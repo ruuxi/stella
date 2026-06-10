@@ -7,7 +7,7 @@ import {
   LogOut,
   Search,
   Star,
-} from "lucide-react";
+} from "@/ui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,

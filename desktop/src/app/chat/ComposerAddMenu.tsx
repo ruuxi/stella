@@ -16,7 +16,7 @@
  */
 import { useCallback, useRef, useState } from "react";
 import type { ChangeEvent, Dispatch, SetStateAction } from "react";
-import { Camera, PanelRight, Paperclip, Scan } from "lucide-react";
+import { Camera, File, PanelRight, Paperclip, Scan } from "@/ui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -219,20 +219,5 @@ export function ComposerAddMenu({
 }
 
 function FileGlyphIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 3 14 8 19 8" />
-    </svg>
-  );
+  return <File size={16} strokeWidth={1.75} aria-hidden />;
 }

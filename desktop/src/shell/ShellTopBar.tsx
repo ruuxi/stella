@@ -11,7 +11,7 @@ import {
   Pin,
   Square,
   X,
-} from "lucide-react";
+} from "@/ui/icons";
 import {
   WindowsMaximizeIcon,
   WindowsRestoreIcon,

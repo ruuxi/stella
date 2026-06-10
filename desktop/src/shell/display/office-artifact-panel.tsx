@@ -6,7 +6,7 @@ import {
   FileText,
   FolderOpen,
   Presentation,
-} from "lucide-react";
+} from "@/ui/icons";
 import type {
   OfficePreviewFormat,
   OfficePreviewRef,

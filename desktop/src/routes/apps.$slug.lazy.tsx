@@ -1,6 +1,6 @@
 import { createLazyFileRoute, useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useMemo } from "react";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "@/ui/icons";
 import { getUserApp } from "@/app/_user/user-apps-registry";
 
 function UserAppHost() {

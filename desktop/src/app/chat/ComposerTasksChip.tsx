@@ -17,7 +17,7 @@
  * instead of interpolate).
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown } from "@/ui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,

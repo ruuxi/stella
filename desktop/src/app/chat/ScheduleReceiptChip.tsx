@@ -14,6 +14,7 @@
 
 import { useMemo, useState } from "react";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
+import { Clock } from "@/ui/icons";
 import { formatNextRun } from "@/global/schedule/format-schedule";
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import "./schedule-receipt-chip.css";
@@ -68,21 +69,7 @@ export function ScheduleReceiptChip({
         onClick={() => setOpen(true)}
       >
         <span className="schedule-receipt-chip__icon" aria-hidden="true">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
-            <circle
-              cx="12"
-              cy="12"
-              r="9"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-            <path
-              d="M12 7v5l3 2"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
+          <Clock size={13} strokeWidth={1.5} />
         </span>
         <span className="schedule-receipt-chip__primary">{primary}</span>
         {meta && <span className="schedule-receipt-chip__meta">{meta}</span>}

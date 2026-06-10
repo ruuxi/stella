@@ -2,7 +2,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/shared/lib/utils";
 import { NativeWebsiteOverlayRegistrar } from "@/shared/lib/native-website-overlay";
-import { X } from "lucide-react";
+import { X } from "@/ui/icons";
 
 const DialogRoot = DialogPrimitive.Root;
 const DialogPortal = DialogPrimitive.Portal;

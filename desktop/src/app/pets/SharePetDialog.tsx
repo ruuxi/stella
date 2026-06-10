@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { useMutation } from "convex/react";
-import { Check, Copy, Lock, Send } from "lucide-react";
+import { Check, Copy, Lock, Send } from "@/ui/icons";
 import { api } from "@/convex/api";
 import {
   Dialog,

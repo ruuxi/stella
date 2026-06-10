@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from "react";
-import { Lightbulb, RefreshCw, Search, Star } from "lucide-react";
+import { Lightbulb, RefreshCw, Search, Star } from "@/ui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,

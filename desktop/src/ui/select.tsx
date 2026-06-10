@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown } from "@/ui/icons";
 import { cn } from "@/shared/lib/utils";
 import { NativeWebsiteOverlayRegistrar } from "@/shared/lib/native-website-overlay";
 

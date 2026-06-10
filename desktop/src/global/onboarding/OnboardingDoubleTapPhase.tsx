@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, Maximize2, Plus, X } from "lucide-react";
+import { ArrowUp, Maximize2, Plus, X } from "@/ui/icons";
 import { getPlatform } from "@/platform/electron/platform";
 import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import "./OnboardingDoubleTapPhase.css";

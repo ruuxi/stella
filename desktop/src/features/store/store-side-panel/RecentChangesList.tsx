@@ -1,4 +1,4 @@
-import { Check, Plus } from "lucide-react";
+import { Check, Plus } from "@/ui/icons";
 import { storeSidePanelStore } from "../store-side-panel-store";
 import type { SelfModFeatureSnapshot } from "../../../shared/types/electron";
 import { formatTimeAgo } from "./format";

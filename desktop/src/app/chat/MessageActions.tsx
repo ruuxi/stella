@@ -11,7 +11,7 @@
  * the chat's scroll-follow logic depends on.
  */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, LoaderCircle, Square, Volume2 } from "lucide-react";
+import { Check, Copy, LoaderCircle, Square, Volume2 } from "@/ui/icons";
 import {
   toggleManualReadAloud,
   useManualReadAloudStatus,

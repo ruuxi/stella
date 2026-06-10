@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, ChevronDown } from "@/ui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,

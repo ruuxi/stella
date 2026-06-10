@@ -8,7 +8,7 @@
  * rather than parsing the text, so the surface stays robust if the
  * fallback wording changes.
  */
-import { AudioLines } from "lucide-react";
+import { AudioLines } from "@/ui/icons";
 import "./voice-session-card.css";
 
 const formatDuration = (durationMs: number): string => {

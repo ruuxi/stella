@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Smartphone } from "@/ui/icons";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Dialog,
@@ -21,14 +21,7 @@ interface ConnectDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const PHONE_ICON = (
-  <svg viewBox="0 0 24 24" aria-hidden>
-    <path
-      fill="currentColor"
-      d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"
-    />
-  </svg>
-);
+const PHONE_ICON = <Smartphone strokeWidth={1.75} aria-hidden />;
 
 const allIntegrations = INTEGRATIONS;
 

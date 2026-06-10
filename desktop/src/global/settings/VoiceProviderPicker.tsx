@@ -28,7 +28,7 @@ import {
   ChevronRight,
   KeyRound,
   LogIn,
-} from "lucide-react";
+} from "@/ui/icons";
 import { Button } from "@/ui/button";
 import { Switch } from "@/ui/switch";
 import { TextField } from "@/ui/text-field";

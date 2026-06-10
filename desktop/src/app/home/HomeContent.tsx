@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { ChevronRight } from "@/ui/icons";
 import "./home.css";
 
 type HomeContentProps = {
@@ -133,20 +134,11 @@ export function HomeContent({ onDismissHome, children }: HomeContentProps) {
           onClick={onDismissHome}
         >
           <span>Back to chat</span>
-          <svg
+          <ChevronRight
             className="home-view-messages-link__arrow"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            size={14}
             aria-hidden="true"
-          >
-            <path d="M9 6l6 6-6 6" />
-          </svg>
+          />
         </button>
       )}
 

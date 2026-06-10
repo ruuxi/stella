@@ -64,7 +64,7 @@ import {
   type InlineWorkingIndicatorMountProps,
 } from "./InlineWorkingIndicator";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "@/ui/icons";
 
 type ChatTimelineProps = {
   rows: EventRowViewModel[];

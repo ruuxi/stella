@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Check, KeyRound, LogIn } from "lucide-react";
+import { Check, KeyRound, LogIn } from "@/ui/icons";
 import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import { ClaudeLogoIcon } from "@/ui/claude-logo-icon";
 import {

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { CollaborationIllustration } from "./CollaborationIllustration";
-import { Copy, Pencil, SquarePen, Users } from "lucide-react";
+import { Copy, Pencil, SquarePen, Users } from "@/ui/icons";
 import { Avatar } from "@/ui/avatar";
 import { showToast } from "@/ui/toast";
 import { getSocialActionErrorMessage } from "./social-errors";

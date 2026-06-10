@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { X } from "lucide-react";
+import { X } from "@/ui/icons";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
 import type { MediaTabItem } from "./media-actions";
 import { glyphForMediaItem } from "./glyph";

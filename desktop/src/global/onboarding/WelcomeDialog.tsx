@@ -9,7 +9,7 @@ import {
 } from "@/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { listLocalEvents } from "@/features/chat/services/local-chat-store";
-import { Compass, LogIn, Smartphone } from "lucide-react";
+import { Compass, LogIn, Smartphone } from "@/ui/icons";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { openCanvasDisplayTab } from "@/features/workspace-display/default-tabs";
 import "./welcome-dialog.css";

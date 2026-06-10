@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X } from "lucide-react";
+import { X } from "@/ui/icons";
 
 interface ToastContextValue {
   toasts: Toast[];

@@ -6,7 +6,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
-import { Search, X } from "lucide-react";
+import { Search, X } from "@/ui/icons";
 import { useT } from "@/shared/i18n";
 
 interface SettingsSearchProps {

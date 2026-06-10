@@ -9,11 +9,18 @@
  * accents (PDF red, sheet green, slides orange, etc.) so each format is
  * recognizable at a glance.
  *
- * Inline SVG keeps the icon set self-contained — we avoid pulling in a full
- * icon dependency just for ~10 glyphs.
+ * Top-level tab glyphs (Chat, Store, Media, Trash, URL) come from the shared
+ * Stella icon set in `@/ui/icons`; only the badged file-type marks live here.
  */
 
 import type { CSSProperties, ReactNode } from "react";
+import {
+  Globe,
+  Image as ImageGlyph,
+  MessageSquare,
+  Store,
+  Trash2,
+} from "@/ui/icons";
 import type { DisplayTabKind } from "./types";
 
 const TYPE_COLORS = {
@@ -301,76 +308,11 @@ const DiffIcon = (props: IconProps) => (
 );
 
 const StoreIcon = ({ size = 18, style }: IconProps) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={style}
-  >
-    {/* Shopping bag silhouette — matches the sidebar's `CustomStore` mark
-        so the display tab reads as "the same thing as Store" at a glance. */}
-    <path
-      d="M6 8h12l-1 12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8z"
-      stroke="currentColor"
-      strokeOpacity="0.75"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill="currentColor"
-      fillOpacity="0.08"
-    />
-    <path
-      d="M9 8V6a3 3 0 0 1 6 0v2"
-      stroke="currentColor"
-      strokeOpacity="0.75"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill="none"
-    />
-  </svg>
+  <Store size={size} strokeWidth={1.5} style={style} />
 );
 
-/**
- * Media tab icon — minimalist Photos-style silhouette in currentColor.
- * Matches the chrome of the other top-level tab icons (Chat, Store,
- * Trash) instead of the badged `ImageIcon` used for inline image
- * payloads.
- */
 const MediaIcon = ({ size = 18, style }: IconProps) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={style}
-  >
-    <rect
-      x="3.5"
-      y="5.5"
-      width="17"
-      height="13"
-      rx="2.5"
-      stroke="currentColor"
-      strokeOpacity="0.75"
-      strokeWidth="1.5"
-      fill="currentColor"
-      fillOpacity="0.08"
-    />
-    <circle cx="9" cy="10" r="1.4" fill="currentColor" fillOpacity="0.75" />
-    <path
-      d="M5 16.5l4-4 3.5 3 3-2.5 3.5 3.5"
-      stroke="currentColor"
-      strokeOpacity="0.75"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill="none"
-    />
-  </svg>
+  <ImageGlyph size={size} strokeWidth={1.5} style={style} />
 );
 
 /**
@@ -420,54 +362,11 @@ const CanvasIcon = ({ size = 18, style }: IconProps) => (
 );
 
 const ChatIcon = ({ size = 18, style }: IconProps) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={style}
-  >
-    <path
-      d="M5 5.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-4.5 3v-3H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"
-      stroke="currentColor"
-      strokeOpacity="0.7"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill="currentColor"
-      fillOpacity="0.08"
-    />
-  </svg>
+  <MessageSquare size={size} strokeWidth={1.5} style={style} />
 );
 
 const TrashIcon = ({ size = 18, style }: IconProps) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={style}
-  >
-    <path
-      d="M5 7h14M9.5 7V5.5a1.5 1.5 0 0 1 1.5-1.5h2a1.5 1.5 0 0 1 1.5 1.5V7M7 7l1 12.2a2 2 0 0 0 2 1.8h4a2 2 0 0 0 2-1.8L17 7"
-      stroke="currentColor"
-      strokeOpacity="0.75"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill="currentColor"
-      fillOpacity="0.08"
-    />
-    <path
-      d="M10.5 10.5v6M13.5 10.5v6"
-      stroke="currentColor"
-      strokeOpacity="0.55"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-    />
-  </svg>
+  <Trash2 size={size} strokeWidth={1.5} style={style} />
 );
 
 /**
@@ -519,34 +418,7 @@ const EngineIcon = ({ size = 18, style }: IconProps) => (
 );
 
 const UrlIcon = ({ size = 18, style }: IconProps) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    style={style}
-  >
-    <circle
-      cx="12"
-      cy="12"
-      r="8"
-      stroke="currentColor"
-      strokeOpacity="0.7"
-      strokeWidth="1.5"
-      fill="currentColor"
-      fillOpacity="0.08"
-    />
-    <path
-      d="M4 12h16M12 4c2.5 2.5 3.8 5.4 3.8 8s-1.3 5.5-3.8 8M12 4c-2.5 2.5-3.8 5.4-3.8 8s1.3 5.5 3.8 8"
-      stroke="currentColor"
-      strokeOpacity="0.7"
-      strokeWidth="1.3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      fill="none"
-    />
-  </svg>
+  <Globe size={size} strokeWidth={1.5} style={style} />
 );
 
 export const DisplayTabIcon = ({

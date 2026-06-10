@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { X } from "@/ui/icons";
 import "./assistant-reply-peek.css";
 
 export type AssistantReplyPeekProps = {

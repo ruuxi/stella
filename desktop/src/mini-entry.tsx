@@ -8,7 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type RefObject,
 } from "react";
-import { PanelRight, Pin } from "lucide-react";
+import { PanelRight, Pin } from "@/ui/icons";
 import "./index.css";
 import "./ui/register-styles";
 import "./shared/styles/app-base.css";

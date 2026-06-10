@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { MessageSquarePlus, Scan } from "lucide-react";
+import { MessageSquarePlus, Scan } from "@/ui/icons";
 import { CustomDevice as Device } from "@/ui/nav-icons";
 import { openConnectDialog } from "@/global/integrations/connect-action";
 import { preloadConnectDialog } from "@/shell/topbar/nav-surface-preloads";

@@ -6,7 +6,7 @@ import {
   type ComponentType,
   type SVGProps,
 } from 'react'
-import { Camera, MessageSquare, Mic, Plus, X } from 'lucide-react'
+import { Camera, MessageSquare, Mic, Plus, X } from "@/ui/icons"
 import { StellaAnimation } from '@/shell/ascii-creature/StellaAnimation'
 import { cssToVec3 } from '@/shared/lib/color'
 import { RADIAL_SIZE } from '@/shared/lib/layout'

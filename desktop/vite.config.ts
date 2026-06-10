@@ -233,7 +233,6 @@ export default defineConfig({
       'recharts',
       'react-pdf',
       'motion',
-      'lucide-react',
       '@tanstack/react-router',
       '@tanstack/react-table',
       'convex/react',

@@ -10,7 +10,7 @@ import { useTheme, useThemeControl } from "@/context/theme-context";
 import { isHiddenOverlay } from "@/shared/theme/themes";
 import { Popover, PopoverContent, PopoverTrigger, PopoverBody } from "@/ui/popover";
 import { Button } from "@/ui/button";
-import { Check } from "lucide-react";
+import { Check } from "@/ui/icons";
 import "./ThemePicker.css";
 
 type ColorScheme = "light" | "dark" | "system";

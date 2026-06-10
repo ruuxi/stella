@@ -40,7 +40,6 @@
         "gaxios": "^7.1.4",
         "googleapis": "^172.0.0",
         "googleapis-common": "^8.0.1",
-        "lucide-react": "^1.17.0",
         "motion": "^12.40.0",
         "openai": "6.39.0",
         "partial-json": "^0.1.7",
@@ -1664,8 +1663,6 @@
     "lowercase-keys": ["lowercase-keys@2.0.0", "", {}, "sha512-tqNXrS78oMOE73NMxK4EMLQsQowWf8jKooH9g7xPavRT706R6bkQJ6DY2Te7QukaZsulxa30wQ7bk0pm4XiHmA=="],
 
     "lru-cache": ["lru-cache@7.18.3", "", {}, "sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA=="],
-
-    "lucide-react": ["lucide-react@1.17.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-9FA9evdox/JQL5PT57fdA1x/yg8T7knJ98+zjTL3UfKza6pflQUUh3XtaQIHKvnsJw1lmsEyHVlt5jchYxOQ5w=="],
 
     "mac-screen-capture-permissions": ["mac-screen-capture-permissions@2.1.0", "", { "dependencies": { "electron-util": "^0.17.2", "execa": "^5.1.1", "macos-version": "^5.2.1" } }, "sha512-acDjfhtsD3nOgwVbBzK5YWJ78zcWXt+UzqdoXbwq2i1oO2zzuC4FQ3fJgHuHjZCTptV6GFTx9uXy4tpLeZ+QJQ=="],
 
