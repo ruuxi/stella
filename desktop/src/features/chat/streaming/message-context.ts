@@ -12,6 +12,7 @@ const buildLocalScreenshotAttachments = (
     return {
       url: screenshot.dataUrl,
       mimeType: match ? match[1] : 'image/png',
+      ...(screenshot.previewUrl ? { previewUrl: screenshot.previewUrl } : {}),
     }
   })
 
@@ -30,3 +31,16 @@ export const buildAllLocalAttachments = (
   ...buildLocalScreenshotAttachments(chatContext),
   ...buildLocalFileAttachments(chatContext),
 ]
+
+/**
+ * Display copies (optimistic rows, stored chat events) swap the full
+ * resolution data URL for the attach-time preview when one exists. The
+ * model path keeps `url` untouched.
+ */
+export const toDisplayAttachments = (
+  attachments: AttachmentRef[],
+): AttachmentRef[] =>
+  attachments.map(({ previewUrl, ...attachment }) => ({
+    ...attachment,
+    ...(previewUrl ? { url: previewUrl } : {}),
+  }))

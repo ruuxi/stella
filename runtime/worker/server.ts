@@ -1480,8 +1480,19 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             type: "user_message",
             payload: {
               text: visibleUserPrompt,
+              // Store the display copy preview-weight: full-resolution data
+              // URLs are for the model request only — persisting them here
+              // bloats the chat store and makes every render of the user
+              // row decode the originals.
               ...(payload.attachments?.length
-                ? { attachments: payload.attachments }
+                ? {
+                    attachments: payload.attachments.map(
+                      ({ previewUrl, ...attachment }) => ({
+                        ...attachment,
+                        ...(previewUrl ? { url: previewUrl } : {}),
+                      }),
+                    ),
+                  }
                 : {}),
               ...(payload.platform ? { platform: payload.platform } : {}),
               ...(payload.timezone ? { timezone: payload.timezone } : {}),

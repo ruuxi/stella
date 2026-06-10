@@ -260,7 +260,7 @@ export function ScreenshotContextChips({
           }}
         >
           <img
-            src={screenshot.dataUrl}
+            src={screenshot.previewUrl ?? screenshot.dataUrl}
             className={cn(
               imageClassName,
               "chat-composer-context-window-thumb chat-composer-context-region-thumb",

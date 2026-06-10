@@ -9,6 +9,7 @@ import type { MessageRecord } from '../../../../../runtime/contracts/local-chat.
 import { resolveComposerContextState } from '../composer-context'
 import {
   buildAllLocalAttachments,
+  toDisplayAttachments,
 } from '../streaming/message-context'
 import { toPastedTextDescriptor } from '../lib/paste-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
@@ -279,7 +280,7 @@ export function useStreamingChatCore({
             timezone,
             locale: requestLocale,
             ...(messageMetadata ? { metadata: messageMetadata } : {}),
-            attachments,
+            attachments: toDisplayAttachments(attachments),
             ...(mode ? { mode } : {}),
           }),
         ])

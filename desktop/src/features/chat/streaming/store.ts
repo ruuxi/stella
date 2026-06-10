@@ -558,7 +558,7 @@ export function streamStoreReducer(
 
 export function attachmentsForStartChat(
   attachments: AttachmentRef[] | undefined,
-): { url: string; mimeType?: string }[] | undefined {
+): { url: string; mimeType?: string; previewUrl?: string }[] | undefined {
   if (!attachments?.length) return undefined
   const mapped = attachments
     .filter(
@@ -566,8 +566,11 @@ export function attachmentsForStartChat(
         typeof a.url === 'string' && a.url.length > 0,
     )
     .map((a) => {
-      const item: { url: string; mimeType?: string } = { url: a.url }
+      const item: { url: string; mimeType?: string; previewUrl?: string } = {
+        url: a.url,
+      }
       if (a.mimeType) item.mimeType = a.mimeType
+      if (a.previewUrl) item.previewUrl = a.previewUrl
       return item
     })
   return mapped.length ? mapped : undefined

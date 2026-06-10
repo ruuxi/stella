@@ -408,6 +408,18 @@ export function useLocalAgentStream({
 
       const attemptId = ++startAttemptRef.current
       const startChatAttachments = attachmentsForStartChat(args.attachments)
+      // The composer's attached images/files already travel as
+      // `attachments` — shipping them again inside chatContext doubles a
+      // potentially huge base64 payload across the IPC bridge for fields
+      // the runtime never reads (it only consumes windowScreenshot,
+      // window/AX, selection, and pasted text from chatContext).
+      const startChatContext = args.chatContext
+        ? {
+            ...args.chatContext,
+            regionScreenshots: undefined,
+            files: undefined,
+          }
+        : args.chatContext
 
       void (async () => {
         if (attemptId !== startAttemptRef.current) return
@@ -418,8 +430,8 @@ export function useLocalAgentStream({
           ...(typeof args.selectedText !== 'undefined'
             ? { selectedText: args.selectedText }
             : {}),
-          ...(typeof args.chatContext !== 'undefined'
-            ? { chatContext: args.chatContext }
+          ...(typeof startChatContext !== 'undefined'
+            ? { chatContext: startChatContext }
             : {}),
           deviceId: args.deviceId,
           platform: args.platform,
