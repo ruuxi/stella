@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "@/ui/icons";
 import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
 import { SPLIT_PHASES, SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
 import { getPlatform } from "@/platform/electron/platform";
@@ -454,18 +455,7 @@ export const OnboardingStep1 = ({
               onClick={prevSplitStep}
               aria-label={t("onboarding.previousStep")}
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
+              <ChevronLeft size={14} />
             </button>
             {canReturnNext ? (
               <button
@@ -475,18 +465,7 @@ export const OnboardingStep1 = ({
                 onClick={nextSplitStep}
                 aria-label={t("onboarding.nextStep")}
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M9 18l6-6-6-6" />
-                </svg>
+                <ChevronRight size={14} />
               </button>
             ) : null}
           </div>

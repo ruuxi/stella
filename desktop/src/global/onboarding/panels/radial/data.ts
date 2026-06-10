@@ -1,11 +1,11 @@
-import { Camera, MessageSquare, Mic, Plus, type LucideIcon } from "lucide-react";
+import { Camera, MessageSquare, Mic, Plus, type IconComponent } from "@/ui/icons";
 
 type RadialWedgeId = "capture" | "chat" | "add" | "voice";
 
 type RadialWedge = {
   id: RadialWedgeId;
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   heading: string;
   detail: string;
 };

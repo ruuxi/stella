@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MoreHorizontal, RefreshCw, RotateCcw } from "lucide-react";
+import { MoreHorizontal, RefreshCw, RotateCcw } from "@/ui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,

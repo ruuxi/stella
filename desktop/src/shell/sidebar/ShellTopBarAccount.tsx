@@ -16,7 +16,7 @@ import {
   MessageSquare,
   Palette,
   Settings as SettingsIcon,
-} from "lucide-react";
+} from "@/ui/icons";
 import { useT } from "@/shared/i18n";
 import {
   preloadAuthDialog,

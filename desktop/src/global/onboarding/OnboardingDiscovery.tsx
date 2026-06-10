@@ -1,5 +1,5 @@
 import React from "react";
-import { Lock } from "lucide-react";
+import { Lock } from "@/ui/icons";
 import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
 import { DISCOVERY_CATEGORIES } from "./onboarding-flow";
 import { getPlatform } from "@/platform/electron/platform";

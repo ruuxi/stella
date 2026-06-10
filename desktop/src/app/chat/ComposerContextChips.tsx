@@ -1,6 +1,15 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContext, ChatContextFile } from "@/shared/types/electron";
 import { cn } from "@/shared/lib/utils";
+import {
+  Archive,
+  Code,
+  File,
+  FileSpreadsheet,
+  FileText,
+  Music,
+  Video,
+} from "@/ui/icons";
 import { ChipPreviewPortal } from "./ChipPreviewPortal";
 import { useHoverPreview } from "./use-hover-preview";
 import {
@@ -300,28 +309,24 @@ function resolveFileCategory(
 }
 
 function FileIcon({ category }: { category: ReturnType<typeof resolveFileCategory> }) {
-  const shared = {
-    width: 16, height: 16, viewBox: "0 0 24 24", fill: "none",
-    stroke: "currentColor", strokeWidth: 1.75,
-    strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
-  };
+  const shared = { size: 16, strokeWidth: 1.75 };
   switch (category) {
     case "pdf":
-      return (<svg {...shared}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /><path d="M9 15v-1h6v1" /><path d="M12 12v6" /></svg>);
+      return <FileText {...shared} />;
     case "document":
-      return (<svg {...shared}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /><path d="M16 13H8" /><path d="M16 17H8" /><path d="M10 9H8" /></svg>);
+      return <FileText {...shared} />;
     case "spreadsheet":
-      return (<svg {...shared}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /><path d="M8 13h2" /><path d="M14 13h2" /><path d="M8 17h2" /><path d="M14 17h2" /></svg>);
+      return <FileSpreadsheet {...shared} />;
     case "code":
-      return (<svg {...shared}><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>);
+      return <Code {...shared} />;
     case "archive":
-      return (<svg {...shared}><path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3" /><path d="M21 16v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3" /><rect x="2" y="8" width="20" height="8" rx="1" /><path d="M12 10v4" /></svg>);
+      return <Archive {...shared} />;
     case "audio":
-      return (<svg {...shared}><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>);
+      return <Music {...shared} />;
     case "video":
-      return (<svg {...shared}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m10 9 5 3-5 3V9Z" /></svg>);
+      return <Video {...shared} />;
     default:
-      return (<svg {...shared}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /></svg>);
+      return <File {...shared} />;
   }
 }
 

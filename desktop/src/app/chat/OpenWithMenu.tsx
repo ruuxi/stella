@@ -8,7 +8,7 @@
  * auto-flips to a drop-down when the card is near the top.
  */
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown } from "@/ui/icons";
 import { useCallback, useEffect, useState } from "react";
 
 import {

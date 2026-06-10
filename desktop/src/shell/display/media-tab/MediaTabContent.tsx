@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, ChevronUp, Folder } from "lucide-react";
+import { ArrowUp, ChevronUp, Folder } from "@/ui/icons";
 import { DropOverlay } from "@/app/chat/DropOverlay";
 import { updateComposerTextareaExpansion } from "@/shared/hooks/use-animated-composer-shell";
 import { MediaPreviewCard } from "@/shell/MediaPreviewCard";

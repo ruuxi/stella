@@ -19,7 +19,7 @@ import {
 import { SocialComposer } from "./SocialComposer";
 import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import type { SocialProfile } from "./hooks/use-social-profile";
-import { MessageSquare } from "lucide-react";
+import { MessageSquare } from "@/ui/icons";
 import { AddonShareCard } from "@/features/store/AddonShareCard";
 import { parseShareLink } from "@/features/store/share-link";
 

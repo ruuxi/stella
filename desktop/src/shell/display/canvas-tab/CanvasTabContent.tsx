@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { X } from "lucide-react";
+import { Image, X } from "@/ui/icons";
 import { displayTabs } from "@/features/workspace-display/tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import {
@@ -210,29 +210,7 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
 };
 
 const CanvasTileGlyph = () => (
-  <svg
-    className="canvas-tab__tile-glyph"
-    viewBox="0 0 24 24"
-    fill="none"
-    aria-hidden
-  >
-    <rect
-      x="4"
-      y="5"
-      width="16"
-      height="14"
-      rx="2.4"
-      stroke="currentColor"
-      strokeWidth="1.4"
-    />
-    <path
-      d="M8 14l3-3 2.4 2.4L17 10"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
+  <Image className="canvas-tab__tile-glyph" strokeWidth={1.4} aria-hidden />
 );
 
 const useCanvasItems = (

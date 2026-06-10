@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Check, UserPlus } from "lucide-react";
+import { Check, UserPlus } from "@/ui/icons";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   Dialog,

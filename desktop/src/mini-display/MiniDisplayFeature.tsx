@@ -1,5 +1,5 @@
 import { lazy, Suspense, useLayoutEffect, type RefObject } from "react";
-import { PanelRight, X } from "lucide-react";
+import { PanelRight, X } from "@/ui/icons";
 import "../shared/styles/app-components.css";
 import "../shell/display/chat-home-overview.css";
 import "./mini-display.css";

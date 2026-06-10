@@ -13,7 +13,7 @@
  * are produced by display payloads, not user choice.
  */
 
-import { Plus } from "lucide-react";
+import { Plus } from "@/ui/icons";
 import { useCallback, useMemo } from "react";
 import {
   DropdownMenu,

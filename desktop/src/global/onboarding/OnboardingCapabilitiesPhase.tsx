@@ -28,8 +28,8 @@ import {
   Users,
   Wand2,
   X,
-  type LucideIcon,
-} from "lucide-react";
+  type IconComponent,
+} from "@/ui/icons";
 import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import "./OnboardingCapabilitiesPhase.css";
 
@@ -61,7 +61,7 @@ const LONG_SCENE_DURATION_MS = 6200;
 
 const PRODUCTIVITY_APPS: Array<{
   id: string;
-  Icon: LucideIcon;
+  Icon: IconComponent;
   label: string;
   color: string;
 }> = [
@@ -90,7 +90,7 @@ const STORE_ITEMS: Array<{
   name: string;
   author: string;
   action: "publish" | "install" | "browse";
-  Icon: LucideIcon | null;
+  Icon: IconComponent | null;
 }> = [
   { name: "Habit tracker", author: "by you", action: "publish", Icon: Check },
   { name: "Recipe box", author: "by @maya", action: "install", Icon: Download },

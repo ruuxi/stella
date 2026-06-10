@@ -5,6 +5,7 @@ import {
 } from "react";
 import { motion } from "motion/react";
 import { cn } from "@/shared/lib/utils";
+import { ArrowUp, Mic, Plus, Square } from "@/ui/icons";
 import "./composer-primitives.css";
 
 type ComposerFieldTone = "default" | "orb";
@@ -19,47 +20,15 @@ type ComposerFieldProps = {
 };
 
 function AddIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-    >
-      <line x1="12" y1="6" x2="12" y2="18" />
-      <line x1="6" y1="12" x2="18" y2="12" />
-    </svg>
-  );
+  return <Plus size={16} strokeWidth={1.75} />;
 }
 
 function StopIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-      <rect x="4" y="4" width="16" height="16" rx="2" />
-    </svg>
-  );
+  return <Square size={16} fill="currentColor" stroke="none" />;
 }
 
 function MicIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="9" y="3" width="6" height="12" rx="3" />
-      <path d="M5 11a7 7 0 0 0 14 0" />
-      <line x1="12" y1="19" x2="12" y2="22" />
-    </svg>
-  );
+  return <Mic size={16} strokeWidth={1.75} />;
 }
 
 function SpinnerIcon() {
@@ -84,18 +53,7 @@ function SpinnerIcon() {
 }
 
 function SendIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.75"
-    >
-      <path d="M12 19V5M5 12l7-7 7 7" />
-    </svg>
-  );
+  return <ArrowUp size={16} strokeWidth={1.75} />;
 }
 
 export const ComposerAddButton = forwardRef<HTMLButtonElement, ComposerButtonProps>(

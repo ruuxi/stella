@@ -5,7 +5,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { ArrowUp, Plus, X } from "lucide-react";
+import { ArrowUp, Plus, X } from "@/ui/icons";
 import { StellaLogoIcon } from "@/ui/stella-logo-icon";
 import { StellaAppMock } from "./panels/StellaAppMock";
 import { RadialDialDemo } from "./panels/radial/RadialDialDemo";

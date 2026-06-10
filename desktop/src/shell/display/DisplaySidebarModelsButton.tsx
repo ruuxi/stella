@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal } from "@/ui/icons";
 import {
   engineOverlay,
   useEngineOverlayOpen,

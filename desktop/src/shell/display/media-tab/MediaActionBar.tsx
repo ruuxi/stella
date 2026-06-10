@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Copy, Download, Trash2 } from "lucide-react";
+import { Copy, Download, Trash2 } from "@/ui/icons";
 import { useDisplayFileBlobs } from "@/shared/hooks/use-display-file-data";
 import { copyImageBlob } from "@/shell/media-clipboard";
 import type { MediaTabItem } from "./media-actions";

@@ -6,7 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Search } from "lucide-react";
+import { Search } from "@/ui/icons";
 import { dispatchComposeText } from "@/shared/lib/stella-orb-chat";
 import {
   getSnapshot,

@@ -35,7 +35,7 @@ import {
   ClipboardPaste,
   Crop,
   Paperclip,
-} from "lucide-react";
+} from "@/ui/icons";
 import { describePastedText } from "@/features/chat/lib/paste-context";
 import { ChipPreviewPortal } from "@/app/chat/ChipPreviewPortal";
 import { useHoverPreview } from "@/app/chat/use-hover-preview";

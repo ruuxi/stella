@@ -24,7 +24,7 @@ import {
   Circle,
   LoaderCircle,
   AlertCircle,
-} from "lucide-react";
+} from "@/ui/icons";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import {

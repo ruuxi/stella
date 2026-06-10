@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Check, KeyRound, LogIn } from "lucide-react";
+import { Check, KeyRound, LogIn } from "@/ui/icons";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import {

@@ -23,6 +23,7 @@ import {
   useState,
   type ComponentProps,
 } from "react";
+import { ChevronDown } from "@/ui/icons";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
@@ -297,16 +298,7 @@ export const ChatColumn = memo(function ChatColumn({
                 onClick={() => scrollToBottom("smooth")}
                 aria-label="Scroll to bottom"
               >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                >
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
+                <ChevronDown size={16} strokeWidth={2.5} />
               </button>
             )}
           </div>

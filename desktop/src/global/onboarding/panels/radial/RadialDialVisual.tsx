@@ -1,4 +1,4 @@
-import { Paperclip, Search } from "lucide-react";
+import { Paperclip, Search } from "@/ui/icons";
 import { useEffect, useRef } from "react";
 import { runVacuumEffect } from "./region-capture-vacuum";
 import { makeCaptureThumbnail } from "./capture-thumbnail";

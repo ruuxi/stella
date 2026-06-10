@@ -12,7 +12,7 @@ import {
   Plus,
   Search,
   User,
-} from "lucide-react";
+} from "@/ui/icons";
 import { useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";

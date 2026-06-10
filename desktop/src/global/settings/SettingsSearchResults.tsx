@@ -1,5 +1,5 @@
 import { Fragment, useMemo, type ReactNode } from "react";
-import { ArrowRight, Search } from "lucide-react";
+import { ArrowRight, Search } from "@/ui/icons";
 import {
   expandedMatchTerms,
   searchSettings,

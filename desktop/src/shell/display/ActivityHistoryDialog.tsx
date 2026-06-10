@@ -22,7 +22,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Search, X } from "@/ui/icons";
 import {
   LegendList,
   type LegendListRenderItemProps,

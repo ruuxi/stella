@@ -14,6 +14,7 @@
 
 import { useEffect, useRef } from "react";
 import { cn } from "@/shared/lib/utils";
+import { ArrowUp, Check, X } from "@/ui/icons";
 import "./dictation-recording-bar.css";
 
 type DictationRecordingBarProps = {
@@ -181,53 +182,13 @@ const formatElapsed = (ms: number): string => {
 };
 
 function CancelIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="6" y1="6" x2="18" y2="18" />
-      <line x1="6" y1="18" x2="18" y2="6" />
-    </svg>
-  );
+  return <X size={14} />;
 }
 
 function CheckIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="5 12 10 17 19 7" />
-    </svg>
-  );
+  return <Check size={16} />;
 }
 
 function SendIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 19V5M5 12l7-7 7 7" />
-    </svg>
-  );
+  return <ArrowUp size={14} strokeWidth={2.5} />;
 }

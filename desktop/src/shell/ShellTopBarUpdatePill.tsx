@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import { X } from "lucide-react";
+import { X } from "@/ui/icons";
 import { showToast } from "@/ui/toast";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { useDesktopUpdate } from "@/global/updates/use-desktop-update";

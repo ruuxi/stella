@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, RefreshCw } from "lucide-react";
+import { ChevronDown, RefreshCw } from "@/ui/icons";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
 import { CompactStellaModelList } from "@/global/settings/CompactStellaModelList";
 import { LocalRuntimeOptions } from "@/global/settings/LocalRuntimeOptions";

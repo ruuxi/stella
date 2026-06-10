@@ -5,13 +5,13 @@ import {
   Film,
   Image as ImageIcon,
   Music,
-  type LucideIcon,
-} from "lucide-react";
+  type IconComponent,
+} from "@/ui/icons";
 import type { MediaTabItem } from "./media-actions";
 
 export const glyphForMediaItem = (
   item: MediaTabItem,
-): { Icon: LucideIcon; label: string; badge?: string } => {
+): { Icon: IconComponent; label: string; badge?: string } => {
   switch (item.asset.kind) {
     case "image":
       return item.asset.filePaths.length > 1

@@ -1,4 +1,4 @@
-import { Play, Square } from "lucide-react"
+import { Play, Square } from "@/ui/icons"
 import { useRef, useEffect, useState, useCallback } from "react"
 import { preloadLyriaMusic, useLyriaMusic } from "@/features/music/hooks/use-lyria-music"
 import type { MusicMood } from "@/prompts/music"

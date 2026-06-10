@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ExternalLink, Globe } from "lucide-react";
+import { ExternalLink, Globe } from "@/ui/icons";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   Dialog,

@@ -11,6 +11,7 @@ import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
 import { displayTabs, useDisplayTabList } from "@/features/workspace-display/tab-store";
 import { CHAT_DISPLAY_TAB_ID } from "./default-tabs";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
+import { X } from "@/ui/icons";
 import { DisplayTabAddMenu } from "./DisplayTabAddMenu";
 
 const closeIconStyle: CSSProperties = {
@@ -59,18 +60,7 @@ export const DisplayTabBar = () => {
                 displayTabs.closeTab(tab.id);
               }}
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={closeIconStyle}
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
+              <X style={closeIconStyle} />
             </button>
           </div>
         );

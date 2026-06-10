@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   ChevronRight,
-} from "lucide-react";
+} from "@/ui/icons";
 
 import type {
   ThirdPartyMigrationFinding,

@@ -1,4 +1,5 @@
 import { type CSSProperties } from "react";
+import { Check, X } from "@/ui/icons";
 import { getPlatform } from "@/platform/electron/platform";
 import { DEFAULT_PET_ID } from "@/shell/pet/built-in-pets";
 import { useSelectedPet } from "@/shell/pet/pet-catalog-context";
@@ -210,36 +211,9 @@ function FakeWaveform() {
 }
 
 function CancelIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <line x1="6" y1="6" x2="18" y2="18" />
-      <line x1="6" y1="18" x2="18" y2="6" />
-    </svg>
-  );
+  return <X size={14} />;
 }
 
 function CheckIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="5 12 10 17 19 7" />
-    </svg>
-  );
+  return <Check size={16} />;
 }
