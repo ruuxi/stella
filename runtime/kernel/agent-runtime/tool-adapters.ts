@@ -193,6 +193,21 @@ const STELLA_ATTACH_IMAGE_RE =
 
 type ImageBlock = { type: "image"; mimeType: string; data: string };
 
+/**
+ * Per-image cap for vision attachments, measured on the base64 payload.
+ * Anthropic rejects any image whose base64 exceeds 10MiB (~7.8MB binary)
+ * with a fatal 400 that kills the whole turn — so oversized files are
+ * never attached; the model gets an inline note telling it to view a
+ * downscaled copy instead. Matches the strictest mainstream provider so
+ * one attach never nukes a run regardless of routing.
+ */
+const MAX_ATTACH_IMAGE_BASE64_BYTES = 10 * 1024 * 1024;
+
+const base64Length = (binaryBytes: number) => Math.ceil(binaryBytes / 3) * 4;
+
+const oversizedAttachImageNote = (imgPath: string, binaryBytes: number) =>
+  `[Image not attached: ${imgPath} is ${(binaryBytes / (1024 * 1024)).toFixed(1)}MB, over the model's per-image limit (~7.8MB). Create a downscaled copy (e.g. \`sips -Z 1568 "${imgPath}" --out /tmp/smaller.png\`, or delegate to an agent with shell access) and view the copy instead.]`;
+
 const normalizeAttachImagePath = (filePath: string) =>
   /^[A-Za-z]:\\\\/.test(filePath) ? filePath.replace(/\\\\/g, "\\") : filePath;
 
@@ -239,16 +254,29 @@ export const extractAttachImageBlocks = async (
   if (matches.length === 0) return { text, images: [] };
 
   const images: ImageBlock[] = [];
+  const markerReplacements: Array<{ full: string; replacement: string }> = [];
   // Read sequentially to keep failure messages deterministic; screenshots are
   // small and there's typically 1-2 per call.
-  for (const { path: imgPath } of matches) {
+  for (const { full, path: imgPath } of matches) {
     try {
       const fs = await import("node:fs/promises");
+      const stat = await fs.stat(imgPath);
+      if (base64Length(stat.size) > MAX_ATTACH_IMAGE_BASE64_BYTES) {
+        // Swap the marker for an actionable note instead of attaching: an
+        // over-cap image inlined into the request 400s fatally at the
+        // provider and kills the entire turn.
+        markerReplacements.push({
+          full,
+          replacement: oversizedAttachImageNote(imgPath, stat.size),
+        });
+        continue;
+      }
       const buf = await fs.readFile(imgPath);
       const mimeType = resolveImageMimeType(imgPath, buf);
       if (!mimeType) {
         return { text, images: [] };
       }
+      markerReplacements.push({ full, replacement: "" });
       images.push({
         type: "image",
         mimeType,
@@ -261,10 +289,11 @@ export const extractAttachImageBlocks = async (
     }
   }
 
-  // Strip the marker lines from the forwarded text so we don't double-send.
+  // Strip attached markers (and swap oversized ones for their notes) so we
+  // don't double-send paths the model no longer needs.
   let stripped = text;
-  for (const { full } of matches) {
-    stripped = stripped.replace(full, "").replace(/\n{3,}/g, "\n\n");
+  for (const { full, replacement } of markerReplacements) {
+    stripped = stripped.replace(full, replacement).replace(/\n{3,}/g, "\n\n");
   }
   stripped = stripped.replace(/[ \t]+\n/g, "\n").trim();
   return { text: stripped, images };

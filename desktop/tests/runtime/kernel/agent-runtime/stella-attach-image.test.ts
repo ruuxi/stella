@@ -121,6 +121,31 @@ App=com.apple.finder (pid 504)
     }
   });
 
+  it("swaps oversized images for a downscale note instead of attaching", async () => {
+    // Anthropic 400s fatally on any image whose base64 exceeds 10MiB —
+    // the attach layer must keep the turn alive by noting the limit
+    // instead of inlining the image. ~8MB binary > the ~7.8MB cap.
+    const tempDir = createTempDir();
+    const bigPath = path.join(tempDir, "huge.png");
+    writeFileSync(
+      bigPath,
+      Buffer.concat([ONE_BY_ONE_PNG, Buffer.alloc(8 * 1024 * 1024)]),
+    );
+    const smallPath = writePng(tempDir, "small.png");
+
+    const text =
+      `[stella-attach-image] inline=image/png ${bigPath}\n` +
+      `[stella-attach-image] inline=image/png ${smallPath}\n`;
+    const result = await extractAttachImageBlocks(text);
+
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
+    expect(result.text).toContain("Image not attached");
+    expect(result.text).toContain(bigPath);
+    expect(result.text).toContain("downscaled copy");
+    expect(result.text).not.toContain(`[stella-attach-image] inline=image/png ${smallPath}`);
+  });
+
   it("extracts a marker embedded inside a JSON-stringified tool result", async () => {
     // Mirrors the exec_command tool result shape: stdout is wrapped inside
     // a JSON envelope where real newlines become escaped `\n` characters.
