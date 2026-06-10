@@ -14,6 +14,7 @@ import {
   type RuntimeAttachmentRef,
   type RuntimeAgentEventPayload,
   type RuntimeChatPayload,
+  type RuntimePromptMessage,
   type RuntimeOneShotCompletionRequest,
   type RuntimeOneShotCompletionResult,
   type RuntimeVoiceToolCallPayload,
@@ -317,6 +318,13 @@ import {
   tryStoreGitArtifactFastPath,
 } from "./store-git-artifact-install.js";
 import { importExternalSource } from "./source-import-external.js";
+import {
+  approximateDataUrlBytes,
+  buildSpilledAttachmentNotice,
+  INLINE_IMAGE_ATTACHMENT_BUDGET_BYTES,
+  spillImageAttachmentsToDisk,
+  type SpilledImageAttachment,
+} from "./chat-attachment-spill.js";
 
 const DATA_URL_RE = /^data:([^;,]+);base64,(.+)$/i;
 const HTTP_URL_RE = /^https?:\/\//i;
@@ -1401,6 +1409,28 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         asTrimmedString(
           (payload as RuntimeChatPayload & { requestId?: string }).requestId,
         ) || undefined;
+      const materializedImageAttachments = await materializeImageAttachments(
+        payload.attachments,
+      );
+      let modelImageAttachments = materializedImageAttachments.map(
+        ({ attachment }) => attachment,
+      );
+      const totalInlineImageBytes = modelImageAttachments.reduce(
+        (total, attachment) => total + approximateDataUrlBytes(attachment.url),
+        0,
+      );
+      let spilledImageAttachments: SpilledImageAttachment[] = [];
+      if (totalInlineImageBytes > INLINE_IMAGE_ATTACHMENT_BUDGET_BYTES) {
+        if (!state.init) {
+          throw new Error("Worker has not been initialized.");
+        }
+        spilledImageAttachments = await spillImageAttachmentsToDisk({
+          stellaDataDirPath: state.init.stellaDataDirPath,
+          conversationId: payload.conversationId,
+          attachments: modelImageAttachments,
+        });
+        modelImageAttachments = [];
+      }
       const { buildChatPromptMessages } = await loadChatPromptContext();
       const {
         visibleUserPrompt,
@@ -1415,8 +1445,21 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         selectedText:
           payload.selectedText ?? payload.chatContext?.selectedText ?? null,
         chatContext: payload.chatContext ?? null,
-        explicitImageAttachmentCount: payload.attachments?.length ?? 0,
+        explicitImageAttachmentCount: modelImageAttachments.length,
       });
+      const runPromptMessages: RuntimePromptMessage[] = [
+        ...(promptMessages ?? []),
+        ...(spilledImageAttachments.length > 0
+          ? [
+              {
+                text: buildSpilledAttachmentNotice(spilledImageAttachments),
+                uiVisibility: "hidden" as const,
+                messageType: "message" as const,
+                customType: "runtime.chat_context",
+              },
+            ]
+          : []),
+      ];
       const userMessageTimestamp = Date.now();
       const windowPreviewImageUrl = windowScreenshotAttachment?.url;
       const userMessageId =
@@ -1510,12 +1553,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           return seq;
         };
       };
-      const materializedImageAttachments = await materializeImageAttachments(
-        payload.attachments,
-      );
-      const modelImageAttachments = materializedImageAttachments.map(
-        ({ attachment }) => attachment,
-      );
       let activeRunId = "";
       const nextSyntheticSeq = createSyntheticSeq();
       const hiddenSystemRunIds = new Set<string>();
@@ -1547,7 +1584,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         windowContextLabel,
         appSelectionLabel,
         activityLabel,
-        promptMessages: (promptMessages ?? []).map((message, index) => ({
+        promptMessages: runPromptMessages.map((message, index) => ({
           index,
           uiVisibility: message.uiVisibility ?? "visible",
           textPreview: message.text.slice(0, 200),
@@ -1555,6 +1592,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         incomingAttachmentCount: payload.attachments?.length ?? 0,
         modelImageAttachmentCount: modelImageAttachments.length,
         mergedAttachmentCount: mergedAttachments.length,
+        totalInlineImageBytes,
+        spilledImageAttachmentCount: spilledImageAttachments.length,
         hasWindowScreenshotAttachment: Boolean(windowScreenshotAttachment),
       });
       const result = await (
@@ -1564,7 +1603,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           conversationId: payload.conversationId,
           userMessageId,
           userPrompt: visibleUserPrompt,
-          ...(promptMessages?.length ? { promptMessages } : {}),
+          ...(runPromptMessages.length
+            ? { promptMessages: runPromptMessages }
+            : {}),
           attachments:
             mergedAttachments.length > 0 ? mergedAttachments : undefined,
           agentType: payload.agentType,
