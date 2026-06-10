@@ -46,7 +46,8 @@ export function useOnboardingFlow({
   skippedPhases,
 }: UseOnboardingFlowArgs) {
   const effectiveSkippedPhases = useMemo(() => {
-    if (!skippedPhases || skippedPhases.size === 0) return PLATFORM_SKIPPED_PHASES;
+    if (!skippedPhases || skippedPhases.size === 0)
+      return PLATFORM_SKIPPED_PHASES;
     if (PLATFORM_SKIPPED_PHASES.size === 0) return skippedPhases;
     return new Set<Phase>([...PLATFORM_SKIPPED_PHASES, ...skippedPhases]);
   }, [skippedPhases]);
@@ -172,11 +173,20 @@ export function useOnboardingFlow({
     transitionTo("capabilities");
   }, [onEnterSplit, onInteract, transitionTo]);
 
+  // The steps the user will actually walk through — platform and
+  // conditional skips removed. Drives the progress strip so a macOS
+  // user and a Windows user each see an honest step count.
+  const visibleSteps = useMemo(
+    () => SPLIT_STEP_ORDER.filter((step) => !effectiveSkippedPhases.has(step)),
+    [effectiveSkippedPhases],
+  );
+
   return {
     phase,
     leaving,
     rippleActive,
     maxVisitedSplitStepIndex,
+    visibleSteps,
     nextSplitStep,
     prevSplitStep,
     continueIntro,

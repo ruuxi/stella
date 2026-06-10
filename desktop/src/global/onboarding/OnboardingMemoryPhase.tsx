@@ -55,7 +55,7 @@ export function OnboardingMemoryPhase({
     <div className="onboarding-step-content onboarding-memory-step">
       <p className="onboarding-step-desc onboarding-memory-step__lede">
         Stella can quietly remember what you've been working on so you don't
-        have to repeat yourself. Off by default — turn it on whenever you want.
+        have to repeat yourself. Off by default. Turn it on whenever you want.
       </p>
 
       <div className="onboarding-memory-grid" key={animationKey}>
@@ -92,7 +92,7 @@ export function OnboardingMemoryPhase({
             ? isAuthenticated
               ? "Stella will reference your screen context when helpful. You can pause or turn this off any time from Settings."
               : "Live Memory will be enabled after sign in. You can pause or turn this off any time from Settings."
-            : "Skip for now — you can always turn this on later in Settings."}
+            : "Skip for now. You can always turn this on later in Settings."}
         </p>
 
         <div

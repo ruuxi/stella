@@ -416,7 +416,7 @@
     "search": {
       "placeholder": "Search settings",
       "clear": "Clear search",
-      "noResultsTitle": "No settings match \u201C{query}\u201D",
+      "noResultsTitle": "No settings match “{query}”",
       "noResultsBody": "Try a shorter or different word.",
       "resultsOne": "{count} result for",
       "resultsOther": "{count} results for",
@@ -432,7 +432,7 @@
         "legal": "Terms of Service and Privacy Policy.",
         "microphone": "Pick your input device, enable wake word, dictation sounds, and on-device transcription.",
         "speaker": "Pick the speaker or headphones Stella's voice plays through.",
-        "wakeWord": "Listen for \u201CHey Stella\u201D and start a voice conversation.",
+        "wakeWord": "Listen for “Hey Stella” and start a voice conversation.",
         "onDeviceTranscription": "Use the local Parakeet model instead of cloud transcription."
       }
     },
@@ -472,19 +472,24 @@
       "secondary": "Stella isn't for everyone. Stella is for you."
     },
     "stepTitles": {
+      "shapeshift": "This app can rewrite itself.",
       "import": "Bring your setup into Stella.",
       "engine": "Pick what powers Stella.",
       "extension": "Add Stella to your browser.",
       "browser": "Let Stella get to know you.",
-      "creation": "Stella can change when you ask. Click the buttons to try.",
       "theme": "How should Stella look?",
       "personality": "How should Stella talk?",
-      "shortcutsGlobal": "Anywhere on your desktop.",
-      "shortcutsLocal": "Inside Stella.",
-      "doubleTap": "Tap twice. Summon Stella.",
+      "summon": "Summon Stella from anywhere.",
       "voice": "Speak instead of type.",
       "memory": "Help Stella remember.",
       "enter": "Stella is almost ready."
+    },
+    "acts": {
+      "discover": "Discover",
+      "personalize": "Make it yours",
+      "connect": "Connect",
+      "flow": "Your flow",
+      "ready": "Ready"
     },
     "discovery": {
       "appsSystem": {

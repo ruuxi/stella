@@ -1,0 +1,325 @@
+/* ──────────────────────────────────────────────────────────────────────
+ * Shapeshift phase — interactive self-modification demo.
+ * Layout mirrors the capabilities stage (full-width, frame centered);
+ * everything inside the frame comes from the shared demo shell, with
+ * the morph artifacts (receipts, timer card, tint, flash) here.
+ * ────────────────────────────────────────────────────────────────────── */
+
+.oshape-step {
+  width: 100%;
+  max-width: none;
+  align-items: center;
+  gap: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.oshape-stage {
+  position: relative;
+  width: min(880px, calc(100vw - 108px), calc((100vh - 380px) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  margin-top: 18px;
+  flex-shrink: 0;
+}
+
+/* Hard-clamp the shell to the stage's aspect box: a growing transcript
+ * must never inflate the frame (that reads as a layout shift). Combined
+ * with the bottom-anchored chat below, old rows clip at the top like a
+ * real conversation instead of stretching the window. */
+.oshape-stage > .oshape-shell {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+}
+
+.oshape-shell .odemo-chat {
+  justify-content: flex-end;
+}
+
+/* The "dusk" theme morph — accent and wash shift together, the
+ * transition on the shell's tint overlay does the rest. */
+.oshape-stage[data-dusk] .oshape-shell {
+  --odemo-accent: oklch(0.58 0.14 295);
+  --odemo-tint-opacity: 1;
+  border-color: color-mix(in oklch, oklch(0.58 0.14 295) 28%, transparent);
+}
+
+/* ── Morph flash — stand-in for the real capture cross-fade ───────── */
+
+.oshape-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 100% at 50% 40%,
+    color-mix(in oklch, var(--foreground) 26%, transparent),
+    color-mix(in oklch, var(--foreground) 6%, transparent) 70%
+  );
+  opacity: 0;
+  animation: oshapeFlash 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes oshapeFlash {
+  0% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* One run's transcript rows — inherits the chat column's rhythm. */
+.oshape-run {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+/* ── File-change receipts ─────────────────────────────────────────── */
+
+.oshape-receipt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+  min-width: 250px;
+  max-width: 80%;
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  transition: opacity 0.4s ease;
+}
+
+.oshape-receipt[data-live] {
+  animation: oshapeReceiptIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes oshapeReceiptIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.oshape-receipt[data-undone] {
+  opacity: 0.45;
+}
+
+.oshape-receipt__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--foreground);
+  opacity: 0.55;
+}
+
+.oshape-receipt__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.oshape-receipt__title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  color: var(--foreground);
+  opacity: 0.88;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.oshape-receipt__meta {
+  font-size: var(--font-size-2xs);
+  color: var(--foreground);
+  opacity: 0.55;
+}
+
+.oshape-receipt__undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--foreground);
+  opacity: 0.8;
+  cursor: default;
+  transition:
+    opacity 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.oshape-receipt__undo:hover {
+  opacity: 1;
+  border-color: color-mix(in oklch, var(--foreground) 32%, transparent);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+/* ── Focus-timer card (the "timer" morph's artifact) ──────────────── */
+
+.oshape-timer-card {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  align-self: flex-start;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklch, var(--odemo-accent) 22%, transparent);
+  background: color-mix(in oklch, var(--odemo-accent) 7%, transparent);
+  animation: oshapeReceiptIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.oshape-timer-card__time {
+  font-size: 22px;
+  font-weight: var(--weight-light);
+  letter-spacing: 0.04em;
+  color: var(--foreground);
+  opacity: 0.92;
+  font-variant-numeric: tabular-nums;
+}
+
+.oshape-timer-card__label {
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.5;
+}
+
+.oshape-timer-card__start {
+  margin-left: 8px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 18%, transparent);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--foreground);
+  opacity: 0.75;
+}
+
+/* ── Request chips (above the composer, like real suggestions) ────── */
+
+.oshape-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  transition: opacity 0.3s ease;
+}
+
+/* When a chip row sits above the composer, the composer's own
+ * `margin-top: auto` yields to the chips so they stay attached. */
+.oshape-chips + .odemo-composer {
+  margin-top: 8px;
+}
+
+.oshape-chips[data-locked] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.oshape-chip {
+  padding: 7px 16px;
+  border-radius: 999px;
+  border: 1px dashed color-mix(in oklch, var(--foreground) 24%, transparent);
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  color: var(--foreground);
+  opacity: 0.78;
+  cursor: default;
+  font-family: inherit;
+  transition:
+    opacity 0.2s ease,
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.15s ease;
+}
+
+.oshape-chip:hover:not(:disabled) {
+  opacity: 1;
+  border-color: color-mix(in oklch, var(--foreground) 40%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  transform: translateY(-1px);
+}
+
+.oshape-chip:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ── Caption + continue ───────────────────────────────────────────── */
+
+.oshape-caption-slot {
+  width: min(880px, calc(100vw - 108px));
+  min-height: 4.6rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  margin-top: 18px;
+}
+
+.oshape-caption {
+  margin: 0;
+  width: 100%;
+  max-width: 640px;
+  text-align: center;
+  font-size: 17px;
+  line-height: 1.55;
+  font-weight: var(--weight-light);
+  color: var(--foreground);
+  opacity: 0.7;
+  animation: oshapeCaptionIn 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes oshapeCaptionIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 0.7;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.oshape-continue {
+  margin-top: 6px;
+}
+
+.oshape-continue[data-emphasized] {
+  opacity: 1 !important;
+  border-color: color-mix(in oklch, var(--foreground) 35%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oshape-flash {
+    animation: none;
+    opacity: 0;
+  }
+
+  .oshape-receipt[data-live],
+  .oshape-timer-card,
+  .oshape-caption {
+    animation-duration: 1ms;
+  }
+}

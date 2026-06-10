@@ -472,17 +472,22 @@
       "secondary": "Stella 不属于所有人。Stella 属于您。"
     },
     "stepTitles": {
+      "shapeshift": "这个应用能改写自己。",
       "extension": "把 Stella 添加到浏览器。",
       "browser": "让 Stella 了解您。",
-      "creation": "您一开口，Stella 就会改变。点击按钮试试看。",
       "theme": "Stella 应该是什么样子？",
       "personality": "Stella 应该怎么说话？",
-      "shortcutsGlobal": "桌面任意位置。",
-      "shortcutsLocal": "Stella 内部。",
-      "doubleTap": "点两下，召唤 Stella。",
+      "summon": "随时随地召唤 Stella。",
       "voice": "用说的，而不是用打的。",
       "memory": "帮 Stella 记住。",
       "enter": "Stella 已经快准备好了。"
+    },
+    "acts": {
+      "discover": "探索",
+      "personalize": "打造专属",
+      "connect": "连接",
+      "flow": "你的节奏",
+      "ready": "就绪"
     },
     "discovery": {
       "appsSystem": {
@@ -504,42 +509,23 @@
     "plans": {
       "free": {
         "tagline": "开始使用 Stella",
-        "features": [
-          "基础聊天与协助",
-          "每日使用量有限"
-        ]
+        "features": ["基础聊天与协助", "每日使用量有限"]
       },
       "go": {
         "tagline": "适合日常个人使用",
-        "features": [
-          "每日更多对话",
-          "浏览器自动化",
-          "语音对话"
-        ]
+        "features": ["每日更多对话", "浏览器自动化", "语音对话"]
       },
       "pro": {
         "tagline": "适合重度用户",
-        "features": [
-          "Go 的 3 倍使用量",
-          "优先响应时间",
-          "全部自动化功能"
-        ]
+        "features": ["Go 的 3 倍使用量", "优先响应时间", "全部自动化功能"]
       },
       "plus": {
         "tagline": "适合专业人士",
-        "features": [
-          "高强度的每日使用",
-          "高级智能体工作流",
-          "优先支持"
-        ]
+        "features": ["高强度的每日使用", "高级智能体工作流", "优先支持"]
       },
       "ultra": {
         "tagline": "无限生产力",
-        "features": [
-          "最高的使用上限",
-          "最快的响应时间",
-          "包含 Plus 的全部内容"
-        ]
+        "features": ["最高的使用上限", "最快的响应时间", "包含 Plus 的全部内容"]
       }
     }
   },

@@ -472,17 +472,22 @@
       "secondary": "Stella não é para todo mundo. Stella é para você."
     },
     "stepTitles": {
+      "shapeshift": "Este app pode reescrever a si mesmo.",
       "extension": "Adicione a Stella ao seu navegador.",
       "browser": "Deixe a Stella te conhecer.",
-      "creation": "A Stella muda quando você pede. Clique nos botões para experimentar.",
       "theme": "Como a Stella deve aparecer?",
       "personality": "Como a Stella deve falar?",
-      "shortcutsGlobal": "Em qualquer lugar do seu desktop.",
-      "shortcutsLocal": "Dentro da Stella.",
-      "doubleTap": "Toque duas vezes. Chame a Stella.",
+      "summon": "Chame a Stella de qualquer lugar.",
       "voice": "Fale em vez de digitar.",
       "memory": "Ajude a Stella a lembrar.",
       "enter": "A Stella está quase pronta."
+    },
+    "acts": {
+      "discover": "Descubra",
+      "personalize": "Deixe com a sua cara",
+      "connect": "Conecte",
+      "flow": "Seu fluxo",
+      "ready": "Pronto"
     },
     "discovery": {
       "appsSystem": {
@@ -504,10 +509,7 @@
     "plans": {
       "free": {
         "tagline": "Comece com a Stella",
-        "features": [
-          "Chat e assistência básicos",
-          "Uso diário limitado"
-        ]
+        "features": ["Chat e assistência básicos", "Uso diário limitado"]
       },
       "go": {
         "tagline": "Para uso pessoal no dia a dia",

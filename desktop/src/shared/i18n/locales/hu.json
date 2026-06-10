@@ -472,17 +472,22 @@
       "secondary": "A Stella nem mindenkinek való. A Stella neked való."
     },
     "stepTitles": {
+      "shapeshift": "Ez az app újra tudja írni önmagát.",
       "extension": "Add hozzá a Stellát a böngésződhöz.",
       "browser": "Hadd ismerjen meg téged a Stella.",
-      "creation": "A Stella változik, ha kéred. Próbáld ki a gombokkal.",
       "theme": "Hogyan nézzen ki a Stella?",
       "personality": "Hogyan beszéljen a Stella?",
-      "shortcutsGlobal": "Bárhol az asztalon.",
-      "shortcutsLocal": "A Stellán belül.",
-      "doubleTap": "Koppints kétszer. Hívd a Stellát.",
+      "summon": "Hívd elő Stellát bárhonnan.",
       "voice": "Beszélj gépelés helyett.",
       "memory": "Segíts a Stellának emlékezni.",
       "enter": "A Stella majdnem készen áll."
+    },
+    "acts": {
+      "discover": "Fedezd fel",
+      "personalize": "Tedd a magadévá",
+      "connect": "Kapcsold össze",
+      "flow": "A te ritmusod",
+      "ready": "Kész"
     },
     "discovery": {
       "appsSystem": {
@@ -504,10 +509,7 @@
     "plans": {
       "free": {
         "tagline": "Indítsd el a Stellát",
-        "features": [
-          "Alap chat és segítség",
-          "Korlátozott napi használat"
-        ]
+        "features": ["Alap chat és segítség", "Korlátozott napi használat"]
       },
       "go": {
         "tagline": "Mindennapi személyes használatra",

@@ -472,17 +472,22 @@
       "secondary": "Stella herkes için değildir. Stella sizin içindir."
     },
     "stepTitles": {
+      "shapeshift": "Bu uygulama kendini yeniden yazabilir.",
       "extension": "Stella'yı tarayıcınıza ekleyin.",
       "browser": "Stella'nın sizi tanımasına izin verin.",
-      "creation": "İstediğinizde Stella değişir. Düğmelere tıklayarak deneyin.",
       "theme": "Stella nasıl görünmeli?",
       "personality": "Stella nasıl konuşmalı?",
-      "shortcutsGlobal": "Masaüstünde her yerde.",
-      "shortcutsLocal": "Stella'nın içinde.",
-      "doubleTap": "İki kez dokunun. Stella'yı çağırın.",
+      "summon": "Stella'yı her yerden çağır.",
       "voice": "Yazmak yerine konuşun.",
       "memory": "Stella'nın hatırlamasına yardım edin.",
       "enter": "Stella neredeyse hazır."
+    },
+    "acts": {
+      "discover": "Keşfet",
+      "personalize": "Kendine göre yap",
+      "connect": "Bağla",
+      "flow": "Senin akışın",
+      "ready": "Hazır"
     },
     "discovery": {
       "appsSystem": {
@@ -504,10 +509,7 @@
     "plans": {
       "free": {
         "tagline": "Stella ile başlayın",
-        "features": [
-          "Temel sohbet ve yardım",
-          "Sınırlı günlük kullanım"
-        ]
+        "features": ["Temel sohbet ve yardım", "Sınırlı günlük kullanım"]
       },
       "go": {
         "tagline": "Günlük kişisel kullanım için",

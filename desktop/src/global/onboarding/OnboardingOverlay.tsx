@@ -22,7 +22,6 @@ import {
 } from "@/shell/ascii-creature/StellaAnimation";
 import type { Phase } from "@/global/onboarding/onboarding-flow";
 import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
-import type { OnboardingDemo } from "@/global/onboarding/OnboardingCanvas";
 import type { LegalDocument } from "@/global/legal/legal-text";
 import { LegalDialog } from "@/global/legal/LegalDialog";
 import { CREATURE_INITIAL_SIZE } from "@/global/onboarding/use-onboarding-overlay";
@@ -115,9 +114,7 @@ export function OnboardingView({
   handleEnterSplit,
   onDiscoveryConfirm,
   onSelectionChange,
-  onDemoChange,
   onPhaseChange,
-  activeDemo,
   discoveryWelcomeExpected = false,
   discoveryWelcomeReady = false,
   stellaAnimationPaused = false,
@@ -141,9 +138,7 @@ export function OnboardingView({
   handleEnterSplit: () => void;
   onDiscoveryConfirm: (categories: DiscoveryCategory[]) => void;
   onSelectionChange?: (hasSelections: boolean) => void;
-  onDemoChange?: (demo: "default" | null) => void;
   onPhaseChange?: (phase: Phase) => void;
-  activeDemo?: OnboardingDemo;
   discoveryWelcomeExpected?: boolean;
   discoveryWelcomeReady?: boolean;
   stellaAnimationPaused?: boolean;
@@ -203,7 +198,6 @@ export function OnboardingView({
         data-split={splitMode}
         data-split-entering={splitEntering || undefined}
         data-has-selections={hasDiscoverySelections || undefined}
-        data-demo-active={activeDemo || undefined}
         data-hidden={stellaAnimationHidden || undefined}
         title="Click to sparkle"
       >
@@ -214,8 +208,7 @@ export function OnboardingView({
           maxDpr={lowPowerCreature ? 1 : undefined}
           frameSkip={lowPowerCreature ? 2 : 0}
           initialBirthProgress={
-            creatureInitialBirth ??
-            (onboardingDone ? 1 : CREATURE_INITIAL_SIZE)
+            creatureInitialBirth ?? (onboardingDone ? 1 : CREATURE_INITIAL_SIZE)
           }
           paused={stellaAnimationPaused || stellaAnimationHidden}
         />
@@ -230,7 +223,6 @@ export function OnboardingView({
             onDiscoveryConfirm={onDiscoveryConfirm}
             onEnterSplit={handleEnterSplit}
             onSelectionChange={onSelectionChange}
-            onDemoChange={onDemoChange}
             onPhaseChange={onPhaseChange}
             isAuthenticated={isAuthenticated}
             discoveryWelcomeExpected={discoveryWelcomeExpected}

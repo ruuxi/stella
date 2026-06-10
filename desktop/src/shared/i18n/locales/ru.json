@@ -472,17 +472,22 @@
       "secondary": "Stella не для всех. Stella для вас."
     },
     "stepTitles": {
+      "shapeshift": "Это приложение может переписать само себя.",
       "extension": "Добавьте Stella в браузер.",
       "browser": "Позвольте Stella узнать вас лучше.",
-      "creation": "Stella меняется, когда вы попросите. Нажмите кнопки, чтобы попробовать.",
       "theme": "Как должна выглядеть Stella?",
       "personality": "Как должна говорить Stella?",
-      "shortcutsGlobal": "Где угодно на рабочем столе.",
-      "shortcutsLocal": "Внутри Stella.",
-      "doubleTap": "Двойное нажатие. Вызовите Stella.",
+      "summon": "Вызывайте Stella откуда угодно.",
       "voice": "Говорите вместо того, чтобы печатать.",
       "memory": "Помогите Stella запомнить.",
       "enter": "Stella почти готова."
+    },
+    "acts": {
+      "discover": "Откройте",
+      "personalize": "Сделайте своим",
+      "connect": "Подключите",
+      "flow": "Ваш ритм",
+      "ready": "Готово"
     },
     "discovery": {
       "appsSystem": {

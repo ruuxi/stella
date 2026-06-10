@@ -472,17 +472,22 @@
       "secondary": "Stella không dành cho tất cả mọi người. Stella dành cho bạn."
     },
     "stepTitles": {
+      "shapeshift": "Ứng dụng này có thể tự viết lại chính nó.",
       "extension": "Thêm Stella vào trình duyệt của bạn.",
       "browser": "Hãy để Stella hiểu bạn hơn.",
-      "creation": "Stella thay đổi khi bạn yêu cầu. Nhấn các nút để thử.",
       "theme": "Stella nên trông như thế nào?",
       "personality": "Stella nên nói chuyện thế nào?",
-      "shortcutsGlobal": "Bất cứ đâu trên màn hình nền.",
-      "shortcutsLocal": "Bên trong Stella.",
-      "doubleTap": "Chạm hai lần. Gọi Stella.",
+      "summon": "Gọi Stella từ bất cứ đâu.",
       "voice": "Hãy nói thay vì gõ.",
       "memory": "Giúp Stella ghi nhớ.",
       "enter": "Stella gần như đã sẵn sàng."
+    },
+    "acts": {
+      "discover": "Khám phá",
+      "personalize": "Biến nó thành của bạn",
+      "connect": "Kết nối",
+      "flow": "Nhịp của bạn",
+      "ready": "Sẵn sàng"
     },
     "discovery": {
       "appsSystem": {

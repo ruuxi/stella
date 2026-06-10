@@ -472,17 +472,22 @@
       "secondary": "Stella är inte för alla. Stella är för dig."
     },
     "stepTitles": {
+      "shapeshift": "Den här appen kan skriva om sig själv.",
       "extension": "Lägg till Stella i webbläsaren.",
       "browser": "Låt Stella lära känna dig.",
-      "creation": "Stella förändras när du ber om det. Klicka på knapparna för att prova.",
       "theme": "Hur ska Stella se ut?",
       "personality": "Hur ska Stella prata?",
-      "shortcutsGlobal": "Var som helst på skrivbordet.",
-      "shortcutsLocal": "Inuti Stella.",
-      "doubleTap": "Tryck två gånger. Kalla på Stella.",
+      "summon": "Kalla på Stella var som helst.",
       "voice": "Tala i stället för att skriva.",
       "memory": "Hjälp Stella att minnas.",
       "enter": "Stella är nästan redo."
+    },
+    "acts": {
+      "discover": "Upptäck",
+      "personalize": "Gör den till din",
+      "connect": "Anslut",
+      "flow": "Ditt flöde",
+      "ready": "Redo"
     },
     "discovery": {
       "appsSystem": {
@@ -511,11 +516,7 @@
       },
       "go": {
         "tagline": "För dagligt personligt bruk",
-        "features": [
-          "Fler samtal per dag",
-          "Webbläsarautomation",
-          "Röstsamtal"
-        ]
+        "features": ["Fler samtal per dag", "Webbläsarautomation", "Röstsamtal"]
       },
       "pro": {
         "tagline": "För avancerade användare",

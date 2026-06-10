@@ -1,216 +1,259 @@
-/* Onboarding "voice" phase.
- *
- * Two side-by-side cards. Each stage is a faithful visual mock of the
- * real overlay surface the shortcut summons:
- *   - .onboarding-voice-overlay-creature mirrors `voice-overlay-creature`
- *   - .onboarding-voice-dictation-overlay mirrors `.dictation-overlay`
- *     plus the layout from DictationRecordingBar.
- *
- * Outer chrome (card frame, header, caption) follows the same vocabulary
- * as OnboardingMemoryPhase so the phase reads as part of the same flow.
- */
+/* ──────────────────────────────────────────────────────────────────────
+ * Voice phase — two looping demo cards (wake word + dictation).
+ * Shares the practice-card vocabulary with the summon phase; every
+ * choreographed element sits in a reserved slot so the loop never
+ * shifts layout.
+ * ────────────────────────────────────────────────────────────────────── */
 
 .onboarding-dialogue[data-phase="voice"] .onboarding-split-right {
   width: 100%;
   min-width: 100%;
   margin-left: 0;
-  padding: clamp(48px, 7vh, 84px) 32px 40px;
+  padding: clamp(28px, 5vh, 64px) 32px 40px;
   align-items: center;
 }
 
 .onboarding-dialogue[data-phase="voice"] .onboarding-split-stage {
   align-items: center;
-  max-width: 1080px;
-  width: 100%;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.onboarding-dialogue[data-phase="voice"] .onboarding-split-title {
-  text-align: center;
-}
-
-.onboarding-voice-step {
-  align-items: center;
-  gap: 22px;
   max-width: none;
   width: 100%;
   flex: 1 1 auto;
   min-height: 0;
 }
 
-.onboarding-voice-step__lede {
+.onboarding-dialogue[data-phase="voice"] .onboarding-split-title,
+.onboarding-dialogue[data-phase="voice"] .onboarding-act-label {
   text-align: center;
-  max-width: 680px;
-  margin: 0 auto;
-  flex-shrink: 0;
-  font-size: 19px;
-  line-height: 1.55;
-  opacity: 0.88;
 }
 
-.onboarding-voice-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+.ovoice-step {
+  align-items: center;
   gap: 22px;
+  max-width: none;
   width: 100%;
-  max-width: 1024px;
-  align-items: stretch;
-  flex: 1 1 auto;
-  min-height: 0;
 }
 
-@media (max-width: 760px) {
-  .onboarding-voice-grid {
+.ovoice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  width: min(960px, calc(100vw - 108px));
+  margin-top: 6px;
+}
+
+@media (max-width: 820px) {
+  .ovoice-grid {
     grid-template-columns: 1fr;
   }
 }
 
-.onboarding-voice-card {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 14px;
-  position: relative;
-  min-height: 0;
-}
+/* ── Card (same vocabulary as the summon practice cards) ──────────── */
 
-.onboarding-voice-card__body {
-  flex: 1;
+.ovoice-card {
   display: flex;
   flex-direction: column;
+  gap: 11px;
+  padding: 26px 26px 20px;
   border-radius: 14px;
-  border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
-  background-color: var(--background);
-  background-image:
-    radial-gradient(
-      120% 90% at 80% 0%,
-      color-mix(in oklch, var(--primary) 8%, transparent),
-      transparent 60%
-    ),
-    radial-gradient(
-      90% 80% at 0% 100%,
-      color-mix(
-        in oklch,
-        var(--accent) 6%,
-        transparent
-      ),
-      transparent 55%
-    );
-  box-shadow: var(--shadow-md);
-  overflow: hidden;
-  min-height: 240px;
-  position: relative;
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
+  background: color-mix(in oklch, var(--foreground) 2.5%, transparent);
 }
 
-.onboarding-voice-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px 10px;
-  border-bottom: 1px solid
-    color-mix(in oklch, var(--foreground) 6%, transparent);
-}
-
-.onboarding-voice-card__heading {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.onboarding-voice-card__eyebrow {
-  font-size: var(--font-size-2xs);
-  letter-spacing: 0.12em;
+.ovoice-card__label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.6;
+}
+
+.ovoice-card__instruction {
+  margin: 0;
+  min-height: calc(2 * 1.5em);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-light);
+  line-height: 1.5;
+  color: var(--foreground);
+  opacity: 0.82;
+}
+
+.ovoice-card__surface {
+  flex: 1;
+  min-height: 296px;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.ovoice-card__footnote {
+  margin: 10px 0 0;
+  text-align: center;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-light);
   color: var(--foreground);
   opacity: 0.55;
 }
 
-.onboarding-voice-card__title {
-  font-size: var(--font-size-md);
-  font-weight: 600;
-  margin: 0;
-  color: var(--foreground);
-  letter-spacing: -0.01em;
-}
+/* ── Talk card: wake-word conversation loop ───────────────────────── */
 
-.onboarding-voice-card .onboarding-keychord {
-  align-self: center;
-}
-
-.onboarding-voice-card__stage {
+.ovoice-talk {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* Spoken phrases render as quiet quote chips in fixed-height slots. */
+.ovoice-talk__quote {
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
+  color: var(--foreground);
+  opacity: 0;
+  transform: translate3d(0, 5px, 0);
+  transition:
+    opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ovoice-talk__quote[data-visible] {
+  opacity: 0.85;
+  transform: none;
+}
+
+.ovoice-talk__sprite {
   position: relative;
-  padding: 18px;
-  min-height: 0;
-  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 152px;
+  height: 152px;
+  margin: 8px 0;
 }
 
-.onboarding-voice-card__caption {
-  margin: 0;
-  padding: 10px 14px 14px;
-  text-align: center;
-  font-size: var(--font-size-xs);
-  line-height: 1.45;
+.ovoice-talk__ring {
+  position: absolute;
+  inset: 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--primary) 30%, transparent);
+  opacity: 0;
+  transform: scale(0.7);
+}
+
+.ovoice-talk__sprite[data-listening] .ovoice-talk__ring {
+  animation: ovoiceRing 2s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+}
+
+.ovoice-talk__sprite[data-listening] .ovoice-talk__ring[data-late] {
+  animation-delay: 0.7s;
+}
+
+@keyframes ovoiceRing {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  35% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+/* Reply and "Bye" share one fixed-height slot — they never overlap in
+ * time, so stacking them in a grid cell keeps the column stable. */
+.ovoice-talk__exchange {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 34px;
+  justify-items: center;
+  align-items: center;
+}
+
+.ovoice-talk__exchange > * {
+  grid-row: 1;
+  grid-column: 1;
+}
+
+.ovoice-talk__reply {
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-light);
+  font-style: italic;
   color: var(--foreground);
-  opacity: 0.7;
-  border-top: 1px solid color-mix(in oklch, var(--foreground) 6%, transparent);
-  background: var(--surface-raised);
-  flex-shrink: 0;
+  opacity: 0;
+  transform: translate3d(0, 5px, 0);
+  transition:
+    opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* ─── Talk card: waving pet sprite + wake-word toggle ─────────────── */
-
-.onboarding-voice-card__stage--talk {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.ovoice-talk__reply[data-visible] {
+  opacity: 0.72;
+  transform: none;
 }
 
-.onboarding-voice-card__toggle {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
+/* ── Dictate card: key hold → pill → typed words ──────────────────── */
 
-.onboarding-voice-wave-sprite {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 120px;
-  height: 120px;
-  pointer-events: none;
-}
-
-/* ─── Dictate card: dictation overlay floating over a generic app ─── */
-
-.onboarding-voice-card__stage--dictate {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-end;
-  gap: 0;
-}
-
-.onboarding-voice-app {
+.ovoice-dictate {
   flex: 1;
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
+  align-items: center;
+  gap: 16px;
+}
+
+.ovoice-dictate__chord {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  transition: opacity 0.3s ease;
+  opacity: 0.7;
+}
+
+.ovoice-dictate__chord[data-held] {
+  opacity: 1;
+}
+
+.ovoice-dictate__chord-hint {
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  opacity: 0.45;
+}
+
+.ovoice-app {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-radius: 11px;
   overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--foreground) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--foreground) 9%, transparent);
   background: var(--surface-raised);
   box-shadow: var(--shadow-md);
-  min-height: 0;
 }
 
-.onboarding-voice-app__bar {
+.ovoice-app__bar {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 12px;
+  flex-shrink: 0;
+  padding: 8px 12px;
   border-bottom: 1px solid
     color-mix(in oklch, var(--foreground) 8%, transparent);
   font-size: var(--font-size-2xs);
@@ -219,99 +262,72 @@
   opacity: 0.65;
 }
 
-.onboarding-voice-app__bar span {
+.ovoice-app__bar span {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: color-mix(in oklch, var(--foreground) 14%, transparent);
 }
-.onboarding-voice-app__bar span:nth-child(1) {
-  background: color-mix(in oklch, var(--destructive) 70%, transparent);
-}
-.onboarding-voice-app__bar span:nth-child(2) {
-  background: color-mix(in oklch, var(--warning) 65%, transparent);
-}
-.onboarding-voice-app__bar span:nth-child(3) {
-  background: color-mix(in oklch, var(--success) 65%, transparent);
-}
 
-.onboarding-voice-app__bar strong {
+.ovoice-app__bar strong {
   margin-left: 6px;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
-.onboarding-voice-app__body {
+.ovoice-app__body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px 36px; /* extra bottom space so the dictation pill
-                              floats over the editor area */
+  gap: 7px;
+  padding: 12px 14px 52px; /* bottom space for the floating pill */
   min-height: 0;
 }
 
-.onboarding-voice-app__field {
+.ovoice-app__field {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: var(--font-size-2xs);
-  padding-bottom: 5px;
+  font-size: var(--font-size-xs);
+  padding-bottom: 6px;
   border-bottom: 1px solid
     color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
-.onboarding-voice-app__label {
+.ovoice-app__field-label {
   color: var(--foreground);
   opacity: 0.5;
-  width: 44px;
+  width: 48px;
   flex-shrink: 0;
 }
 
-.onboarding-voice-app__value {
+.ovoice-app__field-value {
   color: var(--foreground);
   opacity: 0.78;
 }
 
-.onboarding-voice-app__editor {
+.ovoice-app__editor {
   flex: 1;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   line-height: 1.55;
-  color: var(--foreground);
+  color: color-mix(in oklch, var(--foreground) 88%, transparent);
   padding-top: 4px;
-  position: relative;
 }
 
-.onboarding-voice-app__typed {
-  opacity: 0;
-  animation: voiceTypedIn 1.4s ease 0.4s forwards;
-}
-
-@keyframes voiceTypedIn {
-  0% {
-    opacity: 0;
-    clip-path: inset(0 100% 0 0);
-  }
-  100% {
-    opacity: 0.92;
-    clip-path: inset(0 0 0 0);
-  }
-}
-
-.onboarding-voice-app__caret {
+.ovoice-app__caret {
   display: inline-block;
   width: 1.5px;
-  height: 13px;
+  height: 14px;
   vertical-align: -2px;
   margin-left: 1px;
   background: var(--foreground);
   opacity: 0.7;
 }
 
-.onboarding-dialogue[data-phase="voice"] .onboarding-voice-app__caret {
-  animation: voiceCaretBlink 1s steps(1, end) infinite;
+.onboarding-dialogue[data-phase="voice"] .ovoice-app__caret {
+  animation: ovoiceCaretBlink 1s steps(1, end) infinite;
 }
 
-@keyframes voiceCaretBlink {
+@keyframes ovoiceCaretBlink {
   0%,
   50% {
     opacity: 0.7;
@@ -322,31 +338,38 @@
   }
 }
 
-/* Mirror of `.dictation-overlay` + DictationRecordingBar layout —
- * absolutely positioned so it visually floats over the "any app"
- * surface above it. */
-.onboarding-voice-dictation-overlay {
+/* Mirror of the real `.dictation-overlay` pill, floating over the
+ * draft. Pops in while recording, confirms away once the text lands. */
+.ovoice-pill {
   position: absolute;
   left: 50%;
-  bottom: 22px;
-  transform: translateX(-50%);
-  width: min(320px, calc(100% - 36px));
-  min-height: 44px;
+  bottom: 14px;
+  transform: translateX(-50%) translateY(8px) scale(0.92);
+  width: min(300px, calc(100% - 32px));
+  min-height: 42px;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
   border-radius: 18px;
   border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
-  /* Solid pill matching real `.dictation-overlay` (no glass / transparency). */
   background: var(--background);
   box-shadow: var(--shadow-overlay);
+  opacity: 0;
+  transition:
+    opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.onboarding-voice-waveform {
+.ovoice-pill[data-visible] {
+  opacity: 1;
+  transform: translateX(-50%);
+}
+
+.ovoice-waveform {
   flex: 1 1 auto;
   min-width: 0;
-  height: 26px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -354,38 +377,34 @@
   overflow: hidden;
 }
 
-.onboarding-voice-waveform__bar {
+.ovoice-waveform__bar {
   --bar-peak: 60%;
   display: inline-block;
   width: 5px;
   height: 100%;
   border-radius: 3px;
   background: color-mix(in oklch, var(--foreground) 60%, transparent);
-  transform: scaleY(calc(var(--bar-peak) / 100));
+  transform: scaleY(0.18);
   transform-origin: center bottom;
 }
 
-/* Scope the always-running waveform/caret animations to the voice phase
- * so they only paint while this phase owns the screen. Component mount
- * already gates them in practice; this keeps the CSS truthful and
- * resilient to future re-mount/portal patterns. */
-.onboarding-dialogue[data-phase="voice"] .onboarding-voice-waveform__bar {
-  animation: voiceWaveformBar 1.1s ease-in-out infinite;
+.ovoice-waveform[data-active] .ovoice-waveform__bar {
+  animation: ovoiceWaveformBar 1.1s ease-in-out infinite;
 }
 
-@keyframes voiceWaveformBar {
+@keyframes ovoiceWaveformBar {
   0%,
   100% {
     transform: scaleY(0.18);
     opacity: 0.55;
   }
   50% {
-    transform: scaleY(1);
+    transform: scaleY(calc(var(--bar-peak) / 100));
     opacity: 0.95;
   }
 }
 
-.onboarding-voice-dictation-timer {
+.ovoice-pill__timer {
   flex: 0 0 auto;
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
@@ -394,7 +413,7 @@
   user-select: none;
 }
 
-.onboarding-voice-dictation-btn {
+.ovoice-pill__btn {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -402,31 +421,29 @@
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: transparent;
-  border: none;
-  cursor: default;
   color: color-mix(in oklch, var(--foreground) 75%, transparent);
 }
 
-.onboarding-voice-dictation-btn--confirm {
+.ovoice-pill__btn--confirm {
   color: var(--foreground);
 }
 
-.onboarding-voice-step > .onboarding-confirm {
-  flex-shrink: 0;
-}
+/* ── Reduced motion ───────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .onboarding-voice-waveform__bar,
-  .onboarding-voice-app__caret,
-  .onboarding-voice-app__typed {
+  .ovoice-talk__sprite[data-listening] .ovoice-talk__ring,
+  .ovoice-waveform[data-active] .ovoice-waveform__bar,
+  .onboarding-dialogue[data-phase="voice"] .ovoice-app__caret {
     animation: none;
   }
-  .onboarding-voice-app__typed {
-    opacity: 0.92;
-    clip-path: none;
+
+  .ovoice-talk__quote,
+  .ovoice-talk__reply,
+  .ovoice-pill {
+    transition: none;
   }
-  .onboarding-voice-waveform__bar {
+
+  .ovoice-waveform__bar {
     transform: scaleY(0.5);
     opacity: 0.7;
   }

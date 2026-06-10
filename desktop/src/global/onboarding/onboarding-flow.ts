@@ -3,58 +3,101 @@ import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.
 export type Phase =
   | "intro"
   | "capabilities"
-  | "import"
-  | "engine"
-  | "permissions"
-  | "extension"
-  | "browser"
-  | "memory"
-  | "creation"
+  | "shapeshift"
   | "theme"
   | "personality"
-  | "shortcuts-global"
-  | "shortcuts-local"
-  | "double-tap"
+  | "import"
+  | "permissions"
+  | "browser"
+  | "extension"
+  | "engine"
+  | "summon"
   | "voice"
+  | "memory"
   | "enter"
   | "complete"
   | "done";
 
 export const SPLIT_PHASES = new Set<Phase>([
   "capabilities",
+  "shapeshift",
+  "theme",
+  "personality",
   "import",
-  "engine",
   "permissions",
   "browser",
   "extension",
-  "theme",
-  "personality",
-  "creation",
-  "shortcuts-global",
-  "shortcuts-local",
-  "double-tap",
+  "engine",
+  "summon",
   "voice",
   "memory",
   "enter",
 ]);
 
+/**
+ * The onboarding story, told in five acts:
+ *
+ *   Discover      — what Stella can do, and the shape-shifting app itself
+ *   Make it yours — theme, personality, imported setup
+ *   Connect       — permissions, browser discovery, extension, engine
+ *   Your flow     — summoning, voice, memory
+ *   Ready         — the final gate
+ *
+ * The act label renders as a small eyebrow above each step title so the
+ * user always knows where they are in the arc; the progress strip at the
+ * bottom mirrors the same grouping.
+ */
 export const SPLIT_STEP_ORDER: Phase[] = [
   "capabilities",
+  "shapeshift",
   "theme",
+  "personality",
   "import",
   "permissions",
   "browser",
-  "engine",
   "extension",
-  "personality",
-  "creation",
-  "shortcuts-global",
-  "shortcuts-local",
-  "double-tap",
+  "engine",
+  "summon",
   "voice",
   "memory",
   "enter",
 ];
+
+export type OnboardingAct =
+  | "discover"
+  | "personalize"
+  | "connect"
+  | "flow"
+  | "ready";
+
+export const PHASE_ACTS: Partial<Record<Phase, OnboardingAct>> = {
+  capabilities: "discover",
+  shapeshift: "discover",
+  theme: "personalize",
+  personality: "personalize",
+  import: "personalize",
+  permissions: "connect",
+  browser: "connect",
+  extension: "connect",
+  engine: "connect",
+  summon: "flow",
+  voice: "flow",
+  memory: "flow",
+  enter: "ready",
+};
+
+/**
+ * Phases whose demo surfaces own the full stage; the Stella creature
+ * fades out for these (it stays mounted — see OnboardingView) and fades
+ * back in for the form-like phases between them.
+ */
+export const CREATURE_HIDDEN_PHASES = new Set<Phase>([
+  "shapeshift",
+  "summon",
+  "voice",
+  "memory",
+  "enter",
+]);
 
 /**
  * Discovery rows are translated at render time. `labelKey` /
