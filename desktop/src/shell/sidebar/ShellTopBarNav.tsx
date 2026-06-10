@@ -47,7 +47,6 @@ const NavItem = ({
   const showBadge = badgeCount > 0;
   const badgeLabel = badgeCount > 99 ? "99+" : String(badgeCount);
   const showHint = showHintDot && !showBadge;
-  const Icon = app.icon;
 
   const handleClick = useCallback(
     (event: React.MouseEvent<HTMLAnchorElement>) => {
@@ -74,7 +73,6 @@ const NavItem = ({
       title={showBadge ? `${app.label} (${badgeCount} unread)` : app.label}
       aria-label={showBadge ? `${app.label}, ${badgeCount} unread` : app.label}
     >
-      <Icon className="shell-topbar-nav-icon" size={15} aria-hidden="true" />
       <span className="shell-topbar-nav-label">{app.label}</span>
       {showBadge && (
         <span className="shell-topbar-nav-badge" aria-hidden="true">
