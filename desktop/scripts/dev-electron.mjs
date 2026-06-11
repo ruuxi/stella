@@ -27,6 +27,7 @@ import {
   prepareMacDevAppBundle,
   resolveDisclaimBinary,
 } from "./lib/macos-dev-app.mjs";
+import { prepareWinDevAppExecutable } from "./lib/windows-dev-app.mjs";
 
 const require = createRequire(import.meta.url);
 const DEV_MACOS_RUNTIME_DIR_NAME = ".stella-dev-runtime";
@@ -370,6 +371,13 @@ exec "$electron_bin" "\${non_launch_args[@]}"
         ensureDevBareRelaunchExecutable(electronBinaryPath),
     });
     electronBinary = prepared.electronBinary;
+  }
+
+  // Windows equivalent: brand a `Stella.exe` copy of the stock binary so the
+  // exe identity itself carries the Stella icon for the taskbar, alt-tab,
+  // and tray — independent of AppUserModelID/shortcut resolution timing.
+  if (process.platform === "win32") {
+    electronBinary = prepareWinDevAppExecutable({ electronBinary, desktopDir });
   }
 
   const disclaimBinary =
