@@ -431,6 +431,174 @@ export type StoreReleaseGitArtifactBuild = {
   commitHashes: string[];
 };
 
+type StoreSnapshotOp = {
+  path: string;
+  action: "take" | "delete";
+  /** Last selected commit that touched the path. */
+  sourceCommit: string;
+};
+
+const parseNameStatusEntries = (
+  raw: string,
+): Array<{ status: string; paths: string[] }> => {
+  const tokens = raw.split("\0").filter((token) => token.length > 0);
+  const entries: Array<{ status: string; paths: string[] }> = [];
+  let index = 0;
+  while (index < tokens.length) {
+    const status = tokens[index]!.trim();
+    if (!status) {
+      index += 1;
+      continue;
+    }
+    const kind = status[0]!.toUpperCase();
+    if (kind === "R" || kind === "C") {
+      const from = tokens[index + 1];
+      const to = tokens[index + 2];
+      index += 3;
+      if (from === undefined || to === undefined) break;
+      entries.push({ status, paths: [from, to] });
+      continue;
+    }
+    const target = tokens[index + 1];
+    index += 2;
+    if (target === undefined) break;
+    entries.push({ status, paths: [target] });
+  }
+  return entries;
+};
+
+/**
+ * Last-write-wins map of paths touched by the selected commits, in
+ * chronological order. Renames count as delete-old + take-new.
+ */
+const collectStoreSnapshotOps = async (
+  repoRoot: string,
+  orderedCommits: string[],
+): Promise<StoreSnapshotOp[]> => {
+  const ops = new Map<string, StoreSnapshotOp>();
+  for (const hash of orderedCommits) {
+    const raw = gitStdoutText(
+      await runStoreReleaseGitOrThrow(repoRoot, [
+        "show",
+        "--name-status",
+        "--format=",
+        "--find-renames",
+        "-z",
+        hash,
+      ]),
+    );
+    for (const entry of parseNameStatusEntries(raw)) {
+      const kind = entry.status[0]?.toUpperCase() ?? "";
+      if (kind === "D") {
+        const [target] = entry.paths;
+        if (target) {
+          ops.set(target, { path: target, action: "delete", sourceCommit: hash });
+        }
+      } else if (kind === "R") {
+        const [from, to] = entry.paths;
+        if (from) {
+          ops.set(from, { path: from, action: "delete", sourceCommit: hash });
+        }
+        if (to) ops.set(to, { path: to, action: "take", sourceCommit: hash });
+      } else if (kind === "C") {
+        const [, to] = entry.paths;
+        if (to) ops.set(to, { path: to, action: "take", sourceCommit: hash });
+      } else {
+        const [target] = entry.paths;
+        if (target) {
+          ops.set(target, { path: target, action: "take", sourceCommit: hash });
+        }
+      }
+    }
+  }
+  return [...ops.values()];
+};
+
+const resolveGitBlobSha = async (
+  repoRoot: string,
+  commit: string,
+  filePath: string,
+): Promise<string | null> => {
+  const result = await runStoreReleaseGit(repoRoot, [
+    "rev-parse",
+    `${commit}:${filePath}`,
+  ]);
+  if (result.status !== 0) return null;
+  const sha = gitStdoutText(result.stdout).trim();
+  return /^[0-9a-f]{40}$/i.test(sha) ? sha : null;
+};
+
+/**
+ * Snapshot-squash fallback for when patch replay conflicts.
+ *
+ * The common prod failure: the feature was authored against an older
+ * Stella release, the user has since updated, and the publish base
+ * (the *current* `desktopReleaseCommit`) now contains upstream edits
+ * adjacent to the feature's hunks — so the feature's patches no longer
+ * apply even though the user's working tree already holds the correct
+ * merged result.
+ *
+ * Instead of replaying patches, materialize the final state of every
+ * path the selected commits touched. Content is preferred from the
+ * user's HEAD (it carries the update-merge resolution and is what
+ * actually runs on this machine); paths whose HEAD content drifted
+ * beyond the feature's own commits get a warning recorded into the
+ * artifact's security report so the Store review pass sees it.
+ */
+const applyStoreSnapshotSquash = async (args: {
+  worktreeRoot: string;
+  baseCommit: string;
+  headCommit: string;
+  orderedCommits: string[];
+}): Promise<string[]> => {
+  const { worktreeRoot, baseCommit, headCommit, orderedCommits } = args;
+  await runStoreReleaseGit(worktreeRoot, ["cherry-pick", "--abort"]);
+  await runStoreReleaseGit(worktreeRoot, ["cherry-pick", "--quit"]);
+  await runStoreReleaseGitOrThrow(worktreeRoot, ["reset", "--hard", baseCommit]);
+  await runStoreReleaseGit(worktreeRoot, ["clean", "-fd"]);
+
+  const ops = await collectStoreSnapshotOps(worktreeRoot, orderedCommits);
+  const warnings = new Set<string>([
+    "The selected commits no longer apply cleanly to the current Stella release; published the feature's current state instead.",
+  ]);
+  for (const op of ops) {
+    if (op.action === "delete") {
+      await runStoreReleaseGit(worktreeRoot, [
+        "rm",
+        "-r",
+        "-q",
+        "--ignore-unmatch",
+        "--",
+        op.path,
+      ]);
+      continue;
+    }
+    const headBlob = await resolveGitBlobSha(worktreeRoot, headCommit, op.path);
+    const featureBlob = await resolveGitBlobSha(
+      worktreeRoot,
+      op.sourceCommit,
+      op.path,
+    );
+    if (!headBlob) {
+      warnings.add(
+        `${op.path} was later removed on this computer; publishing the feature's last version of it.`,
+      );
+    } else if (featureBlob && headBlob !== featureBlob) {
+      warnings.add(
+        `${op.path} blends this feature with later updates on this computer.`,
+      );
+    }
+    await runStoreReleaseGitOrThrow(worktreeRoot, [
+      "checkout",
+      headBlob ? headCommit : op.sourceCommit,
+      "--",
+      op.path,
+    ]);
+  }
+  await runStoreReleaseGitOrThrow(worktreeRoot, ["add", "-A"]);
+  return [...warnings].sort();
+};
+
 export const collectStoreReleaseGitArtifact = async (args: {
   repoRoot: string;
   attachedFeatureNames: string[];
@@ -447,6 +615,9 @@ export const collectStoreReleaseGitArtifact = async (args: {
     repoRoot: args.repoRoot,
     firstSelectedCommit: ordered[0]!,
   });
+  const headCommit = gitStdoutText(
+    await runStoreReleaseGitOrThrow(args.repoRoot, ["rev-parse", "HEAD"]),
+  ).trim();
   // The git fast path uploads only objects reachable from featureCommit but not
   // canonicalBase. Installers on a different desktop release may not have that
   // base commit; they safely fall back to the agent path.
@@ -467,6 +638,11 @@ export const collectStoreReleaseGitArtifact = async (args: {
       worktreeRoot,
       canonicalBase,
     ]);
+    // Fast path: replay the selected commits as patches for an exact,
+    // feature-only squash. This conflicts whenever the publish base has
+    // moved past the feature (e.g. a Stella update merged edits next to
+    // the feature's hunks), so fall back to a final-state snapshot.
+    let snapshotWarnings: string[] = [];
     for (const hash of ordered) {
       const cherryPick = await runStoreReleaseGit(worktreeRoot, [
         "cherry-pick",
@@ -474,14 +650,13 @@ export const collectStoreReleaseGitArtifact = async (args: {
         hash,
       ]);
       if (cherryPick.status !== 0) {
-        await runStoreReleaseGit(worktreeRoot, ["cherry-pick", "--abort"]);
-        const detail =
-          gitStdoutText(cherryPick.stderr).trim() ||
-          gitStdoutText(cherryPick.stdout).trim() ||
-          `Could not apply ${hash}`;
-        throw new Error(
-          `Store publish could not squash the selected commits cleanly: ${detail}`,
-        );
+        snapshotWarnings = await applyStoreSnapshotSquash({
+          worktreeRoot,
+          baseCommit: canonicalBase,
+          headCommit,
+          orderedCommits: ordered,
+        });
+        break;
       }
     }
 
@@ -490,6 +665,11 @@ export const collectStoreReleaseGitArtifact = async (args: {
       baseCommit: canonicalBase,
       redactor: redact,
     });
+    if (snapshotWarnings.length > 0) {
+      security.warnings = [
+        ...new Set([...security.warnings, ...snapshotWarnings]),
+      ].sort();
+    }
     const hasChanges = await runStoreReleaseGit(worktreeRoot, [
       "diff",
       "--cached",

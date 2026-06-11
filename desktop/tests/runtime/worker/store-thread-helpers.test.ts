@@ -142,6 +142,77 @@ describe("Store release redaction", () => {
     expect(publishedContent).not.toContain("publisher@example-company.com");
   });
 
+  it("falls back to a snapshot squash when the publish base moved past the feature", async () => {
+    // Mirror the prod failure: the feature commit was authored against an
+    // older release, then a Stella update merged upstream edits adjacent to
+    // the feature's hunks and the install manifest base moved forward.
+    const seedCommit = git(repoRoot, ["rev-parse", "HEAD"]);
+
+    git(repoRoot, ["checkout", "-q", "-b", "release", seedCommit]);
+    await writeFile(
+      path.join(repoRoot, "src/feature.ts"),
+      "import upstream\none\ntwo\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", "src/feature.ts"]);
+    git(repoRoot, ["commit", "-q", "-m", "Upstream release edit"]);
+    const newBaseCommit = git(repoRoot, ["rev-parse", "HEAD"]);
+
+    git(repoRoot, ["checkout", "-q", "main"]);
+    await writeFile(
+      path.join(repoRoot, "src/feature.ts"),
+      "import feature\none\ntwo\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", "src/feature.ts"]);
+    git(repoRoot, ["commit", "-q", "-m", "Feature edit"]);
+    const featureCommitHash = git(repoRoot, ["rev-parse", "HEAD"]);
+
+    // Update merge: conflicts, resolved keeping both edits (what the
+    // install-update agent produces on the user's machine).
+    spawnSync("git", ["merge", "release"], { cwd: repoRoot, encoding: "utf8" });
+    await writeFile(
+      path.join(repoRoot, "src/feature.ts"),
+      "import upstream\nimport feature\none\ntwo\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", "src/feature.ts"]);
+    git(repoRoot, ["commit", "-q", "--no-edit"]);
+
+    await writeFile(
+      path.join(repoRoot, "stella-install.json"),
+      `${JSON.stringify({ desktopReleaseCommit: newBaseCommit }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const artifact = await collectStoreReleaseGitArtifact({
+      repoRoot,
+      attachedFeatureNames: ["Drifted Feature"],
+      snapshot: {
+        generatedAt: Date.now(),
+        items: [
+          { name: "Drifted Feature", commitHashes: [featureCommitHash] },
+        ],
+      },
+    });
+
+    expect(artifact?.gitArtifact.baseCommit).toBe(newBaseCommit);
+    const publishedContent = git(repoRoot, [
+      "show",
+      `${artifact!.gitArtifact.featureCommit}:src/feature.ts`,
+    ]);
+    expect(publishedContent).toBe(
+      "import upstream\nimport feature\none\ntwo",
+    );
+    expect(
+      artifact?.gitArtifact.security?.warnings.some((warning) =>
+        warning.includes("src/feature.ts"),
+      ),
+    ).toBe(true);
+    expect(artifact?.diff).toContain("+import feature");
+    expect(artifact?.diff).not.toContain("-import upstream");
+  });
+
   it("blocks git-object Store publish when source contains an API key", async () => {
     await writeFile(
       path.join(repoRoot, "src/feature.ts"),
