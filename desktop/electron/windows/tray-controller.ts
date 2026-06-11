@@ -39,11 +39,21 @@ export class TrayController {
     }
 
     const iconPath = resolveTrayIconPath(this.options.electronDir)
-    const image = iconPath
+    let image = iconPath
       ? nativeImage.createFromPath(iconPath)
       : nativeImage.createEmpty()
+    if (image.isEmpty()) {
+      console.warn(
+        `[tray] No usable tray icon (resolved: ${iconPath ?? 'none'}); the tray will render a blank glyph.`,
+      )
+    } else if (iconPath && !iconPath.endsWith('.ico')) {
+      // .ico files carry proper 16px tray frames; a raw PNG fallback is the
+      // full-size app icon and renders as a smeared blob in the tray unless
+      // downscaled.
+      image = image.resize({ width: 16, height: 16, quality: 'best' })
+    }
 
-    const tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image)
+    const tray = new Tray(image)
     tray.setToolTip('Stella')
     tray.setContextMenu(
       Menu.buildFromTemplate([
