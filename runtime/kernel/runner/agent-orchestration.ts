@@ -378,11 +378,22 @@ export const createAgentOrchestration = (
     listActiveThreads: (conversationId) =>
       context.runtimeStore.listActiveThreads(conversationId),
     onAgentEvent: (event) => {
-      appendAgentLifecycleChatEvent(context, event);
-      if (event.rootRunId) {
-        context.state.runCallbacksByRunId
-          .get(event.rootRunId)
-          ?.onAgentEvent?.(event);
+      // Interjection-turn completions arrive twice (see
+      // `AgentLifecycleEvent.audience`): `orchestrator-only` skips every
+      // display surface (persisted activity row, renderer/run callbacks,
+      // OS notification) so the task UI keeps reading "in progress",
+      // while the deferred `display-only` replay skips the hidden
+      // orchestrator follow-up that already went out.
+      if (event.audience !== "orchestrator-only") {
+        appendAgentLifecycleChatEvent(context, event);
+        if (event.rootRunId) {
+          context.state.runCallbacksByRunId
+            .get(event.rootRunId)
+            ?.onAgentEvent?.(event);
+        }
+      }
+      if (event.audience === "display-only") {
+        return;
       }
       const userPrompt = buildAgentEventPrompt(event);
       if (!userPrompt) {
