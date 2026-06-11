@@ -1,5 +1,6 @@
 // window_info.exe - Returns JSON info about the window at a given screen point
 // Usage: window_info.exe <x> <y> [--exclude-pids=1,2,3] [--exclude-title-prefixes=Title] [--screenshot=path.png] [--set-bounds=x,y,w,h]
+//        window_info.exe --shot <x> <y> | --shot --pid=<pid>   (inline base64 JPEG capture)
 // Output: {"title":"...","process":"...","pid":123,"bounds":{"x":0,"y":0,"width":800,"height":600}}
 // Compile: cl /O2 /EHsc window_info.cpp /link user32.lib gdi32.lib gdiplus.lib ole32.lib dwmapi.lib /OUT:window_info.exe
 
@@ -280,6 +281,25 @@ static bool parseRegionArg(const char* arg, int& x, int& y, int& w, int& h)
     y = static_cast<int>(values[1]);
     w = static_cast<int>(values[2]);
     h = static_cast<int>(values[3]);
+    return true;
+}
+
+// Parse `--pid=<pid>` into a process id (0 = not this arg / invalid).
+static bool parsePidArg(const char* arg, DWORD& outPid)
+{
+    const char* prefix = "--pid=";
+    const size_t prefixLen = strlen(prefix);
+    if (strncmp(arg, prefix, prefixLen) != 0)
+    {
+        return false;
+    }
+    char* end = nullptr;
+    unsigned long pid = strtoul(arg + prefixLen, &end, 10);
+    if (end == arg + prefixLen || pid == 0)
+    {
+        return false;
+    }
+    outPid = static_cast<DWORD>(pid);
     return true;
 }
 
@@ -623,7 +643,69 @@ static bool captureRegionBase64(int x, int y, int w, int h, std::string& outB64,
     return done;
 }
 
-static bool captureWindowBase64(HWND hwnd, std::string& outB64, int& ow, int& oh)
+// PrintWindow can "succeed" while producing an all-black (or otherwise
+// uniform) bitmap for some GPU-composited / hardware-accelerated apps. Sample
+// a sparse row grid and report whether every sampled pixel is identical so
+// callers can treat the capture as failed and fall back. Alpha is masked out
+// because PrintWindow often leaves it zeroed. Must be called while the bitmap
+// is NOT selected into a DC (GetDIBits requirement).
+static bool isBitmapUniform(HBITMAP hbmp, int w, int h)
+{
+    if (w <= 0 || h <= 0) return true;
+    HDC hdc = GetDC(NULL);
+    if (!hdc) return false;
+
+    BITMAPINFO bmi = {};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = w;
+    bmi.bmiHeader.biHeight = h;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    std::vector<DWORD> row(static_cast<size_t>(w));
+    DWORD first = 0;
+    bool haveFirst = false;
+    bool uniform = true;
+
+    const int sampleRows = 8;
+    for (int i = 0; i < sampleRows && uniform; ++i)
+    {
+        const int y = (h - 1) * i / (sampleRows - 1);
+        if (GetDIBits(hdc, hbmp, static_cast<UINT>(y), 1, row.data(), &bmi, DIB_RGB_COLORS) != 1)
+        {
+            // Can't sample — assume real content rather than a blank capture.
+            uniform = false;
+            break;
+        }
+        for (int x = 0; x < w; ++x)
+        {
+            const DWORD pixel = row[static_cast<size_t>(x)] & 0x00FFFFFF;
+            if (!haveFirst)
+            {
+                first = pixel;
+                haveFirst = true;
+                continue;
+            }
+            if (pixel != first)
+            {
+                uniform = false;
+                break;
+            }
+        }
+    }
+
+    ReleaseDC(NULL, hdc);
+    return uniform && haveFirst;
+}
+
+// Capture a single window via PrintWindow. When `allowScreenFallback` is set
+// and PrintWindow fails or renders a blank frame (common for GPU-composited
+// apps), fall back to BitBlt-ing the window's rect straight from the screen
+// DC — correct for the click-at-point path where the target window is on
+// screen under the cursor. PID-based captures keep the fallback off because
+// the target window may be occluded (typically by Stella itself).
+static bool captureWindowBase64(HWND hwnd, std::string& outB64, int& ow, int& oh, bool allowScreenFallback)
 {
     RECT rect = {};
     if (!GetWindowRect(hwnd, &rect)) return false;
@@ -640,12 +722,23 @@ static bool captureWindowBase64(HWND hwnd, std::string& outB64, int& ow, int& oh
     // PW_RENDERFULLCONTENT (0x2) captures DWM-composited content; fall back to 0.
     BOOL ok = PrintWindow(hwnd, hdcMem, 2);
     if (!ok) ok = PrintWindow(hwnd, hdcMem, 0);
-    bool done = ok && encodeBitmapToJpegBase64(hbmp, outB64, ow, oh);
 
+    // Deselect before sampling/encoding — GetDIBits needs the bitmap free.
     SelectObject(hdcMem, hOld);
-    DeleteObject(hbmp);
     DeleteDC(hdcMem);
     ReleaseDC(NULL, hdcScreen);
+
+    bool done = false;
+    if (ok && !isBitmapUniform(hbmp, w, h))
+    {
+        done = encodeBitmapToJpegBase64(hbmp, outB64, ow, oh);
+    }
+    DeleteObject(hbmp);
+
+    if (!done && allowScreenFallback)
+    {
+        return captureRegionBase64(rect.left, rect.top, w, h, outB64, ow, oh);
+    }
     return done;
 }
 
@@ -671,17 +764,60 @@ static HWND resolveHwndAtPoint(POINT pt, const WindowExclusions& excluded)
     return hwnd;
 }
 
-// `{title,process,pid,bounds,image,imageWidth,imageHeight}` for the window at a
-// point, or an error object. Used by both the served --shot path and the
-// one-shot --shot fallback.
-static std::string windowShotJsonAtPoint(POINT pt, const WindowExclusions& excluded)
+// Topmost user-facing top-level window owned by `pid`. Mirrors the
+// recent_apps alt-tab heuristic (visible, non-cloaked, root-owner, not a tool
+// window) so the window captured for a recent-app chip is the same one the
+// chip list surfaced. Prefers a non-minimized window; falls back to a
+// minimized one (PrintWindow with PW_RENDERFULLCONTENT can often still render
+// those via DWM).
+static HWND findTopLevelWindowForPid(DWORD pid)
 {
-    HWND hwnd = resolveHwndAtPoint(pt, excluded);
-    if (!hwnd) return "{\"error\":\"no window at point\"}";
+    HWND iconicFallback = NULL;
+    for (HWND hwnd = GetTopWindow(NULL); hwnd; hwnd = GetWindow(hwnd, GW_HWNDNEXT))
+    {
+        DWORD windowPid = 0;
+        GetWindowThreadProcessId(hwnd, &windowPid);
+        if (windowPid != pid)
+        {
+            continue;
+        }
+        if (!IsWindowVisible(hwnd) || isWindowCloaked(hwnd))
+        {
+            continue;
+        }
+        if (GetAncestor(hwnd, GA_ROOTOWNER) != hwnd)
+        {
+            continue;
+        }
+        LONG exStyle = GetWindowLongA(hwnd, GWL_EXSTYLE);
+        if (exStyle & WS_EX_TOOLWINDOW)
+        {
+            continue;
+        }
+        RECT rect = {};
+        if (!GetWindowRect(hwnd, &rect) || rect.right <= rect.left || rect.bottom <= rect.top)
+        {
+            continue;
+        }
+        if (IsIconic(hwnd))
+        {
+            if (!iconicFallback) iconicFallback = hwnd;
+            continue;
+        }
+        // GetTopWindow walks top-of-z-order first, so the first hit is the
+        // process's topmost window.
+        return hwnd;
+    }
+    return iconicFallback;
+}
 
+// `{title,process,pid,bounds,image,imageWidth,imageHeight}` for a resolved
+// window, or an error object. Shared by the at-point and by-pid shot paths.
+static std::string windowShotJsonForHwnd(HWND hwnd, bool allowScreenFallback)
+{
     std::string b64;
     int iw = 0, ih = 0;
-    if (!captureWindowBase64(hwnd, b64, iw, ih)) return "{\"error\":\"capture failed\"}";
+    if (!captureWindowBase64(hwnd, b64, iw, ih, allowScreenFallback)) return "{\"error\":\"capture failed\"}";
 
     std::string title = getWindowTitle(hwnd);
     RECT rect = {};
@@ -727,6 +863,25 @@ static std::string windowShotJsonAtPoint(POINT pt, const WindowExclusions& exclu
     out += std::to_string(ih);
     out += "}";
     return out;
+}
+
+// Shot JSON for the window at a point. The window is on screen under the
+// cursor, so the screen-DC fallback is enabled.
+static std::string windowShotJsonAtPoint(POINT pt, const WindowExclusions& excluded)
+{
+    HWND hwnd = resolveHwndAtPoint(pt, excluded);
+    if (!hwnd) return "{\"error\":\"no window at point\"}";
+    return windowShotJsonForHwnd(hwnd, true);
+}
+
+// Shot JSON for a process's topmost window (recent-app chip lazy capture).
+// No screen fallback: the target is usually occluded by Stella itself, so a
+// screen BitBlt of its rect would capture the wrong content.
+static std::string windowShotJsonForPid(DWORD pid)
+{
+    HWND hwnd = findTopLevelWindowForPid(pid);
+    if (!hwnd) return "{\"error\":\"no window for pid\"}";
+    return windowShotJsonForHwnd(hwnd, false);
 }
 
 // `{image,imageWidth,imageHeight}` for a virtual-screen rectangle.
@@ -806,6 +961,7 @@ static std::string serveHandleTokens(const std::vector<std::string>& tokens)
     std::vector<POINT> points;
     bool hasPoints = false;
     bool wantShot = false;
+    DWORD shotPid = 0;
     long coords[2] = {0, 0};
     int coordCount = 0;
 
@@ -824,10 +980,14 @@ static std::string serveHandleTokens(const std::vector<std::string>& tokens)
                 return regionShotJson(rx, ry, rw, rh);
             }
         }
-        // Window capture at point: `--shot <x> <y> [--exclude-pids=..]`.
+        // Window capture: `--shot <x> <y>` (at point) or `--shot --pid=<pid>`.
         if (strcmp(arg, "--shot") == 0)
         {
             wantShot = true;
+            continue;
+        }
+        if (parsePidArg(arg, shotPid))
+        {
             continue;
         }
         if (strncmp(arg, "--points=", 9) == 0)
@@ -859,6 +1019,10 @@ static std::string serveHandleTokens(const std::vector<std::string>& tokens)
 
     if (wantShot)
     {
+        if (shotPid != 0)
+        {
+            return windowShotJsonForPid(shotPid);
+        }
         if (coordCount != 2)
         {
             return "{\"error\":\"bad request\"}";
@@ -965,19 +1129,47 @@ int main(int argc, char* argv[])
     }
 
     // One-shot window capture: `window_info --shot <x> <y> [--exclude-pids=..]`
-    // prints `{title,process,pid,bounds,image,...}`. Daemon-less fallback for
-    // the window-click capture path (no temp file, JPEG base64 inline).
-    if (argc >= 4 && strcmp(argv[1], "--shot") == 0)
+    // or `window_info --shot --pid=<pid>` prints
+    // `{title,process,pid,bounds,image,...}`. Daemon-less fallback for the
+    // window-click and recent-app-chip capture paths (no temp file, JPEG
+    // base64 inline).
+    if (argc >= 3 && strcmp(argv[1], "--shot") == 0)
     {
-        POINT pt;
-        pt.x = atol(argv[2]);
-        pt.y = atol(argv[3]);
+        DWORD shotPid = 0;
         WindowExclusions shotExcluded;
-        for (int i = 4; i < argc; ++i)
+        long coords[2] = {0, 0};
+        int coordCount = 0;
+        for (int i = 2; i < argc; ++i)
         {
+            if (parsePidArg(argv[i], shotPid))
+            {
+                continue;
+            }
             parseExcludePidsArg(argv[i], shotExcluded.pids);
             parseExcludeTitlePrefixesArg(argv[i], shotExcluded.titlePrefixes);
+            if (coordCount < 2)
+            {
+                char* end = nullptr;
+                long value = strtol(argv[i], &end, 10);
+                if (end != argv[i])
+                {
+                    coords[coordCount++] = value;
+                }
+            }
         }
+        if (shotPid != 0)
+        {
+            printf("%s\n", windowShotJsonForPid(shotPid).c_str());
+            return 0;
+        }
+        if (coordCount != 2)
+        {
+            fprintf(stderr, "Usage: window_info --shot <x> <y> | --shot --pid=<pid>\n");
+            return 1;
+        }
+        POINT pt;
+        pt.x = coords[0];
+        pt.y = coords[1];
         printf("%s\n", windowShotJsonAtPoint(pt, shotExcluded).c_str());
         return 0;
     }

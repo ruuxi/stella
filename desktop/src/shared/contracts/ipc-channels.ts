@@ -70,6 +70,8 @@ export const IPC_REGION_CLICK = "region:click" as const;
 export const IPC_REGION_GET_WINDOW_CAPTURE = "region:getWindowCapture" as const;
 export const IPC_REGION_CANCEL = "region:cancel" as const;
 export const IPC_CAPTURE_PAGE_DATA_URL = "capture:pageDataUrl" as const;
+export const IPC_CAPTURE_REGION_FAILED =
+  "capture:regionCaptureFailed" as const;
 
 // ── Radial ──────────────────────────────────────────────────────────────────
 

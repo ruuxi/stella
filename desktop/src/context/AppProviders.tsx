@@ -5,6 +5,7 @@ import { ToastProvider } from '@/ui/toast'
 import { BootstrapStateProvider } from '@/bootstrap/bootstrap-state'
 import { I18nProvider } from '@/shared/i18n'
 import { VoiceErrorToastListener } from '@/features/voice/runtime/VoiceErrorToastListener'
+import { CaptureErrorToastListener } from '@/shell/CaptureErrorToastListener'
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
@@ -12,6 +13,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       <ThemeProvider>
         <ToastProvider>
           <VoiceErrorToastListener />
+          <CaptureErrorToastListener />
           <BootstrapStateProvider>
             <UiStateProvider>{children}</UiStateProvider>
           </BootstrapStateProvider>

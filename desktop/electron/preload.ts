@@ -23,6 +23,7 @@ import type {
 import {
   IPC_BROWSER_FETCH_JSON,
   IPC_BROWSER_FETCH_TEXT,
+  IPC_CAPTURE_REGION_FAILED,
   IPC_DISCOVERY_COLLECT_ALL_SIGNALS,
   IPC_HOME_CAPTURE_APP_WINDOW,
   IPC_HOME_GET_ACTIVE_BROWSER_TAB,
@@ -365,6 +366,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     setContext: (context: ChatContext | null) =>
       ipcRenderer.send("chatContext:set", context),
     onContext: onIpc<Record<string, unknown> | null>("chatContext:updated"),
+    onRegionCaptureFailed: onIpcSignal(IPC_CAPTURE_REGION_FAILED),
     screenshot: (point?: { x: number; y: number }) =>
       ipcRenderer.invoke("screenshot:capture", point),
     visionScreenshots: (point?: { x: number; y: number }) =>

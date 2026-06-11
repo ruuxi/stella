@@ -194,6 +194,7 @@ export type ElectronCaptureApi = {
   onContext: (
     callback: (payload: ChatContextUpdate | null) => void,
   ) => () => void;
+  onRegionCaptureFailed: (callback: () => void) => () => void;
   screenshot: (point?: { x: number; y: number }) => Promise<{
     dataUrl: string;
     width: number;

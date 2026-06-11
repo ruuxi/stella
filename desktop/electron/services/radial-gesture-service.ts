@@ -34,7 +34,7 @@ export type RadialCaptureBridge = {
     screenshot: { dataUrl: string; width: number; height: number } | null;
     window: ChatContext["window"];
   } | null>;
-  mergeRegionCaptureResult: (
+  commitRegionCaptureResult: (
     result: {
       screenshot: { dataUrl: string; width: number; height: number } | null;
       window: ChatContext["window"];
@@ -224,7 +224,7 @@ export class RadialGestureService {
         const targetWindowWasFocused = win.isShellWindowFocused(targetWindowMode);
         win.minimizeWindow();
         const regionCapture = await capture.startRegionCapture();
-        capture.mergeRegionCaptureResult(regionCapture);
+        capture.commitRegionCaptureResult(regionCapture);
         if (regionCapture !== null || targetWindowWasFocused) {
           win.showWindow(targetWindowMode);
         } else if (targetWindowWasVisible) {
