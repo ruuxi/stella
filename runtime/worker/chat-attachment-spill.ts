@@ -45,6 +45,17 @@ export const approximateDataUrlBytes = (url: string): number => {
   return Math.floor(((match?.[2]?.length ?? 0) * 3) / 4);
 };
 
+/**
+ * Per-image cap, measured on the base64 payload — Anthropic rejects any
+ * single image whose base64 exceeds 10MiB with a fatal 400. A turn whose
+ * total is under the spill budget can still carry one such image, so the
+ * spill decision checks both.
+ */
+export const MAX_INLINE_IMAGE_BASE64_BYTES = 10 * 1024 * 1024;
+
+export const dataUrlBase64Length = (url: string): number =>
+  DATA_URL_RE.exec(url)?.[2]?.length ?? 0;
+
 export const spillImageAttachmentsToDisk = async (args: {
   stellaDataDirPath: string;
   conversationId: string;

@@ -51,6 +51,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-visually-hidden": "^1.2.4",
     "@react-three/fiber": "^9.6.1",
+    "@silvia-odwyer/photon-node": "0.3.4",
     "@sinclair/typebox": "0.34.49",
     "@smithy/node-http-handler": "^4.7.5",
     "@smithy/types": "^4.14.2",

@@ -1,7 +1,15 @@
 import crypto from "node:crypto";
 import { existsSync, promises as fsPromises } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { resolveBundledRuntimeFile } from "../kernel/shared/runtime-paths.js";
+// Photon itself is lazy-loaded inside resizeImage, so this import adds no
+// WASM parse cost to the worker-ready path.
+import { resizeImage } from "../kernel/shared/image-resize.js";
+import {
+  detectImageMimeTypeFromBytes,
+  imageMimeTypeFromPath,
+} from "../kernel/shared/image-mime.js";
 import type { WorkerPeerLike } from "./peer-broker.js";
 import { getFileLogger } from "../observability/file-logger.js";
 import {
@@ -321,7 +329,9 @@ import { importExternalSource } from "./source-import-external.js";
 import {
   approximateDataUrlBytes,
   buildSpilledAttachmentNotice,
+  dataUrlBase64Length,
   INLINE_IMAGE_ATTACHMENT_BUDGET_BYTES,
+  MAX_INLINE_IMAGE_BASE64_BYTES,
   spillImageAttachmentsToDisk,
   type SpilledImageAttachment,
 } from "./chat-attachment-spill.js";
@@ -344,6 +354,60 @@ const isImageMimeType = (mimeType: string): boolean =>
 const encodeImageDataUrl = (mimeType: string, data: ArrayBuffer): string =>
   `data:${mimeType};base64,${Buffer.from(data).toString("base64")}`;
 
+/**
+ * Pi-style attachment sizing: resize each composer image to fit the
+ * per-image vision budget before it ever reaches the prompt. With every
+ * image ≤4.5MB base64 (typically a few hundred KB), whole batches inline
+ * directly and the spill-to-disk + view_image fallback only triggers for
+ * genuinely huge sets. Falls back to the original bytes when Photon
+ * can't decode the format.
+ */
+const resizeImageDataUrl = async (
+  dataUrl: string,
+  mimeType: string,
+): Promise<string> => {
+  const match = DATA_URL_RE.exec(dataUrl);
+  if (!match) return dataUrl;
+  try {
+    const resized = await resizeImage(
+      Buffer.from(match[2] ?? "", "base64"),
+      mimeType,
+    );
+    if (!resized?.wasResized) return dataUrl;
+    return `data:${resized.mimeType};base64,${resized.data}`;
+  } catch {
+    return dataUrl;
+  }
+};
+
+const FILE_URL_RE = /^file:\/\//i;
+
+const isLocalFileAttachmentUrl = (url: string): boolean =>
+  FILE_URL_RE.test(url) || path.isAbsolute(url);
+
+const materializeLocalFileImage = async (
+  url: string,
+): Promise<RuntimeAttachmentRef | null> => {
+  const filePath = FILE_URL_RE.test(url) ? fileURLToPath(url) : url;
+  const data = await fsPromises.readFile(filePath);
+  const mimeType =
+    detectImageMimeTypeFromBytes(data) ?? imageMimeTypeFromPath(filePath);
+  if (!mimeType) {
+    return null;
+  }
+  const resized = await resizeImage(data, mimeType);
+  if (resized) {
+    return {
+      url: `data:${resized.mimeType};base64,${resized.data}`,
+      mimeType: resized.mimeType,
+    };
+  }
+  return {
+    url: `data:${mimeType};base64,${data.toString("base64")}`,
+    mimeType,
+  };
+};
+
 const materializeImageAttachments = async (
   attachments: RuntimeAttachmentRef[] | undefined,
 ): Promise<MaterializedImageAttachment[]> => {
@@ -355,6 +419,23 @@ const materializeImageAttachments = async (
       continue;
     }
 
+    // Path-backed composer attachments: the renderer keeps only the
+    // path + preview; the original bytes are read and resized here.
+    if (isLocalFileAttachmentUrl(url)) {
+      try {
+        const localImage = await materializeLocalFileImage(url);
+        if (localImage) {
+          materialized.push({ index, attachment: localImage });
+        }
+      } catch (error) {
+        logger.warn("startChat.attachment-materialize-failed", {
+          url,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      continue;
+    }
+
     const hintedMimeType = normalizeAttachmentMimeType(attachment.mimeType);
     const dataUrlMatch = DATA_URL_RE.exec(url);
     if (dataUrlMatch) {
@@ -363,11 +444,13 @@ const materializeImageAttachments = async (
       if (!isImageMimeType(mimeType)) {
         continue;
       }
+      const resizedUrl = await resizeImageDataUrl(url, mimeType);
       materialized.push({
         index,
         attachment: {
-          url,
-          mimeType,
+          url: resizedUrl,
+          mimeType:
+            DATA_URL_RE.exec(resizedUrl)?.[1]?.toLowerCase() ?? mimeType,
         },
       });
       continue;
@@ -399,11 +482,17 @@ const materializeImageAttachments = async (
         continue;
       }
 
+      const fetchedUrl = encodeImageDataUrl(
+        mimeType,
+        await response.arrayBuffer(),
+      );
+      const resizedUrl = await resizeImageDataUrl(fetchedUrl, mimeType);
       materialized.push({
         index,
         attachment: {
-          url: encodeImageDataUrl(mimeType, await response.arrayBuffer()),
-          mimeType,
+          url: resizedUrl,
+          mimeType:
+            DATA_URL_RE.exec(resizedUrl)?.[1]?.toLowerCase() ?? mimeType,
         },
       });
     } catch (error) {
@@ -1420,7 +1509,14 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         0,
       );
       let spilledImageAttachments: SpilledImageAttachment[] = [];
-      if (totalInlineImageBytes > INLINE_IMAGE_ATTACHMENT_BUDGET_BYTES) {
+      const hasOverCapInlineImage = modelImageAttachments.some(
+        (attachment) =>
+          dataUrlBase64Length(attachment.url) > MAX_INLINE_IMAGE_BASE64_BYTES,
+      );
+      if (
+        totalInlineImageBytes > INLINE_IMAGE_ATTACHMENT_BUDGET_BYTES ||
+        hasOverCapInlineImage
+      ) {
         if (!state.init) {
           throw new Error("Worker has not been initialized.");
         }

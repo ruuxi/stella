@@ -1,3 +1,5 @@
+import { promises as fs } from "node:fs";
+
 import type { AgentTool } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { TextContent } from "../../ai/types.js";
@@ -18,6 +20,7 @@ import {
   sanitizeToolVisibleText,
 } from "../tools/safety.js";
 import { resolveImageMimeType } from "../shared/image-mime.js";
+import { formatDimensionNote, resizeImage } from "../shared/image-resize.js";
 
 export const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -195,18 +198,18 @@ type ImageBlock = { type: "image"; mimeType: string; data: string };
 
 /**
  * Per-image cap for vision attachments, measured on the base64 payload.
- * Anthropic rejects any image whose base64 exceeds 10MiB (~7.8MB binary)
- * with a fatal 400 that kills the whole turn — so oversized files are
- * never attached; the model gets an inline note telling it to view a
- * downscaled copy instead. Matches the strictest mainstream provider so
- * one attach never nukes a run regardless of routing.
+ * Anthropic rejects any image whose base64 exceeds 10MiB with a fatal
+ * 400 that kills the whole turn — so oversized files are never attached
+ * raw. `resizeImage` (pi-mono's Photon-based pipeline) normally shrinks
+ * anything large well under this; the cap only matters on its null
+ * fallback path.
  */
 const MAX_ATTACH_IMAGE_BASE64_BYTES = 10 * 1024 * 1024;
 
 const base64Length = (binaryBytes: number) => Math.ceil(binaryBytes / 3) * 4;
 
-const oversizedAttachImageNote = (imgPath: string, binaryBytes: number) =>
-  `[Image not attached: ${imgPath} is ${(binaryBytes / (1024 * 1024)).toFixed(1)}MB, over the model's per-image limit (~7.8MB). Create a downscaled copy (e.g. \`sips -Z 1568 "${imgPath}" --out /tmp/smaller.png\`, or delegate to an agent with shell access) and view the copy instead.]`;
+const omittedAttachImageNote = (imgPath: string, binaryBytes: number) =>
+  `[Image omitted: ${imgPath} is ${(binaryBytes / (1024 * 1024)).toFixed(1)}MB and could not be resized below the inline image size limit.]`;
 
 const normalizeAttachImagePath = (filePath: string) =>
   /^[A-Za-z]:\\\\/.test(filePath) ? filePath.replace(/\\\\/g, "\\") : filePath;
@@ -259,22 +262,38 @@ export const extractAttachImageBlocks = async (
   // small and there's typically 1-2 per call.
   for (const { full, path: imgPath } of matches) {
     try {
-      const fs = await import("node:fs/promises");
-      const stat = await fs.stat(imgPath);
-      if (base64Length(stat.size) > MAX_ATTACH_IMAGE_BASE64_BYTES) {
-        // Swap the marker for an actionable note instead of attaching: an
-        // over-cap image inlined into the request 400s fatally at the
-        // provider and kills the entire turn.
-        markerReplacements.push({
-          full,
-          replacement: oversizedAttachImageNote(imgPath, stat.size),
-        });
-        continue;
-      }
       const buf = await fs.readFile(imgPath);
       const mimeType = resolveImageMimeType(imgPath, buf);
       if (!mimeType) {
         return { text, images: [] };
+      }
+      // Pi-style auto-resize: pass-through when already small (≤2000px
+      // and under the byte cap — e.g. every stella-computer screenshot,
+      // which the native helper pre-caps at 1024px, so screenshot-pixel
+      // coordinates stay 1:1), otherwise shrink to fit. The dimension
+      // note tells the model how to map coordinates back when a resize
+      // did happen.
+      const resized = await resizeImage(buf, mimeType);
+      if (resized) {
+        const note = formatDimensionNote(resized);
+        markerReplacements.push({ full, replacement: note ?? "" });
+        images.push({
+          type: "image",
+          mimeType: resized.mimeType,
+          data: resized.data,
+        });
+        continue;
+      }
+      // Resize unavailable (Photon missing or a format it can't decode,
+      // e.g. some GIFs): attach the original when it's under the provider
+      // per-image cap, otherwise swap the marker for a note — an over-cap
+      // image inlined into the request 400s fatally and kills the turn.
+      if (base64Length(buf.length) > MAX_ATTACH_IMAGE_BASE64_BYTES) {
+        markerReplacements.push({
+          full,
+          replacement: omittedAttachImageNote(imgPath, buf.length),
+        });
+        continue;
       }
       markerReplacements.push({ full, replacement: "" });
       images.push({
