@@ -17,27 +17,18 @@
  * the frontier toward it, advancing monotonically. Because no state is
  * attached to the text DOM, Streamdown can replace nodes freely without
  * ever re-triggering the reveal.
+ *
+ * The per-frame frontier math (including the caret-stall finish that
+ * keeps the tail from sitting half-faded while tool-call args stream
+ * invisibly) lives in `streaming-text-reveal-frontier.ts`.
  */
 import { useEffect, useRef, type ReactNode } from "react";
-
-/** Width of the transparent fade at the reveal frontier. */
-const FADE_WIDTH = 48;
-/** Per-frame proportional catch-up toward the measured caret. */
-const CATCH_UP = 0.22;
-/** Minimum frontier speed (px/frame) so short deltas still glide. */
-const MIN_SPEED = 1.5;
-/** Vertical tolerance when deciding "same line" across reflows. */
-const LINE_EPSILON = 2;
-
-interface RevealState {
-  initialized: boolean;
-  lineTop: number;
-  lineBottom: number;
-  /** Frontier x within the container (mask gradient endpoint). */
-  x: number;
-  /** Rightmost caret x observed on the current line (line-finish goal). */
-  maxRight: number;
-}
+import {
+  advanceRevealFrontier,
+  createRevealState,
+  FADE_WIDTH,
+  type RevealState,
+} from "./streaming-text-reveal-frontier";
 
 /**
  * Deepest last visible node — the live caret position lives at its
@@ -105,13 +96,7 @@ export function StreamingTextReveal({
 }: StreamingTextRevealProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef(active);
-  const stateRef = useRef<RevealState>({
-    initialized: false,
-    lineTop: 0,
-    lineBottom: 0,
-    x: 0,
-    maxRight: 0,
-  });
+  const stateRef = useRef<RevealState>(createRevealState());
   const frameRef = useRef<number | null>(null);
 
   activeRef.current = active;
@@ -144,52 +129,17 @@ export function StreamingTextReveal({
       }
 
       const containerRect = el.getBoundingClientRect();
-      const tTop = caret.top - containerRect.top;
-      const tBottom = caret.bottom - containerRect.top;
-      const tRight = caret.right - containerRect.left;
+      const caughtUp = advanceRevealFrontier(
+        state,
+        {
+          top: caret.top - containerRect.top,
+          bottom: caret.bottom - containerRect.top,
+          right: caret.right - containerRect.left,
+        },
+        activeRef.current,
+        Date.now(),
+      );
 
-      if (!state.initialized || tBottom < state.lineTop - LINE_EPSILON) {
-        // First measurement → sweep in from the left; a relayout that
-        // moved content upward → snap to the caret (no replay).
-        const movedUp = state.initialized;
-        state.initialized = true;
-        state.lineTop = tTop;
-        state.lineBottom = tBottom;
-        state.x = movedUp ? tRight : 0;
-        state.maxRight = tRight;
-      }
-
-      const sameLine = tTop < state.lineBottom - LINE_EPSILON;
-      let goal: number;
-      if (sameLine) {
-        state.lineTop = Math.min(state.lineTop, tTop);
-        state.lineBottom = Math.max(state.lineBottom, tBottom);
-        state.maxRight = Math.max(state.maxRight, tRight);
-        // While streaming, glide up to the caret; once the stream ends,
-        // overshoot by the fade width so the tail reaches full opacity.
-        goal = activeRef.current ? tRight : tRight + FADE_WIDTH;
-      } else {
-        // Caret wrapped to a lower line: finish sweeping the current
-        // line past its recorded end, then latch onto the new line.
-        goal = state.maxRight + FADE_WIDTH;
-        if (state.x >= goal - 0.5) {
-          state.lineTop = tTop;
-          state.lineBottom = tBottom;
-          state.x = 0;
-          state.maxRight = tRight;
-          goal = activeRef.current ? tRight : tRight + FADE_WIDTH;
-        }
-      }
-
-      if (state.x < goal) {
-        state.x = Math.min(
-          goal,
-          state.x + Math.max((goal - state.x) * CATCH_UP, MIN_SPEED),
-        );
-      }
-
-      const caughtUp =
-        sameLine && !activeRef.current && state.x >= tRight + FADE_WIDTH - 0.5;
       if (caughtUp) {
         clearMask(el);
         state.initialized = false;
