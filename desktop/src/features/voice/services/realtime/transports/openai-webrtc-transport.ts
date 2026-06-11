@@ -25,6 +25,7 @@ import {
   acquireSharedMicrophone,
   type SharedMicrophoneLease,
 } from "@/features/voice/services/shared-microphone";
+import { uiState } from "@/platform/ui-state";
 import type {
   RealtimeTransport,
   RealtimeTransportEvents,
@@ -343,7 +344,7 @@ export class OpenAIWebRTCTransport implements RealtimeTransport {
     this.audioElement.srcObject = stream;
     this.audioElement.autoplay = true;
 
-    const preferredSpeakerId = localStorage.getItem(
+    const preferredSpeakerId = uiState.getItem(
       "stella-preferred-speaker-id",
     );
     if (

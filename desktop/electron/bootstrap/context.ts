@@ -16,6 +16,7 @@ import type { LocalChatHistoryService } from "../services/local-chat-history-ser
 import type { SecurityPolicyService } from "../services/security-policy-service.js";
 import type { SelectionWatcherService } from "../services/selection-watcher-service.js";
 import type { UiStateService } from "../services/ui-state-service.js";
+import type { UiStateStore } from "../../../runtime/kernel/ui-state/store.js";
 import { WindowManager } from "../windows/window-manager.js";
 import { createHmrTransitionController } from "../self-mod/hmr-morph.js";
 import type {
@@ -78,6 +79,8 @@ export type BootstrapState = {
   stellaBrowserBridgeService: StellaBrowserBridgeResource | null;
   mobileBridgeResource: MobileBridgeResource | null;
   officePreviewBridgeStop: (() => void) | null;
+  /** Shared renderer KV state backed by ~/.stella/ui-state.json. */
+  uiStateKvStore: UiStateStore | null;
   windowManager: WindowManager | null;
   trayController: TrayController | null;
 };
@@ -211,6 +214,7 @@ export const createBootstrapContext = (
     stellaBrowserBridgeService: null,
     mobileBridgeResource: null,
     officePreviewBridgeStop: null,
+    uiStateKvStore: null,
     windowManager: null,
     trayController: null,
   };

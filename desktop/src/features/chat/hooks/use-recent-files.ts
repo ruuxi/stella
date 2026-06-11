@@ -1,22 +1,23 @@
 /**
  * Composer "+" menu: small persisted ring of recently attached files.
  *
- * Backed by `localStorage` so it survives reloads and is shared across
- * composers in the same renderer (full chat ↔ sidebar). Cross-window
+ * Backed by the shared UI state store so it survives reloads and is shared
+ * across composers in the same renderer (full chat ↔ sidebar). Cross-window
  * propagation rides the standard `storage` event.
  *
  * Files larger than {@link MAX_RECENT_DATA_URL_BYTES} aren't recorded —
- * we don't want a single 15 MB attachment to blow out the localStorage
- * quota and evict everything else.
+ * we don't want a single 15 MB attachment to blow out the shared UI state
+ * store and evict everything else.
  */
 import { useCallback, useSyncExternalStore } from "react";
+import { uiState } from "@/platform/ui-state";
 import type { ChatContextFile } from "@/shared/types/electron";
 
 const STORAGE_KEY = "stella-composer-recent-files";
 const MAX_RECENT_FILES = 3;
 /**
- * ~1.5 MB cap per dataUrl. Three slots × 1.5 MB stays well under the
- * conventional ~5 MB localStorage quota; larger attachments still work
+ * ~1.5 MB cap per dataUrl. Three slots × 1.5 MB keeps the shared UI state
+ * store payload modest; larger attachments still work
  * for the current send, they just don't stick to the recents list.
  */
 const MAX_RECENT_DATA_URL_BYTES = 1.5 * 1024 * 1024;
@@ -38,12 +39,8 @@ function isValidEntry(value: unknown): value is ChatContextFile {
 
 function readStorage(): ChatContextFile[] {
   if (cached) return cached;
-  if (typeof localStorage === "undefined") {
-    cached = [];
-    return cached;
-  }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = uiState.getItem(STORAGE_KEY);
     if (!raw) {
       cached = [];
       return cached;
@@ -65,14 +62,7 @@ function readStorage(): ChatContextFile[] {
 
 function writeStorage(next: ChatContextFile[]) {
   cached = next;
-  if (typeof localStorage !== "undefined") {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    } catch {
-      // Quota exceeded or storage unavailable — keep the in-memory cache so
-      // the current renderer still sees the update; persistence is best-effort.
-    }
-  }
+  uiState.setItem(STORAGE_KEY, JSON.stringify(next));
   for (const fn of subscribers) fn();
 }
 

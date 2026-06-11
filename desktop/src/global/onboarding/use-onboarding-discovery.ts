@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
+import { uiState } from "@/platform/ui-state";
 import {
   BROWSER_PROFILE_KEY,
   BROWSER_SELECTION_KEY,
@@ -172,19 +173,19 @@ export function useOnboardingDiscovery({
       return;
     }
 
-    localStorage.setItem(DISCOVERY_CATEGORIES_KEY, JSON.stringify(selected));
+    uiState.setItem(DISCOVERY_CATEGORIES_KEY, JSON.stringify(selected));
     window.dispatchEvent(new Event(DISCOVERY_CATEGORIES_CHANGED_EVENT));
 
     if (browserEnabled && selectedBrowser) {
-      localStorage.setItem(BROWSER_SELECTION_KEY, selectedBrowser);
+      uiState.setItem(BROWSER_SELECTION_KEY, selectedBrowser);
       if (selectedProfile) {
-        localStorage.setItem(BROWSER_PROFILE_KEY, selectedProfile);
+        uiState.setItem(BROWSER_PROFILE_KEY, selectedProfile);
       } else {
-        localStorage.removeItem(BROWSER_PROFILE_KEY);
+        uiState.removeItem(BROWSER_PROFILE_KEY);
       }
     } else {
-      localStorage.removeItem(BROWSER_SELECTION_KEY);
-      localStorage.removeItem(BROWSER_PROFILE_KEY);
+      uiState.removeItem(BROWSER_SELECTION_KEY);
+      uiState.removeItem(BROWSER_PROFILE_KEY);
     }
 
     // Cadence reports default on only when the user opted into browser

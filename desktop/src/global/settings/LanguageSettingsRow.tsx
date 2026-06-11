@@ -4,8 +4,8 @@ import { Select } from "@/ui/select";
 
 /**
  * Settings row for switching the active app language. Stored both in
- * localStorage (instant rendering) and in Convex `user_preferences`
- * (synced across signed-in devices).
+ * the shared UI state store (instant rendering) and in Convex
+ * `user_preferences` (synced across signed-in devices).
  */
 export function LanguageSettingsRow() {
   const t = useT();

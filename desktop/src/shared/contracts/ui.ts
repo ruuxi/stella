@@ -9,10 +9,9 @@ export type WindowMode = 'full' | 'mini'
  *
  * As of the TanStack Router migration, the active "view" is owned by the
  * router (not by `UiState.view`). The full-shell renderer persists its last
- * router location into renderer-side `localStorage` (key
- * `stella:lastLocation`) so the app can reopen on the same route. We do
- * *not* round-trip that through `UiState` — no other window cares, and IPC
- * on every navigation is wasted bandwidth.
+ * router location into the shared UI state store (key `stella:lastLocation`)
+ * so the app can reopen on the same route. We do *not* round-trip that
+ * through `UiState` — no other window cares about live navigation updates.
  *
  * `conversationId` remains in `UiState` because the voice overlay window
  * needs cross-window access to the active conversation. The chat route

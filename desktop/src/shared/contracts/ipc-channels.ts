@@ -43,6 +43,13 @@ export const IPC_OFFICE_PREVIEW_UPDATE = "officePreview:update" as const;
 export const IPC_UI_GET_STATE = "ui:getState" as const;
 export const IPC_UI_SET_STATE = "ui:setState" as const;
 export const IPC_UI_STATE = "ui:state" as const;
+
+// ── Shared UI state KV (~/.stella/ui-state.json) ───────────────────────────
+
+export const IPC_UI_STATE_KV_SNAPSHOT = "uiState:snapshot" as const;
+export const IPC_UI_STATE_KV_APPLY = "uiState:apply" as const;
+export const IPC_UI_STATE_KV_CLEAR = "uiState:clear" as const;
+export const IPC_UI_STATE_KV_CHANGED = "uiState:changed" as const;
 export const IPC_APP_SET_READY = "app:setReady" as const;
 export const IPC_APP_RELOAD = "app:reload" as const;
 export const IPC_APP_RELAUNCH = "app:relaunch" as const;
@@ -108,8 +115,6 @@ export const IPC_MINI_BRIDGE_READY = "miniBridge:ready" as const;
 
 // ── Theme ───────────────────────────────────────────────────────────────────
 
-export const IPC_THEME_CHANGE = "theme:change" as const;
-export const IPC_THEME_BROADCAST = "theme:broadcast" as const;
 export const IPC_THEME_LIST_INSTALLED = "theme:listInstalled" as const;
 
 // ── Voice ───────────────────────────────────────────────────────────────────

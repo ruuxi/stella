@@ -19,6 +19,7 @@ import {
   type ThemeColors,
 } from "../shared/theme/themes";
 import { generateGradientTokens } from "../shared/theme/color";
+import { uiState } from "../platform/ui-state";
 
 type ColorMode = "light" | "dark" | "system";
 type GradientMode = "soft" | "flat";
@@ -170,17 +171,10 @@ function applyThemeToDocument(
 // ─── Persistence helpers ─────────────────────────────────────────────────
 
 function readStorage<T extends string>(key: string, fallback: T): T {
-  return (localStorage.getItem(key) as T) ?? fallback;
+  return (uiState.getItem(key) as T) ?? fallback;
 }
 
-function persistAndBroadcast(key: string, value: string) {
-  localStorage.setItem(key, value);
-  if (window.electronAPI) {
-    window.electronAPI.theme.broadcast(key, value);
-  }
-}
-
-// ─── useThemePersistence — localStorage + IPC sync ───────────────────────
+// ─── useThemePersistence — shared UI state + storage-event sync ──────────
 
 interface PersistedThemeState {
   themeId: string;
@@ -200,7 +194,7 @@ function useThemePersistence(
   clearPreviews: () => void,
 ): PersistedThemeState {
   const [themeId, setThemeIdRaw] = useState(() => readStorage(THEME_STORAGE_KEY, defaultTheme.id));
-  const [customBase, setCustomBaseRaw] = useState<string | null>(() => localStorage.getItem(CUSTOM_BASE_STORAGE_KEY));
+  const [customBase, setCustomBaseRaw] = useState<string | null>(() => uiState.getItem(CUSTOM_BASE_STORAGE_KEY));
   const [colorMode, setColorModeRaw] = useState(() => readStorage<ColorMode>(COLOR_MODE_STORAGE_KEY, "light"));
   const [gradientMode, setGradientModeRaw] = useState(() => readStorage<GradientMode>(GRADIENT_MODE_STORAGE_KEY, "soft"));
   const [gradientColor, setGradientColorRaw] = useState(() => readStorage<GradientColor>(GRADIENT_COLOR_STORAGE_KEY, "relative"));
@@ -225,17 +219,8 @@ function useThemePersistence(
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  useEffect(() => {
-    if (!window.electronAPI) return;
-    return window.electronAPI.theme.onChange((_event, data) => {
-      if (data.key === THEME_STORAGE_KEY) { setThemeIdRaw(data.value); clearPreviews(); }
-      else if (data.key === CUSTOM_BASE_STORAGE_KEY) { setCustomBaseRaw(data.value); clearPreviews(); }
-      else if (data.key === COLOR_MODE_STORAGE_KEY) setColorModeRaw(data.value as ColorMode);
-      else if (data.key === GRADIENT_MODE_STORAGE_KEY) { setGradientModeRaw(data.value as GradientMode); clearPreviews(); }
-      else if (data.key === GRADIENT_COLOR_STORAGE_KEY) { setGradientColorRaw(data.value as GradientColor); clearPreviews(); }
-    });
-  }, [clearPreviews]);
-
+  // Cross-window and cross-host changes arrive as synthetic `storage` events
+  // dispatched by the shared UI state client.
   useEffect(() => {
     const handler = (e: StorageEvent) => {
       if (e.key === THEME_STORAGE_KEY && e.newValue) { setThemeIdRaw(e.newValue); clearPreviews(); }
@@ -248,11 +233,11 @@ function useThemePersistence(
     return () => window.removeEventListener("storage", handler);
   }, [clearPreviews]);
 
-  const setThemeId = useCallback((id: string) => { setThemeIdRaw(id); persistAndBroadcast(THEME_STORAGE_KEY, id); }, []);
-  const setCustomBase = useCallback((id: string) => { setCustomBaseRaw(id); persistAndBroadcast(CUSTOM_BASE_STORAGE_KEY, id); }, []);
-  const setColorMode = useCallback((mode: ColorMode) => { setColorModeRaw(mode); persistAndBroadcast(COLOR_MODE_STORAGE_KEY, mode); }, []);
-  const setGradientMode = useCallback((mode: GradientMode) => { setGradientModeRaw(mode); persistAndBroadcast(GRADIENT_MODE_STORAGE_KEY, mode); }, []);
-  const setGradientColor = useCallback((color: GradientColor) => { setGradientColorRaw(color); persistAndBroadcast(GRADIENT_COLOR_STORAGE_KEY, color); }, []);
+  const setThemeId = useCallback((id: string) => { setThemeIdRaw(id); uiState.setItem(THEME_STORAGE_KEY, id); }, []);
+  const setCustomBase = useCallback((id: string) => { setCustomBaseRaw(id); uiState.setItem(CUSTOM_BASE_STORAGE_KEY, id); }, []);
+  const setColorMode = useCallback((mode: ColorMode) => { setColorModeRaw(mode); uiState.setItem(COLOR_MODE_STORAGE_KEY, mode); }, []);
+  const setGradientMode = useCallback((mode: GradientMode) => { setGradientModeRaw(mode); uiState.setItem(GRADIENT_MODE_STORAGE_KEY, mode); }, []);
+  const setGradientColor = useCallback((color: GradientColor) => { setGradientColorRaw(color); uiState.setItem(GRADIENT_COLOR_STORAGE_KEY, color); }, []);
 
   return { themeId, customBase, colorMode, gradientMode, gradientColor, systemMode, setThemeId, setCustomBase, setColorMode, setGradientMode, setGradientColor };
 }

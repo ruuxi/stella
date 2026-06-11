@@ -1,7 +1,16 @@
 (function () {
   var root = document.documentElement;
 
+  // Shared UI state snapshot (~/.stella/ui-state.json), exposed before this
+  // script by the Electron preload or the dev server's injected inline
+  // script. localStorage remains only as a first-boot-after-migration
+  // fallback while the shared store is still empty.
+  var uiState = window.__stellaUiState || {};
+
   var readStorage = function (key) {
+    if (Object.prototype.hasOwnProperty.call(uiState, key)) {
+      return uiState[key];
+    }
     try {
       return window.localStorage ? window.localStorage.getItem(key) : null;
     } catch (_error) {

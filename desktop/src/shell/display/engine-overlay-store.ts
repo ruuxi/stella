@@ -5,32 +5,24 @@
  * home launcher instead of swapping the display panel's active tab.
  */
 import { useSyncExternalStore } from "react";
+import { uiState } from "@/platform/ui-state";
 
 type Listener = () => void;
 
 const STORAGE_KEY = "stella.displayPanel.engineOverlayOpen";
 
-const safeStorage = (): Storage | null => {
-  try {
-    return typeof window !== "undefined" ? window.localStorage : null;
-  } catch {
-    return null;
-  }
-};
-
 const readPersistedOpen = (): boolean => {
-  const storage = safeStorage();
-  return storage?.getItem(STORAGE_KEY) === "1";
+  if (typeof window === "undefined") return false;
+  return uiState.getItem(STORAGE_KEY) === "1";
 };
 
 const writePersistedOpen = (next: boolean): void => {
-  const storage = safeStorage();
-  if (!storage) return;
-  if (next) storage.setItem(STORAGE_KEY, "1");
-  else storage.removeItem(STORAGE_KEY);
+  if (typeof window === "undefined") return;
+  if (next) uiState.setItem(STORAGE_KEY, "1");
+  else uiState.removeItem(STORAGE_KEY);
 };
 
-// Restored from localStorage so the Models / engine surface survives a
+// Restored from the shared UI state store so the Models / engine surface survives a
 // panel close + reopen — and the frequent self-mod HMR/full reloads — and
 // comes back open right where the user left it.
 let isOpen = readPersistedOpen();

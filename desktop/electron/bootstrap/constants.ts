@@ -17,6 +17,7 @@ export const HARD_RESET_MUTABLE_HOME_PATHS = [
   "device.json",
   "local-scheduler.json",
   "preferences.json",
+  "ui-state.json",
   "stella.sqlite",
   "stella.sqlite-shm",
   "stella.sqlite-wal",

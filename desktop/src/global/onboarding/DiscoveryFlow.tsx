@@ -9,6 +9,7 @@ import {
 } from "@/global/onboarding/services/synthesis";
 import { buildOnboardingFirstReport } from "@/global/onboarding/services/first-report";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
+import { uiState } from "@/platform/ui-state";
 import { showToast } from "@/ui/toast";
 import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
 import {
@@ -19,7 +20,7 @@ import {
 const withBrowserDiscoveryCategory = (
   categories: DiscoveryCategory[],
 ): DiscoveryCategory[] => {
-  const selectedBrowser = localStorage.getItem(BROWSER_SELECTION_KEY);
+  const selectedBrowser = uiState.getItem(BROWSER_SELECTION_KEY);
   if (!selectedBrowser || categories.includes("browsing_bookmarks")) {
     return categories;
   }
@@ -114,9 +115,9 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         }
 
         const selectedBrowser =
-          localStorage.getItem(BROWSER_SELECTION_KEY) ?? undefined;
+          uiState.getItem(BROWSER_SELECTION_KEY) ?? undefined;
         const selectedProfile =
-          localStorage.getItem(BROWSER_PROFILE_KEY) ?? undefined;
+          uiState.getItem(BROWSER_PROFILE_KEY) ?? undefined;
         const collectAllSignals =
           window.electronAPI?.discovery.collectAllSignals;
         if (!collectAllSignals) {

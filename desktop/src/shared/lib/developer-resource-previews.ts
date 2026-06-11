@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { uiState } from "@/platform/ui-state";
 
 const DEVELOPER_RESOURCE_PREVIEWS_KEY =
   "stella-developer-resource-previews";
@@ -8,14 +9,11 @@ const DEVELOPER_RESOURCE_PREVIEWS_CHANGED_EVENT =
 
 const getDeveloperResourcePreviewsEnabled = (): boolean => {
   if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(DEVELOPER_RESOURCE_PREVIEWS_KEY) === "true";
+  return uiState.getItem(DEVELOPER_RESOURCE_PREVIEWS_KEY) === "true";
 };
 
 export const setDeveloperResourcePreviewsEnabled = (enabled: boolean) => {
-  window.localStorage.setItem(
-    DEVELOPER_RESOURCE_PREVIEWS_KEY,
-    enabled ? "true" : "false",
-  );
+  uiState.setItem(DEVELOPER_RESOURCE_PREVIEWS_KEY, enabled ? "true" : "false");
   window.dispatchEvent(
     new CustomEvent(DEVELOPER_RESOURCE_PREVIEWS_CHANGED_EVENT, {
       detail: { enabled },

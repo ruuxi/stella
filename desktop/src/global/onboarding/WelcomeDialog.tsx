@@ -12,6 +12,7 @@ import { listLocalEvents } from "@/features/chat/services/local-chat-store";
 import { Compass, LogIn, Smartphone } from "@/ui/icons";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { openCanvasDisplayTab } from "@/features/workspace-display/default-tabs";
+import { uiState } from "@/platform/ui-state";
 import "./welcome-dialog.css";
 
 const WELCOME_DIALOG_SEEN_KEY = "stella-welcome-dialog-seen";
@@ -60,23 +61,15 @@ export function WelcomeDialog({
   onSignIn,
 }: WelcomeDialogProps) {
   const { hasConnectedAccount } = useAuthSessionState();
-  const [open, setOpen] = useState(() => {
-    try {
-      return localStorage.getItem(WELCOME_DIALOG_SEEN_KEY) !== "true";
-    } catch {
-      return false;
-    }
-  });
+  const [open, setOpen] = useState(
+    () => uiState.getItem(WELCOME_DIALOG_SEEN_KEY) !== "true",
+  );
 
   const welcomeMessage = useWelcomeMessage(open ? conversationId : null);
 
   const handleClose = useCallback(() => {
     setOpen(false);
-    try {
-      localStorage.setItem(WELCOME_DIALOG_SEEN_KEY, "true");
-    } catch {
-      // ignore
-    }
+    uiState.setItem(WELCOME_DIALOG_SEEN_KEY, "true");
   }, []);
 
   const handleConnect = useCallback(() => {

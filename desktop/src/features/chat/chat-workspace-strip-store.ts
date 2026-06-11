@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { uiState } from "@/platform/ui-state";
 
 const STORAGE_KEY_STRIP = "stella.chatWorkspaceStrip.visible";
 const STORAGE_KEY_SECTIONS = "stella.chatWorkspaceStrip.sections";
@@ -20,31 +21,20 @@ type StripStoreSnapshot = {
   sections: WorkspaceStripSections;
 };
 
-const safeStorage = (): Storage | null => {
-  try {
-    return typeof window !== "undefined" ? window.localStorage : null;
-  } catch {
-    return null;
-  }
-};
-
 const readPersistedStripVisible = (): boolean => {
-  const storage = safeStorage();
-  if (!storage) return true;
-  return storage.getItem(STORAGE_KEY_STRIP) !== "0";
+  if (typeof window === "undefined") return true;
+  return uiState.getItem(STORAGE_KEY_STRIP) !== "0";
 };
 
 const writePersistedStripVisible = (visible: boolean): void => {
-  const storage = safeStorage();
-  if (!storage) return;
-  storage.setItem(STORAGE_KEY_STRIP, visible ? "1" : "0");
+  if (typeof window === "undefined") return;
+  uiState.setItem(STORAGE_KEY_STRIP, visible ? "1" : "0");
 };
 
 const readPersistedSections = (): WorkspaceStripSections => {
-  const storage = safeStorage();
-  if (!storage) return DEFAULT_SECTIONS;
+  if (typeof window === "undefined") return DEFAULT_SECTIONS;
   try {
-    const raw = storage.getItem(STORAGE_KEY_SECTIONS);
+    const raw = uiState.getItem(STORAGE_KEY_SECTIONS);
     if (!raw) return DEFAULT_SECTIONS;
     const parsed = JSON.parse(raw) as Partial<WorkspaceStripSections>;
     return {
@@ -58,9 +48,8 @@ const readPersistedSections = (): WorkspaceStripSections => {
 };
 
 const writePersistedSections = (sections: WorkspaceStripSections): void => {
-  const storage = safeStorage();
-  if (!storage) return;
-  storage.setItem(STORAGE_KEY_SECTIONS, JSON.stringify(sections));
+  if (typeof window === "undefined") return;
+  uiState.setItem(STORAGE_KEY_SECTIONS, JSON.stringify(sections));
 };
 
 const syncStripHiddenDataset = (visible: boolean): void => {

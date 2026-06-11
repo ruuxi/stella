@@ -6,6 +6,7 @@ import { TanStackRouterVite } from "@tanstack/router-plugin/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, searchForWorkspaceRoot, type Plugin } from "vite"
 import { selfModHmrControl } from "./vite/self-mod-hmr-plugin"
+import { uiStateSharedStore } from "./vite/ui-state-plugin"
 
 
 const DEV_URL_FILE = path.resolve(__dirname, '.vite-dev-url')
@@ -265,6 +266,7 @@ export default defineConfig({
     bunHttpServerCloseFix(),
     devServerUrl(),
     selfModHmrControl(),
+    uiStateSharedStore(),
     pdfWorkerAsset(),
   ],
   base: './',

@@ -1,10 +1,12 @@
+import { uiState } from "@/platform/ui-state";
+
 const STORAGE_KEY = "stella:engine-model-favorites";
 
 type FavoriteScope = string;
 
 const readAll = (): Record<FavoriteScope, string[]> => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = uiState.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") return {};
@@ -23,11 +25,7 @@ const readAll = (): Record<FavoriteScope, string[]> => {
 };
 
 const writeAll = (value: Record<FavoriteScope, string[]>): void => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-  } catch {
-    // Ignore quota / private-mode failures.
-  }
+  uiState.setItem(STORAGE_KEY, JSON.stringify(value));
 };
 
 export const readEngineModelFavorites = (scope: FavoriteScope): string[] => {

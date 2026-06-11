@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { uiState } from "@/platform/ui-state";
 
 export type ReduceMotionPreference = "system" | "on" | "off";
 
@@ -14,7 +15,7 @@ const isReduceMotionPreference = (
 
 const readReduceMotionPreference = (): ReduceMotionPreference => {
   if (typeof window === "undefined") return "system";
-  const raw = window.localStorage.getItem(REDUCE_MOTION_KEY);
+  const raw = uiState.getItem(REDUCE_MOTION_KEY);
   return isReduceMotionPreference(raw) ? raw : "system";
 };
 
@@ -62,7 +63,7 @@ export const setReduceMotionPreference = (
   preference: ReduceMotionPreference,
 ) => {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(REDUCE_MOTION_KEY, preference);
+  uiState.setItem(REDUCE_MOTION_KEY, preference);
   applyToDocument(preference);
   dispatchChanged();
 };

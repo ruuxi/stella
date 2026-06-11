@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/ui/dialog";
 import { Button } from "@/ui/button";
+import { uiState } from "@/platform/ui-state";
 import "./SubscriptionUpgradeDialog.css";
 
 type BillingPlanId = "free" | "go" | "pro" | "plus" | "ultra";
@@ -101,24 +102,14 @@ export function SubscriptionUpgradeDialog() {
 
     const storageKey = storageKeyFor(accountKey);
     let stored: BillingPlanId | null = null;
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (raw && raw in DEFAULT_PLAN_LABEL) {
-        stored = raw as BillingPlanId;
-      }
-    } catch {
-      // localStorage can be unavailable (private windows, embedded
-      // contexts) — fall through and treat as "no baseline".
+    const raw = uiState.getItem(storageKey);
+    if (raw && raw in DEFAULT_PLAN_LABEL) {
+      stored = raw as BillingPlanId;
     }
 
     if (stored === plan) return;
 
-    try {
-      window.localStorage.setItem(storageKey, plan);
-    } catch {
-      // Same as above — if we can't persist, we'd re-fire next mount, but
-      // that's strictly better than swallowing the celebration entirely.
-    }
+    uiState.setItem(storageKey, plan);
 
     // First read after sign-in (no baseline) is a silent seed so we don't
     // celebrate plans the user has been on for months.

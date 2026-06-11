@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useIdleHomeVisibility } from '@/features/chat/hooks/use-idle-home-visibility'
+import { uiState } from '@/platform/ui-state'
 import { STELLA_SHOW_HOME_EVENT } from '@/shared/lib/stella-orb-chat'
 
 /** Set when navigating away from chat; cleared on full app restart (new session). */
@@ -9,22 +10,14 @@ const CHAT_HOME_SURFACE_STORAGE_KEY = 'stella.chatHomeSurface'
 type ChatHomeSurface = 'home' | 'chat'
 
 function readPersistedChatHomeSurface(): ChatHomeSurface | null {
-  try {
-    if (typeof window === 'undefined' || !window.localStorage) return null
-    const raw = window.localStorage.getItem(CHAT_HOME_SURFACE_STORAGE_KEY)
-    return raw === 'home' || raw === 'chat' ? raw : null
-  } catch {
-    return null
-  }
+  if (typeof window === 'undefined') return null
+  const raw = uiState.getItem(CHAT_HOME_SURFACE_STORAGE_KEY)
+  return raw === 'home' || raw === 'chat' ? raw : null
 }
 
 function writePersistedChatHomeSurface(surface: ChatHomeSurface): void {
-  try {
-    if (typeof window === 'undefined' || !window.localStorage) return
-    window.localStorage.setItem(CHAT_HOME_SURFACE_STORAGE_KEY, surface)
-  } catch {
-    // Storage is best-effort; the chat route itself still restores normally.
-  }
+  if (typeof window === 'undefined') return
+  uiState.setItem(CHAT_HOME_SURFACE_STORAGE_KEY, surface)
 }
 
 type UseChatHomeSurfaceOptions = {
@@ -56,7 +49,7 @@ type UseChatHomeSurfaceResult = {
  *    away from `/chat` once in this session, we stop forcing the home
  *    overlay just because the conversation is empty (the
  *    `firstStintOnChat` guard).
- * 2. `CHAT_HOME_SURFACE_STORAGE_KEY` (localStorage) — explicit "is the
+ * 2. `CHAT_HOME_SURFACE_STORAGE_KEY` (shared UI state store) — explicit "is the
  *    home overlay or the chat surface the canonical view right now"
  *    sticky preference. Survives reloads.
  * 3. The idle home timer from `useIdleHomeVisibility` — re-shows home

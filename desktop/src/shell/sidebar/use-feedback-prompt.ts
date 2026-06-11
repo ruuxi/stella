@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { uiState } from "@/platform/ui-state";
 
 /**
  * Auto-prompt scheduler for the anonymous feedback dialog.
@@ -9,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * bucket; once that bucket crosses ~30 minutes and the prompt has never been
  * shown before, the hook flips `shouldPrompt` to true.
  *
- * Persistence is in localStorage so the budget survives reloads / restarts.
+ * Persistence is in the shared UI state store so the budget survives reloads / restarts.
  * Acknowledging the prompt resets the day's bucket and stamps `lastPromptAt`
  * so the automatic prompt is one-shot.
  */
@@ -34,33 +35,20 @@ const todayBucketKey = (now: number): string => {
 
 const safeReadNumber = (key: string): number => {
   if (typeof window === "undefined") return 0;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return 0;
-    const n = Number.parseInt(raw, 10);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  } catch {
-    return 0;
-  }
+  const raw = uiState.getItem(key);
+  if (!raw) return 0;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
 };
 
 const safeReadString = (key: string): string | null => {
   if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+  return uiState.getItem(key);
 };
 
 const safeWrite = (key: string, value: string) => {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // localStorage can throw in private mode / sandboxed contexts. The
-    // prompt is a nicety, not a correctness requirement, so swallow.
-  }
+  uiState.setItem(key, value);
 };
 
 const isWindowActive = (): boolean => {
@@ -82,7 +70,7 @@ export const useFeedbackPrompt = (): FeedbackPromptController => {
 
   // Tracks the wall-clock at which the current "active" stretch started.
   // Null when the window is currently inactive. We bank elapsed time into
-  // localStorage on every state change (visibility/focus flip, tick, unmount).
+  // the shared UI state store on every state change (visibility/focus flip, tick, unmount).
   const activeSinceRef = useRef<number | null>(null);
 
   const bankElapsed = useCallback((nowMs: number) => {

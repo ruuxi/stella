@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { uiState } from "@/platform/ui-state";
 
 /**
  * Tiny one-shot "look here" markers shown on the sidebar after a fresh
@@ -6,7 +7,7 @@ import { useCallback, useSyncExternalStore } from "react";
  * we want to highlight until they actually visit each one — at which
  * point the dot is dismissed and never returns.
  *
- * Storage shape (single localStorage key):
+ * Storage shape (single shared-UI-state key):
  *   {
  *     seededAt: number,             // ms epoch when the set was first seeded
  *     active: { [hintId]: true }    // ids still un-dismissed
@@ -34,7 +35,7 @@ const EMPTY_STATE: StoredState = { seededAt: 0, active: {} };
 const safeRead = (): StoredState => {
   if (typeof window === "undefined") return EMPTY_STATE;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = uiState.getItem(STORAGE_KEY);
     if (!raw) return EMPTY_STATE;
     const parsed = JSON.parse(raw) as Partial<StoredState>;
     if (typeof parsed !== "object" || parsed === null) return EMPTY_STATE;
@@ -52,18 +53,13 @@ const safeRead = (): StoredState => {
 
 const safeWrite = (state: StoredState): void => {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // Best-effort; the hints are purely a one-time UX nudge.
-  }
+  uiState.setItem(STORAGE_KEY, JSON.stringify(state));
 };
 
 const subscribers = new Set<() => void>();
 let listenersAttached = false;
 
 const handleStorageEvent = (event: StorageEvent) => {
-  if (event.storageArea !== localStorage) return;
   if (event.key !== STORAGE_KEY) return;
   for (const notify of subscribers) notify();
 };

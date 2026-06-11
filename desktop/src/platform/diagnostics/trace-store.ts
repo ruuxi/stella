@@ -6,6 +6,7 @@
  */
 
 import { AGENT_IDS, type AgentIdLike } from "../../../../runtime/contracts/agent-runtime.js";
+import { uiState } from "../ui-state";
 
 /**
  * Explicit opt-in for trace diagnostics. Stella ships as a Vite dev server,
@@ -16,7 +17,10 @@ import { AGENT_IDS, type AgentIdLike } from "../../../../runtime/contracts/agent
  */
 export function isTraceDiagnosticsEnabled(): boolean {
   if (import.meta.env.VITE_STELLA_TRACE === "1") return true;
+  if (uiState.getItem("stella:trace") === "1") return true;
   try {
+    // localStorage stays readable here so developers can still flip tracing
+    // on from the console with `localStorage.setItem("stella:trace", "1")`.
     return (
       typeof localStorage !== "undefined" &&
       localStorage.getItem("stella:trace") === "1"

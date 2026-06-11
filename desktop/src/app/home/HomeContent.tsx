@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronRight } from "@/ui/icons";
+import { uiState } from "@/platform/ui-state";
 import "./home.css";
 
 type HomeContentProps = {
@@ -10,11 +11,7 @@ type HomeContentProps = {
 const SIDEBAR_HINT_STORAGE_KEY = "stella.home.sidebarHintSeen";
 
 function shouldShowSidebarHint(): boolean {
-  try {
-    return window.localStorage.getItem(SIDEBAR_HINT_STORAGE_KEY) !== "1";
-  } catch {
-    return false;
-  }
+  return uiState.getItem(SIDEBAR_HINT_STORAGE_KEY) !== "1";
 }
 
 function getTimeBasedGreeting(date: Date): string {
@@ -104,11 +101,7 @@ export function HomeContent({ onDismissHome, children }: HomeContentProps) {
 
   useEffect(() => {
     if (!showSidebarHint) return;
-    try {
-      window.localStorage.setItem(SIDEBAR_HINT_STORAGE_KEY, "1");
-    } catch {
-      // Ignore storage failures; the hint is nonessential.
-    }
+    uiState.setItem(SIDEBAR_HINT_STORAGE_KEY, "1");
   }, [showSidebarHint]);
 
   // Dismiss the hint the moment the user actually right-clicks anywhere —

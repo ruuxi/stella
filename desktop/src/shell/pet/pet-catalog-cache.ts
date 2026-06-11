@@ -1,3 +1,4 @@
+import { uiState } from "@/platform/ui-state";
 import { normalizePet, type BuiltInPet } from "./built-in-pets";
 
 /** First-page list cache used by the Pets app for instant cold start. */
@@ -23,7 +24,7 @@ type CachedPetMap = {
 const safeRead = <T>(key: string): T | null => {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = uiState.getItem(key);
     if (!raw) return null;
     return JSON.parse(raw) as T;
   } catch {
@@ -33,11 +34,7 @@ const safeRead = <T>(key: string): T | null => {
 
 const safeWrite = (key: string, value: unknown): void => {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* cache is best-effort */
-  }
+  uiState.setItem(key, JSON.stringify(value));
 };
 
 export const getCachedPetCatalogFirstPage = (): BuiltInPet[] => {

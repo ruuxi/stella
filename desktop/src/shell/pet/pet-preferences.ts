@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { uiState } from "@/platform/ui-state";
 
 const PET_OPEN_KEY = "stella:pet:open";
 const PET_SELECTED_KEY = "stella:pet:selectedId";
@@ -10,20 +11,12 @@ type PetPosition = { left: number; top: number };
 
 const safeRead = (key: string): string | null => {
   if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+  return uiState.getItem(key);
 };
 
 const safeWrite = (key: string, value: string): void => {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    /* ignore */
-  }
+  uiState.setItem(key, value);
 };
 
 /** Whether the pet should be visible on next overlay mount. */

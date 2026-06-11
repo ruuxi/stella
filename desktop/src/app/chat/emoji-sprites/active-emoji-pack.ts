@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { uiState } from "@/platform/ui-state";
 import { getEmojiSpriteSheetCount } from "./sprite-map";
 
 const ACTIVE_EMOJI_PACK_KEY = "stella:emoji-pack:active";
@@ -29,7 +30,7 @@ const isActiveEmojiPack = (value: unknown): value is ActiveEmojiPack => {
 
 export const readActiveEmojiPack = (): ActiveEmojiPack | null => {
   try {
-    const raw = window.localStorage.getItem(ACTIVE_EMOJI_PACK_KEY);
+    const raw = uiState.getItem(ACTIVE_EMOJI_PACK_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     return isActiveEmojiPack(parsed) ? parsed : null;
@@ -40,9 +41,9 @@ export const readActiveEmojiPack = (): ActiveEmojiPack | null => {
 
 export const writeActiveEmojiPack = (pack: ActiveEmojiPack | null): void => {
   if (pack) {
-    window.localStorage.setItem(ACTIVE_EMOJI_PACK_KEY, JSON.stringify(pack));
+    uiState.setItem(ACTIVE_EMOJI_PACK_KEY, JSON.stringify(pack));
   } else {
-    window.localStorage.removeItem(ACTIVE_EMOJI_PACK_KEY);
+    uiState.removeItem(ACTIVE_EMOJI_PACK_KEY);
   }
   window.dispatchEvent(new Event("stella-active-emoji-pack-change"));
 };
