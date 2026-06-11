@@ -27,6 +27,14 @@ import type {
 
 const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/;
 const RUNTIME_AUTH_REFRESH_TIMEOUT_MS = 12_000;
+/**
+ * Mint a replacement Convex JWT this long before the cached one expires. The
+ * renderer only pushes fresh tokens while it's active; when the desktop sits
+ * idle (e.g. the user is on their phone), the main process must keep the
+ * host token fresh itself or every bridge/heartbeat call starts 401ing once
+ * the short-lived JWT lapses.
+ */
+const HOST_AUTH_TOKEN_REFRESH_MARGIN_MS = 60_000;
 const AUTH_STORAGE_SCOPE = "desktop-better-auth-storage";
 const AUTH_STORAGE_FILE = "better-auth-storage.json";
 const PLAINTEXT_PREFIX = "stella-main-plaintext:v1:";
@@ -69,6 +77,7 @@ export class AuthService {
     | null = null;
   private runtimeAuthRefreshRequestId: string | null = null;
   private runtimeAuthRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private hostAuthTokenMintPromise: Promise<string | null> | null = null;
   // Optimistic-session-hydration state. `cachedSessionServed` latches once the
   // persisted session blob has been returned to a caller without a network
   // round-trip; the next read then awaits authoritative revalidation. Any write
@@ -795,8 +804,72 @@ export class AuthService {
     return readConfiguredConvexSiteUrl(this.pendingConvexSiteUrl);
   }
 
+  private isHostAuthTokenFresh(token: string): boolean {
+    const payload = decodeBase64UrlJson(token.split(".")[1] ?? "");
+    const exp = (payload as { exp?: unknown } | null)?.exp;
+    if (typeof exp !== "number") {
+      // Tokens without a readable expiry can't be proactively refreshed;
+      // treat them as fresh and let the server be the judge.
+      return true;
+    }
+    return Date.now() < exp * 1000 - HOST_AUTH_TOKEN_REFRESH_MARGIN_MS;
+  }
+
+  /**
+   * Mint a fresh Convex JWT directly from the main process using the stored
+   * Better Auth session cookie. Single-flight so concurrent callers (bridge
+   * auth sync, tunnel token fetch, runtime refresh fallback) share one
+   * network round-trip.
+   */
+  private async mintHostAuthToken(): Promise<string | null> {
+    if (this.hostAuthTokenMintPromise) {
+      return await this.hostAuthTokenMintPromise;
+    }
+    this.hostAuthTokenMintPromise = (async () => {
+      try {
+        const fresh = await this.getConvexAuthToken();
+        if (fresh && fresh !== this.hostAuthToken) {
+          this.hostAuthToken = fresh;
+          this.options.runnerTarget.getRunner()?.setAuthToken(fresh);
+        }
+        return fresh;
+      } catch (error) {
+        console.warn(
+          "[auth] Failed to mint a fresh host auth token:",
+          (error as Error).message,
+        );
+        return null;
+      } finally {
+        this.hostAuthTokenMintPromise = null;
+      }
+    })();
+    return await this.hostAuthTokenMintPromise;
+  }
+
+  /** Refresh the cached host token in place when it's missing or near expiry. */
+  private async refreshHostAuthTokenIfStale(): Promise<void> {
+    const cached = this.hostAuthToken?.trim() || null;
+    if (cached && this.isHostAuthTokenFresh(cached)) {
+      return;
+    }
+    if (!this.getAuthCookieHeader()) {
+      return;
+    }
+    await this.mintHostAuthToken();
+  }
+
   async getAuthToken(): Promise<string | null> {
-    return this.hostAuthToken?.trim() || null;
+    const cached = this.hostAuthToken?.trim() || null;
+    if (cached && this.isHostAuthTokenFresh(cached)) {
+      return cached;
+    }
+    if (!this.getAuthCookieHeader()) {
+      return cached;
+    }
+    const fresh = await this.mintHostAuthToken();
+    // Fall back to the stale cached token when minting fails so a transient
+    // network blip doesn't read as "signed out" and tear down bridge access.
+    return fresh?.trim() || cached;
   }
 
   getBetterAuthIssuerUrlForStore(): string | null {
@@ -844,7 +917,12 @@ export class AuthService {
           console.warn(
             `[auth] Runtime auth refresh timed out after ${source} request.`,
           );
-          this.finishRuntimeAuthRefresh(this.getRuntimeAuthState());
+          // The renderer didn't answer (idle/throttled window). Mint a fresh
+          // token from the main-process session cookie before giving the
+          // runtime back a possibly-expired state.
+          void this.refreshHostAuthTokenIfStale().finally(() => {
+            this.finishRuntimeAuthRefresh(this.getRuntimeAuthState());
+          });
         }, RUNTIME_AUTH_REFRESH_TIMEOUT_MS);
       },
     );
