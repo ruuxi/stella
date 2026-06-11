@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "child_process";
 import fs from "fs";
 import { bin, install } from "cloudflared";
 import { stopChildProcessTree } from "../../process-runtime.js";
+import { probeBridgePublicHealth } from "./public-health.js";
 
 /**
  * After cloudflared reports a registered connection we don't immediately trust
@@ -154,21 +155,10 @@ export class CloudflareTunnelService {
     const deadline = Date.now() + PUBLIC_READINESS_TIMEOUT_MS;
     while (Date.now() < deadline) {
       if (!this.started || !this.process) return false;
-      const controller = new AbortController();
-      const timer = setTimeout(
-        () => controller.abort(),
-        PUBLIC_READINESS_PROBE_TIMEOUT_MS,
-      );
-      try {
-        const response = await fetch(`${url}/bridge/health`, {
-          method: "GET",
-          signal: controller.signal,
-        });
-        if (response.ok) return true;
-      } catch {
-        // Not routable yet; retry below.
-      } finally {
-        clearTimeout(timer);
+      if (
+        await probeBridgePublicHealth(url, PUBLIC_READINESS_PROBE_TIMEOUT_MS)
+      ) {
+        return true;
       }
       await new Promise((resolve) =>
         setTimeout(resolve, PUBLIC_READINESS_RETRY_MS),
