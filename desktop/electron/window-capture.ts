@@ -356,18 +356,15 @@ const buildWindowCaptureFromShot = (
 }
 
 /**
- * Windows window capture: ask the warm `--serve` daemon for a base64 JPEG of
- * the window at the point (one pipe write, no spawn, no temp file, no PNG
- * double-encode), falling back to a one-shot `--shot` spawn when the daemon is
- * unavailable. Both emit the same JSON shape.
+ * Windows window capture: ask the warm `--serve` daemon for a base64 JPEG
+ * (one pipe write, no spawn, no temp file, no PNG double-encode), falling
+ * back to a one-shot spawn when the daemon is unavailable. Both emit the same
+ * JSON shape. Tokens select the target: `--shot x y` (window at point) or
+ * `--shot --pid=N` (process's topmost window).
  */
-const captureWindowScreenshotWin32 = async (
-  x: number,
-  y: number,
-  options?: QueryWindowInfoOptions,
+const runWindowShotWin32 = async (
+  tokens: string[],
 ): Promise<WindowCapture | null> => {
-  const tokens = shotTokens(x, y, options)
-
   const daemonResponse = await requestWindowInfoDaemon(tokens)
   if (daemonResponse !== undefined) {
     const built = buildWindowCaptureFromShot(safeParseJson(daemonResponse))
@@ -381,6 +378,12 @@ const captureWindowScreenshotWin32 = async (
   if (!stdout) return null
   return buildWindowCaptureFromShot(safeParseJson(stdout))
 }
+
+const captureWindowScreenshotWin32 = (
+  x: number,
+  y: number,
+  options?: QueryWindowInfoOptions,
+): Promise<WindowCapture | null> => runWindowShotWin32(shotTokens(x, y, options))
 
 /**
  * Capture a window screenshot. On Windows this uses the daemon/base64 fast
@@ -463,11 +466,16 @@ const HOME_CAPTURE_HELPER = 'home_capture'
  * chip lazy-capture path: the chip attaches eagerly with metadata and we
  * patch in the screenshot when this resolves.
  *
- * Backed by the dedicated `home_capture` helper (separate from
+ * macOS: backed by the dedicated `home_capture` helper (separate from
  * `desktop_automation` / `window_info`) because the home flow needs
  * different defaults: include off-Space windows in the search, skip the
  * point-based layer-0 filter, and use ScreenCaptureKit with
  * `onScreenWindowsOnly: false` so off-Space windows still capture.
+ *
+ * Windows: backed by `window_info --shot --pid=N` (PrintWindow against the
+ * process's topmost alt-tab window), which works for occluded windows —
+ * unlike the desktopCapturer name-match fallback, which mismatches most
+ * title-only Windows sources and returns wallpaper for occluded windows.
  */
 export const captureWindowScreenshotByPid = async (
   pid: number,
@@ -475,6 +483,10 @@ export const captureWindowScreenshotByPid = async (
 ): Promise<WindowCapture | null> => {
   if (!hasMacPermission('screen')) return null
   if (!Number.isFinite(pid) || pid <= 0) return null
+
+  if (process.platform === 'win32') {
+    return runWindowShotWin32(['--shot', `--pid=${Math.round(pid)}`])
+  }
 
   const tempPath = path.join(
     tmpdir(),

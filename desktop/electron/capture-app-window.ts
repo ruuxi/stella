@@ -32,16 +32,17 @@ type CaptureOptions = {
 /**
  * Captures the topmost on-screen window for the given app.
  *
- * macOS: when a `pid` is provided, uses the bundled `window_info --pid=<pid>`
- * native helper, which performs ScreenCaptureKit window capture against
- * the topmost matching window. This is the reliable path — Electron's
- * `desktopCapturer.getSources({ types: ['window'] })` returns sources with
- * names that don't include the app prefix on modern macOS, so a
+ * When a `pid` is provided, uses the bundled native helpers
+ * (`home_capture --pid=<pid>` on macOS via ScreenCaptureKit,
+ * `window_info --shot --pid=<pid>` on Windows via PrintWindow) against the
+ * process's topmost window. This is the reliable path — Electron's
+ * `desktopCapturer.getSources({ types: ['window'] })` returns sources named
+ * by window title (no app prefix) on modern macOS and Windows, so a
  * name-based match against window sources misses most apps.
  *
  * When no pid is provided (or the native helper fails) we fall back to
  * `desktopCapturer` and a name match — useful for cmd+rc → "Open chat"
- * which doesn't have a pid and for non-macOS platforms.
+ * which doesn't have a pid.
  */
 export const captureAppWindow = async (
   options: CaptureOptions,
@@ -51,7 +52,10 @@ export const captureAppWindow = async (
       ? options.pid
       : null;
 
-  if (pid !== null && process.platform === "darwin") {
+  if (
+    pid !== null &&
+    (process.platform === "darwin" || process.platform === "win32")
+  ) {
     try {
       const capture = await captureWindowScreenshotByPid(pid);
       if (capture) {

@@ -70,7 +70,7 @@ const createService = () => {
     hasPendingRadialCapture: vi.fn(() => false),
     captureRadialContext: vi.fn(),
     startRegionCapture: vi.fn(async () => regionCapture),
-    mergeRegionCaptureResult: vi.fn(),
+    commitRegionCaptureResult: vi.fn(),
     emptyContext: vi.fn(() => ({
       window: null,
       browserUrl: null,
@@ -110,7 +110,7 @@ describe("RadialGestureService capture wedge", () => {
     expect(capture.commitStagedRadialContext).not.toHaveBeenCalled();
     expect(capture.cancelRadialContextCapture).toHaveBeenCalledOnce();
     expect(capture.startRegionCapture).toHaveBeenCalledOnce();
-    expect(capture.mergeRegionCaptureResult).toHaveBeenCalledWith(regionCapture);
+    expect(capture.commitRegionCaptureResult).toHaveBeenCalledWith(regionCapture);
   });
 
   it("still commits staged hover context for the add wedge", () => {

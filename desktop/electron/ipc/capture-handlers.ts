@@ -173,7 +173,7 @@ export const registerCaptureHandlers = (options: CaptureHandlersOptions) => {
 
     const result = await options.captureService.startRegionCapture();
 
-    options.captureService.mergeRegionCaptureResult(result);
+    options.captureService.commitRegionCaptureResult(result);
 
     if (result !== null || targetWindowWasFocused) {
       wm.showWindow(targetWindowMode);

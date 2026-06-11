@@ -22,6 +22,7 @@ import {
   captureRegionScreenshotNative,
   captureWindowScreenshot,
 } from '../window-capture.js'
+import { IPC_CAPTURE_REGION_FAILED } from '../../src/shared/contracts/ipc-channels.js'
 import { hasMacPermission } from '../utils/macos-permissions.js'
 import { computeTargetDims } from '../vision-coordinate-space.js'
 
@@ -136,6 +137,25 @@ export class CaptureService {
       ...this.pendingChatContext,
       regionScreenshots: next,
     })
+  }
+
+  /**
+   * Merge a finished capture into the pending chat context, surfacing an
+   * error to the renderer when the flow completed but produced nothing
+   * (native capture failed end-to-end). A `null` result means the user
+   * cancelled — stays silent.
+   */
+  commitRegionCaptureResult(result: RegionCaptureResult | null): boolean {
+    if (result === null) {
+      return false
+    }
+    const merged = this.mergeRegionCaptureResult(result)
+    if (!merged) {
+      for (const window of this.options.window.getAllWindows()) {
+        window.webContents.send(IPC_CAPTURE_REGION_FAILED)
+      }
+    }
+    return merged
   }
 
   mergeRegionCaptureResult(result: RegionCaptureResult | null): boolean {
@@ -708,6 +728,7 @@ export class CaptureService {
     }
 
     const resolve = this.pendingRegionCaptureResolve
+    const regionBounds = this.options.overlay.getOverlayBounds()
     let capture: Awaited<ReturnType<typeof captureWindowScreenshot>> = null
 
     try {
@@ -725,8 +746,21 @@ export class CaptureService {
       )
     }
 
+    // Native window capture failed (missing/broken helper, PrintWindow
+    // refusal). Fall back to a desktopCapturer shot of the display under the
+    // click so the user still gets an attachment instead of a silent no-op.
+    let fallbackScreenshot: ScreenshotCapture | null = null
+    if (!capture?.screenshot) {
+      const dipPoint = {
+        x: (regionBounds?.x ?? 0) + point.x,
+        y: (regionBounds?.y ?? 0) + point.y,
+      }
+      const display = screen.getDisplayNearestPoint(dipPoint)
+      fallbackScreenshot = await this.captureDisplayScreenshot(display)
+    }
+
     resolve({
-      screenshot: capture?.screenshot ?? null,
+      screenshot: capture?.screenshot ?? fallbackScreenshot,
       window: toChatContextWindow(capture?.windowInfo),
     })
     this.resetRegionCapture()
