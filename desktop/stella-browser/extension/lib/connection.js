@@ -1,16 +1,24 @@
 /**
  * Native messaging connection to the Stella bridge (Chrome native host → localhost TCP).
- * Reconnects after disconnects and keeps the service worker warm via alarms.
+ *
+ * connectNative spawns a native host process (plus a cmd.exe launcher on
+ * Windows), so we never blind-reconnect: while disconnected we poll the
+ * daemon's bridge port with a plain fetch() — zero processes — and only spawn
+ * the host once Stella's daemon is actually listening. The host exits when the
+ * daemon goes away, so nothing of Stella lingers in Task Manager when the app
+ * is closed. An alarm keeps polling alive across service-worker suspensions.
  */
 
 import { STELLA_NATIVE_HOST_NAME } from './native-host-name.js';
 
-const RECONNECT_DELAY = 2000;
-const MAX_RECONNECT_DELAY = 30000;
+/** Must match the daemon's bridge port (STELLA_BROWSER_BRIDGE_PORT / DEFAULT_EXT_PORT). */
+const BRIDGE_HEALTH_URL = 'http://127.0.0.1:39040/healthz';
+const PROBE_INTERVAL = 4000;
+const PROBE_TIMEOUT = 1500;
 
 let nativePort = null;
-let reconnectTimer = null;
-let reconnectDelay = RECONNECT_DELAY;
+let probeTimer = null;
+let probeInFlight = false;
 let commandHandler = null;
 let statusCallback = null;
 
@@ -31,19 +39,20 @@ export function onStatus(callback) {
 }
 
 /**
- * Connect via Chrome native messaging to the Stella native host (no port/token setup).
+ * Connect to the Stella bridge: probe for the daemon and attach via native
+ * messaging once it's up (no port/token setup).
  */
 export function connect() {
   if (isConnected()) return;
-  doConnect();
+  probeThenConnect();
 }
 
 /**
  * Disconnect from the bridge.
  */
 export function disconnect() {
-  clearTimeout(reconnectTimer);
-  reconnectTimer = null;
+  clearTimeout(probeTimer);
+  probeTimer = null;
   if (nativePort) {
     try {
       nativePort.disconnect();
@@ -75,6 +84,60 @@ export function send(message) {
   }
 }
 
+/**
+ * Check whether the Stella daemon is listening on the bridge port.
+ * Any HTTP response means it's up. An abort (something accepted the
+ * connection but never spoke HTTP) is treated as up too — that's an older
+ * daemon build that predates the health endpoint. A fast network error
+ * means nothing is listening (Stella is closed).
+ * @returns {Promise<boolean>}
+ */
+async function isDaemonUp() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT);
+  try {
+    await fetch(BRIDGE_HEALTH_URL, { signal: controller.signal, cache: 'no-store' });
+    return true;
+  } catch (err) {
+    return err?.name === 'AbortError';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Probe for the daemon; attach via native messaging when it's up, otherwise
+ * keep polling. fetch() is process-free, so Stella being closed costs nothing.
+ */
+async function probeThenConnect() {
+  if (probeInFlight || isConnected()) return;
+  clearTimeout(probeTimer);
+  probeTimer = null;
+
+  probeInFlight = true;
+  let up = false;
+  try {
+    up = await isDaemonUp();
+  } finally {
+    probeInFlight = false;
+  }
+
+  if (isConnected()) return;
+  if (up) {
+    doConnect();
+    return;
+  }
+  scheduleProbe();
+}
+
+function scheduleProbe() {
+  clearTimeout(probeTimer);
+  probeTimer = setTimeout(() => {
+    probeTimer = null;
+    probeThenConnect();
+  }, PROBE_INTERVAL);
+}
+
 function doConnect() {
   if (nativePort) {
     try {
@@ -90,7 +153,7 @@ function doConnect() {
     port = chrome.runtime.connectNative(STELLA_NATIVE_HOST_NAME);
   } catch (err) {
     console.error('[connection] connectNative failed:', err);
-    scheduleReconnect();
+    scheduleProbe();
     return;
   }
 
@@ -99,7 +162,6 @@ function doConnect() {
   port.onMessage.addListener(async (msg) => {
     if (msg.type === 'welcome') {
       console.log('[connection] Authenticated, session:', msg.session);
-      reconnectDelay = RECONNECT_DELAY;
       setStatus(true);
       return;
     }
@@ -138,7 +200,9 @@ function doConnect() {
     nativePort = null;
     if (wasActive) {
       setStatus(false);
-      scheduleReconnect();
+      // Host exited (Stella closed, or the daemon restarted). Go back to
+      // process-free polling; we reattach as soon as the daemon answers.
+      probeThenConnect();
     }
   });
 
@@ -147,16 +211,6 @@ function doConnect() {
     version: '1.0.0',
     token: '',
   });
-}
-
-function scheduleReconnect() {
-  clearTimeout(reconnectTimer);
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    console.log('[connection] Reconnecting native messaging…');
-    reconnectDelay = Math.min(reconnectDelay * 1.5, MAX_RECONNECT_DELAY);
-    doConnect();
-  }, reconnectDelay);
 }
 
 function setStatus(connected) {
@@ -173,9 +227,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     if (isConnected()) {
       send({ type: 'ping' });
-    } else if (!reconnectTimer) {
-      // Only attempt reconnect if no backoff timer is already pending.
-      doConnect();
+    } else {
+      // The alarm revives a suspended service worker (which loses its probe
+      // timer); probeThenConnect dedupes against any pending timer/probe.
+      probeThenConnect();
     }
   }
 });

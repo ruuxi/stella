@@ -21,8 +21,10 @@ const DEFAULT_EXT_PORT: u16 = 39040;
 /// Timeout for individual commands sent to the extension (ms).
 const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 60_000;
 
-/// How long to wait for the extension to connect before failing.
-const DEFAULT_WAIT_TIMEOUT_MS: u64 = 30_000;
+/// How long to wait for the extension to connect before failing. The extension
+/// discovers a freshly-started daemon via its periodic HTTP probe of the bridge
+/// port, so this must comfortably cover one probe interval plus host spawn.
+const DEFAULT_WAIT_TIMEOUT_MS: u64 = 60_000;
 
 /// Health check TTL — skip health check if one succeeded within this window.
 const HEALTH_CHECK_TTL_MS: u64 = 5_000;
@@ -404,15 +406,37 @@ impl ExtensionBridge {
     }
 }
 
+/// Minimal HTTP reply for extension liveness probes (see `probe_daemon` in the
+/// extension's connection.js). Lets the extension detect "Stella is running"
+/// with a plain fetch() instead of spawning the native messaging host process.
+const HEALTH_PROBE_RESPONSE: &str = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
+
 /// Handle a single TCP connection from the native messaging host (line-delimited JSON).
 async fn handle_extension_connection(
-    stream: TcpStream,
+    mut stream: TcpStream,
     inner: Arc<Mutex<BridgeInner>>,
     connected_notify: Arc<Notify>,
     expected_token: String,
     session: String,
     disconnect_shutdown_tx: mpsc::Sender<()>,
 ) {
+    // Liveness-probe short-circuit: answer HTTP and bail before touching any
+    // bridge state so probes never disturb an active native-host connection.
+    let mut probe_buf = [0u8; 8];
+    match tokio::time::timeout(Duration::from_secs(10), stream.peek(&mut probe_buf)).await {
+        Ok(Ok(n)) if n > 0 => {
+            let head = &probe_buf[..n];
+            if head.starts_with(b"GET ") || head.starts_with(b"HEAD") {
+                let _ = stream.write_all(HEALTH_PROBE_RESPONSE.as_bytes()).await;
+                let _ = stream.shutdown().await;
+                return;
+            }
+        }
+        // EOF, socket error, or 10s without a single byte — give up before
+        // the JSONL path so a silent dialer can't churn bridge state.
+        _ => return,
+    }
+
     // If there's an existing connection, drop it and let the new one take over.
     {
         let mut guard = inner.lock().await;

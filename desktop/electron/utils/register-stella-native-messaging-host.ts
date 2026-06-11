@@ -4,7 +4,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -67,10 +67,6 @@ function buildNativeHostManifest(
   };
 }
 
-function escapeForCmdLiteral(value: string): string {
-  return value.replace(/%/g, "%%").replace(/"/g, '""');
-}
-
 function quoteForSh(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
@@ -79,33 +75,27 @@ function writeLauncherAndManifest(
   binaryPath: string,
   socketDir: string,
 ): {
-  launcherPath: string;
   manifestPath: string;
   manifest: Record<string, unknown>;
 } {
   const plat = os.platform();
-  const launcherPath =
-    plat === "win32"
-      ? path.join(socketDir, "stella-native-host-launcher.cmd")
-      : path.join(socketDir, "stella-native-host-launcher.sh");
 
-  // Always bake the resolved socketDir into the launcher so the native host
-  // reads discovery files from the same directory the daemon wrote them to,
-  // regardless of how the directory was resolved (env override, XDG, homedir).
+  let hostPath: string;
   if (plat === "win32") {
-    const escapedBinaryPath = escapeForCmdLiteral(binaryPath);
-    const escapedSocketDir = escapeForCmdLiteral(socketDir);
-    const body = [
-      "@echo off",
-      "setlocal DisableDelayedExpansion",
-      'set "STELLA_BROWSER_NATIVE_HOST=1"',
-      `set "STELLA_BROWSER_SESSION=${STELLA_BROWSER_BRIDGE_SESSION}"`,
-      `set "STELLA_BROWSER_SOCKET_DIR=${escapedSocketDir}"`,
-      `"${escapedBinaryPath}" %*`,
-      "",
-    ].join("\r\n");
-    writeFileSync(launcherPath, body, "utf8");
+    // Point the manifest directly at the exe. The binary recognizes Chrome's
+    // spawn from the chrome-extension:// origin argument, and its default
+    // session/socket-dir resolution matches the desktop's, so the old .cmd
+    // env wrapper (which kept a visible cmd.exe alive for the host's whole
+    // lifetime in Task Manager) is unnecessary.
+    hostPath = binaryPath;
+    rmSync(path.join(socketDir, "stella-native-host-launcher.cmd"), {
+      force: true,
+    });
   } else {
+    // Bake the resolved socketDir into the launcher so the native host reads
+    // discovery files from the same directory the daemon wrote them to,
+    // regardless of how the directory was resolved (env override, XDG, homedir).
+    const launcherPath = path.join(socketDir, "stella-native-host-launcher.sh");
     const quotedBinaryPath = quoteForSh(binaryPath);
     const quotedSocketDir = quoteForSh(socketDir);
     const body = `#!/bin/sh
@@ -118,16 +108,17 @@ exec ${quotedBinaryPath} "$@"
 `;
     writeFileSync(launcherPath, body, "utf8");
     chmodSync(launcherPath, 0o755);
+    hostPath = launcherPath;
   }
 
-  const manifest = buildNativeHostManifest(launcherPath);
+  const manifest = buildNativeHostManifest(hostPath);
   const manifestPath = path.join(
     socketDir,
     `${STELLA_NATIVE_MESSAGING_HOST_NAME}.json`,
   );
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
-  return { launcherPath, manifestPath, manifest };
+  return { manifestPath, manifest };
 }
 
 async function installWindowsRegistry(manifestPath: string) {

@@ -2,26 +2,27 @@
 //! extension TCP bridge. Injects the bridge token on `hello` when the extension
 //! has not stored it yet (zero user setup).
 //!
-//! The host is resident: while Chrome holds the native messaging port open, the
-//! process stays alive even when the daemon is not running, quietly polling the
-//! bridge port until Stella starts. Exiting on a refused connection instead
-//! would put the extension into a reconnect loop that respawns this process
-//! (and its cmd.exe launcher on Windows) every ~30 seconds for as long as the
-//! browser is open — visible churn in Task Manager whenever Stella is closed.
+//! The host's lifetime tracks the daemon's: when the daemon is unreachable or
+//! the connection drops (Stella closed), the process exits. The extension does
+//! NOT blind-reconnect — it polls the bridge port over HTTP (a plain fetch, no
+//! process spawn) and only respawns this host once the daemon is listening, so
+//! no Stella processes linger in Task Manager while Stella is closed.
 
 use serde_json::{json, Value};
 use std::fs;
 use std::io::{self, BufRead, Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, TryRecvError};
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::Duration;
 
 use crate::connection::get_socket_dir;
 
 const DEFAULT_SESSION: &str = "stella-app-bridge";
 const DEFAULT_PORT: u16 = 39040;
-/// How often to probe for the daemon while it is not running.
-const DAEMON_POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// Quick retry window for the daemon dial — rides out the extension probing
+/// "up" right as the daemon rebinds (e.g. Stella relaunch kill/respawn).
+const DAEMON_CONNECT_ATTEMPTS: u32 = 5;
+const DAEMON_CONNECT_RETRY_DELAY: Duration = Duration::from_millis(400);
 /// Loopback connects either succeed or get RST'd near-instantly; the timeout
 /// only guards against a pathological firewall swallowing the SYN.
 const DAEMON_CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
@@ -99,22 +100,6 @@ fn set_tcp_keepalive(stream: &TcpStream) {
     );
 }
 
-fn frame_is_hello(buf: &[u8]) -> bool {
-    if !buf.windows(b"\"hello\"".len()).any(|w| w == b"\"hello\"") {
-        return false;
-    }
-    serde_json::from_slice::<Value>(buf)
-        .ok()
-        .map(|v| v.get("type").and_then(|t| t.as_str()) == Some("hello"))
-        .unwrap_or(false)
-}
-
-fn note_frame(buf: Vec<u8>, pending_hello: &mut Option<Vec<u8>>) {
-    if frame_is_hello(&buf) {
-        *pending_hello = Some(buf);
-    }
-}
-
 /// Forward one Chrome frame to the daemon as a JSONL line, injecting the bridge
 /// token into `hello` frames. Returns false when the TCP write failed (daemon
 /// connection is dead); frames that fail to parse are silently skipped.
@@ -142,55 +127,26 @@ fn send_frame_to_tcp(tcp: &mut TcpStream, buf: &[u8], bridge_token: &str) -> boo
     written.and_then(|_| tcp.flush()).is_ok()
 }
 
-/// Poll for the daemon's bridge port while consuming Chrome frames (buffering
-/// the latest `hello` for replay). Returns the connected stream, or None when
-/// Chrome closed the native messaging port.
-fn wait_for_daemon(
-    session: &str,
-    frame_rx: &Receiver<Vec<u8>>,
-    pending_hello: &mut Option<Vec<u8>>,
-) -> Option<TcpStream> {
-    loop {
-        loop {
-            match frame_rx.try_recv() {
-                Ok(buf) => note_frame(buf, pending_hello),
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => return None,
-            }
+/// Dial the daemon's bridge port with a short retry window. Returns None when
+/// the daemon never answered (process should exit; the extension re-probes).
+fn connect_to_daemon(session: &str) -> Option<TcpStream> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], read_bridge_port(session)));
+    for attempt in 0..DAEMON_CONNECT_ATTEMPTS {
+        if let Ok(tcp) = TcpStream::connect_timeout(&addr, DAEMON_CONNECT_TIMEOUT) {
+            return Some(tcp);
         }
-
-        // The daemon expects `hello` as the first message on a connection
-        // (10s auth deadline) — don't dial until the extension has sent one.
-        if pending_hello.is_some() {
-            let addr = SocketAddr::from(([127, 0, 0, 1], read_bridge_port(session)));
-            if let Ok(tcp) = TcpStream::connect_timeout(&addr, DAEMON_CONNECT_TIMEOUT) {
-                return Some(tcp);
-            }
-        }
-
-        match frame_rx.recv_timeout(DAEMON_POLL_INTERVAL) {
-            Ok(buf) => note_frame(buf, pending_hello),
-            Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => return None,
+        if attempt + 1 < DAEMON_CONNECT_ATTEMPTS {
+            std::thread::sleep(DAEMON_CONNECT_RETRY_DELAY);
         }
     }
+    None
 }
 
-/// Bridge Chrome frames ↔ daemon TCP until one side drops. Returns true when
-/// the daemon connection dropped (caller returns to waiting), false when Chrome
-/// closed the native messaging port (process should exit).
-fn bridge(
-    tcp: TcpStream,
-    session: &str,
-    frame_rx: &Receiver<Vec<u8>>,
-    pending_hello: &mut Option<Vec<u8>>,
-) -> bool {
-    // Token/port files are rewritten by each daemon run — read per connection.
-    let bridge_token = read_bridge_token(session).unwrap_or_default();
-
+/// Bridge Chrome frames ↔ daemon TCP until one side drops.
+fn bridge(tcp: TcpStream, bridge_token: &str, frame_rx: &Receiver<Vec<u8>>) {
     let tcp_read = match tcp.try_clone() {
         Ok(t) => t,
-        Err(_) => return true,
+        Err(_) => return,
     };
     let mut tcp_write = tcp;
 
@@ -224,36 +180,23 @@ fn bridge(
         }
     });
 
-    // Replay the extension's `hello` to (re)authenticate this connection — on
-    // daemon restarts the extension keeps its port open and won't resend it.
-    let mut tcp_alive = match pending_hello.as_deref() {
-        Some(hello) => send_frame_to_tcp(&mut tcp_write, hello, &bridge_token),
-        None => true,
-    };
-
-    while tcp_alive {
+    loop {
         if tcp_to_chrome.is_finished() {
             break;
         }
         match frame_rx.recv_timeout(BRIDGE_IDLE_TICK) {
             Ok(buf) => {
-                if !send_frame_to_tcp(&mut tcp_write, &buf, &bridge_token) {
-                    tcp_alive = false;
+                if !send_frame_to_tcp(&mut tcp_write, &buf, bridge_token) {
+                    break;
                 }
-                note_frame(buf, pending_hello);
             }
             Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => {
-                let _ = tcp_write.shutdown(std::net::Shutdown::Both);
-                let _ = tcp_to_chrome.join();
-                return false;
-            }
+            Err(RecvTimeoutError::Disconnected) => break,
         }
     }
 
     let _ = tcp_write.shutdown(std::net::Shutdown::Both);
     let _ = tcp_to_chrome.join();
-    true
 }
 
 /// Run as Chrome native messaging host (stdio ↔ TCP bridge).
@@ -279,23 +222,33 @@ pub fn run_native_host() -> Result<(), String> {
         }
     });
 
-    let mut pending_hello: Option<Vec<u8>> = None;
+    // The daemon expects `hello` as the first message on a connection (10s auth
+    // deadline) — wait for the extension's hello before dialing. Chrome sends
+    // it immediately after spawning the host.
+    let hello = match frame_rx.recv() {
+        Ok(buf) => buf,
+        Err(_) => return Ok(()), // Chrome closed the port before saying hello.
+    };
 
-    loop {
-        let tcp = match wait_for_daemon(&session, &frame_rx, &mut pending_hello) {
-            Some(tcp) => tcp,
-            None => return Ok(()),
-        };
-
-        // No read/write timeout — the connection is long-lived and Chrome may
-        // suspend the service worker for extended periods (delaying keepalive
-        // pings). TCP keepalive detects a dead peer without a hard deadline.
-        set_tcp_keepalive(&tcp);
-
-        if !bridge(tcp, &session, &frame_rx, &mut pending_hello) {
-            return Ok(());
+    let mut tcp = match connect_to_daemon(&session) {
+        Some(tcp) => tcp,
+        None => {
+            return Err(
+                "Stella browser bridge is not running. Open Stella first.".to_string(),
+            )
         }
-        // Daemon connection dropped (Stella stopped/restarted) — keep holding
-        // the Chrome port and go back to waiting.
+    };
+
+    // No read/write timeout — the connection is long-lived and Chrome may
+    // suspend the service worker for extended periods (delaying keepalive
+    // pings). TCP keepalive detects a dead peer without a hard deadline.
+    set_tcp_keepalive(&tcp);
+
+    let bridge_token = read_bridge_token(&session).unwrap_or_default();
+    if !send_frame_to_tcp(&mut tcp, &hello, &bridge_token) {
+        return Err("Stella browser bridge closed during handshake.".to_string());
     }
+
+    bridge(tcp, &bridge_token, &frame_rx);
+    Ok(())
 }
