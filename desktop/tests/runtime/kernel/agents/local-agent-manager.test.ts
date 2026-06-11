@@ -337,6 +337,179 @@ describe("LocalAgentManager Exec fs locking", () => {
     expect(getComposerTaskChipTasks(rootTasks)).toEqual([]);
   });
 
+  it("defers the Done display for interjection completions and drops it when the thread resumes", async () => {
+    const events: AgentLifecycleEvent[] = [];
+    let runCount = 0;
+    let firstRunStarted: (() => void) | null = null;
+    const firstRunStartedPromise = new Promise<void>((resolve) => {
+      firstRunStarted = resolve;
+    });
+    const completions = () =>
+      events.filter((event) => event.type === "agent-completed");
+    const waitForCompletions = async (count: number) => {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (completions().length >= count) return;
+        await sleep(25);
+      }
+      throw new Error(`Expected ${count} completion event(s) in time.`);
+    };
+
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => {
+        runCount += 1;
+        if (runCount === 1) {
+          firstRunStarted?.();
+          await new Promise<void>((resolve) => {
+            if (args.abortSignal.aborted) {
+              resolve();
+              return;
+            }
+            args.abortSignal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+          });
+          return { runId: args.runId, result: "", interrupted: true };
+        }
+        return { runId: args.runId, result: `done-${runCount}` };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => {
+        events.push(event);
+      },
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "long research task",
+      prompt: "do long research",
+      agentType: AGENT_IDS.GENERAL,
+      rootRunId: "root-1",
+      storageMode: "local",
+    });
+    await firstRunStartedPromise;
+
+    // User message relayed mid-task: hard-cut interjection turn.
+    await manager.sendAgentMessage(
+      task.threadId,
+      "how is it going?",
+      "orchestrator",
+      { rootRunId: "root-2" },
+    );
+    await waitForCompletions(1);
+
+    // The orchestrator hears about the completion immediately, but the
+    // Done display is deferred — no audience-less / display-only event.
+    expect(completions()).toHaveLength(1);
+    expect(completions()[0]).toMatchObject({
+      audience: "orchestrator-only",
+      result: "done-2",
+    });
+    // Deferred display still pending → the thread counts as active work.
+    expect(manager.getActiveAgentCount()).toBe(1);
+
+    // Orchestrator resumes the thread: the deferred Done display must be
+    // dropped, and the genuine completion of the resumed turn displays
+    // normally.
+    await manager.sendAgentMessage(
+      task.threadId,
+      "continue the task",
+      "orchestrator",
+      { rootRunId: "root-2" },
+    );
+    await waitForCompletions(2);
+
+    expect(completions()).toHaveLength(2);
+    expect(completions()[1]).toMatchObject({ result: "done-3" });
+    expect(completions()[1]?.audience).toBeUndefined();
+    expect(events.some((event) => event.audience === "display-only")).toBe(
+      false,
+    );
+    expect(manager.getActiveAgentCount()).toBe(0);
+  });
+
+  it("flushes a deferred interjection Done display on shutdown", async () => {
+    const events: AgentLifecycleEvent[] = [];
+    let runCount = 0;
+    let firstRunStarted: (() => void) | null = null;
+    const firstRunStartedPromise = new Promise<void>((resolve) => {
+      firstRunStarted = resolve;
+    });
+    const completions = () =>
+      events.filter((event) => event.type === "agent-completed");
+
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => {
+        runCount += 1;
+        if (runCount === 1) {
+          firstRunStarted?.();
+          await new Promise<void>((resolve) => {
+            if (args.abortSignal.aborted) {
+              resolve();
+              return;
+            }
+            args.abortSignal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+          });
+          return { runId: args.runId, result: "", interrupted: true };
+        }
+        return { runId: args.runId, result: `done-${runCount}` };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => {
+        events.push(event);
+      },
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "long research task",
+      prompt: "do long research",
+      agentType: AGENT_IDS.GENERAL,
+      rootRunId: "root-1",
+      storageMode: "local",
+    });
+    await firstRunStartedPromise;
+    await manager.sendAgentMessage(
+      task.threadId,
+      "how is it going?",
+      "orchestrator",
+      { rootRunId: "root-2" },
+    );
+    for (let attempt = 0; attempt < 100 && completions().length < 1; attempt += 1) {
+      await sleep(25);
+    }
+    expect(completions()).toHaveLength(1);
+
+    manager.shutdown();
+
+    const displayed = completions().filter(
+      (event) => event.audience === "display-only",
+    );
+    expect(displayed).toHaveLength(1);
+    expect(displayed[0]).toMatchObject({ result: "done-2" });
+  });
+
   it("emits failed terminal events when an engine turn throws", async () => {
     const events: AgentLifecycleEvent[] = [];
     const manager = new LocalAgentManager({
