@@ -1,3 +1,5 @@
+import { uiState } from "@/platform/ui-state";
+
 const SHARED_MIC_STATE_KEY = "__stellaSharedMicrophoneState";
 const SHARED_MIC_RELEASE_GRACE_MS = 45_000;
 
@@ -64,7 +66,7 @@ const hasLiveTrack = (stream: MediaStream | null) => {
 
 const getSharedMicrophoneConstraints = (): MediaTrackConstraints => {
   const constraints = { ...SHARED_MIC_SPEECH_CAPTURE_CONSTRAINTS };
-  const preferredId = localStorage.getItem(PREFERRED_MIC_KEY);
+  const preferredId = uiState.getItem(PREFERRED_MIC_KEY);
   if (preferredId) {
     constraints.deviceId = { ideal: preferredId };
   }
@@ -121,7 +123,7 @@ const acquireRootStream = async (
 };
 
 export function isMicrophoneEnabled(): boolean {
-  return localStorage.getItem(MIC_ENABLED_KEY) !== "false";
+  return uiState.getItem(MIC_ENABLED_KEY) !== "false";
 }
 
 export async function acquireSharedMicrophone(): Promise<SharedMicrophoneLease> {

@@ -1,3 +1,4 @@
+import { uiState } from "../ui-state";
 import { getElectronApi } from "./electron";
 
 const DEVICE_ID_KEY = "Stella.deviceId";
@@ -6,7 +7,7 @@ let cachedDeviceId: string | null = null;
 
 export const writeLocalDeviceId = (deviceId: string) => {
   cachedDeviceId = deviceId;
-  window.localStorage.setItem(DEVICE_ID_KEY, deviceId);
+  uiState.setItem(DEVICE_ID_KEY, deviceId);
 };
 
 export const getOrCreateDeviceId = async () => {

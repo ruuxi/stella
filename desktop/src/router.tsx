@@ -5,7 +5,7 @@ import { routeTree } from "./routeTree.gen";
 /**
  * App router. Uses memory history because Stella ships in Electron — there's
  * no browser URL bar to surface or guard with `file://` quirks. Location is
- * persisted to renderer-side `localStorage` (see
+ * persisted to the shared UI state store (see
  * `@/shared/lib/last-location` and the restore/persist effects in
  * `__root.tsx`) so it survives reloads and window restarts.
  *

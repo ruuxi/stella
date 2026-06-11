@@ -112,6 +112,10 @@ import {
   IPC_SHELL_OPEN_WITH,
   IPC_SHELL_OPEN_PATH,
   IPC_SYSTEM_OPEN_FDA,
+  IPC_UI_STATE_KV_APPLY,
+  IPC_UI_STATE_KV_CHANGED,
+  IPC_UI_STATE_KV_CLEAR,
+  IPC_UI_STATE_KV_SNAPSHOT,
   IPC_SOCIAL_SESSIONS_CREATE,
   IPC_SOCIAL_SESSIONS_GET_STATUS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
@@ -204,6 +208,20 @@ const invokeBrowserFetch = async <T>(
 };
 
 // ---------------------------------------------------------------------------
+
+// Shared UI state (~/.stella/ui-state.json) snapshot, read synchronously so
+// the boot script and module-load preference reads see it before first paint.
+contextBridge.exposeInMainWorld(
+  "__stellaUiState",
+  (() => {
+    try {
+      const snapshot = ipcRenderer.sendSync(IPC_UI_STATE_KV_SNAPSHOT) as unknown;
+      return snapshot && typeof snapshot === "object" ? snapshot : {};
+    } catch {
+      return {};
+    }
+  })(),
+);
 
 contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
@@ -570,10 +588,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   theme: {
-    onChange: onIpcWithEvent<{ key: string; value: string }>("theme:change"),
-    broadcast: (key: string, value: string) =>
-      ipcRenderer.send("theme:broadcast", { key, value }),
     listInstalled: () => ipcRenderer.invoke("theme:listInstalled"),
+  },
+
+  uiState: {
+    apply: (changes: Record<string, string | null>) =>
+      ipcRenderer.send(IPC_UI_STATE_KV_APPLY, changes),
+    clear: () => ipcRenderer.send(IPC_UI_STATE_KV_CLEAR),
+    onChanged: onIpc<Record<string, string | null>>(IPC_UI_STATE_KV_CHANGED),
   },
 
   screenGuide: {

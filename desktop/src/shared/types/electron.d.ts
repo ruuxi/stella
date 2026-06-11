@@ -441,11 +441,20 @@ export type ElectronOverlayApi = {
 };
 
 export type ElectronThemeApi = {
-  onChange: (
-    callback: (event: unknown, data: { key: string; value: string }) => void,
-  ) => () => void;
-  broadcast: (key: string, value: string) => void;
   listInstalled: () => Promise<Theme[]>;
+};
+
+/**
+ * Shared UI state KV (~/.stella/ui-state.json) — the renderer's durable
+ * key/value state. The boot snapshot is exposed separately as
+ * `window.__stellaUiState`; this API carries writes and remote changes.
+ */
+export type ElectronUiStateKvApi = {
+  apply: (changes: Record<string, string | null>) => void;
+  clear: () => void;
+  onChanged: (
+    callback: (changes: Record<string, string | null>) => void,
+  ) => () => void;
 };
 
 export type ElectronVoiceApi = {
@@ -1771,6 +1780,7 @@ export type ElectronApi = {
   overlay: ElectronOverlayApi;
   screenGuide: ElectronScreenGuideApi;
   theme: ElectronThemeApi;
+  uiState: ElectronUiStateKvApi;
   voice: ElectronVoiceApi;
   dictation: ElectronDictationApi;
   agent: ElectronAgentApi;
@@ -1959,6 +1969,12 @@ type ElectronPetApi = {
 declare global {
   interface Window {
     electronAPI?: ElectronApi;
+    /**
+     * Boot snapshot of the shared UI state KV, delivered before any app code
+     * runs (Electron preload `sendSync`, or the Vite dev server's injected
+     * inline script for plain-browser tabs).
+     */
+    __stellaUiState?: Record<string, string>;
   }
 }
 

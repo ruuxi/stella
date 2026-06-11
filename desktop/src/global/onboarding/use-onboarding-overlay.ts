@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction } from "convex/react";
 import { api } from "@/convex/api";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
+import { uiState } from "@/platform/ui-state";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import {
   readOnboardingPhase,
@@ -37,6 +38,8 @@ const deleteIndexedDatabase = (name: string) =>
 
 const clearLocalBrowserState = async () => {
   clearCachedToken();
+
+  uiState.clear();
 
   try {
     localStorage.clear();

@@ -469,8 +469,8 @@ export const PetsApp = () => {
    *  clicks don't keep inflating the public counter (the backend rate
    *  limit also enforces this, but skipping the round-trip is snappier). */
   const incrementedRef = useRef<Set<string>>(new Set());
-  /** First page rendered immediately from localStorage so a cold start
-   *  isn't blank for the duration of the first Convex round trip. */
+  /** First page rendered immediately from the shared UI state cache so a
+   *  cold start isn't blank for the duration of the first Convex round trip. */
   const cachedFirstPageRef = useRef<BuiltInPet[]>(getCachedPetCatalogFirstPage());
 
   useEffect(() => {

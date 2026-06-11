@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { uiState } from "@/platform/ui-state";
 
 const NATIVE_FONT_SMOOTHING_KEY = "stella-native-font-smoothing";
 const NATIVE_FONT_SMOOTHING_CHANGED_EVENT =
@@ -13,7 +14,7 @@ const DEFAULT_ENABLED = true;
 
 const readStored = (): boolean => {
   if (typeof window === "undefined") return DEFAULT_ENABLED;
-  const raw = window.localStorage.getItem(NATIVE_FONT_SMOOTHING_KEY);
+  const raw = uiState.getItem(NATIVE_FONT_SMOOTHING_KEY);
   if (raw === null) return DEFAULT_ENABLED;
   return raw === "true";
 };
@@ -36,10 +37,7 @@ export const getNativeFontSmoothingEnabled = (): boolean => readStored();
 
 export const setNativeFontSmoothingEnabled = (enabled: boolean) => {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(
-    NATIVE_FONT_SMOOTHING_KEY,
-    enabled ? "true" : "false",
-  );
+  uiState.setItem(NATIVE_FONT_SMOOTHING_KEY, enabled ? "true" : "false");
   applyToDocument(enabled);
   window.dispatchEvent(
     new CustomEvent(NATIVE_FONT_SMOOTHING_CHANGED_EVENT, {

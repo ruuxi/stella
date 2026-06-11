@@ -6,6 +6,7 @@ import {
   type FunctionReturnType,
 } from "convex/server";
 import { useEffect, useRef, useState } from "react";
+import { uiState } from "@/platform/ui-state";
 
 const PERSISTENT_CACHE_PREFIX = "stella:persistent-convex-one-shot:v1";
 const DEFAULT_MAX_SERIALIZED_BYTES = 512 * 1024;
@@ -24,33 +25,18 @@ type PersistentCacheEntry<T> = {
   data: T;
 };
 
-const getPersistentStorage = (): Storage | null => {
-  try {
-    if (typeof window === "undefined" || !window.localStorage) return null;
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-};
-
 const readPersistentEntry = <T,>(key: string): T | undefined => {
-  const storage = getPersistentStorage();
-  if (!storage) return undefined;
+  const raw = uiState.getItem(key);
+  if (!raw) return undefined;
   try {
-    const raw = storage.getItem(key);
-    if (!raw) return undefined;
     const parsed = JSON.parse(raw) as Partial<PersistentCacheEntry<T>>;
     if (typeof parsed.expiresAt !== "number" || Date.now() > parsed.expiresAt) {
-      storage.removeItem(key);
+      uiState.removeItem(key);
       return undefined;
     }
     return parsed.data as T;
   } catch {
-    try {
-      storage.removeItem(key);
-    } catch {
-      /* ignore cleanup failures */
-    }
+    uiState.removeItem(key);
     return undefined;
   }
 };
@@ -61,8 +47,6 @@ const writePersistentEntry = <T,>(
   ttlMs: number,
   maxSerializedBytes: number,
 ): void => {
-  const storage = getPersistentStorage();
-  if (!storage) return;
   try {
     const now = Date.now();
     const raw = JSON.stringify({
@@ -71,9 +55,9 @@ const writePersistentEntry = <T,>(
       data,
     } satisfies PersistentCacheEntry<T>);
     if (raw.length > maxSerializedBytes) return;
-    storage.setItem(key, raw);
+    uiState.setItem(key, raw);
   } catch {
-    /* quota / serialization errors are non-fatal */
+    /* serialization errors are non-fatal */
   }
 };
 

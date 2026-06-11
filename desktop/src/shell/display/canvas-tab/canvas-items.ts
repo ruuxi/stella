@@ -1,10 +1,11 @@
 /**
  * Module-scoped store of HTML canvases the orchestrator's `html` tool has
  * produced. The Canvas tab subscribes via `useSyncExternalStore`; files
- * live under `~/.stella/outputs/html/` and a small localStorage index keeps
- * the rail populated across renderer and desktop restarts.
+ * live under `~/.stella/outputs/html/` and a small index in the shared UI
+ * state store keeps the rail populated across renderer and desktop restarts.
  */
 
+import { uiState } from "@/platform/ui-state";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 
 export type CanvasHtmlItem = {
@@ -30,9 +31,8 @@ const refreshSnapshot = () => {
 };
 
 const readJsonArray = <T>(key: string): T[] => {
-  if (typeof localStorage === "undefined") return [];
   try {
-    const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+    const parsed = JSON.parse(uiState.getItem(key) || "[]");
     return Array.isArray(parsed) ? (parsed as T[]) : [];
   } catch {
     return [];
@@ -40,12 +40,7 @@ const readJsonArray = <T>(key: string): T[] => {
 };
 
 const writeJsonArray = <T>(key: string, value: ReadonlyArray<T>): void => {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Best effort only; disk files remain the source of truth.
-  }
+  uiState.setItem(key, JSON.stringify(value));
 };
 
 const isPersistedItem = (entry: unknown): entry is CanvasHtmlItem => {

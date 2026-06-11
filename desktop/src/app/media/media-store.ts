@@ -1,6 +1,9 @@
 /**
- * Persistent media studio state — localStorage-backed history + form state.
+ * Persistent media studio state — history + form state backed by the shared
+ * UI state store.
  */
+
+import { uiState } from "@/platform/ui-state"
 
 /* ── Types ── */
 
@@ -19,7 +22,7 @@ export type HistoryEntry = {
   prompt?: string
   timestamp: number
   output: OutputMedia | null
-  thumb?: string          // small data URL for the strip (kept in localStorage)
+  thumb?: string          // small data URL for the strip (kept in the shared UI state store)
   status: "pending" | "succeeded" | "failed"
   error?: string
 }
@@ -43,14 +46,14 @@ const MAX_HISTORY = 100
 
 export function loadHistory(): HistoryEntry[] {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]")
+    return JSON.parse(uiState.getItem(HISTORY_KEY) || "[]")
   } catch {
     return []
   }
 }
 
 export function saveHistory(entries: HistoryEntry[]): void {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, MAX_HISTORY)))
+  uiState.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, MAX_HISTORY)))
 }
 
 export function addHistoryEntry(entry: HistoryEntry): HistoryEntry[] {
@@ -83,7 +86,7 @@ const DEFAULT_FORM: FormState = {
 
 export function loadFormState(): FormState {
   try {
-    const raw = localStorage.getItem(FORM_KEY)
+    const raw = uiState.getItem(FORM_KEY)
     if (!raw) return DEFAULT_FORM
     return { ...DEFAULT_FORM, ...JSON.parse(raw) }
   } catch {
@@ -92,7 +95,7 @@ export function loadFormState(): FormState {
 }
 
 export function saveFormState(state: FormState): void {
-  localStorage.setItem(FORM_KEY, JSON.stringify(state))
+  uiState.setItem(FORM_KEY, JSON.stringify(state))
 }
 
 /* ── Output extraction ── */
@@ -185,7 +188,7 @@ export async function saveOutputToStella(
 
 const THUMB_SIZE = 80
 
-/** Downscale an image URL to a tiny JPEG data URL for localStorage. */
+/** Downscale an image URL to a tiny JPEG data URL for the shared UI state store. */
 export function generateThumb(url: string): Promise<string | null> {
   return new Promise((resolve) => {
     const img = new Image()

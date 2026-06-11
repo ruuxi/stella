@@ -1,3 +1,4 @@
+import { uiState } from "@/platform/ui-state";
 import type { ChatContext } from "@/shared/types/electron";
 
 /**
@@ -7,39 +8,27 @@ import type { ChatContext } from "@/shared/types/electron";
  * see the AuthDialog first. That keeps Chronicle/Dream from starting during
  * the onboarding animation itself.
  *
- * Persisted in `localStorage` (not `sessionStorage`) because the user may
- * close the app before signing in, and we want to re-prompt on next
+ * Persisted in the shared UI state store (not `sessionStorage`) because the
+ * user may close the app before signing in, and we want to re-prompt on next
  * launch rather than silently dropping the intent.
  */
 const REQUEST_SIGN_IN_AFTER_ONBOARDING_KEY =
   "stella-request-signin-after-onboarding";
 
 export function markRequestSignInAfterOnboarding(): void {
-  try {
-    localStorage.setItem(REQUEST_SIGN_IN_AFTER_ONBOARDING_KEY, "1");
-  } catch {
-    /* ignore */
-  }
+  uiState.setItem(REQUEST_SIGN_IN_AFTER_ONBOARDING_KEY, "1");
 }
 
 export function consumeRequestSignInAfterOnboarding(): boolean {
-  try {
-    if (localStorage.getItem(REQUEST_SIGN_IN_AFTER_ONBOARDING_KEY) === "1") {
-      localStorage.removeItem(REQUEST_SIGN_IN_AFTER_ONBOARDING_KEY);
-      return true;
-    }
-  } catch {
-    /* ignore */
+  if (uiState.getItem(REQUEST_SIGN_IN_AFTER_ONBOARDING_KEY) === "1") {
+    uiState.removeItem(REQUEST_SIGN_IN_AFTER_ONBOARDING_KEY);
+    return true;
   }
   return false;
 }
 
 export function clearRequestSignInAfterOnboarding(): void {
-  try {
-    localStorage.removeItem(REQUEST_SIGN_IN_AFTER_ONBOARDING_KEY);
-  } catch {
-    /* ignore */
-  }
+  uiState.removeItem(REQUEST_SIGN_IN_AFTER_ONBOARDING_KEY);
 }
 
 export const STELLA_OPEN_PANEL_CHAT_EVENT = "stella:open-panel-chat";

@@ -15,6 +15,7 @@ import {
   translateArray,
   type TranslateParams,
 } from "./catalogs";
+import { uiState } from "@/platform/ui-state";
 import {
   DEFAULT_LOCALE,
   isRtlLocale,
@@ -32,9 +33,9 @@ type I18nContextValue = {
   /** True when the active locale renders right-to-left. */
   isRTL: boolean;
   /**
-   * Update the locale. Persists to localStorage immediately and, when
-   * the user is signed in, fan out to Convex `user_preferences` so it
-   * follows them across devices.
+   * Update the locale. Persists to the shared UI state store immediately
+   * and, when the user is signed in, fan out to Convex `user_preferences`
+   * so it follows them across devices.
    */
   setLocale: (locale: Locale) => void;
   /**
@@ -55,21 +56,13 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 
 const readPersistedLocale = (): Locale | null => {
   if (typeof window === "undefined") return null;
-  try {
-    const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
-    return isSupportedLocale(stored) ? stored : null;
-  } catch {
-    return null;
-  }
+  const stored = uiState.getItem(LOCALE_STORAGE_KEY);
+  return isSupportedLocale(stored) ? stored : null;
 };
 
 const writePersistedLocale = (locale: Locale) => {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
-  } catch {
-    /* localStorage can throw in private mode — non-critical. */
-  }
+  uiState.setItem(LOCALE_STORAGE_KEY, locale);
 };
 
 const navigatorLanguages = (): string[] => {
@@ -151,7 +144,7 @@ export function I18nProviderBase({
   }, [locale]);
 
   // Pull the user's stored locale from Convex when signed in. Treats
-  // the renderer-local localStorage value as an instant cache, then
+  // the renderer-local UI-state value as an instant cache, then
   // upgrades once the server replies. The Convex query is the
   // external state we're syncing with — setting state in this effect
   // is exactly the "subscribe + setState" shape the lint rule
@@ -172,7 +165,7 @@ export function I18nProviderBase({
       setLocaleState(next);
       writePersistedLocale(next);
       // Best-effort remote sync; signed-out/local-only surfaces just keep the
-      // localStorage value.
+      // shared-UI-state value.
       void Promise.resolve(persistRemoteLocale?.(next)).catch(() => {
         /* signed-out / network — preference still lives locally */
       });

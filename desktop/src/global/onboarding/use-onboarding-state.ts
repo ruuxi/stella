@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { uiState } from "@/platform/ui-state";
 import { SPLIT_STEP_ORDER, type Phase } from "./onboarding-flow";
 import {
   clearPostOnboardingHints,
@@ -17,51 +18,35 @@ const ONBOARDING_PHASE_KEY = "stella-onboarding-phase";
 const ONBOARDING_COMPLETE_EVENT = "stella:onboarding-complete-changed";
 
 export const readLocalOnboardingCompleted = () => {
-  try {
-    return localStorage.getItem(ONBOARDING_COMPLETE_KEY) === "true";
-  } catch {
-    return false;
-  }
+  return uiState.getItem(ONBOARDING_COMPLETE_KEY) === "true";
 };
 
 const writeLocalOnboardingCompleted = (completed: boolean) => {
-  try {
-    if (completed) {
-      localStorage.setItem(ONBOARDING_COMPLETE_KEY, "true");
-      return;
-    }
-    localStorage.removeItem(ONBOARDING_COMPLETE_KEY);
-  } catch {
-    // Best-effort; ~/.stella/preferences.json is the durable source.
+  if (completed) {
+    uiState.setItem(ONBOARDING_COMPLETE_KEY, "true");
+    return;
   }
+  uiState.removeItem(ONBOARDING_COMPLETE_KEY);
 };
 
 const SPLIT_PHASE_SET = new Set<Phase>(SPLIT_STEP_ORDER);
 
 export const readOnboardingPhase = (): Phase | null => {
-  try {
-    const raw = localStorage.getItem(ONBOARDING_PHASE_KEY);
-    if (!raw) return null;
-    if (!SPLIT_PHASE_SET.has(raw as Phase)) {
-      localStorage.removeItem(ONBOARDING_PHASE_KEY);
-      return null;
-    }
-    return raw as Phase;
-  } catch {
+  const raw = uiState.getItem(ONBOARDING_PHASE_KEY);
+  if (!raw) return null;
+  if (!SPLIT_PHASE_SET.has(raw as Phase)) {
+    uiState.removeItem(ONBOARDING_PHASE_KEY);
     return null;
   }
+  return raw as Phase;
 };
 
 const writeOnboardingPhase = (phase: Phase | null) => {
-  try {
-    if (!phase || !SPLIT_PHASE_SET.has(phase)) {
-      localStorage.removeItem(ONBOARDING_PHASE_KEY);
-      return;
-    }
-    localStorage.setItem(ONBOARDING_PHASE_KEY, phase);
-  } catch {
-    // Best-effort; persistence is purely a UX nicety.
+  if (!phase || !SPLIT_PHASE_SET.has(phase)) {
+    uiState.removeItem(ONBOARDING_PHASE_KEY);
+    return;
   }
+  uiState.setItem(ONBOARDING_PHASE_KEY, phase);
 };
 
 /**
@@ -79,7 +64,6 @@ let durableRevision = 0;
 let hydrationPromise: Promise<void> | null = null;
 
 const handleStorageEvent = (event: StorageEvent) => {
-  if (event.storageArea !== localStorage) return;
   if (event.key !== ONBOARDING_COMPLETE_KEY) return;
   for (const notify of subscribers) notify();
 };

@@ -22,7 +22,6 @@ type UiHandlersOptions = {
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
   ) => boolean;
-  getBroadcastToMobile?: () => ((channel: string, data: unknown) => void) | null;
 };
 
 export const registerUiHandlers = (options: UiHandlersOptions) => {
@@ -182,19 +181,6 @@ export const registerUiHandlers = (options: UiHandlersOptions) => {
     }
     options.windowManager.showWindow(target);
   });
-
-  ipcMain.on(
-    "theme:broadcast",
-    (event, data: { key: string; value: string }) => {
-      const sender = BrowserWindow.fromWebContents(event.sender);
-      for (const window of options.windowManager.getAllWindows()) {
-        if (window !== sender) {
-          window.webContents.send("theme:change", data);
-        }
-      }
-      options.getBroadcastToMobile?.()?.("theme:change", data);
-    },
-  );
 
   ipcMain.on("app:reload", (event) => {
     if (!options.assertPrivilegedSender(event, "app:reload")) return;

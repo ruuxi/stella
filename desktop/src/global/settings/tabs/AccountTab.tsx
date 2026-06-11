@@ -13,6 +13,7 @@ import {
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { deleteAuthUser } from "@/global/auth/services/auth-session";
 import { clearCachedToken } from "@/global/auth/services/auth-token";
+import { uiState } from "@/platform/ui-state";
 import type { LegalDocument } from "@/global/legal/legal-text";
 import { useT } from "@/shared/i18n";
 import { getSettingsErrorMessage } from "./shared";
@@ -33,6 +34,8 @@ const deleteIndexedDatabase = (name: string) =>
 
 async function clearLocalAccountState() {
   clearCachedToken();
+
+  uiState.clear();
 
   try {
     localStorage.clear();

@@ -10,6 +10,7 @@
  */
 
 import { createElement } from "react";
+import { uiState } from "@/platform/ui-state";
 import type {
   DisplayPayload,
   DisplayTabPayload,
@@ -77,10 +78,9 @@ const isGeneratedMediaItem = (value: unknown): value is GeneratedMediaItem => {
 };
 
 const loadGeneratedMediaItems = (): GeneratedMediaItem[] => {
-  if (typeof localStorage === "undefined") return [];
   try {
     const parsed = JSON.parse(
-      localStorage.getItem(GENERATED_MEDIA_ITEMS_KEY) || "[]",
+      uiState.getItem(GENERATED_MEDIA_ITEMS_KEY) || "[]",
     );
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(isGeneratedMediaItem).slice(-GENERATED_MEDIA_ITEMS_CAP);
@@ -90,15 +90,10 @@ const loadGeneratedMediaItems = (): GeneratedMediaItem[] => {
 };
 
 const persistGeneratedMediaItems = (): void => {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(
-      GENERATED_MEDIA_ITEMS_KEY,
-      JSON.stringify(generatedMediaItems.slice(-GENERATED_MEDIA_ITEMS_CAP)),
-    );
-  } catch {
-    // Best-effort; local output files remain on disk.
-  }
+  uiState.setItem(
+    GENERATED_MEDIA_ITEMS_KEY,
+    JSON.stringify(generatedMediaItems.slice(-GENERATED_MEDIA_ITEMS_CAP)),
+  );
 };
 
 const generatedMediaItems: GeneratedMediaItem[] = loadGeneratedMediaItems();

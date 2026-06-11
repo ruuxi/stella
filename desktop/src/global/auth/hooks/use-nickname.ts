@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { uiState } from "@/platform/ui-state";
 import { useAuthSessionState } from "./use-auth-session-state";
 import { useCurrentUser } from "./use-current-user";
 
@@ -15,11 +16,7 @@ const identityKey = (email: string | null | undefined): string | null => {
 export function getStoredNickname(email: string | null | undefined): string {
   const id = identityKey(email);
   if (!id) return "";
-  try {
-    return localStorage.getItem(`${NICKNAME_PREFIX}${id}`) ?? "";
-  } catch {
-    return "";
-  }
+  return uiState.getItem(`${NICKNAME_PREFIX}${id}`) ?? "";
 }
 
 export function setStoredNickname(
@@ -28,20 +25,16 @@ export function setStoredNickname(
 ): void {
   const id = identityKey(email);
   if (!id) return;
-  try {
-    const trimmed = nickname.trim();
-    if (trimmed) {
-      localStorage.setItem(`${NICKNAME_PREFIX}${id}`, trimmed);
-    } else {
-      localStorage.removeItem(`${NICKNAME_PREFIX}${id}`);
-    }
-    // Always mark as asked once the user explicitly saves; the dialog
-    // shouldn't keep re-prompting.
-    localStorage.setItem(`${NICKNAME_ASKED_PREFIX}${id}`, "true");
-    window.dispatchEvent(new CustomEvent(NICKNAME_CHANGED_EVENT));
-  } catch {
-    // localStorage can be unavailable; silently ignore.
+  const trimmed = nickname.trim();
+  if (trimmed) {
+    uiState.setItem(`${NICKNAME_PREFIX}${id}`, trimmed);
+  } else {
+    uiState.removeItem(`${NICKNAME_PREFIX}${id}`);
   }
+  // Always mark as asked once the user explicitly saves; the dialog
+  // shouldn't keep re-prompting.
+  uiState.setItem(`${NICKNAME_ASKED_PREFIX}${id}`, "true");
+  window.dispatchEvent(new CustomEvent(NICKNAME_CHANGED_EVENT));
 }
 
 export function hasNicknameBeenAsked(
@@ -49,21 +42,13 @@ export function hasNicknameBeenAsked(
 ): boolean {
   const id = identityKey(email);
   if (!id) return true;
-  try {
-    return localStorage.getItem(`${NICKNAME_ASKED_PREFIX}${id}`) === "true";
-  } catch {
-    return true;
-  }
+  return uiState.getItem(`${NICKNAME_ASKED_PREFIX}${id}`) === "true";
 }
 
 export function markNicknameAsked(email: string | null | undefined): void {
   const id = identityKey(email);
   if (!id) return;
-  try {
-    localStorage.setItem(`${NICKNAME_ASKED_PREFIX}${id}`, "true");
-  } catch {
-    // ignore
-  }
+  uiState.setItem(`${NICKNAME_ASKED_PREFIX}${id}`, "true");
 }
 
 interface UseNicknameResult {

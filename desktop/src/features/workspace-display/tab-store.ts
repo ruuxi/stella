@@ -13,6 +13,7 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { uiState } from "@/platform/ui-state";
 import type { DisplayTab, DisplayTabSpec, OpenTabOptions } from "./types";
 
 type Listener = () => void;
@@ -43,8 +44,8 @@ export type DisplayPanelLayoutSnapshot = {
   panelExpanded: boolean;
   /**
    * User-resized width in CSS pixels. `null` means "use the default
-   * `clamp()` width baked into the stylesheet". Persisted to localStorage
-   * so the choice survives reloads.
+   * `clamp()` width baked into the stylesheet". Persisted to the shared
+   * UI state store so the choice survives reloads.
    */
   panelWidth: number | null;
 };
@@ -70,18 +71,9 @@ export const DISPLAY_MAIN_CONTENT_MIN_WIDTH = 450;
 const STORAGE_KEY_WIDTH = "stella.displayPanel.width";
 const STORAGE_KEY_EXPANDED = "stella.displayPanel.expanded";
 
-const safeStorage = (): Storage | null => {
-  try {
-    return typeof window !== "undefined" ? window.localStorage : null;
-  } catch {
-    return null;
-  }
-};
-
 const readPersistedWidth = (): number | null => {
-  const storage = safeStorage();
-  if (!storage) return null;
-  const raw = storage.getItem(STORAGE_KEY_WIDTH);
+  if (typeof window === "undefined") return null;
+  const raw = uiState.getItem(STORAGE_KEY_WIDTH);
   if (!raw) return null;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
@@ -89,20 +81,18 @@ const readPersistedWidth = (): number | null => {
 };
 
 const readPersistedExpanded = (): boolean => {
-  const storage = safeStorage();
-  if (!storage) return false;
-  return storage.getItem(STORAGE_KEY_EXPANDED) === "1";
+  if (typeof window === "undefined") return false;
+  return uiState.getItem(STORAGE_KEY_EXPANDED) === "1";
 };
 
 const writePersistedWidthNow = (width: number | null): void => {
-  const storage = safeStorage();
-  if (!storage) return;
-  if (width == null) storage.removeItem(STORAGE_KEY_WIDTH);
-  else storage.setItem(STORAGE_KEY_WIDTH, String(Math.round(width)));
+  if (typeof window === "undefined") return;
+  if (width == null) uiState.removeItem(STORAGE_KEY_WIDTH);
+  else uiState.setItem(STORAGE_KEY_WIDTH, String(Math.round(width)));
 };
 
 // Coalesce width writes during a drag — `setPanelWidth` fires per
-// pointermove (60–120 Hz) and the synchronous `localStorage.setItem`
+// pointermove (60–120 Hz) and the synchronous `uiState.setItem`
 // adds up. We keep the latest value and flush it on a short timer plus
 // on `pagehide` so the user's last position survives a reload.
 let pendingPersistedWidth: { value: number | null } | null = null;
@@ -137,10 +127,9 @@ if (typeof window !== "undefined") {
 }
 
 const writePersistedExpanded = (expanded: boolean): void => {
-  const storage = safeStorage();
-  if (!storage) return;
-  if (expanded) storage.setItem(STORAGE_KEY_EXPANDED, "1");
-  else storage.removeItem(STORAGE_KEY_EXPANDED);
+  if (typeof window === "undefined") return;
+  if (expanded) uiState.setItem(STORAGE_KEY_EXPANDED, "1");
+  else uiState.removeItem(STORAGE_KEY_EXPANDED);
 };
 
 const EMPTY_SNAPSHOT: TabStoreSnapshot = {
@@ -353,7 +342,7 @@ export const displayTabs = {
    * stylesheet default. Callers are responsible for clamping to the
    * panel minimum and main-content-derived maximum before invoking this.
    *
-   * `localStorage` writes are coalesced so a pointer-driven drag at
+   * Shared UI state writes are coalesced so a pointer-driven drag at
    * 60–120 Hz doesn't synchronously hit storage on every move.
    */
   setPanelWidth(width: number | null): void {

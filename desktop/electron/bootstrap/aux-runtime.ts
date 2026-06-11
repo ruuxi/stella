@@ -8,19 +8,9 @@ import {
 } from "./context.js";
 
 const readMobileBridgeBootstrap = async (context: BootstrapContext) => {
-  const window = context.state.windowManager?.getFullWindow();
-  if (!window || window.isDestroyed()) {
-    return buildMobileBridgeBootstrap({});
-  }
-
-  try {
-    const raw = await window.webContents.executeJavaScript(
-      `(()=>{var d={};for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k!==null)d[k]=localStorage.getItem(k)}return JSON.stringify(d)})()`,
-    );
-    return buildMobileBridgeBootstrap(JSON.parse(raw as string));
-  } catch {
-    return buildMobileBridgeBootstrap({});
-  }
+  return buildMobileBridgeBootstrap(
+    context.state.uiStateKvStore?.snapshot() ?? {},
+  );
 };
 
 export const startMobileBridge = (context: BootstrapContext) => {

@@ -158,7 +158,7 @@ export const FullShell = () => {
   const { gradientMode, gradientColor } = useTheme();
   const { completed: onboardingDone, hydrated: onboardingHydrated } =
     useOnboardingState();
-  // Returning users resolve `onboardingDone` synchronously from localStorage,
+  // Returning users resolve `onboardingDone` synchronously from shared UI state,
   // so seed `hasEnteredApp` synchronously too — otherwise the chat-surface /
   // RouterProvider mount is deferred to a separate macrotask by the
   // setTimeout(0) effect below. The splash stays up until `appReady`, so there

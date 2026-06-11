@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { uiState } from "@/platform/ui-state";
 import { Switch } from "@/ui/switch";
 import { Select } from "@/ui/select";
 import {
@@ -55,10 +56,10 @@ export function AudioTab() {
     MediaDeviceInfo[]
   >([]);
   const [selectedMicId, setSelectedMicId] = useState(
-    () => localStorage.getItem(PREFERRED_MIC_KEY) ?? "",
+    () => uiState.getItem(PREFERRED_MIC_KEY) ?? "",
   );
   const [selectedSpeakerId, setSelectedSpeakerId] = useState(
-    () => localStorage.getItem(PREFERRED_SPEAKER_KEY) ?? "",
+    () => uiState.getItem(PREFERRED_SPEAKER_KEY) ?? "",
   );
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [microphoneStatus, setMicrophoneStatus] =
@@ -150,14 +151,14 @@ export function AudioTab() {
         platform === "darwin" && microphoneStatus === "denied";
 
       setMicEnabled(checked);
-      localStorage.setItem(MIC_ENABLED_KEY, checked ? "true" : "false");
+      uiState.setItem(MIC_ENABLED_KEY, checked ? "true" : "false");
 
       if (checked) {
         void (async () => {
           if (microphoneDenied) {
             setPermissionError(t("settings.audio.errors.micDeniedReset"));
             setMicEnabled(false);
-            localStorage.setItem(MIC_ENABLED_KEY, "false");
+            uiState.setItem(MIC_ENABLED_KEY, "false");
             return;
           }
 
@@ -173,7 +174,7 @@ export function AudioTab() {
                 : t("settings.audio.errors.micDenied"),
             );
             setMicEnabled(false);
-            localStorage.setItem(MIC_ENABLED_KEY, "false");
+            uiState.setItem(MIC_ENABLED_KEY, "false");
           }
         })();
       }
@@ -260,18 +261,18 @@ export function AudioTab() {
   const handleMicChange = useCallback((deviceId: string) => {
     setSelectedMicId(deviceId);
     if (deviceId) {
-      localStorage.setItem(PREFERRED_MIC_KEY, deviceId);
+      uiState.setItem(PREFERRED_MIC_KEY, deviceId);
     } else {
-      localStorage.removeItem(PREFERRED_MIC_KEY);
+      uiState.removeItem(PREFERRED_MIC_KEY);
     }
   }, []);
 
   const handleSpeakerChange = useCallback((deviceId: string) => {
     setSelectedSpeakerId(deviceId);
     if (deviceId) {
-      localStorage.setItem(PREFERRED_SPEAKER_KEY, deviceId);
+      uiState.setItem(PREFERRED_SPEAKER_KEY, deviceId);
     } else {
-      localStorage.removeItem(PREFERRED_SPEAKER_KEY);
+      uiState.removeItem(PREFERRED_SPEAKER_KEY);
     }
   }, []);
 

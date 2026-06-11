@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { uiState } from "@/platform/ui-state";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 
 const MATERIALIZED_KEY = "stella-media-materialized-jobs";
@@ -7,9 +8,8 @@ const FAILED_NOTIFIED_KEY = "stella-media-failed-notified-jobs";
 const MATERIALIZED_CAP = 1000;
 
 const loadFromStorage = (key = MATERIALIZED_KEY): string[] => {
-  if (typeof localStorage === "undefined") return [];
   try {
-    const raw = localStorage.getItem(key);
+    const raw = uiState.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as string[] | { jobIds?: string[] };
     const ids = Array.isArray(parsed) ? parsed : parsed.jobIds;
@@ -33,20 +33,14 @@ export const capInMemory = (
 };
 
 const persistToStorage = (ids: Set<string>, key = MATERIALIZED_KEY): void => {
-  if (typeof localStorage === "undefined") return;
-  try {
-    const trimmed = Array.from(ids).slice(-MATERIALIZED_CAP);
-    localStorage.setItem(key, JSON.stringify(trimmed));
-  } catch {
-    // Best-effort; no-op on quota errors.
-  }
+  const trimmed = Array.from(ids).slice(-MATERIALIZED_CAP);
+  uiState.setItem(key, JSON.stringify(trimmed));
 };
 
 const loadPayloadsFromStorage = (): Map<string, DisplayPayload> => {
   const map = new Map<string, DisplayPayload>();
-  if (typeof localStorage === "undefined") return map;
   try {
-    const raw = localStorage.getItem(MATERIALIZED_PAYLOADS_KEY);
+    const raw = uiState.getItem(MATERIALIZED_PAYLOADS_KEY);
     if (!raw) return map;
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return map;
@@ -68,21 +62,16 @@ const loadPayloadsFromStorage = (): Map<string, DisplayPayload> => {
 const persistPayloadsToStorage = (
   payloads: Map<string, DisplayPayload>,
 ): void => {
-  if (typeof localStorage === "undefined") return;
-  try {
-    const entries = Array.from(payloads.entries()).slice(-MATERIALIZED_CAP);
-    localStorage.setItem(
-      MATERIALIZED_PAYLOADS_KEY,
-      JSON.stringify(
-        entries.map(([jobId, payload]) => ({
-          jobId,
-          payload,
-        })),
-      ),
-    );
-  } catch {
-    // Best-effort; no-op on quota errors.
-  }
+  const entries = Array.from(payloads.entries()).slice(-MATERIALIZED_CAP);
+  uiState.setItem(
+    MATERIALIZED_PAYLOADS_KEY,
+    JSON.stringify(
+      entries.map(([jobId, payload]) => ({
+        jobId,
+        payload,
+      })),
+    ),
+  );
 };
 
 // Module-scoped, mutated through `markMediaJobMaterialized` and the

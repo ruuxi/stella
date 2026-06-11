@@ -22,7 +22,7 @@ export const Route = createFileRoute("/chat")({
   // conversation pointer. This makes the route incapable of "losing" the
   // conversation — `?c=` is always re-derived from the source of truth.
   //
-  // Fast path: a synchronous `localStorage` cache lets us redirect on the same
+  // Fast path: a synchronous shared-UI-state cache lets us redirect on the same
   // tick on reload, so the chat surface keeps the previous conversation
   // mounted instead of flashing the empty/home state while an IPC round-trip
   // resolves. The durable SQLite pointer is the cold-start fallback (fresh

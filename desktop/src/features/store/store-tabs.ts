@@ -9,6 +9,8 @@
  *   - "Fashion" — Shopify try-on flow.
  */
 
+import { uiState } from "@/platform/ui-state";
+
 export const STORE_TAB_KEYS = [
   "discover",
   "pets",
@@ -35,7 +37,7 @@ export const DEFAULT_STORE_TAB: StoreTab = "discover";
 const LEGACY_STORE_TAB_KEYS = new Set(["installed", "publish"]);
 
 /**
- * Convert any string (URL search param, localStorage value) into a
+ * Convert any string (URL search param, shared UI state value) into a
  * valid current tab key. Legacy values (`"installed"`, `"publish"`)
  * map to Discover; everything unknown also falls back to Discover.
  */
@@ -49,7 +51,7 @@ export const normalizeStoreTab = (value: unknown): StoreTab => {
 };
 
 /**
- * localStorage key for the last-active Store tab. The URL `?tab=` param is
+ * Shared UI state key for the last-active Store tab. The URL `?tab=` param is
  * the source of truth while inside Store; this persists across visits so
  * reopening Store lands where the user left off, and lets the warm-up path
  * preload the same tab the open will land on (so the prewarmed view isn't
@@ -58,9 +60,5 @@ export const normalizeStoreTab = (value: unknown): StoreTab => {
 export const LAST_STORE_TAB_KEY = "stella.store.lastTab";
 
 export const readStoredStoreTab = (): StoreTab => {
-  try {
-    return normalizeStoreTab(window.localStorage?.getItem(LAST_STORE_TAB_KEY));
-  } catch {
-    return DEFAULT_STORE_TAB;
-  }
+  return normalizeStoreTab(uiState.getItem(LAST_STORE_TAB_KEY));
 };

@@ -40,6 +40,7 @@ export const stellaStateRuntimePaths = [
   'device.json',
   'local-scheduler.json',
   'preferences.json',
+  'ui-state.json',
   'stella.sqlite',
   'stella.sqlite-shm',
   'stella.sqlite-wal',

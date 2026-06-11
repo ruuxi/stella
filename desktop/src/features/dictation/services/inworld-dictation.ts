@@ -13,6 +13,7 @@
 
 import { postServiceJson } from "@/platform/http/service-request";
 import { callChatCompletion, extractChatText } from "@/platform/ai/llm";
+import { uiState } from "@/platform/ui-state";
 import {
   acquireSharedMicrophone,
   setSharedMicrophoneKeepWarm,
@@ -73,15 +74,15 @@ type DictationTranscriptResult = {
 };
 
 export function isDictationSuperFastEnabled(): boolean {
-  return localStorage.getItem(DICTATION_SUPER_FAST_KEY) === "true";
+  return uiState.getItem(DICTATION_SUPER_FAST_KEY) === "true";
 }
 
 export function isDictationEnhanceEnabled(): boolean {
-  return localStorage.getItem(DICTATION_ENHANCE_KEY) === "true";
+  return uiState.getItem(DICTATION_ENHANCE_KEY) === "true";
 }
 
 export function isLocalDictationEnabled(): boolean {
-  return localStorage.getItem(DICTATION_LOCAL_KEY) !== "false";
+  return uiState.getItem(DICTATION_LOCAL_KEY) !== "false";
 }
 
 /**
@@ -96,15 +97,15 @@ export function isLocalDictationPlatform(): boolean {
 }
 
 export function setDictationEnhancePreference(enabled: boolean): void {
-  localStorage.setItem(DICTATION_ENHANCE_KEY, enabled ? "true" : "false");
+  uiState.setItem(DICTATION_ENHANCE_KEY, enabled ? "true" : "false");
 }
 
 export function setLocalDictationPreference(enabled: boolean): void {
-  localStorage.setItem(DICTATION_LOCAL_KEY, enabled ? "true" : "false");
+  uiState.setItem(DICTATION_LOCAL_KEY, enabled ? "true" : "false");
 }
 
 export function setDictationSuperFastPreference(enabled: boolean): void {
-  localStorage.setItem(DICTATION_SUPER_FAST_KEY, enabled ? "true" : "false");
+  uiState.setItem(DICTATION_SUPER_FAST_KEY, enabled ? "true" : "false");
 }
 
 const bytesToBase64 = (bytes: Uint8Array): string => {

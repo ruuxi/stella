@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import { uiState } from "@/platform/ui-state";
 import {
   getSnapshot as getUserAppsSnapshot,
   subscribe as subscribeToUserApps,
@@ -11,7 +12,7 @@ import {
  * slug the user hasn't seen yet keeps the dot lit until they visit
  * `/apps`.
  *
- * Storage shape (single localStorage key):
+ * Storage shape (single shared-UI-state key):
  *   {
  *     initialized: boolean,           // false until the first seed
  *     seen: { [slug]: true }          // slugs the user has acknowledged
@@ -36,7 +37,7 @@ const EMPTY_STATE: StoredState = { initialized: false, seen: {} };
 const safeRead = (): StoredState => {
   if (typeof window === "undefined") return EMPTY_STATE;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = uiState.getItem(STORAGE_KEY);
     if (!raw) return EMPTY_STATE;
     const parsed = JSON.parse(raw) as Partial<StoredState>;
     if (typeof parsed !== "object" || parsed === null) return EMPTY_STATE;
@@ -59,11 +60,7 @@ const safeRead = (): StoredState => {
 
 const safeWrite = (state: StoredState): void => {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // Best-effort; the dot is purely a one-time visual nudge.
-  }
+  uiState.setItem(STORAGE_KEY, JSON.stringify(state));
 };
 
 const subscribers = new Set<() => void>();

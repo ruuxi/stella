@@ -1,81 +1,55 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Renderer-side persistence is the source of truth for "where was the user
- * when they last closed the app". This test pins the contract:
+ * when they last closed the app". Backed by the shared UI state store
+ * (`~/.stella/ui-state.json`) via the `uiState` client. This test pins the
+ * contract:
  *
  *  - We accept only well-formed paths (must start with `/`).
  *  - We refuse pathological values (oversize) so a corrupted store can't
  *    DoS the restore effect or stuff junk into navigate().
  *  - Round-trip is lossless for valid input.
- *  - Storage failures (no `localStorage`, quota errors) don't throw.
+ *  - Windowless / misbehaving-localStorage environments don't throw.
  */
 
 const STORAGE_KEY = "stella:lastLocation";
 
-class MemoryStorage implements Storage {
-  private store = new Map<string, string>();
-  get length() {
-    return this.store.size;
-  }
-  clear() {
-    this.store.clear();
-  }
-  getItem(key: string) {
-    return this.store.has(key) ? this.store.get(key)! : null;
-  }
-  setItem(key: string, value: string) {
-    this.store.set(key, value);
-  }
-  removeItem(key: string) {
-    this.store.delete(key);
-  }
-  key(index: number) {
-    return Array.from(this.store.keys())[index] ?? null;
-  }
-}
+type FakeWindow = {
+  __stellaUiState?: Record<string, string>;
+  localStorage?: Storage;
+  addEventListener: () => void;
+  removeEventListener: () => void;
+  dispatchEvent: () => boolean;
+  location: { href: string };
+};
 
-class ThrowingStorage implements Storage {
-  readonly length = 0;
-  clear() {
-    throw new Error("nope");
-  }
-  getItem(): string | null {
-    throw new Error("nope");
-  }
-  setItem(): void {
-    throw new Error("quota exceeded");
-  }
-  removeItem(): void {
-    throw new Error("nope");
-  }
-  key(): string | null {
-    throw new Error("nope");
-  }
-}
-
-const installWindow = (storage: Storage | undefined) => {
-  // Node lacks a window; fake just enough for the module to find/avoid it.
-  (globalThis as unknown as { window?: { localStorage?: Storage } }).window =
-    storage === undefined ? ({} as { localStorage?: Storage }) : { localStorage: storage };
+const installWindow = (overrides: Partial<FakeWindow> = {}) => {
+  (globalThis as unknown as { window?: FakeWindow }).window = {
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => true,
+    location: { href: "https://stella.test/" },
+    ...overrides,
+  };
 };
 
 const uninstallWindow = () => {
   delete (globalThis as unknown as { window?: unknown }).window;
 };
 
-const importFreshModule = async () => {
-  // Bypass cache so each test sees a clean module instance.
-  const mod = await import(`../../src/shared/lib/last-location?ts=${Date.now()}`);
-  return mod as typeof import("../../src/shared/lib/last-location");
+// The uiState client caches its in-memory map at module scope, so each test
+// re-imports a fresh module graph against the current fake window.
+const importFreshModules = async () => {
+  vi.resetModules();
+  const { uiState } = await import("../../src/platform/ui-state");
+  const lastLocation = await import("../../src/shared/lib/last-location");
+  return { uiState, ...lastLocation };
 };
 
 describe("last-location persistence", () => {
-  let storage: MemoryStorage;
-
   beforeEach(() => {
-    storage = new MemoryStorage();
-    installWindow(storage);
+    installWindow({ __stellaUiState: {} });
   });
 
   afterEach(() => {
@@ -83,54 +57,62 @@ describe("last-location persistence", () => {
   });
 
   it("round-trips a valid path-only location", async () => {
-    const { readPersistedLastLocation, writePersistedLastLocation } =
-      await importFreshModule();
+    const { uiState, readPersistedLastLocation, writePersistedLastLocation } =
+      await importFreshModules();
     writePersistedLastLocation("/settings");
-    expect(storage.getItem(STORAGE_KEY)).toBe("/settings");
+    expect(uiState.getItem(STORAGE_KEY)).toBe("/settings");
     expect(readPersistedLastLocation()).toBe("/settings");
   });
 
   it("round-trips a location with a search string", async () => {
     const { readPersistedLastLocation, writePersistedLastLocation } =
-      await importFreshModule();
+      await importFreshModules();
     writePersistedLastLocation("/chat?c=conv_abc123");
     expect(readPersistedLastLocation()).toBe("/chat?c=conv_abc123");
   });
 
   it("rejects values that don't start with /", async () => {
-    const { readPersistedLastLocation } = await importFreshModule();
-    storage.setItem(STORAGE_KEY, "javascript:alert(1)");
+    installWindow({
+      __stellaUiState: { [STORAGE_KEY]: "javascript:alert(1)" },
+    });
+    const { readPersistedLastLocation } = await importFreshModules();
     expect(readPersistedLastLocation()).toBeNull();
   });
 
   it("rejects pathologically large values", async () => {
-    const { readPersistedLastLocation, writePersistedLastLocation } =
-      await importFreshModule();
     const huge = "/chat?c=" + "x".repeat(5000);
+    const { uiState, readPersistedLastLocation, writePersistedLastLocation } =
+      await importFreshModules();
     writePersistedLastLocation(huge);
-    expect(storage.getItem(STORAGE_KEY)).toBeNull();
-    storage.setItem(STORAGE_KEY, huge);
+    expect(uiState.getItem(STORAGE_KEY)).toBeNull();
+    uiState.setItem(STORAGE_KEY, huge);
     expect(readPersistedLastLocation()).toBeNull();
   });
 
   it("returns null when nothing has been persisted", async () => {
-    const { readPersistedLastLocation } = await importFreshModule();
+    const { readPersistedLastLocation } = await importFreshModules();
     expect(readPersistedLastLocation()).toBeNull();
   });
 
-  it("never throws when localStorage itself misbehaves", async () => {
-    installWindow(new ThrowingStorage());
+  it("never throws when legacy localStorage misbehaves at import", async () => {
+    const throwing = new Proxy({} as Storage, {
+      get() {
+        throw new Error("nope");
+      },
+    });
+    installWindow({ __stellaUiState: {}, localStorage: throwing });
     const { readPersistedLastLocation, writePersistedLastLocation } =
-      await importFreshModule();
+      await importFreshModules();
     expect(readPersistedLastLocation()).toBeNull();
     expect(() => writePersistedLastLocation("/chat")).not.toThrow();
   });
 
-  it("returns null when localStorage is unavailable (no window)", async () => {
+  it("works in-memory when no window exists", async () => {
     uninstallWindow();
     const { readPersistedLastLocation, writePersistedLastLocation } =
-      await importFreshModule();
+      await importFreshModules();
     expect(readPersistedLastLocation()).toBeNull();
     expect(() => writePersistedLastLocation("/chat")).not.toThrow();
+    expect(readPersistedLastLocation()).toBe("/chat");
   });
 });

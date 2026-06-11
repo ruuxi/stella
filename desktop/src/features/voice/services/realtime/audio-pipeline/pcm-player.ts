@@ -23,6 +23,8 @@
  * receives the MediaStreamDestination, matching the OpenAI transport.
  */
 
+import { uiState } from "@/platform/ui-state";
+
 const SCHEDULE_FUDGE_SEC = 0.02; // ~20 ms cushion to avoid xrun on slow chunks
 
 export interface PcmPlayerOptions {
@@ -68,7 +70,7 @@ export class PcmPlayer {
     const sink = new Audio();
     sink.autoplay = true;
     sink.srcObject = this.destination.stream;
-    const preferredSpeakerId = localStorage.getItem(
+    const preferredSpeakerId = uiState.getItem(
       "stella-preferred-speaker-id",
     );
     if (preferredSpeakerId && typeof sink.setSinkId === "function") {

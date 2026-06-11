@@ -7,11 +7,11 @@ type Router = ReturnType<typeof useRouter>;
 
 /**
  * Restore the last persisted location exactly once. Reads synchronously
- * from `localStorage` (no async hydration race) and only navigates if
+ * from the shared UI state store (no async hydration race) and only navigates if
  * the pathname matches a registered route in this router. Anything
  * else falls through to the memory-history default (`/chat`).
  *
- * The mini window shares `localStorage` with the full window, so it must
+ * The mini window shares the UI state store with the full window, so it must
  * never restore the full window's last route — it always opens at home.
  */
 export function useLastLocationRestore(router: Router): void {

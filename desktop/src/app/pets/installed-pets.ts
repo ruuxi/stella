@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { uiState } from "@/platform/ui-state";
 import { BUNDLED_PETS } from "@/shell/pet/bundled-pets";
 
 const STORAGE_KEY = "stella:pet:installed";
@@ -12,7 +13,7 @@ const STORAGE_KEY = "stella:pet:installed";
 const safeRead = (): Set<string> => {
   if (typeof window === "undefined") return new Set();
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = uiState.getItem(STORAGE_KEY);
     if (!raw) return new Set();
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -26,14 +27,10 @@ const safeRead = (): Set<string> => {
 
 const safeWrite = (set: Set<string>): void => {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(Array.from(set)),
-    );
-  } catch {
-    /* ignore */
-  }
+  uiState.setItem(
+    STORAGE_KEY,
+    JSON.stringify(Array.from(set)),
+  );
 };
 
 export const isBundledPetId = (petId: string): boolean =>

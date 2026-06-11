@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { uiState } from "@/platform/ui-state";
 import {
   DEFAULT_STORE_TAB,
   LAST_STORE_TAB_KEY,
@@ -254,11 +255,7 @@ export function StoreApp() {
   }, [navigate, search.tab, urlIsLegacy, requestedTab]);
 
   useEffect(() => {
-    try {
-      window.localStorage?.setItem(LAST_STORE_TAB_KEY, requestedTab);
-    } catch {
-      // ignore storage failures
-    }
+    uiState.setItem(LAST_STORE_TAB_KEY, requestedTab);
   }, [requestedTab]);
 
   useEffect(() => {

@@ -119,7 +119,7 @@ function RootLayout() {
   // Single writer for the active-conversation pointer. The router
   // (`/chat?c=<id>`) is the live source of truth; whenever it changes we
   // mirror the id into SQLite (durable, cross-process) and a synchronous
-  // `localStorage` cache (fast boot read). Together they let the next boot
+  // shared-UI-state cache (fast boot read). Together they let the next boot
   // restore exactly this conversation — surviving both renderer hard reloads
   // and full restarts — without the empty-state flash an IPC-only read causes.
   useEffect(() => {
