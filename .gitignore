@@ -42,6 +42,9 @@ DEV-CONTEXT.md
 # TypeScript incremental build artifacts (machine-generated; never commit).
 *.tsbuildinfo
 
+# TanStack Router temporary files (machine-generated).
+/.tanstack/
+
 # Exec worker fallback CJS cache (Node-test runtime only; Bun loads .ts directly).
 runtime/kernel/exec/.exec-worker-cache/
 
