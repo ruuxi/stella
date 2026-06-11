@@ -17,6 +17,7 @@ type AttachedScreenshot = {
   width: number;
   height: number;
   previewUrl?: string;
+  filePath?: string;
 };
 
 type AttachedFile = ChatContextFile;
@@ -105,6 +106,32 @@ async function decodeImageAttachment(
   }
 }
 
+/**
+ * Path-backed attach: the fast path for picker/drag-drop images. The
+ * renderer decodes the file once into a small preview and keeps only
+ * `{ filePath, previewUrl }` in state — the original bytes never enter
+ * renderer memory or the send IPC payload; the runtime worker reads and
+ * resizes them from disk. Returns null when the File has no on-disk path
+ * (synthetic files) or preview decoding fails, in which case the caller
+ * falls back to the inline base64 pipeline.
+ */
+async function processPathBackedImage(
+  file: File,
+): Promise<AttachedScreenshot | null> {
+  const filePath = window.electronAPI?.files?.getPathForFile?.(file);
+  if (!filePath) return null;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const { width, height } = bitmap;
+    const previewUrl = encodePreview(bitmap, width, height);
+    bitmap.close();
+    if (!previewUrl) return null;
+    return { dataUrl: previewUrl, previewUrl, filePath, width, height };
+  } catch {
+    return null;
+  }
+}
+
 function isAttachableImage(mimeType: string): boolean {
   return ATTACHMENT_IMAGE_MIME_TYPES.has(mimeType);
 }
@@ -127,6 +154,8 @@ async function processInputFiles(
 
   const imageResults = await Promise.allSettled(
     imageFiles.map(async (file): Promise<AttachedScreenshot> => {
+      const pathBacked = await processPathBackedImage(file);
+      if (pathBacked) return pathBacked;
       const dataUrl = await readFileAsDataUrl(file);
       return { dataUrl, ...(await decodeImageAttachment(file, dataUrl)) };
     }),
