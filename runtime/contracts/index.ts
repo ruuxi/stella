@@ -66,11 +66,19 @@ export type ChatContext = {
     height: number;
     /**
      * Downscaled data URL for chip thumbnails and message-row rendering.
-     * Full-resolution `dataUrl` is reserved for the model request and the
-     * explicit zoom overlay — rendering it in chips forces Chromium to
-     * decode multi-megabyte images for ~50px thumbs.
+     * Full-resolution pixels are reserved for the model request —
+     * rendering them in chips forces Chromium to decode multi-megabyte
+     * images for ~50px thumbs.
      */
     previewUrl?: string;
+    /**
+     * Absolute on-disk path for picker/drag-drop attachments. When set,
+     * the renderer never loads the original bytes — `dataUrl` holds only
+     * the preview, and the runtime worker reads + resizes the original
+     * from disk at send time, keeping attach instant and the send IPC
+     * payload tiny.
+     */
+    filePath?: string;
   }[];
   files?: ChatContextFile[];
   /**

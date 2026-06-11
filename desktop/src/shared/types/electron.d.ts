@@ -1757,6 +1757,10 @@ export type ElectronMigrationApi = {
 export type ElectronApi = {
   platform: string;
   arch: string;
+  files: {
+    /** Absolute on-disk path for a picker/drag-drop File, or "" if unavailable. */
+    getPathForFile: (file: File) => string;
+  };
   display: ElectronDisplayApi;
   officePreview: ElectronOfficePreviewApi;
   migration: ElectronMigrationApi;

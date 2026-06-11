@@ -209,6 +209,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
   arch: process.arch,
 
+  files: {
+    /**
+     * Absolute on-disk path for a picker/drag-drop `File`, or "" for
+     * synthetic files (e.g. clipboard images). Lets the composer attach
+     * images by path so the renderer never loads the original bytes.
+     */
+    getPathForFile: (file: File) => {
+      try {
+        return webUtils.getPathForFile(file) || "";
+      } catch {
+        return "";
+      }
+    },
+  },
+
   window: {
     minimize: () => ipcRenderer.send("window:minimize"),
     maximize: () => ipcRenderer.send("window:maximize"),

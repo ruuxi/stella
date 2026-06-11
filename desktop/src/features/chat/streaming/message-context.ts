@@ -5,6 +5,15 @@ const buildLocalScreenshotAttachments = (
   chatContext: ChatContext | null,
 ): AttachmentRef[] =>
   (chatContext?.regionScreenshots ?? []).map((screenshot) => {
+    // Path-backed attachments ship only the path + preview; the runtime
+    // worker reads and resizes the original from disk. The worker sniffs
+    // the mime type from the file bytes.
+    if (screenshot.filePath) {
+      return {
+        url: screenshot.filePath,
+        previewUrl: screenshot.previewUrl ?? screenshot.dataUrl,
+      }
+    }
     const match = screenshot.dataUrl.match(
       /^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/,
     )

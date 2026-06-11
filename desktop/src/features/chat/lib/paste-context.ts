@@ -1,11 +1,14 @@
 /**
- * Composer paste handling: lift a long pasted text blob out of the
- * textarea and into a collapsed "Pasted text" context chip instead of
- * dumping a wall of text into the input. Short pastes fall through to the
- * default inline behavior so quick snippets aren't hidden behind a chip.
+ * Composer paste handling: clipboard files (copied screenshots, images,
+ * documents) attach through the same pipeline as drag-drop and the "+"
+ * picker, and a long pasted text blob lifts out of the textarea into a
+ * collapsed "Pasted text" context chip instead of dumping a wall of text
+ * into the input. Short pastes fall through to the default inline
+ * behavior so quick snippets aren't hidden behind a chip.
  */
 import type { ClipboardEvent, Dispatch, SetStateAction } from "react";
 import type { ChatContext } from "@/shared/types/electron";
+import { attachFilesToContext } from "./file-attach";
 
 type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
 
@@ -49,10 +52,11 @@ export const attachPastedText = (
 };
 
 /**
- * Shared `onPaste` handler for composer textareas. When the clipboard
- * carries a long plain-text blob (and no files), it intercepts the paste
- * and turns it into a context chip. Returns true when it consumed the
- * event so callers can skip their own paste handling.
+ * Shared `onPaste` handler for composer textareas. Clipboard files
+ * (e.g. a copied screenshot or a file copied in Finder) attach as
+ * context chips; a long plain-text blob collapses into a "Pasted text"
+ * chip. Returns true when it consumed the event so callers can skip
+ * their own paste handling.
  */
 export const handleComposerPaste = (
   event: ClipboardEvent<HTMLTextAreaElement>,
@@ -60,9 +64,12 @@ export const handleComposerPaste = (
 ): boolean => {
   const clipboard = event.clipboardData;
   if (!clipboard) return false;
-  // Files (images, documents) go through the drag-drop / "+" attach
-  // pipeline, not here — only intercept pure text pastes.
-  if (clipboard.files && clipboard.files.length > 0) return false;
+  const files = Array.from(clipboard.files ?? []);
+  if (files.length > 0) {
+    event.preventDefault();
+    void attachFilesToContext(files, setChatContext);
+    return true;
+  }
   const text = clipboard.getData("text/plain");
   if (!shouldAttachPastedText(text)) return false;
   event.preventDefault();
