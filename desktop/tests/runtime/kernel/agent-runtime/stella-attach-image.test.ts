@@ -121,16 +121,28 @@ App=com.apple.finder (pid 504)
     }
   });
 
-  it("swaps oversized images for a downscale note instead of attaching", async () => {
-    // Anthropic 400s fatally on any image whose base64 exceeds 10MiB —
-    // the attach layer must keep the turn alive by noting the limit
-    // instead of inlining the image. ~8MB binary > the ~7.8MB cap.
+  it("auto-resizes oversized images and notes the coordinate mapping (pi parity)", async () => {
+    // Pi-style attach behavior: a too-large image is resized to fit the
+    // vision budget instead of being bounced back with a "go downscale it
+    // yourself" note, and the model gets a dimension note for coordinate
+    // mapping. Generate a real >2000px noise PNG via Photon so the resize
+    // path actually exercises decode → resize → encode.
+    const photon = await import("@silvia-odwyer/photon-node");
+    const size = 2400;
+    const raw = new Uint8Array(size * size * 4);
+    for (let i = 0; i < raw.length; i += 4) {
+      raw[i] = (i * 31) % 256;
+      raw[i + 1] = (i * 17) % 256;
+      raw[i + 2] = (i * 7) % 256;
+      raw[i + 3] = 255;
+    }
+    const bigImage = new photon.PhotonImage(raw, size, size);
+    const bigPngBytes = Buffer.from(bigImage.get_bytes());
+    bigImage.free();
+
     const tempDir = createTempDir();
     const bigPath = path.join(tempDir, "huge.png");
-    writeFileSync(
-      bigPath,
-      Buffer.concat([ONE_BY_ONE_PNG, Buffer.alloc(8 * 1024 * 1024)]),
-    );
+    writeFileSync(bigPath, bigPngBytes);
     const smallPath = writePng(tempDir, "small.png");
 
     const text =
@@ -138,12 +150,26 @@ App=com.apple.finder (pid 504)
       `[stella-attach-image] inline=image/png ${smallPath}\n`;
     const result = await extractAttachImageBlocks(text);
 
+    // Both images attach: the big one resized, the small one untouched.
+    expect(result.images).toHaveLength(2);
+    expect(result.images[0].data.length).toBeLessThan(
+      bigPngBytes.toString("base64").length,
+    );
+    expect(result.images[1].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
+    // Dimension note for the resized image only; markers stripped.
+    expect(result.text).toContain(`original ${size}x${size}`);
+    expect(result.text).toContain("Multiply coordinates by");
+    expect(result.text).not.toContain("[stella-attach-image]");
+  });
+
+  it("passes small images through byte-identical (no resize, no note)", async () => {
+    const tempDir = createTempDir();
+    const imgPath = writePng(tempDir);
+    const text = `[stella-attach-image] 1x1 1KB inline=image/png ${imgPath}\n`;
+    const result = await extractAttachImageBlocks(text);
     expect(result.images).toHaveLength(1);
     expect(result.images[0].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
-    expect(result.text).toContain("Image not attached");
-    expect(result.text).toContain(bigPath);
-    expect(result.text).toContain("downscaled copy");
-    expect(result.text).not.toContain(`[stella-attach-image] inline=image/png ${smallPath}`);
+    expect(result.text).not.toContain("Multiply coordinates by");
   });
 
   it("extracts a marker embedded inside a JSON-stringified tool result", async () => {
