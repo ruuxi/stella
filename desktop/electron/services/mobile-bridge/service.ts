@@ -20,6 +20,7 @@ import {
   type BridgeCryptoSession,
 } from "./crypto.js";
 import { getHandler, getOnHandlers } from "./handler-registry.js";
+import { probeBridgePublicHealth } from "./public-health.js";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
 const REGISTRATION_REFRESH_MS = 60_000;
@@ -1368,23 +1369,8 @@ export class MobileBridgeService {
     }
   }
 
-  private async probePublicTunnelHealth(url: string): Promise<boolean> {
-    const controller = new AbortController();
-    const timer = setTimeout(
-      () => controller.abort(),
-      BRIDGE_PUBLIC_HEALTH_TIMEOUT_MS,
-    );
-    try {
-      const response = await fetch(`${trimTrailingSlash(url)}/bridge/health`, {
-        method: "GET",
-        signal: controller.signal,
-      });
-      return response.ok;
-    } catch {
-      return false;
-    } finally {
-      clearTimeout(timer);
-    }
+  private probePublicTunnelHealth(url: string): Promise<boolean> {
+    return probeBridgePublicHealth(url, BRIDGE_PUBLIC_HEALTH_TIMEOUT_MS);
   }
 
   private async clearRegistration() {
