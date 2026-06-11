@@ -191,8 +191,13 @@ fn main() {
         env::set_var("MSYS2_ARG_CONV_EXCL", "*");
     }
 
-    // Chrome native messaging host (stdio ↔ extension TCP bridge)
-    if env::var("STELLA_BROWSER_NATIVE_HOST").is_ok() {
+    // Chrome native messaging host (stdio ↔ extension TCP bridge). On Windows
+    // the host manifest points directly at this exe (no cmd.exe launcher to
+    // set the env flag), so also recognize Chrome's spawn by the extension
+    // origin it passes as an argument (chrome-extension://<id>/).
+    let spawned_by_chrome =
+        cfg!(windows) && env::args().skip(1).any(|a| a.starts_with("chrome-extension://"));
+    if spawned_by_chrome || env::var("STELLA_BROWSER_NATIVE_HOST").is_ok() {
         if let Err(e) = native::native_host::run_native_host() {
             eprintln!("{}", e);
             exit(1);
