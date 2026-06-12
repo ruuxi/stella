@@ -123,6 +123,12 @@ export type AgentToolRequest = {
   maxAgentDepth?: number;
   parentAgentId?: string;
   threadId?: string;
+  /**
+   * Groups this spawn with sibling spawns serving the same request: an
+   * existing `grp-…` id, or a short label shared across the sibling
+   * calls. Grouped threads share one active-work slot.
+   */
+  group?: string;
   storageMode: "cloud" | "local";
   selfModMetadata?: {
     packageId?: string;
@@ -152,12 +158,30 @@ export type AgentToolApi = {
   createAgent: (request: AgentToolRequest) => Promise<{
     threadId: string;
     activeThreads?: RuntimeThreadRecord[];
+    groupKey?: string;
+    groupLabel?: string;
   }>;
   getAgent: (threadId: string) => Promise<AgentToolSnapshot | null>;
   cancelAgent: (
     threadId: string,
     reason?: string,
   ) => Promise<{ canceled: boolean }>;
+  /** Cancel every member thread of a `grp-…` work group at once. */
+  cancelGroup?: (
+    groupKey: string,
+    reason?: string,
+  ) => Promise<{ canceled: boolean; canceledThreadIds: string[] }>;
+  /**
+   * Start an orchestrator-authored workflow script. Resolves once the
+   * script is running in the background; throws on syntax errors.
+   */
+  runWorkflow?: (args: {
+    conversationId: string;
+    description: string;
+    script: string;
+    group?: string;
+    rootRunId?: string;
+  }) => Promise<{ workflowId: string; groupKey?: string; groupLabel?: string }>;
   sendAgentMessage?: (
     threadId: string,
     message: string,
@@ -166,7 +190,7 @@ export type AgentToolApi = {
       description?: string;
       rootRunId?: string;
     },
-  ) => Promise<{ delivered: boolean }>;
+  ) => Promise<{ delivered: boolean; reason?: string }>;
   drainAgentMessages?: (
     threadId: string,
     recipient: "orchestrator" | "subagent",
@@ -220,6 +244,17 @@ export type ToolHostOptions = {
     ref: unknown,
     args: Record<string, unknown>,
   ) => Promise<unknown>;
+  /**
+   * Optional synchronous search over ALL of a conversation's runtime
+   * threads (including evicted ones), backing the orchestrator's
+   * `search_threads` tool. Deliberately deterministic — no LLM in the
+   * path — so thread ids survive to the model verbatim.
+   */
+  searchThreads?: (args: {
+    conversationId: string;
+    query?: string;
+    limit?: number;
+  }) => RuntimeThreadRecord[];
   /**
    * Optional one-shot context lookup used by the orchestrator's read-only
    * Context tool.
