@@ -18,6 +18,11 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec("PRAGMA synchronous = NORMAL;");
   db.exec("PRAGMA temp_store = MEMORY;");
   db.exec("PRAGMA busy_timeout = 5000;");
+  // Per-connection in SQLite (OFF by default) — without it every ON DELETE
+  // CASCADE declared below is inert. Every connection funnels through this
+  // initializer, and no writer uses INSERT OR REPLACE on a parent table, so
+  // enforcement cannot trigger a surprise delete-then-cascade.
+  db.exec("PRAGMA foreign_keys = ON;");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS settings (
