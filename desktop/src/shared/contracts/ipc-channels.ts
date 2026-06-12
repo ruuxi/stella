@@ -377,6 +377,8 @@ export const IPC_SCHEDULE_UPDATED = "schedule:updated" as const;
 
 export const IPC_STORE_READ_FEATURE_SNAPSHOT =
   "store:readFeatureSnapshot" as const;
+export const IPC_STORE_LIST_FEATURE_ROSTER =
+  "store:listFeatureRoster" as const;
 export const IPC_STORE_LIST_PACKAGES = "store:listPackages" as const;
 export const IPC_STORE_GET_PACKAGE = "store:getPackage" as const;
 export const IPC_STORE_LIST_RELEASES = "store:listReleases" as const;

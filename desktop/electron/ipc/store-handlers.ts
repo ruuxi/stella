@@ -7,6 +7,7 @@ import {
 } from "electron";
 import path from "path";
 import type {
+  SelfModFeatureRosterPage,
   SelfModFeatureSnapshot,
   StoreInstallRecord,
   StorePackageRecord,
@@ -537,6 +538,20 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     );
   });
 
+  ipcMain.handle(
+    "store:listFeatureRoster",
+    async (event, payload?: { limit?: number; offset?: number }) => {
+      return await withStoreRunner(
+        event,
+        "store:listFeatureRoster",
+        async (runner) =>
+          (await runner.listSelfModFeatureRoster(
+            payload,
+          )) satisfies SelfModFeatureRosterPage,
+      );
+    },
+  );
+
   ipcMain.handle("store:listPackages", async (event) => {
     return await withStoreRunner(
       event,
@@ -627,6 +642,8 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
 
   type StorePublishSelectedFeaturesPayload = {
     attachedFeatureNames: string[];
+    /** Roster featureIds parallel to the names (`""` for legacy entries). */
+    attachedFeatureIds?: string[];
     packageId: string;
     asUpdate: boolean;
     displayName?: string;

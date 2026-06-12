@@ -1,5 +1,10 @@
 import { Check, Plus } from "@/ui/icons";
-import { storeSidePanelStore } from "../store-side-panel-store";
+import {
+  featureKeyOf,
+  loadOlderFeatureEntries,
+  storeSidePanelStore,
+  type StoreSidePanelOlderEntry,
+} from "../store-side-panel-store";
 import type { SelfModFeatureSnapshot } from "../../../shared/types/electron";
 import { formatTimeAgo } from "./format";
 
@@ -61,28 +66,37 @@ function publishButtonLabel(selectedCount: number): string {
 type RecentChangesListProps = {
   snapshot: SelfModFeatureSnapshot | null;
   snapshotLoading: boolean;
-  selectedFeatureNames: ReadonlySet<string>;
+  selectedFeatureKeys: ReadonlySet<string>;
+  olderEntries: StoreSidePanelOlderEntry[];
+  rosterTotal: number | null;
+  olderLoading: boolean;
   publishDisabled?: boolean;
   onPublishSelected: () => void;
 };
 
 export function RecentChangesList({
   snapshot,
-  selectedFeatureNames,
+  selectedFeatureKeys,
+  olderEntries,
+  rosterTotal,
+  olderLoading,
   publishDisabled = false,
   onPublishSelected,
 }: RecentChangesListProps) {
   const items = snapshot?.items ?? [];
-  const selectedCount = selectedFeatureNames.size;
+  const selectedCount = selectedFeatureKeys.size;
   if (items.length === 0) return null;
+  const shownCount = items.length + olderEntries.length;
+  const hasOlder = rosterTotal !== null && rosterTotal > shownCount;
   return (
     <div className="store-side-panel-recent">
       <div className="store-side-panel-list">
         {items.map((item, index) => {
-          const selected = selectedFeatureNames.has(item.name);
+          const key = featureKeyOf(item);
+          const selected = selectedFeatureKeys.has(key);
           return (
             <RecentRow
-              key={`${index}:${item.name}`}
+              key={`${index}:${key}`}
               name={item.name}
               meta={
                 snapshot?.generatedAt
@@ -90,10 +104,33 @@ export function RecentChangesList({
                   : null
               }
               selected={selected}
-              onToggle={() => storeSidePanelStore.toggleFeature(item.name)}
+              onToggle={() => storeSidePanelStore.toggleFeature(key)}
             />
           );
         })}
+        {olderEntries.map((entry) => {
+          const key = featureKeyOf(entry);
+          const selected = selectedFeatureKeys.has(key);
+          return (
+            <RecentRow
+              key={key}
+              name={entry.name}
+              meta={`Updated ${formatTimeAgo(entry.lastCommitAt)}`}
+              selected={selected}
+              onToggle={() => storeSidePanelStore.toggleFeature(key)}
+            />
+          );
+        })}
+        {hasOlder ? (
+          <button
+            type="button"
+            className="store-side-panel-show-older"
+            disabled={olderLoading}
+            onClick={() => void loadOlderFeatureEntries()}
+          >
+            {olderLoading ? "Loading…" : "Show older"}
+          </button>
+        ) : null}
       </div>
       <div className="store-side-panel-publish-bar">
         <button

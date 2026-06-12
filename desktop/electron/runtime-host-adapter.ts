@@ -337,6 +337,8 @@ export class RuntimeHostAdapter {
             ...(event.result ? { result: event.result } : {}),
             ...(event.error ? { error: event.error } : {}),
             ...(event.statusText ? { statusText: event.statusText } : {}),
+            ...(event.groupKey ? { groupKey: event.groupKey } : {}),
+            ...(event.groupLabel ? { groupLabel: event.groupLabel } : {}),
           });
         }
         break;
@@ -880,6 +882,8 @@ export class RuntimeHostAdapter {
               ...(event.result ? { result: event.result } : {}),
               ...(event.error ? { error: event.error } : {}),
               ...(event.statusText ? { statusText: event.statusText } : {}),
+              ...(event.groupKey ? { groupKey: event.groupKey } : {}),
+              ...(event.groupLabel ? { groupLabel: event.groupLabel } : {}),
             });
           }
           break;
@@ -970,6 +974,10 @@ export class RuntimeHostAdapter {
 
   readSelfModFeatureSnapshot() {
     return this.host.readSelfModFeatureSnapshot();
+  }
+
+  listSelfModFeatureRoster(payload?: { limit?: number; offset?: number }) {
+    return this.host.listSelfModFeatureRoster(payload);
   }
 
   beginExternalSelfMod(payload: { runId: string; paths: string[] }) {

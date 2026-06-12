@@ -63,6 +63,7 @@ import {
   type RuntimeWebSearchResult,
   type RunResumeEventsResult,
   type ScheduledConversationEvent,
+  type SelfModFeatureRosterPage,
   type SelfModFeatureSnapshot,
   type SelfModCommitSummary,
   type SelfModHmrState,
@@ -2109,6 +2110,17 @@ export class StellaRuntimeHost {
     return await this.requestWorker<SelfModFeatureSnapshot | null>(
       METHOD_NAMES.INTERNAL_WORKER_FEATURE_SNAPSHOT_READ,
       undefined,
+      { ensureWorker: true, recordActivity: false },
+    );
+  }
+
+  async listSelfModFeatureRoster(payload?: {
+    limit?: number;
+    offset?: number;
+  }) {
+    return await this.requestWorker<SelfModFeatureRosterPage>(
+      METHOD_NAMES.INTERNAL_WORKER_FEATURE_ROSTER_LIST,
+      payload,
       { ensureWorker: true, recordActivity: false },
     );
   }

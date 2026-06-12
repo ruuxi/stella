@@ -14,16 +14,26 @@ import {
 import { packageIdFromName } from "./format";
 import type { StoreCategory } from "./types";
 
+/**
+ * One selected publishable change. `featureId` pins the selection to an
+ * exact roster feature — display names are not unique, so without it two
+ * same-named features would collapse onto whichever resolves first.
+ */
+export type PublishFeatureRef = {
+  name: string;
+  featureId?: string;
+};
+
 type PublishDialogProps = {
   open: boolean;
-  selectedFeatureNames: string[];
+  selectedFeatures: PublishFeatureRef[];
   onClose: () => void;
   onPublished: (args: { releaseNumber: number }) => Promise<void> | void;
 };
 
 export function PublishDialog({
   open,
-  selectedFeatureNames,
+  selectedFeatures,
   onClose,
   onPublished,
 }: PublishDialogProps) {
@@ -41,19 +51,25 @@ export function PublishDialog({
   const [updatePackageId, setUpdatePackageId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const sourceFeatureNames = useMemo(() => {
+  const sourceFeatures = useMemo(() => {
+    // Dedupe on featureId (falling back to name for legacy rows without
+    // one) so two distinct features that happen to share a display name
+    // both survive into the publish payload.
     const seen = new Set<string>();
-    return selectedFeatureNames
-      .map((name) => name.trim())
-      .filter((name) => {
-        if (!name || seen.has(name)) return false;
-        seen.add(name);
-        return true;
-      });
-  }, [selectedFeatureNames]);
+    const features: PublishFeatureRef[] = [];
+    for (const feature of selectedFeatures) {
+      const name = feature.name.trim();
+      if (!name) continue;
+      const key = feature.featureId ?? name;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      features.push({ name, featureId: feature.featureId });
+    }
+    return features;
+  }, [selectedFeatures]);
 
   const selectedFeatureName =
-    sourceFeatureNames.length === 1 ? sourceFeatureNames[0] : "";
+    sourceFeatures.length === 1 ? sourceFeatures[0]!.name : "";
 
   // When the dialog opens, seed the form from the selected feature. Re-seed on
   // every open so a different source selection gets its own pre-fill.
@@ -80,7 +96,7 @@ export function PublishDialog({
   }>;
 
   const handleSubmit = async () => {
-    if (sourceFeatureNames.length === 0) {
+    if (sourceFeatures.length === 0) {
       showToast({
         title: "No source changes",
         description: "Select at least one recent source-backed change first.",
@@ -152,7 +168,12 @@ export function PublishDialog({
       return;
     }
     const publishArgs = {
-      attachedFeatureNames: sourceFeatureNames,
+      attachedFeatureNames: sourceFeatures.map((feature) => feature.name),
+      // Parallel to the names; "" marks legacy rows the worker resolves by
+      // name instead.
+      attachedFeatureIds: sourceFeatures.map(
+        (feature) => feature.featureId ?? "",
+      ),
       packageId: publishPackageId,
       asUpdate,
       manifest,

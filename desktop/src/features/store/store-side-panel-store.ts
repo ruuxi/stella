@@ -1,25 +1,49 @@
 /**
  * Side-panel selection state.
  *
- * Phase 1 ships only the rolling-window feature snapshot the namer LLM
- * regenerates after every self-mod commit. Multi-select state lives
- * here so the user's picks survive remounts.
+ * The list renders the durable feature snapshot (newest roster features)
+ * first, with older roster entries paged in behind the "Show older"
+ * affordance. Multi-select state lives here so the user's picks survive
+ * remounts.
  */
 import { useSyncExternalStore } from "react";
-import type { SelfModFeatureSnapshot } from "@/shared/types/electron";
+import type {
+  SelfModFeatureRosterEntry,
+  SelfModFeatureSnapshot,
+} from "@/shared/types/electron";
+
+export type StoreSidePanelOlderEntry = SelfModFeatureRosterEntry & {
+  commitHashes: string[];
+};
 
 type StoreSidePanelState = {
   snapshot: SelfModFeatureSnapshot | null;
   snapshotLoading: boolean;
-  /** Selected feature names from the snapshot (display names — agent never sees commit hashes). */
-  selectedFeatureNames: Set<string>;
+  /** Selected feature keys — `featureId`, falling back to `name` for stale snapshot rows without one. */
+  selectedFeatureKeys: Set<string>;
+  /** Roster entries older than the snapshot window, in roster order. */
+  olderEntries: StoreSidePanelOlderEntry[];
+  /** Total roster size (null until the first roster probe resolves). */
+  rosterTotal: number | null;
+  olderLoading: boolean;
 };
+
+const OLDER_PAGE_SIZE = 20;
 
 const EMPTY: StoreSidePanelState = {
   snapshot: null,
   snapshotLoading: true,
-  selectedFeatureNames: new Set(),
+  selectedFeatureKeys: new Set(),
+  olderEntries: [],
+  rosterTotal: null,
+  olderLoading: false,
 };
+
+/** Selection identity for a snapshot item or roster entry. */
+export const featureKeyOf = (item: {
+  featureId?: string;
+  name: string;
+}): string => item.featureId ?? item.name;
 
 let state: StoreSidePanelState = EMPTY;
 const listeners = new Set<() => void>();
@@ -51,19 +75,40 @@ export const storeSidePanelStore = {
     if (state.snapshotLoading === loading) return;
     emit({ ...state, snapshotLoading: loading });
   },
-  toggleFeature(name: string): void {
+  setRosterTotal(total: number): void {
+    if (state.rosterTotal === total) return;
+    emit({ ...state, rosterTotal: total });
+  },
+  setOlderLoading(loading: boolean): void {
+    if (state.olderLoading === loading) return;
+    emit({ ...state, olderLoading: loading });
+  },
+  appendOlderEntries(entries: StoreSidePanelOlderEntry[], total: number): void {
+    const shown = new Set([
+      ...(state.snapshot?.items ?? []).map(featureKeyOf),
+      ...state.olderEntries.map(featureKeyOf),
+    ]);
+    const fresh = entries.filter((entry) => !shown.has(featureKeyOf(entry)));
     emit({
       ...state,
-      selectedFeatureNames: toggle(state.selectedFeatureNames, name),
+      olderEntries: [...state.olderEntries, ...fresh],
+      rosterTotal: total,
+      olderLoading: false,
+    });
+  },
+  toggleFeature(key: string): void {
+    emit({
+      ...state,
+      selectedFeatureKeys: toggle(state.selectedFeatureKeys, key),
     });
   },
   clearSelections(): void {
-    if (state.selectedFeatureNames.size === 0) {
+    if (state.selectedFeatureKeys.size === 0) {
       return;
     }
     emit({
       ...state,
-      selectedFeatureNames: new Set(),
+      selectedFeatureKeys: new Set(),
     });
   },
   reset(): void {
@@ -90,5 +135,34 @@ export const refreshFeatureSnapshot = async (): Promise<void> => {
     storeSidePanelStore.setSnapshot(snapshot);
   } catch {
     storeSidePanelStore.setSnapshotLoading(false);
+  }
+  // Probe the roster size so the list knows whether older features exist
+  // beyond the snapshot window. Best-effort: without it the "Show older"
+  // affordance simply stays hidden.
+  if (!api.listFeatureRoster) return;
+  try {
+    const page = await api.listFeatureRoster({ limit: 1 });
+    storeSidePanelStore.setRosterTotal(page.total);
+  } catch {
+    // Ignore — pagination is unavailable, the snapshot still renders.
+  }
+};
+
+export const loadOlderFeatureEntries = async (): Promise<void> => {
+  const api = window.electronAPI?.store;
+  if (!api?.listFeatureRoster) return;
+  const current = storeSidePanelStore.getSnapshot();
+  if (current.olderLoading) return;
+  const offset =
+    (current.snapshot?.items.length ?? 0) + current.olderEntries.length;
+  storeSidePanelStore.setOlderLoading(true);
+  try {
+    const page = await api.listFeatureRoster({
+      limit: OLDER_PAGE_SIZE,
+      offset,
+    });
+    storeSidePanelStore.appendOlderEntries(page.entries, page.total);
+  } catch {
+    storeSidePanelStore.setOlderLoading(false);
   }
 };

@@ -319,6 +319,34 @@
   letter-spacing: -0.005em;
 }
 
+.store-side-panel-show-older {
+  margin: 2px 0 4px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-weak);
+  letter-spacing: -0.005em;
+  cursor: default;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+.store-side-panel-show-older:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  color: var(--text-base);
+}
+.store-side-panel-show-older:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.store-side-panel-show-older:disabled {
+  color: var(--text-weaker);
+}
+
 /* Expanded display panel keeps the source list and publish bar aligned. */
 .display-sidebar--expanded .store-side-panel-list,
 .display-sidebar--expanded .store-side-panel-publish-bar {

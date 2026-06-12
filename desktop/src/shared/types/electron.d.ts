@@ -42,6 +42,8 @@ import type {
   DesktopReleaseSourceHistoryRef as SharedDesktopReleaseSourceHistoryRef,
   StellaReleaseArtifactRef as SharedStellaReleaseArtifactRef,
   SelfModFeatureSnapshot as SharedSelfModFeatureSnapshot,
+  SelfModFeatureRosterEntry as SharedSelfModFeatureRosterEntry,
+  SelfModFeatureRosterPage as SharedSelfModFeatureRosterPage,
   SelfModHmrPhase as SharedSelfModHmrPhase,
   SelfModHmrState as SharedSelfModHmrState,
   AgentHealth as SharedAgentHealth,
@@ -120,6 +122,8 @@ export type DesktopReleaseSourceHistoryRef =
   SharedDesktopReleaseSourceHistoryRef;
 export type StellaReleaseArtifactRef = SharedStellaReleaseArtifactRef;
 export type SelfModFeatureSnapshot = SharedSelfModFeatureSnapshot;
+export type SelfModFeatureRosterEntry = SharedSelfModFeatureRosterEntry;
+export type SelfModFeatureRosterPage = SharedSelfModFeatureRosterPage;
 export type SelfModHmrPhase = SharedSelfModHmrPhase;
 export type SelfModHmrState = SharedSelfModHmrState;
 export type AgentHealth = SharedAgentHealth;
@@ -1294,6 +1298,10 @@ export type ElectronScheduleApi = {
 
 export type ElectronStoreApi = {
   readFeatureSnapshot: () => Promise<SelfModFeatureSnapshot | null>;
+  listFeatureRoster: (payload?: {
+    limit?: number;
+    offset?: number;
+  }) => Promise<SelfModFeatureRosterPage>;
   listPackages: () => Promise<StorePackageRecord[]>;
   getPackage: (packageId: string) => Promise<StorePackageRecord | null>;
   listPackageReleases: (
@@ -1310,6 +1318,8 @@ export type ElectronStoreApi = {
   }) => Promise<StoreInstallRecord | null>;
   publishSelectedFeatures: (payload: {
     attachedFeatureNames: string[];
+    /** Roster featureIds parallel to the names (`""` for legacy entries). */
+    attachedFeatureIds?: string[];
     packageId: string;
     asUpdate: boolean;
     displayName?: string;

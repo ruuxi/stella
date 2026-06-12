@@ -311,9 +311,11 @@ const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
 
 import {
+  buildStorePublishFeatureSnapshot,
   buildStoreReleaseRedactor,
   collectStoreReleaseCommits,
   collectStoreReleaseGitArtifact,
+  normalizeStoreThreadFeatureIds,
   normalizeStoreThreadFeatureNames,
 } from "./store-thread-helpers.js";
 import {
@@ -2028,6 +2030,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               result: ev.result,
               error: ev.error,
               statusText: ev.statusText,
+              ...(ev.groupKey ? { groupKey: ev.groupKey } : {}),
+              ...(ev.groupLabel ? { groupLabel: ev.groupLabel } : {}),
             });
           },
           onAgentReasoning: (ev) => {
@@ -2626,16 +2630,33 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const attachedFeatureNames = normalizeStoreThreadFeatureNames(
       payload.attachedFeatureNames,
     );
+    // Parallel to the names (`""` for legacy entries without one). Names are
+    // not unique across roster features, so the ids are what actually pin
+    // the selection to the right commit sets.
+    const attachedFeatureIds = normalizeStoreThreadFeatureIds(
+      payload.attachedFeatureIds,
+    );
     if (attachedFeatureNames.length === 0) {
       throw new Error("Select at least one source-backed change to publish.");
+    }
+    if (
+      attachedFeatureIds.length > 0 &&
+      attachedFeatureIds.length !== attachedFeatureNames.length
+    ) {
+      // The ids are positional; a length mismatch means the pairing is
+      // unreliable and resolving by it could publish the wrong feature.
+      throw new Error(
+        "The selected changes no longer line up with their ids. Refresh Store and select the source changes again.",
+      );
     }
 
     const store = ensureStoreModStore();
     const repoRoot = state.init.stellaAppDir;
-    const snapshot = store.readFeatureSnapshot();
+    const snapshot = buildStorePublishFeatureSnapshot(store);
     const commits = await collectStoreReleaseCommits({
       repoRoot,
       attachedFeatureNames,
+      attachedFeatureIds,
       snapshot,
     });
     if (commits.length === 0) {
@@ -2647,6 +2668,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const gitArtifactBuild = await collectStoreReleaseGitArtifact({
       repoRoot,
       attachedFeatureNames,
+      attachedFeatureIds,
       snapshot,
     });
     if (!gitArtifactBuild || gitArtifactBuild.objectUploads.length === 0) {
@@ -2714,6 +2736,18 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     async () => {
       const service = ensureStoreModService();
       return service.readFeatureSnapshot();
+    },
+  );
+
+  // Paginated roster read for the side panel's "Show older" affordance.
+  // Entries carry their commit hashes so features older than the snapshot
+  // window stay exactly as publishable as snapshot items.
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_FEATURE_ROSTER_LIST,
+    async (params) => {
+      const payload = (params ?? {}) as { limit?: number; offset?: number };
+      const service = ensureStoreModService();
+      return service.listFeatureRoster(payload);
     },
   );
 

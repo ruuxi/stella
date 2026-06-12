@@ -2003,6 +2003,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   store: {
     readFeatureSnapshot: () => ipcRenderer.invoke("store:readFeatureSnapshot"),
+    listFeatureRoster: (payload?: { limit?: number; offset?: number }) =>
+      ipcRenderer.invoke("store:listFeatureRoster", payload),
     listPackages: () => ipcRenderer.invoke("store:listPackages"),
     getPackage: (packageId: string) =>
       ipcRenderer.invoke("store:getPackage", { packageId }),
@@ -2019,6 +2021,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("store:installFromBlueprint", payload),
     publishSelectedFeatures: (payload: {
       attachedFeatureNames: string[];
+      attachedFeatureIds?: string[];
       packageId: string;
       asUpdate: boolean;
       displayName?: string;
