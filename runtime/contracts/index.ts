@@ -285,19 +285,48 @@ export type SelfModCommitSummary = {
 };
 
 /**
- * One entry in the rolling-window feature snapshot the Store side panel
- * renders. `name` is a normie-friendly 3-7 word phrase the namer LLM
- * produced; `commitHashes` is the LLM's grouping decision used to build the
- * source pack and reference diffs for publishing.
+ * One entry in the feature snapshot the Store side panel renders.
+ * Derived from the durable feature roster (newest features first):
+ * `featureId` is the Stella-Feature-Id stamped into the commits'
+ * trailers (the authoring thread's group key, falling back to its
+ * thread key; `legacy-…` for entries seeded from the pre-roster LLM
+ * snapshot), `name` is frozen at the feature's first commit, and
+ * `commitHashes` accrue per commit — grouping is deterministic, no LLM
+ * regeneration, so names never churn and features never fall off.
  */
 export type SelfModFeatureSnapshotItem = {
   name: string;
   commitHashes: string[];
+  featureId?: string;
 };
 
 export type SelfModFeatureSnapshot = {
   items: SelfModFeatureSnapshotItem[];
   generatedAt: number;
+};
+
+/**
+ * Durable feature-roster row backing the snapshot above. Rows accrue
+ * forever; the Store panel paginates instead of forgetting.
+ */
+export type SelfModFeatureRosterEntry = {
+  featureId: string;
+  name: string;
+  conversationId?: string;
+  createdAt: number;
+  lastCommitAt: number;
+  commitCount: number;
+};
+
+/**
+ * One page of the feature roster, as served to the Store side panel's
+ * "Show older" pagination. Entries carry their commit hashes so features
+ * older than the snapshot window stay exactly as publishable as snapshot
+ * items.
+ */
+export type SelfModFeatureRosterPage = {
+  entries: Array<SelfModFeatureRosterEntry & { commitHashes: string[] }>;
+  total: number;
 };
 
 export type StorePackageCategory =

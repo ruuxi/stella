@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
 import type {
+  SelfModFeatureRosterEntry,
   SelfModFeatureSnapshot,
   SelfModFeatureSnapshotItem,
   StoreInstallRecord,
   StoreThreadMessage,
   StoreThreadSnapshot,
 } from "../../contracts/index.js";
+import { slugify } from "../shared/slug.js";
 import type { SqliteDatabase } from "./shared.js";
 
 type InstallRow = {
@@ -54,7 +56,11 @@ const parseSnapshotItems = (raw: string): SelfModFeatureSnapshotItem[] => {
                 typeof hash === "string" && hash.trim().length > 0,
             )
           : [];
-        return { name, commitHashes };
+        const featureId =
+          typeof candidate.featureId === "string" && candidate.featureId.trim()
+            ? candidate.featureId.trim()
+            : undefined;
+        return { name, commitHashes, ...(featureId ? { featureId } : {}) };
       })
       .filter((item): item is SelfModFeatureSnapshotItem => item !== null);
   } catch {
@@ -287,6 +293,198 @@ export class StoreModStore {
     this.db
       .prepare("DELETE FROM store_installs WHERE package_id = ?")
       .run(packageId);
+  }
+
+  /**
+   * Record one self-mod commit against its durable feature. The
+   * feature's name is FROZEN at first commit (write-once, no churn);
+   * later commits only bump recency and the commit list. commit_count
+   * is derived from the commit table so re-recording a hash is
+   * idempotent.
+   */
+  upsertFeatureRosterEntry(args: {
+    featureId: string;
+    name: string;
+    conversationId?: string;
+    commitHash: string;
+    committedAt?: number;
+  }): void {
+    const committedAt = args.committedAt ?? Date.now();
+    this.db
+      .prepare(
+        `
+      INSERT INTO store_feature_roster (
+        feature_id, name, conversation_id, created_at, last_commit_at, commit_count
+      )
+      VALUES (?, ?, ?, ?, ?, 0)
+      ON CONFLICT(feature_id) DO UPDATE SET
+        last_commit_at = MAX(last_commit_at, excluded.last_commit_at)
+    `,
+      )
+      .run(
+        args.featureId,
+        args.name.trim() || args.featureId,
+        args.conversationId ?? null,
+        committedAt,
+        committedAt,
+      );
+    this.db
+      .prepare(
+        `
+      INSERT INTO store_feature_commits (feature_id, commit_hash, committed_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(feature_id, commit_hash) DO NOTHING
+    `,
+      )
+      .run(args.featureId, args.commitHash, committedAt);
+    this.db
+      .prepare(
+        `
+      UPDATE store_feature_roster
+      SET commit_count = (
+        SELECT COUNT(*) FROM store_feature_commits WHERE feature_id = ?
+      )
+      WHERE feature_id = ?
+    `,
+      )
+      .run(args.featureId, args.featureId);
+  }
+
+  listFeatureRoster(args?: {
+    limit?: number;
+    offset?: number;
+  }): SelfModFeatureRosterEntry[] {
+    const limit = Math.max(1, Math.min(200, Math.floor(args?.limit ?? 50)));
+    const offset = Math.max(0, Math.floor(args?.offset ?? 0));
+    const rows = this.db
+      .prepare(
+        `
+      SELECT
+        feature_id AS featureId,
+        name,
+        conversation_id AS conversationId,
+        created_at AS createdAt,
+        last_commit_at AS lastCommitAt,
+        commit_count AS commitCount
+      FROM store_feature_roster
+      ORDER BY last_commit_at DESC
+      LIMIT ? OFFSET ?
+    `,
+      )
+      .all(limit, offset) as Array<{
+      featureId: string;
+      name: string;
+      conversationId: string | null;
+      createdAt: number;
+      lastCommitAt: number;
+      commitCount: number;
+    }>;
+    return rows.map((row) => ({
+      featureId: row.featureId,
+      name: row.name,
+      ...(row.conversationId ? { conversationId: row.conversationId } : {}),
+      createdAt: row.createdAt,
+      lastCommitAt: row.lastCommitAt,
+      commitCount: row.commitCount,
+    }));
+  }
+
+  countFeatureRoster(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS count FROM store_feature_roster")
+      .get() as { count: number } | undefined;
+    return row?.count ?? 0;
+  }
+
+  listFeatureCommitHashes(featureId: string): string[] {
+    const rows = this.db
+      .prepare(
+        `
+      SELECT commit_hash AS commitHash
+      FROM store_feature_commits
+      WHERE feature_id = ?
+      ORDER BY committed_at DESC
+    `,
+      )
+      .all(featureId) as Array<{ commitHash: string }>;
+    return rows.map((row) => row.commitHash);
+  }
+
+  /**
+   * Materialize the snapshot the Store side panel (and the publish
+   * flow) reads from the roster head — same contract shape the LLM
+   * regenerator used to produce, now deterministic and durable.
+   */
+  buildSnapshotFromRoster(limit = 20): SelfModFeatureSnapshot {
+    const items = this.listFeatureRoster({ limit }).map((entry) => ({
+      name: entry.name,
+      commitHashes: this.listFeatureCommitHashes(entry.featureId),
+      featureId: entry.featureId,
+    }));
+    return { items, generatedAt: Date.now() };
+  }
+
+  /**
+   * One-time import: when the roster is empty but a pre-roster LLM
+   * snapshot exists, freeze its items as `legacy-…` features so
+   * nothing the user currently sees disappears. Names are frozen
+   * as-is; older commits beyond the imported window stay git-only.
+   */
+  seedFeatureRosterFromSnapshotIfEmpty(): void {
+    if (this.countFeatureRoster() > 0) return;
+    const snapshot = this.readFeatureSnapshot();
+    if (!snapshot || snapshot.items.length === 0) return;
+    // All-or-nothing: a partial seed would pass the count>0 guard on the
+    // next startup and permanently drop the un-imported items (the next
+    // commit overwrites the snapshot they live in).
+    this.db.exec("BEGIN");
+    try {
+      this.seedFeatureRosterItems(snapshot.items, snapshot.generatedAt);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        // Connection-level failure; nothing further to roll back.
+      }
+      throw error;
+    }
+  }
+
+  private seedFeatureRosterItems(
+    items: SelfModFeatureSnapshotItem[],
+    generatedAt: number,
+  ): void {
+    const seen = new Set<string>();
+    for (const item of items) {
+      let featureId = `legacy-${slugify(item.name) || "feature"}`;
+      for (let ordinal = 2; seen.has(featureId); ordinal++) {
+        featureId = `legacy-${slugify(item.name) || "feature"}-${ordinal}`;
+      }
+      seen.add(featureId);
+      if (item.commitHashes.length === 0) {
+        this.db
+          .prepare(
+            `
+          INSERT INTO store_feature_roster (
+            feature_id, name, conversation_id, created_at, last_commit_at, commit_count
+          )
+          VALUES (?, ?, NULL, ?, ?, 0)
+          ON CONFLICT(feature_id) DO NOTHING
+        `,
+          )
+          .run(featureId, item.name, generatedAt, generatedAt);
+        continue;
+      }
+      for (const commitHash of item.commitHashes) {
+        this.upsertFeatureRosterEntry({
+          featureId,
+          name: item.name,
+          commitHash,
+          committedAt: generatedAt,
+        });
+      }
+    }
   }
 
   writeFeatureSnapshot(snapshot: SelfModFeatureSnapshot): void {
