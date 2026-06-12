@@ -163,6 +163,25 @@ const eventRoleForType = (type: string): string => {
 
 const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
 
+// English function words dropped from searchThreads queries before
+// matching. Under OR-with-ranking semantics a stray stopword can never
+// exclude a result, only pad the 6-token budget and inflate scores with
+// rows that merely contain "the" — so the list errs toward inclusion.
+const SEARCH_STOPWORDS = new Set([
+  "a", "an", "the", "and", "or", "but",
+  "of", "to", "in", "on", "at", "for", "with", "from", "by", "about",
+  "into", "over", "after", "before", "during", "between",
+  "is", "am", "are", "was", "were", "be", "been", "being",
+  "do", "does", "did", "doing", "have", "has", "had", "having",
+  "will", "would", "can", "could", "should", "shall", "may", "might",
+  "i", "me", "my", "we", "us", "our", "you", "your",
+  "it", "its", "they", "them", "their", "he", "him", "his", "she", "her",
+  "that", "this", "these", "those", "there", "here",
+  "what", "which", "who", "whom", "whose", "when", "where", "why", "how",
+  "not", "no", "so", "if", "then", "than", "too", "very", "just", "also",
+  "any", "some", "thing", "stuff", "one", "ago", "last", "recent",
+]);
+
 const toIsoTimestamp = (timestamp: number): string =>
   new Date(timestamp).toISOString();
 
@@ -2621,9 +2640,14 @@ export class SessionStore {
   /**
    * Search EVERY thread the conversation has ever spawned — including
    * evicted ones — by key, name, summary, group label, and agent
-   * description. Tokens are AND-ed; each token may match any column.
-   * No query returns the most recent work first. The orchestrator's own
-   * thread is excluded (it is the conversation, not work).
+   * description. A result must match at least one token and ranks by how
+   * many tokens it matches (ties break newest-first). Strict AND would
+   * make the verbose natural-language queries an LLM writes ("the flight
+   * comparison from last week") return nothing — the one failure this
+   * tool exists to prevent — so stopwords are dropped up front and the
+   * rest is scored, not filtered. No query returns the most recent work
+   * first. The orchestrator's own thread is excluded (it is the
+   * conversation, not work).
    */
   searchThreads(args: {
     conversationId: string;
@@ -2631,11 +2655,19 @@ export class SessionStore {
     limit?: number;
   }): RuntimeThreadRecord[] {
     const limit = Math.max(1, Math.min(25, Math.floor(args.limit ?? 12)));
-    const tokens = (args.query ?? "")
+    const rawTokens = (args.query ?? "")
       .split(/\s+/)
       .map((token) => token.trim())
-      .filter(Boolean)
-      .slice(0, 6);
+      .filter(Boolean);
+    const meaningful = rawTokens.filter(
+      (token) => !SEARCH_STOPWORDS.has(token.toLowerCase()),
+    );
+    // An all-stopword query still searches with what it has rather than
+    // silently degrading into a recency dump.
+    const tokens = (meaningful.length > 0 ? meaningful : rawTokens).slice(
+      0,
+      6,
+    );
     const escapeLike = (value: string) =>
       value.replace(/([\\%_])/g, "\\$1");
     const tokenClause = `(
@@ -2654,23 +2686,36 @@ export class SessionStore {
       // subagent sessions) are not orchestrator-resumable work — offering
       // them as results would hand the model dead "resumable" ids.
       "thread_key NOT LIKE '%::subagent::%'",
-      ...tokens.map(() => tokenClause),
+      ...(tokens.length > 0
+        ? [`(${tokens.map(() => tokenClause).join("\n        OR ")})`]
+        : []),
     ].join("\n        AND ");
+    const orderBy =
+      tokens.length > 0
+        ? `(${tokens
+            .map(() => `CASE WHEN ${tokenClause} THEN 1 ELSE 0 END`)
+            .join(" + ")}) DESC,
+      runtime_threads.last_used_at DESC`
+        : "runtime_threads.last_used_at DESC";
     const params: Array<string | number> = [
       args.conversationId,
       args.conversationId,
     ];
-    for (const token of tokens) {
-      const pattern = `%${escapeLike(token)}%`;
-      params.push(pattern, pattern, pattern, pattern, pattern, pattern);
-    }
+    const pushTokenParams = () => {
+      for (const token of tokens) {
+        const pattern = `%${escapeLike(token)}%`;
+        params.push(pattern, pattern, pattern, pattern, pattern, pattern);
+      }
+    };
+    pushTokenParams(); // WHERE binds first,
+    pushTokenParams(); // then ORDER BY rebinds the same patterns.
     params.push(limit);
     const rows = this.db
       .prepare(
         `
       ${SessionStore.RUNTIME_THREAD_SELECT}
       WHERE ${where}
-      ORDER BY runtime_threads.last_used_at DESC
+      ORDER BY ${orderBy}
       LIMIT ?
     `,
       )
