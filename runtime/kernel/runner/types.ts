@@ -36,6 +36,7 @@ import type {
   LocalAgentManager,
   AgentLifecycleEvent,
 } from "../agents/local-agent-manager.js";
+import type { WorkflowService } from "../workflows/workflow-service.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import type {
   StorePackageRecord,
@@ -102,6 +103,19 @@ export type StellaHostRunnerOptions = {
       threadKey?: string;
       succeeded: boolean;
       /**
+       * Durable feature identity for this run's commits: the authoring
+       * thread's group key when grouped, else its thread key. Stamped
+       * as the `Stella-Feature-Id` trailer and used as the feature
+       * roster key.
+       */
+      featureId?: string;
+      /**
+       * Human feature name (group label or thread description); frozen
+       * into the roster at the feature's first commit and slugified
+       * into the `Stella-Feature-Title` trailer.
+       */
+      featureTitle?: string;
+      /**
        * Returns a 1-line user-friendly commit subject (≤ 12 words).
        * Returning `null` falls back to the task description.
        */
@@ -111,23 +125,6 @@ export type StellaHostRunnerOptions = {
         diffPreview: string;
         conversationId?: string;
       }) => Promise<string | null>;
-      /**
-       * Returns the rolling-window feature snapshot items (3-7 word
-       * normie-friendly names grouping the most recent self-mod commits).
-       * Runs after a successful commit; result replaces the snapshot
-       * the side panel reads. Returning `null` leaves the previous
-       * snapshot in place.
-       */
-      featureNamerProvider?: (args: {
-        commits: Array<{
-          commitHash: string;
-          shortHash: string;
-          subject: string;
-          body: string;
-          timestampMs: number;
-          files: string[];
-        }>;
-      }) => Promise<Array<{ name: string; commitHashes: string[] }> | null>;
     }) => Promise<void> | void;
     cancelRun?: (runId: string) => Promise<void> | void;
   } | null;
@@ -261,6 +258,7 @@ export type RunnerState = {
   isInitialized: boolean;
   initializationPromise: Promise<void> | null;
   localAgentManager: LocalAgentManager | null;
+  workflowService: WorkflowService | null;
   activeOrchestratorRunId: string | null;
   activeOrchestratorConversationId: string | null;
   activeOrchestratorUiVisibility: "visible" | "hidden";

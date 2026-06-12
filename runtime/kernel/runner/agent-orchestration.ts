@@ -13,6 +13,7 @@ import { runExplore } from "../agent-runtime/explore.js";
 import { resolveOrchestratorThreadKey } from "../thread-runtime.js";
 import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
 import { LocalAgentManager } from "../agents/local-agent-manager.js";
+import { WorkflowService } from "../workflows/workflow-service.js";
 import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
 import { isKnownSafeCommand } from "../tools/safe-commands.js";
 import { resolveToolPath } from "../tools/path-inference.js";
@@ -36,8 +37,6 @@ import type { RunnerContext } from "./types.js";
 import { buildAgentEventPrompt } from "./shared.js";
 import {
   buildCommitSubjectPrompt,
-  buildFeatureSnapshotPrompt,
-  parseFeatureSnapshotItems,
   sanitizeAuthoredCommitSubject,
 } from "../self-mod/feature-namer.js";
 
@@ -284,6 +283,12 @@ const resolveSelfModMetadata = (args: {
 const buildLifecycleEventPayload = (
   event: AgentLifecycleEvent,
 ): Record<string, unknown> => {
+  const groupFields = event.groupKey
+    ? {
+        groupKey: event.groupKey,
+        ...(event.groupLabel ? { groupLabel: event.groupLabel } : {}),
+      }
+    : {};
   switch (event.type) {
     case "agent-started":
       return {
@@ -292,6 +297,7 @@ const buildLifecycleEventPayload = (
         agentType: event.agentType,
         ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
         ...(event.statusText ? { statusText: event.statusText } : {}),
+        ...groupFields,
       };
     case "agent-completed":
       // `result` is always persisted (even if empty) so the
@@ -308,12 +314,14 @@ const buildLifecycleEventPayload = (
         ...(event.producedFiles?.length
           ? { producedFiles: event.producedFiles }
           : {}),
+        ...groupFields,
       };
     case "agent-failed":
     case "agent-canceled":
       return {
         agentId: event.agentId,
         ...(event.error ? { error: event.error } : {}),
+        ...groupFields,
       };
     case "agent-progress":
       return {
@@ -321,6 +329,7 @@ const buildLifecycleEventPayload = (
         statusText: event.statusText,
         ...(event.description ? { description: event.description } : {}),
         ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
+        ...groupFields,
       };
   }
 };
@@ -362,10 +371,74 @@ export const createAgentOrchestration = (
     }) => Promise<void>;
   },
 ) => {
+  const handleAgentLifecycleEvent = (rawEvent: AgentLifecycleEvent) => {
+    // Enrich every lifecycle event with its thread's work group ONCE,
+    // centrally — emit sites in the manager and workflow service stay
+    // group-unaware. The Activity UI uses this to collapse sibling
+    // agents under one group header.
+    let event = rawEvent;
+    if (!event.groupKey) {
+      // Optional-chained like the other runtimeStore lookups here: test
+      // harnesses stub partial stores.
+      const group = context.runtimeStore.getThreadGroup?.(event.agentId);
+      if (group?.groupKey) {
+        event = {
+          ...event,
+          groupKey: group.groupKey,
+          ...(group.groupLabel ? { groupLabel: group.groupLabel } : {}),
+        };
+      }
+    }
+    // Interjection-turn completions arrive twice (see
+    // `AgentLifecycleEvent.audience`): `orchestrator-only` skips every
+    // display surface (persisted activity row, renderer/run callbacks,
+    // OS notification) so the task UI keeps reading "in progress",
+    // while the deferred `display-only` replay skips the hidden
+    // orchestrator follow-up that already went out.
+    if (event.audience !== "orchestrator-only") {
+      appendAgentLifecycleChatEvent(context, event);
+      if (event.rootRunId) {
+        context.state.runCallbacksByRunId
+          .get(event.rootRunId)
+          ?.onAgentEvent?.(event);
+      }
+    }
+    if (event.audience === "display-only") {
+      return;
+    }
+    const userPrompt = buildAgentEventPrompt(event);
+    if (!userPrompt) {
+      return;
+    }
+    // The follow-up below is in-memory delivery for the active orchestrator
+    // session; this row is the durable record read by the next history rebuild.
+    persistThreadCustomMessage(context.runtimeStore, {
+      threadKey: resolveOrchestratorThreadKey(event.conversationId),
+      customType: "runtime.task_lifecycle",
+      content: [{ type: "text", text: userPrompt }],
+      display: false,
+      timestamp: Date.now(),
+    });
+    void deps.sendMessage({
+      conversationId: event.conversationId,
+      text: userPrompt,
+      uiVisibility: "hidden",
+      agentType: AGENT_IDS.ORCHESTRATOR,
+      deliverAs: "followUp",
+      callbackRunId: event.rootRunId,
+      customType: "runtime.task_lifecycle",
+      display: false,
+      responseTarget: createAgentLifecycleResponseTarget({
+        agentId: event.agentId,
+        eventType: event.type,
+      }),
+    });
+  };
+
   context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaDataDir),
-    resolveTaskThread: ({ conversationId, agentType, threadId }) => {
+    resolveTaskThread: ({ conversationId, agentType, threadId, nameHint, group }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
       }
@@ -373,56 +446,15 @@ export const createAgentOrchestration = (
         conversationId,
         agentType,
         threadId,
+        ...(nameHint ? { nameHint } : {}),
+        ...(group ? { group } : {}),
       });
     },
     listActiveThreads: (conversationId) =>
       context.runtimeStore.listActiveThreads(conversationId),
-    onAgentEvent: (event) => {
-      // Interjection-turn completions arrive twice (see
-      // `AgentLifecycleEvent.audience`): `orchestrator-only` skips every
-      // display surface (persisted activity row, renderer/run callbacks,
-      // OS notification) so the task UI keeps reading "in progress",
-      // while the deferred `display-only` replay skips the hidden
-      // orchestrator follow-up that already went out.
-      if (event.audience !== "orchestrator-only") {
-        appendAgentLifecycleChatEvent(context, event);
-        if (event.rootRunId) {
-          context.state.runCallbacksByRunId
-            .get(event.rootRunId)
-            ?.onAgentEvent?.(event);
-        }
-      }
-      if (event.audience === "display-only") {
-        return;
-      }
-      const userPrompt = buildAgentEventPrompt(event);
-      if (!userPrompt) {
-        return;
-      }
-      // The follow-up below is in-memory delivery for the active orchestrator
-      // session; this row is the durable record read by the next history rebuild.
-      persistThreadCustomMessage(context.runtimeStore, {
-        threadKey: resolveOrchestratorThreadKey(event.conversationId),
-        customType: "runtime.task_lifecycle",
-        content: [{ type: "text", text: userPrompt }],
-        display: false,
-        timestamp: Date.now(),
-      });
-      void deps.sendMessage({
-        conversationId: event.conversationId,
-        text: userPrompt,
-        uiVisibility: "hidden",
-        agentType: AGENT_IDS.ORCHESTRATOR,
-        deliverAs: "followUp",
-        callbackRunId: event.rootRunId,
-        customType: "runtime.task_lifecycle",
-        display: false,
-        responseTarget: createAgentLifecycleResponseTarget({
-          agentId: event.agentId,
-          eventType: event.type,
-        }),
-      });
-    },
+    listGroupMemberThreadIds: (groupKey) =>
+      context.runtimeStore.listGroupMemberThreadIds(groupKey),
+    onAgentEvent: handleAgentLifecycleEvent,
     fetchAgentContext: deps.buildAgentContext,
     runSubagent: async ({
       conversationId,
@@ -437,6 +469,7 @@ export const createAgentOrchestration = (
       abortSignal,
       selfModMetadata,
       selfModRunId,
+      selfModFeature,
       onSelfModRunStarted,
       onSelfModRunClosed,
       shouldContinueSelfModLifecycleAfterInterrupt,
@@ -979,28 +1012,29 @@ export const createAgentOrchestration = (
               return subject || null;
             };
 
-            const featureNamerProvider = async (input: {
-              commits: Array<{
-                commitHash: string;
-                shortHash: string;
-                subject: string;
-                body: string;
-                timestampMs: number;
-                files: string[];
-              }>;
-            }): Promise<Array<{
-              name: string;
-              commitHashes: string[];
-            }> | null> => {
-              const reply = await runOneShotPrompt(
-                buildFeatureSnapshotPrompt(input),
-              );
-              if (!reply) return null;
-              return parseFeatureSnapshotItems(
-                reply,
-                input.commits.map((commit) => commit.commitHash),
-              );
-            };
+            // Durable feature identity, decided at write time: an explicit
+            // identity from the caller (workflow steps commit to their
+            // workflow's feature), else the authoring thread's group key
+            // (several agents serving one request commit to ONE feature),
+            // else its thread key — so a thread resumed months later keeps
+            // extending the same feature instead of spawning a churned
+            // rename.
+            const threadGroup =
+              !selfModFeature && agentId
+                ? context.runtimeStore.getThreadGroup?.(agentId)
+                : undefined;
+            const threadName =
+              !selfModFeature && agentId
+                ? context.runtimeStore.getThreadName?.(agentId)
+                : undefined;
+            const featureId =
+              selfModFeature?.featureId ?? threadGroup?.groupKey ?? agentId;
+            const featureTitle =
+              selfModFeature?.featureTitle ??
+              threadGroup?.groupLabel ??
+              (threadName && threadName !== agentId
+                ? threadName
+                : taskDescription);
 
             await Promise.resolve(
               context.selfModLifecycle!.finalizeRun({
@@ -1010,9 +1044,10 @@ export const createAgentOrchestration = (
                 taskPrompt,
                 conversationId,
                 ...(agentId ? { threadKey: agentId } : {}),
+                ...(featureId ? { featureId } : {}),
+                ...(featureTitle ? { featureTitle } : {}),
                 succeeded: true,
                 commitMessageProvider,
-                featureNamerProvider,
               }),
             );
             onSelfModRunClosed?.(lifecycleRunId);
@@ -1053,6 +1088,20 @@ export const createAgentOrchestration = (
       context.runtimeStore.getAgentRecord?.(threadId) ?? null,
     listAgentRecordsByStatus: (status) =>
       context.runtimeStore.listAgentRecordsByStatus?.(status) ?? [],
+  });
+
+  context.state.workflowService = new WorkflowService({
+    store: context.runtimeStore,
+    runAgent: (args) => {
+      const manager = context.state.localAgentManager;
+      if (!manager) {
+        return Promise.reject(
+          new Error("Local agent manager is unavailable."),
+        );
+      }
+      return manager.runEphemeralAgent(args);
+    },
+    emitLifecycleEvent: handleAgentLifecycleEvent,
   });
 
   const runBlockingLocalAgent = async (
@@ -1125,6 +1174,7 @@ export const createAgentOrchestration = (
   };
 
   const shutdown = () => {
+    context.state.workflowService?.shutdown();
     context.state.localAgentManager?.shutdown();
     shutdownSubagentRuntimes();
   };

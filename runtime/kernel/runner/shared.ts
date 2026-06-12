@@ -132,7 +132,9 @@ export const buildAgentEventPrompt = (
   }
   if (event.type === "agent-completed") {
     lines.push(
-      "agent_state: paused; this agent is not currently working. Use send_input to resume the same thread if follow-up work is needed.",
+      event.agentType === "workflow"
+        ? "agent_state: finished. Workflows cannot take send_input — start a new workflow (or spawn_agent) for follow-up work."
+        : "agent_state: paused; this agent is not currently working. Use send_input to resume the same thread if follow-up work is needed.",
     );
   }
 
