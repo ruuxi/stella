@@ -294,6 +294,46 @@
   white-space: nowrap;
 }
 
+/* ── Activity group rows ──────────────────────────────────────────── */
+
+/* Group headers reuse the task-row/button anatomy; the only additions
+   are the aggregate-status meta, a subtle expand chevron, and the
+   indented member list revealed on expand. */
+
+.chat-workspace-strip__group-status {
+  /* Aggregate text can be a live member's status narration — let it
+     ellipsize instead of pushing the chevron out of the row. */
+  flex-shrink: 1;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-workspace-strip__group-chevron {
+  flex: 0 0 auto;
+  color: var(--text-weak);
+  transition: transform 120ms ease;
+}
+
+.chat-workspace-strip__group-chevron[data-expanded="true"] {
+  transform: rotate(90deg);
+}
+
+/* Compound selector so the member list wins over the base
+   `.chat-workspace-strip__list` margin/padding reset declared below. */
+.chat-workspace-strip__list.chat-workspace-strip__group-members {
+  margin-top: 6px;
+  /* Indent member rows under the header label (icon 15px + gap 8px). */
+  padding-left: 23px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace-strip__group-chevron {
+    transition: none;
+  }
+}
+
 @keyframes chat-workspace-strip__spin {
   from {
     transform: rotate(0deg);

@@ -50,7 +50,16 @@ export const getEventText = (event: EventRecord): string => {
 
 // Persisted lifecycle event payloads (kebab-case `agent-*` events). These
 // mirror the data emitted by `appendAgentLifecycleChatEvent` in the runner.
-type AgentStartedEventPayload = {
+
+/** Work group (`grp-…` key + human label) of the agent's thread. Present
+ *  on lifecycle events whose thread was spawned into a group; absent on
+ *  ungrouped agents and on legacy persisted events. */
+type AgentLifecycleGroupFields = {
+  groupKey?: string
+  groupLabel?: string
+}
+
+type AgentStartedEventPayload = AgentLifecycleGroupFields & {
   agentId: string
   description: string
   agentType: string
@@ -60,24 +69,24 @@ type AgentStartedEventPayload = {
   statusText?: string
 }
 
-type AgentCompletedEventPayload = {
+type AgentCompletedEventPayload = AgentLifecycleGroupFields & {
   agentId: string
   result?: string
   fileChanges?: FileChangeRecord[]
   producedFiles?: ProducedFileRecord[]
 }
 
-type AgentFailedEventPayload = {
+type AgentFailedEventPayload = AgentLifecycleGroupFields & {
   agentId: string
   error?: string
 }
 
-type AgentCanceledEventPayload = {
+type AgentCanceledEventPayload = AgentLifecycleGroupFields & {
   agentId: string
   error?: string
 }
 
-type AgentProgressEventPayload = {
+type AgentProgressEventPayload = AgentLifecycleGroupFields & {
   agentId: string
   statusText: string
 }
@@ -94,6 +103,11 @@ export type TaskItem = {
   runId?: string
   anchorTurnId?: string
   parentAgentId?: string
+  /** Work group this task's agent thread was spawned into. Tasks sharing
+   *  a groupKey collapse under one Activity group header; absent for
+   *  ungrouped agents and legacy persisted events. */
+  groupKey?: string
+  groupLabel?: string
   statusText?: string
   reasoningText?: string
   startedAtMs: number
@@ -401,6 +415,8 @@ export function extractTasksFromActivities(
       agentType: previous?.agentType ?? 'general',
       status: previous?.status ?? 'running',
       parentAgentId: previous?.parentAgentId,
+      groupKey: previous?.groupKey,
+      groupLabel: previous?.groupLabel,
       statusText: normalizeTaskDisplayStatusText(previous?.statusText),
       startedAtMs: previous?.startedAtMs ?? timestamp,
       completedAtMs: previous?.completedAtMs,
@@ -409,6 +425,19 @@ export function extractTasksFromActivities(
       ...overrides,
     }
   }
+
+  // Every lifecycle event type carries the group fields (the runner
+  // enriches them centrally), so any event may upgrade a task from
+  // ungrouped to grouped — but a group-less event never clears them.
+  const groupOverrides = (
+    payload: AgentLifecycleGroupFields,
+  ): Partial<TaskItem> =>
+    payload.groupKey
+      ? {
+          groupKey: payload.groupKey,
+          ...(payload.groupLabel ? { groupLabel: payload.groupLabel } : {}),
+        }
+      : {}
 
   // Once a task reaches a terminal state, only a fresh `agent-started`
   // (send_input re-activation) may revive it. This guards against in-flight
@@ -427,6 +456,8 @@ export function extractTasksFromActivities(
         agentType: event.payload.agentType,
         status: 'running',
         parentAgentId: event.payload.parentAgentId,
+        groupKey: event.payload.groupKey ?? previous?.groupKey,
+        groupLabel: event.payload.groupLabel ?? previous?.groupLabel,
         statusText:
           normalizeTaskDisplayStatusText(event.payload.statusText) ??
           normalizeTaskDisplayStatusText(previous?.statusText) ??
@@ -457,6 +488,7 @@ export function extractTasksFromActivities(
           completedAtMs: undefined,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: undefined,
+          ...groupOverrides(event.payload),
         }),
       )
       continue
@@ -471,6 +503,7 @@ export function extractTasksFromActivities(
           completedAtMs: event.timestamp,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: event.payload.result,
+          ...groupOverrides(event.payload),
         }),
       )
       terminalTaskIds.add(event.payload.agentId)
@@ -486,6 +519,7 @@ export function extractTasksFromActivities(
           completedAtMs: event.timestamp,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: event.payload.error,
+          ...groupOverrides(event.payload),
         }),
       )
       terminalTaskIds.add(event.payload.agentId)
@@ -501,6 +535,7 @@ export function extractTasksFromActivities(
           completedAtMs: event.timestamp,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: event.payload.error ?? 'Canceled',
+          ...groupOverrides(event.payload),
         }),
       )
       terminalTaskIds.add(event.payload.agentId)
@@ -596,6 +631,125 @@ export function getFooterTasksFromTasks(
   )
 }
 
+/**
+ * One collapsed Activity entry for tasks sharing a `groupKey` (agents
+ * spawned into the same work group). Aggregated from the member tasks
+ * by `groupActivityTasks`.
+ */
+export type TaskGroup = {
+  groupKey: string
+  label: string
+  /** Members in spawn order (startedAtMs asc, id tie-break). */
+  members: TaskItem[]
+  /** Aggregate: any member running → running; else any error → error;
+   *  else any completed → completed; else canceled. */
+  status: TaskLifecycleStatus
+  completedCount: number
+  totalCount: number
+  startedAtMs: number
+  completedAtMs?: number
+  lastUpdatedAtMs: number
+}
+
+export type ActivityRow =
+  | { kind: 'task'; task: TaskItem }
+  | { kind: 'group'; group: TaskGroup }
+
+const buildTaskGroup = (groupKey: string, members: TaskItem[]): TaskGroup => {
+  const ordered = [...members].sort(
+    (a, b) => a.startedAtMs - b.startedAtMs || a.id.localeCompare(b.id),
+  )
+  const completedCount = ordered.filter(
+    (member) => member.status === 'completed',
+  ).length
+  const status: TaskLifecycleStatus = ordered.some(
+    (member) => member.status === 'running',
+  )
+    ? 'running'
+    : ordered.some((member) => member.status === 'error')
+      ? 'error'
+      : completedCount > 0
+        ? 'completed'
+        : 'canceled'
+  return {
+    groupKey,
+    label:
+      ordered.find((member) => member.groupLabel)?.groupLabel ??
+      ordered[0].description,
+    members: ordered,
+    status,
+    completedCount,
+    totalCount: ordered.length,
+    startedAtMs: Math.min(...ordered.map((member) => member.startedAtMs)),
+    completedAtMs:
+      status === 'running'
+        ? undefined
+        : Math.max(
+            ...ordered.map(
+              (member) => member.completedAtMs ?? member.lastUpdatedAtMs,
+            ),
+          ),
+    lastUpdatedAtMs: Math.max(
+      ...ordered.map((member) => member.lastUpdatedAtMs),
+    ),
+  }
+}
+
+/**
+ * Collapse tasks sharing a `groupKey` into one `TaskGroup` row (emitted
+ * at the first member's position in the input order). Ungrouped tasks
+ * and singleton groups pass through as plain `task` rows, so legacy
+ * events with no group fields produce exactly the same rows as before.
+ */
+export function groupActivityTasks(
+  tasks: readonly TaskItem[],
+): ActivityRow[] {
+  const membersByGroupKey = new Map<string, TaskItem[]>()
+  for (const task of tasks) {
+    if (!task.groupKey) continue
+    const members = membersByGroupKey.get(task.groupKey)
+    if (members) {
+      members.push(task)
+    } else {
+      membersByGroupKey.set(task.groupKey, [task])
+    }
+  }
+
+  const rows: ActivityRow[] = []
+  const emittedGroupKeys = new Set<string>()
+  for (const task of tasks) {
+    const members = task.groupKey
+      ? membersByGroupKey.get(task.groupKey)
+      : undefined
+    if (!task.groupKey || !members || members.length < 2) {
+      rows.push({ kind: 'task', task })
+      continue
+    }
+    if (emittedGroupKeys.has(task.groupKey)) continue
+    emittedGroupKeys.add(task.groupKey)
+    rows.push({ kind: 'group', group: buildTaskGroup(task.groupKey, members) })
+  }
+  return rows
+}
+
+/**
+ * Aggregate status line for a group header: while running, the most
+ * recently updated running member's status text (the live narration);
+ * otherwise (or when no member has one) the "2 of 3 done" tally.
+ */
+export function getTaskGroupStatusText(group: TaskGroup): string {
+  if (group.status === 'running') {
+    const latestRunning = [...group.members]
+      .filter((member) => member.status === 'running')
+      .sort((a, b) => b.lastUpdatedAtMs - a.lastUpdatedAtMs)[0]
+    const statusText = latestRunning
+      ? normalizeTaskDisplayStatusText(latestRunning.statusText)
+      : undefined
+    if (statusText) return statusText
+  }
+  return `${group.completedCount} of ${group.totalCount} done`
+}
+
 export function mergeFooterTasks(
   persistedTasks: TaskItem[],
   liveTasks?: TaskItem[],
@@ -632,6 +786,10 @@ export function mergeFooterTasks(
             statusText:
               normalizeTaskDisplayStatusText(task.statusText) ??
               normalizeTaskDisplayStatusText(persistedTask.statusText),
+            // Live tasks hydrated from resume snapshots don't carry group
+            // fields; never let them clear the persisted group membership.
+            groupKey: task.groupKey ?? persistedTask.groupKey,
+            groupLabel: task.groupLabel ?? persistedTask.groupLabel,
           }
         : task
     mergedById.set(task.id, nextTask)

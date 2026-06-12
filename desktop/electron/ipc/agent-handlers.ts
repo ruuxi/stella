@@ -76,6 +76,9 @@ type AgentEventPayload = {
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;
+  /** Work group (`grp-…` key + human label) of the agent's thread. */
+  groupKey?: string;
+  groupLabel?: string;
 };
 
 type ActiveRunSnapshot = {
@@ -98,6 +101,8 @@ type ConversationTaskSnapshot = {
   reasoningText?: string;
   result?: string;
   error?: string;
+  groupKey?: string;
+  groupLabel?: string;
 };
 
 const MAX_AGENT_REASONING_CHARS = 8_000;
@@ -227,6 +232,8 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       reasoningText: current?.reasoningText,
       result: current?.result,
       error: current?.error,
+      groupKey: event.groupKey ?? current?.groupKey,
+      groupLabel: event.groupLabel ?? current?.groupLabel,
     };
 
     if (
@@ -655,6 +662,8 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   result: ev.result,
                   error: ev.error,
                   statusText: ev.statusText,
+                  groupKey: ev.groupKey,
+                  groupLabel: ev.groupLabel,
                 },
                 senderWebContentsId,
               );
@@ -998,6 +1007,8 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   result: ev.result,
                   error: ev.error,
                   statusText: ev.statusText,
+                  groupKey: ev.groupKey,
+                  groupLabel: ev.groupLabel,
                 },
                 senderWebContentsId,
               );

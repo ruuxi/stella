@@ -31,7 +31,10 @@ import { Dialog } from "@/ui/dialog";
 import {
   extractTasksFromActivities,
   getTaskDisplayText,
+  getTaskGroupStatusText,
+  groupActivityTasks,
   type EventRecord,
+  type TaskGroup,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import type { ScheduleEntry } from "@/global/schedule/use-conversation-schedules";
@@ -88,12 +91,14 @@ const taskBadge = (task: TaskItem): string => {
 const taskLabel = (task: TaskItem): string =>
   (getTaskDisplayText(task) || task.description || "").trim();
 
-type DoneListItem = { kind: "done"; task: TaskItem };
+type DoneListItem = { kind: "done"; task: TaskItem; grouped?: boolean };
+type DoneGroupListItem = { kind: "doneGroup"; group: TaskGroup };
 type UpNextListItem = { kind: "upNext"; entry: ScheduleEntry };
 type FilesListItem = { kind: "files"; entry: ActivityHistoryFile };
 type LoadingListItem = { kind: "loading"; id: string };
 type ListItem =
   | DoneListItem
+  | DoneGroupListItem
   | UpNextListItem
   | FilesListItem
   | LoadingListItem;
@@ -183,8 +188,10 @@ export function ActivityHistoryDialog({
 
   const filteredDone = useMemo(() => {
     if (!needle) return doneTasks;
-    return doneTasks.filter((task) =>
-      taskLabel(task).toLowerCase().includes(needle),
+    return doneTasks.filter(
+      (task) =>
+        taskLabel(task).toLowerCase().includes(needle) ||
+        (task.groupLabel ?? "").toLowerCase().includes(needle),
     );
   }, [doneTasks, needle]);
 
@@ -204,10 +211,19 @@ export function ActivityHistoryDialog({
 
   const listItems = useMemo<ListItem[]>(() => {
     if (section === "done") {
-      const rows: ListItem[] = filteredDone.map((task) => ({
-        kind: "done",
-        task,
-      }));
+      // Members of the same work group nest under one group entry
+      // (always expanded here); ungrouped/legacy tasks stay flat rows.
+      const rows: ListItem[] = [];
+      for (const row of groupActivityTasks(filteredDone)) {
+        if (row.kind === "task") {
+          rows.push({ kind: "done", task: row.task });
+          continue;
+        }
+        rows.push({ kind: "doneGroup", group: row.group });
+        for (const member of row.group.members) {
+          rows.push({ kind: "done", task: member, grouped: true });
+        }
+      }
       if (hasMoreActivity || isLoadingMoreActivity) {
         rows.push({ kind: "loading", id: "pager-loading" });
       }
@@ -251,7 +267,12 @@ export function ActivityHistoryDialog({
       const { task } = item;
       const label = taskLabel(task);
       return (
-        <div className="activity-history-dialog__row" data-status={task.status}>
+        <div
+          className={`activity-history-dialog__row${
+            item.grouped ? " activity-history-dialog__row--grouped" : ""
+          }`}
+          data-status={task.status}
+        >
           <button
             type="button"
             className="activity-history-dialog__row-button"
@@ -263,6 +284,22 @@ export function ActivityHistoryDialog({
               {taskBadge(task)}
             </span>
           </button>
+        </div>
+      );
+    }
+    if (item.kind === "doneGroup") {
+      const { group } = item;
+      return (
+        <div
+          className="activity-history-dialog__row activity-history-dialog__row--group"
+          data-status={group.status}
+        >
+          <span className="activity-history-dialog__row-text">
+            {group.label.trim()}
+          </span>
+          <span className="activity-history-dialog__row-meta">
+            {getTaskGroupStatusText(group)}
+          </span>
         </div>
       );
     }
@@ -388,6 +425,8 @@ const keyExtractor = (item: ListItem): string => {
   switch (item.kind) {
     case "done":
       return `done:${item.task.id}`;
+    case "doneGroup":
+      return `done-group:${item.group.groupKey}`;
     case "upNext":
       return `up:${item.entry.kind}:${item.entry.id}`;
     case "files":

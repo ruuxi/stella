@@ -4,9 +4,12 @@ import {
   getComposerTaskChipTasks,
   extractTasksFromEvents,
   getTaskDisplayText,
+  getTaskGroupStatusText,
   getFooterTasksFromEvents,
+  groupActivityTasks,
   mergeFooterTasks,
   type EventRecord,
+  type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import {
   getInlineWorkingIndicatorActive,
@@ -223,6 +226,176 @@ describe("extractTasksFromEvents", () => {
     const [task] = extractTasksFromEvents(events);
     expect(task.description).toBe("Inspect settings");
     expect(task.statusText).toBe("Reading files");
+  });
+});
+
+describe("work-group folding", () => {
+  const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
+    description: "Task",
+    agentType: "general",
+    status: "running",
+    startedAtMs: 100,
+    lastUpdatedAtMs: 100,
+    ...overrides,
+  });
+
+  it("threads groupKey/groupLabel from persisted lifecycle payloads onto tasks", () => {
+    const tasks = extractTasksFromEvents([
+      event("1", 100, "agent-started", {
+        agentId: "task-1",
+        description: "Compare flights",
+        agentType: "general",
+        groupKey: "grp-1",
+        groupLabel: "Plan the trip",
+      }),
+      event("2", 150, "agent-started", {
+        agentId: "task-2",
+        description: "Compare hotels",
+        agentType: "general",
+        groupKey: "grp-1",
+        groupLabel: "Plan the trip",
+      }),
+      event("3", 200, "agent-completed", {
+        agentId: "task-1",
+        result: "Done",
+        groupKey: "grp-1",
+        groupLabel: "Plan the trip",
+      }),
+    ]);
+
+    expect(tasks.map((t) => t.groupKey)).toEqual(["grp-1", "grp-1"]);
+    expect(tasks[0]?.groupLabel).toBe("Plan the trip");
+  });
+
+  it("collapses two members of one group into a single header row", () => {
+    const rows = groupActivityTasks([
+      task({ id: "task-1", groupKey: "grp-1", groupLabel: "Plan the trip" }),
+      task({
+        id: "task-2",
+        groupKey: "grp-1",
+        groupLabel: "Plan the trip",
+        startedAtMs: 150,
+        lastUpdatedAtMs: 150,
+      }),
+      task({ id: "task-3", description: "Unrelated" }),
+    ]);
+
+    expect(rows.map((row) => row.kind)).toEqual(["group", "task"]);
+    const group = rows[0]!.kind === "group" ? rows[0].group : undefined;
+    expect(group?.label).toBe("Plan the trip");
+    expect(group?.members.map((member) => member.id)).toEqual([
+      "task-1",
+      "task-2",
+    ]);
+  });
+
+  it("leaves legacy rows without group fields untouched", () => {
+    const tasks = [
+      task({ id: "task-1", description: "Old task" }),
+      task({ id: "task-2", description: "Older task", status: "completed" }),
+    ];
+
+    const rows = groupActivityTasks(tasks);
+    expect(rows).toEqual([
+      { kind: "task", task: tasks[0] },
+      { kind: "task", task: tasks[1] },
+    ]);
+  });
+
+  it("renders a singleton group as a plain task row", () => {
+    const tasks = [
+      task({ id: "task-1", groupKey: "grp-1", groupLabel: "Plan the trip" }),
+    ];
+
+    expect(groupActivityTasks(tasks)).toEqual([
+      { kind: "task", task: tasks[0] },
+    ]);
+  });
+
+  it("aggregates the header status across member states", () => {
+    const running = groupActivityTasks([
+      task({
+        id: "task-1",
+        groupKey: "grp-1",
+        status: "completed",
+        completedAtMs: 200,
+        lastUpdatedAtMs: 200,
+      }),
+      task({
+        id: "task-2",
+        groupKey: "grp-1",
+        statusText: "Comparing 12 flight options",
+        lastUpdatedAtMs: 300,
+      }),
+      task({ id: "task-3", groupKey: "grp-1", lastUpdatedAtMs: 250 }),
+    ]);
+    expect(running[0]!.kind).toBe("group");
+    const runningGroup = running[0]!.kind === "group" ? running[0].group : undefined;
+    expect(runningGroup?.status).toBe("running");
+    // Most recently updated running member's narration wins while running.
+    expect(getTaskGroupStatusText(runningGroup!)).toBe(
+      "Comparing 12 flight options",
+    );
+
+    const done = groupActivityTasks([
+      task({
+        id: "task-1",
+        groupKey: "grp-1",
+        status: "completed",
+        completedAtMs: 200,
+        lastUpdatedAtMs: 200,
+      }),
+      task({
+        id: "task-2",
+        groupKey: "grp-1",
+        status: "completed",
+        completedAtMs: 300,
+        lastUpdatedAtMs: 300,
+      }),
+    ]);
+    const doneGroup = done[0]!.kind === "group" ? done[0].group : undefined;
+    expect(doneGroup?.status).toBe("completed");
+    expect(getTaskGroupStatusText(doneGroup!)).toBe("2 of 2 done");
+
+    const failed = groupActivityTasks([
+      task({
+        id: "task-1",
+        groupKey: "grp-1",
+        status: "completed",
+        completedAtMs: 200,
+        lastUpdatedAtMs: 200,
+      }),
+      task({
+        id: "task-2",
+        groupKey: "grp-1",
+        status: "error",
+        completedAtMs: 300,
+        lastUpdatedAtMs: 300,
+      }),
+    ]);
+    const failedGroup = failed[0]!.kind === "group" ? failed[0].group : undefined;
+    expect(failedGroup?.status).toBe("error");
+    expect(getTaskGroupStatusText(failedGroup!)).toBe("1 of 2 done");
+  });
+
+  it("keeps the persisted group membership when live tasks lack group fields", () => {
+    const persistedTasks = extractTasksFromEvents([
+      event("1", 100, "agent-started", {
+        agentId: "task-1",
+        description: "Compare flights",
+        agentType: "general",
+        groupKey: "grp-1",
+        groupLabel: "Plan the trip",
+      }),
+    ]);
+
+    // Resume-snapshot live tasks carry no group fields.
+    const [merged] = mergeFooterTasks(persistedTasks, [
+      task({ id: "task-1", description: "Compare flights", runId: "run-1" }),
+    ]);
+
+    expect(merged?.groupKey).toBe("grp-1");
+    expect(merged?.groupLabel).toBe("Plan the trip");
   });
 });
 

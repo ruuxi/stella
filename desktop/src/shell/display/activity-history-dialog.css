@@ -164,6 +164,17 @@
   color: color-mix(in oklch, var(--foreground) 55%, var(--destructive));
 }
 
+/* Work-group nesting in the Completed section: one group entry
+   (groupLabel + aggregate tally) with its member rows indented
+   beneath it. Ungrouped rows are untouched. */
+.activity-history-dialog__row--group .activity-history-dialog__row-text {
+  font-weight: var(--weight-medium);
+}
+
+.activity-history-dialog__row--grouped {
+  padding-left: 26px;
+}
+
 .activity-history-dialog__row-text {
   flex: 1;
   min-width: 0;
