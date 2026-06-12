@@ -3,6 +3,8 @@ import type {
   LocalCronJobRecord,
   LocalHeartbeatConfigRecord,
   ScheduledConversationEvent,
+  SelfModFeatureRosterEntry,
+  SelfModFeatureRosterPage,
   SelfModFeatureSnapshot,
   SelfModCommitSummary,
   SelfModHmrState,
@@ -32,6 +34,8 @@ export type {
   LocalCronJobRecord,
   LocalHeartbeatConfigRecord,
   ScheduledConversationEvent,
+  SelfModFeatureRosterEntry,
+  SelfModFeatureRosterPage,
   SelfModFeatureSnapshot,
   SelfModCommitSummary,
   SelfModHmrState,
@@ -135,6 +139,7 @@ export const METHOD_NAMES = {
   STORE_INSTALL_FROM_BLUEPRINT: "store.installFromBlueprint",
   STORE_UNINSTALL_MOD: "store.uninstallMod",
   SELF_MOD_FEATURE_SNAPSHOT_READ: "selfMod.featureSnapshot.read",
+  SELF_MOD_FEATURE_ROSTER_LIST: "selfMod.featureRoster.list",
   SCHEDULE_LIST_CRON_JOBS: "schedule.listCronJobs",
   SCHEDULE_LIST_HEARTBEATS: "schedule.listHeartbeats",
   SCHEDULE_LIST_EVENTS: "schedule.listConversationEvents",
@@ -221,6 +226,8 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_UNINSTALL_STORE_MOD: "internal.worker.uninstallStoreMod",
   INTERNAL_WORKER_FEATURE_SNAPSHOT_READ:
     "internal.worker.selfMod.featureSnapshotRead",
+  INTERNAL_WORKER_FEATURE_ROSTER_LIST:
+    "internal.worker.selfMod.featureRosterList",
   INTERNAL_WORKER_RESUME_HMR: "internal.worker.resumeHmr",
   INTERNAL_WORKER_SELF_MOD_EXTERNAL_BEGIN:
     "internal.worker.selfMod.externalBegin",
@@ -668,6 +675,9 @@ export type RuntimeAgentEventPayload = {
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;
+  /** Work group (`grp-…` key + human label) of the agent's thread. */
+  groupKey?: string;
+  groupLabel?: string;
   responseTarget?:
     | { type: "user_turn" }
     | { type: "agent_turn"; agentId: string }
@@ -787,6 +797,13 @@ export type StorePublishArgs = {
  */
 export type StorePublishSelectedFeaturesArgs = {
   attachedFeatureNames: string[];
+  /**
+   * Roster featureIds parallel to `attachedFeatureNames` (`""` for legacy
+   * entries without one). Feature names are not unique, so the worker
+   * resolves by id first and only falls back to the name when the id is
+   * blank.
+   */
+  attachedFeatureIds?: string[];
   packageId: string;
   asUpdate: boolean;
   displayName?: string;

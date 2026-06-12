@@ -2,12 +2,22 @@ import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  buildStorePublishFeatureSnapshot,
   buildStoreReleaseRedactor,
   collectStoreReleaseCommits,
   collectStoreReleaseGitArtifact,
+  normalizeStoreThreadFeatureIds,
+  normalizeStoreThreadFeatureNames,
 } from "../../../../runtime/worker/store-thread-helpers.js";
+import {
+  getDesktopDatabasePath,
+  initializeDesktopDatabase,
+} from "../../../../runtime/kernel/storage/database-init.js";
+import type { SqliteDatabase } from "../../../../runtime/kernel/storage/shared.js";
+import { StoreModStore } from "../../../../runtime/kernel/storage/store-mod-store.js";
 
 const git = (cwd: string, args: string[]) => {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -233,5 +243,197 @@ describe("Store release redaction", () => {
         },
       }),
     ).rejects.toThrow(/credential|API key/i);
+  });
+});
+
+describe("Store publish feature selection resolution", () => {
+  let repoRoot = "";
+  let olderCommit = "";
+  let newerCommit = "";
+
+  // Roster feature names are NOT unique: two threads with the same
+  // description freeze the same name onto two distinct features. The
+  // snapshot lists newest-first, so name-only resolution always lands on
+  // the newer one — ids are what pin a selection to the right commits.
+  const duplicateNameSnapshot = () => ({
+    generatedAt: Date.now(),
+    items: [
+      {
+        name: "Status Widget",
+        featureId: "feat-newer",
+        commitHashes: [newerCommit],
+      },
+      {
+        name: "Status Widget",
+        featureId: "feat-older",
+        commitHashes: [olderCommit],
+      },
+    ],
+  });
+
+  beforeEach(async () => {
+    repoRoot = await initRepo();
+    await writeFile(
+      path.join(repoRoot, "src/older.ts"),
+      "export const older = true;\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", "src/older.ts"]);
+    git(repoRoot, ["commit", "-q", "-m", "Older duplicate feature"]);
+    olderCommit = git(repoRoot, ["rev-parse", "HEAD"]);
+    await writeFile(
+      path.join(repoRoot, "src/newer.ts"),
+      "export const newer = true;\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", "src/newer.ts"]);
+    git(repoRoot, ["commit", "-q", "-m", "Newer duplicate feature"]);
+    newerCommit = git(repoRoot, ["rev-parse", "HEAD"]);
+  });
+
+  afterEach(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  it("resolves a same-named feature by its featureId instead of first name match", async () => {
+    const commits = await collectStoreReleaseCommits({
+      repoRoot,
+      attachedFeatureNames: ["Status Widget"],
+      attachedFeatureIds: ["feat-older"],
+      snapshot: duplicateNameSnapshot(),
+    });
+
+    expect(commits.map((commit) => commit.hash)).toEqual([olderCommit]);
+  });
+
+  it("publishes the union of commit sets when both same-named features are selected", async () => {
+    const commits = await collectStoreReleaseCommits({
+      repoRoot,
+      attachedFeatureNames: ["Status Widget", "Status Widget"],
+      attachedFeatureIds: ["feat-older", "feat-newer"],
+      snapshot: duplicateNameSnapshot(),
+    });
+
+    expect(commits.map((commit) => commit.hash)).toEqual([
+      olderCommit,
+      newerCommit,
+    ]);
+  });
+
+  it("falls back to name resolution for legacy selections without ids", async () => {
+    const withoutIdsArray = await collectStoreReleaseCommits({
+      repoRoot,
+      attachedFeatureNames: ["Status Widget"],
+      snapshot: duplicateNameSnapshot(),
+    });
+    expect(withoutIdsArray.map((commit) => commit.hash)).toEqual([
+      newerCommit,
+    ]);
+
+    const withBlankIdPlaceholder = await collectStoreReleaseCommits({
+      repoRoot,
+      attachedFeatureNames: ["Status Widget"],
+      attachedFeatureIds: [""],
+      snapshot: duplicateNameSnapshot(),
+    });
+    expect(withBlankIdPlaceholder.map((commit) => commit.hash)).toEqual([
+      newerCommit,
+    ]);
+  });
+});
+
+describe("Store publish selection limit", () => {
+  it("accepts up to 12 selected changes", () => {
+    const names = Array.from({ length: 12 }, (_, index) => `Feature ${index}`);
+    expect(normalizeStoreThreadFeatureNames(names)).toHaveLength(12);
+    expect(
+      normalizeStoreThreadFeatureIds(
+        names.map((_, index) => `feat-${index}`),
+      ),
+    ).toHaveLength(12);
+  });
+
+  it("throws loudly instead of silently truncating more than 12 selections", () => {
+    const names = Array.from({ length: 13 }, (_, index) => `Feature ${index}`);
+    expect(() => normalizeStoreThreadFeatureNames(names)).toThrow(
+      /at most 12/,
+    );
+    expect(() =>
+      normalizeStoreThreadFeatureIds(names.map((_, index) => `feat-${index}`)),
+    ).toThrow(/at most 12/);
+  });
+});
+
+describe("buildStorePublishFeatureSnapshot", () => {
+  let rootPath = "";
+  let db: SqliteDatabase;
+  let store: StoreModStore;
+
+  beforeEach(() => {
+    rootPath = path.join(
+      os.tmpdir(),
+      `stella-store-publish-snapshot-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    db = new DatabaseSync(getDesktopDatabasePath(rootPath), {
+      timeout: 5_000,
+    }) as unknown as SqliteDatabase;
+    initializeDesktopDatabase(db);
+    store = new StoreModStore(db);
+  });
+
+  afterEach(async () => {
+    db.close();
+    await rm(rootPath, { recursive: true, force: true });
+  });
+
+  it("resolves roster features beyond the persisted snapshot window", () => {
+    for (let index = 0; index < 25; index++) {
+      store.upsertFeatureRosterEntry({
+        featureId: `feature-${index}`,
+        name: `Feature ${index}`,
+        commitHash: `${index}`.padStart(40, "0"),
+        committedAt: 1_000 + index,
+      });
+    }
+    store.writeFeatureSnapshot(store.buildSnapshotFromRoster());
+    expect(store.readFeatureSnapshot()?.items).toHaveLength(20);
+
+    const snapshot = buildStorePublishFeatureSnapshot(store);
+    expect(snapshot?.items).toHaveLength(25);
+    const oldest = snapshot?.items.find((item) => item.name === "Feature 0");
+    expect(oldest?.featureId).toBe("feature-0");
+    expect(oldest?.commitHashes).toEqual(["0".padStart(40, "0")]);
+  });
+
+  it("keeps persisted-snapshot items the roster does not know about", () => {
+    store.upsertFeatureRosterEntry({
+      featureId: "feature-known",
+      name: "Known Feature",
+      commitHash: "a".repeat(40),
+      committedAt: 1_000,
+    });
+    store.writeFeatureSnapshot({
+      items: [{ name: "Legacy Feature", commitHashes: ["b".repeat(40)] }],
+      generatedAt: 2_000,
+    });
+
+    const snapshot = buildStorePublishFeatureSnapshot(store);
+    expect(snapshot?.items.map((item) => item.name)).toEqual([
+      "Known Feature",
+      "Legacy Feature",
+    ]);
+  });
+
+  it("falls back to the persisted snapshot when the roster is empty", () => {
+    store.writeFeatureSnapshot({
+      items: [{ name: "Legacy Feature", commitHashes: ["c".repeat(40)] }],
+      generatedAt: 3_000,
+    });
+
+    const snapshot = buildStorePublishFeatureSnapshot(store);
+    expect(snapshot?.generatedAt).toBe(3_000);
+    expect(snapshot?.items.map((item) => item.name)).toEqual([
+      "Legacy Feature",
+    ]);
   });
 });

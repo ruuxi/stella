@@ -13,6 +13,8 @@ import { promisify } from "node:util";
 import { deflateSync } from "node:zlib";
 import { setupEnvironment } from "dugite";
 import type {
+  SelfModFeatureSnapshot,
+  SelfModFeatureSnapshotItem,
   StoreReleaseCommit,
   StoreReleaseGitArtifact,
   StoreReleaseGitObjectUpload,
@@ -22,14 +24,70 @@ import type { StoreModStore } from "../kernel/storage/store-mod-store.js";
 
 const execFileAsync = promisify(execFile);
 
-export const normalizeStoreThreadFeatureNames = (value: unknown): string[] =>
-  Array.isArray(value)
+const STORE_RELEASE_SELECTED_FEATURE_LIMIT = 12;
+
+const assertStoreReleaseSelectedFeatureLimit = (count: number): void => {
+  if (count > STORE_RELEASE_SELECTED_FEATURE_LIMIT) {
+    throw new Error(
+      `Store publish supports at most ${STORE_RELEASE_SELECTED_FEATURE_LIMIT} selected changes at once. Deselect some changes and publish them as a separate release.`,
+    );
+  }
+};
+
+export const normalizeStoreThreadFeatureNames = (value: unknown): string[] => {
+  const names = Array.isArray(value)
     ? value
         .filter((entry): entry is string => typeof entry === "string")
         .map((entry) => entry.trim())
         .filter(Boolean)
-        .slice(0, 12)
     : [];
+  assertStoreReleaseSelectedFeatureLimit(names.length);
+  return names;
+};
+
+/**
+ * Normalizes the optional featureId array that parallels the selected
+ * feature names. Position-preserving: non-string entries become `""` so
+ * index pairing with the names survives (a blank id means "legacy entry,
+ * resolve by name").
+ */
+export const normalizeStoreThreadFeatureIds = (value: unknown): string[] => {
+  const ids = Array.isArray(value)
+    ? value.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    : [];
+  assertStoreReleaseSelectedFeatureLimit(ids.length);
+  return ids;
+};
+
+/**
+ * Publish-time feature snapshot: every roster feature (with its commit
+ * hashes) plus any persisted-snapshot items the roster doesn't know about.
+ * The persisted snapshot only materializes the roster head, so resolving
+ * selected names against it alone would make features surfaced through the
+ * side panel's "Show older" pagination unpublishable.
+ */
+export const buildStorePublishFeatureSnapshot = (
+  store: StoreModStore,
+): SelfModFeatureSnapshot | null => {
+  const snapshot = store.readFeatureSnapshot();
+  const total = store.countFeatureRoster();
+  if (total === 0) return snapshot;
+  const items: SelfModFeatureSnapshotItem[] = [];
+  for (let offset = 0; offset < total; offset += 200) {
+    for (const entry of store.listFeatureRoster({ limit: 200, offset })) {
+      items.push({
+        name: entry.name,
+        commitHashes: store.listFeatureCommitHashes(entry.featureId),
+        featureId: entry.featureId,
+      });
+    }
+  }
+  const rosterNames = new Set(items.map((item) => item.name));
+  for (const item of snapshot?.items ?? []) {
+    if (!rosterNames.has(item.name)) items.push(item);
+  }
+  return { items, generatedAt: snapshot?.generatedAt ?? Date.now() };
+};
 
 const STORE_RELEASE_GIT_SHOW_EXCLUDE_PATHSPECS = [
   ":(exclude,glob)**/*.min.js",
@@ -602,6 +660,8 @@ const applyStoreSnapshotSquash = async (args: {
 export const collectStoreReleaseGitArtifact = async (args: {
   repoRoot: string;
   attachedFeatureNames: string[];
+  /** Parallel to `attachedFeatureNames`; see collectStoreReleaseCommitHashes. */
+  attachedFeatureIds?: string[];
   snapshot: ReturnType<StoreModStore["readFeatureSnapshot"]>;
 }): Promise<StoreReleaseGitArtifactBuild | undefined> => {
   const ordered = await collectStoreReleaseCommitHashes(args);
@@ -798,13 +858,24 @@ export const buildStoreReleaseRedactor = (): ((input: string) => string) => {
 const collectStoreReleaseCommitHashes = async (args: {
   repoRoot: string;
   attachedFeatureNames: string[];
+  /**
+   * Optional featureIds parallel to `attachedFeatureNames` (`""` for legacy
+   * entries without one). Roster feature names are not unique, so id
+   * resolution is authoritative; name matching is only a fallback for
+   * entries that never had an id.
+   */
+  attachedFeatureIds?: string[];
   snapshot: ReturnType<StoreModStore["readFeatureSnapshot"]>;
 }): Promise<string[]> => {
   if (args.attachedFeatureNames.length === 0) return [];
   const seen = new Set<string>();
   const selected: string[] = [];
-  for (const name of args.attachedFeatureNames) {
-    const item = args.snapshot?.items.find((entry) => entry.name === name);
+  for (let index = 0; index < args.attachedFeatureNames.length; index += 1) {
+    const name = args.attachedFeatureNames[index]!;
+    const featureId = args.attachedFeatureIds?.[index]?.trim() ?? "";
+    const item = featureId
+      ? args.snapshot?.items.find((entry) => entry.featureId === featureId)
+      : args.snapshot?.items.find((entry) => entry.name === name);
     for (const rawHash of item?.commitHashes ?? []) {
       const hash = rawHash.trim();
       if (!hash || seen.has(hash)) continue;
@@ -822,6 +893,8 @@ const collectStoreReleaseCommitHashes = async (args: {
 export const collectStoreReleaseCommits = async (args: {
   repoRoot: string;
   attachedFeatureNames: string[];
+  /** Parallel to `attachedFeatureNames`; see collectStoreReleaseCommitHashes. */
+  attachedFeatureIds?: string[];
   snapshot: ReturnType<StoreModStore["readFeatureSnapshot"]>;
 }): Promise<StoreReleaseCommit[]> => {
   const ordered = await collectStoreReleaseCommitHashes(args);

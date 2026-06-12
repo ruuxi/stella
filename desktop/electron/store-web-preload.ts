@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld("stellaDesktopStore", {
     invoke("storeWeb:uninstallMod", { packageId }),
   publishSelectedFeatures: (payload: {
     attachedFeatureNames: string[];
+    attachedFeatureIds?: string[];
     packageId: string;
     asUpdate: boolean;
     displayName?: string;

@@ -7,18 +7,24 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import {
+  featureKeyOf,
   refreshFeatureSnapshot,
   storeSidePanelStore,
   useStoreSidePanelState,
 } from "./store-side-panel-store";
 import "./store.css";
-import { PublishDialog } from "./store-side-panel/PublishDialog";
+import {
+  PublishDialog,
+  type PublishFeatureRef,
+} from "./store-side-panel/PublishDialog";
 import { RecentChangesList } from "./store-side-panel/RecentChangesList";
 import { StoreIllustration } from "@/shell/display/illustrations/StoreIllustration";
 
 export function StoreSidePanel() {
   const state = useStoreSidePanelState();
-  const [publishFeatureNames, setPublishFeatureNames] = useState<string[]>([]);
+  const [publishFeatures, setPublishFeatures] = useState<PublishFeatureRef[]>(
+    [],
+  );
   const [publishOpen, setPublishOpen] = useState(false);
 
   useEffect(() => {
@@ -29,16 +35,21 @@ export function StoreSidePanel() {
   }, []);
 
   const handlePublishSelected = useCallback(() => {
-    const names = Array.from(state.selectedFeatureNames);
-    if (names.length === 0) return;
-    setPublishFeatureNames(names);
+    // Selection is keyed on featureId. Display names are NOT unique across
+    // roster features, so the publish contract carries the id alongside the
+    // name; only legacy rows without one fall back to name resolution.
+    const features = [...(state.snapshot?.items ?? []), ...state.olderEntries]
+      .filter((item) => state.selectedFeatureKeys.has(featureKeyOf(item)))
+      .map((item) => ({ name: item.name, featureId: item.featureId }));
+    if (features.length === 0) return;
+    setPublishFeatures(features);
     setPublishOpen(true);
-  }, [state.selectedFeatureNames]);
+  }, [state.snapshot, state.olderEntries, state.selectedFeatureKeys]);
 
   const handlePublished = useCallback(
     async (_args: { releaseNumber: number }) => {
       storeSidePanelStore.clearSelections();
-      setPublishFeatureNames([]);
+      setPublishFeatures([]);
       setPublishOpen(false);
     },
     [],
@@ -52,7 +63,10 @@ export function StoreSidePanel() {
       <RecentChangesList
         snapshot={state.snapshot}
         snapshotLoading={state.snapshotLoading}
-        selectedFeatureNames={state.selectedFeatureNames}
+        selectedFeatureKeys={state.selectedFeatureKeys}
+        olderEntries={state.olderEntries}
+        rosterTotal={state.rosterTotal}
+        olderLoading={state.olderLoading}
         onPublishSelected={() => void handlePublishSelected()}
       />
 
@@ -70,10 +84,10 @@ export function StoreSidePanel() {
 
       <PublishDialog
         open={publishOpen}
-        selectedFeatureNames={publishFeatureNames}
+        selectedFeatures={publishFeatures}
         onClose={() => {
           setPublishOpen(false);
-          setPublishFeatureNames([]);
+          setPublishFeatures([]);
         }}
         onPublished={handlePublished}
       />
