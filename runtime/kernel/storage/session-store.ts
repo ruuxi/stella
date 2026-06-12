@@ -1,9 +1,12 @@
 import type { TaskLifecycleStatus } from "../../contracts/agent-runtime.js";
 import {
   MAX_ACTIVE_RUNTIME_THREADS,
+  MAX_GROUP_MEMBER_THREADS,
+  THREAD_GROUP_KEY_PREFIX,
   type RuntimeThreadRecord,
   normalizeRuntimeThreadId,
 } from "../runtime-threads.js";
+import { slugify } from "../shared/slug.js";
 import type { SqliteDatabase } from "./shared.js";
 import {
   listPendingOrchestratorReverts as listPendingOrchestratorRevertsImpl,
@@ -2557,6 +2560,8 @@ export class SessionStore {
     lastUsedAt: number;
     description: string | null;
     summary: string | null;
+    groupKey?: string | null;
+    groupLabel?: string | null;
   }): RuntimeThreadRecord {
     return {
       threadId: row.threadId,
@@ -2568,147 +2573,328 @@ export class SessionStore {
       lastUsedAt: row.lastUsedAt,
       ...(row.description ? { description: row.description } : {}),
       ...(row.summary ? { summary: row.summary } : {}),
+      ...(row.groupKey ? { groupKey: row.groupKey } : {}),
+      ...(row.groupLabel ? { groupLabel: row.groupLabel } : {}),
     };
   }
 
-  listActiveThreads(conversationId: string): RuntimeThreadRecord[] {
-    const rows = this.db
-      .prepare(
-        `
+  private static readonly RUNTIME_THREAD_SELECT = `
       SELECT
         thread_key AS threadId,
         runtime_threads.conversation_id AS conversationId,
-        name,
+        runtime_threads.name AS name,
         runtime_threads.agent_type AS agentType,
         runtime_threads.status AS status,
-        created_at AS createdAt,
-        last_used_at AS lastUsedAt,
+        runtime_threads.created_at AS createdAt,
+        runtime_threads.last_used_at AS lastUsedAt,
         runtime_threads.summary AS summary,
+        runtime_threads.group_key AS groupKey,
+        runtime_threads.group_label AS groupLabel,
         runtime_agents.description AS description
       FROM runtime_threads
       LEFT JOIN runtime_agents
         ON runtime_agents.thread_id = runtime_threads.thread_key
+  `;
+
+  listActiveThreads(conversationId: string): RuntimeThreadRecord[] {
+    // Eviction caps SLOTS (groups + ungrouped threads) at
+    // MAX_ACTIVE_RUNTIME_THREADS, and group membership is capped at
+    // MAX_GROUP_MEMBER_THREADS, so the row LIMIT here is the product —
+    // a safety bound, not the budgeting mechanism.
+    const rows = this.db
+      .prepare(
+        `
+      ${SessionStore.RUNTIME_THREAD_SELECT}
       WHERE runtime_threads.conversation_id = ?
         AND runtime_threads.status = 'active'
       ORDER BY runtime_threads.last_used_at DESC
       LIMIT ?
     `,
       )
-      .all(conversationId, MAX_ACTIVE_RUNTIME_THREADS) as Array<{
-      threadId: string;
-      conversationId: string;
-      name: string;
-      agentType: string;
-      status: "active" | "evicted";
-      createdAt: number;
-      lastUsedAt: number;
-      description: string | null;
-      summary: string | null;
-    }>;
+      .all(
+        conversationId,
+        MAX_ACTIVE_RUNTIME_THREADS * MAX_GROUP_MEMBER_THREADS,
+      ) as Array<Parameters<SessionStore["deserializeRuntimeThread"]>[0]>;
     return rows.map((row) => this.deserializeRuntimeThread(row));
   }
 
-  resolveOrCreateActiveThread(args: {
+  /**
+   * Search EVERY thread the conversation has ever spawned — including
+   * evicted ones — by key, name, summary, group label, and agent
+   * description. Tokens are AND-ed; each token may match any column.
+   * No query returns the most recent work first. The orchestrator's own
+   * thread is excluded (it is the conversation, not work).
+   */
+  searchThreads(args: {
     conversationId: string;
-    agentType: string;
-    threadId?: string;
-  }): { threadId: string; reused: boolean } {
-    const requestedThreadId = normalizeRuntimeThreadId(args.threadId ?? "");
-    const existing = requestedThreadId
-      ? (this.db
-          .prepare(
-            `
-        SELECT
-          thread_key AS threadId,
-          conversation_id AS conversationId,
-          agent_type AS agentType,
-          status,
-          created_at AS createdAt,
-          last_used_at AS lastUsedAt,
-          summary
+    query?: string;
+    limit?: number;
+  }): RuntimeThreadRecord[] {
+    const limit = Math.max(1, Math.min(25, Math.floor(args.limit ?? 12)));
+    const tokens = (args.query ?? "")
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+      .slice(0, 6);
+    const escapeLike = (value: string) =>
+      value.replace(/([\\%_])/g, "\\$1");
+    const tokenClause = `(
+        thread_key LIKE ? ESCAPE '\\'
+        OR runtime_threads.name LIKE ? ESCAPE '\\'
+        OR runtime_threads.summary LIKE ? ESCAPE '\\'
+        OR runtime_threads.group_label LIKE ? ESCAPE '\\'
+        OR runtime_threads.group_key LIKE ? ESCAPE '\\'
+        OR runtime_agents.description LIKE ? ESCAPE '\\'
+      )`;
+    const where = [
+      "runtime_threads.conversation_id = ?",
+      "runtime_threads.agent_type != 'orchestrator'",
+      "thread_key != ?",
+      // Implicit transcript rows (ephemeral workflow agents, internal
+      // subagent sessions) are not orchestrator-resumable work — offering
+      // them as results would hand the model dead "resumable" ids.
+      "thread_key NOT LIKE '%::subagent::%'",
+      ...tokens.map(() => tokenClause),
+    ].join("\n        AND ");
+    const params: Array<string | number> = [
+      args.conversationId,
+      args.conversationId,
+    ];
+    for (const token of tokens) {
+      const pattern = `%${escapeLike(token)}%`;
+      params.push(pattern, pattern, pattern, pattern, pattern, pattern);
+    }
+    params.push(limit);
+    const rows = this.db
+      .prepare(
+        `
+      ${SessionStore.RUNTIME_THREAD_SELECT}
+      WHERE ${where}
+      ORDER BY runtime_threads.last_used_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(...params) as Array<
+      Parameters<SessionStore["deserializeRuntimeThread"]>[0]
+    >;
+    return rows.map((row) => this.deserializeRuntimeThread(row));
+  }
+
+  getThreadGroup(
+    threadKey: string,
+  ): { groupKey?: string; groupLabel?: string } | undefined {
+    const row = this.db
+      .prepare(
+        `
+      SELECT group_key AS groupKey, group_label AS groupLabel
+      FROM runtime_threads
+      WHERE thread_key = ?
+      LIMIT 1
+    `,
+      )
+      .get(threadKey) as
+      | { groupKey: string | null; groupLabel: string | null }
+      | undefined;
+    if (!row) return undefined;
+    return {
+      ...(row.groupKey ? { groupKey: row.groupKey } : {}),
+      ...(row.groupLabel ? { groupLabel: row.groupLabel } : {}),
+    };
+  }
+
+  listGroupMemberThreadIds(groupKey: string): string[] {
+    const rows = this.db
+      .prepare(
+        `
+      SELECT thread_key AS threadId
+      FROM runtime_threads
+      WHERE group_key = ?
+      ORDER BY last_used_at DESC
+    `,
+      )
+      .all(groupKey) as Array<{ threadId: string }>;
+    return rows.map((row) => row.threadId);
+  }
+
+  /**
+   * Active work slots for a conversation: each group is one slot, each
+   * ungrouped thread is one slot. Eviction and the active-work budget
+   * operate on slots so a multi-agent fan-out costs one of the
+   * MAX_ACTIVE_RUNTIME_THREADS slots, not one per member.
+   */
+  private listActiveWorkSlots(
+    conversationId: string,
+  ): Array<{ slot: string; lastUsedAt: number }> {
+    return this.db
+      .prepare(
+        `
+      SELECT
+        COALESCE(group_key, thread_key) AS slot,
+        MAX(last_used_at) AS lastUsedAt
+      FROM runtime_threads
+      WHERE conversation_id = ?
+        AND status = 'active'
+      GROUP BY COALESCE(group_key, thread_key)
+      ORDER BY lastUsedAt ASC
+    `,
+      )
+      .all(conversationId) as Array<{ slot: string; lastUsedAt: number }>;
+  }
+
+  /** Flip every thread in the least-recently-used active slot to 'evicted'. */
+  private evictOldestWorkSlot(conversationId: string): void {
+    const oldest = this.listActiveWorkSlots(conversationId)[0];
+    if (!oldest) return;
+    this.db
+      .prepare(
+        `
+      UPDATE runtime_threads
+      SET status = 'evicted'
+      WHERE conversation_id = ?
+        AND status = 'active'
+        AND COALESCE(group_key, thread_key) = ?
+    `,
+      )
+      .run(conversationId, oldest.slot);
+  }
+
+  /**
+   * Reactivate a thread and — when it belongs to a group — every sibling
+   * in that group, evicting the LRU slot first when the conversation is
+   * at its slot budget. Sibling context is what makes resuming old work
+   * useful, so resurrection is all-or-nothing per slot.
+   */
+  private reactivateWorkSlot(
+    conversationId: string,
+    slot: string,
+  ): void {
+    if (
+      this.listActiveWorkSlots(conversationId).length >=
+      MAX_ACTIVE_RUNTIME_THREADS
+    ) {
+      this.evictOldestWorkSlot(conversationId);
+    }
+    this.db
+      .prepare(
+        `
+      UPDATE runtime_threads
+      SET status = 'active'
+      WHERE conversation_id = ?
+        AND COALESCE(group_key, thread_key) = ?
+    `,
+      )
+      .run(conversationId, slot);
+  }
+
+  private threadOrGroupKeyExists(key: string): boolean {
+    const row = this.db
+      .prepare(
+        `
+      SELECT 1 AS hit
+      FROM runtime_threads
+      WHERE thread_key = ? OR group_key = ?
+      LIMIT 1
+    `,
+      )
+      .get(key, key) as { hit: number } | undefined;
+    return Boolean(row);
+  }
+
+  /**
+   * Mint a key unique across BOTH thread keys and group keys (they share
+   * one id namespace so `pause_agent`/`send_input` routing is never
+   * ambiguous). Collisions get `-2`, `-3`, … suffixes.
+   */
+  private mintUniqueKey(base: string): string {
+    if (!this.threadOrGroupKeyExists(base)) return base;
+    for (let ordinal = 2; ; ordinal++) {
+      const candidate = `${base}-${ordinal}`;
+      if (!this.threadOrGroupKeyExists(candidate)) return candidate;
+    }
+  }
+
+  /**
+   * Resolve the `group` value passed to spawn_agent: an existing
+   * `grp-…` id attaches to that group (resurrecting it when evicted), a
+   * label create-or-attaches against the conversation's ACTIVE groups by
+   * normalized label (so parallel same-label spawns land in one group),
+   * and anything else mints a fresh group.
+   */
+  private resolveSpawnGroup(
+    conversationId: string,
+    rawGroup: string,
+  ): { groupKey: string; groupLabel: string; isNewGroup: boolean } {
+    const trimmed = rawGroup.trim().replace(/\s+/g, " ").slice(0, 120);
+    if (trimmed.startsWith(THREAD_GROUP_KEY_PREFIX)) {
+      const row = this.db
+        .prepare(
+          `
+        SELECT group_key AS groupKey, group_label AS groupLabel
         FROM runtime_threads
-        WHERE thread_key = ?
+        WHERE conversation_id = ? AND group_key = ?
         LIMIT 1
       `,
-          )
-          .get(requestedThreadId) as
-          | {
-              threadId: string;
-              conversationId: string;
-              agentType: string;
-              status: "active" | "evicted";
-              createdAt: number;
-              lastUsedAt: number;
-              summary: string | null;
-            }
-          | undefined)
-      : undefined;
-
-    if (existing) {
-      if (
-        existing.conversationId !== args.conversationId ||
-        existing.agentType !== args.agentType
-      ) {
-        throw new Error(
-          `Thread ${existing.threadId} belongs to a different conversation or agent type.`,
-        );
+        )
+        .get(conversationId, trimmed) as
+        | { groupKey: string; groupLabel: string | null }
+        | undefined;
+      if (row) {
+        return {
+          groupKey: row.groupKey,
+          groupLabel: row.groupLabel ?? row.groupKey,
+          isNewGroup: false,
+        };
       }
-      const activeThreads = this.listActiveThreads(args.conversationId);
-      if (
-        existing.status !== "active" &&
-        activeThreads.length >= MAX_ACTIVE_RUNTIME_THREADS
-      ) {
-        const oldest = [...activeThreads].sort(
-          (a, b) => a.lastUsedAt - b.lastUsedAt,
-        )[0];
-        if (oldest) {
-          this.db
-            .prepare(
-              `
-            UPDATE runtime_threads
-            SET status = 'evicted'
-            WHERE thread_key = ?
-          `,
-            )
-            .run(oldest.threadId);
-        }
-      }
-      if (existing.status !== "active") {
-        this.db
-          .prepare(
-            `
-          UPDATE runtime_threads
-          SET status = 'active'
-          WHERE thread_key = ?
-        `,
-          )
-          .run(existing.threadId);
-      }
-      this.touchThread(existing.threadId);
+    }
+    const labelMatch = this.db
+      .prepare(
+        `
+      SELECT group_key AS groupKey, group_label AS groupLabel
+      FROM runtime_threads
+      WHERE conversation_id = ?
+        AND status = 'active'
+        AND group_label IS NOT NULL
+        AND LOWER(group_label) = LOWER(?)
+      LIMIT 1
+    `,
+      )
+      .get(conversationId, trimmed) as
+      | { groupKey: string; groupLabel: string | null }
+      | undefined;
+    if (labelMatch) {
       return {
-        threadId: existing.threadId,
-        reused: true,
+        groupKey: labelMatch.groupKey,
+        groupLabel: labelMatch.groupLabel ?? trimmed,
+        isNewGroup: false,
       };
     }
+    // A stale/unknown `grp-…` id falls through to minting; strip the
+    // prefix first so the result is `grp-tokyo-trip`, never `grp-grp-…`.
+    const labelSource = trimmed.startsWith(THREAD_GROUP_KEY_PREFIX)
+      ? trimmed.slice(THREAD_GROUP_KEY_PREFIX.length).trim() || trimmed
+      : trimmed;
+    const slug = slugify(labelSource) || "work";
+    const groupKey = this.mintUniqueKey(`${THREAD_GROUP_KEY_PREFIX}${slug}`);
+    return { groupKey, groupLabel: labelSource, isNewGroup: true };
+  }
 
-    const activeThreads = this.listActiveThreads(args.conversationId);
-    if (activeThreads.length >= MAX_ACTIVE_RUNTIME_THREADS) {
-      const oldest = [...activeThreads].sort(
-        (a, b) => a.lastUsedAt - b.lastUsedAt,
-      )[0];
-      if (oldest) {
-        this.db
-          .prepare(
-            `
-          UPDATE runtime_threads
-          SET status = 'evicted'
-          WHERE thread_key = ?
-        `,
-          )
-          .run(oldest.threadId);
-      }
+  private mintThreadKey(args: {
+    agentType: string;
+    nameHint?: string;
+  }): string {
+    const slug = slugify(args.nameHint ?? "");
+    // `grp-` is the group-id namespace; `legacy-` is the seeded feature
+    // roster's id namespace (store-mod-store.ts) — a thread key landing in
+    // either would merge unrelated identities downstream.
+    if (
+      slug &&
+      !slug.startsWith(THREAD_GROUP_KEY_PREFIX) &&
+      !slug.startsWith("legacy-")
+    ) {
+      return this.mintUniqueKey(slug);
     }
-
+    // Fallback for descriptions that slug to nothing (emoji, non-Latin
+    // scripts): the historical per-agent-type ordinal.
     const prefix = "task-";
     const rows = this.db
       .prepare(
@@ -2727,7 +2913,139 @@ export class SessionStore {
         nextOrdinal = suffix + 1;
       }
     }
-    const threadId = requestedThreadId || `${prefix}${nextOrdinal}`;
+    return this.mintUniqueKey(`${prefix}${nextOrdinal}`);
+  }
+
+  resolveOrCreateActiveThread(args: {
+    conversationId: string;
+    agentType: string;
+    threadId?: string;
+    /**
+     * Human description of the work; sluggified into the thread key for
+     * new threads (so ids read `compare-flight-prices`, not `task-7`)
+     * and stored as the thread's display name.
+     */
+    nameHint?: string;
+    /**
+     * Group this spawn under one work slot: an existing `grp-…` id, or a
+     * short label shared by sibling spawn_agent calls.
+     */
+    group?: string;
+  }): {
+    threadId: string;
+    reused: boolean;
+    groupKey?: string;
+    groupLabel?: string;
+  } {
+    const requestedThreadId = normalizeRuntimeThreadId(args.threadId ?? "");
+    const existing = requestedThreadId
+      ? (this.db
+          .prepare(
+            `
+        SELECT
+          thread_key AS threadId,
+          conversation_id AS conversationId,
+          agent_type AS agentType,
+          status,
+          group_key AS groupKey,
+          group_label AS groupLabel
+        FROM runtime_threads
+        WHERE thread_key = ?
+        LIMIT 1
+      `,
+          )
+          .get(requestedThreadId) as
+          | {
+              threadId: string;
+              conversationId: string;
+              agentType: string;
+              status: "active" | "evicted";
+              groupKey: string | null;
+              groupLabel: string | null;
+            }
+          | undefined)
+      : undefined;
+
+    if (existing) {
+      if (
+        existing.conversationId !== args.conversationId ||
+        existing.agentType !== args.agentType
+      ) {
+        throw new Error(
+          `Thread ${existing.threadId} belongs to a different conversation or agent type.`,
+        );
+      }
+      if (existing.status !== "active") {
+        this.reactivateWorkSlot(
+          args.conversationId,
+          existing.groupKey ?? existing.threadId,
+        );
+      }
+      this.touchThread(existing.threadId);
+      return {
+        threadId: existing.threadId,
+        reused: true,
+        ...(existing.groupKey ? { groupKey: existing.groupKey } : {}),
+        ...(existing.groupLabel ? { groupLabel: existing.groupLabel } : {}),
+      };
+    }
+
+    const group = args.group?.trim()
+      ? this.resolveSpawnGroup(args.conversationId, args.group)
+      : undefined;
+
+    if (group && !group.isNewGroup) {
+      const memberStatuses = this.db
+        .prepare(
+          `
+        SELECT status, COUNT(*) AS count
+        FROM runtime_threads
+        WHERE conversation_id = ? AND group_key = ?
+        GROUP BY status
+      `,
+        )
+        .all(args.conversationId, group.groupKey) as Array<{
+        status: string;
+        count: number;
+      }>;
+      const activeMembers =
+        memberStatuses.find((row) => row.status === "active")?.count ?? 0;
+      const totalMembers = memberStatuses.reduce(
+        (sum, row) => sum + row.count,
+        0,
+      );
+      // Attaching to a fully-evicted group resurrects ALL its members, so
+      // the cap applies to the total in that case — otherwise a 9th spawn
+      // into an evicted 8-member group would bypass the budget entirely.
+      const membersAfterResurrection =
+        activeMembers === 0 ? totalMembers : activeMembers;
+      if (membersAfterResurrection >= MAX_GROUP_MEMBER_THREADS) {
+        throw new Error(
+          `Group ${group.groupKey} already has ${membersAfterResurrection} threads. Continue one of its existing threads with send_input instead of spawning another.`,
+        );
+      }
+      if (activeMembers === 0 && totalMembers > 0) {
+        // Adding work to a fully-evicted group resurrects the whole slot.
+        this.reactivateWorkSlot(args.conversationId, group.groupKey);
+      }
+    }
+    const occupiesNewSlot = !group || group.isNewGroup;
+    if (
+      occupiesNewSlot &&
+      this.listActiveWorkSlots(args.conversationId).length >=
+        MAX_ACTIVE_RUNTIME_THREADS
+    ) {
+      this.evictOldestWorkSlot(args.conversationId);
+    }
+
+    const threadId =
+      requestedThreadId ??
+      this.mintThreadKey({
+        agentType: args.agentType,
+        ...(args.nameHint ? { nameHint: args.nameHint } : {}),
+      });
+    const name =
+      args.nameHint?.trim().replace(/\s+/g, " ").slice(0, 200) || threadId;
     const now = Date.now();
     this.upsertSession(args.conversationId, now);
     this.db
@@ -2741,15 +3059,27 @@ export class SessionStore {
         status,
         created_at,
         last_used_at,
-        summary
+        summary,
+        group_key,
+        group_label
       )
-      VALUES (?, ?, ?, ?, 'active', ?, ?, NULL)
+      VALUES (?, ?, ?, ?, 'active', ?, ?, NULL, ?, ?)
     `,
       )
-      .run(threadId, args.conversationId, args.agentType, threadId, now, now);
+      .run(
+        threadId,
+        args.conversationId,
+        args.agentType,
+        name,
+        now,
+        now,
+        group?.groupKey ?? null,
+        group?.groupLabel ?? null,
+      );
     return {
       threadId,
       reused: false,
+      ...(group ? { groupKey: group.groupKey, groupLabel: group.groupLabel } : {}),
     };
   }
 
@@ -2836,7 +3166,9 @@ export class SessionStore {
   }
 
   getThreadName(threadKey: string): string | undefined {
-    this.ensureImplicitThreadRow(threadKey);
+    // Deliberately side-effect-free: callers (e.g. the self-mod finalize
+    // path) probe arbitrary agent ids, and creating implicit rows for
+    // them would leak phantom threads into search results.
     const row = this.db
       .prepare(
         `
@@ -2850,6 +3182,177 @@ export class SessionStore {
     return typeof row?.name === "string" && row.name.length > 0
       ? row.name
       : undefined;
+  }
+
+  createWorkflowRecord(args: {
+    workflowKey: string;
+    conversationId: string;
+    description: string;
+    script: string;
+  }): void {
+    const now = Date.now();
+    this.db
+      .prepare(
+        `
+      INSERT INTO runtime_workflows (
+        workflow_key,
+        conversation_id,
+        description,
+        script,
+        status,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, 'running', ?, ?)
+    `,
+      )
+      .run(
+        args.workflowKey,
+        args.conversationId,
+        args.description,
+        args.script,
+        now,
+        now,
+      );
+  }
+
+  finalizeWorkflowRecord(args: {
+    workflowKey: string;
+    status: "completed" | "failed" | "canceled";
+    resultJson?: string;
+    error?: string;
+  }): void {
+    this.db
+      .prepare(
+        `
+      UPDATE runtime_workflows
+      SET status = ?, result_json = ?, error = ?, updated_at = ?
+      WHERE workflow_key = ?
+    `,
+      )
+      .run(
+        args.status,
+        args.resultJson ?? null,
+        args.error ?? null,
+        Date.now(),
+        args.workflowKey,
+      );
+  }
+
+  getWorkflowRecord(workflowKey: string): {
+    workflowKey: string;
+    conversationId: string;
+    description: string;
+    script: string;
+    status: string;
+    resultJson?: string;
+    error?: string;
+  } | null {
+    const row = this.db
+      .prepare(
+        `
+      SELECT
+        workflow_key AS workflowKey,
+        conversation_id AS conversationId,
+        description,
+        script,
+        status,
+        result_json AS resultJson,
+        error
+      FROM runtime_workflows
+      WHERE workflow_key = ?
+      LIMIT 1
+    `,
+      )
+      .get(workflowKey) as
+      | {
+          workflowKey: string;
+          conversationId: string;
+          description: string;
+          script: string;
+          status: string;
+          resultJson: string | null;
+          error: string | null;
+        }
+      | undefined;
+    if (!row) return null;
+    return {
+      workflowKey: row.workflowKey,
+      conversationId: row.conversationId,
+      description: row.description,
+      script: row.script,
+      status: row.status,
+      ...(row.resultJson ? { resultJson: row.resultJson } : {}),
+      ...(row.error ? { error: row.error } : {}),
+    };
+  }
+
+  listWorkflowKeysByStatus(status: string): string[] {
+    const rows = this.db
+      .prepare(
+        `
+      SELECT workflow_key AS workflowKey
+      FROM runtime_workflows
+      WHERE status = ?
+    `,
+      )
+      .all(status) as Array<{ workflowKey: string }>;
+    return rows.map((row) => row.workflowKey);
+  }
+
+  recordWorkflowStepStart(args: {
+    workflowKey: string;
+    stepIndex: number;
+    label: string;
+    promptHash: string;
+  }): void {
+    this.db
+      .prepare(
+        `
+      INSERT INTO runtime_workflow_steps (
+        workflow_key,
+        step_index,
+        label,
+        prompt_hash,
+        status,
+        started_at
+      )
+      VALUES (?, ?, ?, ?, 'running', ?)
+      ON CONFLICT(workflow_key, step_index) DO NOTHING
+    `,
+      )
+      .run(
+        args.workflowKey,
+        args.stepIndex,
+        args.label,
+        args.promptHash,
+        Date.now(),
+      );
+  }
+
+  recordWorkflowStepEnd(args: {
+    workflowKey: string;
+    stepIndex: number;
+    status: "completed" | "failed" | "canceled";
+    resultJson?: string;
+    error?: string;
+  }): void {
+    this.db
+      .prepare(
+        `
+      UPDATE runtime_workflow_steps
+      SET status = ?, result_json = ?, error = ?, completed_at = ?
+      WHERE workflow_key = ? AND step_index = ?
+    `,
+      )
+      .run(
+        args.status,
+        args.resultJson ?? null,
+        args.error ?? null,
+        Date.now(),
+        args.workflowKey,
+        args.stepIndex,
+      );
   }
 
   saveAgentRecord(record: PersistedAgentRecord): void {

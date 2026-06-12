@@ -139,7 +139,9 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       created_at INTEGER NOT NULL,
       last_used_at INTEGER NOT NULL,
       summary TEXT,
-      external_session_id TEXT
+      external_session_id TEXT,
+      group_key TEXT,
+      group_label TEXT
     );
   `);
   try {
@@ -147,9 +149,60 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   } catch {
     // Column already exists.
   }
+  try {
+    db.exec("ALTER TABLE runtime_threads ADD COLUMN group_key TEXT;");
+  } catch {
+    // Column already exists.
+  }
+  try {
+    db.exec("ALTER TABLE runtime_threads ADD COLUMN group_label TEXT;");
+  } catch {
+    // Column already exists.
+  }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_runtime_threads_conversation_status
     ON runtime_threads(conversation_id, status, last_used_at);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_runtime_threads_group
+    ON runtime_threads(group_key);
+  `);
+
+  // Workflow runs: orchestrator-authored scripts that fan work out to
+  // ephemeral agents. Each workflow also owns a `runtime_threads` row
+  // (agent_type 'workflow', same key) so the existing slot budgeting,
+  // "Other Threads" rendering, search, and pause routing cover workflows
+  // with no special cases; these tables hold the payload (script, journal,
+  // result). NOTE: `runtime_run_events`/`runtime_tasks` are legacy names
+  // dropped above — do not reuse them here.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_workflows (
+      workflow_key TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      description TEXT NOT NULL,
+      script TEXT NOT NULL,
+      status TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      result_json TEXT,
+      error TEXT,
+      FOREIGN KEY(workflow_key) REFERENCES runtime_threads(thread_key) ON DELETE CASCADE
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_workflow_steps (
+      workflow_key TEXT NOT NULL,
+      step_index INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      prompt_hash TEXT NOT NULL,
+      status TEXT NOT NULL,
+      result_json TEXT,
+      error TEXT,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      PRIMARY KEY (workflow_key, step_index),
+      FOREIGN KEY(workflow_key) REFERENCES runtime_workflows(workflow_key) ON DELETE CASCADE
+    );
   `);
 
   db.exec(`
@@ -244,6 +297,37 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       items_json TEXT NOT NULL,
       generated_at INTEGER NOT NULL
     );
+  `);
+
+  // Durable feature roster: one row per self-mod feature, keyed by the
+  // Stella-Feature-Id stamped into commit trailers at commit time (the
+  // authoring thread's group key, falling back to its thread key).
+  // Unlike the rolling snapshot above, rows accrue forever — features
+  // never fall off; the Store panel paginates instead. Names are frozen
+  // at first commit (write-once) so they never churn.
+  // NOTE: `self_mod_features` is a legacy name dropped on every init —
+  // do not rename this table to it.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS store_feature_roster (
+      feature_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      conversation_id TEXT,
+      created_at INTEGER NOT NULL,
+      last_commit_at INTEGER NOT NULL,
+      commit_count INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS store_feature_commits (
+      feature_id TEXT NOT NULL,
+      commit_hash TEXT NOT NULL,
+      committed_at INTEGER NOT NULL,
+      PRIMARY KEY (feature_id, commit_hash)
+    );
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_store_feature_roster_last_commit
+    ON store_feature_roster(last_commit_at);
   `);
 
   // Wipe any older shape of this table before recreating it. The first
