@@ -116,7 +116,7 @@ export const createAgentTools = (
         query: {
           type: "string",
           description:
-            "Words from the work you're looking for (topic, app name, what it did). Omit to list recent past work.",
+            "Words from the work you're looking for (topic, app name, what it did). Results need not match every word — the best-matching threads rank first. Omit to list recent past work.",
         },
         limit: {
           type: "number",

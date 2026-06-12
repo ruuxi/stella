@@ -479,20 +479,59 @@ describe("searchThreads", () => {
     expect(results[0]?.name).toBe("Compare flight prices Tokyo");
   });
 
-  it("ANDs whitespace-separated tokens", () => {
+  it("ranks threads matching more tokens first without dropping partial matches", () => {
     const { store } = createTestContext();
-    const conversationId = "conv-search-and";
+    const conversationId = "conv-search-rank";
+    const both = spawnThread(
+      store,
+      conversationId,
+      "Compare flight prices Tokyo",
+    );
+    const hotel = spawnThread(store, conversationId, "Compare hotel prices Tokyo");
+    const paris = spawnThread(store, conversationId, "Compare flight prices Paris");
+    spawnThread(store, conversationId, "Organize tax documents");
+
+    // Two-token match outranks single-token matches; among equal scores
+    // the most recently used thread wins; zero-token matches drop out.
+    const results = store.searchThreads({
+      conversationId,
+      query: "flight tokyo",
+    });
+    expect(results.map((thread) => thread.threadId)).toEqual([
+      both.threadId,
+      paris.threadId,
+      hotel.threadId,
+    ]);
+  });
+
+  it("ignores stopwords so verbose natural-language queries still match", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-search-stopwords";
     const match = spawnThread(
       store,
       conversationId,
       "Compare flight prices Tokyo",
     );
-    spawnThread(store, conversationId, "Compare hotel prices Tokyo");
-    spawnThread(store, conversationId, "Compare flight prices Paris");
+    spawnThread(store, conversationId, "Organize tax documents");
+
+    // Under strict AND this query returned nothing: "the"/"from"/"last"
+    // never appear in the thread, and unmatched tokens excluded it.
+    const results = store.searchThreads({
+      conversationId,
+      query: "the flight comparison from last week",
+    });
+    expect(results.map((thread) => thread.threadId)).toEqual([match.threadId]);
+  });
+
+  it("still searches when every token is a stopword", () => {
+    const { store } = createTestContext();
+    const conversationId = "conv-search-all-stopwords";
+    const match = spawnThread(store, conversationId, "What is it tracker");
+    spawnThread(store, conversationId, "Organize tax documents");
 
     const results = store.searchThreads({
       conversationId,
-      query: "flight tokyo",
+      query: "what is it",
     });
     expect(results.map((thread) => thread.threadId)).toEqual([match.threadId]);
   });
