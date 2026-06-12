@@ -12,6 +12,7 @@ import {
 } from './bootstrap/constants.js'
 import { createBootstrapContext } from './bootstrap/context.js'
 import { initMainProcessLogging } from './observability/main-logger.js'
+import { registerCanvasLibraryScheme } from './services/canvas-library.js'
 import {
   getTotalSystemMemoryMb,
   isLowMemoryWindowsDevice,
@@ -85,6 +86,9 @@ const startLocalCrashReporter = () => {
 
 export const bootstrapMainProcess = () => {
   app.setName(STELLA_APP_NAME)
+  // Privileged-scheme registration must precede app readiness; this is the
+  // app's single registerSchemesAsPrivileged call.
+  registerCanvasLibraryScheme()
   initMainProcessLogging(stellaAppDir)
   installDevBrokenPipeGuards()
   configureDevKeychainBehavior()
