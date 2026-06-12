@@ -492,6 +492,8 @@ export function useAgentEventHandler({
                   : 'running',
               anchorTurnId: event.userMessageId,
               parentAgentId: event.parentAgentId,
+              groupKey: event.groupKey,
+              groupLabel: event.groupLabel,
               statusText: normalizeTaskDisplayStatusText(event.statusText),
               reasoningText:
                 event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED

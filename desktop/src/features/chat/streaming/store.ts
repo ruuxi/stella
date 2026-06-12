@@ -64,6 +64,8 @@ export type ResumeTaskSnapshot = {
   reasoningText?: string
   result?: string
   error?: string
+  groupKey?: string
+  groupLabel?: string
 }
 
 export type StreamStoreAction =
@@ -346,6 +348,8 @@ export function streamStoreReducer(
         ...action.task,
         description: nextDescription,
         anchorTurnId: action.task.anchorTurnId ?? existing?.anchorTurnId,
+        groupKey: action.task.groupKey ?? existing?.groupKey,
+        groupLabel: action.task.groupLabel ?? existing?.groupLabel,
         startedAtMs: existing?.startedAtMs ?? action.task.startedAtMs,
         statusText:
           action.task.status === 'running'
@@ -625,4 +629,6 @@ export const toTaskFromResumeSnapshot = (
   lastUpdatedAtMs: nowMs,
   outputPreview: snapshot.result ?? snapshot.error,
   reasoningText: snapshot.reasoningText,
+  groupKey: snapshot.groupKey,
+  groupLabel: snapshot.groupLabel,
 })

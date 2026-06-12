@@ -21,6 +21,7 @@ import {
 import {
   History,
   CheckCircle2,
+  ChevronRight,
   Circle,
   LoaderCircle,
   AlertCircle,
@@ -35,7 +36,11 @@ import { formatNextRun } from "@/global/schedule/format-schedule";
 import {
   extractTasksFromActivities,
   getTaskDisplayText,
+  getTaskGroupStatusText,
+  groupActivityTasks,
   mergeFooterTasks,
+  type ActivityRow,
+  type TaskGroup,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import {
@@ -154,53 +159,171 @@ const taskToActivityContext = (
   lastUpdatedAtMs: task.lastUpdatedAtMs,
 });
 
-function TasksList({
-  tasks,
+function TaskRow({
+  task,
   selectedActivityId,
   onSelectTask,
 }: {
-  tasks: ReadonlyArray<TaskItem>;
+  task: TaskItem;
   selectedActivityId?: string | null;
   onSelectTask: (task: TaskItem) => void;
 }) {
+  const label = (getTaskDisplayText(task) || task.description).trim();
+  return (
+    <li
+      className="chat-workspace-strip__task-row"
+      data-status={task.status}
+      data-selected={selectedActivityId === task.id ? "true" : undefined}
+      title={label}
+    >
+      <button
+        type="button"
+        className="chat-workspace-strip__task-button"
+        onClick={() => onSelectTask(task)}
+        aria-label={`Use ${label || "activity"} as context`}
+      >
+        <span
+          className="chat-workspace-strip__task-icon-wrap"
+          aria-hidden="true"
+        >
+          <TaskStatusIcon status={task.status} />
+        </span>
+        <span className="chat-workspace-strip__task-label">
+          {task.status === "running" ? (
+            <TextShimmer text={label} durationMs={2000} />
+          ) : (
+            label
+          )}
+        </span>
+      </button>
+    </li>
+  );
+}
+
+/**
+ * Collapsed work-group header. Looks like a regular task row (same
+ * icon/label/classes) with an aggregate status and a chevron; clicking
+ * toggles the member rows, which render exactly like plain task rows.
+ */
+function GroupRow({
+  group,
+  expanded,
+  onToggle,
+  selectedActivityId,
+  onSelectTask,
+}: {
+  group: TaskGroup;
+  expanded: boolean;
+  onToggle: (groupKey: string) => void;
+  selectedActivityId?: string | null;
+  onSelectTask: (task: TaskItem) => void;
+}) {
+  const label = group.label.trim();
+  const statusText = getTaskGroupStatusText(group);
+  return (
+    <li
+      className="chat-workspace-strip__task-row chat-workspace-strip__group-row"
+      data-status={group.status}
+      title={`${label} — ${statusText}`}
+    >
+      <button
+        type="button"
+        className="chat-workspace-strip__task-button"
+        onClick={() => onToggle(group.groupKey)}
+        aria-expanded={expanded}
+        aria-label={`${label || "Task group"}: ${statusText}`}
+      >
+        <span
+          className="chat-workspace-strip__task-icon-wrap"
+          aria-hidden="true"
+        >
+          <TaskStatusIcon status={group.status} />
+        </span>
+        <span className="chat-workspace-strip__task-label">
+          {group.status === "running" ? (
+            <TextShimmer text={label} durationMs={2000} />
+          ) : (
+            label
+          )}
+        </span>
+        <span className="chat-workspace-strip__row-meta chat-workspace-strip__group-status">
+          {statusText}
+        </span>
+        <ChevronRight
+          className="chat-workspace-strip__group-chevron"
+          data-expanded={expanded ? "true" : undefined}
+          size={13}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
+      </button>
+      {expanded ? (
+        <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks chat-workspace-strip__group-members">
+          {group.members.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              selectedActivityId={selectedActivityId}
+              onSelectTask={onSelectTask}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+function TasksList({
+  rows,
+  selectedActivityId,
+  onSelectTask,
+  expandedGroupKeys,
+  onToggleGroup,
+}: {
+  rows: ReadonlyArray<ActivityRow>;
+  selectedActivityId?: string | null;
+  onSelectTask: (task: TaskItem) => void;
+  expandedGroupKeys: ReadonlySet<string>;
+  onToggleGroup: (groupKey: string) => void;
+}) {
   return (
     <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks">
-      {tasks.map((task) => {
-        const label = (getTaskDisplayText(task) || task.description).trim();
-        return (
-          <li
-            key={task.id}
-            className="chat-workspace-strip__task-row"
-            data-status={task.status}
-            data-selected={selectedActivityId === task.id ? "true" : undefined}
-            title={label}
-          >
-            <button
-              type="button"
-              className="chat-workspace-strip__task-button"
-              onClick={() => onSelectTask(task)}
-              aria-label={`Use ${label || "activity"} as context`}
-            >
-              <span
-                className="chat-workspace-strip__task-icon-wrap"
-                aria-hidden="true"
-              >
-                <TaskStatusIcon status={task.status} />
-              </span>
-              <span className="chat-workspace-strip__task-label">
-                {task.status === "running" ? (
-                  <TextShimmer text={label} durationMs={2000} />
-                ) : (
-                  label
-                )}
-              </span>
-            </button>
-          </li>
-        );
-      })}
+      {rows.map((row) =>
+        row.kind === "task" ? (
+          <TaskRow
+            key={row.task.id}
+            task={row.task}
+            selectedActivityId={selectedActivityId}
+            onSelectTask={onSelectTask}
+          />
+        ) : (
+          <GroupRow
+            key={`group:${row.group.groupKey}`}
+            group={row.group}
+            expanded={expandedGroupKeys.has(row.group.groupKey)}
+            onToggle={onToggleGroup}
+            selectedActivityId={selectedActivityId}
+            onSelectTask={onSelectTask}
+          />
+        ),
+      )}
     </ul>
   );
 }
+
+const activityRowStatus = (row: ActivityRow): TaskItem["status"] =>
+  row.kind === "task" ? row.task.status : row.group.status;
+
+const activityRowId = (row: ActivityRow): string =>
+  row.kind === "task" ? row.task.id : row.group.groupKey;
+
+const activityRowStartedAtMs = (row: ActivityRow): number =>
+  row.kind === "task" ? row.task.startedAtMs : row.group.startedAtMs;
+
+const activityRowCompletedAtMs = (row: ActivityRow): number => {
+  const entry = row.kind === "task" ? row.task : row.group;
+  return entry.completedAtMs ?? entry.lastUpdatedAtMs ?? entry.startedAtMs;
+};
 
 type ChatWorkspaceStripProps = {
   forceHidden?: boolean;
@@ -243,6 +366,20 @@ export function ChatWorkspaceStrip({
     useState<ActivityHistorySection | null>(null);
   const [openScheduleEntry, setOpenScheduleEntry] =
     useState<ScheduleEntry | null>(null);
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const toggleGroup = (groupKey: string) => {
+    setExpandedGroupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  };
 
   const allTasks = useMemo(() => {
     const persisted = extractTasksFromActivities(activity.activities, {
@@ -257,31 +394,37 @@ export function ChatWorkspaceStrip({
     liveTasks,
   ]);
 
-  // Tie-break on the stable `id` so tasks that share a timestamp (e.g.
+  // Tasks sharing a work-group key collapse into one expandable header
+  // row; ungrouped tasks and singleton groups stay plain rows. A group
+  // with any running member sorts with the running rows.
+  const activityRows = useMemo(() => groupActivityTasks(allTasks), [allTasks]);
+
+  // Tie-break on the stable id so rows that share a timestamp (e.g.
   // agents spawned together in one turn) keep a fixed order instead of
   // swapping positions every time the upstream merge re-runs.
-  const runningTasks = useMemo(
+  const runningRows = useMemo(
     () =>
-      [...allTasks]
-        .filter((task) => task.status === "running")
+      [...activityRows]
+        .filter((row) => activityRowStatus(row) === "running")
         .sort(
           (a, b) =>
-            b.startedAtMs - a.startedAtMs || a.id.localeCompare(b.id),
+            activityRowStartedAtMs(b) - activityRowStartedAtMs(a) ||
+            activityRowId(a).localeCompare(activityRowId(b)),
         )
         .slice(0, ACTIVITY_VISIBLE),
-    [allTasks],
+    [activityRows],
   );
 
-  const doneTasks = useMemo(
+  const doneRows = useMemo(
     () =>
-      [...allTasks]
-        .filter((task) => task.status !== "running")
-        .sort((a, b) => {
-          const aTime = a.completedAtMs ?? a.lastUpdatedAtMs ?? a.startedAtMs;
-          const bTime = b.completedAtMs ?? b.lastUpdatedAtMs ?? b.startedAtMs;
-          return bTime - aTime || a.id.localeCompare(b.id);
-        }),
-    [allTasks],
+      [...activityRows]
+        .filter((row) => activityRowStatus(row) !== "running")
+        .sort(
+          (a, b) =>
+            activityRowCompletedAtMs(b) - activityRowCompletedAtMs(a) ||
+            activityRowId(a).localeCompare(activityRowId(b)),
+        ),
+    [activityRows],
   );
   const allFiles = useMemo(
     () => deriveConversationFiles(filesFeed.files),
@@ -290,16 +433,17 @@ export function ChatWorkspaceStrip({
 
   const nowMs = Date.now();
 
-  // One Activity list capped at ACTIVITY_VISIBLE total: in-progress tasks
-  // come first, completed ones fill whatever slots are left.
-  const visibleDoneTasks = doneTasks.slice(
+  // One Activity list capped at ACTIVITY_VISIBLE total rows (a collapsed
+  // group counts as one row): in-progress rows come first, completed
+  // ones fill whatever slots are left.
+  const visibleDoneRows = doneRows.slice(
     0,
-    Math.max(0, ACTIVITY_VISIBLE - runningTasks.length),
+    Math.max(0, ACTIVITY_VISIBLE - runningRows.length),
   );
-  const hiddenDoneCount = doneTasks.length - visibleDoneTasks.length;
-  const visibleActivityTasks = useMemo(
-    () => [...runningTasks, ...visibleDoneTasks],
-    [runningTasks, visibleDoneTasks],
+  const hiddenDoneCount = doneRows.length - visibleDoneRows.length;
+  const visibleActivityRows = useMemo(
+    () => [...runningRows, ...visibleDoneRows],
+    [runningRows, visibleDoneRows],
   );
   const visibleFiles = allFiles.slice(0, FILES_VISIBLE);
   const hiddenFilesCount = allFiles.length - visibleFiles.length;
@@ -309,7 +453,7 @@ export function ChatWorkspaceStrip({
   );
   const hiddenScheduleCount = schedules.length - upNext.length;
 
-  const hasActivity = visibleActivityTasks.length > 0;
+  const hasActivity = visibleActivityRows.length > 0;
   const hasFiles = allFiles.length > 0;
   const hasSchedule = upNext.length > 0;
   const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
@@ -368,12 +512,14 @@ export function ChatWorkspaceStrip({
                       ? () => setHistorySection("done")
                       : undefined
                   }
-                  historyLabel={`View all activity (${doneTasks.length})`}
+                  historyLabel={`View all activity (${doneRows.length})`}
                 >
                   <TasksList
-                    tasks={visibleActivityTasks}
+                    rows={visibleActivityRows}
                     selectedActivityId={chat.composer.chatContext?.activity?.id}
                     onSelectTask={handleSelectTask}
+                    expandedGroupKeys={expandedGroupKeys}
+                    onToggleGroup={toggleGroup}
                   />
                 </WorkspaceSection>
               </>
