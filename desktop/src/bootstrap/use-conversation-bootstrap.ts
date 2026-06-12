@@ -1,5 +1,8 @@
 import { useEffect } from 'react'
-import { getOrCreateLocalConversationId } from '@/features/chat/services/local-chat-store'
+import {
+  getOrCreateLocalConversationId,
+  isLocalChatApiAvailable,
+} from '@/features/chat/services/local-chat-store'
 import { useUiState } from '@/context/ui-state'
 import { configurePiRuntime, getOrCreateDeviceId } from '@/platform/electron/device'
 import { useBootstrapState } from './bootstrap-state'
@@ -26,6 +29,14 @@ export const useConversationBootstrap = () => {
 
     const run = async () => {
       markPreparing()
+
+      // Plain-browser dev tab: there is no chat backend and never will be
+      // this session — mark ready with no conversation instead of burning
+      // the 45s retry loop into a bootstrap-failure surface.
+      if (!isLocalChatApiAvailable()) {
+        markReady()
+        return
+      }
 
       const hostPromise = configurePiRuntime()
       const devicePromise = getOrCreateDeviceId()
