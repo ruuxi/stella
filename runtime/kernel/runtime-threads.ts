@@ -1,4 +1,33 @@
+/**
+ * Active work is budgeted in SLOTS, not raw threads: a thread group
+ * (several related threads spawned for one request) occupies one slot,
+ * and an ungrouped thread is its own slot. Eviction flips whole slots
+ * to 'evicted'; the rows survive and stay resumable via `send_input`
+ * and discoverable via `search_threads`.
+ */
 export const MAX_ACTIVE_RUNTIME_THREADS = 16;
+
+/**
+ * Cap on active member threads per group so one fan-out can't grow the
+ * injected context block without bound. The 9th spawn into a group is
+ * rejected with an instructive error (continue a member with
+ * `send_input` instead).
+ */
+export const MAX_GROUP_MEMBER_THREADS = 8;
+
+/**
+ * Group keys are minted as `grp-<slug>` so the orchestrator (and the
+ * pause routing) can tell a group id from a thread id at a glance.
+ */
+export const THREAD_GROUP_KEY_PREFIX = "grp-";
+
+/**
+ * Pseudo agent-type for workflow runs. A workflow owns a regular
+ * `runtime_threads` row (so slot budgeting, rendering, search, and
+ * pause routing cover it with no special cases) but cannot receive
+ * `send_input` — its execution is script-driven, not conversational.
+ */
+export const WORKFLOW_AGENT_TYPE = "workflow";
 
 export type RuntimeThreadRecord = {
   conversationId: string;
@@ -10,6 +39,8 @@ export type RuntimeThreadRecord = {
   lastUsedAt: number;
   description?: string;
   summary?: string;
+  groupKey?: string;
+  groupLabel?: string;
 };
 
 export const normalizeRuntimeThreadId = (value: string): string | undefined => {
@@ -37,18 +68,91 @@ const formatPromptValue = (value: string | undefined, fallback: string): string 
   return trimmed ? trimmed.replace(/\s+/g, " ").slice(0, 180) : fallback;
 };
 
+const formatThreadLines = (
+  thread: RuntimeThreadRecord,
+  now: number,
+  indent: string,
+): string => {
+  const summary = formatPromptValue(thread.summary, "");
+  const kind =
+    thread.agentType === WORKFLOW_AGENT_TYPE
+      ? "workflow — pause_agent only, cannot take send_input"
+      : "resumable";
+  return [
+    `${indent}- ${thread.threadId} (${kind}, last used ${formatRuntimeThreadAge(thread.lastUsedAt, now)})`,
+    `${indent}  description: ${formatPromptValue(
+      thread.description ??
+        (thread.name !== thread.threadId ? thread.name : undefined),
+      "No description recorded",
+    )}`,
+    ...(summary ? [`${indent}  summary: ${summary}`] : []),
+  ].join("\n");
+};
+
+type WorkSlot = {
+  groupKey?: string;
+  groupLabel?: string;
+  lastUsedAt: number;
+  threads: RuntimeThreadRecord[];
+};
+
+/**
+ * Group the active-thread list into work slots, ordered by slot recency.
+ * Input ordering (per-thread recency) is not assumed.
+ */
+const collectWorkSlots = (threads: RuntimeThreadRecord[]): WorkSlot[] => {
+  const slots = new Map<string, WorkSlot>();
+  for (const thread of threads) {
+    const slotKey = thread.groupKey ?? thread.threadId;
+    const slot = slots.get(slotKey);
+    if (slot) {
+      slot.threads.push(thread);
+      slot.lastUsedAt = Math.max(slot.lastUsedAt, thread.lastUsedAt);
+      if (!slot.groupLabel && thread.groupLabel) {
+        slot.groupLabel = thread.groupLabel;
+      }
+    } else {
+      slots.set(slotKey, {
+        ...(thread.groupKey
+          ? {
+              groupKey: thread.groupKey,
+              ...(thread.groupLabel ? { groupLabel: thread.groupLabel } : {}),
+            }
+          : {}),
+        lastUsedAt: thread.lastUsedAt,
+        threads: [thread],
+      });
+    }
+  }
+  const ordered = [...slots.values()];
+  ordered.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+  for (const slot of ordered) {
+    slot.threads.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+  }
+  return ordered;
+};
+
 export const buildActiveThreadsPrompt = (
   threads: RuntimeThreadRecord[],
   now = Date.now(),
 ): string => {
   if (threads.length === 0) return "";
-  const lines = threads.slice(0, MAX_ACTIVE_RUNTIME_THREADS).map((thread) => {
-    const summary = formatPromptValue(thread.summary, "");
-    return [
-      `- ${thread.threadId} (resumable, last used ${formatRuntimeThreadAge(thread.lastUsedAt, now)})`,
-      `  description: ${formatPromptValue(thread.description, "No description recorded")}`,
-      ...(summary ? [`  summary: ${summary}`] : []),
-    ].join("\n");
+  const slots = collectWorkSlots(threads).slice(0, MAX_ACTIVE_RUNTIME_THREADS);
+  const blocks = slots.map((slot) => {
+    if (!slot.groupKey || slot.threads.length === 1) {
+      // Ungrouped threads (and degenerate one-member groups) render exactly
+      // like the historical flat entries — no header noise for the common case.
+      const lines = slot.threads.map((thread) =>
+        formatThreadLines(thread, now, ""),
+      );
+      return lines.join("\n");
+    }
+    const label = formatPromptValue(slot.groupLabel, slot.groupKey);
+    const header = `## ${label} [${slot.groupKey}] (last used ${formatRuntimeThreadAge(slot.lastUsedAt, now)})`;
+    const lines = slot.threads.map((thread) =>
+      formatThreadLines(thread, now, "  "),
+    );
+    return [header, ...lines].join("\n");
   });
-  return `# Other Threads\nThese thread_ids are durable and can be reused later for continued work, even after cancellation or completion.\n${lines.join("\n")}`;
+  return `# Other Threads\nDurable past and ongoing work, grouped when several threads serve one request. Any thread_id can be reused later with send_input, even after cancellation or completion. A group id (grp-…) works with pause_agent to stop the whole group, and with spawn_agent's \`group\` to add related work. Older work not listed here is searchable with search_threads.\n${blocks.join("\n")}`;
 };
