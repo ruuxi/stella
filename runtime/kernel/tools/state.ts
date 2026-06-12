@@ -9,6 +9,8 @@ import type {
   AgentToolApi,
 } from "./types.js";
 import {
+  THREAD_GROUP_KEY_PREFIX,
+  WORKFLOW_AGENT_TYPE,
   formatRuntimeThreadAge,
   type RuntimeThreadRecord,
 } from "../runtime-threads.js";
@@ -23,6 +25,11 @@ export type StateContext = {
   tasks: Map<string, AgentRecord>;
   agentApi?: AgentToolApi;
   getSubagentTypes?: () => readonly string[];
+  searchThreads?: (args: {
+    conversationId: string;
+    query?: string;
+    limit?: number;
+  }) => RuntimeThreadRecord[];
 };
 
 const toOptionalString = (value: unknown): string | undefined => {
@@ -90,12 +97,63 @@ export const createStateContext = (
   stateRoot: string,
   agentApi?: AgentToolApi,
   getSubagentTypes?: () => readonly string[],
+  searchThreads?: StateContext["searchThreads"],
 ): StateContext => ({
   stateRoot,
   tasks: new Map(),
   agentApi,
   getSubagentTypes,
+  searchThreads,
 });
+
+export const handleSearchThreads = async (
+  ctx: StateContext,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> => {
+  if (!ctx.searchThreads) {
+    return { error: "Thread search is not available on this device." };
+  }
+  const query = toOptionalString(args.query);
+  const rawLimit = typeof args.limit === "number" ? args.limit : undefined;
+  const limit = Math.max(1, Math.min(25, Math.floor(rawLimit ?? 12)));
+  const threads = ctx.searchThreads({
+    conversationId: context.conversationId,
+    ...(query ? { query } : {}),
+    limit,
+  });
+  if (threads.length === 0) {
+    return {
+      result: {
+        threads: [],
+        note: query
+          ? "No past work matched. Try fewer or different words, or call again without a query to browse recent work."
+          : "No past work recorded yet.",
+      },
+    };
+  }
+  return {
+    result: {
+      threads: threads.map((thread) => ({
+        thread_id: thread.threadId,
+        availability:
+          thread.agentType === WORKFLOW_AGENT_TYPE
+            ? "workflow — cannot take send_input; start a new workflow for follow-ups"
+            : "resumable",
+        last_used: formatRuntimeThreadAge(thread.lastUsedAt),
+        ...(thread.name && thread.name !== thread.threadId
+          ? { name: thread.name }
+          : {}),
+        ...(thread.description ? { description: thread.description } : {}),
+        ...(thread.summary
+          ? { summary: thread.summary.replace(/\s+/g, " ").slice(0, 300) }
+          : {}),
+        ...(thread.groupKey ? { group_id: thread.groupKey } : {}),
+        ...(thread.groupLabel ? { group_label: thread.groupLabel } : {}),
+      })),
+    },
+  };
+};
 
 export const handleSendInput = async (
   ctx: StateContext,
@@ -131,7 +189,7 @@ export const handleSendInput = async (
     },
   );
   if (!delivered.delivered) {
-    return { error: `Thread not found: ${threadId}` };
+    return { error: delivered.reason ?? `Thread not found: ${threadId}` };
   }
   return {
     result: {
@@ -140,6 +198,61 @@ export const handleSendInput = async (
       delivered: true,
     },
   };
+};
+
+export const handleRunWorkflow = async (
+  ctx: StateContext,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> => {
+  if (context.agentType !== AGENT_IDS.ORCHESTRATOR) {
+    return { error: "Only the orchestrator can run workflows." };
+  }
+  if (!ctx.agentApi?.runWorkflow) {
+    return { error: "Workflows are not available on this device." };
+  }
+  const script = toOptionalString(args.script);
+  if (!script) {
+    return { error: "script is required" };
+  }
+  const rawDescription = toOptionalString(args.description);
+  if (!rawDescription) {
+    return { error: "description is required" };
+  }
+  // Never derive from the script — its first line is JavaScript, and the
+  // description becomes the workflow's user-facing name.
+  const description = rawDescription;
+  const group = toOptionalString(args.group);
+  try {
+    const started = await ctx.agentApi.runWorkflow({
+      conversationId: context.conversationId,
+      description,
+      script,
+      ...(group ? { group } : {}),
+      ...(context.rootRunId ? { rootRunId: context.rootRunId } : {}),
+    });
+    return {
+      result: {
+        workflow_id: started.workflowId,
+        created: true,
+        running_in_background: true,
+        follow_up_on_completion: true,
+        ...(started.groupKey
+          ? {
+              group_id: started.groupKey,
+              ...(started.groupLabel
+                ? { group_label: started.groupLabel }
+                : {}),
+            }
+          : {}),
+        note: "Workflow started but is NOT finished yet. You will receive one [Agent completed] event on this workflow_id carrying the script's return value. Do not tell the user it is done until then. pause_agent stops it; it cannot take send_input.",
+      },
+    };
+  } catch (error) {
+    // Script syntax errors land here with V8 line info — return them so
+    // the orchestrator can fix the script and retry.
+    return { error: (error as Error).message };
+  }
 };
 
 export const handleSpawnAgent = async (
@@ -157,6 +270,29 @@ export const handleSpawnAgent = async (
     // because it produced an empty assistant message that overwrote the
     // orchestrator's actual response to the pause request.
     if (ctx.agentApi) {
+      // Group ids and thread ids share one namespace (keys are minted
+      // unique across both), so this routing can never hit both.
+      if (
+        explicitThreadId.startsWith(THREAD_GROUP_KEY_PREFIX) &&
+        ctx.agentApi.cancelGroup
+      ) {
+        const groupResult = await ctx.agentApi.cancelGroup(
+          explicitThreadId,
+          AGENT_PAUSE_CANCEL_REASON,
+        );
+        if (groupResult.canceled) {
+          return {
+            result: {
+              group_id: explicitThreadId,
+              status: "canceled",
+              canceled: true,
+              canceled_thread_ids: groupResult.canceledThreadIds,
+            },
+          };
+        }
+        // Fall through: a grp-… prefix on a value that isn't a known
+        // group still gets the per-thread lookup below.
+      }
       const canceled = await ctx.agentApi.cancelAgent(
         explicitThreadId,
         AGENT_PAUSE_CANCEL_REASON,
@@ -226,6 +362,7 @@ export const handleSpawnAgent = async (
     return { error: "description is required" };
   }
   const description = deriveAgentDescription(rawDescription, prompt);
+  const group = toOptionalString(args.group);
 
   if (ctx.agentApi) {
     logWorkingIndicatorTrace("[stella:working-indicator:spawn_agent]", {
@@ -235,17 +372,25 @@ export const handleSpawnAgent = async (
       promptPreview: prompt.slice(0, 160),
       rootRunId: context.rootRunId,
     });
-    const created = await ctx.agentApi.createAgent({
-      conversationId: context.conversationId,
-      description,
-      prompt,
-      agentType,
-      rootRunId: context.rootRunId,
-      agentDepth: nextAgentDepth,
-      ...(typeof maxAgentDepth === "number" ? { maxAgentDepth } : {}),
-      parentAgentId,
-      storageMode,
-    });
+    let created: Awaited<ReturnType<AgentToolApi["createAgent"]>>;
+    try {
+      created = await ctx.agentApi.createAgent({
+        conversationId: context.conversationId,
+        description,
+        prompt,
+        agentType,
+        rootRunId: context.rootRunId,
+        agentDepth: nextAgentDepth,
+        ...(typeof maxAgentDepth === "number" ? { maxAgentDepth } : {}),
+        parentAgentId,
+        ...(group ? { group } : {}),
+        storageMode,
+      });
+    } catch (error) {
+      // Group member caps and thread-resolution failures surface as tool
+      // errors the model can act on, not as runner-level crashes.
+      return { error: (error as Error).message };
+    }
     const otherThreads = created.activeThreads
       ? buildOtherThreadsResult(created.activeThreads, created.threadId)
       : [];
@@ -255,6 +400,14 @@ export const handleSpawnAgent = async (
         created: true,
         running_in_background: true,
         follow_up_on_completion: true,
+        ...(created.groupKey
+          ? {
+              group_id: created.groupKey,
+              ...(created.groupLabel ? { group_label: created.groupLabel } : {}),
+              group_note:
+                "Reuse this exact group_id on sibling spawn_agent calls for the same request.",
+            }
+          : {}),
         note: "Task has started but is NOT finished yet. Wait for the completion event before telling the user it is done.",
         ...(otherThreads.length > 0 ? { other_threads: otherThreads } : {}),
       },

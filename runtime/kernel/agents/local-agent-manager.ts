@@ -213,6 +213,14 @@ export type AgentLifecycleEvent = {
    * nothing revives the thread within the grace window. Absent = both.
    */
   audience?: "orchestrator-only" | "display-only";
+  /**
+   * Work group of the thread that emitted this event. Emit sites leave
+   * these unset; the runner's central lifecycle handler enriches every
+   * event from the thread registry so the Activity UI can collapse
+   * sibling agents under one group header.
+   */
+  groupKey?: string;
+  groupLabel?: string;
 };
 
 type LocalAgentManagerOpts = {
@@ -222,7 +230,16 @@ type LocalAgentManagerOpts = {
     conversationId: string;
     agentType: string;
     threadId?: string;
-  }) => { threadId: string; reused: boolean } | null;
+    nameHint?: string;
+    group?: string;
+  }) => {
+    threadId: string;
+    reused: boolean;
+    groupKey?: string;
+    groupLabel?: string;
+  } | null;
+  /** Member thread ids of a `grp-…` work group, for group-level cancel. */
+  listGroupMemberThreadIds?: (groupKey: string) => string[];
   onAgentEvent?: (event: AgentLifecycleEvent) => void;
   fetchAgentContext: (args: {
     conversationId: string;
@@ -247,6 +264,13 @@ type LocalAgentManagerOpts = {
     abortSignal: AbortSignal;
     selfModMetadata?: AgentToolRequest["selfModMetadata"];
     selfModRunId?: string;
+    /**
+     * Explicit feature identity for any self-mod commits this run makes.
+     * Workflow steps pass their workflow's identity so every step of one
+     * workflow commits to ONE feature instead of fragmenting into
+     * per-step features keyed by ephemeral agent ids.
+     */
+    selfModFeature?: { featureId: string; featureTitle: string };
     onSelfModRunStarted?: (runId: string) => void;
     onSelfModRunClosed?: (runId: string) => void;
     shouldContinueSelfModLifecycleAfterInterrupt?: () => boolean;
@@ -1131,6 +1155,8 @@ export class LocalAgentManager implements AgentToolApi {
   async createAgent(request: AgentToolRequest): Promise<{
     threadId: string;
     activeThreads?: RuntimeThreadRecord[];
+    groupKey?: string;
+    groupLabel?: string;
   }> {
     const controller = new AbortController();
     const resolvedThread =
@@ -1138,6 +1164,8 @@ export class LocalAgentManager implements AgentToolApi {
         conversationId: request.conversationId,
         agentType: request.agentType,
         threadId: request.threadId,
+        nameHint: request.description,
+        ...(request.group ? { group: request.group } : {}),
       }) ?? null;
     const threadId =
       resolvedThread?.threadId ?? request.threadId ?? `thread-${++this.nextId}`;
@@ -1212,7 +1240,131 @@ export class LocalAgentManager implements AgentToolApi {
     return {
       threadId: task.threadId,
       activeThreads: this.opts.listActiveThreads?.(request.conversationId),
+      ...(resolvedThread?.groupKey
+        ? {
+            groupKey: resolvedThread.groupKey,
+            ...(resolvedThread.groupLabel
+              ? { groupLabel: resolvedThread.groupLabel }
+              : {}),
+          }
+        : {}),
     };
+  }
+
+  /**
+   * Run a single agent turn OUTSIDE the durable task surface: no thread
+   * row, no work slot, no lifecycle events, no persisted agent record.
+   * This is the execution primitive for workflow scripts — their agents
+   * report to the script, not to the orchestrator. The agentId should
+   * use the `<conversationId>::subagent::<type>::…` shape so any
+   * incidental thread-storage writes derive the right conversation.
+   */
+  async runEphemeralAgent(args: {
+    conversationId: string;
+    agentId: string;
+    description: string;
+    prompt: string;
+    rootRunId?: string;
+    selfModFeature?: { featureId: string; featureTitle: string };
+    signal: AbortSignal;
+  }): Promise<{ result: string; error?: string; interrupted?: boolean }> {
+    const agentType = "general";
+    const agentContext = await this.opts.fetchAgentContext({
+      conversationId: args.conversationId,
+      agentType,
+      runId: args.agentId,
+      threadId: args.agentId,
+    });
+    const session = getOrCreateSubagentSession(
+      this.subagentSessions,
+      args.agentId,
+      args.conversationId,
+      agentType,
+    );
+    try {
+      const outcome = await this.opts.runSubagent({
+        conversationId: args.conversationId,
+        userMessageId: args.agentId,
+        agentType,
+        agentId: args.agentId,
+        ...(args.rootRunId ? { rootRunId: args.rootRunId } : {}),
+        ...(args.selfModFeature ? { selfModFeature: args.selfModFeature } : {}),
+        taskDescription: args.description,
+        taskPrompt: args.prompt,
+        agentContext,
+        subagentSession: session,
+        persistToConvex: false,
+        enableRemoteTools: true,
+        abortSignal: args.signal,
+        toolExecutor: async (toolName, toolArgs, toolContext, signal) => {
+          const scopedContext: ToolContext = {
+            ...toolContext,
+            agentId: args.agentId,
+            agentDepth: 1,
+            maxAgentDepth: agentContext.maxAgentDepth,
+          };
+          const lockKey = getFsLockKey(toolName, toolArgs, scopedContext);
+          if (!lockKey) {
+            return await this.opts.toolExecutor(
+              toolName,
+              toolArgs,
+              scopedContext,
+              signal,
+            );
+          }
+          const release = await this.acquireFsLock(args.agentId, lockKey);
+          try {
+            return await this.opts.toolExecutor(
+              toolName,
+              toolArgs,
+              scopedContext,
+              signal,
+            );
+          } finally {
+            release();
+          }
+        },
+      });
+      return {
+        result: outcome.result,
+        ...(outcome.error ? { error: outcome.error } : {}),
+        ...(outcome.interrupted ? { interrupted: true } : {}),
+      };
+    } finally {
+      const liveSession = this.subagentSessions.get(args.agentId);
+      if (liveSession) {
+        this.subagentSessions.delete(args.agentId);
+        try {
+          liveSession.dispose();
+        } catch {
+          // Best-effort.
+        }
+      }
+    }
+  }
+
+  /**
+   * Cancel every member thread of a work group. Member discovery comes
+   * from the durable thread registry (not the in-memory task map) so
+   * already-persisted members are covered too; cancelAgent is a no-op
+   * for members that already reached a terminal status.
+   */
+  async cancelGroup(
+    groupKey: string,
+    reason?: string,
+  ): Promise<{ canceled: boolean; canceledThreadIds: string[] }> {
+    const memberIds = this.opts.listGroupMemberThreadIds?.(groupKey) ?? [];
+    if (memberIds.length === 0) {
+      return { canceled: false, canceledThreadIds: [] };
+    }
+    const canceledThreadIds: string[] = [];
+    for (const threadId of memberIds) {
+      const result = await this.cancelAgent(threadId, reason);
+      if (result.canceled) {
+        canceledThreadIds.push(threadId);
+      }
+    }
+    return { canceled: canceledThreadIds.length > 0, canceledThreadIds };
   }
 
   async getAgent(agentId: string): Promise<AgentToolSnapshot | null> {
@@ -1376,7 +1528,7 @@ export class LocalAgentManager implements AgentToolApi {
     message: string,
     from: "orchestrator" | "subagent",
     options?: { description?: string; rootRunId?: string },
-  ): Promise<{ delivered: boolean }> {
+  ): Promise<{ delivered: boolean; reason?: string }> {
     const text = message.trim();
     if (!text) return { delivered: false };
     const updateStatusSource = options?.description?.trim()
@@ -1393,6 +1545,23 @@ export class LocalAgentManager implements AgentToolApi {
       if (!persisted) {
         return { delivered: false };
       }
+      if (persisted.agentType === "workflow") {
+        // Workflow runs are script-driven, not conversational — hydrating
+        // one as a General task would re-run its description as a prompt.
+        return {
+          delivered: false,
+          reason: `${agentId} is a workflow and cannot take send_input. Start a new workflow (or spawn_agent) for follow-up work.`,
+        };
+      }
+      // Re-activate the durable thread row (and its whole group) so the
+      // resumed work re-enters the active slot budget and reappears under
+      // "Other Threads" — without this, an evicted thread keeps running
+      // with status 'evicted' and stays invisible to the orchestrator.
+      this.opts.resolveTaskThread?.({
+        conversationId: persisted.conversationId,
+        agentType: persisted.agentType,
+        threadId: persisted.threadId,
+      });
       const resumedTask = this.hydrateTaskFromRecord(
         persisted,
         text,
@@ -1431,6 +1600,13 @@ export class LocalAgentManager implements AgentToolApi {
       if (rootRunId) {
         task.rootRunId = rootRunId;
       }
+      // Same re-activation as the persisted-record path above: the thread
+      // row may have been evicted while this task sat terminal in memory.
+      this.opts.resolveTaskThread?.({
+        conversationId: task.conversationId,
+        agentType: task.agentType,
+        threadId: task.threadId,
+      });
       this.resetTaskForNextAttempt(task, text);
       task.pendingStartStatusText = updateStatusText;
       task.recentActivity = [updateStatusText];
