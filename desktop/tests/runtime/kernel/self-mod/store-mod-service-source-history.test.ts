@@ -85,7 +85,9 @@ describe("StoreModService source history", () => {
     const firstRecord = sourceHistory.findRevisionByCommit(first!.commitHash);
     expect(firstRecord).toBeTruthy();
     expect(firstRecord?.origin).toBe("self-mod");
-    expect(firstRecord?.featureId).toBe("self-mod:conv-1");
+    // The trailer feature id (threadKey when ungrouped) is the canonical
+    // source-history feature identity for author commits.
+    expect(firstRecord?.featureId).toBe("thread-1");
     expect(firstRecord?.parentRevisionIds).toEqual([`git:${initialCommit}`]);
     expect(firstRecord?.changeSet.changes[0]).not.toHaveProperty("base");
     expect(firstRecord?.changeSet.changes[0]).not.toHaveProperty("next");
@@ -111,7 +113,7 @@ describe("StoreModService source history", () => {
     expect(secondRecord?.parentRevisionIds).toEqual([firstRecord!.revisionId]);
     expect(
       sourceHistory
-        .listFeatureRevisions("self-mod:conv-1")
+        .listFeatureRevisions("thread-1")
         .map((record) => record.revisionId),
     ).toEqual([firstRecord!.revisionId, secondRecord!.revisionId]);
   });

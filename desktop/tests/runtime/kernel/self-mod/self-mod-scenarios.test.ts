@@ -20,7 +20,6 @@ import { StellaSourceHistoryStore } from "../../../../../runtime/kernel/storage/
 import { StoreModStore } from "../../../../../runtime/kernel/storage/store-mod-store.js";
 import {
   StoreModService,
-  type FeatureNamerProvider,
 } from "../../../../../runtime/kernel/self-mod/store-mod-service.js";
 import { createSelfModHmrController } from "../../../../../runtime/kernel/self-mod/hmr.js";
 import {
@@ -385,49 +384,48 @@ describe("agent finalize", () => {
     expect(secondRecord?.parentRevisionIds).toEqual([firstRecord!.revisionId]);
   });
 
-  it("feature namer runs in the background and receives the previous snapshot for stability", async () => {
-    const namerCalls: Array<{
-      commitHashes: string[];
-      previousItems: Array<{ name: string; commitHashes: string[] }>;
-    }> = [];
-    const namer: FeatureNamerProvider = async ({ commits, previousItems }) => {
-      namerCalls.push({
-        commitHashes: commits.map((commit) => commit.commitHash),
-        previousItems,
-      });
-      return commits.map((commit, index) => ({
-        name: `Feature ${namerCalls.length}.${index}`,
-        commitHashes: [commit.commitHash],
-      }));
-    };
-
+  it("author commits accrue to the durable feature roster and the snapshot is the roster head", async () => {
     await h.service.beginSelfModRun({ runId: "n1", taskDescription: "One" });
     await writeRepoFile(h.repoRoot, "desktop/src/n1.tsx", "export {};\n");
-    await h.service.finalizeSelfModRun({
+    const first = await h.service.finalizeSelfModRun({
       runId: "n1",
       succeeded: true,
       conversationId: "conv-n",
-      featureNamerProvider: namer,
+      featureId: "weather-dashboard",
+      featureTitle: "Build a weather dashboard",
     });
-    await h.service.waitForBackgroundTasks();
-    expect(namerCalls).toHaveLength(1);
-    expect(namerCalls[0]!.previousItems).toEqual([]);
-    expect(h.service.readFeatureSnapshot()?.items).toHaveLength(1);
+    let snapshot = h.service.readFeatureSnapshot();
+    expect(snapshot?.items).toHaveLength(1);
+    expect(snapshot?.items[0]).toMatchObject({
+      featureId: "weather-dashboard",
+      name: "Build a weather dashboard",
+      commitHashes: [first!.commitHash],
+    });
 
+    // A later commit with the same feature id extends the SAME feature:
+    // the name stays frozen even when a different title is supplied.
     await h.service.beginSelfModRun({ runId: "n2", taskDescription: "Two" });
     await writeRepoFile(h.repoRoot, "desktop/src/n2.tsx", "export {};\n");
-    await h.service.finalizeSelfModRun({
+    const second = await h.service.finalizeSelfModRun({
       runId: "n2",
       succeeded: true,
       conversationId: "conv-n",
-      featureNamerProvider: namer,
+      featureId: "weather-dashboard",
+      featureTitle: "A churned rename that must not stick",
     });
-    await h.service.waitForBackgroundTasks();
-    expect(namerCalls).toHaveLength(2);
-    // Second invocation sees the first run's published snapshot.
-    expect(namerCalls[1]!.previousItems.map((item) => item.name)).toEqual([
-      "Feature 1.0",
-    ]);
+    snapshot = h.service.readFeatureSnapshot();
+    expect(snapshot?.items).toHaveLength(1);
+    expect(snapshot?.items[0]!.name).toBe("Build a weather dashboard");
+    expect(snapshot?.items[0]!.commitHashes).toEqual(
+      expect.arrayContaining([first!.commitHash, second!.commitHash]),
+    );
+
+    // Feature identity also lands as commit trailers (slugified title).
+    const log = commitBody(h.repoRoot, second!.commitHash);
+    expect(log).toContain("Stella-Feature-Id: weather-dashboard");
+    expect(log).toContain(
+      "Stella-Feature-Title: a-churned-rename-that-must-not-stick",
+    );
   });
 
   it("detectSelfModAppliedSince reports the latest self-mod commit after a baseline", async () => {

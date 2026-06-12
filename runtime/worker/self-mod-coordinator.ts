@@ -38,7 +38,6 @@ import {
 } from "../kernel/self-mod/hmr.js";
 import type {
   CommitMessageProvider,
-  FeatureNamerProvider,
   StoreModService,
 } from "../kernel/self-mod/store-mod-service.js";
 import {
@@ -102,9 +101,10 @@ export type SelfModLifecycle = {
     taskPrompt: string;
     conversationId: string;
     threadKey?: string;
+    featureId?: string;
+    featureTitle?: string;
     succeeded: boolean;
     commitMessageProvider?: CommitMessageProvider;
-    featureNamerProvider?: FeatureNamerProvider;
   }) => Promise<void>;
   cancelRun: (runId: string) => Promise<void>;
 };
@@ -426,8 +426,9 @@ export const createSelfModCoordinator = (
       succeeded,
       conversationId,
       threadKey,
+      featureId,
+      featureTitle,
       commitMessageProvider,
-      featureNamerProvider,
     }) => {
       const storeModService = getStoreModService();
       const controller = getController();
@@ -441,8 +442,9 @@ export const createSelfModCoordinator = (
         succeeded,
         ...(conversationId ? { conversationId } : {}),
         ...(threadKey ? { threadKey } : {}),
+        ...(featureId ? { featureId } : {}),
+        ...(featureTitle ? { featureTitle } : {}),
         ...(commitMessageProvider ? { commitMessageProvider } : {}),
-        ...(featureNamerProvider ? { featureNamerProvider } : {}),
         ...(controller
           ? {
               isPathOwnedByAnotherActiveRun: (repoRelativePath: string) =>
