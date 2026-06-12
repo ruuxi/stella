@@ -154,6 +154,13 @@
         ]
       },
       {
+        "from": "desktop/resources/library-shell",
+        "to": "library-shell",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "desktop/native/out",
         "to": "native/out",
         "filter": [

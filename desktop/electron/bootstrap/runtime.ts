@@ -7,6 +7,7 @@ import {
   prepareBootstrapAppShell,
 } from "./app-shell.js";
 import { createManagedResource } from "../managed-resource.js";
+import { installCanvasLibraryProtocol } from "../services/canvas-library.js";
 
 const BACKGROUND_RUNTIME_RETRY_DELAY_MS = 2_000;
 
@@ -17,6 +18,12 @@ export const initializeBootstrapApplication = async (
 
   services.authService.registerAuthProtocol();
   services.authService.captureInitialAuthUrl(process.argv);
+
+  installCanvasLibraryProtocol({
+    stellaDataDir: context.config.stellaDataDirPath,
+    stellaAppDir: context.config.stellaAppDir,
+    sessionPartition: context.config.sessionPartition,
+  });
 
   await prepareBootstrapAppShell(context);
   registerBootstrapIpcHandlers(
