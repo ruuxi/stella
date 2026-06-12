@@ -20,6 +20,15 @@
 import { type EventRecord } from "@/features/chat/lib/event-transforms";
 import type { LocalChatUpdatedPayload } from "../../../../../runtime/contracts/local-chat.js";
 
+/**
+ * Absent outside Electron (plain-browser `bun run dev`): chat persistence
+ * lives in main-process SQLite. Reads degrade to empty, the update
+ * subscription no-ops, and conversation creation fails loudly — a browser
+ * tab has no chat backend to create against.
+ */
+export const isLocalChatApiAvailable = (): boolean =>
+  Boolean(window.electronAPI?.localChat);
+
 const getLocalChatApi = () => {
   const api = window.electronAPI?.localChat;
   if (!api) {
@@ -53,12 +62,16 @@ export const setActiveLocalConversationId = async (
 export const listLocalEvents = async (
   conversationId: string,
   maxItems = 200,
-): Promise<EventRecord[]> =>
-  getLocalChatApi().listEvents({
+): Promise<EventRecord[]> => {
+  const api = window.electronAPI?.localChat;
+  if (!api) return [];
+  return api.listEvents({
     conversationId,
     maxItems,
   });
+};
 
 export const subscribeToLocalChatUpdates = (
   listener: (payload: LocalChatUpdatedPayload | null) => void,
-): (() => void) => getLocalChatApi().onUpdated(listener);
+): (() => void) =>
+  window.electronAPI?.localChat?.onUpdated(listener) ?? (() => {});

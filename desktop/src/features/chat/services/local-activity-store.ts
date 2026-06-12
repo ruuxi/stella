@@ -14,15 +14,9 @@ import type {
   LocalChatUpdatedPayload,
 } from "../../../../../runtime/contracts/local-chat.js";
 
-const getLocalChatApi = () => {
-  const api = window.electronAPI?.localChat;
-  if (!api) {
-    throw new Error(
-      "[local-activity-store] Electron local chat API is unavailable.",
-    );
-  }
-  return api;
-};
+// Absent outside Electron (plain-browser `bun run dev`): degrade to an
+// empty, update-free activity window instead of erroring.
+const getLocalChatApi = () => window.electronAPI?.localChat ?? null;
 
 export type LocalActivityWindow = {
   activities: EventRecord[];
@@ -43,7 +37,9 @@ export const listLocalActivity = async (
     beforeId?: string;
   } = {},
 ): Promise<LocalActivityWindow> => {
-  const window = await getLocalChatApi().listActivity({
+  const api = getLocalChatApi();
+  if (!api) return EMPTY_WINDOW;
+  const window = await api.listActivity({
     conversationId,
     limit: args.limit,
     beforeTimestampMs: args.beforeTimestampMs,
@@ -57,7 +53,7 @@ export const listLocalActivity = async (
 
 const subscribeToLocalChatUpdates = (
   listener: (payload: LocalChatUpdatedPayload | null) => void,
-): (() => void) => getLocalChatApi().onUpdated(listener);
+): (() => void) => getLocalChatApi()?.onUpdated(listener) ?? (() => {});
 
 export type LocalActivityWindowSnapshot = {
   window: LocalActivityWindow;

@@ -15,15 +15,9 @@ import type {
   LocalChatUpdatedPayload,
 } from "../../../../../runtime/contracts/local-chat.js";
 
-const getLocalChatApi = () => {
-  const api = window.electronAPI?.localChat;
-  if (!api) {
-    throw new Error(
-      "[local-files-store] Electron local chat API is unavailable.",
-    );
-  }
-  return api;
-};
+// Absent outside Electron (plain-browser `bun run dev`): degrade to an
+// empty, update-free files window instead of erroring.
+const getLocalChatApi = () => window.electronAPI?.localChat ?? null;
 
 export type LocalFilesWindow = {
   files: EventRecord[];
@@ -40,7 +34,9 @@ export const listLocalFiles = async (
     beforeId?: string;
   } = {},
 ): Promise<LocalFilesWindow> => {
-  const window = await getLocalChatApi().listFiles({
+  const api = getLocalChatApi();
+  if (!api) return EMPTY_WINDOW;
+  const window = await api.listFiles({
     conversationId,
     limit: args.limit,
     beforeTimestampMs: args.beforeTimestampMs,
@@ -51,7 +47,7 @@ export const listLocalFiles = async (
 
 const subscribeToLocalChatUpdates = (
   listener: (payload: LocalChatUpdatedPayload | null) => void,
-): (() => void) => getLocalChatApi().onUpdated(listener);
+): (() => void) => getLocalChatApi()?.onUpdated(listener) ?? (() => {});
 
 export type LocalFilesWindowSnapshot = {
   window: LocalFilesWindow;

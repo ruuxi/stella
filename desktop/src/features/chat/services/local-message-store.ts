@@ -20,15 +20,10 @@ import type {
 } from "../../../../../runtime/contracts/local-chat.js";
 import { isUiHiddenChatMessagePayload } from "../../../../../runtime/chat-event-visibility.js";
 
-const getLocalChatApi = () => {
-  const api = window.electronAPI?.localChat;
-  if (!api) {
-    throw new Error(
-      "[local-message-store] Electron local chat API is unavailable.",
-    );
-  }
-  return api;
-};
+// Absent outside Electron (plain-browser `bun run dev`): chat history lives
+// in main-process SQLite, so browser tabs degrade to an empty, update-free
+// timeline instead of erroring.
+const getLocalChatApi = () => window.electronAPI?.localChat ?? null;
 
 export type LocalMessageWindow = {
   messages: MessageRecord[];
@@ -45,7 +40,9 @@ export const listLocalMessages = async (
   conversationId: string,
   maxVisibleMessages: number,
 ): Promise<LocalMessageWindow> => {
-  const window = await getLocalChatApi().listMessages({
+  const api = getLocalChatApi();
+  if (!api) return EMPTY_WINDOW;
+  const window = await api.listMessages({
     conversationId,
     maxVisibleMessages,
   });
@@ -63,7 +60,9 @@ export const listLocalMessagesBefore = async (
     maxVisibleMessages: number;
   },
 ): Promise<LocalMessageWindow> => {
-  const window = await getLocalChatApi().listMessagesBefore({
+  const api = getLocalChatApi();
+  if (!api) return EMPTY_WINDOW;
+  const window = await api.listMessagesBefore({
     conversationId,
     beforeTimestampMs: args.beforeTimestampMs,
     beforeId: args.beforeId,
@@ -83,7 +82,9 @@ const listLocalMessagesAfter = async (
     maxVisibleMessages: number;
   },
 ): Promise<LocalMessageWindow> => {
-  const window = await getLocalChatApi().listMessagesAfter({
+  const api = getLocalChatApi();
+  if (!api) return EMPTY_WINDOW;
+  const window = await api.listMessagesAfter({
     conversationId,
     afterTimestampMs: args.afterTimestampMs,
     afterId: args.afterId,
@@ -97,7 +98,7 @@ const listLocalMessagesAfter = async (
 
 const subscribeToLocalChatUpdates = (
   listener: (payload: LocalChatUpdatedPayload | null) => void,
-): (() => void) => getLocalChatApi().onUpdated(listener);
+): (() => void) => getLocalChatApi()?.onUpdated(listener) ?? (() => {});
 
 export type LocalMessageWindowSnapshot = {
   window: LocalMessageWindow;
