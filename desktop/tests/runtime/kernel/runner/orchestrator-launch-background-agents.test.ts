@@ -56,6 +56,7 @@ const createContext = () =>
       activeOrchestratorSession: null,
       orchestratorSessions: new Map(),
       activeRunAbortControllers: new Map(),
+      loadedAgents: [],
       localAgentManager: {
         listActiveAgentRuns: () => [
           { runId: "run-1", conversationId: "conversation-1" },
