@@ -21,14 +21,6 @@ export const MAX_GROUP_MEMBER_THREADS = 8;
  */
 export const THREAD_GROUP_KEY_PREFIX = "grp-";
 
-/**
- * Pseudo agent-type for workflow runs. A workflow owns a regular
- * `runtime_threads` row (so slot budgeting, rendering, search, and
- * pause routing cover it with no special cases) but cannot receive
- * `send_input` — its execution is script-driven, not conversational.
- */
-export const WORKFLOW_AGENT_TYPE = "workflow";
-
 export type RuntimeThreadRecord = {
   conversationId: string;
   threadId: string;
@@ -74,12 +66,8 @@ const formatThreadLines = (
   indent: string,
 ): string => {
   const summary = formatPromptValue(thread.summary, "");
-  const kind =
-    thread.agentType === WORKFLOW_AGENT_TYPE
-      ? "workflow — pause_agent only, cannot take send_input"
-      : "resumable";
   return [
-    `${indent}- ${thread.threadId} (${kind}, last used ${formatRuntimeThreadAge(thread.lastUsedAt, now)})`,
+    `${indent}- ${thread.threadId} (resumable, last used ${formatRuntimeThreadAge(thread.lastUsedAt, now)})`,
     `${indent}  description: ${formatPromptValue(
       thread.description ??
         (thread.name !== thread.threadId ? thread.name : undefined),

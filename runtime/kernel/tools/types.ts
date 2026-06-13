@@ -171,17 +171,6 @@ export type AgentToolApi = {
     groupKey: string,
     reason?: string,
   ) => Promise<{ canceled: boolean; canceledThreadIds: string[] }>;
-  /**
-   * Start an orchestrator-authored workflow script. Resolves once the
-   * script is running in the background; throws on syntax errors.
-   */
-  runWorkflow?: (args: {
-    conversationId: string;
-    description: string;
-    script: string;
-    group?: string;
-    rootRunId?: string;
-  }) => Promise<{ workflowId: string; groupKey?: string; groupLabel?: string }>;
   sendAgentMessage?: (
     threadId: string,
     message: string,

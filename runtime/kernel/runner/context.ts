@@ -580,19 +580,6 @@ export const createRunnerContext = ({
         return await context.state.localAgentManager.getAgent(agentId);
       },
       cancelAgent: async (agentId, reason) => {
-        // Workflows route first: a running workflow's thread also has a
-        // persisted agent record, and the manager's persisted-record
-        // cancel path would mark it canceled without stopping the script.
-        const workflowService = context.state.workflowService;
-        if (workflowService) {
-          const workflowCancel = await workflowService.cancelWorkflow(
-            agentId,
-            reason,
-          );
-          if (workflowCancel.canceled) {
-            return { canceled: true };
-          }
-        }
         if (!context.state.localAgentManager) {
           return { canceled: false };
         }
@@ -602,10 +589,6 @@ export const createRunnerContext = ({
         );
       },
       cancelGroup: async (groupKey, reason) => {
-        await context.state.workflowService?.cancelGroupWorkflows(
-          groupKey,
-          reason,
-        );
         if (!context.state.localAgentManager) {
           return { canceled: false, canceledThreadIds: [] };
         }
@@ -613,12 +596,6 @@ export const createRunnerContext = ({
           groupKey,
           reason,
         );
-      },
-      runWorkflow: async (args) => {
-        if (!context.state.workflowService) {
-          throw new Error("Workflows are not available yet — runtime is still starting up.");
-        }
-        return await context.state.workflowService.startWorkflow(args);
       },
       sendAgentMessage: async (agentId, message, from, options) => {
         if (
@@ -686,7 +663,6 @@ export const createRunnerContext = ({
       isInitialized: false,
       initializationPromise: null,
       localAgentManager: null,
-      workflowService: null,
       activeOrchestratorRunId: null,
       activeOrchestratorConversationId: null,
       activeOrchestratorUiVisibility: "visible",
