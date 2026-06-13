@@ -7,7 +7,6 @@ import { StoreModStore } from "../storage/store-mod-store.js";
 import { commitGitMessage, getStagedDiffPreview } from "./git/commit.js";
 import {
   getGitCommitParent,
-  getGitHeadCommitSequence,
   listGitDirtyFiles,
 } from "./git/log.js";
 import { revertGitCommits } from "./git/revert.js";
@@ -554,36 +553,26 @@ export class StoreModService {
           reason: "working tree is not clean",
         };
       }
-      const expectedHeadStack = [...hashes].reverse();
-      const actualHeadStack = await getGitHeadCommitSequence(
-        this.repoRoot,
-        expectedHeadStack.length,
-      );
-      const canDirectRevert =
-        actualHeadStack.length === expectedHeadStack.length &&
-        expectedHeadStack.every(
-          (hash, index) => actualHeadStack[index] === hash,
-        );
-      if (!canDirectRevert) {
-        return {
-          revertedCommits: [],
-          fallbackRequired: true,
-          reason: "install commits are not the latest commits",
-        };
-      }
+      // Revert the add-on's own commits directly, newest-first. `git revert`
+      // computes each inverse patch and applies it at HEAD, so this works even
+      // when the add-on is no longer the latest commit (e.g. another add-on was
+      // installed after it) — the common case that previously dropped to the
+      // slow agent. The tree was just verified clean, so a conflicting revert
+      // resets back to the pre-revert HEAD (leaving history untouched), and we
+      // hand off to the agent fallback only when the inverse genuinely cannot
+      // apply (a later edit overlapped this add-on's lines).
       try {
-        // The tree was just verified clean, so a mid-stack revert
-        // failure can safely reset back to the pre-revert HEAD instead
-        // of leaving a half-uninstalled history.
         revertedCommits = await revertGitCommits({
           repoRoot: this.repoRoot,
-          commitHashes: expectedHeadStack,
+          commitHashes: [...hashes].reverse(),
           resetToPreRevertHeadOnFailure: true,
         });
       } catch (error) {
-        throw new Error(
-          `Failed to revert install commits for ${packageId}: ${(error as Error).message}`,
-        );
+        return {
+          revertedCommits: [],
+          fallbackRequired: true,
+          reason: `add-on changes overlap later edits and could not be reverted cleanly: ${(error as Error).message}`,
+        };
       }
     }
     this.store.deleteInstall(packageId);
