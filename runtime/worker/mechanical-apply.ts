@@ -45,16 +45,18 @@ export const parseNameStatus = (raw: string): GitNameStatusChange[] => {
 
 /**
  * Paths an install must never read, write, or delete. A malformed Store
- * artifact that touches these (e.g. a published `node_modules` symlink from
+ * artifact that contains these (e.g. a published `node_modules` symlink from
  * an authoring worktree, or anything under `.git/`) would corrupt the user's
- * checkout — refuse the install before any filesystem op instead of letting
- * the damage land. The fast-path caller catches the throw and falls back to
- * the agent path, where a parallel rule in the install prompt keeps the
- * agent from re-applying the same paths.
+ * checkout. We silently skip those entries instead of failing the install:
+ * they're never legitimate add-on content, the rest of the artifact is still
+ * safe to apply, and historic packages published with this junk in them
+ * (some early Store releases shipped a worktree node_modules symlink) keep
+ * working. The agent install prompt carries a parallel rule for the fallback
+ * path.
  */
 const FORBIDDEN_PATH_PREFIXES = ["node_modules/", ".git/"] as const;
-const isForbiddenInstallPath = (path: string): boolean => {
-  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+const isForbiddenInstallPath = (filePath: string): boolean => {
+  const normalized = filePath.replace(/\\/g, "/").replace(/^\.\//, "");
   return FORBIDDEN_PATH_PREFIXES.some(
     (prefix) =>
       normalized === prefix.slice(0, -1) || normalized.startsWith(prefix),
@@ -66,19 +68,20 @@ export const applyMergedTreeToWorkingTree = async (args: {
   treeHash: string;
   changes: GitNameStatusChange[];
 }): Promise<void> => {
-  const forbidden = args.changes
-    .map((change) => change.path)
-    .filter(isForbiddenInstallPath);
-  if (forbidden.length > 0) {
-    throw new Error(
-      `Refusing to apply Store install: artifact touches forbidden paths (${forbidden.slice(0, 3).join(", ")}${forbidden.length > 3 ? ", …" : ""}). Installs may not change node_modules or .git.`,
+  const safeChanges = args.changes.filter(
+    (change) => !isForbiddenInstallPath(change.path),
+  );
+  const skippedCount = args.changes.length - safeChanges.length;
+  if (skippedCount > 0) {
+    console.warn(
+      `[store-install] Skipping ${skippedCount} forbidden path(s) (node_modules / .git) in install artifact.`,
     );
   }
 
-  const deleted = args.changes
+  const deleted = safeChanges
     .filter((change) => change.deleted)
     .map((change) => change.path);
-  const present = args.changes
+  const present = safeChanges
     .filter((change) => !change.deleted)
     .map((change) => change.path);
 
