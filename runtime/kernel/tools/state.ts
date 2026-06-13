@@ -10,7 +10,6 @@ import type {
 } from "./types.js";
 import {
   THREAD_GROUP_KEY_PREFIX,
-  WORKFLOW_AGENT_TYPE,
   formatRuntimeThreadAge,
   type RuntimeThreadRecord,
 } from "../runtime-threads.js";
@@ -136,10 +135,7 @@ export const handleSearchThreads = async (
     result: {
       threads: threads.map((thread) => ({
         thread_id: thread.threadId,
-        availability:
-          thread.agentType === WORKFLOW_AGENT_TYPE
-            ? "workflow — cannot take send_input; start a new workflow for follow-ups"
-            : "resumable",
+        availability: "resumable",
         last_used: formatRuntimeThreadAge(thread.lastUsedAt),
         ...(thread.name && thread.name !== thread.threadId
           ? { name: thread.name }
@@ -198,61 +194,6 @@ export const handleSendInput = async (
       delivered: true,
     },
   };
-};
-
-export const handleRunWorkflow = async (
-  ctx: StateContext,
-  args: Record<string, unknown>,
-  context: ToolContext,
-): Promise<ToolResult> => {
-  if (context.agentType !== AGENT_IDS.ORCHESTRATOR) {
-    return { error: "Only the orchestrator can run workflows." };
-  }
-  if (!ctx.agentApi?.runWorkflow) {
-    return { error: "Workflows are not available on this device." };
-  }
-  const script = toOptionalString(args.script);
-  if (!script) {
-    return { error: "script is required" };
-  }
-  const rawDescription = toOptionalString(args.description);
-  if (!rawDescription) {
-    return { error: "description is required" };
-  }
-  // Never derive from the script — its first line is JavaScript, and the
-  // description becomes the workflow's user-facing name.
-  const description = rawDescription;
-  const group = toOptionalString(args.group);
-  try {
-    const started = await ctx.agentApi.runWorkflow({
-      conversationId: context.conversationId,
-      description,
-      script,
-      ...(group ? { group } : {}),
-      ...(context.rootRunId ? { rootRunId: context.rootRunId } : {}),
-    });
-    return {
-      result: {
-        workflow_id: started.workflowId,
-        created: true,
-        running_in_background: true,
-        follow_up_on_completion: true,
-        ...(started.groupKey
-          ? {
-              group_id: started.groupKey,
-              ...(started.groupLabel
-                ? { group_label: started.groupLabel }
-                : {}),
-            }
-          : {}),
-        note: "Workflow started but is NOT finished yet. You will receive one [Agent completed] event on this workflow_id carrying the script's return value. Do not tell the user it is done until then. pause_agent stops it; it cannot take send_input.",
-      },
-    };
-  } catch (error) {
-    // Script syntax errors land here with V8 line info — return them so
-    // the orchestrator can fix the script and retry.
-    return { error: (error as Error).message };
-  }
 };
 
 export const handleSpawnAgent = async (

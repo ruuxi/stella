@@ -36,7 +36,6 @@ import type {
   LocalAgentManager,
   AgentLifecycleEvent,
 } from "../agents/local-agent-manager.js";
-import type { WorkflowService } from "../workflows/workflow-service.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 import type {
   StorePackageRecord,
@@ -258,7 +257,6 @@ export type RunnerState = {
   isInitialized: boolean;
   initializationPromise: Promise<void> | null;
   localAgentManager: LocalAgentManager | null;
-  workflowService: WorkflowService | null;
   activeOrchestratorRunId: string | null;
   activeOrchestratorConversationId: string | null;
   activeOrchestratorUiVisibility: "visible" | "hidden";

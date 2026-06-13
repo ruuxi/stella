@@ -173,43 +173,6 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     ON runtime_threads(group_key);
   `);
 
-  // Workflow runs: orchestrator-authored scripts that fan work out to
-  // ephemeral agents. Each workflow also owns a `runtime_threads` row
-  // (agent_type 'workflow', same key) so the existing slot budgeting,
-  // "Other Threads" rendering, search, and pause routing cover workflows
-  // with no special cases; these tables hold the payload (script, journal,
-  // result). NOTE: `runtime_run_events`/`runtime_tasks` are legacy names
-  // dropped above — do not reuse them here.
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS runtime_workflows (
-      workflow_key TEXT PRIMARY KEY,
-      conversation_id TEXT NOT NULL,
-      description TEXT NOT NULL,
-      script TEXT NOT NULL,
-      status TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      result_json TEXT,
-      error TEXT,
-      FOREIGN KEY(workflow_key) REFERENCES runtime_threads(thread_key) ON DELETE CASCADE
-    );
-  `);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS runtime_workflow_steps (
-      workflow_key TEXT NOT NULL,
-      step_index INTEGER NOT NULL,
-      label TEXT NOT NULL,
-      prompt_hash TEXT NOT NULL,
-      status TEXT NOT NULL,
-      result_json TEXT,
-      error TEXT,
-      started_at INTEGER NOT NULL,
-      completed_at INTEGER,
-      PRIMARY KEY (workflow_key, step_index),
-      FOREIGN KEY(workflow_key) REFERENCES runtime_workflows(workflow_key) ON DELETE CASCADE
-    );
-  `);
-
   db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_thread_sessions (
       thread_key TEXT PRIMARY KEY,

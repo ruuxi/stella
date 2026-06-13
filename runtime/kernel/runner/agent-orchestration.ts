@@ -13,7 +13,6 @@ import { runExplore } from "../agent-runtime/explore.js";
 import { resolveOrchestratorThreadKey } from "../thread-runtime.js";
 import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
 import { LocalAgentManager } from "../agents/local-agent-manager.js";
-import { WorkflowService } from "../workflows/workflow-service.js";
 import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
 import { isKnownSafeCommand } from "../tools/safe-commands.js";
 import { resolveToolPath } from "../tools/path-inference.js";
@@ -373,9 +372,9 @@ export const createAgentOrchestration = (
 ) => {
   const handleAgentLifecycleEvent = (rawEvent: AgentLifecycleEvent) => {
     // Enrich every lifecycle event with its thread's work group ONCE,
-    // centrally — emit sites in the manager and workflow service stay
-    // group-unaware. The Activity UI uses this to collapse sibling
-    // agents under one group header.
+    // centrally — emit sites in the manager stay group-unaware. The
+    // Activity UI uses this to collapse sibling agents under one group
+    // header.
     let event = rawEvent;
     if (!event.groupKey) {
       // Optional-chained like the other runtimeStore lookups here: test
@@ -1013,12 +1012,11 @@ export const createAgentOrchestration = (
             };
 
             // Durable feature identity, decided at write time: an explicit
-            // identity from the caller (workflow steps commit to their
-            // workflow's feature), else the authoring thread's group key
-            // (several agents serving one request commit to ONE feature),
-            // else its thread key — so a thread resumed months later keeps
-            // extending the same feature instead of spawning a churned
-            // rename.
+            // identity from the caller, else the authoring thread's group
+            // key (several agents serving one request commit to ONE
+            // feature), else its thread key — so a thread resumed months
+            // later keeps extending the same feature instead of spawning a
+            // churned rename.
             const threadGroup =
               !selfModFeature && agentId
                 ? context.runtimeStore.getThreadGroup?.(agentId)
@@ -1088,20 +1086,6 @@ export const createAgentOrchestration = (
       context.runtimeStore.getAgentRecord?.(threadId) ?? null,
     listAgentRecordsByStatus: (status) =>
       context.runtimeStore.listAgentRecordsByStatus?.(status) ?? [],
-  });
-
-  context.state.workflowService = new WorkflowService({
-    store: context.runtimeStore,
-    runAgent: (args) => {
-      const manager = context.state.localAgentManager;
-      if (!manager) {
-        return Promise.reject(
-          new Error("Local agent manager is unavailable."),
-        );
-      }
-      return manager.runEphemeralAgent(args);
-    },
-    emitLifecycleEvent: handleAgentLifecycleEvent,
   });
 
   const runBlockingLocalAgent = async (
@@ -1174,7 +1158,6 @@ export const createAgentOrchestration = (
   };
 
   const shutdown = () => {
-    context.state.workflowService?.shutdown();
     context.state.localAgentManager?.shutdown();
     shutdownSubagentRuntimes();
   };
