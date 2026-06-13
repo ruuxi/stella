@@ -589,7 +589,11 @@ export const launchPreparedOrchestratorRun = (args: {
 
   void (async () => {
     if (shouldAttachSelfModLifecycle) {
-      const selfModMetadata = prepared.selfModMetadata ?? { mode: "update" };
+      // Only install-update reaches this path (controlsSelfModHmr), so a
+      // missing metadata payload still means a desktop update.
+      const selfModMetadata = prepared.selfModMetadata ?? {
+        mode: "desktop-update" as const,
+      };
       await context.selfModHmrController?.beginRun(prepared.runId);
       const expectedWritePaths = resolveExpectedSelfModWritePaths(
         selfModMetadata,

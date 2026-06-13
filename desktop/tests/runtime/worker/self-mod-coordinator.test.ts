@@ -170,16 +170,20 @@ const runAgentSelfMod = async (
   relPath: string,
   content: string,
   conversationId: string,
+  mode: "author" | "install" | "update" | "uninstall" | "desktop-update" =
+    "author",
 ) => {
   // The orchestration layer registers the run with the HMR controller
   // before any writes; the coordinator lifecycle snapshots the git
-  // baseline. Mirror that here.
+  // baseline. It also always resolves a mode ("author" for general-agent
+  // runs). Mirror that here.
   await h.controller.beginRun(runId);
   await h.coordinator.lifecycle.beginRun({
     runId,
     taskDescription: `Task ${runId}`,
     taskPrompt: "prompt",
     conversationId,
+    mode,
   });
   await writeRepoFile(h, relPath, content);
   await h.controller.recordWrite(runId, [path.join(h.repoRoot, relPath)]);
@@ -224,6 +228,30 @@ describe("self-mod coordinator", () => {
     expect(pausedRunIds(h)).toEqual(["run-1"]);
     expect(resumedRunIds(h)).toEqual([]);
     expect(h.coordinator.hasPendingApplyBatches()).toBe(false);
+  });
+
+  it("store install finalize auto-applies through the morph instead of stashing a card", async () => {
+    // Store install/update/uninstall agent fallbacks run in background
+    // `store-install:<pkg>` conversations with no chat surface, so there
+    // is no Update card to click — they must dispatch immediately.
+    await runAgentSelfMod(
+      h,
+      "run-install",
+      "desktop/src/mod.tsx",
+      "export const mod = true;\n",
+      "store-install:pkg-a",
+      "install",
+    );
+
+    expect(h.pendingApplies.size).toBe(0);
+    const transitions = methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION);
+    expect(transitions).toHaveLength(1);
+    const transitionId = (
+      transitions[0]!.params as { transitionId: string }
+    ).transitionId;
+    const resume = await h.coordinator.resumeTransition({ transitionId });
+    expect(resume).toEqual({ ok: true, requiresClientFullReload: false });
+    expect(resumedRunIds(h)).toEqual(["run-install"]);
   });
 
   it("clicking Update drains pending applies through one morph transition and resumes reload pauses", async () => {

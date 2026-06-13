@@ -479,14 +479,16 @@ export const createSelfModCoordinator = (
         // released once the held batch finally drains and applies.
         return;
       }
-      // Defer the apply whenever the change produced a commit: the user
-      // applies it by clicking "Update" on the pending card. Nothing
-      // auto-applies. The card is matched back to this stash in `onEnd`
-      // by commit hash (reliable; no run-id correlation needed). A
-      // change that never gets clicked stays committed on disk and goes
-      // live on the next restart.
+      // Author runs defer the apply: the user applies by clicking
+      // "Update" on the pending card. The card is matched back to this
+      // stash in `onEnd` by commit hash (reliable; no run-id correlation
+      // needed). A change that never gets clicked stays committed on
+      // disk and goes live on the next restart. Every other mode
+      // (install/update/uninstall/desktop-update) has no chat surface
+      // to host a card — their conversations are background threads —
+      // so they auto-apply under the morph cover instead.
       const applyMode = selfModRunApplyModes.get(runId);
-      if (finalized?.commitHash && applyMode !== "desktop-update") {
+      if (finalized?.commitHash && applyMode === "author") {
         getPendingSelfModApplies().set(finalized.commitHash, {
           commitHash: finalized.commitHash,
           applyResult: decision,

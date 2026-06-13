@@ -69,6 +69,7 @@ import {
   detectSelfModAppliedSince,
   getGitHead,
   getLastSelfModCommitHash,
+  listFilesForCommit,
   listGitDirtyFiles,
   listRecentSelfModCommits,
 } from "../kernel/self-mod/git/log.js";
@@ -327,6 +328,7 @@ import {
   materializeStoreGitArtifactReference,
   tryStoreGitArtifactFastPath,
 } from "./store-git-artifact-install.js";
+import { expandExternalSelfModPaths } from "./mechanical-apply.js";
 import { importExternalSource } from "./source-import-external.js";
 import {
   approximateDataUrlBytes,
@@ -2760,7 +2762,54 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       const payload = params as { packageId: string };
       const runner = ensureRunner();
       const service = ensureStoreModService();
-      const result = await service.uninstall(payload.packageId);
+      // The direct revert mutates live code, so bracket it in the same
+      // external self-mod envelope as the store git-artifact fast path:
+      // pin the install commits' files before the revert, then finish to
+      // dispatch the morph apply. The agent fallback below carries its
+      // own lifecycle (mode "uninstall").
+      const installForRevert = service.getInstall(payload.packageId);
+      const revertCommitHashes = installForRevert
+        ? installForRevert.installCommitHashes.length > 0
+          ? installForRevert.installCommitHashes
+          : installForRevert.installCommitHash
+            ? [installForRevert.installCommitHash]
+            : []
+        : [];
+      const revertPaths = new Set<string>();
+      for (const commitHash of revertCommitHashes) {
+        const files = await listFilesForCommit(
+          state.init.stellaAppDir,
+          commitHash,
+        ).catch(() => [] as string[]);
+        for (const file of files) revertPaths.add(file);
+      }
+      let revertHmrRunId: string | null = null;
+      if (revertPaths.size > 0) {
+        revertHmrRunId = `store-uninstall-revert:${crypto.randomUUID()}`;
+        await selfMod.externalLifecycle.beginExternalSelfMod({
+          runId: revertHmrRunId,
+          paths: expandExternalSelfModPaths([...revertPaths]),
+        });
+      }
+      let result: Awaited<ReturnType<typeof service.uninstall>>;
+      try {
+        result = await service.uninstall(payload.packageId);
+      } catch (error) {
+        if (revertHmrRunId) {
+          await selfMod.externalLifecycle
+            .finishExternalSelfMod({ runId: revertHmrRunId, succeeded: false })
+            .catch(() => undefined);
+        }
+        throw error;
+      }
+      if (revertHmrRunId) {
+        // `succeeded: false` (fallback required / nothing reverted) cancels
+        // the run and releases the pauses without a morph.
+        await selfMod.externalLifecycle.finishExternalSelfMod({
+          runId: revertHmrRunId,
+          succeeded: result.revertedCommits.length > 0,
+        });
+      }
       if (result.fallbackRequired) {
         const install = service.getInstall(payload.packageId);
         const prompt = [
