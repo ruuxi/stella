@@ -43,11 +43,38 @@ export const parseNameStatus = (raw: string): GitNameStatusChange[] => {
   return changes;
 };
 
+/**
+ * Paths an install must never read, write, or delete. A malformed Store
+ * artifact that touches these (e.g. a published `node_modules` symlink from
+ * an authoring worktree, or anything under `.git/`) would corrupt the user's
+ * checkout — refuse the install before any filesystem op instead of letting
+ * the damage land. The fast-path caller catches the throw and falls back to
+ * the agent path, where a parallel rule in the install prompt keeps the
+ * agent from re-applying the same paths.
+ */
+const FORBIDDEN_PATH_PREFIXES = ["node_modules/", ".git/"] as const;
+const isForbiddenInstallPath = (path: string): boolean => {
+  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+  return FORBIDDEN_PATH_PREFIXES.some(
+    (prefix) =>
+      normalized === prefix.slice(0, -1) || normalized.startsWith(prefix),
+  );
+};
+
 export const applyMergedTreeToWorkingTree = async (args: {
   repoRoot: string;
   treeHash: string;
   changes: GitNameStatusChange[];
 }): Promise<void> => {
+  const forbidden = args.changes
+    .map((change) => change.path)
+    .filter(isForbiddenInstallPath);
+  if (forbidden.length > 0) {
+    throw new Error(
+      `Refusing to apply Store install: artifact touches forbidden paths (${forbidden.slice(0, 3).join(", ")}${forbidden.length > 3 ? ", …" : ""}). Installs may not change node_modules or .git.`,
+    );
+  }
+
   const deleted = args.changes
     .filter((change) => change.deleted)
     .map((change) => change.path);
