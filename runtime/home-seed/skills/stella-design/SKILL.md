@@ -83,7 +83,7 @@ static screenshot:
 - Validation matches the scope. For desktop renderer work, run:
 
 ```sh
-bunx tsgo -p desktop/tsconfig.app.json --noEmit
+node node_modules/typescript-7/lib/tsc.js -p desktop/tsconfig.app.json --noEmit
 ```
 
 For broader desktop changes, also run the validation listed in

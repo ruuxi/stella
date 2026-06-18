@@ -287,7 +287,7 @@ export function EngineTabContent() {
   const applySavedPrefs = useCallback(
     (saved: LocalModelPreferences | null | undefined) => {
       if (!saved) return;
-      let next: LocalModelPreferences = {
+      const next: LocalModelPreferences = {
         ...saved,
         codexModel: saved.codexModel || DEFAULT_CODEX_MODEL,
         codexReasoningEffort:
