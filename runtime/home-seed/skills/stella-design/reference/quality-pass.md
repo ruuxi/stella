@@ -106,7 +106,7 @@ Use the strongest practical verification for the scope:
 - Renderer typecheck:
 
 ```sh
-bunx tsgo -p desktop/tsconfig.app.json --noEmit
+node node_modules/typescript-7/lib/tsc.js -p desktop/tsconfig.app.json --noEmit
 ```
 
 - Broader desktop change: also use the checks in

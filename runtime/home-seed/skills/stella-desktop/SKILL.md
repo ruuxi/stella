@@ -67,8 +67,8 @@ Run from the Stella install root (the directory containing `desktop/` and
 `runtime/`):
 
 ```bash
-bunx tsgo -p desktop/tsconfig.app.json --noEmit   # renderer (workspace-local TS 7)
-bun run electron:typecheck                        # main + preload
+node node_modules/typescript-7/lib/tsc.js -p desktop/tsconfig.app.json --noEmit
+bun run electron:typecheck
 bun run lint
 bun run test:run -- tests/runtime/sidebar-discovery.test.ts tests/runtime/route-smoke.test.ts
 ```

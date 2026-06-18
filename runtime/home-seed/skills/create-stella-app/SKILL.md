@@ -40,7 +40,7 @@ from the repo root (never `npm` or `pnpm`). Validate from the install
 root:
 
 ```sh
-bunx tsgo -p desktop/tsconfig.app.json --noEmit
+node node_modules/typescript-7/lib/tsc.js -p desktop/tsconfig.app.json --noEmit
 ```
 
 ## One file, on purpose

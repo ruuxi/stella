@@ -26,7 +26,7 @@ const PACKAGE_JSON = `{
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "typescript": "~6.0.3",
+    "typescript": "rc",
     "vite": "8.0.11"
   }
 }
