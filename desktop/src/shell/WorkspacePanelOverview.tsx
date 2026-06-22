@@ -1,23 +1,8 @@
 /**
- * Right-aligned workspace strip rendered next to the active chat
- * conversation surface (NOT on the home content). When the display
- * sidebar opens, this stays mounted as a clipped zero-width slot so
- * the chat column can resize smoothly.
- *
- * Everything lives inside a single outlined panel (rounded corners,
- * 1px subtle border, no painted fill); sections inside are separated
- * by thin horizontal dividers. Empty sections are omitted entirely.
- *
- * Shares its data sources with the display sidebar's Chat tab
- * (`ChatHomeOverview`) — same `useChatRuntime` + `useConversationSchedules`
- * plumbing — so both surfaces stay in sync without one re-deriving
- * against the other.
+ * Activity / Files / Schedule sections for the unified workspace panel.
+ * Shown in strip mode (panel closed) beside the active chat conversation.
  */
-import {
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   History,
   CheckCircle2,
@@ -51,7 +36,6 @@ import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
 import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
 import { basenameOf } from "@/features/workspace-display/path-to-viewer";
-import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import {
   ActivityHistoryDialog,
   type ActivityHistorySection,
@@ -59,11 +43,9 @@ import {
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
 import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
-import { useChatWorkspaceStripStore } from "@/features/chat/chat-workspace-strip-store";
 import type { ChatContext } from "@/shared/types/electron";
-import { TextShimmer } from "./TextShimmer";
-import { WorkspaceActionsList } from "./WorkspaceActionsList";
-import "./chat-workspace-strip.css";
+import { TextShimmer } from "@/app/chat/TextShimmer";
+import "@/app/chat/chat-workspace-strip.css";
 
 const ACTIVITY_VISIBLE = 8;
 const FILES_VISIBLE = 5;
@@ -200,11 +182,6 @@ function TaskRow({
   );
 }
 
-/**
- * Collapsed work-group header. Looks like a regular task row (same
- * icon/label/classes) with an aggregate status and a chevron; clicking
- * toggles the member rows, which render exactly like plain task rows.
- */
 function GroupRow({
   group,
   expanded,
@@ -325,14 +302,6 @@ const activityRowCompletedAtMs = (row: ActivityRow): number => {
   return entry.completedAtMs ?? entry.lastUpdatedAtMs ?? entry.startedAtMs;
 };
 
-type ChatWorkspaceStripProps = {
-  forceHidden?: boolean;
-  /** Rendered beside expanded display-panel chat; not clipped by panelOpen. */
-  embeddedInDisplayPanel?: boolean;
-  onNewChat?: () => void | Promise<void>;
-  onSelectArea?: () => void;
-};
-
 const scheduleEntryToAffectedRef = (
   entry: ScheduleEntry,
   conversationId: string,
@@ -345,14 +314,7 @@ const scheduleEntryToAffectedRef = (
   nextRunAtMs: entry.nextRunAtMs,
 });
 
-export function ChatWorkspaceStrip({
-  forceHidden = false,
-  embeddedInDisplayPanel = false,
-  onNewChat,
-  onSelectArea,
-}: ChatWorkspaceStripProps) {
-  const panelOpen = useDisplayPanelOpen();
-  const { stripVisible } = useChatWorkspaceStripStore();
+export function WorkspacePanelOverview() {
   const chat = useChatRuntime();
   const { state } = useUiState();
 
@@ -394,14 +356,8 @@ export function ChatWorkspaceStrip({
     liveTasks,
   ]);
 
-  // Tasks sharing a work-group key collapse into one expandable header
-  // row; ungrouped tasks and singleton groups stay plain rows. A group
-  // with any running member sorts with the running rows.
   const activityRows = useMemo(() => groupActivityTasks(allTasks), [allTasks]);
 
-  // Tie-break on the stable id so rows that share a timestamp (e.g.
-  // agents spawned together in one turn) keep a fixed order instead of
-  // swapping positions every time the upstream merge re-runs.
   const runningRows = useMemo(
     () =>
       [...activityRows]
@@ -433,9 +389,6 @@ export function ChatWorkspaceStrip({
 
   const nowMs = Date.now();
 
-  // One Activity list capped at ACTIVITY_VISIBLE total rows (a collapsed
-  // group counts as one row): in-progress rows come first, completed
-  // ones fill whatever slots are left.
   const visibleDoneRows = doneRows.slice(
     0,
     Math.max(0, ACTIVITY_VISIBLE - runningRows.length),
@@ -460,6 +413,7 @@ export function ChatWorkspaceStrip({
     if (!openScheduleEntry || !conversationId) return [];
     return [scheduleEntryToAffectedRef(openScheduleEntry, conversationId)];
   }, [conversationId, openScheduleEntry]);
+
   const handleOpenFile = (entry: ConversationFileEntry) => {
     openDisplayPayloadTab(entry.payload);
   };
@@ -476,132 +430,111 @@ export function ChatWorkspaceStrip({
     }));
     chat.composer.requestFocus?.();
   };
-  const hidden =
-    forceHidden || !stripVisible || (panelOpen && !embeddedInDisplayPanel);
+
+  if (!hasActivity && !hasFiles && !hasSchedule) {
+    return null;
+  }
 
   return (
-    <aside
-      className={`chat-workspace-strip${
-        hidden ? " chat-workspace-strip--hidden" : ""
-      }${embeddedInDisplayPanel ? " chat-workspace-strip--display-panel" : ""}`}
-      aria-label="Workspace"
-      aria-hidden={hidden}
-    >
-      <div className="chat-workspace-strip__inner">
-        <div className="chat-workspace-strip__panel-frame">
-          <div className="chat-workspace-strip__panel">
-            <WorkspaceSection title="Actions">
-              <div className="chat-workspace-strip__actions-body">
-                <WorkspaceActionsList
-                  onNewChat={onNewChat}
-                  onSelectArea={onSelectArea}
-                />
-              </div>
+    <>
+      <div className="chat-workspace-strip__panel">
+        {hasActivity && (
+          <WorkspaceSection
+            title="Activity"
+            onOpenHistory={
+              hiddenDoneCount > 0 ? () => setHistorySection("done") : undefined
+            }
+            historyLabel={`View all activity (${doneRows.length})`}
+          >
+            <TasksList
+              rows={visibleActivityRows}
+              selectedActivityId={chat.composer.chatContext?.activity?.id}
+              onSelectTask={handleSelectTask}
+              expandedGroupKeys={expandedGroupKeys}
+              onToggleGroup={toggleGroup}
+            />
+          </WorkspaceSection>
+        )}
+
+        {hasFiles && (
+          <>
+            {hasActivity ? (
+              <div
+                className="chat-workspace-strip__divider"
+                aria-hidden="true"
+              />
+            ) : null}
+            <WorkspaceSection
+              title="Files"
+              onOpenHistory={
+                hiddenFilesCount > 0
+                  ? () => setHistorySection("files")
+                  : undefined
+              }
+              historyLabel={`View all files (${allFiles.length})`}
+            >
+              <ul className="chat-workspace-strip__list">
+                {visibleFiles.map((file) => (
+                  <li
+                    key={file.path}
+                    className="chat-workspace-strip__row"
+                    title={file.path}
+                  >
+                    <button
+                      type="button"
+                      className="chat-workspace-strip__file-button"
+                      onClick={() => handleOpenFile(file)}
+                    >
+                      <DisplayTabIcon
+                        kind={displayTabKindForPayload(file.payload)}
+                        size={15}
+                      />
+                      <span className="chat-workspace-strip__file-name">
+                        {basenameOf(file.path)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </WorkspaceSection>
+          </>
+        )}
 
-            {hasActivity && (
-              <>
-                <div
-                  className="chat-workspace-strip__divider"
-                  aria-hidden="true"
-                />
-                <WorkspaceSection
-                  title="Activity"
-                  onOpenHistory={
-                    hiddenDoneCount > 0
-                      ? () => setHistorySection("done")
-                      : undefined
-                  }
-                  historyLabel={`View all activity (${doneRows.length})`}
-                >
-                  <TasksList
-                    rows={visibleActivityRows}
-                    selectedActivityId={chat.composer.chatContext?.activity?.id}
-                    onSelectTask={handleSelectTask}
-                    expandedGroupKeys={expandedGroupKeys}
-                    onToggleGroup={toggleGroup}
-                  />
-                </WorkspaceSection>
-              </>
-            )}
-
-            {hasFiles && (
-              <>
-                <div
-                  className="chat-workspace-strip__divider"
-                  aria-hidden="true"
-                />
-                <WorkspaceSection
-                  title="Files"
-                  onOpenHistory={
-                    hiddenFilesCount > 0
-                      ? () => setHistorySection("files")
-                      : undefined
-                  }
-                  historyLabel={`View all files (${allFiles.length})`}
-                >
-                  <ul className="chat-workspace-strip__list">
-                    {visibleFiles.map((file) => (
-                      <li
-                        key={file.path}
-                        className="chat-workspace-strip__row"
-                        title={file.path}
-                      >
-                        <button
-                          type="button"
-                          className="chat-workspace-strip__file-button"
-                          onClick={() => handleOpenFile(file)}
-                        >
-                          <DisplayTabIcon
-                            kind={displayTabKindForPayload(file.payload)}
-                            size={15}
-                          />
-                          <span className="chat-workspace-strip__file-name">
-                            {basenameOf(file.path)}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </WorkspaceSection>
-              </>
-            )}
-
-            {hasSchedule && (
-              <>
-                <div
-                  className="chat-workspace-strip__divider"
-                  aria-hidden="true"
-                />
-                <WorkspaceSection
-                  title="Schedule"
-                  onOpenHistory={
-                    hiddenScheduleCount > 0
-                      ? () => setHistorySection("upNext")
-                      : undefined
-                  }
-                  historyLabel={`View all schedules (${schedules.length})`}
-                >
-                  <ul className="chat-workspace-strip__list">
-                    {upNext.map((entry) => (
-                      <li
-                        key={`${entry.kind}:${entry.id}`}
-                        className="chat-workspace-strip__row"
-                      >
-                        <span className="chat-workspace-strip__row-label">
-                          {entry.name.trim()}
-                        </span>
-                        <span className="chat-workspace-strip__row-meta">
-                          {formatNextRun(entry.nextRunAtMs, nowMs)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </WorkspaceSection>
-              </>
-            )}
-          </div>
-        </div>
+        {hasSchedule && (
+          <>
+            {hasActivity || hasFiles ? (
+              <div
+                className="chat-workspace-strip__divider"
+                aria-hidden="true"
+              />
+            ) : null}
+            <WorkspaceSection
+              title="Schedule"
+              onOpenHistory={
+                hiddenScheduleCount > 0
+                  ? () => setHistorySection("upNext")
+                  : undefined
+              }
+              historyLabel={`View all schedules (${schedules.length})`}
+            >
+              <ul className="chat-workspace-strip__list">
+                {upNext.map((entry) => (
+                  <li
+                    key={`${entry.kind}:${entry.id}`}
+                    className="chat-workspace-strip__row"
+                  >
+                    <span className="chat-workspace-strip__row-label">
+                      {entry.name.trim()}
+                    </span>
+                    <span className="chat-workspace-strip__row-meta">
+                      {formatNextRun(entry.nextRunAtMs, nowMs)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </WorkspaceSection>
+          </>
+        )}
       </div>
       <ScheduleDetailsDialog
         open={openScheduleEntry !== null}
@@ -640,6 +573,6 @@ export function ChatWorkspaceStrip({
           setHistorySection(null);
         }}
       />
-    </aside>
+    </>
   );
 }

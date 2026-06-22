@@ -28,7 +28,10 @@ import {
   dispatchClosePanel,
   dispatchOpenWorkspacePanel,
 } from "@/shared/lib/stella-orb-chat";
+import { useChatWorkspaceStripStore } from "@/features/chat/chat-workspace-strip-store";
+import { WorkspacePanelOverview } from "@/shell/WorkspacePanelOverview";
 import "./display-sidebar.css";
+import "./workspace-panel.css";
 
 export interface DisplaySidebarHandle {
   /**
@@ -48,6 +51,9 @@ export interface DisplaySidebarHandle {
 type DisplaySidebarProps = {
   onOpenChange?: (open: boolean) => void;
   portalTarget?: Element | null;
+  /** Render the Activity / Files / Schedule overview when the panel is closed. */
+  showOverview?: boolean;
+  forceHidden?: boolean;
 };
 
 const DISPLAY_PANEL_DEFAULT_MIN_WIDTH = 380;
@@ -127,11 +133,24 @@ const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
 export const DisplaySidebar = forwardRef<
   DisplaySidebarHandle,
   DisplaySidebarProps
->(function DisplaySidebar({ onOpenChange, portalTarget }, ref) {
+>(function DisplaySidebar(
+  { onOpenChange, portalTarget, showOverview = false, forceHidden = false },
+  ref,
+) {
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
   const activeTab = useActiveDisplayTab();
+  const { stripVisible } = useChatWorkspaceStripStore();
   const asideRef = useRef<HTMLElement | null>(null);
+
+  // The overview (Activity / Files / Schedule) shows when the panel is closed
+  // and the strip toggle (in the top bar) is on. When the panel is open it
+  // hosts the active tab content instead.
+  const showOverviewSections =
+    showOverview && !panelOpen && stripVisible && !forceHidden;
+  // Mount the floating panel when there's something to show — open tab content
+  // or the overview sections.
+  const shellVisible = panelOpen || showOverviewSections;
 
   useImperativeHandle(
     ref,
@@ -379,28 +398,40 @@ export const DisplaySidebar = forwardRef<
   return createPortal(
     <aside
       ref={asideRef}
-      className={`display-sidebar${panelOpen ? " display-sidebar--open" : ""}${
+      className={`display-sidebar workspace-panel${
+        shellVisible ? " display-sidebar--shell-visible" : ""
+      }${panelOpen ? " display-sidebar--open" : ""}${
         panelOpen && panelExpanded ? " display-sidebar--expanded" : ""
-      }`}
-      aria-hidden={!panelOpen}
+      }${!panelOpen && shellVisible ? " workspace-panel--strip-mode" : ""}`}
+      aria-label="Workspace"
+      aria-hidden={!shellVisible}
       onContextMenu={handleContextMenu}
     >
-      <div
-        className="display-sidebar__resize-handle"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize display panel"
-        onPointerDown={handleResizeStart}
-        onDoubleClick={handleResizeDoubleClick}
-        title="Drag to resize · double-click to reset"
-      />
-      <div className="display-sidebar-inner">
-        <div className="display-sidebar__active">
+      {panelOpen ? (
+        <div
+          className="display-sidebar__resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize display panel"
+          onPointerDown={handleResizeStart}
+          onDoubleClick={handleResizeDoubleClick}
+          title="Drag to resize · double-click to reset"
+        />
+      ) : null}
+      <div className="display-sidebar-inner workspace-panel__frame">
+        <div className="workspace-panel__body">
+          {showOverviewSections ? (
+            <div className="workspace-panel__overview">
+              <WorkspacePanelOverview />
+            </div>
+          ) : null}
           {panelOpen && activeTab ? (
-            <DeferredDisplayContent
-              key={activeTab.id}
-              render={activeTab.render}
-            />
+            <div className="display-sidebar__active">
+              <DeferredDisplayContent
+                key={activeTab.id}
+                render={activeTab.render}
+              />
+            </div>
           ) : null}
         </div>
       </div>

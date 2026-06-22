@@ -53,7 +53,6 @@ import {
 } from "@/shared/hooks/use-animated-composer-shell";
 import { AssistantReplyPeek } from "@/app/chat/AssistantReplyPeek";
 import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
-import { ChatWorkspaceStrip } from "@/app/chat/ChatWorkspaceStrip";
 import { ChatRuntimeContext } from "@/context/chat-runtime-context";
 import "./chat-sidebar.css";
 
@@ -618,13 +617,6 @@ export function ChatPanelTab({
             </div>
           </div>
         </div>
-        {wideLayout ? (
-          <ChatWorkspaceStrip
-            embeddedInDisplayPanel
-            onNewChat={onNewChat}
-            onSelectArea={handleSelectArea}
-          />
-        ) : null}
       </div>
       {previewScreenshot && previewScreenshotIndex !== null && (
         <ScreenshotPreviewOverlay

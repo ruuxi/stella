@@ -27,7 +27,6 @@ import { ChevronDown } from "@/ui/icons";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
-import { ChatWorkspaceStrip } from "./ChatWorkspaceStrip";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import { getInlineWorkingIndicatorActive } from "@/features/chat/working-indicator-state";
 import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
@@ -63,7 +62,6 @@ export const ChatColumn = memo(function ChatColumn({
   scroll,
   composerEntering,
   conversationId,
-  hideRightContextPanel = false,
   showHomeContent,
   onDismissHome,
 }: ChatColumnProps) {
@@ -311,11 +309,6 @@ export const ChatColumn = memo(function ChatColumn({
             {renderComposer("chat", chatReplyPeek)}
           </div>
         </div>
-        <ChatWorkspaceStrip
-          forceHidden={hideRightContextPanel}
-          onNewChat={composer.onNewChat}
-          onSelectArea={composer.onSelectArea}
-        />
 
         {/* Custom scrollbar thumb overlay — pinned to the right edge of
           the layer (past the workspace strip) so it tracks the app side

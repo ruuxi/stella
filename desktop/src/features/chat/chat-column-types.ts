@@ -130,7 +130,6 @@ export type ChatColumnProps = {
   scroll: ChatColumnScroll;
   composerEntering?: boolean;
   conversationId: string | null;
-  hideRightContextPanel?: boolean;
   showHomeContent?: boolean;
   onDismissHome?: () => void;
 };
