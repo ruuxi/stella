@@ -62,6 +62,10 @@ import {
   useDisplayTabList,
 } from "@/features/workspace-display/tab-store";
 import { CHAT_DISPLAY_TAB_ID } from "@/features/workspace-display/default-tabs";
+import {
+  ensureChatDisplayTab,
+  openChatDisplayTab,
+} from "@/shell/display/default-tabs";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { useWindowType } from "@/shared/hooks/use-window-type";
@@ -72,10 +76,6 @@ import {
   type StellaOpenPanelChatDetail,
   type StellaComposeTextDetail,
 } from "@/shared/lib/stella-orb-chat";
-import {
-  ensureChatDisplayTab,
-  openChatDisplayTab,
-} from "@/features/workspace-display/default-tabs";
 import { ModelCatalogUpdatedAtProvider } from "@/global/settings/hooks/model-catalog-updated-at";
 import { useRestrictedStellaModelReset } from "@/global/settings/hooks/use-restricted-stella-model-reset";
 import { MobileActivityNotificationsBridge } from "@/global/mobile/MobileActivityNotificationsBridge";
@@ -469,7 +469,6 @@ function RootChrome() {
               composer={chat.composer}
               scroll={chat.scroll}
               conversationId={conversationId}
-              hideRightContextPanel={shouldAutoHideWorkspaceStrip}
               showHomeContent={chat.showHomeContent}
               onDismissHome={chat.dismissHome}
             />
@@ -484,7 +483,17 @@ function RootChrome() {
       </StellaContextMenu>
 
       <Suspense fallback={null}>
-        <DisplaySidebar ref={displaySidebarRef} />
+        <DisplaySidebar
+          ref={displaySidebarRef}
+          showOverview={
+            isOnChatRoute &&
+            !chat.showHomeContent &&
+            !isMiniWindow &&
+            !isMobileWebView &&
+            !shouldAutoHideWorkspaceStrip
+          }
+          forceHidden={shouldAutoHideWorkspaceStrip && !panelOpen}
+        />
       </Suspense>
 
       <ComposerAreaSelectOverlay

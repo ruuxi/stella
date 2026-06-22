@@ -1,0 +1,120 @@
+/* Unified workspace panel — a single floating card on the right that merges
+   the former workspace strip (Activity / Files / Schedule overview) and the
+   display sidebar (tab content). The top-bar chrome (account, tabs, panel
+   controls, window controls) lives in `ShellTopBar`, not in this panel.
+
+   Closed (strip mode): content-sized card showing the overview.
+   Open: full-height card hosting the active tab body. */
+
+.display-sidebar.workspace-panel {
+  /* Let the frame's soft shadow bleed past the clip box so it reads as a
+     floating card; `clip` still bounds the width-slide animation. */
+  overflow: clip;
+  overflow-clip-margin: 28px;
+}
+
+/* The inner element is the floating card. Selector is qualified with
+   `.display-sidebar` so it wins over the base `.display-sidebar-inner`
+   rules (padding-top, border, width, transform) on the same node. */
+.display-sidebar.workspace-panel .display-sidebar-inner.workspace-panel__frame {
+  --workspace-panel-inset-top: calc(var(--shell-topbar-height, 38px) + 8px);
+  --workspace-panel-inset-right: 10px;
+  --workspace-panel-inset-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: auto;
+  /* Strip mode: only as tall as the content needs. */
+  height: auto;
+  max-height: calc(
+    100% - var(--workspace-panel-inset-top) -
+      var(--workspace-panel-inset-bottom)
+  );
+  margin: var(--workspace-panel-inset-top) var(--workspace-panel-inset-right)
+    var(--workspace-panel-inset-bottom) 0;
+  padding-top: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  contain: layout paint;
+}
+
+/* Open mode hosts a scrollable tab body — fill the available height. */
+.display-sidebar.workspace-panel.display-sidebar--open
+  .display-sidebar-inner.workspace-panel__frame {
+  height: calc(
+    100% - var(--workspace-panel-inset-top) -
+      var(--workspace-panel-inset-bottom)
+  );
+}
+
+.workspace-panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-panel__overview {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.workspace-panel__body .display-sidebar__active {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-panel__overview .chat-workspace-strip__panel {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  max-height: none;
+}
+
+/* ── Width / visibility ──────────────────────────────────────────── */
+
+.display-sidebar.workspace-panel:not(.display-sidebar--open).display-sidebar--shell-visible {
+  width: var(--chat-workspace-strip-width, 320px);
+}
+
+.display-sidebar.workspace-panel.display-sidebar--open.display-sidebar--shell-visible {
+  width: var(--display-panel-width, clamp(380px, 34vw, 520px));
+}
+
+.display-sidebar.workspace-panel:not(.display-sidebar--shell-visible) {
+  width: 0;
+  pointer-events: none;
+}
+
+/* Collapse the card entirely when the overview has no content (the
+   overview component renders nothing), so a closed panel never shows an
+   empty floating card. */
+.display-sidebar.workspace-panel:not(.display-sidebar--open):has(
+    .workspace-panel__overview:empty
+  ) {
+  width: 0;
+  pointer-events: none;
+}
+
+/* Keep the card visible (cancel the base slide-out transform) whenever the
+   shell is shown — the base `.display-sidebar-inner` is hidden unless the
+   panel is in the `--open` state. */
+.display-sidebar.workspace-panel.display-sidebar--shell-visible
+  .display-sidebar-inner {
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .display-sidebar.workspace-panel.display-sidebar--shell-visible
+    .display-sidebar-inner {
+    transform: none;
+  }
+}

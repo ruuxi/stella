@@ -1,140 +1,11 @@
-/* Right-side workspace strip rendered next to the active chat surface.
-   One outlined panel that houses every section; sections inside are
-   separated by thin horizontal dividers (no per-section border). No
-   divider between the strip and main content. */
-
-.chat-workspace-strip {
-  --chat-workspace-strip-width: 320px;
-  --chat-workspace-strip-inset-top: 10px;
-  --chat-workspace-strip-inset-right: 10px;
-  --chat-workspace-strip-inset-left: 0;
-  --chat-workspace-strip-inset-bottom: 10px;
-  flex: 0 0 auto;
-  align-self: stretch;
-  width: var(--chat-workspace-strip-width);
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  background: transparent;
-  /* Explicitly no divider against the main content. */
-  border: none;
-  pointer-events: auto;
-  /* `overflow: clip` (instead of `hidden`) lets paint extend beyond the
-     clip box via `overflow-clip-margin`, so the panel-frame's soft
-     left-edge shadow isn't sliced at the strip boundary while the
-     slide-close animation still gets its content clip. */
-  overflow: clip;
-  overflow-clip-margin: 40px;
-  contain: layout;
-  transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
-}
-
-.chat-workspace-strip--hidden,
-:root[data-display-panel-open="true"]
-  .chat-workspace-strip:not(.chat-workspace-strip--display-panel),
-:root[data-shell-right-context-hidden="true"] .chat-workspace-strip,
-:root[data-chat-workspace-strip-user-hidden="true"] .chat-workspace-strip {
-  width: 0;
-  pointer-events: none;
-}
-
-.chat-workspace-strip__inner {
-  width: var(--chat-workspace-strip-width);
-  min-width: var(--chat-workspace-strip-width);
-  height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  padding: var(--chat-workspace-strip-inset-top)
-    var(--chat-workspace-strip-inset-right)
-    var(--chat-workspace-strip-inset-bottom)
-    var(--chat-workspace-strip-inset-left);
-  box-sizing: border-box;
-  overflow: clip;
-  overflow-clip-margin: 40px;
-  contain: layout;
-  transform: translate3d(0, 0, 0);
-  opacity: 1;
-  transition:
-    width 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
-    min-width 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
-    transform 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
-    opacity 220ms ease-out;
-}
-
-.chat-workspace-strip--hidden .chat-workspace-strip__inner,
-:root[data-display-panel-open="true"]
-  .chat-workspace-strip:not(.chat-workspace-strip--display-panel)
-  .chat-workspace-strip__inner,
-:root[data-shell-right-context-hidden="true"] .chat-workspace-strip__inner,
-:root[data-chat-workspace-strip-user-hidden="true"]
-  .chat-workspace-strip__inner {
-  transform: translate3d(12px, 0, 0);
-  opacity: 0;
-}
-
-.chat-workspace-strip--display-panel .chat-workspace-strip__inner {
-  padding-top: 20px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-workspace-strip,
-  .chat-workspace-strip__inner {
-    transition: none;
-  }
-
-  .chat-workspace-strip--hidden .chat-workspace-strip__inner,
-  :root[data-display-panel-open="true"]
-    .chat-workspace-strip:not(.chat-workspace-strip--display-panel)
-    .chat-workspace-strip__inner,
-  :root[data-shell-right-context-hidden="true"] .chat-workspace-strip__inner,
-  :root[data-chat-workspace-strip-user-hidden="true"]
-    .chat-workspace-strip__inner {
-    transform: none;
-  }
-}
-
-@media (max-width: 1120px) {
-  .chat-workspace-strip {
-    width: 0;
-    pointer-events: none;
-  }
-
-  .chat-workspace-strip__inner {
-    transform: translate3d(12px, 0, 0);
-    opacity: 0;
-  }
-}
-
-/* ── Single outer panel ───────────────────────────────────────────── */
-
-/* Shadow on the frame so the panel lifts; the panel itself keeps
-   overflow:hidden for rounded content without clipping the halo.
-   Both the frame and panel size to their content — they only grow
-   tall enough to wrap the sections inside, never to fill the
-   available vertical space. */
-.chat-workspace-strip__panel-frame {
-  flex: 0 0 auto;
-  min-height: 0;
-  max-height: 100%;
-  border-radius: var(--radius-xl);
-  /* Single soft resting shadow supplies the floating depth; the panel's
-     own hairline border below is the visible edge. */
-  box-shadow: var(--shadow-sm);
-  contain: layout paint;
-}
+/* Section/row styles shared by the unified workspace panel overview.
+   The outer strip shell lives in workspace-panel.css / display-sidebar.css. */
 
 .chat-workspace-strip__panel {
   display: flex;
   flex-direction: column;
   max-height: 100%;
   min-height: 0;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -145,8 +16,6 @@
   margin: 0 12px;
   background: var(--border);
 }
-
-/* ── Section ──────────────────────────────────────────────────────── */
 
 .chat-workspace-strip__section {
   flex-shrink: 0;
@@ -200,8 +69,6 @@
   gap: 6px;
 }
 
-/* ── Activity rows ────────────────────────────────────────────────── */
-
 .chat-workspace-strip__list--tasks {
   gap: 10px;
 }
@@ -252,7 +119,6 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* Align the glyph optically with the first text line. */
   height: calc(1em * 1.4);
 }
 
@@ -294,15 +160,7 @@
   white-space: nowrap;
 }
 
-/* ── Activity group rows ──────────────────────────────────────────── */
-
-/* Group headers reuse the task-row/button anatomy; the only additions
-   are the aggregate-status meta, a subtle expand chevron, and the
-   indented member list revealed on expand. */
-
 .chat-workspace-strip__group-status {
-  /* Aggregate text can be a live member's status narration — let it
-     ellipsize instead of pushing the chevron out of the row. */
   flex-shrink: 1;
   max-width: 45%;
   overflow: hidden;
@@ -320,11 +178,8 @@
   transform: rotate(90deg);
 }
 
-/* Compound selector so the member list wins over the base
-   `.chat-workspace-strip__list` margin/padding reset declared below. */
 .chat-workspace-strip__list.chat-workspace-strip__group-members {
   margin-top: 6px;
-  /* Indent member rows under the header label (icon 15px + gap 8px). */
   padding-left: 23px;
 }
 
@@ -348,17 +203,6 @@
     animation: none;
   }
 }
-
-/* Actions section body: compact command list; geometry lives in
-   workspace-actions-list.css. This wrapper exists only so the body
-   can match the section's content inset. */
-.chat-workspace-strip__actions-body {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-}
-
-/* ── Rows ─────────────────────────────────────────────────────────── */
 
 .chat-workspace-strip__list {
   list-style: none;
@@ -389,14 +233,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.chat-workspace-strip__row-label-shimmer {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
 }
 
 .chat-workspace-strip__file-name {
