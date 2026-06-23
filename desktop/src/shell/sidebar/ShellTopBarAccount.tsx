@@ -410,6 +410,9 @@ export const ShellTopBarAccount = ({
   const pillLabel = isPaidPlan
     ? planLabel(plan, billingStatus)
     : t("sidebar.upgrade");
+  const sidebarPlanLabel = billingQueryReady
+    ? planLabel(plan, billingStatus)
+    : null;
 
   return (
     <div className="shell-topbar-account">
@@ -420,13 +423,28 @@ export const ShellTopBarAccount = ({
             className="shell-topbar-account-trigger shell-topbar-account-trigger--split"
             title={
               displayLabel === accountName
-                ? accountName
-                : `${displayLabel} · ${accountName}`
+                ? sidebarPlanLabel
+                  ? `${accountName} · ${sidebarPlanLabel}`
+                  : accountName
+                : sidebarPlanLabel
+                  ? `${displayLabel} · ${accountName} · ${sidebarPlanLabel}`
+                  : `${displayLabel} · ${accountName}`
             }
-            aria-label={accountName}
+            aria-label={
+              sidebarPlanLabel
+                ? `${displayLabel}, ${sidebarPlanLabel} plan`
+                : displayLabel
+            }
           >
-            <span className="shell-topbar-account-nickname">
-              {displayLabel}
+            <span className="shell-topbar-account-identity">
+              <span className="shell-topbar-account-nickname">
+                {displayLabel}
+              </span>
+              {sidebarPlanLabel ? (
+                <span className="shell-topbar-account-plan">
+                  {sidebarPlanLabel}
+                </span>
+              ) : null}
             </span>
             <span className="shell-topbar-account-trigger-icon">
               <SettingsIcon size={15} strokeWidth={1.75} aria-hidden="true" />
