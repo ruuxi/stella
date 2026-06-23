@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import { X } from "@/ui/icons";
+import { Download, X } from "@/ui/icons";
 import { showToast } from "@/ui/toast";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { useDesktopUpdate } from "@/global/updates/use-desktop-update";
@@ -151,6 +151,12 @@ export const ShellTopBarUpdatePill = () => {
               : "Update Stella (no update published — visible for testing)"
         }
       >
+        <Download
+          className="shell-topbar-update-pill__icon"
+          size={12}
+          strokeWidth={2}
+          aria-hidden
+        />
         <span className="shell-topbar-update-pill__label">{label}</span>
       </button>
       {isActive ? (
