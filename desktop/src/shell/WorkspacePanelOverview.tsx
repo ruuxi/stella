@@ -530,7 +530,8 @@ export function WorkspacePanelOverview({
   const hasActivity = visibleActivityRows.length > 0;
   const hasFiles = allFiles.length > 0;
   const hasSchedule = upNext.length > 0;
-  const hasStore = storePreview.length > 0;
+  // Store is no longer listed by default — it only surfaces while searching.
+  const hasStore = searching && storePreview.length > 0;
   const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
     if (!openScheduleEntry || !conversationId) return [];
     return [scheduleEntryToAffectedRef(openScheduleEntry, conversationId)];
