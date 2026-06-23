@@ -6,9 +6,9 @@
  *   2. Capture         → radial-dial-style region/window capture.
  *   3. Attach Stella   → pick a window and dock the mini beside it.
  *
- * Menu order (top → bottom): optional recent files, then capture, attach
- * Stella, and attach files at the bottom (nearest the + button).
- * No dividers between rows.
+ * Menu order (top → bottom): optional recent files, new chat, then capture,
+ * select area, attach Stella, and attach files at the bottom (nearest the +
+ * button). No dividers between rows.
  *
  * The menu owns its own state (file input ref + recent-files store), so
  * both the home full-chat composer and the sidebar composer can reuse it
@@ -16,7 +16,14 @@
  */
 import { useCallback, useRef, useState } from "react";
 import type { ChangeEvent, Dispatch, SetStateAction } from "react";
-import { Camera, File, PanelRight, Paperclip, Scan } from "@/ui/icons";
+import {
+  Camera,
+  File,
+  MessageSquarePlus,
+  PanelRight,
+  Paperclip,
+  Scan,
+} from "@/ui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +47,7 @@ type ComposerAddMenuProps = {
   className?: string;
   title?: string;
   onSelectArea?: () => void;
+  onNewChat?: () => void | Promise<void>;
 };
 
 const FILE_NAME_MAX_DISPLAY = 28;
@@ -66,9 +74,12 @@ export function ComposerAddMenu({
   className,
   title,
   onSelectArea,
+  onNewChat,
 }: ComposerAddMenuProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [newChatArmed, setNewChatArmed] = useState(false);
+  const [newChatPending, setNewChatPending] = useState(false);
   const { recentFiles, recordRecentFiles } = useRecentFiles();
 
   const handleAttachFiles = useCallback(() => {
@@ -102,6 +113,45 @@ export function ComposerAddMenu({
       console.warn("[composer-add-menu] capture failed:", error);
     }
   }, []);
+
+  const handleMenuOpenChange = useCallback(
+    (open: boolean) => {
+      if (newChatPending) return;
+      setMenuOpen(open);
+      if (!open) setNewChatArmed(false);
+    },
+    [newChatPending],
+  );
+
+  const handleNewChatSelect = useCallback(
+    async (event: Event) => {
+      if (!onNewChat) return;
+      if (!newChatArmed) {
+        event.preventDefault();
+        setNewChatArmed(true);
+        return;
+      }
+      setNewChatPending(true);
+      try {
+        await onNewChat();
+        setMenuOpen(false);
+        setNewChatArmed(false);
+      } catch (error) {
+        console.warn("[composer-add-menu] new chat failed:", error);
+        showToast({
+          title: "Couldn’t start a new chat",
+          description:
+            error instanceof Error && error.message
+              ? error.message
+              : "Stella will keep this chat open.",
+          variant: "error",
+        });
+      } finally {
+        setNewChatPending(false);
+      }
+    },
+    [newChatArmed, onNewChat],
+  );
 
   const handleSelectArea = useCallback(() => {
     setMenuOpen(false);
@@ -147,7 +197,7 @@ export function ComposerAddMenu({
 
   return (
     <>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu open={menuOpen} onOpenChange={handleMenuOpenChange}>
         <DropdownMenuTrigger asChild>
           <ComposerAddButton className={className} title={title ?? "Add"} />
         </DropdownMenuTrigger>
@@ -179,6 +229,18 @@ export function ComposerAddMenu({
               ))}
             </>
           )}
+          {onNewChat ? (
+            <DropdownMenuItem
+              onSelect={(event) => {
+                void handleNewChatSelect(event);
+              }}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <MessageSquarePlus size={16} strokeWidth={1.75} />
+              </span>
+              {newChatArmed ? "Confirm new chat" : "New chat"}
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem onSelect={handleCapture}>
             <span data-slot="dropdown-menu-item-icon">
               <Camera size={16} strokeWidth={1.75} />

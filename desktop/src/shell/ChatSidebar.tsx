@@ -140,6 +140,7 @@ export function ChatPanelTab({
   onLoadOlder,
   onSend,
   onStop,
+  onNewChat,
 }: ChatPanelTabProps) {
   const [inputText, setInputText] = useState("");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
@@ -296,6 +297,14 @@ export function ChatPanelTab({
     if (!startAnnotation) return undefined;
     return () => startAnnotation({ submit: attachAnnotation });
   }, [startAnnotation, attachAnnotation]);
+
+  const handleNewChat = useCallback(async () => {
+    await onNewChat();
+    setInputText("");
+    setChatContext(null);
+    setSelectedText(null);
+    setSidebarExpanded(false);
+  }, [onNewChat, setChatContext, setSelectedText]);
 
   const dictation = useDictation({
     message: inputText,
@@ -509,6 +518,7 @@ export function ChatPanelTab({
                       title="Add"
                       setChatContext={setChatContext}
                       onSelectArea={handleSelectArea}
+                      onNewChat={handleNewChat}
                     />
 
                     {dictationInline ? (
@@ -556,6 +566,7 @@ export function ChatPanelTab({
                               title="Add"
                               setChatContext={setChatContext}
                               onSelectArea={handleSelectArea}
+                              onNewChat={handleNewChat}
                             />
                           </div>
 
