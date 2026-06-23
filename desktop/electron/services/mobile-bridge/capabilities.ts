@@ -36,8 +36,6 @@ import {
   IPC_DISCOVERY_WRITE_CORE_MEMORY,
   IPC_DISCOVERY_WRITE_KNOWLEDGE,
   IPC_DISPLAY_LIST_CANVAS_HTML,
-  IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS,
-  IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED,
   IPC_DISPLAY_READ_FILE,
   IPC_DISPLAY_TRASH_FORCE_DELETE,
   IPC_DISPLAY_TRASH_LIST,
@@ -242,11 +240,6 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
   event("display.onUpdate", IPC_DISPLAY_UPDATE),
   invoke("display.readFile", IPC_DISPLAY_READ_FILE),
   invoke("display.listCanvasHtml", IPC_DISPLAY_LIST_CANVAS_HTML),
-  invoke("display.listOpenPanelReports", IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS),
-  invoke(
-    "display.markOpenPanelReportOpened",
-    IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED,
-  ),
   invoke("display.listTrash", IPC_DISPLAY_TRASH_LIST),
   invoke("display.forceDeleteTrash", IPC_DISPLAY_TRASH_FORCE_DELETE),
 

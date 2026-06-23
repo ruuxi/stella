@@ -24,8 +24,6 @@ import {
   getPreventComputerSleep,
   getReadAloudEnabled,
   setReadAloudEnabled,
-  getCadenceReportsPreferences,
-  setCadenceReportsPreferences,
   getSoundNotificationsEnabled,
   getSyncMode,
   loadLocalPreferences,
@@ -34,7 +32,6 @@ import {
   saveLocalPreferences,
   setOnboardingCompleted,
   updateLocalModelPreferences,
-  type CadenceReportsPreferences,
   type LocalModelPreferencesSnapshot,
   type ReasoningEffort,
 } from "../../../runtime/kernel/preferences/local-preferences.js";
@@ -129,8 +126,6 @@ import {
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_GET_READ_ALOUD,
   IPC_PREFERENCES_SET_READ_ALOUD,
-  IPC_PREFERENCES_GET_CADENCE_REPORTS,
-  IPC_PREFERENCES_SET_CADENCE_REPORTS,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
 } from "../../src/shared/contracts/ipc-channels.js";
@@ -1953,52 +1948,6 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     }
     return { enabled: nextEnabled };
   });
-
-  ipcMain.handle(IPC_PREFERENCES_GET_CADENCE_REPORTS, (event) => {
-    if (
-      !options.externalLinkService.assertPrivilegedSender(
-        event,
-        IPC_PREFERENCES_GET_CADENCE_REPORTS,
-      )
-    ) {
-      throw new Error(
-        "Blocked untrusted preferences:getCadenceReports request.",
-      );
-    }
-    const stellaAppDir = options.getStellaAppDir();
-    if (!stellaAppDir) {
-      return {
-        schedules: { "4h": false, daily: false, weekly: false },
-        browser: null,
-        profile: null,
-      } satisfies CadenceReportsPreferences;
-    }
-    return getCadenceReportsPreferences(stellaAppDir);
-  });
-
-  ipcMain.handle(
-    IPC_PREFERENCES_SET_CADENCE_REPORTS,
-    (event, settings: CadenceReportsPreferences) => {
-      if (
-        !options.externalLinkService.assertPrivilegedSender(
-          event,
-          IPC_PREFERENCES_SET_CADENCE_REPORTS,
-        )
-      ) {
-        throw new Error(
-          "Blocked untrusted preferences:setCadenceReports request.",
-        );
-      }
-      const fallback: CadenceReportsPreferences = {
-        schedules: { "4h": false, daily: false, weekly: false },
-        browser: null,
-        profile: null,
-      };
-      const stellaAppDir = options.getStellaAppDir();
-      if (!stellaAppDir) return fallback;
-      return setCadenceReportsPreferences(stellaAppDir, settings ?? fallback);
-    },
-  );
 
   ipcMain.handle(IPC_GLOBAL_SHORTCUTS_GET_SUSPENDED, (event) => {
     if (

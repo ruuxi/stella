@@ -11,20 +11,26 @@ import {
 } from "react";
 import {
   CreditCard,
-  FileText,
   LogOut,
   MessageSquare,
   Palette,
   Settings as SettingsIcon,
+  SlidersHorizontal,
 } from "@/ui/icons";
 import { useT } from "@/shared/i18n";
 import {
   preloadAuthDialog,
   preloadBillingScreen,
   preloadConnectDialog,
+  preloadModelsPicker,
   preloadNavSurfaceRoute,
 } from "@/shell/topbar/nav-surface-preloads";
+import { ModelsPicker } from "@/global/settings/ModelsPicker";
 import { ThemePicker } from "@/global/settings/ThemePicker";
+import {
+  engineOverlay,
+  useEngineOverlayOpen,
+} from "@/shell/display/engine-overlay-store";
 import { usePersistentConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 import { SUBSCRIPTION_UPGRADED_EVENT } from "@/global/billing/SubscriptionUpgradeDialog";
 import { api } from "@/convex/api";
@@ -55,12 +61,6 @@ import "./account-dialogs.css";
 
 const FeedbackDialog = lazy(() =>
   import("./FeedbackDialog").then((m) => ({ default: m.FeedbackDialog })),
-);
-
-const ReportsDialog = lazy(() =>
-  import("@/global/settings/ReportsDialog").then((m) => ({
-    default: m.ReportsDialog,
-  })),
 );
 
 type BillingPlanId = "free" | "go" | "pro" | "plus" | "ultra";
@@ -198,14 +198,14 @@ export const ShellTopBarAccount = ({
     };
   }, []);
 
+  const modelsPickerOpen = useEngineOverlayOpen();
   const pendingFeedbackRef = useRef(false);
   const pendingConnectRef = useRef(false);
   const pendingSettingsRef = useRef(false);
+  const pendingModelsRef = useRef(false);
   const pendingThemeRef = useRef(false);
-  const pendingReportsRef = useRef(false);
   const [signOutConfirmOpen, setSignOutConfirmOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
-  const [reportsOpen, setReportsOpen] = useState(false);
   const pendingSignOutRef = useRef(false);
 
   const handleDropdownCloseAutoFocus = useCallback(
@@ -228,16 +228,16 @@ export const ShellTopBarAccount = ({
         handleOpenConnect();
         return;
       }
+      if (pendingModelsRef.current) {
+        pendingModelsRef.current = false;
+        event.preventDefault();
+        engineOverlay.setOpen(true);
+        return;
+      }
       if (pendingThemeRef.current) {
         pendingThemeRef.current = false;
         event.preventDefault();
         setThemePickerOpen(true);
-        return;
-      }
-      if (pendingReportsRef.current) {
-        pendingReportsRef.current = false;
-        event.preventDefault();
-        setReportsOpen(true);
         return;
       }
       if (pendingSignOutRef.current) {
@@ -307,6 +307,18 @@ export const ShellTopBarAccount = ({
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => {
+                pendingModelsRef.current = true;
+              }}
+              onMouseEnter={preloadModelsPicker}
+              onFocus={preloadModelsPicker}
+            >
+              <span data-slot="dropdown-menu-item-icon">
+                <SlidersHorizontal size={14} strokeWidth={1.75} />
+              </span>
+              Models
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
                 pendingThemeRef.current = true;
               }}
             >
@@ -314,16 +326,6 @@ export const ShellTopBarAccount = ({
                 <Palette size={14} strokeWidth={1.75} />
               </span>
               Theme
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                pendingReportsRef.current = true;
-              }}
-            >
-              <span data-slot="dropdown-menu-item-icon">
-                <FileText size={14} strokeWidth={1.75} />
-              </span>
-              Reports
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => {
@@ -350,6 +352,21 @@ export const ShellTopBarAccount = ({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <ModelsPicker
+          open={modelsPickerOpen}
+          onOpenChange={engineOverlay.setOpen}
+          hideTrigger
+          side="top"
+          align="end"
+          trigger={
+            <button
+              type="button"
+              className="shell-topbar-account-models-anchor"
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+          }
+        />
         <ThemePicker
           open={themePickerOpen}
           onOpenChange={setThemePickerOpen}
@@ -373,11 +390,6 @@ export const ShellTopBarAccount = ({
               variant={feedbackVariant}
               onSubmitted={acknowledgeFeedbackPrompt}
             />
-          </Suspense>
-        ) : null}
-        {reportsOpen ? (
-          <Suspense fallback={null}>
-            <ReportsDialog open onOpenChange={setReportsOpen} />
           </Suspense>
         ) : null}
       </div>
@@ -441,6 +453,18 @@ export const ShellTopBarAccount = ({
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
+              pendingModelsRef.current = true;
+            }}
+            onMouseEnter={preloadModelsPicker}
+            onFocus={preloadModelsPicker}
+          >
+            <span data-slot="dropdown-menu-item-icon">
+              <SlidersHorizontal size={14} strokeWidth={1.75} />
+            </span>
+            Models
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
               pendingThemeRef.current = true;
             }}
           >
@@ -448,16 +472,6 @@ export const ShellTopBarAccount = ({
               <Palette size={14} strokeWidth={1.75} />
             </span>
             Theme
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              pendingReportsRef.current = true;
-            }}
-          >
-            <span data-slot="dropdown-menu-item-icon">
-              <FileText size={14} strokeWidth={1.75} />
-            </span>
-            Reports
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
@@ -540,6 +554,21 @@ export const ShellTopBarAccount = ({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <ModelsPicker
+        open={modelsPickerOpen}
+        onOpenChange={engineOverlay.setOpen}
+        hideTrigger
+        side="top"
+        align="end"
+        trigger={
+          <button
+            type="button"
+            className="shell-topbar-account-models-anchor"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+        }
+      />
       <ThemePicker
         open={themePickerOpen}
         onOpenChange={setThemePickerOpen}
@@ -563,11 +592,6 @@ export const ShellTopBarAccount = ({
             variant={feedbackVariant}
             onSubmitted={acknowledgeFeedbackPrompt}
           />
-        </Suspense>
-      ) : null}
-      {reportsOpen ? (
-        <Suspense fallback={null}>
-          <ReportsDialog open onOpenChange={setReportsOpen} />
         </Suspense>
       ) : null}
       <Dialog open={signOutConfirmOpen} onOpenChange={setSignOutConfirmOpen}>
