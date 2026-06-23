@@ -718,14 +718,6 @@ export type LockedComputerUseStatus = {
   warnings: string[];
 };
 
-export type CadenceReportCadenceId = "4h" | "daily" | "weekly";
-
-export type CadenceReportSettings = {
-  schedules: Record<CadenceReportCadenceId, boolean>;
-  browser: string | null;
-  profile: string | null;
-};
-
 export type ElectronSystemApi = {
   getDeviceId: () => Promise<string | null>;
   startPhoneAccessSession: () => Promise<{ ok: boolean }>;
@@ -835,10 +827,6 @@ export type ElectronSystemApi = {
   ) => Promise<{ enabled: boolean }>;
   getReadAloudEnabled: () => Promise<boolean>;
   setReadAloudEnabled: (enabled: boolean) => Promise<{ enabled: boolean }>;
-  getCadenceReportSettings: () => Promise<CadenceReportSettings>;
-  setCadenceReportSettings: (
-    settings: CadenceReportSettings,
-  ) => Promise<CadenceReportSettings>;
   getOnboardingCompleted: () => Promise<boolean>;
   setOnboardingCompleted: (
     completed: boolean,
@@ -1706,28 +1694,6 @@ export type ElectronDisplayApi = {
       createdAt: number;
     }>
   >;
-  listOpenPanelReports: () => Promise<
-    Array<{
-      cadence: "4h" | "daily" | "weekly";
-      label: string;
-      title: string;
-      filePath: string;
-      generatedAt: number;
-      windowStartAt: number;
-      openedAt?: number;
-    }>
-  >;
-  markOpenPanelReportOpened: (payload: {
-    cadence: "4h" | "daily" | "weekly";
-  }) => Promise<{
-    cadence: "4h" | "daily" | "weekly";
-    label: string;
-    title: string;
-    filePath: string;
-    generatedAt: number;
-    windowStartAt: number;
-    openedAt?: number;
-  } | null>;
   listTrash: () => Promise<{
     items: Array<{
       id: string;

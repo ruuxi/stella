@@ -108,7 +108,7 @@ const emitAgentEndHook = async (
         ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
         isUserTurn: opts.uiVisibility !== "hidden",
         // Stella-runtime post-finalize hooks (memory review, dream notify,
-        // cadence reports, thread summaries) read accessors off `services`
+        // thread summaries) read accessors off `services`
         // instead of being baked into the kernel.
         services: {
           resolvedLlm: opts.resolvedLlm,
@@ -190,7 +190,7 @@ const emitSubagentAgentEnd = (
      * feature-snapshot namer, …). When true, we still fire `agent_end`
      * so balanced-lifecycle hooks (self-mod baseline cleanup, etc.)
      * run, but `services` is intentionally minimal so post-finalize
-     * side-effect hooks (dream notify, cadence reports, thread summaries
+     * side-effect hooks (dream notify, thread summaries
      * record) self-skip. Pre-migration these were
      * inline if-branches inside `finalizeSubagentSuccess` gated on
      * `sideEffectsAllowed`; now the gate lives on the hook side.
@@ -504,7 +504,7 @@ export const finalizeSubagentSuccess = async (args: {
   result: string;
   agentMessageCount?: number;
 }): Promise<SubagentRunResult> => {
-  // Thread-summaries record, cadence reports, and dream-scheduler notify
+  // Thread-summaries record and dream-scheduler notify
   // live as `agent_end` hooks in `runtime/extensions/stella-runtime/`.
   // The kernel just fires the lifecycle event with the per-run services
   // populated; each hook self-skips when its capability gate doesn't match.

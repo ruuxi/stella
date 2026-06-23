@@ -13,7 +13,6 @@ import type { MiniDoubleTapModifier } from "../src/shared/lib/mini-double-tap.js
 import type { MorphTimingSettings } from "../src/shared/contracts/morph-timing.js";
 import type { OfficePreviewSnapshot } from "../../runtime/contracts/office-preview.js";
 import type { RealtimeVoicePreferences } from "../../runtime/contracts/local-preferences.js";
-import type { CadenceReportsPreferences as CadenceReportSettings } from "../../runtime/kernel/preferences/local-preferences.js";
 import type {
   ThirdPartyMigrationPreview,
   ThirdPartyMigrationReport,
@@ -42,8 +41,6 @@ import {
   IPC_DISCOVERY_WRITE_CORE_MEMORY,
   IPC_DISCOVERY_WRITE_KNOWLEDGE,
   IPC_DISPLAY_LIST_CANVAS_HTML,
-  IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS,
-  IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED,
   IPC_DISPLAY_TRASH_FORCE_DELETE,
   IPC_DISPLAY_TRASH_LIST,
   IPC_OFFICE_PREVIEW_LIST,
@@ -91,7 +88,6 @@ import {
   IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_READ_ALOUD,
-  IPC_PREFERENCES_GET_CADENCE_REPORTS,
   IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_MODELS,
@@ -101,7 +97,6 @@ import {
   IPC_PREFERENCES_SET_LOCKED_COMPUTER_USE,
   IPC_PREFERENCES_SET_RADIAL_TRIGGER,
   IPC_PREFERENCES_SET_READ_ALOUD,
-  IPC_PREFERENCES_SET_CADENCE_REPORTS,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_GET_WAKE_WORD,
@@ -283,10 +278,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
           createdAt: number;
         }>
       >,
-    listOpenPanelReports: () =>
-      ipcRenderer.invoke(IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS),
-    markOpenPanelReportOpened: (payload: { cadence: string }) =>
-      ipcRenderer.invoke(IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED, payload),
     listTrash: () => ipcRenderer.invoke(IPC_DISPLAY_TRASH_LIST),
     forceDeleteTrash: (payload: { id?: string; all?: boolean }) =>
       ipcRenderer.invoke(IPC_DISPLAY_TRASH_FORCE_DELETE, payload),
@@ -1197,15 +1188,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_PREFERENCES_SET_READ_ALOUD, enabled) as Promise<{
         enabled: boolean;
       }>,
-    getCadenceReportSettings: () =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_GET_CADENCE_REPORTS,
-      ) as Promise<CadenceReportSettings>,
-    setCadenceReportSettings: (settings: CadenceReportSettings) =>
-      ipcRenderer.invoke(
-        IPC_PREFERENCES_SET_CADENCE_REPORTS,
-        settings,
-      ) as Promise<CadenceReportSettings>,
     getOnboardingCompleted: () =>
       ipcRenderer.invoke(
         IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,

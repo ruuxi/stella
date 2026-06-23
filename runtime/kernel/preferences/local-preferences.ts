@@ -57,22 +57,6 @@ export type ImageGenerationPreferences = {
   model?: string;
 };
 
-export type CadenceReportCadence = "4h" | "daily" | "weekly";
-
-export type CadenceReportSchedules = Record<CadenceReportCadence, boolean>;
-
-export type CadenceReportsPreferences = {
-  /** Per-cadence enabled flags. All false means cadence reports are off. */
-  schedules: CadenceReportSchedules;
-  /**
-   * Chromium browser id used to source browsing activity for reports
-   * (e.g. "chrome"). Null falls back to auto-detection.
-   */
-  browser: string | null;
-  /** Browser profile folder id (e.g. "Default", "Profile 1"). */
-  profile: string | null;
-};
-
 export type {
   RealtimeVoiceProvider,
   RealtimeVoiceUnderlyingProvider,
@@ -150,13 +134,6 @@ export type LocalPreferences = {
   chronicleEnabled: boolean;
   chroniclePendingEnable: boolean;
   /**
-   * Background cadence reports (4h / Daily / Weekly). Off by default. Turned
-   * on during onboarding when the user opts into browser discovery, or later
-   * from the Reports dialog. The browser/profile pin which history the
-   * reports read so they source from the location the user expects.
-   */
-  cadenceReports: CadenceReportsPreferences;
-  /**
    * "Hey Stella" wake-word listener — when enabled, a background
    * native helper continuously listens for the wake word and starts
    * the realtime voice agent on detection. Mic buttons / keybinds
@@ -198,12 +175,6 @@ export type LocalModelPreferencesSnapshot = Pick<
 const DEFAULT_MAX_AGENT_CONCURRENCY = 24;
 const MAX_AGENT_CONCURRENCY_CEILING = 48;
 
-const DEFAULT_CADENCE_REPORTS: CadenceReportsPreferences = {
-  schedules: { "4h": false, daily: false, weekly: false },
-  browser: null,
-  profile: null,
-};
-
 const DEFAULT_PREFERENCES: LocalPreferences = {
   defaultModels: {},
   modelOverrides: {},
@@ -232,7 +203,6 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   readAloudEnabled: false,
   chronicleEnabled: false,
   chroniclePendingEnable: false,
-  cadenceReports: DEFAULT_CADENCE_REPORTS,
   personalityVoiceId: undefined,
 };
 
@@ -312,7 +282,6 @@ export const loadLocalPreferences = (stellaDataDir: string): LocalPreferences =>
       chroniclePendingEnable:
         parsed.chronicleEnabled !== true &&
         parsed.chroniclePendingEnable === true,
-      cadenceReports: normalizeCadenceReports(parsed.cadenceReports),
       personalityVoiceId: isKnownPersonalityId(parsed.personalityVoiceId)
         ? parsed.personalityVoiceId
         : DEFAULT_PREFERENCES.personalityVoiceId,
@@ -510,22 +479,6 @@ export const setReadAloudEnabled = (
   saveLocalPreferences(stellaDataDir, { ...prefs, readAloudEnabled: enabled });
 };
 
-export const getCadenceReportsPreferences = (
-  stellaDataDir: string,
-): CadenceReportsPreferences => {
-  return loadLocalPreferences(stellaDataDir).cadenceReports;
-};
-
-export const setCadenceReportsPreferences = (
-  stellaDataDir: string,
-  value: CadenceReportsPreferences,
-): CadenceReportsPreferences => {
-  const prefs = loadLocalPreferences(stellaDataDir);
-  const next = normalizeCadenceReports(value);
-  saveLocalPreferences(stellaDataDir, { ...prefs, cadenceReports: next });
-  return next;
-};
-
 export const getChronicleEnabled = (stellaDataDir: string): boolean => {
   return loadLocalPreferences(stellaDataDir).chronicleEnabled;
 };
@@ -662,44 +615,6 @@ const normalizeConcurrency = (value: unknown): number => {
   }
   const rounded = Math.floor(parsed);
   return Math.min(MAX_AGENT_CONCURRENCY_CEILING, rounded);
-};
-
-const normalizeCadenceReports = (value: unknown): CadenceReportsPreferences => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return {
-      schedules: { ...DEFAULT_CADENCE_REPORTS.schedules },
-      browser: null,
-      profile: null,
-    };
-  }
-  const record = value as {
-    schedules?: unknown;
-    browser?: unknown;
-    profile?: unknown;
-  };
-  const sched =
-    typeof record.schedules === "object" &&
-    record.schedules !== null &&
-    !Array.isArray(record.schedules)
-      ? (record.schedules as Record<string, unknown>)
-      : {};
-  const browser =
-    typeof record.browser === "string" && record.browser.trim().length > 0
-      ? record.browser.trim()
-      : null;
-  const profile =
-    typeof record.profile === "string" && record.profile.trim().length > 0
-      ? record.profile.trim()
-      : null;
-  return {
-    schedules: {
-      "4h": sched["4h"] === true,
-      daily: sched.daily === true,
-      weekly: sched.weekly === true,
-    },
-    browser,
-    profile,
-  };
 };
 
 export const normalizeImageGenerationPreferences = (

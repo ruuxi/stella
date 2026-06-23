@@ -27,10 +27,6 @@ export const IPC_WINDOW_SET_NATIVE_BUTTONS_VISIBLE =
 export const IPC_DISPLAY_UPDATE = "display:update" as const;
 export const IPC_DISPLAY_READ_FILE = "display:readFile" as const;
 export const IPC_DISPLAY_LIST_CANVAS_HTML = "display:listCanvasHtml" as const;
-export const IPC_DISPLAY_LIST_OPEN_PANEL_REPORTS =
-  "display:listOpenPanelReports" as const;
-export const IPC_DISPLAY_MARK_OPEN_PANEL_REPORT_OPENED =
-  "display:markOpenPanelReportOpened" as const;
 export const IPC_DISPLAY_TRASH_LIST = "displayTrash:list" as const;
 export const IPC_DISPLAY_TRASH_FORCE_DELETE =
   "displayTrash:forceDelete" as const;
@@ -253,10 +249,6 @@ export const IPC_PREFERENCES_GET_READ_ALOUD =
   "preferences:getReadAloud" as const;
 export const IPC_PREFERENCES_SET_READ_ALOUD =
   "preferences:setReadAloud" as const;
-export const IPC_PREFERENCES_GET_CADENCE_REPORTS =
-  "preferences:getCadenceReports" as const;
-export const IPC_PREFERENCES_SET_CADENCE_REPORTS =
-  "preferences:setCadenceReports" as const;
 export const IPC_PREFERENCES_GET_ONBOARDING_COMPLETED =
   "preferences:getOnboardingCompleted" as const;
 export const IPC_PREFERENCES_SET_ONBOARDING_COMPLETED =
