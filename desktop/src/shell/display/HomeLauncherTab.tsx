@@ -4,7 +4,7 @@
  *
  * Home itself IS the chat, so this surface never hosts a duplicate
  * conversation. Instead it's a quiet launcher of the other display
- * surfaces the user might want (Canvas, Media, Trash) — click one and that
+ * surfaces the user might want (Canvas, Media, Store, Trash) — click one and that
  * tab takes over. Activity / files / schedules already live in the left
  * sidebar, so this launcher doesn't repeat them, and Models lives in the
  * sidebar footer rather than here.
@@ -15,6 +15,7 @@ import type { DisplayTabKind } from "@/features/workspace-display/types";
 import {
   openCanvasDisplayTab,
   openMediaDisplayTab,
+  openStoreDisplayTab,
   openTrashDisplayTab,
 } from "./default-tabs";
 import "./chat-home-overview.css";
@@ -41,6 +42,13 @@ const ENTRIES: ReadonlyArray<LauncherEntry> = [
     description: "Generated images, video, and audio",
     kind: "media",
     onSelect: openMediaDisplayTab,
+  },
+  {
+    id: "store",
+    label: "Store",
+    description: "Add-ons and things you've built",
+    kind: "store",
+    onSelect: openStoreDisplayTab,
   },
   {
     id: "trash",
