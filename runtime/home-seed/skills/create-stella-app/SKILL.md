@@ -7,7 +7,7 @@ description: Scaffold a new single-file Stella app under desktop/src/app/_user. 
 
 A Stella app is **one file**: `desktop/src/app/_user/<slug>.tsx`. It
 appears on the `/apps` page automatically and opens at `/apps/<slug>`.
-No sidebar entry. No multi-file scaffold.
+No nav entry of its own. No multi-file scaffold.
 
 ## Scaffold
 
@@ -57,8 +57,9 @@ Don't touch:
   resolves every user app.
 - `desktop/src/app/_user/user-apps-registry.ts` — discovery happens
   through `import.meta.glob`; new files are picked up automatically.
-- the top-bar nav / `app-registry` — user apps live on `/apps`, not
-  in the sidebar.
+- the left sidebar nav / `app-registry` — user apps live on the `/apps`
+  page, reached via the sidebar's single "Apps" entry; they never get
+  their own nav row.
 
 ## Visual style
 
