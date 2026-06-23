@@ -30,8 +30,8 @@
 :root[data-shell-panel-chrome="true"] .full-body::before {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 1px;
+  bottom: 1px;
   left: var(--shell-left-sidebar-width, 0px);
   width: var(--shell-junction-radius);
   z-index: 1;
