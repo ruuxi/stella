@@ -297,13 +297,23 @@
   gap: 10px;
 }
 
-.workspace-sidebar__footer .shell-topbar-account-nickname {
+.workspace-sidebar__footer .shell-topbar-account-identity {
   flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-start;
+}
+
+.workspace-sidebar__footer .shell-topbar-account-nickname {
+  flex: 0 1 auto;
   min-width: 0;
   max-width: none;
   margin-left: 0;
   text-align: left;
   font-size: var(--font-size-base);
+}
+
+.workspace-sidebar__footer .shell-topbar-account-plan {
+  font-size: var(--font-size-xs);
 }
 
 .workspace-sidebar__footer .shell-topbar-account-signin-icon {

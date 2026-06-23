@@ -212,6 +212,16 @@
   height: 15px;
 }
 
+.shell-topbar-account-identity {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .shell-topbar-account-nickname {
   font-family: inherit;
   font-size: var(--font-size-base);
@@ -223,6 +233,17 @@
   max-width: 160px;
   pointer-events: none;
   margin-left: 2px;
+}
+
+.shell-topbar-account-plan {
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.005em;
+  color: var(--text-weak);
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .shell-topbar-account-avatar {
