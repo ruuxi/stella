@@ -246,23 +246,6 @@
   pointer-events: none;
 }
 
-.shell-topbar-account-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1px solid var(--border-weak);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
-  color: var(--text-strong);
-  font-family: inherit;
-  font-size: var(--font-size-2xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0.04em;
-  pointer-events: none;
-}
-
 .shell-topbar-account-signin {
   display: inline-flex;
   align-items: center;

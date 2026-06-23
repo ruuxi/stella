@@ -65,14 +65,6 @@
   color: var(--text-base);
 }
 
-.error-boundary-feature-list {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  margin: 0 0 20px;
-}
-
 .error-boundary-btn {
   padding: 6px 24px;
   min-width: 100px;
@@ -110,16 +102,6 @@
 
 .error-boundary-btn--fix:hover:not(:disabled) {
   background: color-mix(in oklch, var(--primary) 85%, var(--foreground));
-}
-
-.error-boundary-btn--primary {
-  background: var(--foreground);
-  border-color: var(--foreground);
-  color: var(--background);
-}
-
-.error-boundary-btn--primary:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--foreground) 85%, var(--background));
 }
 
 .error-boundary-btn--danger {

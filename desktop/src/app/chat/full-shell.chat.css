@@ -237,12 +237,6 @@
   color: var(--text-weak);
 }
 
-.event-item.steps-wrapper {
-  background: transparent;
-  padding: 0;
-  border: none;
-}
-
 .event-type {
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);

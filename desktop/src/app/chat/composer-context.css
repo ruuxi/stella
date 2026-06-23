@@ -114,14 +114,6 @@
   box-shadow: var(--focus-ring);
 }
 
-/* Empty-slot placeholder keeps the row from collapsing when one of the
- * three suggestion slots is currently empty (e.g. one app quit, no live
- * candidate to fill it yet). Zero-width — invisible but reserves no
- * horizontal space; flex `gap` collapses around it gracefully. */
-.composer-context-suggestion-placeholder {
-  display: none;
-}
-
 .composer-context-suggestion__plus {
   font-size: var(--font-size-sm);
   line-height: 1;

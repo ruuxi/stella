@@ -137,15 +137,6 @@
   color: var(--text-weak);
 }
 
-.activity-history-dialog__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 .activity-history-dialog__row {
   display: flex;
   align-items: baseline;

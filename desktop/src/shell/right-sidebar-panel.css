@@ -108,13 +108,6 @@ body[data-display-expanding="true"]
   padding-left: max(12px, calc(116px - var(--shell-left-sidebar-width, 0px)));
 }
 
-.right-sidebar-panel__chrome-spacer {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  -webkit-app-region: drag;
-}
-
 .right-sidebar-panel__chrome-tabs-slot {
   flex: 1;
   min-width: 0;
@@ -133,13 +126,6 @@ body[data-display-expanding="true"]
   -webkit-app-region: no-drag;
 }
 
-.right-sidebar-panel__overview {
-  flex: 0 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
 .right-sidebar-panel__body .right-sidebar__active {
   flex: 1 1 auto;
   min-height: 0;
@@ -156,13 +142,6 @@ body[data-display-expanding="true"]
   .right-sidebar-panel__body
   .right-sidebar__active {
   min-width: 0;
-}
-
-.right-sidebar-panel__overview .chat-workspace-strip__panel {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  max-height: none;
 }
 
 /* ── Width / visibility ──────────────────────────────────────────── */
@@ -189,16 +168,6 @@ body[data-display-expanding="true"]
 }
 
 .right-sidebar.right-sidebar-panel:not(.right-sidebar--shell-visible) {
-  width: 0;
-  pointer-events: none;
-}
-
-/* Collapse the card entirely when the overview has no content (the
-   overview component renders nothing), so a closed panel never shows an
-   empty floating card. */
-.right-sidebar.right-sidebar-panel:not(.right-sidebar--open):has(
-    .right-sidebar-panel__overview:empty
-  ) {
   width: 0;
   pointer-events: none;
 }

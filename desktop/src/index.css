@@ -116,9 +116,6 @@ html[data-stella-window="mini"] #stella-mini-boot {
 }
 
 :root {
-  /* Base radius — buttons / small controls */
-  --radius: 0.625rem;
-
   /* Font families with metric-adjusted fallbacks. Manrope for UI/body;
      Cormorant Garamond for display headings and brand voice. */
   --font-family-sans: "Manrope", "Manrope Fallback", system-ui, sans-serif;
@@ -130,21 +127,10 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --font-family-mono--font-feature-settings: "ss01" 1;
   --font-family-display: "Cormorant Garamond", Georgia, serif;
 
-  /* Font feature settings (legacy) */
-  --font-feature-settings: normal;
-
-  /* Gradient controls (retained for any legacy reference; the animated
-     background is removed in favor of a single flat surface). */
-  --gradient-saturation: 100;
-  --gradient-brightness: 100;
-  --gradient-blur: 120px;
-  --gradient-noise: 0;
-
   /* Accent ramp for incidental data viz (Apple system colors). */
   --stella-animation-color-1: #0a84ff;
   --stella-animation-color-2: #34c759;
   --stella-animation-color-3: #ff9f0a;
-  --stella-animation-color-4: #5e5ce6;
 
   /* ── Elevation: one calm, soft family. No banding to fight now that the
         substrate is a single flat surface, so a tight contact layer plus one
@@ -204,13 +190,11 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --panel-surface-border: color-mix(in oklch, var(--border) 60%, transparent);
   --panel-surface-highlight: inset 0 1px 0
     color-mix(in oklch, white 42%, transparent);
-  --panel-elevated-shadow: var(--shadow-sm);
 
   /* Opaque surface ladder. */
   --surface-inset: color-mix(in srgb, var(--foreground) 5%, var(--background));
   --surface-raised: var(--card);
   --surface-raised-hover: color-mix(in srgb, var(--foreground) 4%, var(--card));
-  --surface-overlay: var(--card);
   --surface-raised-stronger-non-alpha: var(--card);
 
   /* Text hierarchy — SOLID, opaque colors mixed toward the background so
@@ -221,9 +205,6 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --text-weak: color-mix(in srgb, var(--foreground) 58%, var(--background));
   --text-weaker: color-mix(in srgb, var(--foreground) 40%, var(--background));
   --text-interactive-base: var(--primary);
-
-  /* No blend mode — text paints normally on a stable opaque surface. */
-  --text-mix-blend-mode: normal;
 
   /* Color scheme */
   color-scheme: light;
@@ -236,8 +217,6 @@ html[data-stella-window="mini"] #stella-mini-boot {
 
   /* ── Semantic colors — macOS-native light. ── */
   --background: #ffffff;
-  --background-base: #ffffff;
-  --background-weak: #f5f5f7;
   --background-strong: #ffffff;
   --foreground: #1d1d1f;
   --card: #ffffff;
@@ -256,7 +235,6 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --border: #d6d6d6;
   --input: #d6d6d6;
   --ring: #0a84ff;
-  --info: #0a84ff;
   --chart-1: #0a84ff;
   --chart-2: #34c759;
   --chart-3: #ff9f0a;
@@ -291,24 +269,17 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --interactive: var(--ring);
   --interactive-foreground: var(--primary-foreground);
   --success: var(--stella-animation-color-2);
-  --success-foreground: #ffffff;
   --warning: var(--stella-animation-color-3);
-  --warning-foreground: #1d1d1f;
   --destructive-foreground: var(--primary-foreground);
   --danger: var(--destructive);
-  --error: var(--destructive);
   --text-error: var(--destructive);
   --diff-add: var(--success);
   --diff-del: var(--destructive);
 
   /* Aliases for tokens components reached for that didn't exist */
   --text-muted: var(--text-weak);
-  --text-secondary: var(--text-base);
-  --text-tertiary: var(--text-weaker);
   --surface-base: var(--background);
-  --border-subtle: var(--border-weak);
   --shadow-soft: var(--shadow-overlay);
-  --font-sans: var(--font-family-sans);
   --font-mono: var(--font-family-mono);
 
   /* ── Canonical "selected" state ───────────────────────────────────────
@@ -343,19 +314,13 @@ html[data-stella-window="mini"] #stella-mini-boot {
 
   /* ── Spacing scale (4px grid + the three half-steps that are too common to
         round away: 2 / 6 / 10). ── */
-  --space-0: 0;
-  --space-px: 1px;
-  --space-0_5: 2px;
   --space-1: 4px;
   --space-1_5: 6px;
   --space-2: 8px;
-  --space-2_5: 10px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
 
   /* ── Weight scale. Manrope is variable (200–800); these are the real stops. ── */
   --weight-light: 300;
@@ -365,23 +330,8 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --weight-bold: 700;
 
   /* ── Line-height scale ── */
-  --lh-none: 1;
   --lh-tight: 1.2; /* headings */
-  --lh-snug: 1.35; /* dense UI labels, list rows */
   --lh-normal: 1.45; /* default body/UI */
-  --lh-relaxed: 1.55; /* reading prose, chat bodies */
-  --lh-loose: 1.65; /* long-form documents */
-
-  /* ── Motion scale. Animate only on user intent; one ease curve family. ── */
-  --duration-instant: 80ms; /* button press, active-state flips */
-  --duration-fast: 120ms; /* hover/focus tints, icon swaps */
-  --duration-base: 150ms; /* DEFAULT UI transition (color/opacity/transform) */
-  --duration-moderate: 200ms; /* dropdown/menu open, small layout shifts */
-  --duration-slow: 280ms; /* popover/dialog enter, panel slide */
-  --duration-slower: 460ms; /* large overlays, deliberate emphasis */
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* default for most transitions */
-  --ease-decelerate: cubic-bezier(0.16, 1, 0.3, 1); /* entering / expanding */
-  --ease-accelerate: cubic-bezier(0.4, 0, 1, 1); /* leaving / collapsing */
 
   /* One canonical focus ring: offset background gap + ring. */
   --focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
@@ -392,7 +342,6 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --stella-animation-color-1: #0a84ff;
   --stella-animation-color-2: #30d158;
   --stella-animation-color-3: #ff9f0a;
-  --stella-animation-color-4: #5e5ce6;
 
   /* Dark elevation — slightly stronger so soft shadows read on dark surfaces. */
   --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -441,7 +390,6 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --surface-inset: color-mix(in srgb, var(--foreground) 6%, var(--background));
   --surface-raised: var(--card);
   --surface-raised-hover: color-mix(in srgb, var(--foreground) 6%, var(--card));
-  --surface-overlay: var(--card);
   --surface-raised-stronger-non-alpha: var(--card);
 
   /* Solid, theme-tracking text ramp (mixed toward the dark background). */
@@ -451,8 +399,6 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --text-weaker: color-mix(in srgb, var(--foreground) 42%, var(--background));
   --text-interactive-base: var(--primary);
 
-  --text-mix-blend-mode: normal;
-
   color-scheme: dark;
 
   --border-strong: color-mix(in srgb, var(--foreground) 24%, var(--background));
@@ -461,8 +407,6 @@ html[data-stella-window="mini"] #stella-mini-boot {
 
   /* ── Semantic colors — macOS-native dark. ── */
   --background: #1c1c1e;
-  --background-base: #1c1c1e;
-  --background-weak: #161618;
   --background-strong: #2c2c2e;
   --foreground: #f5f5f7;
   --card: #2c2c2e;
@@ -481,7 +425,6 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --border: #38383a;
   --input: #38383a;
   --ring: #0a84ff;
-  --info: #0a84ff;
   --chart-1: #0a84ff;
   --chart-2: #30d158;
   --chart-3: #ff9f0a;
@@ -545,13 +488,7 @@ html:has(.window-shell) .app {
    voice — keep their own shaped/floating surfaces. */
 html[data-stella-window="overlay"],
 html[data-stella-window="overlay"] body,
-html[data-stella-window="overlay"] #root,
-html:has(.window-region),
-html:has(.window-region) body,
-html:has(.window-region) #root,
-html:has(.window-voice),
-html:has(.window-voice) body,
-html:has(.window-voice) #root {
+html[data-stella-window="overlay"] #root {
   background: transparent !important;
   min-height: 100vh;
 }

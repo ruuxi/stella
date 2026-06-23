@@ -22,10 +22,6 @@
   animation-timing-function: linear;
 }
 
-.text-shimmer--base {
-  --text-shimmer-from: var(--text-base);
-}
-
 @keyframes text-shimmer-sweep {
   0% {
     background-position: 100% 0;
