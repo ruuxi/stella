@@ -15,7 +15,6 @@
 .window-shell.full {
   --shell-topbar-height: 38px;
   --shell-topbar-panel-controls-width: 76px;
-  --shell-content-edge: color-mix(in oklch, var(--foreground) 11%, transparent);
   padding: 0;
 }
 
@@ -61,7 +60,6 @@
   transition: none !important;
 }
 
-:root[data-shell-window-resizing="true"] .chat-workspace-strip__card,
 :root[data-shell-window-resizing="true"] .composer-shell,
 :root[data-shell-window-resizing="true"] .chat-sidebar-shell,
 :root[data-shell-window-resizing="true"] .chat-sidebar-inner {
@@ -99,29 +97,6 @@
 .shell-topbar[data-platform="mac"] .shell-topbar-left {
   transform: translateY(2px);
   padding-left: 84px;
-}
-
-.shell-topbar-profile-cluster {
-  flex-shrink: 0;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transform: translateX(-8px);
-  -webkit-app-region: no-drag;
-}
-
-.shell-topbar[data-platform="mac"] .shell-topbar-profile-cluster {
-  transform: translate(-8px, 2px);
-}
-
-.shell-topbar:not([data-display-open="true"]) .shell-topbar-profile-cluster {
-  transform: translateX(12px);
-}
-
-.shell-topbar[data-platform="mac"]:not([data-display-open="true"])
-  .shell-topbar-profile-cluster {
-  transform: translate(12px, 2px);
 }
 
 .shell-topbar-spacer {
@@ -222,9 +197,7 @@
   box-shadow: var(--focus-ring);
 }
 
-.shell-topbar-icon-btn[aria-pressed="true"]:not(
-    .shell-topbar-workspace-strip-btn
-  ) {
+.shell-topbar-icon-btn[aria-pressed="true"] {
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
   color: var(--text-strong);
 }
@@ -452,109 +425,9 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   color: var(--text-strong);
 }
 
-.shell-topbar-tab:focus-visible,
-.shell-topbar-tab__button:focus-visible {
+.shell-topbar-tab:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
-}
-
-.shell-topbar-tab--active {
-  border-color: var(--select-border);
-  background: var(--select-fill);
-  color: var(--select-text);
-}
-
-.shell-topbar-tab__button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: default;
-}
-
-.shell-topbar-tab__title {
-  max-width: 145px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-weight: var(--weight-medium);
-}
-
-.shell-topbar-tab__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  margin: 0;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm, 6px);
-  background: transparent;
-  color: var(--text-weak);
-  cursor: default;
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 120ms ease,
-    background 120ms ease,
-    color 120ms ease;
-}
-
-.shell-topbar-tab:hover .shell-topbar-tab__close,
-.shell-topbar-tab:focus-within .shell-topbar-tab__close {
-  opacity: 0.55;
-  pointer-events: auto;
-}
-
-.shell-topbar-tab__close:hover {
-  opacity: 1;
-  color: var(--text-strong);
-  background: color-mix(in srgb, var(--foreground) 8%, transparent);
-}
-
-.shell-topbar-tab__close:focus-visible,
-.shell-topbar-tab__add:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
-/* "+" affordance at the right of the tab strip — opens the
-   DisplayTabAddMenu dropdown. Same height as a tab row so the strip
-   stays visually balanced; subtle resting state, fills in on hover. */
-.shell-topbar-tab__add {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin-left: 2px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-weak);
-  cursor: default;
-  opacity: 0.7;
-  transition:
-    opacity 120ms ease,
-    color 120ms ease,
-    background 120ms ease;
-  -webkit-app-region: no-drag;
-}
-
-.shell-topbar-tab__add:hover,
-.shell-topbar-tab__add[data-state="open"] {
-  opacity: 1;
-  color: var(--text-strong);
-  background: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
 
 /* "Add tab" dropdown — adopts the same glass surface as the connect
@@ -632,10 +505,6 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   color: var(--primary-foreground);
 }
 
-.shell-topbar-history-btn {
-  display: none;
-}
-
 .onboarding-layout {
   /* Bound the onboarding "stage" so the layout is consistent across every
    * display size — small laptops, normal monitors, 4K, ultrawide, Studio
@@ -654,17 +523,6 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   z-index: 2;
   overflow: hidden;
   pointer-events: auto;
-  -webkit-app-region: no-drag;
-}
-
-.post-onboarding-startup-gate {
-  display: flex;
-  width: 100%;
-  height: 100%;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  z-index: 2;
   -webkit-app-region: no-drag;
 }
 
@@ -1026,30 +884,8 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   transition: none;
 }
 
-.onboarding-signin {
-  position: absolute;
-  bottom: 18%;
-  z-index: 10;
-  background: transparent;
-  border: 2px solid var(--border-strong);
-  min-width: 140px;
-}
-
-.new-session-directory {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
-  font-weight: var(--weight-medium);
-  color: var(--text-weak);
-}
-
 /* ── Compact mode: window narrower than 600px ── */
 @media (max-width: 600px) {
-  .shell-topbar-history-btn {
-    display: none;
-  }
-
   .shell-topbar[data-display-open="true"] .shell-topbar-tablist {
     flex: 1 1 0;
     max-width: none;

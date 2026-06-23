@@ -167,23 +167,6 @@
   box-shadow: var(--focus-ring);
 }
 
-.media-tab__action-btn--danger {
-  color: var(--destructive);
-  border-color: color-mix(
-    in oklch,
-    var(--destructive) 40%,
-    transparent
-  );
-}
-
-.media-tab__action-btn--danger:hover {
-  background: color-mix(
-    in oklch,
-    var(--destructive) 8%,
-    transparent
-  );
-}
-
 .media-tab__action-btn--armed,
 .media-tab__action-btn--armed:hover {
   color: var(--primary-foreground, var(--background));

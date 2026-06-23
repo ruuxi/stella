@@ -85,17 +85,6 @@ html[data-stella-window="pet"] #root {
   pointer-events: none;
 }
 
-.pet-overlay-bubble-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: var(--weight-semibold);
-  font-size: var(--font-size-xs);
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
-  color: var(--text-weak);
-}
-
 /* Two stacked text slots so the message can cross-fade on change
  * instead of hot-swapping. The bubble has a fixed width, so the slot
  * stays put and only opacity animates. */

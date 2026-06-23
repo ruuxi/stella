@@ -249,10 +249,6 @@
   margin-top: 2px;
 }
 
-.pets-card-description {
-  display: none;
-}
-
 .pets-card-meta {
   display: flex;
   align-items: center;
@@ -297,18 +293,6 @@
   color: var(--text-base);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
-}
-
-.pets-card-selected-badge {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  font-size: var(--font-size-2xs);
-  font-weight: var(--weight-semibold);
-  color: var(--primary-foreground);
-  background: var(--primary);
-  padding: 2px 6px;
-  border-radius: 999px;
 }
 
 .pets-grid-sentinel {

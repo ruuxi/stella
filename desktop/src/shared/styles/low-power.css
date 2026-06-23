@@ -36,7 +36,6 @@ html[data-low-power] .onboarding-mock-window,
 html[data-low-power] .onboarding-dialogue,
 html[data-low-power] .onboarding-start-button,
 html[data-low-power] .onboarding-confirm,
-html[data-low-power] .onboarding-confirm-row,
 html[data-low-power] .onboarding-engine-step,
 html[data-low-power] .onboarding-enter-step__status,
 html[data-low-power] .onboarding-enter-step__suggestion,
@@ -45,8 +44,7 @@ html[data-low-power] .inline-working-indicator,
 html[data-low-power] .inline-working-indicator--leaving,
 html[data-low-power] .inline-generated-image-cards--strip-pending::before,
 html[data-low-power] .inline-generated-image-card__placeholder::before,
-html[data-low-power] .assistant-reply-peek,
-html[data-low-power] .pet-overlay-aura {
+html[data-low-power] .assistant-reply-peek {
   filter: none !important;
 }
 
@@ -147,12 +145,6 @@ html[data-low-power] .anim-card,
 html[data-low-power] .anim-body,
 html[data-low-power] .anim-roof,
 html[data-low-power] .anim-ripple {
-  animation: none !important;
-}
-
-/* Pet overlay decoration */
-html[data-low-power] .pet-overlay-aura[data-visible="true"],
-html[data-low-power] .pet-overlay-status-pill__bar {
   animation: none !important;
 }
 

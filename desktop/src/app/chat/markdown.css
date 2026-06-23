@@ -141,12 +141,6 @@
   border-top: 1px solid var(--border-weak, var(--border));
 }
 
-/* Code blocks wrapper */
-.markdown-code {
-  position: relative;
-  margin: 1rem 0;
-}
-
 /* Code blocks - Shiki output */
 .markdown pre,
 .markdown .shiki {
@@ -225,61 +219,6 @@
   background: var(--surface-inset, var(--muted));
 }
 
-/* Copy button */
-.markdown-copy-button {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-raised, var(--card));
-  border: 1px solid var(--border-weak, var(--border));
-  border-radius: var(--radius-md);
-  cursor: default;
-  opacity: 0;
-  transition: opacity 0.15s ease, background 0.15s ease;
-  z-index: 1;
-}
-
-.markdown-code:hover .markdown-copy-button {
-  opacity: 1;
-}
-
-.markdown-copy-button:hover {
-  background: var(--surface-raised-hover, var(--accent));
-}
-
-.markdown-copy-button:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
-.markdown-copy-button svg {
-  width: 16px;
-  height: 16px;
-  color: var(--text-weak, var(--muted-foreground));
-}
-
-.markdown-copy-button .check-icon {
-  display: none;
-}
-
-.markdown-copy-button[data-copied="true"] .copy-icon {
-  display: none;
-}
-
-.markdown-copy-button[data-copied="true"] .check-icon {
-  display: inline-flex;
-}
-
-.markdown-copy-button[data-copied="true"] svg {
-  color: var(--success);
-}
-
 /*
  * Tables — Streamdown owns the structural styling (row dividers via
  * `divide-y divide-border`, cell padding `px-4 py-2`, semibold header,
@@ -344,4 +283,3 @@
 .markdown input[type="checkbox"] {
   margin-right: 0.5rem;
 }
-

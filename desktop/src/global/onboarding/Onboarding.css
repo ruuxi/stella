@@ -19,14 +19,7 @@
   --onboarding-duration-fade: 240ms;
   --onboarding-duration-enter: 620ms;
   --onboarding-duration-text: 460ms;
-  --onboarding-duration-morph: 520ms;
   --onboarding-stagger-step: 55ms;
-  /* Blur radii dominate the cost of the reveal animation: a 12px blur over the
-   * full moment container forces the GPU to re-rasterize a large surface every
-   * frame. 7px reads as "soft → sharp" almost identically at roughly half the
-   * per-frame cost, and lets us hold 60fps even when a backdrop-filter sits
-   * underneath the animated layer. */
-  --onboarding-reveal-blur: 7px;
   --onboarding-reveal-text-blur: 4px;
   --onboarding-reveal-translate: 22px;
   --onboarding-reveal-text-translate: 14px;
@@ -97,8 +90,7 @@
 
 /* Start / auth stay interactive, but the Stella creature itself lives above
  * the dialogue so clicks on the visible creature always trigger its flash. */
-.onboarding-moment--start,
-.onboarding-moment--auth {
+.onboarding-moment--start {
   position: relative;
   z-index: 13;
 }
@@ -106,11 +98,6 @@
 /* Initial Start Stella: nudge below vertical center so it sits under the creature */
 .onboarding-moment--start {
   margin-top: min(14vh, 110px);
-}
-
-/* Preparing / auth loading: sit below the creature, smaller caption */
-.onboarding-moment--auth {
-  margin-top: 44px;
 }
 
 @keyframes momentFadeIn {
@@ -253,15 +240,6 @@
   outline: none;
   box-shadow: var(--focus-ring);
   border-radius: var(--radius-sm);
-}
-
-/* ═══ Moment 1: Auth ═══ */
-
-.onboarding-moment--auth .onboarding-text {
-  font-size: var(--font-size-lg);
-  letter-spacing: 0.06em;
-  opacity: 0.45;
-  margin-bottom: 0;
 }
 
 /* ═══ Moment 2: Intro (ripple reveal) ═══ */

@@ -1,8 +1,5 @@
 .home-content {
   --home-scale-title: 42px;
-  --home-scale-category-text: var(--font-size-md);
-  --home-scale-option-text: var(--font-size-xl);
-  --home-scale-option-gap: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;

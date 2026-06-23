@@ -117,12 +117,8 @@ function applyThemeToDocument(
     delete root.dataset.baseTheme;
   }
   root.style.setProperty("color-scheme", isDark ? "dark" : "light");
-  // Text paints normally on a stable, opaque surface — no blend compositing
-  // over a moving gradient (that system is removed).
-  root.style.setProperty("--text-mix-blend-mode", "normal");
 
   root.style.setProperty("--background", colors.background);
-  root.style.setProperty("--background-weak", colors.backgroundWeak);
   root.style.setProperty("--background-strong", colors.backgroundStrong);
   root.style.setProperty("--foreground", colors.foreground);
   root.style.setProperty("--card", colors.card);
@@ -139,7 +135,6 @@ function applyThemeToDocument(
   root.style.setProperty("--accent", colors.accent);
   root.style.setProperty("--accent-foreground", colors.accentForeground);
   root.style.setProperty("--destructive", colors.error);
-  root.style.setProperty("--info", colors.info);
   root.style.setProperty("--border", colors.border);
   root.style.setProperty("--input", colors.border);
   root.style.setProperty("--ring", colors.interactive);
@@ -147,7 +142,6 @@ function applyThemeToDocument(
   root.style.setProperty("--stella-animation-color-1", colors.interactive);
   root.style.setProperty("--stella-animation-color-2", colors.success);
   root.style.setProperty("--stella-animation-color-3", colors.warning);
-  root.style.setProperty("--stella-animation-color-4", colors.info);
 
   const gradientTokens = getGradientTokens(
     {
@@ -161,11 +155,6 @@ function applyThemeToDocument(
   );
 
   root.style.setProperty("--text-interactive-base", gradientTokens.textInteractive);
-  root.style.setProperty("--surface-info-strong", gradientTokens.surfaceInfoStrong);
-  root.style.setProperty("--surface-success-strong", gradientTokens.surfaceSuccessStrong);
-  root.style.setProperty("--surface-warning-strong", gradientTokens.surfaceWarningStrong);
-  root.style.setProperty("--surface-brand-base", gradientTokens.surfaceBrandBase);
-  root.style.setProperty("--background-base", colors.background);
 }
 
 // ─── Persistence helpers ─────────────────────────────────────────────────
