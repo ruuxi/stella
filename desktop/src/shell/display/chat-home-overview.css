@@ -1,9 +1,8 @@
 /* ============================================================
-   Chat home launcher — body of the Chat display tab while the
-   user is on home (`/chat`). Quiet list of the other display
-   tabs the user can jump into. Activity/files/schedules already
-   live in the workspace strip, so this surface doesn't repeat
-   them.
+   Home launcher — body of the Home display tab while the user is
+   on home (`/chat`). Quiet list of the other display surfaces the
+   user can jump into. Activity / files / schedules already live in
+   the left sidebar, so this surface doesn't repeat them.
    ============================================================ */
 
 .chat-home-launcher {
@@ -16,22 +15,8 @@
   scrollbar-width: none;
 }
 
-/* When the engine pane is open, drop the bottom padding so the model
- * surface can extend to the panel floor. Keep top padding stable so
- * the launcher entries don't shift on toggle. */
-.chat-home-launcher[data-engine-open] {
-  padding-bottom: 0;
-}
-
 .chat-home-launcher::-webkit-scrollbar {
   display: none;
-}
-
-/* With the engine overlay open, the inner EngineTabContent owns its
- * own scroll — disable scrolling on the outer launcher so we don't
- * stack two scroll containers. */
-.chat-home-launcher[data-engine-open] {
-  overflow: hidden;
 }
 
 .chat-home-launcher__list {
@@ -41,121 +26,6 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-/* Compact Models pill — right-aligned below the launcher entries. */
-.chat-home-launcher__models-row {
-  display: flex;
-  justify-content: flex-end;
-  padding: 6px 10px 0;
-  list-style: none;
-}
-
-/* When the inline engine overlay is open it fills the remaining
- * vertical space below the launcher entries; the launcher list itself
- * stops trying to consume the page. */
-.chat-home-launcher__engine {
-  flex: 1;
-  min-height: 0;
-  /* Cancel the launcher's 18px horizontal padding so the engine pane
-   * starts flush with the launcher icons (which sit ~10px inset via
-   * the entry button's own padding). */
-  margin: 6px -18px 0;
-  display: flex;
-  flex-direction: column;
-  opacity: 0;
-  transform: translateY(4px);
-  transition:
-    opacity 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-.chat-home-launcher__engine[data-visible] {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.chat-home-launcher__engine > * {
-  flex: 1;
-  min-height: 0;
-}
-
-/* Pull the engine surface left so its title sits closer to the
- * launcher entries rather than getting nested behind two layers of
- * padding. */
-.chat-home-launcher__engine .engine-tab {
-  padding: 8px 2px 4px;
-  gap: 14px;
-  /* The provider/model list inside has its own scroll — don't let
-   * the whole model panel double-scroll. */
-  overflow: hidden;
-}
-
-@media (max-height: 700px) {
-  .chat-home-launcher[data-engine-open] {
-    padding-top: 16px;
-  }
-
-  .chat-home-launcher[data-engine-open] .chat-home-launcher__entry {
-    padding-block: 7px;
-  }
-
-  .chat-home-launcher[data-engine-open] .chat-home-launcher__models-row {
-    padding-top: 2px;
-  }
-
-  .chat-home-launcher__engine .engine-tab {
-    gap: 10px;
-  }
-}
-
-@media (max-height: 580px) {
-  .chat-home-launcher[data-engine-open] {
-    padding-top: 10px;
-  }
-
-  .chat-home-launcher[data-engine-open] .chat-home-launcher__list {
-    gap: 1px;
-  }
-
-  .chat-home-launcher[data-engine-open] .chat-home-launcher__entry {
-    gap: 8px;
-    padding-block: 5px;
-  }
-
-  .chat-home-launcher[data-engine-open]
-    .chat-home-launcher__entry-description {
-    display: none;
-  }
-
-  .chat-home-launcher__engine {
-    margin-top: 2px;
-  }
-
-  .chat-home-launcher__engine .engine-tab {
-    padding-top: 6px;
-    gap: 8px;
-  }
-}
-
-@media (max-height: 520px) {
-  .chat-home-launcher[data-engine-open] .chat-home-launcher__list {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .chat-home-launcher[data-engine-open] .chat-home-launcher__entry-icon {
-    width: 22px;
-    height: 22px;
-  }
-
-  .chat-home-launcher[data-engine-open] .chat-home-launcher__entry-label {
-    font-size: var(--font-size-sm);
-  }
-
-  .chat-home-launcher[data-engine-open] .chat-home-launcher__models-row {
-    grid-column: 1 / -1;
-  }
 }
 
 .chat-home-launcher__entry {
@@ -218,4 +88,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-height: 580px) {
+  .chat-home-launcher__entry-description {
+    display: none;
+  }
 }

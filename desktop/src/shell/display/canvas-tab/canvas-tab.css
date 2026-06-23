@@ -4,8 +4,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px 12px 12px;
+  padding: 0;
   font-family: var(--font-family-sans, "Manrope", sans-serif);
   color: var(--foreground);
 }
@@ -20,7 +19,7 @@
   border-radius: 14px;
   overflow: hidden;
   /*
-   * Intentionally no painted background — the library shell handles its
+   * Intentionally no painted background — the canvas iframe handles its
    * own styling, and a flat card behind it just adds a bright slab in
    * light themes that fights the global gradient.
    */
@@ -42,6 +41,25 @@
   display: flex;
 }
 
+.canvas-tab__frame-state {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  font-size: var(--font-size-base);
+  line-height: var(--lh-normal);
+  color: var(--text-weak);
+  text-align: center;
+}
+
+.canvas-tab__frame-state--error {
+  color: color-mix(
+    in oklch,
+    var(--destructive) 70%,
+    var(--text-base) 30%
+  );
+}
+
 .canvas-tab__illustration-spot {
   flex: 1;
   width: 100%;
@@ -53,6 +71,11 @@
   gap: 14px;
   padding: 24px;
   text-align: center;
+}
+
+.canvas-tab__illustration-spot:has(.canvas-tab__loading-label) {
+  gap: 6px;
+  transform: translateY(-10px);
 }
 
 .canvas-tab__illustration-art {
@@ -70,8 +93,59 @@
   width: 100%;
   height: 100%;
   /* Cursor/sparkle animations sit low-right in the viewBox; nudge so
-     the window reads centered. */
+     the window reads centered under the loading label. */
   transform: translate(-6px, -8px);
+}
+
+.canvas-tab__illustration-label {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.canvas-tab__loading-label {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-medium);
+  color: var(--text-weak);
+  line-height: 1.4;
+}
+
+.canvas-tab__loading-dots {
+  display: inline-flex;
+  align-items: baseline;
+  margin-left: 1px;
+}
+
+.canvas-tab__loading-dots span {
+  animation: canvas-tab-loading-dot 1.2s ease-in-out infinite;
+  opacity: 0.15;
+}
+
+.canvas-tab__loading-dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.canvas-tab__loading-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.canvas-tab__loading-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes canvas-tab-loading-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.15;
+  }
+
+  30% {
+    opacity: 1;
+  }
 }
 
 .canvas-tab__hero-empty {
@@ -103,4 +177,170 @@
   line-height: 1.5;
   color: var(--text-weak);
   max-width: 38ch;
+}
+
+/* Top chip rail — compact tabs with glyph + title (no previews). */
+.canvas-tab__rail {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: thin;
+}
+
+.canvas-tab__rail::-webkit-scrollbar {
+  height: 6px;
+}
+
+.canvas-tab__rail::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+  border-radius: 999px;
+}
+
+/* Match shell-topbar-tab rounding — token corners, not pills. */
+.canvas-tab__tile {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 168px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 8px);
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.canvas-tab__tile-main {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  padding: 3px 4px 3px 8px;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  min-width: 0;
+  flex: 1;
+  cursor: default;
+  font-size: var(--font-size-sm);
+  color: var(--text-base);
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.canvas-tab__tile-remove {
+  appearance: none;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: color-mix(in oklch, var(--foreground) 55%, transparent);
+  display: grid;
+  place-items: center;
+  cursor: default;
+  opacity: 0;
+  transform: scale(0.9);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.canvas-tab__tile-remove--confirm,
+.canvas-tab__tile:hover .canvas-tab__tile-remove,
+.canvas-tab__tile:focus-within .canvas-tab__tile-remove {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.canvas-tab__tile-remove:hover {
+  background: color-mix(
+    in oklch,
+    var(--destructive) 12%,
+    transparent
+  );
+  color: var(--destructive);
+}
+
+.canvas-tab__tile-remove--confirm,
+.canvas-tab__tile-remove--confirm:hover {
+  background: color-mix(
+    in oklch,
+    var(--destructive) 22%,
+    transparent
+  );
+  color: var(--destructive);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-tab__loading-dots span {
+    animation: none;
+    opacity: 1;
+  }
+
+  .canvas-tab__tile,
+  .canvas-tab__tile-main,
+  .canvas-tab__tile-remove,
+  .canvas-tab__tile-glyph {
+    transition: none;
+  }
+}
+
+.canvas-tab__tile:hover,
+.canvas-tab__tile:focus-within {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.canvas-tab__tile:hover .canvas-tab__tile-main,
+.canvas-tab__tile:focus-within .canvas-tab__tile-main {
+  color: var(--text-strong);
+}
+
+.canvas-tab__tile-main:focus-visible,
+.canvas-tab__tile-remove:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.canvas-tab__tile--active {
+  border-color: var(--select-border);
+  background: var(--select-fill);
+}
+
+.canvas-tab__tile--active .canvas-tab__tile-main {
+  color: var(--text-strong);
+}
+
+.canvas-tab__tile-glyph {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: block;
+  color: color-mix(in oklch, var(--foreground) 55%, transparent);
+}
+
+.canvas-tab__tile--active .canvas-tab__tile-glyph,
+.canvas-tab__tile:hover .canvas-tab__tile-glyph,
+.canvas-tab__tile:focus-within .canvas-tab__tile-glyph {
+  color: color-mix(in oklch, var(--foreground) 72%, transparent);
+}
+
+.canvas-tab__tile-label {
+  font-size: var(--font-size-sm);
+  line-height: 1.2;
+  font-weight: var(--weight-medium);
+  color: inherit;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

@@ -15,16 +15,10 @@ export const formatRealtimeSystemMessage = (text: string): string =>
 
 export const formatAgentTerminalStateSystemReminder = (
   lines: string[],
-  options?: { suggestCanvasPage?: boolean },
 ): string =>
   [
     `<${INTERNAL_SYSTEM_REMINDER_TAG}>`,
     "The agent has finished. The user cannot see this report. You must respond to the user. If the task is not complete, discuss it with the user or delegate automatically to finish the task.",
-    ...(options?.suggestCanvasPage
-      ? [
-          "For substantial results, prefer publishing the findings as a canvas library page (`html` tool) and keeping the chat reply to a one-line pointer. When several agents report back on the same effort, keep one living rollup page up to date (reuse its slug) instead of narrating every completion in chat.",
-        ]
-      : []),
     `</${INTERNAL_SYSTEM_REMINDER_TAG}>`,
     "",
     ...lines,

@@ -69,8 +69,11 @@ import {
   useDisplayPanelOpen,
 } from "@/features/workspace-display/tab-store";
 import {
+  CHAT_DISPLAY_TAB_ID,
+  HOME_DISPLAY_TAB_ID,
   ensureChatDisplayTab,
   openChatDisplayTab,
+  openHomeDisplayTab,
 } from "@/shell/display/default-tabs";
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
@@ -247,6 +250,28 @@ function RootChrome() {
     [],
   );
 
+  // Route-aware default surface for a manual panel summon (right-click /
+  // keyboard). Home never opens to a duplicate chat — it shows the Home
+  // launcher; every other route opens the chat viewer. An already-active
+  // artifact viewer (media / canvas / pdf / …) reopens as-is regardless of
+  // route so summoning doesn't lose what the user was looking at.
+  const openDefaultPanelSurface = useCallback(() => {
+    const { activeTabId } = displayTabs.getTabListSnapshot();
+    const isArtifactViewer =
+      activeTabId !== null &&
+      activeTabId !== CHAT_DISPLAY_TAB_ID &&
+      activeTabId !== HOME_DISPLAY_TAB_ID;
+    if (isArtifactViewer) {
+      displayTabs.setPanelOpen(true);
+      return;
+    }
+    if (isOnChatRoute) {
+      openHomeDisplayTab();
+      return;
+    }
+    openChatPanel();
+  }, [isOnChatRoute, openChatPanel]);
+
   useEffect(() => {
     const handleComposeText = (event: Event) => {
       const detail = (event as CustomEvent<StellaComposeTextDetail>).detail;
@@ -333,7 +358,29 @@ function RootChrome() {
     displaySidebarRef,
     latestDisplayPayloadRef,
     openChatPanel,
+    openDefaultPanelSurface,
   });
+
+  // Auto-follow the route with the panel's default surface: navigating to
+  // home flips an open Chat panel to the Home launcher, and navigating away
+  // from home flips an open Home launcher to Chat. Only the default
+  // surfaces follow the route — an open artifact viewer (Media / Canvas /
+  // PDF / …) is left untouched so navigation never yanks the user off it,
+  // and a closed panel stays closed (it picks the right surface on summon).
+  useEffect(() => {
+    if (isMiniWindow || isMobileWebView) return;
+    const { panelOpen, activeTabId } = displayTabs.getSnapshot();
+    if (!panelOpen) return;
+    const isDefaultSurface =
+      activeTabId === CHAT_DISPLAY_TAB_ID ||
+      activeTabId === HOME_DISPLAY_TAB_ID;
+    if (!isDefaultSurface) return;
+    if (isOnChatRoute) {
+      if (activeTabId !== HOME_DISPLAY_TAB_ID) openHomeDisplayTab();
+    } else if (activeTabId !== CHAT_DISPLAY_TAB_ID) {
+      displayTabs.activateTab(CHAT_DISPLAY_TAB_ID);
+    }
+  }, [isOnChatRoute, isMiniWindow, isMobileWebView]);
 
   useEffect(() => {
     const root = document.documentElement;

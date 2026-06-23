@@ -100,6 +100,18 @@ body[data-display-expanding="true"]
   -webkit-app-region: drag;
 }
 
+.workspace-panel__chrome-tabs-slot {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  height: 100%;
+  padding: 0 4px;
+  -webkit-app-region: drag;
+}
+
 .workspace-panel__chrome .shell-topbar-display-controls,
 .workspace-panel__chrome .shell-topbar-window-controls,
 .workspace-panel__chrome .shell-topbar-icon-btn {

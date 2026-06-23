@@ -4,6 +4,8 @@ import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
+import { DisplayTabSwitcher } from "@/shell/display/DisplayTabSwitcher";
+import { CanvasTopBarTabs } from "@/shell/display/canvas-tab/CanvasTopBarTabs";
 import { WindowControls } from "@/shell/WindowControls";
 
 type ShellTopBarProps = Record<string, never>;
@@ -45,7 +47,14 @@ export const ShellTopBar = ({}: ShellTopBarProps) => {
       data-display-open={panelOpen ? "true" : "false"}
     >
       <div className="shell-topbar-left" />
-      <div className="shell-topbar-spacer" aria-hidden="true" />
+      {panelOpen ? (
+        <div className="shell-topbar-tabs">
+          <DisplayTabSwitcher />
+          <CanvasTopBarTabs />
+        </div>
+      ) : (
+        <div className="shell-topbar-spacer" aria-hidden="true" />
+      )}
       <div className="shell-topbar-right">
         {isMiniWindow ? (
           <button

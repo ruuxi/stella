@@ -31,6 +31,8 @@ import {
 import { getPlatform } from "@/platform/electron/platform";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
+import { DisplayTabSwitcher } from "@/shell/display/DisplayTabSwitcher";
+import { CanvasTopBarTabs } from "@/shell/display/canvas-tab/CanvasTopBarTabs";
 import { WindowControls } from "@/shell/WindowControls";
 import "./display-sidebar.css";
 import "./workspace-panel.css";
@@ -416,15 +418,15 @@ export const DisplaySidebar = forwardRef<
       ) : null}
       <div className="display-sidebar-inner workspace-panel__frame">
         {panelOpen && !isMiniWindow ? (
-          <div
-            className="workspace-panel__chrome"
-            data-platform={isMac ? "mac" : isWin ? "win" : "other"}
-          >
             <div
-              className="workspace-panel__chrome-spacer"
-              aria-hidden="true"
-            />
-            <DisplayPanelControls />
+              className="workspace-panel__chrome"
+              data-platform={isMac ? "mac" : isWin ? "win" : "other"}
+            >
+              <div className="workspace-panel__chrome-tabs-slot">
+                <DisplayTabSwitcher />
+                <CanvasTopBarTabs />
+              </div>
+              <DisplayPanelControls />
             {showWindowsControlsOnRight ? (
               <WindowControls useWindowsIcons={isWin} hidden={false} />
             ) : null}

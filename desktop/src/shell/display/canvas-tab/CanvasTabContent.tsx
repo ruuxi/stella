@@ -1,60 +1,211 @@
 /**
- * Canvas tab — hosts the canvas library site (`stella-canvas://library`),
- * the app-owned shell that lists, groups, and searches every page the
- * orchestrator's `html` tool has produced. The tab is a single persistent
- * iframe onto that site; new pages slot in via a manifest the tool
- * maintains, so this component only has to nudge the shell:
- *
- *   - `stella:library-refresh` when the canvas store sees a new payload
- *     (the shell refetches /manifest.json and animates the new card in)
- *   - `stella:library-open` to deep-link the page a chat artifact or a
- *     fresh html-tool result refers to
- *
- * Selection bridging ("Ask Stella" on selected canvas text) keeps working
- * unchanged: the shell relays the artifact iframe's selection messages to
- * this window with rect offsets applied, and `AskStellaSelectionChip`
- * still finds this iframe via the `.canvas-tab__iframe` class.
+ * Canvas tab — workspace-panel viewer for HTML artifacts the orchestrator
+ * produced via the `html` tool. Layout is a chip rail of saved canvases
+ * over a sandboxed iframe rendering the selected file as `srcdoc`.
  */
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import {
   type CanvasHtmlItem,
   getCanvasHtmlItems,
+  getSelectedCanvasHtmlId,
+  loadCanvasHtmlHistory,
+  setSelectedCanvasHtmlId,
   subscribeCanvasHtmlItems,
+  subscribeSelectedCanvasHtmlId,
 } from "./canvas-items";
 import { CanvasIllustration } from "../illustrations/CanvasIllustration";
 import "./canvas-tab.css";
 
-export const CANVAS_LIBRARY_URL = "stella-canvas://library/";
+const decoder = new TextDecoder("utf-8");
 
-const slugForItem = (
-  items: ReadonlyArray<CanvasHtmlItem>,
-  itemId: string,
-): string | null => {
-  const item = items.find((candidate) => candidate.id === itemId);
-  if (item?.slug) return item.slug;
-  const basename = itemId.split(/[\\/]/).pop() ?? "";
-  return basename.endsWith(".html")
-    ? basename.slice(0, -".html".length)
-    : null;
+const CANVAS_SELECTION_BRIDGE_SCRIPT = String.raw`
+(() => {
+  const composeButton = document.createElement("button");
+  composeButton.type = "button";
+  composeButton.textContent = "Ask Stella";
+  composeButton.setAttribute("aria-label", "Ask Stella about this");
+  Object.assign(composeButton.style, {
+    position: "fixed",
+    zIndex: "2147483647",
+    display: "none",
+    alignItems: "center",
+    border: "1px solid rgba(255,255,255,0.18)",
+    borderRadius: "999px",
+    background: "rgba(20,20,22,0.92)",
+    color: "white",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.24)",
+    padding: "5px 9px",
+    font: "600 12px system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+    cursor: "default",
+  });
+  (document.body || document.documentElement).appendChild(composeButton);
+  let activeComposeText = "";
+  let hideTimer = 0;
+
+  const findComposeTarget = (target) => {
+    if (!target || typeof target.closest !== "function") return null;
+    return target.closest("[data-stella-compose]");
+  };
+
+  const readComposeText = (target) => {
+    const raw = target.getAttribute("data-stella-compose") || target.textContent || "";
+    return raw.replace(/\s+/g, " ").trim();
+  };
+
+  const showComposeButton = (target) => {
+    window.clearTimeout(hideTimer);
+    const text = readComposeText(target);
+    if (!text) return;
+    activeComposeText = text;
+    const rect = target.getBoundingClientRect();
+    composeButton.style.left = Math.max(8, Math.min(window.innerWidth - 104, rect.right - 96)) + "px";
+    composeButton.style.top = Math.max(8, rect.top + 8) + "px";
+    composeButton.style.display = "inline-flex";
+  };
+
+  const hideComposeButtonSoon = () => {
+    window.clearTimeout(hideTimer);
+    hideTimer = window.setTimeout(() => {
+      composeButton.style.display = "none";
+      activeComposeText = "";
+    }, 180);
+  };
+
+  document.addEventListener("mouseover", (event) => {
+    const target = findComposeTarget(event.target);
+    if (target) showComposeButton(target);
+  }, true);
+  document.addEventListener("mouseout", (event) => {
+    const target = findComposeTarget(event.target);
+    if (target) hideComposeButtonSoon();
+  }, true);
+  composeButton.addEventListener("mouseover", () => window.clearTimeout(hideTimer));
+  composeButton.addEventListener("mouseout", hideComposeButtonSoon);
+  composeButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (activeComposeText) {
+      parent.postMessage({ type: "stella:canvas-compose", text: activeComposeText }, "*");
+    }
+    composeButton.style.display = "none";
+  });
+
+  const post = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      parent.postMessage({ type: "stella:canvas-selection", selected: false }, "*");
+      return;
+    }
+    const text = selection.toString();
+    const trimmed = text.trim();
+    if (trimmed.length < 2) {
+      parent.postMessage({ type: "stella:canvas-selection", selected: false }, "*");
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    if ((rect.width === 0 && rect.height === 0) || !Number.isFinite(rect.left)) {
+      parent.postMessage({ type: "stella:canvas-selection", selected: false }, "*");
+      return;
+    }
+    parent.postMessage({
+      type: "stella:canvas-selection",
+      selected: true,
+      text,
+      rect: {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      },
+    }, "*");
+  };
+  window.addEventListener("mouseup", () => setTimeout(post, 0), true);
+  document.addEventListener("selectionchange", () => setTimeout(post, 0));
+  window.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "stella:canvas-selection-clear") {
+      window.getSelection()?.removeAllRanges();
+      post();
+    }
+  });
+})();
+`;
+
+const injectCanvasSelectionBridge = (html: string): string => {
+  const script = `<script>${CANVAS_SELECTION_BRIDGE_SCRIPT}</script>`;
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${script}</body>`);
+  }
+  return `${html}${script}`;
 };
 
-const libraryShellSrc = (): string => {
-  const theme = document.documentElement.getAttribute(
-    "data-stella-boot-theme",
-  );
-  return theme === "dark" || theme === "light"
-    ? `${CANVAS_LIBRARY_URL}?theme=${theme}`
-    : CANVAS_LIBRARY_URL;
-};
+const CanvasLoadingDots = () => (
+  <span className="canvas-tab__loading-dots" aria-hidden>
+    <span>.</span>
+    <span>.</span>
+    <span>.</span>
+  </span>
+);
 
-const CanvasIllustrationSpot = () => (
+const CanvasIllustrationSpot = ({
+  label,
+}: {
+  label?: ReactNode;
+}) => (
   <div className="canvas-tab__illustration-spot">
     <div className="canvas-tab__illustration-art">
       <CanvasIllustration />
     </div>
+    {label ? <div className="canvas-tab__illustration-label">{label}</div> : null}
   </div>
 );
+
+const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
+  const { bytes, error, loading } = useDisplayFileBytes(
+    item.filePath,
+    "Canvas preview requires the Stella desktop app.",
+  );
+  const html = useMemo(() => (bytes ? decoder.decode(bytes) : ""), [bytes]);
+  const srcDoc = useMemo(
+    () => (html ? injectCanvasSelectionBridge(html) : ""),
+    [html],
+  );
+
+  if (error) {
+    return (
+      <div className="canvas-tab__frame-state canvas-tab__frame-state--error">
+        Couldn't load this canvas.
+      </div>
+    );
+  }
+  if (loading || !html) {
+    return (
+      <CanvasIllustrationSpot
+        label={
+          <div className="canvas-tab__loading-label">
+            Loading
+            <CanvasLoadingDots />
+          </div>
+        }
+      />
+    );
+  }
+
+  return (
+    <div className="canvas-tab__frame-wrap">
+      <iframe
+        key={`${item.id}:${item.createdAt}`}
+        title={item.title}
+        className="canvas-tab__iframe"
+        srcDoc={srcDoc}
+        sandbox="allow-scripts allow-popups allow-modals allow-forms"
+        referrerPolicy="no-referrer"
+      />
+    </div>
+  );
+};
 
 const useCanvasItems = (
   initial: ReadonlyArray<CanvasHtmlItem>,
@@ -65,6 +216,15 @@ const useCanvasItems = (
     () => initial,
   );
 
+const useSelectedCanvasId = (
+  fallback: string | null,
+): string | null =>
+  useSyncExternalStore(
+    subscribeSelectedCanvasHtmlId,
+    getSelectedCanvasHtmlId,
+    () => fallback,
+  );
+
 export const CanvasTabContent = ({
   items: initialItems,
   selectedItemId,
@@ -73,80 +233,48 @@ export const CanvasTabContent = ({
   selectedItemId?: string;
 }) => {
   const items = useCanvasItems(initialItems);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const [shellReady, setShellReady] = useState(false);
-  const [shellSrc] = useState(libraryShellSrc);
+  const selectedId = useSelectedCanvasId(
+    selectedItemId ?? items.at(-1)?.id ?? null,
+  );
 
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (
-        event.source === iframeRef.current?.contentWindow &&
-        (event.data as { type?: unknown })?.type === "stella:library-ready"
-      ) {
-        setShellReady(true);
-      }
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    void loadCanvasHtmlHistory();
   }, []);
 
-  // New payloads bump the store snapshot (including same-slug rewrites,
-  // which refresh createdAt); tell the shell to refetch the manifest.
   useEffect(() => {
-    if (!shellReady) return;
-    iframeRef.current?.contentWindow?.postMessage(
-      { type: "stella:library-refresh" },
-      "*",
-    );
-  }, [shellReady, items]);
+    if (selectedItemId && items.some((item) => item.id === selectedItemId)) {
+      setSelectedCanvasHtmlId(selectedItemId);
+    }
+  }, [items, selectedItemId]);
 
-  // Deep-link the page the latest payload refers to. `selectedItemId` only
-  // changes when a payload (re)opens this tab, so user navigation inside
-  // the shell is never fought by stale props.
   useEffect(() => {
-    if (!shellReady || !selectedItemId) return;
-    const slug = slugForItem(items, selectedItemId);
-    if (!slug) return;
-    iframeRef.current?.contentWindow?.postMessage(
-      { type: "stella:library-open", slug },
-      "*",
-    );
-    // items is intentionally not a dependency: re-opening on every store
-    // bump would yank the user back to the latest page mid-browse.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shellReady, selectedItemId]);
+    if (items.length === 0) {
+      setSelectedCanvasHtmlId(null);
+      return;
+    }
+    if (!selectedId || !items.some((item) => item.id === selectedId)) {
+      setSelectedCanvasHtmlId(items.at(-1)?.id ?? null);
+    }
+  }, [items, selectedId]);
 
-  if (typeof window.electronAPI === "undefined") {
-    return (
-      <div className="canvas-tab">
-        <div className="canvas-tab__hero">
-          <div className="canvas-tab__hero-empty">
-            <CanvasIllustrationSpot />
-            <div className="canvas-tab__hero-empty-title">
-              Canvases land here
-            </div>
-            <div className="canvas-tab__hero-empty-hint">
-              The canvas library requires the Stella desktop app.
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const selectedItem =
+    items.find((item) => item.id === selectedId) ?? items.at(-1) ?? null;
 
   return (
     <div className="canvas-tab">
       <div className="canvas-tab__hero">
-        <div className="canvas-tab__frame-wrap">
-          <iframe
-            ref={iframeRef}
-            title="Canvas library"
-            className="canvas-tab__iframe"
-            src={shellSrc}
-            sandbox="allow-scripts allow-same-origin allow-popups allow-modals allow-forms"
-            referrerPolicy="no-referrer"
-          />
-        </div>
+        {selectedItem ? (
+          <CanvasHeroFrame item={selectedItem} />
+        ) : (
+          <div className="canvas-tab__hero-empty">
+            <CanvasIllustrationSpot />
+            <div className="canvas-tab__hero-empty-title">Canvases land here</div>
+            <div className="canvas-tab__hero-empty-hint">
+              Charts, plans, comparisons, and other HTML views Stella renders
+              are saved here.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

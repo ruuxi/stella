@@ -3,6 +3,7 @@ import { ChatPanelTab, type ChatPanelOpenRequest } from "@/shell/ChatSidebar";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { StoreSidePanel } from "@/features/store/StoreSidePanel";
 import { TrashTabContent } from "./TrashTabContent";
+import { HomeLauncherTab } from "./HomeLauncherTab";
 import { MediaTabContent } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
 import { getCanvasHtmlItems } from "./canvas-tab/canvas-items";
@@ -89,10 +90,20 @@ export function openChatDisplayTab(
   );
 }
 
+/**
+ * Open the Home launcher tab — the quiet launcher of other display
+ * surfaces (Canvas / Media / Trash) shown when the user summons the panel
+ * while on home. Home itself is the chat, so the panel never opens to a
+ * duplicate chat there.
+ */
 export function openHomeDisplayTab(): void {
-  // The home index lives in the left WorkspaceSidebar now; opening the
-  // display panel just surfaces the live chat viewer.
-  openChatDisplayTab();
+  displayTabs.openTab({
+    id: HOME_DISPLAY_TAB_ID,
+    kind: "home",
+    title: "Home",
+    tooltip: "Jump into Canvas, Media, and more",
+    render: () => createElement(HomeLauncherTab),
+  });
 }
 
 /**
@@ -125,11 +136,9 @@ export function openTrashDisplayTab(): void {
 }
 
 /**
- * Open the engine / models surface. It now lives as an inline overlay
- * at the bottom of the Chat home overview, not as its own display tab.
- * Callers that previously navigated to `/chat` before invoking this
- * function continue to work — we just activate the Chat display tab
- * and flip the overlay on.
+ * Open the sidebar Models popover. Callers that navigate to `/chat`
+ * first continue to work — we activate the Chat display tab and open
+ * the popover anchored to the footer Models button.
  */
 export function openEngineDisplayTab(): void {
   openChatDisplayTab(null);

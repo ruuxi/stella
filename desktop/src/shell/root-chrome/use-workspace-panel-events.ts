@@ -13,20 +13,27 @@ type UseWorkspacePanelEventsOptions = {
   displaySidebarRef: RefObject<DisplaySidebarHandle | null>;
   latestDisplayPayloadRef: RefObject<DisplayTabPayload | null>;
   openChatPanel: (detail?: StellaOpenPanelChatDetail) => void;
+  /**
+   * Route-aware default surface for a manual panel summon (right-click /
+   * keyboard). Opens the Home launcher on home and the chat viewer
+   * elsewhere; reopens an already-active artifact viewer as-is.
+   */
+  openDefaultPanelSurface: () => void;
 };
 
 /**
  * Window-event + IPC wiring for the workspace panel. Subscribes to:
  * - `STELLA_OPEN_PANEL_CHAT_EVENT` — open the chat tab
  * - `STELLA_CLOSE_PANEL_EVENT` — close the panel
- * - `STELLA_OPEN_WORKSPACE_PANEL_EVENT` — show whatever's already open,
- *   or fall back to the last display payload, or seed the chat tab.
+ * - `STELLA_OPEN_WORKSPACE_PANEL_EVENT` — manual summon; opens the
+ *   route-aware default surface (Home launcher on home, chat elsewhere).
  * - `electronAPI.ui.onOpenChatSidebar` — IPC equivalent of "open chat tab".
  */
 export function useWorkspacePanelEvents({
   displaySidebarRef,
   latestDisplayPayloadRef,
   openChatPanel,
+  openDefaultPanelSurface,
 }: UseWorkspacePanelEventsOptions): void {
   useEffect(() => {
     const handleOpen = (event: Event) => {
@@ -37,11 +44,7 @@ export function useWorkspacePanelEvents({
     const handleClose = () => displayTabs.setPanelOpen(false);
 
     const handleOpenDisplay = () => {
-      // Reopen to wherever the user last was — the nav history + active tab
-      // survive a close, so just re-open the panel. A fresh session (no
-      // viewers opened yet) sits on the overview root, so this still lands
-      // on the library overview the first time.
-      displayTabs.setPanelOpen(true);
+      openDefaultPanelSurface();
     };
 
     window.addEventListener(STELLA_OPEN_PANEL_CHAT_EVENT, handleOpen);
@@ -64,5 +67,10 @@ export function useWorkspacePanelEvents({
       );
       cleanupIpcOpen?.();
     };
-  }, [displaySidebarRef, latestDisplayPayloadRef, openChatPanel]);
+  }, [
+    displaySidebarRef,
+    latestDisplayPayloadRef,
+    openChatPanel,
+    openDefaultPanelSurface,
+  ]);
 }

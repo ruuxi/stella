@@ -43,13 +43,9 @@ import { ShellTopBarAccount } from "@/shell/sidebar/ShellTopBarAccount";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
 import { WindowControls } from "@/shell/WindowControls";
 import { DisplaySidebarModelsButton } from "@/shell/display/DisplaySidebarModelsButton";
-import { EngineTabContent } from "@/shell/display/EngineTabContent";
-import { useEngineOverlayOpen } from "@/shell/display/engine-overlay-store";
 import { CustomLayout } from "@/ui/nav-icons";
 import "./workspace-sidebar.css";
 import "./shell-junction.css";
-
-const ENGINE_FADE_MS = 180;
 
 const useRegisteredApps = (): readonly AppMetadata[] =>
   useSyncExternalStore(subscribeToAppRegistry, getAppRegistrySnapshot);
@@ -98,30 +94,6 @@ export function WorkspaceSidebar({
     if (searchActive) searchInputRef.current?.focus();
   }, [searchActive]);
 
-  // Models/engine inline overlay, toggled by the footer Models button.
-  const engineOpen = useEngineOverlayOpen();
-  const [engineMounted, setEngineMounted] = useState(engineOpen);
-  const [engineVisible, setEngineVisible] = useState(engineOpen);
-  useEffect(() => {
-    if (engineOpen) {
-      setEngineMounted(true);
-      let innerFrame = 0;
-      const outerFrame = window.requestAnimationFrame(() => {
-        innerFrame = window.requestAnimationFrame(() => setEngineVisible(true));
-      });
-      return () => {
-        window.cancelAnimationFrame(outerFrame);
-        if (innerFrame) window.cancelAnimationFrame(innerFrame);
-      };
-    }
-    setEngineVisible(false);
-    const timer = window.setTimeout(
-      () => setEngineMounted(false),
-      ENGINE_FADE_MS,
-    );
-    return () => window.clearTimeout(timer);
-  }, [engineOpen]);
-
   return (
     <aside
       className="workspace-sidebar"
@@ -154,6 +126,16 @@ export function WorkspaceSidebar({
                     className="workspace-sidebar__nav-row"
                     data-active={active ? "true" : undefined}
                     aria-current={active ? "page" : undefined}
+                    onClick={(event) => {
+                      // Re-entry behavior: clicking the already-active nav
+                      // entry (e.g. Home while on /chat) runs its
+                      // `onActiveClick` (e.g. return to home content)
+                      // instead of a no-op navigation.
+                      if (active && app.onActiveClick) {
+                        event.preventDefault();
+                        app.onActiveClick();
+                      }
+                    }}
                   >
                     <span
                       className="workspace-sidebar__nav-icon"
@@ -259,15 +241,6 @@ export function WorkspaceSidebar({
 
           <WorkspacePanelOverview query={query} variant="overview" />
         </div>
-
-        {engineMounted ? (
-          <div
-            className="workspace-sidebar__engine"
-            data-visible={engineVisible || undefined}
-          >
-            <EngineTabContent />
-          </div>
-        ) : null}
 
         <div className="workspace-sidebar__footer">
           <DisplaySidebarModelsButton />

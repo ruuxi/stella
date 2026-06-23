@@ -19,12 +19,14 @@ export type CanvasHtmlItem = {
 const items: CanvasHtmlItem[] = [];
 const itemsByPath = new Map<string, CanvasHtmlItem>();
 const listeners = new Set<() => void>();
+const selectionListeners = new Set<() => void>();
 const STORAGE_KEY = "stella-display-canvas-html-items";
 const REMOVED_KEY = "stella-display-canvas-html-removed";
 const MAX_ITEMS = 200;
 
 // Stable snapshot for `useSyncExternalStore`; refreshed only on mutation.
 let snapshot: ReadonlyArray<CanvasHtmlItem> = [];
+let selectedCanvasHtmlId: string | null = null;
 
 const refreshSnapshot = () => {
   snapshot = items.slice();
@@ -75,6 +77,28 @@ const emit = () => {
   for (const listener of listeners) listener();
 };
 
+const emitSelection = () => {
+  for (const listener of selectionListeners) listener();
+};
+
+export const getSelectedCanvasHtmlId = (): string | null =>
+  selectedCanvasHtmlId;
+
+export const setSelectedCanvasHtmlId = (id: string | null): void => {
+  if (selectedCanvasHtmlId === id) return;
+  selectedCanvasHtmlId = id;
+  emitSelection();
+};
+
+export const subscribeSelectedCanvasHtmlId = (
+  listener: () => void,
+): (() => void) => {
+  selectionListeners.add(listener);
+  return () => {
+    selectionListeners.delete(listener);
+  };
+};
+
 const seedItem = (item: CanvasHtmlItem): void => {
   if (removedPaths.has(item.filePath)) return;
   if (itemsByPath.has(item.filePath)) return;
@@ -122,10 +146,15 @@ export const removeCanvasHtmlItem = (
 ): ReadonlyArray<CanvasHtmlItem> => {
   const idx = items.findIndex((item) => item.filePath === filePath);
   if (idx === -1) return snapshot;
+  const removed = items[idx];
   items.splice(idx, 1);
   itemsByPath.delete(filePath);
   removedPaths.add(filePath);
   persistRemovedPaths();
+  if (selectedCanvasHtmlId === removed.id) {
+    selectedCanvasHtmlId = items.at(-1)?.id ?? null;
+    emitSelection();
+  }
   emit();
   return snapshot;
 };

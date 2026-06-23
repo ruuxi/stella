@@ -1,0 +1,70 @@
+.display-tab-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: min(220px, 100%);
+  min-height: 28px;
+  margin: 0;
+  padding: 3px 7px 3px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: var(--text-base);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
+  cursor: default;
+  -webkit-app-region: no-drag;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.display-tab-switcher:hover,
+.display-tab-switcher[data-state="open"] {
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  color: var(--text-strong);
+}
+
+.display-tab-switcher:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.display-tab-switcher__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-base);
+}
+
+.display-tab-switcher__title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.display-tab-switcher__chevron {
+  flex-shrink: 0;
+  color: var(--text-weak);
+}
+
+.display-tab-switcher-menu__item {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.display-tab-switcher-menu__item--active {
+  color: var(--text-strong);
+}
+
+.display-tab-switcher-menu__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
