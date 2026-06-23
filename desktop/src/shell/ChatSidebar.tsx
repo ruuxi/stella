@@ -29,8 +29,6 @@ import {
 } from "@/features/chat/composer-context";
 import type { InlineWorkingIndicatorMountProps } from "@/app/chat/InlineWorkingIndicator";
 import { getInlineWorkingIndicatorActive } from "@/features/chat/working-indicator-state";
-import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
-import { useFooterTasks } from "@/features/chat/hooks/use-footer-tasks";
 import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
 import { handleComposerPaste } from "@/features/chat/lib/paste-context";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
@@ -126,8 +124,6 @@ export function ChatPanelTab({
   wideLayout = false,
   messages,
   conversationId,
-  activities,
-  latestMessageTimestampMs,
   isStreaming,
   isStreamingResponseText,
   runtimeStatusText,
@@ -243,13 +239,6 @@ export function ChatPanelTab({
     ],
   );
 
-  const appSessionStartedAtMs = useAgentSessionStartedAt();
-  const footerTasks = useFooterTasks({
-    activities,
-    latestMessageTimestampMs,
-    liveTasks,
-    appSessionStartedAtMs,
-  });
   useReadAloud(messages);
   // Initial thinking is pre-tool only. Once a tool lifecycle begins, the
   // indicator follows live TOOL_START/TOOL_END state instead of the long-lived
@@ -478,7 +467,6 @@ export function ChatPanelTab({
                   active={surfaceActive}
                   chatContext={chatContext}
                   setChatContext={setChatContext}
-                  tasks={footerTasks}
                 />
               </div>
 
