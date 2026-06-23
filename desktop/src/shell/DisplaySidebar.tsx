@@ -58,27 +58,35 @@ type DisplaySidebarProps = {
   portalTarget?: Element | null;
 };
 
-const DISPLAY_PANEL_DEFAULT_MIN_WIDTH = 380;
-const DISPLAY_PANEL_DEFAULT_MAX_WIDTH = 520;
-const DISPLAY_PANEL_DEFAULT_VIEWPORT_RATIO = 0.34;
+const DISPLAY_PANEL_DEFAULT_WIDTH = 600;
 
 const clampNumber = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
 
-const computeDefaultWidth = (): number =>
-  clampNumber(
-    window.innerWidth * DISPLAY_PANEL_DEFAULT_VIEWPORT_RATIO,
-    DISPLAY_PANEL_DEFAULT_MIN_WIDTH,
-    DISPLAY_PANEL_DEFAULT_MAX_WIDTH,
-  );
+const computeDefaultWidth = (): number => DISPLAY_PANEL_DEFAULT_WIDTH;
+
+const measureShellWidth = (): number => {
+  const shell = document.querySelector<HTMLElement>(".full-body");
+  return shell?.getBoundingClientRect().width ?? window.innerWidth;
+};
+
+const measureDockedLeftSidebarWidth = (): number => {
+  const sidebar = document.querySelector<HTMLElement>(".workspace-sidebar");
+  return sidebar?.getBoundingClientRect().width ?? 0;
+};
 
 /**
  * Compute the current upper bound for the user-resizable width from the
- * main outlet's minimum width. The panel can grow as much as it wants until
- * it would squeeze the main content below that floor.
+ * shell width after reserving the docked left sidebar and the main outlet's
+ * minimum width. This mirrors Codex's pressure behavior: the right panel
+ * shrinks and grows with the app window instead of holding a fixed width
+ * until it disappears.
  */
 const computeMaxWidth = (): number => {
-  const available = window.innerWidth - DISPLAY_MAIN_CONTENT_MIN_WIDTH;
+  const available =
+    measureShellWidth() -
+    measureDockedLeftSidebarWidth() -
+    DISPLAY_MAIN_CONTENT_MIN_WIDTH;
   return Math.max(DISPLAY_PANEL_MIN_WIDTH, Math.floor(available));
 };
 
@@ -216,10 +224,20 @@ export const DisplaySidebar = forwardRef<
 
     syncWidthVarNow();
     const unsubscribe = displayTabs.subscribeLayout(scheduleWidthVarSync);
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleWidthVarSync);
+    const shell = document.querySelector<HTMLElement>(".full-body");
+    const leftSidebar =
+      document.querySelector<HTMLElement>(".workspace-sidebar");
+    if (shell) resizeObserver?.observe(shell);
+    if (leftSidebar) resizeObserver?.observe(leftSidebar);
     window.addEventListener("resize", scheduleWidthVarSync);
     return () => {
       cancelAnimationFrame(frame);
       unsubscribe();
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", scheduleWidthVarSync);
       clearDisplayPanelWidthCssVar();
     };
@@ -418,15 +436,15 @@ export const DisplaySidebar = forwardRef<
       ) : null}
       <div className="display-sidebar-inner workspace-panel__frame">
         {panelOpen && !isMiniWindow ? (
-            <div
-              className="workspace-panel__chrome"
-              data-platform={isMac ? "mac" : isWin ? "win" : "other"}
-            >
-              <div className="workspace-panel__chrome-tabs-slot">
-                <DisplayTabSwitcher />
-                <CanvasTopBarTabs />
-              </div>
-              <DisplayPanelControls />
+          <div
+            className="workspace-panel__chrome"
+            data-platform={isMac ? "mac" : isWin ? "win" : "other"}
+          >
+            <div className="workspace-panel__chrome-tabs-slot">
+              <DisplayTabSwitcher />
+              <CanvasTopBarTabs />
+            </div>
+            <DisplayPanelControls />
             {showWindowsControlsOnRight ? (
               <WindowControls useWindowsIcons={isWin} hidden={false} />
             ) : null}

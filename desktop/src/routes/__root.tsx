@@ -168,14 +168,23 @@ function RootChrome() {
   const chat = useChatRuntime();
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
+  const [leftSidebarVisible, setLeftSidebarVisible] = useState<boolean>(
+    () => uiState.getItem(LEFT_SIDEBAR_VISIBLE_KEY) !== "0",
+  );
 
   const [shellBreakpoints, setShellBreakpoints] =
     useState<ShellBreakpointState>(() =>
       getShellBreakpointState(
         typeof window === "undefined" ? 0 : window.innerWidth,
+        leftSidebarVisible,
       ),
     );
   const shellBreakpointsRef = useRef(shellBreakpoints);
+  const displayPanelWasHiddenRef = useRef(shellBreakpoints.hideDisplayPanel);
+  const autoCollapsedDisplayPanelRef = useRef<{
+    panelExpanded: boolean;
+  } | null>(null);
+  const displayBreakpointTransitionTimeoutRef = useRef<number | null>(null);
 
   const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
 
@@ -191,13 +200,12 @@ function RootChrome() {
   const isFullWindow = !isMiniWindow && !isMobileWebView;
   const platform = getPlatform();
   const isMac = platform === "darwin";
+  const dockedLeftSidebarVisible =
+    isFullWindow && leftSidebarVisible && !shellBreakpoints.hideLeftSidebar;
 
   // Left sidebar visibility — a toggle next to the traffic lights collapses
   // it; a floating button at the same spot brings it back. Persisted so the
   // choice survives reloads.
-  const [leftSidebarVisible, setLeftSidebarVisible] = useState<boolean>(
-    () => uiState.getItem(LEFT_SIDEBAR_VISIBLE_KEY) !== "0",
-  );
   const toggleLeftSidebar = useCallback(() => {
     setLeftSidebarVisible((prev) => {
       const next = !prev;
@@ -205,6 +213,28 @@ function RootChrome() {
       return next;
     });
   }, []);
+
+  const triggerDisplayBreakpointTransition = useCallback(() => {
+    document.body.dataset.displayBreakpointTransition = "true";
+    if (displayBreakpointTransitionTimeoutRef.current !== null) {
+      window.clearTimeout(displayBreakpointTransitionTimeoutRef.current);
+    }
+    displayBreakpointTransitionTimeoutRef.current = window.setTimeout(() => {
+      displayBreakpointTransitionTimeoutRef.current = null;
+      delete document.body.dataset.displayBreakpointTransition;
+    }, 520);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (displayBreakpointTransitionTimeoutRef.current !== null) {
+        window.clearTimeout(displayBreakpointTransitionTimeoutRef.current);
+        displayBreakpointTransitionTimeoutRef.current = null;
+      }
+      delete document.body.dataset.displayBreakpointTransition;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (isMiniWindow) return;
@@ -227,12 +257,12 @@ function RootChrome() {
     const root = document.documentElement;
     root.style.setProperty(
       "--shell-left-sidebar-width",
-      isFullWindow && leftSidebarVisible ? "252px" : "0px",
+      dockedLeftSidebarVisible ? "252px" : "0px",
     );
     return () => {
       root.style.removeProperty("--shell-left-sidebar-width");
     };
-  }, [isFullWindow, leftSidebarVisible]);
+  }, [dockedLeftSidebarVisible]);
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -471,11 +501,15 @@ function RootChrome() {
       if (frame !== 0) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        const next = getShellBreakpointState(Math.round(pendingWidth));
+        const next = getShellBreakpointState(
+          Math.round(pendingWidth),
+          leftSidebarVisible,
+        );
         const previous = shellBreakpointsRef.current;
         if (
           next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
-          next.hideDisplayPanel === previous.hideDisplayPanel
+          next.hideDisplayPanel === previous.hideDisplayPanel &&
+          next.hideLeftSidebar === previous.hideLeftSidebar
         ) {
           return;
         }
@@ -506,16 +540,45 @@ function RootChrome() {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, []);
+  }, [leftSidebarVisible]);
 
   useEffect(() => {
-    if (isMiniWindow || isMobileWebView) return;
-    if (shellBreakpoints.hideDisplayPanel) {
-      const { panelExpanded, panelOpen } = displayTabs.getSnapshot();
+    if (isMiniWindow || isMobileWebView) {
+      displayPanelWasHiddenRef.current = shellBreakpoints.hideDisplayPanel;
+      autoCollapsedDisplayPanelRef.current = null;
+      return;
+    }
+
+    const wasHidden = displayPanelWasHiddenRef.current;
+    const isHidden = shellBreakpoints.hideDisplayPanel;
+    displayPanelWasHiddenRef.current = isHidden;
+
+    const { panelExpanded, panelOpen } = displayTabs.getSnapshot();
+
+    if (isHidden) {
+      if (!wasHidden && panelOpen) {
+        autoCollapsedDisplayPanelRef.current = { panelExpanded };
+        triggerDisplayBreakpointTransition();
+      }
       if (panelExpanded) displayTabs.setPanelExpanded(false);
       if (panelOpen) displayTabs.setPanelOpen(false);
+      return;
     }
-  }, [isMiniWindow, isMobileWebView, shellBreakpoints.hideDisplayPanel]);
+
+    const autoCollapsedPanel = autoCollapsedDisplayPanelRef.current;
+    if (!wasHidden || !autoCollapsedPanel) return;
+    autoCollapsedDisplayPanelRef.current = null;
+    triggerDisplayBreakpointTransition();
+    if (!panelOpen) displayTabs.setPanelOpen(true);
+    if (autoCollapsedPanel.panelExpanded) displayTabs.setPanelExpanded(true);
+  }, [
+    isMiniWindow,
+    isMobileWebView,
+    panelExpanded,
+    panelOpen,
+    shellBreakpoints.hideDisplayPanel,
+    triggerDisplayBreakpointTransition,
+  ]);
 
   return (
     <>
@@ -527,7 +590,7 @@ function RootChrome() {
         <WorkspaceSidebar
           onSignIn={showAuthDialog}
           onConnect={showConnectDialog}
-          collapsed={!leftSidebarVisible}
+          collapsed={!dockedLeftSidebarVisible}
         />
       ) : null}
 
@@ -571,8 +634,10 @@ function RootChrome() {
           className="shell-topbar-icon-btn shell-edge-toggle shell-edge-toggle--left"
           data-platform={isMac ? "mac" : "other"}
           onClick={toggleLeftSidebar}
-          aria-label={leftSidebarVisible ? "Hide sidebar" : "Show sidebar"}
-          title={leftSidebarVisible ? "Hide sidebar" : "Show sidebar"}
+          aria-label={
+            dockedLeftSidebarVisible ? "Hide sidebar" : "Show sidebar"
+          }
+          title={dockedLeftSidebarVisible ? "Hide sidebar" : "Show sidebar"}
         >
           <PanelLeft size={16} strokeWidth={1.75} />
         </button>

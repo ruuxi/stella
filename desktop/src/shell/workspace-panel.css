@@ -51,6 +51,7 @@ body[data-display-expanding="true"]
   .display-sidebar.workspace-panel
   .display-sidebar-inner.workspace-panel__frame,
 :root[data-shell-window-resizing="true"]
+  body:not([data-display-breakpoint-transition="true"])
   .display-sidebar.workspace-panel
   .display-sidebar-inner.workspace-panel__frame {
   transition: none;
