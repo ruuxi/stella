@@ -105,11 +105,27 @@ const generatedMediaItemIds = new Set(
 // skip work.
 let generatedMediaSnapshot: ReadonlyArray<GeneratedMediaItem> = [];
 
+const generatedMediaListeners = new Set<() => void>();
+
 const refreshGeneratedMediaSnapshot = () => {
   generatedMediaSnapshot = generatedMediaItems.slice();
+  for (const listener of generatedMediaListeners) listener();
 };
 
 refreshGeneratedMediaSnapshot();
+
+/**
+ * Subscribe to generated-media mutations (add/remove). The library
+ * overview uses this so its Media section stays live without polling.
+ */
+export const subscribeGeneratedMediaItems = (
+  listener: () => void,
+): (() => void) => {
+  generatedMediaListeners.add(listener);
+  return () => {
+    generatedMediaListeners.delete(listener);
+  };
+};
 
 const hashText = (text: string): string => {
   let hash = 5381;

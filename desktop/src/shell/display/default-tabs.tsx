@@ -1,10 +1,8 @@
 import { createElement } from "react";
-import { useMatchRoute } from "@tanstack/react-router";
 import { ChatPanelTab, type ChatPanelOpenRequest } from "@/shell/ChatSidebar";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { StoreSidePanel } from "@/features/store/StoreSidePanel";
 import { TrashTabContent } from "./TrashTabContent";
-import { ChatHomeOverview } from "./ChatHomeOverview";
 import { MediaTabContent } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
 import { getCanvasHtmlItems } from "./canvas-tab/canvas-items";
@@ -32,29 +30,17 @@ export {
 } from "@/features/workspace-display/default-tabs";
 
 /**
- * Chat display tab body. Always mounted via the singleton tab store; its
- * content adapts to the current route:
- *
- *   - On `/chat` (home): the normal side panel shows `ChatHomeOverview`
- *     instead of duplicating the main chat. Expanded mode takes over the
- *     main outlet, so it renders the live chat there too.
- *   - Everywhere else: render the live `ChatPanelTab` so users can keep
- *     talking to Stella from any route.
- *
- * Switching here keeps the tab's identity and selection stable across
- * navigation; the route never closes / reopens / re-selects the tab.
+ * Chat display tab body — the live in-panel chat, available from any route
+ * so users can keep talking to Stella while a viewer is open. (The home
+ * index now lives in the left `WorkspaceSidebar`, not here.)
  */
 function ChatDisplayTab({
   openRequest,
 }: {
   openRequest: ChatPanelOpenRequest | null;
 }) {
-  const matchRoute = useMatchRoute();
-  const isOnHomeChatRoute = Boolean(matchRoute({ to: "/chat" }));
   const panelExpanded = useDisplayPanelExpanded();
   const chat = useChatRuntime();
-
-  if (isOnHomeChatRoute && !panelExpanded) return <ChatHomeOverview />;
 
   return (
     <ChatPanelTab
@@ -104,13 +90,9 @@ export function openChatDisplayTab(
 }
 
 export function openHomeDisplayTab(): void {
-  displayTabs.openTab({
-    id: HOME_DISPLAY_TAB_ID,
-    kind: "home",
-    title: "Home",
-    tooltip: "Display sidebar home",
-    render: () => createElement(ChatHomeOverview),
-  });
+  // The home index lives in the left WorkspaceSidebar now; opening the
+  // display panel just surfaces the live chat viewer.
+  openChatDisplayTab();
 }
 
 /**
@@ -154,7 +136,7 @@ export function openEngineDisplayTab(): void {
   engineOverlay.setOpen(true);
 }
 
-export function openMediaDisplayTab(): void {
+export function openMediaDisplayTab(selectedItemId?: string): void {
   const items = getGeneratedMediaItems();
   displayTabs.openTab({
     id: MEDIA_DISPLAY_TAB_ID,
@@ -162,11 +144,15 @@ export function openMediaDisplayTab(): void {
     title: "Media",
     tooltip: "Generated media",
     metadata: { kind: "media", items },
-    render: () => createElement(MediaTabContent, { items }),
+    render: () =>
+      createElement(MediaTabContent, {
+        items,
+        ...(selectedItemId ? { selectedItemId } : {}),
+      }),
   });
 }
 
-export function openCanvasDisplayTab(): void {
+export function openCanvasDisplayTab(selectedItemId?: string): void {
   const items = getCanvasHtmlItems();
   displayTabs.openTab({
     id: CANVAS_DISPLAY_TAB_ID,
@@ -174,7 +160,11 @@ export function openCanvasDisplayTab(): void {
     title: "Canvas",
     tooltip: "HTML canvases Stella has shown you",
     metadata: { kind: "canvas-html", items },
-    render: () => createElement(CanvasTabContent, { items }),
+    render: () =>
+      createElement(CanvasTabContent, {
+        items,
+        ...(selectedItemId ? { selectedItemId } : {}),
+      }),
   });
 }
 

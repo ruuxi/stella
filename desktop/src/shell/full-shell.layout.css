@@ -634,6 +634,21 @@ body[data-display-expanding="true"] .shell-topbar-tablist {
   box-sizing: border-box;
 }
 
+/* Full window: left/right floating panels own the top chrome (traffic
+   lights, viewer controls) so the center column can run edge-to-edge. */
+:root[data-shell-panel-chrome="true"] .content-area {
+  padding-top: 0;
+}
+
+:root[data-shell-panel-chrome="true"] .persistent-chat-surface,
+:root[data-shell-panel-chrome="true"] .route-outlet-surface {
+  top: 0;
+}
+
+:root[data-shell-panel-chrome="true"] .content-area::before {
+  height: var(--shell-topbar-height, 38px);
+}
+
 /* Drag strip at top of content area for window dragging */
 .content-area::before {
   content: "";

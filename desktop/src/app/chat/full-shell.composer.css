@@ -16,10 +16,10 @@
   position: relative;
   width: 100%;
   max-width: min(var(--full-chat-composer-max-width), calc(100% - 48px));
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: var(--panel-surface-bg-gradient);
+  border: 1px solid var(--panel-surface-border);
   border-radius: 999px; /* CSS fallback; overridden by motion inline style */
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-sm), var(--panel-surface-highlight);
   overflow: clip;
   transition: box-shadow 200ms ease, border-color 200ms ease;
 }

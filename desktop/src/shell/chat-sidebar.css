@@ -129,10 +129,10 @@
 .chat-sidebar-shell {
   position: relative;
   width: 100%;
-  background: var(--panel-surface-bg);
+  background: var(--panel-surface-bg-gradient);
   border: 1px solid var(--panel-surface-border);
   border-radius: 999px; /* fallback before JS; overridden by motion */
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-sm), var(--panel-surface-highlight);
   overflow: clip;
   transition: box-shadow 200ms ease, border-color 200ms ease;
 }

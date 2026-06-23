@@ -1,8 +1,9 @@
 /**
- * Activity / Files / Schedule sections for the unified workspace panel.
- * Shown in strip mode (panel closed) beside the active chat conversation.
+ * Activity / Files / Schedule / Store sections for the unified workspace
+ * panel. Used both in strip mode (panel closed) beside the active chat and,
+ * with `query` supplied, as the searchable group overview (panel open).
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   History,
   CheckCircle2,
@@ -18,6 +19,17 @@ import {
   type ScheduleEntry,
 } from "@/global/schedule/use-conversation-schedules";
 import { formatNextRun } from "@/global/schedule/format-schedule";
+import { matchesQuery } from "@/features/workspace-display/display-search-store";
+import {
+  loadOlderFeatureEntries,
+  refreshFeatureSnapshot,
+  useStoreSidePanelState,
+} from "@/features/store/store-side-panel-store";
+import { openStoreDisplayTab } from "@/shell/display/default-tabs";
+import {
+  sectionCollapseStore,
+  useSectionCollapsed,
+} from "@/shell/section-collapse-store";
 import {
   extractTasksFromActivities,
   getTaskDisplayText,
@@ -47,26 +59,52 @@ import type { ChatContext } from "@/shared/types/electron";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import "@/app/chat/chat-workspace-strip.css";
 
-const ACTIVITY_VISIBLE = 8;
-const FILES_VISIBLE = 5;
-const UPNEXT_VISIBLE = 4;
+// Default per-section caps. The compact strip shows a small preview; the
+// group overview shows more. An active search ignores caps entirely
+// (see `caps` below) and pages in the full dataset.
+const SECTION_CAPS = {
+  strip: { activity: 8, files: 5, schedule: 4, store: 5 },
+  overview: { activity: 24, files: 20, schedule: 16, store: 20 },
+} as const;
+const UNCAPPED = {
+  activity: Infinity,
+  files: Infinity,
+  schedule: Infinity,
+  store: Infinity,
+};
 const EMPTY_TASKS: TaskItem[] = [];
+
+const activityRowText = (row: ActivityRow): string =>
+  row.kind === "task"
+    ? getTaskDisplayText(row.task) || row.task.description
+    : row.group.label;
 
 function WorkspaceSection({
   title,
+  sectionId,
   children,
   onOpenHistory,
   historyLabel,
 }: {
   title: string;
+  /** Stable id for persisted collapse state. */
+  sectionId: string;
   children?: ReactNode;
   onOpenHistory?: () => void;
   historyLabel?: string;
 }) {
+  const collapsed = useSectionCollapsed(sectionId);
   return (
     <section className="chat-workspace-strip__section">
       <header className="chat-workspace-strip__section-header">
-        <span className="chat-workspace-strip__section-title">{title}</span>
+        <button
+          type="button"
+          className="chat-workspace-strip__section-toggle"
+          onClick={() => sectionCollapseStore.toggle(sectionId)}
+          aria-expanded={!collapsed}
+        >
+          {title}
+        </button>
         {onOpenHistory ? (
           <button
             type="button"
@@ -79,7 +117,12 @@ function WorkspaceSection({
           </button>
         ) : null}
       </header>
-      <div className="chat-workspace-strip__section-body">{children}</div>
+      <div
+        className="chat-workspace-strip__section-collapse"
+        data-collapsed={collapsed ? "true" : undefined}
+      >
+        <div className="chat-workspace-strip__section-body">{children}</div>
+      </div>
     </section>
   );
 }
@@ -314,7 +357,18 @@ const scheduleEntryToAffectedRef = (
   nextRunAtMs: entry.nextRunAtMs,
 });
 
-export function WorkspacePanelOverview() {
+export function WorkspacePanelOverview({
+  query = "",
+  variant = "strip",
+  renderEmpty,
+}: {
+  /** When set, live-filters every section by this query (group overview). */
+  query?: string;
+  /** Default cap set: compact strip vs. roomier group overview. */
+  variant?: "strip" | "overview";
+  /** Rendered when nothing matches; strip mode omits it and renders null. */
+  renderEmpty?: () => ReactNode;
+} = {}) {
   const chat = useChatRuntime();
   const { state } = useUiState();
 
@@ -324,6 +378,52 @@ export function WorkspacePanelOverview() {
   const liveTasks = chat.conversation.streaming.liveTasks ?? EMPTY_TASKS;
   const filesFeed = chat.conversation.files;
   const schedules = useConversationSchedules(conversationId);
+  const storeState = useStoreSidePanelState();
+
+  const searching = query.trim().length > 0;
+  const caps = searching ? UNCAPPED : SECTION_CAPS[variant];
+
+  useEffect(() => {
+    void refreshFeatureSnapshot();
+  }, []);
+
+  // While searching, page in the full dataset so the query matches every
+  // item, not just what's already loaded. Each loader call updates
+  // hasOlder/loading, which re-runs the effect until the feed is drained.
+  useEffect(() => {
+    if (!searching) return;
+    if (activity.hasOlder && !activity.isLoadingOlder) activity.loadOlder();
+  }, [
+    searching,
+    activity.hasOlder,
+    activity.isLoadingOlder,
+    activity.loadOlder,
+  ]);
+
+  useEffect(() => {
+    if (!searching) return;
+    if (filesFeed.hasOlder && !filesFeed.isLoadingOlder) filesFeed.loadOlder();
+  }, [
+    searching,
+    filesFeed.hasOlder,
+    filesFeed.isLoadingOlder,
+    filesFeed.loadOlder,
+  ]);
+
+  useEffect(() => {
+    if (!searching) return;
+    const total = storeState.rosterTotal;
+    if (total == null || storeState.olderLoading) return;
+    const loaded =
+      (storeState.snapshot?.items.length ?? 0) + storeState.olderEntries.length;
+    if (loaded < total) void loadOlderFeatureEntries();
+  }, [
+    searching,
+    storeState.rosterTotal,
+    storeState.olderLoading,
+    storeState.snapshot,
+    storeState.olderEntries.length,
+  ]);
   const [historySection, setHistorySection] =
     useState<ActivityHistorySection | null>(null);
   const [openScheduleEntry, setOpenScheduleEntry] =
@@ -356,7 +456,11 @@ export function WorkspacePanelOverview() {
     liveTasks,
   ]);
 
-  const activityRows = useMemo(() => groupActivityTasks(allTasks), [allTasks]);
+  const activityRows = useMemo(() => {
+    const grouped = groupActivityTasks(allTasks);
+    if (!query) return grouped;
+    return grouped.filter((row) => matchesQuery(activityRowText(row), query));
+  }, [allTasks, query]);
 
   const runningRows = useMemo(
     () =>
@@ -367,8 +471,8 @@ export function WorkspacePanelOverview() {
             activityRowStartedAtMs(b) - activityRowStartedAtMs(a) ||
             activityRowId(a).localeCompare(activityRowId(b)),
         )
-        .slice(0, ACTIVITY_VISIBLE),
-    [activityRows],
+        .slice(0, caps.activity),
+    [activityRows, caps.activity],
   );
 
   const doneRows = useMemo(
@@ -382,33 +486,51 @@ export function WorkspacePanelOverview() {
         ),
     [activityRows],
   );
-  const allFiles = useMemo(
-    () => deriveConversationFiles(filesFeed.files),
-    [filesFeed.files],
-  );
+  const allFiles = useMemo(() => {
+    const derived = deriveConversationFiles(filesFeed.files);
+    if (!query) return derived;
+    return derived.filter((file) => matchesQuery(basenameOf(file.path), query));
+  }, [filesFeed.files, query]);
+
+  const filteredSchedules = useMemo(() => {
+    if (!query) return schedules;
+    return schedules.filter((entry) => matchesQuery(entry.name, query));
+  }, [schedules, query]);
+
+  const storeItems = useMemo(() => {
+    const base = storeState.snapshot?.items ?? [];
+    // Search reaches older roster entries too (paged in by the effect above);
+    // the default view only lists the newest snapshot window.
+    const source = searching ? [...base, ...storeState.olderEntries] : base;
+    if (!query) return source;
+    return source.filter((item) => matchesQuery(item.name, query));
+  }, [storeState.snapshot, storeState.olderEntries, searching, query]);
 
   const nowMs = Date.now();
 
   const visibleDoneRows = doneRows.slice(
     0,
-    Math.max(0, ACTIVITY_VISIBLE - runningRows.length),
+    Math.max(0, caps.activity - runningRows.length),
   );
   const hiddenDoneCount = doneRows.length - visibleDoneRows.length;
   const visibleActivityRows = useMemo(
     () => [...runningRows, ...visibleDoneRows],
     [runningRows, visibleDoneRows],
   );
-  const visibleFiles = allFiles.slice(0, FILES_VISIBLE);
+  const visibleFiles = allFiles.slice(0, caps.files);
   const hiddenFilesCount = allFiles.length - visibleFiles.length;
   const upNext = useMemo(
-    () => schedules.slice(0, UPNEXT_VISIBLE),
-    [schedules],
+    () => filteredSchedules.slice(0, caps.schedule),
+    [filteredSchedules, caps.schedule],
   );
-  const hiddenScheduleCount = schedules.length - upNext.length;
+  const hiddenScheduleCount = filteredSchedules.length - upNext.length;
+  const storePreview = storeItems.slice(0, caps.store);
+  const hiddenStoreCount = storeItems.length - storePreview.length;
 
   const hasActivity = visibleActivityRows.length > 0;
   const hasFiles = allFiles.length > 0;
   const hasSchedule = upNext.length > 0;
+  const hasStore = storePreview.length > 0;
   const dialogAffected = useMemo<ScheduleToolAffectedRef[]>(() => {
     if (!openScheduleEntry || !conversationId) return [];
     return [scheduleEntryToAffectedRef(openScheduleEntry, conversationId)];
@@ -431,8 +553,8 @@ export function WorkspacePanelOverview() {
     chat.composer.requestFocus?.();
   };
 
-  if (!hasActivity && !hasFiles && !hasSchedule) {
-    return null;
+  if (!hasActivity && !hasFiles && !hasSchedule && !hasStore) {
+    return renderEmpty ? <>{renderEmpty()}</> : null;
   }
 
   return (
@@ -441,6 +563,7 @@ export function WorkspacePanelOverview() {
         {hasActivity && (
           <WorkspaceSection
             title="Activity"
+            sectionId="activity"
             onOpenHistory={
               hiddenDoneCount > 0 ? () => setHistorySection("done") : undefined
             }
@@ -457,83 +580,101 @@ export function WorkspacePanelOverview() {
         )}
 
         {hasFiles && (
-          <>
-            {hasActivity ? (
-              <div
-                className="chat-workspace-strip__divider"
-                aria-hidden="true"
-              />
-            ) : null}
-            <WorkspaceSection
-              title="Files"
-              onOpenHistory={
-                hiddenFilesCount > 0
-                  ? () => setHistorySection("files")
-                  : undefined
-              }
-              historyLabel={`View all files (${allFiles.length})`}
-            >
-              <ul className="chat-workspace-strip__list">
-                {visibleFiles.map((file) => (
-                  <li
-                    key={file.path}
-                    className="chat-workspace-strip__row"
-                    title={file.path}
+          <WorkspaceSection
+            title="Files"
+            sectionId="files"
+            onOpenHistory={
+              hiddenFilesCount > 0
+                ? () => setHistorySection("files")
+                : undefined
+            }
+            historyLabel={`View all files (${allFiles.length})`}
+          >
+            <ul className="chat-workspace-strip__list">
+              {visibleFiles.map((file) => (
+                <li
+                  key={file.path}
+                  className="chat-workspace-strip__row"
+                  title={file.path}
+                >
+                  <button
+                    type="button"
+                    className="chat-workspace-strip__file-button"
+                    onClick={() => handleOpenFile(file)}
                   >
-                    <button
-                      type="button"
-                      className="chat-workspace-strip__file-button"
-                      onClick={() => handleOpenFile(file)}
-                    >
-                      <DisplayTabIcon
-                        kind={displayTabKindForPayload(file.payload)}
-                        size={15}
-                      />
-                      <span className="chat-workspace-strip__file-name">
-                        {basenameOf(file.path)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </WorkspaceSection>
-          </>
+                    <DisplayTabIcon
+                      kind={displayTabKindForPayload(file.payload)}
+                      size={15}
+                    />
+                    <span className="chat-workspace-strip__file-name">
+                      {basenameOf(file.path)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </WorkspaceSection>
         )}
 
         {hasSchedule && (
-          <>
-            {hasActivity || hasFiles ? (
-              <div
-                className="chat-workspace-strip__divider"
-                aria-hidden="true"
-              />
-            ) : null}
-            <WorkspaceSection
-              title="Schedule"
-              onOpenHistory={
-                hiddenScheduleCount > 0
-                  ? () => setHistorySection("upNext")
-                  : undefined
-              }
-              historyLabel={`View all schedules (${schedules.length})`}
-            >
-              <ul className="chat-workspace-strip__list">
-                {upNext.map((entry) => (
-                  <li
-                    key={`${entry.kind}:${entry.id}`}
-                    className="chat-workspace-strip__row"
+          <WorkspaceSection
+            title="Schedule"
+            sectionId="schedule"
+            onOpenHistory={
+              hiddenScheduleCount > 0
+                ? () => setHistorySection("upNext")
+                : undefined
+            }
+            historyLabel={`View all schedules (${schedules.length})`}
+          >
+            <ul className="chat-workspace-strip__list">
+              {upNext.map((entry) => (
+                <li
+                  key={`${entry.kind}:${entry.id}`}
+                  className="chat-workspace-strip__row"
+                >
+                  <span className="chat-workspace-strip__row-label">
+                    {entry.name.trim()}
+                  </span>
+                  <span className="chat-workspace-strip__row-meta">
+                    {formatNextRun(entry.nextRunAtMs, nowMs)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </WorkspaceSection>
+        )}
+
+        {hasStore && (
+          <WorkspaceSection
+            title="Store"
+            sectionId="store"
+            onOpenHistory={
+              hiddenStoreCount > 0 ? () => openStoreDisplayTab() : undefined
+            }
+            historyLabel={`View all add-ons (${storeItems.length})`}
+          >
+            <ul className="chat-workspace-strip__list">
+              {storePreview.map((item) => (
+                <li
+                  key={item.featureId ?? item.name}
+                  className="chat-workspace-strip__row"
+                  title={item.name}
+                >
+                  <button
+                    type="button"
+                    className="chat-workspace-strip__file-button"
+                    onClick={() => openStoreDisplayTab()}
                   >
-                    <span className="chat-workspace-strip__row-label">
-                      {entry.name.trim()}
+                    <DisplayTabIcon kind="store" size={15} />
+                    <span className="chat-workspace-strip__file-name">
+                      {item.name}
                     </span>
-                    <span className="chat-workspace-strip__row-meta">
-                      {formatNextRun(entry.nextRunAtMs, nowMs)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </WorkspaceSection>
-          </>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </WorkspaceSection>
         )}
       </div>
       <ScheduleDetailsDialog

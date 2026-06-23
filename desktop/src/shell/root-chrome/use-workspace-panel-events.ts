@@ -37,21 +37,11 @@ export function useWorkspacePanelEvents({
     const handleClose = () => displayTabs.setPanelOpen(false);
 
     const handleOpenDisplay = () => {
-      // Prefer reopening whatever tabs are already in the manager; only
-      // fall back to re-routing the last payload when nothing has been
-      // opened yet this session. If there is no display payload yet,
-      // seed the panel with Chat so the workspace panel is always
-      // openable.
-      if (displayTabs.getSnapshot().tabs.length > 0) {
-        displayTabs.setPanelOpen(true);
-        return;
-      }
-      const payload = latestDisplayPayloadRef.current;
-      if (!payload) {
-        openChatPanel();
-        return;
-      }
-      displaySidebarRef.current?.open(payload);
+      // Reopen to wherever the user last was — the nav history + active tab
+      // survive a close, so just re-open the panel. A fresh session (no
+      // viewers opened yet) sits on the overview root, so this still lands
+      // on the library overview the first time.
+      displayTabs.setPanelOpen(true);
     };
 
     window.addEventListener(STELLA_OPEN_PANEL_CHAT_EVENT, handleOpen);
