@@ -101,7 +101,7 @@ export function openHomeDisplayTab(): void {
     id: HOME_DISPLAY_TAB_ID,
     kind: "home",
     title: "Home",
-    tooltip: "Jump into Canvas, Media, and more",
+    tooltip: "Jump into Canvas, Media, Store, and more",
     render: () => createElement(HomeLauncherTab),
   });
 }
