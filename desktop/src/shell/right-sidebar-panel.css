@@ -87,6 +87,7 @@ body[data-display-expanding="true"]
   gap: 8px;
   height: var(--shell-topbar-height, 38px);
   padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--border-base);
   -webkit-app-region: drag;
 }
 
