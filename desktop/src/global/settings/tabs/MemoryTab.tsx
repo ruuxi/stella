@@ -224,9 +224,8 @@ function ChronicleSettingsCard() {
   }, [refresh]);
 
   const openChronicleModelPicker = () => {
-    // Models live in the workspace panel's Engine tab now; open it
-    // alongside /chat so the user lands on the picker without
-    // bouncing through another settings page.
+    // Open the sidebar Models popover alongside /chat so the user can
+    // pick a Chronicle model without leaving memory settings.
     void router.navigate({ to: "/chat" });
     openEngineDisplayTab();
   };

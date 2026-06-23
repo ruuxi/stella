@@ -12,3 +12,12 @@
 [data-models-picker] .agent-model-picker {
   gap: 10px;
 }
+
+.models-picker-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 360px;
+  font-size: var(--font-size-sm);
+  color: var(--text-weak);
+}

@@ -125,6 +125,10 @@ export const deleteAuthUser = async () => {
   emit();
 };
 
+export function getAuthSessionSnapshot(): AuthSessionResult {
+  return currentSession;
+}
+
 export function useDesktopAuthSession() {
   const [snapshot, setSnapshot] = useState(currentSession);
 
