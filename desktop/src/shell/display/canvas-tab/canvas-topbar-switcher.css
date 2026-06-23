@@ -31,14 +31,10 @@
 .canvas-topbar-switcher__segment--current {
   min-width: 0;
   max-width: min(220px, 100%);
-  border-color: var(--select-border);
-  background: var(--select-fill);
-  color: var(--select-text);
 }
 
-.canvas-topbar-switcher__segment--more {
+.canvas-topbar-switcher__chevron {
   flex-shrink: 0;
-  padding-inline: 7px;
   color: var(--text-weak);
 }
 
@@ -46,13 +42,6 @@
 .canvas-topbar-switcher__segment[data-state="open"] {
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   color: var(--text-strong);
-}
-
-.canvas-topbar-switcher__segment--current:hover,
-.canvas-topbar-switcher__segment--current[data-state="open"] {
-  border-color: var(--select-border);
-  background: var(--select-fill);
-  color: var(--select-text);
 }
 
 .canvas-topbar-switcher__segment:focus-visible {
@@ -70,10 +59,6 @@
 .canvas-topbar-menu__item {
   justify-content: flex-start;
   gap: 10px;
-}
-
-.canvas-topbar-menu__item--active {
-  color: var(--text-strong);
 }
 
 .canvas-topbar-menu__label {

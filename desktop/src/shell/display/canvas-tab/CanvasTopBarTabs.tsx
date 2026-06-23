@@ -1,10 +1,10 @@
 /**
  * Canvas picker in the display panel top chrome — shows the active canvas
- * title and a +n affordance; both open the same switcher menu.
+ * title and a chevron; clicking opens the switcher menu.
  */
 
 import { useState, useSyncExternalStore } from "react";
-import { Image, X } from "@/ui/icons";
+import { ChevronDown, Image, X } from "@/ui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,8 +50,6 @@ export const CanvasTopBarTabs = () => {
     items.find((item) => item.id === selectedId) ?? items.at(-1) ?? null;
   if (!selectedItem) return null;
 
-  const extraCount = items.length - 1;
-
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <div className="canvas-topbar-switcher">
@@ -65,20 +63,14 @@ export const CanvasTopBarTabs = () => {
             <span className="canvas-topbar-switcher__title">
               {selectedItem.title}
             </span>
+            <ChevronDown
+              size={13}
+              strokeWidth={1.6}
+              className="canvas-topbar-switcher__chevron"
+              aria-hidden
+            />
           </button>
         </DropdownMenuTrigger>
-        {extraCount > 0 ? (
-          <button
-            type="button"
-            className="canvas-topbar-switcher__segment canvas-topbar-switcher__segment--more"
-            aria-label={`${extraCount} more canvases`}
-            aria-haspopup="menu"
-            aria-expanded={open}
-            onClick={() => setOpen(true)}
-          >
-            +{extraCount}
-          </button>
-        ) : null}
       </div>
       <DropdownMenuContent
         className="canvas-topbar-menu display-tab-add-menu"
@@ -87,13 +79,10 @@ export const CanvasTopBarTabs = () => {
         sideOffset={6}
       >
         {items.map((item) => {
-          const isActive = item.id === selectedItem.id;
           return (
             <DropdownMenuItem
               key={item.id}
-              className={`canvas-topbar-menu__item display-tab-add-menu__item${
-                isActive ? " canvas-topbar-menu__item--active" : ""
-              }`}
+              className="canvas-topbar-menu__item display-tab-add-menu__item"
               onSelect={() => setSelectedCanvasHtmlId(item.id)}
             >
               <span data-slot="dropdown-menu-item-icon">
