@@ -4,10 +4,10 @@ import {
   type DisplayTabPayload,
   normalizeDisplayPayload,
 } from "@/shared/contracts/display-payload";
-import type { DisplaySidebarHandle } from "@/shell/DisplaySidebar";
+import type { RightSidebarHandle } from "@/shell/RightSidebar";
 
 type UseDisplayPayloadRoutingOptions = {
-  displaySidebarRef: RefObject<DisplaySidebarHandle | null>;
+  rightSidebarRef: RefObject<RightSidebarHandle | null>;
   isMiniWindow: boolean;
   isOnChatRoute: boolean;
   showHomeContent: boolean;
@@ -41,7 +41,7 @@ type UseDisplayPayloadRoutingResult = {
  * here too.
  */
 export function useDisplayPayloadRouting({
-  displaySidebarRef,
+  rightSidebarRef,
   isMiniWindow,
   isOnChatRoute,
   showHomeContent,
@@ -51,7 +51,7 @@ export function useDisplayPayloadRouting({
   const routeDisplayPayload = useCallback(
     (payload: DisplayTabPayload) => {
       latestDisplayPayloadRef.current = payload;
-      const ds = displaySidebarRef.current;
+      const ds = rightSidebarRef.current;
       if (!ds) return;
       if (isMiniWindow) {
         ds.update(payload);
@@ -72,7 +72,7 @@ export function useDisplayPayloadRouting({
         ds.update(payload);
       }
     },
-    [displaySidebarRef, isMiniWindow, isOnChatRoute, showHomeContent],
+    [rightSidebarRef, isMiniWindow, isOnChatRoute, showHomeContent],
   );
 
   // Structured display payloads from main process.
@@ -95,7 +95,7 @@ export function useDisplayPayloadRouting({
       ?.then((result: { items?: unknown[] } | null) => {
         if (cancelled || !result || !Array.isArray(result.items)) return;
         if (result.items.length === 0) return;
-        displaySidebarRef.current?.update({
+        rightSidebarRef.current?.update({
           kind: "trash",
           title: "Trash",
           createdAt: Date.now(),
@@ -105,7 +105,7 @@ export function useDisplayPayloadRouting({
     return () => {
       cancelled = true;
     };
-  }, [displaySidebarRef]);
+  }, [rightSidebarRef]);
 
   // Owner-scoped materializer: any media job (this conversation,
   // another device, the agent, the studio, …) gets downloaded into

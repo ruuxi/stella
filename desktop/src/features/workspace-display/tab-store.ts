@@ -528,7 +528,7 @@ export const useDisplayTabList = (): DisplayTabListSnapshot =>
  * Subscribe to a single field of the panel-layout snapshot. Per-field
  * selectors keep open/expanded consumers from re-rendering when the user
  * drags the resize handle (width updates fan out separately via a CSS
- * variable on `:root` — see `DisplaySidebar.tsx`).
+ * variable on `:root` — see `RightSidebar.tsx`).
  */
 const useLayoutSlice = <T>(
   pick: (snapshot: DisplayPanelLayoutSnapshot) => T,

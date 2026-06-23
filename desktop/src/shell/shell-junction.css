@@ -19,11 +19,11 @@
   box-shadow: var(--panel-surface-highlight);
 }
 
-:root[data-shell-panel-chrome="true"] .workspace-sidebar {
+:root[data-shell-panel-chrome="true"] .left-sidebar {
   z-index: 1;
 }
 
-:root[data-shell-panel-chrome="true"] .display-sidebar.workspace-panel {
+:root[data-shell-panel-chrome="true"] .right-sidebar.right-sidebar-panel {
   z-index: 1;
 }
 
@@ -83,12 +83,12 @@
 
 /* ── Left sidebar ──────────────────────────────────────────────────── */
 
-:root[data-shell-panel-chrome="true"] .workspace-sidebar {
+:root[data-shell-panel-chrome="true"] .left-sidebar {
   overflow: hidden;
   overflow-clip-margin: 0;
 }
 
-:root[data-shell-panel-chrome="true"] .workspace-sidebar__frame {
+:root[data-shell-panel-chrome="true"] .left-sidebar__frame {
   position: relative;
   height: 100%;
   margin: 0;
@@ -102,14 +102,14 @@
 
 /* ── Right viewer panel ────────────────────────────────────────────── */
 
-:root[data-shell-panel-chrome="true"] .display-sidebar.workspace-panel {
+:root[data-shell-panel-chrome="true"] .right-sidebar.right-sidebar-panel {
   overflow: hidden;
   overflow-clip-margin: 0;
 }
 
 :root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel
-  .display-sidebar-inner.workspace-panel__frame {
+  .right-sidebar.right-sidebar-panel
+  .right-sidebar-inner.right-sidebar-panel__frame {
   position: relative;
   height: 100%;
   max-height: none;
@@ -124,15 +124,15 @@
 }
 
 :root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel.display-sidebar--open
-  .display-sidebar-inner.workspace-panel__frame {
+  .right-sidebar.right-sidebar-panel.right-sidebar--open
+  .right-sidebar-inner.right-sidebar-panel__frame {
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
   height: 100%;
 }
 
 :root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel.display-sidebar--expanded
-  .display-sidebar-inner.workspace-panel__frame {
+  .right-sidebar.right-sidebar-panel.right-sidebar--expanded
+  .right-sidebar-inner.right-sidebar-panel__frame {
   width: 100%;
   border-left: 1px solid var(--shell-junction-border);
   border-top-left-radius: var(--shell-junction-radius);
@@ -142,8 +142,8 @@
 }
 
 :root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel
-  .workspace-panel__body
-  .display-sidebar__active {
+  .right-sidebar.right-sidebar-panel
+  .right-sidebar-panel__body
+  .right-sidebar__active {
   min-width: var(--display-panel-width, clamp(380px, 34vw, 520px));
 }

@@ -57,7 +57,7 @@ export function StoreSidePanel() {
 
   return (
     <div
-      className="display-sidebar__rich display-sidebar__rich--store store-side-panel"
+      className="right-sidebar__rich right-sidebar__rich--store store-side-panel"
       data-store-display-tab="store"
     >
       <RecentChangesList

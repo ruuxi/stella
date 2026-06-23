@@ -1,10 +1,10 @@
 /* Persistent floating left sidebar — the consolidated index.
    Full-height column; junction curves live in shell-junction.css. */
 
-.workspace-sidebar {
-  --workspace-sidebar-width: 252px;
+.left-sidebar {
+  --left-sidebar-width: 252px;
   flex: 0 0 auto;
-  width: var(--workspace-sidebar-width);
+  width: var(--left-sidebar-width);
   min-width: 0;
   height: 100%;
   box-sizing: border-box;
@@ -19,15 +19,15 @@
 }
 
 /* Collapsed: animate width to 0; the fixed-width frame clips on the way out. */
-.workspace-sidebar--collapsed {
+.left-sidebar--collapsed {
   width: 0;
 }
 
-.workspace-sidebar__frame {
+.left-sidebar__frame {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  width: var(--workspace-sidebar-width);
+  width: var(--left-sidebar-width);
   height: 100%;
   background: var(--panel-surface-bg-gradient);
   border: 1px solid var(--panel-surface-border);
@@ -37,7 +37,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workspace-sidebar {
+  .left-sidebar {
     transition: none;
   }
 }
@@ -45,7 +45,7 @@
 /* Top chrome — macOS traffic-light inset, update pill, Windows controls.
    Left padding clears the always-floating sidebar toggle (see
    `.shell-edge-toggle--left`) so the update pill never sits under it. */
-.workspace-sidebar__chrome {
+.left-sidebar__chrome {
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -55,26 +55,26 @@
   -webkit-app-region: drag;
 }
 
-.workspace-sidebar[data-platform="mac"] .workspace-sidebar__chrome {
+.left-sidebar[data-platform="mac"] .left-sidebar__chrome {
   padding-left: 116px;
   transform: translateY(2px);
 }
 
-.workspace-sidebar__chrome-spacer {
+.left-sidebar__chrome-spacer {
   flex: 1;
   min-width: 0;
   height: 100%;
   -webkit-app-region: drag;
 }
 
-.workspace-sidebar__chrome .shell-topbar-update-pill,
-.workspace-sidebar__chrome .shell-topbar-window-controls {
+.left-sidebar__chrome .shell-topbar-update-pill,
+.left-sidebar__chrome .shell-topbar-window-controls {
   -webkit-app-region: no-drag;
 }
 
 /* ── Search (nav-row styled, grouped with Home / Store / Social) ─── */
 
-.workspace-sidebar__search-row {
+.left-sidebar__search-row {
   width: 100%;
   border: none;
   background: transparent;
@@ -82,7 +82,7 @@
   text-align: left;
 }
 
-.workspace-sidebar__search-row .workspace-sidebar__search-input {
+.left-sidebar__search-row .left-sidebar__search-input {
   flex: 1;
   min-width: 0;
   padding: 0;
@@ -95,22 +95,22 @@
   font-family: var(--font-family-sans);
 }
 
-.workspace-sidebar__search-row .workspace-sidebar__search-input::placeholder {
+.left-sidebar__search-row .left-sidebar__search-input::placeholder {
   color: var(--text-weak);
 }
 
-.workspace-sidebar__search-row:focus-within {
+.left-sidebar__search-row:focus-within {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   color: var(--text-strong);
 }
 
-.workspace-sidebar__search-row:focus-within .workspace-sidebar__nav-icon {
+.left-sidebar__search-row:focus-within .left-sidebar__nav-icon {
   color: var(--text-strong);
 }
 
 /* ── Scroll body ──────────────────────────────────────────────────── */
 
-.workspace-sidebar__scroll {
+.left-sidebar__scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -119,20 +119,20 @@
   padding: 4px 6px 6px;
 }
 
-.workspace-sidebar__scroll::-webkit-scrollbar {
+.left-sidebar__scroll::-webkit-scrollbar {
   display: none;
 }
 
 /* ── Nav rows (Home/Store/Social, Apps) ───────────────────────────── */
 
-.workspace-sidebar__nav {
+.left-sidebar__nav {
   display: flex;
   flex-direction: column;
   gap: 1px;
   margin-bottom: 6px;
 }
 
-.workspace-sidebar__nav-row {
+.left-sidebar__nav-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -147,17 +147,17 @@
     color 120ms ease;
 }
 
-.workspace-sidebar__nav-row:hover {
+.left-sidebar__nav-row:hover {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
   color: var(--text-strong);
 }
 
-.workspace-sidebar__nav-row[data-active="true"] {
+.left-sidebar__nav-row[data-active="true"] {
   background: var(--select-fill);
   color: var(--select-text);
 }
 
-.workspace-sidebar__nav-icon {
+.left-sidebar__nav-icon {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -165,11 +165,11 @@
   color: var(--text-base);
 }
 
-.workspace-sidebar__nav-row[data-active="true"] .workspace-sidebar__nav-icon {
+.left-sidebar__nav-row[data-active="true"] .left-sidebar__nav-icon {
   color: var(--select-text);
 }
 
-.workspace-sidebar__nav-label {
+.left-sidebar__nav-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -181,13 +181,13 @@
 
 /* ── Collapsible section (Apps) ───────────────────────────────────── */
 
-.workspace-sidebar__section {
+.left-sidebar__section {
   display: flex;
   flex-direction: column;
   margin-bottom: 6px;
 }
 
-.workspace-sidebar__section-header {
+.left-sidebar__section-header {
   display: block;
   width: 100%;
   margin: 2px 0;
@@ -205,16 +205,16 @@
     color 120ms ease;
 }
 
-.workspace-sidebar__section-header:hover {
+.left-sidebar__section-header:hover {
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
-.workspace-sidebar__section-header:focus-visible {
+.left-sidebar__section-header:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
 
-.workspace-sidebar__app-list {
+.left-sidebar__app-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -224,41 +224,41 @@
 }
 
 /* Animated expand/collapse (Apps), matching the overview sections. */
-.workspace-sidebar__section-collapse {
+.left-sidebar__section-collapse {
   display: grid;
   grid-template-rows: 1fr;
   min-height: 0;
   transition: grid-template-rows 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-.workspace-sidebar__section-collapse[data-collapsed="true"] {
+.left-sidebar__section-collapse[data-collapsed="true"] {
   grid-template-rows: 0fr;
 }
 
-.workspace-sidebar__section-collapse > .workspace-sidebar__app-list {
+.left-sidebar__section-collapse > .left-sidebar__app-list {
   min-height: 0;
   overflow: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workspace-sidebar__section-collapse {
+  .left-sidebar__section-collapse {
     transition: none;
   }
 }
 
 /* Activity / Files / Schedule / Store — align with nav rows, no chevron indent */
-.workspace-sidebar__scroll .chat-workspace-strip__section {
+.left-sidebar__scroll .chat-workspace-strip__section {
   padding: 6px 8px 8px;
 }
 
-.workspace-sidebar__scroll .chat-workspace-strip__section-header {
+.left-sidebar__scroll .chat-workspace-strip__section-header {
   padding: 0;
   margin-bottom: 4px;
 }
 
 /* "View all" history buttons stay hidden until the section is hovered
    (or the button is focused), keeping the resting sidebar quiet. */
-.workspace-sidebar__scroll .chat-workspace-strip__section-history {
+.left-sidebar__scroll .chat-workspace-strip__section-history {
   opacity: 0;
   pointer-events: none;
   transition:
@@ -266,17 +266,17 @@
     color 120ms ease;
 }
 
-.workspace-sidebar__scroll
+.left-sidebar__scroll
   .chat-workspace-strip__section:hover
   .chat-workspace-strip__section-history,
-.workspace-sidebar__scroll .chat-workspace-strip__section-history:focus-visible {
+.left-sidebar__scroll .chat-workspace-strip__section-history:focus-visible {
   opacity: 1;
   pointer-events: auto;
 }
 
 /* ── Footer (sign in + account) ───────────────────────────────────── */
 
-.workspace-sidebar__footer {
+.left-sidebar__footer {
   flex-shrink: 0;
   display: flex;
   flex-wrap: nowrap;
@@ -284,7 +284,7 @@
   padding: 6px 10px 8px;
 }
 
-.workspace-sidebar__footer .shell-topbar-account {
+.left-sidebar__footer .shell-topbar-account {
   flex: 1 1 auto;
   width: 100%;
   min-width: 0;
@@ -292,14 +292,14 @@
   gap: 6px;
 }
 
-.workspace-sidebar__footer .shell-topbar-account-signin {
+.left-sidebar__footer .shell-topbar-account-signin {
   margin-right: auto;
 }
 
 /* Sidebar footer account controls — slightly larger than the compact
    defaults used elsewhere in the top bar. */
-.workspace-sidebar__footer .shell-topbar-account-signin,
-.workspace-sidebar__footer .shell-topbar-account-trigger {
+.left-sidebar__footer .shell-topbar-account-signin,
+.left-sidebar__footer .shell-topbar-account-trigger {
   min-width: 0;
   height: 26px;
   padding: 0 10px;
@@ -307,21 +307,21 @@
   font-size: var(--font-size-base);
 }
 
-.workspace-sidebar__footer .shell-topbar-account-trigger {
+.left-sidebar__footer .shell-topbar-account-trigger {
   flex: 1 1 auto;
 }
 
-.workspace-sidebar__footer .shell-topbar-account-trigger--split {
+.left-sidebar__footer .shell-topbar-account-trigger--split {
   gap: 10px;
 }
 
-.workspace-sidebar__footer .shell-topbar-account-identity {
+.left-sidebar__footer .shell-topbar-account-identity {
   flex: 1 1 auto;
   min-width: 0;
   justify-content: flex-start;
 }
 
-.workspace-sidebar__footer .shell-topbar-account-nickname {
+.left-sidebar__footer .shell-topbar-account-nickname {
   flex: 0 1 auto;
   min-width: 0;
   max-width: none;
@@ -330,21 +330,21 @@
   font-size: var(--font-size-base);
 }
 
-.workspace-sidebar__footer .shell-topbar-account-plan {
+.left-sidebar__footer .shell-topbar-account-plan {
   font-size: var(--font-size-xs);
 }
 
-.workspace-sidebar__footer .shell-topbar-account-signin-icon {
+.left-sidebar__footer .shell-topbar-account-signin-icon {
   width: 15px;
   height: 15px;
 }
 
-.workspace-sidebar__footer .shell-topbar-account-signin-icon svg {
+.left-sidebar__footer .shell-topbar-account-signin-icon svg {
   width: 15px;
   height: 15px;
 }
 
-.workspace-sidebar__footer .shell-topbar-account-signin-label {
+.left-sidebar__footer .shell-topbar-account-signin-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -353,14 +353,14 @@
   max-width: 120px;
 }
 
-.workspace-sidebar__footer .shell-topbar-account-settings {
+.left-sidebar__footer .shell-topbar-account-settings {
   flex: 0 0 auto;
   width: 26px;
   height: 26px;
   margin-left: auto;
 }
 
-.workspace-sidebar__footer .shell-topbar-account-settings svg {
+.left-sidebar__footer .shell-topbar-account-settings svg {
   width: 15px;
   height: 15px;
 }

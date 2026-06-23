@@ -19,9 +19,9 @@ const MINI_HOME_DISPLAY_TAB_ID = "mini:home";
 
 type MiniDisplayOpenOptions = Parameters<typeof displayTabs.openTab>[1];
 
-const LazyDisplaySidebar = lazy(() =>
-  import("../shell/DisplaySidebar").then((module) => ({
-    default: module.DisplaySidebar,
+const LazyRightSidebar = lazy(() =>
+  import("../shell/RightSidebar").then((module) => ({
+    default: module.RightSidebar,
   })),
 );
 
@@ -282,7 +282,7 @@ export function MiniDisplayPanelHost({
 
   return (
     <Suspense fallback={null}>
-      <LazyDisplaySidebar portalTarget={portalTarget} />
+      <LazyRightSidebar portalTarget={portalTarget} />
     </Suspense>
   );
 }

@@ -49,11 +49,11 @@
 
 :root[data-shell-window-resizing="true"]
   body:not([data-display-breakpoint-transition="true"])
-  .display-sidebar.display-sidebar--open,
+  .right-sidebar.right-sidebar--open,
 :root[data-shell-window-resizing="true"]
   body:not([data-display-breakpoint-transition="true"])
-  .display-sidebar.display-sidebar--open
-  .display-sidebar-inner,
+  .right-sidebar.right-sidebar--open
+  .right-sidebar-inner,
 :root[data-shell-window-resizing="true"]
   body:not([data-display-breakpoint-transition="true"])
   .shell-topbar[data-display-open="true"]
@@ -379,7 +379,7 @@
     transparent 100%
   );
   /* Slides in/out in lockstep with the display panel
-     (`.display-sidebar` uses width 460ms cubic-bezier(0.32, 0.72, 0.16, 1)). */
+     (`.right-sidebar` uses width 460ms cubic-bezier(0.32, 0.72, 0.16, 1)). */
   transition:
     max-width 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
     flex-basis 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
@@ -415,7 +415,7 @@
 /* The 460ms transition above is sized for the panel's open/close
    animation. During a live pointer-driven resize the panel width
    updates every frame, so the same transition would visibly lag the
-   tab strip behind the drag. `DisplaySidebar` toggles this attribute
+   tab strip behind the drag. `RightSidebar` toggles this attribute
    for the duration of the gesture. */
 body[data-display-resizing="true"] .shell-topbar-tabs,
 body[data-display-resizing="true"] .shell-topbar-tablist,

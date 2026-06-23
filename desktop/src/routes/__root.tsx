@@ -24,15 +24,15 @@ import { ComposerAreaSelectOverlay } from "@/app/chat/ComposerAreaSelectOverlay"
 import { OPEN_CONNECT_DIALOG_EVENT } from "@/global/integrations/connect-action";
 import { setActiveLocalConversationId } from "@/features/chat/services/local-chat-store";
 import { writeActiveConversationIdCache } from "@/features/chat/services/active-conversation-cache";
-import type { DisplaySidebarHandle } from "@/shell/DisplaySidebar";
+import type { RightSidebarHandle } from "@/shell/RightSidebar";
 // The workspace panel is a ~410-line surface not needed for first
 // interaction, so it is lazy-loaded to keep it out of the always-eager
 // shell's first-paint module graph. The imperative `ref` handle is null
 // until the chunk mounts; every consumer (`use-workspace-panel-events`,
 // `use-display-payload-routing`) already accesses it defensively with `?.`,
 // and only from event/async callbacks — never synchronously on mount.
-const DisplaySidebar = lazy(() =>
-  import("@/shell/DisplaySidebar").then((m) => ({ default: m.DisplaySidebar })),
+const RightSidebar = lazy(() =>
+  import("@/shell/RightSidebar").then((m) => ({ default: m.RightSidebar })),
 );
 // These dialogs are rarely seen on first interaction (onboarding welcome,
 // nickname prompt, post-OAuth confirmation, billing upgrade) and each already
@@ -63,7 +63,7 @@ const SubscriptionUpgradeDialog = lazy(() =>
   })),
 );
 import { ShellTopBar } from "@/shell/ShellTopBar";
-import { WorkspaceSidebar } from "@/shell/WorkspaceSidebar";
+import { LeftSidebar } from "@/shell/LeftSidebar";
 import {
   displayTabs,
   useDisplayPanelExpanded,
@@ -187,7 +187,7 @@ function RootChrome() {
   } | null>(null);
   const displayBreakpointTransitionTimeoutRef = useRef<number | null>(null);
 
-  const displaySidebarRef = useRef<DisplaySidebarHandle>(null);
+  const rightSidebarRef = useRef<RightSidebarHandle>(null);
 
   const { hasConnectedAccount, isLoading: isAuthLoading } =
     useAuthSessionState();
@@ -253,7 +253,7 @@ function RootChrome() {
 
   // Expose the current left-sidebar width so an expanded display panel can
   // inset past it (keeping the rail visible). 252px mirrors
-  // `--workspace-sidebar-width` in workspace-sidebar.css; 0 when collapsed.
+  // `--left-sidebar-width` in left-sidebar.css; 0 when collapsed.
   useLayoutEffect(() => {
     const root = document.documentElement;
     if (dockedLeftSidebarVisible) root.dataset.shellLeftSidebarDocked = "true";
@@ -417,7 +417,7 @@ function RootChrome() {
   const isContextMenuPanelOpen = panelOpen;
 
   const { latestDisplayPayloadRef } = useDisplayPayloadRouting({
-    displaySidebarRef,
+    rightSidebarRef,
     isMiniWindow,
     isOnChatRoute,
     showHomeContent: chat.showHomeContent,
@@ -426,7 +426,7 @@ function RootChrome() {
   useDictationToggleBridge();
 
   useWorkspacePanelEvents({
-    displaySidebarRef,
+    rightSidebarRef,
     latestDisplayPayloadRef,
     openChatPanel,
     openDefaultPanelSurface,
@@ -592,7 +592,7 @@ function RootChrome() {
       {!isFullWindow ? <ShellTopBar /> : null}
 
       {isFullWindow ? (
-        <WorkspaceSidebar
+        <LeftSidebar
           onSignIn={showAuthDialog}
           onConnect={showConnectDialog}
           collapsed={!dockedLeftSidebarVisible}
@@ -661,7 +661,7 @@ function RootChrome() {
       ) : null}
 
       <Suspense fallback={null}>
-        <DisplaySidebar ref={displaySidebarRef} />
+        <RightSidebar ref={rightSidebarRef} />
       </Suspense>
 
       <ComposerAreaSelectOverlay
@@ -676,7 +676,7 @@ function RootChrome() {
         onDialogOpenChange={handleDialogOpenChange}
       />
 
-      {/* Suspense fallback={null} mirrors the lazy DisplaySidebar above: the
+      {/* Suspense fallback={null} mirrors the lazy RightSidebar above: the
           deferred chunk stays off the first-paint graph, and each dialog still
           renders null until its own open state flips — no flash, no behavior change. */}
       <Suspense fallback={null}>

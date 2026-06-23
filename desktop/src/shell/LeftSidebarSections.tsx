@@ -1,7 +1,7 @@
 /**
- * Activity / Files / Schedule / Store sections for the unified workspace
- * panel. Used both in strip mode (panel closed) beside the active chat and,
- * with `query` supplied, as the searchable group overview (panel open).
+ * Activity / Files / Schedule / Store sections rendered inside the left
+ * sidebar. With `query` supplied they act as the searchable group overview;
+ * section rows open the right sidebar viewer (master-detail).
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
@@ -357,7 +357,7 @@ const scheduleEntryToAffectedRef = (
   nextRunAtMs: entry.nextRunAtMs,
 });
 
-export function WorkspacePanelOverview({
+export function LeftSidebarSections({
   query = "",
   variant = "strip",
   renderEmpty,

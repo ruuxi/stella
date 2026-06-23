@@ -34,11 +34,11 @@ import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
 import { DisplayTabSwitcher } from "@/shell/display/DisplayTabSwitcher";
 import { CanvasTopBarTabs } from "@/shell/display/canvas-tab/CanvasTopBarTabs";
 import { WindowControls } from "@/shell/WindowControls";
-import "./display-sidebar.css";
-import "./workspace-panel.css";
+import "./right-sidebar.css";
+import "./right-sidebar-panel.css";
 import "./shell-junction.css";
 
-export interface DisplaySidebarHandle {
+export interface RightSidebarHandle {
   /**
    * Open (or refresh) a tab for the given payload and activate it. The
    * panel auto-opens as a side effect of `displayTabs.openTab`.
@@ -53,7 +53,7 @@ export interface DisplaySidebarHandle {
   close(): void;
 }
 
-type DisplaySidebarProps = {
+type RightSidebarProps = {
   onOpenChange?: (open: boolean) => void;
   portalTarget?: Element | null;
 };
@@ -71,7 +71,7 @@ const measureShellWidth = (): number => {
 };
 
 const measureDockedLeftSidebarWidth = (): number => {
-  const sidebar = document.querySelector<HTMLElement>(".workspace-sidebar");
+  const sidebar = document.querySelector<HTMLElement>(".left-sidebar");
   return sidebar?.getBoundingClientRect().width ?? 0;
 };
 
@@ -103,7 +103,7 @@ const resolveDisplayPanelWidth = (preferredWidth: number | null): number => {
 const DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD = 260;
 const DISPLAY_PANEL_WIDTH_CSS_VAR = "--display-panel-width";
 
-// Set on `:root` (not on `.display-sidebar`) so siblings outside the panel
+// Set on `:root` (not on `.right-sidebar`) so siblings outside the panel
 // (e.g. the topbar tab strip width calc) can inherit the same value.
 const applyDisplayPanelWidthCssVar = (width: number | null): void => {
   const root = document.documentElement;
@@ -140,10 +140,10 @@ const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
  * call. This component just observes the store and renders the active
  * tab's `render()`.
  */
-export const DisplaySidebar = forwardRef<
-  DisplaySidebarHandle,
-  DisplaySidebarProps
->(function DisplaySidebar({ onOpenChange, portalTarget }, ref) {
+export const RightSidebar = forwardRef<
+  RightSidebarHandle,
+  RightSidebarProps
+>(function RightSidebar({ onOpenChange, portalTarget }, ref) {
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
   const activeTab = useActiveDisplayTab();
@@ -230,7 +230,7 @@ export const DisplaySidebar = forwardRef<
         : new ResizeObserver(scheduleWidthVarSync);
     const shell = document.querySelector<HTMLElement>(".full-body");
     const leftSidebar =
-      document.querySelector<HTMLElement>(".workspace-sidebar");
+      document.querySelector<HTMLElement>(".left-sidebar");
     if (shell) resizeObserver?.observe(shell);
     if (leftSidebar) resizeObserver?.observe(leftSidebar);
     window.addEventListener("resize", scheduleWidthVarSync);
@@ -312,7 +312,7 @@ export const DisplaySidebar = forwardRef<
       const previousUserSelect = document.body.style.userSelect;
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
-      aside?.classList.add("display-sidebar--resizing");
+      aside?.classList.add("right-sidebar--resizing");
       // Lets the topbar (which lives in a separate React tree above the
       // panel) drop its open/close transition for the duration of the
       // drag — otherwise the centered store tabs and right-aligned tab
@@ -372,7 +372,7 @@ export const DisplaySidebar = forwardRef<
         }
         document.body.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
-        aside?.classList.remove("display-sidebar--resizing");
+        aside?.classList.remove("right-sidebar--resizing");
         delete document.body.dataset.displayResizing;
         if (latestWidth != null) {
           displayTabs.setPanelWidth(latestWidth);
@@ -414,10 +414,10 @@ export const DisplaySidebar = forwardRef<
   return createPortal(
     <aside
       ref={asideRef}
-      className={`display-sidebar workspace-panel${
-        shellVisible ? " display-sidebar--shell-visible" : ""
-      }${panelOpen ? " display-sidebar--open" : ""}${
-        panelOpen && panelExpanded ? " display-sidebar--expanded" : ""
+      className={`right-sidebar right-sidebar-panel${
+        shellVisible ? " right-sidebar--shell-visible" : ""
+      }${panelOpen ? " right-sidebar--open" : ""}${
+        panelOpen && panelExpanded ? " right-sidebar--expanded" : ""
       }`}
       aria-label="Workspace"
       aria-hidden={!shellVisible}
@@ -425,7 +425,7 @@ export const DisplaySidebar = forwardRef<
     >
       {panelOpen ? (
         <div
-          className="display-sidebar__resize-handle"
+          className="right-sidebar__resize-handle"
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize display panel"
@@ -434,13 +434,13 @@ export const DisplaySidebar = forwardRef<
           title="Drag to resize · double-click to reset"
         />
       ) : null}
-      <div className="display-sidebar-inner workspace-panel__frame">
+      <div className="right-sidebar-inner right-sidebar-panel__frame">
         {panelOpen && !isMiniWindow ? (
           <div
-            className="workspace-panel__chrome"
+            className="right-sidebar-panel__chrome"
             data-platform={isMac ? "mac" : isWin ? "win" : "other"}
           >
-            <div className="workspace-panel__chrome-tabs-slot">
+            <div className="right-sidebar-panel__chrome-tabs-slot">
               <DisplayTabSwitcher />
               <CanvasTopBarTabs />
             </div>
@@ -450,9 +450,9 @@ export const DisplaySidebar = forwardRef<
             ) : null}
           </div>
         ) : null}
-        <div className="workspace-panel__body">
+        <div className="right-sidebar-panel__body">
           {panelOpen && activeTab ? (
-            <div className="display-sidebar__active">
+            <div className="right-sidebar__active">
               <DeferredDisplayContent
                 key={activeTab.id}
                 render={activeTab.render}

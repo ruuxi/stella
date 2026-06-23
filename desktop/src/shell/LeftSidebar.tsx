@@ -2,9 +2,9 @@
  * Persistent floating left sidebar — the consolidated index.
  *
  * Top-to-bottom: primary nav (Home / Apps / Store / Social / Search) and the
- * Activity / Files / Schedule sections (reused from `WorkspacePanelOverview`).
- * Nav rows navigate the center content; section items open the right-side
- * viewer (master-detail).
+ * Activity / Files / Schedule sections (`LeftSidebarSections`). Nav rows
+ * navigate the center content; section items open the right sidebar viewer
+ * (master-detail).
  *
  * Full window only — the mini window keeps its own chrome.
  */
@@ -23,28 +23,28 @@ import {
   useDisplaySearchQuery,
 } from "@/features/workspace-display/display-search-store";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
-import { WorkspacePanelOverview } from "@/shell/WorkspacePanelOverview";
+import { LeftSidebarSections } from "@/shell/LeftSidebarSections";
 import { ShellTopBarAccount } from "@/shell/sidebar/ShellTopBarAccount";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
 import { WindowControls } from "@/shell/WindowControls";
-import "./workspace-sidebar.css";
+import "./left-sidebar.css";
 import "./shell-junction.css";
 
 const useRegisteredApps = (): readonly AppMetadata[] =>
   useSyncExternalStore(subscribeToAppRegistry, getAppRegistrySnapshot);
 
-type WorkspaceSidebarProps = {
+type LeftSidebarProps = {
   onSignIn?: () => void;
   onConnect?: () => void;
   /** When true, the sidebar animates its width to 0 (stays mounted). */
   collapsed?: boolean;
 };
 
-export function WorkspaceSidebar({
+export function LeftSidebar({
   onSignIn,
   onConnect,
   collapsed = false,
-}: WorkspaceSidebarProps) {
+}: LeftSidebarProps) {
   const query = useDisplaySearchQuery();
   const allApps = useRegisteredApps();
   const matchRoute = useMatchRoute();
@@ -70,25 +70,25 @@ export function WorkspaceSidebar({
 
   return (
     <aside
-      className={`workspace-sidebar${collapsed ? " workspace-sidebar--collapsed" : ""}`}
+      className={`left-sidebar${collapsed ? " left-sidebar--collapsed" : ""}`}
       data-platform={isMac ? "mac" : isWin ? "win" : "other"}
       aria-label="Sidebar"
       aria-hidden={collapsed || undefined}
     >
-      <div className="workspace-sidebar__frame">
-        <div className="workspace-sidebar__chrome">
+      <div className="left-sidebar__frame">
+        <div className="left-sidebar__chrome">
           <ShellTopBarUpdatePill />
           <div
-            className="workspace-sidebar__chrome-spacer"
+            className="left-sidebar__chrome-spacer"
             aria-hidden="true"
           />
           {showWindowsControlsOnLeft ? (
             <WindowControls useWindowsIcons hidden={false} />
           ) : null}
         </div>
-        <div className="workspace-sidebar__scroll">
+        <div className="left-sidebar__scroll">
           {navApps.length > 0 ? (
-            <nav className="workspace-sidebar__nav" aria-label="Navigation">
+            <nav className="left-sidebar__nav" aria-label="Navigation">
               {navApps.map((app) => {
                 const active = Boolean(
                   matchRoute({ to: app.route, fuzzy: true }),
@@ -98,7 +98,7 @@ export function WorkspaceSidebar({
                   <Link
                     key={app.id}
                     to={app.route}
-                    className="workspace-sidebar__nav-row"
+                    className="left-sidebar__nav-row"
                     data-active={active ? "true" : undefined}
                     aria-current={active ? "page" : undefined}
                     onClick={(event) => {
@@ -113,12 +113,12 @@ export function WorkspaceSidebar({
                     }}
                   >
                     <span
-                      className="workspace-sidebar__nav-icon"
+                      className="left-sidebar__nav-icon"
                       aria-hidden="true"
                     >
                       <Icon size={16} />
                     </span>
-                    <span className="workspace-sidebar__nav-label">
+                    <span className="left-sidebar__nav-label">
                       {app.label}
                     </span>
                   </Link>
@@ -126,9 +126,9 @@ export function WorkspaceSidebar({
               })}
 
               {showSearchInput ? (
-                <div className="workspace-sidebar__nav-row workspace-sidebar__search-row">
+                <div className="left-sidebar__nav-row left-sidebar__search-row">
                   <span
-                    className="workspace-sidebar__nav-icon"
+                    className="left-sidebar__nav-icon"
                     aria-hidden="true"
                   >
                     <Search size={16} strokeWidth={1.75} />
@@ -136,7 +136,7 @@ export function WorkspaceSidebar({
                   <input
                     ref={searchInputRef}
                     type="text"
-                    className="workspace-sidebar__search-input"
+                    className="left-sidebar__search-input"
                     value={query}
                     placeholder="Search"
                     onChange={(event) =>
@@ -151,25 +151,25 @@ export function WorkspaceSidebar({
               ) : (
                 <button
                   type="button"
-                  className="workspace-sidebar__nav-row workspace-sidebar__search-row"
+                  className="left-sidebar__nav-row left-sidebar__search-row"
                   onClick={() => setSearchActive(true)}
                 >
                   <span
-                    className="workspace-sidebar__nav-icon"
+                    className="left-sidebar__nav-icon"
                     aria-hidden="true"
                   >
                     <Search size={16} strokeWidth={1.75} />
                   </span>
-                  <span className="workspace-sidebar__nav-label">Search</span>
+                  <span className="left-sidebar__nav-label">Search</span>
                 </button>
               )}
             </nav>
           ) : null}
 
-          <WorkspacePanelOverview query={query} variant="overview" />
+          <LeftSidebarSections query={query} variant="overview" />
         </div>
 
-        <div className="workspace-sidebar__footer">
+        <div className="left-sidebar__footer">
           <ShellTopBarAccount onSignIn={onSignIn} onConnect={onConnect} />
         </div>
       </div>
