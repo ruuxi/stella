@@ -319,12 +319,13 @@
   font-weight: var(--chat-text-strong-weight);
 }
 
-/* Heading scale for every chat surface (full + compact). No heading
-   ever renders below body size (`--chat-text-size`, 15px); h4–h6 land at
-   body size and rely on weight/casing for hierarchy. Compact surfaces
-   share this exact scale — they no longer flatten headings to body. */
+/* Heading scale for every chat surface (full + compact). Sized clearly
+   above the 15px body so the hierarchy reads at a glance; the shared
+   token scale tops out too low for this, so chat uses explicit px. h5/h6
+   land at body size but stay distinct via the bold weight + base uppercase
+   styling. Compact surfaces share this exact scale. */
 .event-item.assistant .markdown :is(h1, h2, h3, h4, h5, h6) {
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
   line-height: 1.3;
   margin-top: 1rem;
   margin-bottom: 0.4rem;
@@ -334,10 +335,10 @@
   margin-top: 0;
 }
 
-.event-item.assistant .markdown h1 { font-size: var(--font-size-3xl); }
-.event-item.assistant .markdown h2 { font-size: var(--font-size-2xl); }
-.event-item.assistant .markdown h3 { font-size: var(--font-size-xl); }
-.event-item.assistant .markdown h4 { font-size: var(--font-size-lg); }
+.event-item.assistant .markdown h1 { font-size: 26px; }
+.event-item.assistant .markdown h2 { font-size: 21px; }
+.event-item.assistant .markdown h3 { font-size: 18px; }
+.event-item.assistant .markdown h4 { font-size: 16px; }
 .event-item.assistant .markdown h5,
 .event-item.assistant .markdown h6 { font-size: var(--font-size-lg); }
 
