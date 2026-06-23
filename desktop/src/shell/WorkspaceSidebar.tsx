@@ -1,21 +1,15 @@
 /**
  * Persistent floating left sidebar — the consolidated index.
  *
- * Top-to-bottom: primary nav (Home / Store / Social / Search), the
- * user's Apps, and the Activity / Files / Schedule / Store sections
- * (reused from `WorkspacePanelOverview`). Nav and app rows navigate the
- * center content; section items open the right-side viewer (master-detail).
+ * Top-to-bottom: primary nav (Home / Apps / Store / Social / Search) and the
+ * Activity / Files / Schedule sections (reused from `WorkspacePanelOverview`).
+ * Nav rows navigate the center content; section items open the right-side
+ * viewer (master-detail).
  *
  * Full window only — the mini window keeps its own chrome.
  */
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import { Search } from "@/ui/icons";
 import type { AppMetadata } from "@/app/_shared/app-metadata";
@@ -23,34 +17,21 @@ import {
   getSnapshot as getAppRegistrySnapshot,
   subscribe as subscribeToAppRegistry,
 } from "@/shell/sidebar/app-registry";
-import {
-  getSnapshot as getUserAppsSnapshot,
-  subscribe as subscribeToUserApps,
-  type UserApp,
-} from "@/app/_user/user-apps-registry";
 import { getPlatform } from "@/platform/electron/platform";
 import {
   displaySearchStore,
   useDisplaySearchQuery,
 } from "@/features/workspace-display/display-search-store";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
-import {
-  useSectionCollapsed,
-  sectionCollapseStore,
-} from "./section-collapse-store";
 import { WorkspacePanelOverview } from "@/shell/WorkspacePanelOverview";
 import { ShellTopBarAccount } from "@/shell/sidebar/ShellTopBarAccount";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
 import { WindowControls } from "@/shell/WindowControls";
-import { CustomLayout } from "@/ui/nav-icons";
 import "./workspace-sidebar.css";
 import "./shell-junction.css";
 
 const useRegisteredApps = (): readonly AppMetadata[] =>
   useSyncExternalStore(subscribeToAppRegistry, getAppRegistrySnapshot);
-
-const useUserApps = (): readonly UserApp[] =>
-  useSyncExternalStore(subscribeToUserApps, getUserAppsSnapshot);
 
 type WorkspaceSidebarProps = {
   onSignIn?: () => void;
@@ -66,27 +47,18 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps) {
   const query = useDisplaySearchQuery();
   const allApps = useRegisteredApps();
-  const userApps = useUserApps();
   const matchRoute = useMatchRoute();
-  const appsCollapsed = useSectionCollapsed("apps");
   const panelOpen = useDisplayPanelOpen();
   const platform = getPlatform();
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
   const showWindowsControlsOnLeft = isWin && !panelOpen;
 
-  // Primary nav: top-slot apps, minus the legacy "apps" launcher entry
-  // (the user's apps are listed directly below).
+  // Primary nav: top-slot apps (Home / Apps / Store / Social).
   const navApps = useMemo(
-    () =>
-      allApps.filter(
-        (app) =>
-          !app.hideFromSidebar && app.slot === "top" && app.id !== "apps",
-      ),
+    () => allApps.filter((app) => !app.hideFromSidebar && app.slot === "top"),
     [allApps],
   );
-
-  const hasApps = userApps.length > 0;
 
   // Search renders as a compact button until clicked, then becomes the input.
   const [searchActive, setSearchActive] = useState(false);
@@ -192,54 +164,6 @@ export function WorkspaceSidebar({
                 </button>
               )}
             </nav>
-          ) : null}
-
-          {hasApps ? (
-            <section className="workspace-sidebar__section">
-              <button
-                type="button"
-                className="workspace-sidebar__section-header"
-                onClick={() => sectionCollapseStore.toggle("apps")}
-                aria-expanded={!appsCollapsed}
-              >
-                Apps
-              </button>
-              <div
-                className="workspace-sidebar__section-collapse"
-                data-collapsed={appsCollapsed ? "true" : undefined}
-              >
-                <ul className="workspace-sidebar__app-list">
-                  {userApps.map((app) => {
-                    const active = Boolean(
-                      matchRoute({
-                        to: "/apps/$slug",
-                        params: { slug: app.slug },
-                      }),
-                    );
-                    return (
-                      <li key={app.slug}>
-                        <Link
-                          to="/apps/$slug"
-                          params={{ slug: app.slug }}
-                          className="workspace-sidebar__nav-row"
-                          data-active={active ? "true" : undefined}
-                        >
-                          <span
-                            className="workspace-sidebar__nav-icon"
-                            aria-hidden="true"
-                          >
-                            <CustomLayout size={16} />
-                          </span>
-                          <span className="workspace-sidebar__nav-label">
-                            {app.meta.label}
-                          </span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </section>
           ) : null}
 
           <WorkspacePanelOverview query={query} variant="overview" />
