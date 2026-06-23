@@ -227,6 +227,49 @@
   pointer-events: none;
 }
 
+/* Floating sidebar/panel toggles pinned to the window's top corners.
+   Reuse `.shell-topbar-icon-btn` for the look; override positioning so they
+   sit next to the traffic lights (left) and at the top-right (right). */
+.shell-edge-toggle {
+  position: absolute;
+  top: 9px;
+  z-index: 80;
+  -webkit-app-region: no-drag;
+}
+
+.shell-edge-toggle--left {
+  left: 12px;
+}
+
+.shell-edge-toggle--left[data-platform="mac"] {
+  left: 84px;
+}
+
+.shell-edge-toggle--right {
+  right: 12px;
+}
+
+.shell-edge-toggle--left::after {
+  left: 0;
+  transform: translateY(-2px);
+}
+
+.shell-edge-toggle--left:hover::after,
+.shell-edge-toggle--left:focus-visible::after {
+  transform: translateY(0);
+}
+
+.shell-edge-toggle--right::after {
+  left: auto;
+  right: 0;
+  transform: translateY(-2px);
+}
+
+.shell-edge-toggle--right:hover::after,
+.shell-edge-toggle--right:focus-visible::after {
+  transform: translateY(0);
+}
+
 .shell-topbar-window-controls {
   box-sizing: border-box;
   /* 3 × 24px buttons + 2 × 2px gaps + 2 × 8px padding. Pinned so the

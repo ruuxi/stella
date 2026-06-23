@@ -1,7 +1,7 @@
 /**
  * Persistent floating left sidebar — the consolidated index.
  *
- * Top-to-bottom: a search box, primary nav (Home / Store / Social), the
+ * Top-to-bottom: primary nav (Home / Store / Social / Search), the
  * user's Apps, and the Activity / Files / Schedule / Store sections
  * (reused from `WorkspacePanelOverview`). Nav and app rows navigate the
  * center content; section items open the right-side viewer (master-detail).
@@ -56,11 +56,14 @@ const useUserApps = (): readonly UserApp[] =>
 type WorkspaceSidebarProps = {
   onSignIn?: () => void;
   onConnect?: () => void;
+  /** When true, the sidebar animates its width to 0 (stays mounted). */
+  collapsed?: boolean;
 };
 
 export function WorkspaceSidebar({
   onSignIn,
   onConnect,
+  collapsed = false,
 }: WorkspaceSidebarProps) {
   const query = useDisplaySearchQuery();
   const allApps = useRegisteredApps();
@@ -96,9 +99,10 @@ export function WorkspaceSidebar({
 
   return (
     <aside
-      className="workspace-sidebar"
+      className={`workspace-sidebar${collapsed ? " workspace-sidebar--collapsed" : ""}`}
       data-platform={isMac ? "mac" : isWin ? "win" : "other"}
       aria-label="Sidebar"
+      aria-hidden={collapsed || undefined}
     >
       <div className="workspace-sidebar__frame">
         <div className="workspace-sidebar__chrome">
@@ -149,6 +153,45 @@ export function WorkspaceSidebar({
                   </Link>
                 );
               })}
+
+              {showSearchInput ? (
+                <div className="workspace-sidebar__nav-row workspace-sidebar__search-row">
+                  <span
+                    className="workspace-sidebar__nav-icon"
+                    aria-hidden="true"
+                  >
+                    <Search size={16} strokeWidth={1.75} />
+                  </span>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    className="workspace-sidebar__search-input"
+                    value={query}
+                    placeholder="Search"
+                    onChange={(event) =>
+                      displaySearchStore.setQuery(event.currentTarget.value)
+                    }
+                    onBlur={() => {
+                      if (query.length === 0) setSearchActive(false);
+                    }}
+                    aria-label="Search activity, files, and more"
+                  />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="workspace-sidebar__nav-row workspace-sidebar__search-row"
+                  onClick={() => setSearchActive(true)}
+                >
+                  <span
+                    className="workspace-sidebar__nav-icon"
+                    aria-hidden="true"
+                  >
+                    <Search size={16} strokeWidth={1.75} />
+                  </span>
+                  <span className="workspace-sidebar__nav-label">Search</span>
+                </button>
+              )}
             </nav>
           ) : null}
 
@@ -199,45 +242,6 @@ export function WorkspaceSidebar({
               </div>
             </section>
           ) : null}
-
-          {showSearchInput ? (
-            <div className="workspace-sidebar__search">
-              <Search
-                size={14}
-                strokeWidth={1.85}
-                className="workspace-sidebar__search-icon"
-                aria-hidden="true"
-              />
-              <input
-                ref={searchInputRef}
-                type="text"
-                className="workspace-sidebar__search-input"
-                value={query}
-                placeholder="Search"
-                onChange={(event) =>
-                  displaySearchStore.setQuery(event.currentTarget.value)
-                }
-                onBlur={() => {
-                  if (query.length === 0) setSearchActive(false);
-                }}
-                aria-label="Search activity, files, and more"
-              />
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="workspace-sidebar__search-button"
-              onClick={() => setSearchActive(true)}
-            >
-              <Search
-                size={14}
-                strokeWidth={1.85}
-                className="workspace-sidebar__search-icon"
-                aria-hidden="true"
-              />
-              <span>Search</span>
-            </button>
-          )}
 
           <WorkspacePanelOverview query={query} variant="overview" />
         </div>
