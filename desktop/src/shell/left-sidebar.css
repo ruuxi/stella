@@ -57,7 +57,6 @@
 
 .left-sidebar[data-platform="mac"] .left-sidebar__chrome {
   padding-left: 116px;
-  transform: translateY(2px);
 }
 
 .left-sidebar__chrome-spacer {

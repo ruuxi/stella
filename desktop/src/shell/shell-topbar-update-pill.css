@@ -1,9 +1,13 @@
+/* Align with `.shell-edge-toggle` (24×24 @ top 9px). */
 .shell-topbar-update-pill {
+  --shell-topbar-update-pill-height: 22px;
   position: relative;
   display: inline-flex;
   align-items: stretch;
-  height: 24px;
+  height: var(--shell-topbar-update-pill-height);
   margin-left: 4px;
+  margin-top: 9px;
+  align-self: flex-start;
   border-radius: 999px;
   background: color-mix(in oklch, var(--foreground) 6%, transparent);
   border: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
@@ -66,9 +70,9 @@
 .shell-topbar-update-pill__main {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   height: 100%;
-  padding: 0 9px;
+  padding: 0 16px 0 13px;
   border: none;
   background: transparent;
   color: inherit;
@@ -93,11 +97,16 @@
   white-space: nowrap;
 }
 
+.shell-topbar-update-pill__icon {
+  flex-shrink: 0;
+  opacity: 0.88;
+}
+
 .shell-topbar-update-pill__cancel {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
+  width: 18px;
   height: 100%;
   padding: 0;
   border: none;
