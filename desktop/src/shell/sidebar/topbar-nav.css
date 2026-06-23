@@ -191,6 +191,27 @@
   box-shadow: var(--focus-ring);
 }
 
+.shell-topbar-account-trigger--split {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.shell-topbar-account-trigger-icon {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  pointer-events: none;
+}
+
+.shell-topbar-account-trigger-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
 .shell-topbar-account-nickname {
   font-family: inherit;
   font-size: var(--font-size-base);
@@ -269,6 +290,7 @@
 }
 
 .shell-topbar-account-settings {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -302,6 +324,16 @@
   inset: 0;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.shell-topbar-account-models-anchor {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 26px;
+  height: 26px;
   pointer-events: none;
   opacity: 0;
 }

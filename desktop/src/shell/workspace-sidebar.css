@@ -256,60 +256,83 @@
   margin-bottom: 4px;
 }
 
-/* ── Footer (Models + account) ────────────────────────────────────── */
+/* ── Footer (sign in + account) ───────────────────────────────────── */
 
 .workspace-sidebar__footer {
   flex-shrink: 0;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 4px 6px 6px;
-}
-
-/* Keep everything on one row; the account block shrinks (label ellipsizes)
-   before anything wraps. */
-.workspace-sidebar__footer .display-sidebar__models-btn[data-active] {
-  color: var(--text-strong);
-  border-color: color-mix(in oklch, var(--border) 70%, transparent);
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-}
-
-.workspace-sidebar__footer .display-sidebar__models-btn {
-  flex: 0 0 auto;
-  padding: 3px 7px;
-  font-size: var(--font-size-xs);
+  padding: 6px 10px 8px;
 }
 
 .workspace-sidebar__footer .shell-topbar-account {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
-  gap: 4px;
+  justify-content: flex-start;
+  gap: 6px;
 }
 
-/* Compact the account + models controls in the sidebar footer. */
-.workspace-sidebar__footer .shell-topbar-account-trigger,
 .workspace-sidebar__footer .shell-topbar-account-signin {
-  min-width: 0;
-  height: 22px;
-  padding: 0 7px;
-  gap: 5px;
-  font-size: var(--font-size-xs);
+  margin-right: auto;
 }
 
-.workspace-sidebar__footer .shell-topbar-account-signin-label,
+/* Sidebar footer account controls — slightly larger than the compact
+   defaults used elsewhere in the top bar. */
+.workspace-sidebar__footer .shell-topbar-account-signin,
+.workspace-sidebar__footer .shell-topbar-account-trigger {
+  min-width: 0;
+  height: 26px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: var(--font-size-base);
+}
+
+.workspace-sidebar__footer .shell-topbar-account-trigger {
+  flex: 1 1 auto;
+}
+
+.workspace-sidebar__footer .shell-topbar-account-trigger--split {
+  gap: 10px;
+}
+
 .workspace-sidebar__footer .shell-topbar-account-nickname {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  margin-left: 0;
+  text-align: left;
+  font-size: var(--font-size-base);
+}
+
+.workspace-sidebar__footer .shell-topbar-account-signin-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.workspace-sidebar__footer .shell-topbar-account-signin-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.workspace-sidebar__footer .shell-topbar-account-signin-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--font-size-xs);
-  max-width: 110px;
+  font-size: var(--font-size-base);
+  max-width: 120px;
 }
 
 .workspace-sidebar__footer .shell-topbar-account-settings {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+}
+
+.workspace-sidebar__footer .shell-topbar-account-settings svg {
+  width: 15px;
+  height: 15px;
 }

@@ -244,7 +244,12 @@ export const ShellTopBarAccount = ({
         pendingSignOutRef.current = false;
         event.preventDefault();
         setSignOutConfirmOpen(true);
+        return;
       }
+
+      // Click-away / Escape dismiss — don't return focus to the trigger or
+      // the open-state + focus-visible styles stick on the footer button.
+      event.preventDefault();
     },
     [handleOpenFeedback, handleOpenSettings, handleOpenConnect],
   );
@@ -412,7 +417,7 @@ export const ShellTopBarAccount = ({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="shell-topbar-account-trigger"
+            className="shell-topbar-account-trigger shell-topbar-account-trigger--split"
             title={
               displayLabel === accountName
                 ? accountName
@@ -420,17 +425,19 @@ export const ShellTopBarAccount = ({
             }
             aria-label={accountName}
           >
-            <SettingsIcon size={15} strokeWidth={1.75} aria-hidden="true" />
             <span className="shell-topbar-account-nickname">
               {displayLabel}
             </span>
-            {connectHint.active ? (
-              <span
-                className="shell-topbar-nav-hint-dot"
-                aria-hidden="true"
-                style={{ top: 4, right: 4 }}
-              />
-            ) : null}
+            <span className="shell-topbar-account-trigger-icon">
+              <SettingsIcon size={15} strokeWidth={1.75} aria-hidden="true" />
+              {connectHint.active ? (
+                <span
+                  className="shell-topbar-nav-hint-dot"
+                  aria-hidden="true"
+                  style={{ top: 4, right: 4 }}
+                />
+              ) : null}
+            </span>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent

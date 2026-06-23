@@ -42,7 +42,6 @@ import { WorkspacePanelOverview } from "@/shell/WorkspacePanelOverview";
 import { ShellTopBarAccount } from "@/shell/sidebar/ShellTopBarAccount";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
 import { WindowControls } from "@/shell/WindowControls";
-import { DisplaySidebarModelsButton } from "@/shell/display/DisplaySidebarModelsButton";
 import { CustomLayout } from "@/ui/nav-icons";
 import "./workspace-sidebar.css";
 import "./shell-junction.css";
@@ -247,7 +246,6 @@ export function WorkspaceSidebar({
         </div>
 
         <div className="workspace-sidebar__footer">
-          <DisplaySidebarModelsButton />
           <ShellTopBarAccount onSignIn={onSignIn} onConnect={onConnect} />
         </div>
       </div>
