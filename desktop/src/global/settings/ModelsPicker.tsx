@@ -112,7 +112,17 @@ export function ModelsPicker({
         data-models-picker="true"
       >
         <PopoverBody>
-          <Suspense fallback={null}>
+          <Suspense
+            fallback={
+              <div
+                className="models-picker-loading"
+                aria-busy="true"
+                aria-live="polite"
+              >
+                Loading…
+              </div>
+            }
+          >
             <AgentModelPicker />
           </Suspense>
         </PopoverBody>

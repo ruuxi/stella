@@ -21,6 +21,8 @@ import { useAuthBootstrapState } from "@/global/auth/DesktopConvexAuthProvider";
  */
 const ModelCatalogUpdatedAtContext = createContext<number | null>(null);
 
+let lastKnownCatalogUpdatedAt: number | null = null;
+
 export function ModelCatalogUpdatedAtProvider({
   children,
 }: {
@@ -35,6 +37,10 @@ export function ModelCatalogUpdatedAtProvider({
       api.stella_models.getModelCatalogUpdatedAt,
       runtimeAuthReady ? {} : "skip",
     ) as number | undefined) ?? null;
+
+  if (updatedAt !== null) {
+    lastKnownCatalogUpdatedAt = updatedAt;
+  }
 
   const lastSentRef = useRef<number | null | undefined>(undefined);
   useEffect(() => {
@@ -54,5 +60,12 @@ export function ModelCatalogUpdatedAtProvider({
 
 /** Read the current catalog updated-at marker; `null` until first load. */
 export function useModelCatalogUpdatedAt(): number | null {
-  return useContext(ModelCatalogUpdatedAtContext);
+  const value = useContext(ModelCatalogUpdatedAtContext);
+  if (value !== null) lastKnownCatalogUpdatedAt = value;
+  return value;
+}
+
+/** Sync read for hover-intent catalog preloads (no React subscription). */
+export function readModelCatalogUpdatedAtSnapshot(): number | null {
+  return lastKnownCatalogUpdatedAt;
 }

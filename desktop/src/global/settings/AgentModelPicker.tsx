@@ -153,6 +153,17 @@ const VOICE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
  */
 let cachedLocalPreferences: LocalModelPreferences | null = null;
 
+/** Intent-hover warm: start the preferences IPC before the popover opens. */
+export function warmAgentModelPickerCache(): void {
+  if (cachedLocalPreferences) return;
+  void window.electronAPI?.system
+    ?.getLocalModelPreferences?.()
+    .then((next) => {
+      if (next) cachedLocalPreferences = next;
+    })
+    .catch(() => undefined);
+}
+
 function isReasoningEffort(value: string): value is ReasoningEffort {
   return REASONING_EFFORT_OPTIONS.some((option) => option.id === value);
 }
@@ -967,9 +978,8 @@ export function AgentModelPicker({
               type="button"
               className="agent-model-picker-chronicle-link"
               onClick={() => {
-                // Models live in the workspace panel's Engine tab now;
-                // open it alongside /chat so the picker comes into view
-                // immediately.
+                // Open the sidebar Models popover so Chronicle can be
+                // configured without leaving chat.
                 void router.navigate({ to: "/chat" });
                 openEngineDisplayTab();
                 onSelected?.();

@@ -35,7 +35,14 @@ export const preloadConnectDialog = () =>
   runOnce("connect", () => import("@/global/integrations/ConnectDialog"));
 
 export const preloadModelsPicker = () =>
-  runOnce("models-picker", () => import("@/global/settings/AgentModelPicker"));
+  runOnce("models-picker", async () => {
+    const mod = await import("@/global/settings/AgentModelPicker");
+    mod.warmAgentModelPickerCache();
+    const { preloadModelCatalogCache } = await import(
+      "@/global/settings/hooks/use-model-catalog"
+    );
+    preloadModelCatalogCache();
+  });
 
 // Settings owns its tab content inside the route chunk, so warming the screen
 // chunk is enough to make both first open and tab switches feel immediate.

@@ -1,8 +1,7 @@
 /**
- * Tiny singleton store for the inline Engine overlay that lives at the
- * bottom of the Chat home overview. Replaces the old dedicated Engine
- * display tab — the engine surface now opens in-place over the chat
- * home launcher instead of swapping the display panel's active tab.
+ * Tiny singleton store for the sidebar Models popover. Callers like
+ * `openEngineDisplayTab()` and `stella:open-model-picker` flip this on
+ * so the footer Models button opens its popover programmatically.
  */
 import { useSyncExternalStore } from "react";
 import { uiState } from "@/platform/ui-state";
@@ -22,9 +21,8 @@ const writePersistedOpen = (next: boolean): void => {
   else uiState.removeItem(STORAGE_KEY);
 };
 
-// Restored from the shared UI state store so the Models / engine surface survives a
-// panel close + reopen — and the frequent self-mod HMR/full reloads — and
-// comes back open right where the user left it.
+// Restored from the shared UI state store so programmatic open requests
+// and the user's last open/closed choice survive panel close + reopen.
 let isOpen = readPersistedOpen();
 const listeners = new Set<Listener>();
 

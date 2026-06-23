@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { api } from "@/convex/api";
-import { useDesktopAuthSession } from "@/global/auth/services/auth-session";
-import { useModelCatalogUpdatedAt } from "@/global/settings/hooks/model-catalog-updated-at";
+import { useDesktopAuthSession, getAuthSessionSnapshot } from "@/global/auth/services/auth-session";
+import { readModelCatalogUpdatedAtSnapshot, useModelCatalogUpdatedAt } from "@/global/settings/hooks/model-catalog-updated-at";
 import { createServiceRequest } from "@/platform/http/service-request";
 import {
   groupCatalogModelsByProvider,
@@ -228,4 +228,32 @@ export function useModelCatalog() {
     refreshing: stellaQuery.isFetching || managedQuery.isFetching,
     audience,
   };
+}
+
+function buildAnonymousStellaCatalogKey(
+  sessionData: AuthSessionData,
+  modelCatalogUpdatedAt: number,
+): string {
+  return `${getSessionCacheKey(sessionData)}:audience:anonymous::${modelCatalogUpdatedAt}`;
+}
+
+/** Intent-hover warm for the sidebar Models popover and composer entry points. */
+export function preloadModelCatalogCache(): void {
+  void managedGatewayStore.ensure("default");
+
+  const modelCatalogUpdatedAt = readModelCatalogUpdatedAtSnapshot();
+  if (modelCatalogUpdatedAt === null) return;
+
+  const session = getAuthSessionSnapshot();
+  if (session.isPending) return;
+
+  const sessionData = session.data as AuthSessionData;
+  const hasConnectedAccount = Boolean(
+    sessionData && sessionData.user?.isAnonymous !== true,
+  );
+  if (hasConnectedAccount) return;
+
+  void stellaCatalogStore.ensure(
+    buildAnonymousStellaCatalogKey(sessionData, modelCatalogUpdatedAt),
+  );
 }
