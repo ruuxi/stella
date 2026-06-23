@@ -94,8 +94,8 @@
 .markdown ol {
   margin-top: 0.25rem;
   margin-bottom: 0.75rem;
-  padding-left: 0;
-  list-style-position: inside;
+  padding-left: 1.5rem;
+  list-style-position: outside;
 }
 
 .markdown ul {

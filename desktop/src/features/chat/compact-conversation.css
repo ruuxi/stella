@@ -166,19 +166,8 @@
   margin-bottom: 0.5rem;
 }
 
-.chat-conversation-surface .event-item.assistant .markdown :is(h1, h2, h3, h4, h5, h6) {
-  /* Compact bubbles are narrow; size headings to the body so the
-     row doesn't blow out vertically on a leading `# Heading`. */
-  font-size: var(--chat-text-size);
-  font-weight: var(--weight-semibold);
-  line-height: 1.35;
-  margin-top: 0.85rem;
-  margin-bottom: 0.35rem;
-}
-
-.chat-conversation-surface .event-item.assistant .markdown :is(h1, h2, h3, h4, h5, h6):first-child {
-  margin-top: 0;
-}
+/* Compact surfaces share the full-chat heading scale (defined in
+   full-shell.chat.css) — no separate flatten-to-body behavior. */
 
 .chat-conversation-surface .event-item.assistant .markdown :is(pre, code, .shiki, kbd, samp) {
   font-weight: var(--weight-regular);
