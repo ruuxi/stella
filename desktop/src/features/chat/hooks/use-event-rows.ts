@@ -13,6 +13,7 @@ import {
   deriveTurnInlineImagePayloads,
   deriveTurnResource,
 } from '@/features/chat/lib/derive-turn-resource'
+import { deriveTurnWebSearchResults } from '@/features/chat/lib/derive-turn-web-search'
 import { filterMessagesForUiDisplay } from '@/features/chat/lib/message-display'
 import {
   stabilizeTurnRows,
@@ -382,6 +383,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           { developerResourcesEnabled: developerResourcePreviewsEnabled },
         )
         const inlineImagePayloads = deriveTurnInlineImagePayloads(toolEvents)
+        const webSearchResults = deriveTurnWebSearchResults(toolEvents)
         const sourceDiffPayloads = collectTurnSourceDiffPayloads(toolEvents, {
           developerResourcesEnabled: developerResourcePreviewsEnabled,
         })
@@ -407,6 +409,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           ...(inlineImagePayloads.length > 0
             ? { inlineImagePayloads }
             : {}),
+          ...(webSearchResults.length > 0 ? { webSearchResults } : {}),
           ...(sourceDiffPayloads.length > 0 ? { sourceDiffPayloads } : {}),
           ...(selfModApplied ? { selfModApplied } : {}),
           ...(getScheduleReceipt(toolEvents)

@@ -24,6 +24,19 @@ export type ToolRequestPayload = {
   agentType?: string;
 };
 
+/**
+ * One web search hit as surfaced to the chat UI. Mirrors the backend
+ * `SearchHit` (Exa) shape; `image`/`favicon` are only present when the
+ * source provided them.
+ */
+export type WebSearchResultHit = {
+  title: string;
+  url: string;
+  snippet: string;
+  image?: string;
+  favicon?: string;
+};
+
 export type ToolResultPayload = {
   toolName: string;
   result?: unknown;
@@ -34,6 +47,13 @@ export type ToolResultPayload = {
   officePreviewRef?: OfficePreviewRef;
   fileChanges?: FileChangeRecord[];
   producedFiles?: ProducedFileRecord[];
+  /**
+   * Structured `web` tool fields, spread onto the persisted payload when
+   * the tool ran in search mode (see `runtime/kernel/tools/defs/web.ts`).
+   */
+  mode?: string;
+  query?: string;
+  results?: WebSearchResultHit[];
 };
 
 export type Attachment = {

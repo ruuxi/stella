@@ -6,6 +6,7 @@ import type {
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import type { AgentResponseTarget } from "@/features/chat/streaming/streaming-types";
 import type { SelfModApplied } from "@/features/chat/self-mod-types";
+import type { WebSearchImageHit } from "@/features/chat/lib/derive-turn-web-search";
 import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
 import type { VoiceSessionSummaryMetadata } from "../../../../runtime/contracts/local-chat.js";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
@@ -54,6 +55,12 @@ export type AssistantRowViewModel = {
   resourcePayload?: DisplayPayload;
   /** Orchestrator image_gen inline cards — one group per tool call. */
   inlineImagePayloads?: DisplayPayload[];
+  /**
+   * "Results from the web" image strip — thumbnails from the turn's most
+   * recent `web` search (Claude-style). Only image-bearing hits, capped to
+   * a single row. See `deriveTurnWebSearchResults`.
+   */
+  webSearchResults?: WebSearchImageHit[];
   /**
    * Developer-resource source-diff payloads for this turn, in edit
    * order. Populated only when the developer-file-previews setting

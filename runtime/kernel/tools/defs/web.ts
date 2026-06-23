@@ -22,7 +22,13 @@ export type WebToolOptions = {
     options?: { category?: string },
   ) => Promise<{
     text: string;
-    results?: Array<{ title: string; url: string; snippet: string }>;
+    results?: Array<{
+      title: string;
+      url: string;
+      snippet: string;
+      image?: string;
+      favicon?: string;
+    }>;
   }>;
 };
 

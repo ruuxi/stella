@@ -70,7 +70,13 @@ export const createConvexSession = (
     optionsArg?: { category?: string },
   ): Promise<{
     text: string;
-    results: Array<{ title: string; url: string; snippet: string }>;
+    results: Array<{
+      title: string;
+      url: string;
+      snippet: string;
+      image?: string;
+      favicon?: string;
+    }>;
   }> => {
     try {
       const client = ensureConvexClient();
@@ -90,7 +96,13 @@ export const createConvexSession = (
         },
       )) as {
         text: string;
-        results: Array<{ title: string; url: string; snippet: string }>;
+        results: Array<{
+          title: string;
+          url: string;
+          snippet: string;
+          image?: string;
+          favicon?: string;
+        }>;
       };
 
       return {

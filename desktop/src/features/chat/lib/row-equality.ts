@@ -218,6 +218,20 @@ const sourceDiffPayloadsEqual = (
   return true;
 };
 
+const webSearchResultsEqual = (
+  a: AssistantRowViewModel["webSearchResults"],
+  b: AssistantRowViewModel["webSearchResults"],
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return (a?.length ?? 0) === (b?.length ?? 0);
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i].url !== b[i].url) return false;
+    if (a[i].image !== b[i].image) return false;
+  }
+  return true;
+};
+
 const userRowEqual = (a: UserRowViewModel, b: UserRowViewModel): boolean =>
   a.id === b.id &&
   a.text === b.text &&
@@ -246,6 +260,7 @@ const assistantRowEqual = (
   resourcePayloadEqual(a.resourcePayload, b.resourcePayload) &&
   sourceDiffPayloadsEqual(a.inlineImagePayloads, b.inlineImagePayloads) &&
   sourceDiffPayloadsEqual(a.sourceDiffPayloads, b.sourceDiffPayloads) &&
+  webSearchResultsEqual(a.webSearchResults, b.webSearchResults) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
   scheduleReceiptEqual(a.scheduleReceipt, b.scheduleReceipt) &&
   (a.voiceSession?.durationMs ?? null) === (b.voiceSession?.durationMs ?? null) &&

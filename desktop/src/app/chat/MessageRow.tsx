@@ -50,6 +50,7 @@ import {
   SourceDiffEndResource,
 } from "@/app/chat/EndResourceCard";
 import { InlineGeneratedImageStrip } from "@/app/chat/InlineGeneratedImageCard";
+import { WebSearchResultsStrip } from "@/app/chat/WebSearchResultsStrip";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
@@ -466,6 +467,7 @@ export const AssistantMessageRow = memo(
     const hasOfficePreview = Boolean(row.officePreviewRef);
     const hasResource = Boolean(row.resourcePayload);
     const hasInlineImages = (row.inlineImagePayloads?.length ?? 0) > 0;
+    const hasWebSearchResults = (row.webSearchResults?.length ?? 0) > 0;
     const hasSelfMod = Boolean(row.selfModApplied);
     const hasCustomSlot = Boolean(row.customSlot);
     const hasScheduleReceipt = Boolean(
@@ -478,6 +480,7 @@ export const AssistantMessageRow = memo(
       !hasOfficePreview &&
       !hasResource &&
       !hasInlineImages &&
+      !hasWebSearchResults &&
       !hasSelfMod &&
       !hasCustomSlot &&
       !hasScheduleReceipt &&
@@ -518,6 +521,9 @@ export const AssistantMessageRow = memo(
                 hideHorizontalRules
               />
             </StreamingTextReveal>
+          )}
+          {hasWebSearchResults && row.webSearchResults && (
+            <WebSearchResultsStrip results={row.webSearchResults} />
           )}
           {row.officePreviewRef && (
             <OfficePreviewCard previewRef={row.officePreviewRef} />
