@@ -319,12 +319,27 @@
   font-weight: var(--chat-text-strong-weight);
 }
 
-.event-item.assistant .markdown h1 { font-size: var(--font-size-2xl); }
-.event-item.assistant .markdown h2 { font-size: var(--font-size-xl); }
-.event-item.assistant .markdown h3 { font-size: var(--font-size-lg); }
-.event-item.assistant .markdown h4 { font-size: var(--font-size-base); }
+/* Heading scale for every chat surface (full + compact). No heading
+   ever renders below body size (`--chat-text-size`, 15px); h4–h6 land at
+   body size and rely on weight/casing for hierarchy. Compact surfaces
+   share this exact scale — they no longer flatten headings to body. */
+.event-item.assistant .markdown :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: var(--weight-semibold);
+  line-height: 1.3;
+  margin-top: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.event-item.assistant .markdown :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
+}
+
+.event-item.assistant .markdown h1 { font-size: var(--font-size-3xl); }
+.event-item.assistant .markdown h2 { font-size: var(--font-size-2xl); }
+.event-item.assistant .markdown h3 { font-size: var(--font-size-xl); }
+.event-item.assistant .markdown h4 { font-size: var(--font-size-lg); }
 .event-item.assistant .markdown h5,
-.event-item.assistant .markdown h6 { font-size: var(--font-size-sm); }
+.event-item.assistant .markdown h6 { font-size: var(--font-size-lg); }
 
 /* Context chip row inside the user bubble — surfaces the window / screen
    selection attached to the message. Pill aesthetic mirrors the composer
