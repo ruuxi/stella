@@ -110,6 +110,15 @@ const FOLLOW_MIN_STEP_PX = 0.5
  */
 const FOLLOW_BREATHING_PX = 72
 
+/**
+ * Gap left above the streaming assistant row's top edge when auto-follow
+ * pins to the top. Once a reply grows taller than the viewport, follow
+ * stops here instead of chasing the bottom forever — the user gets a
+ * stable reading area with a small peek of the prior message above so
+ * the conversation reads as continuous rather than chopped.
+ */
+const FOLLOW_TOP_PEEK_PX = 56
+
 /** Matches `.event-list-trailing-region` min-heights in full-shell.chat.css */
 const TRAILING_REGION_MIN_PX = {
   full: 160,
@@ -631,6 +640,7 @@ export function useChatScrollManagement({
         if (!streamingRow || streamingRow.offsetHeight <= 0) return
         const rowRect = streamingRow.getBoundingClientRect()
         const containerRect = attached.getBoundingClientRect()
+        const rowTop = rowRect.top - containerRect.top + attached.scrollTop
         const rowBottom =
           rowRect.bottom - containerRect.top + attached.scrollTop
         const desiredScrollTop = Math.max(
@@ -654,7 +664,14 @@ export function useChatScrollManagement({
                   attached.clientHeight +
                 POST_SEND_USER_MESSAGE_BREATHING_PX,
               )
-        const target = Math.max(desiredScrollTop, queuedScrollTop)
+        const bottomFollow = Math.max(desiredScrollTop, queuedScrollTop)
+        // Cap at "streaming row pinned near the viewport top" so a reply
+        // taller than the viewport stops following once its start reaches
+        // the top, instead of chasing the bottom forever. `min` lets short
+        // replies and the queued-follow-up stack keep bottom-following
+        // (their `pinnedTop` sits below `bottomFollow`, so it never bites).
+        const pinnedTop = Math.max(0, rowTop - FOLLOW_TOP_PEEK_PX)
+        const target = Math.min(bottomFollow, pinnedTop)
         setTarget(target)
       }
       let followAssistantRowRaf = 0
