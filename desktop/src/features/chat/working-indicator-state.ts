@@ -20,17 +20,25 @@ export function getRunningTaskIndicatorText(
 export function getInlineWorkingIndicatorActive({
   isStreaming,
   isStreamingResponseText,
-  hasToolActivity,
   isToolActive,
+  hasRunningTask,
 }: {
   isStreaming: boolean;
   isStreamingResponseText: boolean;
-  hasToolActivity: boolean;
   isToolActive: boolean;
+  /**
+   * A spawned agent/task is currently running. Its own task chip and
+   * per-agent indicator cover that work, so the orchestrator line should
+   * not pin "thinking" while it merely waits for the sub-agent.
+   */
+  hasRunningTask: boolean;
 }): boolean {
-  const isPreToolThinking =
-    isStreaming && !isStreamingResponseText && !hasToolActivity;
-  return isPreToolThinking || isToolActive;
+  if (isToolActive) return true;
+  // The orchestrator is between its own steps: the initial pre-tool think,
+  // or the gap after a fast tool returns before the next tool/answer. Show
+  // the rotating thinking label so the line never goes blank mid-run — but
+  // not while a spawned agent is doing the work.
+  return isStreaming && !isStreamingResponseText && !hasRunningTask;
 }
 
 export function getInlineWorkingIndicatorExitDelayMs({

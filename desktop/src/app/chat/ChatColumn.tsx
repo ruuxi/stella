@@ -163,13 +163,16 @@ export const ChatColumn = memo(function ChatColumn({
     isStreaming &&
     !conversation.streaming.isStreamingResponseText &&
     !hasToolActivity;
+  const hasRunningTask = (conversation.streaming.liveTasks ?? []).some(
+    (task) => task.status === "running",
+  );
   const hasActiveWork = getInlineWorkingIndicatorActive({
     isStreaming,
     isStreamingResponseText: Boolean(
       conversation.streaming.isStreamingResponseText,
     ),
-    hasToolActivity,
     isToolActive,
+    hasRunningTask,
   });
   const indicatorProps: InlineWorkingIndicatorMountProps = {
     active: hasActiveWork,

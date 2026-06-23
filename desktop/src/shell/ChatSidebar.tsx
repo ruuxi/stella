@@ -248,11 +248,14 @@ export function ChatPanelTab({
   const hasActiveTool = Boolean(isToolActive);
   const isPreToolThinking =
     hasActiveStreaming && !isStreamingResponseText && !hasLiveToolActivity;
+  const hasRunningTask = (liveTasks ?? []).some(
+    (task) => task.status === "running",
+  );
   const hasActiveWork = getInlineWorkingIndicatorActive({
     isStreaming: hasActiveStreaming,
     isStreamingResponseText: Boolean(isStreamingResponseText),
-    hasToolActivity: hasLiveToolActivity,
     isToolActive: hasActiveTool,
+    hasRunningTask,
   });
   const indicatorProps: InlineWorkingIndicatorMountProps = {
     active: hasActiveWork,

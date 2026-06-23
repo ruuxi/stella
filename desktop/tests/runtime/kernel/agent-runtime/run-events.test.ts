@@ -217,9 +217,11 @@ const runToolStatusIntegration = async (toolName: string) => {
   const activeBeforeTool = getInlineWorkingIndicatorActive({
     isStreaming: true,
     isStreamingResponseText: false,
-    hasToolActivity: state.runsById[runId]?.hasToolActivity ?? false,
     isToolActive: Boolean(
       Object.keys(state.runsById[runId]?.activeToolCalls ?? {}).length,
+    ),
+    hasRunningTask: Object.values(state.tasksByRunId[runId] ?? {}).some(
+      (task) => task.status === "running",
     ),
   });
   state = streamStoreReducer(state, {
@@ -245,9 +247,11 @@ const runToolStatusIntegration = async (toolName: string) => {
   const activeDuringTool = getInlineWorkingIndicatorActive({
     isStreaming: true,
     isStreamingResponseText: false,
-    hasToolActivity: toolActiveRun?.hasToolActivity ?? false,
     isToolActive: Boolean(
       Object.keys(toolActiveRun?.activeToolCalls ?? {}).length,
+    ),
+    hasRunningTask: Object.values(state.tasksByRunId[runId] ?? {}).some(
+      (task) => task.status === "running",
     ),
   });
   const displayStatusDuringTool = getWorkingIndicatorDisplayStatus({
@@ -269,9 +273,11 @@ const runToolStatusIntegration = async (toolName: string) => {
   const activeAfterToolBeforeAnswer = getInlineWorkingIndicatorActive({
     isStreaming: true,
     isStreamingResponseText: false,
-    hasToolActivity: toolEndedRun?.hasToolActivity ?? false,
     isToolActive: Boolean(
       Object.keys(toolEndedRun?.activeToolCalls ?? {}).length,
+    ),
+    hasRunningTask: Object.values(state.tasksByRunId[runId] ?? {}).some(
+      (task) => task.status === "running",
     ),
   });
 
@@ -304,7 +310,9 @@ describe("subscribeRuntimeAgentEvents", () => {
     );
     expect(web.activeBeforeTool).toBe(true);
     expect(web.activeDuringTool).toBe(true);
-    expect(web.activeAfterToolBeforeAnswer).toBe(false);
+    // Gap after a fast tool returns: keep showing the thinking label rather
+    // than going blank until the next tool/answer.
+    expect(web.activeAfterToolBeforeAnswer).toBe(true);
     expect(web.statusAfterToolEnd).toBeNull();
     expect(web.displayStatus).toBe("Searching");
 
@@ -317,7 +325,7 @@ describe("subscribeRuntimeAgentEvents", () => {
     );
     expect(spawnAgent.activeBeforeTool).toBe(true);
     expect(spawnAgent.activeDuringTool).toBe(true);
-    expect(spawnAgent.activeAfterToolBeforeAnswer).toBe(false);
+    expect(spawnAgent.activeAfterToolBeforeAnswer).toBe(true);
     expect(spawnAgent.statusAfterToolEnd).toBeNull();
     expect(spawnAgent.displayStatus).toBe("On it");
 
@@ -330,12 +338,12 @@ describe("subscribeRuntimeAgentEvents", () => {
     );
     expect(sendInput.activeBeforeTool).toBe(true);
     expect(sendInput.activeDuringTool).toBe(true);
-    expect(sendInput.activeAfterToolBeforeAnswer).toBe(false);
+    expect(sendInput.activeAfterToolBeforeAnswer).toBe(true);
     expect(sendInput.statusAfterToolEnd).toBeNull();
     expect(sendInput.displayStatus).toBe("On it");
   });
 
-  it("does not keep pre-tool thinking pinned when agent activity arrives without a visible tool lifecycle", () => {
+  it("steps back while a spawned sub-agent task runs, then resumes thinking once it finishes", () => {
     const runId = "run-update-agent";
     let state = streamStoreReducer(initialStoreState, {
       type: "run-started",
@@ -349,33 +357,56 @@ describe("subscribeRuntimeAgentEvents", () => {
       statusText: "Resume current Nvidia web research test again",
     });
 
-    expect(
+    const activeFor = (current: typeof state) =>
       getInlineWorkingIndicatorActive({
         isStreaming: true,
         isStreamingResponseText: false,
-        hasToolActivity: state.runsById[runId]?.hasToolActivity ?? false,
         isToolActive: Boolean(
-          Object.keys(state.runsById[runId]?.activeToolCalls ?? {}).length,
+          Object.keys(current.runsById[runId]?.activeToolCalls ?? {}).length,
         ),
-      }),
-    ).toBe(true);
+        hasRunningTask: Object.values(current.tasksByRunId[runId] ?? {}).some(
+          (task) => task.status === "running",
+        ),
+      });
 
+    // Pre-tool thinking: the orchestrator line is active.
+    expect(activeFor(state)).toBe(true);
+
+    // A spawned sub-agent starts working — its own task chip covers it, so
+    // the orchestrator line steps back instead of pinning "thinking".
     state = streamStoreReducer(state, {
-      type: "tool-activity-observed",
+      type: "task-upsert",
       runId,
+      conversationId: "conversation-1",
+      userMessageId: "user-1",
+      task: {
+        id: "agent-1",
+        description: "long research task",
+        agentType: AGENT_IDS.GENERAL,
+        status: "running",
+        startedAtMs: 1_000,
+        lastUpdatedAtMs: 1_000,
+      },
     });
+    expect(activeFor(state)).toBe(false);
 
-    const run = state.runsById[runId];
-    expect(run?.statusText).toBeNull();
-    expect(run?.hasToolActivity).toBe(true);
-    expect(
-      getInlineWorkingIndicatorActive({
-        isStreaming: true,
-        isStreamingResponseText: false,
-        hasToolActivity: run?.hasToolActivity ?? false,
-        isToolActive: Boolean(Object.keys(run?.activeToolCalls ?? {}).length),
-      }),
-    ).toBe(false);
+    // The sub-agent finishes — the orchestrator is thinking again in the gap.
+    state = streamStoreReducer(state, {
+      type: "task-upsert",
+      runId,
+      conversationId: "conversation-1",
+      userMessageId: "user-1",
+      task: {
+        id: "agent-1",
+        description: "long research task",
+        agentType: AGENT_IDS.GENERAL,
+        status: "completed",
+        startedAtMs: 1_000,
+        completedAtMs: 2_000,
+        lastUpdatedAtMs: 2_000,
+      },
+    });
+    expect(activeFor(state)).toBe(true);
   });
 
   it("records a completed assistant text event without a Pi message object", () => {
