@@ -127,6 +127,11 @@
   margin-left: auto;
   max-width: var(--compact-chat-user-max-width);
   width: fit-content;
+  /* The full-chat user bubble is a solid `--primary` fill and flips text to
+     `--primary-foreground`. Compact bubbles use a subtle tint instead, so
+     reset the body text color (`.event-body` reads `--chat-text-color`)
+     back to a readable color or the light primary-foreground washes out. */
+  --chat-text-color: var(--compact-chat-user-color);
   color: var(--compact-chat-user-color);
   padding: var(--compact-chat-user-padding);
 }
