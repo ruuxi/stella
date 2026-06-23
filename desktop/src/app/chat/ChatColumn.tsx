@@ -29,8 +29,6 @@ import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import { getInlineWorkingIndicatorActive } from "@/features/chat/working-indicator-state";
-import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
-import { useFooterTasks } from "@/features/chat/hooks/use-footer-tasks";
 import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import type { ChatColumnProps } from "@/features/chat/chat-column-types";
@@ -154,13 +152,6 @@ export const ChatColumn = memo(function ChatColumn({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showHomeContent]);
 
-  const appSessionStartedAtMs = useAgentSessionStartedAt();
-  const footerTasks = useFooterTasks({
-    activities: conversation.activity.activities,
-    latestMessageTimestampMs: conversation.activity.latestMessageTimestampMs,
-    liveTasks: conversation.streaming.liveTasks,
-    appSessionStartedAtMs,
-  });
   useReadAloud(conversation.messages);
   // Initial thinking is pre-tool only. Once a tool lifecycle begins, the
   // indicator follows live TOOL_START/TOOL_END state instead of the long-lived
@@ -232,7 +223,6 @@ export const ChatColumn = memo(function ChatColumn({
         isDragOver={isDragOver}
         replyPeek={replyPeek}
         suggestionsActive={isActiveSurface}
-        tasks={footerTasks}
       />
     );
   };

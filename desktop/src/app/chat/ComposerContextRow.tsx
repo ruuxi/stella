@@ -22,11 +22,6 @@ import {
   type SuggestionSlot,
 } from "@/features/chat/hooks/use-auto-context-chips";
 import { truncateChipLabel } from "@/features/chat/composer-context";
-import {
-  getComposerTaskChipTasks,
-  type TaskItem,
-} from "@/features/chat/lib/event-transforms";
-import { ComposerTasksChip } from "./ComposerTasksChip";
 
 // ---------------------------------------------------------------------------
 // Attached chips — context the user has committed to sending. Lives INSIDE
@@ -103,21 +98,14 @@ type ComposerSuggestionRowProps = {
   active?: boolean;
   chatContext: ChatContext | null;
   setChatContext: Dispatch<SetStateAction<ChatContext | null>>;
-  /** Currently-running agents ("tasks"). Surfaced as the leading chip. */
-  tasks?: TaskItem[];
 };
 
 export function ComposerSuggestionContextRow({
   active = true,
   chatContext,
   setChatContext,
-  tasks,
 }: ComposerSuggestionRowProps) {
   const { lanes, dismissSlot } = useAutoContextChips(active);
-  const taskChipTasks = useMemo(
-    () => getComposerTaskChipTasks(tasks),
-    [tasks],
-  );
   const rowRef = useRef<HTMLDivElement | null>(null);
   const lanesRef = useRef<HTMLDivElement | null>(null);
   const [hiddenLaneIndexes, setHiddenLaneIndexes] = useState<Set<number>>(
@@ -249,7 +237,6 @@ export function ComposerSuggestionContextRow({
       ref={rowRef}
       className="composer-context-actions composer-context-actions--suggestions"
     >
-      <ComposerTasksChip tasks={taskChipTasks} />
       <div ref={lanesRef} className="composer-context-suggestion-lanes">
         {lanes.map((lane, index) => (
           <SuggestionLaneView
