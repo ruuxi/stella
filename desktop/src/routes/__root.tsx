@@ -11,6 +11,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -253,13 +254,17 @@ function RootChrome() {
   // Expose the current left-sidebar width so an expanded display panel can
   // inset past it (keeping the rail visible). 252px mirrors
   // `--workspace-sidebar-width` in workspace-sidebar.css; 0 when collapsed.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
+    if (dockedLeftSidebarVisible) root.dataset.shellLeftSidebarDocked = "true";
+    else delete root.dataset.shellLeftSidebarDocked;
+
     root.style.setProperty(
       "--shell-left-sidebar-width",
       dockedLeftSidebarVisible ? "252px" : "0px",
     );
     return () => {
+      delete root.dataset.shellLeftSidebarDocked;
       root.style.removeProperty("--shell-left-sidebar-width");
     };
   }, [dockedLeftSidebarVisible]);
