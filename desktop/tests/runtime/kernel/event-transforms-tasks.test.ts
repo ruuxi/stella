@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   extractStepsFromEvents,
-  getComposerTaskChipTasks,
   extractTasksFromEvents,
   getTaskDisplayText,
   getTaskGroupStatusText,
@@ -478,60 +477,56 @@ describe("mergeFooterTasks", () => {
   });
 });
 
-describe("getComposerTaskChipTasks", () => {
-  it("keeps only running tasks for the composer chip", () => {
-    const tasks = [
-      {
-        id: "task-1",
-        description: "Still running",
-        agentType: "general",
-        status: "running",
-        startedAtMs: 100,
-        lastUpdatedAtMs: 100,
-      },
-      {
-        id: "task-2",
-        description: "Already done",
-        agentType: "general",
-        status: "completed",
-        startedAtMs: 100,
-        completedAtMs: 200,
-        lastUpdatedAtMs: 200,
-      },
-    ] as const;
-
-    expect(getComposerTaskChipTasks(tasks).map((task) => task.id)).toEqual([
-      "task-1",
-    ]);
-  });
-});
-
 describe("getInlineWorkingIndicatorActive", () => {
-  it("keeps pre-tool thinking but clears after a completed tool while the run remains open", () => {
+  it("shows thinking through pre-tool and between-tool gaps, but not during sub-agent work", () => {
+    // Pre-tool thinking.
     expect(
       getInlineWorkingIndicatorActive({
         isStreaming: true,
         isStreamingResponseText: false,
-        hasToolActivity: false,
         isToolActive: false,
+        hasRunningTask: false,
       }),
     ).toBe(true);
 
+    // A tool is actively running.
     expect(
       getInlineWorkingIndicatorActive({
         isStreaming: true,
         isStreamingResponseText: false,
-        hasToolActivity: true,
         isToolActive: true,
+        hasRunningTask: false,
       }),
     ).toBe(true);
 
+    // Gap after a fast tool returns, before the next tool/answer: keep the
+    // thinking label up instead of going blank.
     expect(
       getInlineWorkingIndicatorActive({
         isStreaming: true,
         isStreamingResponseText: false,
-        hasToolActivity: true,
         isToolActive: false,
+        hasRunningTask: false,
+      }),
+    ).toBe(true);
+
+    // A spawned sub-agent is doing the work — its own chip covers it.
+    expect(
+      getInlineWorkingIndicatorActive({
+        isStreaming: true,
+        isStreamingResponseText: false,
+        isToolActive: false,
+        hasRunningTask: true,
+      }),
+    ).toBe(false);
+
+    // Answer text is streaming: the indicator gets out of the way.
+    expect(
+      getInlineWorkingIndicatorActive({
+        isStreaming: true,
+        isStreamingResponseText: true,
+        isToolActive: false,
+        hasRunningTask: false,
       }),
     ).toBe(false);
   });

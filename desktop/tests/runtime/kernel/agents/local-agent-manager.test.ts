@@ -14,10 +14,7 @@ import type {
   ToolContext,
   ToolResult,
 } from "../../../../../runtime/kernel/tools/types.js";
-import {
-  getComposerTaskChipTasks,
-  type TaskItem,
-} from "@/features/chat/lib/event-transforms";
+import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import {
   initialStoreState,
   streamStoreReducer,
@@ -334,7 +331,7 @@ describe("LocalAgentManager Exec fs locking", () => {
     ) as TaskItem[];
     expect(rootTasks).toHaveLength(1);
     expect(rootTasks[0]?.status).toBe("completed");
-    expect(getComposerTaskChipTasks(rootTasks)).toEqual([]);
+    expect(rootTasks.filter((task) => task.status === "running")).toEqual([]);
   });
 
   it("defers the Done display for interjection completions and drops it when the thread resumes", async () => {
