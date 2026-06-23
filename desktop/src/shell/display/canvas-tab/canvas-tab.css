@@ -16,7 +16,7 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  border-radius: 14px;
+  border-radius: 0;
   overflow: hidden;
   /*
    * Intentionally no painted background — the canvas iframe handles its

@@ -1,12 +1,11 @@
 /* Three-column shell junction — full-height side panels, visible borders.
-   Left seam: center column rounds outward. Right seam: display panel scoops
-   inward so the curve reads the opposite way. */
+   Left seam: center column rounds outward. Right seam: flat — the display
+   panel butts straight against the center column with no curve. */
 
 :root[data-shell-panel-chrome="true"] {
   --shell-junction-radius: 16px;
   --shell-window-radius: 12px;
   --shell-junction-border: var(--border-base);
-  --shell-junction-canvas: var(--background);
 }
 
 /* ── Center column ─────────────────────────────────────────────────── */
@@ -77,55 +76,15 @@
   height: 100%;
 }
 
-/* Concave inner top/bottom corners — mirror of the left seam but curving
-   into the panel instead of out from the center. */
-:root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel
-  .display-sidebar-inner.workspace-panel__frame::before,
-:root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel
-  .display-sidebar-inner.workspace-panel__frame::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  width: var(--shell-junction-radius);
-  height: var(--shell-junction-radius);
-  pointer-events: none;
-  z-index: 3;
-  background: var(--shell-junction-canvas);
-}
-
-:root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel
-  .display-sidebar-inner.workspace-panel__frame::before {
-  top: 0;
-  border-bottom-right-radius: var(--shell-junction-radius);
-}
-
-:root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel
-  .display-sidebar-inner.workspace-panel__frame::after {
-  bottom: 0;
-  border-top-right-radius: var(--shell-junction-radius);
-}
-
 :root[data-shell-panel-chrome="true"]
   .display-sidebar.workspace-panel.display-sidebar--expanded
   .display-sidebar-inner.workspace-panel__frame {
+  width: 100%;
   border-left: 1px solid var(--shell-junction-border);
   border-top-left-radius: var(--shell-junction-radius);
   border-bottom-left-radius: var(--shell-junction-radius);
   border-top-right-radius: var(--shell-window-radius);
   border-bottom-right-radius: var(--shell-window-radius);
-}
-
-:root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel.display-sidebar--expanded
-  .display-sidebar-inner.workspace-panel__frame::before,
-:root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel.display-sidebar--expanded
-  .display-sidebar-inner.workspace-panel__frame::after {
-  display: none;
 }
 
 :root[data-shell-panel-chrome="true"]
