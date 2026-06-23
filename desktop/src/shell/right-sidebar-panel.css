@@ -1,15 +1,15 @@
 /* Unified workspace panel — full-height right viewer. Junction curves and
    panel-chrome overrides live in shell-junction.css. */
 
-.display-sidebar.workspace-panel {
+.right-sidebar.right-sidebar-panel {
   overflow: clip;
   overflow-clip-margin: 0;
 }
 
 /* The inner element is the panel surface. Selector is qualified with
-   `.display-sidebar` so it wins over the base `.display-sidebar-inner`
+   `.right-sidebar` so it wins over the base `.right-sidebar-inner`
    rules (padding-top, border, width, transform) on the same node. */
-.display-sidebar.workspace-panel .display-sidebar-inner.workspace-panel__frame {
+.right-sidebar.right-sidebar-panel .right-sidebar-inner.right-sidebar-panel__frame {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -25,14 +25,14 @@
 }
 
 :root[data-shell-panel-chrome="true"]
-  .display-sidebar.workspace-panel
-  .display-sidebar-inner.workspace-panel__frame {
+  .right-sidebar.right-sidebar-panel
+  .right-sidebar-inner.right-sidebar-panel__frame {
   padding-top: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .display-sidebar.workspace-panel
-    .display-sidebar-inner.workspace-panel__frame {
+  .right-sidebar.right-sidebar-panel
+    .right-sidebar-inner.right-sidebar-panel__frame {
     transition: none;
   }
 }
@@ -41,37 +41,37 @@
    is resizing, or the expand toggle is mid-swap), the panel width updates
    every frame — the 460ms width ease would make the frame trail the cursor.
    Drop it so the frame tracks the aside 1:1, mirroring
-   `.display-sidebar--resizing`. */
-.display-sidebar.workspace-panel.display-sidebar--resizing
-  .display-sidebar-inner.workspace-panel__frame,
+   `.right-sidebar--resizing`. */
+.right-sidebar.right-sidebar-panel.right-sidebar--resizing
+  .right-sidebar-inner.right-sidebar-panel__frame,
 body[data-display-resizing="true"]
-  .display-sidebar.workspace-panel
-  .display-sidebar-inner.workspace-panel__frame,
+  .right-sidebar.right-sidebar-panel
+  .right-sidebar-inner.right-sidebar-panel__frame,
 body[data-display-expanding="true"]
-  .display-sidebar.workspace-panel
-  .display-sidebar-inner.workspace-panel__frame,
+  .right-sidebar.right-sidebar-panel
+  .right-sidebar-inner.right-sidebar-panel__frame,
 :root[data-shell-window-resizing="true"]
   body:not([data-display-breakpoint-transition="true"])
-  .display-sidebar.workspace-panel
-  .display-sidebar-inner.workspace-panel__frame {
+  .right-sidebar.right-sidebar-panel
+  .right-sidebar-inner.right-sidebar-panel__frame {
   transition: none;
 }
 
 /* Open mode hosts a scrollable tab body — fixed width (clip-reveal on the
    slide) + fill the available height. */
-.display-sidebar.workspace-panel.display-sidebar--open
-  .display-sidebar-inner.workspace-panel__frame {
+.right-sidebar.right-sidebar-panel.right-sidebar--open
+  .right-sidebar-inner.right-sidebar-panel__frame {
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
   height: 100%;
 }
 
 /* Expanded mode fills the absolutely-positioned aside. */
-.display-sidebar.workspace-panel.display-sidebar--expanded
-  .display-sidebar-inner.workspace-panel__frame {
+.right-sidebar.right-sidebar-panel.right-sidebar--expanded
+  .right-sidebar-inner.right-sidebar-panel__frame {
   width: auto;
 }
 
-.workspace-panel__body {
+.right-sidebar-panel__body {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -80,7 +80,7 @@ body[data-display-expanding="true"]
 }
 
 /* Top chrome inside the right viewer panel (back/forward/expand/close). */
-.workspace-panel__chrome {
+.right-sidebar-panel__chrome {
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -90,7 +90,7 @@ body[data-display-expanding="true"]
   -webkit-app-region: drag;
 }
 
-.workspace-panel__chrome[data-platform="mac"] {
+.right-sidebar-panel__chrome[data-platform="mac"] {
   transform: translateY(2px);
 }
 
@@ -98,24 +98,24 @@ body[data-display-expanding="true"]
    collapsed). Inset the chrome so its tabs clear the macOS traffic lights
    and the floating left-sidebar toggle; the inset shrinks to nothing once
    the rail (and those controls) sits to the panel's left. */
-.display-sidebar.workspace-panel.display-sidebar--expanded
-  .workspace-panel__chrome {
+.right-sidebar.right-sidebar-panel.right-sidebar--expanded
+  .right-sidebar-panel__chrome {
   padding-left: max(12px, calc(44px - var(--shell-left-sidebar-width, 0px)));
 }
 
-.display-sidebar.workspace-panel.display-sidebar--expanded
-  .workspace-panel__chrome[data-platform="mac"] {
+.right-sidebar.right-sidebar-panel.right-sidebar--expanded
+  .right-sidebar-panel__chrome[data-platform="mac"] {
   padding-left: max(12px, calc(116px - var(--shell-left-sidebar-width, 0px)));
 }
 
-.workspace-panel__chrome-spacer {
+.right-sidebar-panel__chrome-spacer {
   flex: 1;
   min-width: 0;
   height: 100%;
   -webkit-app-region: drag;
 }
 
-.workspace-panel__chrome-tabs-slot {
+.right-sidebar-panel__chrome-tabs-slot {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -127,20 +127,20 @@ body[data-display-expanding="true"]
   -webkit-app-region: drag;
 }
 
-.workspace-panel__chrome .shell-topbar-display-controls,
-.workspace-panel__chrome .shell-topbar-window-controls,
-.workspace-panel__chrome .shell-topbar-icon-btn {
+.right-sidebar-panel__chrome .shell-topbar-display-controls,
+.right-sidebar-panel__chrome .shell-topbar-window-controls,
+.right-sidebar-panel__chrome .shell-topbar-icon-btn {
   -webkit-app-region: no-drag;
 }
 
-.workspace-panel__overview {
+.right-sidebar-panel__overview {
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
-.workspace-panel__body .display-sidebar__active {
+.right-sidebar-panel__body .right-sidebar__active {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
@@ -152,13 +152,13 @@ body[data-display-expanding="true"]
 }
 
 /* Expanded fills the content area, so let the viewer track the frame. */
-.display-sidebar.workspace-panel.display-sidebar--expanded
-  .workspace-panel__body
-  .display-sidebar__active {
+.right-sidebar.right-sidebar-panel.right-sidebar--expanded
+  .right-sidebar-panel__body
+  .right-sidebar__active {
   min-width: 0;
 }
 
-.workspace-panel__overview .chat-workspace-strip__panel {
+.right-sidebar-panel__overview .chat-workspace-strip__panel {
   border: none;
   border-radius: 0;
   background: transparent;
@@ -167,11 +167,11 @@ body[data-display-expanding="true"]
 
 /* ── Width / visibility ──────────────────────────────────────────── */
 
-.display-sidebar.workspace-panel:not(.display-sidebar--open).display-sidebar--shell-visible {
+.right-sidebar.right-sidebar-panel:not(.right-sidebar--open).right-sidebar--shell-visible {
   width: var(--chat-workspace-strip-width, 320px);
 }
 
-.display-sidebar.workspace-panel.display-sidebar--open.display-sidebar--shell-visible {
+.right-sidebar.right-sidebar-panel.right-sidebar--open.right-sidebar--shell-visible {
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
 }
 
@@ -179,7 +179,7 @@ body[data-display-expanding="true"]
    absolute overlay must win the width over the fixed open-width rule above
    (equal-ish specificity), so this selector carries an extra class. Left
    inset matches the current sidebar width so the rail stays visible. */
-.display-sidebar.workspace-panel.display-sidebar--open.display-sidebar--expanded.display-sidebar--shell-visible {
+.right-sidebar.right-sidebar-panel.right-sidebar--open.right-sidebar--expanded.right-sidebar--shell-visible {
   position: absolute;
   inset: 0 0 0 var(--shell-left-sidebar-width, 0px);
   z-index: 60;
@@ -188,7 +188,7 @@ body[data-display-expanding="true"]
   margin-left: 0;
 }
 
-.display-sidebar.workspace-panel:not(.display-sidebar--shell-visible) {
+.right-sidebar.right-sidebar-panel:not(.right-sidebar--shell-visible) {
   width: 0;
   pointer-events: none;
 }
@@ -196,25 +196,25 @@ body[data-display-expanding="true"]
 /* Collapse the card entirely when the overview has no content (the
    overview component renders nothing), so a closed panel never shows an
    empty floating card. */
-.display-sidebar.workspace-panel:not(.display-sidebar--open):has(
-    .workspace-panel__overview:empty
+.right-sidebar.right-sidebar-panel:not(.right-sidebar--open):has(
+    .right-sidebar-panel__overview:empty
   ) {
   width: 0;
   pointer-events: none;
 }
 
 /* Keep the card visible (cancel the base slide-out transform) whenever the
-   shell is shown — the base `.display-sidebar-inner` is hidden unless the
+   shell is shown — the base `.right-sidebar-inner` is hidden unless the
    panel is in the `--open` state. */
-.display-sidebar.workspace-panel.display-sidebar--shell-visible
-  .display-sidebar-inner {
+.right-sidebar.right-sidebar-panel.right-sidebar--shell-visible
+  .right-sidebar-inner {
   transform: translate3d(0, 0, 0);
   opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .display-sidebar.workspace-panel.display-sidebar--shell-visible
-    .display-sidebar-inner {
+  .right-sidebar.right-sidebar-panel.right-sidebar--shell-visible
+    .right-sidebar-inner {
     transform: none;
   }
 }

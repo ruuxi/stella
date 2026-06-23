@@ -1,5 +1,5 @@
 /**
- * Canvas tab — workspace-panel viewer for HTML artifacts the orchestrator
+ * Canvas tab — right sidebar viewer for HTML artifacts the orchestrator
  * produced via the `html` tool. Layout is a chip rail of saved canvases
  * over a sandboxed iframe rendering the selected file as `srcdoc`.
  */

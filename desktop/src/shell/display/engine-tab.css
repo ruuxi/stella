@@ -3,7 +3,7 @@
  * by design (no nested cards). The provider/model picker is reused
  * from the settings page with a narrow-mode override here. */
 
-.display-sidebar__rich--engine {
+.right-sidebar__rich--engine {
   padding: 0;
 }
 

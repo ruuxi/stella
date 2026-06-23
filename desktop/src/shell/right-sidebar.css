@@ -1,5 +1,5 @@
-.display-sidebar {
-  --display-sidebar-bottom-left-radius: 0px;
+.right-sidebar {
+  --right-sidebar-bottom-left-radius: 0px;
   flex-shrink: 0;
   overflow: hidden;
   height: 100%;
@@ -20,14 +20,14 @@
   contain: layout;
 }
 
-.display-sidebar--open {
+.right-sidebar--open {
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
 }
 
 /* Expanded mode overlays the content area instead of participating in the
    flex row. Normal side-panel mode still consumes layout width; only the
    explicit expanded state becomes a full content-area replacement. */
-.display-sidebar--open.display-sidebar--expanded {
+.right-sidebar--open.right-sidebar--expanded {
   position: absolute;
   inset: 0;
   z-index: 60;
@@ -36,7 +36,7 @@
   margin-left: 0;
 }
 
-/* Expanded mode overlays the content area but `.display-sidebar-inner` is
+/* Expanded mode overlays the content area but `.right-sidebar-inner` is
    transparent, so without this rule the chat / route outlet behind it
    bleeds through. Use opacity (not visibility/display) because
    `.persistent-chat-surface--active` / `.route-outlet-surface--active`
@@ -59,21 +59,21 @@
 /* While the user is actively dragging the resize handle, suppress the
    width transition so the panel tracks the cursor 1:1 instead of
    easing toward each new width value. */
-.display-sidebar--resizing {
+.right-sidebar--resizing {
   transition: none;
 }
 
-.display-sidebar--resizing iframe {
+.right-sidebar--resizing iframe {
   pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .display-sidebar,
-  .display-sidebar-inner,
-  .display-sidebar--open .display-sidebar-inner {
+  .right-sidebar,
+  .right-sidebar-inner,
+  .right-sidebar--open .right-sidebar-inner {
     transition: none;
   }
-  .display-sidebar-inner {
+  .right-sidebar-inner {
     transform: none;
     opacity: 1;
   }
@@ -85,13 +85,13 @@
    when the user right-clicks to summon the display panel we want it to
    replace the chat surface entirely instead of slicing it. */
 @media (max-width: 600px) {
-  .display-sidebar--open {
+  .right-sidebar--open {
     width: 100%;
     flex: 1;
     box-shadow: none;
   }
 
-  .display-sidebar-inner {
+  .right-sidebar-inner {
     width: 100%;
     padding-top: var(--shell-topbar-height, 38px);
     border-left: none;
@@ -99,7 +99,7 @@
     box-shadow: none;
   }
 
-  .display-sidebar {
+  .right-sidebar {
     border-radius: 0;
     margin-left: 0;
     /* No slide animation in mini — the panel is a full-surface swap
@@ -115,13 +115,13 @@
   }
 
   /* Resize and expand are meaningless at full width. */
-  .display-sidebar__resize-handle {
+  .right-sidebar__resize-handle {
     display: none;
   }
 
 }
 
-.display-sidebar-inner {
+.right-sidebar-inner {
   position: relative;
   z-index: 1;
   display: flex;
@@ -133,7 +133,7 @@
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
   min-width: 0;
   border-left: 1px solid var(--border);
-  border-radius: 0 0 0 var(--display-sidebar-bottom-left-radius);
+  border-radius: 0 0 0 var(--right-sidebar-bottom-left-radius);
   transform: translate3d(12px, 0, 0);
   opacity: 0;
   transition:
@@ -144,15 +144,15 @@
   overflow: hidden;
 }
 
-:root[data-theme="pearl"] .display-sidebar-inner,
-:root[data-theme="noir"] .display-sidebar-inner,
-:root[data-base-theme="pearl"] .display-sidebar-inner,
-:root[data-base-theme="noir"] .display-sidebar-inner {
+:root[data-theme="pearl"] .right-sidebar-inner,
+:root[data-theme="noir"] .right-sidebar-inner,
+:root[data-base-theme="pearl"] .right-sidebar-inner,
+:root[data-base-theme="noir"] .right-sidebar-inner {
   background: var(--background);
   box-shadow: none;
 }
 
-.display-sidebar--open .display-sidebar-inner {
+.right-sidebar--open .right-sidebar-inner {
   transform: translate3d(0, 0, 0);
   opacity: 1;
   /* Opening: ease the content in slightly slower than the slide and let
@@ -163,7 +163,7 @@
     opacity 320ms ease-out 80ms;
 }
 
-.display-sidebar--expanded .display-sidebar-inner {
+.right-sidebar--expanded .right-sidebar-inner {
   width: 100%;
   border-left: none;
 }
@@ -171,26 +171,26 @@
 /*
  * Expanded panel tab bodies — center a readable column instead of
  * stretching edge-to-edge. Chat owns its own row (50rem chat + strip);
- * every other tab root under `.display-sidebar__active` picks up the
+ * every other tab root under `.right-sidebar__active` picks up the
  * shared max-width here.
  */
-.display-sidebar--expanded {
+.right-sidebar--expanded {
   --display-panel-expanded-column: min(50rem, calc(100% - 48px));
   --display-panel-expanded-wide-column: min(960px, calc(100% - 48px));
 }
 
-.display-sidebar--expanded .display-sidebar__active > :not(.chat-panel-tab) {
+.right-sidebar--expanded .right-sidebar__active > :not(.chat-panel-tab) {
   box-sizing: border-box;
   width: 100%;
   max-width: var(--display-panel-expanded-column);
   margin-inline: auto;
 }
 
-.display-sidebar--expanded .display-sidebar__active > .media-tab,
-.display-sidebar--expanded .display-sidebar__active > .canvas-tab,
-.display-sidebar--expanded
-  .display-sidebar__active
-  > .display-sidebar__rich:not(.display-sidebar__rich--store) {
+.right-sidebar--expanded .right-sidebar__active > .media-tab,
+.right-sidebar--expanded .right-sidebar__active > .canvas-tab,
+.right-sidebar--expanded
+  .right-sidebar__active
+  > .right-sidebar__rich:not(.right-sidebar__rich--store) {
   max-width: var(--display-panel-expanded-wide-column);
 }
 
@@ -206,13 +206,13 @@
   max-width: none;
 }
 
-html[data-stella-window="mini"] .display-sidebar--open {
+html[data-stella-window="mini"] .right-sidebar--open {
   width: 100%;
   flex: 1;
 }
 
-html[data-stella-window="mini"] .display-sidebar,
-html[data-stella-window="mini"] .display-sidebar--open {
+html[data-stella-window="mini"] .right-sidebar,
+html[data-stella-window="mini"] .right-sidebar--open {
   position: relative;
   inset: auto;
   z-index: auto;
@@ -221,14 +221,14 @@ html[data-stella-window="mini"] .display-sidebar--open {
   transition: none;
 }
 
-html[data-stella-window="mini"] .display-sidebar--open .display-sidebar-inner {
+html[data-stella-window="mini"] .right-sidebar--open .right-sidebar-inner {
   width: 100%;
   border-left: none;
   border-radius: 0;
 }
 
 @media (max-width: 600px) {
-  .display-sidebar--open .display-sidebar-inner {
+  .right-sidebar--open .right-sidebar-inner {
     width: 100%;
     border-left: none;
     border-radius: 0;
@@ -244,13 +244,13 @@ html[data-stella-window="mini"][data-display-panel-open="true"]
   display: none;
 }
 
-html[data-stella-window="mini"] .display-sidebar__resize-handle {
+html[data-stella-window="mini"] .right-sidebar__resize-handle {
   display: none;
 }
 
 /* ── Left-edge resize handle ────────────────────────────────────────── */
 
-.display-sidebar__resize-handle {
+.right-sidebar__resize-handle {
   position: absolute;
   top: 0;
   left: 0;
@@ -262,43 +262,43 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   transition: opacity 0.15s ease;
 }
 
-.display-sidebar__resize-handle::before,
-.display-sidebar__resize-handle::after {
+.right-sidebar__resize-handle::before,
+.right-sidebar__resize-handle::after {
   content: "";
   position: absolute;
   pointer-events: none;
 }
 
-.display-sidebar__resize-handle::before {
+.right-sidebar__resize-handle::before {
   top: 0;
-  bottom: var(--display-sidebar-bottom-left-radius);
+  bottom: var(--right-sidebar-bottom-left-radius);
   left: 0;
   width: 1px;
   background: var(--border);
 }
 
-.display-sidebar__resize-handle::after {
+.right-sidebar__resize-handle::after {
   left: 0;
   bottom: 0;
-  width: var(--display-sidebar-bottom-left-radius);
-  height: var(--display-sidebar-bottom-left-radius);
-  border-bottom-left-radius: var(--display-sidebar-bottom-left-radius);
+  width: var(--right-sidebar-bottom-left-radius);
+  height: var(--right-sidebar-bottom-left-radius);
+  border-bottom-left-radius: var(--right-sidebar-bottom-left-radius);
   border-left: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 
-.display-sidebar--open .display-sidebar__resize-handle:hover,
-.display-sidebar--resizing .display-sidebar__resize-handle {
+.right-sidebar--open .right-sidebar__resize-handle:hover,
+.right-sidebar--resizing .right-sidebar__resize-handle {
   opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .display-sidebar__resize-handle {
+  .right-sidebar__resize-handle {
     transition: none;
   }
 }
 
-.display-sidebar__models-btn {
+.right-sidebar__models-btn {
   gap: 6px;
   min-height: 0;
   padding: 4px 10px;
@@ -310,23 +310,23 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   background: transparent;
 }
 
-.display-sidebar__models-btn-icon {
+.right-sidebar__models-btn-icon {
   color: currentColor;
   opacity: 0.85;
 }
 
-.display-sidebar__models-btn:hover:not(:disabled) {
+.right-sidebar__models-btn:hover:not(:disabled) {
   color: var(--text-strong);
   border-color: transparent;
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
-.display-sidebar__models-btn:focus-visible {
+.right-sidebar__models-btn:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
 
-.display-sidebar__active {
+.right-sidebar__active {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -334,12 +334,12 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   overflow: hidden;
 }
 
-.display-sidebar__active > * {
+.right-sidebar__active > * {
   flex: 1;
   min-height: 0;
 }
 
-.display-sidebar__content {
+.right-sidebar__content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -352,15 +352,15 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   line-height: 1.55;
 }
 
-.display-sidebar__content h1,
-.display-sidebar__content h2,
-.display-sidebar__content h3 {
+.right-sidebar__content h1,
+.right-sidebar__content h2,
+.right-sidebar__content h3 {
   font-weight: var(--weight-semibold);
 }
 
 /* Wrapper for non-HTML payloads (office preview, PDF viewer). Fills the
    sidebar so the inner card can size against it. */
-.display-sidebar__rich {
+.right-sidebar__rich {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -370,23 +370,23 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   overflow: hidden;
 }
 
-.display-sidebar__rich > * {
+.right-sidebar__rich > * {
   flex: 1;
   min-height: 0;
 }
 
-.display-sidebar__rich--pdf {
+.right-sidebar__rich--pdf {
   padding: 12px;
 }
 
-.display-sidebar__rich--url {
+.right-sidebar__rich--url {
   padding: 0;
   display: flex;
   flex-direction: column;
   background: var(--surface-base);
 }
 
-.display-sidebar__rich--url > .display-file-preview__header {
+.right-sidebar__rich--url > .display-file-preview__header {
   flex: 0 0 auto;
 }
 
@@ -399,17 +399,17 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
   display: block;
 }
 
-.display-sidebar__rich--media {
+.right-sidebar__rich--media {
   padding: 12px 12px 12px;
   gap: 12px;
 }
 
-.display-sidebar__rich--table {
+.right-sidebar__rich--table {
   padding: 12px;
 }
 
-.display-sidebar__rich--markdown,
-.display-sidebar__rich--diff {
+.right-sidebar__rich--markdown,
+.right-sidebar__rich--diff {
   padding: 12px;
 }
 
@@ -1362,7 +1362,7 @@ html[data-stella-window="mini"] .display-sidebar__resize-handle {
 
 /* ── Trash tab ──────────────────────────────────────────────────── */
 
-.display-sidebar__rich--trash {
+.right-sidebar__rich--trash {
   padding: 12px;
 }
 

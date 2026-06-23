@@ -445,7 +445,7 @@ export function EngineTabContent() {
   /* ── render ─────────────────────────────────────────────────── */
 
   return (
-    <div className="display-sidebar__rich display-sidebar__rich--engine">
+    <div className="right-sidebar__rich right-sidebar__rich--engine">
       <section className="engine-tab" aria-label="Model settings">
         <div className="engine-tab__engine-block">
           <div

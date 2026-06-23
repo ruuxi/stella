@@ -108,7 +108,7 @@
   pointer-events: auto;
 }
 
-.workspace-panel__chrome .canvas-topbar-switcher {
+.right-sidebar-panel__chrome .canvas-topbar-switcher {
   flex: 0 1 auto;
   min-width: 0;
 }

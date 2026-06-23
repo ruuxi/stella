@@ -1,5 +1,5 @@
 /* Section/row styles shared by the unified workspace panel overview.
-   The outer strip shell lives in workspace-panel.css / display-sidebar.css. */
+   The outer strip shell lives in right-sidebar-panel.css / right-sidebar.css. */
 
 .chat-workspace-strip__panel {
   display: flex;

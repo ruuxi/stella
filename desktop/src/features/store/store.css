@@ -153,13 +153,13 @@
   padding: 0;
 }
 
-.display-sidebar__rich.display-sidebar__rich--store > * {
+.right-sidebar__rich.right-sidebar__rich--store > * {
   flex: 0 0 auto;
   min-height: initial;
 }
 
-.display-sidebar__rich.display-sidebar__rich--store > .store-side-panel-recent,
-.display-sidebar__rich.display-sidebar__rich--store
+.right-sidebar__rich.right-sidebar__rich--store > .store-side-panel-recent,
+.right-sidebar__rich.right-sidebar__rich--store
   > .store-side-panel-empty-state {
   flex: 1 1 auto;
   min-height: 0;
@@ -348,8 +348,8 @@
 }
 
 /* Expanded display panel keeps the source list and publish bar aligned. */
-.display-sidebar--expanded .store-side-panel-list,
-.display-sidebar--expanded .store-side-panel-publish-bar {
+.right-sidebar--expanded .store-side-panel-list,
+.right-sidebar--expanded .store-side-panel-publish-bar {
   padding-inline: 24px;
 }
 

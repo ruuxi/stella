@@ -69,7 +69,7 @@ export const UrlTabContent = ({
 }) => {
   const [reloadKey, setReloadKey] = useState(0);
   return (
-    <div className="display-sidebar__rich display-sidebar__rich--url">
+    <div className="right-sidebar__rich right-sidebar__rich--url">
       <header className="display-file-preview__header">
         <div className="display-file-preview__title-group">
           <span className="display-file-preview__eyebrow">Live preview</span>
@@ -113,7 +113,7 @@ export const OfficeTabContent = ({
 }: {
   previewRef: OfficePreviewRef;
 }) => (
-  <div className="display-sidebar__rich">
+  <div className="right-sidebar__rich">
     <Suspense fallback={null}>
       <OfficeArtifactPanel previewRef={previewRef} />
     </Suspense>
@@ -167,7 +167,7 @@ export const OfficeFileTabContent = ({
   }
 
   return (
-    <div className="display-sidebar__rich">
+    <div className="right-sidebar__rich">
       <section className="display-artifact-panel">
         <div className="display-artifact-panel__body">
           <div className="display-artifact-status">
@@ -263,7 +263,7 @@ export const DelimitedTableTabContent = ({
   });
 
   return (
-    <div className="display-sidebar__rich display-sidebar__rich--table">
+    <div className="right-sidebar__rich right-sidebar__rich--table">
       <section className="display-file-preview display-file-preview--table">
         <header className="display-file-preview__header">
           <div className="display-file-preview__title-group">
@@ -324,7 +324,7 @@ export const PdfTabContent = ({
   filePath: string;
   title?: string;
 }) => (
-  <div className="display-sidebar__rich display-sidebar__rich--pdf">
+  <div className="right-sidebar__rich right-sidebar__rich--pdf">
     <Suspense fallback={null}>
       <PdfViewerCard filePath={filePath} {...(title ? { title } : {})} />
     </Suspense>
@@ -353,7 +353,7 @@ export const MarkdownTabContent = ({
   });
 
   return (
-    <div className="display-sidebar__rich display-sidebar__rich--markdown">
+    <div className="right-sidebar__rich right-sidebar__rich--markdown">
       <section className="display-file-preview display-file-preview--markdown">
         <header className="display-file-preview__header">
           <div className="display-file-preview__title-group">
@@ -633,7 +633,7 @@ export const SourceDiffTabContent = () => {
     : "Code changes";
 
   return (
-    <div className="display-sidebar__rich display-sidebar__rich--diff">
+    <div className="right-sidebar__rich right-sidebar__rich--diff">
       <section className="display-file-preview display-file-preview--diff">
         <header className="display-file-preview__header">
           <div className="display-file-preview__title-group">
@@ -680,7 +680,7 @@ export const ImageTabContent = ({
   prompt,
   capability,
 }: { filePaths: string[] } & WithMediaMeta) => (
-  <div className="display-sidebar__rich display-sidebar__rich--media">
+  <div className="right-sidebar__rich right-sidebar__rich--media">
     <Suspense fallback={null}>
       <MediaPreviewCard
         asset={{ kind: "image", filePaths }}
@@ -696,7 +696,7 @@ export const VideoTabContent = ({
   prompt,
   capability,
 }: { filePath: string } & WithMediaMeta) => (
-  <div className="display-sidebar__rich display-sidebar__rich--media">
+  <div className="right-sidebar__rich right-sidebar__rich--media">
     <Suspense fallback={null}>
       <MediaPreviewCard
         asset={{ kind: "video", filePath }}
@@ -712,7 +712,7 @@ export const AudioTabContent = ({
   prompt,
   capability,
 }: { filePath: string } & WithMediaMeta) => (
-  <div className="display-sidebar__rich display-sidebar__rich--media">
+  <div className="right-sidebar__rich right-sidebar__rich--media">
     <Suspense fallback={null}>
       <MediaPreviewCard
         asset={{ kind: "audio", filePath }}
@@ -729,7 +729,7 @@ export const Model3dTabContent = ({
   prompt,
   capability,
 }: { filePath: string; label?: string } & WithMediaMeta) => (
-  <div className="display-sidebar__rich display-sidebar__rich--media">
+  <div className="right-sidebar__rich right-sidebar__rich--media">
     <Suspense fallback={null}>
       <MediaPreviewCard
         asset={{ kind: "model3d", filePath, ...(label ? { label } : {}) }}
@@ -746,7 +746,7 @@ export const DownloadTabContent = ({
   prompt,
   capability,
 }: { filePath: string; label: string } & WithMediaMeta) => (
-  <div className="display-sidebar__rich display-sidebar__rich--media">
+  <div className="right-sidebar__rich right-sidebar__rich--media">
     <Suspense fallback={null}>
       <MediaPreviewCard
         asset={{ kind: "download", filePath, label }}
@@ -762,7 +762,7 @@ export const TextTabContent = ({
   prompt,
   capability,
 }: { text: string } & WithMediaMeta) => (
-  <div className="display-sidebar__rich display-sidebar__rich--media">
+  <div className="right-sidebar__rich right-sidebar__rich--media">
     <Suspense fallback={null}>
       <MediaPreviewCard
         asset={{ kind: "text", text }}

@@ -6,11 +6,11 @@ import {
   type StellaOpenPanelChatDetail,
 } from "@/shared/lib/stella-orb-chat";
 import type { DisplayTabPayload } from "@/shared/contracts/display-payload";
-import type { DisplaySidebarHandle } from "@/shell/DisplaySidebar";
+import type { RightSidebarHandle } from "@/shell/RightSidebar";
 import { displayTabs } from "@/features/workspace-display/tab-store";
 
 type UseWorkspacePanelEventsOptions = {
-  displaySidebarRef: RefObject<DisplaySidebarHandle | null>;
+  rightSidebarRef: RefObject<RightSidebarHandle | null>;
   latestDisplayPayloadRef: RefObject<DisplayTabPayload | null>;
   openChatPanel: (detail?: StellaOpenPanelChatDetail) => void;
   /**
@@ -30,7 +30,7 @@ type UseWorkspacePanelEventsOptions = {
  * - `electronAPI.ui.onOpenChatSidebar` — IPC equivalent of "open chat tab".
  */
 export function useWorkspacePanelEvents({
-  displaySidebarRef,
+  rightSidebarRef,
   latestDisplayPayloadRef,
   openChatPanel,
   openDefaultPanelSurface,
@@ -68,7 +68,7 @@ export function useWorkspacePanelEvents({
       cleanupIpcOpen?.();
     };
   }, [
-    displaySidebarRef,
+    rightSidebarRef,
     latestDisplayPayloadRef,
     openChatPanel,
     openDefaultPanelSurface,

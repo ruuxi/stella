@@ -132,7 +132,7 @@
 }
 
 /* Horizontal rule — hidden in chat via `hideHorizontalRules`; still used
- * in blueprint / display-sidebar markdown. */
+ * in blueprint / right-sidebar markdown. */
 .markdown hr,
 .markdown [data-streamdown="horizontal-rule"] {
   border: none;

@@ -33,7 +33,7 @@ export {
 /**
  * Chat display tab body — the live in-panel chat, available from any route
  * so users can keep talking to Stella while a viewer is open. (The home
- * index now lives in the left `WorkspaceSidebar`, not here.)
+ * index now lives in the left `LeftSidebar`, not here.)
  */
 function ChatDisplayTab({
   openRequest,

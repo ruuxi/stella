@@ -47,7 +47,7 @@ export function BillingScreen() {
     scheduleBillingWebLayout();
     const contentArea = document.querySelector<HTMLElement>(".content-area");
     const displaySidebar =
-      document.querySelector<HTMLElement>(".display-sidebar");
+      document.querySelector<HTMLElement>(".right-sidebar");
     const resizeObserver = new ResizeObserver(scheduleBillingWebLayout);
     if (contentArea) resizeObserver.observe(contentArea);
     if (displaySidebar) resizeObserver.observe(displaySidebar);

@@ -87,7 +87,7 @@ export const maybeShowPaidMediaTierToast = (error: unknown): boolean => {
   return true
 }
 
-/** Toast-only error surface for display-sidebar Media tab and `/api/media` callers. */
+/** Toast-only error surface for right-sidebar Media tab and `/api/media` callers. */
 export const notifyMediaGenerationError = (error: unknown): void => {
   if (maybeShowPaidMediaTierToast(error)) return
   const message = readableMediaErrorMessage(error)
