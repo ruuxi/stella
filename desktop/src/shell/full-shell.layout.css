@@ -43,12 +43,19 @@
 /* Native window drags should track the OS compositor, not our panel
    open/close easing. RootChrome toggles this flag without React state while
    the BrowserWindow is actively resizing. */
-:root[data-shell-window-resizing="true"] .window-shell.full,
-:root[data-shell-window-resizing="true"] .display-sidebar.display-sidebar--open,
+:root[data-shell-window-resizing="true"] .window-shell.full {
+  transition: none !important;
+}
+
 :root[data-shell-window-resizing="true"]
+  body:not([data-display-breakpoint-transition="true"])
+  .display-sidebar.display-sidebar--open,
+:root[data-shell-window-resizing="true"]
+  body:not([data-display-breakpoint-transition="true"])
   .display-sidebar.display-sidebar--open
   .display-sidebar-inner,
 :root[data-shell-window-resizing="true"]
+  body:not([data-display-breakpoint-transition="true"])
   .shell-topbar[data-display-open="true"]
   .shell-topbar-tablist {
   transition: none !important;
