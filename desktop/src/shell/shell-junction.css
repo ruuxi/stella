@@ -30,8 +30,11 @@
 /* ── Left sidebar ──────────────────────────────────────────────────── */
 
 :root[data-shell-panel-chrome="true"] .workspace-sidebar {
-  overflow: hidden;
-  overflow-clip-margin: 0;
+  position: relative;
+  /* Let the seam-fill pseudo paint past the right edge into the center
+     column's rounded-corner notch (clipped well outside the box). */
+  overflow: clip;
+  overflow-clip-margin: var(--shell-junction-radius);
 }
 
 :root[data-shell-panel-chrome="true"] .workspace-sidebar__frame {
@@ -44,6 +47,24 @@
   border-top-left-radius: var(--shell-window-radius);
   border-bottom-left-radius: var(--shell-window-radius);
   box-shadow: var(--panel-surface-highlight);
+}
+
+/* The center column rounds its left corners outward over the sidebar.
+   Extend the sidebar surface into that notch so the rounded corners reveal
+   the sidebar background rather than the window gradient. The panel
+   gradient runs top→bottom, so a flush horizontal extension aligns
+   seamlessly. Sits under the center column (z-index 2), visible only
+   through its transparent rounded corners. */
+:root[data-shell-panel-chrome="true"]
+  .workspace-sidebar:not(.workspace-sidebar--collapsed)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: var(--shell-junction-radius);
+  background: var(--panel-surface-bg-gradient);
+  pointer-events: none;
 }
 
 /* ── Right viewer panel ────────────────────────────────────────────── */
