@@ -64,7 +64,7 @@ import "@/app/chat/chat-workspace-strip.css";
 // (see `caps` below) and pages in the full dataset.
 const SECTION_CAPS = {
   strip: { activity: 8, files: 5, schedule: 4, store: 5 },
-  overview: { activity: 24, files: 20, schedule: 16, store: 20 },
+  overview: { activity: 6, files: 6, schedule: 6, store: 6 },
 } as const;
 const UNCAPPED = {
   activity: Infinity,
