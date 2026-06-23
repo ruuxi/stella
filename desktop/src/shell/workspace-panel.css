@@ -93,6 +93,20 @@ body[data-display-expanding="true"]
   transform: translateY(2px);
 }
 
+/* When expanded, the panel can reach the window's left edge (left sidebar
+   collapsed). Inset the chrome so its tabs clear the macOS traffic lights
+   and the floating left-sidebar toggle; the inset shrinks to nothing once
+   the rail (and those controls) sits to the panel's left. */
+.display-sidebar.workspace-panel.display-sidebar--expanded
+  .workspace-panel__chrome {
+  padding-left: max(12px, calc(44px - var(--shell-left-sidebar-width, 0px)));
+}
+
+.display-sidebar.workspace-panel.display-sidebar--expanded
+  .workspace-panel__chrome[data-platform="mac"] {
+  padding-left: max(12px, calc(116px - var(--shell-left-sidebar-width, 0px)));
+}
+
 .workspace-panel__chrome-spacer {
   flex: 1;
   min-width: 0;
@@ -158,6 +172,19 @@ body[data-display-expanding="true"]
 
 .display-sidebar.workspace-panel.display-sidebar--open.display-sidebar--shell-visible {
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
+}
+
+/* Expanded takes over the content area (right of the left sidebar). The
+   absolute overlay must win the width over the fixed open-width rule above
+   (equal-ish specificity), so this selector carries an extra class. Left
+   inset matches the current sidebar width so the rail stays visible. */
+.display-sidebar.workspace-panel.display-sidebar--open.display-sidebar--expanded.display-sidebar--shell-visible {
+  position: absolute;
+  inset: 0 0 0 var(--shell-left-sidebar-width, 0px);
+  z-index: 60;
+  width: auto;
+  flex: none;
+  margin-left: 0;
 }
 
 .display-sidebar.workspace-panel:not(.display-sidebar--shell-visible) {

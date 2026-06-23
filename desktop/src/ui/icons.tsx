@@ -498,6 +498,14 @@ export const PanelRight = createIcon(
   </>,
 );
 
+export const PanelLeft = createIcon(
+  "panel-left",
+  <>
+    <rect x="3.25" y="4.75" width="17.5" height="14.5" rx="3" />
+    <path d="M8.75 4.75v14.5" />
+  </>,
+);
+
 export const AppWindowMac = createIcon(
   "app-window",
   <>

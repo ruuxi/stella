@@ -78,6 +78,9 @@ import {
 import { FullShellDialogs } from "@/shell/full-shell-dialogs";
 import { StellaContextMenu } from "@/shell/context-menu/StellaContextMenu";
 import { useWindowType } from "@/shared/hooks/use-window-type";
+import { getPlatform } from "@/platform/electron/platform";
+import { uiState } from "@/platform/ui-state";
+import { PanelLeft, PanelRight } from "@/ui/icons";
 import {
   dispatchClosePanel,
   dispatchOpenWorkspacePanel,
@@ -99,6 +102,9 @@ import {
   getShellBreakpointState,
   type ShellBreakpointState,
 } from "@/shell/shell-breakpoints";
+
+/** Persisted left-sidebar visibility ("0" = hidden). */
+const LEFT_SIDEBAR_VISIBLE_KEY = "stella.leftSidebar.visible";
 
 /**
  * The root route owns the app chrome — top shell bar, workspace panel,
@@ -182,7 +188,23 @@ function RootChrome() {
   const isMobileWebView =
     typeof document !== "undefined" &&
     document.documentElement.getAttribute("data-platform") === "mobile";
-  const showWorkspaceSidebar = !isMiniWindow && !isMobileWebView;
+  const isFullWindow = !isMiniWindow && !isMobileWebView;
+  const platform = getPlatform();
+  const isMac = platform === "darwin";
+
+  // Left sidebar visibility — a toggle next to the traffic lights collapses
+  // it; a floating button at the same spot brings it back. Persisted so the
+  // choice survives reloads.
+  const [leftSidebarVisible, setLeftSidebarVisible] = useState<boolean>(
+    () => uiState.getItem(LEFT_SIDEBAR_VISIBLE_KEY) !== "0",
+  );
+  const toggleLeftSidebar = useCallback(() => {
+    setLeftSidebarVisible((prev) => {
+      const next = !prev;
+      uiState.setItem(LEFT_SIDEBAR_VISIBLE_KEY, next ? "1" : "0");
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (isMiniWindow) return;
@@ -191,12 +213,26 @@ function RootChrome() {
 
   useEffect(() => {
     const root = document.documentElement;
-    if (showWorkspaceSidebar) root.dataset.shellPanelChrome = "true";
+    if (isFullWindow) root.dataset.shellPanelChrome = "true";
     else delete root.dataset.shellPanelChrome;
     return () => {
       delete root.dataset.shellPanelChrome;
     };
-  }, [showWorkspaceSidebar]);
+  }, [isFullWindow]);
+
+  // Expose the current left-sidebar width so an expanded display panel can
+  // inset past it (keeping the rail visible). 252px mirrors
+  // `--workspace-sidebar-width` in workspace-sidebar.css; 0 when collapsed.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(
+      "--shell-left-sidebar-width",
+      isFullWindow && leftSidebarVisible ? "252px" : "0px",
+    );
+    return () => {
+      root.style.removeProperty("--shell-left-sidebar-width");
+    };
+  }, [isFullWindow, leftSidebarVisible]);
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -485,12 +521,13 @@ function RootChrome() {
     <>
       <MobileActivityNotificationsBridge />
 
-      {!showWorkspaceSidebar ? <ShellTopBar /> : null}
+      {!isFullWindow ? <ShellTopBar /> : null}
 
-      {showWorkspaceSidebar ? (
+      {isFullWindow ? (
         <WorkspaceSidebar
           onSignIn={showAuthDialog}
           onConnect={showConnectDialog}
+          collapsed={!leftSidebarVisible}
         />
       ) : null}
 
@@ -521,6 +558,37 @@ function RootChrome() {
           </div>
         </div>
       </StellaContextMenu>
+
+      {/* Rendered after `.content-area` so their `no-drag` carve is applied
+          after the content area's top `-webkit-app-region: drag` strip —
+          draggable regions resolve in DOM order, not z-index, so a button
+          painted above but earlier in the DOM would still read as draggable
+          (and swallow clicks). The left toggle is always mounted at a fixed
+          position so it doesn't shift between the open and collapsed states. */}
+      {isFullWindow ? (
+        <button
+          type="button"
+          className="shell-topbar-icon-btn shell-edge-toggle shell-edge-toggle--left"
+          data-platform={isMac ? "mac" : "other"}
+          onClick={toggleLeftSidebar}
+          aria-label={leftSidebarVisible ? "Hide sidebar" : "Show sidebar"}
+          title={leftSidebarVisible ? "Hide sidebar" : "Show sidebar"}
+        >
+          <PanelLeft size={16} strokeWidth={1.75} />
+        </button>
+      ) : null}
+
+      {isFullWindow && !panelOpen ? (
+        <button
+          type="button"
+          className="shell-topbar-icon-btn shell-edge-toggle shell-edge-toggle--right"
+          onClick={() => dispatchOpenWorkspacePanel()}
+          aria-label="Open panel"
+          title="Open panel"
+        >
+          <PanelRight size={16} strokeWidth={1.75} />
+        </button>
+      ) : null}
 
       <Suspense fallback={null}>
         <DisplaySidebar ref={displaySidebarRef} />
