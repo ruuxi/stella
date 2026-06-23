@@ -732,7 +732,13 @@ export type RuntimeConversationResumeResult = {
 
 export type RuntimeWebSearchResult = {
   text: string;
-  results: Array<{ title: string; url: string; snippet: string }>;
+  results: Array<{
+    title: string;
+    url: string;
+    snippet: string;
+    image?: string;
+    favicon?: string;
+  }>;
 };
 
 export type HostDeviceIdentity = {
