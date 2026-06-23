@@ -1,0 +1,136 @@
+/* Three-column shell junction — full-height side panels, visible borders.
+   Left seam: center column rounds outward. Right seam: display panel scoops
+   inward so the curve reads the opposite way. */
+
+:root[data-shell-panel-chrome="true"] {
+  --shell-junction-radius: 16px;
+  --shell-window-radius: 12px;
+  --shell-junction-border: var(--border-base);
+  --shell-junction-canvas: var(--background);
+}
+
+/* ── Center column ─────────────────────────────────────────────────── */
+
+:root[data-shell-panel-chrome="true"] .content-area {
+  border: 1px solid var(--shell-junction-border);
+  /* Round only the left edge — right edge stays square for inward panel scoops. */
+  border-radius: var(--shell-junction-radius) 0 0 var(--shell-junction-radius);
+  overflow: clip;
+  z-index: 2;
+  box-shadow: var(--panel-surface-highlight);
+}
+
+:root[data-shell-panel-chrome="true"] .workspace-sidebar {
+  z-index: 1;
+}
+
+:root[data-shell-panel-chrome="true"] .display-sidebar.workspace-panel {
+  z-index: 1;
+}
+
+/* ── Left sidebar ──────────────────────────────────────────────────── */
+
+:root[data-shell-panel-chrome="true"] .workspace-sidebar {
+  overflow: hidden;
+  overflow-clip-margin: 0;
+}
+
+:root[data-shell-panel-chrome="true"] .workspace-sidebar__frame {
+  position: relative;
+  height: 100%;
+  margin: 0;
+  border: 1px solid var(--shell-junction-border);
+  border-right: none;
+  border-radius: 0;
+  border-top-left-radius: var(--shell-window-radius);
+  border-bottom-left-radius: var(--shell-window-radius);
+  box-shadow: var(--panel-surface-highlight);
+}
+
+/* ── Right viewer panel ────────────────────────────────────────────── */
+
+:root[data-shell-panel-chrome="true"] .display-sidebar.workspace-panel {
+  overflow: hidden;
+  overflow-clip-margin: 0;
+}
+
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel
+  .display-sidebar-inner.workspace-panel__frame {
+  position: relative;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  border: 1px solid var(--shell-junction-border);
+  border-left: none;
+  border-radius: 0;
+  border-top-right-radius: var(--shell-window-radius);
+  border-bottom-right-radius: var(--shell-window-radius);
+  box-shadow: var(--panel-surface-highlight);
+  width: var(--display-panel-width, clamp(380px, 34vw, 520px));
+}
+
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel.display-sidebar--open
+  .display-sidebar-inner.workspace-panel__frame {
+  width: var(--display-panel-width, clamp(380px, 34vw, 520px));
+  height: 100%;
+}
+
+/* Concave inner top/bottom corners — mirror of the left seam but curving
+   into the panel instead of out from the center. */
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel
+  .display-sidebar-inner.workspace-panel__frame::before,
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel
+  .display-sidebar-inner.workspace-panel__frame::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: var(--shell-junction-radius);
+  height: var(--shell-junction-radius);
+  pointer-events: none;
+  z-index: 3;
+  background: var(--shell-junction-canvas);
+}
+
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel
+  .display-sidebar-inner.workspace-panel__frame::before {
+  top: 0;
+  border-bottom-right-radius: var(--shell-junction-radius);
+}
+
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel
+  .display-sidebar-inner.workspace-panel__frame::after {
+  bottom: 0;
+  border-top-right-radius: var(--shell-junction-radius);
+}
+
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel.display-sidebar--expanded
+  .display-sidebar-inner.workspace-panel__frame {
+  border-left: 1px solid var(--shell-junction-border);
+  border-top-left-radius: var(--shell-junction-radius);
+  border-bottom-left-radius: var(--shell-junction-radius);
+  border-top-right-radius: var(--shell-window-radius);
+  border-bottom-right-radius: var(--shell-window-radius);
+}
+
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel.display-sidebar--expanded
+  .display-sidebar-inner.workspace-panel__frame::before,
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel.display-sidebar--expanded
+  .display-sidebar-inner.workspace-panel__frame::after {
+  display: none;
+}
+
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel
+  .workspace-panel__body
+  .display-sidebar__active {
+  min-width: var(--display-panel-width, clamp(380px, 34vw, 520px));
+}

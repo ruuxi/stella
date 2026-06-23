@@ -1,53 +1,73 @@
-/* Unified workspace panel — a single floating card on the right that merges
-   the former workspace strip (Activity / Files / Schedule overview) and the
-   display sidebar (tab content). The top-bar chrome (account, tabs, panel
-   controls, window controls) lives in `ShellTopBar`, not in this panel.
-
-   Closed (strip mode): content-sized card showing the overview.
-   Open: full-height card hosting the active tab body. */
+/* Unified workspace panel — full-height right viewer. Junction curves and
+   panel-chrome overrides live in shell-junction.css. */
 
 .display-sidebar.workspace-panel {
-  /* Let the frame's soft shadow bleed past the clip box so it reads as a
-     floating card; `clip` still bounds the width-slide animation. */
   overflow: clip;
-  overflow-clip-margin: 28px;
+  overflow-clip-margin: 0;
 }
 
-/* The inner element is the floating card. Selector is qualified with
+/* The inner element is the panel surface. Selector is qualified with
    `.display-sidebar` so it wins over the base `.display-sidebar-inner`
    rules (padding-top, border, width, transform) on the same node. */
 .display-sidebar.workspace-panel .display-sidebar-inner.workspace-panel__frame {
-  --workspace-panel-inset-top: calc(var(--shell-topbar-height, 38px) + 8px);
-  --workspace-panel-inset-right: 10px;
-  --workspace-panel-inset-bottom: 10px;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  width: auto;
-  /* Strip mode: only as tall as the content needs. */
-  height: auto;
-  max-height: calc(
-    100% - var(--workspace-panel-inset-top) -
-      var(--workspace-panel-inset-bottom)
-  );
-  margin: var(--workspace-panel-inset-top) var(--workspace-panel-inset-right)
-    var(--workspace-panel-inset-bottom) 0;
-  padding-top: 0;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-sm);
+  width: var(--display-panel-width, clamp(380px, 34vw, 520px));
+  height: 100%;
+  margin: 0;
+  background: var(--panel-surface-bg-gradient);
+  border: 1px solid var(--panel-surface-border);
+  border-left: none;
   overflow: hidden;
   contain: layout paint;
+  transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
 }
 
-/* Open mode hosts a scrollable tab body — fill the available height. */
+:root[data-shell-panel-chrome="true"]
+  .display-sidebar.workspace-panel
+  .display-sidebar-inner.workspace-panel__frame {
+  padding-top: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .display-sidebar.workspace-panel
+    .display-sidebar-inner.workspace-panel__frame {
+    transition: none;
+  }
+}
+
+/* While the user is actively dragging the resize handle (or the OS window
+   is resizing, or the expand toggle is mid-swap), the panel width updates
+   every frame — the 460ms width ease would make the frame trail the cursor.
+   Drop it so the frame tracks the aside 1:1, mirroring
+   `.display-sidebar--resizing`. */
+.display-sidebar.workspace-panel.display-sidebar--resizing
+  .display-sidebar-inner.workspace-panel__frame,
+body[data-display-resizing="true"]
+  .display-sidebar.workspace-panel
+  .display-sidebar-inner.workspace-panel__frame,
+body[data-display-expanding="true"]
+  .display-sidebar.workspace-panel
+  .display-sidebar-inner.workspace-panel__frame,
+:root[data-shell-window-resizing="true"]
+  .display-sidebar.workspace-panel
+  .display-sidebar-inner.workspace-panel__frame {
+  transition: none;
+}
+
+/* Open mode hosts a scrollable tab body — fixed width (clip-reveal on the
+   slide) + fill the available height. */
 .display-sidebar.workspace-panel.display-sidebar--open
   .display-sidebar-inner.workspace-panel__frame {
-  height: calc(
-    100% - var(--workspace-panel-inset-top) -
-      var(--workspace-panel-inset-bottom)
-  );
+  width: var(--display-panel-width, clamp(380px, 34vw, 520px));
+  height: 100%;
+}
+
+/* Expanded mode fills the absolutely-positioned aside. */
+.display-sidebar.workspace-panel.display-sidebar--expanded
+  .display-sidebar-inner.workspace-panel__frame {
+  width: auto;
 }
 
 .workspace-panel__body {
@@ -56,6 +76,34 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Top chrome inside the right viewer panel (back/forward/expand/close). */
+.workspace-panel__chrome {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--shell-topbar-height, 38px);
+  padding: 0 10px 0 12px;
+  -webkit-app-region: drag;
+}
+
+.workspace-panel__chrome[data-platform="mac"] {
+  transform: translateY(2px);
+}
+
+.workspace-panel__chrome-spacer {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  -webkit-app-region: drag;
+}
+
+.workspace-panel__chrome .shell-topbar-display-controls,
+.workspace-panel__chrome .shell-topbar-window-controls,
+.workspace-panel__chrome .shell-topbar-icon-btn {
+  -webkit-app-region: no-drag;
 }
 
 .workspace-panel__overview {
@@ -69,6 +117,18 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  /* Hold the viewer at the open width while the frame animates so the
+     contents (e.g. a media image) stay laid out at their final size and
+     get clip-revealed rather than reflowed/rescaled during the slide. */
+  width: 100%;
+  min-width: var(--display-panel-width, clamp(380px, 34vw, 520px));
+}
+
+/* Expanded fills the content area, so let the viewer track the frame. */
+.display-sidebar.workspace-panel.display-sidebar--expanded
+  .workspace-panel__body
+  .display-sidebar__active {
+  min-width: 0;
 }
 
 .workspace-panel__overview .chat-workspace-strip__panel {

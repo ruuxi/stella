@@ -28,10 +28,13 @@ import {
   dispatchClosePanel,
   dispatchOpenWorkspacePanel,
 } from "@/shared/lib/stella-orb-chat";
-import { useChatWorkspaceStripStore } from "@/features/chat/chat-workspace-strip-store";
-import { WorkspacePanelOverview } from "@/shell/WorkspacePanelOverview";
+import { getPlatform } from "@/platform/electron/platform";
+import { useWindowType } from "@/shared/hooks/use-window-type";
+import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
+import { WindowControls } from "@/shell/WindowControls";
 import "./display-sidebar.css";
 import "./workspace-panel.css";
+import "./shell-junction.css";
 
 export interface DisplaySidebarHandle {
   /**
@@ -51,9 +54,6 @@ export interface DisplaySidebarHandle {
 type DisplaySidebarProps = {
   onOpenChange?: (open: boolean) => void;
   portalTarget?: Element | null;
-  /** Render the Activity / Files / Schedule overview when the panel is closed. */
-  showOverview?: boolean;
-  forceHidden?: boolean;
 };
 
 const DISPLAY_PANEL_DEFAULT_MIN_WIDTH = 380;
@@ -133,24 +133,20 @@ const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
 export const DisplaySidebar = forwardRef<
   DisplaySidebarHandle,
   DisplaySidebarProps
->(function DisplaySidebar(
-  { onOpenChange, portalTarget, showOverview = false, forceHidden = false },
-  ref,
-) {
+>(function DisplaySidebar({ onOpenChange, portalTarget }, ref) {
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
   const activeTab = useActiveDisplayTab();
-  const { stripVisible } = useChatWorkspaceStripStore();
   const asideRef = useRef<HTMLElement | null>(null);
+  const platform = getPlatform();
+  const isMac = platform === "darwin";
+  const isWin = platform === "win32";
+  const isMiniWindow = useWindowType() === "mini";
+  const showWindowsControlsOnRight = isWin || (!isMac && isMiniWindow);
 
-  // The overview (Activity / Files / Schedule) shows when the panel is closed
-  // and the strip toggle (in the top bar) is on. When the panel is open it
-  // hosts the active tab content instead.
-  const showOverviewSections =
-    showOverview && !panelOpen && stripVisible && !forceHidden;
-  // Mount the floating panel when there's something to show — open tab content
-  // or the overview sections.
-  const shellVisible = panelOpen || showOverviewSections;
+  // Viewer-only: the panel is just the detail surface. It's mounted only
+  // when open (with an active viewer); the index lives in the left sidebar.
+  const shellVisible = panelOpen;
 
   useImperativeHandle(
     ref,
@@ -402,7 +398,7 @@ export const DisplaySidebar = forwardRef<
         shellVisible ? " display-sidebar--shell-visible" : ""
       }${panelOpen ? " display-sidebar--open" : ""}${
         panelOpen && panelExpanded ? " display-sidebar--expanded" : ""
-      }${!panelOpen && shellVisible ? " workspace-panel--strip-mode" : ""}`}
+      }`}
       aria-label="Workspace"
       aria-hidden={!shellVisible}
       onContextMenu={handleContextMenu}
@@ -419,12 +415,22 @@ export const DisplaySidebar = forwardRef<
         />
       ) : null}
       <div className="display-sidebar-inner workspace-panel__frame">
+        {panelOpen && !isMiniWindow ? (
+          <div
+            className="workspace-panel__chrome"
+            data-platform={isMac ? "mac" : isWin ? "win" : "other"}
+          >
+            <div
+              className="workspace-panel__chrome-spacer"
+              aria-hidden="true"
+            />
+            <DisplayPanelControls />
+            {showWindowsControlsOnRight ? (
+              <WindowControls useWindowsIcons={isWin} hidden={false} />
+            ) : null}
+          </div>
+        ) : null}
         <div className="workspace-panel__body">
-          {showOverviewSections ? (
-            <div className="workspace-panel__overview">
-              <WorkspacePanelOverview />
-            </div>
-          ) : null}
           {panelOpen && activeTab ? (
             <div className="display-sidebar__active">
               <DeferredDisplayContent

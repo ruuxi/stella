@@ -30,6 +30,25 @@ export type DisplayTabListSnapshot = {
 };
 
 /**
+ * Sentinel id for the grouped library overview — the panel's navigation
+ * root. It is never a real registered tab; the display panel renders the
+ * overview component whenever the current history entry is this id.
+ */
+export const OVERVIEW_ENTRY_ID = "__overview__";
+
+/**
+ * Linear panel navigation history. Entries are either the overview
+ * sentinel or a registered tab id. Back/forward move `index`; activating
+ * a viewer truncates any forward entries and pushes the new id.
+ */
+export type DisplayNavSnapshot = {
+  /** Id of the entry currently shown (overview sentinel or a tab id). */
+  currentEntryId: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
+};
+
+/**
  * Slice surfaced to consumers that only need panel layout state
  * (display sidebar, shell topbar, store route, etc.). Splitting this
  * away from the tab list lets resize/animation updates propagate
@@ -155,6 +174,51 @@ const listeners = new Set<Listener>();
 const tabListListeners = new Set<Listener>();
 const layoutListeners = new Set<Listener>();
 
+// ── Navigation history ──────────────────────────────────────────────
+// The overview sentinel always anchors the bottom of the stack so back
+// from any viewer eventually lands on the grouped library overview.
+let history: string[] = [OVERVIEW_ENTRY_ID];
+let historyIndex = 0;
+const navListeners = new Set<Listener>();
+
+const computeNavSnapshot = (): DisplayNavSnapshot => ({
+  currentEntryId: history[historyIndex] ?? OVERVIEW_ENTRY_ID,
+  canGoBack: historyIndex > 0,
+  canGoForward: historyIndex < history.length - 1,
+});
+
+let navSnapshot: DisplayNavSnapshot = computeNavSnapshot();
+
+const emitNav = (): void => {
+  navSnapshot = computeNavSnapshot();
+  for (const listener of navListeners) listener();
+};
+
+/**
+ * Push a new entry onto the history, truncating any forward entries.
+ * No-op (just re-points) when the entry already sits at the cursor.
+ */
+const pushHistory = (entryId: string): void => {
+  if (history[historyIndex] === entryId) return;
+  history = [...history.slice(0, historyIndex + 1), entryId];
+  historyIndex = history.length - 1;
+  emitNav();
+};
+
+// Drop history references to a tab id that no longer exists (closed/reset),
+// collapsing consecutive duplicates so back/forward stay meaningful.
+const dropFromHistory = (entryId: string): void => {
+  const filtered = history.filter((id) => id !== entryId);
+  const deduped: string[] = [];
+  for (const id of filtered) {
+    if (deduped[deduped.length - 1] !== id) deduped.push(id);
+  }
+  const next = deduped.length > 0 ? deduped : [OVERVIEW_ENTRY_ID];
+  historyIndex = Math.min(historyIndex, next.length - 1);
+  history = next;
+  emitNav();
+};
+
 type EmitOptions = {
   /** Did the tab list / active tab change? */
   tabsChanged?: boolean;
@@ -210,6 +274,14 @@ export const displayTabs = {
     layoutListeners.add(listener);
     return () => layoutListeners.delete(listener);
   },
+  /**
+   * Navigation-history subscription. Fires when the current entry or the
+   * back/forward availability changes.
+   */
+  subscribeNav(listener: Listener): () => void {
+    navListeners.add(listener);
+    return () => navListeners.delete(listener);
+  },
   getSnapshot(): TabStoreSnapshot {
     return state;
   },
@@ -218,6 +290,9 @@ export const displayTabs = {
   },
   getLayoutSnapshot(): DisplayPanelLayoutSnapshot {
     return layoutSnapshot;
+  },
+  getNavSnapshot(): DisplayNavSnapshot {
+    return navSnapshot;
   },
   /**
    * Register or refresh a tab. If a tab with this id already exists, its
@@ -260,6 +335,9 @@ export const displayTabs = {
         layoutChanged: openPanel !== state.panelOpen,
       },
     );
+    // Activating a viewer pushes it onto the nav history so back returns
+    // to wherever the user came from (often the overview root).
+    if (activate) pushHistory(spec.id);
   },
   /**
    * Activate an existing tab by id. No-op if the id is unknown. Always
@@ -268,13 +346,52 @@ export const displayTabs = {
    */
   activateTab(tabId: string): void {
     if (findIndex(state, tabId) === -1) return;
-    if (state.activeTabId === tabId && state.panelOpen) return;
+    if (state.activeTabId === tabId && state.panelOpen) {
+      pushHistory(tabId);
+      return;
+    }
     const tabsChanged = state.activeTabId !== tabId;
     const layoutChanged = !state.panelOpen;
     emit(
       { ...state, activeTabId: tabId, panelOpen: true },
       { tabsChanged, layoutChanged },
     );
+    pushHistory(tabId);
+  },
+  /**
+   * Show the grouped library overview (the navigation root) and open the
+   * panel. Pushes the overview sentinel onto the history.
+   */
+  showOverview(): void {
+    const layoutChanged = !state.panelOpen;
+    if (layoutChanged) {
+      emit({ ...state, panelOpen: true }, { layoutChanged: true });
+    }
+    pushHistory(OVERVIEW_ENTRY_ID);
+  },
+  /** Step back one entry in the panel navigation history. */
+  back(): void {
+    if (historyIndex <= 0) return;
+    historyIndex -= 1;
+    const entryId = history[historyIndex] ?? OVERVIEW_ENTRY_ID;
+    if (entryId !== OVERVIEW_ENTRY_ID && findIndex(state, entryId) !== -1) {
+      if (state.activeTabId !== entryId) {
+        emit({ ...state, activeTabId: entryId }, { tabsChanged: true });
+      }
+    }
+    emitNav();
+  },
+  /** Step forward one entry in the panel navigation history. */
+  forward(): void {
+    if (historyIndex >= history.length - 1) return;
+    historyIndex += 1;
+    const entryId = history[historyIndex] ?? OVERVIEW_ENTRY_ID;
+    if (entryId !== OVERVIEW_ENTRY_ID && findIndex(state, entryId) !== -1) {
+      if (state.activeTabId !== entryId) {
+        emit({ ...state, activeTabId: entryId }, { tabsChanged: true });
+      }
+    }
+    emitNav();
   },
   /**
    * Close a tab. If it was the active tab, activates the most-recent
@@ -289,6 +406,7 @@ export const displayTabs = {
         { ...state, tabs: [], activeTabId: null, panelOpen: false },
         { tabsChanged: true, layoutChanged: state.panelOpen },
       );
+      dropFromHistory(tabId);
       return;
     }
     let nextActive = state.activeTabId;
@@ -300,6 +418,7 @@ export const displayTabs = {
       { ...state, tabs: remaining, activeTabId: nextActive },
       { tabsChanged: true },
     );
+    dropFromHistory(tabId);
   },
   /**
    * Open / close the panel without changing the active tab. Closing here
@@ -365,6 +484,9 @@ export const displayTabs = {
       clearTimeout(persistedWidthTimer);
       persistedWidthTimer = null;
     }
+    history = [OVERVIEW_ENTRY_ID];
+    historyIndex = 0;
+    emitNav();
     emit(
       {
         tabs: [],
@@ -428,3 +550,15 @@ export const useActiveDisplayTab = (): DisplayTab | null => {
   if (activeTabId == null) return null;
   return tabs.find((tab) => tab.id === activeTabId) ?? null;
 };
+
+/**
+ * Subscribe to the panel navigation history (current entry +
+ * back/forward availability). Drives the top-bar back/forward controls
+ * and the panel's overview-vs-viewer rendering.
+ */
+export const useDisplayNav = (): DisplayNavSnapshot =>
+  useSyncExternalStore(
+    displayTabs.subscribeNav,
+    displayTabs.getNavSnapshot,
+    displayTabs.getNavSnapshot,
+  );

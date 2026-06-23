@@ -6,7 +6,14 @@ import {
   useRouter,
   useRouterState,
 } from "@tanstack/react-router";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { z } from "zod";
 import { ChatRuntimeProvider } from "@/context/chat-runtime";
 import { useChatRuntime } from "@/context/use-chat-runtime";
@@ -55,13 +62,12 @@ const SubscriptionUpgradeDialog = lazy(() =>
   })),
 );
 import { ShellTopBar } from "@/shell/ShellTopBar";
+import { WorkspaceSidebar } from "@/shell/WorkspaceSidebar";
 import {
   displayTabs,
   useDisplayPanelExpanded,
   useDisplayPanelOpen,
-  useDisplayTabList,
 } from "@/features/workspace-display/tab-store";
-import { CHAT_DISPLAY_TAB_ID } from "@/features/workspace-display/default-tabs";
 import {
   ensureChatDisplayTab,
   openChatDisplayTab,
@@ -153,7 +159,6 @@ function RootChrome() {
   const chat = useChatRuntime();
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
-  const { activeTabId } = useDisplayTabList();
 
   const [shellBreakpoints, setShellBreakpoints] =
     useState<ShellBreakpointState>(() =>
@@ -174,13 +179,21 @@ function RootChrome() {
   const isMobileWebView =
     typeof document !== "undefined" &&
     document.documentElement.getAttribute("data-platform") === "mobile";
-  const shouldAutoHideWorkspaceStrip =
-    !isMiniWindow && !isMobileWebView && shellBreakpoints.hideWorkspaceStrip;
+  const showWorkspaceSidebar = !isMiniWindow && !isMobileWebView;
 
   useEffect(() => {
     if (isMiniWindow) return;
     window.electronAPI?.window.setNativeButtonsVisible?.(true);
   }, [isMiniWindow]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (showWorkspaceSidebar) root.dataset.shellPanelChrome = "true";
+    else delete root.dataset.shellPanelChrome;
+    return () => {
+      delete root.dataset.shellPanelChrome;
+    };
+  }, [showWorkspaceSidebar]);
 
   const setDialogSearch = useCallback(
     (next: "auth" | "connect" | undefined) => {
@@ -421,38 +434,18 @@ function RootChrome() {
     }
   }, [isMiniWindow, isMobileWebView, shellBreakpoints.hideDisplayPanel]);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    if (shouldAutoHideWorkspaceStrip) {
-      root.dataset.shellRightContextHidden = "true";
-    } else {
-      delete root.dataset.shellRightContextHidden;
-    }
-
-    return () => {
-      delete root.dataset.shellRightContextHidden;
-    };
-  }, [shouldAutoHideWorkspaceStrip]);
-
-  const expandedDisplayPanelChat =
-    panelOpen && panelExpanded && activeTabId === CHAT_DISPLAY_TAB_ID;
-
   return (
     <>
       <MobileActivityNotificationsBridge />
 
-      <ShellTopBar
-        onSignIn={showAuthDialog}
-        onConnect={showConnectDialog}
-        showWorkspaceStripToggle={
-          isOnChatRoute &&
-          !chat.showHomeContent &&
-          !isMiniWindow &&
-          !isMobileWebView &&
-          !shouldAutoHideWorkspaceStrip &&
-          (!panelOpen || expandedDisplayPanelChat)
-        }
-      />
+      {!showWorkspaceSidebar ? <ShellTopBar /> : null}
+
+      {showWorkspaceSidebar ? (
+        <WorkspaceSidebar
+          onSignIn={showAuthDialog}
+          onConnect={showConnectDialog}
+        />
+      ) : null}
 
       <StellaContextMenu
         isOpen={isContextMenuPanelOpen}
@@ -483,17 +476,7 @@ function RootChrome() {
       </StellaContextMenu>
 
       <Suspense fallback={null}>
-        <DisplaySidebar
-          ref={displaySidebarRef}
-          showOverview={
-            isOnChatRoute &&
-            !chat.showHomeContent &&
-            !isMiniWindow &&
-            !isMobileWebView &&
-            !shouldAutoHideWorkspaceStrip
-          }
-          forceHidden={shouldAutoHideWorkspaceStrip && !panelOpen}
-        />
+        <DisplaySidebar ref={displaySidebarRef} />
       </Suspense>
 
       <ComposerAreaSelectOverlay

@@ -8,10 +8,9 @@
   font-family: inherit;
   font-size: var(--font-size-base);
   line-height: 1.35;
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--card);
-  box-shadow: var(--shadow-sm);
   color: var(--text-base);
   max-width: 100%;
   text-align: left;

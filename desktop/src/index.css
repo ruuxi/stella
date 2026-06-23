@@ -191,12 +191,19 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --panel-glass-bg: color-mix(in srgb, var(--card) 88%, transparent);
   --panel-glass-blur: blur(20px) saturate(130%);
 
-  /* Sidebar chrome — a subtle gray so the rail reads as chrome against the
-     white content area (macOS Mail/Finder layout). Composer/cards use --card. */
-  --panel-surface-bg: #f2f2f4;
-  --panel-surface-bg-gradient: none;
-  --panel-surface-border: var(--border);
-  --panel-surface-highlight: none;
+  /* Tint-only shell panels (workspace panel, chat sidebar, composer) — a
+     semi-transparent theme tint + soft top-to-bottom gradient and an inset
+     top highlight. No backdrop-filter, so it reads like soft glass over the
+     shifting gradient while staying cheap to paint. */
+  --panel-surface-bg: color-mix(in srgb, var(--background) 50%, transparent);
+  --panel-surface-bg-gradient: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--background) 46%, transparent),
+    color-mix(in srgb, var(--background) 58%, transparent)
+  );
+  --panel-surface-border: color-mix(in oklch, var(--border) 60%, transparent);
+  --panel-surface-highlight: inset 0 1px 0
+    color-mix(in oklch, white 42%, transparent);
   --panel-elevated-shadow: var(--shadow-sm);
 
   /* Opaque surface ladder. */
@@ -421,10 +428,15 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --glass-bg: color-mix(in srgb, var(--card) 84%, transparent);
   --panel-glass-bg: color-mix(in srgb, var(--card) 90%, transparent);
 
-  --panel-surface-bg: var(--card);
-  --panel-surface-bg-gradient: none;
+  --panel-surface-bg: color-mix(in srgb, var(--background) 62%, transparent);
+  --panel-surface-bg-gradient: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--background) 56%, transparent),
+    color-mix(in srgb, var(--background) 70%, transparent)
+  );
   --panel-surface-border: var(--border);
-  --panel-surface-highlight: none;
+  --panel-surface-highlight: inset 0 1px 0
+    color-mix(in oklch, white 10%, transparent);
 
   --surface-inset: color-mix(in srgb, var(--foreground) 6%, var(--background));
   --surface-raised: var(--card);
