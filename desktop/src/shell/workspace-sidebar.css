@@ -277,44 +277,6 @@
   margin-bottom: 4px;
 }
 
-/* ── Engine / models overlay ──────────────────────────────────────── */
-
-.workspace-sidebar__engine {
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: 60%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-top: 1px solid var(--border);
-  opacity: 0;
-  transform: translateY(4px);
-  transition:
-    opacity 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-.workspace-sidebar__engine[data-visible] {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.workspace-sidebar__engine > * {
-  flex: 1;
-  min-height: 0;
-}
-
-.workspace-sidebar__engine .engine-tab {
-  padding: 8px 10px;
-  overflow: hidden;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .workspace-sidebar__engine {
-    transition: none;
-  }
-}
-
 /* ── Footer (Models + account) ────────────────────────────────────── */
 
 .workspace-sidebar__footer {
@@ -329,6 +291,12 @@
 
 /* Keep everything on one row; the account block shrinks (label ellipsizes)
    before anything wraps. */
+.workspace-sidebar__footer .display-sidebar__models-btn[data-active] {
+  color: var(--text-strong);
+  border-color: color-mix(in oklch, var(--border) 70%, transparent);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
 .workspace-sidebar__footer .display-sidebar__models-btn {
   flex: 0 0 auto;
   padding: 3px 7px;

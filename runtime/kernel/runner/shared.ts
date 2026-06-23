@@ -136,7 +136,5 @@ export const buildAgentEventPrompt = (
     );
   }
 
-  return formatAgentTerminalStateSystemReminder(lines, {
-    suggestCanvasPage: event.type === "agent-completed",
-  });
+  return formatAgentTerminalStateSystemReminder(lines);
 };

@@ -21,6 +21,7 @@ import {
   Store,
   Trash2,
 } from "@/ui/icons";
+import { CustomHouse } from "@/ui/nav-icons";
 import type { DisplayTabKind } from "./types";
 
 const TYPE_COLORS = {
@@ -365,6 +366,10 @@ const ChatIcon = ({ size = 18, style }: IconProps) => (
   <MessageSquare size={size} strokeWidth={1.5} style={style} />
 );
 
+const HomeIcon = ({ size = 18, style }: IconProps) => (
+  <CustomHouse size={size} strokeWidth={1.6} style={style} />
+);
+
 const TrashIcon = ({ size = 18, style }: IconProps) => (
   <Trash2 size={size} strokeWidth={1.5} style={style} />
 );
@@ -432,6 +437,7 @@ export const DisplayTabIcon = ({
 }) => {
   switch (kind) {
     case "home":
+      return <HomeIcon size={size} style={style} />;
     case "chat":
       return <ChatIcon size={size} style={style} />;
     case "canvas":

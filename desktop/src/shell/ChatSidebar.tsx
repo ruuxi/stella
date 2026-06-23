@@ -144,7 +144,6 @@ export function ChatPanelTab({
   onLoadOlder,
   onSend,
   onStop,
-  onNewChat,
 }: ChatPanelTabProps) {
   const [inputText, setInputText] = useState("");
   const [sidebarExpanded, setSidebarExpanded] = useState(false);

@@ -53,7 +53,7 @@ import {
   type ActivityHistorySection,
 } from "@/shell/display/ActivityHistoryDialog";
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
-import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
+import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/scheduling";
 import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import type { ChatContext } from "@/shared/types/electron";
 import { TextShimmer } from "@/app/chat/TextShimmer";

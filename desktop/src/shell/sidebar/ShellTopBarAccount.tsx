@@ -50,6 +50,7 @@ import {
 } from "@/ui/dropdown-menu";
 import { CustomDevice as Device, CustomLogIn as LogIn } from "@/ui/nav-icons";
 import { useFeedbackPrompt } from "./use-feedback-prompt";
+import "./topbar-nav.css";
 import "./account-dialogs.css";
 
 const FeedbackDialog = lazy(() =>
