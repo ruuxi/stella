@@ -4,7 +4,11 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildContextLookupUserPrompt } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
+import {
+  buildContextLookupUserPrompt,
+  formatThreadSearch,
+  parseRecallAction,
+} from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
 import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
@@ -198,5 +202,65 @@ describe("buildContextLookupUserPrompt", () => {
     );
     expect(prompt).not.toContain("Built launcher release assets.");
     expect(prompt).toContain("Full ~/.stella/memories/MEMORY.md omitted");
+  });
+});
+
+describe("parseRecallAction", () => {
+  it("parses each action shape, tolerating fences and prose", () => {
+    expect(
+      parseRecallAction('{"action":"search_memory","terms":["budget","app"]}'),
+    ).toEqual({ action: "search_memory", terms: ["budget", "app"] });
+
+    expect(
+      parseRecallAction(
+        'Sure:\n```json\n{"action":"search_threads","query":"flight research"}\n```',
+      ),
+    ).toEqual({ action: "search_threads", query: "flight research" });
+
+    expect(
+      parseRecallAction('{"action":"answer","brief":"Nothing relevant found."}'),
+    ).toEqual({ action: "answer", brief: "Nothing relevant found." });
+  });
+
+  it("drops non-string terms and returns null for prose or unknown actions", () => {
+    expect(
+      parseRecallAction('{"action":"search_memory","terms":["ok",3,null]}'),
+    ).toEqual({ action: "search_memory", terms: ["ok"] });
+    expect(parseRecallAction("I could not find anything.")).toBeNull();
+    expect(parseRecallAction('{"action":"delete_everything"}')).toBeNull();
+  });
+});
+
+describe("formatThreadSearch", () => {
+  const makeStore = (threads: unknown[]) =>
+    ({
+      searchThreads: () => threads,
+    }) as unknown as Parameters<typeof formatThreadSearch>[0];
+
+  it("renders resumable thread_ids with description and clamped summary", () => {
+    const out = formatThreadSearch(
+      makeStore([
+        {
+          threadId: "scrape-airline-a",
+          description: "Scrape airline A fares",
+          summary: "  found  cheap   fares  ",
+        },
+      ]),
+      "conv-1",
+      "flights",
+      undefined,
+    );
+    expect(out).toContain("- scrape-airline-a (resumable)");
+    expect(out).toContain("description: Scrape airline A fares");
+    expect(out).toContain("summary: found cheap fares");
+  });
+
+  it("explains an empty result differently with and without a query", () => {
+    expect(formatThreadSearch(makeStore([]), "conv-1", "flights", undefined)).toMatch(
+      /No past threads matched/,
+    );
+    expect(formatThreadSearch(makeStore([]), "conv-1", undefined, undefined)).toMatch(
+      /No past threads recorded/,
+    );
   });
 });

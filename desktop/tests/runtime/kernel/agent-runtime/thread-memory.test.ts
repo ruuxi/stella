@@ -112,6 +112,88 @@ describe("buildStartupPromptMessages", () => {
     expect(promptText).toContain("***");
   });
 
+  it("push-injects the resident user profile and focus summary as startup docs", async () => {
+    const messages = await buildStartupPromptMessages({
+      context: {
+        systemPrompt: "system",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+        threadHistory: [],
+        userProfile: "# User Profile\n\n- The user goes by Bob",
+        memorySummary: "# Memory summary\n\n- Shipping the resident-memory rewire",
+      },
+    });
+
+    const promptText = messages.map((message) => message.text).join("\n");
+    expect(promptText).toContain('path="~/.stella/memories/profile.md"');
+    expect(promptText).toContain("The user goes by Bob");
+    expect(promptText).toContain('path="~/.stella/memories/memory_summary.md"');
+    expect(promptText).toContain("resident-memory rewire");
+    expect(messages.every((m) => m.customType === "bootstrap.startup_doc")).toBe(
+      true,
+    );
+  });
+
+  it("does not re-inject resident docs already persisted in thread history", async () => {
+    const messages = await buildStartupPromptMessages({
+      context: {
+        systemPrompt: "system",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+        threadHistory: [
+          {
+            role: "runtimeInternal",
+            content: "",
+            customMessage: {
+              customType: "bootstrap.startup_doc",
+              content: [
+                {
+                  type: "text",
+                  text: '<startup_doc path="~/.stella/memories/profile.md">\n# User Profile\n\n- The user goes by Bob\n</startup_doc>',
+                },
+              ],
+            },
+          },
+        ],
+        userProfile: "# User Profile\n\n- The user goes by Bob",
+      },
+    });
+
+    expect(messages).toEqual([]);
+  });
+
+  it("re-injects a resident doc whose content changed since it was persisted", async () => {
+    const messages = await buildStartupPromptMessages({
+      context: {
+        systemPrompt: "system",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+        threadHistory: [
+          {
+            role: "runtimeInternal",
+            content: "",
+            customMessage: {
+              customType: "bootstrap.startup_doc",
+              content: [
+                {
+                  type: "text",
+                  text: '<startup_doc path="~/.stella/memories/profile.md">\n# User Profile\n\n- The user goes by Bob\n</startup_doc>',
+                },
+              ],
+            },
+          },
+        ],
+        // Remember replaced the fact after the old doc was persisted.
+        userProfile: "# User Profile\n\n- The user goes by Robert",
+      },
+    });
+
+    const promptText = messages.map((message) => message.text).join("\n");
+    expect(promptText).toContain('path="~/.stella/memories/profile.md"');
+    expect(promptText).toContain("The user goes by Robert");
+    expect(promptText).not.toContain("The user goes by Bob");
+  });
+
   it("injects personality as a startup doc ahead of core memory on the first turn", async () => {
     const messages = await buildStartupPromptMessages({
       context: {

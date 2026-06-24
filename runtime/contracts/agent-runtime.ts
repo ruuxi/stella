@@ -41,6 +41,14 @@ export type AgentCapabilities = {
    * hidden `~/.stella/core-memory.md` startup doc on the first turn.
    */
   injectsCoreMemory?: boolean;
+  /**
+   * Push-inject the live resident memory docs — the durable user profile
+   * (`~/.stella/memories/profile.md`, written by the Remember tool) and
+   * Dream's focus summary (`~/.stella/memories/memory_summary.md`) — as hidden
+   * startup docs, so durable facts are always in context without a Context
+   * lookup.
+   */
+  injectsResidentMemory?: boolean;
   /** Inject the dynamic memory bundle on the every-Nth-turn cadence. */
   injectsDynamicMemory?: boolean;
   /** Inject runtime reminder hidden messages. */
@@ -99,6 +107,7 @@ const BUILTIN_AGENT_DEFINITIONS = [
       followUpMode: "all",
       injectsPersonality: true,
       injectsCoreMemory: true,
+      injectsResidentMemory: true,
       injectsDynamicMemory: true,
       injectsRuntimeReminders: true,
       injectsSkillCatalog: true,

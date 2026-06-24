@@ -112,7 +112,9 @@ describe("orchestrator direct tool surface", () => {
     const orchestratorTools = new Set(
       host.getToolCatalog("orchestrator").map((tool) => tool.name),
     );
-    expect(orchestratorTools.has("Context")).toBe(true);
+    expect(orchestratorTools.has("Recall")).toBe(true);
+    expect(orchestratorTools.has("Remember")).toBe(true);
+    expect(orchestratorTools.has("search_threads")).toBe(false);
     expect(orchestratorTools.has("spawn_agent")).toBe(true);
     expect(orchestratorTools.has("send_input")).toBe(true);
     expect(orchestratorTools.has("pause_agent")).toBe(true);
@@ -161,7 +163,8 @@ describe("orchestrator direct tool surface", () => {
     expect(generalTools.has("DisplayGuidelines")).toBe(false);
     expect(generalTools.has("Memory")).toBe(false);
     expect(generalTools.has("MemoryNote")).toBe(false);
-    expect(generalTools.has("Context")).toBe(false);
+    expect(generalTools.has("Recall")).toBe(false);
+    expect(generalTools.has("Remember")).toBe(false);
     expect(generalTools.has("import_source")).toBe(false);
     expect(generalTools.has("askQuestion")).toBe(false);
     expect(generalTools.has("AskUserQuestion")).toBe(false);
@@ -294,11 +297,11 @@ describe("orchestrator direct tool surface", () => {
     );
   });
 
-  it("executes Context for the orchestrator and rejects other agents", async () => {
+  it("executes Recall for the orchestrator and rejects other agents", async () => {
     const { host, contextLookups } = await createTestHost();
 
     const orchestratorResult = await host.executeTool(
-      "Context",
+      "Recall",
       {
         prompt: "Find context for what the user means by yesterday's tab.",
         memorySearchTerms: ["yesterday", "tab"],
@@ -318,7 +321,7 @@ describe("orchestrator direct tool surface", () => {
     });
 
     const generalResult = await host.executeTool(
-      "Context",
+      "Recall",
       { prompt: "Find context." },
       makeToolContext("general"),
     );
@@ -326,11 +329,11 @@ describe("orchestrator direct tool surface", () => {
     expect(generalResult.error).toContain("only available to the orchestrator");
 
     const missingPromptResult = await host.executeTool(
-      "Context",
+      "Recall",
       {},
       makeToolContext("orchestrator"),
     );
-    expect(missingPromptResult.error).toContain("Context prompt is required");
+    expect(missingPromptResult.error).toContain("Recall prompt is required");
   });
 
   it("executes spawn_agent directly for the orchestrator and rejects other agents", async () => {

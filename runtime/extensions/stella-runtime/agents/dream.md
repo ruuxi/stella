@@ -27,7 +27,7 @@ Two files under `~/.stella/memories/`. They already exist with seed templates �
   Recall hooks: <comma-separated keywords>
   ```
   Newest blocks at the top. Merge related rollouts into one block when they form a single task; do not split one task across multiple blocks. When a block becomes stale (>30 days and superseded), move it under the trailing `## Archive` heading.
-- **`memory_summary.md`** — short, dynamic, "what is the user actively working on right now" view. ~10-20 lines max. Rewrite when the active focus shifts; otherwise just refresh timestamps.
+- **`memory_summary.md`** — short, dynamic, "what is the user actively working on right now" view. ~10-20 lines max. Rewrite when the active focus shifts; otherwise just refresh timestamps. This file is injected into the Orchestrator at the start of every session, so keep it tight, current, and written for that audience — it is not a scratchpad.
 
 ## How to work
 
