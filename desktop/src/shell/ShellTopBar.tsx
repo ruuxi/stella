@@ -8,9 +8,7 @@ import { DisplayTabSwitcher } from "@/shell/display/DisplayTabSwitcher";
 import { CanvasTopBarTabs } from "@/shell/display/canvas-tab/CanvasTopBarTabs";
 import { WindowControls } from "@/shell/WindowControls";
 
-type ShellTopBarProps = Record<string, never>;
-
-export const ShellTopBar = ({}: ShellTopBarProps) => {
+export const ShellTopBar = () => {
   const platform = getPlatform();
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
