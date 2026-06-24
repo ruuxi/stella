@@ -53,6 +53,36 @@ export const readCoreMemory = (stellaDataDir: string): string | undefined => {
   return undefined;
 };
 
+const readResidentMemoryDoc = (filePath: string): string | undefined => {
+  try {
+    const content = fs.readFileSync(filePath, "utf-8").trim();
+    return content ? redactMemoryText(content) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Dream's dynamic focus summary, read synchronously for resident injection.
+ * Push-injected alongside core memory so the user's current active focus is
+ * always in the Orchestrator's context (not only via the `Context` lookup).
+ */
+export const readMemorySummaryDoc = (
+  stellaDataDir: string,
+): string | undefined =>
+  readResidentMemoryDoc(
+    path.join(stellaDataDir, "memories", "memory_summary.md"),
+  );
+
+/**
+ * The durable user-profile facts written by the `Remember` tool, read
+ * synchronously for resident injection.
+ */
+export const readUserProfileDoc = (
+  stellaDataDir: string,
+): string | undefined =>
+  readResidentMemoryDoc(path.join(stellaDataDir, "memories", "profile.md"));
+
 const MAX_AGENT_EVENT_FIELD_CHARS = 30_000;
 
 const truncateAgentEventField = (value: string): string =>

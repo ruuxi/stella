@@ -11,7 +11,6 @@
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import {
-  handleSearchThreads,
   handleSendInput,
   handleSpawnAgent,
   type StateContext,
@@ -51,29 +50,6 @@ export const createAgentTools = (
     },
     execute: async (args, context) =>
       handleSpawnAgent(stateContext, args, context),
-  },
-  {
-    name: "search_threads",
-    agentTypes: ORCHESTRATOR_ONLY,
-    description:
-      "Find past work beyond what `# Other Threads` shows. Searches every thread ever spawned in this conversation — including old, finished, or no-longer-listed ones — by name, description, and summary. Call without a query to browse the most recent past work. Every returned thread_id can be resumed with send_input; prefer resuming found work over re-spawning it.",
-    parameters: {
-      type: "object",
-      properties: {
-        query: {
-          type: "string",
-          description:
-            "Words from the work you're looking for (topic, app name, what it did). Results need not match every word — the best-matching threads rank first. Omit to list recent past work.",
-        },
-        limit: {
-          type: "number",
-          description: "Max results (default 12, max 25).",
-        },
-      },
-      required: [],
-    },
-    execute: async (args, context) =>
-      handleSearchThreads(stateContext, args, context),
   },
   {
     name: "send_input",

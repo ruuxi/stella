@@ -234,19 +234,9 @@ export type ToolHostOptions = {
     args: Record<string, unknown>,
   ) => Promise<unknown>;
   /**
-   * Optional synchronous search over ALL of a conversation's runtime
-   * threads (including evicted ones), backing the orchestrator's
-   * `search_threads` tool. Deliberately deterministic — no LLM in the
-   * path — so thread ids survive to the model verbatim.
-   */
-  searchThreads?: (args: {
-    conversationId: string;
-    query?: string;
-    limit?: number;
-  }) => RuntimeThreadRecord[];
-  /**
-   * Optional one-shot context lookup used by the orchestrator's read-only
-   * Context tool.
+   * Optional context lookup backing the orchestrator's read-only `Recall`
+   * tool. The host runs the recall agent (memory ledger + past-thread search
+   * + live machine state) and returns its synthesized brief.
    */
   contextProvider?: (payload: {
     conversationId: string;

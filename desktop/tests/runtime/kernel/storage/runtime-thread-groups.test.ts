@@ -727,7 +727,7 @@ describe("buildActiveThreadsPrompt", () => {
     expect(prompt).toContain("    description: Scrape airline A fares");
     // The ungrouped singleton renders flat, exactly like the historical format.
     expect(prompt).toContain("\n- solo-task (resumable, last used just now)");
-    expect(prompt).toContain("search_threads");
+    expect(prompt).toContain("Recall");
   });
 
   it("renders a one-member group flat without a header", () => {

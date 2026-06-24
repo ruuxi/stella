@@ -2,6 +2,7 @@ import path from "node:path";
 
 import type { AssistantMessage, Context, Message } from "../../ai/types.js";
 import { completeSimple, readAssistantText } from "../../ai/stream.js";
+import { parseJsonWithRepair } from "../../ai/utils/json-parse.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { HostAppBrowserContextSnapshot } from "../../protocol/index.js";
 import type { LocalContextEvent } from "../local-history.js";
@@ -18,6 +19,9 @@ import {
 } from "../integrations/claude-code-agent-runtime.js";
 
 const MAX_CONTEXT_OUTPUT_TOKENS = 900;
+const EAGER_MEMORY_FILE_CHAR_BUDGET = 4_000;
+const MAX_RECALL_STEPS = 4;
+const RECALL_OBSERVATION_CHAR_BUDGET = 6_000;
 const MAX_MEMORY_SEARCH_TERMS = 12;
 const MAX_MEMORY_SEARCH_TERM_CHARS = 120;
 const MAX_MEMORY_SEARCH_MATCHES = 40;
@@ -27,13 +31,18 @@ const CHRONICLE_DIR_SEGMENTS = ["memories_extensions", "chronicle"] as const;
 
 type ContextLookupStore = Pick<RuntimeStore, "listActiveThreads">;
 
-const CONTEXT_LOOKUP_SYSTEM_PROMPT = [
-  "Provide relevant matching information for the lookup request.",
+const RECALL_SYSTEM_PROMPT = [
+  "You are Stella's recall agent. Resolve the lookup request into a concise, useful answer for the orchestrator, drawing on the user's durable memory, past agent work (threads), recent activity, and live app/browser state.",
   "",
-  "Use the available context sources to return only information that directly helps answer or route the request.",
+  "You work in up to a few steps. At each step respond with EXACTLY ONE JSON object and nothing else:",
+  '  {"action":"search_memory","terms":["...", "..."]}  — keyword-search the durable memory ledger (MEMORY.md). 2-8 concrete terms.',
+  '  {"action":"search_threads","query":"..."}          — search every past agent thread (resumable) by topic/app/what it did. Omit query to browse recent work.',
+  '  {"action":"answer","brief":"..."}                   — finish with a concise markdown brief.',
   "",
-  "Return a concise markdown brief. Include relevant memory, likely referenced apps/tabs, URLs, and active agent threads only when they help.",
-  'If nothing is relevant, respond exactly "Nothing relevant found."',
+  "The eager context below already includes the memory summary, a (possibly truncated) ledger, live app/browser state, recent activity, active threads, and chronicle. Search only when the answer likely lives in the deeper ledger or in older/unlisted threads. Resolve in as few steps as possible — answer the moment you can.",
+  "",
+  "When past threads are relevant, include their thread_id(s) in the brief so the orchestrator can resume them. Keep the brief tight — only what helps answer or route the request.",
+  'If nothing is relevant, answer with exactly "Nothing relevant found."',
 ].join("\n");
 
 const truncate = (value: string, maxChars: number): string =>
@@ -176,8 +185,12 @@ const readMemoryFiles = async (
   for (const file of files) {
     const content = await readOptionalTextFile(file.path);
     if (!content) continue;
+    const rendered = truncate(
+      sanitizePromptContext(content, file.displayPath),
+      EAGER_MEMORY_FILE_CHAR_BUDGET,
+    );
     blocks.push(
-      `<memory_file path="${file.displayPath}">\n${sanitizePromptContext(content, file.displayPath)}\n</memory_file>`,
+      `<memory_file path="${file.displayPath}">\n${rendered}\n</memory_file>`,
     );
   }
   if (blocks.length === 0) return "No memory files found.";
@@ -365,7 +378,95 @@ export const buildContextLookupUserPrompt = async (args: {
   return sections.join("\n");
 };
 
-export const runContextLookup = async (args: {
+/** Search every past agent thread (resumable), formatted for the recall agent. */
+export const formatThreadSearch = (
+  store: Pick<RuntimeStore, "searchThreads">,
+  conversationId: string,
+  query: string | undefined,
+  limit: number | undefined,
+): string => {
+  const cappedLimit = Math.max(1, Math.min(25, Math.floor(limit ?? 12)));
+  const threads = store.searchThreads({
+    conversationId,
+    ...(query ? { query } : {}),
+    limit: cappedLimit,
+  });
+  if (threads.length === 0) {
+    return query
+      ? "No past threads matched. Try fewer/different words, or omit the query to browse recent work."
+      : "No past threads recorded yet.";
+  }
+  return threads
+    .map((thread) => {
+      const summary = thread.summary?.trim().replace(/\s+/g, " ").slice(0, 300);
+      return [
+        `- ${thread.threadId} (resumable)`,
+        thread.description?.trim()
+          ? `  description: ${thread.description.trim()}`
+          : "",
+        summary ? `  summary: ${summary}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n");
+};
+
+type RecallAction =
+  | { action: "search_memory"; terms: string[] }
+  | { action: "search_threads"; query?: string; limit?: number }
+  | { action: "answer"; brief: string };
+
+/** Pull the first JSON object out of a model turn (tolerates fences/prose). */
+const extractJsonObject = (raw: string): string | null => {
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? (fenced[1] ?? "") : raw;
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start === -1 || end === -1 || end < start) return null;
+  return candidate.slice(start, end + 1);
+};
+
+export const parseRecallAction = (raw: string): RecallAction | null => {
+  const json = extractJsonObject(raw);
+  if (!json) return null;
+  let parsed: unknown;
+  try {
+    parsed = parseJsonWithRepair<unknown>(json);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const obj = parsed as Record<string, unknown>;
+  if (obj.action === "answer") {
+    return { action: "answer", brief: typeof obj.brief === "string" ? obj.brief : "" };
+  }
+  if (obj.action === "search_memory") {
+    const terms = Array.isArray(obj.terms)
+      ? obj.terms.filter((term): term is string => typeof term === "string")
+      : [];
+    return { action: "search_memory", terms };
+  }
+  if (obj.action === "search_threads") {
+    return {
+      action: "search_threads",
+      ...(typeof obj.query === "string" ? { query: obj.query } : {}),
+      ...(typeof obj.limit === "number" ? { limit: obj.limit } : {}),
+    };
+  }
+  return null;
+};
+
+/**
+ * Agent-backed recall. Seeds the model with the cheap eager context (memory
+ * summary, capped ledger, live app/browser state, recent activity, active
+ * threads, chronicle), then runs a bounded JSON-action loop where the model
+ * decides what to search — the deep memory ledger and/or every past agent
+ * thread — before synthesizing a brief. Replaces the old one-shot lookup and
+ * subsumes the standalone `search_threads` tool. Runs synchronously as the
+ * `Recall` tool's backing.
+ */
+export const runRecall = async (args: {
   conversationId: string;
   lookupPrompt: string;
   memorySearchTerms?: readonly string[];
@@ -377,51 +478,120 @@ export const runContextLookup = async (args: {
   resolvedLlm: ResolvedLlmRoute;
   signal?: AbortSignal;
 }): Promise<string> => {
-  const userText = await buildContextLookupUserPrompt(args);
-  const context: Context = {
-    systemPrompt: CONTEXT_LOOKUP_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [{ type: "text", text: userText }],
-        timestamp: Date.now(),
-      } satisfies Message,
-    ],
-  };
+  const seed = await buildContextLookupUserPrompt({
+    conversationId: args.conversationId,
+    lookupPrompt: args.lookupPrompt,
+    // memorySearchTerms intentionally omitted from the seed — the recall agent
+    // issues its own searches; any orchestrator-provided terms pre-seed below.
+    stellaDataDir: args.stellaDataDir,
+    store: args.store,
+    localEvents: args.localEvents,
+    ...(args.appBrowserContext
+      ? { appBrowserContext: args.appBrowserContext }
+      : {}),
+  });
 
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
     stellaAppDir: args.stellaAppDir,
     modelId: args.resolvedLlm.model.id,
   });
-  if (useClaudeCode) {
-    const text = await runClaudeCodeAgentTextCompletion({
-      stellaAppDir: args.stellaAppDir,
-      agentType: AGENT_IDS.ORCHESTRATOR,
-      stellaModel: args.resolvedLlm.model.id,
+  const apiKey = useClaudeCode
+    ? undefined
+    : (await args.resolvedLlm.getApiKey())?.trim();
+  if (!useClaudeCode && !apiKey) {
+    return "Recall is unavailable because no model credential is configured.";
+  }
+
+  const step = async (userText: string): Promise<string> => {
+    const context: Context = {
+      systemPrompt: RECALL_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: userText }],
+          timestamp: Date.now(),
+        } satisfies Message,
+      ],
+    };
+    if (useClaudeCode) {
+      const text = await runClaudeCodeAgentTextCompletion({
+        stellaAppDir: args.stellaAppDir,
+        agentType: AGENT_IDS.ORCHESTRATOR,
+        stellaModel: args.resolvedLlm.model.id,
+        context,
+        abortSignal: args.signal,
+      });
+      return text.trim();
+    }
+    const response: AssistantMessage = await completeSimple(
+      args.resolvedLlm.model,
       context,
-      abortSignal: args.signal,
-    });
-    return text.trim() || "Nothing relevant found.";
+      {
+        apiKey: apiKey as string,
+        ...(args.resolvedLlm.refreshApiKey
+          ? { refreshApiKey: args.resolvedLlm.refreshApiKey }
+          : {}),
+        maxTokens: MAX_CONTEXT_OUTPUT_TOKENS,
+        temperature: 0,
+        ...(args.signal ? { signal: args.signal } : {}),
+      },
+    );
+    return readAssistantText(response).trim();
+  };
+
+  const buildTurn = (scratchpad: string, closer: string): string =>
+    [
+      seed,
+      scratchpad ? `\n# Steps so far\n${scratchpad}` : "",
+      `\n# Next\n${closer}`,
+    ].join("\n");
+
+  let scratchpad = "";
+
+  // Honor an orchestrator-provided search hint as a pre-run observation.
+  const seedTerms = normalizeMemorySearchTerms(args.memorySearchTerms);
+  if (seedTerms.length > 0) {
+    const initial = await readMemorySearchResults(args.stellaDataDir, seedTerms);
+    scratchpad += `\nAction: ${JSON.stringify({ action: "search_memory", terms: seedTerms })}\nObservation:\n${truncate(initial, RECALL_OBSERVATION_CHAR_BUDGET)}\n`;
   }
 
-  const apiKey = (await args.resolvedLlm.getApiKey())?.trim();
-  if (!apiKey) {
-    return "Context lookup is unavailable because no model credential is configured.";
+  for (let i = 0; i < MAX_RECALL_STEPS; i += 1) {
+    const raw = await step(
+      buildTurn(
+        scratchpad,
+        'Respond with one JSON action ({"action":"search_memory"|"search_threads"|"answer", ...}).',
+      ),
+    );
+    const action = parseRecallAction(raw);
+    if (!action) {
+      // Model returned prose instead of JSON — accept it as the answer.
+      return raw || "Nothing relevant found.";
+    }
+    if (action.action === "answer") {
+      return action.brief.trim() || "Nothing relevant found.";
+    }
+    const observation =
+      action.action === "search_memory"
+        ? await readMemorySearchResults(args.stellaDataDir, action.terms)
+        : formatThreadSearch(
+            args.store,
+            args.conversationId,
+            action.query,
+            action.limit,
+          );
+    scratchpad += `\nAction: ${JSON.stringify(action)}\nObservation:\n${truncate(observation, RECALL_OBSERVATION_CHAR_BUDGET)}\n`;
   }
 
-  const response: AssistantMessage = await completeSimple(
-    args.resolvedLlm.model,
-    context,
-    {
-      apiKey,
-      ...(args.resolvedLlm.refreshApiKey
-        ? { refreshApiKey: args.resolvedLlm.refreshApiKey }
-        : {}),
-      maxTokens: MAX_CONTEXT_OUTPUT_TOKENS,
-      temperature: 0,
-      ...(args.signal ? { signal: args.signal } : {}),
-    },
+  // Step budget exhausted — force a final synthesized answer.
+  const finalRaw = await step(
+    buildTurn(
+      scratchpad,
+      'You are out of search steps. Respond now with {"action":"answer","brief":"..."} summarizing what you found.',
+    ),
   );
-
-  return readAssistantText(response).trim() || "Nothing relevant found.";
+  const finalAction = parseRecallAction(finalRaw);
+  if (finalAction?.action === "answer") {
+    return finalAction.brief.trim() || "Nothing relevant found.";
+  }
+  return finalRaw || "Nothing relevant found.";
 };

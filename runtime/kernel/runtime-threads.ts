@@ -3,7 +3,7 @@
  * (several related threads spawned for one request) occupies one slot,
  * and an ungrouped thread is its own slot. Eviction flips whole slots
  * to 'evicted'; the rows survive and stay resumable via `send_input`
- * and discoverable via `search_threads`.
+ * and discoverable via `Recall`.
  */
 export const MAX_ACTIVE_RUNTIME_THREADS = 16;
 
@@ -142,5 +142,5 @@ export const buildActiveThreadsPrompt = (
     );
     return [header, ...lines].join("\n");
   });
-  return `# Other Threads\nDurable past and ongoing work, grouped when several threads serve one request. Any thread_id can be reused later with send_input, even after cancellation or completion. A group id (grp-…) works with pause_agent to stop the whole group, and with spawn_agent's \`group\` to add related work. Older work not listed here is searchable with search_threads.\n${blocks.join("\n")}`;
+  return `# Other Threads\nDurable past and ongoing work, grouped when several threads serve one request. Any thread_id can be reused later with send_input, even after cancellation or completion. A group id (grp-…) works with pause_agent to stop the whole group, and with spawn_agent's \`group\` to add related work. Older work not listed here is searchable with Recall.\n${blocks.join("\n")}`;
 };

@@ -50,7 +50,7 @@ import type {
 } from "../storage/shared.js";
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import { BackgroundCompactionScheduler } from "../agent-runtime/compaction-scheduler.js";
-import { runContextLookup } from "../agent-runtime/context-lookup.js";
+import { runRecall } from "../agent-runtime/context-lookup.js";
 import {
   defaultPromptForAgentType,
   DEFAULT_MAX_AGENT_DEPTH,
@@ -58,6 +58,8 @@ import {
   LOCAL_HISTORY_RESERVE_TOKENS,
   MIN_LOCAL_HISTORY_TOKENS,
   readCoreMemory,
+  readMemorySummaryDoc,
+  readUserProfileDoc,
   sanitizeConvexDeploymentUrl,
   sanitizeStellaBase,
 } from "./shared.js";
@@ -531,7 +533,6 @@ export const createRunnerContext = ({
       }
     },
     sourceImportApi,
-    searchThreads: (args) => context.runtimeStore.searchThreads(args),
     contextProvider: async (payload) => {
       const agent = resolveAgent(context, AGENT_IDS.ORCHESTRATOR);
       const model = getConfiguredModel(context, AGENT_IDS.ORCHESTRATOR, agent);
@@ -548,7 +549,7 @@ export const createRunnerContext = ({
       const appBrowserContext = getAppBrowserContext
         ? await getAppBrowserContext()
         : undefined;
-      return await runContextLookup({
+      return await runRecall({
         conversationId: payload.conversationId,
         lookupPrompt: payload.prompt,
         ...(payload.memorySearchTerms?.length
@@ -896,6 +897,10 @@ export const buildAgentContext = async (
     args.agentType,
     "injectsCoreMemory",
   );
+  const injectsResidentMemory = agentHasCapability(
+    args.agentType,
+    "injectsResidentMemory",
+  );
   const injectsPersonality = agentHasCapability(
     args.agentType,
     "injectsPersonality",
@@ -918,6 +923,12 @@ export const buildAgentContext = async (
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
     coreMemory: injectsCoreMemory
       ? readCoreMemory(context.stellaDataDir)
+      : undefined,
+    memorySummary: injectsResidentMemory
+      ? readMemorySummaryDoc(context.stellaDataDir)
+      : undefined,
+    userProfile: injectsResidentMemory
+      ? readUserProfileDoc(context.stellaDataDir)
       : undefined,
     personality: injectsPersonality
       ? readOrSeedPersonality(context.stellaDataDir)

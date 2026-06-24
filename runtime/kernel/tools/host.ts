@@ -83,7 +83,6 @@ export const createToolHost = ({
   queryConvex,
   actionConvex,
   contextProvider,
-  searchThreads,
 }: ToolHostOptions) => {
   const stateRoot = stellaDataDir ?? stellaAppDir;
   const toolCatalog = new Map<string, ToolMetadata>();
@@ -104,7 +103,6 @@ export const createToolHost = ({
     stateRoot,
     agentApi,
     getSubagentTypes,
-    searchThreads,
   );
 
   void recoverStaleSecretFiles(stateRoot)

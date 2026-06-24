@@ -24,11 +24,6 @@ export type StateContext = {
   tasks: Map<string, AgentRecord>;
   agentApi?: AgentToolApi;
   getSubagentTypes?: () => readonly string[];
-  searchThreads?: (args: {
-    conversationId: string;
-    query?: string;
-    limit?: number;
-  }) => RuntimeThreadRecord[];
 };
 
 const toOptionalString = (value: unknown): string | undefined => {
@@ -96,60 +91,12 @@ export const createStateContext = (
   stateRoot: string,
   agentApi?: AgentToolApi,
   getSubagentTypes?: () => readonly string[],
-  searchThreads?: StateContext["searchThreads"],
 ): StateContext => ({
   stateRoot,
   tasks: new Map(),
   agentApi,
   getSubagentTypes,
-  searchThreads,
 });
-
-export const handleSearchThreads = async (
-  ctx: StateContext,
-  args: Record<string, unknown>,
-  context: ToolContext,
-): Promise<ToolResult> => {
-  if (!ctx.searchThreads) {
-    return { error: "Thread search is not available on this device." };
-  }
-  const query = toOptionalString(args.query);
-  const rawLimit = typeof args.limit === "number" ? args.limit : undefined;
-  const limit = Math.max(1, Math.min(25, Math.floor(rawLimit ?? 12)));
-  const threads = ctx.searchThreads({
-    conversationId: context.conversationId,
-    ...(query ? { query } : {}),
-    limit,
-  });
-  if (threads.length === 0) {
-    return {
-      result: {
-        threads: [],
-        note: query
-          ? "No past work matched. Try fewer or different words, or call again without a query to browse recent work."
-          : "No past work recorded yet.",
-      },
-    };
-  }
-  return {
-    result: {
-      threads: threads.map((thread) => ({
-        thread_id: thread.threadId,
-        availability: "resumable",
-        last_used: formatRuntimeThreadAge(thread.lastUsedAt),
-        ...(thread.name && thread.name !== thread.threadId
-          ? { name: thread.name }
-          : {}),
-        ...(thread.description ? { description: thread.description } : {}),
-        ...(thread.summary
-          ? { summary: thread.summary.replace(/\s+/g, " ").slice(0, 300) }
-          : {}),
-        ...(thread.groupKey ? { group_id: thread.groupKey } : {}),
-        ...(thread.groupLabel ? { group_label: thread.groupLabel } : {}),
-      })),
-    },
-  };
-};
 
 export const handleSendInput = async (
   ctx: StateContext,

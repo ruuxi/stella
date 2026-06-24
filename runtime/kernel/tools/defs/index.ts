@@ -24,7 +24,7 @@ import type {
 } from "../types.js";
 
 import { applyPatchTool } from "./apply-patch.js";
-import { createContextTool } from "./context.js";
+import { createRecallTool } from "./recall.js";
 import { dreamTool } from "./dream.js";
 import { editTool } from "./edit.js";
 import { createExecCommandTool } from "./exec-command.js";
@@ -35,6 +35,7 @@ import { createImageGenTool } from "./image-gen.js";
 import { createLinqImessageTools } from "./linq-imessage.js";
 import { createMultiToolUseParallelTool } from "./multi-tool-use-parallel.js";
 import { readTool } from "./read.js";
+import { createRememberTool } from "./remember.js";
 import { createRequestCredentialTool } from "./request-credential.js";
 import { createScheduleTool } from "./schedule.js";
 import { createScheduleControlTools } from "./schedule-control.js";
@@ -105,7 +106,12 @@ export const buildBuiltinTools = (
 
   // Orchestrator coordination surface
   tools.push(createHtmlTool({ stellaDataDir: options.stellaDataDir ?? options.stellaAppDir }));
-  tools.push(createContextTool({ contextProvider: options.contextProvider }));
+  tools.push(createRecallTool({ contextProvider: options.contextProvider }));
+  tools.push(
+    createRememberTool({
+      stellaDataDir: options.stellaDataDir ?? options.stellaAppDir,
+    }),
+  );
   tools.push(
     createScheduleTool({
       agentApi: options.agentApi,
