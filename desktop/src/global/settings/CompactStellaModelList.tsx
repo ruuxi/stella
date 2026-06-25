@@ -30,9 +30,9 @@ interface CompactStellaModelListProps {
 
 /**
  * Collapsed model picker used by both the sidebar popover and the Settings
- * page. Shows just the curated Stella preset modes (Stella Designer,
- * Stella Builder, …) so the common case is one click — every
- * other provider/model lives behind the "More options" expansion.
+ * page. Shows "Default" (Stella picks per plan) plus the managed models a
+ * user can pin — every BYOK provider/model lives behind the "More options"
+ * expansion.
  */
 export function CompactStellaModelList({
   stellaModels,
@@ -48,9 +48,7 @@ export function CompactStellaModelList({
     () =>
       stellaModels.filter(
         (model) =>
-          model.provider === "stella" &&
-          model.id.startsWith("stella/") &&
-          !model.modelId.includes("/"),
+          model.provider === "stella" && model.id.startsWith("stella/"),
       ),
     [stellaModels],
   );
