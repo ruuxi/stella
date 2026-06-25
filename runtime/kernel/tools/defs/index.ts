@@ -52,6 +52,13 @@ import { createWriteStdinTool } from "./write-stdin.js";
 import type { StateContext } from "../state.js";
 
 export type BuildBuiltinToolsContext = ToolHostOptions & {
+  /**
+   * Resolved durable state root (`stellaDataDir`, falling back to
+   * `stellaAppDir` only at the host boundary for tests). Required here so
+   * tools that persist artifacts (html, remember, script_draft) can never
+   * silently fall back to the install/repo root.
+   */
+  stellaDataDir: string;
   /** Initialized PTY shell state shared by exec_command / write_stdin. */
   shellState: ShellState;
   /** Initialized state context for the durable spawn_agent / send_input / pause_agent tools. */
@@ -105,11 +112,11 @@ export const buildBuiltinTools = (
   tools.push(toolSearchTool);
 
   // Orchestrator coordination surface
-  tools.push(createHtmlTool({ stellaDataDir: options.stellaDataDir ?? options.stellaAppDir }));
+  tools.push(createHtmlTool({ stellaDataDir: options.stellaDataDir }));
   tools.push(createRecallTool({ contextProvider: options.contextProvider }));
   tools.push(
     createRememberTool({
-      stellaDataDir: options.stellaDataDir ?? options.stellaAppDir,
+      stellaDataDir: options.stellaDataDir,
     }),
   );
   tools.push(
@@ -130,7 +137,7 @@ export const buildBuiltinTools = (
     ...createScheduleControlTools({ scheduleApi: options.scheduleApi }),
   );
   tools.push(
-    createScriptDraftTool({ stellaDataDir: options.stellaDataDir ?? options.stellaAppDir }),
+    createScriptDraftTool({ stellaDataDir: options.stellaDataDir }),
   );
 
   // (Store agent moved to backend — no local tools.)
