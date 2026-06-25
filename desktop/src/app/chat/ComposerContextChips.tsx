@@ -14,6 +14,7 @@ import { ChipPreviewPortal } from "./ChipPreviewPortal";
 import { useHoverPreview } from "./use-hover-preview";
 import {
   describePastedText,
+  PASTED_TEXT_PREVIEW_MAX_CHARS,
   toPastedTextDescriptor,
 } from "@/features/chat/lib/paste-context";
 import {
@@ -396,10 +397,6 @@ export function FileContextChips({
 /* ------------------------------------------------------------------ */
 /*  Pasted-text chips                                                 */
 /* ------------------------------------------------------------------ */
-
-// The preview is scrollable (the pointer can move onto it), so show a
-// generous slice rather than a tooltip-sized one.
-const PASTED_TEXT_PREVIEW_MAX_CHARS = 4000;
 
 function PastedTextChip({
   text,

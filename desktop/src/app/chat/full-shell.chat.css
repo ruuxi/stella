@@ -450,7 +450,8 @@
   white-space: nowrap;
 }
 
-.event-context-chip--window[data-has-preview] {
+.event-context-chip--window[data-has-preview],
+.event-context-chip--pasted-text[data-has-preview] {
   cursor: default;
 }
 
@@ -495,6 +496,33 @@ button.event-context-chip--overflow:focus-visible {
   border-radius: var(--radius-md);
   object-fit: contain;
   background: var(--surface-inset);
+}
+
+/* Pasted-text hover preview. Same floating shell as the window preview
+   card; scrollable so the pointer can move onto it to read long blobs. */
+.event-pasted-text-preview-card {
+  width: min(460px, calc(100vw - 64px));
+  max-height: 220px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 75%, transparent);
+  background: var(--surface-raised-stronger-non-alpha, var(--card));
+  box-shadow: var(--shadow-overlay);
+  color: var(--text-strong);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.event-pasted-text-preview-body {
+  overflow-y: auto;
+  min-height: 0;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  letter-spacing: 0.01em;
 }
 
 .event-channel-badge.provider {

@@ -17,9 +17,23 @@ export const PASTE_AS_CHIP_MIN_CHARS = 1200;
 /** ...or this many lines, whichever trips first. */
 export const PASTE_AS_CHIP_MIN_LINES = 18;
 
-export type PastedTextDescriptor = { lines: number; chars: number };
+/**
+ * Cap for the hover-preview body stored on / shown by a pasted-text chip.
+ * The preview is scrollable (the pointer can move onto it), so this is a
+ * generous slice rather than a tooltip-sized one — and it bounds how much
+ * pasted text we persist on the sent message's metadata.
+ */
+export const PASTED_TEXT_PREVIEW_MAX_CHARS = 4000;
+
+export type PastedTextDescriptor = {
+  /** Bounded preview slice (≤ `PASTED_TEXT_PREVIEW_MAX_CHARS`) for hovercards. */
+  text?: string;
+  lines: number;
+  chars: number;
+};
 
 export const toPastedTextDescriptor = (text: string): PastedTextDescriptor => ({
+  text: text.slice(0, PASTED_TEXT_PREVIEW_MAX_CHARS),
   lines: text.split(/\r\n|\r|\n/).length,
   chars: text.length,
 });
@@ -29,6 +43,18 @@ export const describePastedText = (descriptor: PastedTextDescriptor): string =>
   descriptor.lines > 1
     ? `${descriptor.lines.toLocaleString()} lines`
     : `${descriptor.chars.toLocaleString()} chars`;
+
+/**
+ * Hovercard body for a pasted-text chip: the bounded preview with a
+ * trailing ellipsis when the full paste was longer than what we stored.
+ * Returns an empty string when no preview text is available (e.g. a chip
+ * persisted before previews were stored), so callers can skip the portal.
+ */
+export const pastedTextPreview = (descriptor: PastedTextDescriptor): string => {
+  const text = descriptor.text ?? "";
+  if (!text) return "";
+  return descriptor.chars > text.length ? `${text}…` : text;
+};
 
 export const shouldAttachPastedText = (text: string): boolean => {
   if (!text) return false;

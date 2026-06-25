@@ -36,7 +36,11 @@ import {
   Crop,
   Paperclip,
 } from "@/ui/icons";
-import { describePastedText } from "@/features/chat/lib/paste-context";
+import {
+  describePastedText,
+  pastedTextPreview,
+  type PastedTextDescriptor,
+} from "@/features/chat/lib/paste-context";
 import { ChipPreviewPortal } from "@/app/chat/ChipPreviewPortal";
 import { useHoverPreview } from "@/app/chat/use-hover-preview";
 import type {
@@ -146,6 +150,52 @@ function UserWindowContextChip({
             alt="Window content preview"
             className="event-window-preview-img"
           />
+        </ChipPreviewPortal>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Pasted-text chip inside the user bubble. Mirrors the composer's
+ * `PastedTextChip`: hovering (or focusing) reveals the pasted content in a
+ * scrollable portaled card so the user can read what they attached. The
+ * body comes from the bounded preview persisted on the message metadata.
+ */
+function UserPastedTextChip({
+  descriptor,
+}: {
+  descriptor: PastedTextDescriptor;
+}) {
+  const { triggerRef, open, previewProps } = useHoverPreview<HTMLSpanElement>();
+  const stats = describePastedText(descriptor);
+  const preview = pastedTextPreview(descriptor);
+  return (
+    <span className="event-window-badge-hovercard">
+      <span
+        ref={triggerRef}
+        className="event-context-chip event-context-chip--pasted-text"
+        data-has-preview={preview ? "true" : undefined}
+        tabIndex={preview ? 0 : undefined}
+        title={`Pasted text — ${stats}`}
+      >
+        <ClipboardPaste
+          className="event-context-chip__icon"
+          size={13}
+          strokeWidth={1.75}
+          aria-hidden="true"
+        />
+        <span className="event-context-chip__label">Pasted text</span>
+      </span>
+      {preview && (
+        <ChipPreviewPortal
+          triggerRef={triggerRef}
+          open={open}
+          preferredPlacement="top"
+          className="event-pasted-text-preview-card"
+          {...previewProps}
+        >
+          <div className="event-pasted-text-preview-body">{preview}</div>
         </ChipPreviewPortal>
       )}
     </span>
@@ -343,20 +393,7 @@ export const UserMessageRow = memo(
     pastedTexts.forEach((descriptor, index) => {
       chips.push({
         key: `pasted-text-${index}`,
-        node: (
-          <span
-            className="event-context-chip event-context-chip--pasted-text"
-            title={`Pasted text — ${describePastedText(descriptor)}`}
-          >
-            <ClipboardPaste
-              className="event-context-chip__icon"
-              size={13}
-              strokeWidth={1.75}
-              aria-hidden="true"
-            />
-            <span className="event-context-chip__label">Pasted text</span>
-          </span>
-        ),
+        node: <UserPastedTextChip descriptor={descriptor} />,
       });
     });
     if (channelEnvelope?.provider) {
