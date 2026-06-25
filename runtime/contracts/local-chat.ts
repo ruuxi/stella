@@ -128,8 +128,13 @@ export type MessageMetadata = {
     windowPreviewImageUrl?: string;
     appSelectionLabel?: string;
     activityLabel?: string;
-    /** Lightweight descriptors for each "Pasted text" chip on this turn. */
-    pastedTexts?: { lines: number; chars: number }[];
+    /**
+     * Descriptors for each "Pasted text" chip on this turn. `text` is a
+     * bounded preview (capped at `PASTED_TEXT_PREVIEW_MAX_CHARS`) so the
+     * sent-message chip can show the pasted content on hover, matching the
+     * composer chip; `lines`/`chars` describe the full paste.
+     */
+    pastedTexts?: { text?: string; lines: number; chars: number }[];
   };
   trigger?: {
     kind?: string;

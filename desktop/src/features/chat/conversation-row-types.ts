@@ -7,6 +7,7 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import type { AgentResponseTarget } from "@/features/chat/streaming/streaming-types";
 import type { SelfModApplied } from "@/features/chat/self-mod-types";
 import type { WebSearchImageHit } from "@/features/chat/lib/derive-turn-web-search";
+import type { PastedTextDescriptor } from "@/features/chat/lib/paste-context";
 import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
 import type { VoiceSessionSummaryMetadata } from "../../../../runtime/contracts/local-chat.js";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
@@ -22,7 +23,7 @@ export type UserRowViewModel = {
   appSelectionLabel?: string;
   activityLabel?: string;
   /** Descriptors for the "Pasted text" chips lifted out of the composer. */
-  pastedTexts?: { lines: number; chars: number }[];
+  pastedTexts?: PastedTextDescriptor[];
   attachments: Attachment[];
   channelEnvelope?: ChannelEnvelope;
 };
