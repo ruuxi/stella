@@ -164,6 +164,9 @@ export const buildAgentEventPrompt = (
     lines.push(
       "agent_state: paused; this agent is not currently working. Use send_input to resume the same thread if follow-up work is needed.",
     );
+    lines.push(
+      "presentation: if the result is a report or substantial/dense information, render it with the `html` tool and give the user only a short chat reply — they read the canvas for the detail. For a quick answer or simple Q&A, reply directly in chat without `html`.",
+    );
   }
 
   return formatAgentTerminalStateSystemReminder(lines);
