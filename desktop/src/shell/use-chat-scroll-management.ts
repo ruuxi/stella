@@ -51,41 +51,47 @@ const THUMB_FADE_MS = 1200
 const THUMB_EPSILON_PX = 0.5
 
 /**
- * Auto-follow lerp tuning.
+ * Auto-follow motion model.
  *
- * Each frame we move the viewport closer to the target by
- * `diff * factor(diff)`. A fixed factor trades off smoothness against
- * how far the viewport can fall behind a moving target: the
- * steady-state lag is `growth_per_frame / factor`, so a soft factor
- * like 0.22 looks buttery on slow streams but lets text drop below
- * the viewport whenever the model emits a burst of a few hundred
- * pixels at once (post-tool dumps, slow network catching up).
+ * Streaming content grows in discrete, irregular bursts (a line / a few
+ * tokens at a time). A naive "ease toward the new bottom, then stop"
+ * follow restarts an ease-in/ease-out per chunk and crawls the last few
+ * pixels asymptotically, so back-to-back short bumps read as a start/stop
+ * stutter.
  *
- * Instead we ramp the factor with the current diff: low for typical
- * streaming, climbing toward 0.65 as the gap grows so big jumps
- * catch up in a couple frames instead of crawling for ~half a
- * second with text invisible the whole time. Above
- * `FOLLOW_HARD_SNAP_PX` we just land on target — at that point the
- * row is so far off that any lerp would visibly flicker text in and
- * out of view.
+ * Instead we model the follow as a critically-damped spring whose
+ * velocity *persists* across frames and across chunk boundaries: a new
+ * chunk just moves the spring's target, and because the spring is still
+ * carrying velocity from the previous chunk the motion blends into one
+ * continuous glide. Acceleration scales with the gap (`stiffness · diff`),
+ * so a big burst still catches up quickly while a slow trickle glides
+ * gently — no asymptotic crawl, no per-chunk restart. Critical damping
+ * (`damping ≈ 2·√stiffness`) means it settles without overshoot. The loop
+ * stays warm for `FOLLOW_STREAM_IDLE_MS` after the last growth so a slow
+ * stream doesn't re-settle per line, then eases to rest. Above
+ * `FOLLOW_HARD_SNAP_PX` we land directly — that far off, any glide would
+ * leave the streamed text below the viewport for too many frames.
  */
-const FOLLOW_LERP_FACTOR_BASE = 0.30
-const FOLLOW_LERP_FACTOR_MAX = 0.65
-const FOLLOW_LERP_FACTOR_SCALE = 0.005
+const FOLLOW_SPRING_STIFFNESS = 0.00026 // px/ms² per px of gap (~250ms settle)
+const FOLLOW_SPRING_DAMPING = 0.0322 // ≈ 2·√stiffness → critically damped
+/** Keep gliding this long after the last content growth before settling to rest. */
+const FOLLOW_STREAM_IDLE_MS = 200
+/** Clamp per-frame dt so a tab-switch / GC pause can't fling the viewport. */
+const FOLLOW_MAX_FRAME_MS = 48
+/** Assumed dt for the first frame of a glide (before two timestamps exist). */
+const FOLLOW_DEFAULT_FRAME_MS = 16
 const FOLLOW_HARD_SNAP_PX = 240
 /**
  * Gentle one-shot motion profile for the post-send nudge.
  *
- * Stream auto-follow wants to be snappy (and even hard-snaps past
- * `FOLLOW_HARD_SNAP_PX`) so streamed text never lags below the
- * viewport. The post-send reframe has no such pressure — it's a single
- * settle into the reading position — so it reads better as a slow,
- * smooth ease-out. A low constant factor gives an exponential ease-out
- * that decelerates into the target over ~20–30 frames, and we skip the
- * hard snap entirely so even a tall just-sent bubble eases instead of
- * teleporting. If a stream chunk arrives mid-nudge, its (non-gentle)
- * `setTarget` clears the gentle flag and the snappy follow takes over —
- * the two motions blend on the same loop instead of fighting.
+ * The post-send reframe is a single settle into the reading position with
+ * no streaming pressure, so it reads better as a slow ease-out rather than
+ * the spring's stream-tuned glide. A low constant factor gives an
+ * exponential ease-out that decelerates into the target over ~20–30
+ * frames, and it skips the hard snap entirely so even a tall just-sent
+ * bubble eases instead of teleporting. If a stream chunk arrives mid-nudge
+ * its (non-gentle) `setTarget` clears the gentle flag and the spring takes
+ * over — the two motions blend on the same loop instead of fighting.
  */
 const FOLLOW_GENTLE_LERP_FACTOR = 0.12
 /**
@@ -454,20 +460,28 @@ export function useChatScrollManagement({
       cleanup()
       attached = node
 
-      // ---- continuous lerp follow loop -----------------------------
-      // `followTarget` is the absolute scrollTop the loop is currently
-      // chasing; `null` means idle. Updating the target mid-flight
-      // doesn't restart the easing — the loop just lerps toward the
-      // new value on its next frame.
+      // ---- continuous spring follow loop ---------------------------
+      // `followTarget` is the absolute scrollTop the loop is chasing
+      // (`null` = idle). `followVel` (px/ms) carries across frames so
+      // consecutive streaming chunks blend into one glide instead of
+      // restarting an ease per chunk. `lastTargetTime` marks the last
+      // content growth so the loop can stay warm through the gaps
+      // between slow lines, then settle once the stream pauses.
       let followTarget: number | null = null
       let followRaf = 0
       let followGentle = false
+      let followVel = 0
+      let lastFrameTime = 0
+      let lastTargetTime = 0
 
       const stopLoop = () => {
         if (followRaf) cancelAnimationFrame(followRaf)
         followRaf = 0
         followTarget = null
         followGentle = false
+        followVel = 0
+        lastFrameTime = 0
+        lastTargetTime = 0
       }
 
       const stepFollow = () => {
@@ -475,6 +489,8 @@ export function useChatScrollManagement({
         if (!attached || followTarget === null) return
         if (!followRef.current) {
           followTarget = null
+          followVel = 0
+          lastFrameTime = 0
           return
         }
         const maxScroll = Math.max(
@@ -485,41 +501,77 @@ export function useChatScrollManagement({
         const current = attached.scrollTop
         const diff = target - current
         const absDiff = Math.abs(diff)
+
+        // Caught up. The gentle one-shot nudge ends here; a stream-follow
+        // glide instead idles in place (velocity bled off) and stays warm
+        // so the next chunk continues without a restart — until the stream
+        // has been quiet for `FOLLOW_STREAM_IDLE_MS`, then it settles.
         if (absDiff < FOLLOW_MIN_STEP_PX) {
           attached.scrollTop = target
-          followTarget = null
+          followVel = 0
+          lastFrameTime = 0
+          if (
+            followGentle ||
+            performance.now() - lastTargetTime > FOLLOW_STREAM_IDLE_MS
+          ) {
+            followTarget = null
+            return
+          }
+          followRaf = requestAnimationFrame(stepFollow)
           return
         }
-        // Massive gap (post-tool dump, slow network catching up,
-        // resumed conversation jumping to the latest reply) — just
-        // land on the target. Trying to lerp hundreds of px would
-        // leave the streaming text invisible for many frames while
-        // the loop crawls. The gentle post-send nudge opts out: it has
-        // no streaming pressure, so a tall reframe should ease rather
-        // than teleport.
-        if (!followGentle && absDiff > FOLLOW_HARD_SNAP_PX) {
+
+        // Gentle post-send reframe: constant low-factor ease-out (no
+        // velocity carry, no hard snap) — a single smooth settle.
+        if (followGentle) {
+          const lerpStep = diff * FOLLOW_GENTLE_LERP_FACTOR
+          const stepPx =
+            Math.abs(lerpStep) >= FOLLOW_MIN_STEP_PX
+              ? lerpStep
+              : Math.sign(diff) * FOLLOW_MIN_STEP_PX
+          attached.scrollTop = current + stepPx
+          followRaf = requestAnimationFrame(stepFollow)
+          return
+        }
+
+        // Massive gap (post-tool dump, slow network catching up, resumed
+        // conversation jumping to the latest reply) — land directly rather
+        // than glide hundreds of px with text off-screen the whole time.
+        // Stay warm so the trickle that follows the dump still glides.
+        if (absDiff > FOLLOW_HARD_SNAP_PX) {
           attached.scrollTop = target
-          followTarget = null
+          followVel = 0
+          lastFrameTime = 0
+          if (performance.now() - lastTargetTime > FOLLOW_STREAM_IDLE_MS) {
+            followTarget = null
+            return
+          }
+          followRaf = requestAnimationFrame(stepFollow)
           return
         }
-        // Gentle: constant low factor → smooth ease-out into the target.
-        // Otherwise adaptive lerp: smooth on small diffs (typical
-        // word-by-word streaming), snappier on larger diffs so a chunk
-        // that lands 80–200px below the viewport catches up in a couple
-        // frames instead of taking ~half a second and leaving text below
-        // the viewport bottom the whole time.
-        const factor = followGentle
-          ? FOLLOW_GENTLE_LERP_FACTOR
-          : Math.min(
-              FOLLOW_LERP_FACTOR_MAX,
-              FOLLOW_LERP_FACTOR_BASE + absDiff * FOLLOW_LERP_FACTOR_SCALE,
-            )
-        const lerpStep = diff * factor
-        const stepPx =
-          Math.abs(lerpStep) >= FOLLOW_MIN_STEP_PX
-            ? lerpStep
-            : Math.sign(diff) * FOLLOW_MIN_STEP_PX
-        attached.scrollTop = current + stepPx
+
+        // Critically-damped spring step. Velocity persists across frames
+        // (and across chunk boundaries via `setTarget`), so the motion is
+        // a continuous glide rather than a per-chunk ease-out-to-stop.
+        const now = performance.now()
+        const dt = lastFrameTime
+          ? Math.min(FOLLOW_MAX_FRAME_MS, Math.max(1, now - lastFrameTime))
+          : FOLLOW_DEFAULT_FRAME_MS
+        lastFrameTime = now
+        const accel =
+          FOLLOW_SPRING_STIFFNESS * diff - FOLLOW_SPRING_DAMPING * followVel
+        // Stream-follow never runs backward, so clamp velocity ≥ 0.
+        followVel = Math.max(0, followVel + accel * dt)
+        let step = followVel * dt
+        if (step < FOLLOW_MIN_STEP_PX) step = FOLLOW_MIN_STEP_PX
+        if (step >= diff) {
+          // Would reach/overshoot the target this frame — land exactly and
+          // keep velocity consistent with the distance actually covered.
+          attached.scrollTop = target
+          followVel = diff / dt
+        } else {
+          attached.scrollTop = current + step
+        }
         followRaf = requestAnimationFrame(stepFollow)
       }
 
@@ -534,7 +586,7 @@ export function useChatScrollManagement({
           attached.scrollHeight - attached.clientHeight,
         )
         const clamped = Math.max(0, Math.min(maxScroll, newTarget))
-        // Don't lerp backwards during stream-follow (would scroll the
+        // Don't follow backwards during stream-follow (would scroll the
         // user up against their intent). Post-send positioning opts in.
         if (
           !options.allowBackward &&
@@ -542,8 +594,16 @@ export function useChatScrollManagement({
         ) {
           return
         }
+        const gentle = Boolean(options.gentle)
+        // Switching from a warm spring glide into a gentle one-shot (or
+        // vice versa) shouldn't carry stale velocity between the two
+        // motion profiles.
+        if (gentle !== followGentle) followVel = 0
         followTarget = clamped
-        followGentle = Boolean(options.gentle)
+        followGentle = gentle
+        // Mark content growth so the spring loop stays warm between the
+        // irregular gaps in a slow stream (gentle nudges don't extend it).
+        if (!gentle) lastTargetTime = performance.now()
         if (!followRaf) followRaf = requestAnimationFrame(stepFollow)
       }
 
