@@ -1,5 +1,5 @@
 import { MODEL_SETTINGS_AGENTS } from "../../../../../runtime/contracts/agent-runtime.js";
-import { STELLA_STANDARD_MODEL } from "@/shared/stella-api";
+import { STELLA_DEFAULT_MODEL } from "@/shared/stella-api";
 
 export type ModelDefaultEntry = {
   agentType: string;
@@ -20,7 +20,7 @@ export function getLocalModelDefaults(
     const model =
       serverDefault?.model ??
       defaultModels?.[agent.key] ??
-      STELLA_STANDARD_MODEL;
+      STELLA_DEFAULT_MODEL;
     return {
       agentType: agent.key,
       model,

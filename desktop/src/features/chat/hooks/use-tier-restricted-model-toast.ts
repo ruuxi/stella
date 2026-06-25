@@ -20,7 +20,6 @@ import { router } from '@/router'
 import {
   getModelRestrictionActionLabel,
   getModelRestrictionDescription,
-  isRestrictedAudienceAllowedStellaModelId,
   isRestrictedModelOverrideAudience,
   resolveBillingAudience,
   type ManagedModelAudience,
@@ -121,9 +120,10 @@ export function useTierRestrictedModelToast() {
       // Only Stella-provider picks are subject to tier restrictions —
       // BYOK / OAuth providers (Anthropic, OpenAI, OpenRouter, local
       // runtime, …) run on the user's own key and are unaffected by
-      // Stella plan limits, so don't toast on them.
+      // Stella plan limits, so don't toast on them. The opaque default
+      // sentinel is never a restricted pick.
       if (!override.startsWith('stella/')) continue
-      if (isRestrictedAudienceAllowedStellaModelId(override)) continue
+      if (override === 'stella/default') continue
       const dedupeKey = buildToastDedupeKey(audience, agent, override)
       if (seenRef.current.has(dedupeKey)) continue
       seenRef.current.add(dedupeKey)

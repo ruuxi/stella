@@ -37,26 +37,6 @@ export const isRestrictedModelOverrideAudience = (
   audience !== undefined &&
   RESTRICTED_MODEL_OVERRIDE_AUDIENCES.has(audience);
 
-/**
- * Desktop-side mirror of the backend's
- * `RESTRICTED_AUDIENCE_ALLOWED_STELLA_MODEL_IDS`.
- *
- * Restricted audiences cannot freely override Stella-managed models, but
- * Standard and Light are intentionally still selectable because Standard is
- * the default mode and Light is the small fallback users may opt into.
- */
-const RESTRICTED_AUDIENCE_ALLOWED_STELLA_MODEL_IDS = new Set<string>([
-  "stella/standard",
-  "stella/light",
-]);
-
-export const isRestrictedAudienceAllowedStellaModelId = (
-  modelId: string | null | undefined,
-): boolean =>
-  Boolean(
-    modelId && RESTRICTED_AUDIENCE_ALLOWED_STELLA_MODEL_IDS.has(modelId.trim()),
-  );
-
 const PLAN_LABELS: Record<ManagedModelAudience, string> = {
   anonymous: "Free",
   free: "Free",

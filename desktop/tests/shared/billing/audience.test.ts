@@ -1,24 +1,15 @@
 import { describe, expect, it } from "bun:test";
 
-import {
-  isRestrictedAudienceAllowedStellaModelId,
-  isRestrictedModelOverrideAudience,
-} from "../../../src/global/billing/audience";
+import { isRestrictedModelOverrideAudience } from "../../../src/global/billing/audience";
 
 describe("billing audience model restrictions", () => {
-  it("keeps restricted Stella audiences pinned except for Standard and Light", () => {
+  it("pins restricted audiences to the backend default (no model override)", () => {
     expect(isRestrictedModelOverrideAudience("anonymous")).toBe(true);
-    expect(isRestrictedAudienceAllowedStellaModelId("stella/standard")).toBe(
-      true,
-    );
-    expect(isRestrictedAudienceAllowedStellaModelId("stella/light")).toBe(true);
-    expect(isRestrictedAudienceAllowedStellaModelId("stella/builder")).toBe(
-      false,
-    );
-    expect(
-      isRestrictedAudienceAllowedStellaModelId(
-        "stella/openrouter/anthropic/claude-opus-4.7",
-      ),
-    ).toBe(false);
+    expect(isRestrictedModelOverrideAudience("free")).toBe(true);
+    expect(isRestrictedModelOverrideAudience("go")).toBe(true);
+    expect(isRestrictedModelOverrideAudience("go_fallback")).toBe(true);
+    expect(isRestrictedModelOverrideAudience("pro")).toBe(false);
+    expect(isRestrictedModelOverrideAudience("plus")).toBe(false);
+    expect(isRestrictedModelOverrideAudience("ultra")).toBe(false);
   });
 });
