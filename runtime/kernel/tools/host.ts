@@ -135,6 +135,7 @@ export const createToolHost = ({
   // the model sees.
   const builtinTools: BuiltinToolDefinition[] = buildBuiltinTools({
     stellaAppDir,
+    stellaDataDir: stateRoot,
     stellaBrowserBinPath: _stellaBrowserBinPath,
     stellaOfficeBinPath: _stellaOfficeBinPath,
     stellaComputerCliPath,

@@ -6,7 +6,7 @@ import {
 import type { ToolDefinition } from "../types.js";
 
 export type RememberToolOptions = {
-  stellaDataDir?: string;
+  stellaDataDir: string;
 };
 
 const VALID_ACTIONS: readonly UserProfileAction[] = ["add", "replace", "remove"];
@@ -48,9 +48,6 @@ export const createRememberTool = (
     additionalProperties: false,
   },
   execute: async (args) => {
-    if (!options.stellaDataDir) {
-      return { error: "Remember is not available in this runtime." };
-    }
     const action = typeof args.action === "string" ? args.action : "";
     if (!VALID_ACTIONS.includes(action as UserProfileAction)) {
       return { error: "action must be 'add', 'replace', or 'remove'." };
