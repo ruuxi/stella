@@ -756,16 +756,27 @@ export function AgentModelPicker({
       : activeVoice
         ? voicePreferences.provider
         : (overrides[activeAgent] ?? "");
+  // The Assistant tab maps to both orchestrator and general. Their plan
+  // default can be different models (e.g. Kimi K2.6 vs K2.7 Code on non-Ultra
+  // tiers), so naming a single model in the "Default" label would be
+  // misleading — fall back to a plain "Stella Default" when they diverge.
+  const assistantDefaultsDiverge =
+    activeAssistant &&
+    assistantWriteKeys
+      .map((key) => resolvedDefaultModelMap[key] ?? defaultModelMap[key])
+      .some((model, _index, models) => model !== models[0]);
   const defaultLabel = activeProviderSetting
     ? "Stella"
-    : ready
-      ? getDefaultModelOptionLabel(
-          canonicalAgentKey,
-          defaultModelMap,
-          resolvedDefaultModelMap,
-          modelNamesById,
-        )
-      : "Default";
+    : !ready
+      ? "Default"
+      : assistantDefaultsDiverge
+        ? "Stella Default"
+        : getDefaultModelOptionLabel(
+            canonicalAgentKey,
+            defaultModelMap,
+            resolvedDefaultModelMap,
+            modelNamesById,
+          );
   const currentLabel = activeProviderSetting
     ? (IMAGE_PROVIDER_OPTIONS.find((entry) => entry.key === current)?.label ??
       VOICE_PROVIDER_OPTIONS.find((entry) => entry.key === current)?.label ??
