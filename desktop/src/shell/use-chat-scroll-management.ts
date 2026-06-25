@@ -557,16 +557,25 @@ export function useChatScrollManagement({
       const scrollLatestUserMessageIntoView = () => {
         if (!attached) return
         if (!followRef.current) return
-        const userRow =
-          attached.querySelector<HTMLElement>('.event-row--user--just-sent') ??
-          (() => {
-            const rows = attached.querySelectorAll<HTMLElement>(
-              '.event-row--user',
-            )
-            return rows.length > 0 ? rows[rows.length - 1]! : null
-          })()
+        const userRow = attached.querySelector<HTMLElement>(
+          '.event-row--user--just-sent',
+        )
         if (!userRow) {
-          nudgeBy(POST_SEND_USER_MESSAGE_BREATHING_PX, { gentle: true })
+          // The optimistic just-sent row isn't in the DOM. This happens
+          // when the user is parked far up in history (follow latch still
+          // armed — e.g. they were following a reply taller than the
+          // viewport, pinned near its top) and the new user row
+          // virtualized off the bottom. We must NOT fall back to the last
+          // *rendered* user row: that's an earlier turn's bubble up in the
+          // current viewport, and framing it scrolls the viewport
+          // *backward* — the "send scrolled me further up" bug. Instead
+          // settle forward toward the end so the just-sent bubble (and the
+          // assistant reply about to stream below it) come into view.
+          const maxScroll = Math.max(
+            0,
+            attached.scrollHeight - attached.clientHeight,
+          )
+          setTarget(maxScroll, { gentle: true })
           return
         }
         // Use offsetTop/offsetHeight (layout geometry) rather than
