@@ -785,24 +785,46 @@ export function useChatScrollManagement({
       })
 
       // Keep the viewport glued to the end across container *width*
-      // changes while the user is pinned to the bottom. The display
-      // panel slides open/closed over 460ms, resizing the scroll
-      // container's width frame-by-frame. While the list is still
-      // settling its initial scroll-to-end (right after reload), that
-      // width churn makes Legend re-evaluate its end position and the
-      // content bounces vertically. Re-pinning to the end on each
-      // width change absorbs the bounce. Gated on `followRef` so a user
-      // scrolled up in history is left untouched (Legend's
-      // `maintainVisibleContentPosition` keeps their anchor), and gated
-      // on width-only so composer/height changes don't trigger it.
+      // changes while the user is pinned to the bottom. The display panel
+      // slides open/closed over 460ms, resizing the scroll container's
+      // width frame-by-frame; if that crosses the chat's content
+      // max-width the text reflows and the content height changes every
+      // frame, so a naive follow would drift off the bottom.
+      //
+      // Two things keep this from shaking:
+      //   - We pin by writing `scrollTop` straight to the freshly measured
+      //     max, NOT `listRef.scrollToEnd()`. Legend's scrollToEnd targets
+      //     an end derived from estimated item sizes that fluctuate while
+      //     the list re-measures mid-reflow, and it rides Legend's own
+      //     scroll scheduling — both fight `maintainVisibleContentPosition`
+      //     and oscillate. A direct `scrollHeight - clientHeight` write is
+      //     the real bottom and lands the same frame.
+      //   - We coalesce to a single rAF: ResizeObserver can fire several
+      //     times per frame during the slide, and we only want one pin
+      //     after layout has settled for the frame.
+      // Gated on `followRef` so a user scrolled up in history is left
+      // untouched, and on width-only so composer/height changes don't
+      // trigger it.
       let lastContainerWidth = attached.clientWidth
+      let resizePinRaf = 0
+      const pinToEnd = () => {
+        resizePinRaf = 0
+        if (!attached || !followRef.current) return
+        // A pin and an in-flight follow glide would write scrollTop on the
+        // same frames; the pin wins, so drop the glide.
+        stopLoop()
+        attached.scrollTop = Math.max(
+          0,
+          attached.scrollHeight - attached.clientHeight,
+        )
+      }
       const handleContainerResize = () => {
         if (!attached) return
         const width = attached.clientWidth
         if (width === lastContainerWidth) return
         lastContainerWidth = width
         if (!followRef.current) return
-        void listRef.current?.scrollToEnd({ animated: false })
+        if (!resizePinRaf) resizePinRaf = requestAnimationFrame(pinToEnd)
       }
       const containerResizeObserver =
         typeof ResizeObserver === 'undefined'
@@ -814,6 +836,10 @@ export function useChatScrollManagement({
         if (!attached) return
         unsubscribeFollow()
         containerResizeObserver?.disconnect()
+        if (resizePinRaf) {
+          cancelAnimationFrame(resizePinRaf)
+          resizePinRaf = 0
+        }
         attached.removeEventListener('wheel', handleWheel)
         attached.removeEventListener('touchstart', handleTouchStart)
         attached.removeEventListener('keydown', handleKeyDown)
