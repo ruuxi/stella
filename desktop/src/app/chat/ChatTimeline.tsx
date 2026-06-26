@@ -165,6 +165,7 @@ const isCardRow = (row: EventRowViewModel): boolean =>
       row.officePreviewRef ||
       row.scheduleReceipt ||
       row.selfModApplied ||
+      row.backgroundWork ||
       row.customSlot,
   );
 

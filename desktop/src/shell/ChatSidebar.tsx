@@ -124,6 +124,8 @@ export function ChatPanelTab({
   wideLayout = false,
   messages,
   conversationId,
+  activities,
+  latestMessageTimestampMs,
   isStreaming,
   isStreamingResponseText,
   runtimeStatusText,
@@ -454,6 +456,8 @@ export function ChatPanelTab({
               pendingUserMessageId={pendingUserMessageId}
               queuedUserMessages={queuedUserMessages}
               liveTasks={liveTasks}
+              activities={activities}
+              latestMessageTimestampMs={latestMessageTimestampMs}
               indicator={indicatorProps}
               hasOlderMessages={hasOlderMessages}
               isLoadingOlder={isLoadingOlder}
