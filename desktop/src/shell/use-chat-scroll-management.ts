@@ -784,62 +784,24 @@ export function useChatScrollManagement({
         scheduleFollowActiveAssistantRow()
       })
 
-      // Keep the viewport glued to the end across container *width*
-      // changes while the user is pinned to the bottom. The display panel
-      // slides open/closed over 460ms, resizing the scroll container's
-      // width frame-by-frame; if that crosses the chat's content
-      // max-width the text reflows and the content height changes every
-      // frame, so a naive follow would drift off the bottom.
-      //
-      // Two things keep this from shaking:
-      //   - We pin by writing `scrollTop` straight to the freshly measured
-      //     max, NOT `listRef.scrollToEnd()`. Legend's scrollToEnd targets
-      //     an end derived from estimated item sizes that fluctuate while
-      //     the list re-measures mid-reflow, and it rides Legend's own
-      //     scroll scheduling — both fight `maintainVisibleContentPosition`
-      //     and oscillate. A direct `scrollHeight - clientHeight` write is
-      //     the real bottom and lands the same frame.
-      //   - We coalesce to a single rAF: ResizeObserver can fire several
-      //     times per frame during the slide, and we only want one pin
-      //     after layout has settled for the frame.
-      // Gated on `followRef` so a user scrolled up in history is left
-      // untouched, and on width-only so composer/height changes don't
-      // trigger it.
-      let lastContainerWidth = attached.clientWidth
-      let resizePinRaf = 0
-      const pinToEnd = () => {
-        resizePinRaf = 0
-        if (!attached || !followRef.current) return
-        // A pin and an in-flight follow glide would write scrollTop on the
-        // same frames; the pin wins, so drop the glide.
-        stopLoop()
-        attached.scrollTop = Math.max(
-          0,
-          attached.scrollHeight - attached.clientHeight,
-        )
-      }
-      const handleContainerResize = () => {
-        if (!attached) return
-        const width = attached.clientWidth
-        if (width === lastContainerWidth) return
-        lastContainerWidth = width
-        if (!followRef.current) return
-        if (!resizePinRaf) resizePinRaf = requestAnimationFrame(pinToEnd)
-      }
-      const containerResizeObserver =
-        typeof ResizeObserver === 'undefined'
-          ? null
-          : new ResizeObserver(handleContainerResize)
-      containerResizeObserver?.observe(attached)
+      // NOTE: We intentionally do NOT re-pin scrollTop on container *width*
+      // changes (the display/sidebar panel sliding open/closed over 460ms).
+      // Earlier versions re-ran `scrollToEnd`, or wrote `scrollTop` directly,
+      // on every width tick to keep the bottom glued during the reflow — but
+      // any external scroll write during the slide fights Legend's
+      // `maintainVisibleContentPosition`, which independently re-anchors on
+      // each reflow frame. The two controllers disagree frame-to-frame and
+      // oscillate: the heavy vertical shake at the bottom while toggling the
+      // sidebar. An isolated A/B harness confirmed it — with the per-frame
+      // pin the reference row's on-screen Y oscillated (5 direction reversals,
+      // 42px range); with no custom write Legend's MVCP held it smoothly (0
+      // reversals, 21px monotonic settle). So we let MVCP own scroll position
+      // across width reflows and write scrollTop only for the explicit motions
+      // (send nudge, stream follow, scroll-to-bottom button).
 
       cleanup = () => {
         if (!attached) return
         unsubscribeFollow()
-        containerResizeObserver?.disconnect()
-        if (resizePinRaf) {
-          cancelAnimationFrame(resizePinRaf)
-          resizePinRaf = 0
-        }
         attached.removeEventListener('wheel', handleWheel)
         attached.removeEventListener('touchstart', handleTouchStart)
         attached.removeEventListener('keydown', handleKeyDown)
