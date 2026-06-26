@@ -822,14 +822,12 @@ export class MobileBridgeService {
       return;
     }
 
-    let session = this.getValidSession(req);
-    if (!session) {
-      session = await this.authorizeBridgeSession(req.headers);
-    }
-    if (!session) {
+    const resolved = await this.resolveBridgeSession(req);
+    if (!resolved) {
       ws.close(4001, "Unauthorized");
       return;
     }
+    const session = resolved.session;
 
     const client = {
       subscriptions: new Set<string>(),
@@ -998,6 +996,32 @@ export class MobileBridgeService {
 
   // ── Auth (Convex-mediated) ────────────────────────────────────────────
 
+  private hasExplicitSessionHeaders(req: IncomingMessage): boolean {
+    const id = req.headers["x-stella-bridge-session-id"];
+    return typeof id === "string" && id.trim().length > 0;
+  }
+
+  /**
+   * Resolve a bridge session, preferring explicit session headers over the
+   * ambient cookie. The cookie is only a fallback for cookie-only requests
+   * (WebView sub-resources that cannot set custom headers). It must never
+   * override the credentials a header-bearing client presents: doing so lets a
+   * stale cookie from a previous send authorize the request with an old crypto
+   * session, so a payload encrypted with the current send's keys fails to
+   * decrypt and surfaces to the phone as "session expired". When headers are
+   * present but invalid we reject rather than fall back to the cookie.
+   */
+  private async resolveBridgeSession(
+    req: IncomingMessage,
+  ): Promise<{ session: BridgeSessionRecord; fromHeaders: boolean } | null> {
+    if (this.hasExplicitSessionHeaders(req)) {
+      const session = await this.authorizeBridgeSession(req.headers);
+      return session ? { session, fromHeaders: true } : null;
+    }
+    const cookieSession = this.getValidSession(req);
+    return cookieSession ? { session: cookieSession, fromHeaders: false } : null;
+  }
+
   private async ensureAuthorized(
     req: IncomingMessage,
     res: ServerResponse,
@@ -1018,26 +1042,25 @@ export class MobileBridgeService {
       return null;
     }
 
-    const existingSession = this.getValidSession(req);
-    if (existingSession) {
-      this.markClientActivity();
-      return existingSession;
+    const resolved = await this.resolveBridgeSession(req);
+    if (!resolved) {
+      sendJson(res, 401, { error: "Unauthorized" }, requestOrigin);
+      return null;
     }
 
-    const bridgeSession = await this.authorizeBridgeSession(req.headers);
-    if (bridgeSession) {
+    // Only (re)issue the cookie when we authorized via explicit session
+    // headers — a freshly minted/confirmed session. Cookie-only requests
+    // already carry a valid cookie and must not mint a new session mapping.
+    if (resolved.fromHeaders) {
       const sessionCookieId = crypto.randomUUID();
-      this.sessions.set(sessionCookieId, bridgeSession);
+      this.sessions.set(sessionCookieId, resolved.session);
       res.setHeader(
         "Set-Cookie",
         `${COOKIE_NAME}=${sessionCookieId}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
       );
-      this.markClientActivity();
-      return bridgeSession;
     }
-
-    sendJson(res, 401, { error: "Unauthorized" }, requestOrigin);
-    return null;
+    this.markClientActivity();
+    return resolved.session;
   }
 
   private async authorizeBridgeSession(
