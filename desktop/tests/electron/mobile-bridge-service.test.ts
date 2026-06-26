@@ -173,6 +173,72 @@ describe("MobileBridgeService registration lease", () => {
     expect(anyService.isBridgeAccessEnabled()).toBe(false);
   });
 
+  it("prefers explicit session headers over a stale cookie", async () => {
+    // Regression: a request carrying a previous send's session cookie plus the
+    // current send's session headers must authorize the *header* session. The
+    // cookie used to win, so the desktop decrypted the new payload with the old
+    // session's keys and the phone saw a spurious "session expired".
+    const service = createService();
+    const anyService = configureReadyService(service);
+    anyService.registrationLeaseExpiresAt = Date.now() + 120_000;
+    anyService.registrationState = "healthy";
+
+    const staleSession = {
+      expiresAt: Date.now() + 60_000,
+      sessionSecret: "secret-old",
+      mobileDeviceId: "old",
+      crypto: { marker: "old" },
+    };
+    const freshSession = {
+      expiresAt: Date.now() + 60_000,
+      sessionSecret: "secret-new",
+      mobileDeviceId: "new",
+      crypto: { marker: "new" },
+    };
+    anyService.sessions.set("cookie-old", staleSession);
+    anyService.sessions.set("session-new", freshSession);
+
+    const req = {
+      headers: {
+        cookie: "stella_mobile_bridge=cookie-old",
+        "x-stella-bridge-session-id": "session-new",
+        "x-stella-bridge-session-secret": "secret-new",
+        "x-stella-bridge-challenge-id": "challenge-new",
+      },
+    };
+    const res = { setHeader: vi.fn() };
+
+    const resolved = await anyService.ensureAuthorized(req, res, null);
+
+    expect(resolved).toBe(freshSession);
+    expect(resolved).not.toBe(staleSession);
+  });
+
+  it("falls back to the cookie when no session headers are present", async () => {
+    // WebView sub-resources (scripts, images) can't set custom headers, so the
+    // cookie path must still authorize them.
+    const service = createService();
+    const anyService = configureReadyService(service);
+    anyService.registrationLeaseExpiresAt = Date.now() + 120_000;
+    anyService.registrationState = "healthy";
+
+    const cookieSession = {
+      expiresAt: Date.now() + 60_000,
+      sessionSecret: "secret",
+      mobileDeviceId: "web",
+      crypto: { marker: "web" },
+    };
+    anyService.sessions.set("cookie-web", cookieSession);
+
+    const req = { headers: { cookie: "stella_mobile_bridge=cookie-web" } };
+    const res = { setHeader: vi.fn() };
+
+    const resolved = await anyService.ensureAuthorized(req, res, null);
+
+    expect(resolved).toBe(cookieSession);
+    expect(res.setHeader).not.toHaveBeenCalled();
+  });
+
   it("filters source-diff display updates unless developer previews are enabled", () => {
     const service = createService();
     const anyService = configureReadyService(service);
