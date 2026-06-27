@@ -2,17 +2,25 @@
  * Post-completion "finishing up" HTML pass.
  *
  * When a `general` sub-agent finishes a turn that produced a substantial
- * report, we run one extra completion on a small, fast model and offer it
- * the exact same `html` tool the orchestrator uses. The model decides:
- * call `html` (with a self-contained document) when the result reads better
- * as a canvas, or answer in plain chat — i.e. emit no tool call — for quick
- * Q&A / short answers. When it calls the tool we execute it directly, so the
- * tool owns where the file is written (`~/.stella/outputs/html/<slug>.html`)
- * and how it surfaces as a canvas, identical to the orchestrator path.
+ * report, we run one extra completion that offers the exact same `html` tool
+ * the orchestrator uses. The model decides: call `html` (with a self-contained
+ * document) when the result reads better as a canvas, or answer in plain chat
+ * — i.e. emit no tool call — for quick Q&A / short answers. When it calls the
+ * tool we execute it directly, so the tool owns where the file is written
+ * (`~/.stella/outputs/html/<slug>.html`) and how it surfaces as a canvas,
+ * identical to the orchestrator path.
  *
- * This replaces the old orchestrator-side reminder that nudged the model to
- * call `html` itself: the orchestrator still receives the agent's result,
- * but the canvas is now generated here, automatically, on a dedicated route.
+ * Routing mirrors the rest of the runtime (see `explore.ts`): it follows the
+ * user's engine and model, not a forced managed model.
+ *   - Claude Code engine → run through the user's Claude CLI with the html tool.
+ *   - Default / Codex / BYOK → `resolveLlmRoute`, honoring a model override that
+ *     rides the general agent's pick (so a BYOK user's own provider/key is used).
+ *     When the user has no override and is signed into Stella, this resolves to
+ *     the backend `html` config (Gemini Flash via OpenRouter). When no usable
+ *     route or credential exists, the pass quietly does nothing.
+ *
+ * We don't cost-optimize a user's own engine/provider — if they run Claude
+ * Code, Codex, or BYOK, the pass uses that and the cost is theirs.
  */
 
 import { complete } from "../../ai/stream.js";
@@ -23,9 +31,17 @@ import type {
   Tool,
   ToolCall,
 } from "../../ai/types.js";
-import type { ResolvedLlmRoute } from "../model-routing.js";
+import { resolveLlmRoute } from "../model-routing.js";
+import type { StellaSiteConfig } from "../model-routing-stella.js";
+import { withStellaModelCatalogMetadata } from "../stella-model-catalog.js";
+import { getModelOverride } from "../preferences/local-preferences.js";
+import {
+  runClaudeCodeAgentTextCompletion,
+  shouldUseClaudeCodeAgentRuntime,
+} from "../integrations/claude-code-agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
-import type { ToolContext } from "../tools/types.js";
+import type { ToolContext, ToolResult } from "../tools/types.js";
 import { createHtmlTool } from "../tools/defs/html.js";
 import { createRuntimeLogger } from "../debug.js";
 
@@ -35,12 +51,11 @@ const logger = createRuntimeLogger("agent-runtime.finish-html-pass");
  * Subsidiary agent type used to resolve the route + honor a user model
  * override for this pass (see `getModelOverride`). Not a user-facing agent.
  *
- * The concrete model for this pass lives entirely in the stella-backend
- * managed catalog (the `html` internal config mapped to this agent type in
- * `convex/agent/model.ts` — Gemini Flash via the OpenRouter relay). The
- * desktop never hardcodes a model: it requests the opaque Stella default for
- * this agent type and the backend resolves it, so provider/model changes are
- * a one-line backend edit and honor a user override transparently.
+ * On the default engine with no override, this resolves to the stella-backend
+ * managed `html` config (mapped to this agent type in `convex/agent/model.ts`
+ * — Gemini Flash via the OpenRouter relay). The desktop never hardcodes the
+ * managed model: it requests the opaque Stella default and the backend
+ * resolves it, so provider/model changes are a one-line backend edit.
  */
 export const FINISH_HTML_AGENT_TYPE = "html_finish";
 
@@ -84,34 +99,73 @@ export type FinishHtmlPassResult = {
   fileChanges: FileChangeRecord[];
 };
 
-/**
- * Run the finishing-up HTML pass. Best-effort: any failure (no credential,
- * model error, no tool call) resolves to `null` so the agent completes
- * normally without a canvas.
- */
-export const runFinishHtmlPass = async (args: {
+/** Lift the `html` tool's result into a pass result, or `null` if it didn't
+ *  produce a usable file. Exported for unit tests. */
+export const extractFinishHtmlResult = (
+  toolResult: ToolResult,
+): FinishHtmlPassResult | null => {
+  if (toolResult.error) return null;
+  const details = (toolResult.details ?? {}) as {
+    filePath?: unknown;
+    slug?: unknown;
+    title?: unknown;
+  };
+  const filePath =
+    typeof details.filePath === "string" ? details.filePath : null;
+  if (!filePath) return null;
+  return {
+    filePath,
+    slug: typeof details.slug === "string" ? details.slug : "",
+    title: typeof details.title === "string" ? details.title : "Canvas",
+    fileChanges: toolResult.fileChanges ?? [],
+  };
+};
+
+export type RunFinishHtmlPassArgs = {
+  stellaAppDir: string;
   stellaDataDir: string;
-  route: ResolvedLlmRoute;
+  site: StellaSiteConfig;
+  deviceId?: string;
+  modelCatalogUpdatedAt?: number | null;
   description?: string;
   result: string;
   abortSignal?: AbortSignal;
-}): Promise<FinishHtmlPassResult | null> => {
+};
+
+/**
+ * Run the finishing-up HTML pass. Best-effort: any failure (no usable route or
+ * credential, model error, no tool call) resolves to `null` so the agent
+ * completes normally without a canvas.
+ */
+export const runFinishHtmlPass = async (
+  args: RunFinishHtmlPassArgs,
+): Promise<FinishHtmlPassResult | null> => {
   const result = args.result.trim();
   if (result.length < MIN_RESULT_CHARS) return null;
   if (args.abortSignal?.aborted) return null;
 
-  let apiKey: string | undefined;
-  try {
-    apiKey = (await args.route.getApiKey())?.trim() || undefined;
-  } catch {
-    apiKey = undefined;
-  }
-  if (!apiKey) return null;
+  // Ride the user's BYOK pick: prefer an explicit override for this pass, then
+  // the general agent's model (whose work we're finishing). Undefined → the
+  // backend-owned managed default for `html_finish`.
+  const modelName =
+    getModelOverride(args.stellaDataDir, FINISH_HTML_AGENT_TYPE) ??
+    getModelOverride(args.stellaDataDir, AGENT_IDS.GENERAL);
 
+  const tool = createHtmlTool({ stellaDataDir: args.stellaDataDir });
+  const toolContext: ToolContext = {
+    conversationId: "",
+    deviceId: "",
+    requestId: `finish-html:${Date.now().toString(36)}`,
+    stellaDataDir: args.stellaDataDir,
+  };
+  const toolSchema: Tool = {
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters as unknown as Tool["parameters"],
+  };
   const userText = args.description
     ? `Task: ${args.description}\n\nAgent's finished report:\n${result}`
     : `Agent's finished report:\n${result}`;
-
   const messages: Message[] = [
     {
       role: "user",
@@ -120,32 +174,95 @@ export const runFinishHtmlPass = async (args: {
     },
   ];
 
-  // Offer the orchestrator's `html` tool verbatim — same name, description,
-  // and JSON-schema args — so the model calls it exactly as the orchestrator
-  // would, and the tool owns the file path + canvas surfacing.
-  const tool = createHtmlTool({ stellaDataDir: args.stellaDataDir });
+  // Claude Code engine: run the pass through the user's Claude CLI with the
+  // html tool offered, exactly like explore does. Engine detection reads the
+  // pref store (keyed by stellaDataDir, same as the rest of the runtime).
+  if (shouldUseClaudeCodeAgentRuntime({ stellaAppDir: args.stellaDataDir })) {
+    let captured: FinishHtmlPassResult | null = null;
+    try {
+      await runClaudeCodeAgentTextCompletion({
+        stellaAppDir: args.stellaAppDir,
+        agentType: FINISH_HTML_AGENT_TYPE,
+        ...(modelName ? { stellaModel: modelName } : {}),
+        context: {
+          systemPrompt: FINISH_HTML_SYSTEM_PROMPT,
+          messages,
+          tools: [toolSchema],
+        },
+        ...(args.abortSignal ? { abortSignal: args.abortSignal } : {}),
+        executeTool: async (_toolCallId, toolName, toolArgs) => {
+          if (toolName !== tool.name) {
+            return {
+              error: `Tool ${toolName} is not available to the finishing pass.`,
+            };
+          }
+          const toolResult = await tool.execute(toolArgs, toolContext);
+          const extracted = extractFinishHtmlResult(toolResult);
+          if (extracted) captured = extracted;
+          return toolResult;
+        },
+      });
+    } catch (error) {
+      logger.debug("finish-html.claude-code.failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+    if (args.abortSignal?.aborted) return null;
+    return captured;
+  }
+
+  // Default / Codex / BYOK: resolve the route (honoring the BYOK override),
+  // enrich with catalog metadata so a managed default routes to the right
+  // gateway, then offer the html tool in one completion.
+  let route;
+  try {
+    route = await withStellaModelCatalogMetadata({
+      route: resolveLlmRoute({
+        stellaAppDir: args.stellaDataDir,
+        modelName,
+        agentType: FINISH_HTML_AGENT_TYPE,
+        site: args.site,
+      }),
+      agentType: FINISH_HTML_AGENT_TYPE,
+      site: args.site,
+      ...(args.deviceId ? { deviceId: args.deviceId } : {}),
+      ...(args.modelCatalogUpdatedAt != null
+        ? { modelCatalogUpdatedAt: args.modelCatalogUpdatedAt }
+        : {}),
+      stellaDataDir: args.stellaDataDir,
+    });
+  } catch (error) {
+    logger.debug("finish-html.route.unavailable", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+
+  let apiKey: string | undefined;
+  try {
+    apiKey = (await route.getApiKey())?.trim() || undefined;
+  } catch {
+    apiKey = undefined;
+  }
+  if (!apiKey) return null;
+
   const context: Context = {
     systemPrompt: FINISH_HTML_SYSTEM_PROMPT,
     messages,
-    tools: [
-      {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters as unknown as Tool["parameters"],
-      },
-    ],
+    tools: [toolSchema],
   };
 
   let response: AssistantMessage;
   try {
-    response = await complete(args.route.model, context, {
+    response = await complete(route.model, context, {
       apiKey,
       maxTokens: MAX_OUTPUT_TOKENS,
       ...(args.abortSignal ? { signal: args.abortSignal } : {}),
     });
   } catch (error) {
     logger.debug("finish-html.completion.failed", {
-      provider: args.route.model.provider,
+      provider: route.model.provider,
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
@@ -156,33 +273,12 @@ export const runFinishHtmlPass = async (args: {
   if (args.abortSignal?.aborted) return null;
 
   try {
-    // The html tool's execute only reads its args; the context is a required
-    // parameter it ignores, so a minimal stub is sufficient.
-    const toolContext: ToolContext = {
-      conversationId: "",
-      deviceId: "",
-      requestId: `finish-html:${toolCall.id}`,
-      stellaDataDir: args.stellaDataDir,
-    };
     const toolResult = await tool.execute(toolCall.arguments, toolContext);
     if (toolResult.error) {
       logger.debug("finish-html.write.failed", { error: toolResult.error });
       return null;
     }
-    const details = (toolResult.details ?? {}) as {
-      filePath?: unknown;
-      slug?: unknown;
-      title?: unknown;
-    };
-    const filePath =
-      typeof details.filePath === "string" ? details.filePath : null;
-    if (!filePath) return null;
-    return {
-      filePath,
-      slug: typeof details.slug === "string" ? details.slug : "",
-      title: typeof details.title === "string" ? details.title : "Canvas",
-      fileChanges: toolResult.fileChanges ?? [],
-    };
+    return extractFinishHtmlResult(toolResult);
   } catch (error) {
     logger.debug("finish-html.write.threw", {
       error: error instanceof Error ? error.message : String(error),
