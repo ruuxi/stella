@@ -63,6 +63,7 @@ const SubscriptionUpgradeDialog = lazy(() =>
   })),
 );
 import { ShellTopBar } from "@/shell/ShellTopBar";
+import { WindowControls } from "@/shell/WindowControls";
 import { LeftSidebar } from "@/shell/LeftSidebar";
 import {
   displayTabs,
@@ -201,6 +202,7 @@ function RootChrome() {
   const isFullWindow = !isMiniWindow && !isMobileWebView;
   const platform = getPlatform();
   const isMac = platform === "darwin";
+  const isWin = platform === "win32";
   const dockedLeftSidebarVisible =
     isFullWindow && leftSidebarVisible && !shellBreakpoints.hideLeftSidebar;
 
@@ -649,15 +651,33 @@ function RootChrome() {
       ) : null}
 
       {isFullWindow && !panelOpen ? (
-        <button
-          type="button"
-          className="shell-topbar-icon-btn shell-edge-toggle shell-edge-toggle--right"
-          onClick={() => dispatchOpenWorkspacePanel()}
-          aria-label="Open panel"
-          title="Open panel"
-        >
-          <PanelRight size={16} strokeWidth={1.75} />
-        </button>
+        isWin ? (
+          // Windows: the panel toggle and the custom min/max/close controls
+          // share the top-right corner, controls outermost. Mounted only
+          // while the panel is closed — opening the panel hides both.
+          <div className="shell-edge-right-cluster">
+            <button
+              type="button"
+              className="shell-topbar-icon-btn"
+              onClick={() => dispatchOpenWorkspacePanel()}
+              aria-label="Open panel"
+              title="Open panel"
+            >
+              <PanelRight size={16} strokeWidth={1.75} />
+            </button>
+            <WindowControls useWindowsIcons hidden={false} />
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="shell-topbar-icon-btn shell-edge-toggle shell-edge-toggle--right"
+            onClick={() => dispatchOpenWorkspacePanel()}
+            aria-label="Open panel"
+            title="Open panel"
+          >
+            <PanelRight size={16} strokeWidth={1.75} />
+          </button>
+        )
       ) : null}
 
       <Suspense fallback={null}>
