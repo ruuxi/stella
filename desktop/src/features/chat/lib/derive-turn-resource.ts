@@ -297,9 +297,15 @@ const fileChangeHtmlOutputPayload = (
     | { filePath: string; slug: string; createdAt: number }
     | null = null;
   for (const event of toolEvents) {
-    if (!isToolResult(event)) continue;
+    // Tool results (orchestrator/general writes) AND agent-completed events
+    // (the auto "finishing up" canvas folded into producedFiles) both carry
+    // html-output records.
+    if (!isToolResult(event) && !isAgentCompletedEvent(event)) continue;
     if ((event.payload as { error?: unknown }).error) continue;
-    for (const record of fileChangesForResult(event)) {
+    for (const record of [
+      ...fileChangesForResult(event),
+      ...producedFilesForResult(event),
+    ]) {
       const resolved = resolveFileChange(record, event.timestamp);
       if (!resolved) continue;
       const match = HTML_OUTPUT_PATH_RE.exec(resolved.path);

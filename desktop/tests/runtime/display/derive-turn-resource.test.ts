@@ -207,6 +207,36 @@ describe("deriveTurnResource", () => {
     });
   });
 
+  it("surfaces an auto finish-html canvas from agent-completed producedFiles", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "agent-1",
+          type: "agent-completed",
+          timestamp: 9,
+          payload: {
+            agentId: "agent-1",
+            agentType: "general",
+            result: "...long report...",
+            producedFiles: [
+              {
+                path: "/Users/me/.stella/outputs/html/q3-revenue-breakdown.html",
+                kind: { type: "add" },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "canvas-html",
+      filePath:
+        "/Users/me/.stella/outputs/html/q3-revenue-breakdown.html",
+      title: "Q3 Revenue Breakdown",
+      slug: "q3-revenue-breakdown",
+      createdAt: 9,
+    });
+  });
+
   it("derives a payload from subagent completed producedFiles", () => {
     expect(
       deriveTurnResource([

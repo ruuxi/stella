@@ -7,6 +7,10 @@ import {
   getModelOverride,
 } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
+import {
+  FINISH_HTML_AGENT_TYPE,
+  runFinishHtmlPass,
+} from "../agent-runtime/finish-html-pass.js";
 import { createAgentLifecycleResponseTarget } from "../agent-runtime/response-target.js";
 import { persistThreadCustomMessage } from "../agent-runtime/thread-memory.js";
 import { runExplore } from "../agent-runtime/explore.js";
@@ -455,6 +459,54 @@ export const createAgentOrchestration = (
       context.runtimeStore.listGroupMemberThreadIds(groupKey),
     onAgentEvent: handleAgentLifecycleEvent,
     fetchAgentContext: deps.buildAgentContext,
+    runFinishHtmlPass: async ({ description, result, abortSignal }) => {
+      // The model lives in the backend `html` config (mapped to the
+      // `html_finish` agent type): Gemini Flash via the OpenRouter relay.
+      // We request the opaque Stella default and let the catalog resolve the
+      // concrete upstream model + relay provider — the same path subagents
+      // use — so a `google/…` id correctly routes through OpenRouter (the
+      // catalog advertises it as `openrouter/google/…`). A user override for
+      // this agent type is still honored.
+      const site = {
+        baseUrl: context.state.convexSiteUrl,
+        getAuthToken: () => context.state.authToken?.trim(),
+        hasConnectedAccount: () => context.state.hasConnectedAccount,
+        refreshAuthToken: async () => {
+          const refreshed = await context.requestRuntimeAuthRefresh?.({
+            source: "stella_provider",
+          });
+          return refreshed?.authenticated ? refreshed.token : null;
+        },
+      };
+      let route;
+      try {
+        route = await withStellaModelCatalogMetadata({
+          route: resolveLlmRoute({
+            stellaAppDir: context.stellaDataDir,
+            modelName: getModelOverride(
+              context.stellaDataDir,
+              FINISH_HTML_AGENT_TYPE,
+            ),
+            agentType: FINISH_HTML_AGENT_TYPE,
+            site,
+          }),
+          agentType: FINISH_HTML_AGENT_TYPE,
+          site,
+          deviceId: context.deviceId,
+          modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
+          stellaDataDir: context.stellaDataDir,
+        });
+      } catch {
+        return null;
+      }
+      return runFinishHtmlPass({
+        stellaDataDir: context.stellaDataDir,
+        route,
+        result,
+        ...(description ? { description } : {}),
+        ...(abortSignal ? { abortSignal } : {}),
+      });
+    },
     runSubagent: async ({
       conversationId,
       userMessageId,
