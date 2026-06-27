@@ -2,6 +2,7 @@ import { type ReactNode } from 'react'
 import { useFullShellChat } from '@/shell/use-full-shell-chat'
 import { ChatRuntimeContext } from '@/context/chat-runtime-context'
 import { usePetStatusBroadcast } from '@/shell/pet/use-pet-status-broadcast'
+import { useAgentProgressSummaryEngine } from '@/features/chat/use-agent-progress-summary-engine'
 import { isTraceDiagnosticsEnabled } from '@/platform/diagnostics/trace-store'
 
 /**
@@ -44,6 +45,11 @@ export function ChatRuntimeProvider({
     isStreaming: runtime.conversation.isStreaming,
     pendingUserMessageId: runtime.conversation.pendingUserMessageId ?? null,
   })
+
+  // Generate rolling 3-7 word progress summaries for each active sub-agent.
+  useAgentProgressSummaryEngine(
+    runtime.conversation.streaming.liveTasks ?? [],
+  )
 
   return (
     <ChatRuntimeContext.Provider value={runtime}>

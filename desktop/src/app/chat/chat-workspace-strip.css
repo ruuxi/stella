@@ -111,6 +111,115 @@
   min-width: 0;
 }
 
+.chat-workspace-strip__task-row-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* In the head, the row button shares space with the collapse toggle. */
+.chat-workspace-strip__task-row-head .chat-workspace-strip__task-button {
+  flex: 1 1 auto;
+  width: auto;
+  margin-right: 0;
+}
+
+.chat-workspace-strip__task-summary-toggle {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.chat-workspace-strip__task-summary-toggle:hover,
+.chat-workspace-strip__task-summary-toggle:focus-visible {
+  outline: none;
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-base);
+}
+
+.chat-workspace-strip__task-progress {
+  list-style: none;
+  margin: 3px 0 1px;
+  /* Indent under the status icon so lines align with the row label. */
+  padding: 0 2px 0 23px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 104px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+
+.chat-workspace-strip__task-progress-item {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: var(--text-weak);
+}
+
+.chat-workspace-strip__task-progress-item[data-newest="true"] {
+  color: var(--text-base);
+  animation: chat-workspace-strip__progress-in 240ms
+    cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.chat-workspace-strip__task-progress-item--leaving {
+  animation: chat-workspace-strip__progress-out 260ms
+    cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes chat-workspace-strip__progress-in {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    max-height: 24px;
+    transform: translateY(0);
+  }
+}
+
+@keyframes chat-workspace-strip__progress-out {
+  from {
+    opacity: 0.5;
+    max-height: 24px;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace-strip__task-progress-item[data-newest="true"],
+  .chat-workspace-strip__task-progress-item--leaving {
+    animation: none;
+  }
+}
+
 .chat-workspace-strip__task-button {
   appearance: none;
   display: flex;
