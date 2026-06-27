@@ -186,7 +186,10 @@ export function normalizeStellaCatalogModels(
   models: readonly CatalogApiModel[],
 ): CatalogModel[] {
   return models
-    .filter((model) => !model.type || model.type === "language")
+    .filter(
+      (model) =>
+        !model.type || model.type === "language" || model.type === "multimodal",
+    )
     .map((model) => {
       const provider = model.provider ?? "stella";
       return {
