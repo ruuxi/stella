@@ -110,76 +110,6 @@ const getScheduleReceipt = (
 const asNonEmptyString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
 
-/**
- * Background-work threads spawned on this assistant turn. Reads the
- * `spawn_agent` tool results (orchestrator-only) attached to the turn —
- * `send_input` / `pause_agent` are intentionally excluded since they don't
- * *start* new background work. Multiple spawns in one turn collapse into a
- * single descriptor (one inline card that tallies them). The optional
- * group label, when present, becomes the card's title.
- */
-const getBackgroundWork = (
-  events: readonly EventRecord[],
-):
-  | {
-      threadIds: string[]
-      descriptions: Record<string, string>
-      groupKey?: string
-      label?: string
-    }
-  | undefined => {
-  const threadIds: string[] = []
-  const descriptions: Record<string, string> = {}
-  // spawn_agent's user-friendly `description` arrives on the tool_request;
-  // the thread id only lands on the tool_result. Match them by request id
-  // so the card can title itself with the work's description (the same
-  // text the sidebar Activity surface shows).
-  const descriptionByRequestId = new Map<string, string>()
-  let groupKey: string | undefined
-  let label: string | undefined
-  for (const event of events) {
-    if (event.type === 'tool_request') {
-      const payload = event.payload as
-        | { toolName?: string; args?: { description?: unknown } }
-        | undefined
-      if (!payload || payload.toolName !== 'spawn_agent') continue
-      const description = asNonEmptyString(payload.args?.description)
-      if (description && event.requestId) {
-        descriptionByRequestId.set(event.requestId, description)
-      }
-      continue
-    }
-    if (event.type !== 'tool_result') continue
-    const payload = event.payload as
-      | {
-          toolName?: string
-          thread_id?: unknown
-          group_id?: unknown
-          group_label?: unknown
-          requestId?: unknown
-        }
-      | undefined
-    if (!payload || payload.toolName !== 'spawn_agent') continue
-    const threadId = asNonEmptyString(payload.thread_id)
-    if (!threadId || threadIds.includes(threadId)) continue
-    threadIds.push(threadId)
-    const requestId = event.requestId ?? asNonEmptyString(payload.requestId)
-    const description = requestId
-      ? descriptionByRequestId.get(requestId)
-      : undefined
-    if (description) descriptions[threadId] = description
-    if (!groupKey) groupKey = asNonEmptyString(payload.group_id)
-    if (!label) label = asNonEmptyString(payload.group_label)
-  }
-  if (threadIds.length === 0) return undefined
-  return {
-    threadIds,
-    descriptions,
-    ...(groupKey ? { groupKey } : {}),
-    ...(label ? { label } : {}),
-  }
-}
-
 const getCwd = (events: readonly EventRecord[]): string | undefined => {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index]
@@ -214,7 +144,6 @@ const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
   !row.selfModApplied &&
   !row.scheduleReceipt &&
   !row.voiceSession &&
-  !row.backgroundWork &&
   !row.customSlot
 
 /** Merge sequential one-by-one image_gen rows into a single inline strip. */
@@ -236,7 +165,6 @@ const coalesceInlineImageRows = (
       !(prev.sourceDiffPayloads?.length) &&
       !prev.selfModApplied &&
       !prev.scheduleReceipt &&
-      !prev.backgroundWork &&
       !prev.customSlot
     ) {
       out[out.length - 1] = {
@@ -262,7 +190,6 @@ const isVoiceOnlyRow = (row: AssistantRowViewModel): boolean =>
   !(row.sourceDiffPayloads?.length) &&
   !row.selfModApplied &&
   !row.scheduleReceipt &&
-  !row.backgroundWork &&
   !row.customSlot
 
 /**
@@ -339,29 +266,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     () => filterMessagesForUiDisplay(messages),
     [messages],
   )
-
-  /**
-   * Background threads whose `agent-completed` event has landed anywhere in
-   * the loaded window. Scanned over the raw (unfiltered) messages since the
-   * completion event attaches to a later turn's assistant message. This is
-   * the reload-safe "done" signal for the inline background-work card —
-   * `agent-failed` / `agent-canceled` are not in the message stream, so
-   * those terminal states come from live task state at render time.
-   */
-  const completedThreadIds = useMemo(() => {
-    const completed = new Set<string>()
-    for (const message of messages) {
-      for (const toolEvent of message.toolEvents) {
-        if (toolEvent.type !== 'agent-completed') continue
-        const agentId = (toolEvent.payload as { agentId?: unknown } | undefined)
-          ?.agentId
-        if (typeof agentId === 'string' && agentId.length > 0) {
-          completed.add(agentId)
-        }
-      }
-    }
-    return completed
-  }, [messages])
 
   const responseTargetByAssistantId = useMemo(() => {
     const map = new Map<string, AgentResponseTarget | undefined>()
@@ -486,15 +390,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const selfModApplied = payload?.selfModApplied
         const officePreviewRef = getOfficePreviewRef(toolEvents)
         const voiceSession = payload?.metadata?.voiceSession
-        const backgroundWorkBase = getBackgroundWork(toolEvents)
-        const backgroundWork = backgroundWorkBase
-          ? {
-              ...backgroundWorkBase,
-              completedThreadIds: backgroundWorkBase.threadIds.filter((id) =>
-                completedThreadIds.has(id),
-              ),
-            }
-          : undefined
         const isStreamingOverlay =
           message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX) &&
           runtimeMetadata?.isStreaming !== false
@@ -521,7 +416,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             ? { scheduleReceipt: getScheduleReceipt(toolEvents) }
             : {}),
           ...(voiceSession ? { voiceSession } : {}),
-          ...(backgroundWork ? { backgroundWork } : {}),
         }
         computed.push(row)
       }
@@ -555,7 +449,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
 
     return coalesceVoiceSessionRows(coalesceInlineImageRows(computed))
   }, [
-    completedThreadIds,
     developerResourcePreviewsEnabled,
     displayMessages,
     responseTargetByAssistantId,

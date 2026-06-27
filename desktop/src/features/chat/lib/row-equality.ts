@@ -218,28 +218,6 @@ const sourceDiffPayloadsEqual = (
   return true;
 };
 
-const backgroundWorkEqual = (
-  a: AssistantRowViewModel["backgroundWork"],
-  b: AssistantRowViewModel["backgroundWork"],
-): boolean => {
-  if (a === b) return true;
-  if (!a || !b) return a === b;
-  if ((a.groupKey ?? null) !== (b.groupKey ?? null)) return false;
-  if ((a.label ?? null) !== (b.label ?? null)) return false;
-  if (a.threadIds.length !== b.threadIds.length) return false;
-  if (a.completedThreadIds.length !== b.completedThreadIds.length) return false;
-  for (let i = 0; i < a.threadIds.length; i += 1) {
-    if (a.threadIds[i] !== b.threadIds[i]) return false;
-    if (a.descriptions[a.threadIds[i]] !== b.descriptions[b.threadIds[i]]) {
-      return false;
-    }
-  }
-  for (let i = 0; i < a.completedThreadIds.length; i += 1) {
-    if (a.completedThreadIds[i] !== b.completedThreadIds[i]) return false;
-  }
-  return true;
-};
-
 const webSearchResultsEqual = (
   a: AssistantRowViewModel["webSearchResults"],
   b: AssistantRowViewModel["webSearchResults"],
@@ -285,7 +263,6 @@ const assistantRowEqual = (
   webSearchResultsEqual(a.webSearchResults, b.webSearchResults) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
   scheduleReceiptEqual(a.scheduleReceipt, b.scheduleReceipt) &&
-  backgroundWorkEqual(a.backgroundWork, b.backgroundWork) &&
   (a.voiceSession?.durationMs ?? null) === (b.voiceSession?.durationMs ?? null) &&
   // Compare a stable key for the custom slot (the ReactNode itself
   // changes identity on each render of the Store thread). Surfaces

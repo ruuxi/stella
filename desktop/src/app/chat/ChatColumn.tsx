@@ -19,16 +19,11 @@ import {
   memo,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ComponentProps,
 } from "react";
 import { ChevronDown } from "@/ui/icons";
-import {
-  extractTasksFromActivities,
-  mergeFooterTasks,
-} from "@/features/chat/lib/event-transforms";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
@@ -197,24 +192,6 @@ export const ChatColumn = memo(function ChatColumn({
     disabled: conversation.streaming.isStreaming,
   });
 
-  // Merged background-task state for the inline background-work cards:
-  // persisted activity (reload-safe terminal status) overlaid with the
-  // live task stream (running narration / failures while in flight).
-  const activities = conversation.activity.activities;
-  const latestMessageTimestampMs =
-    conversation.activity.latestMessageTimestampMs;
-  const liveTasks = conversation.streaming.liveTasks;
-  const backgroundTasks = useMemo(
-    () =>
-      mergeFooterTasks(
-        extractTasksFromActivities(activities, {
-          latestMessageTimestampMs,
-        }),
-        liveTasks,
-      ),
-    [activities, latestMessageTimestampMs, liveTasks],
-  );
-
   /**
    * Two synced instances of the (fully controlled) composer: one pinned at
    * the bottom of the persistently-mounted chat, one centered inside the
@@ -292,7 +269,6 @@ export const ChatColumn = memo(function ChatColumn({
               messages={conversation.messages}
               pendingUserMessageId={conversation.streaming.pendingUserMessageId}
               queuedUserMessages={conversation.streaming.queuedUserMessages}
-              backgroundTasks={backgroundTasks}
               indicator={indicatorProps}
               hasOlderMessages={conversation.history.hasOlderMessages}
               isLoadingOlder={conversation.history.isLoadingOlder}

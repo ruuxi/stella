@@ -1,27 +1,23 @@
 /**
  * Persistent floating left sidebar — the consolidated index.
  *
- * Top-to-bottom: primary nav (Home / Apps / Store / Social / Search) and the
+ * Top-to-bottom: primary nav (Home / Apps / Store / Social) and the
  * Activity / Files / Schedule sections (`LeftSidebarSections`). Nav rows
  * navigate the center content; section items open the right sidebar viewer
- * (master-detail).
+ * (master-detail). Search now lives in the composer activity pill's tray,
+ * not here.
  *
  * Full window only — the mini window keeps its own chrome.
  */
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { Link, useMatchRoute } from "@tanstack/react-router";
-import { Search } from "@/ui/icons";
 import type { AppMetadata } from "@/app/_shared/app-metadata";
 import {
   getSnapshot as getAppRegistrySnapshot,
   subscribe as subscribeToAppRegistry,
 } from "@/shell/sidebar/app-registry";
 import { getPlatform } from "@/platform/electron/platform";
-import {
-  displaySearchStore,
-  useDisplaySearchQuery,
-} from "@/features/workspace-display/display-search-store";
 import { LeftSidebarSections } from "@/shell/LeftSidebarSections";
 import { ShellTopBarAccount } from "@/shell/sidebar/ShellTopBarAccount";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
@@ -43,7 +39,6 @@ export function LeftSidebar({
   onConnect,
   collapsed = false,
 }: LeftSidebarProps) {
-  const query = useDisplaySearchQuery();
   const allApps = useRegisteredApps();
   const matchRoute = useMatchRoute();
   const platform = getPlatform();
@@ -55,14 +50,6 @@ export function LeftSidebar({
     () => allApps.filter((app) => !app.hideFromSidebar && app.slot === "top"),
     [allApps],
   );
-
-  // Search renders as a compact button until clicked, then becomes the input.
-  const [searchActive, setSearchActive] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const showSearchInput = searchActive || query.length > 0;
-  useEffect(() => {
-    if (searchActive) searchInputRef.current?.focus();
-  }, [searchActive]);
 
   return (
     <aside
@@ -117,49 +104,10 @@ export function LeftSidebar({
                   </Link>
                 );
               })}
-
-              {showSearchInput ? (
-                <div className="left-sidebar__nav-row left-sidebar__search-row">
-                  <span
-                    className="left-sidebar__nav-icon"
-                    aria-hidden="true"
-                  >
-                    <Search size={16} strokeWidth={1.75} />
-                  </span>
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    className="left-sidebar__search-input"
-                    value={query}
-                    placeholder="Search"
-                    onChange={(event) =>
-                      displaySearchStore.setQuery(event.currentTarget.value)
-                    }
-                    onBlur={() => {
-                      if (query.length === 0) setSearchActive(false);
-                    }}
-                    aria-label="Search activity, files, and more"
-                  />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className="left-sidebar__nav-row left-sidebar__search-row"
-                  onClick={() => setSearchActive(true)}
-                >
-                  <span
-                    className="left-sidebar__nav-icon"
-                    aria-hidden="true"
-                  >
-                    <Search size={16} strokeWidth={1.75} />
-                  </span>
-                  <span className="left-sidebar__nav-label">Search</span>
-                </button>
-              )}
             </nav>
           ) : null}
 
-          <LeftSidebarSections query={query} variant="overview" />
+          <LeftSidebarSections variant="overview" showRunning={false} />
         </div>
 
         <div className="left-sidebar__footer">

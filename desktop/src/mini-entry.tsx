@@ -33,7 +33,6 @@ import {
   createNewLocalConversationId,
   setActiveLocalConversationId,
 } from "./features/chat/services/local-chat-store";
-import { useConversationActivity } from "./features/chat/hooks/use-conversation-activity";
 import { useConversationDisplayMessages } from "./features/chat/hooks/use-conversation-display-messages";
 import { useConversationMessages } from "./features/chat/hooks/use-conversation-messages";
 import { useStreamingChatCore } from "./features/chat/hooks/use-streaming-chat-core";
@@ -303,10 +302,6 @@ function MiniChatSurface() {
     loadOlder: loadOlderMessages,
   } = useConversationMessages(conversationId ?? undefined);
 
-  const { activities, latestMessageTimestampMs } = useConversationActivity(
-    conversationId ?? undefined,
-  );
-
   const {
     liveTasks,
     optimisticEvents,
@@ -399,8 +394,6 @@ function MiniChatSurface() {
               conversationId={conversationId}
               variant="mini"
               messages={messages}
-              activities={activities}
-              latestMessageTimestampMs={latestMessageTimestampMs}
               isStreaming={isStreaming}
               isStreamingResponseText={isStreamingResponseText}
               runtimeStatusText={runtimeStatusText}
