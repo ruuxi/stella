@@ -66,8 +66,7 @@
   -webkit-app-region: drag;
 }
 
-.left-sidebar__chrome .shell-topbar-update-pill,
-.left-sidebar__chrome .shell-topbar-window-controls {
+.left-sidebar__chrome .shell-topbar-update-pill {
   -webkit-app-region: no-drag;
 }
 

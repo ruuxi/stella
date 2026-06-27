@@ -250,6 +250,38 @@
   transform: translateY(0);
 }
 
+/* Windows full-window: the panel toggle + custom min/max/close controls
+   share the top-right corner (controls outermost). Only mounted while the
+   panel is closed, so opening the panel removes the whole cluster. */
+.shell-edge-right-cluster {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: var(--shell-topbar-height, 38px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 8px;
+  z-index: 80;
+  -webkit-app-region: no-drag;
+}
+
+/* Anchor tooltips to the right edge so the rightmost (Close) hint doesn't
+   spill past the window corner — mirrors the `.shell-topbar-right` rules. */
+.shell-edge-right-cluster .shell-topbar-icon-btn::after,
+.shell-edge-right-cluster .shell-topbar-wc-btn::after {
+  left: auto;
+  right: 0;
+  transform: translateY(-2px);
+}
+
+.shell-edge-right-cluster .shell-topbar-icon-btn:hover::after,
+.shell-edge-right-cluster .shell-topbar-icon-btn:focus-visible::after,
+.shell-edge-right-cluster .shell-topbar-wc-btn:hover::after,
+.shell-edge-right-cluster .shell-topbar-wc-btn:focus-visible::after {
+  transform: translateY(0);
+}
+
 .shell-topbar-window-controls {
   box-sizing: border-box;
   /* 3 × 24px buttons + 2 × 2px gaps + 2 × 8px padding. Pinned so the

@@ -22,11 +22,9 @@ import {
   displaySearchStore,
   useDisplaySearchQuery,
 } from "@/features/workspace-display/display-search-store";
-import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import { LeftSidebarSections } from "@/shell/LeftSidebarSections";
 import { ShellTopBarAccount } from "@/shell/sidebar/ShellTopBarAccount";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
-import { WindowControls } from "@/shell/WindowControls";
 import "./left-sidebar.css";
 import "./shell-junction.css";
 
@@ -48,11 +46,9 @@ export function LeftSidebar({
   const query = useDisplaySearchQuery();
   const allApps = useRegisteredApps();
   const matchRoute = useMatchRoute();
-  const panelOpen = useDisplayPanelOpen();
   const platform = getPlatform();
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
-  const showWindowsControlsOnLeft = isWin && !panelOpen;
 
   // Primary nav: top-slot apps (Home / Apps / Store / Social).
   const navApps = useMemo(
@@ -82,9 +78,6 @@ export function LeftSidebar({
             className="left-sidebar__chrome-spacer"
             aria-hidden="true"
           />
-          {showWindowsControlsOnLeft ? (
-            <WindowControls useWindowsIcons hidden={false} />
-          ) : null}
         </div>
         <div className="left-sidebar__scroll">
           {navApps.length > 0 ? (

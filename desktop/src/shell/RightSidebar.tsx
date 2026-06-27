@@ -33,7 +33,6 @@ import { useWindowType } from "@/shared/hooks/use-window-type";
 import { DisplayPanelControls } from "@/shell/DisplayPanelControls";
 import { DisplayTabSwitcher } from "@/shell/display/DisplayTabSwitcher";
 import { CanvasTopBarTabs } from "@/shell/display/canvas-tab/CanvasTopBarTabs";
-import { WindowControls } from "@/shell/WindowControls";
 import "./right-sidebar.css";
 import "./right-sidebar-panel.css";
 import "./shell-junction.css";
@@ -152,7 +151,6 @@ export const RightSidebar = forwardRef<
   const isMac = platform === "darwin";
   const isWin = platform === "win32";
   const isMiniWindow = useWindowType() === "mini";
-  const showWindowsControlsOnRight = isWin || (!isMac && isMiniWindow);
 
   // Viewer-only: the panel is just the detail surface. It's mounted only
   // when open (with an active viewer); the index lives in the left sidebar.
@@ -445,9 +443,6 @@ export const RightSidebar = forwardRef<
               <CanvasTopBarTabs />
             </div>
             <DisplayPanelControls />
-            {showWindowsControlsOnRight ? (
-              <WindowControls useWindowsIcons={isWin} hidden={false} />
-            ) : null}
           </div>
         ) : null}
         <div className="right-sidebar-panel__body">

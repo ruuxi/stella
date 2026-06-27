@@ -122,7 +122,6 @@ body[data-display-expanding="true"]
 }
 
 .right-sidebar-panel__chrome .shell-topbar-display-controls,
-.right-sidebar-panel__chrome .shell-topbar-window-controls,
 .right-sidebar-panel__chrome .shell-topbar-icon-btn {
   -webkit-app-region: no-drag;
 }
