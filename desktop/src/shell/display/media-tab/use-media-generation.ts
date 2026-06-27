@@ -19,15 +19,9 @@ export type SubmitMediaJobArgs = {
   capability: MediaActionId | string;
   prompt: string;
   source?: string;
-  /** Optional input bag forwarded verbatim. Defaults to a small
-   *  per-capability default (e.g. `duration_seconds` for sfx). */
+  /** Optional input bag forwarded verbatim. */
   input?: Record<string, unknown>;
 };
-
-const defaultInputForCapability = (
-  capability: SubmitMediaJobArgs["capability"],
-): Record<string, unknown> =>
-  capability === "sound_effects" ? { duration_seconds: 5 } : {};
 
 export const submitMediaJob = async (
   args: SubmitMediaJobArgs,
@@ -38,7 +32,7 @@ export const submitMediaJob = async (
       "Content-Type": "application/json",
     },
   );
-  const input = args.input ?? defaultInputForCapability(args.capability);
+  const input = args.input ?? {};
   const response = await fetch(endpoint, {
     method: "POST",
     headers,

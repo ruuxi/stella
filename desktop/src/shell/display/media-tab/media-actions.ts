@@ -21,8 +21,7 @@ export type MediaActionId =
   | "text_to_video"
   | "image_edit"
   | "image_to_video"
-  | "sound_effects"
-  | "text_to_dialogue"
+  | "audio_generation"
   | "text_to_3d";
 
 export type MediaAssetKind =
@@ -64,14 +63,9 @@ export const MEDIA_ACTIONS: MediaAction[] = [
     sourceKind: "image",
   },
   {
-    id: "sound_effects",
-    label: "Sound",
-    placeholder: "Describe a sound effect",
-  },
-  {
-    id: "text_to_dialogue",
-    label: "Voice",
-    placeholder: "Type what to say",
+    id: "audio_generation",
+    label: "Audio",
+    placeholder: "Describe a voice line, sound effect, or ambience",
   },
   {
     id: "text_to_3d",
