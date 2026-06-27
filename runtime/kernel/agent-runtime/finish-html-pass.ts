@@ -63,7 +63,7 @@ export const FINISH_HTML_AGENT_TYPE = "html_finish";
  *  never worth a canvas, and running the model just adds latency. */
 const MIN_RESULT_CHARS = 280;
 
-const MAX_OUTPUT_TOKENS = 32_768;
+const MAX_OUTPUT_TOKENS = 100_768;
 
 export const FINISH_HTML_SYSTEM_PROMPT = `You are the "finishing" pass for a Stella agent. You are given the agent's final report and the \`html\` tool, which writes a self-contained HTML document and shows it to the user as a canvas in the workspace panel.
 
