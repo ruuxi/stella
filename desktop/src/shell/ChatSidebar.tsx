@@ -27,8 +27,7 @@ import {
   deriveComposerState,
   hasAttachedComposerChips,
 } from "@/features/chat/composer-context";
-import type { InlineWorkingIndicatorMountProps } from "@/app/chat/InlineWorkingIndicator";
-import { getInlineWorkingIndicatorActive } from "@/features/chat/working-indicator-state";
+import { buildInlineWorkingIndicatorProps } from "@/features/chat/working-indicator-state";
 import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
 import { handleComposerPaste } from "@/features/chat/lib/paste-context";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
@@ -236,30 +235,20 @@ export function ChatPanelTab({
   );
 
   useReadAloud(messages);
-  // Initial thinking is pre-tool only. Once a tool lifecycle begins, the
-  // indicator follows live TOOL_START/TOOL_END state instead of the long-lived
-  // root run, so spawn_agent/send_input do not pin it while the agent works.
-  const hasActiveStreaming = Boolean(isStreaming);
-  const hasLiveToolActivity = Boolean(hasToolActivity);
-  const hasActiveTool = Boolean(isToolActive);
-  const isPreToolThinking =
-    hasActiveStreaming && !isStreamingResponseText && !hasLiveToolActivity;
-  const hasRunningTask = (liveTasks ?? []).some(
-    (task) => task.status === "running",
-  );
-  const hasActiveWork = getInlineWorkingIndicatorActive({
-    isStreaming: hasActiveStreaming,
+  // The sidebar / mini window have no ComposerActivityPill, so the inline
+  // indicator covers spawned-agent work here too (coverSubAgentWork) — the
+  // same user-visible "working" feedback the full shell gets from its pill.
+  const indicatorProps = buildInlineWorkingIndicatorProps({
+    isStreaming: Boolean(isStreaming),
     isStreamingResponseText: Boolean(isStreamingResponseText),
-    isToolActive: hasActiveTool,
-    hasRunningTask,
+    isToolActive: Boolean(isToolActive),
+    hasToolActivity: Boolean(hasToolActivity),
+    activeToolName,
+    activeToolCallId,
+    runtimeStatusText,
+    liveTasks,
+    coverSubAgentWork: true,
   });
-  const indicatorProps: InlineWorkingIndicatorMountProps = {
-    active: hasActiveWork,
-    runningTool: hasActiveTool ? (activeToolName ?? undefined) : undefined,
-    runningToolId: hasActiveTool ? (activeToolCallId ?? undefined) : undefined,
-    status:
-      isPreToolThinking || hasActiveTool ? (runtimeStatusText ?? null) : null,
-  };
 
   const { chatContext, setChatContext, selectedText, setSelectedText } =
     useCapturedChatContext();

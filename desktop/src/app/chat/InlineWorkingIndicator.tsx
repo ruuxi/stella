@@ -29,35 +29,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getInlineWorkingIndicatorExitDelayMs,
   INLINE_WORKING_INDICATOR_MIN_VISIBLE_MS,
+  type InlineWorkingIndicatorMountProps,
+  type InlineWorkingIndicatorProps,
 } from "@/features/chat/working-indicator-state";
 import { WorkingIndicator } from "./WorkingIndicator";
 import "./indicators.css";
 
-export type InlineWorkingIndicatorProps = {
-  runningTool?: string;
-  /** Stable id of the in-flight tool call; seeds the friendly status
-   * label so it doesn't churn on every re-render. */
-  runningToolId?: string;
-  /** Run-level orchestrator status (spawn / pause / compaction, etc.). */
-  status?: string | null;
-};
-
-export type InlineWorkingIndicatorMountProps = InlineWorkingIndicatorProps & {
-  /**
-   * `true` while the orchestrator is thinking or running a tool (and not
-   * yet streaming answer text). Flipping to `false` triggers the grow-out
-   * exit; the component stays mounted until the exit completes. If
-   * `active` flips back to true mid-exit, the exit is canceled and the
-   * indicator resumes live updates.
-   */
-  active: boolean;
-  /**
-   * Skip the `MIN_VISIBLE_MS` hold on deactivation. Set when answer text
-   * has started streaming — the indicator must get out of the way right
-   * away instead of trailing the growing message for the hold duration.
-   */
-  exitImmediately?: boolean;
-};
+export type {
+  InlineWorkingIndicatorMountProps,
+  InlineWorkingIndicatorProps,
+} from "@/features/chat/working-indicator-state";
 
 /**
  * Exit timing. There's no hold beat anymore (the indicator used to linger

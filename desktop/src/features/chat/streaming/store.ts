@@ -28,6 +28,17 @@ export type RunRecord = {
   outcome?: 'completed' | 'error' | 'canceled'
   statusText: string | null
   hasToolActivity: boolean
+  /**
+   * `true` while the orchestrator is actively emitting visible answer
+   * text. Set on each visible STREAM chunk; reset when a tool starts (the
+   * model has stopped talking to do work) and on run start. Drives the
+   * inline working indicator's "Thinking → gone" handoff. Tracked at the
+   * run level (not derived from the overlay array) so reasoning gaps
+   * *after* an interim/preamble message still show the indicator, and so
+   * runs without a user-message anchor (proactive / non-`user_turn`) get
+   * the same handoff even though they never create a streaming overlay.
+   */
+  isStreamingText: boolean
   activeToolCalls: Record<
     string,
     {
@@ -81,6 +92,10 @@ export type StreamStoreAction =
       type: 'run-status'
       runId: string
       statusText: string | null
+    }
+  | {
+      type: 'mark-streaming-text'
+      runId: string
     }
   | {
       type: 'tool-start'
@@ -165,6 +180,40 @@ const toToolCallKey = (args: {
   return `${args.runId}:tool`
 }
 
+/**
+ * Resolve which active tool-call a `tool-end` refers to, tolerant of the
+ * runtime keying the end event differently from its start (e.g. a
+ * `toolCallId` on start but only a `toolName` on end). A `tool-end` whose
+ * exact key is missing must still clear the in-flight tool — otherwise a
+ * phantom entry pins `isToolActive` true and the working indicator stays
+ * stuck on a tool label until the run finishes. Returns `null` only when
+ * nothing can be safely matched (so concurrent tools never clear the wrong
+ * entry).
+ */
+const resolveToolEndKey = (
+  activeToolCalls: Record<string, { toolName: string; statusText: string | null }>,
+  action: { runId: string; toolCallId?: string; toolName?: string },
+): string | null => {
+  const exact = toToolCallKey(action)
+  if (exact in activeToolCalls) return exact
+  const callId = action.toolCallId?.trim()
+  if (callId && callId in activeToolCalls) return callId
+  const toolName = action.toolName?.trim()
+  if (toolName) {
+    const nameKey = `${action.runId}:${toolName}`
+    if (nameKey in activeToolCalls) return nameKey
+    const matchingByName = Object.keys(activeToolCalls).filter(
+      (key) => activeToolCalls[key]?.toolName === toolName,
+    )
+    const lastMatch = matchingByName.at(-1)
+    if (lastMatch) return lastMatch
+  }
+  const keys = Object.keys(activeToolCalls)
+  // With a single tool in flight, an unresolved end unambiguously closes it.
+  if (keys.length === 1) return keys[0]!
+  return null
+}
+
 const createEmptyRunRecord = (args: {
   runId: string
   conversationId: string
@@ -184,6 +233,7 @@ const createEmptyRunRecord = (args: {
   ...(args.outcome ? { outcome: args.outcome } : {}),
   statusText: args.statusText ?? null,
   hasToolActivity: false,
+  isStreamingText: false,
   activeToolCalls: {},
 })
 
@@ -235,6 +285,22 @@ export function streamStoreReducer(
         },
       }
     }
+    case 'mark-streaming-text': {
+      const current = state.runsById[action.runId]
+      if (!current || current.terminal || current.isStreamingText) {
+        return state
+      }
+      return {
+        ...state,
+        runsById: {
+          ...state.runsById,
+          [action.runId]: {
+            ...current,
+            isStreamingText: true,
+          },
+        },
+      }
+    }
     case 'tool-start': {
       const current =
         state.runsById[action.runId] ??
@@ -253,6 +319,10 @@ export function streamStoreReducer(
           [action.runId]: {
             ...current,
             hasToolActivity: true,
+            // The model has stopped emitting text to run a tool; clear the
+            // streaming-text flag so the post-tool reasoning gap shows the
+            // working indicator again.
+            isStreamingText: false,
             statusText: action.statusText ?? current.statusText,
             activeToolCalls: {
               ...(current.activeToolCalls ?? {}),
@@ -270,9 +340,11 @@ export function streamStoreReducer(
       if (!current || current.terminal) {
         return state
       }
-      const toolCallKey = toToolCallKey(action)
       const nextActiveToolCalls = { ...(current.activeToolCalls ?? {}) }
-      delete nextActiveToolCalls[toolCallKey]
+      const toolCallKey = resolveToolEndKey(nextActiveToolCalls, action)
+      if (toolCallKey) {
+        delete nextActiveToolCalls[toolCallKey]
+      }
       const nextActiveTool = Object.values(nextActiveToolCalls).at(-1)
       return {
         ...state,
