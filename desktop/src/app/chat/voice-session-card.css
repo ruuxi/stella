@@ -12,9 +12,11 @@
   width: fit-content;
   gap: 8px;
   padding: 7px 13px 7px 11px;
-  border: 1px solid var(--border);
+  /* Blended panel surface — matches the artifact / background-work cards. */
+  border: 1px solid var(--panel-surface-border);
   border-radius: 999px;
-  background: var(--muted);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--panel-surface-highlight);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
   line-height: 1.2;

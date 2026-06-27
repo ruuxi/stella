@@ -9,19 +9,26 @@
   font-size: var(--font-size-base);
   line-height: 1.35;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--card);
+  /* Blended "panel surface" — same translucent gradient, hairline border, and
+     top highlight as the background-work card / sidebars, so artifacts read as
+     soft glass over the chat background. */
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--panel-surface-highlight);
   color: var(--text-base);
   max-width: 100%;
   text-align: left;
   transition:
     background 140ms ease,
+    box-shadow 140ms ease,
     border-color 140ms ease;
 }
 
 .end-resource-card:hover {
-  background: var(--surface-raised-hover);
   border-color: var(--border-strong);
+  box-shadow:
+    var(--panel-surface-highlight),
+    inset 0 0 0 999px color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 .end-resource-card__main {

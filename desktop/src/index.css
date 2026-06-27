@@ -170,12 +170,16 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --button-secondary-base: color-mix(in srgb, var(--foreground) 5%, var(--card));
   --button-secondary-hover: color-mix(in srgb, var(--foreground) 9%, var(--card));
 
-  /* Glass is reserved ONLY for transient overlays (dropdowns, popovers,
-     dialogs, command palette). Every primary surface is flat + opaque. */
-  --glass-bg: color-mix(in srgb, var(--card) 82%, transparent);
-  --glass-blur: blur(24px) saturate(140%);
-  --panel-glass-bg: color-mix(in srgb, var(--card) 88%, transparent);
-  --panel-glass-blur: blur(20px) saturate(130%);
+  /* Overlays (dropdowns, popovers, dialogs, command palette, toasts) carry the
+     same soft "panel surface" tint as the sidebars / composer, but composited
+     over an OPAQUE base (`--card`) — floating overlays sit over a scrim / live
+     content, so they must never be see-through. In the flat themes this
+     resolves to clean opaque card; in colorful themes the tint blends through.
+     No backdrop-filter: the blur tokens resolve to `none`. */
+  --glass-bg: var(--panel-surface-bg-gradient), var(--card);
+  --glass-blur: none;
+  --panel-glass-bg: var(--panel-surface-bg-gradient), var(--card);
+  --panel-glass-blur: none;
 
   /* Tint-only shell panels (workspace panel, chat sidebar, composer) — a
      semi-transparent theme tint + soft top-to-bottom gradient and an inset
@@ -374,8 +378,8 @@ html[data-stella-window="mini"] #stella-mini-boot {
   --button-secondary-base: color-mix(in srgb, var(--foreground) 8%, var(--card));
   --button-secondary-hover: color-mix(in srgb, var(--foreground) 14%, var(--card));
 
-  --glass-bg: color-mix(in srgb, var(--card) 84%, transparent);
-  --panel-glass-bg: color-mix(in srgb, var(--card) 90%, transparent);
+  --glass-bg: var(--panel-surface-bg-gradient), var(--card);
+  --panel-glass-bg: var(--panel-surface-bg-gradient), var(--card);
 
   --panel-surface-bg: color-mix(in srgb, var(--background) 62%, transparent);
   --panel-surface-bg-gradient: linear-gradient(
