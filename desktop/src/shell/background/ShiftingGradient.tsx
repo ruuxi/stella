@@ -350,12 +350,19 @@ export const ShiftingGradient = memo(function ShiftingGradient({
         <div
           className="gradient-base"
           style={{
-            background: [
-              `radial-gradient(circle at 18% 20%, color-mix(in srgb, ${colors.primary} 12%, transparent) 0%, transparent 30%)`,
-              `radial-gradient(circle at 84% 18%, color-mix(in srgb, ${colors.interactive} 14%, transparent) 0%, transparent 32%)`,
-              `radial-gradient(circle at 50% 84%, color-mix(in srgb, ${colors.success} 10%, transparent) 0%, transparent 40%)`,
-              "var(--background)",
-            ].join(", "),
+            // Forced-mode themes (the flat Light/Dark defaults) want a clean
+            // solid surface — no colored blobs. The canvas path already drops
+            // the blobs for `forcedMode`; the lightweight CSS path (taken on
+            // low-power machines, including most ≤8GB Windows boxes) has to do
+            // the same or the gradient bleeds through as visible color blobs.
+            background: forcedMode
+              ? "var(--background)"
+              : [
+                  `radial-gradient(circle at 18% 20%, color-mix(in srgb, ${colors.primary} 12%, transparent) 0%, transparent 30%)`,
+                  `radial-gradient(circle at 84% 18%, color-mix(in srgb, ${colors.interactive} 14%, transparent) 0%, transparent 32%)`,
+                  `radial-gradient(circle at 50% 84%, color-mix(in srgb, ${colors.success} 10%, transparent) 0%, transparent 40%)`,
+                  "var(--background)",
+                ].join(", "),
           }}
         />
       ) : (
