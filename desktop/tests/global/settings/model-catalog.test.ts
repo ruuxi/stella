@@ -77,6 +77,32 @@ describe("settings model catalog", () => {
     ]);
   });
 
+  it("retains multimodal Stella modes (e.g. Stella Vision) in the catalog", () => {
+    const models = normalizeStellaCatalogModels([
+      {
+        id: "stella/vision",
+        name: "Stella Vision",
+        provider: "stella",
+        upstreamModel: "google/gemini-3-flash-preview",
+        type: "multimodal",
+      },
+      {
+        id: "stella/designer",
+        name: "Stella Designer",
+        provider: "stella",
+        upstreamModel: "anthropic/claude-opus-4.8",
+        type: "language",
+      },
+    ]);
+
+    // Vision is multimodal — it must NOT be filtered out, or the mode is
+    // unpickable in the desktop catalog.
+    expect(models.map((model) => model.id)).toEqual([
+      "stella/vision",
+      "stella/designer",
+    ]);
+  });
+
   it("preserves per-agent Stella mode defaults from the backend", () => {
     const defaults = getLocalModelDefaults({ orchestrator: "stella/light" }, [
       {
