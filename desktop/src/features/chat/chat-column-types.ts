@@ -4,7 +4,6 @@ import type {
   NativeScrollEvent,
   NativeSyntheticEvent,
 } from "@legendapp/list/react";
-import type { TaskProgressSummaries } from "@/features/chat/hooks/use-task-progress-summaries";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import type {
   EventRecord,
@@ -26,8 +25,8 @@ export type ChatColumnConversation = {
   /**
    * Agent-lifecycle activity for the conversation. Fed by
    * `useConversationActivity` in local mode and a `displayEvents` filter
-   * in cloud mode. Footer working indicator, ChatHomeOverview
-   * Now/Done/UpNext, and ActivityHistoryDialog all read from this rather
+   * in cloud mode. Footer working indicator and ActivityHistoryDialog read
+   * from this rather
    * than scanning `events`.
    *
    * `latestMessageTimestampMs` is the latest user/assistant timestamp
@@ -69,7 +68,6 @@ export type ChatColumnConversation = {
     pendingUserMessageId: string | null;
     queuedUserMessages: QueuedUserMessage[];
     liveTasks?: TaskItem[];
-    taskProgressSummaries: TaskProgressSummaries;
   };
   history: {
     hasOlderMessages: boolean;

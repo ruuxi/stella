@@ -527,17 +527,16 @@ export type RuntimeActiveRun = {
 };
 
 /**
- * One-shot text completion request. Lets renderer surfaces (task progress
- * summaries, the music-prompt shaper, etc.) run a single completion through
- * the runtime's BYOK-aware route resolver — same path the orchestrator and
- * subsidiary agents use — instead of unconditionally hitting Stella's
- * managed chat-completions endpoint.
+ * One-shot text completion request. Lets renderer surfaces (the music-prompt
+ * shaper, etc.) run a single completion through the runtime's BYOK-aware
+ * route resolver — same path the orchestrator and subsidiary agents use —
+ * instead of unconditionally hitting Stella's managed chat-completions endpoint.
  *
  * `agentType` picks which per-agent model override + provider to honor.
  * `fallbackAgentTypes` lets the caller fall through to a related agent's
  * configured model when no explicit override exists for `agentType` (e.g.
- * `task_summary` falls back to `general` so the user's Assistant-tab BYOK
- * pick is respected even though `task_summary` is not user-configurable).
+ * `music_prompt` falls back to `general` so the user's Assistant-tab BYOK
+ * pick is respected even though `music_prompt` is not user-configurable).
  */
 export type RuntimeOneShotCompletionRequest = {
   agentType: string;

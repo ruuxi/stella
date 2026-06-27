@@ -15,7 +15,6 @@ import { useConversationDisplayMessages } from "@/features/chat/hooks/use-conver
 import { useConversationFiles } from "@/features/chat/hooks/use-conversation-files";
 import { useConversationMessages } from "@/features/chat/hooks/use-conversation-messages";
 import { useStreamingChat } from "@/features/chat/hooks/use-streaming-chat";
-import { useTaskProgressSummaries } from "@/features/chat/hooks/use-task-progress-summaries";
 import {
   useTraceEventMonitor,
   useTraceIpcListener,
@@ -122,13 +121,6 @@ export function useFullShellChat({
     persistedMessages,
     optimisticEvents,
     streamingAssistants,
-  });
-
-  const taskProgressSummaries = useTaskProgressSummaries({
-    liveTasks,
-    messages: persistedMessages,
-    activities,
-    latestMessageTimestampMs,
   });
 
   useTraceIpcListener(traceEnabled);
@@ -414,7 +406,6 @@ export function useFullShellChat({
         pendingUserMessageId,
         queuedUserMessages,
         liveTasks,
-        taskProgressSummaries,
       },
       history: {
         hasOlderMessages,
@@ -447,7 +438,6 @@ export function useFullShellChat({
       isStreaming,
       isStreamingResponseText,
       isToolActive,
-      taskProgressSummaries,
     ],
   );
 
