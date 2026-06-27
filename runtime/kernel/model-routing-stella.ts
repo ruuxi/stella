@@ -1,6 +1,9 @@
 import { Buffer } from "node:buffer";
 import type { Api, Model } from "../ai/types.js";
-import { findRegistryModel, uniqueModelCandidates } from "./model-routing-matching.js";
+import {
+  findRegistryModel,
+  uniqueModelCandidates,
+} from "./model-routing-matching.js";
 import {
   STELLA_DEFAULT_MODEL,
   STELLA_STANDARD_MODEL,
@@ -18,7 +21,11 @@ export const STELLA_PROVIDER = "stella";
 export type StellaSiteConfig = {
   baseUrl: string | null;
   getAuthToken: () => string | null | undefined;
-  refreshAuthToken?: () => Promise<string | null | undefined> | string | null | undefined;
+  refreshAuthToken?: () =>
+    | Promise<string | null | undefined>
+    | string
+    | null
+    | undefined;
   hasConnectedAccount?: () => boolean;
 };
 
@@ -49,11 +56,14 @@ export const inferManagedGatewayProviderFromModel = (
 };
 
 const fallbackResolvedModelForAlias = (modelId: string): string => {
+  // Offline fallback for the per-mode upstream model when the server catalog
+  // metadata is unavailable. Keep in sync with the backend `BASE_MODE_CONFIGS`
+  // (convex/agent/model.ts) — the catalog is the source of truth at runtime.
   switch (modelId) {
     case "stella/light":
-      return "deepseek/deepseek-v4-flash";
+      return "accounts/fireworks/models/deepseek-v4-flash";
     case "stella/priority":
-      return "accounts/fireworks/models/kimi-k2p6";
+      return "accounts/fireworks/models/kimi-k2p7-code";
     case "stella/builder":
       return "openai/gpt-5.5";
     case "stella/designer":
@@ -79,7 +89,10 @@ const readJwtExpiryMs = (token: string): number | null => {
   if (!payload) return null;
   try {
     const decoded = JSON.parse(
-      Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"),
+      Buffer.from(
+        payload.replace(/-/g, "+").replace(/_/g, "/"),
+        "base64",
+      ).toString("utf8"),
     ) as { exp?: unknown };
     return typeof decoded.exp === "number" ? decoded.exp * 1000 : null;
   } catch {
@@ -89,7 +102,10 @@ const readJwtExpiryMs = (token: string): number | null => {
 
 const shouldRefreshToken = (token: string): boolean => {
   const expiresAtMs = readJwtExpiryMs(token);
-  return expiresAtMs !== null && expiresAtMs <= Date.now() + STELLA_AUTH_REFRESH_SKEW_MS;
+  return (
+    expiresAtMs !== null &&
+    expiresAtMs <= Date.now() + STELLA_AUTH_REFRESH_SKEW_MS
+  );
 };
 
 const modelName = (modelId: string): string => modelId.replace(/^stella\//, "");
@@ -109,9 +125,8 @@ const providerNativeModelId = (
   return resolvedModelId;
 };
 
-const registryProviderForRelay = (
-  provider: ManagedGatewayProvider,
-): string => provider === "fireworks" ? "fireworks" : provider;
+const registryProviderForRelay = (provider: ManagedGatewayProvider): string =>
+  provider === "fireworks" ? "fireworks" : provider;
 
 const apiForRelay = (
   provider: ManagedGatewayProvider,
@@ -188,7 +203,8 @@ const createRelayModel = (args: {
   // thinking, which Opus 4.7 rejects in budget form) when `model.id`
   // carries a user-facing Stella alias like `stella/designer` that doesn't
   // include the underlying model slug.
-  (model as Model<Api> & { upstreamModelId?: string }).upstreamModelId = nativeId;
+  (model as Model<Api> & { upstreamModelId?: string }).upstreamModelId =
+    nativeId;
   return model;
 };
 
@@ -210,8 +226,7 @@ export const createStellaRoute = (args: {
   }
 
   const resolvedModelId =
-    args.resolvedModelId ??
-    fallbackResolvedModelForAlias(args.modelId);
+    args.resolvedModelId ?? fallbackResolvedModelForAlias(args.modelId);
   const relayProvider = inferManagedGatewayProviderFromModel(resolvedModelId);
 
   const refreshApiKey = async (): Promise<string | undefined> => {
