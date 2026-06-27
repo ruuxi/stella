@@ -17,8 +17,12 @@
   min-height: 44px;
   max-width: 100%;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
-  background: var(--card);
+  /* Soft blended "panel surface" — the same translucent gradient fill,
+     hairline border, and top highlight the left sidebar / composer use,
+     so the card reads as soft glass over the shifting background. */
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--panel-surface-highlight);
   color: var(--text-base);
   font-family: inherit;
   font-size: var(--font-size-base);
@@ -30,7 +34,11 @@
 }
 
 .background-work-card[data-state="error"] {
-  border-color: color-mix(in oklch, var(--danger, #d9534f) 45%, var(--border));
+  border-color: color-mix(
+    in oklch,
+    var(--danger, #d9534f) 45%,
+    var(--panel-surface-border)
+  );
 }
 
 .background-work-card__glyph {
