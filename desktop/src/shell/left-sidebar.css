@@ -70,42 +70,6 @@
   -webkit-app-region: no-drag;
 }
 
-/* ── Search (nav-row styled, grouped with Home / Store / Social) ─── */
-
-.left-sidebar__search-row {
-  width: 100%;
-  border: none;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-}
-
-.left-sidebar__search-row .left-sidebar__search-input {
-  flex: 1;
-  min-width: 0;
-  padding: 0;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: inherit;
-  font-size: var(--font-size-base);
-  font-weight: var(--weight-medium);
-  font-family: var(--font-family-sans);
-}
-
-.left-sidebar__search-row .left-sidebar__search-input::placeholder {
-  color: var(--text-weak);
-}
-
-.left-sidebar__search-row:focus-within {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
-  color: var(--text-strong);
-}
-
-.left-sidebar__search-row:focus-within .left-sidebar__nav-icon {
-  color: var(--text-strong);
-}
-
 /* ── Scroll body ──────────────────────────────────────────────────── */
 
 .left-sidebar__scroll {

@@ -58,7 +58,6 @@ import { WebSearchResultsStrip } from "@/app/chat/WebSearchResultsStrip";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
-import { BackgroundWorkCard } from "@/app/chat/BackgroundWorkCard";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import { VoiceSessionCard } from "@/app/chat/VoiceSessionCard";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
@@ -512,9 +511,6 @@ export const AssistantMessageRow = memo(
       row.scheduleReceipt && row.scheduleReceipt.affected.length > 0,
     );
     const hasVoiceSession = Boolean(row.voiceSession);
-    const hasBackgroundWork = Boolean(
-      row.backgroundWork && row.backgroundWork.threadIds.length > 0,
-    );
 
     if (
       !hasText &&
@@ -525,8 +521,7 @@ export const AssistantMessageRow = memo(
       !hasSelfMod &&
       !hasCustomSlot &&
       !hasScheduleReceipt &&
-      !hasVoiceSession &&
-      !hasBackgroundWork
+      !hasVoiceSession
     ) {
       // Reserve a scroll-follow target before the first token lands;
       // otherwise `followActiveAssistantRow` can't find
@@ -563,14 +558,6 @@ export const AssistantMessageRow = memo(
                 hideHorizontalRules
               />
             </StreamingTextReveal>
-          )}
-          {hasBackgroundWork && row.backgroundWork && (
-            <BackgroundWorkCard
-              threadIds={row.backgroundWork.threadIds}
-              completedThreadIds={row.backgroundWork.completedThreadIds}
-              descriptions={row.backgroundWork.descriptions}
-              label={row.backgroundWork.label}
-            />
           )}
           {hasWebSearchResults && row.webSearchResults && (
             <WebSearchResultsStrip results={row.webSearchResults} />

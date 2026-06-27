@@ -37,10 +37,7 @@ import {
   ScreenshotPreviewOverlay,
 } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
-import type {
-  EventRecord,
-  TaskItem,
-} from "@/features/chat/lib/event-transforms";
+import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import type { AnnotationSelection } from "./use-full-shell-chat";
@@ -90,8 +87,6 @@ interface ChatPanelTabProps {
   variant?: "mini" | "sidebar";
   messages: MessageRecord[];
   conversationId?: string | null;
-  activities: EventRecord[];
-  latestMessageTimestampMs: number | null;
   isStreaming: boolean;
   /** True once the in-flight run has streamed any visible assistant text. */
   isStreamingResponseText?: boolean;
@@ -124,8 +119,6 @@ export function ChatPanelTab({
   wideLayout = false,
   messages,
   conversationId,
-  activities,
-  latestMessageTimestampMs,
   isStreaming,
   isStreamingResponseText,
   runtimeStatusText,
@@ -455,9 +448,6 @@ export function ChatPanelTab({
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}
               queuedUserMessages={queuedUserMessages}
-              liveTasks={liveTasks}
-              activities={activities}
-              latestMessageTimestampMs={latestMessageTimestampMs}
               indicator={indicatorProps}
               hasOlderMessages={hasOlderMessages}
               isLoadingOlder={isLoadingOlder}

@@ -48,10 +48,6 @@ function ChatDisplayTab({
       openRequest={openRequest}
       wideLayout={panelExpanded}
       messages={chat.conversation.messages}
-      activities={chat.conversation.activity.activities}
-      latestMessageTimestampMs={
-        chat.conversation.activity.latestMessageTimestampMs
-      }
       isStreaming={chat.conversation.isStreaming}
       isStreamingResponseText={
         chat.conversation.streaming.isStreamingResponseText

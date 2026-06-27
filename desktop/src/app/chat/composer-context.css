@@ -66,11 +66,13 @@
 .composer-context-suggestion {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px 3px 6px;
-  background: transparent;
-  border: 1px dashed color-mix(in oklch, var(--foreground) 22%, transparent);
+  gap: 7px;
+  height: 28px;
+  padding: 0 12px 0 10px;
+  background: var(--panel-surface-bg-gradient);
+  border: 1px solid var(--panel-surface-border);
   border-radius: 999px;
+  box-shadow: var(--panel-surface-highlight);
   color: var(--text-weak);
   font-family: inherit;
   font-size: var(--font-size-sm);
@@ -104,9 +106,12 @@
 }
 
 .composer-context-suggestion:hover {
-  color: var(--text-base);
-  border-color: color-mix(in oklch, var(--foreground) 36%, transparent);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  color: var(--text-strong);
+  border-color: color-mix(
+    in oklch,
+    var(--foreground) 18%,
+    var(--panel-surface-border)
+  );
 }
 
 .composer-context-suggestion:focus-visible {

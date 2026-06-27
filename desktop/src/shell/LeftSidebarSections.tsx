@@ -361,6 +361,8 @@ export function LeftSidebarSections({
   query = "",
   variant = "strip",
   renderEmpty,
+  onNavigate,
+  showRunning = true,
 }: {
   /** When set, live-filters every section by this query (group overview). */
   query?: string;
@@ -368,6 +370,13 @@ export function LeftSidebarSections({
   variant?: "strip" | "overview";
   /** Rendered when nothing matches; strip mode omits it and renders null. */
   renderEmpty?: () => ReactNode;
+  /** Fired after a section item is opened/selected — lets a host surface
+   *  (e.g. the composer activity tray) dismiss itself. */
+  onNavigate?: () => void;
+  /** Include in-progress (running) activity rows. The left sidebar opts
+   *  out — running work lives in the composer activity pill now — while the
+   *  tray / strip keep the full list. */
+  showRunning?: boolean;
 } = {}) {
   const chat = useChatRuntime();
   const { state } = useUiState();
@@ -464,15 +473,17 @@ export function LeftSidebarSections({
 
   const runningRows = useMemo(
     () =>
-      [...activityRows]
-        .filter((row) => activityRowStatus(row) === "running")
-        .sort(
-          (a, b) =>
-            activityRowStartedAtMs(b) - activityRowStartedAtMs(a) ||
-            activityRowId(a).localeCompare(activityRowId(b)),
-        )
-        .slice(0, caps.activity),
-    [activityRows, caps.activity],
+      showRunning
+        ? [...activityRows]
+            .filter((row) => activityRowStatus(row) === "running")
+            .sort(
+              (a, b) =>
+                activityRowStartedAtMs(b) - activityRowStartedAtMs(a) ||
+                activityRowId(a).localeCompare(activityRowId(b)),
+            )
+            .slice(0, caps.activity)
+        : [],
+    [activityRows, caps.activity, showRunning],
   );
 
   const doneRows = useMemo(
@@ -539,6 +550,7 @@ export function LeftSidebarSections({
 
   const handleOpenFile = (entry: ConversationFileEntry) => {
     openDisplayPayloadTab(entry.payload);
+    onNavigate?.();
   };
   const handleSelectTask = (task: TaskItem) => {
     const activityContext = taskToActivityContext(task);
@@ -552,6 +564,7 @@ export function LeftSidebarSections({
       activity: activityContext,
     }));
     chat.composer.requestFocus?.();
+    onNavigate?.();
   };
 
   if (!hasActivity && !hasFiles && !hasSchedule && !hasStore) {
@@ -665,7 +678,10 @@ export function LeftSidebarSections({
                   <button
                     type="button"
                     className="chat-workspace-strip__file-button"
-                    onClick={() => openStoreDisplayTab()}
+                    onClick={() => {
+                      openStoreDisplayTab();
+                      onNavigate?.();
+                    }}
                   >
                     <DisplayTabIcon kind="store" size={15} />
                     <span className="chat-workspace-strip__file-name">

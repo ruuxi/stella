@@ -9,6 +9,7 @@ import {
   ComposerContextRow,
   ComposerSuggestionContextRow,
 } from "./ComposerContextRow";
+import { ComposerActivityPill } from "./ComposerActivityPill";
 import {
   AssistantReplyPeek,
   type AssistantReplyPeekProps,
@@ -148,11 +149,14 @@ export function Composer({
     <div className="composer">
       <div className="composer-context-peek-anchor">
         {replyPeek ? <AssistantReplyPeek {...replyPeek} /> : null}
-        <ComposerSuggestionContextRow
-          active={suggestionsActive}
-          chatContext={chatContext}
-          setChatContext={setChatContext}
-        />
+        <div className="composer-context-lead-row">
+          <ComposerActivityPill />
+          <ComposerSuggestionContextRow
+            active={suggestionsActive}
+            chatContext={chatContext}
+            setChatContext={setChatContext}
+          />
+        </div>
       </div>
       <div
         ref={shellRef}
