@@ -6,7 +6,7 @@ export function CanvasIllustration({ className = "" }: { className?: string }) {
           .anim-float-1 { animation: float1 6s ease-in-out infinite; }
           .anim-float-2 { animation: float2 5s ease-in-out infinite; }
           .anim-window { animation: floatWindow 8s ease-in-out infinite; }
-          .anim-cursor { animation: moveCursor 6s ease-in-out infinite; }
+          .anim-canvas-cursor { animation: moveCursor 6s ease-in-out infinite; }
           .anim-block { animation: placeBlock 6s ease-in-out infinite; transform-origin: 200px 150px; }
           .anim-sparkle { animation: popSparkle 6s ease-out infinite; transform-origin: 220px 130px; }
 
@@ -56,7 +56,7 @@ export function CanvasIllustration({ className = "" }: { className?: string }) {
         <path d="M220 110 C 220 125, 205 130, 205 130 C 205 130, 220 135, 220 150 C 220 135, 235 130, 235 130 C 235 130, 220 125, 220 110 Z" fill="#fbbf24" />
       </g>
 
-      <g className="anim-cursor" filter="url(#shadow-md)">
+      <g className="anim-canvas-cursor" filter="url(#shadow-md)">
         <path d="M0,0 L0,24 L6,18 L11,29 L14,27 L9,16 L18,16 Z" fill="#0f172a" stroke="#ffffff" strokeWidth="2" strokeLinejoin="round" />
       </g>
     </svg>
