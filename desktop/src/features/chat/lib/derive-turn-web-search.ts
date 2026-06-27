@@ -14,6 +14,7 @@
 
 import type { EventRecord } from "@/features/chat/lib/event-transforms";
 import type { WebSearchResultHit } from "../../../../../runtime/contracts/local-chat.js";
+import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 
 /** Cap so the strip stays a single tidy row regardless of result count. */
 const MAX_WEB_SEARCH_IMAGE_CARDS = 4;
@@ -74,6 +75,17 @@ export const deriveTurnWebSearchResults = (
     if (!payload || payload.toolName !== "web") continue;
     if (typeof payload.error === "string" && payload.error) continue;
     if (payload.mode !== undefined && payload.mode !== "search") continue;
+
+    // The inline "Results from the web" image strip is an orchestrator-only
+    // affordance. The general (and other sub-) agents run web searches as part
+    // of background work and must not splash thumbnails into the chat. An
+    // absent `agentType` means the orchestrator (mirrors the worker's
+    // `?? AGENT_IDS.ORCHESTRATOR` default when persisting events).
+    const agentType =
+      typeof payload.agentType === "string" ? payload.agentType : undefined;
+    if (agentType !== undefined && agentType !== AGENT_IDS.ORCHESTRATOR) {
+      continue;
+    }
 
     const results = readResultsArray(payload);
     if (!results) continue;
