@@ -357,6 +357,14 @@ export function useAgentEventHandler({
                 : {}),
               chunk: event.chunk,
             })
+            // Mark the run as actively streaming answer text so the inline
+            // working indicator steps aside. Driven off the chunk (not the
+            // overlay array) so runs without a user-message anchor —
+            // proactive / non-`user_turn` responses that never create an
+            // overlay — still get the handoff.
+            if (/\S/.test(event.chunk)) {
+              dispatch({ type: 'mark-streaming-text', runId: event.runId })
+            }
           }
           break
         }

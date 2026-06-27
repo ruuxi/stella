@@ -7,6 +7,95 @@ import { computeStatus, normalizeDisplayStatusText } from "./status-utils";
 
 export const INLINE_WORKING_INDICATOR_MIN_VISIBLE_MS = 2000;
 
+export type InlineWorkingIndicatorProps = {
+  runningTool?: string;
+  /** Stable id of the in-flight tool call; seeds the friendly status
+   * label so it doesn't churn on every re-render. */
+  runningToolId?: string;
+  /** Run-level orchestrator status (spawn / pause / compaction, etc.). */
+  status?: string | null;
+};
+
+export type InlineWorkingIndicatorMountProps = InlineWorkingIndicatorProps & {
+  /**
+   * `true` while the orchestrator is thinking or running a tool (and not
+   * yet streaming answer text). Flipping to `false` triggers the grow-out
+   * exit; the component stays mounted until the exit completes. If
+   * `active` flips back to true mid-exit, the exit is canceled and the
+   * indicator resumes live updates.
+   */
+  active: boolean;
+  /**
+   * Skip the `MIN_VISIBLE_MS` hold on deactivation. Set when answer text
+   * has started streaming — the indicator must get out of the way right
+   * away instead of trailing the growing message for the hold duration.
+   */
+  exitImmediately?: boolean;
+};
+
+/**
+ * Single source of truth for the inline working indicator's mount props,
+ * shared by every chat surface (full shell, sidebar, mini) so they can't
+ * drift. Pass the raw streaming snapshot; the helper derives `active`,
+ * the friendly label inputs, and the immediate-exit handoff.
+ */
+export function buildInlineWorkingIndicatorProps({
+  isStreaming,
+  isStreamingResponseText,
+  isToolActive,
+  hasToolActivity,
+  activeToolName,
+  activeToolCallId,
+  runtimeStatusText,
+  liveTasks,
+  coverSubAgentWork = false,
+}: {
+  isStreaming: boolean;
+  isStreamingResponseText: boolean;
+  isToolActive: boolean;
+  hasToolActivity: boolean;
+  activeToolName?: string | null;
+  activeToolCallId?: string | null;
+  runtimeStatusText?: string | null;
+  liveTasks?: TaskItem[];
+  /**
+   * Surfaces without a composer activity pill (the sidebar + mini window)
+   * have nowhere else to show that a spawned agent is working, so the
+   * inline indicator must cover that case rather than step aside. The full
+   * shell passes `false` because its `ComposerActivityPill` owns that
+   * state.
+   */
+  coverSubAgentWork?: boolean;
+}): InlineWorkingIndicatorMountProps {
+  const hasRunningTask =
+    !coverSubAgentWork &&
+    (liveTasks ?? []).some((task) => task.status === "running");
+  const active = getInlineWorkingIndicatorActive({
+    isStreaming,
+    isStreamingResponseText,
+    isToolActive,
+    hasRunningTask,
+  });
+  // Initial thinking is pre-tool only. Once a tool lifecycle begins the
+  // indicator follows live TOOL_START/TOOL_END state instead of the
+  // long-lived root run, so spawn_agent/send_input do not pin it while the
+  // agent works.
+  const isPreToolThinking =
+    isStreaming && !isStreamingResponseText && !hasToolActivity;
+  return {
+    active,
+    // Once the assistant starts streaming answer text, get out of the way
+    // immediately instead of trailing the growing message for the
+    // min-visible hold. Other deactivations (run finished, sub-agent took
+    // over) keep the hold so a fast turn still flashes the indicator.
+    exitImmediately: isStreamingResponseText,
+    runningTool: isToolActive ? (activeToolName ?? undefined) : undefined,
+    runningToolId: isToolActive ? (activeToolCallId ?? undefined) : undefined,
+    status:
+      isPreToolThinking || isToolActive ? (runtimeStatusText ?? null) : null,
+  };
+}
+
 export function getRunningTaskIndicatorText(
   task: TaskItem,
 ): string | undefined {

@@ -135,6 +135,7 @@ export function useStreamingChatCore({
     activeToolName,
     hasToolActivity,
     isToolActive,
+    isStreamingResponseText,
     reasoningText,
     streamingAssistants,
     isStreaming,
@@ -362,14 +363,6 @@ export function useStreamingChatCore({
       setPendingUserMessageId,
       clearOptimisticMessage,
     ],
-  )
-
-  // True once the in-flight run has emitted any visible assistant text.
-  // Drives the inline working indicator's "Thinking → gone" handoff: the
-  // indicator shows while the assistant is reasoning / running a tool, and
-  // disappears the moment answer text starts streaming.
-  const isStreamingResponseText = streamingAssistants.some(
-    (overlay) => /\S/.test(overlay.text),
   )
 
   return {

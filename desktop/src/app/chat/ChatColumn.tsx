@@ -27,8 +27,7 @@ import { ChevronDown } from "@/ui/icons";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
-import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
-import { getInlineWorkingIndicatorActive } from "@/features/chat/working-indicator-state";
+import { buildInlineWorkingIndicatorProps } from "@/features/chat/working-indicator-state";
 import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import type { ChatColumnProps } from "@/features/chat/chat-column-types";
@@ -153,40 +152,21 @@ export const ChatColumn = memo(function ChatColumn({
   }, [showHomeContent]);
 
   useReadAloud(conversation.messages);
-  // Initial thinking is pre-tool only. Once a tool lifecycle begins, the
-  // indicator follows live TOOL_START/TOOL_END state instead of the long-lived
-  // root run, so spawn_agent/send_input do not pin it while the agent works.
-  const isStreaming = Boolean(conversation.streaming.isStreaming);
-  const hasToolActivity = Boolean(conversation.streaming.hasToolActivity);
-  const isToolActive = Boolean(conversation.streaming.isToolActive);
-  const isPreToolThinking =
-    isStreaming &&
-    !conversation.streaming.isStreamingResponseText &&
-    !hasToolActivity;
-  const hasRunningTask = (conversation.streaming.liveTasks ?? []).some(
-    (task) => task.status === "running",
-  );
-  const hasActiveWork = getInlineWorkingIndicatorActive({
-    isStreaming,
+  // The full shell's ComposerActivityPill surfaces spawned-agent work, so
+  // the inline indicator steps aside while a sub-agent runs.
+  const indicatorProps = buildInlineWorkingIndicatorProps({
+    isStreaming: Boolean(conversation.streaming.isStreaming),
     isStreamingResponseText: Boolean(
       conversation.streaming.isStreamingResponseText,
     ),
-    isToolActive,
-    hasRunningTask,
+    isToolActive: Boolean(conversation.streaming.isToolActive),
+    hasToolActivity: Boolean(conversation.streaming.hasToolActivity),
+    activeToolName: conversation.streaming.activeToolName,
+    activeToolCallId: conversation.streaming.activeToolCallId,
+    runtimeStatusText: conversation.streaming.runtimeStatusText,
+    liveTasks: conversation.streaming.liveTasks,
+    coverSubAgentWork: false,
   });
-  const indicatorProps: InlineWorkingIndicatorMountProps = {
-    active: hasActiveWork,
-    runningTool: isToolActive
-      ? (conversation.streaming.activeToolName ?? undefined)
-      : undefined,
-    runningToolId: isToolActive
-      ? (conversation.streaming.activeToolCallId ?? undefined)
-      : undefined,
-    status:
-      isPreToolThinking || isToolActive
-        ? conversation.streaming.runtimeStatusText
-        : null,
-  };
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext: composer.setChatContext,
     disabled: conversation.streaming.isStreaming,

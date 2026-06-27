@@ -409,6 +409,109 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(activeFor(state)).toBe(true);
   });
 
+  it("keeps the working indicator alive in reasoning gaps after an interim/preamble message", () => {
+    const runId = "run-preamble";
+    const conversationId = "conversation-1";
+    // Derive the indicator gate the same way the renderer does: the
+    // streaming-text flag lives on the run record.
+    const activeFor = (current: typeof state) =>
+      getInlineWorkingIndicatorActive({
+        isStreaming: !current.runsById[runId]?.terminal,
+        isStreamingResponseText: Boolean(
+          current.runsById[runId]?.isStreamingText,
+        ),
+        isToolActive: Boolean(
+          Object.keys(current.runsById[runId]?.activeToolCalls ?? {}).length,
+        ),
+        hasRunningTask: false,
+      });
+
+    let state = streamStoreReducer(initialStoreState, {
+      type: "run-started",
+      runId,
+      conversationId,
+      userMessageId: "user-1",
+    });
+    // Pre-text thinking shows the indicator.
+    expect(state.runsById[runId]?.isStreamingText).toBe(false);
+    expect(activeFor(state)).toBe(true);
+
+    // Model streams a preamble ("Let me check…") — indicator steps aside.
+    state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
+    expect(state.runsById[runId]?.isStreamingText).toBe(true);
+    expect(activeFor(state)).toBe(false);
+
+    // A tool starts: the streaming-text flag resets and the tool label shows.
+    state = streamStoreReducer(state, {
+      type: "tool-start",
+      runId,
+      conversationId,
+      toolCallId: "call-1",
+      toolName: "web",
+    });
+    expect(state.runsById[runId]?.isStreamingText).toBe(false);
+    expect(activeFor(state)).toBe(true);
+
+    // Tool ends — this is the hole: with the old "any text this run" signal
+    // the indicator went blank here. It must keep showing the thinking label.
+    state = streamStoreReducer(state, {
+      type: "tool-end",
+      runId,
+      toolCallId: "call-1",
+      toolName: "web",
+    });
+    expect(state.runsById[runId]?.isStreamingText).toBe(false);
+    expect(activeFor(state)).toBe(true);
+
+    // Final answer streams — indicator steps aside again.
+    state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
+    expect(activeFor(state)).toBe(false);
+  });
+
+  it("clears the in-flight tool even when tool-end is keyed differently than tool-start", () => {
+    const runId = "run-tool-mismatch";
+    const conversationId = "conversation-1";
+    let state = streamStoreReducer(initialStoreState, {
+      type: "run-started",
+      runId,
+      conversationId,
+      userMessageId: "user-1",
+    });
+
+    // Start keyed by toolCallId, end carries only the toolName.
+    state = streamStoreReducer(state, {
+      type: "tool-start",
+      runId,
+      conversationId,
+      toolCallId: "call-abc",
+      toolName: "web",
+    });
+    expect(Object.keys(state.runsById[runId]?.activeToolCalls ?? {})).toEqual([
+      "call-abc",
+    ]);
+    state = streamStoreReducer(state, {
+      type: "tool-end",
+      runId,
+      toolName: "web",
+    });
+    expect(state.runsById[runId]?.activeToolCalls).toEqual({});
+
+    // End carrying an unrelated id still closes the single in-flight tool.
+    state = streamStoreReducer(state, {
+      type: "tool-start",
+      runId,
+      conversationId,
+      toolCallId: "call-def",
+      toolName: "read",
+    });
+    state = streamStoreReducer(state, {
+      type: "tool-end",
+      runId,
+      toolCallId: "stale-id",
+    });
+    expect(state.runsById[runId]?.activeToolCalls).toEqual({});
+  });
+
   it("records a completed assistant text event without a Pi message object", () => {
     const store = { recordRunEvent: vi.fn() };
     const recorder = createRunEventRecorder({
