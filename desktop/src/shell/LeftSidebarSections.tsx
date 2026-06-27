@@ -57,6 +57,12 @@ import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/sch
 import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import type { ChatContext } from "@/shared/types/electron";
 import { TextShimmer } from "@/app/chat/TextShimmer";
+import { AgentProgressSummaries } from "@/shell/AgentProgressSummaries";
+import {
+  agentProgressSummaryStore,
+  useAgentProgressSummaries,
+  useAgentProgressSummariesCollapsed,
+} from "@/features/chat/agent-progress-summary-store";
 import "@/app/chat/chat-workspace-strip.css";
 
 // Default per-section caps. The compact strip shows a small preview; the
@@ -194,6 +200,11 @@ function TaskRow({
   onSelectTask: (task: TaskItem) => void;
 }) {
   const label = (getTaskDisplayText(task) || task.description).trim();
+  const summaries = useAgentProgressSummaries(task.id);
+  const summariesCollapsed = useAgentProgressSummariesCollapsed(task.id);
+  // Progress only belongs on a live agent; a completed/canceled row that
+  // lingers briefly should not show stale "working…" lines.
+  const showProgress = task.status === "running" && summaries.length > 0;
   return (
     <li
       className="chat-workspace-strip__task-row"
@@ -201,26 +212,48 @@ function TaskRow({
       data-selected={selectedActivityId === task.id ? "true" : undefined}
       title={label}
     >
-      <button
-        type="button"
-        className="chat-workspace-strip__task-button"
-        onClick={() => onSelectTask(task)}
-        aria-label={`Use ${label || "activity"} as context`}
-      >
-        <span
-          className="chat-workspace-strip__task-icon-wrap"
-          aria-hidden="true"
+      <div className="chat-workspace-strip__task-row-head">
+        <button
+          type="button"
+          className="chat-workspace-strip__task-button"
+          onClick={() => onSelectTask(task)}
+          aria-label={`Use ${label || "activity"} as context`}
         >
-          <TaskStatusIcon status={task.status} />
-        </span>
-        <span className="chat-workspace-strip__task-label">
-          {task.status === "running" ? (
-            <TextShimmer text={label} durationMs={2000} />
-          ) : (
-            label
-          )}
-        </span>
-      </button>
+          <span
+            className="chat-workspace-strip__task-icon-wrap"
+            aria-hidden="true"
+          >
+            <TaskStatusIcon status={task.status} />
+          </span>
+          <span className="chat-workspace-strip__task-label">
+            {task.status === "running" ? (
+              <TextShimmer text={label} durationMs={2000} />
+            ) : (
+              label
+            )}
+          </span>
+        </button>
+        {showProgress ? (
+          <button
+            type="button"
+            className="chat-workspace-strip__task-summary-toggle"
+            onClick={() => agentProgressSummaryStore.toggleCollapsed(task.id)}
+            aria-expanded={!summariesCollapsed}
+            aria-label={
+              summariesCollapsed ? "Show progress" : "Hide progress"
+            }
+          >
+            <ChevronRight
+              className="chat-workspace-strip__group-chevron"
+              data-expanded={!summariesCollapsed ? "true" : undefined}
+              size={13}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+          </button>
+        ) : null}
+      </div>
+      {showProgress ? <AgentProgressSummaries agentId={task.id} /> : null}
     </li>
   );
 }
