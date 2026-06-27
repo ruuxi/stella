@@ -787,6 +787,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       maxOutputTokens?: number;
       temperature?: number;
       fallbackAgentTypes?: string[];
+      model?: string;
     }) =>
       ipcRenderer.invoke("agent:oneShotCompletion", payload) as Promise<{
         text: string;
