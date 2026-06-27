@@ -449,11 +449,7 @@ export const ShellTopBarAccount = ({
             <span className="shell-topbar-account-trigger-icon">
               <SettingsIcon size={15} strokeWidth={1.75} aria-hidden="true" />
               {connectHint.active ? (
-                <span
-                  className="shell-topbar-nav-hint-dot"
-                  aria-hidden="true"
-                  style={{ top: 4, right: 4 }}
-                />
+                <span className="shell-topbar-nav-hint-dot" aria-hidden="true" />
               ) : null}
             </span>
           </button>

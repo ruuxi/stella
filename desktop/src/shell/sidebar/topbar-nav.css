@@ -212,6 +212,14 @@
   height: 15px;
 }
 
+/* Corner-anchor on the settings glyph — offsets inherited from the old
+   full-width trigger button read as centered once the dot moved inside
+   the 15×15 icon box. */
+.shell-topbar-account-trigger-icon .shell-topbar-nav-hint-dot {
+  top: -1px;
+  right: -1px;
+}
+
 .shell-topbar-account-identity {
   display: inline-flex;
   align-items: baseline;
