@@ -118,35 +118,14 @@ html[data-low-power] .radial-result-voice__bars span {
   animation: none !important;
 }
 
-/* Display-sidebar / store / social empty-state SVG illustrations */
-html[data-low-power] .anim-float-1,
-html[data-low-power] .anim-float-2,
-html[data-low-power] .anim-window,
-html[data-low-power] .anim-cursor,
-html[data-low-power] .anim-cursor-a,
-html[data-low-power] .anim-cursor-b,
-html[data-low-power] .anim-block,
-html[data-low-power] .anim-sparkle,
-html[data-low-power] .anim-box,
-html[data-low-power] .anim-item-1,
-html[data-low-power] .anim-item-2,
-html[data-low-power] .anim-item-3,
-html[data-low-power] .anim-photo,
-html[data-low-power] .anim-video,
-html[data-low-power] .anim-audio,
-html[data-low-power] .anim-play,
-html[data-low-power] .anim-bin,
-html[data-low-power] .anim-lid,
-html[data-low-power] .anim-paper-1,
-html[data-low-power] .anim-paper-2,
-html[data-low-power] .anim-dust,
-html[data-low-power] .anim-sidebar,
-html[data-low-power] .anim-card,
-html[data-low-power] .anim-body,
-html[data-low-power] .anim-roof,
-html[data-low-power] .anim-ripple {
-  animation: none !important;
-}
+/* NOTE: the store / social / display-sidebar empty-state illustrations
+   (CanvasIllustration, AppCreationIllustration, CollaborationIllustration,
+   Store/Media/Trash) are intentionally NOT throttled here. They're a handful
+   of GPU-composited transform/opacity keyframes inside one small bounded SVG —
+   negligible cost even on the machines that trip this flag — and they already
+   self-pause when off-screen / the tab is hidden (`svg[data-running="false"]`).
+   Throttling them was cargo-culted alongside the genuinely expensive effects
+   (backdrop-filter blur, the canvas gradient blend) that this file targets. */
 
 /* Generated-image card ambient drift + heavy blur wash */
 html[data-low-power] .inline-generated-image-cards--strip-pending::before,

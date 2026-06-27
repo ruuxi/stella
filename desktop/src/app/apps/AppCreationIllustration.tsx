@@ -48,7 +48,7 @@ export function AppCreationIllustration({
             svg[data-running="false"] .anim-window,
             svg[data-running="false"] .anim-sidebar,
             svg[data-running="false"] .anim-card,
-            svg[data-running="false"] .anim-cursor,
+            svg[data-running="false"] .anim-app-cursor,
             svg[data-running="false"] .anim-sparkle,
             svg[data-running="false"] .anim-ripple,
             svg[data-running="false"] .anim-float-1,
@@ -59,7 +59,7 @@ export function AppCreationIllustration({
             .anim-window { animation: floatWindow 6s ease-in-out infinite; }
             .anim-sidebar { animation: slideSidebar 6s ease-in-out infinite; }
             .anim-card { animation: popCard 6s ease-in-out infinite; }
-            .anim-cursor { animation: moveStellaCursor 6s ease-in-out infinite; }
+            .anim-app-cursor { animation: moveStellaCursor 6s ease-in-out infinite; }
             .anim-sparkle { 
               animation: popSparkle 6s ease-out infinite; 
               transform-origin: 220px 160px; 
@@ -278,7 +278,7 @@ export function AppCreationIllustration({
       </g>
 
       {/* Stella Cursor */}
-      <g className="anim-cursor" filter="url(#shadow-sm)">
+      <g className="anim-app-cursor" filter="url(#shadow-sm)">
         <path
           d="M0,0 L0,24 L6,18 L11,29 L14,27 L9,16 L18,16 Z"
           fill="var(--primary)"
