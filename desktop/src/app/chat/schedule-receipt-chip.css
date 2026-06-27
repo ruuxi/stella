@@ -10,9 +10,11 @@
   gap: 8px;
   margin-top: 8px;
   padding: 5px 10px 5px 9px;
-  border: 1px solid var(--border);
+  /* Blended panel surface — matches the artifact / background-work cards. */
+  border: 1px solid var(--panel-surface-border);
   border-radius: 999px;
-  background: var(--muted);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--panel-surface-highlight);
   color: var(--text-base);
   font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
@@ -20,14 +22,17 @@
   cursor: default;
   transition:
     background 140ms ease,
+    box-shadow 140ms ease,
     border-color 140ms ease,
     color 140ms ease;
 }
 
 .schedule-receipt-chip:hover {
-  background: color-mix(in oklch, var(--foreground) 6%, var(--muted));
   border-color: var(--border-strong);
   color: var(--text-strong);
+  box-shadow:
+    var(--panel-surface-highlight),
+    inset 0 0 0 999px color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 .schedule-receipt-chip:focus-visible {

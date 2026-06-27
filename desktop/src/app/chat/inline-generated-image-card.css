@@ -152,29 +152,37 @@
   margin-top: 10px;
   padding: 0;
   width: min(100%, 320px);
-  border: 1px solid var(--border);
+  /* Blended panel surface — matches the background-work / artifact cards.
+     (Cleared by the `--image` variant once the real image fills the frame.) */
+  border: 1px solid var(--panel-surface-border);
   border-radius: var(--radius-2xl);
-  background: var(--card);
-  box-shadow: var(--shadow-sm);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--panel-surface-highlight);
   overflow: hidden;
   cursor: default;
   text-align: left;
   transition:
     border-color 140ms ease,
+    box-shadow 140ms ease,
     transform 60ms ease;
 }
 
 .inline-generated-image-card:hover {
   border-color: var(--border-strong);
+  box-shadow:
+    var(--panel-surface-highlight),
+    inset 0 0 0 999px color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 .inline-generated-image-card--image {
   border-color: transparent;
   background: transparent;
+  box-shadow: none;
 }
 
 .inline-generated-image-card--image:hover {
   border-color: transparent;
+  box-shadow: none;
 }
 
 .inline-generated-image-card--failed {
