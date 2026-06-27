@@ -31,6 +31,7 @@
  */
 
 import path from "path";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type {
   TaskLifecycleStatus,
   TerminalTaskLifecycleStatus,
@@ -348,6 +349,26 @@ type LocalAgentManagerOpts = {
     status: TaskLifecycleStatus,
   ) => PersistedAgentRecord[];
   listActiveThreads?: (conversationId: string) => RuntimeThreadRecord[];
+  /**
+   * Post-completion "finishing up" pass. When a `general` agent finishes a
+   * substantial turn, the manager runs this to (optionally) render the
+   * result as an HTML canvas on a dedicated fast model. Returns the written
+   * file when a canvas was produced, or `null` when the model declined
+   * (quick Q&A / short answers). Best-effort: failures resolve to `null`.
+   */
+  runFinishHtmlPass?: (args: {
+    conversationId: string;
+    agentId?: string;
+    agentType: string;
+    description?: string;
+    result: string;
+    abortSignal?: AbortSignal;
+  }) => Promise<{
+    filePath: string;
+    slug: string;
+    title: string;
+    fileChanges?: FileChangeRecord[];
+  } | null>;
 };
 
 const normalizeString = (value: unknown): string | undefined => {
@@ -775,6 +796,65 @@ export class LocalAgentManager implements AgentToolApi {
     }
   }
 
+  /**
+   * Run the post-completion HTML "finishing up" pass for a just-completed
+   * `general` task and fold any produced canvas into `task.producedFiles`.
+   * The task's status is already `completed` in memory, but the terminal
+   * `agent-completed` lifecycle event has NOT fired yet — so the UI still
+   * reads the task as running, and the `agent-progress` we emit here shows
+   * "Finishing up …" until the canvas settles. Best-effort and quiet.
+   */
+  private async runFinishHtmlPassForTask(
+    task: RuntimeAgentRecord,
+  ): Promise<void> {
+    const run = this.opts.runFinishHtmlPass;
+    if (!run) return;
+    if (task.agentType !== AGENT_IDS.GENERAL) return;
+    const result = (task.result ?? "").trim();
+    if (!result) return;
+    if (task.controller.signal.aborted) return;
+
+    this.opts.onAgentEvent?.({
+      type: "agent-progress",
+      conversationId: task.conversationId,
+      rootRunId: task.rootRunId,
+      agentId: task.threadId,
+      agentType: task.agentType,
+      description: task.description,
+      parentAgentId: task.parentAgentId,
+      statusText: task.description
+        ? `Finishing up — ${task.description}`
+        : "Finishing up",
+    });
+
+    let canvas: {
+      filePath: string;
+      slug: string;
+      title: string;
+      fileChanges?: FileChangeRecord[];
+    } | null = null;
+    try {
+      canvas = await run({
+        conversationId: task.conversationId,
+        agentId: task.threadId,
+        agentType: task.agentType,
+        ...(task.description ? { description: task.description } : {}),
+        result,
+        abortSignal: task.controller.signal,
+      });
+    } catch {
+      canvas = null;
+    }
+    if (!canvas) return;
+    if (task.controller.signal.aborted) return;
+
+    const records: ProducedFileRecord[] =
+      canvas.fileChanges && canvas.fileChanges.length > 0
+        ? canvas.fileChanges
+        : [{ path: canvas.filePath, kind: { type: "add" } }];
+    task.producedFiles = [...(task.producedFiles ?? []), ...records];
+  }
+
   private tryStartNext(): void {
     const maxConcurrent = Math.max(
       1,
@@ -1027,6 +1107,11 @@ export class LocalAgentManager implements AgentToolApi {
         task.result = result.result;
         task.fileChanges = result.fileChanges;
         task.producedFiles = result.producedFiles;
+        // Render the finished report into an HTML canvas (when warranted)
+        // before the terminal completion event goes out, so the canvas
+        // rides along on the same `agent-completed` payload and the
+        // working indicator can read "Finishing up …" in the meantime.
+        await this.runFinishHtmlPassForTask(task);
       }
     } catch (error) {
       task.completedAt = Date.now();
