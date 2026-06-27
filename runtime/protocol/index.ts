@@ -545,6 +545,14 @@ export type RuntimeOneShotCompletionRequest = {
   maxOutputTokens?: number;
   temperature?: number;
   fallbackAgentTypes?: string[];
+  /**
+   * Explicit model id (e.g. `stella/light`) that takes precedence over any
+   * per-agent override or `fallbackAgentTypes`. Lets internal helpers pin a
+   * tier alias so it resolves consistently across engines — notably so the
+   * Claude Code / Codex engines map `stella/light` to their own light models
+   * (Haiku / mini) instead of the user's expensive default.
+   */
+  model?: string;
 };
 
 export type RuntimeOneShotCompletionResult = {

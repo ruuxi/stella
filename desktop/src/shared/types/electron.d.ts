@@ -602,6 +602,7 @@ export type ElectronAgentApi = {
     maxOutputTokens?: number;
     temperature?: number;
     fallbackAgentTypes?: string[];
+    model?: string;
   }) => Promise<{ text: string }>;
   healthCheck: () => Promise<AgentHealth | null>;
   getActiveRun: () => Promise<{

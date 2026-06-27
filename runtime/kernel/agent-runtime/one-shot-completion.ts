@@ -72,34 +72,58 @@ export const runOneShotCompletion = async (args: {
     return { text: "" };
   }
 
-  const modelName = resolveModelName(
+  const explicitModel = request.model?.trim() || undefined;
+  const fallbackModelName = resolveModelName(
     runtime.stellaDataDir,
     request.agentType,
     request.fallbackAgentTypes,
   );
-  const route = resolveLlmRoute({
-    stellaAppDir: runtime.stellaDataDir,
-    modelName,
-    agentType: request.agentType,
-    site: {
-      baseUrl: runtime.siteBaseUrl,
-      getAuthToken: () => runtime.getAuthToken()?.trim() ?? null,
-      hasConnectedAccount: () => runtime.hasConnectedAccount(),
-      refreshAuthToken: async () => {
-        const result = await runtime.requestRuntimeAuthRefresh?.();
-        return result?.authenticated ? result.token : null;
-      },
+  const site = {
+    baseUrl: runtime.siteBaseUrl,
+    getAuthToken: () => runtime.getAuthToken()?.trim() ?? null,
+    hasConnectedAccount: () => runtime.hasConnectedAccount(),
+    refreshAuthToken: async () => {
+      const result = await runtime.requestRuntimeAuthRefresh?.();
+      return result?.authenticated ? result.token : null;
     },
-  });
+  };
+  const buildRoute = (modelName: string | undefined) =>
+    resolveLlmRoute({
+      stellaAppDir: runtime.stellaDataDir,
+      modelName,
+      agentType: request.agentType,
+      site,
+    });
 
-  const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
+  let modelName = explicitModel ?? fallbackModelName;
+  let route = buildRoute(modelName);
+  let useClaudeCode = shouldUseClaudeCodeAgentRuntime({
     stellaAppDir: runtime.stellaDataDir,
     modelId: route.model.id,
   });
+  let apiKey = useClaudeCode ? undefined : (await route.getApiKey())?.trim();
 
-  const apiKey = useClaudeCode
-    ? undefined
-    : (await route.getApiKey())?.trim();
+  // An explicit Stella tier alias (e.g. `stella/light`) routes only through
+  // Stella's managed gateway. A signed-out BYOK user has no Stella credential,
+  // so retry with the caller's `fallbackAgentTypes` model — which resolves to
+  // the user's local provider — instead of failing the completion outright.
+  if (
+    !useClaudeCode &&
+    !apiKey &&
+    explicitModel !== undefined &&
+    route.route === "stella" &&
+    fallbackModelName !== undefined &&
+    fallbackModelName !== modelName
+  ) {
+    modelName = fallbackModelName;
+    route = buildRoute(modelName);
+    useClaudeCode = shouldUseClaudeCodeAgentRuntime({
+      stellaAppDir: runtime.stellaDataDir,
+      modelId: route.model.id,
+    });
+    apiKey = useClaudeCode ? undefined : (await route.getApiKey())?.trim();
+  }
+
   if (!useClaudeCode && !apiKey) {
     throw new Error(
       "No API credential is available for this completion. Add a matching local key in Settings → Models or sign in to use Stella.",
