@@ -59,6 +59,7 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
 import { BackgroundWorkCard } from "@/app/chat/BackgroundWorkCard";
+import { ToolActivityTrace } from "@/app/chat/ToolActivityTrace";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import { VoiceSessionCard } from "@/app/chat/VoiceSessionCard";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
@@ -517,6 +518,9 @@ export const AssistantMessageRow = memo(
     const hasBackgroundWork = Boolean(
       row.backgroundWork && row.backgroundWork.threadIds.length > 0,
     );
+    const hasToolActivity = Boolean(
+      row.toolActivity && row.toolActivity.steps.length > 0,
+    );
 
     if (
       !hasText &&
@@ -528,7 +532,8 @@ export const AssistantMessageRow = memo(
       !hasCustomSlot &&
       !hasScheduleReceipt &&
       !hasVoiceSession &&
-      !hasBackgroundWork
+      !hasBackgroundWork &&
+      !hasToolActivity
     ) {
       // Reserve a scroll-follow target before the first token lands;
       // otherwise `followActiveAssistantRow` can't find
@@ -565,6 +570,9 @@ export const AssistantMessageRow = memo(
                 hideHorizontalRules
               />
             </StreamingTextReveal>
+          )}
+          {hasToolActivity && row.toolActivity && (
+            <ToolActivityTrace group={row.toolActivity} />
           )}
           {hasBackgroundWork && row.backgroundWork && (
             <BackgroundWorkCard

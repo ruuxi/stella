@@ -1,0 +1,141 @@
+/* ============================================================
+   Inline tool-activity trace — the muted, collapsible "Read 3 files
+   and searched code" line under an assistant turn. Reads as a quiet
+   sub-line of the message (lighter text, small icons), not a card:
+   it should recede next to the answer text. Expanding reveals the
+   individual tool calls.
+   ============================================================ */
+
+.tool-activity {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  max-width: 100%;
+}
+
+.tool-activity__header {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  max-width: 100%;
+  margin: 0;
+  padding: 2px 4px 2px 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-weak);
+  font-family: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+
+.tool-activity__header:hover {
+  color: var(--text-base);
+}
+
+.tool-activity__lead {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--text-weaker);
+}
+
+.tool-activity__header:hover .tool-activity__lead {
+  color: var(--text-weak);
+}
+
+.tool-activity__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-activity__chevron {
+  flex-shrink: 0;
+  color: var(--text-weaker);
+  transition: transform 140ms ease;
+}
+
+.tool-activity[data-expanded="true"] .tool-activity__chevron {
+  transform: rotate(90deg);
+}
+
+/* Spinner shared by the header lead + per-step glyph while running. */
+.tool-activity__spin {
+  animation: tool-activity-spin 900ms linear infinite;
+}
+
+@keyframes tool-activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Expanded step list ------------------------------------------------ */
+
+.tool-activity__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 2px 0;
+  padding: 4px 0 4px 9px;
+  list-style: none;
+  /* Hairline rail aligns under the leading icon so the steps read as a
+     nested branch of the summary line. */
+  border-left: 1px solid var(--panel-surface-border, var(--border-weak));
+  margin-left: 8px;
+}
+
+.tool-activity__step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.tool-activity__step-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--text-weaker);
+}
+
+.tool-activity__step[data-status="completed"] .tool-activity__step-glyph {
+  color: var(--success, var(--text-base));
+}
+
+.tool-activity__step[data-status="error"] .tool-activity__step-glyph {
+  color: var(--danger, #d9534f);
+}
+
+.tool-activity__step-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--text-weaker);
+}
+
+.tool-activity__step-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
