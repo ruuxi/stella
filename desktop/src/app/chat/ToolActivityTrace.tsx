@@ -5,25 +5,28 @@
  * the Claude-Code-style "Read 3 files and searched code" line with a leading
  * category icon. Click (or Enter/Space) expands it into the individual steps.
  *
- * While the turn is still streaming the group reports a running step, so the
- * line shows a live label ("Reading MessageRow.tsx") with a shimmer; when the
- * response finalizes the running step resolves and the line settles into the
- * static summary — that settle IS the "collapse when finalized" behavior.
+ * This is the *settled* record of a turn's tool work. The live, in-flight
+ * phase is owned by the footer `WorkingIndicator` (which already narrates the
+ * running tool during streaming); the trace only mounts once the row's run
+ * has finished (see the `!running` gate in `MessageRow`), so a tool is never
+ * shown live and inline at the same time.
  */
 import { useState, type ReactNode } from "react";
 import {
   AlertCircle,
+  Box,
   Check,
   ChevronRight,
+  Clock,
   Code,
   FileText,
   Globe,
-  LoaderCircle,
+  Lightbulb,
+  MessageSquare,
   Pencil,
   Search,
-  Box,
+  Wand2,
 } from "@/ui/icons";
-import { TextShimmer } from "@/app/chat/TextShimmer";
 import type {
   ToolActivityCategory,
   ToolActivityGroup,
@@ -40,7 +43,10 @@ const CATEGORY_ICON: Record<
   search: (props) => <Search {...props} />,
   web: (props) => <Globe {...props} />,
   command: (props) => <Code {...props} />,
-  code: (props) => <Code {...props} />,
+  create: (props) => <Wand2 {...props} />,
+  memory: (props) => <Lightbulb {...props} />,
+  schedule: (props) => <Clock {...props} />,
+  message: (props) => <MessageSquare {...props} />,
   other: (props) => <Box {...props} />,
 };
 
@@ -58,9 +64,7 @@ function StepRow({ step }: { step: ToolActivityStep }) {
   return (
     <li className="tool-activity__step" data-status={step.status}>
       <span className="tool-activity__step-glyph" aria-hidden="true">
-        {step.status === "running" ? (
-          <LoaderCircle size={12} strokeWidth={2} className="tool-activity__spin" />
-        ) : step.status === "error" ? (
+        {step.status === "error" ? (
           <AlertCircle size={12} strokeWidth={2} />
         ) : (
           <Check size={12} strokeWidth={2} />
@@ -76,17 +80,10 @@ function StepRow({ step }: { step: ToolActivityStep }) {
 
 export function ToolActivityTrace({ group }: { group: ToolActivityGroup }) {
   const [expanded, setExpanded] = useState(false);
-  const { running, summary, runningLabel, steps, icon } = group;
-
-  const label = running ? (runningLabel ?? summary) : summary;
-  const stepCount = steps.length;
+  const { summary, steps, icon } = group;
 
   return (
-    <div
-      className="tool-activity"
-      data-state={running ? "running" : "done"}
-      data-expanded={expanded ? "true" : undefined}
-    >
+    <div className="tool-activity" data-expanded={expanded ? "true" : undefined}>
       <button
         type="button"
         className="tool-activity__header"
@@ -94,23 +91,9 @@ export function ToolActivityTrace({ group }: { group: ToolActivityGroup }) {
         onClick={() => setExpanded((value) => !value)}
       >
         <span className="tool-activity__lead" aria-hidden="true">
-          {running ? (
-            <LoaderCircle
-              size={14}
-              strokeWidth={2}
-              className="tool-activity__spin"
-            />
-          ) : (
-            <CategoryIcon category={icon} />
-          )}
+          <CategoryIcon category={icon} />
         </span>
-        <span className="tool-activity__label">
-          {running ? (
-            <TextShimmer text={label} durationMs={1900} />
-          ) : (
-            label
-          )}
-        </span>
+        <span className="tool-activity__label">{summary}</span>
         <ChevronRight
           className="tool-activity__chevron"
           size={13}
@@ -119,7 +102,10 @@ export function ToolActivityTrace({ group }: { group: ToolActivityGroup }) {
         />
       </button>
       {expanded && (
-        <ul className="tool-activity__steps" aria-label={`${stepCount} tool calls`}>
+        <ul
+          className="tool-activity__steps"
+          aria-label={`${steps.length} tool calls`}
+        >
           {steps.map((step) => (
             <StepRow key={step.id} step={step} />
           ))}
