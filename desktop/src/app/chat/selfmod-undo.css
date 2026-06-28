@@ -10,10 +10,12 @@
   font-family: inherit;
   font-size: var(--font-size-base);
   line-height: 1.35;
-  border-radius: var(--radius-2xl);
-  border: 1px solid var(--border);
-  background: var(--card);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-lg);
+  /* Soft blended "panel surface" — matches the inline background-work /
+     voice / schedule cards so all in-chat status cards read as one family. */
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--panel-surface-highlight);
   color: var(--text-base);
 }
 
