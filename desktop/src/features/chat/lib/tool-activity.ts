@@ -6,30 +6,39 @@
  * most recent one — see `assembleMessageWindow`). This module folds that
  * run into one collapsible summary line, Claude-Code-style:
  *
- *   "Read 3 files and searched code"   "Searched code, ran 2 commands"
+ *   "Read 3 files and searched code"   "Searched the web and ran 2 commands"
  *
- * While the turn is still live the group reports a `running` step (a
- * `tool_request` with no matching `tool_result` yet) so the trace can show
- * a live label; once every step resolves it settles into the static summary
- * — that settle IS the "collapse when finalized" behavior.
+ * Mapping is keyed off Stella's *actual* tool names (see
+ * `runtime/kernel/tools/defs/`), not generic Claude-Code names — the common
+ * dev tools aggregate by category (read / edit / search / web / command) and
+ * the domain tools (memory, scheduling, messaging, media…) get their own
+ * phrases. Anything unrecognized falls back to a humanized name so a new
+ * tool still reads sensibly ("used fashion search products") instead of
+ * being dropped.
  *
- * Delegation tools (`spawn_agent` / `send_input` / …) are intentionally
- * excluded: those surface through `BackgroundWorkCard`, not the trace.
+ * `running` gates the renderer: while a step is in flight the live footer
+ * `WorkingIndicator` owns the display; the inline trace mounts only once the
+ * run settles. Delegation tools (`spawn_agent` / `send_input` / …) and the
+ * `multi_tool_use_parallel` wrapper are excluded — the former surface through
+ * `BackgroundWorkCard`, the latter is fan-out plumbing, not a real call.
  */
 import type { EventRecord } from "@/features/chat/lib/event-transforms";
 import {
-  extractStepsFromEvents,
   isToolRequest,
+  isToolResult,
 } from "@/features/chat/lib/event-transforms";
 
-/** Coarse tool family the summary phrasing + icon key off. */
+/** Coarse tool family the leading icon + summary phrasing key off. */
 export type ToolActivityCategory =
   | "read"
   | "edit"
   | "search"
   | "web"
   | "command"
-  | "code"
+  | "create"
+  | "memory"
+  | "schedule"
+  | "message"
   | "other";
 
 export type ToolActivityStatus = "running" | "completed" | "error";
@@ -49,15 +58,20 @@ export type ToolActivityGroup = {
   summary: string;
   /** Leading-icon category (the run's dominant family). */
   icon: ToolActivityCategory;
-  /** A step is still in flight (request without result). */
+  /**
+   * A step is still in flight (a `tool_request` with no matching
+   * `tool_result` yet). The renderer gates on this: while `true` the live
+   * footer `WorkingIndicator` owns the display and the inline trace stays
+   * hidden; it mounts only once the run settles (`false`).
+   */
   running: boolean;
-  /** Live label for the running step, e.g. "Reading MessageRow.tsx". */
-  runningLabel?: string;
 };
 
-// Delegation tools own the BackgroundWorkCard surface; keep them out of the
-// inline tool trace so a turn that spawns an agent doesn't double-report it.
-const DELEGATION_TOOLS = new Set([
+// Owned by other surfaces / not real calls — never shown in the trace.
+//   - delegation → BackgroundWorkCard
+//   - multi_tool_use_parallel → fan-out wrapper; its children emit their own
+//     tool_request events, so the wrapper itself would just be noise.
+const EXCLUDED_TOOLS = new Set([
   "spawn_agent",
   "send_input",
   "pause_agent",
@@ -65,186 +79,310 @@ const DELEGATION_TOOLS = new Set([
   "search_threads",
   "run_workflow",
   "task",
+  "multi_tool_use_parallel",
 ]);
 
-const categoryForTool = (toolName: string): ToolActivityCategory => {
+type PhraseFn = (count: number) => string;
+
+const plural = (one: string, many: (n: number) => string): PhraseFn => (n) =>
+  n === 1 ? one : many(n);
+
+/**
+ * Per-tool descriptor keyed by lowercased tool name. `category` drives the
+ * icon; `phrase` is the settled summary clause. Tools sharing a category but
+ * NOT a phrase (e.g. a future second "command" tool) still aggregate into one
+ * clause via `aggregateKey` below.
+ */
+type ToolDescriptor = { category: ToolActivityCategory; phrase: PhraseFn };
+
+const TOOL_DESCRIPTORS: Record<string, ToolDescriptor> = {
+  // — read —
+  read: { category: "read", phrase: plural("read a file", (n) => `read ${n} files`) },
+  view_image: {
+    category: "read",
+    phrase: plural("viewed an image", (n) => `viewed ${n} images`),
+  },
+  // — edit —
+  edit: { category: "edit", phrase: plural("edited a file", (n) => `edited ${n} files`) },
+  write: { category: "edit", phrase: plural("wrote a file", (n) => `wrote ${n} files`) },
+  strreplace: {
+    category: "edit",
+    phrase: plural("edited a file", (n) => `edited ${n} files`),
+  },
+  apply_patch: {
+    category: "edit",
+    phrase: plural("applied a patch", (n) => `applied ${n} patches`),
+  },
+  scriptdraft: {
+    category: "edit",
+    phrase: plural("drafted a script", (n) => `drafted ${n} scripts`),
+  },
+  // — search —
+  grep: { category: "search", phrase: () => "searched code" },
+  tool_search: {
+    category: "search",
+    phrase: plural("looked up a tool", (n) => `looked up ${n} tools`),
+  },
+  // — web —
+  web: { category: "web", phrase: () => "searched the web" },
+  import_source: {
+    category: "web",
+    phrase: plural("imported a source", (n) => `imported ${n} sources`),
+  },
+  // — command —
+  exec_command: {
+    category: "command",
+    phrase: plural("ran a command", (n) => `ran ${n} commands`),
+  },
+  write_stdin: {
+    category: "command",
+    phrase: plural("sent input to a command", (n) => `sent input ${n} times`),
+  },
+  // — create / media —
+  image_gen: {
+    category: "create",
+    phrase: plural("generated an image", (n) => `generated ${n} images`),
+  },
+  html: {
+    category: "create",
+    phrase: plural("built a page", (n) => `built ${n} pages`),
+  },
+  dream: {
+    category: "create",
+    phrase: plural("generated a vision", (n) => `generated ${n} visions`),
+  },
+  // — memory —
+  recall: { category: "memory", phrase: () => "checked memory" },
+  remember: {
+    category: "memory",
+    phrase: plural("saved a note", (n) => `saved ${n} notes`),
+  },
+  // — scheduling —
+  schedule: { category: "schedule", phrase: () => "updated scheduling" },
+  cronadd: { category: "schedule", phrase: () => "updated schedules" },
+  cronupdate: { category: "schedule", phrase: () => "updated schedules" },
+  cronremove: { category: "schedule", phrase: () => "updated schedules" },
+  cronrun: { category: "schedule", phrase: () => "ran a schedule" },
+  cronlist: { category: "schedule", phrase: () => "checked schedules" },
+  heartbeatget: { category: "schedule", phrase: () => "checked heartbeats" },
+  heartbeatrun: { category: "schedule", phrase: () => "ran a heartbeat" },
+  heartbeatupsert: { category: "schedule", phrase: () => "updated heartbeats" },
+  // — messaging —
+  linq_send_message: {
+    category: "message",
+    phrase: plural("sent a message", (n) => `sent ${n} messages`),
+  },
+  linq_send_voice_memo: {
+    category: "message",
+    phrase: plural("sent a voice memo", (n) => `sent ${n} voice memos`),
+  },
+  linq_react_to_message: { category: "message", phrase: () => "reacted to a message" },
+  linq_share_contact_card: { category: "message", phrase: () => "shared a contact" },
+  // — misc known —
+  request_credential: { category: "other", phrase: () => "requested access" },
+  requestcredential: { category: "other", phrase: () => "requested access" },
+};
+
+/** snake_case / CamelCase → "lower spaced words" for the generic fallback. */
+const humanizeToolName = (toolName: string): string =>
+  toolName
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const descriptorFor = (toolName: string): ToolDescriptor => {
+  const known = TOOL_DESCRIPTORS[toolName.toLowerCase()];
+  if (known) return known;
+  const human = humanizeToolName(toolName);
+  return {
+    category: "other",
+    phrase: plural(`used ${human}`, (n) => `used ${human} ×${n}`),
+  };
+};
+
+/**
+ * Aggregation key for the summary. Dev categories collapse all their tools
+ * into one clause (Edit + Write + StrReplace → one "edited N files"); domain
+ * tools group per tool name so distinct ones stay separate but repeats tally.
+ */
+const DEV_CATEGORIES = new Set<ToolActivityCategory>([
+  "read",
+  "edit",
+  "search",
+  "web",
+  "command",
+]);
+
+const aggregateKey = (step: ToolActivityStep): string =>
+  DEV_CATEGORIES.has(step.category)
+    ? `cat:${step.category}`
+    : `tool:${step.toolName.toLowerCase()}`;
+
+const str = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+
+const basename = (path: string): string => path.split(/[\\/]/).pop() || path;
+
+const clamp = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max)}…` : text;
+
+/** Per-call title shown in the expanded step list. */
+const titleForCall = (
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+): string => {
+  const a = args ?? {};
   switch (toolName.toLowerCase()) {
     case "read":
-      return "read";
+    case "view_image": {
+      const path = str(a.path) ?? str(a.file_path);
+      return path ? basename(path) : "file";
+    }
     case "edit":
-    case "multiedit":
     case "write":
-      return "edit";
+    case "strreplace": {
+      const path = str(a.file_path) ?? str(a.path);
+      return path ? basename(path) : "file";
+    }
+    case "apply_patch":
+      return "patch";
     case "grep":
-    case "glob":
-      return "search";
-    case "web":
-    case "webfetch":
-    case "websearch":
-      return "web";
-    case "bash":
-      return "command";
-    case "executetypescript":
-      return "code";
+      return str(a.pattern) ? `"${clamp(str(a.pattern)!, 32)}"` : "code";
+    case "web": {
+      const query = str(a.query);
+      if (query) return `"${clamp(query, 40)}"`;
+      const url = str(a.url);
+      if (url) {
+        try {
+          return new URL(url).hostname;
+        } catch {
+          return url;
+        }
+      }
+      return "the web";
+    }
+    case "exec_command": {
+      const cmd = str(a.cmd) ?? str(a.command);
+      return cmd ? clamp(cmd, 48) : "command";
+    }
+    case "image_gen":
+    case "dream":
+      return str(a.prompt) ? clamp(str(a.prompt)!, 48) : "image";
+    case "html":
+      return str(a.title) ?? "page";
+    case "remember":
+      return str(a.title) ?? str(a.name) ?? "note";
+    case "recall":
+      return str(a.query) ? `"${clamp(str(a.query)!, 40)}"` : "memory";
     default:
-      return "other";
+      return humanizeToolName(toolName);
   }
 };
 
-/** Settled phrase for a category given how many of its calls ran. */
-const phraseForCategory = (
-  category: ToolActivityCategory,
-  count: number,
-  sampleToolName: string,
-): string => {
-  const plural = (singular: string, pluralForm: string) =>
-    count === 1 ? `${singular}` : `${pluralForm}`;
-  switch (category) {
-    case "read":
-      return plural("read a file", `read ${count} files`);
-    case "edit":
-      return plural("edited a file", `edited ${count} files`);
-    case "search":
-      return "searched code";
-    case "web":
-      return "searched the web";
-    case "command":
-      return plural("ran a command", `ran ${count} commands`);
-    case "code":
-      return "ran code";
-    default:
-      return count === 1 ? `ran ${sampleToolName}` : `ran ${sampleToolName} ×${count}`;
-  }
-};
-
-/** Present-progressive label for the in-flight step. */
-const gerundForCategory = (category: ToolActivityCategory): string => {
-  switch (category) {
-    case "read":
-      return "Reading";
-    case "edit":
-      return "Editing";
-    case "search":
-      return "Searching";
-    case "web":
-      return "Searching the web";
-    case "command":
-      return "Running";
-    case "code":
-      return "Running code";
-    default:
-      return "Working";
-  }
+const requestIdOf = (event: EventRecord): string | undefined => {
+  if (event.requestId) return event.requestId;
+  const payload = event.payload as { requestId?: string } | undefined;
+  return payload?.requestId;
 };
 
 const capitalize = (text: string): string =>
   text.length === 0 ? text : text[0].toUpperCase() + text.slice(1);
 
 /**
- * Join category phrases in first-appearance order: "A", "A and B",
- * "A, B and C" — then capitalize the leading word. Mirrors the natural
- * phrasing in the reference transcript ("Read 3 files and searched code").
+ * Join clauses in first-appearance order: "A", "A and B", "A, B and C" —
+ * then capitalize the leading word.
  */
 const joinPhrases = (phrases: string[]): string => {
   if (phrases.length === 0) return "";
   if (phrases.length === 1) return capitalize(phrases[0]);
   const head = phrases.slice(0, -1).join(", ");
-  const joined = `${head} and ${phrases[phrases.length - 1]}`;
-  return capitalize(joined);
+  return capitalize(`${head} and ${phrases[phrases.length - 1]}`);
 };
 
 /**
  * Fold a turn's tool events into one trace group, or `undefined` when the
- * turn ran no traceable (non-delegation) tools.
+ * turn ran no traceable (non-excluded) tools.
  */
 export function deriveToolActivity(
   events: readonly EventRecord[],
 ): ToolActivityGroup | undefined {
   if (events.length === 0) return undefined;
 
-  // Index requests so we can map each derived step back to its tool name
-  // (extractStepsFromEvents preserves request order and carries `tool`).
-  const traceable: EventRecord[] = events.filter((event) => {
+  // Pair tool_request → tool_result by requestId, preserving request order.
+  const steps: ToolActivityStep[] = [];
+  const indexByRequestId = new Map<string, number>();
+
+  for (const event of events) {
     if (isToolRequest(event)) {
-      return !DELEGATION_TOOLS.has(event.payload.toolName.toLowerCase());
+      const toolName = event.payload.toolName;
+      if (EXCLUDED_TOOLS.has(toolName.toLowerCase())) continue;
+      const id = requestIdOf(event) ?? event._id;
+      const { category } = descriptorFor(toolName);
+      indexByRequestId.set(id, steps.length);
+      steps.push({
+        id,
+        toolName,
+        category,
+        title: titleForCall(
+          toolName,
+          event.payload.args as Record<string, unknown> | undefined,
+        ),
+        status: "running",
+      });
+      continue;
     }
-    // Keep tool_result rows so step pairing (running → completed) works;
-    // results for filtered-out delegation tools simply pair with nothing.
-    return event.type === "tool_result";
-  });
+    if (isToolResult(event)) {
+      const id = requestIdOf(event);
+      if (!id) continue;
+      const index = indexByRequestId.get(id);
+      if (index === undefined) continue;
+      const errored = Boolean((event.payload as { error?: unknown }).error);
+      steps[index] = {
+        ...steps[index],
+        status: errored ? "error" : "completed",
+      };
+    }
+  }
 
-  const rawSteps = extractStepsFromEvents(traceable);
-  if (rawSteps.length === 0) return undefined;
+  if (steps.length === 0) return undefined;
 
-  const steps: ToolActivityStep[] = rawSteps.map((step) => {
-    const category = categoryForTool(step.tool);
-    return {
-      id: step.id,
-      toolName: step.tool,
-      category,
-      title: step.title ?? step.tool,
-      status:
-        step.status === "pending"
-          ? "running"
-          : (step.status as ToolActivityStatus),
-    };
-  });
-
-  // Category tallies in first-appearance order for the summary phrasing.
-  const order: ToolActivityCategory[] = [];
-  const counts = new Map<ToolActivityCategory, number>();
-  const sampleTool = new Map<ToolActivityCategory, string>();
+  // Aggregate clauses by key, in first-appearance order.
+  const order: string[] = [];
+  const groupCount = new Map<string, number>();
+  const groupSample = new Map<string, ToolActivityStep>();
   for (const step of steps) {
-    if (!counts.has(step.category)) {
-      order.push(step.category);
-      sampleTool.set(step.category, step.toolName);
+    const key = aggregateKey(step);
+    if (!groupCount.has(key)) {
+      order.push(key);
+      groupSample.set(key, step);
     }
-    counts.set(step.category, (counts.get(step.category) ?? 0) + 1);
+    groupCount.set(key, (groupCount.get(key) ?? 0) + 1);
   }
 
   const summary = joinPhrases(
-    order.map((category) =>
-      phraseForCategory(
-        category,
-        counts.get(category) ?? 0,
-        sampleTool.get(category) ?? category,
-      ),
-    ),
+    order.map((key) => {
+      const sample = groupSample.get(key)!;
+      return descriptorFor(sample.toolName).phrase(groupCount.get(key) ?? 0);
+    }),
   );
 
-  // Dominant category (most calls; ties keep first-appearance) drives the
-  // leading icon.
-  let icon: ToolActivityCategory = order[0];
+  // Leading icon: dominant aggregation group (most calls; ties keep
+  // first-appearance order).
+  let iconKey = order[0];
   let best = -1;
-  for (const category of order) {
-    const count = counts.get(category) ?? 0;
+  for (const key of order) {
+    const count = groupCount.get(key) ?? 0;
     if (count > best) {
       best = count;
-      icon = category;
+      iconKey = key;
     }
   }
+  const icon = groupSample.get(iconKey)!.category;
 
-  const runningStep = steps.find((step) => step.status === "running");
-  const runningLabel = runningStep
-    ? (() => {
-        const gerund = gerundForCategory(runningStep.category);
-        const title = runningStep.title.trim();
-        // Avoid "Searching the web Searching the web"-style doubling when the
-        // gerund already carries the object.
-        if (!title || gerund.toLowerCase().endsWith(title.toLowerCase())) {
-          return gerund;
-        }
-        return `${gerund} ${title}`;
-      })()
-    : undefined;
+  const running = steps.some((step) => step.status === "running");
 
-  return {
-    steps,
-    summary,
-    icon,
-    running: Boolean(runningStep),
-    ...(runningLabel ? { runningLabel } : {}),
-  };
+  return { steps, summary, icon, running };
 }
 
 /**
@@ -261,7 +399,6 @@ export function toolActivityEqual(
   if (!a || !b) return a === b;
   if (a.running !== b.running) return false;
   if (a.summary !== b.summary) return false;
-  if ((a.runningLabel ?? null) !== (b.runningLabel ?? null)) return false;
   if (a.icon !== b.icon) return false;
   if (a.steps.length !== b.steps.length) return false;
   for (let i = 0; i < a.steps.length; i += 1) {

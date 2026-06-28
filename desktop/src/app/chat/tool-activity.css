@@ -68,17 +68,6 @@
   transform: rotate(90deg);
 }
 
-/* Spinner shared by the header lead + per-step glyph while running. */
-.tool-activity__spin {
-  animation: tool-activity-spin 900ms linear infinite;
-}
-
-@keyframes tool-activity-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* Expanded step list ------------------------------------------------ */
 
 .tool-activity__steps {

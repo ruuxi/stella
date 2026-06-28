@@ -518,8 +518,13 @@ export const AssistantMessageRow = memo(
     const hasBackgroundWork = Boolean(
       row.backgroundWork && row.backgroundWork.threadIds.length > 0,
     );
+    // The live, in-flight phase is owned by the footer WorkingIndicator —
+    // the inline trace only appears once this row's tool run has settled
+    // (no step still running), so the same tool isn't shown in both places.
     const hasToolActivity = Boolean(
-      row.toolActivity && row.toolActivity.steps.length > 0,
+      row.toolActivity &&
+        row.toolActivity.steps.length > 0 &&
+        !row.toolActivity.running,
     );
 
     if (
