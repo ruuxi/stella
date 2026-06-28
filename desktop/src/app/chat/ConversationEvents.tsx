@@ -17,8 +17,10 @@ import type { Attachment } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import { useEventRows } from "@/features/chat/hooks/use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
+import { BackgroundWorkProvider } from "./background-work-context";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
+import type { TaskItem } from "@/features/chat/lib/event-transforms";
 
 const USER_MESSAGE_ENTER_MS = 360;
 
@@ -36,6 +38,12 @@ type Props = {
   maxItems?: number;
   pendingUserMessageId?: string | null;
   queuedUserMessages?: QueuedUserMessage[];
+  /**
+   * Merged background-work task state (persisted activity + live tasks)
+   * the inline background-work cards read for live progress / terminal
+   * status. Surfaces pass whatever they have on hand.
+   */
+  backgroundTasks?: TaskItem[];
   /** Working/agent indicator rendered below the last assistant message. */
   indicator?: InlineWorkingIndicatorMountProps;
   hasOlderMessages?: boolean;
@@ -104,6 +112,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   maxItems,
   pendingUserMessageId,
   queuedUserMessages,
+  backgroundTasks,
   indicator,
   hasOlderMessages,
   isLoadingOlder,
@@ -140,21 +149,23 @@ export const ConversationEvents = memo(function ConversationEvents({
       : projectedRows;
 
   return (
-    <ChatTimeline
-      rows={rows}
-      conversationId={conversationId}
-      hasOlderEvents={hasOlderMessages}
-      isLoadingOlder={isLoadingOlder}
-      isLoadingHistory={isLoadingHistory}
-      onOpenAttachment={onOpenAttachment}
-      queuedUserMessages={queuedUserMessages}
-      indicator={indicator}
-      listRef={listRef}
-      onListScroll={onListScroll}
-      onStartReached={onStartReached}
-      className={className}
-      contentContainerStyle={contentContainerStyle}
-      estimatedItemSize={estimatedItemSize}
-    />
+    <BackgroundWorkProvider tasks={backgroundTasks}>
+      <ChatTimeline
+        rows={rows}
+        conversationId={conversationId}
+        hasOlderEvents={hasOlderMessages}
+        isLoadingOlder={isLoadingOlder}
+        isLoadingHistory={isLoadingHistory}
+        onOpenAttachment={onOpenAttachment}
+        queuedUserMessages={queuedUserMessages}
+        indicator={indicator}
+        listRef={listRef}
+        onListScroll={onListScroll}
+        onStartReached={onStartReached}
+        className={className}
+        contentContainerStyle={contentContainerStyle}
+        estimatedItemSize={estimatedItemSize}
+      />
+    </BackgroundWorkProvider>
   );
 });

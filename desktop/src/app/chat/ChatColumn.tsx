@@ -24,6 +24,8 @@ import {
   type ComponentProps,
 } from "react";
 import { ChevronDown } from "@/ui/icons";
+import { useMergedBackgroundTasks } from "@/features/chat/hooks/use-merged-background-tasks";
+import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
@@ -152,8 +154,9 @@ export const ChatColumn = memo(function ChatColumn({
   }, [showHomeContent]);
 
   useReadAloud(conversation.messages);
-  // The full shell's ComposerActivityPill surfaces spawned-agent work, so
-  // the inline indicator steps aside while a sub-agent runs.
+  // The inline background-work card (and the ComposerActivityPill) surface
+  // spawned-agent work, so the inline indicator steps aside while a
+  // sub-agent runs.
   const indicatorProps = buildInlineWorkingIndicatorProps({
     isStreaming: Boolean(conversation.streaming.isStreaming),
     isStreamingResponseText: Boolean(
@@ -165,11 +168,18 @@ export const ChatColumn = memo(function ChatColumn({
     activeToolCallId: conversation.streaming.activeToolCallId,
     runtimeStatusText: conversation.streaming.runtimeStatusText,
     liveTasks: conversation.streaming.liveTasks,
-    coverSubAgentWork: false,
   });
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext: composer.setChatContext,
     disabled: conversation.streaming.isStreaming,
+  });
+
+  const appSessionStartedAtMs = useAgentSessionStartedAt();
+  const backgroundTasks = useMergedBackgroundTasks({
+    activities: conversation.activity.activities,
+    liveTasks: conversation.streaming.liveTasks,
+    latestMessageTimestampMs: conversation.activity.latestMessageTimestampMs,
+    appSessionStartedAtMs,
   });
 
   /**
@@ -249,6 +259,7 @@ export const ChatColumn = memo(function ChatColumn({
               messages={conversation.messages}
               pendingUserMessageId={conversation.streaming.pendingUserMessageId}
               queuedUserMessages={conversation.streaming.queuedUserMessages}
+              backgroundTasks={backgroundTasks}
               indicator={indicatorProps}
               hasOlderMessages={conversation.history.hasOlderMessages}
               isLoadingOlder={conversation.history.isLoadingOlder}

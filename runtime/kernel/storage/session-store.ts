@@ -168,18 +168,103 @@ const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
 // exclude a result, only pad the 6-token budget and inflate scores with
 // rows that merely contain "the" — so the list errs toward inclusion.
 const SEARCH_STOPWORDS = new Set([
-  "a", "an", "the", "and", "or", "but",
-  "of", "to", "in", "on", "at", "for", "with", "from", "by", "about",
-  "into", "over", "after", "before", "during", "between",
-  "is", "am", "are", "was", "were", "be", "been", "being",
-  "do", "does", "did", "doing", "have", "has", "had", "having",
-  "will", "would", "can", "could", "should", "shall", "may", "might",
-  "i", "me", "my", "we", "us", "our", "you", "your",
-  "it", "its", "they", "them", "their", "he", "him", "his", "she", "her",
-  "that", "this", "these", "those", "there", "here",
-  "what", "which", "who", "whom", "whose", "when", "where", "why", "how",
-  "not", "no", "so", "if", "then", "than", "too", "very", "just", "also",
-  "any", "some", "thing", "stuff", "one", "ago", "last", "recent",
+  "a",
+  "an",
+  "the",
+  "and",
+  "or",
+  "but",
+  "of",
+  "to",
+  "in",
+  "on",
+  "at",
+  "for",
+  "with",
+  "from",
+  "by",
+  "about",
+  "into",
+  "over",
+  "after",
+  "before",
+  "during",
+  "between",
+  "is",
+  "am",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "do",
+  "does",
+  "did",
+  "doing",
+  "have",
+  "has",
+  "had",
+  "having",
+  "will",
+  "would",
+  "can",
+  "could",
+  "should",
+  "shall",
+  "may",
+  "might",
+  "i",
+  "me",
+  "my",
+  "we",
+  "us",
+  "our",
+  "you",
+  "your",
+  "it",
+  "its",
+  "they",
+  "them",
+  "their",
+  "he",
+  "him",
+  "his",
+  "she",
+  "her",
+  "that",
+  "this",
+  "these",
+  "those",
+  "there",
+  "here",
+  "what",
+  "which",
+  "who",
+  "whom",
+  "whose",
+  "when",
+  "where",
+  "why",
+  "how",
+  "not",
+  "no",
+  "so",
+  "if",
+  "then",
+  "than",
+  "too",
+  "very",
+  "just",
+  "also",
+  "any",
+  "some",
+  "thing",
+  "stuff",
+  "one",
+  "ago",
+  "last",
+  "recent",
 ]);
 
 const toIsoTimestamp = (timestamp: number): string =>
@@ -1641,7 +1726,7 @@ export class SessionStore {
   ): LocalChatEventRecord[] {
     const clauses: string[] = [
       "message.session_id = ?",
-      "message.type IN ('user_message', 'assistant_message', 'tool_request', 'tool_result', 'agent-completed')",
+      "message.type IN ('user_message', 'assistant_message', 'tool_request', 'tool_result', 'agent-started', 'agent-completed')",
     ];
     const params: Array<string | number> = [conversationId];
     if (cutoff) {
@@ -2664,12 +2749,8 @@ export class SessionStore {
     );
     // An all-stopword query still searches with what it has rather than
     // silently degrading into a recency dump.
-    const tokens = (meaningful.length > 0 ? meaningful : rawTokens).slice(
-      0,
-      6,
-    );
-    const escapeLike = (value: string) =>
-      value.replace(/([\\%_])/g, "\\$1");
+    const tokens = (meaningful.length > 0 ? meaningful : rawTokens).slice(0, 6);
+    const escapeLike = (value: string) => value.replace(/([\\%_])/g, "\\$1");
     const tokenClause = `(
         thread_key LIKE ? ESCAPE '\\'
         OR runtime_threads.name LIKE ? ESCAPE '\\'
@@ -2809,10 +2890,7 @@ export class SessionStore {
    * at its slot budget. Sibling context is what makes resuming old work
    * useful, so resurrection is all-or-nothing per slot.
    */
-  private reactivateWorkSlot(
-    conversationId: string,
-    slot: string,
-  ): void {
+  private reactivateWorkSlot(conversationId: string, slot: string): void {
     if (
       this.listActiveWorkSlots(conversationId).length >=
       MAX_ACTIVE_RUNTIME_THREADS
@@ -3124,7 +3202,9 @@ export class SessionStore {
     return {
       threadId,
       reused: false,
-      ...(group ? { groupKey: group.groupKey, groupLabel: group.groupLabel } : {}),
+      ...(group
+        ? { groupKey: group.groupKey, groupLabel: group.groupLabel }
+        : {}),
     };
   }
 

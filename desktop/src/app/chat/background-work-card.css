@@ -1,0 +1,93 @@
+/* ============================================================
+   Inline "background work" card — the friendly in-chat marker for
+   work Stella kicked off in the background. Shares the artifact-card
+   surface (rounded square, bordered) so it reads as part of the same
+   family. While work is in progress the title shimmers (like the
+   sidebar Activity surface); it settles into a quiet finished state —
+   with a check / alert glyph — once everything wraps up.
+   ============================================================ */
+
+.background-work-card {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 14px 8px 11px;
+  min-height: 44px;
+  max-width: 100%;
+  border-radius: var(--radius-lg);
+  /* Soft blended "panel surface" — the same translucent gradient fill,
+     hairline border, and top highlight the left sidebar / composer use,
+     so the card reads as soft glass over the shifting background. */
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--panel-surface-highlight);
+  color: var(--text-base);
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  line-height: 1.3;
+  overflow: hidden;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.background-work-card[data-state="error"] {
+  border-color: color-mix(
+    in oklch,
+    var(--danger, #d9534f) 45%,
+    var(--panel-surface-border)
+  );
+}
+
+.background-work-card__glyph {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  color: var(--text-weak);
+}
+
+.background-work-card[data-state="done"] .background-work-card__glyph {
+  color: var(--text-base);
+}
+
+.background-work-card[data-state="error"] .background-work-card__glyph {
+  color: var(--danger, #d9534f);
+}
+
+.background-work-card__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--text-weaker);
+}
+
+.background-work-card__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.background-work-card__title {
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.background-work-card__subtitle {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.01em;
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

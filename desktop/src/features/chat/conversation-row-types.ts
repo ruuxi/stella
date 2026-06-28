@@ -89,6 +89,33 @@ export type AssistantRowViewModel = {
    */
   voiceSession?: VoiceSessionSummaryMetadata;
   /**
+   * Inline "background work" card for a turn that kicked off (or updated)
+   * one or more background threads (orchestrator `spawn_agent` /
+   * `send_input`). Multiple in the same turn collapse onto one card —
+   * `threadIds` carries every thread it covers and the card tallies them.
+   * `completedThreadIds` is the reload-safe subset whose `agent-completed`
+   * event has landed in the message stream; live running/error/cancel
+   * narration comes from `BackgroundWorkProvider` instead so progress ticks
+   * don't re-project the row. `supersededThreadIds` is the subset a LATER
+   * turn's card now owns — this (earlier) card freezes them as settled so it
+   * doesn't re-animate when the thread is revived. `label` is the optional
+   * friendly group label.
+   */
+  backgroundWork?: {
+    threadIds: string[];
+    completedThreadIds: string[];
+    supersededThreadIds?: string[];
+    /** Per-thread work description (the spawn's user-friendly summary),
+     *  used as the card title — mirrors the sidebar Activity surface. */
+    descriptions: Record<string, string>;
+    /** Per-thread spawn/last-advanced time (ms). Lets the card presume a
+     *  long-silent thread with no live signal is settled rather than pinning
+     *  it as forever-working when its lifecycle aged out of the windows. */
+    spawnedAtMs?: Record<string, number>;
+    groupKey?: string;
+    label?: string;
+  };
+  /**
    * Optional renderer for surface-specific row attachments (e.g. the Store
    * thread's draft confirmation card). Mounted after the markdown body and
    * after built-in inline artifacts.

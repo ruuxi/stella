@@ -2,9 +2,9 @@
    Composer activity pill — the always-present search / background-work
    marker that leads the context chip row above the composer. Shares the
    soft "panel surface" fill + hairline border the composer / sidebar use,
-   but as a single-row pill: a leading indicator (search · pulse · check ·
-   alert · dot) plus one line of text. The indicator alone carries the
-   status, so there's no second status line.
+   but as a single-row pill: a leading glyph (search · check · alert · dot)
+   plus one line of text. While running there's no glyph — the shimmering
+   task count carries the status on its own.
    ============================================================ */
 
 .composer-activity-pill {
@@ -33,7 +33,11 @@
 
 .composer-activity-pill:hover,
 .composer-activity-pill[data-open] {
-  border-color: color-mix(in oklch, var(--foreground) 18%, var(--panel-surface-border));
+  border-color: color-mix(
+    in oklch,
+    var(--foreground) 18%,
+    var(--panel-surface-border)
+  );
   color: var(--text-strong);
 }
 
@@ -70,43 +74,17 @@
   color: var(--danger, #d9534f);
 }
 
+/* Running has no glyph — drop the slot so the count sits flush with the
+   pill's leading edge instead of behind an empty gap. */
+.composer-activity-pill[data-state="running"] .composer-activity-pill__glyph {
+  display: none;
+}
+
 .composer-activity-pill__dot {
   width: 7px;
   height: 7px;
   border-radius: 999px;
   background: var(--text-weaker);
-}
-
-/* Running: a quiet, static solid dot — no animation. */
-.composer-activity-pill__dot--running {
-  width: 8px;
-  height: 8px;
-  background: var(--text-base);
-}
-
-/* Page dots — one per concurrent task. The active dot (the description
-   currently showing in the carousel) is filled + slightly larger; the rest
-   are dim. Reads like carousel pagination, so the count is obvious at a
-   glance and ties to the line being shown. */
-.composer-activity-pill__pips {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.composer-activity-pill__pip {
-  width: 4px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--text-weaker);
-  transition:
-    background 200ms ease,
-    transform 200ms ease;
-}
-
-.composer-activity-pill__pip[data-active] {
-  background: var(--text-base);
-  transform: scale(1.4);
 }
 
 .composer-activity-pill__label {
@@ -116,45 +94,6 @@
   text-overflow: ellipsis;
   font-weight: var(--weight-medium);
   color: inherit;
-}
-
-/* Carousel: descriptions stack in a vertical track that slides up one
-   line at a time, so the outgoing and incoming lines move together as one
-   continuous scroll. The viewport clips to a single line. */
-.composer-activity-pill__carousel {
-  display: block;
-  max-width: 100%;
-  height: 1lh;
-  overflow: hidden;
-}
-
-.composer-activity-pill__carousel-track {
-  display: flex;
-  flex-direction: column;
-  will-change: transform;
-}
-
-.composer-activity-pill__carousel-item {
-  display: block;
-  height: 1lh;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.composer-activity-pill__carousel-item .text-shimmer {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .composer-activity-pill__carousel-track {
-    transition: none !important;
-  }
 }
 
 /* ============================================================
@@ -174,9 +113,7 @@
      panel-surface gradient, but composited over the solid app background
      instead of letting content show through. No blur — it's a flat,
      blended panel color matching the chips. */
-  background:
-    var(--panel-surface-bg-gradient),
-    var(--background);
+  background: var(--panel-surface-bg-gradient), var(--background);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   border: 1px solid var(--panel-surface-border);

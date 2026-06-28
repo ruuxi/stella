@@ -48,7 +48,6 @@ export function buildInlineWorkingIndicatorProps({
   activeToolCallId,
   runtimeStatusText,
   liveTasks,
-  coverSubAgentWork = false,
 }: {
   isStreaming: boolean;
   isStreamingResponseText: boolean;
@@ -58,18 +57,12 @@ export function buildInlineWorkingIndicatorProps({
   activeToolCallId?: string | null;
   runtimeStatusText?: string | null;
   liveTasks?: TaskItem[];
-  /**
-   * Surfaces without a composer activity pill (the sidebar + mini window)
-   * have nowhere else to show that a spawned agent is working, so the
-   * inline indicator must cover that case rather than step aside. The full
-   * shell passes `false` because its `ComposerActivityPill` owns that
-   * state.
-   */
-  coverSubAgentWork?: boolean;
 }): InlineWorkingIndicatorMountProps {
-  const hasRunningTask =
-    !coverSubAgentWork &&
-    (liveTasks ?? []).some((task) => task.status === "running");
+  // The inline background-work card owns spawned-agent state in every
+  // surface, so the indicator always steps aside while a sub-agent runs.
+  const hasRunningTask = (liveTasks ?? []).some(
+    (task) => task.status === "running",
+  );
   const active = getInlineWorkingIndicatorActive({
     isStreaming,
     isStreamingResponseText,

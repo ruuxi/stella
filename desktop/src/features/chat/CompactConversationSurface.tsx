@@ -1,4 +1,10 @@
 import { cn } from "@/shared/lib/utils";
+import type {
+  EventRecord,
+  TaskItem,
+} from "@/features/chat/lib/event-transforms";
+import { useMergedBackgroundTasks } from "@/features/chat/hooks/use-merged-background-tasks";
+import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
@@ -32,6 +38,16 @@ type CompactConversationSurfaceProps = {
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
+  liveTasks?: TaskItem[];
+  /**
+   * Persisted agent-lifecycle activity for the conversation, merged with
+   * `liveTasks` to back the inline background-work cards. Without it,
+   * a reloaded surface (no live tasks) would treat a failed/canceled
+   * thread as still running. `latestMessageTimestampMs` lets the
+   * stale-task auto-completion rule apply.
+   */
+  activities?: EventRecord[];
+  latestMessageTimestampMs?: number | null;
   /** Working/agent indicator rendered below the last assistant message. */
   indicator?: InlineWorkingIndicatorMountProps;
   hasOlderMessages?: boolean;
@@ -52,6 +68,9 @@ export function CompactConversationSurface({
   maxItems,
   pendingUserMessageId,
   queuedUserMessages,
+  liveTasks,
+  activities,
+  latestMessageTimestampMs,
   indicator,
   hasOlderMessages,
   isLoadingOlder,
@@ -59,6 +78,13 @@ export function CompactConversationSurface({
   showConversation = true,
   estimatedItemSize = 96,
 }: CompactConversationSurfaceProps) {
+  const appSessionStartedAtMs = useAgentSessionStartedAt();
+  const backgroundTasks = useMergedBackgroundTasks({
+    activities,
+    liveTasks,
+    latestMessageTimestampMs,
+    appSessionStartedAtMs,
+  });
   return (
     <div
       className={cn(
@@ -80,6 +106,7 @@ export function CompactConversationSurface({
             maxItems={maxItems}
             pendingUserMessageId={pendingUserMessageId}
             queuedUserMessages={queuedUserMessages}
+            backgroundTasks={backgroundTasks}
             indicator={indicator}
             hasOlderMessages={hasOlderMessages}
             isLoadingOlder={isLoadingOlder}

@@ -34,7 +34,10 @@ import {
   ScreenshotPreviewOverlay,
 } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
-import type { TaskItem } from "@/features/chat/lib/event-transforms";
+import type {
+  EventRecord,
+  TaskItem,
+} from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import type { AnnotationSelection } from "./use-full-shell-chat";
@@ -83,6 +86,13 @@ interface ChatPanelTabProps {
   variant?: "mini" | "sidebar";
   messages: MessageRecord[];
   conversationId?: string | null;
+  /**
+   * Persisted agent-lifecycle activity + the latest message timestamp,
+   * merged with `liveTasks` in CompactConversationSurface to back the
+   * inline background-work cards (reload-safe terminal status).
+   */
+  activities: EventRecord[];
+  latestMessageTimestampMs: number | null;
   isStreaming: boolean;
   /** True once the in-flight run has streamed any visible assistant text. */
   isStreamingResponseText?: boolean;
@@ -115,6 +125,8 @@ export function ChatPanelTab({
   wideLayout = false,
   messages,
   conversationId,
+  activities,
+  latestMessageTimestampMs,
   isStreaming,
   isStreamingResponseText,
   runtimeStatusText,
@@ -150,7 +162,8 @@ export function ChatPanelTab({
       (!document.hidden && document.hasFocus()),
   );
   useEffect(() => {
-    const sync = () => setSurfaceActive(!document.hidden && document.hasFocus());
+    const sync = () =>
+      setSurfaceActive(!document.hidden && document.hasFocus());
     document.addEventListener("visibilitychange", sync);
     window.addEventListener("focus", sync);
     window.addEventListener("blur", sync);
@@ -237,10 +250,9 @@ export function ChatPanelTab({
   );
 
   useReadAloud(messages);
-  // When the activity pill is present it owns running-agent state, so the
-  // inline indicator steps aside (same as the full shell). Without the pill
-  // (the mini window) the inline indicator must cover spawned-agent work so
-  // there's still some "working" feedback.
+  // The inline background-work card now owns spawned-agent state in every
+  // surface (full, sidebar, mini), so the inline indicator always steps
+  // aside for sub-agent work and doesn't double up with the card.
   const indicatorProps = buildInlineWorkingIndicatorProps({
     isStreaming: Boolean(isStreaming),
     isStreamingResponseText: Boolean(isStreamingResponseText),
@@ -250,7 +262,6 @@ export function ChatPanelTab({
     activeToolCallId,
     runtimeStatusText,
     liveTasks,
-    coverSubAgentWork: !showActivityPill,
   });
 
   const { chatContext, setChatContext, selectedText, setSelectedText } =
@@ -440,6 +451,9 @@ export function ChatPanelTab({
               runtimeStatusText={runtimeStatusText}
               pendingUserMessageId={pendingUserMessageId}
               queuedUserMessages={queuedUserMessages}
+              liveTasks={liveTasks}
+              activities={activities}
+              latestMessageTimestampMs={latestMessageTimestampMs}
               indicator={indicatorProps}
               hasOlderMessages={hasOlderMessages}
               isLoadingOlder={isLoadingOlder}
