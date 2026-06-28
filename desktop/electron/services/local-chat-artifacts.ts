@@ -6,6 +6,31 @@ import {
 } from "../../../runtime/contracts/file-changes.js";
 import { isUiHiddenChatMessagePayload } from "../../../runtime/chat-event-visibility.js";
 
+/**
+ * Inline "background work" card for the mobile chat — the companion to the
+ * desktop's inline agent card. Derived from the turn's `agent-started`
+ * lifecycle events; `done` once every covered thread has an `agent-completed`
+ * at/after its spawn (or has been silent past the stale cutoff). This is a
+ * mobile-bridge-only payload, intentionally NOT part of the shared
+ * `DisplayPayload` contract (which doubles as the desktop workspace-panel tab
+ * contract — this card isn't an openable tab).
+ */
+export type MobileAgentWorkPayload = {
+  kind: "agent-work";
+  state: "running" | "done";
+  /** Number of background threads this card covers. */
+  total: number;
+  completed: number;
+  /** Title line (a single task's description, or "Working on N tasks"). */
+  title: string;
+  /** Status line ("Working in background" / "N of M done" / "Finished"). */
+  subtitle: string;
+  createdAt: number;
+};
+
+/** What the mobile sync transport can carry inline under a message. */
+export type MobileSyncArtifact = DisplayPayload | MobileAgentWorkPayload;
+
 export type LocalChatSyncMessageWithArtifacts = {
   localMessageId: string;
   role: "user" | "assistant";
@@ -13,7 +38,7 @@ export type LocalChatSyncMessageWithArtifacts = {
   timestamp: number;
   requestId?: string;
   deviceId?: string;
-  artifacts?: DisplayPayload[];
+  artifacts?: MobileSyncArtifact[];
 };
 
 export type LocalChatMobileSyncCursor = {
@@ -391,6 +416,114 @@ const imageGenPayload = (event: ArtifactEventRecord): DisplayPayload | null => {
   };
 };
 
+/** A no-signal thread spawned longer ago than this is presumed settled
+ *  rather than pinned as forever-working. Mirrors the desktop card. */
+const AGENT_WORK_STALE_MS = 5 * 60_000;
+
+const GENERIC_TASK_DESCRIPTION = /^(task|agent|work|help|do this|follow up)$/i;
+
+const trimmedString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+
+const isGenericDescription = (value: string | undefined): boolean =>
+  !value || GENERIC_TASK_DESCRIPTION.test(value.trim());
+
+/** Latest `agent-completed` timestamp per agent id across the synced set. */
+const buildCompletedAtMsById = (
+  messages: readonly ArtifactMessageRecord[],
+): Map<string, number> => {
+  const completedAt = new Map<string, number>();
+  for (const message of messages) {
+    for (const event of message.toolEvents) {
+      if (event.type !== "agent-completed") continue;
+      const agentId = trimmedString(event.payload?.agentId);
+      if (!agentId) continue;
+      if (event.timestamp > (completedAt.get(agentId) ?? 0)) {
+        completedAt.set(agentId, event.timestamp);
+      }
+    }
+  }
+  return completedAt;
+};
+
+/**
+ * Background-work card for a turn, from its `agent-started` events. Completion
+ * is scoped per run (an `agent-completed` at/after the thread's spawn on this
+ * turn) so a thread reused via `send_input` doesn't inherit a prior run's
+ * completion. Returns null for turns that started no background work.
+ */
+const deriveAgentWorkPayload = (
+  message: Pick<ArtifactMessageRecord, "toolEvents">,
+  completedAtMsById: ReadonlyMap<string, number>,
+  nowMs: number,
+): MobileAgentWorkPayload | null => {
+  const threadIds: string[] = [];
+  const descriptions: Record<string, string> = {};
+  const spawnedAtMs: Record<string, number> = {};
+  let groupLabel: string | undefined;
+  let createdAt = 0;
+
+  for (const event of message.toolEvents) {
+    if (event.type !== "agent-started") continue;
+    const payload = event.payload;
+    if (!payload) continue;
+    const agentId = trimmedString(payload.agentId);
+    if (!agentId) continue;
+    if (!threadIds.includes(agentId)) threadIds.push(agentId);
+    const description = trimmedString(payload.description);
+    if (description && !descriptions[agentId])
+      descriptions[agentId] = description;
+    if (event.timestamp > (spawnedAtMs[agentId] ?? 0)) {
+      spawnedAtMs[agentId] = event.timestamp;
+    }
+    if (!groupLabel) groupLabel = trimmedString(payload.groupLabel);
+    if (event.timestamp > createdAt) createdAt = event.timestamp;
+  }
+  if (threadIds.length === 0) return null;
+
+  let completed = 0;
+  for (const id of threadIds) {
+    const spawnedAt = spawnedAtMs[id] ?? 0;
+    const completedAt = completedAtMsById.get(id);
+    const isDone =
+      (completedAt !== undefined && completedAt >= spawnedAt) ||
+      nowMs - spawnedAt > AGENT_WORK_STALE_MS;
+    if (isDone) completed += 1;
+  }
+  const total = threadIds.length;
+  const state: "running" | "done" = completed >= total ? "done" : "running";
+
+  const firstDescription = threadIds
+    .map((id) => descriptions[id])
+    .find((value) => !isGenericDescription(value));
+
+  let title: string;
+  let subtitle: string;
+  if (total > 1) {
+    title =
+      state === "running"
+        ? `Working on ${total} tasks`
+        : groupLabel || firstDescription || "Background work";
+    subtitle =
+      state === "running" ? `${completed} of ${total} done` : "Finished";
+  } else {
+    title = firstDescription || groupLabel || "Background work";
+    subtitle = state === "running" ? "Working in background" : "Finished";
+  }
+
+  return {
+    kind: "agent-work",
+    state,
+    total,
+    completed,
+    title,
+    subtitle,
+    createdAt,
+  };
+};
+
 export const deriveMobileArtifactsForMessage = (
   message: Pick<ArtifactMessageRecord, "toolEvents">,
   options?: MobileArtifactOptions,
@@ -462,12 +595,24 @@ export const buildMobileSyncMessages = (
   options?: MobileArtifactOptions,
 ): LocalChatSyncMessageWithArtifacts[] => {
   const rows: LocalChatSyncMessageWithArtifacts[] = [];
+  // Completion is scoped per run (see deriveAgentWorkPayload); precompute the
+  // latest completion per thread across the whole synced set once.
+  const completedAtMsById = buildCompletedAtMsById(messages);
+  const nowMs = Date.now();
   for (const message of messages) {
     if (isUiHiddenChatMessagePayload(message.payload ?? null)) continue;
     const role = message.type === "user_message" ? "user" : "assistant";
     if (role !== "user" && role !== "assistant") continue;
     const text = textFromPayload(message.payload);
-    const artifacts = deriveMobileArtifactsForMessage(message, options);
+    const fileArtifacts = deriveMobileArtifactsForMessage(message, options);
+    const agentWork = deriveAgentWorkPayload(message, completedAtMsById, nowMs);
+    // Inline the agent card on the assistant turn that spawned it. For a
+    // fire-and-forget turn (no assistant message — the start event lands on
+    // the user_message), it's emitted as its own assistant bubble below.
+    const artifacts: MobileSyncArtifact[] =
+      role === "assistant" && agentWork
+        ? [...fileArtifacts, agentWork]
+        : fileArtifacts;
 
     if (text || role === "assistant") {
       if (text || artifacts.length > 0) {
@@ -483,10 +628,7 @@ export const buildMobileSyncMessages = (
           ...(artifacts.length > 0 ? { artifacts } : {}),
         });
       }
-      continue;
-    }
-
-    if (artifacts.length > 0) {
+    } else if (artifacts.length > 0) {
       rows.push({
         localMessageId: `${message._id}:artifacts`,
         role: "assistant",
@@ -494,6 +636,17 @@ export const buildMobileSyncMessages = (
         timestamp: message.timestamp,
         ...(message.requestId ? { requestId: message.requestId } : {}),
         artifacts,
+      });
+    }
+
+    if (role === "user" && agentWork) {
+      rows.push({
+        localMessageId: `${message._id}:agent`,
+        role: "assistant",
+        text: "",
+        timestamp: message.timestamp,
+        ...(message.requestId ? { requestId: message.requestId } : {}),
+        artifacts: [agentWork],
       });
     }
   }
