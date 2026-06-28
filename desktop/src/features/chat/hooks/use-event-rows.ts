@@ -15,6 +15,7 @@ import {
   deriveTurnResource,
 } from "@/features/chat/lib/derive-turn-resource";
 import { deriveTurnWebSearchResults } from "@/features/chat/lib/derive-turn-web-search";
+import { deriveToolActivity } from "@/features/chat/lib/tool-activity";
 import { filterMessagesForUiDisplay } from "@/features/chat/lib/message-display";
 import {
   stabilizeTurnRows,
@@ -207,6 +208,7 @@ const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
   !row.scheduleReceipt &&
   !row.voiceSession &&
   !row.backgroundWork &&
+  !row.toolActivity &&
   !row.customSlot;
 
 /** Merge sequential one-by-one image_gen rows into a single inline strip. */
@@ -255,6 +257,7 @@ const isVoiceOnlyRow = (row: AssistantRowViewModel): boolean =>
   !row.selfModApplied &&
   !row.scheduleReceipt &&
   !row.backgroundWork &&
+  !row.toolActivity &&
   !row.customSlot;
 
 /**
@@ -528,6 +531,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const officePreviewRef = getOfficePreviewRef(toolEvents);
         const voiceSession = payload?.metadata?.voiceSession;
         const backgroundWork = buildBackgroundWork(toolEvents);
+        const toolActivity = deriveToolActivity(toolEvents);
         const isStreamingOverlay =
           message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX) &&
           runtimeMetadata?.isStreaming !== false;
@@ -553,6 +557,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             : {}),
           ...(voiceSession ? { voiceSession } : {}),
           ...(backgroundWork ? { backgroundWork } : {}),
+          ...(toolActivity ? { toolActivity } : {}),
         };
         computed.push(row);
       }
