@@ -116,6 +116,212 @@ describe("local chat mobile artifacts", () => {
     });
   });
 
+  it("derives a running agent-work card from an agent-started event", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now,
+          payload: { text: "On it" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Book flights" },
+            },
+          ],
+        }),
+      ],
+      20,
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      localMessageId: "a1",
+      role: "assistant",
+      text: "On it",
+      artifacts: [
+        {
+          kind: "agent-work",
+          state: "running",
+          total: 1,
+          completed: 0,
+          title: "Book flights",
+          subtitle: "Working in background",
+        },
+      ],
+    });
+  });
+
+  it("settles the agent-work card once the thread completes", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now,
+          payload: { text: "On it" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now - 2_000,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Book flights" },
+            },
+            {
+              _id: "ac1",
+              timestamp: now - 1_000,
+              type: "agent-completed",
+              payload: { agentId: "t1" },
+            },
+          ],
+        }),
+      ],
+      20,
+    );
+
+    expect(rows[0]?.artifacts?.[0]).toMatchObject({
+      kind: "agent-work",
+      state: "done",
+      total: 1,
+      completed: 1,
+      title: "Book flights",
+      subtitle: "Finished",
+    });
+  });
+
+  it("tallies multiple agents started in one turn", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now,
+          payload: { text: "" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Book flights" },
+            },
+            {
+              _id: "as2",
+              timestamp: now,
+              type: "agent-started",
+              payload: { agentId: "t2", description: "Find hotels" },
+            },
+          ],
+        }),
+      ],
+      20,
+    );
+
+    expect(rows[0]?.artifacts?.[0]).toMatchObject({
+      kind: "agent-work",
+      state: "running",
+      total: 2,
+      completed: 0,
+      title: "Working on 2 tasks",
+      subtitle: "0 of 2 done",
+    });
+  });
+
+  it("scopes completion to each run so a reactivation card stays running", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now - 3_000,
+          payload: { text: "Starting" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now - 3_000,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Book flights" },
+            },
+          ],
+        }),
+        baseMessage({
+          _id: "a2",
+          timestamp: now - 2_000,
+          payload: { text: "Done first pass" },
+          toolEvents: [
+            {
+              _id: "ac1",
+              timestamp: now - 2_000,
+              type: "agent-completed",
+              payload: { agentId: "t1" },
+            },
+          ],
+        }),
+        baseMessage({
+          _id: "a3",
+          timestamp: now - 1_000,
+          payload: { text: "Revising" },
+          toolEvents: [
+            {
+              _id: "as2",
+              timestamp: now - 1_000,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Book flights" },
+            },
+          ],
+        }),
+      ],
+      20,
+    );
+
+    const a1 = rows.find((row) => row.localMessageId === "a1");
+    const a3 = rows.find((row) => row.localMessageId === "a3");
+    // The original card saw a completion at/after its spawn → done. The
+    // reactivation card's only completion predates its spawn → still running.
+    expect(a1?.artifacts?.[0]).toMatchObject({
+      kind: "agent-work",
+      state: "done",
+    });
+    expect(a3?.artifacts?.[0]).toMatchObject({
+      kind: "agent-work",
+      state: "running",
+    });
+  });
+
+  it("emits a fire-and-forget agent card as its own assistant row", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "u1",
+          type: "user_message",
+          timestamp: now,
+          payload: { text: "Book me a flight" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Book flights" },
+            },
+          ],
+        }),
+      ],
+      20,
+    );
+
+    expect(rows.map((row) => row.localMessageId)).toEqual(["u1", "u1:agent"]);
+    expect(rows[0]).toMatchObject({ role: "user", text: "Book me a flight" });
+    expect(rows[1]).toMatchObject({
+      role: "assistant",
+      artifacts: [
+        { kind: "agent-work", state: "running", title: "Book flights" },
+      ],
+    });
+  });
+
   it("returns an opaque cursor for the newest source event in a sync page", () => {
     const page = buildMobileSyncMessagesPage(
       [
