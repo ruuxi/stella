@@ -354,8 +354,16 @@
   gap: 6px;
   justify-content: flex-end;
   min-width: 0;
-  /* Chips sit above the bubble as their own row; pull them closer to the
-     bubble than the default 12px inter-row gap. */
+}
+
+/* Chips sit above the bubble as their own row; pull them closer to the
+   bubble than the default inter-row gap. Scoped to `:not(:last-child)` so
+   the negative margin only applies when a bubble actually follows — a
+   chips-only message (e.g. pasted text with no typed text) is the row's
+   last child, and the negative margin would otherwise push the chip's
+   bottom border outside the measured row box, which legend-list clips via
+   its per-item `contain: paint`. */
+.event-context-chips:not(:last-child) {
   margin-bottom: -6px;
 }
 
