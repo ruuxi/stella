@@ -33,6 +33,7 @@ import { isUiHiddenChatMessagePayload } from "../../../../../runtime/chat-event-
 const isTurnDecorationEvent = (event: EventRecord): boolean =>
   event.type === "tool_request" ||
   event.type === "tool_result" ||
+  event.type === "agent-started" ||
   event.type === "agent-completed";
 
 const toMessageRecord = (event: EventRecord): MessageRecord => ({
@@ -103,10 +104,7 @@ export const groupEventsIntoMessages = (
     }
     if (isTurnDecorationEvent(event)) {
       if (currentAssistant) {
-        currentAssistant.toolEvents = [
-          ...currentAssistant.toolEvents,
-          event,
-        ];
+        currentAssistant.toolEvents = [...currentAssistant.toolEvents, event];
       } else {
         pendingPreAssistantTools.push(event);
       }

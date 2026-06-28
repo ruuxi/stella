@@ -186,7 +186,7 @@ describe("groupEventsIntoMessages", () => {
     expect(messages[0]!.toolEvents).toEqual([]);
   });
 
-  it("skips event types that are not chat messages or turn decorations", () => {
+  it("skips non-decoration event types (e.g. agent-progress) but keeps agent-started", () => {
     const events: EventRecord[] = [
       event({ _id: "u1", type: "user_message", timestamp: 1 }),
       event({
@@ -205,7 +205,26 @@ describe("groupEventsIntoMessages", () => {
     ];
     const messages = groupEventsIntoMessages(events);
     expect(messages.map((m) => m._id)).toEqual(["u1", "a1"]);
+    // agent-progress is not a turn decoration (skipped); agent-started is,
+    // and — firing before any assistant — flushes onto the first assistant.
     expect(messages[0]!.toolEvents).toEqual([]);
-    expect(messages[1]!.toolEvents).toEqual([]);
+    expect(messages[1]!.toolEvents.map((e) => e._id)).toEqual(["as1"]);
+  });
+
+  it("attaches agent-started to the user turn on a fire-and-forget spawn", () => {
+    const events: EventRecord[] = [
+      event({ _id: "u1", type: "user_message", timestamp: 1 }),
+      event({
+        _id: "as1",
+        type: "agent-started",
+        timestamp: 2,
+        payload: { agentId: "a" },
+      }),
+    ];
+    const messages = groupEventsIntoMessages(events);
+    // No assistant message this turn — the start event falls back to the
+    // user_message anchor so the background-work card still renders.
+    expect(messages.map((m) => m._id)).toEqual(["u1"]);
+    expect(messages[0]!.toolEvents.map((e) => e._id)).toEqual(["as1"]);
   });
 });

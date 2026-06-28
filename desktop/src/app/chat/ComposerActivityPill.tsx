@@ -5,12 +5,13 @@
  * It does double duty:
  *   • Idle, it's the entry point to search — a search icon + "Search". This
  *     replaces the old left-sidebar search row.
- *   • While Stella has background work in flight it shows the live status:
- *     a soft pulse + the rotating work description (the same cadence the
- *     old inline background-work card used). When work settles it briefly
- *     shows a finished / couldn't-finish / stopped state before quietly
- *     reverting to "Search" — a minimum dwell so a quick task doesn't just
- *     flash its progress.
+ *   • While Stella has background work in flight it shows a simple,
+ *     shimmering count of how many things are running ("1 task", "2
+ *     tasks", …) — the per-task detail lives in the inline chat cards and
+ *     the tray, so the ambient pill just tallies. When work settles it
+ *     briefly shows a finished / couldn't-finish / stopped state before
+ *     quietly reverting to "Search" — a minimum dwell so a quick task
+ *     doesn't just flash its progress.
  *
  * Clicking it (in any state) opens a tray with the searchable Activity /
  * Files / Schedule overview.
@@ -21,12 +22,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
-import {
-  extractTasksFromActivities,
-  getTaskDisplayText,
-  mergeFooterTasks,
-  type TaskItem,
-} from "@/features/chat/lib/event-transforms";
+import { useMergedBackgroundTasks } from "@/features/chat/hooks/use-merged-background-tasks";
+import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import {
   displaySearchStore,
   useDisplaySearchQuery,
@@ -36,33 +33,25 @@ import "./composer-activity-pill.css";
 
 type PillState = "idle" | "running" | "done" | "error" | "canceled";
 
-/** Sweep for the running-title shimmer — matches the old inline card. */
+/** Sweep for the running-title shimmer — matches the inline card. */
 const TITLE_SHIMMER_MS = 1900;
-/** Cadence for cycling through in-flight work descriptions. */
-const ROTATE_INTERVAL_MS = 3500;
-/** Duration of one carousel slide between descriptions. */
-const CAROUSEL_SLIDE_MS = 460;
-/** Above this many concurrent tasks, page dots stop reading as a count —
- *  fall back to a single running dot (the carousel still cycles them all). */
-const MAX_PIPS = 5;
 /** Keep a settled (finished / failed / stopped) state visible at least
  *  this long before reverting to idle, so quick work doesn't flash. */
 const TERMINAL_DWELL_MS = 2800;
 
-const EMPTY_TASKS: TaskItem[] = [];
-
 const STATUS_FALLBACK: Record<Exclude<PillState, "idle">, string> = {
-  running: "Working…",
+  running: "Task in progress",
   done: "Finished",
   error: "Couldn’t finish",
   canceled: "Stopped",
 };
 
 /** Live status of the whole conversation's background work, distilled into
- *  a single pill state with a minimum dwell on terminal states. */
+ *  a single pill state (+ running count) with a minimum dwell on terminal
+ *  states. */
 function useActivityPillState(tasks: TaskItem[]): {
   state: PillState;
-  activeDescriptions: string[];
+  runningCount: number;
 } {
   const runningTasks = useMemo(
     () => tasks.filter((task) => task.status === "running"),
@@ -72,15 +61,7 @@ function useActivityPillState(tasks: TaskItem[]): {
     () => runningTasks.map((task) => task.id).join("\u0000"),
     [runningTasks],
   );
-
-  const activeDescriptions = useMemo(() => {
-    const out: string[] = [];
-    for (const task of runningTasks) {
-      const text = (getTaskDisplayText(task) || task.description || "").trim();
-      if (text) out.push(text);
-    }
-    return out;
-  }, [runningTasks]);
+  const runningCount = runningTasks.length;
 
   const [state, setState] = useState<PillState>("idle");
   const prevRunningIdsRef = useRef<string[]>([]);
@@ -144,15 +125,14 @@ function useActivityPillState(tasks: TaskItem[]): {
     [],
   );
 
-  return { state, activeDescriptions };
+  return { state, runningCount };
 }
 
 function PillGlyph({ state }: { state: PillState }) {
   switch (state) {
     case "running":
-      return (
-        <span className="composer-activity-pill__dot composer-activity-pill__dot--running" />
-      );
+      // No glyph while running — the shimmering count carries the state.
+      return null;
     case "done":
       return <Check size={15} strokeWidth={2} aria-hidden="true" />;
     case "error":
@@ -209,69 +189,15 @@ function ActivityTray({ onNavigate }: { onNavigate: () => void }) {
 export function ComposerActivityPill() {
   const chat = useChatRuntime();
   const appSessionStartedAtMs = useAgentSessionStartedAt();
-  const activities = chat.conversation.activity.activities;
-  const latestMessageTimestampMs =
-    chat.conversation.activity.latestMessageTimestampMs;
-  const liveTasks = chat.conversation.streaming.liveTasks ?? EMPTY_TASKS;
+  const tasks = useMergedBackgroundTasks({
+    activities: chat.conversation.activity.activities,
+    liveTasks: chat.conversation.streaming.liveTasks,
+    latestMessageTimestampMs:
+      chat.conversation.activity.latestMessageTimestampMs,
+    appSessionStartedAtMs,
+  });
 
-  const tasks = useMemo(
-    () =>
-      mergeFooterTasks(
-        extractTasksFromActivities(activities, {
-          appSessionStartedAtMs,
-          latestMessageTimestampMs,
-        }),
-        liveTasks,
-      ),
-    [activities, appSessionStartedAtMs, latestMessageTimestampMs, liveTasks],
-  );
-
-  const { state, activeDescriptions } = useActivityPillState(tasks);
-
-  const len = activeDescriptions.length;
-  const rotating = state === "running" && len > 1;
-  const rotationSignature = activeDescriptions.join("\u0000");
-
-  // Carousel position advances 0,1,2,… When it lands on the appended clone
-  // of the first line (position === len) we let the slide finish, then snap
-  // back to 0 with the transition off — so the loop reads as one continuous
-  // upward scroll instead of jumping backwards.
-  const [position, setPosition] = useState(0);
-  const [animate, setAnimate] = useState(true);
-
-  useEffect(() => {
-    setPosition(0);
-    setAnimate(true);
-  }, [rotationSignature]);
-
-  useEffect(() => {
-    if (!rotating) return;
-    const interval = window.setInterval(() => {
-      setAnimate(true);
-      setPosition((p) => p + 1);
-    }, ROTATE_INTERVAL_MS);
-    return () => window.clearInterval(interval);
-  }, [rotating, rotationSignature]);
-
-  useEffect(() => {
-    if (!rotating || position !== len) return;
-    const timer = window.setTimeout(() => {
-      setAnimate(false);
-      setPosition(0);
-    }, CAROUSEL_SLIDE_MS);
-    return () => window.clearTimeout(timer);
-  }, [rotating, position, len]);
-
-  const shownIndex = len > 0 ? position % len : 0;
-  const runningTitle =
-    len > 0 ? activeDescriptions[shownIndex] : STATUS_FALLBACK.running;
-
-  // Hold onto the last running description so the settled state can echo
-  // what just finished instead of snapping to a generic label.
-  const lastTitleRef = useRef("");
-  useEffect(() => {
-    if (state === "running") lastTitleRef.current = runningTitle;
-  }, [state, runningTitle]);
+  const { state, runningCount } = useActivityPillState(tasks);
 
   const [open, setOpen] = useState(false);
   const handleOpenChange = (next: boolean) => {
@@ -283,9 +209,15 @@ export function ComposerActivityPill() {
   if (state === "idle") {
     label = "Search";
   } else if (state === "running") {
-    label = runningTitle;
+    // A single task reads as a generic "in progress" — no count, no
+    // description (the per-task detail lives in the inline cards / tray).
+    // Several at once earn a tally in the same phrasing.
+    label =
+      runningCount > 1
+        ? `${runningCount} tasks in progress`
+        : STATUS_FALLBACK.running;
   } else {
-    label = lastTitleRef.current || STATUS_FALLBACK[state];
+    label = STATUS_FALLBACK[state];
   }
 
   const labelNode: ReactNode =
@@ -306,51 +238,9 @@ export function ComposerActivityPill() {
           aria-label={state === "idle" ? "Search" : `${label} — open activity`}
         >
           <span className="composer-activity-pill__glyph" aria-hidden="true">
-            {state === "running" && len > 1 && len <= MAX_PIPS ? (
-              <span className="composer-activity-pill__pips">
-                {activeDescriptions.map((_, index) => (
-                  <span
-                    key={index}
-                    className="composer-activity-pill__pip"
-                    data-active={index === shownIndex || undefined}
-                  />
-                ))}
-              </span>
-            ) : (
-              <PillGlyph state={state} />
-            )}
+            <PillGlyph state={state} />
           </span>
-          <span className="composer-activity-pill__label">
-            {rotating ? (
-              <span className="composer-activity-pill__carousel">
-                <span
-                  className="composer-activity-pill__carousel-track"
-                  style={{
-                    transform: `translateY(calc(${position} * -1lh))`,
-                    transition: animate
-                      ? `transform ${CAROUSEL_SLIDE_MS}ms cubic-bezier(0.22, 0.61, 0.36, 1)`
-                      : "none",
-                  }}
-                >
-                  {[...activeDescriptions, activeDescriptions[0]].map(
-                    (description, index) => (
-                      <span
-                        key={index}
-                        className="composer-activity-pill__carousel-item"
-                      >
-                        <TextShimmer
-                          text={description}
-                          durationMs={TITLE_SHIMMER_MS}
-                        />
-                      </span>
-                    ),
-                  )}
-                </span>
-              </span>
-            ) : (
-              labelNode
-            )}
-          </span>
+          <span className="composer-activity-pill__label">{labelNode}</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
