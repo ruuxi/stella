@@ -5,15 +5,9 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
-import {
-  ComposerContextRow,
-  ComposerSuggestionContextRow,
-} from "./ComposerContextRow";
-import { ComposerActivityPill } from "./ComposerActivityPill";
-import {
-  AssistantReplyPeek,
-  type AssistantReplyPeekProps,
-} from "./AssistantReplyPeek";
+import { ComposerContextRow } from "./ComposerContextRow";
+import { ComposerLeadRow } from "./ComposerLeadRow";
+import { type AssistantReplyPeekProps } from "./AssistantReplyPeek";
 import { ComposerAddMenu } from "./ComposerAddMenu";
 import {
   ComposerMicButton,
@@ -147,17 +141,13 @@ export function Composer({
 
   return (
     <div className="composer">
-      <div className="composer-context-peek-anchor">
-        {replyPeek ? <AssistantReplyPeek {...replyPeek} /> : null}
-        <div className="composer-context-lead-row">
-          <ComposerActivityPill />
-          <ComposerSuggestionContextRow
-            active={suggestionsActive}
-            chatContext={chatContext}
-            setChatContext={setChatContext}
-          />
-        </div>
-      </div>
+      <ComposerLeadRow
+        replyPeek={replyPeek}
+        showActivityPill
+        suggestionsActive={suggestionsActive}
+        chatContext={chatContext}
+        setChatContext={setChatContext}
+      />
       <div
         ref={shellRef}
         className={`composer-shell${isDragOver ? " composer-shell--drag-over" : ""}`}

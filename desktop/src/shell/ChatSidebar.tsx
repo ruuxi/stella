@@ -9,10 +9,8 @@ import {
 import { CompactConversationSurface } from "@/features/chat/CompactConversationSurface";
 import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
 import { useChatScrollManagement } from "@/shell/use-chat-scroll-management";
-import {
-  ComposerContextRow,
-  ComposerSuggestionContextRow,
-} from "@/app/chat/ComposerContextRow";
+import { ComposerContextRow } from "@/app/chat/ComposerContextRow";
+import { ComposerLeadRow } from "@/app/chat/ComposerLeadRow";
 import { ComposerAddMenu } from "@/app/chat/ComposerAddMenu";
 import {
   ComposerMicButton,
@@ -45,7 +43,6 @@ import {
   updateComposerTextareaExpansion,
   useAnimatedComposerShell,
 } from "@/shared/hooks/use-animated-composer-shell";
-import { AssistantReplyPeek } from "@/app/chat/AssistantReplyPeek";
 import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
 import { ChatRuntimeContext } from "@/context/chat-runtime-context";
 import "./chat-sidebar.css";
@@ -168,6 +165,11 @@ export function ChatPanelTab({
   // when there's no provider the "Select area" action is simply omitted.
   const chatRuntime = useContext(ChatRuntimeContext);
   const startAnnotation = chatRuntime?.annotation.start;
+  // The activity pill reads the shared chat runtime, so it can only mount
+  // where a provider exists. The mini window has none, so it keeps the inline
+  // indicator covering spawned-agent work; every provider-backed surface shows
+  // the pill (and its progress summaries) just like the full shell.
+  const showActivityPill = variant !== "mini" && Boolean(chatRuntime);
 
   /*
    * Own scroll-management instance for the sidebar list. Mirrors the
@@ -235,9 +237,10 @@ export function ChatPanelTab({
   );
 
   useReadAloud(messages);
-  // The sidebar / mini window have no ComposerActivityPill, so the inline
-  // indicator covers spawned-agent work here too (coverSubAgentWork) — the
-  // same user-visible "working" feedback the full shell gets from its pill.
+  // When the activity pill is present it owns running-agent state, so the
+  // inline indicator steps aside (same as the full shell). Without the pill
+  // (the mini window) the inline indicator must cover spawned-agent work so
+  // there's still some "working" feedback.
   const indicatorProps = buildInlineWorkingIndicatorProps({
     isStreaming: Boolean(isStreaming),
     isStreamingResponseText: Boolean(isStreamingResponseText),
@@ -247,7 +250,7 @@ export function ChatPanelTab({
     activeToolCallId,
     runtimeStatusText,
     liveTasks,
-    coverSubAgentWork: true,
+    coverSubAgentWork: !showActivityPill,
   });
 
   const { chatContext, setChatContext, selectedText, setSelectedText } =
@@ -448,22 +451,22 @@ export function ChatPanelTab({
             />
 
             <div className="chat-sidebar-composer">
-              <div className="composer-context-peek-anchor">
-                {assistantReplyPeek.visible ? (
-                  <AssistantReplyPeek
-                    text={assistantReplyPeek.previewText}
-                    onJumpToBottom={() =>
-                      sidebarScroll.scrollToBottom("smooth")
-                    }
-                    onDismiss={assistantReplyPeek.dismiss}
-                  />
-                ) : null}
-                <ComposerSuggestionContextRow
-                  active={surfaceActive}
-                  chatContext={chatContext}
-                  setChatContext={setChatContext}
-                />
-              </div>
+              <ComposerLeadRow
+                replyPeek={
+                  assistantReplyPeek.visible
+                    ? {
+                        text: assistantReplyPeek.previewText,
+                        onJumpToBottom: () =>
+                          sidebarScroll.scrollToBottom("smooth"),
+                        onDismiss: assistantReplyPeek.dismiss,
+                      }
+                    : null
+                }
+                showActivityPill={showActivityPill}
+                suggestionsActive={surfaceActive}
+                chatContext={chatContext}
+                setChatContext={setChatContext}
+              />
 
               <div
                 ref={shellRef}
