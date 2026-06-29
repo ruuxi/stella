@@ -153,89 +153,81 @@ export function transformMessages<TApi extends Api>(
 	const validToolCallIds = new Set<string>();
 	for (const message of transformed) {
 		if (message.role !== "assistant") continue;
-		const assistantMsg = message as AssistantMessage;
-		// Errored/aborted assistant turns are skipped in the second pass below, so
-		// their tool_use blocks never reach the provider. They must be excluded
-		// here too, otherwise the matching tool_result survives the orphan check
-		// and is emitted with no preceding tool_use — which Anthropic rejects
-		// ("tool_result ... must have a corresponding tool_use block in the
-		// previous message").
-		if (assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") {
-			continue;
-		}
-		for (const block of assistantMsg.content) {
+		for (const block of (message as AssistantMessage).content) {
 			if (block.type === "toolCall") {
 				validToolCallIds.add(block.id);
 			}
 		}
 	}
 
-	// Second pass: drop orphaned tool results and insert synthetic empty
-	// tool results for assistant tool calls that are missing their result.
+	// Second pass: re-attach each assistant turn's tool results immediately after
+	// it (in tool-call order) and drop any out-of-place result messages.
+	//
+	// Anthropic requires a tool_result's tool_use to be in the immediately
+	// preceding message. Results can drift out of that position when a non-tool
+	// message is recorded between a tool_use and its result — e.g. a
+	// `runtime.task_lifecycle` reminder is persisted the moment a spawned
+	// sub-agent finishes, racing just ahead of the orchestrator's tool-result
+	// batch, so a later history rebuild interleaves reminder-then-results.
+	// Anchoring each result to its call fixes the adjacency and collapses the
+	// duplicate copy that such interleaving would otherwise leave behind (which
+	// previously surfaced as the Anthropic 400 "tool_result ... must have a
+	// corresponding tool_use block in the previous message").
+	const realResultsById = new Map<string, ToolResultMessage>();
+	for (const message of transformed) {
+		if (message.role !== "toolResult") continue;
+		const toolResult = message as ToolResultMessage;
+		if (!validToolCallIds.has(toolResult.toolCallId)) continue;
+		if (!realResultsById.has(toolResult.toolCallId)) {
+			realResultsById.set(toolResult.toolCallId, toolResult);
+		}
+	}
+
 	const result: Message[] = [];
-	let pendingToolCalls: ToolCall[] = [];
-	let existingToolResultIds = new Set<string>();
-	const insertSyntheticToolResults = () => {
-		if (pendingToolCalls.length > 0) {
-			for (const tc of pendingToolCalls) {
-				if (!existingToolResultIds.has(tc.id)) {
+	const emittedResultIds = new Set<string>();
+
+	for (const msg of transformed) {
+		if (msg.role === "assistant") {
+			// Skip errored/aborted assistant turns entirely. They are incomplete
+			// (partial content, dangling tool calls) and replaying them can trip
+			// provider validation; the model should retry from the last good state.
+			const assistantMsg = msg as AssistantMessage;
+			if (assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") {
+				continue;
+			}
+			result.push(msg);
+			// Emit this turn's tool results adjacently, in call order: the real
+			// result when we have one, otherwise a synthetic placeholder so the
+			// tool_use is never left dangling.
+			for (const block of assistantMsg.content) {
+				if (block.type !== "toolCall") continue;
+				const toolCall = block as ToolCall;
+				if (emittedResultIds.has(toolCall.id)) continue;
+				emittedResultIds.add(toolCall.id);
+				const realResult = realResultsById.get(toolCall.id);
+				if (realResult) {
+					result.push(realResult);
+				} else {
 					result.push({
 						role: "toolResult",
-						toolCallId: tc.id,
-						toolName: tc.name,
+						toolCallId: toolCall.id,
+						toolName: toolCall.name,
 						content: [{ type: "text", text: "No result provided" }],
 						isError: true,
 						timestamp: Date.now(),
 					} as ToolResultMessage);
 				}
 			}
-			pendingToolCalls = [];
-			existingToolResultIds = new Set();
+			continue;
 		}
-	};
-
-	for (let i = 0; i < transformed.length; i++) {
-		const msg = transformed[i];
-
-		if (msg.role === "assistant") {
-			// If we have pending orphaned tool calls from a previous assistant, insert synthetic results now
-			insertSyntheticToolResults();
-
-			// Skip errored/aborted assistant messages entirely.
-			// These are incomplete turns that shouldn't be replayed:
-			// - May have partial content (reasoning without message, incomplete tool calls)
-			// - Replaying them can cause API errors (e.g., OpenAI "reasoning without following item")
-			// - The model should retry from the last valid state
-			const assistantMsg = msg as AssistantMessage;
-			if (assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") {
-				continue;
-			}
-
-			// Track tool calls from this assistant message
-			const toolCalls = assistantMsg.content.filter((b) => b.type === "toolCall") as ToolCall[];
-			if (toolCalls.length > 0) {
-				pendingToolCalls = toolCalls;
-				existingToolResultIds = new Set();
-			}
-
-			result.push(msg);
-		} else if (msg.role === "toolResult") {
-			if (!validToolCallIds.has(msg.toolCallId)) {
-				continue;
-			}
-			existingToolResultIds.add(msg.toolCallId);
-			result.push(msg);
-		} else if (msg.role === "user") {
-			// User message interrupts tool flow - insert synthetic results for orphaned calls
-			insertSyntheticToolResults();
-			result.push(msg);
-		} else {
-			result.push(msg);
+		// Real tool results are re-emitted adjacent to their assistant turn above;
+		// any standalone occurrence here is a duplicate or an orphan (no valid
+		// tool_use) and is dropped.
+		if (msg.role === "toolResult") {
+			continue;
 		}
+		result.push(msg);
 	}
-
-	// If the conversation ends with unresolved tool calls, synthesize results now.
-	insertSyntheticToolResults();
 
 	return result;
 }

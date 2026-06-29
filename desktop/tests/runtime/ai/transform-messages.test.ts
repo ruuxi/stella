@@ -127,6 +127,85 @@ describe("runtime transformMessages", () => {
     expect(result.map((msg) => msg.role)).toEqual(["user", "user"]);
   });
 
+  it("re-anchors tool results next to their call when a reminder is interleaved", () => {
+    // Repro for the live Anthropic 400: a runtime.task_lifecycle reminder
+    // (rebuilt as a user message) is persisted between the assistant tool_use
+    // and its results, so history replay yields tool_use -> user -> results.
+    // The fix must move the real results back adjacent to the call (in call
+    // order) and not duplicate or synthesize them.
+    const messages: Message[] = [
+      {
+        role: "assistant",
+        provider: "anthropic",
+        api: "anthropic-messages",
+        model: "claude-opus-4.8",
+        usage,
+        stopReason: "toolUse",
+        timestamp: 1,
+        content: [
+          { type: "text", text: "scheduling + spawning" },
+          { type: "toolCall", id: "toolu_sched", name: "Schedule", arguments: {} },
+          { type: "toolCall", id: "toolu_spawn", name: "spawn_agent", arguments: {} },
+        ],
+      },
+      // Reminder injected between the tool_use and its results.
+      {
+        role: "user",
+        content: [{ type: "text", text: "<system_reminder> The agent has finished." }],
+        timestamp: 2,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "toolu_sched",
+        toolName: "Schedule",
+        content: [{ type: "text", text: "scheduled" }],
+        isError: false,
+        timestamp: 3,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "toolu_spawn",
+        toolName: "spawn_agent",
+        content: [{ type: "text", text: "{\"thread_id\":\"b\"}" }],
+        isError: false,
+        timestamp: 4,
+      },
+      {
+        role: "assistant",
+        provider: "anthropic",
+        api: "anthropic-messages",
+        model: "claude-opus-4.8",
+        usage,
+        stopReason: "stop",
+        timestamp: 5,
+        content: [{ type: "text", text: "done" }],
+      },
+    ];
+
+    const result = transformMessages(messages, anthropicModel);
+
+    expect(result.map((m) => m.role)).toEqual([
+      "assistant",
+      "toolResult",
+      "toolResult",
+      "user",
+      "assistant",
+    ]);
+    // Results sit immediately after the tool_use turn, in call order, with the
+    // real content (not a synthetic "No result provided") and no duplicates.
+    const first = result[1] as Extract<Message, { role: "toolResult" }>;
+    const second = result[2] as Extract<Message, { role: "toolResult" }>;
+    expect(first.toolCallId).toBe("toolu_sched");
+    expect(first.isError).toBe(false);
+    expect(second.toolCallId).toBe("toolu_spawn");
+    expect(second.isError).toBe(false);
+    expect(
+      result.filter(
+        (m) => m.role === "toolResult" && m.toolCallId === "toolu_sched",
+      ).length,
+    ).toBe(1);
+  });
+
   it("keeps a tool result paired with a successful assistant tool call", () => {
     const messages: Message[] = [
       {
