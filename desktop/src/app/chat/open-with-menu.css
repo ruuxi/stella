@@ -4,23 +4,30 @@
   gap: 4px;
   padding: 5px 9px 5px 11px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--card);
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--panel-surface-highlight);
   color: var(--text-base);
   font: inherit;
   font-size: var(--font-size-sm);
   line-height: 1;
   cursor: default;
   transition:
-    background 120ms ease,
     border-color 120ms ease,
-    color 120ms ease;
+    color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .open-with-menu__trigger:hover {
-  background: var(--surface-raised-hover);
-  border-color: var(--border-strong);
+  border-color: color-mix(
+    in oklch,
+    var(--foreground) 18%,
+    var(--panel-surface-border)
+  );
   color: var(--text-strong);
+  box-shadow:
+    var(--panel-surface-highlight),
+    inset 0 0 0 999px color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 .open-with-menu__trigger:focus-visible {

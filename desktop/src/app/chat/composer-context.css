@@ -364,9 +364,9 @@ button.mini-context-chip:focus-visible {
   max-height: 180px;
   padding: 12px 14px;
   border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 75%, transparent);
-  background: var(--surface-raised-stronger-non-alpha, var(--card));
-  box-shadow: var(--shadow-overlay);
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient), var(--background);
+  box-shadow: var(--shadow-overlay), var(--panel-surface-highlight);
   color: var(--text-strong);
   font-size: var(--font-size-base);
   line-height: 1.45;

@@ -9,11 +9,9 @@
   gap: 0;
   margin-bottom: 6px;
   border-radius: var(--radius-xl);
-  border: 1px solid var(--border);
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: var(--shadow-overlay);
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient), var(--background);
+  box-shadow: var(--shadow-overlay), var(--panel-surface-highlight);
   overflow: hidden;
   pointer-events: auto;
   animation: assistant-reply-peek-in 160ms ease-out;
