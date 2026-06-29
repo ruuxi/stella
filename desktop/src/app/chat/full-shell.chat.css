@@ -395,9 +395,9 @@
   max-width: min(360px, calc(100vw - 64px));
   padding: 8px;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 75%, transparent);
-  background: var(--surface-raised-stronger-non-alpha, var(--card));
-  box-shadow: var(--shadow-overlay);
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient), var(--background);
+  box-shadow: var(--shadow-overlay), var(--panel-surface-highlight);
 }
 
 .event-context-overflow-card .event-attachment {
@@ -491,9 +491,9 @@ button.event-context-chip--overflow:focus-visible {
   max-width: min(460px, calc(100vw - 64px));
   padding: 6px;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 75%, transparent);
-  background: var(--surface-raised-stronger-non-alpha, var(--card));
-  box-shadow: var(--shadow-overlay);
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient), var(--background);
+  box-shadow: var(--shadow-overlay), var(--panel-surface-highlight);
 }
 
 .event-window-preview-img {
@@ -513,9 +513,9 @@ button.event-context-chip--overflow:focus-visible {
   max-height: 220px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 75%, transparent);
-  background: var(--surface-raised-stronger-non-alpha, var(--card));
-  box-shadow: var(--shadow-overlay);
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient), var(--background);
+  box-shadow: var(--shadow-overlay), var(--panel-surface-highlight);
   color: var(--text-strong);
   overflow: hidden;
   display: flex;
@@ -571,37 +571,45 @@ button.event-context-chip--overflow:focus-visible {
   align-self: center;
   padding: 8px 12px;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-inset);
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--panel-surface-highlight);
   color: var(--text-weak);
   font-size: var(--font-size-sm);
   line-height: 1;
 }
 
-/* Scroll to bottom button */
+/* Scroll to bottom — same soft panel surface as composer / activity pill. */
 .scroll-to-bottom {
   position: absolute;
   bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--card);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--panel-surface-border);
+  background: var(--panel-surface-bg-gradient);
+  box-shadow: var(--shadow-sm), var(--panel-surface-highlight);
   color: var(--text-weak);
   cursor: default;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
   z-index: 20;
 }
 
 .scroll-to-bottom:hover {
-  background: var(--surface-raised-hover);
-  border-color: var(--border-strong);
+  border-color: color-mix(
+    in oklch,
+    var(--foreground) 18%,
+    var(--panel-surface-border)
+  );
   color: var(--text-strong);
 }
 
