@@ -114,12 +114,10 @@
   height: 100%;
   max-height: none;
   margin: 0;
-  border: 1px solid var(--shell-junction-border);
-  border-left: none;
+  background: transparent;
+  border: none;
   border-radius: 0;
-  border-top-right-radius: var(--shell-window-radius);
-  border-bottom-right-radius: var(--shell-window-radius);
-  box-shadow: var(--panel-surface-highlight);
+  box-shadow: none;
   width: var(--display-panel-width, clamp(380px, 34vw, 520px));
 }
 
@@ -134,11 +132,8 @@
   .right-sidebar.right-sidebar-panel.right-sidebar--expanded
   .right-sidebar-inner.right-sidebar-panel__frame {
   width: 100%;
-  border-left: 1px solid var(--shell-junction-border);
-  border-top-left-radius: var(--shell-junction-radius);
-  border-bottom-left-radius: var(--shell-junction-radius);
-  border-top-right-radius: var(--shell-window-radius);
-  border-bottom-right-radius: var(--shell-window-radius);
+  border: none;
+  border-radius: 0;
 }
 
 :root[data-shell-panel-chrome="true"]
