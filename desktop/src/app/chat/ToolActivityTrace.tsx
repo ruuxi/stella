@@ -14,10 +14,19 @@
  *    recycles on scroll);
  *  - the summary crossfades when its text changes (e.g. count 1 → 2), via the
  *    same keyed-layer swap the working indicator uses;
- *  - expand/collapse animates the step list's height (grid `0fr ↔ 1fr`).
- * All of it is disabled under `prefers-reduced-motion` in the stylesheet.
+ *  - expand/collapse animates the step list's `height` between 0 and its
+ *    measured pixel height (a fixed-px range the browser interpolates
+ *    smoothly), then releases to `auto`. The grid `0fr ↔ 1fr` trick reads as
+ *    stepping inside the virtualized list, which re-measures the row per frame.
+ * All of it is disabled under `prefers-reduced-motion`.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   AlertCircle,
   Box,
@@ -155,6 +164,51 @@ export function ToolActivityTrace({
     introPlayed.add(traceKey);
   }, [traceKey]);
 
+  // Measured-height accordion: animate `height` between 0 and the content's
+  // pixel height, then release to `auto` so later count tick-ups (while open)
+  // grow naturally. Animating fixed-px endpoints stays smooth where the grid
+  // `fr` trick stutters under the list's per-frame re-measure.
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLUListElement | null>(null);
+  const mountedRef = useRef(false);
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const inner = innerRef.current;
+    if (!wrap || !inner) return;
+
+    // No animation on first mount (or when the user opts out of motion) —
+    // just settle to the resting height.
+    const reduce = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (!mountedRef.current || reduce) {
+      mountedRef.current = true;
+      wrap.style.height = expanded ? "auto" : "0px";
+      return;
+    }
+
+    if (expanded) {
+      const target = inner.offsetHeight;
+      wrap.style.height = "0px";
+      void wrap.offsetHeight; // commit the 0 start before transitioning
+      wrap.style.height = `${target}px`;
+      const onEnd = (event: TransitionEvent) => {
+        if (event.propertyName !== "height") return;
+        wrap.style.height = "auto"; // let it grow with later steps
+        wrap.removeEventListener("transitionend", onEnd);
+      };
+      wrap.addEventListener("transitionend", onEnd);
+      return () => wrap.removeEventListener("transitionend", onEnd);
+    }
+
+    // Collapsing: pin the current height in px, then transition to 0.
+    wrap.style.height = `${inner.offsetHeight}px`;
+    void wrap.offsetHeight;
+    wrap.style.height = "0px";
+    // Only re-run on open/close — while open the height is `auto`, so later
+    // step tick-ups grow the list naturally without replaying the animation.
+  }, [expanded]);
+
   return (
     <div
       className={`tool-activity${intro ? " tool-activity--intro" : ""}`}
@@ -179,9 +233,14 @@ export function ToolActivityTrace({
           aria-hidden="true"
         />
       </button>
-      <div className="tool-activity__steps-wrap" aria-hidden={!expanded}>
+      <div
+        className="tool-activity__steps-wrap"
+        ref={wrapRef}
+        aria-hidden={!expanded}
+      >
         <ul
           className="tool-activity__steps"
+          ref={innerRef}
           aria-label={`${steps.length} tool calls`}
         >
           {steps.map((step) => (
