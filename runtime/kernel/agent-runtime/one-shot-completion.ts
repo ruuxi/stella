@@ -13,14 +13,20 @@
  *      listed as user-configurable agents themselves.
  *   3. Stella's backend-owned default for the agent/audience.
  *
- * Falls through to the Stella managed gateway whenever a non-Stella model
- * id has no matching local credential — same fallback semantics as
- * `resolveLlmRoute`.
+ * One-shot completions are non-interactive utility calls (connector
+ * auto-replies, prompt shapers, …), so unlike the orchestrator they degrade
+ * gracefully: a pick that can't be honored (`resolveLlmRoute` throws) falls
+ * through to the next, broader candidate and ultimately to Stella's managed
+ * default — rather than surfacing a hard error to the RPC caller.
  */
 
 import { completeSimple, readAssistantText } from "../../ai/stream.js";
 import type { Context, Message } from "../../ai/types.js";
-import { resolveLlmRoute } from "../model-routing.js";
+import {
+  resolveLlmRoute,
+  resolvedLlmSupportsCredentiallessCalls,
+  type ResolvedLlmRoute,
+} from "../model-routing.js";
 import { getModelOverride } from "../preferences/local-preferences.js";
 import {
   runClaudeCodeAgentTextCompletion,
@@ -95,36 +101,65 @@ export const runOneShotCompletion = async (args: {
       site,
     });
 
-  let modelName = explicitModel ?? fallbackModelName;
-  let route = buildRoute(modelName);
-  let useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-    stellaAppDir: runtime.stellaDataDir,
-    modelId: route.model.id,
-  });
-  let apiKey = useClaudeCode ? undefined : (await route.getApiKey())?.trim();
-
-  // An explicit Stella tier alias (e.g. `stella/light`) routes only through
-  // Stella's managed gateway. A signed-out BYOK user has no Stella credential,
-  // so retry with the caller's `fallbackAgentTypes` model — which resolves to
-  // the user's local provider — instead of failing the completion outright.
-  if (
-    !useClaudeCode &&
-    !apiKey &&
-    explicitModel !== undefined &&
-    route.route === "stella" &&
-    fallbackModelName !== undefined &&
-    fallbackModelName !== modelName
-  ) {
-    modelName = fallbackModelName;
-    route = buildRoute(modelName);
-    useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-      stellaAppDir: runtime.stellaDataDir,
-      modelId: route.model.id,
-    });
-    apiKey = useClaudeCode ? undefined : (await route.getApiKey())?.trim();
+  // Candidate model ids in priority order, most specific first:
+  //   1. the explicit / inherited BYOK pick,
+  //   2. the caller's `fallbackAgentTypes` pick,
+  //   3. `undefined` → Stella's backend-chosen default (managed relay).
+  // `resolveLlmRoute` now throws for a pick it can't honor (no key, unknown
+  // model, unsupported provider); we catch and try the next, broader candidate
+  // instead of letting the throw escape to the RPC caller. A route that
+  // resolves but has no usable credential (e.g. a Stella alias while signed
+  // out) likewise falls through.
+  const candidateModelNames: (string | undefined)[] = [];
+  for (const candidate of [
+    explicitModel ?? fallbackModelName,
+    fallbackModelName,
+    undefined,
+  ]) {
+    if (!candidateModelNames.includes(candidate)) {
+      candidateModelNames.push(candidate);
+    }
   }
 
-  if (!useClaudeCode && !apiKey) {
+  let route: ResolvedLlmRoute | undefined;
+  let modelName: string | undefined;
+  let useClaudeCode = false;
+  let apiKey: string | undefined;
+  let lastRouteError: unknown;
+
+  for (const candidate of candidateModelNames) {
+    let candidateRoute: ResolvedLlmRoute;
+    try {
+      candidateRoute = buildRoute(candidate);
+    } catch (error) {
+      lastRouteError = error;
+      continue;
+    }
+    const candidateUsesClaudeCode = shouldUseClaudeCodeAgentRuntime({
+      stellaAppDir: runtime.stellaDataDir,
+      modelId: candidateRoute.model.id,
+    });
+    const candidateApiKey = candidateUsesClaudeCode
+      ? undefined
+      : (await candidateRoute.getApiKey())?.trim();
+    const usable =
+      candidateUsesClaudeCode ||
+      Boolean(candidateApiKey) ||
+      resolvedLlmSupportsCredentiallessCalls(candidateRoute);
+    if (!usable) {
+      continue;
+    }
+    route = candidateRoute;
+    modelName = candidate;
+    useClaudeCode = candidateUsesClaudeCode;
+    apiKey = candidateApiKey;
+    break;
+  }
+
+  if (!route) {
+    if (lastRouteError instanceof Error) {
+      throw lastRouteError;
+    }
     throw new Error(
       "No API credential is available for this completion. Add a matching local key in Settings → Models or sign in to use Stella.",
     );
