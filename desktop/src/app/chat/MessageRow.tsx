@@ -518,13 +518,11 @@ export const AssistantMessageRow = memo(
     const hasBackgroundWork = Boolean(
       row.backgroundWork && row.backgroundWork.threadIds.length > 0,
     );
-    // The live, in-flight phase is owned by the footer WorkingIndicator —
-    // the inline trace only appears once this row's tool run has settled
-    // (no step still running), so the same tool isn't shown in both places.
+    // The in-flight call is owned by the footer WorkingIndicator; the trace
+    // counts only settled calls (the group is undefined until the first one
+    // returns), so the two never narrate the same tool at once.
     const hasToolActivity = Boolean(
-      row.toolActivity &&
-        row.toolActivity.steps.length > 0 &&
-        !row.toolActivity.running,
+      row.toolActivity && row.toolActivity.steps.length > 0,
     );
 
     if (
@@ -577,7 +575,7 @@ export const AssistantMessageRow = memo(
             </StreamingTextReveal>
           )}
           {hasToolActivity && row.toolActivity && (
-            <ToolActivityTrace group={row.toolActivity} />
+            <ToolActivityTrace group={row.toolActivity} traceKey={row.id} />
           )}
           {hasBackgroundWork && row.backgroundWork && (
             <BackgroundWorkCard

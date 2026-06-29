@@ -94,6 +94,12 @@ const textFromToolLikeValue = (value: unknown): string => {
   }
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
+    if (typeof record.result === "string") {
+      return record.result;
+    }
+    if (typeof record.error === "string") {
+      return record.error;
+    }
     if (typeof record.text === "string") {
       return record.text;
     }

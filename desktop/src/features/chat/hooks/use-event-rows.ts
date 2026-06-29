@@ -9,6 +9,7 @@ import {
 import type { MessageRecord } from "../../../../../runtime/contracts/local-chat.js";
 import { isOfficePreviewRef } from "../../../../../runtime/contracts/office-preview.js";
 import type { ScheduleToolAffectedRef } from "../../../../../runtime/kernel/shared/scheduling";
+import { pickScheduleToolSummary } from "@/global/schedule/schedule-receipt-summary";
 import {
   collectTurnSourceDiffPayloads,
   deriveTurnInlineImagePayloads,
@@ -93,12 +94,7 @@ const getScheduleReceipt = (
     if (!schedule || typeof schedule !== "object") continue;
     const affected = (schedule as { affected?: unknown }).affected;
     if (!Array.isArray(affected) || affected.length === 0) continue;
-    const summary =
-      typeof payload.resultPreview === "string" && payload.resultPreview.trim()
-        ? payload.resultPreview.trim()
-        : typeof payload.result === "string" && payload.result.trim()
-          ? payload.result.trim()
-          : undefined;
+    const summary = pickScheduleToolSummary(payload);
     return {
       affected: affected as ScheduleToolAffectedRef[],
       ...(summary ? { summary } : {}),
