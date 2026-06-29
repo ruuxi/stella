@@ -680,12 +680,21 @@ export function LeftSidebarSections({
                   key={`${entry.kind}:${entry.id}`}
                   className="chat-workspace-strip__row"
                 >
-                  <span className="chat-workspace-strip__row-label">
-                    {entry.name.trim()}
-                  </span>
-                  <span className="chat-workspace-strip__row-meta">
-                    {formatNextRun(entry.nextRunAtMs, nowMs)}
-                  </span>
+                  <button
+                    type="button"
+                    className="chat-workspace-strip__file-button"
+                    onClick={() => {
+                      setOpenScheduleEntry(entry);
+                      onNavigate?.();
+                    }}
+                  >
+                    <span className="chat-workspace-strip__row-label">
+                      {entry.name.trim()}
+                    </span>
+                    <span className="chat-workspace-strip__row-meta">
+                      {formatNextRun(entry.nextRunAtMs, nowMs)}
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -758,6 +767,7 @@ export function LeftSidebarSections({
         }}
         onOpenSchedule={(entry) => {
           setOpenScheduleEntry(entry);
+          setHistorySection(null);
         }}
         onOpenFile={(entry) => {
           handleOpenFile(entry);
