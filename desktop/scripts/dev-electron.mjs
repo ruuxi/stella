@@ -20,6 +20,7 @@ import {
 } from "node:fs";
 import { resolve } from "node:path";
 import path from "node:path";
+import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { shouldRestartElectronForBuildPath } from "./dev-electron-restart-filter.mjs";
@@ -90,6 +91,127 @@ const isPidAlive = (pid) => {
   }
 };
 
+// Code-signing identity of the packaged Stella launcher.
+const LAUNCHER_TEAM_ID = "7UVYHQ763X";
+const LAUNCHER_BUNDLE_ID = "com.stella.launcher";
+// Pins both the bundle id and the Stella team via the Apple-rooted chain.
+const LAUNCHER_CODESIGN_REQUIREMENT = `anchor apple generic and identifier "${LAUNCHER_BUNDLE_ID}" and certificate leaf[subject.OU] = "${LAUNCHER_TEAM_ID}"`;
+
+/**
+ * Verify a candidate launcher's `.app` bundle is a genuine, intact Stella
+ * launcher: a valid code seal (`--verify --strict`) that also satisfies a
+ * Developer-ID requirement pinning the bundle id + team. `-dvv` alone only
+ * prints the embedded descriptor without validating the seal — a tampered
+ * binary still carrying the team id would pass it — so this actually enforces
+ * trust before the binary is spawned to decrypt at-rest BYOK keys.
+ *
+ * @param {string} appBundlePath
+ * @returns {{ trusted: true } | { trusted: false; reason: string }}
+ */
+const verifyLauncherBundle = (appBundlePath) => {
+  try {
+    execFileSync(
+      "codesign",
+      [
+        "--verify",
+        "--strict",
+        "-R",
+        `=${LAUNCHER_CODESIGN_REQUIREMENT}`,
+        appBundlePath,
+      ],
+      { stdio: "ignore" },
+    );
+    return { trusted: true };
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      // `codesign` is a base macOS binary; its absence is unusual and not the
+      // launcher's fault, so report it distinctly from a failed verification.
+      return { trusted: false, reason: "codesign unavailable" };
+    }
+    return {
+      trusted: false,
+      reason: "code signature / requirement check failed",
+    };
+  }
+};
+
+/**
+ * Locate the installed, signed Stella launcher binary so the dev runtime can
+ * decrypt launcher-keychain credentials (e.g. BYOK API keys saved while
+ * running under the packaged launcher). The dev server is never itself
+ * packaged, so without this it falls back to insecure dev-plaintext storage
+ * and silently can't read keys the launcher wrote — routing then drops to the
+ * managed relay. Returns null when no trusted launcher is installed (e.g. CI),
+ * leaving the existing dev-plaintext fallback intact.
+ *
+ * @returns {string | null}
+ */
+const resolveLauncherProtectedStorageBin = () => {
+  const fromEnv = process.env.STELLA_LAUNCHER_PROTECTED_STORAGE_BIN?.trim();
+  if (fromEnv) {
+    // Authoritative: the packaged launcher passes its own exact binary path
+    // when it spawns dev. Trust it as-is — a local/dev (ad-hoc) launcher build
+    // would not satisfy the Developer-ID requirement below.
+    return fromEnv;
+  }
+  if (process.platform !== "darwin") {
+    return null;
+  }
+  const candidates = [
+    "/Applications/Stella.app/Contents/MacOS/Stella",
+    path.join(
+      homedir(),
+      "Applications",
+      "Stella.app",
+      "Contents",
+      "MacOS",
+      "Stella",
+    ),
+  ];
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) {
+      continue;
+    }
+    const appBundle = path.resolve(candidate, "..", "..", "..");
+    const verdict = verifyLauncherBundle(appBundle);
+    if (verdict.trusted) {
+      return candidate;
+    }
+    // Surface why a present-but-rejected launcher isn't being used, instead of
+    // silently dropping to insecure dev-plaintext storage.
+    console.warn(
+      `[electron-main] ignoring launcher at ${appBundle}: ${verdict.reason}. ` +
+        "BYOK keys saved under the launcher won't decrypt; dev will use insecure dev-plaintext storage.",
+    );
+  }
+  return null;
+};
+
+/**
+ * Decide how the spawned runtime stores secrets at rest. The result is merged
+ * onto the child's environment:
+ * - A trusted launcher binary → broker through it. On macOS the launcher owns
+ *   the Keychain ACL, so dev-Electron decrypts without a Keychain prompt.
+ * - Windows (no launcher) → fall through to Electron `safeStorage` (DPAPI) by
+ *   NOT setting the insecure flag. DPAPI is user-scoped with no per-app prompt,
+ *   so bare dev encrypts directly — no launcher needed.
+ * - Otherwise (macOS without a launcher, Linux) → dev-plaintext, because
+ *   `safeStorage` there would surface an OS keyring prompt a dev build's
+ *   identity can't satisfy.
+ *
+ * @param {string | null} launcherBin
+ * @returns {Record<string, string>}
+ */
+const resolveProtectedStorageEnv = (launcherBin) => {
+  if (launcherBin) {
+    return { STELLA_LAUNCHER_PROTECTED_STORAGE_BIN: launcherBin };
+  }
+  if (process.platform === "win32") {
+    return {};
+  }
+  return { STELLA_DEV_INSECURE_PROTECTED_STORAGE: "1" };
+};
+
 /**
  * Starts the Electron lifecycle.
  *
@@ -104,6 +226,20 @@ const isPidAlive = (pid) => {
  */
 export const startElectronLifecycle = ({ readiness, electronEnv, onExit }) => {
   let electronBinary = require("electron");
+
+  // Discover the installed launcher binary so launcher-keychain credentials
+  // (BYOK keys) decrypt in the dev runtime. Computed once per lifecycle and
+  // shared by both the in-process spawn and the bare relaunch shell script.
+  const launcherProtectedStorageBin = resolveLauncherProtectedStorageBin();
+  if (launcherProtectedStorageBin) {
+    console.log(
+      `[electron-main] protected storage via launcher: ${launcherProtectedStorageBin}`,
+    );
+  } else if (process.platform === "win32") {
+    console.log(
+      "[electron-main] protected storage via OS safeStorage (DPAPI)",
+    );
+  }
 
   let shuttingDown = false;
   let currentApp = null;
@@ -272,6 +408,7 @@ restart_file=${JSON.stringify(devRestartRequestFile)}
 runner_pid_file=${JSON.stringify(path.join(desktopDir, ".electron-dev-runner.pid"))}
 runner_script=${JSON.stringify(path.join(desktopDir, "scripts", "electron-dev-runner.mjs"))}
 node_bin=${JSON.stringify(process.execPath)}
+launcher_protected_storage_bin=${JSON.stringify(launcherProtectedStorageBin ?? "")}
 
 non_launch_args=()
 for arg in "$@"; do
@@ -302,6 +439,9 @@ if [ "\${non_launch_args[1]-}" != "." ]; then
 fi
 export NODE_ENV=development
 export STELLA_DEV_RESTART_REQUEST_FILE="$restart_file"
+if [ -z "$STELLA_LAUNCHER_PROTECTED_STORAGE_BIN" ] && [ -n "$launcher_protected_storage_bin" ]; then
+  export STELLA_LAUNCHER_PROTECTED_STORAGE_BIN="$launcher_protected_storage_bin"
+fi
 if [ -z "$STELLA_LAUNCHER_PROTECTED_STORAGE_BIN" ]; then
   export STELLA_DEV_INSECURE_PROTECTED_STORAGE=1
 fi
@@ -658,9 +798,7 @@ exec "$electron_bin" "\${non_launch_args[@]}"
         ...process.env,
         NODE_ENV: "development",
         STELLA_DEV_RESTART_REQUEST_FILE: devRestartRequestFile,
-        ...(process.env.STELLA_LAUNCHER_PROTECTED_STORAGE_BIN
-          ? {}
-          : { STELLA_DEV_INSECURE_PROTECTED_STORAGE: "1" }),
+        ...resolveProtectedStorageEnv(launcherProtectedStorageBin),
         ...(electronEnv ?? {}),
       },
       stdio: "inherit",
