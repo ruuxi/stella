@@ -605,11 +605,7 @@ button.event-context-chip--overflow:focus-visible {
 }
 
 .scroll-to-bottom:hover {
-  border-color: color-mix(
-    in oklch,
-    var(--foreground) 18%,
-    var(--panel-surface-border)
-  );
+  border-color: var(--panel-surface-border-hover);
   color: var(--text-strong);
 }
 

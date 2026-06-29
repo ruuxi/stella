@@ -107,11 +107,7 @@
 
 .composer-context-suggestion:hover {
   color: var(--text-strong);
-  border-color: color-mix(
-    in oklch,
-    var(--foreground) 18%,
-    var(--panel-surface-border)
-  );
+  border-color: var(--panel-surface-border-hover);
 }
 
 .composer-context-suggestion:focus-visible {
