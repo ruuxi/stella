@@ -153,7 +153,17 @@ export function transformMessages<TApi extends Api>(
 	const validToolCallIds = new Set<string>();
 	for (const message of transformed) {
 		if (message.role !== "assistant") continue;
-		for (const block of (message as AssistantMessage).content) {
+		const assistantMsg = message as AssistantMessage;
+		// Errored/aborted assistant turns are skipped in the second pass below, so
+		// their tool_use blocks never reach the provider. They must be excluded
+		// here too, otherwise the matching tool_result survives the orphan check
+		// and is emitted with no preceding tool_use — which Anthropic rejects
+		// ("tool_result ... must have a corresponding tool_use block in the
+		// previous message").
+		if (assistantMsg.stopReason === "error" || assistantMsg.stopReason === "aborted") {
+			continue;
+		}
+		for (const block of assistantMsg.content) {
 			if (block.type === "toolCall") {
 				validToolCallIds.add(block.id);
 			}

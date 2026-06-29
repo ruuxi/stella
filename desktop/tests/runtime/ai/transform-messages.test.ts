@@ -71,4 +71,97 @@ describe("runtime transformMessages", () => {
       ],
     });
   });
+
+  it("drops a tool result whose only tool call was on an errored assistant turn", () => {
+    // Repro for the Anthropic 400 "tool_result ... must have a corresponding
+    // tool_use block in the previous message": an aborted/errored assistant
+    // turn is stripped, so its tool result must be dropped as an orphan rather
+    // than emitted on its own.
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Run the tool." }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        provider: "anthropic",
+        api: "anthropic-messages",
+        model: "claude-opus-4.7",
+        usage,
+        stopReason: "error",
+        timestamp: 2,
+        content: [
+          {
+            type: "toolCall",
+            id: "toolu_orphan",
+            name: "Bash",
+            arguments: { command: "ls" },
+          },
+        ],
+      },
+      {
+        role: "toolResult",
+        toolCallId: "toolu_orphan",
+        toolName: "Bash",
+        content: [{ type: "text", text: "result" }],
+        isError: false,
+        timestamp: 3,
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "Try again." }],
+        timestamp: 4,
+      },
+    ];
+
+    const result = transformMessages(messages, anthropicModel);
+
+    expect(
+      result.some(
+        (msg) =>
+          msg.role === "toolResult" && msg.toolCallId === "toolu_orphan",
+      ),
+    ).toBe(false);
+    expect(result.some((msg) => msg.role === "assistant")).toBe(false);
+    expect(result.map((msg) => msg.role)).toEqual(["user", "user"]);
+  });
+
+  it("keeps a tool result paired with a successful assistant tool call", () => {
+    const messages: Message[] = [
+      {
+        role: "assistant",
+        provider: "anthropic",
+        api: "anthropic-messages",
+        model: "claude-opus-4.7",
+        usage,
+        stopReason: "toolUse",
+        timestamp: 1,
+        content: [
+          {
+            type: "toolCall",
+            id: "toolu_ok",
+            name: "Bash",
+            arguments: { command: "ls" },
+          },
+        ],
+      },
+      {
+        role: "toolResult",
+        toolCallId: "toolu_ok",
+        toolName: "Bash",
+        content: [{ type: "text", text: "result" }],
+        isError: false,
+        timestamp: 2,
+      },
+    ];
+
+    const result = transformMessages(messages, anthropicModel);
+
+    expect(
+      result.some(
+        (msg) => msg.role === "toolResult" && msg.toolCallId === "toolu_ok",
+      ),
+    ).toBe(true);
+  });
 });
