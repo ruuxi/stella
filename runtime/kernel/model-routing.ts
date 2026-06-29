@@ -4,6 +4,10 @@ import path from "node:path";
 import type { Api, Model } from "../ai/types.js";
 import { AGENT_IDS } from "../contracts/agent-runtime.js";
 import { getModels } from "../ai/models.js";
+import {
+  formatLlmRouteFailure,
+  type LlmRouteFailure,
+} from "../ai/llm-route-failure.js";
 import { getLocalLlmCredential } from "./storage/llm-credentials.js";
 import {
   getLocalLlmOAuthApiKey,
@@ -221,19 +225,72 @@ const getDirectProviderCandidates = (
   }
 };
 
+/**
+ * Pass-through gateways whose model-id space is owned by the gateway, not our
+ * static registry. The gateway accepts arbitrary `<vendor>/<model>` ids as-is
+ * and normalizes transport/quirks, so we can synthesize a routable model from
+ * the gateway's registry template when the (best-effort, network-bound)
+ * models.dev fetch hasn't populated the exact id yet. This keeps the model
+ * picker (which fetches models.dev live) and the runtime resolver from
+ * disagreeing. The gateway remains the authority — a bogus id fails loudly
+ * upstream, not here.
+ *
+ * Direct vendor providers (Anthropic, OpenAI, …) are intentionally excluded:
+ * their id formats are quirk-specific (dashes, date suffixes) and encoded
+ * precisely in the static registry, so synthesizing one risks a malformed id.
+ */
+const SYNTHESIZABLE_GATEWAY_PROVIDERS = new Set<string>([
+  "openrouter",
+  "vercel-ai-gateway",
+]);
+
+/**
+ * Build a routable model for `modelId` by cloning the gateway's registry
+ * template — which carries the `api`, `baseUrl`, `headers`, and `compat`
+ * needed to actually make the request, none of which models.dev provides.
+ * Metadata (context window, cost) falls back to the template's values; the
+ * request still succeeds and the gateway validates the id.
+ */
+const synthesizeGatewayModelFromTemplate = (
+  registryProvider: string,
+  modelId: string,
+): Model<Api> | null => {
+  if (!SYNTHESIZABLE_GATEWAY_PROVIDERS.has(registryProvider)) return null;
+  const template = (getModels(registryProvider as never) as Model<Api>[])[0];
+  if (!template) return null;
+  return { ...template, id: modelId, name: modelId };
+};
+
+/**
+ * Outcome of trying to satisfy an explicit direct-provider (BYOK / local)
+ * selection. Every non-route outcome names *why* it failed so the caller can
+ * surface a specific, actionable message instead of silently re-routing.
+ */
+type DirectProviderRouteResult =
+  | { kind: "route"; route: ResolvedLlmRoute }
+  // The `<provider>/` prefix isn't a provider Stella can talk to directly.
+  | { kind: "unsupported-provider" }
+  // Provider is known but the model id isn't in its registry (typo / dropped).
+  | { kind: "unknown-model" }
+  // Provider + model are valid, but there's no usable key/credential for it.
+  | { kind: "missing-credential" };
+
 const resolveDirectProviderRoute = (args: {
   stellaAppDir: string;
   provider: string;
   modelId: string;
   fullModelId: string;
-}): ResolvedLlmRoute | null => {
+}): DirectProviderRouteResult => {
   if (args.provider === LOCAL_PROVIDER && args.modelId.trim()) {
     const local = parseLocalModelId(args.modelId);
-    if (!local) return null;
+    if (!local) return { kind: "unknown-model" };
     return {
-      model: createLocalOpenAICompatibleModel(local.modelId, local.baseUrl),
-      route: "direct-provider",
-      getApiKey: () => "",
+      kind: "route",
+      route: {
+        model: createLocalOpenAICompatibleModel(local.modelId, local.baseUrl),
+        route: "direct-provider",
+        getApiKey: () => "",
+      },
     };
   }
 
@@ -242,7 +299,7 @@ const resolveDirectProviderRoute = (args: {
     args.modelId,
   );
   if (!directProvider) {
-    return null;
+    return { kind: "unsupported-provider" };
   }
 
   const requestedCandidates = uniqueModelCandidates([
@@ -250,12 +307,14 @@ const resolveDirectProviderRoute = (args: {
     ...directProvider.candidates,
   ]);
 
-  const directModel = findRegistryModel(
-    directProvider.registryProvider,
-    requestedCandidates,
-  );
+  const directModel =
+    findRegistryModel(directProvider.registryProvider, requestedCandidates) ??
+    synthesizeGatewayModelFromTemplate(
+      directProvider.registryProvider,
+      args.modelId,
+    );
   if (!directModel) {
-    return null;
+    return { kind: "unknown-model" };
   }
 
   if (
@@ -263,9 +322,12 @@ const resolveDirectProviderRoute = (args: {
     directModel.id === GROK_COMPOSER_MODEL
   ) {
     return {
-      model: directModel,
-      route: "direct-provider",
-      getApiKey: () => readGrokCliSessionToken(),
+      kind: "route",
+      route: {
+        model: directModel,
+        route: "direct-provider",
+        getApiKey: () => readGrokCliSessionToken(),
+      },
     };
   }
 
@@ -273,90 +335,96 @@ const resolveDirectProviderRoute = (args: {
     hasLocalProviderAuth(args.stellaAppDir, directProvider.credentialProvider)
   ) {
     return {
-      model: directModel,
-      route: "direct-provider",
-      getApiKey: () =>
-        getLocalProviderApiKey(
-          args.stellaAppDir,
-          directProvider.credentialProvider,
-        ),
+      kind: "route",
+      route: {
+        model: directModel,
+        route: "direct-provider",
+        getApiKey: () =>
+          getLocalProviderApiKey(
+            args.stellaAppDir,
+            directProvider.credentialProvider,
+          ),
+      },
     };
   }
 
   if (directProvider.allowBaseUrlWithoutCredential && directModel.baseUrl) {
     return {
-      model: directModel,
-      route: "direct-provider",
-      getApiKey: () => "",
+      kind: "route",
+      route: {
+        model: directModel,
+        route: "direct-provider",
+        getApiKey: () => "",
+      },
     };
   }
 
-  return null;
+  return { kind: "missing-credential" };
 };
 
-/**
- * Wrap any model id as a Stella-routed model id.
- *
- * `parsed.fullModelId` is the user-typed id minus surrounding whitespace,
- * already including its `<provider>/<model>` shape. We prefix `stella/` so the
- * Stella backend treats the rest as a passthrough to that upstream provider
- * (matching `parseStellaModelSelection` in `backend/convex/stella_models.ts`).
- */
-const wrapAsStellaModelId = (fullModelId: string): string => {
-  if (fullModelId.startsWith(`${STELLA_PROVIDER}/`)) return fullModelId;
-  return `${STELLA_PROVIDER}/${fullModelId}`;
-};
+type LlmRouteResolution =
+  | { ok: true; route: ResolvedLlmRoute }
+  | { ok: false; failure: LlmRouteFailure };
 
-const resolveMaybeLlmRoute = (args: {
+const resolveLlmRouteResult = (args: {
   stellaAppDir: string;
   modelName: string | undefined;
   agentType: string;
   site: StellaSiteConfig;
-}): ResolvedLlmRoute | null => {
+}): LlmRouteResolution => {
   const parsed = parseModelReference(args.modelName);
 
   // No model specified → let the backend choose from agent type + audience.
   if (!parsed) {
-    return createStellaRoute({
+    const route = createStellaRoute({
       site: args.site,
       agentType: args.agentType,
       modelId: STELLA_DEFAULT_MODEL,
     });
+    return route
+      ? { ok: true, route }
+      : { ok: false, failure: { kind: "no-stella-route" } };
   }
 
   // Explicit Stella prefix (`stella/<alias>` or `stella/<provider>/<model>`):
   // route through Stella with the original id intact.
   if (parsed.provider === STELLA_PROVIDER) {
-    return createStellaRoute({
+    const route = createStellaRoute({
       site: args.site,
       agentType: args.agentType,
       modelId: parsed.fullModelId,
     });
+    return route
+      ? { ok: true, route }
+      : { ok: false, failure: { kind: "no-stella-route" } };
   }
 
-  // Try the direct provider that the model id specifies. Multiple authed
-  // providers can coexist; the model id is the source of truth. Picking a
-  // non-Stella model implicitly opts that call into local-credential routing —
-  // there is no master toggle. If the user has no matching credential we fall
-  // through to the Stella passthrough below.
-  const directProviderRoute = resolveDirectProviderRoute({
+  // Explicit non-Stella selection (BYOK / local / direct provider): the model
+  // id is the source of truth and must be honored exactly. We never silently
+  // re-route a user's explicit provider pick through Stella's managed gateway —
+  // that would swap their provider, billing, and sometimes the model itself
+  // without consent. Any failure is reported so the caller can fail loudly and
+  // let the user switch models.
+  const direct = resolveDirectProviderRoute({
     stellaAppDir: args.stellaAppDir,
     provider: parsed.provider,
     modelId: parsed.modelId,
     fullModelId: parsed.fullModelId,
   });
-  if (directProviderRoute) {
-    return directProviderRoute;
+  if (direct.kind === "route") {
+    return { ok: true, route: direct.route };
   }
-
-  // No direct route (missing key or unknown provider) → fall back to Stella
-  // rather than hard-failing. Users who want strict direct routing can add a
-  // matching API key in Settings.
-  return createStellaRoute({
-    site: args.site,
-    agentType: args.agentType,
-    modelId: wrapAsStellaModelId(parsed.fullModelId),
-  });
+  // The three non-route outcomes all carry the same context; `direct.kind`
+  // (`unsupported-provider` | `unknown-model` | `missing-credential`) maps 1:1
+  // onto the failure kind.
+  return {
+    ok: false,
+    failure: {
+      kind: direct.kind,
+      provider: parsed.provider,
+      model: parsed.fullModelId,
+    },
+  };
 };
 
 export const canResolveLlmRoute = (args: {
@@ -364,13 +432,26 @@ export const canResolveLlmRoute = (args: {
   modelName: string | undefined;
   agentType?: string;
   site: StellaSiteConfig;
-}): boolean =>
-  Boolean(
-    resolveMaybeLlmRoute({
-      ...args,
-      agentType: args.agentType ?? AGENT_IDS.ORCHESTRATOR,
+}): boolean => {
+  const agentType = args.agentType ?? AGENT_IDS.ORCHESTRATOR;
+  const result = resolveLlmRouteResult({ ...args, agentType });
+  if (result.ok) return true;
+
+  // An unhonorable explicit model pick does NOT make the orchestrator unready:
+  // the run still starts and surfaces a toast for the bad pick, then the user
+  // switches models. Readiness only fails when there's no route at all — i.e.
+  // no Stella account to run anything on.
+  if (result.failure.kind === "no-stella-route") {
+    return false;
+  }
+  return Boolean(
+    createStellaRoute({
+      site: args.site,
+      agentType,
+      modelId: STELLA_DEFAULT_MODEL,
     }),
   );
+};
 
 export const resolveLlmRoute = (args: {
   stellaAppDir: string;
@@ -378,10 +459,7 @@ export const resolveLlmRoute = (args: {
   agentType: string;
   site: StellaSiteConfig;
 }): ResolvedLlmRoute => {
-  const route = resolveMaybeLlmRoute(args);
-  if (route) return route;
-
-  throw new Error(
-    "No usable model route is configured. Add a matching local API key in Settings or sign in to use Stella.",
-  );
+  const result = resolveLlmRouteResult(args);
+  if (result.ok) return result.route;
+  throw new Error(formatLlmRouteFailure(result.failure));
 };

@@ -73,29 +73,22 @@ describe("resolveLlmRoute", () => {
     return `header.${payload}.signature`;
   };
 
-  it("falls back to Stella when no matching local credential is set for the chosen model", async () => {
-    // No credentials saved at all → routing falls through to Stella with the
-    // upstream provider/model preserved as a passthrough id.
+  it("fails loudly (no Stella fallback) when an explicit BYOK model has no key", async () => {
+    // The user explicitly picked an OpenAI model but saved no OpenAI key. We
+    // must NOT silently re-route through Stella's managed gateway — surface a
+    // clear error so the caller can toast and the user can switch models.
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"
     );
 
-    const resolved = resolveLlmRoute({
-      stellaAppDir: "/tmp/stella",
-      modelName: "openai/gpt-5.1-codex",
-      agentType: "general",
-      site,
-    });
-
-    expect(resolved.route).toBe("stella");
-    // Relay model carries the upstream provider so pi-mono adapters dispatch
-    // correctly, but the id stays the original `stella/...` selection so
-    // history replay and prompt-cache keys stay stable.
-    expect(resolved.model.provider).toBe("openai");
-    expect(resolved.model.id).toBe("stella/openai/gpt-5.1-codex");
-    expect(resolved.model.baseUrl).toBe(
-      "https://stella.example.test/api/stella/relay",
-    );
+    expect(() =>
+      resolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: "openai/gpt-5.1-codex",
+        agentType: "general",
+        site,
+      }),
+    ).toThrow(/no usable api key for openai/i);
   });
 
   it("uses Stella's backend default sentinel when no model is specified", async () => {
@@ -160,7 +153,7 @@ describe("resolveLlmRoute", () => {
 
     const resolved = resolveLlmRoute({
       stellaAppDir: "/tmp/stella",
-      modelName: "openai/gpt-5.1-codex",
+      modelName: "stella/default",
       agentType: "general",
       site: {
         baseUrl: "https://stella.example.test",
@@ -183,7 +176,7 @@ describe("resolveLlmRoute", () => {
 
     const resolved = resolveLlmRoute({
       stellaAppDir: "/tmp/stella",
-      modelName: "openai/gpt-5.1-codex",
+      modelName: "stella/default",
       agentType: "general",
       site: {
         baseUrl: "https://stella.example.test",
@@ -242,24 +235,23 @@ describe("resolveLlmRoute", () => {
     await expect(openaiRoute.getApiKey()).resolves.toBe("openai-key");
   });
 
-  it("does not silently re-route to a different provider's gateway", async () => {
-    // User has only an OpenRouter key, but asks for `anthropic/...` directly.
-    // Old behavior would remap through OpenRouter; new behavior falls back to
-    // Stella so the user-typed provider id is never silently substituted.
+  it("never silently substitutes another provider; it fails loudly", async () => {
+    // User has only an OpenRouter key but explicitly asks for `anthropic/...`.
+    // We must not remap through OpenRouter OR Stella — the selection fails
+    // loudly so the user can add an Anthropic key or switch models.
     credentials.set("openrouter", "openrouter-key");
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"
     );
 
-    const resolved = resolveLlmRoute({
-      stellaAppDir: "/tmp/stella",
-      modelName: "anthropic/claude-opus-4.6",
-      agentType: "general",
-      site,
-    });
-
-    expect(resolved.route).toBe("stella");
-    expect(resolved.model.id).toBe("stella/anthropic/claude-opus-4.6");
+    expect(() =>
+      resolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: "anthropic/claude-opus-4.6",
+        agentType: "general",
+        site,
+      }),
+    ).toThrow(/no usable api key for anthropic/i);
   });
 
   it("routes explicit `openrouter/<provider>/<model>` through OpenRouter directly", async () => {
@@ -281,25 +273,123 @@ describe("resolveLlmRoute", () => {
     await expect(resolved.getApiKey()).resolves.toBe("openrouter-key");
   });
 
-  it("falls back to Stella when the requested provider has no credential", async () => {
+  it("fails loudly when the requested provider has no credential (other providers authed)", async () => {
     credentials.set("anthropic", "anthropic-key");
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    expect(() =>
+      resolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: "openai/gpt-5.1-codex",
+        agentType: "general",
+        site,
+      }),
+    ).toThrow(/no usable api key for openai/i);
+  });
+
+  it("synthesizes a route for an unregistered id on a pass-through gateway", async () => {
+    // The model picker fetches models.dev live and may show an OpenRouter id
+    // the runtime registry hasn't picked up yet. Rather than failing, we clone
+    // the OpenRouter template and let OpenRouter validate the id upstream.
+    credentials.set("openrouter", "openrouter-key");
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"
     );
 
     const resolved = resolveLlmRoute({
       stellaAppDir: "/tmp/stella",
-      modelName: "openai/gpt-5.1-codex",
+      modelName: "openrouter/anthropic/claude-opus-9.9",
       agentType: "general",
       site,
     });
 
-    expect(resolved.route).toBe("stella");
-    expect(resolved.model.provider).toBe("openai");
-    expect(resolved.model.id).toBe("stella/openai/gpt-5.1-codex");
-    expect(resolved.model.baseUrl).toBe(
-      "https://stella.example.test/api/stella/relay",
+    expect(resolved.route).toBe("direct-provider");
+    expect(resolved.model.provider).toBe("openrouter");
+    expect(resolved.model.id).toBe("anthropic/claude-opus-9.9");
+    await expect(resolved.getApiKey()).resolves.toBe("openrouter-key");
+  });
+
+  it("still requires a key for a synthesized gateway model", async () => {
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
     );
+
+    expect(() =>
+      resolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: "openrouter/anthropic/claude-opus-9.9",
+        agentType: "general",
+        site,
+      }),
+    ).toThrow(/no usable api key for openrouter/i);
+  });
+
+  it("fails loudly for an unknown model id on a non-gateway provider", async () => {
+    // Direct vendors are NOT synthesized — their id formats are quirk-specific,
+    // so an id missing from the static registry is a loud failure.
+    credentials.set("anthropic", "anthropic-key");
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    expect(() =>
+      resolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: "anthropic/claude-opus-9.9",
+        agentType: "general",
+        site,
+      }),
+    ).toThrow(/is not available from anthropic/i);
+  });
+
+  it("fails loudly for an unsupported provider prefix", async () => {
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    expect(() =>
+      resolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: "totallyfakeprovider/some-model",
+        agentType: "general",
+        site,
+      }),
+    ).toThrow(/unknown model provider/i);
+  });
+
+  it("stays ready (canResolveLlmRoute) for an unhonorable pick when Stella is available", async () => {
+    // A bad BYOK pick must not block the composer: the orchestrator is still
+    // "ready" because a managed Stella route exists; the bad pick surfaces as a
+    // toast at run time instead.
+    const { canResolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    expect(
+      canResolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: "openai/gpt-5.1-codex",
+        agentType: "general",
+        site,
+      }),
+    ).toBe(true);
+  });
+
+  it("reports not-ready when neither a key nor a Stella account is available", async () => {
+    const { canResolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    expect(
+      canResolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: "openai/gpt-5.1-codex",
+        agentType: "general",
+        site: { baseUrl: null, getAuthToken: () => undefined },
+      }),
+    ).toBe(false);
   });
 
   it("uses OAuth credentials when no API key is set for the requested provider", async () => {
