@@ -31,6 +31,36 @@ export type MobileAgentWorkPayload = {
 /** What the mobile sync transport can carry inline under a message. */
 export type MobileSyncArtifact = DisplayPayload | MobileAgentWorkPayload;
 
+/**
+ * One settled tool call, projected for the mobile inline tool-activity trace.
+ * The desktop renders the same run via `deriveToolActivity`; mobile reruns the
+ * (pure) phrasing on these steps. Only the handful of arg keys the per-call
+ * title needs are carried — never raw tool args (which can hold file contents).
+ */
+export type MobileToolStep = {
+  id: string;
+  toolName: string;
+  status: "completed" | "error";
+  /** Pruned string args used only to build the per-call title (path, query…). */
+  args?: Record<string, string>;
+};
+
+/**
+ * One background task (spawned agent) for the mobile activity pill + tray.
+ * Folded from the same `agent-*` lifecycle events the inline agent card reads;
+ * carried on the message that spawned it and collected conversation-wide on
+ * mobile. The desktop equivalent is the footer/tray `TaskItem`.
+ */
+export type MobileTask = {
+  id: string;
+  title: string;
+  status: "running" | "completed" | "error" | "canceled";
+  /** Live narration while running ("Reading file…"). */
+  statusText?: string;
+  createdAt: number;
+  completedAt?: number;
+};
+
 export type LocalChatSyncMessageWithArtifacts = {
   localMessageId: string;
   role: "user" | "assistant";
@@ -39,6 +69,10 @@ export type LocalChatSyncMessageWithArtifacts = {
   requestId?: string;
   deviceId?: string;
   artifacts?: MobileSyncArtifact[];
+  /** Settled tool calls for this turn, oldest first (assistant rows only). */
+  toolSteps?: MobileToolStep[];
+  /** Background tasks spawned by this turn (collected into the activity tray). */
+  tasks?: MobileTask[];
 };
 
 export type LocalChatMobileSyncCursor = {
@@ -524,6 +558,215 @@ const deriveAgentWorkPayload = (
   };
 };
 
+type TaskBuild = {
+  id: string;
+  title: string;
+  status: "running" | "completed" | "error" | "canceled";
+  statusText?: string;
+  createdAt: number;
+  spawnedAt: number;
+  completedAt?: number;
+};
+
+const terminalTaskStatus = (
+  type: string,
+): "completed" | "error" | "canceled" | null => {
+  if (type === "agent-completed") return "completed";
+  if (type === "agent-failed") return "error";
+  if (type === "agent-canceled") return "canceled";
+  return null;
+};
+
+/** Fold every turn's `agent-*` lifecycle events into one task per agent id. */
+const buildMobileTasksById = (
+  messages: readonly ArtifactMessageRecord[],
+  nowMs: number,
+): Map<string, MobileTask> => {
+  const builds = new Map<string, TaskBuild>();
+  for (const message of messages) {
+    for (const event of message.toolEvents) {
+      const payload = event.payload;
+      if (!payload) continue;
+      const agentId = trimmedString(payload.agentId);
+      if (!agentId) continue;
+      const existing = builds.get(agentId);
+      if (event.type === "agent-started") {
+        const title =
+          trimmedString(payload.description) ||
+          trimmedString(payload.groupLabel) ||
+          "Background work";
+        if (!existing) {
+          builds.set(agentId, {
+            id: agentId,
+            title,
+            status: "running",
+            createdAt: event.timestamp,
+            spawnedAt: event.timestamp,
+          });
+        } else {
+          if (
+            existing.title === "Background work" &&
+            title !== "Background work"
+          ) {
+            existing.title = title;
+          }
+          existing.createdAt = Math.min(existing.createdAt, event.timestamp);
+          existing.spawnedAt = Math.max(existing.spawnedAt, event.timestamp);
+        }
+        continue;
+      }
+      if (event.type === "agent-progress") {
+        const statusText = trimmedString(payload.statusText);
+        if (existing && existing.status === "running" && statusText) {
+          existing.statusText = statusText;
+        }
+        continue;
+      }
+      const terminal = terminalTaskStatus(event.type);
+      if (!terminal) continue;
+      if (!existing) {
+        builds.set(agentId, {
+          id: agentId,
+          title:
+            trimmedString(payload.description) ||
+            trimmedString(payload.groupLabel) ||
+            "Background work",
+          status: terminal,
+          createdAt: event.timestamp,
+          spawnedAt: event.timestamp,
+          completedAt: event.timestamp,
+        });
+      } else if (event.timestamp >= existing.spawnedAt) {
+        existing.status = terminal;
+        existing.completedAt = event.timestamp;
+      }
+    }
+  }
+
+  const tasks = new Map<string, MobileTask>();
+  for (const build of builds.values()) {
+    // A long-silent running thread aged out of the loaded window — settle it so
+    // the tray doesn't shimmer "running" forever (mirrors the agent card).
+    const status =
+      build.status === "running" &&
+      nowMs - build.spawnedAt > AGENT_WORK_STALE_MS
+        ? "completed"
+        : build.status;
+    tasks.set(build.id, {
+      id: build.id,
+      title: build.title,
+      status,
+      ...(status === "running" && build.statusText
+        ? { statusText: build.statusText }
+        : {}),
+      createdAt: build.createdAt,
+      ...(build.completedAt !== undefined
+        ? { completedAt: build.completedAt }
+        : {}),
+    });
+  }
+  return tasks;
+};
+
+/** Tasks spawned by this message (its `agent-started` ids), resolved globally. */
+const deriveMobileTasksForMessage = (
+  message: Pick<ArtifactMessageRecord, "toolEvents">,
+  tasksById: ReadonlyMap<string, MobileTask>,
+): MobileTask[] => {
+  const out: MobileTask[] = [];
+  const seen = new Set<string>();
+  for (const event of message.toolEvents) {
+    if (event.type !== "agent-started") continue;
+    const agentId = trimmedString(event.payload?.agentId);
+    if (!agentId || seen.has(agentId)) continue;
+    seen.add(agentId);
+    const task = tasksById.get(agentId);
+    if (task) out.push(task);
+  }
+  return out;
+};
+
+// Arg keys the mobile per-call title reads (see the mobile `tool-activity`
+// port). Everything else is dropped so raw tool args never cross the bridge.
+const TITLE_ARG_KEYS = [
+  "path",
+  "file_path",
+  "pattern",
+  "query",
+  "url",
+  "cmd",
+  "command",
+  "prompt",
+  "title",
+  "name",
+] as const;
+
+const pickTitleArgs = (args: unknown): Record<string, string> | undefined => {
+  if (!args || typeof args !== "object") return undefined;
+  const source = args as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const key of TITLE_ARG_KEYS) {
+    const value = source[key];
+    if (typeof value === "string" && value.length > 0) {
+      out[key] = value.length > 200 ? value.slice(0, 200) : value;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+};
+
+/**
+ * Pair a turn's `tool_request` / `tool_result` events by request id and project
+ * the settled ones (a result arrived) for the mobile tool-activity trace. The
+ * in-flight call is intentionally omitted — it's owned by the live working
+ * indicator, exactly as on desktop.
+ */
+export const deriveMobileToolSteps = (
+  message: Pick<ArtifactMessageRecord, "toolEvents">,
+): MobileToolStep[] => {
+  type Build = {
+    id: string;
+    toolName: string;
+    status: "running" | "completed" | "error";
+    args?: Record<string, string>;
+  };
+  const order: string[] = [];
+  const byId = new Map<string, Build>();
+  for (const event of message.toolEvents) {
+    const payload = event.payload ?? {};
+    const requestId =
+      (typeof payload.requestId === "string" && payload.requestId) || event._id;
+    if (!requestId) continue;
+    if (event.type === "tool_request") {
+      const toolName =
+        typeof payload.toolName === "string" ? payload.toolName : "";
+      if (!toolName) continue;
+      if (!byId.has(requestId)) order.push(requestId);
+      byId.set(requestId, {
+        id: requestId,
+        toolName,
+        status: "running",
+        args: pickTitleArgs(payload.args),
+      });
+    } else if (event.type === "tool_result") {
+      const existing = byId.get(requestId);
+      if (!existing) continue;
+      existing.status = payload.error ? "error" : "completed";
+    }
+  }
+  const steps: MobileToolStep[] = [];
+  for (const id of order) {
+    const build = byId.get(id);
+    if (!build || build.status === "running") continue;
+    steps.push({
+      id: build.id,
+      toolName: build.toolName,
+      status: build.status,
+      ...(build.args ? { args: build.args } : {}),
+    });
+  }
+  return steps;
+};
+
 export const deriveMobileArtifactsForMessage = (
   message: Pick<ArtifactMessageRecord, "toolEvents">,
   options?: MobileArtifactOptions,
@@ -599,6 +842,7 @@ export const buildMobileSyncMessages = (
   // latest completion per thread across the whole synced set once.
   const completedAtMsById = buildCompletedAtMsById(messages);
   const nowMs = Date.now();
+  const tasksById = buildMobileTasksById(messages, nowMs);
   for (const message of messages) {
     if (isUiHiddenChatMessagePayload(message.payload ?? null)) continue;
     const role = message.type === "user_message" ? "user" : "assistant";
@@ -606,6 +850,11 @@ export const buildMobileSyncMessages = (
     const text = textFromPayload(message.payload);
     const fileArtifacts = deriveMobileArtifactsForMessage(message, options);
     const agentWork = deriveAgentWorkPayload(message, completedAtMsById, nowMs);
+    // Background tasks spawned by this turn (collected into the activity tray).
+    const tasks = deriveMobileTasksForMessage(message, tasksById);
+    // Settled tool calls for the inline tool-activity trace (assistant turns).
+    const toolSteps =
+      role === "assistant" ? deriveMobileToolSteps(message) : [];
     // Inline the agent card on the assistant turn that spawned it. For a
     // fire-and-forget turn (no assistant message — the start event lands on
     // the user_message), it's emitted as its own assistant bubble below.
@@ -615,7 +864,7 @@ export const buildMobileSyncMessages = (
         : fileArtifacts;
 
     if (text || role === "assistant") {
-      if (text || artifacts.length > 0) {
+      if (text || artifacts.length > 0 || toolSteps.length > 0) {
         rows.push({
           localMessageId: message._id,
           role,
@@ -626,6 +875,10 @@ export const buildMobileSyncMessages = (
             ? { deviceId: message.deviceId }
             : {}),
           ...(artifacts.length > 0 ? { artifacts } : {}),
+          ...(toolSteps.length > 0 ? { toolSteps } : {}),
+          // Carried for the activity tray (collected conversation-wide); never
+          // forces a row to render on its own — it rides one that already does.
+          ...(tasks.length > 0 ? { tasks } : {}),
         });
       }
     } else if (artifacts.length > 0) {
@@ -647,6 +900,9 @@ export const buildMobileSyncMessages = (
         timestamp: message.timestamp,
         ...(message.requestId ? { requestId: message.requestId } : {}),
         artifacts: [agentWork],
+        // Fire-and-forget turn: the user row may not render, so carry its tasks
+        // on the agent bubble (collected by id, so any overlap dedupes).
+        ...(tasks.length > 0 ? { tasks } : {}),
       });
     }
   }
