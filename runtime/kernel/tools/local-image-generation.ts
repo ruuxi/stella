@@ -359,72 +359,54 @@ const runFal = async (
   return { error: "fal image generation timed out." };
 };
 
-const extractOpenRouterImages = (json: unknown): string[] => {
-  const choices = (json as { choices?: unknown }).choices;
-  if (!Array.isArray(choices)) return [];
-  const images: string[] = [];
-  for (const choice of choices) {
-    const message = (choice as { message?: unknown }).message as
-      | { images?: unknown; content?: unknown }
-      | undefined;
-    if (!message) continue;
-    if (Array.isArray(message.images)) {
-      for (const image of message.images) {
-        const url = asNonEmptyString(
-          (image as { image_url?: { url?: unknown } }).image_url?.url,
-        );
-        if (url) images.push(url);
-      }
-    }
-    if (Array.isArray(message.content)) {
-      for (const part of message.content) {
-        const record = part as {
-          type?: unknown;
-          image_url?: { url?: unknown };
-        };
-        if (record.type === "image_url") {
-          const url = asNonEmptyString(record.image_url?.url);
-          if (url) images.push(url);
-        }
-      }
-    }
-  }
-  return images;
-};
-
 const runOpenRouter = async (
   input: LocalImageGenerationInput,
   apiKey: string,
   model: string,
+  outputFormat: string,
 ): Promise<string[] | { error: string }> => {
+  // OpenRouter's dedicated Image API (`POST /api/v1/images`) is uniform across
+  // every image model and returns `data[].b64_json` (same shape as OpenAI). The
+  // older chat-completions `modalities: ["image","text"]` path only worked for
+  // models that also emit text, so image-only models (e.g. openai/gpt-image-2)
+  // were rejected with a "text, image" modalities error.
+  // https://openrouter.ai/docs/features/multimodal/image-generation
   const references = await collectReferenceDataUrls(
     input.referenceImagePaths,
     input.referenceImageUrls,
   );
-  const content: Array<Record<string, unknown>> = [
-    { type: "text", text: input.prompt },
-    ...references.map((url) => ({ type: "image_url", image_url: { url } })),
-  ];
-  const response = await fetchJson(
-    "https://openrouter.ai/api/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://stella.sh",
-        "X-OpenRouter-Title": "Stella",
-      },
-      body: JSON.stringify({
-        model,
-        modalities: ["image", "text"],
-        messages: [{ role: "user", content }],
-      }),
-      signal: input.extras?.signal,
+  const body: Record<string, unknown> = {
+    model,
+    prompt: input.prompt,
+    n: normalizeNumImages(input.args.num_images),
+    quality: asNonEmptyString(input.args.quality) ?? "low",
+    output_format: outputFormat,
+  };
+  // `aspect_ratio` is the normalized ratio OpenRouter accepts; models that
+  // don't support it ignore the field.
+  if (input.aspectRatio) {
+    body.aspect_ratio = input.aspectRatio;
+  }
+  if (references.length > 0) {
+    body.input_references = references.map((url) => ({
+      type: "image_url",
+      image_url: { url },
+    }));
+  }
+  const response = await fetchJson("https://openrouter.ai/api/v1/images", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://stella.sh",
+      "X-OpenRouter-Title": "Stella",
     },
-  );
+    body: JSON.stringify(body),
+    signal: input.extras?.signal,
+  });
   if (!response.ok) return { error: response.error };
-  return extractOpenRouterImages(response.json);
+  // `/api/v1/images` returns `{ data: [{ b64_json }] }` — same as OpenAI.
+  return extractOpenAiImages(response.json);
 };
 
 export const runLocalImageGeneration = async (
@@ -453,7 +435,7 @@ export const runLocalImageGeneration = async (
       ? await runOpenAi(input, apiKey, providerModel, outputFormat)
       : preferences.provider === "fal"
         ? await runFal(input, apiKey, providerModel, outputFormat)
-        : await runOpenRouter(input, apiKey, providerModel);
+        : await runOpenRouter(input, apiKey, providerModel, outputFormat);
   if ("error" in generated) {
     return {
       error: `image_gen ${preferences.provider} failed: ${generated.error}`,
