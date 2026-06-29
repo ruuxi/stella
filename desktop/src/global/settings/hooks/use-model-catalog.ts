@@ -10,6 +10,7 @@ import {
   normalizeDirectProviderCatalogModels,
   normalizeStellaCatalogModels,
   searchCatalogModels,
+  withStellaPresetFallbacks,
   type CatalogApiResponse,
   type CatalogDefaultModel,
   type CatalogModel,
@@ -162,8 +163,15 @@ export function useModelCatalog() {
   const authAudienceKey = useMemo(() => {
     if (session.isPending) return null;
     if (!hasConnectedAccount) return `${sessionCacheScope}:audience:anonymous`;
-    if (!billingAudienceKey) return null;
-    return `${sessionCacheScope}:audience:${billingAudienceKey}`;
+    // Once billing resolves we key by the precise audience. Until then fetch
+    // under a provisional key rather than returning null — the backend derives
+    // the real audience (and `allowedForAudience`) from the auth token, not
+    // from this client cache key, so the fetched data is already correct; the
+    // audience only busts the cache so restricted styling re-evaluates on plan
+    // change. Returning null here previously left the picker stuck on
+    // "Loading Stella models…" forever whenever the billing query was slow or
+    // failed (it swallows errors and never resolves).
+    return `${sessionCacheScope}:audience:${billingAudienceKey ?? "pending"}`;
   }, [
     billingAudienceKey,
     hasConnectedAccount,
@@ -172,8 +180,11 @@ export function useModelCatalog() {
   ]);
 
   const stellaCacheKey = useMemo(() => {
-    if (!authAudienceKey || modelCatalogUpdatedAt === null) return null;
-    return `${authAudienceKey}::${modelCatalogUpdatedAt}`;
+    if (!authAudienceKey) return null;
+    // The updated-at marker is only a cache-bust hint, not a prerequisite.
+    // Fall back to a stable token so the catalog loads even if the marker
+    // query hasn't resolved yet, then re-fetch when it does.
+    return `${authAudienceKey}::${modelCatalogUpdatedAt ?? "pending"}`;
   }, [authAudienceKey, modelCatalogUpdatedAt]);
 
   const stellaQuery = useResourceStore(stellaCatalogStore, stellaCacheKey);
@@ -183,7 +194,13 @@ export function useModelCatalog() {
   const managedPayload = managedQuery.data ?? EMPTY_MANAGED;
 
   const localModels = useMemo(() => listLocalCatalogModels(), []);
-  const stellaModels = stellaPayload.models;
+  // The curated Stella preset modes always render from a local fallback, so the
+  // compact picker is never blank while the catalog loads / on a fetch failure.
+  // Fetched entries override the fallbacks with authoritative metadata.
+  const stellaModels = useMemo(
+    () => withStellaPresetFallbacks(stellaPayload.models),
+    [stellaPayload.models],
+  );
   const directModels = useMemo(
     () => mergeCatalogModels(localModels, managedPayload.directModels),
     [managedPayload.directModels, localModels],

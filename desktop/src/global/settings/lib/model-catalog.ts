@@ -83,6 +83,79 @@ export type ModelsDevApi = Record<string, ModelsDevProviderEntry>;
 
 export { getProviderDisplayName };
 
+/**
+ * The curated Stella preset "modes" are a fixed, branded set (mirrors
+ * `STELLA_ALIAS_MODES` in backend `stella_models.ts`). They never change at
+ * runtime, so the compact picker should render them instantly — offline,
+ * pre-auth, or while `/api/models` is still loading — rather than depending on
+ * a network round-trip. The fetched catalog only *refines* them (authoritative
+ * `allowedForAudience`, resolved upstream model); this is the always-present
+ * scaffold. Keep in sync with the backend mode list.
+ */
+// `upstreamModel` mirrors the backend's per-mode default (`BASE_MODE_CONFIGS`
+// in `stella_models.ts`, and the offline `fallbackResolvedModelForAlias` in
+// `runtime/kernel/model-routing-stella.ts`). It drives the preset subtitle
+// (the underlying model name, e.g. "claude-opus-4.8"), so the compact picker
+// shows the same "preset + model" rows before the catalog refines them per
+// audience. Keep these in sync with the backend mode list.
+const STELLA_PRESET_FALLBACK_DEFS: ReadonlyArray<{
+  mode: string;
+  name: string;
+  upstreamModel: string;
+}> = [
+  {
+    mode: "light",
+    name: "Stella Light",
+    upstreamModel: "accounts/fireworks/models/deepseek-v4-flash",
+  },
+  { mode: "standard", name: "Stella Standard", upstreamModel: "openai/gpt-5.5" },
+  {
+    mode: "priority",
+    name: "Stella Priority",
+    upstreamModel: "accounts/fireworks/models/kimi-k2p7-code",
+  },
+  { mode: "builder", name: "Stella Builder", upstreamModel: "openai/gpt-5.5" },
+  {
+    mode: "designer",
+    name: "Stella Designer",
+    upstreamModel: "anthropic/claude-opus-4.8",
+  },
+  {
+    mode: "vision",
+    name: "Stella Vision",
+    upstreamModel: "google/gemini-3-flash-preview",
+  },
+];
+
+export const STELLA_PRESET_FALLBACK_MODELS: readonly CatalogModel[] =
+  STELLA_PRESET_FALLBACK_DEFS.map(({ mode, name, upstreamModel }) => ({
+    id: `stella/${mode}`,
+    modelId: mode,
+    name,
+    provider: "stella",
+    providerName: getProviderDisplayName("stella"),
+    source: "stella" as const,
+    upstreamModel,
+  }));
+
+/**
+ * Merge the fixed Stella preset fallbacks under the fetched Stella catalog so
+ * the curated modes are always present in the picker; any matching fetched
+ * entry (carrying authoritative metadata) overrides its fallback.
+ */
+export function withStellaPresetFallbacks(
+  stellaModels: readonly CatalogModel[],
+): CatalogModel[] {
+  const byId = new Map<string, CatalogModel>();
+  for (const preset of STELLA_PRESET_FALLBACK_MODELS) {
+    byId.set(preset.id, preset);
+  }
+  for (const model of stellaModels) {
+    byId.set(model.id, model);
+  }
+  return Array.from(byId.values());
+}
+
 function compareCatalogModels(a: CatalogModel, b: CatalogModel): number {
   if (a.provider === "stella" && b.provider !== "stella") return -1;
   if (a.provider !== "stella" && b.provider === "stella") return 1;

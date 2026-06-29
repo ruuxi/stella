@@ -241,6 +241,8 @@ export function AgentModelPicker({
     refresh,
     refreshing,
     audience,
+    loading: catalogLoading,
+    error: catalogError,
   } = useModelCatalog();
 
   const [preferences, setPreferencesRaw] =
@@ -973,6 +975,11 @@ export function AgentModelPicker({
             defaultLabel={defaultLabel}
             onSelect={handleSelect}
             disabled={!ready || pendingAgent !== null}
+            loading={catalogLoading}
+            error={catalogError}
+            onRetry={() => {
+              void refresh();
+            }}
             restricted={restrictedStellaPicks}
             restrictedPlanLabel={restrictedPlanLabel}
             onUpgrade={() => {
