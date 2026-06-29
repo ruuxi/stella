@@ -1,5 +1,8 @@
 import { getAllModels } from "../../../../../runtime/ai/models.js";
 import type { Api, Model } from "../../../../../runtime/ai/types.js";
+// Provider display names live in a shared, browser-safe runtime module so the
+// model picker and the runtime route-error toasts can't drift apart.
+import { getProviderDisplayName } from "../../../../../runtime/ai/provider-display.js";
 import { LOCAL_MODEL_PROVIDER_KEYS } from "./llm-providers";
 
 export type CatalogModelSource = "stella" | "local";
@@ -78,45 +81,7 @@ type ModelsDevProviderEntry = {
 
 export type ModelsDevApi = Record<string, ModelsDevProviderEntry>;
 
-const PROVIDER_NAMES: Record<string, string> = {
-  "amazon-bedrock": "Amazon Bedrock",
-  anthropic: "Anthropic",
-  "azure-openai-responses": "Azure OpenAI",
-  cerebras: "Cerebras",
-  "github-copilot": "GitHub Copilot",
-  google: "Google",
-  grok: "Grok",
-  "google-antigravity": "Google Antigravity",
-  "google-gemini-cli": "Google Gemini CLI",
-  "google-vertex": "Google Vertex",
-  groq: "Groq",
-  huggingface: "Hugging Face",
-  local: "Local",
-  "kimi-coding": "Kimi",
-  minimax: "MiniMax",
-  "minimax-cn": "MiniMax China",
-  mistral: "Mistral",
-  opencode: "OpenCode",
-  "opencode-go": "OpenCode Go",
-  openai: "OpenAI",
-  "openai-codex": "OpenAI",
-  openrouter: "OpenRouter",
-  stella: "Stella",
-  "vercel-ai-gateway": "Vercel AI Gateway",
-  xai: "xAI",
-  zai: "Z.AI",
-};
-
-export function getProviderDisplayName(provider: string): string {
-  const normalized = provider.trim();
-  const mapped = PROVIDER_NAMES[normalized];
-  if (mapped) return mapped;
-  return normalized
-    .split(/[-_]/g)
-    .filter(Boolean)
-    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
-    .join(" ");
-}
+export { getProviderDisplayName };
 
 function compareCatalogModels(a: CatalogModel, b: CatalogModel): number {
   if (a.provider === "stella" && b.provider !== "stella") return -1;

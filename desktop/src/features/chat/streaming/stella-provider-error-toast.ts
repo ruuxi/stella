@@ -1,4 +1,8 @@
-import { BYOK_TOAST_ACTION } from '@/global/billing/byok-action'
+import {
+  BYOK_TOAST_ACTION,
+  OPEN_MODEL_PICKER_EVENT,
+} from '@/global/billing/byok-action'
+import { detectLlmRouteFailureKind } from '../../../../../runtime/ai/llm-route-failure.js'
 import type { ToastOptions } from '@/ui/toast'
 
 const normalizeErrorText = (value: string | null | undefined): string =>
@@ -20,6 +24,16 @@ const openSignInDialog = () => {
       }),
     })
   })
+}
+
+const openModelPicker = () => {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new Event(OPEN_MODEL_PICKER_EVENT))
+}
+
+const chooseModelAction = {
+  label: 'Choose model',
+  onClick: openModelPicker,
 }
 
 const upgradeAction = {
@@ -109,6 +123,46 @@ export const resolveStellaProviderErrorToast = (
 ): ToastOptions => {
   const message = normalizeErrorText(reason)
   const normalized = message.toLowerCase()
+
+  // Route-resolution failures carry a stable marker from the runtime resolver
+  // (`runtime/ai/llm-route-failure.ts`), so we map them by kind rather than by
+  // matching their human-readable prose.
+  const routeFailureKind = detectLlmRouteFailureKind(message)
+  if (routeFailureKind === 'missing-credential') {
+    return {
+      title: 'Provider key needed',
+      description:
+        'Stella could not use your selected model because its API key is missing or unreadable. Add or re-check it in Settings → Model, or pick another model.',
+      variant: 'error',
+      duration: 8000,
+      action: chooseModelAction,
+      secondaryAction: BYOK_TOAST_ACTION,
+    }
+  }
+  if (
+    routeFailureKind === 'unknown-model' ||
+    routeFailureKind === 'unsupported-provider'
+  ) {
+    return {
+      title: 'Model unavailable',
+      description:
+        'Stella could not use your selected model. Choose a different model to continue.',
+      variant: 'error',
+      duration: 8000,
+      action: chooseModelAction,
+    }
+  }
+  if (routeFailureKind === 'no-stella-route') {
+    return {
+      title: 'No model available',
+      description:
+        'Sign in to use Stella, or add your own provider key to keep going.',
+      variant: 'error',
+      duration: 8000,
+      action: signInAction,
+      secondaryAction: BYOK_TOAST_ACTION,
+    }
+  }
 
   // Anonymous-cap branch must come before the generic rate-limit branch:
   // anon users get a "Sign in" CTA instead of "Upgrade" → /billing
