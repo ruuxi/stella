@@ -192,6 +192,11 @@ html[data-stella-window="mini"] #stella-mini-boot {
     color-mix(in srgb, var(--background) 58%, transparent)
   );
   --panel-surface-border: color-mix(in oklch, var(--border) 60%, transparent);
+  --panel-surface-border-hover: color-mix(
+    in oklch,
+    var(--foreground) 18%,
+    var(--panel-surface-border)
+  );
   --panel-surface-highlight: inset 0 1px 0
     color-mix(in oklch, white 42%, transparent);
 
@@ -388,6 +393,11 @@ html[data-stella-window="mini"] #stella-mini-boot {
     color-mix(in srgb, var(--background) 70%, transparent)
   );
   --panel-surface-border: var(--border);
+  --panel-surface-border-hover: color-mix(
+    in oklch,
+    var(--foreground) 18%,
+    var(--panel-surface-border)
+  );
   --panel-surface-highlight: inset 0 1px 0
     color-mix(in oklch, white 10%, transparent);
 

@@ -33,11 +33,7 @@
 
 .composer-activity-pill:hover,
 .composer-activity-pill[data-open] {
-  border-color: color-mix(
-    in oklch,
-    var(--foreground) 18%,
-    var(--panel-surface-border)
-  );
+  border-color: var(--panel-surface-border-hover);
   color: var(--text-strong);
 }
 
