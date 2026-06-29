@@ -131,39 +131,26 @@
   }
 }
 
-/* Expand/collapse: animate the list height via grid-template-rows 0fr ↔ 1fr
-   (smoothly animates an otherwise-`auto` height) plus a content fade. */
+/* Expand/collapse: `height` is driven in JS between 0 and the measured
+   content height (then released to `auto`); the browser interpolates that
+   fixed-px range smoothly. `overflow:hidden` clips the content while it
+   slides open/closed. */
 .tool-activity__steps-wrap {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 200ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.tool-activity[data-expanded="true"] .tool-activity__steps-wrap {
-  grid-template-rows: 1fr;
+  height: 0;
+  overflow: hidden;
+  transition: height 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .tool-activity__steps {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  /* min-height:0 + overflow:hidden let the 0fr row clip the content to zero. */
-  min-height: 0;
-  overflow: hidden;
-  margin: 0;
+  margin: 0 0 0 8px;
   padding: 4px 0 4px 9px;
   list-style: none;
   /* Hairline rail aligns under the leading icon so the steps read as a
      nested branch of the summary line. */
-  margin-left: 8px;
   border-left: 1px solid var(--panel-surface-border, var(--border-weak));
-  opacity: 0;
-  transition: opacity 140ms ease;
-}
-
-.tool-activity[data-expanded="true"] .tool-activity__steps {
-  opacity: 1;
-  transition: opacity 200ms ease 60ms;
 }
 
 .tool-activity__step {
@@ -219,8 +206,7 @@
     animation: none;
   }
   .tool-activity__chevron,
-  .tool-activity__steps-wrap,
-  .tool-activity__steps {
+  .tool-activity__steps-wrap {
     transition: none;
   }
 }
