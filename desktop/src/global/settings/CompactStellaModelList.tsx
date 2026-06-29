@@ -17,6 +17,12 @@ interface CompactStellaModelListProps {
   /** Selection callback. Empty string ⇒ revert to default. */
   onSelect: (value: string) => void;
   disabled?: boolean;
+  /** True while the Stella catalog is still being fetched (no data yet). */
+  loading?: boolean;
+  /** Non-null when the Stella catalog fetch failed. */
+  error?: string | null;
+  /** Re-run the Stella catalog fetch (used by the failed-state retry). */
+  onRetry?: () => void;
   /**
    * When true the user's plan can't override the default Stella model
    * (anonymous, free, or Go). Non-default presets render disabled with
@@ -40,6 +46,9 @@ export function CompactStellaModelList({
   defaultLabel,
   onSelect,
   disabled = false,
+  loading = false,
+  error = null,
+  onRetry,
   restricted = false,
   restrictedPlanLabel,
   onUpgrade,
@@ -80,7 +89,26 @@ export function CompactStellaModelList({
         ) : null}
       </button>
       {presets.length === 0 ? (
-        <div className="compact-stella-list-empty">Loading Stella models…</div>
+        loading ? (
+          <div className="compact-stella-list-empty">Loading Stella models…</div>
+        ) : (
+          <div className="compact-stella-list-empty compact-stella-list-empty--state">
+            <span>
+              {error
+                ? "Couldn't load Stella models."
+                : "No Stella models available."}
+            </span>
+            {onRetry ? (
+              <button
+                type="button"
+                className="compact-stella-list-restricted-link"
+                onClick={onRetry}
+              >
+                Retry
+              </button>
+            ) : null}
+          </div>
+        )
       ) : (
         presets.map((model) => {
           const selected = !isDefaultSelected && model.id === value;
