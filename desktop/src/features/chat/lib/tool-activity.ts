@@ -8,6 +8,13 @@
  *
  *   "Read 3 files and searched code"   "Searched the web and ran 2 commands"
  *
+ * Only *settled* calls (completed/errored) are counted, and the group is
+ * `undefined` until the first one settles. So the trace appears once the
+ * first tool returns and its count ticks up in place as each subsequent call
+ * finishes (the still-in-flight call stays owned by the live footer
+ * `WorkingIndicator`) — which is what lets the summary animate 1 → 2 → 3
+ * rather than popping in already-final.
+ *
  * Mapping is keyed off Stella's *actual* tool names (see
  * `runtime/kernel/tools/defs/`), not generic Claude-Code names — the common
  * dev tools aggregate by category (read / edit / search / web / command) and
@@ -53,18 +60,12 @@ export type ToolActivityStep = {
 };
 
 export type ToolActivityGroup = {
+  /** Settled steps only (completed/errored), in call order. */
   steps: ToolActivityStep[];
   /** Settled summary, e.g. "Read 3 files and searched code". */
   summary: string;
   /** Leading-icon category (the run's dominant family). */
   icon: ToolActivityCategory;
-  /**
-   * A step is still in flight (a `tool_request` with no matching
-   * `tool_result` yet). The renderer gates on this: while `true` the live
-   * footer `WorkingIndicator` owns the display and the inline trace stays
-   * hidden; it mounts only once the run settles (`false`).
-   */
-  running: boolean;
 };
 
 // Owned by other surfaces / not real calls — never shown in the trace.
@@ -345,13 +346,17 @@ export function deriveToolActivity(
     }
   }
 
-  if (steps.length === 0) return undefined;
+  // Count only settled calls — the in-flight one stays owned by the live
+  // WorkingIndicator. This is what lets the summary appear after the first
+  // result and tick up in place as each subsequent call returns.
+  const settled = steps.filter((step) => step.status !== "running");
+  if (settled.length === 0) return undefined;
 
   // Aggregate clauses by key, in first-appearance order.
   const order: string[] = [];
   const groupCount = new Map<string, number>();
   const groupSample = new Map<string, ToolActivityStep>();
-  for (const step of steps) {
+  for (const step of settled) {
     const key = aggregateKey(step);
     if (!groupCount.has(key)) {
       order.push(key);
@@ -380,16 +385,13 @@ export function deriveToolActivity(
   }
   const icon = groupSample.get(iconKey)!.category;
 
-  const running = steps.some((step) => step.status === "running");
-
-  return { steps, summary, icon, running };
+  return { steps: settled, summary, icon };
 }
 
 /**
  * Shallow structural equality for the memo/stable-rows comparator. Compares
- * the running flag, summary, and each step's identity+status so a streaming
- * status flip (running → completed) re-renders, but stable re-projections
- * don't.
+ * the summary and each settled step's identity+status so a newly-settled call
+ * (count tick-up) re-renders, but stable re-projections don't.
  */
 export function toolActivityEqual(
   a: ToolActivityGroup | undefined,
@@ -397,7 +399,6 @@ export function toolActivityEqual(
 ): boolean {
   if (a === b) return true;
   if (!a || !b) return a === b;
-  if (a.running !== b.running) return false;
   if (a.summary !== b.summary) return false;
   if (a.icon !== b.icon) return false;
   if (a.steps.length !== b.steps.length) return false;

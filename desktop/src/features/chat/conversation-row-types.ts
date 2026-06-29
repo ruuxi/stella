@@ -92,10 +92,11 @@ export type AssistantRowViewModel = {
   /**
    * Collapsed, expandable trace of the tool calls this row's turn ran after
    * its text (one summary line, Claude-Code-style: "Read 3 files and
-   * searched code"). Derived from the row's `toolEvents` slice; while the
-   * turn is live it reports a running step so the line can show live status,
-   * settling into the static summary once finalized. Delegation tools are
-   * excluded — those surface through `backgroundWork` instead.
+   * searched code"). Derived from the row's `toolEvents` slice, counting only
+   * settled calls — so it appears once the first tool returns and ticks up as
+   * each subsequent one finishes, while the in-flight call stays owned by the
+   * footer working indicator. Delegation tools are excluded — those surface
+   * through `backgroundWork` instead.
    */
   toolActivity?: ToolActivityGroup;
   /**

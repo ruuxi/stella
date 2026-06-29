@@ -259,7 +259,9 @@ export const createRunEventRecorder = ({
     }): RuntimeToolEndEvent {
       const resultPreview = getToolResultPreview(
         args.toolName,
-        args.details ?? args.result,
+        // Structured side-channels (schedule receipts, image metadata, etc.)
+        // live in `details`; previews must stay human-readable.
+        args.result ?? args.details,
       );
       const seq = nextSeq();
       store.recordRunEvent({
