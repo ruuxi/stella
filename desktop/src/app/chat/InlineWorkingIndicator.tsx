@@ -10,9 +10,12 @@
  *  - While the assistant is reasoning (no answer text yet) it shows a
  *    rotating thinking label ("Thinking", "Mulling it over", …) seeded
  *    per turn; while a tool is running it shows that tool's friendly
- *    status. The moment answer text starts streaming, the indicator
- *    exits immediately (`exitImmediately` skips the min-visible hold) —
- *    it does NOT trail the growing message line by line.
+ *    status. It stays up until the assistant's first character is actually
+ *    painted on screen (the streaming-text hand-off), then deactivates
+ *    through the `MIN_VISIBLE_MS` floor. Because deactivation always runs
+ *    through that floor (no immediate-exit shortcut), on a fast (sub-2s)
+ *    turn the indicator briefly lingers over the start of the streaming
+ *    answer rather than vanishing the instant text appears.
  *  - Long-running agent task presence lives in the composer's task chip; this
  *    inline indicator only follows the orchestrator's thinking/tool lifecycle.
  *  - When the work finishes (`active` flips false) the indicator stays visible
