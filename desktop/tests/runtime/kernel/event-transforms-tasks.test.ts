@@ -479,14 +479,13 @@ describe("mergeFooterTasks", () => {
 });
 
 describe("getInlineWorkingIndicatorActive", () => {
-  it("shows thinking through pre-tool and between-tool gaps, but not during sub-agent work", () => {
+  it("stays visible through thinking, tools and spawned agents until text is painted", () => {
     // Pre-tool thinking.
     expect(
       getInlineWorkingIndicatorActive({
         isStreaming: true,
         isStreamingResponseText: false,
         isToolActive: false,
-        hasRunningTask: false,
       }),
     ).toBe(true);
 
@@ -496,7 +495,6 @@ describe("getInlineWorkingIndicatorActive", () => {
         isStreaming: true,
         isStreamingResponseText: false,
         isToolActive: true,
-        hasRunningTask: false,
       }),
     ).toBe(true);
 
@@ -507,84 +505,73 @@ describe("getInlineWorkingIndicatorActive", () => {
         isStreaming: true,
         isStreamingResponseText: false,
         isToolActive: false,
-        hasRunningTask: false,
       }),
     ).toBe(true);
 
-    // A spawned sub-agent is doing the work — its own chip covers it.
-    expect(
-      getInlineWorkingIndicatorActive({
-        isStreaming: true,
-        isStreamingResponseText: false,
-        isToolActive: false,
-        hasRunningTask: true,
-      }),
-    ).toBe(false);
-
-    // Answer text is streaming: the indicator gets out of the way.
+    // First character actually painted (reveal frontier): hand off.
     expect(
       getInlineWorkingIndicatorActive({
         isStreaming: true,
         isStreamingResponseText: true,
         isToolActive: false,
-        hasRunningTask: false,
+      }),
+    ).toBe(false);
+
+    // Run ended: nothing to show.
+    expect(
+      getInlineWorkingIndicatorActive({
+        isStreaming: false,
+        isStreamingResponseText: false,
+        isToolActive: false,
       }),
     ).toBe(false);
   });
 });
 
 describe("buildInlineWorkingIndicatorProps", () => {
-  const runningTask = (runId: string): TaskItem => ({
-    id: `task-${runId}`,
-    description: "background research",
-    agentType: "general",
-    status: "running",
-    runId,
-    startedAtMs: 0,
-    lastUpdatedAtMs: 0,
-  });
-
-  it("keeps the orchestrator indicator visible while a previous turn's background task runs", () => {
-    // New turn: the orchestrator is in its pre-tool thinking phase while a
-    // sub-agent spawned by an EARLIER run is still going. The leftover task
-    // belongs to a different run, so it must not hide the current turn's
-    // working indicator.
+  it("stays visible during pre-text thinking", () => {
     const props = buildInlineWorkingIndicatorProps({
       isStreaming: true,
       isStreamingResponseText: false,
       isToolActive: false,
       hasToolActivity: false,
-      liveTasks: [runningTask("run-prev")],
-      activeRunId: "run-current",
     });
     expect(props.active).toBe(true);
+    // Floor-only: never an early dismiss, so no immediate-exit handoff.
+    expect(props.exitImmediately).toBeUndefined();
   });
 
-  it("still shows the indicator while the current turn calls a tool with a prior background task running", () => {
+  it("stays visible while a tool / spawned agent is the turn's first action", () => {
     const props = buildInlineWorkingIndicatorProps({
       isStreaming: true,
       isStreamingResponseText: false,
       isToolActive: true,
       hasToolActivity: true,
-      activeToolName: "read_file",
+      activeToolName: "spawn_agent",
       activeToolCallId: "call-1",
-      liveTasks: [runningTask("run-prev")],
-      activeRunId: "run-current",
     });
     expect(props.active).toBe(true);
   });
 
-  it("steps aside for a sub-agent spawned by the current run", () => {
-    // The running task belongs to the active run (the orchestrator just
-    // spawned it), so the inline indicator yields to the task's own
-    // chip/card instead of doubling up.
+  it("stays visible after a delta arrives but before the text is painted", () => {
+    // `isStreamingResponseText` is now driven by the reveal frontier
+    // painting the first character — not by raw delta arrival — so until it
+    // flips the indicator must remain up (no dead gap).
     const props = buildInlineWorkingIndicatorProps({
       isStreaming: true,
       isStreamingResponseText: false,
       isToolActive: false,
       hasToolActivity: true,
-      liveTasks: [runningTask("run-current")],
-      activeRunId: "run-current",
+    });
+    expect(props.active).toBe(true);
+  });
+
+  it("hands off once the first character is painted", () => {
+    const props = buildInlineWorkingIndicatorProps({
+      isStreaming: true,
+      isStreamingResponseText: true,
+      isToolActive: false,
+      hasToolActivity: true,
     });
     expect(props.active).toBe(false);
   });

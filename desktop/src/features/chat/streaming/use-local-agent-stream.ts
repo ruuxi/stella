@@ -310,6 +310,23 @@ export function useLocalAgentStream({
     [discardStreamText],
   )
 
+  /**
+   * Fired by `StreamingTextReveal` the moment the active streaming row
+   * first paints visible characters. Marks the in-flight run as streaming
+   * answer text so the inline working indicator hands off to the text only
+   * once it's actually on screen — not when the first delta arrived. Stable
+   * (reads the live run via refs) so the reveal can hold it across renders.
+   */
+  const notifyAssistantTextPainted = useCallback(() => {
+    const conversationId = activeConversationIdRef.current
+    const runId = conversationId
+      ? (activeRunIdByConversationRef.current[conversationId] ?? null)
+      : null
+    if (runId) {
+      dispatch({ type: 'mark-streaming-text', runId })
+    }
+  }, [])
+
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId
   }, [activeConversationId])
@@ -569,6 +586,7 @@ export function useLocalAgentStream({
     liveTasks,
     runtimeStatusText,
     activeRunId,
+    notifyAssistantTextPainted,
     activeToolCallId,
     activeToolName,
     hasToolActivity,

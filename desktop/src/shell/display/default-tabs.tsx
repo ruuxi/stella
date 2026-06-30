@@ -57,7 +57,7 @@ function ChatDisplayTab({
         chat.conversation.streaming.isStreamingResponseText
       }
       runtimeStatusText={chat.conversation.streaming.runtimeStatusText}
-      activeRunId={chat.conversation.streaming.activeRunId}
+      onAssistantTextPainted={chat.conversation.onAssistantTextPainted}
       activeToolCallId={chat.conversation.streaming.activeToolCallId}
       activeToolName={chat.conversation.streaming.activeToolName}
       hasToolActivity={chat.conversation.streaming.hasToolActivity}

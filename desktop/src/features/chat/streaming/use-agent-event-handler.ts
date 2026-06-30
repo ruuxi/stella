@@ -357,12 +357,15 @@ export function useAgentEventHandler({
                 : {}),
               chunk: event.chunk,
             })
-            // Mark the run as actively streaming answer text so the inline
-            // working indicator steps aside. Driven off the chunk (not the
-            // overlay array) so runs without a user-message anchor —
-            // proactive / non-`user_turn` responses that never create an
-            // overlay — still get the handoff.
-            if (/\S/.test(event.chunk)) {
+            // Anchorless runs (proactive / non-`user_turn` responses that
+            // never create an overlay row, and therefore never paint via
+            // `StreamingTextReveal`) have no paint signal to hand off to, so
+            // they still flip the indicator on first delta. Anchored runs
+            // instead wait for the reveal frontier to actually paint the
+            // first character (`notifyAssistantTextPainted` →
+            // `mark-streaming-text`), so the indicator never disappears into
+            // a dead gap before any text is visible.
+            if (/\S/.test(event.chunk) && !event.userMessageId) {
               dispatch({ type: 'mark-streaming-text', runId: event.runId })
             }
           }

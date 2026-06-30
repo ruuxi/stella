@@ -25,6 +25,7 @@ import {
 } from "react";
 import { ChevronDown } from "@/ui/icons";
 import { ConversationEvents } from "./ConversationEvents";
+import { AssistantTextPaintContext } from "./assistant-text-paint-context";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
 import { buildInlineWorkingIndicatorProps } from "@/features/chat/working-indicator-state";
@@ -33,6 +34,9 @@ import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-alou
 import type { ChatColumnProps } from "@/features/chat/chat-column-types";
 import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
 import "./full-shell.chat.css";
+
+/** Stable no-op so the paint-signal context value doesn't churn per render. */
+const noopPaint = () => {};
 
 /**
  * Inline content-container style for Legend List.
@@ -152,9 +156,10 @@ export const ChatColumn = memo(function ChatColumn({
   }, [showHomeContent]);
 
   useReadAloud(conversation.messages);
-  // The inline background-work card (and the ComposerActivityPill) surface
-  // spawned-agent work, so the inline indicator steps aside while a
-  // sub-agent runs.
+  // The indicator stays up through the whole turn — thinking, tool calls,
+  // spawned agents — and only hands off once the assistant's first
+  // character is actually painted (`isStreamingResponseText`, now driven by
+  // the reveal frontier). Background/spawned work no longer suppresses it.
   const indicatorProps = buildInlineWorkingIndicatorProps({
     isStreaming: Boolean(conversation.streaming.isStreaming),
     isStreamingResponseText: Boolean(
@@ -165,8 +170,6 @@ export const ChatColumn = memo(function ChatColumn({
     activeToolName: conversation.streaming.activeToolName,
     activeToolCallId: conversation.streaming.activeToolCallId,
     runtimeStatusText: conversation.streaming.runtimeStatusText,
-    liveTasks: conversation.streaming.liveTasks,
-    activeRunId: conversation.streaming.activeRunId,
   });
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext: composer.setChatContext,
@@ -246,21 +249,27 @@ export const ChatColumn = memo(function ChatColumn({
             strip — instead of sitting at the inside edge of the
             centered chat column. */}
           <div className="chat-viewport-region">
-            <ConversationEvents
-              messages={conversation.messages}
-              pendingUserMessageId={conversation.streaming.pendingUserMessageId}
-              queuedUserMessages={conversation.streaming.queuedUserMessages}
-              indicator={indicatorProps}
-              hasOlderMessages={conversation.history.hasOlderMessages}
-              isLoadingOlder={conversation.history.isLoadingOlder}
-              isLoadingHistory={conversation.history.isInitialLoading}
-              listRef={listRef}
-              onListScroll={onListScroll}
-              onStartReached={scroll.onStartReached}
-              className="session-content"
-              contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
-              estimatedItemSize={140}
-            />
+            <AssistantTextPaintContext.Provider
+              value={conversation.onAssistantTextPainted ?? noopPaint}
+            >
+              <ConversationEvents
+                messages={conversation.messages}
+                pendingUserMessageId={
+                  conversation.streaming.pendingUserMessageId
+                }
+                queuedUserMessages={conversation.streaming.queuedUserMessages}
+                indicator={indicatorProps}
+                hasOlderMessages={conversation.history.hasOlderMessages}
+                isLoadingOlder={conversation.history.isLoadingOlder}
+                isLoadingHistory={conversation.history.isInitialLoading}
+                listRef={listRef}
+                onListScroll={onListScroll}
+                onStartReached={scroll.onStartReached}
+                className="session-content"
+                contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
+                estimatedItemSize={140}
+              />
+            </AssistantTextPaintContext.Provider>
 
             {showScrollButton && !assistantReplyPeek.visible && (
               <button
