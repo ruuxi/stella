@@ -229,6 +229,64 @@ describe("local chat mobile artifacts", () => {
     });
   });
 
+  it("bridges generated reasoning summaries onto the running task", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now,
+          payload: { text: "Working" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Book flights" },
+            },
+          ],
+        }),
+      ],
+      20,
+      undefined,
+      new Map([["t1", ["reading flight options", "comparing fares"]]]),
+    );
+
+    const task = rows.find((row) => row.localMessageId === "a1")?.tasks?.[0];
+    expect(task).toMatchObject({ id: "t1", status: "running" });
+    // Ordered oldest -> newest, exactly the phrases the desktop tray shows.
+    expect(task?.reasoningSummaries).toEqual([
+      "reading flight options",
+      "comparing fares",
+    ]);
+  });
+
+  it("omits reasoningSummaries when no summaries are bridged", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now,
+          payload: { text: "Working" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Book flights" },
+            },
+          ],
+        }),
+      ],
+      20,
+    );
+
+    const task = rows.find((row) => row.localMessageId === "a1")?.tasks?.[0];
+    expect(task).toMatchObject({ id: "t1", status: "running" });
+    expect(task?.reasoningSummaries).toBeUndefined();
+  });
+
   it("scopes completion to each run so a reactivation card stays running", () => {
     const now = Date.now();
     const rows = buildMobileSyncMessages(

@@ -218,4 +218,25 @@ export function useAgentProgressSummaryEngine(
       timers.clear();
     };
   }, []);
+
+  // Mirror the generated summaries to the electron main process so the
+  // desktop→mobile sync bridge can attach them to each task's
+  // `reasoningSummaries` (mobile renders the SAME phrases). This is a plain
+  // snapshot push — no LLM call crosses the bridge — published on every store
+  // change, deduped against the last serialized snapshot so collapse toggles
+  // and back-to-back identical states don't spam IPC.
+  const lastPublishedRef = useRef<string>("");
+  useEffect(() => {
+    const publish = () => {
+      const api = window.electronAPI?.localChat;
+      if (!api?.publishReasoningSummaries) return;
+      const snapshot = agentProgressSummaryStore.snapshotTexts();
+      const serialized = JSON.stringify(snapshot);
+      if (serialized === lastPublishedRef.current) return;
+      lastPublishedRef.current = serialized;
+      void api.publishReasoningSummaries({ summariesByAgentId: snapshot });
+    };
+    publish();
+    return agentProgressSummaryStore.subscribe(publish);
+  }, []);
 }

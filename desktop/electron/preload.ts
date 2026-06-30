@@ -2182,6 +2182,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       maxMessages?: number;
       includeDeveloperArtifacts?: boolean;
     }) => ipcRenderer.invoke("localChat:syncMessages", payload),
+    publishReasoningSummaries: (payload: {
+      summariesByAgentId: Record<string, string[]>;
+    }) => ipcRenderer.invoke("localChat:publishReasoningSummaries", payload),
     getSyncCheckpoint: (payload: { conversationId: string }) =>
       ipcRenderer.invoke("localChat:getSyncCheckpoint", payload),
     setSyncCheckpoint: (payload: {

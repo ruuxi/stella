@@ -71,6 +71,16 @@ export class LocalChatHistoryService {
     payload: LocalChatUpdatedPayload | null,
   ) => void;
   private resetInProgress = false;
+  /**
+   * Latest per-agent reasoning summaries mirrored from the renderer's
+   * `agentProgressSummaryStore` via `publishReasoningSummaries`. The mobile
+   * sync serializer attaches these to each task's `reasoningSummaries` so the
+   * mobile activity tray shows the SAME phrases the desktop tray generated —
+   * the summaries are renderer-generated only and never persisted to SQLite,
+   * so they ride this in-memory snapshot instead. Replaced wholesale on each
+   * publish; only the currently-running agents are present.
+   */
+  private reasoningSummariesByAgent = new Map<string, string[]>();
 
   constructor(options: LocalChatHistoryServiceOptions) {
     this.stellaAppDir = options.stellaAppDir;
@@ -301,6 +311,33 @@ export class LocalChatHistoryService {
     return { ok: true };
   }
 
+  /**
+   * Mirror the renderer's generated per-agent reasoning summaries into the
+   * in-memory snapshot the mobile sync serializer reads. Renderer-only data
+   * (no SQLite row, no LLM call on this side) — just the current phrases keyed
+   * by agent id, replacing the previous snapshot wholesale.
+   */
+  setReasoningSummaries(args: {
+    summariesByAgentId: Record<string, readonly string[]>;
+  }): { ok: true } {
+    const next = new Map<string, string[]>();
+    for (const [rawAgentId, rawList] of Object.entries(
+      args.summariesByAgentId ?? {},
+    )) {
+      const agentId = typeof rawAgentId === "string" ? rawAgentId.trim() : "";
+      if (!agentId || !Array.isArray(rawList)) continue;
+      const cleaned: string[] = [];
+      for (const entry of rawList) {
+        if (typeof entry !== "string") continue;
+        const text = entry.trim();
+        if (text) cleaned.push(text);
+      }
+      if (cleaned.length > 0) next.set(agentId, cleaned);
+    }
+    this.reasoningSummariesByAgent = next;
+    return { ok: true };
+  }
+
   listSyncMessages(args: {
     conversationId: string;
     maxMessages?: number;
@@ -310,9 +347,14 @@ export class LocalChatHistoryService {
     const { messages } = this.getStore().listMessages(args.conversationId, {
       maxVisibleMessages: maxMessages,
     });
-    return buildMobileSyncMessages(messages, maxMessages, {
-      includeDeveloperArtifacts: args.includeDeveloperArtifacts === true,
-    });
+    return buildMobileSyncMessages(
+      messages,
+      maxMessages,
+      {
+        includeDeveloperArtifacts: args.includeDeveloperArtifacts === true,
+      },
+      this.reasoningSummariesByAgent,
+    );
   }
 
   syncMessages(args: {
@@ -340,6 +382,7 @@ export class LocalChatHistoryService {
         maxMessages,
         sourceEvents,
         artifactOptions,
+        this.reasoningSummariesByAgent,
       );
     }
 
@@ -351,6 +394,7 @@ export class LocalChatHistoryService {
       maxMessages,
       messages,
       artifactOptions,
+      this.reasoningSummariesByAgent,
     );
   }
 
