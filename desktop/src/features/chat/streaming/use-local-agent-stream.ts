@@ -316,6 +316,15 @@ export function useLocalAgentStream({
    * answer text so the inline working indicator hands off to the text only
    * once it's actually on screen — not when the first delta arrived. Stable
    * (reads the live run via refs) so the reveal can hold it across renders.
+   *
+   * Known limitation (low risk, not hardened): the paint is attributed to
+   * whatever run is currently active, with no run-identity check. A stray
+   * late rAF from a prior run's reveal could in theory mark the *next* run
+   * as streaming-text early. In practice the window is tiny — when a new run
+   * starts the prior reveal's `active` drops, which cancels its rAF and the
+   * already-latched `paintedRef` blocks a re-fire — so passing the painting
+   * run's id down through the row/overlay/paint-context chain to reject
+   * mismatches was judged more invasive than the residual risk warrants.
    */
   const notifyAssistantTextPainted = useCallback(() => {
     const conversationId = activeConversationIdRef.current
