@@ -8,6 +8,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -44,14 +45,16 @@ import {
   groupActivityTasks,
   mergeFooterTasks,
   type ActivityRow,
-  type EventRecord,
   type TaskGroup,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import {
-  deriveConversationFiles,
   type ConversationFileEntry,
 } from "@/features/workspace-display/derive-conversation-files";
+import {
+  agentFilesSignature,
+  deriveAgentFilesMap,
+} from "@/features/workspace-display/agent-files";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
 import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
@@ -85,33 +88,6 @@ const EMPTY_TASKS: TaskItem[] = [];
 const EMPTY_FILES: ReadonlyArray<ConversationFileEntry> = [];
 /** Most-recent reasoning summaries shown under an expanded agent. */
 const AGENT_SUMMARY_CAP = 3;
-
-/**
- * Group the files an agent produced under its own id. Each agent's
- * lifecycle events — notably `agent-completed`, which carries the run's
- * `fileChanges` / `producedFiles` — are replayed through the shared
- * `deriveConversationFiles` derivation, so the per-agent list dedupes by
- * path exactly like the old standalone Files section did.
- */
-function deriveAgentFilesMap(
-  activities: ReadonlyArray<EventRecord>,
-): Map<string, ConversationFileEntry[]> {
-  const eventsByAgent = new Map<string, EventRecord[]>();
-  for (const event of activities) {
-    const agentId = (event.payload as { agentId?: unknown } | undefined)
-      ?.agentId;
-    if (typeof agentId !== "string" || agentId.length === 0) continue;
-    const list = eventsByAgent.get(agentId);
-    if (list) list.push(event);
-    else eventsByAgent.set(agentId, [event]);
-  }
-  const filesByAgent = new Map<string, ConversationFileEntry[]>();
-  for (const [agentId, events] of eventsByAgent) {
-    const files = deriveConversationFiles(events);
-    if (files.length > 0) filesByAgent.set(agentId, files);
-  }
-  return filesByAgent;
-}
 
 const activityRowText = (row: ActivityRow): string =>
   row.kind === "task"
@@ -604,10 +580,27 @@ export function LeftSidebarSections({
 
   // Files produced by each agent, keyed by agentId, nested under that agent's
   // expanded row (replacing the old standalone Files section).
-  const agentFiles = useMemo(
-    () => deriveAgentFilesMap(activity.activities),
-    [activity.activities],
-  );
+  //
+  // `activity.activities` gets a fresh array identity on every streamed delta
+  // (the activity window is refetched per `localChat:updated`), so a plain
+  // `useMemo([activity.activities])` re-ran the heavy per-agent file
+  // derivation on every token — the 44ms sidebar offender in the trace. Gate
+  // the recompute on a cheap content signature of the file-contributing
+  // events so it only re-runs when an agent's files actually change; the
+  // returned Map keeps a stable reference across deltas otherwise (so the
+  // memoized task rows that take it as a prop also stop re-reconciling).
+  const agentFilesCacheRef = useRef<{
+    signature: string;
+    result: Map<string, ConversationFileEntry[]>;
+  } | null>(null);
+  const agentFiles = useMemo(() => {
+    const signature = agentFilesSignature(activity.activities);
+    const cached = agentFilesCacheRef.current;
+    if (cached && cached.signature === signature) return cached.result;
+    const result = deriveAgentFilesMap(activity.activities);
+    agentFilesCacheRef.current = { signature, result };
+    return result;
+  }, [activity.activities]);
 
   const filteredSchedules = useMemo(() => {
     if (!query) return schedules;
