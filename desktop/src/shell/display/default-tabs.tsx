@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { ChatPanelTab, type ChatPanelOpenRequest } from "@/shell/ChatSidebar";
 import { useChatRuntime } from "@/context/use-chat-runtime";
+import { useChatMessages } from "@/context/use-chat-messages";
 import { StoreSidePanel } from "@/features/store/StoreSidePanel";
 import { TrashTabContent } from "./TrashTabContent";
 import { HomeLauncherTab } from "./HomeLauncherTab";
@@ -42,12 +43,13 @@ function ChatDisplayTab({
 }) {
   const panelExpanded = useDisplayPanelExpanded();
   const chat = useChatRuntime();
+  const messages = useChatMessages();
 
   return (
     <ChatPanelTab
       openRequest={openRequest}
       wideLayout={panelExpanded}
-      messages={chat.conversation.messages}
+      messages={messages}
       activities={chat.conversation.activity.activities}
       latestMessageTimestampMs={
         chat.conversation.activity.latestMessageTimestampMs

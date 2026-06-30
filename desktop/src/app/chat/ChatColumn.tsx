@@ -26,6 +26,7 @@ import {
 } from "react";
 import { ChevronDown } from "@/ui/icons";
 import { ConversationEvents } from "./ConversationEvents";
+import { useChatMessages } from "@/context/use-chat-messages";
 import { AssistantTextPaintContext } from "./assistant-text-paint-context";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
@@ -126,8 +127,15 @@ export const ChatColumn = memo(function ChatColumn({
     isFollowingLatest,
   } = scroll;
 
+  // Live timeline. Subscribing here is what intentionally re-renders
+  // ChatColumn each streamed frame — kept narrow: the message list
+  // (ConversationEvents) must repaint, while the memoized Composer and the
+  // imperative scrollbar stay put. The shell chrome above ChatColumn reads
+  // only the stable `runtime` value and does not re-render per frame.
+  const messages = useChatMessages();
+
   const assistantReplyPeek = useAssistantReplyPeek({
-    messages: conversation.messages,
+    messages,
     isFollowingLatest,
   });
 
@@ -156,7 +164,7 @@ export const ChatColumn = memo(function ChatColumn({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showHomeContent]);
 
-  useReadAloud(conversation.messages);
+  useReadAloud(messages);
   // The indicator stays up through the whole turn — thinking, tool calls,
   // spawned agents — and only hands off once the assistant's first
   // character is actually painted (`isStreamingResponseText`, now driven by
@@ -272,7 +280,7 @@ export const ChatColumn = memo(function ChatColumn({
               value={conversation.onAssistantTextPainted ?? noopPaint}
             >
               <ConversationEvents
-                messages={conversation.messages}
+                messages={messages}
                 pendingUserMessageId={
                   conversation.streaming.pendingUserMessageId
                 }

@@ -388,7 +388,6 @@ export function useFullShellChat({
 
   const chatColumnConversation = useMemo<ChatColumnConversation>(
     () => ({
-      messages: displayMessages,
       activity: {
         activities,
         latestMessageTimestampMs,
@@ -426,7 +425,6 @@ export function useFullShellChat({
       activities,
       activeToolCallId,
       activeToolName,
-      displayMessages,
       hasToolActivity,
       hasOlderActivity,
       hasOlderFiles,
@@ -509,8 +507,15 @@ export function useFullShellChat({
     ],
   );
 
-  return {
-    conversation: {
+  // The visible message timeline (`displayMessages`) is the only field
+  // that changes every paced animation frame while a reply streams. It is
+  // returned separately and published through `ChatMessagesContext` rather
+  // than folded into `runtime`, so the `runtime` value below keeps a stable
+  // identity across streamed frames. That stops every `useChatRuntime()`
+  // consumer (shell chrome, left sidebar, mobile bridge) from re-rendering
+  // ~60x/s — only the timeline renderers subscribe to the message channel.
+  const conversation = useMemo(
+    () => ({
       ...chatColumnConversation,
       hasOlderMessages,
       isLoadingOlder: isLoadingOlderMessages,
@@ -525,22 +530,65 @@ export function useFullShellChat({
       sendMessageWithContext,
       cancelCurrentStream,
       startNewChat,
-    },
-    composer: {
+    }),
+    [
+      chatColumnConversation,
+      hasOlderMessages,
+      isLoadingOlderMessages,
+      isInitialLoadingMessages,
+      loadOlderMessages,
+      reasoningText,
+      isStreaming,
+      pendingUserMessageId,
+      queuedUserMessages,
+      sendMessage,
+      sendContextlessMessage,
+      sendMessageWithContext,
+      cancelCurrentStream,
+      startNewChat,
+    ],
+  );
+
+  const composer = useMemo(
+    () => ({
       ...chatColumnComposer,
       handleSend,
       handleStop: cancelCurrentStream,
-    },
-    scroll: chatColumnScroll,
-    annotation: {
+    }),
+    [chatColumnComposer, handleSend, cancelCurrentStream],
+  );
+
+  const annotation = useMemo(
+    () => ({
       active: Boolean(annotationTarget),
       requestId: annotationTarget?.id ?? null,
       start: startAnnotation,
       cancel: cancelAnnotation,
       submit: submitAnnotation,
-    },
-    showHomeContent,
-    dismissHome,
-    showHome,
-  };
+    }),
+    [annotationTarget, startAnnotation, cancelAnnotation, submitAnnotation],
+  );
+
+  const runtime = useMemo(
+    () => ({
+      conversation,
+      composer,
+      scroll: chatColumnScroll,
+      annotation,
+      showHomeContent,
+      dismissHome,
+      showHome,
+    }),
+    [
+      conversation,
+      composer,
+      chatColumnScroll,
+      annotation,
+      showHomeContent,
+      dismissHome,
+      showHome,
+    ],
+  );
+
+  return { runtime, messages: displayMessages };
 }
