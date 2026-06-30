@@ -31,6 +31,7 @@ import { AssistantTextPaintContext } from "./assistant-text-paint-context";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
 import { buildInlineWorkingIndicatorProps } from "@/features/chat/working-indicator-state";
+import { prewarmCreature } from "@/shell/ascii-creature/renderer-pool";
 import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import type { ChatColumnProps } from "@/features/chat/chat-column-types";
@@ -165,6 +166,28 @@ export const ChatColumn = memo(function ChatColumn({
   }, [showHomeContent]);
 
   useReadAloud(messages);
+
+  // Pre-warm the working-indicator creature's WebGL context during idle, so
+  // the first message send doesn't pay the cold ~200ms GL spin-up (context +
+  // shader compile) on the main thread. Matches the indicator's exact size
+  // (see WorkingIndicator: 20x20, maxDpr 1) so the pooled renderer's key
+  // lines up and the real mount reuses it. Runs once per chat surface.
+  useEffect(() => {
+    const scheduleIdle =
+      window.requestIdleCallback ??
+      ((callback: IdleRequestCallback) =>
+        window.setTimeout(
+          () => callback({ didTimeout: false, timeRemaining: () => 0 }),
+          200,
+        ));
+    const cancelIdle =
+      window.cancelIdleCallback ??
+      ((handle: number) => window.clearTimeout(handle));
+    const handle = scheduleIdle(() =>
+      prewarmCreature({ width: 20, height: 20, maxDpr: 1 }),
+    );
+    return () => cancelIdle(handle as number);
+  }, []);
   // The indicator stays up through the whole turn — thinking, tool calls,
   // spawned agents — and only hands off once the assistant's first
   // character is actually painted (`isStreamingResponseText`, now driven by
