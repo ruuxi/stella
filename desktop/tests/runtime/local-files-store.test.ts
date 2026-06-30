@@ -139,6 +139,106 @@ describe("local-files-store", () => {
     }
   });
 
+  it("does not refetch for updates whose event cannot carry files", async () => {
+    let updateListener:
+      | ((payload: LocalChatUpdatedPayload | null) => void)
+      | null = null;
+    const listFiles = vi
+      .fn()
+      .mockResolvedValue(filesWindow([makeToolResult("ev-1", 1_000, "/a.ts")]));
+    const onUpdated = vi.fn().mockImplementation((listener) => {
+      updateListener = listener;
+      return () => {
+        updateListener = null;
+      };
+    });
+    const restore = installFakeElectronApi({
+      localChat: { listFiles, onUpdated },
+    });
+
+    try {
+      const unsubscribe = subscribeToLocalFilesWindow(
+        { conversationId: "c1", limit: 500 },
+        () => undefined,
+      );
+      // Initial load.
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+
+      // The per-token streaming flood: assistant text, user message, tool
+      // request, reasoning, progress. None can change the files window, so
+      // none must trigger a full-window refetch.
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "m-1", timestamp: 1_001, type: "assistant_message" },
+      });
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "u-1", timestamp: 1_002, type: "user_message" },
+      });
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "tq-1", timestamp: 1_003, type: "tool_request" },
+      });
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "r-1", timestamp: 1_004, type: "agent-reasoning" },
+      });
+      // Give any erroneous async refetch a chance to run before asserting.
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(listFiles).toHaveBeenCalledTimes(1);
+
+      // A genuinely file-bearing event type still refetches.
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "ev-2", timestamp: 1_010, type: "tool_result" },
+      });
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+
+      // An `agent-completed` (carries `producedFiles`) refetches too.
+      updateListener?.({
+        conversationId: "c1",
+        event: { _id: "ac-1", timestamp: 1_020, type: "agent-completed" },
+      });
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(3));
+
+      unsubscribe();
+    } finally {
+      restore();
+    }
+  });
+
+  it("refetches for a bulk update with no specific event", async () => {
+    let updateListener:
+      | ((payload: LocalChatUpdatedPayload | null) => void)
+      | null = null;
+    const listFiles = vi.fn().mockResolvedValue(filesWindow([]));
+    const onUpdated = vi.fn().mockImplementation((listener) => {
+      updateListener = listener;
+      return () => {
+        updateListener = null;
+      };
+    });
+    const restore = installFakeElectronApi({
+      localChat: { listFiles, onUpdated },
+    });
+
+    try {
+      const unsubscribe = subscribeToLocalFilesWindow(
+        { conversationId: "c1", limit: 500 },
+        () => undefined,
+      );
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+
+      // No event attached → we can't rule out a file change, so refetch.
+      updateListener?.(null);
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+
+      unsubscribe();
+    } finally {
+      restore();
+    }
+  });
+
   it("seeds a larger active window from the smaller loaded snapshot while loading older files", async () => {
     let resolveSecond: ((value: FilesPayload) => void) | null = null;
     const firstWindow = filesWindow([makeToolResult("ev-1", 1_000, "/a.ts")]);
