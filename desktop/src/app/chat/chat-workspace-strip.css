@@ -326,6 +326,33 @@
   padding-left: 23px;
 }
 
+/* Expanded agent detail: recent reasoning summaries + the files it produced,
+   indented to line up under the row label (clearing the status icon). */
+.chat-workspace-strip__task-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding-left: 23px;
+}
+
+.chat-workspace-strip__task-detail .chat-workspace-strip__task-progress {
+  margin: 0;
+  padding-left: 0;
+}
+
+.chat-workspace-strip__task-files {
+  gap: 2px;
+}
+
+.chat-workspace-strip__task-detail-empty {
+  margin: 0;
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: var(--text-weak);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-workspace-strip__group-chevron {
     transition: none;

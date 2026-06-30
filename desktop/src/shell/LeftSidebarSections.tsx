@@ -37,6 +37,7 @@ import {
   groupActivityTasks,
   mergeFooterTasks,
   type ActivityRow,
+  type EventRecord,
   type TaskGroup,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
@@ -55,14 +56,9 @@ import {
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/scheduling";
 import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
-import type { ChatContext } from "@/shared/types/electron";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import { AgentProgressSummaries } from "@/shell/AgentProgressSummaries";
-import {
-  agentProgressSummaryStore,
-  useAgentProgressSummaries,
-  useAgentProgressSummariesCollapsed,
-} from "@/features/chat/agent-progress-summary-store";
+import { useAgentProgressSummaries } from "@/features/chat/agent-progress-summary-store";
 import "@/app/chat/chat-workspace-strip.css";
 
 // Default per-section caps. The compact strip shows a small preview; the
@@ -79,6 +75,36 @@ const UNCAPPED = {
   store: Infinity,
 };
 const EMPTY_TASKS: TaskItem[] = [];
+const EMPTY_FILES: ReadonlyArray<ConversationFileEntry> = [];
+/** Most-recent reasoning summaries shown under an expanded agent. */
+const AGENT_SUMMARY_CAP = 3;
+
+/**
+ * Group the files an agent produced under its own id. Each agent's
+ * lifecycle events — notably `agent-completed`, which carries the run's
+ * `fileChanges` / `producedFiles` — are replayed through the shared
+ * `deriveConversationFiles` derivation, so the per-agent list dedupes by
+ * path exactly like the old standalone Files section did.
+ */
+function deriveAgentFilesMap(
+  activities: ReadonlyArray<EventRecord>,
+): Map<string, ConversationFileEntry[]> {
+  const eventsByAgent = new Map<string, EventRecord[]>();
+  for (const event of activities) {
+    const agentId = (event.payload as { agentId?: unknown } | undefined)
+      ?.agentId;
+    if (typeof agentId !== "string" || agentId.length === 0) continue;
+    const list = eventsByAgent.get(agentId);
+    if (list) list.push(event);
+    else eventsByAgent.set(agentId, [event]);
+  }
+  const filesByAgent = new Map<string, ConversationFileEntry[]>();
+  for (const [agentId, events] of eventsByAgent) {
+    const files = deriveConversationFiles(events);
+    if (files.length > 0) filesByAgent.set(agentId, files);
+  }
+  return filesByAgent;
+}
 
 const activityRowText = (row: ActivityRow): string =>
   row.kind === "task"
@@ -174,50 +200,39 @@ function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
   }
 }
 
-const taskToActivityContext = (
-  task: TaskItem,
-): NonNullable<ChatContext["activity"]> => ({
-  id: task.id,
-  label: (getTaskDisplayText(task) || task.description || "Activity").trim(),
-  agentType: task.agentType,
-  status: task.status,
-  ...(task.runId ? { runId: task.runId } : {}),
-  ...(task.anchorTurnId ? { anchorTurnId: task.anchorTurnId } : {}),
-  startedAtMs: task.startedAtMs,
-  ...(typeof task.completedAtMs === "number"
-    ? { completedAtMs: task.completedAtMs }
-    : {}),
-  lastUpdatedAtMs: task.lastUpdatedAtMs,
-});
-
 function TaskRow({
   task,
-  selectedActivityId,
-  onSelectTask,
+  expanded,
+  onToggle,
+  files,
+  onOpenFile,
 }: {
   task: TaskItem;
-  selectedActivityId?: string | null;
-  onSelectTask: (task: TaskItem) => void;
+  expanded: boolean;
+  onToggle: (taskId: string) => void;
+  files: ReadonlyArray<ConversationFileEntry>;
+  onOpenFile: (entry: ConversationFileEntry) => void;
 }) {
   const label = (getTaskDisplayText(task) || task.description).trim();
   const summaries = useAgentProgressSummaries(task.id);
-  const summariesCollapsed = useAgentProgressSummariesCollapsed(task.id);
-  // Progress only belongs on a live agent; a completed/canceled row that
-  // lingers briefly should not show stale "working…" lines.
-  const showProgress = task.status === "running" && summaries.length > 0;
+  const hasSummaries = summaries.length > 0;
+  const hasFiles = files.length > 0;
   return (
     <li
       className="chat-workspace-strip__task-row"
       data-status={task.status}
-      data-selected={selectedActivityId === task.id ? "true" : undefined}
+      data-expanded={expanded ? "true" : undefined}
       title={label}
     >
       <div className="chat-workspace-strip__task-row-head">
         <button
           type="button"
           className="chat-workspace-strip__task-button"
-          onClick={() => onSelectTask(task)}
-          aria-label={`Use ${label || "activity"} as context`}
+          onClick={() => onToggle(task.id)}
+          aria-expanded={expanded}
+          aria-label={`${label || "Activity"} — ${
+            expanded ? "collapse" : "expand"
+          }`}
         >
           <span
             className="chat-workspace-strip__task-icon-wrap"
@@ -232,28 +247,52 @@ function TaskRow({
               label
             )}
           </span>
+          <ChevronRight
+            className="chat-workspace-strip__group-chevron"
+            data-expanded={expanded ? "true" : undefined}
+            size={13}
+            strokeWidth={2}
+            aria-hidden="true"
+          />
         </button>
-        {showProgress ? (
-          <button
-            type="button"
-            className="chat-workspace-strip__task-summary-toggle"
-            onClick={() => agentProgressSummaryStore.toggleCollapsed(task.id)}
-            aria-expanded={!summariesCollapsed}
-            aria-label={
-              summariesCollapsed ? "Show progress" : "Hide progress"
-            }
-          >
-            <ChevronRight
-              className="chat-workspace-strip__group-chevron"
-              data-expanded={!summariesCollapsed ? "true" : undefined}
-              size={13}
-              strokeWidth={2}
-              aria-hidden="true"
-            />
-          </button>
-        ) : null}
       </div>
-      {showProgress ? <AgentProgressSummaries agentId={task.id} /> : null}
+      {expanded ? (
+        <div className="chat-workspace-strip__task-detail">
+          {hasSummaries ? (
+            <AgentProgressSummaries agentId={task.id} max={AGENT_SUMMARY_CAP} />
+          ) : null}
+          {hasFiles ? (
+            <ul className="chat-workspace-strip__list chat-workspace-strip__task-files">
+              {files.map((file) => (
+                <li
+                  key={file.path}
+                  className="chat-workspace-strip__row"
+                  title={file.path}
+                >
+                  <button
+                    type="button"
+                    className="chat-workspace-strip__file-button"
+                    onClick={() => onOpenFile(file)}
+                  >
+                    <DisplayTabIcon
+                      kind={displayTabKindForPayload(file.payload)}
+                      size={15}
+                    />
+                    <span className="chat-workspace-strip__file-name">
+                      {basenameOf(file.path)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {!hasSummaries && !hasFiles ? (
+            <p className="chat-workspace-strip__task-detail-empty">
+              No reasoning or files yet.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -262,14 +301,18 @@ function GroupRow({
   group,
   expanded,
   onToggle,
-  selectedActivityId,
-  onSelectTask,
+  expandedTaskIds,
+  onToggleTask,
+  agentFiles,
+  onOpenFile,
 }: {
   group: TaskGroup;
   expanded: boolean;
   onToggle: (groupKey: string) => void;
-  selectedActivityId?: string | null;
-  onSelectTask: (task: TaskItem) => void;
+  expandedTaskIds: ReadonlySet<string>;
+  onToggleTask: (taskId: string) => void;
+  agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
+  onOpenFile: (entry: ConversationFileEntry) => void;
 }) {
   const label = group.label.trim();
   const statusText = getTaskGroupStatusText(group);
@@ -316,8 +359,10 @@ function GroupRow({
             <TaskRow
               key={task.id}
               task={task}
-              selectedActivityId={selectedActivityId}
-              onSelectTask={onSelectTask}
+              expanded={expandedTaskIds.has(task.id)}
+              onToggle={onToggleTask}
+              files={agentFiles.get(task.id) ?? EMPTY_FILES}
+              onOpenFile={onOpenFile}
             />
           ))}
         </ul>
@@ -328,16 +373,20 @@ function GroupRow({
 
 function TasksList({
   rows,
-  selectedActivityId,
-  onSelectTask,
+  expandedTaskIds,
+  onToggleTask,
   expandedGroupKeys,
   onToggleGroup,
+  agentFiles,
+  onOpenFile,
 }: {
   rows: ReadonlyArray<ActivityRow>;
-  selectedActivityId?: string | null;
-  onSelectTask: (task: TaskItem) => void;
+  expandedTaskIds: ReadonlySet<string>;
+  onToggleTask: (taskId: string) => void;
   expandedGroupKeys: ReadonlySet<string>;
   onToggleGroup: (groupKey: string) => void;
+  agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
+  onOpenFile: (entry: ConversationFileEntry) => void;
 }) {
   return (
     <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks">
@@ -346,8 +395,10 @@ function TasksList({
           <TaskRow
             key={row.task.id}
             task={row.task}
-            selectedActivityId={selectedActivityId}
-            onSelectTask={onSelectTask}
+            expanded={expandedTaskIds.has(row.task.id)}
+            onToggle={onToggleTask}
+            files={agentFiles.get(row.task.id) ?? EMPTY_FILES}
+            onOpenFile={onOpenFile}
           />
         ) : (
           <GroupRow
@@ -355,8 +406,10 @@ function TasksList({
             group={row.group}
             expanded={expandedGroupKeys.has(row.group.groupKey)}
             onToggle={onToggleGroup}
-            selectedActivityId={selectedActivityId}
-            onSelectTask={onSelectTask}
+            expandedTaskIds={expandedTaskIds}
+            onToggleTask={onToggleTask}
+            agentFiles={agentFiles}
+            onOpenFile={onOpenFile}
           />
         ),
       )}
@@ -395,7 +448,6 @@ export function LeftSidebarSections({
   variant = "strip",
   renderEmpty,
   onNavigate,
-  showRunning = true,
 }: {
   /** When set, live-filters every section by this query (group overview). */
   query?: string;
@@ -404,12 +456,8 @@ export function LeftSidebarSections({
   /** Rendered when nothing matches; strip mode omits it and renders null. */
   renderEmpty?: () => ReactNode;
   /** Fired after a section item is opened/selected — lets a host surface
-   *  (e.g. the composer activity tray) dismiss itself. */
+   *  dismiss itself. */
   onNavigate?: () => void;
-  /** Include in-progress (running) activity rows. The left sidebar opts
-   *  out — running work lives in the composer activity pill now — while the
-   *  tray / strip keep the full list. */
-  showRunning?: boolean;
 } = {}) {
   const chat = useChatRuntime();
   const { state } = useUiState();
@@ -484,6 +532,22 @@ export function LeftSidebarSections({
       return next;
     });
   };
+  // Per-agent expand/collapse: an expanded activity row reveals that
+  // agent's recent reasoning summaries and the files it produced.
+  const [expandedTaskIds, setExpandedTaskIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const toggleTask = (taskId: string) => {
+    setExpandedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
 
   const allTasks = useMemo(() => {
     const persisted = extractTasksFromActivities(activity.activities, {
@@ -504,19 +568,19 @@ export function LeftSidebarSections({
     return grouped.filter((row) => matchesQuery(activityRowText(row), query));
   }, [allTasks, query]);
 
+  // Running agents are no longer filtered out — they list alongside finished
+  // ones, newest first.
   const runningRows = useMemo(
     () =>
-      showRunning
-        ? [...activityRows]
-            .filter((row) => activityRowStatus(row) === "running")
-            .sort(
-              (a, b) =>
-                activityRowStartedAtMs(b) - activityRowStartedAtMs(a) ||
-                activityRowId(a).localeCompare(activityRowId(b)),
-            )
-            .slice(0, caps.activity)
-        : [],
-    [activityRows, caps.activity, showRunning],
+      [...activityRows]
+        .filter((row) => activityRowStatus(row) === "running")
+        .sort(
+          (a, b) =>
+            activityRowStartedAtMs(b) - activityRowStartedAtMs(a) ||
+            activityRowId(a).localeCompare(activityRowId(b)),
+        )
+        .slice(0, caps.activity),
+    [activityRows, caps.activity],
   );
 
   const doneRows = useMemo(
@@ -530,11 +594,13 @@ export function LeftSidebarSections({
         ),
     [activityRows],
   );
-  const allFiles = useMemo(() => {
-    const derived = deriveConversationFiles(filesFeed.files);
-    if (!query) return derived;
-    return derived.filter((file) => matchesQuery(basenameOf(file.path), query));
-  }, [filesFeed.files, query]);
+
+  // Files produced by each agent, keyed by agentId, nested under that agent's
+  // expanded row (replacing the old standalone Files section).
+  const agentFiles = useMemo(
+    () => deriveAgentFilesMap(activity.activities),
+    [activity.activities],
+  );
 
   const filteredSchedules = useMemo(() => {
     if (!query) return schedules;
@@ -561,8 +627,6 @@ export function LeftSidebarSections({
     () => [...runningRows, ...visibleDoneRows],
     [runningRows, visibleDoneRows],
   );
-  const visibleFiles = allFiles.slice(0, caps.files);
-  const hiddenFilesCount = allFiles.length - visibleFiles.length;
   const upNext = useMemo(
     () => filteredSchedules.slice(0, caps.schedule),
     [filteredSchedules, caps.schedule],
@@ -572,7 +636,6 @@ export function LeftSidebarSections({
   const hiddenStoreCount = storeItems.length - storePreview.length;
 
   const hasActivity = visibleActivityRows.length > 0;
-  const hasFiles = allFiles.length > 0;
   const hasSchedule = upNext.length > 0;
   // Store is no longer listed by default — it only surfaces while searching.
   const hasStore = searching && storePreview.length > 0;
@@ -585,22 +648,8 @@ export function LeftSidebarSections({
     openDisplayPayloadTab(entry.payload);
     onNavigate?.();
   };
-  const handleSelectTask = (task: TaskItem) => {
-    const activityContext = taskToActivityContext(task);
-    chat.composer.setChatContext((prev) => ({
-      ...(prev ?? {
-        window: null,
-        browserUrl: null,
-        selectedText: null,
-        regionScreenshots: [],
-      }),
-      activity: activityContext,
-    }));
-    chat.composer.requestFocus?.();
-    onNavigate?.();
-  };
 
-  if (!hasActivity && !hasFiles && !hasSchedule && !hasStore) {
+  if (!hasActivity && !hasSchedule && !hasStore) {
     return renderEmpty ? <>{renderEmpty()}</> : null;
   }
 
@@ -618,48 +667,13 @@ export function LeftSidebarSections({
           >
             <TasksList
               rows={visibleActivityRows}
-              selectedActivityId={chat.composer.chatContext?.activity?.id}
-              onSelectTask={handleSelectTask}
+              expandedTaskIds={expandedTaskIds}
+              onToggleTask={toggleTask}
               expandedGroupKeys={expandedGroupKeys}
               onToggleGroup={toggleGroup}
+              agentFiles={agentFiles}
+              onOpenFile={handleOpenFile}
             />
-          </WorkspaceSection>
-        )}
-
-        {hasFiles && (
-          <WorkspaceSection
-            title="Files"
-            sectionId="files"
-            onOpenHistory={
-              hiddenFilesCount > 0
-                ? () => setHistorySection("files")
-                : undefined
-            }
-            historyLabel={`View all files (${allFiles.length})`}
-          >
-            <ul className="chat-workspace-strip__list">
-              {visibleFiles.map((file) => (
-                <li
-                  key={file.path}
-                  className="chat-workspace-strip__row"
-                  title={file.path}
-                >
-                  <button
-                    type="button"
-                    className="chat-workspace-strip__file-button"
-                    onClick={() => handleOpenFile(file)}
-                  >
-                    <DisplayTabIcon
-                      kind={displayTabKindForPayload(file.payload)}
-                      size={15}
-                    />
-                    <span className="chat-workspace-strip__file-name">
-                      {basenameOf(file.path)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
           </WorkspaceSection>
         )}
 
@@ -761,10 +775,6 @@ export function LeftSidebarSections({
         schedules={schedules}
         conversationId={conversationId}
         nowMs={nowMs}
-        onSelectTask={(task) => {
-          handleSelectTask(task);
-          setHistorySection(null);
-        }}
         onOpenSchedule={(entry) => {
           setOpenScheduleEntry(entry);
           setHistorySection(null);

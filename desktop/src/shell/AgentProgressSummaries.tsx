@@ -15,7 +15,15 @@ import {
 
 const EXIT_ANIMATION_MS = 260;
 
-export function AgentProgressSummaries({ agentId }: { agentId: string }) {
+export function AgentProgressSummaries({
+  agentId,
+  max,
+}: {
+  agentId: string;
+  /** Cap the rendered list to the N most-recent summaries. When set, the
+   *  drop-out animation is skipped so the list never exceeds the cap. */
+  max?: number;
+}) {
   const summaries = useAgentProgressSummaries(agentId);
   const collapsed = useAgentProgressSummariesCollapsed(agentId);
 
@@ -38,11 +46,19 @@ export function AgentProgressSummaries({ agentId }: { agentId: string }) {
     return () => clearTimeout(timer);
   }, [summaries]);
 
-  // Newest at the top so the latest status is always in view.
-  const ordered = useMemo(() => [...summaries].reverse(), [summaries]);
+  // Newest at the top so the latest status is always in view; capped to the
+  // N most-recent when `max` is set.
+  const ordered = useMemo(() => {
+    const newestFirst = [...summaries].reverse();
+    return typeof max === "number" ? newestFirst.slice(0, max) : newestFirst;
+  }, [summaries, max]);
+
+  // With a hard cap, dropping the trailing fade-out keeps the rendered count
+  // from briefly exceeding the cap.
+  const leavingVisible = typeof max === "number" ? [] : leaving;
 
   if (collapsed) return null;
-  if (summaries.length === 0 && leaving.length === 0) return null;
+  if (ordered.length === 0 && leavingVisible.length === 0) return null;
 
   return (
     <ul
@@ -59,7 +75,7 @@ export function AgentProgressSummaries({ agentId }: { agentId: string }) {
           {summary.text}
         </li>
       ))}
-      {leaving.map((summary) => (
+      {leavingVisible.map((summary) => (
         <li
           key={summary.id}
           className="chat-workspace-strip__task-progress-item chat-workspace-strip__task-progress-item--leaving"
