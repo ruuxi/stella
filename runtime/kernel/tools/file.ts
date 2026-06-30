@@ -20,16 +20,6 @@ import {
 import { isBlockedPath } from "./command-safety.js";
 import { sanitizeToolVisibleText } from "./safety.js";
 
-export type FileToolsConfig = {
-  stellaAppDir?: string;
-};
-
-const fileToolsConfig: FileToolsConfig = {};
-
-export function setFileToolsConfig(config: FileToolsConfig) {
-  fileToolsConfig.stellaAppDir = config.stellaAppDir;
-}
-
 const isPathInsideRoot = (candidate: string, root: string): boolean => {
   const relative = path.relative(root, candidate);
   return (
