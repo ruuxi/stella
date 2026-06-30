@@ -234,6 +234,12 @@ const backgroundWorkEqual = (
     if (a.descriptions[a.threadIds[i]] !== b.descriptions[b.threadIds[i]]) {
       return false;
     }
+    if (
+      (a.statusTexts?.[a.threadIds[i]] ?? null) !==
+      (b.statusTexts?.[b.threadIds[i]] ?? null)
+    ) {
+      return false;
+    }
   }
   for (let i = 0; i < a.completedThreadIds.length; i += 1) {
     if (a.completedThreadIds[i] !== b.completedThreadIds[i]) return false;
@@ -243,6 +249,12 @@ const backgroundWorkEqual = (
   if (aSuperseded.length !== bSuperseded.length) return false;
   for (let i = 0; i < aSuperseded.length; i += 1) {
     if (aSuperseded[i] !== bSuperseded[i]) return false;
+  }
+  const aFollowUp = a.followUpThreadIds ?? [];
+  const bFollowUp = b.followUpThreadIds ?? [];
+  if (aFollowUp.length !== bFollowUp.length) return false;
+  for (let i = 0; i < aFollowUp.length; i += 1) {
+    if (aFollowUp[i] !== bFollowUp[i]) return false;
   }
   return true;
 };

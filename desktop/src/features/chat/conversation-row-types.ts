@@ -119,6 +119,15 @@ export type AssistantRowViewModel = {
     /** Per-thread work description (the spawn's user-friendly summary),
      *  used as the card title — mirrors the sidebar Activity surface. */
     descriptions: Record<string, string>;
+    /** Per-thread follow-up text for threads re-activated via `send_input` on
+     *  this turn. A `send_input` reuses the thread's original `description`, so
+     *  this carries the follow-up's own message/description for the card title;
+     *  absent for plain spawns. See `getBackgroundWork`. */
+    statusTexts?: Record<string, string>;
+    /** Threads on this card that are `send_input` follow-ups (an update to an
+     *  already-spawned thread) rather than fresh spawns — drives the distinct
+     *  "follow-up" card variant. */
+    followUpThreadIds?: string[];
     /** Per-thread spawn/last-advanced time (ms). Lets the card presume a
      *  long-silent thread with no live signal is settled rather than pinning
      *  it as forever-working when its lifecycle aged out of the windows. */

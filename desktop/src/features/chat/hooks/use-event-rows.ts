@@ -141,19 +141,50 @@ const asNonEmptyString = (value: unknown): string | undefined =>
  * the HTML/canvas renderer and recall lookup never emit `agent-started`
  * events at all, so they can't produce a card regardless.)
  */
-const getBackgroundWork = (
+/**
+ * A `send_input` follow-up reuses an existing thread, so its `agent-started`
+ * event carries the thread's ORIGINAL `description` unchanged — the follow-up's
+ * own message/description rides on `statusText` instead. The runtime only sets
+ * `statusText` to something other than the spawn description on a re-activation
+ * (a fresh spawn falls `statusText` back to `description`; every `send_input`
+ * path stamps the follow-up text via `pendingStartStatusText` — see
+ * `LocalAgentManager.sendAgentMessage` / `tryStartNext`). So a `statusText`
+ * that differs from `description` is the reload-safe marker that this start was
+ * a follow-up, and its value is the follow-up text the card should surface.
+ * Returns `undefined` for a plain spawn (no follow-up text to show).
+ */
+const followUpStatusText = (
+  description: string | undefined,
+  statusText: string | undefined,
+): string | undefined => {
+  const followUp = asNonEmptyString(statusText);
+  if (!followUp) return undefined;
+  if (description && followUp.trim() === description.trim()) return undefined;
+  return followUp;
+};
+
+export const getBackgroundWork = (
   events: readonly EventRecord[],
 ):
   | {
       threadIds: string[];
       descriptions: Record<string, string>;
       spawnedAtMs: Record<string, number>;
+      /** Per-thread follow-up message/description for threads re-activated via
+       *  `send_input` on this turn (the card title for a follow-up). Absent for
+       *  plain spawns. */
+      statusTexts: Record<string, string>;
+      /** Threads on this card that are `send_input` follow-ups rather than
+       *  fresh spawns, so the card can read them as an update breadcrumb. */
+      followUpThreadIds: string[];
       groupKey?: string;
       label?: string;
     }
   | undefined => {
   const threadIds: string[] = [];
   const descriptions: Record<string, string> = {};
+  const statusTexts: Record<string, string> = {};
+  const followUpThreadIds: string[] = [];
   // When this thread was kicked off / last advanced on this turn (ms). Lets
   // the card distinguish a fresh spawn (read as working) from one whose
   // lifecycle aged out of the loaded windows (presume settled, not pinned
@@ -174,6 +205,14 @@ const getBackgroundWork = (
     const description = asNonEmptyString(event.payload.description);
     if (description && !descriptions[agentId])
       descriptions[agentId] = description;
+    const followUp = followUpStatusText(
+      event.payload.description,
+      event.payload.statusText,
+    );
+    if (followUp) {
+      statusTexts[agentId] = followUp;
+      if (!followUpThreadIds.includes(agentId)) followUpThreadIds.push(agentId);
+    }
     if (event.timestamp > (spawnedAtMs[agentId] ?? 0)) {
       spawnedAtMs[agentId] = event.timestamp;
     }
@@ -185,6 +224,8 @@ const getBackgroundWork = (
     threadIds,
     descriptions,
     spawnedAtMs,
+    statusTexts,
+    followUpThreadIds,
     ...(groupKey ? { groupKey } : {}),
     ...(label ? { label } : {}),
   };
@@ -807,12 +848,17 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       }
       const descriptions = { ...row.backgroundWork.descriptions };
       const spawnedAtMs = { ...(row.backgroundWork.spawnedAtMs ?? {}) };
+      const statusTexts = { ...(row.backgroundWork.statusTexts ?? {}) };
       for (const id of duplicated) {
         delete descriptions[id];
         delete spawnedAtMs[id];
+        delete statusTexts[id];
       }
       const remainingSuperseded = superseded.filter((id) =>
         remainingThreadIds.includes(id),
+      );
+      const followUpThreadIds = (row.backgroundWork.followUpThreadIds ?? []).filter(
+        (id) => !duplicated.has(id),
       );
       row.backgroundWork = {
         ...row.backgroundWork,
@@ -822,6 +868,8 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         ),
         descriptions,
         spawnedAtMs,
+        statusTexts,
+        followUpThreadIds,
         ...(remainingSuperseded.length > 0
           ? { supersededThreadIds: remainingSuperseded }
           : {}),

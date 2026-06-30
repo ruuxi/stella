@@ -619,6 +619,8 @@ export const AssistantMessageRow = memo(
               supersededThreadIds={row.backgroundWork.supersededThreadIds}
               spawnedAtMs={row.backgroundWork.spawnedAtMs}
               descriptions={row.backgroundWork.descriptions}
+              statusTexts={row.backgroundWork.statusTexts}
+              followUpThreadIds={row.backgroundWork.followUpThreadIds}
               label={row.backgroundWork.label}
             />
           )}
