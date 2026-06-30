@@ -157,6 +157,13 @@ export function ChatPanelTab({
   onNewChat,
 }: ChatPanelTabProps) {
   const [inputText, setInputText] = useState("");
+  // Always-current mirror of `inputText`. A dictation transcript is appended
+  // via `setInputText` right before the dictate-and-submit commit fires (the
+  // commit is rAF-deferred and can beat React's passive effect refreshing the
+  // send closure). Reading the latest text from a ref keeps the send from
+  // racing ahead with the pre-transcript value and dropping the dictated text.
+  const inputTextRef = useRef(inputText);
+  inputTextRef.current = inputText;
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const restoredConversationScrollRef = useRef<string | null>(null);
@@ -363,7 +370,7 @@ export function ChatPanelTab({
 
   const sendCurrentMessage = useCallback(() => {
     const { canSubmit, trimmedMessage } = deriveComposerState({
-      message: inputText,
+      message: inputTextRef.current,
       chatContext,
     });
     if (!canSubmit) return;
@@ -395,7 +402,6 @@ export function ChatPanelTab({
       sidebarScroll.releaseFollow();
     }
   }, [
-    inputText,
     chatContext,
     isStreaming,
     onSend,
