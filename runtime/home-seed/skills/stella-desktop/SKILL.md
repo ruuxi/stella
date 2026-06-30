@@ -7,6 +7,13 @@ description: Use this skill before modifying Stella, the desktop app and runtime
 
 ## Operating rules
 
+- **File tools require absolute paths.** Write/Edit/apply_patch reject relative
+paths and do NOT follow the shell's `cd` — a relative path is never resolved
+against your `exec_command` working directory. When editing Stella's own
+source, pass the full absolute path under the running install root (the
+directory containing `desktop/` and `runtime/`). Find that root once (e.g. with
+`pwd` from the install root, or the `Install root` value when given) and prefix
+every file-tool path with it, even after you `cd` elsewhere in a command.
 - Never launch Stella's dev servers for testing. Stella is already running
 for the user; starting another desktop/runtime dev server can interrupt the
 active session. Use typecheck, lint, focused tests, and code inspection

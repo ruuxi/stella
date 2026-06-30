@@ -18,7 +18,8 @@ export const readTool: ToolDefinition = {
     properties: {
       file_path: {
         type: "string",
-        description: "Absolute or repo-relative file path.",
+        description:
+          "Absolute file path. Must be absolute (~ / $HOME expansion allowed); relative paths are rejected.",
       },
       offset: { type: "number" },
       limit: { type: "number" },

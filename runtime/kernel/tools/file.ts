@@ -38,23 +38,27 @@ const isPathInsideRoot = (candidate: string, root: string): boolean => {
   );
 };
 
+export const requireAbsoluteFilePath = (rawPath: unknown): string => {
+  const raw = String(rawPath ?? "");
+  const expandedPath = expandHomePath(raw);
+  if (!path.isAbsolute(expandedPath)) {
+    throw new Error(
+      `File tool paths must be absolute. Received relative path '${raw}'. ` +
+        `Pass a full absolute path (e.g. /Users/you/projects/foo/bar.ts); ` +
+        `the file tools do not resolve relative to the shell's working directory.`,
+    );
+  }
+  return path.resolve(expandedPath);
+};
+
 export const resolveFilePath = (
   rawPath: unknown,
   context?: ToolContext,
 ): string => {
-  const expandedPath = expandHomePath(String(rawPath ?? ""));
+  const resolvedPath = requireAbsoluteFilePath(rawPath);
   const scopedRoot = context?.toolWorkspaceRoot?.trim()
     ? path.resolve(context.toolWorkspaceRoot)
     : null;
-  const resolvedPath = path.isAbsolute(expandedPath)
-    ? path.resolve(expandedPath)
-    : path.resolve(
-        scopedRoot ??
-          context?.stellaAppDir ??
-          fileToolsConfig.stellaAppDir ??
-          process.cwd(),
-        expandedPath,
-      );
 
   if (scopedRoot && !isPathInsideRoot(resolvedPath, scopedRoot)) {
     throw new Error("Path is outside the shared session workspace.");

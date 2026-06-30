@@ -124,17 +124,16 @@ describe("general agent tools", () => {
     expect(await readFile(filePath, "utf-8")).toBe("hello\nstella\n");
   });
 
-  it("apply_patch accepts the `input` key with a relative path", async () => {
+  it("apply_patch accepts the `input` key with an absolute path", async () => {
     const root = await createTempDir();
-    const relPath = path.join("nested", "notes.txt");
-    const absPath = path.join(root, relPath);
+    const absPath = path.join(root, "nested", "notes.txt");
     await mkdir(path.dirname(absPath), { recursive: true });
     await writeFile(absPath, "hello\nworld\n", "utf-8");
 
     const result = await handleApplyPatch(
       {
         input: `*** Begin Patch
-*** Update File: ${relPath}
+*** Update File: ${absPath}
 @@
  hello
 -world
@@ -153,24 +152,35 @@ describe("general agent tools", () => {
     expect(await readFile(absPath, "utf-8")).toBe("hello\nstella\n");
   });
 
-  it("apply_patch resolves relative paths against an explicit workdir", async () => {
+  it("apply_patch rejects a relative path with a clear error", async () => {
     const root = await createTempDir();
     const filePath = path.join(root, "notes.txt");
     await writeFile(filePath, "hello\nworld\n", "utf-8");
 
-    const result = await handleApplyPatch({
-      input: `*** Begin Patch
+    const result = await handleApplyPatch(
+      {
+        input: `*** Begin Patch
 *** Update File: notes.txt
 @@
  hello
 -world
 +stella
 *** End Patch`,
-      workdir: root,
-    });
+        workdir: root,
+      },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaAppDir: root,
+      },
+    );
 
-    expect(result.error).toBeUndefined();
-    expect(await readFile(filePath, "utf-8")).toBe("hello\nstella\n");
+    expect(result.error).toMatch(
+      /File tool paths must be absolute. Received relative path 'notes\.txt'/,
+    );
+    // The original file is left untouched when the path is rejected.
+    expect(await readFile(filePath, "utf-8")).toBe("hello\nworld\n");
   });
 
   it("apply_patch tolerates trailing whitespace and unicode dashes", async () => {
