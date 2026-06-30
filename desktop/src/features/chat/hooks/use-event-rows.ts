@@ -396,6 +396,35 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     return map;
   }, [messages]);
 
+  /**
+   * Per-message projection cache. Finalized messages keep a stable object
+   * identity across stream deltas (see `stabilizeMessageList`), so their
+   * already-projected rows are reused instead of being re-derived on every
+   * streamed delta — only the live overlay (whose identity changes per
+   * delta) re-projects. Without this the whole list re-derives each frame,
+   * O(messages) work that grows with conversation length.
+   *
+   * Excluded from the cache: rows carrying a background-work card. Those are
+   * mutated in place by the dedup/supersede pass below and their
+   * `completedThreadIds` depend on the per-frame completion map, so they are
+   * rebuilt every frame (they are rare — only turns that spawned agents).
+   *
+   * Keyed by message identity and invalidated wholesale when the
+   * developer-resource-preview flag flips (the only non-message-intrinsic
+   * input to a row's content; the per-frame completion map only feeds the
+   * uncached background-work rows).
+   */
+  const projectionCacheRef = useRef<{
+    devFlag: boolean;
+    byMessage: WeakMap<
+      MessageRecord,
+      { rows: EventRowViewModel[]; indexWithinTurn: number }
+    >;
+  }>({
+    devFlag: developerResourcePreviewsEnabled,
+    byMessage: new WeakMap(),
+  });
+
   const allRows = useMemo<EventRowViewModel[]>(() => {
     const computed: EventRowViewModel[] = [];
     /**
@@ -433,7 +462,46 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       };
     };
 
+    const projectionCache = projectionCacheRef.current;
+    if (projectionCache.devFlag !== developerResourcePreviewsEnabled) {
+      projectionCache.devFlag = developerResourcePreviewsEnabled;
+      projectionCache.byMessage = new WeakMap();
+    }
+    const cacheByMessage = projectionCache.byMessage;
+
     for (const message of displayMessages) {
+      // Advance the per-turn assistant index for every assistant message
+      // (cache hit or miss) so the sequential stableKeys stay correct, then
+      // reuse the prior projection of any message whose identity — and index
+      // position — is unchanged. The live overlay's identity changes per
+      // delta, so it always re-projects; finalized rows are reused.
+      let indexWithinTurn = -1;
+      let assistantReplyId: string | undefined;
+      if (isAssistantMessage(message)) {
+        const indexPayload = getMessagePayload(message);
+        assistantReplyId =
+          typeof indexPayload?.userMessageId === "string" &&
+          indexPayload.userMessageId.length > 0
+            ? indexPayload.userMessageId
+            : undefined;
+        if (assistantReplyId !== undefined) {
+          indexWithinTurn =
+            (assistantCountByUserMessageId.get(assistantReplyId) ?? 0) + 1;
+          assistantCountByUserMessageId.set(assistantReplyId, indexWithinTurn);
+        }
+      }
+
+      const cachedProjection = cacheByMessage.get(message);
+      if (
+        cachedProjection &&
+        cachedProjection.indexWithinTurn === indexWithinTurn
+      ) {
+        for (const cachedRow of cachedProjection.rows) computed.push(cachedRow);
+        continue;
+      }
+
+      const produced: EventRowViewModel[] = [];
+
       if (isUserMessage(message)) {
         const contextMetadata = getMessagePayload(message)?.metadata?.context;
         const windowLabel =
@@ -475,7 +543,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             ? { channelEnvelope: getChannelEnvelope(message) }
             : {}),
         };
-        computed.push(row);
+        produced.push(row);
         // A fire-and-forget spawn / send_input that never produced an
         // assistant message has its tools anchored on this user_message.
         // Surface the card on a synthetic assistant row right under it so
@@ -484,7 +552,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const userBackgroundWork = buildBackgroundWork(message.toolEvents);
         if (userBackgroundWork) {
           const bgKey = `assistant-bgwork-${message._id}`;
-          computed.push({
+          produced.push({
             kind: "assistant",
             id: bgKey,
             text: "",
@@ -493,17 +561,10 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             backgroundWork: userBackgroundWork,
           });
         }
-        continue;
-      }
-
-      if (isAssistantMessage(message)) {
+      } else if (isAssistantMessage(message)) {
         const text = getDisplayMessageText(message);
         const payload = getMessagePayload(message);
-        const replyToUserMessageId =
-          typeof payload?.userMessageId === "string" &&
-          payload.userMessageId.length > 0
-            ? payload.userMessageId
-            : undefined;
+        const replyToUserMessageId = assistantReplyId;
         const responseTarget = responseTargetByAssistantId.get(message._id);
         const runtimeMetadata = (
           payload?.metadata as
@@ -514,22 +575,12 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         // `_id`s) and the eventual persisted rows for the same
         // `(userMessageId, indexInTurn)` slot. The display merge
         // ensures only one source is present at a time, so the count
-        // stays consistent.
-        let stableKey: string;
-        if (replyToUserMessageId !== undefined) {
-          const indexWithinTurn =
-            (assistantCountByUserMessageId.get(replyToUserMessageId) ?? 0) + 1;
-          assistantCountByUserMessageId.set(
-            replyToUserMessageId,
-            indexWithinTurn,
-          );
-          stableKey = assistantScrollFollowKey(
-            replyToUserMessageId,
-            indexWithinTurn,
-          );
-        } else {
-          stableKey = message._id;
-        }
+        // stays consistent. `indexWithinTurn` was advanced in the loop
+        // preamble (so cache hits keep positions correct).
+        const stableKey =
+          replyToUserMessageId !== undefined
+            ? assistantScrollFollowKey(replyToUserMessageId, indexWithinTurn)
+            : message._id;
         const toolEvents = message.toolEvents;
         const resourcePayload = deriveTurnResource(
           toolEvents,
@@ -592,8 +643,24 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           ...(backgroundWork ? { backgroundWork } : {}),
           ...(showInlineArtifacts && toolActivity ? { toolActivity } : {}),
         };
-        computed.push(row);
+        produced.push(row);
       }
+
+      // Cache the projection for reuse on the next delta, EXCEPT rows that
+      // carry a background-work card: those are mutated by the dedup pass
+      // below and their completion subset depends on the per-frame completion
+      // map, so they must be rebuilt each frame. Everything else is a pure
+      // function of the (stable) message identity + dev flag.
+      const hasBackgroundWork = produced.some(
+        (producedRow) =>
+          producedRow.kind === "assistant" && Boolean(producedRow.backgroundWork),
+      );
+      if (hasBackgroundWork) {
+        cacheByMessage.delete(message);
+      } else {
+        cacheByMessage.set(message, { rows: produced, indexWithinTurn });
+      }
+      for (const producedRow of produced) computed.push(producedRow);
     }
 
     // No synthetic trailing artifact row: a `user_message` carrying inline-
