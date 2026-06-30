@@ -90,7 +90,9 @@ export function Composer({
   const dictation = useDictation({
     message,
     setMessage,
-    disabled: isStreaming,
+    // Dictation stays available even while the orchestrator is busy
+    // (mid-turn / streaming) — the mic is intentionally NOT gated on
+    // `isStreaming`. See `submitComposer` for the in-flight submit flow.
     onTranscriptCommitted: () => {
       requestAnimationFrame(() => {
         textareaRef.current?.focus();
@@ -100,6 +102,20 @@ export function Composer({
       onSendRef.current();
     },
   });
+
+  // Submitting while a recording/transcription is still in flight must not
+  // race ahead of the dictated text. `commitAndSend` stops + finalizes the
+  // recording, waits for the pending transcript to be appended to the
+  // composer, and only then fires `onCommit` (→ onSend). For the idle case
+  // it sends immediately. Error/timeout paths still resolve to idle and fire
+  // the commit, so submit never hangs.
+  const submitComposer = () => {
+    if (dictation.isRecording || dictation.isTranscribing) {
+      dictation.commitAndSend();
+      return;
+    }
+    onSend();
+  };
 
   const composerState = deriveComposerState({
     message,
@@ -170,8 +186,7 @@ export function Composer({
             aria-busy={isStreaming}
             onSubmit={(event) => {
               event.preventDefault();
-              if (dictation.isRecording) return;
-              onSend();
+              submitComposer();
             }}
           >
             <ComposerAddMenu
@@ -210,7 +225,7 @@ export function Composer({
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
-                      onSend();
+                      submitComposer();
                     }
                   }}
                   onPaste={(event) => {
@@ -235,7 +250,7 @@ export function Composer({
                     <ComposerMicButton
                       className="composer-mic"
                       isTranscribing={dictation.isTranscribing}
-                      disabled={isStreaming || dictation.isTranscribing}
+                      disabled={dictation.isTranscribing}
                       onClick={dictation.toggle}
                       title={
                         dictation.error

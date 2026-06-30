@@ -313,7 +313,9 @@ export function ChatPanelTab({
   const dictation = useDictation({
     message: inputText,
     setMessage: setInputText,
-    disabled: isStreaming,
+    // Dictation stays available even while the orchestrator is busy
+    // (mid-turn / streaming) — the mic is intentionally NOT gated on
+    // `isStreaming`. See `submitComposer` for the in-flight submit flow.
     onTranscriptCommitted: () => {
       requestAnimationFrame(() => {
         inputRef.current?.focus();
@@ -398,17 +400,23 @@ export function ChatPanelTab({
     sidebarScroll,
   ]);
 
-  const handleSubmit = useCallback(
-    (event: React.FormEvent) => {
-      event.preventDefault();
-      sendCurrentMessage();
-    },
-    [sendCurrentMessage],
-  );
-
   const submitFromDictation = useCallback(() => {
     sendCurrentMessage();
   }, [sendCurrentMessage]);
+
+  // Submitting while a recording/transcription is still in flight must not
+  // race ahead of the dictated text. `commitAndSend` stops + finalizes the
+  // recording, waits for the pending transcript to be appended to the
+  // composer, and only then fires `onCommit` (→ sendCurrentMessage). For the
+  // idle case it sends immediately. Error/timeout paths still resolve to idle
+  // and fire the commit, so submit never hangs.
+  const submitComposer = useCallback(() => {
+    if (dictation.isRecording || dictation.isTranscribing) {
+      dictation.commitAndSend();
+      return;
+    }
+    sendCurrentMessage();
+  }, [dictation, sendCurrentMessage]);
 
   useEffect(() => {
     submitFromDictationRef.current = submitFromDictation;
@@ -512,11 +520,8 @@ export function ChatPanelTab({
                     ref={formRef}
                     className={`chat-sidebar-form${formExpanded ? " expanded" : ""}`}
                     onSubmit={(event) => {
-                      if (dictation.isRecording) {
-                        event.preventDefault();
-                        return;
-                      }
-                      handleSubmit(event);
+                      event.preventDefault();
+                      submitComposer();
                     }}
                   >
                     <ComposerAddMenu
@@ -556,7 +561,7 @@ export function ChatPanelTab({
                           onKeyDown={(event) => {
                             if (event.key === "Enter" && !event.shiftKey) {
                               event.preventDefault();
-                              handleSubmit(event);
+                              submitComposer();
                             }
                           }}
                           onPaste={(event) => {
@@ -580,7 +585,7 @@ export function ChatPanelTab({
                             <ComposerMicButton
                               className="composer-mic"
                               isTranscribing={dictation.isTranscribing}
-                              disabled={isStreaming || dictation.isTranscribing}
+                              disabled={dictation.isTranscribing}
                               onClick={dictation.toggle}
                               title={
                                 dictation.error
