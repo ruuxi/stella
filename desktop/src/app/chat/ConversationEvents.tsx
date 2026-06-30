@@ -13,7 +13,6 @@ import {
   type RefObject,
 } from "react";
 import type { LegendListRef, NativeScrollEvent, NativeSyntheticEvent } from "@legendapp/list/react";
-import type { Attachment } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import { useEventRows } from "@/features/chat/hooks/use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
@@ -41,7 +40,6 @@ type Props = {
   hasOlderMessages?: boolean;
   isLoadingOlder?: boolean;
   isLoadingHistory?: boolean;
-  onOpenAttachment?: (attachment: Attachment) => void;
   /** Threaded through to `<ChatTimeline>` → `<LegendList>`. */
   listRef?: RefObject<LegendListRef | null>;
   onListScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -108,7 +106,6 @@ export const ConversationEvents = memo(function ConversationEvents({
   hasOlderMessages,
   isLoadingOlder,
   isLoadingHistory,
-  onOpenAttachment,
   listRef,
   onListScroll,
   onStartReached,
@@ -146,7 +143,6 @@ export const ConversationEvents = memo(function ConversationEvents({
       hasOlderEvents={hasOlderMessages}
       isLoadingOlder={isLoadingOlder}
       isLoadingHistory={isLoadingHistory}
-      onOpenAttachment={onOpenAttachment}
       queuedUserMessages={queuedUserMessages}
       indicator={indicator}
       listRef={listRef}

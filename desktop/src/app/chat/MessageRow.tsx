@@ -335,28 +335,21 @@ function UserContextChips({ chips }: { chips: ContextChip[] }) {
  * A user-attached image inside the sent message. Clicking (or pressing
  * Enter / Space) opens a full-window enlarged preview via the shared
  * {@link ImageLightbox}, mirroring how generated images can be opened in a
- * larger view. When the caller supplies `onOpenAttachment`, that handler
- * takes over instead (e.g. to route the attachment elsewhere).
+ * larger view.
  */
 function AttachmentImage({
   attachment,
   index,
   safeUrl,
-  onOpenAttachment,
 }: {
   attachment: Attachment;
   index: number;
   safeUrl: string;
-  onOpenAttachment?: (attachment: Attachment) => void;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const label = getAttachmentLabel(attachment, index);
 
   const open = () => {
-    if (onOpenAttachment) {
-      onOpenAttachment(attachment);
-      return;
-    }
     setPreviewOpen(true);
   };
 
@@ -376,25 +369,22 @@ function AttachmentImage({
           }
         }}
       />
-      {!onOpenAttachment && (
-        <ImageLightbox
-          open={previewOpen}
-          onOpenChange={setPreviewOpen}
-          src={safeUrl}
-          alt={label}
-        />
-      )}
+      <ImageLightbox
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        src={safeUrl}
+        alt={label}
+      />
     </>
   );
 }
 
 type UserRowProps = {
   row: UserRowViewModel;
-  onOpenAttachment?: (attachment: Attachment) => void;
 };
 
 export const UserMessageRow = memo(
-  function UserMessageRow({ row, onOpenAttachment }: UserRowProps) {
+  function UserMessageRow({ row }: UserRowProps) {
     const { text, windowLabel, attachments, channelEnvelope } = row;
     const appSelectionLabel = row.appSelectionLabel?.trim();
     const activityLabel = row.activityLabel?.trim();
@@ -499,7 +489,6 @@ export const UserMessageRow = memo(
               attachment={attachment}
               index={index}
               safeUrl={safeUrl}
-              onOpenAttachment={onOpenAttachment}
             />
           ),
         });
@@ -539,9 +528,7 @@ export const UserMessageRow = memo(
       </div>
     );
   },
-  (prev, next) =>
-    prev.onOpenAttachment === next.onOpenAttachment &&
-    eventRowEqual(prev.row, next.row),
+  (prev, next) => eventRowEqual(prev.row, next.row),
 );
 
 type AssistantRowProps = {
