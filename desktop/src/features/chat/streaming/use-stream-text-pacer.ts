@@ -14,11 +14,11 @@
  * motion` bypasses pacing entirely.
  */
 import { useCallback, useEffect, useRef } from 'react'
-
-/** Minimum code points released per frame while a buffer is non-empty. */
-const MIN_CHARS_PER_FRAME = 2
-/** A backlog drains over at most this many frames (~100ms at 60fps). */
-const CATCH_UP_FRAMES = 6
+import {
+  createPaceState,
+  stepPaceCount,
+  type PaceState,
+} from './stream-text-pacer-cadence'
 
 type PendingEntry = {
   runId: string
@@ -44,6 +44,15 @@ function prefersReducedMotion(): boolean {
 
 export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
   const pendingRef = useRef(new Map<string, PendingEntry>())
+  // Per-slot cadence state (smoothed rate + fractional carry), tagged with
+  // the owning run. Kept separate from the text buffer so it survives the
+  // brief gaps where a slot's buffer empties between provider deltas — the
+  // next delta then resumes at the current speed instead of snapping back to
+  // the initial rate. The `runId` tag lets flush/discard reclaim it at run
+  // boundaries even after the slot's buffer has fully drained.
+  const paceStateRef = useRef(
+    new Map<string, { runId: string; pace: PaceState }>(),
+  )
   const frameRef = useRef<number | null>(null)
   // Always invoke the latest `release` without re-creating the rAF loop.
   const releaseRef = useRef(release)
@@ -52,6 +61,7 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
   const tick = useCallback(() => {
     frameRef.current = null
     const pending = pendingRef.current
+    const paceState = paceStateRef.current
     let scheduleNext = false
     for (const [slotId, entry] of pending) {
       // Split on code points so a surrogate pair is never released
@@ -61,16 +71,21 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         pending.delete(slotId)
         continue
       }
-      const count = Math.max(
-        MIN_CHARS_PER_FRAME,
-        Math.ceil(chars.length / CATCH_UP_FRAMES),
-      )
+      let state = paceState.get(slotId)
+      if (!state) {
+        state = { runId: entry.runId, pace: createPaceState() }
+        paceState.set(slotId, state)
+      }
+      const count = stepPaceCount(state.pace, chars.length)
       const out = chars.slice(0, count).join('')
       const rest = chars.slice(count).join('')
       if (rest) {
         pending.set(slotId, { runId: entry.runId, text: rest })
         scheduleNext = true
       } else {
+        // Keep the cadence state warm: the run may stream more text into
+        // this same slot after a short gap, and resuming at the current
+        // rate avoids a fresh slow ramp (read: a stutter) on every delta.
         pending.delete(slotId)
       }
       releaseRef.current(slotId, out)
@@ -111,6 +126,15 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
     [ensureLoop],
   )
 
+  /** Drop cadence state for every slot matching `predicate` (also reclaims
+   *  slots whose text buffer already drained but stayed warm). */
+  const dropPaceState = useCallback((predicate?: StreamSlotPredicate) => {
+    for (const [slotId, st] of [...paceStateRef.current.entries()]) {
+      if (predicate && !predicate({ slotId, runId: st.runId })) continue
+      paceStateRef.current.delete(slotId)
+    }
+  }, [])
+
   /** Release all buffered text for matching slots immediately. */
   const flush = useCallback(
     (predicate?: StreamSlotPredicate) => {
@@ -120,9 +144,10 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         pending.delete(slotId)
         if (entry.text) releaseRef.current(slotId, entry.text)
       }
+      dropPaceState(predicate)
       cancelLoopIfIdle()
     },
-    [cancelLoopIfIdle],
+    [cancelLoopIfIdle, dropPaceState],
   )
 
   /** Drop buffered text for matching slots without releasing it. */
@@ -133,9 +158,10 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         if (predicate && !predicate({ slotId, runId: entry.runId })) continue
         pending.delete(slotId)
       }
+      dropPaceState(predicate)
       cancelLoopIfIdle()
     },
-    [cancelLoopIfIdle],
+    [cancelLoopIfIdle, dropPaceState],
   )
 
   useEffect(
@@ -145,6 +171,7 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         frameRef.current = null
       }
       pendingRef.current.clear()
+      paceStateRef.current.clear()
     },
     [],
   )
