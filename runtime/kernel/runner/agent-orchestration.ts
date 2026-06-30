@@ -7,7 +7,6 @@ import {
   getModelOverride,
 } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
-import { runFinishHtmlPass } from "../agent-runtime/finish-html-pass.js";
 import { createAgentLifecycleResponseTarget } from "../agent-runtime/response-target.js";
 import { persistThreadCustomMessage } from "../agent-runtime/thread-memory.js";
 import { runExplore } from "../agent-runtime/explore.js";
@@ -456,32 +455,6 @@ export const createAgentOrchestration = (
       context.runtimeStore.listGroupMemberThreadIds(groupKey),
     onAgentEvent: handleAgentLifecycleEvent,
     fetchAgentContext: deps.buildAgentContext,
-    runFinishHtmlPass: async ({ description, result, abortSignal }) => {
-      // The pass owns engine + route resolution (mirrors `explore`): Claude
-      // Code runs through the user's CLI; default/Codex/BYOK go through
-      // `resolveLlmRoute`, riding the user's model pick when set and otherwise
-      // the backend-managed `html` config (Gemini Flash via OpenRouter).
-      return runFinishHtmlPass({
-        stellaAppDir: context.stellaAppDir,
-        stellaDataDir: context.stellaDataDir,
-        site: {
-          baseUrl: context.state.convexSiteUrl,
-          getAuthToken: () => context.state.authToken?.trim(),
-          hasConnectedAccount: () => context.state.hasConnectedAccount,
-          refreshAuthToken: async () => {
-            const refreshed = await context.requestRuntimeAuthRefresh?.({
-              source: "stella_provider",
-            });
-            return refreshed?.authenticated ? refreshed.token : null;
-          },
-        },
-        deviceId: context.deviceId,
-        modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
-        result,
-        ...(description ? { description } : {}),
-        ...(abortSignal ? { abortSignal } : {}),
-      });
-    },
     runSubagent: async ({
       conversationId,
       userMessageId,
