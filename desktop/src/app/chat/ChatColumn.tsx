@@ -19,6 +19,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -160,17 +161,35 @@ export const ChatColumn = memo(function ChatColumn({
   // spawned agents — and only hands off once the assistant's first
   // character is actually painted (`isStreamingResponseText`, now driven by
   // the reveal frontier). Background/spawned work no longer suppresses it.
-  const indicatorProps = buildInlineWorkingIndicatorProps({
-    isStreaming: Boolean(conversation.streaming.isStreaming),
-    isStreamingResponseText: Boolean(
+  // Memoize over the primitive streaming inputs so the indicator mount
+  // props keep a stable object identity across the per-frame re-renders
+  // driven by streaming text growth. Without this, a fresh object every
+  // render invalidates `ChatTimeline`'s `ListFooter` useMemo and forces the
+  // whole working-indicator subtree (WorkingIndicator -> SwapText ->
+  // StellaAnimation wrapper) to reconcile on every streamed frame.
+  const indicatorProps = useMemo(
+    () =>
+      buildInlineWorkingIndicatorProps({
+        isStreaming: Boolean(conversation.streaming.isStreaming),
+        isStreamingResponseText: Boolean(
+          conversation.streaming.isStreamingResponseText,
+        ),
+        isToolActive: Boolean(conversation.streaming.isToolActive),
+        hasToolActivity: Boolean(conversation.streaming.hasToolActivity),
+        activeToolName: conversation.streaming.activeToolName,
+        activeToolCallId: conversation.streaming.activeToolCallId,
+        runtimeStatusText: conversation.streaming.runtimeStatusText,
+      }),
+    [
+      conversation.streaming.isStreaming,
       conversation.streaming.isStreamingResponseText,
-    ),
-    isToolActive: Boolean(conversation.streaming.isToolActive),
-    hasToolActivity: Boolean(conversation.streaming.hasToolActivity),
-    activeToolName: conversation.streaming.activeToolName,
-    activeToolCallId: conversation.streaming.activeToolCallId,
-    runtimeStatusText: conversation.streaming.runtimeStatusText,
-  });
+      conversation.streaming.isToolActive,
+      conversation.streaming.hasToolActivity,
+      conversation.streaming.activeToolName,
+      conversation.streaming.activeToolCallId,
+      conversation.streaming.runtimeStatusText,
+    ],
+  );
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext: composer.setChatContext,
     disabled: conversation.streaming.isStreaming,
