@@ -213,6 +213,28 @@ type UseEventRowsResult = {
   rows: EventRowViewModel[];
 };
 
+/**
+ * Whether an assistant row carries anything other than a background-work
+ * receipt. Used by the dedup pass below to decide between clearing just the
+ * card (the row has other content to keep) and dropping the synthetic
+ * card-only row entirely.
+ */
+const assistantRowHasNonBackgroundContent = (
+  row: AssistantRowViewModel,
+): boolean =>
+  row.text.trim().length > 0 ||
+  Boolean(row.isStreaming) ||
+  Boolean(row.officePreviewRef) ||
+  Boolean(row.resourcePayload) ||
+  (row.inlineImagePayloads?.length ?? 0) > 0 ||
+  (row.webSearchResults?.length ?? 0) > 0 ||
+  (row.sourceDiffPayloads?.length ?? 0) > 0 ||
+  Boolean(row.selfModApplied) ||
+  Boolean(row.scheduleReceipt) ||
+  Boolean(row.voiceSession) ||
+  Boolean(row.toolActivity) ||
+  Boolean(row.customSlot);
+
 const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
   row.text.trim().length === 0 &&
   (row.inlineImagePayloads?.length ?? 0) > 0 &&
@@ -604,10 +626,21 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       }
     }
 
-    // Only the latest card per thread stays live. When a later turn spawns
-    // or updates (send_input) the same thread, earlier cards for it are
-    // marked superseded so they freeze as settled instead of re-animating
-    // (BackgroundWorkCard treats superseded threads as done).
+    // Reconcile a thread that surfaces on more than one row. Two distinct
+    // cases, distinguished by the per-thread `spawnedAtMs` (the source
+    // `agent-started` event's timestamp):
+    //
+    //  - Genuine re-activation: a LATER turn spawns or updates (send_input)
+    //    the same thread, carrying a strictly newer `agent-started`. The
+    //    later card owns the thread; earlier cards are marked superseded so
+    //    they read as settled breadcrumbs instead of re-animating.
+    //
+    //  - Exact duplicate: the SAME `agent-started` event (identical
+    //    `spawnedAtMs`) projected onto two rows — e.g. a fire-and-forget
+    //    spawn briefly anchored on both the user-message fallback row and the
+    //    assistant row during the SQLite/stream handoff. Rendering both draws
+    //    two identical "Started in background" receipts, so the redundant
+    //    (non-canonical) copy drops the thread entirely. One spawn = one card.
     const latestOwnerByThread = new Map<string, number>();
     computed.forEach((row, index) => {
       if (row.kind !== "assistant" || !row.backgroundWork) return;
@@ -615,20 +648,88 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         latestOwnerByThread.set(id, index);
       }
     });
+    const ownerSpawnedAtForThread = (id: string): number | undefined => {
+      const ownerIndex = latestOwnerByThread.get(id);
+      if (ownerIndex === undefined) return undefined;
+      const owner = computed[ownerIndex];
+      if (owner?.kind !== "assistant" || !owner.backgroundWork) return undefined;
+      return owner.backgroundWork.spawnedAtMs?.[id];
+    };
+    const droppedRowIndices = new Set<number>();
     computed.forEach((row, index) => {
       if (row.kind !== "assistant" || !row.backgroundWork) return;
-      const superseded = row.backgroundWork.threadIds.filter(
-        (id) => latestOwnerByThread.get(id) !== index,
-      );
-      if (superseded.length > 0) {
-        row.backgroundWork = {
-          ...row.backgroundWork,
-          supersededThreadIds: superseded,
-        };
+      const superseded: string[] = [];
+      const duplicated = new Set<string>();
+      for (const id of row.backgroundWork.threadIds) {
+        if (latestOwnerByThread.get(id) === index) continue;
+        const ownerSpawnedAt = ownerSpawnedAtForThread(id);
+        const selfSpawnedAt = row.backgroundWork.spawnedAtMs?.[id];
+        // A strictly later spawn time means a separate re-activation lives
+        // below — freeze this earlier copy. Same (or unknown) time means the
+        // same lifecycle event surfaced twice — collapse onto the canonical
+        // owner.
+        if (
+          ownerSpawnedAt !== undefined &&
+          selfSpawnedAt !== undefined &&
+          ownerSpawnedAt > selfSpawnedAt
+        ) {
+          superseded.push(id);
+        } else {
+          duplicated.add(id);
+        }
       }
+      if (duplicated.size === 0) {
+        if (superseded.length > 0) {
+          row.backgroundWork = {
+            ...row.backgroundWork,
+            supersededThreadIds: superseded,
+          };
+        }
+        return;
+      }
+      const remainingThreadIds = row.backgroundWork.threadIds.filter(
+        (id) => !duplicated.has(id),
+      );
+      if (remainingThreadIds.length === 0) {
+        if (assistantRowHasNonBackgroundContent(row)) {
+          const { backgroundWork: _omit, ...rest } = row;
+          computed[index] = rest;
+        } else {
+          // Synthetic card-only row whose sole receipt was a duplicate —
+          // drop it so the canonical copy is the only render.
+          droppedRowIndices.add(index);
+        }
+        return;
+      }
+      const descriptions = { ...row.backgroundWork.descriptions };
+      const spawnedAtMs = { ...(row.backgroundWork.spawnedAtMs ?? {}) };
+      for (const id of duplicated) {
+        delete descriptions[id];
+        delete spawnedAtMs[id];
+      }
+      const remainingSuperseded = superseded.filter((id) =>
+        remainingThreadIds.includes(id),
+      );
+      row.backgroundWork = {
+        ...row.backgroundWork,
+        threadIds: remainingThreadIds,
+        completedThreadIds: row.backgroundWork.completedThreadIds.filter(
+          (id) => !duplicated.has(id),
+        ),
+        descriptions,
+        spawnedAtMs,
+        ...(remainingSuperseded.length > 0
+          ? { supersededThreadIds: remainingSuperseded }
+          : {}),
+      };
     });
 
-    return coalesceVoiceSessionRows(coalesceInlineImageRows(computed));
+    const deduped =
+      droppedRowIndices.size > 0
+        ? computed.filter((_, index) => !droppedRowIndices.has(index))
+        : computed;
+
+    return coalesceVoiceSessionRows(coalesceInlineImageRows(deduped));
   }, [
     completedAtMsById,
     developerResourcePreviewsEnabled,
