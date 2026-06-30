@@ -1,13 +1,11 @@
 import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
 import "./StellaAnimation.css";
+import { BIRTH_DURATION, FLASH_DURATION, parseColor } from "./glyph-atlas";
+import { resolveCreatureSpec } from "./creature-spec";
 import {
-  BIRTH_DURATION,
-  FLASH_DURATION,
-  buildGlyphAtlas,
-  getCssNumber,
-  parseColor,
-} from "./glyph-atlas";
-import { initRenderer } from "./renderer";
+  acquireCreatureRenderer,
+  releaseCreatureRenderer,
+} from "./renderer-pool";
 import { computeAnalyserEnergy } from "@/features/voice/services/audio-energy";
 
 /** Reusable buffer for frequency data — avoids per-frame allocation. */
@@ -19,12 +17,6 @@ function computeEnergy(analyser: AnalyserNode): number {
   return result.energy;
 }
 
-/**
- * Extra canvas space around the creature so edge effects (speaking expansion,
- * breathing, flash wave) are never clipped. The shader UV mapping is scaled
- * by the same factor so the creature stays the same pixel size.
- */
-const EDGE_SCALE = 2.5;
 const NOISE_FLOOR_FAST_RATE = 0.1;
 const NOISE_FLOOR_SLOW_RATE = 0.005;
 const NOISE_FLOOR_SPEECH_RATIO = 3;
@@ -87,7 +79,6 @@ export const StellaAnimation = React.forwardRef<
     ref,
   ) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const canvasRef = useRef<HTMLCanvasElement>(null);
     const darkRef = useRef<HTMLSpanElement>(null);
     const mediumDarkRef = useRef<HTMLSpanElement>(null);
     const mediumRef = useRef<HTMLSpanElement>(null);
@@ -206,49 +197,7 @@ export const StellaAnimation = React.forwardRef<
 
     useEffect(() => {
       const container = containerRef.current;
-      const canvas = canvasRef.current;
-      if (!container || !canvas) return;
-
-      const styles = getComputedStyle(container);
-      const fontSize = getCssNumber(
-        styles.getPropertyValue("--ascii-font-size"),
-        11,
-      );
-      const lineHeight = getCssNumber(
-        styles.getPropertyValue("--ascii-line-height"),
-        fontSize,
-      );
-      const fontFamily =
-        styles.getPropertyValue("--ascii-font-family").trim() ||
-        '"SF Mono", "Menlo", "Monaco", "Courier New", monospace';
-
-      const measureCanvas = document.createElement("canvas");
-      const measureCtx = measureCanvas.getContext("2d");
-      if (!measureCtx) return;
-      measureCtx.font = `${fontSize}px ${fontFamily}`;
-      const metrics = measureCtx.measureText("M");
-      const glyphWidth = Math.max(1, Math.ceil(metrics.width));
-      const glyphHeight = Math.max(1, Math.ceil(lineHeight));
-
-      const cssWidth = Math.max(1, Math.floor(width * glyphWidth * EDGE_SCALE));
-      const cssHeight = Math.max(
-        1,
-        Math.floor(height * glyphHeight * EDGE_SCALE),
-      );
-      const dpr = Math.min(window.devicePixelRatio || 1, maxDpr ?? Infinity);
-
-      canvas.style.width = `${cssWidth}px`;
-      canvas.style.height = `${cssHeight}px`;
-      canvas.width = Math.floor(cssWidth * dpr);
-      canvas.height = Math.floor(cssHeight * dpr);
-
-      const glyphAtlas = buildGlyphAtlas(
-        fontFamily,
-        fontSize,
-        glyphWidth,
-        glyphHeight,
-      );
-      if (!glyphAtlas) return;
+      if (!container) return;
 
       const readColors = () => {
         const swatches = [
@@ -264,16 +213,22 @@ export const StellaAnimation = React.forwardRef<
         return new Float32Array(parsed.flat());
       };
 
-      const mainRenderer = initRenderer(
-        canvas,
-        glyphAtlas,
-        width * EDGE_SCALE,
-        height * EDGE_SCALE,
+      const spec = resolveCreatureSpec(container, { width, height, maxDpr });
+      if (!spec) return;
+
+      // Borrow a warm GL context + compiled program from the pool (or create
+      // one on the very first appearance for this size). This is what keeps
+      // every subsequent mount — i.e. every message send's working
+      // indicator — off the ~16-20ms main-thread GL spin-up.
+      const pooled = acquireCreatureRenderer(
+        spec,
         readColors(),
         birthRef.current,
         flashRef.current,
       );
-      if (!mainRenderer) return;
+      if (!pooled) return;
+      container.appendChild(pooled.canvas);
+      const mainRenderer = pooled.renderer;
 
       let frameCount = 0;
 
@@ -446,9 +401,13 @@ export const StellaAnimation = React.forwardRef<
 
       return () => {
         if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        requestRef.current = undefined;
         animateRef.current = null;
         observer.disconnect();
-        mainRenderer.destroy();
+        // Hand the GL context back to the pool (kept warm) rather than
+        // tearing it down — the next mount reuses it instead of re-spinning
+        // a context + recompiling shaders.
+        releaseCreatureRenderer(pooled);
       };
     }, [
       width,
@@ -470,7 +429,6 @@ export const StellaAnimation = React.forwardRef<
             : "stella-animation-container"
         }
       >
-        <canvas ref={canvasRef} className="ascii-canvas" />
         <span
           ref={darkRef}
           className="ascii-color-swatch char-dark"
