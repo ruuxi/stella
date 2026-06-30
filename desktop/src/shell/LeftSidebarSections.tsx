@@ -3,7 +3,14 @@
  * sidebar. With `query` supplied they act as the searchable group overview;
  * section rows open the right sidebar viewer (master-detail).
  */
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   History,
   CheckCircle2,
@@ -200,7 +207,7 @@ function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
   }
 }
 
-function TaskRow({
+const TaskRow = memo(function TaskRow({
   task,
   expanded,
   onToggle,
@@ -295,9 +302,9 @@ function TaskRow({
       ) : null}
     </li>
   );
-}
+});
 
-function GroupRow({
+const GroupRow = memo(function GroupRow({
   group,
   expanded,
   onToggle,
@@ -369,9 +376,9 @@ function GroupRow({
       ) : null}
     </li>
   );
-}
+});
 
-function TasksList({
+const TasksList = memo(function TasksList({
   rows,
   expandedTaskIds,
   onToggleTask,
@@ -415,7 +422,7 @@ function TasksList({
       )}
     </ul>
   );
-}
+});
 
 const activityRowStatus = (row: ActivityRow): TaskItem["status"] =>
   row.kind === "task" ? row.task.status : row.group.status;
@@ -521,7 +528,7 @@ export function LeftSidebarSections({
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<
     ReadonlySet<string>
   >(() => new Set());
-  const toggleGroup = (groupKey: string) => {
+  const toggleGroup = useCallback((groupKey: string) => {
     setExpandedGroupKeys((prev) => {
       const next = new Set(prev);
       if (next.has(groupKey)) {
@@ -531,13 +538,13 @@ export function LeftSidebarSections({
       }
       return next;
     });
-  };
+  }, []);
   // Per-agent expand/collapse: an expanded activity row reveals that
   // agent's recent reasoning summaries and the files it produced.
   const [expandedTaskIds, setExpandedTaskIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const toggleTask = (taskId: string) => {
+  const toggleTask = useCallback((taskId: string) => {
     setExpandedTaskIds((prev) => {
       const next = new Set(prev);
       if (next.has(taskId)) {
@@ -547,7 +554,7 @@ export function LeftSidebarSections({
       }
       return next;
     });
-  };
+  }, []);
 
   const allTasks = useMemo(() => {
     const persisted = extractTasksFromActivities(activity.activities, {
@@ -618,9 +625,9 @@ export function LeftSidebarSections({
 
   const nowMs = Date.now();
 
-  const visibleDoneRows = doneRows.slice(
-    0,
-    Math.max(0, caps.activity - runningRows.length),
+  const visibleDoneRows = useMemo(
+    () => doneRows.slice(0, Math.max(0, caps.activity - runningRows.length)),
+    [doneRows, caps.activity, runningRows.length],
   );
   const hiddenDoneCount = doneRows.length - visibleDoneRows.length;
   const visibleActivityRows = useMemo(
@@ -644,10 +651,13 @@ export function LeftSidebarSections({
     return [scheduleEntryToAffectedRef(openScheduleEntry, conversationId)];
   }, [conversationId, openScheduleEntry]);
 
-  const handleOpenFile = (entry: ConversationFileEntry) => {
-    openDisplayPayloadTab(entry.payload);
-    onNavigate?.();
-  };
+  const handleOpenFile = useCallback(
+    (entry: ConversationFileEntry) => {
+      openDisplayPayloadTab(entry.payload);
+      onNavigate?.();
+    },
+    [onNavigate],
+  );
 
   if (!hasActivity && !hasSchedule && !hasStore) {
     return renderEmpty ? <>{renderEmpty()}</> : null;
