@@ -64,6 +64,7 @@ export const createOrchestratorController = (
     clearActiveOrchestratorRun,
     createRuntimeCallbacks,
     queueOrchestratorTurn,
+    setFollowUpReplyFlusher,
   } = coordinator;
   const preExecutionCanceledRunIds = new Set<string>();
   const preparingRunIds = new Set<string>();
@@ -375,9 +376,90 @@ export const createOrchestratorController = (
       // still interrupt the live turn at the next safe boundary.
       const delivery: "steer" | "followUp" =
         message.role === "user" ? "followUp" : "steer";
+      if (delivery === "followUp" && message.role === "user") {
+        recordPendingFollowUpReply(args.session.conversationId, promptInput.text);
+      }
       args.session.queueMessage(message, delivery);
     }
   };
+
+  /**
+   * Mirror a follow-up user message so it can be answered after the active
+   * run drains. Follow-ups injected into the live run are only delivered at
+   * `agent_end`; if the run is interrupted or fails before then, the agent's
+   * in-memory follow-up queue is cleared and the user would never get a reply.
+   * The buffer is consumed by `flushPendingFollowUpReplies` on abnormal
+   * termination and discarded on clean completion.
+   */
+  const recordPendingFollowUpReply = (
+    conversationId: string,
+    text: string,
+  ): void => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return;
+    }
+    const existing = context.state.pendingFollowUpReplies.get(conversationId);
+    if (existing) {
+      existing.push({ text: trimmed });
+    } else {
+      context.state.pendingFollowUpReplies.set(conversationId, [
+        { text: trimmed },
+      ]);
+    }
+  };
+
+  /**
+   * Fire a fresh reply turn for follow-up user messages that were injected
+   * into a run but never answered because the run was interrupted or failed
+   * before draining its follow-up queue. The messages are already persisted to
+   * the thread (at injection time), so the reply is triggered with a hidden
+   * runtime message rather than re-emitting the user turn — this avoids
+   * duplicating the user's message in the thread/UI while still producing a
+   * real, deliverable assistant reply (a fresh run with its own runId).
+   */
+  const flushPendingFollowUpReplies = (conversationId: string): void => {
+    const pending = context.state.pendingFollowUpReplies.get(conversationId);
+    context.state.pendingFollowUpReplies.delete(conversationId);
+    if (!pending || pending.length === 0) {
+      return;
+    }
+    const callbacks = getCallbacksForTarget({ conversationId });
+    if (!callbacks) {
+      return;
+    }
+    const combinedText = pending.map((entry) => entry.text).join("\n\n");
+    queueOrchestratorTurn({
+      priority: "user",
+      execute: async () => {
+        await startStreamingOrchestratorTurn(
+          {
+            conversationId,
+            userPrompt: "",
+            promptMessages: [
+              {
+                text:
+                  "The user sent the following message(s) while you were " +
+                  "finishing the previous task, and they were never answered " +
+                  "because that run ended early. Reply to them now as a " +
+                  "direct response to the user:\n\n" +
+                  combinedText,
+                messageType: "message",
+                customType: "runtime.queued_message_reply",
+                uiVisibility: UI_VISIBILITY_HIDDEN,
+              },
+            ],
+            agentType: AGENT_IDS.ORCHESTRATOR,
+            userMessageId: `message:${crypto.randomUUID()}`,
+            uiVisibility: UI_VISIBILITY_VISIBLE,
+          },
+          callbacks,
+        );
+      },
+    });
+  };
+
+  setFollowUpReplyFlusher(flushPendingFollowUpReplies);
 
   const sendMessage = async (input: RuntimeSendMessageInput): Promise<void> => {
     const text = input.text.trim();
@@ -501,6 +583,9 @@ export const createOrchestratorController = (
         liveSession.queueCallbackSwitch(callbacks);
       });
       const message = persistInjectedUserMessage(liveSession, text, timestamp);
+      if (delivery === "followUp") {
+        recordPendingFollowUpReply(liveSession.conversationId, text);
+      }
       liveSession.queueMessage(message, delivery);
       return;
     }

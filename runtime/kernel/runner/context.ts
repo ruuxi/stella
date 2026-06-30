@@ -694,6 +694,7 @@ export const createRunnerContext = ({
       orchestratorSessions: new Map(),
       compactionScheduler: new BackgroundCompactionScheduler(),
       queuedOrchestratorTurns: [],
+      pendingFollowUpReplies: new Map(),
       activeRunAbortControllers: new Map(),
       conversationCallbacks: new Map(),
       runCallbacksByRunId: new Map(),
