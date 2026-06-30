@@ -78,6 +78,13 @@ export type ChatColumnConversation = {
     isLoadingOlder: boolean;
     isInitialLoading: boolean;
   };
+  /**
+   * Fired by the streaming assistant row the moment it first paints
+   * visible characters. The chat surface wires this into the inline
+   * working indicator so it hands off to the text only once it's actually
+   * on screen, never into a blank gap.
+   */
+  onAssistantTextPainted?: () => void;
 };
 
 export type ChatColumnComposer = {

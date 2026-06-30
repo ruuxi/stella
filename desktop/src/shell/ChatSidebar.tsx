@@ -7,6 +7,7 @@ import {
   useMemo,
 } from "react";
 import { CompactConversationSurface } from "@/features/chat/CompactConversationSurface";
+import { AssistantTextPaintContext } from "@/app/chat/assistant-text-paint-context";
 import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
 import { useChatScrollManagement } from "@/shell/use-chat-scroll-management";
 import { ComposerContextRow } from "@/app/chat/ComposerContextRow";
@@ -70,6 +71,9 @@ const WIDE_PANEL_CONTENT_STYLE = {
   paddingBottom: 4,
 } as const;
 
+/** Stable no-op so the paint-signal context value doesn't churn per render. */
+const noopPaint = () => {};
+
 interface ChatSidebarOpenOptions {
   /** When provided, attaches/replaces the current chat context before opening. */
   chatContext?: ChatContext | null;
@@ -97,10 +101,12 @@ interface ChatPanelTabProps {
   /** True once the in-flight run has streamed any visible assistant text. */
   isStreamingResponseText?: boolean;
   runtimeStatusText?: string | null;
-  /** Run id of the in-flight orchestrator run, used to scope the working
-   * indicator's "step aside for a sub-agent" behavior to the current
-   * run's own spawned agents. */
-  activeRunId?: string | null;
+  /**
+   * Fired by the streaming assistant row the moment it first paints
+   * visible characters. Wired into the inline working indicator so it
+   * hands off to the text only once it's on screen, never into a gap.
+   */
+  onAssistantTextPainted?: () => void;
   activeToolCallId?: string | null;
   activeToolName?: string | null;
   hasToolActivity?: boolean;
@@ -134,7 +140,7 @@ export function ChatPanelTab({
   isStreaming,
   isStreamingResponseText,
   runtimeStatusText,
-  activeRunId,
+  onAssistantTextPainted,
   activeToolCallId,
   activeToolName,
   hasToolActivity,
@@ -255,9 +261,10 @@ export function ChatPanelTab({
   );
 
   useReadAloud(messages);
-  // The inline background-work card now owns spawned-agent state in every
-  // surface (full, sidebar, mini), so the inline indicator always steps
-  // aside for sub-agent work and doesn't double up with the card.
+  // The indicator stays up through the whole turn — thinking, tool calls,
+  // spawned agents — and hands off only once the assistant's first
+  // character is painted (`isStreamingResponseText`, driven by the reveal
+  // frontier). Background/spawned work no longer suppresses it.
   const indicatorProps = buildInlineWorkingIndicatorProps({
     isStreaming: Boolean(isStreaming),
     isStreamingResponseText: Boolean(isStreamingResponseText),
@@ -266,8 +273,6 @@ export function ChatPanelTab({
     activeToolName,
     activeToolCallId,
     runtimeStatusText,
-    liveTasks,
-    activeRunId,
   });
 
   const { chatContext, setChatContext, selectedText, setSelectedText } =
@@ -456,28 +461,32 @@ export function ChatPanelTab({
       >
         <div className="chat-sidebar-inner">
           <div className="chat-sidebar-main">
-            <CompactConversationSurface
-              className="chat-sidebar-messages"
-              variant={variant}
-              scroll={sidebarScrollApi}
-              messages={messages}
-              conversationId={conversationId}
-              isStreaming={isStreaming}
-              runtimeStatusText={runtimeStatusText}
-              pendingUserMessageId={pendingUserMessageId}
-              queuedUserMessages={queuedUserMessages}
-              liveTasks={liveTasks}
-              activities={activities}
-              latestMessageTimestampMs={latestMessageTimestampMs}
-              indicator={indicatorProps}
-              hasOlderMessages={hasOlderMessages}
-              isLoadingOlder={isLoadingOlder}
-              isLoadingHistory={isInitialLoading}
-              contentContainerStyle={
-                wideLayout ? WIDE_PANEL_CONTENT_STYLE : SIDEBAR_CONTENT_STYLE
-              }
-              estimatedItemSize={wideLayout ? 140 : undefined}
-            />
+            <AssistantTextPaintContext.Provider
+              value={onAssistantTextPainted ?? noopPaint}
+            >
+              <CompactConversationSurface
+                className="chat-sidebar-messages"
+                variant={variant}
+                scroll={sidebarScrollApi}
+                messages={messages}
+                conversationId={conversationId}
+                isStreaming={isStreaming}
+                runtimeStatusText={runtimeStatusText}
+                pendingUserMessageId={pendingUserMessageId}
+                queuedUserMessages={queuedUserMessages}
+                liveTasks={liveTasks}
+                activities={activities}
+                latestMessageTimestampMs={latestMessageTimestampMs}
+                indicator={indicatorProps}
+                hasOlderMessages={hasOlderMessages}
+                isLoadingOlder={isLoadingOlder}
+                isLoadingHistory={isInitialLoading}
+                contentContainerStyle={
+                  wideLayout ? WIDE_PANEL_CONTENT_STYLE : SIDEBAR_CONTENT_STYLE
+                }
+                estimatedItemSize={wideLayout ? 140 : undefined}
+              />
+            </AssistantTextPaintContext.Provider>
 
             <div className="chat-sidebar-composer">
               <ComposerLeadRow

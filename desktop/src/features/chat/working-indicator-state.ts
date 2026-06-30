@@ -26,9 +26,11 @@ export type InlineWorkingIndicatorMountProps = InlineWorkingIndicatorProps & {
    */
   active: boolean;
   /**
-   * Skip the `MIN_VISIBLE_MS` hold on deactivation. Set when answer text
-   * has started streaming — the indicator must get out of the way right
-   * away instead of trailing the growing message for the hold duration.
+   * Escape hatch to skip the `MIN_VISIBLE_MS` floor on deactivation.
+   * No longer set by `buildInlineWorkingIndicatorProps`: because `active`
+   * now stays true until the first character is painted, the floor is
+   * purely anti-flicker and must never cause an early dismiss. Kept
+   * optional for the component's own fallback handling.
    */
   exitImmediately?: boolean;
 };
@@ -47,45 +49,27 @@ export function buildInlineWorkingIndicatorProps({
   activeToolName,
   activeToolCallId,
   runtimeStatusText,
-  liveTasks,
-  activeRunId,
 }: {
   isStreaming: boolean;
+  /**
+   * True once the assistant's first character is actually *painted* on
+   * screen for the in-flight run (driven by the `StreamingTextReveal`
+   * reveal frontier via `mark-streaming-text`), not merely once the first
+   * delta arrived in the data stream. This is the indicator's hand-off
+   * trigger, so the indicator never disappears into a gap before any text
+   * is visible.
+   */
   isStreamingResponseText: boolean;
   isToolActive: boolean;
   hasToolActivity: boolean;
   activeToolName?: string | null;
   activeToolCallId?: string | null;
   runtimeStatusText?: string | null;
-  liveTasks?: TaskItem[];
-  /**
-   * Run id of the in-flight orchestrator run. Used to scope the "step
-   * aside for a spawned sub-agent" behavior to sub-agents *this* run
-   * actually spawned. `liveTasks` aggregates every run in the
-   * conversation, so a background task left running by an earlier turn
-   * would otherwise hide the current turn's working indicator — the
-   * exact bug where the orchestrator looks idle while a prior background
-   * agent is still going.
-   */
-  activeRunId?: string | null;
 }): InlineWorkingIndicatorMountProps {
-  // The inline background-work card owns spawned-agent state in every
-  // surface, so the indicator steps aside while a sub-agent spawned by the
-  // current run is working. Only the active run's own sub-agents count: a
-  // task still running from an earlier turn is unrelated to what the
-  // orchestrator is doing right now and must not suppress its indicator.
-  const hasRunningTask = (liveTasks ?? []).some((task) => {
-    if (task.status !== "running") return false;
-    // When the active run is unknown (older surfaces / before a run id is
-    // available) fall back to the prior behavior so nothing regresses.
-    if (activeRunId == null) return true;
-    return task.runId === activeRunId;
-  });
   const active = getInlineWorkingIndicatorActive({
     isStreaming,
     isStreamingResponseText,
     isToolActive,
-    hasRunningTask,
   });
   // Initial thinking is pre-tool only. Once a tool lifecycle begins the
   // indicator follows live TOOL_START/TOOL_END state instead of the
@@ -95,11 +79,11 @@ export function buildInlineWorkingIndicatorProps({
     isStreaming && !isStreamingResponseText && !hasToolActivity;
   return {
     active,
-    // Once the assistant starts streaming answer text, get out of the way
-    // immediately instead of trailing the growing message for the
-    // min-visible hold. Other deactivations (run finished, sub-agent took
-    // over) keep the hold so a fast turn still flashes the indicator.
-    exitImmediately: isStreamingResponseText,
+    // No early dismiss: deactivation always runs through the min-visible
+    // floor (`getInlineWorkingIndicatorExitDelayMs`). Because `active` now
+    // stays true until the first character is painted, the floor only ever
+    // *delays* a too-fast hide (anti-flicker) — it never causes one. The
+    // effective hide time is max(min-duration elapsed, first-painted-text).
     runningTool: isToolActive ? (activeToolName ?? undefined) : undefined,
     runningToolId: isToolActive ? (activeToolCallId ?? undefined) : undefined,
     status:
@@ -121,24 +105,22 @@ export function getInlineWorkingIndicatorActive({
   isStreaming,
   isStreamingResponseText,
   isToolActive,
-  hasRunningTask,
 }: {
   isStreaming: boolean;
+  /**
+   * True once the assistant's first character is actually painted (reveal
+   * frontier), the hand-off point. Until then the indicator stays up no
+   * matter how long the model thinks.
+   */
   isStreamingResponseText: boolean;
   isToolActive: boolean;
-  /**
-   * A spawned agent/task is currently running. Its own task chip and
-   * per-agent indicator cover that work, so the orchestrator line should
-   * not pin "thinking" while it merely waits for the sub-agent.
-   */
-  hasRunningTask: boolean;
 }): boolean {
   if (isToolActive) return true;
-  // The orchestrator is between its own steps: the initial pre-tool think,
-  // or the gap after a fast tool returns before the next tool/answer. Show
-  // the rotating thinking label so the line never goes blank mid-run — but
-  // not while a spawned agent is doing the work.
-  return isStreaming && !isStreamingResponseText && !hasRunningTask;
+  // Stay visible continuously from send through the whole turn — pre-tool
+  // thinking, gaps between tools, and while a spawned agent works — until
+  // the assistant's first character is actually painted. A background or
+  // spawned agent no longer suppresses the orchestrator's own indicator.
+  return isStreaming && !isStreamingResponseText;
 }
 
 export function getInlineWorkingIndicatorExitDelayMs({

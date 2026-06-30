@@ -23,6 +23,7 @@
  * invisibly) lives in `streaming-text-reveal-frontier.ts`.
  */
 import { useEffect, useRef, type ReactNode } from "react";
+import { useNotifyAssistantTextPainted } from "./assistant-text-paint-context";
 import {
   advanceRevealFrontier,
   createRevealState,
@@ -101,8 +102,35 @@ export function StreamingTextReveal({
   const activeRef = useRef(active);
   const stateRef = useRef<RevealState>(createRevealState());
   const frameRef = useRef<number | null>(null);
+  const notifyPainted = useNotifyAssistantTextPainted();
+  const paintedRef = useRef(false);
 
   activeRef.current = active;
+
+  // First-visible-paint signal. The working indicator stays up until the
+  // assistant's first character is actually on screen, so it needs to know
+  // the moment the reveal has measurable painted content — independent of
+  // the mask animation (which `prefers-reduced-motion` disables). A cheap
+  // rAF poll watches for the first measurable node, fires once, and stops.
+  useEffect(() => {
+    if (!active) {
+      paintedRef.current = false;
+      return;
+    }
+    if (paintedRef.current) return;
+    let raf = 0;
+    const check = () => {
+      const el = ref.current;
+      if (el && findLastVisibleNode(el)) {
+        paintedRef.current = true;
+        notifyPainted();
+        return;
+      }
+      raf = requestAnimationFrame(check);
+    };
+    raf = requestAnimationFrame(check);
+    return () => cancelAnimationFrame(raf);
+  }, [active, notifyPainted]);
 
   useEffect(() => {
     if (!active || frameRef.current !== null) return;

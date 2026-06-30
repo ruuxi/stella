@@ -220,9 +220,6 @@ const runToolStatusIntegration = async (toolName: string) => {
     isToolActive: Boolean(
       Object.keys(state.runsById[runId]?.activeToolCalls ?? {}).length,
     ),
-    hasRunningTask: Object.values(state.tasksByRunId[runId] ?? {}).some(
-      (task) => task.status === "running",
-    ),
   });
   state = streamStoreReducer(state, {
     type: "run-status",
@@ -250,9 +247,6 @@ const runToolStatusIntegration = async (toolName: string) => {
     isToolActive: Boolean(
       Object.keys(toolActiveRun?.activeToolCalls ?? {}).length,
     ),
-    hasRunningTask: Object.values(state.tasksByRunId[runId] ?? {}).some(
-      (task) => task.status === "running",
-    ),
   });
   const displayStatusDuringTool = getWorkingIndicatorDisplayStatus({
     status: toolActiveRun?.statusText ?? undefined,
@@ -275,9 +269,6 @@ const runToolStatusIntegration = async (toolName: string) => {
     isStreamingResponseText: false,
     isToolActive: Boolean(
       Object.keys(toolEndedRun?.activeToolCalls ?? {}).length,
-    ),
-    hasRunningTask: Object.values(state.tasksByRunId[runId] ?? {}).some(
-      (task) => task.status === "running",
     ),
   });
 
@@ -343,7 +334,7 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(sendInput.displayStatus).toBe("On it");
   });
 
-  it("steps back while a spawned sub-agent task runs, then resumes thinking once it finishes", () => {
+  it("keeps the indicator up while a spawned sub-agent runs (no early dismiss)", () => {
     const runId = "run-update-agent";
     let state = streamStoreReducer(initialStoreState, {
       type: "run-started",
@@ -360,20 +351,20 @@ describe("subscribeRuntimeAgentEvents", () => {
     const activeFor = (current: typeof state) =>
       getInlineWorkingIndicatorActive({
         isStreaming: true,
-        isStreamingResponseText: false,
+        isStreamingResponseText: Boolean(
+          current.runsById[runId]?.isStreamingText,
+        ),
         isToolActive: Boolean(
           Object.keys(current.runsById[runId]?.activeToolCalls ?? {}).length,
-        ),
-        hasRunningTask: Object.values(current.tasksByRunId[runId] ?? {}).some(
-          (task) => task.status === "running",
         ),
       });
 
     // Pre-tool thinking: the orchestrator line is active.
     expect(activeFor(state)).toBe(true);
 
-    // A spawned sub-agent starts working — its own task chip covers it, so
-    // the orchestrator line steps back instead of pinning "thinking".
+    // A spawned sub-agent starts working. The orchestrator's own indicator
+    // must STAY up — it only hands off once the assistant's first character
+    // is painted, regardless of background/spawned work.
     state = streamStoreReducer(state, {
       type: "task-upsert",
       runId,
@@ -388,9 +379,9 @@ describe("subscribeRuntimeAgentEvents", () => {
         lastUpdatedAtMs: 1_000,
       },
     });
-    expect(activeFor(state)).toBe(false);
+    expect(activeFor(state)).toBe(true);
 
-    // The sub-agent finishes — the orchestrator is thinking again in the gap.
+    // The sub-agent finishes — still thinking, still visible.
     state = streamStoreReducer(state, {
       type: "task-upsert",
       runId,
@@ -407,6 +398,10 @@ describe("subscribeRuntimeAgentEvents", () => {
       },
     });
     expect(activeFor(state)).toBe(true);
+
+    // Only the painted first character hands off.
+    state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
+    expect(activeFor(state)).toBe(false);
   });
 
   it("keeps the working indicator alive in reasoning gaps after an interim/preamble message", () => {
@@ -423,7 +418,6 @@ describe("subscribeRuntimeAgentEvents", () => {
         isToolActive: Boolean(
           Object.keys(current.runsById[runId]?.activeToolCalls ?? {}).length,
         ),
-        hasRunningTask: false,
       });
 
     let state = streamStoreReducer(initialStoreState, {

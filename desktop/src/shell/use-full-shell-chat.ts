@@ -95,6 +95,7 @@ export function useFullShellChat({
     optimisticEvents,
     runtimeStatusText,
     activeRunId,
+    notifyAssistantTextPainted,
     activeToolCallId,
     activeToolName,
     hasToolActivity,
@@ -414,6 +415,7 @@ export function useFullShellChat({
         isLoadingOlder: isLoadingOlderMessages,
         isInitialLoading: isInitialLoadingMessages,
       },
+      onAssistantTextPainted: notifyAssistantTextPainted,
     }),
     [
       activities,
@@ -433,6 +435,7 @@ export function useFullShellChat({
       liveTasks,
       loadOlderActivity,
       loadOlderFiles,
+      notifyAssistantTextPainted,
       pendingUserMessageId,
       persistedFiles,
       queuedUserMessages,
