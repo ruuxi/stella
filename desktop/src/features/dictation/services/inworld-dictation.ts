@@ -57,6 +57,14 @@ const LEVEL_EMIT_INTERVAL_MS = 80;
 const LEVEL_GAIN = 6;
 const SUPER_FAST_PRE_ROLL_MS = 450;
 
+/** Per-segment transcription timeout. Each managed upload is ~10 MB of audio
+ *  (≤ 4 minutes), so 90 s is generous headroom for a slow connection while
+ *  still bounding the wait — a stalled request must never leave the session
+ *  permanently stuck in `transcribing`. The on-device path transcribes the
+ *  whole recording in one pass, so it gets this budget scaled by the number
+ *  of equivalent segments (see `transcribeCapturedAudio`). */
+const TRANSCRIBE_SEGMENT_TIMEOUT_MS = 90_000;
+
 export type DictationSessionState =
   | "idle"
   | "listening"
@@ -64,7 +72,13 @@ export type DictationSessionState =
   | "error";
 
 type DictationCallbacks = {
-  onFinalTranscript?: (text: string) => void;
+  /**
+   * Fired with the transcribed text. `meta.partial` is true when one or more
+   * segments of a multi-segment (managed) transcription failed — the text is
+   * what succeeded, and the caller should signal to the user that the result
+   * may be incomplete rather than treating it as a clean transcript.
+   */
+  onFinalTranscript?: (text: string, meta?: { partial?: boolean }) => void;
   onStateChange?: (state: DictationSessionState, error?: string) => void;
   /** Periodic 0..1 input-level tick used by the recording UI to render a
    *  scrolling waveform. Fires at ~12 Hz while listening; the value is the
@@ -82,6 +96,12 @@ type TranscribeResponse = {
 type DictationTranscriptResult = {
   transcript: string;
   source: "local" | "inworld";
+  /** True when at least one segment failed but others succeeded — the
+   *  transcript holds the recovered parts. */
+  partial?: boolean;
+  /** Set when every segment failed, so the caller can error out instead of
+   *  silently returning an empty transcript. */
+  error?: string;
 };
 
 export function isDictationSuperFastEnabled(): boolean {
@@ -118,6 +138,28 @@ export function setLocalDictationPreference(enabled: boolean): void {
 export function setDictationSuperFastPreference(enabled: boolean): void {
   uiState.setItem(DICTATION_SUPER_FAST_KEY, enabled ? "true" : "false");
 }
+
+/**
+ * Reject if `promise` doesn't settle within `ms`. Used to bound the on-device
+ * IPC transcription, which we can't abort directly — on timeout the renderer
+ * recovers (the underlying work may keep running in the main process, but the
+ * session no longer waits on it forever).
+ */
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
 
 const bytesToBase64 = (bytes: Uint8Array): string => {
   let binary = "";
@@ -473,13 +515,25 @@ export class InworldDictationSession {
       const chunks = this.pcmChunks;
       this.pcmChunks = [];
       const result = await this.transcribeCapturedAudio(chunks);
+      // Nothing came back at all (every segment failed / timed out) — fail
+      // into the recoverable error state so the mic re-enables for a retry.
+      if (!result.transcript) {
+        if (result.error) {
+          this.setState("error", result.error);
+          return;
+        }
+        this.setState("idle");
+        return;
+      }
       const finalTranscript =
         result.source === "local"
           ? await enhanceTranscript(result.transcript)
           : result.transcript;
       this.setState("idle");
       if (finalTranscript) {
-        this.callbacks.onFinalTranscript?.(finalTranscript);
+        this.callbacks.onFinalTranscript?.(finalTranscript, {
+          partial: result.partial,
+        });
       }
     } catch (err) {
       console.error("[dictation] transcription failed:", err);
@@ -499,8 +553,13 @@ export class InworldDictationSession {
    * pass. The managed endpoint caps a single upload, so when we fall back to
    * it we split the audio into segments that each stay under the limit (see
    * `MANAGED_MAX_SEGMENT_SAMPLES`), transcribe them sequentially, and join
-   * the partial transcripts. Short recordings produce a single segment, so
-   * their behaviour is unchanged.
+   * the parts. Short recordings produce a single segment, so their behaviour
+   * is unchanged.
+   *
+   * Both paths are time-bounded so a stalled request can't wedge the session
+   * in `transcribing`. If some segments succeed and others fail, we keep the
+   * recovered text and flag the result `partial` rather than discarding the
+   * whole transcript; only when every segment fails do we surface `error`.
    */
   private async transcribeCapturedAudio(
     chunks: Int16Array[],
@@ -511,12 +570,25 @@ export class InworldDictationSession {
       window.electronAPI?.dictation?.transcribeLocal
     ) {
       try {
+        const totalSamples = chunks.reduce(
+          (sum, chunk) => sum + chunk.length,
+          0,
+        );
+        // Local runs in one pass over the whole recording, so scale the
+        // timeout by how many managed segments it would have been.
+        const localTimeoutMs =
+          Math.max(
+            1,
+            Math.ceil(totalSamples / MANAGED_MAX_SEGMENT_SAMPLES),
+          ) * TRANSCRIBE_SEGMENT_TIMEOUT_MS;
         const audioBase64 = bytesToBase64(
           encodeWav16(chunks, TARGET_SAMPLE_RATE),
         );
-        const local = await window.electronAPI.dictation.transcribeLocal({
-          audioBase64,
-        });
+        const local = await withTimeout(
+          window.electronAPI.dictation.transcribeLocal({ audioBase64 }),
+          localTimeoutMs,
+          "Local transcription timed out. Please try again.",
+        );
         return { transcript: local.transcript ?? "", source: "local" };
       } catch (error) {
         console.warn(
@@ -528,33 +600,67 @@ export class InworldDictationSession {
 
     const segments = splitPcmBySampleBudget(chunks, MANAGED_MAX_SEGMENT_SAMPLES);
     const parts: string[] = [];
-    for (const segment of segments) {
-      const transcript = await this.sendManagedTranscription(
-        encodeWav16(segment, TARGET_SAMPLE_RATE),
-      );
-      if (transcript) parts.push(transcript);
+    let failures = 0;
+    let firstError: string | undefined;
+    for (let i = 0; i < segments.length; i += 1) {
+      try {
+        const transcript = await this.sendManagedTranscription(
+          encodeWav16(segments[i]!, TARGET_SAMPLE_RATE),
+        );
+        if (transcript) parts.push(transcript);
+      } catch (error) {
+        failures += 1;
+        const message = (error as Error).message;
+        if (!firstError) firstError = message;
+        console.error(
+          `[dictation] segment ${i + 1}/${segments.length} transcription failed:`,
+          message,
+        );
+      }
     }
-    return { transcript: parts.join(" ").trim(), source: "inworld" };
+    return {
+      transcript: parts.join(" ").trim(),
+      source: "inworld",
+      partial: failures > 0 && parts.length > 0,
+      // Surface an error only when nothing came back at all; a partial
+      // success keeps its recovered text and is flagged via `partial`.
+      error: parts.length === 0 ? firstError : undefined,
+    };
   }
 
   private async sendManagedTranscription(
     wavBytes: Uint8Array,
   ): Promise<string> {
     const audioBase64 = bytesToBase64(wavBytes);
-    const parsed = await postServiceJson<TranscribeResponse>(
-      "/api/dictation/transcribe",
-      {
-        audioBase64,
-        audioEncoding: "AUTO_DETECT",
-      },
-      {
-        errorMessage: async (response) => {
-          const detail = await response.text();
-          return `Transcription failed: ${response.status} ${detail}`;
-        },
-      },
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      TRANSCRIBE_SEGMENT_TIMEOUT_MS,
     );
-    return parsed.transcript ?? "";
+    try {
+      const parsed = await postServiceJson<TranscribeResponse>(
+        "/api/dictation/transcribe",
+        {
+          audioBase64,
+          audioEncoding: "AUTO_DETECT",
+        },
+        {
+          signal: controller.signal,
+          errorMessage: async (response) => {
+            const detail = await response.text();
+            return `Transcription failed: ${response.status} ${detail}`;
+          },
+        },
+      );
+      return parsed.transcript ?? "";
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error("Transcription timed out. Please try again.");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async setupAudioPipeline(stream: MediaStream): Promise<void> {
