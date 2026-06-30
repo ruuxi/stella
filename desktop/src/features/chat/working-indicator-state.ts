@@ -48,6 +48,7 @@ export function buildInlineWorkingIndicatorProps({
   activeToolCallId,
   runtimeStatusText,
   liveTasks,
+  activeRunId,
 }: {
   isStreaming: boolean;
   isStreamingResponseText: boolean;
@@ -57,12 +58,29 @@ export function buildInlineWorkingIndicatorProps({
   activeToolCallId?: string | null;
   runtimeStatusText?: string | null;
   liveTasks?: TaskItem[];
+  /**
+   * Run id of the in-flight orchestrator run. Used to scope the "step
+   * aside for a spawned sub-agent" behavior to sub-agents *this* run
+   * actually spawned. `liveTasks` aggregates every run in the
+   * conversation, so a background task left running by an earlier turn
+   * would otherwise hide the current turn's working indicator — the
+   * exact bug where the orchestrator looks idle while a prior background
+   * agent is still going.
+   */
+  activeRunId?: string | null;
 }): InlineWorkingIndicatorMountProps {
   // The inline background-work card owns spawned-agent state in every
-  // surface, so the indicator always steps aside while a sub-agent runs.
-  const hasRunningTask = (liveTasks ?? []).some(
-    (task) => task.status === "running",
-  );
+  // surface, so the indicator steps aside while a sub-agent spawned by the
+  // current run is working. Only the active run's own sub-agents count: a
+  // task still running from an earlier turn is unrelated to what the
+  // orchestrator is doing right now and must not suppress its indicator.
+  const hasRunningTask = (liveTasks ?? []).some((task) => {
+    if (task.status !== "running") return false;
+    // When the active run is unknown (older surfaces / before a run id is
+    // available) fall back to the prior behavior so nothing regresses.
+    if (activeRunId == null) return true;
+    return task.runId === activeRunId;
+  });
   const active = getInlineWorkingIndicatorActive({
     isStreaming,
     isStreamingResponseText,

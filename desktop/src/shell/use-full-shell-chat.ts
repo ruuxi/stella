@@ -94,6 +94,7 @@ export function useFullShellChat({
     liveTasks,
     optimisticEvents,
     runtimeStatusText,
+    activeRunId,
     activeToolCallId,
     activeToolName,
     hasToolActivity,
@@ -399,6 +400,7 @@ export function useFullShellChat({
         isStreaming,
         isStreamingResponseText,
         runtimeStatusText,
+        activeRunId,
         activeToolCallId,
         activeToolName,
         hasToolActivity,
@@ -415,6 +417,7 @@ export function useFullShellChat({
     }),
     [
       activities,
+      activeRunId,
       activeToolCallId,
       activeToolName,
       displayMessages,

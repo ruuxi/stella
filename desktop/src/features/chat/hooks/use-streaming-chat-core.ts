@@ -131,6 +131,7 @@ export function useStreamingChatCore({
   const {
     liveTasks,
     runtimeStatusText,
+    activeRunId,
     activeToolCallId,
     activeToolName,
     hasToolActivity,
@@ -370,6 +371,7 @@ export function useStreamingChatCore({
     optimisticEvents,
     queuedUserMessages,
     runtimeStatusText,
+    activeRunId,
     activeToolCallId,
     activeToolName,
     hasToolActivity,
