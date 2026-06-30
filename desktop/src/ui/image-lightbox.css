@@ -66,7 +66,7 @@
   border: 1px solid var(--border-weak);
   color: var(--muted-foreground);
   box-shadow: var(--shadow-md, var(--shadow-xl));
-  cursor: default;
+  cursor: pointer;
 }
 
 [data-component="image-lightbox"] [data-slot="image-lightbox-close"]:hover {
