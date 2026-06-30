@@ -7,6 +7,7 @@ import {
   isUserMessage,
 } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../../runtime/contracts/local-chat.js";
+import { isOrchestratorReservedBuiltinAgentId } from "../../../../../runtime/contracts/agent-runtime.js";
 import { isOfficePreviewRef } from "../../../../../runtime/contracts/office-preview.js";
 import type { ScheduleToolAffectedRef } from "../../../../../runtime/kernel/shared/scheduling";
 import { pickScheduleToolSummary } from "@/global/schedule/schedule-receipt-summary";
@@ -124,6 +125,19 @@ const asNonEmptyString = (value: unknown): string | undefined =>
  * a failed spawn (so no phantom card). Multiple in one turn collapse into a
  * single descriptor (one card that tallies them); the optional group label
  * becomes the card's title.
+ *
+ * Only user-facing *delegated* work earns a card: the `general` agent and
+ * any custom user-installed subagent — i.e. exactly the agent types
+ * `spawn_agent` accepts. Orchestrator-reserved builtin agents (schedule,
+ * fashion, explore, dream, chronicle, install_update, …) run behind tools
+ * as internal/system helpers, so their `agent-started` events are filtered
+ * out here via the same `isOrchestratorReservedBuiltinAgentId` predicate
+ * that `spawn_agent` uses to reject non-delegation targets. This is a
+ * denylist rather than an allowlist of `general` so legitimate custom
+ * subagents the user kicked off still surface, while any future internal
+ * builtin is excluded automatically. (Tool-internal one-shot helpers like
+ * the HTML/canvas renderer and recall lookup never emit `agent-started`
+ * events at all, so they can't produce a card regardless.)
  */
 const getBackgroundWork = (
   events: readonly EventRecord[],
@@ -147,6 +161,11 @@ const getBackgroundWork = (
   let label: string | undefined;
   for (const event of events) {
     if (!isAgentStartedEvent(event)) continue;
+    // Skip internal/system agents invoked behind a tool (schedule, etc.):
+    // the inline card is only a "started here" receipt for user-facing
+    // delegated work. Mirrors `spawn_agent`'s own acceptance rule.
+    const agentType = asNonEmptyString(event.payload.agentType);
+    if (agentType && isOrchestratorReservedBuiltinAgentId(agentType)) continue;
     const agentId = asNonEmptyString(event.payload.agentId);
     if (!agentId) continue;
     if (!threadIds.includes(agentId)) threadIds.push(agentId);
