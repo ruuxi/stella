@@ -37,28 +37,19 @@
   width: 100%;
 }
 
-/* Lead row: the always-present activity / search pill, then the
- * auto-context suggestion lanes filling the remaining width. */
+/* Lead row: the auto-context suggestion lanes filling the available width. */
 .composer-context-lead-row {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  /* Nudge the whole row (pill + suggestions) in from the shell's left edge. */
+  /* Nudge the row in from the shell's left edge. */
   padding-left: 12px;
-}
-
-.composer-context-lead-row .composer-activity-pill {
-  /* Match the suggestion row's bottom padding so both sit on one baseline. */
-  margin-bottom: 4px;
 }
 
 .composer-context-lead-row .composer-context-actions--suggestions {
   flex: 1;
   min-width: 0;
-  /* The pill leads the row and the lead-row gap supplies the spacing, so
-   * the suggestion lanes carry no extra left inset — the pill→first-chip
-   * gap matches the gap between chips. */
   padding-left: 0;
 }
 

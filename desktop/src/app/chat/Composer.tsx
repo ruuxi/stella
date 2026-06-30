@@ -168,7 +168,6 @@ export function Composer({
     <div className="composer">
       <ComposerLeadRow
         replyPeek={replyPeek}
-        showActivityPill
         suggestionsActive={suggestionsActive}
         chatContext={chatContext}
         setChatContext={setChatContext}

@@ -196,11 +196,6 @@ export function ChatPanelTab({
   // when there's no provider the "Select area" action is simply omitted.
   const chatRuntime = useContext(ChatRuntimeContext);
   const startAnnotation = chatRuntime?.annotation.start;
-  // The activity pill reads the shared chat runtime, so it can only mount
-  // where a provider exists. The mini window has none, so it keeps the inline
-  // indicator covering spawned-agent work; every provider-backed surface shows
-  // the pill (and its progress summaries) just like the full shell.
-  const showActivityPill = variant !== "mini" && Boolean(chatRuntime);
 
   /*
    * Own scroll-management instance for the sidebar list. Mirrors the
@@ -514,7 +509,6 @@ export function ChatPanelTab({
                       }
                     : null
                 }
-                showActivityPill={showActivityPill}
                 suggestionsActive={surfaceActive}
                 chatContext={chatContext}
                 setChatContext={setChatContext}
