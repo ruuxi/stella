@@ -547,7 +547,7 @@ button.event-context-chip--overflow:focus-visible {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-base);
   object-fit: cover;
-  cursor: default;
+  cursor: pointer;
   transition: transform 0.15s ease;
 }
 

@@ -1,0 +1,88 @@
+[data-component="image-lightbox-overlay"] {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  /* Slightly deeper scrim than a content dialog so the image reads as
+   * the sole focus, matching the calm single-dim convention. */
+  background-color: rgba(0, 0, 0, 0.55);
+}
+
+[data-component="image-lightbox"] {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Comfortable breathing room so the image never touches the window edge
+   * and the surrounding scrim stays clickable to dismiss. */
+  padding: 40px;
+  pointer-events: none;
+}
+
+[data-component="image-lightbox"] [data-slot="image-lightbox-content"] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: 100%;
+  pointer-events: auto;
+}
+
+[data-component="image-lightbox"] [data-slot="image-lightbox-content"]:focus-visible {
+  outline: none;
+}
+
+[data-component="image-lightbox"] [data-slot="image-lightbox-image"] {
+  display: block;
+  /* Fit within the padded window, preserve aspect ratio, and never
+   * upscale past the image's intrinsic resolution (auto sizing caps at
+   * natural pixels). */
+  width: auto;
+  height: auto;
+  max-width: calc(100vw - 80px);
+  max-height: calc(100vh - 80px);
+  border-radius: var(--radius-2xl, 14px);
+  border: 1px solid var(--border-weak);
+  background: var(--panel-glass-bg);
+  background-clip: padding-box;
+  box-shadow: var(--shadow-xl);
+}
+
+[data-component="image-lightbox"] [data-slot="image-lightbox-close"] {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
+  border: 1px solid var(--border-weak);
+  color: var(--muted-foreground);
+  box-shadow: var(--shadow-md, var(--shadow-xl));
+  cursor: default;
+}
+
+[data-component="image-lightbox"] [data-slot="image-lightbox-close"]:hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--panel-glass-bg));
+  color: var(--foreground);
+}
+
+[data-component="image-lightbox"] [data-slot="image-lightbox-close"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+[data-component="image-lightbox-overlay"][data-state="open"] {
+  animation: dialog-overlay-show 250ms ease;
+}
+
+[data-component="image-lightbox"] [data-slot="image-lightbox-content"][data-state="open"] {
+  animation: dialog-content-show 300ms ease-out;
+}

@@ -43,6 +43,7 @@ import {
 } from "@/features/chat/lib/paste-context";
 import { ChipPreviewPortal } from "@/app/chat/ChipPreviewPortal";
 import { useHoverPreview } from "@/app/chat/use-hover-preview";
+import { ImageLightbox } from "@/ui/image-lightbox";
 import type {
   Attachment,
   ChannelEnvelope,
@@ -330,6 +331,63 @@ function UserContextChips({ chips }: { chips: ContextChip[] }) {
   );
 }
 
+/**
+ * A user-attached image inside the sent message. Clicking (or pressing
+ * Enter / Space) opens a full-window enlarged preview via the shared
+ * {@link ImageLightbox}, mirroring how generated images can be opened in a
+ * larger view. When the caller supplies `onOpenAttachment`, that handler
+ * takes over instead (e.g. to route the attachment elsewhere).
+ */
+function AttachmentImage({
+  attachment,
+  index,
+  safeUrl,
+  onOpenAttachment,
+}: {
+  attachment: Attachment;
+  index: number;
+  safeUrl: string;
+  onOpenAttachment?: (attachment: Attachment) => void;
+}) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const label = getAttachmentLabel(attachment, index);
+
+  const open = () => {
+    if (onOpenAttachment) {
+      onOpenAttachment(attachment);
+      return;
+    }
+    setPreviewOpen(true);
+  };
+
+  return (
+    <>
+      <img
+        src={safeUrl}
+        alt={attachment.name ?? "Attachment"}
+        className="event-attachment"
+        onClick={open}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(eventKey) => {
+          if (eventKey.key === "Enter" || eventKey.key === " ") {
+            eventKey.preventDefault();
+            open();
+          }
+        }}
+      />
+      {!onOpenAttachment && (
+        <ImageLightbox
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          src={safeUrl}
+          alt={label}
+        />
+      )}
+    </>
+  );
+}
+
 type UserRowProps = {
   row: UserRowViewModel;
   onOpenAttachment?: (attachment: Attachment) => void;
@@ -437,21 +495,11 @@ export const UserMessageRow = memo(
         chips.push({
           key,
           node: (
-            <img
-              src={safeUrl}
-              alt="Attachment"
-              className="event-attachment"
-              onClick={() => onOpenAttachment?.(attachment)}
-              role={onOpenAttachment ? "button" : undefined}
-              tabIndex={onOpenAttachment ? 0 : undefined}
-              onKeyDown={(eventKey) => {
-                if (
-                  onOpenAttachment &&
-                  (eventKey.key === "Enter" || eventKey.key === " ")
-                ) {
-                  onOpenAttachment(attachment);
-                }
-              }}
+            <AttachmentImage
+              attachment={attachment}
+              index={index}
+              safeUrl={safeUrl}
+              onOpenAttachment={onOpenAttachment}
             />
           ),
         });
