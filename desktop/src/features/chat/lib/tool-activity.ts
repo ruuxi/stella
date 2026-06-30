@@ -319,13 +319,16 @@ export function deriveToolActivity(
   const indexByRequestId = new Map<string, number>();
 
   for (const event of events) {
-    // Scope the trace to the orchestrator's own tool calls. Tool events from
-    // spawned sub-agents (the general agent and any other delegated run) carry
-    // their originating `agentType` on the payload; the orchestrator's own
-    // calls persist with no `agentType` (see `onToolStart`/`onToolEnd` in
-    // `runtime/worker/server.ts`), so an absent value resolves to the
-    // orchestrator — matching the `(agentType ?? ORCHESTRATOR)` convention
-    // used across the worker. Anything else is a sub-agent and is dropped.
+    // Scope the trace to the orchestrator's own tool calls. Tool events carry
+    // their originating `agentType` on the payload: spawned sub-agents (the
+    // general agent and any other delegated run) tag theirs with that agent's
+    // type, and the orchestrator's own calls are explicitly stamped
+    // `agentType: "orchestrator"` (see `onToolStart`/`onToolEnd` in
+    // `runtime/worker/server.ts`). The `?? ORCHESTRATOR` default is a
+    // legacy/missing-tag fallback that fails OPEN to the orchestrator — it is
+    // NOT an "absent ⇒ orchestrator" invariant to rely on; in practice the tag
+    // is present. Anything that resolves to a non-orchestrator type is a
+    // sub-agent and is dropped.
     const agentType =
       (event.payload as { agentType?: string } | undefined)?.agentType ??
       AGENT_IDS.ORCHESTRATOR;
