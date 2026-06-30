@@ -58,6 +58,14 @@ export function useFullShellChat({
 }: UseFullShellChatOptions) {
   const { setConversationId } = useUiState();
   const [message, setMessage] = useState("");
+  // Always-current mirror of `message`. A dictation transcript is appended via
+  // `setMessage` immediately before the dictate-and-submit commit fires (the
+  // commit is rAF-deferred and can beat React's passive effect that refreshes
+  // the `onSend` closure). Reading the latest text from a ref keeps the send
+  // from racing ahead with the pre-transcript value — which, with an image
+  // attached, would otherwise submit image-only and drop the dictated text.
+  const latestMessageRef = useRef(message);
+  latestMessageRef.current = message;
   const [composerFocusRequestId, setComposerFocusRequestId] = useState(0);
   const annotationIdRef = useRef(0);
   const annotationTargetRef = useRef<AnnotationContextTarget | null>(null);
@@ -318,7 +326,7 @@ export function useFullShellChat({
     enterChatSurfaceForInteraction();
     resetIdleTimer();
     void sendMessage({
-      text: message,
+      text: latestMessageRef.current,
       selectedText,
       chatContext,
       onClear: () => {
@@ -349,7 +357,6 @@ export function useFullShellChat({
     enterChatSurfaceForInteraction,
     getIsFollowing,
     isStreaming,
-    message,
     nudgeAfterSend,
     nudgeQueuedMessagesIntoView,
     releaseFollow,
