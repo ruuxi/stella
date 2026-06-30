@@ -126,6 +126,14 @@ export function Composer({
     requireConversationId: true,
   });
   const { placeholder } = composerState;
+  // A dictation in flight makes the composer submittable on its own: the
+  // pending transcript is the content. Without this the submit arrow stays
+  // disabled (canSubmit is false while the text is still empty), so a press
+  // during transcription is swallowed and `submitComposer` never runs —
+  // the transcription finishes but the message is never sent/queued.
+  const dictationInFlight =
+    dictation.isRecording || dictation.isTranscribing;
+  const canSubmitWithDictation = canSubmit || dictationInFlight;
   const hasText = message.trim().length > 0;
   const dictationBelow = dictation.isRecordingVisible && hasText;
   const dictationInline = dictation.isRecordingVisible && !hasText;
@@ -269,7 +277,7 @@ export function Composer({
                     )}
                     <ComposerSubmitButton
                       className="composer-submit"
-                      disabled={!canSubmit}
+                      disabled={!canSubmitWithDictation}
                       animated
                     />
                   </div>

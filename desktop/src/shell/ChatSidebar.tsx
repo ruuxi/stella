@@ -439,6 +439,13 @@ export function ChatPanelTab({
     chatContext,
     selectedText,
   });
+  // A dictation in flight makes the composer submittable on its own — the
+  // pending transcript is the content. Without this the submit arrow stays
+  // disabled while the text is empty, so a press during transcription is
+  // swallowed and the message is never sent/queued.
+  const dictationInFlight =
+    dictation.isRecording || dictation.isTranscribing;
+  const canSubmitWithDictation = composerState.canSubmit || dictationInFlight;
   const hasText = inputText.trim().length > 0;
   const dictationBelow = dictation.isRecordingVisible && hasText;
   const dictationInline = dictation.isRecordingVisible && !hasText;
@@ -619,7 +626,7 @@ export function ChatPanelTab({
                             )}
                             <ComposerSubmitButton
                               className="composer-submit"
-                              disabled={!composerState.canSubmit}
+                              disabled={!canSubmitWithDictation}
                               animated
                             />
                           </div>
