@@ -181,6 +181,7 @@ export function StreamingTextReveal({
         },
         activeRef.current,
         Date.now(),
+        containerRect.width,
       );
 
       if (caughtUp) {

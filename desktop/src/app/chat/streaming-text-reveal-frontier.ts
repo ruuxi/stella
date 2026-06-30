@@ -52,15 +52,37 @@ export interface RevealCaret {
 }
 
 /**
+ * Advance the frontier `x` toward `goal` by one frame. `accel` (>= 1)
+ * scales both the proportional catch-up and the floor speed so the
+ * reveal can cascade quickly when it has fallen multiple lines behind a
+ * burst, without ever overshooting the goal.
+ */
+function stepFrontierX(state: RevealState, goal: number, accel: number): void {
+  if (state.x >= goal) return;
+  state.x = Math.min(
+    goal,
+    state.x +
+      Math.max((goal - state.x) * CATCH_UP * accel, MIN_SPEED * accel),
+  );
+}
+
+/**
  * Advance the reveal frontier by one frame toward the measured caret.
  * Mutates `state`. Returns `true` when the reveal fully caught up after
  * streaming ended — the caller should clear the mask and stop ticking.
+ *
+ * `lineRight` is the full text-column width (container-relative): the
+ * right edge an intermediate, fully-wrapped line is swept to while the
+ * frontier cascades down toward a caret several lines below. Defaults to
+ * the caret's own right edge so single-line callers/tests need not pass
+ * it.
  */
 export function advanceRevealFrontier(
   state: RevealState,
   caret: RevealCaret,
   active: boolean,
   nowMs: number,
+  lineRight: number = caret.right,
 ): boolean {
   if (!state.initialized || caret.bottom < state.lineTop - LINE_EPSILON) {
     // First measurement → sweep in from the left; a relayout that
@@ -74,13 +96,14 @@ export function advanceRevealFrontier(
     state.lastProgressAtMs = nowMs;
   }
 
+  const lineHeight = Math.max(1, state.lineBottom - state.lineTop);
   const sameLine = caret.top < state.lineBottom - LINE_EPSILON;
   // Once the caret stalls (no new visible text — e.g. the model is
   // streaming tool-call args we never render), finish the tail instead
   // of holding the last words half-faded in the gradient ramp.
   const finishTail =
     !active || nowMs - state.lastProgressAtMs >= IDLE_FINISH_MS;
-  let goal: number;
+
   if (sameLine) {
     state.lineTop = Math.min(state.lineTop, caret.top);
     state.lineBottom = Math.max(state.lineBottom, caret.bottom);
@@ -91,27 +114,45 @@ export function advanceRevealFrontier(
     // While text is arriving, glide up to the caret; once the stream
     // ends or stalls, overshoot by the fade width so the tail reaches
     // full opacity.
-    goal = finishTail ? caret.right + FADE_WIDTH : caret.right;
-  } else {
-    // Caret wrapped to a lower line: finish sweeping the current
-    // line past its recorded end, then latch onto the new line.
-    goal = state.maxRight + FADE_WIDTH;
-    if (state.x >= goal - 0.5) {
+    const goal = finishTail ? caret.right + FADE_WIDTH : caret.right;
+    stepFrontierX(state, goal, 1);
+    return !active && state.x >= caret.right + FADE_WIDTH - 0.5;
+  }
+
+  // Caret wrapped below the current reveal line. Sweep the current line
+  // to its full end, then step DOWN exactly one line — never jump
+  // straight to the caret's latest line, which would expose every
+  // intermediate line at once (the "stall then dump a whole paragraph"
+  // jank). Accelerate proportional to how far behind the reveal is so a
+  // multi-line burst cascades quickly but still line-by-line, keeping
+  // pace with the stream instead of crawling one slow line at a time.
+  const linesBehind = Math.max(
+    1,
+    Math.round((caret.top - state.lineTop) / lineHeight),
+  );
+  // A line the caret has already moved past is complete and fills the
+  // text column; reveal it to the wider of its measured end and the
+  // full column width.
+  const currentLineRight = Math.max(state.maxRight, lineRight);
+  stepFrontierX(state, currentLineRight + FADE_WIDTH, linesBehind);
+  if (state.x >= currentLineRight + FADE_WIDTH - 0.5) {
+    const nextBottom = state.lineBottom + lineHeight;
+    state.x = 0;
+    if (caret.top < nextBottom - LINE_EPSILON) {
+      // The next line down is the caret's own line → adopt its real
+      // geometry so the final sweep tracks the live caret.
       state.lineTop = caret.top;
       state.lineBottom = caret.bottom;
-      state.x = 0;
       state.maxRight = caret.right;
       state.lastProgressAtMs = nowMs;
-      goal = !active ? caret.right + FADE_WIDTH : caret.right;
+    } else {
+      // An intermediate fully-wrapped line → advance arithmetically and
+      // reveal it at the full column width.
+      state.lineTop = state.lineBottom;
+      state.lineBottom = nextBottom;
+      state.maxRight = lineRight;
     }
   }
 
-  if (state.x < goal) {
-    state.x = Math.min(
-      goal,
-      state.x + Math.max((goal - state.x) * CATCH_UP, MIN_SPEED),
-    );
-  }
-
-  return sameLine && !active && state.x >= caret.right + FADE_WIDTH - 0.5;
+  return false;
 }

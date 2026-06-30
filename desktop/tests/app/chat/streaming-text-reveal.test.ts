@@ -90,4 +90,61 @@ describe("advanceRevealFrontier", () => {
     expect(state.lineTop).toBe(24);
     expect(state.x).toBe(120);
   });
+
+  it("cascades line-by-line through a multi-line burst instead of dumping", () => {
+    const state = createRevealState();
+    // Reveal line 0 fully.
+    runFrames(state, line(200), true, 0, 200);
+    expect(state.x).toBe(200);
+
+    // A burst lands: the caret jumps four lines down in a single frame
+    // (lineHeight 20 → top 80). The reveal must NOT jump straight to the
+    // caret's line — it visits each intermediate line in turn.
+    const caret: RevealCaret = { top: 80, bottom: 100, right: 140 };
+    const lineRight = 600;
+    const seenLineTops = new Set<number>();
+    let caughtUp = false;
+    for (let frame = 0; frame < 200 && !caughtUp; frame += 1) {
+      caughtUp = advanceRevealFrontier(state, caret, true, 10, lineRight);
+      seenLineTops.add(state.lineTop);
+    }
+    // Every intermediate line (0, 20, 40, 60) plus the caret line (80)
+    // was the active reveal line at some point — none were skipped.
+    expect(seenLineTops.has(0)).toBe(true);
+    expect(seenLineTops.has(20)).toBe(true);
+    expect(seenLineTops.has(40)).toBe(true);
+    expect(seenLineTops.has(60)).toBe(true);
+    expect(state.lineTop).toBe(80);
+    // Settles onto the caret's own line and parks at the live caret.
+    expect(state.x).toBe(140);
+  });
+
+  it("keeps pace: a deep backlog catches up fast, then eases into the caret", () => {
+    const state = createRevealState();
+    runFrames(state, line(200), true, 0, 200);
+
+    // Caret eight lines below in a single frame (a flush-sized jump).
+    const caret: RevealCaret = { top: 160, bottom: 180, right: 90 };
+
+    // The bulk of the backlog clears fast: within a handful of frames the
+    // reveal has already advanced several lines (no multi-second crawl,
+    // the failure mode of a naive gentle line-by-line sweep).
+    for (let frame = 0; frame < 8; frame += 1) {
+      advanceRevealFrontier(state, caret, true, 10, 600);
+    }
+    expect(state.lineTop).toBeGreaterThanOrEqual(80);
+
+    // It still converges all the way onto the live caret line and parks
+    // there — never overshooting or skipping it.
+    let frames = 8;
+    while (state.lineTop !== 160 && frames < 200) {
+      advanceRevealFrontier(state, caret, true, 10, 600);
+      frames += 1;
+    }
+    expect(state.lineTop).toBe(160);
+    // Once on the caret's own line it glides up to and parks at the live
+    // caret edge.
+    runFrames(state, caret, true, 10, 200);
+    expect(state.x).toBe(90);
+  });
 });
