@@ -1,14 +1,22 @@
 /**
- * Per-message action row rendered below a settled chat message.
+ * Per-message action row rendered below a chat message.
  *
  * - User messages get a single Copy action.
  * - Assistant messages get Copy + Read aloud (on-demand TTS).
  *
- * Never mounted while a message is still streaming — the caller gates on
- * the finalized state. The row reserves its height at all times and only
- * fades in on row hover / keyboard focus (or while its read-aloud is
- * active) so revealing it never shifts surrounding row geometry, which
- * the chat's scroll-follow logic depends on.
+ * The row reserves its height at all times and only fades in on row hover /
+ * keyboard focus (or while its read-aloud is active) so revealing it never
+ * shifts surrounding row geometry, which the chat's scroll-follow logic
+ * depends on.
+ *
+ * It is mounted *throughout* an assistant message's lifetime — including
+ * while it is still streaming — so its reserved height is present from the
+ * first painted line and finalizing the message causes NO layout jump. While
+ * `streaming` is true the row is held invisible and made `inert` (not
+ * focusable, not clickable, hidden from the accessibility tree); it cannot
+ * reveal on hover/focus until the message settles. The CSS that suppresses
+ * the reveal keys off the row's `.event-row--streaming` ancestor (see
+ * `message-actions.css`).
  */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, LoaderCircle, Square, Volume2 } from "@/ui/icons";
@@ -28,6 +36,13 @@ type MessageActionsProps = {
   showReadAloud?: boolean;
   /** Row alignment — `end` right-aligns under the user bubble. */
   align?: "start" | "end";
+  /**
+   * True while the owning message is still streaming. The row stays mounted
+   * (reserving its height) but is held invisible + `inert` so it can't be
+   * focused, clicked, or read by assistive tech, and never reveals on hover
+   * until the message finalizes.
+   */
+  streaming?: boolean;
 };
 
 const COPIED_RESET_MS = 1600;
@@ -37,6 +52,7 @@ function MessageActionsImpl({
   messageKey,
   showReadAloud = false,
   align = "start",
+  streaming = false,
 }: MessageActionsProps) {
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -72,6 +88,11 @@ function MessageActionsImpl({
     <div
       className={`message-actions message-actions--${align}`}
       data-active={isPlaying ? "true" : undefined}
+      data-streaming={streaming ? "true" : undefined}
+      // `inert` keeps the still-streaming (invisible) row out of the tab
+      // order and the accessibility tree and blocks pointer interaction —
+      // belt-and-suspenders with the CSS that holds it at opacity:0.
+      inert={streaming || undefined}
     >
       <button
         type="button"

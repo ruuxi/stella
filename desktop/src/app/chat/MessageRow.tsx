@@ -659,12 +659,17 @@ export const AssistantMessageRow = memo(
             />
           )}
           {row.customSlot ? row.customSlot : null}
-          {hasText && !row.isStreaming && (
+          {hasText && (
+            // Mounted while streaming too (held invisible + inert via the
+            // `streaming` flag) so its reserved height is present from the
+            // first line and finalizing the message adds no box — no layout
+            // jump. It only becomes hover/focus-revealable once settled.
             <MessageActions
               text={text}
               messageKey={row.id}
               showReadAloud
               align="start"
+              streaming={Boolean(row.isStreaming)}
             />
           )}
         </div>
