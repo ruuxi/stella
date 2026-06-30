@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat";
 import type { StreamingAssistantOverlay } from "@/features/chat/streaming/streaming-types";
 import {
+  findOverlayWinnerIndices,
   getPersistedAssistantSlots,
   mergeConversationDisplayMessageSources,
+  overlayMergeShapeUnchanged,
   overlayToMessageRecord,
+  rebuildDisplayMessagesFromCachedOrder,
 } from "@/features/chat/hooks/use-conversation-display-messages";
 
 const message = (overrides: Partial<MessageRecord>): MessageRecord => ({
@@ -96,5 +99,147 @@ describe("conversation display message merge", () => {
         responseTarget: { type: "user_turn" },
       },
     });
+  });
+});
+
+describe("conversation display merge — structural-sharing fast path", () => {
+  // Build the inputs for a turn that is mid-stream: a user message, a prior
+  // assistant turn, and a live overlay masking its persisted twin.
+  const buildScene = (overlayText: string) => {
+    const user = message({ _id: "u1", type: "user_message", timestamp: 0 });
+    const priorAssistant = message({
+      _id: "assistant-msg-prior",
+      timestamp: 1,
+      payload: { text: "earlier reply", userMessageId: "u0" },
+    });
+    const persistedTwin = message({
+      _id: "assistant-msg-run-1-10",
+      timestamp: 3,
+      payload: { text: "stored text", userMessageId: "u1" },
+    });
+    const persistedMessages = [user, priorAssistant, persistedTwin];
+    const live = overlay({ text: overlayText, timestamp: 2 });
+    const overlayMessages = [overlayToMessageRecord(live, persistedTwin)];
+    const persistedAssistantSlots = getPersistedAssistantSlots([
+      priorAssistant,
+      persistedTwin,
+    ]);
+    return {
+      persistedMessages,
+      overlayMessages,
+      streamingAssistants: [live],
+      persistedAssistantSlots,
+    };
+  };
+
+  it("reuse equals a full recompute when only overlay text grows", () => {
+    const first = buildScene("strea");
+    const fullFirst = mergeConversationDisplayMessageSources(first);
+    const winners = findOverlayWinnerIndices(fullFirst, first.overlayMessages);
+
+    // Next delta: identical persisted set + slot index (stable refs), overlay
+    // rebuilt with grown text (new object, same id/timestamp/type).
+    const second = {
+      ...first,
+      overlayMessages: [
+        overlayToMessageRecord(
+          overlay({ text: "streamed text", timestamp: 2 }),
+          first.persistedMessages[2]!,
+        ),
+      ],
+    };
+
+    expect(
+      overlayMergeShapeUnchanged(first.overlayMessages, second.overlayMessages),
+    ).toBe(true);
+
+    const reused = rebuildDisplayMessagesFromCachedOrder(
+      fullFirst,
+      winners,
+      second.overlayMessages,
+    );
+    const fullSecond = mergeConversationDisplayMessageSources({
+      ...second,
+      persistedMessages: first.persistedMessages,
+      persistedAssistantSlots: first.persistedAssistantSlots,
+    });
+
+    expect(reused).not.toBeNull();
+    // Identical ordering + membership.
+    expect(reused!.map((m) => m._id)).toEqual(fullSecond.map((m) => m._id));
+    // Identical masking + timestamp ordering: user (ts 0), prior assistant
+    // (ts 1), live overlay (ts 2); the persisted twin (ts 3) stays hidden.
+    expect(reused!.map((m) => m._id)).toEqual([
+      "u1",
+      "assistant-msg-prior",
+      "stream-overlay:u1:1",
+    ]);
+    // The overlay slot reflects the grown text...
+    const reusedOverlay = reused!.find((m) => m._id === "stream-overlay:u1:1");
+    expect(reusedOverlay!.payload?.text).toBe("streamed text");
+    // ...and matches the full recompute's object at that slot by reference.
+    const fullOverlay = fullSecond.find((m) => m._id === "stream-overlay:u1:1");
+    expect(reusedOverlay).toBe(second.overlayMessages[0]);
+    expect(reusedOverlay).toBe(fullOverlay);
+    // Persisted-winner positions reuse the cached (stable) objects.
+    const reusedUser = reused!.find((m) => m._id === "u1");
+    expect(reusedUser).toBe(first.persistedMessages[0]);
+  });
+
+  it("only the overlay positions are swapped; persisted refs are preserved", () => {
+    const scene = buildScene("hello");
+    const full = mergeConversationDisplayMessageSources(scene);
+    const winners = findOverlayWinnerIndices(full, scene.overlayMessages);
+    // Exactly one overlay winner (the streaming overlay); the two persisted
+    // rows are not winners.
+    expect(winners).toHaveLength(1);
+    expect(full[winners[0]!]!._id).toBe("stream-overlay:u1:1");
+  });
+
+  it("shape check fails when membership/order/timestamp actually changes", () => {
+    const base = buildScene("hi").overlayMessages;
+    // Different id (new slot).
+    expect(
+      overlayMergeShapeUnchanged(base, [
+        overlayToMessageRecord(
+          overlay({ _id: "stream-overlay:u1:2", indexInTurn: 2 }),
+          undefined,
+        ),
+      ]),
+    ).toBe(false);
+    // Different length.
+    expect(overlayMergeShapeUnchanged(base, [])).toBe(false);
+    // Different timestamp (would reorder the sort).
+    expect(
+      overlayMergeShapeUnchanged(base, [
+        overlayToMessageRecord(overlay({ text: "hi", timestamp: 99 }), undefined),
+      ]),
+    ).toBe(false);
+  });
+
+  it("falls back (returns null) if an overlay-winner id is missing", () => {
+    const scene = buildScene("x");
+    const full = mergeConversationDisplayMessageSources(scene);
+    const winners = findOverlayWinnerIndices(full, scene.overlayMessages);
+    // Current overlay list no longer contains the winner id → caller must
+    // recompute rather than reuse a stale order.
+    expect(
+      rebuildDisplayMessagesFromCachedOrder(full, winners, []),
+    ).toBeNull();
+  });
+
+  it("reuses the array as-is when no overlay contributed (empty winners)", () => {
+    const persistedMessages = [
+      message({ _id: "u1", type: "user_message", timestamp: 0 }),
+    ];
+    const cachedResult = mergeConversationDisplayMessageSources({
+      persistedMessages,
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots(persistedMessages),
+    });
+    expect(rebuildDisplayMessagesFromCachedOrder(cachedResult, [], [])).toBe(
+      cachedResult,
+    );
   });
 });
