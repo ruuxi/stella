@@ -321,7 +321,11 @@ export function streamStoreReducer(
             hasToolActivity: true,
             // The model has stopped emitting text to run a tool; clear the
             // streaming-text flag so the post-tool reasoning gap shows the
-            // working indicator again.
+            // working indicator again. Re-arming is safe: the post-tool
+            // answer is a new assistant message (the agent loop emits the
+            // `message_end` boundary before this tool start), so it streams
+            // into a fresh overlay slot whose `StreamingTextReveal` re-fires
+            // the paint hand-off and sets `isStreamingText` back to true.
             isStreamingText: false,
             statusText: action.statusText ?? current.statusText,
             activeToolCalls: {
