@@ -364,36 +364,84 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
    * would otherwise inherit that old `agent-completed` and look done. A card
    * only counts a completion at or after its spawn (see `buildBackgroundWork`).
    */
+  // Incremental build. The bare `useMemo([messages])` re-scanned EVERY
+  // message's EVERY tool event on every streamed delta (the `messages` array
+  // identity changes each delta as the live overlay grows), i.e.
+  // O(messages x toolEvents) per frame — growing with conversation length on
+  // the auto-scroll critical path. Two structural facts make this avoidable:
+  //
+  //   1. `agent-completed` contributions are intrinsic to a message's
+  //      `toolEvents` array, and `stabilizeMessageList` keeps each finalized
+  //      message's `toolEvents` reference stable across deltas.
+  //   2. During pure text streaming no `toolEvents` change at all.
+  //
+  // So: cache each `toolEvents` array's contribution by reference, and when
+  // every message's `toolEvents` ref matches the previous build, return the
+  // prior Map untouched (no rebuild, no allocation). When some change, rebuild
+  // but reuse cached contributions for unchanged arrays — the heavy
+  // agent-completed scan runs only for genuinely new/changed tool-event lists.
+  const completedCacheRef = useRef<{
+    toolEventsByIndex: Array<EventRecord[] | undefined>;
+    contributionByToolEvents: WeakMap<
+      EventRecord[],
+      ReadonlyArray<readonly [string, number]>
+    >;
+    result: Map<string, number>;
+  } | null>(null);
+
   const completedAtMsById = useMemo(() => {
-    const completedAt = new Map<string, number>();
-    for (const message of messages) {
-      for (const toolEvent of message.toolEvents) {
-        if (toolEvent.type !== "agent-completed") continue;
-        const agentId = (toolEvent.payload as { agentId?: unknown } | undefined)
-          ?.agentId;
-        if (typeof agentId === "string" && agentId.length > 0) {
-          const prev = completedAt.get(agentId) ?? 0;
-          if (toolEvent.timestamp > prev) {
-            completedAt.set(agentId, toolEvent.timestamp);
-          }
+    const cache = completedCacheRef.current;
+    if (cache && cache.toolEventsByIndex.length === messages.length) {
+      let unchanged = true;
+      for (let i = 0; i < messages.length; i += 1) {
+        if (cache.toolEventsByIndex[i] !== messages[i].toolEvents) {
+          unchanged = false;
+          break;
         }
       }
+      if (unchanged) return cache.result;
     }
-    return completedAt;
-  }, [messages]);
 
-  const responseTargetByAssistantId = useMemo(() => {
-    const map = new Map<string, AgentResponseTarget | undefined>();
-    for (const message of messages) {
-      if (!isAssistantMessage(message)) continue;
-      const metadata = (
-        getMessagePayload(message)?.metadata as
-          | { runtime?: { responseTarget?: AgentResponseTarget } }
-          | undefined
-      )?.runtime;
-      map.set(message._id, metadata?.responseTarget);
+    const contributionByToolEvents =
+      cache?.contributionByToolEvents ??
+      new WeakMap<EventRecord[], ReadonlyArray<readonly [string, number]>>();
+    const toolEventsByIndex: Array<EventRecord[] | undefined> = new Array(
+      messages.length,
+    );
+    const completedAt = new Map<string, number>();
+
+    for (let i = 0; i < messages.length; i += 1) {
+      const toolEvents = messages[i].toolEvents;
+      toolEventsByIndex[i] = toolEvents;
+      if (!toolEvents || toolEvents.length === 0) continue;
+
+      let contribution = contributionByToolEvents.get(toolEvents);
+      if (!contribution) {
+        const pairs: Array<readonly [string, number]> = [];
+        for (const toolEvent of toolEvents) {
+          if (toolEvent.type !== "agent-completed") continue;
+          const agentId = (
+            toolEvent.payload as { agentId?: unknown } | undefined
+          )?.agentId;
+          if (typeof agentId === "string" && agentId.length > 0) {
+            pairs.push([agentId, toolEvent.timestamp] as const);
+          }
+        }
+        contribution = pairs;
+        contributionByToolEvents.set(toolEvents, contribution);
+      }
+
+      for (const [agentId, ts] of contribution) {
+        if (ts > (completedAt.get(agentId) ?? 0)) completedAt.set(agentId, ts);
+      }
     }
-    return map;
+
+    completedCacheRef.current = {
+      toolEventsByIndex,
+      contributionByToolEvents,
+      result: completedAt,
+    };
+    return completedAt;
   }, [messages]);
 
   /**
@@ -565,12 +613,24 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const text = getDisplayMessageText(message);
         const payload = getMessagePayload(message);
         const replyToUserMessageId = assistantReplyId;
-        const responseTarget = responseTargetByAssistantId.get(message._id);
+        // Read `responseTarget` straight off this message's own runtime
+        // metadata. It was previously precomputed into a per-render
+        // `Map<_id, responseTarget>` and looked up here by `message._id` — but
+        // that lookup is always THIS same message, so the map was a redundant
+        // O(messages) pass + allocation on every streamed delta. Inlining it
+        // (it folds into the per-message projection cache for finalized rows;
+        // only the live overlay reads it fresh) removes that whole pass.
         const runtimeMetadata = (
           payload?.metadata as
-            | { runtime?: { isStreaming?: boolean } }
+            | {
+                runtime?: {
+                  isStreaming?: boolean;
+                  responseTarget?: AgentResponseTarget;
+                };
+              }
             | undefined
         )?.runtime;
+        const responseTarget = runtimeMetadata?.responseTarget;
         // Unified key for both live-streaming overlays (synthetic
         // `_id`s) and the eventual persisted rows for the same
         // `(userMessageId, indexInTurn)` slot. The display merge
@@ -774,12 +834,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         : computed;
 
     return coalesceVoiceSessionRows(coalesceInlineImageRows(deduped));
-  }, [
-    completedAtMsById,
-    developerResourcePreviewsEnabled,
-    displayMessages,
-    responseTargetByAssistantId,
-  ]);
+  }, [completedAtMsById, developerResourcePreviewsEnabled, displayMessages]);
 
   const rowsStableRef = useRef<StableTurnRowsState<EventRowViewModel> | null>(
     null,
