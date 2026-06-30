@@ -68,20 +68,54 @@ function measureCaretRect(last: Node): DOMRect | null {
   return rects.length > 0 ? rects[rects.length - 1] : null;
 }
 
+/** Fully-transparent hold mask shown before the first character paints. */
+const HOLD_MASK_IMAGE = "linear-gradient(transparent, transparent)";
+/** Sentinel stored in `lastKeyRef` once the mask has been cleared. */
+const CLEARED_MASK_KEY = "";
+
+type MaskKeyRef = { current: string | null };
+
+/**
+ * Apply the reveal mask, skipping the style write (and the layer
+ * re-rasterization it forces) when the resulting mask is byte-identical to
+ * what is already painted. The mask-image/size/position triple fully
+ * determines the painted result, so a matching key means this frame would
+ * paint exactly the same pixels — common when the frontier has caught up and
+ * is idling between token bursts, or while the model streams tool-call args
+ * that render no new visible text. Coalescing those frames keeps the reveal's
+ * per-frame raster off the main thread so it stops competing with scroll
+ * compositing, with zero change to what the user sees.
+ */
 function applyMask(
   el: HTMLElement,
   state: RevealState,
   caretBottom: number,
   clipBottom: number,
+  lastKeyRef: MaskKeyRef,
 ): void {
   const mask = buildRevealMask(state, caretBottom, clipBottom);
+  const key = `${mask.maskImage}|${mask.maskSize}|${mask.maskPosition}`;
+  if (key === lastKeyRef.current) return;
+  lastKeyRef.current = key;
   el.style.maskImage = mask.maskImage;
   el.style.maskSize = mask.maskSize;
   el.style.maskPosition = mask.maskPosition;
   el.style.maskRepeat = mask.maskRepeat;
 }
 
-function clearMask(el: HTMLElement): void {
+/** Hold the row fully masked (pre-first-paint), deduped like `applyMask`. */
+function applyHoldMask(el: HTMLElement, lastKeyRef: MaskKeyRef): void {
+  if (lastKeyRef.current === HOLD_MASK_IMAGE) return;
+  lastKeyRef.current = HOLD_MASK_IMAGE;
+  el.style.maskImage = HOLD_MASK_IMAGE;
+  el.style.maskSize = "";
+  el.style.maskPosition = "";
+  el.style.maskRepeat = "";
+}
+
+function clearMask(el: HTMLElement, lastKeyRef: MaskKeyRef): void {
+  if (lastKeyRef.current === CLEARED_MASK_KEY) return;
+  lastKeyRef.current = CLEARED_MASK_KEY;
   el.style.maskImage = "";
   el.style.maskSize = "";
   el.style.maskPosition = "";
@@ -102,6 +136,9 @@ export function StreamingTextReveal({
   const activeRef = useRef(active);
   const stateRef = useRef<RevealState>(createRevealState());
   const frameRef = useRef<number | null>(null);
+  // Signature of the mask currently written to the DOM, so the rAF loop can
+  // skip re-applying (and re-rasterizing) an unchanged mask frame-to-frame.
+  const lastMaskKeyRef = useRef<string | null>(null);
   const notifyPainted = useNotifyAssistantTextPainted();
   const paintedRef = useRef(false);
 
@@ -161,10 +198,10 @@ export function StreamingTextReveal({
         // No measurable content yet — hold fully masked until the
         // first chunk paints, then reveal from the line's left edge.
         if (activeRef.current) {
-          el.style.maskImage = "linear-gradient(transparent, transparent)";
+          applyHoldMask(el, lastMaskKeyRef);
           frameRef.current = requestAnimationFrame(tick);
         } else {
-          clearMask(el);
+          clearMask(el, lastMaskKeyRef);
           state.initialized = false;
           frameRef.current = null;
         }
@@ -185,7 +222,7 @@ export function StreamingTextReveal({
       );
 
       if (caughtUp) {
-        clearMask(el);
+        clearMask(el, lastMaskKeyRef);
         state.initialized = false;
         state.x = 0;
         frameRef.current = null;
@@ -202,7 +239,7 @@ export function StreamingTextReveal({
         codeBlockBottom !== null
           ? Math.max(state.lineBottom, caretBottom, codeBlockBottom)
           : state.lineBottom;
-      applyMask(el, state, caretBottom, clipBottom);
+      applyMask(el, state, caretBottom, clipBottom, lastMaskKeyRef);
       frameRef.current = requestAnimationFrame(tick);
     };
 
