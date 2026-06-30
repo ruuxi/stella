@@ -13,6 +13,7 @@ import type {
 import type { OfficePreviewRef } from "../../../../../runtime/contracts/office-preview.js";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import type { SelfModApplied } from "@/features/chat/self-mod-types";
+import { toolActivityEqual } from "@/features/chat/lib/tool-activity";
 import type {
   AssistantRowViewModel,
   EventRowViewModel,
@@ -292,6 +293,7 @@ const assistantRowEqual = (
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
   scheduleReceiptEqual(a.scheduleReceipt, b.scheduleReceipt) &&
   backgroundWorkEqual(a.backgroundWork, b.backgroundWork) &&
+  toolActivityEqual(a.toolActivity, b.toolActivity) &&
   (a.voiceSession?.durationMs ?? null) ===
     (b.voiceSession?.durationMs ?? null) &&
   // Compare a stable key for the custom slot (the ReactNode itself
