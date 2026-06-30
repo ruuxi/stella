@@ -1,5 +1,5 @@
 import path from "node:path";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -57,6 +57,56 @@ describe("fileChanges emission", () => {
     });
     expect(result.error).toBeDefined();
     expect(result.fileChanges).toBeUndefined();
+  });
+
+  it("Write rejects a relative path with a clear error", async () => {
+    const root = await createTempDir();
+    const result = await handleWrite(
+      { file_path: path.join("nested", "rel.txt"), content: "nope" },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaAppDir: root,
+      },
+    );
+    expect(result.error).toMatch(/File tool paths must be absolute/);
+    expect(result.error).toMatch(/nested/);
+    expect(result.fileChanges).toBeUndefined();
+  });
+
+  it("Edit rejects a relative path with a clear error", async () => {
+    const root = await createTempDir();
+    const result = await handleEdit(
+      {
+        file_path: "rel-edit.txt",
+        old_string: "a",
+        new_string: "b",
+      },
+      {
+        conversationId: "c1",
+        deviceId: "d1",
+        requestId: "r1",
+        stellaAppDir: root,
+      },
+    );
+    expect(result.error).toMatch(
+      /File tool paths must be absolute. Received relative path 'rel-edit\.txt'/,
+    );
+  });
+
+  it("Write accepts a ~-prefixed path (expands to absolute under HOME)", async () => {
+    const home = process.env.HOME ?? "";
+    expect(home.length).toBeGreaterThan(0);
+    const rel = `.stella-test-${Date.now()}.txt`;
+    const result = await handleWrite({
+      file_path: `~/${rel}`,
+      content: "tilde",
+    });
+    expect(result.error).toBeUndefined();
+    const written = path.join(home, rel);
+    expect(await readFile(written, "utf-8")).toBe("tilde");
+    await rm(written, { force: true });
   });
 
   it("Edit emits an `update` change for a successful replacement", async () => {

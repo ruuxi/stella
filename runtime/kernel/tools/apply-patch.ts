@@ -31,10 +31,11 @@ type HunkLine =
   | { kind: "add"; text: string };
 
 /**
- * Paths in the envelope are typically relative and resolved against the turn
- * cwd. We keep raw paths during parse so callers can resolve them against their
- * own cwd (e.g. the HMR resolver in agent-orchestration). Empty paths are
- * rejected.
+ * Paths in the envelope are home-expanded (~, $HOME, %USERPROFILE%) but must
+ * be absolute — the file tools no longer resolve paths against any working
+ * directory. Raw paths are kept during parse so self-mod path inference can
+ * still read them; the absolute-path requirement is enforced in resolveOp.
+ * Empty paths are rejected.
  */
 const normalizeRawPath = (raw: string): string => {
   const expanded = expandHomePath(raw.trim());
@@ -42,8 +43,17 @@ const normalizeRawPath = (raw: string): string => {
   return expanded;
 };
 
-const resolveAgainstCwd = (raw: string, cwd: string): string =>
-  path.isAbsolute(raw) ? raw : path.resolve(cwd, raw);
+const requireAbsolutePatchPath = (raw: string): string => {
+  // Paths in the envelope are already home-expanded during parse.
+  if (!path.isAbsolute(raw)) {
+    throw new Error(
+      `File tool paths must be absolute. Received relative path '${raw}'. ` +
+        `Pass a full absolute path (e.g. /Users/you/projects/foo/bar.ts); ` +
+        `the file tools do not resolve relative to the shell's working directory.`,
+    );
+  }
+  return path.resolve(raw);
+};
 
 // ----------------------------------------------------------------------------
 // Parser
@@ -526,36 +536,6 @@ export const extractApplyPatchTargetPaths = (patch: string): string[] =>
     return op.moveTo ? [op.path, op.moveTo] : [op.path];
   });
 
-const resolveApplyPatchCwd = (
-  args: Record<string, unknown>,
-  context?: ToolContext,
-): string => {
-  const argCwd = args.workdir ?? args.working_directory ?? args.cwd;
-  if (context?.toolWorkspaceRoot && context.toolWorkspaceRoot.trim()) {
-    const root = path.resolve(context.toolWorkspaceRoot);
-    if (typeof argCwd === "string" && argCwd.trim()) {
-      const requested = expandHomePath(argCwd.trim());
-      const resolved = path.isAbsolute(requested)
-        ? path.resolve(requested)
-        : path.resolve(root, requested);
-      if (!isPathInsideRoot(resolved, root)) {
-        throw new Error(
-          "apply_patch workdir is outside the shared session workspace.",
-        );
-      }
-      return resolved;
-    }
-    return root;
-  }
-  if (typeof argCwd === "string" && argCwd.trim()) {
-    return path.resolve(expandHomePath(argCwd.trim()));
-  }
-  if (context?.stellaAppDir && context.stellaAppDir.trim()) {
-    return context.stellaAppDir;
-  }
-  return process.cwd();
-};
-
 const isPathInsideRoot = (candidate: string, root: string): boolean => {
   const relative = path.relative(root, candidate);
   return (
@@ -588,15 +568,15 @@ const ensurePatchOpsWithinRoot = (
   return null;
 };
 
-const resolveOp = <T extends FileOp>(op: T, cwd: string): T => {
+const resolveOp = <T extends FileOp>(op: T): T => {
   if (op.kind === "update") {
     return {
       ...op,
-      path: resolveAgainstCwd(op.path, cwd),
-      ...(op.moveTo ? { moveTo: resolveAgainstCwd(op.moveTo, cwd) } : {}),
+      path: requireAbsolutePatchPath(op.path),
+      ...(op.moveTo ? { moveTo: requireAbsolutePatchPath(op.moveTo) } : {}),
     } as T;
   }
-  return { ...op, path: resolveAgainstCwd(op.path, cwd) } as T;
+  return { ...op, path: requireAbsolutePatchPath(op.path) } as T;
 };
 
 export const handleApplyPatch = async (
@@ -610,8 +590,7 @@ export const handleApplyPatch = async (
   }
 
   try {
-    const cwd = resolveApplyPatchCwd(args, context);
-    const ops = parsePatch(patch).map((op) => resolveOp(op, cwd));
+    const ops = parsePatch(patch).map((op) => resolveOp(op));
     if (context?.toolWorkspaceRoot && context.toolWorkspaceRoot.trim()) {
       const scopeError = ensurePatchOpsWithinRoot(
         ops,

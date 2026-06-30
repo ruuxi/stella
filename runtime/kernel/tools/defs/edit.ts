@@ -8,14 +8,15 @@ import type { ToolDefinition } from "../types.js";
 export const editTool: ToolDefinition = {
   name: "Edit",
   description:
-    "Edit an existing text file by replacing old_string with new_string. Use replace_all only when every occurrence should change. Required: file_path, old_string, new_string.",
+    "Edit an existing text file by replacing old_string with new_string. Use replace_all only when every occurrence should change. file_path MUST be an absolute path (e.g. /Users/you/projects/foo/bar.ts); relative paths are rejected and the file tools do NOT follow the shell's cwd. Required: file_path, old_string, new_string.",
   promptSnippet: "Replace text inside an existing file",
   parameters: {
     type: "object",
     properties: {
       file_path: {
         type: "string",
-        description: "Absolute or repo-relative path to edit.",
+        description:
+          "Absolute path to edit. Must be absolute (~ / $HOME expansion allowed); relative paths are rejected.",
       },
       old_string: {
         type: "string",
