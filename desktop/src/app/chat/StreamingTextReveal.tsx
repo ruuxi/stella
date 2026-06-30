@@ -112,6 +112,17 @@ export function StreamingTextReveal({
   // the moment the reveal has measurable painted content — independent of
   // the mask animation (which `prefers-reduced-motion` disables). A cheap
   // rAF poll watches for the first measurable node, fires once, and stops.
+  //
+  // The signal fires once per reveal instance (`paintedRef` latches, and
+  // resets only when `active` drops). That is enough to re-arm the
+  // indicator hand-off after a `tool-start` clears `isStreamingText`: the
+  // post-tool answer is structurally a *new* assistant message, so it lands
+  // in a fresh overlay slot (a brand-new `StreamingTextReveal` instance with
+  // `paintedRef` already false). The agent loop guarantees this ordering —
+  // `message_end` (→ `ASSISTANT_MESSAGE` boundary → slot-index advance)
+  // always precedes the next `tool_execution_start`, and text never resumes
+  // inside an already-streamed message, so a second text segment can never
+  // reuse this instance with a stale latched `paintedRef`.
   useEffect(() => {
     if (!active) {
       paintedRef.current = false;
