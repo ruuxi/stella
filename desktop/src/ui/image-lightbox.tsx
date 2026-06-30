@@ -43,6 +43,7 @@ export function ImageLightbox({
             data-slot="image-lightbox-content"
             className={cn(className)}
             aria-label={alt || "Image preview"}
+            aria-describedby={undefined}
           >
             <VisuallyHidden asChild>
               <DialogPrimitive.Title>
