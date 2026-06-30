@@ -168,6 +168,7 @@ export const ChatColumn = memo(function ChatColumn({
     activeToolCallId: conversation.streaming.activeToolCallId,
     runtimeStatusText: conversation.streaming.runtimeStatusText,
     liveTasks: conversation.streaming.liveTasks,
+    activeRunId: conversation.streaming.activeRunId,
   });
   const { isDragOver, dropHandlers } = useFileDrop({
     setChatContext: composer.setChatContext,

@@ -11,6 +11,7 @@ import {
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import {
+  buildInlineWorkingIndicatorProps,
   getInlineWorkingIndicatorActive,
   getInlineWorkingIndicatorExitDelayMs,
   getRunningTaskIndicatorText,
@@ -529,6 +530,63 @@ describe("getInlineWorkingIndicatorActive", () => {
         hasRunningTask: false,
       }),
     ).toBe(false);
+  });
+});
+
+describe("buildInlineWorkingIndicatorProps", () => {
+  const runningTask = (runId: string): TaskItem => ({
+    id: `task-${runId}`,
+    description: "background research",
+    agentType: "general",
+    status: "running",
+    runId,
+    startedAtMs: 0,
+    lastUpdatedAtMs: 0,
+  });
+
+  it("keeps the orchestrator indicator visible while a previous turn's background task runs", () => {
+    // New turn: the orchestrator is in its pre-tool thinking phase while a
+    // sub-agent spawned by an EARLIER run is still going. The leftover task
+    // belongs to a different run, so it must not hide the current turn's
+    // working indicator.
+    const props = buildInlineWorkingIndicatorProps({
+      isStreaming: true,
+      isStreamingResponseText: false,
+      isToolActive: false,
+      hasToolActivity: false,
+      liveTasks: [runningTask("run-prev")],
+      activeRunId: "run-current",
+    });
+    expect(props.active).toBe(true);
+  });
+
+  it("still shows the indicator while the current turn calls a tool with a prior background task running", () => {
+    const props = buildInlineWorkingIndicatorProps({
+      isStreaming: true,
+      isStreamingResponseText: false,
+      isToolActive: true,
+      hasToolActivity: true,
+      activeToolName: "read_file",
+      activeToolCallId: "call-1",
+      liveTasks: [runningTask("run-prev")],
+      activeRunId: "run-current",
+    });
+    expect(props.active).toBe(true);
+  });
+
+  it("steps aside for a sub-agent spawned by the current run", () => {
+    // The running task belongs to the active run (the orchestrator just
+    // spawned it), so the inline indicator yields to the task's own
+    // chip/card instead of doubling up.
+    const props = buildInlineWorkingIndicatorProps({
+      isStreaming: true,
+      isStreamingResponseText: false,
+      isToolActive: false,
+      hasToolActivity: true,
+      liveTasks: [runningTask("run-current")],
+      activeRunId: "run-current",
+    });
+    expect(props.active).toBe(false);
   });
 });
 

@@ -311,6 +311,7 @@ function MiniChatSurface() {
     liveTasks,
     optimisticEvents,
     runtimeStatusText,
+    activeRunId,
     activeToolCallId,
     activeToolName,
     hasToolActivity,
@@ -404,6 +405,7 @@ function MiniChatSurface() {
               isStreaming={isStreaming}
               isStreamingResponseText={isStreamingResponseText}
               runtimeStatusText={runtimeStatusText}
+              activeRunId={activeRunId}
               activeToolCallId={activeToolCallId}
               activeToolName={activeToolName}
               hasToolActivity={hasToolActivity}

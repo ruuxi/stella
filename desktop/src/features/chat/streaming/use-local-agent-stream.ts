@@ -553,6 +553,10 @@ export function useLocalAgentStream({
           const anchorTurnId = storeState.runsById[runId]?.userMessageId
           return Object.values(taskMap).map((task) => ({
             ...task,
+            // Stamp the owning run id so consumers can tell a current-run
+            // sub-agent apart from a background task left over by an
+            // earlier turn (live task-upserts don't carry runId).
+            runId: task.runId ?? runId,
             anchorTurnId: task.anchorTurnId ?? anchorTurnId ?? undefined,
           }))
         })
@@ -564,6 +568,7 @@ export function useLocalAgentStream({
   return {
     liveTasks,
     runtimeStatusText,
+    activeRunId,
     activeToolCallId,
     activeToolName,
     hasToolActivity,
