@@ -228,6 +228,70 @@ describe("conversation display merge — structural-sharing fast path", () => {
     ).toBeNull();
   });
 
+  it("merges an already-ordered union into the same order as a full sort (skip path)", () => {
+    // Persisted already in (timestamp, _id) order; overlay is the newest →
+    // the deduped union is already sorted, so the merge skips the sort. Result
+    // must still be exactly the display order.
+    const persistedMessages = [
+      message({ _id: "u1", type: "user_message", timestamp: 0 }),
+      message({ _id: "a1", timestamp: 1 }),
+      message({ _id: "u2", type: "user_message", timestamp: 2 }),
+    ];
+    const overlayMessages = [
+      message({ _id: "u3", type: "user_message", timestamp: 3 }),
+    ];
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages,
+      overlayMessages,
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots(persistedMessages),
+    });
+    expect(merged.map((m) => m._id)).toEqual(["u1", "a1", "u2", "u3"]);
+  });
+
+  it("fully sorts a union that arrives out of order (sort path)", () => {
+    // Overlay timestamp lands BEFORE a persisted message → adjacency scan finds
+    // an inversion and the full sort runs, producing correct display order.
+    const persistedMessages = [
+      message({ _id: "u1", type: "user_message", timestamp: 0 }),
+      message({ _id: "a3", timestamp: 3 }),
+    ];
+    const overlayMessages = [
+      message({ _id: "a1", timestamp: 1 }),
+      message({ _id: "a2", timestamp: 2 }),
+    ];
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages,
+      overlayMessages,
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots(persistedMessages),
+    });
+    expect(merged.map((m) => m._id)).toEqual(["u1", "a1", "a2", "a3"]);
+  });
+
+  it("breaks equal timestamps by _id and dedups first-wins (persisted over overlay)", () => {
+    const persistedWinner = message({ _id: "dup", timestamp: 5 });
+    const persistedMessages = [
+      message({ _id: "b", timestamp: 5 }),
+      persistedWinner,
+      message({ _id: "a", timestamp: 5 }),
+    ];
+    const overlayMessages = [
+      // Same id as a persisted message → persisted must win (listed first).
+      message({ _id: "dup", timestamp: 5, payload: { text: "overlay" } }),
+      message({ _id: "c", timestamp: 5 }),
+    ];
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages,
+      overlayMessages,
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots(persistedMessages),
+    });
+    // Equal timestamps → ordered by _id; "dup" resolves to the persisted obj.
+    expect(merged.map((m) => m._id)).toEqual(["a", "b", "c", "dup"]);
+    expect(merged.find((m) => m._id === "dup")).toBe(persistedWinner);
+  });
+
   it("reuses the array as-is when no overlay contributed (empty winners)", () => {
     const persistedMessages = [
       message({ _id: "u1", type: "user_message", timestamp: 0 }),
