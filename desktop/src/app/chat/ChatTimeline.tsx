@@ -57,7 +57,6 @@ import {
   UserMessageRow,
 } from "@/app/chat/MessageRow";
 import type { EventRowViewModel } from "@/features/chat/conversation-row-types";
-import type { Attachment } from "@/features/chat/lib/event-transforms";
 import { ComposerQueuedMessages } from "./ComposerQueuedMessages";
 import {
   InlineWorkingIndicator,
@@ -79,7 +78,6 @@ type ChatTimelineProps = {
    * container as the conversation but is not part of the active tail.
    */
   extraTail?: React.ReactNode;
-  onOpenAttachment?: (attachment: Attachment) => void;
   queuedUserMessages?: QueuedUserMessage[];
   /**
    * Claude-style working/agent indicator. Rendered on its own line at the
@@ -206,17 +204,10 @@ const ItemSeparator = ({ leadingItem }: { leadingItem: TimelineListItem }) => (
 
 const renderRow = (
   row: EventRowViewModel,
-  onOpenAttachment?: (attachment: Attachment) => void,
   conversationId?: string | null,
 ) => {
   if (row.kind === "user") {
-    return (
-      <UserMessageRow
-        key={row.id}
-        row={row}
-        onOpenAttachment={onOpenAttachment}
-      />
-    );
+    return <UserMessageRow key={row.id} row={row} />;
   }
   return (
     <AssistantMessageRow
@@ -235,7 +226,6 @@ export const ChatTimeline = memo(function ChatTimeline({
   isLoadingHistory,
   emptyState,
   extraTail,
-  onOpenAttachment,
   queuedUserMessages,
   indicator,
   listRef,
@@ -259,8 +249,8 @@ export const ChatTimeline = memo(function ChatTimeline({
 
   const renderItem = useCallback(
     ({ item }: LegendListRenderItemProps<TimelineListItem>) =>
-      renderRow(item.row, onOpenAttachment, conversationId),
-    [conversationId, onOpenAttachment],
+      renderRow(item.row, conversationId),
+    [conversationId],
   );
 
   const keyExtractor = useCallback((item: TimelineListItem) => item.id, []);
