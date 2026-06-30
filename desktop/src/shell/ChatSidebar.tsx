@@ -372,6 +372,7 @@ export function ChatPanelTab({
     const { canSubmit, trimmedMessage } = deriveComposerState({
       message: inputTextRef.current,
       chatContext,
+      selectedText,
     });
     if (!canSubmit) return;
     // Follow-latch (intent) wins over the physical near-bottom
