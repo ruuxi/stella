@@ -45,8 +45,6 @@
   max-height: calc(100vh - 80px);
   border-radius: var(--radius-2xl, 14px);
   border: 1px solid var(--border-weak);
-  background: var(--panel-glass-bg);
-  background-clip: padding-box;
   box-shadow: var(--shadow-xl);
 }
 
