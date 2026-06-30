@@ -59,7 +59,6 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
 import { BackgroundWorkCard } from "@/app/chat/BackgroundWorkCard";
-import { ToolActivityTrace } from "@/app/chat/ToolActivityTrace";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import { VoiceSessionCard } from "@/app/chat/VoiceSessionCard";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
@@ -518,13 +517,6 @@ export const AssistantMessageRow = memo(
     const hasBackgroundWork = Boolean(
       row.backgroundWork && row.backgroundWork.threadIds.length > 0,
     );
-    // The in-flight call is owned by the footer WorkingIndicator; the trace
-    // counts only settled calls (the group is undefined until the first one
-    // returns), so the two never narrate the same tool at once.
-    const hasToolActivity = Boolean(
-      row.toolActivity && row.toolActivity.steps.length > 0,
-    );
-
     if (
       !hasText &&
       !hasOfficePreview &&
@@ -535,8 +527,7 @@ export const AssistantMessageRow = memo(
       !hasCustomSlot &&
       !hasScheduleReceipt &&
       !hasVoiceSession &&
-      !hasBackgroundWork &&
-      !hasToolActivity
+      !hasBackgroundWork
     ) {
       // Reserve a scroll-follow target before the first token lands;
       // otherwise `followActiveAssistantRow` can't find
@@ -573,9 +564,6 @@ export const AssistantMessageRow = memo(
                 hideHorizontalRules
               />
             </StreamingTextReveal>
-          )}
-          {hasToolActivity && row.toolActivity && (
-            <ToolActivityTrace group={row.toolActivity} traceKey={row.id} />
           )}
           {hasBackgroundWork && row.backgroundWork && (
             <BackgroundWorkCard
