@@ -341,35 +341,6 @@ const coalesceVoiceSessionRows = (
   return out;
 };
 
-/**
- * Stable React key for an assistant row. Live-streaming overlays and
- * their eventual persisted counterparts share this key (both anchor
- * on `(userMessageId, indexInTurn)`). While the live overlay is still
- * present it masks the persisted twin; once the overlay is cleared,
- * the persisted row reuses the same key. Preserves the slot's
- * measured size and Streamdown's parse cache across the handoff.
- *
- * Falls back to `message._id` for assistant messages without a
- * `userMessageId` payload field (rare — e.g. legacy rows or hidden
- * runs that surface without a user-message anchor).
- */
-/**
- * Stable cache key for a synthetic trailing artifact row (fire-and-
- * forget image emitted before any assistant text). Prefers the latest
- * `requestId` in the segment so a follow-up tool result for the same
- * request reuses the cached row.
- */
-const stableToolSegmentKey = (events: readonly EventRecord[]): string => {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]!;
-    if (typeof event.requestId === "string" && event.requestId.trim()) {
-      return event.requestId.trim();
-    }
-  }
-  const last = events[events.length - 1];
-  return last?._id ?? "trailing";
-};
-
 export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
   const developerResourcePreviewsEnabled =
     useDeveloperResourcePreviewsEnabled();
@@ -579,6 +550,16 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const isStreamingOverlay =
           message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX) &&
           runtimeMetadata?.isStreaming !== false;
+        // Inline artifact cards (generated images, html/canvas + tool-output
+        // resource previews, office files, source diffs, the web-search image
+        // strip, and the tool-activity trace) only render once their owning
+        // assistant message is finalized — never on the live in-progress
+        // overlay row while the turn is still streaming / thinking / running
+        // tools. The same tool events resurface on the persisted (terminal)
+        // row once the overlay locks or clears, so the cards appear there.
+        // Non-artifact receipts (voice-session summary, schedule receipt,
+        // self-mod notice, background-work card) keep rendering live.
+        const showInlineArtifacts = !isStreamingOverlay;
         const row: AssistantRowViewModel = {
           kind: "assistant",
           id: stableKey,
@@ -590,48 +571,37 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           ...(isStreamingOverlay ? { isStreaming: true } : {}),
           ...(responseTarget ? { responseTarget } : {}),
           ...(replyToUserMessageId ? { replyToUserMessageId } : {}),
-          ...(officePreviewRef ? { officePreviewRef } : {}),
-          ...(resourcePayload ? { resourcePayload } : {}),
-          ...(inlineImagePayloads.length > 0 ? { inlineImagePayloads } : {}),
-          ...(webSearchResults.length > 0 ? { webSearchResults } : {}),
-          ...(sourceDiffPayloads.length > 0 ? { sourceDiffPayloads } : {}),
+          ...(showInlineArtifacts && officePreviewRef
+            ? { officePreviewRef }
+            : {}),
+          ...(showInlineArtifacts && resourcePayload ? { resourcePayload } : {}),
+          ...(showInlineArtifacts && inlineImagePayloads.length > 0
+            ? { inlineImagePayloads }
+            : {}),
+          ...(showInlineArtifacts && webSearchResults.length > 0
+            ? { webSearchResults }
+            : {}),
+          ...(showInlineArtifacts && sourceDiffPayloads.length > 0
+            ? { sourceDiffPayloads }
+            : {}),
           ...(selfModApplied ? { selfModApplied } : {}),
           ...(getScheduleReceipt(toolEvents)
             ? { scheduleReceipt: getScheduleReceipt(toolEvents) }
             : {}),
           ...(voiceSession ? { voiceSession } : {}),
           ...(backgroundWork ? { backgroundWork } : {}),
-          ...(toolActivity ? { toolActivity } : {}),
+          ...(showInlineArtifacts && toolActivity ? { toolActivity } : {}),
         };
         computed.push(row);
       }
     }
 
-    // Trailing artifact card: if the latest message in the loaded window
-    // is a `user_message` carrying inline-image tool events (fire-and-
-    // forget image submission with no assistant reply yet), surface them
-    // as a synthetic assistant row right under the user message. Matches
-    // the prior `segmentToolEventsByAssistant`-`trailing` behavior under
-    // the new "each message owns the tools that follow it" shape.
-    const lastDisplayMessage = displayMessages[displayMessages.length - 1];
-    if (lastDisplayMessage && isUserMessage(lastDisplayMessage)) {
-      const trailingTools = lastDisplayMessage.toolEvents;
-      const trailingInlineImagePayloads =
-        deriveTurnInlineImagePayloads(trailingTools);
-      if (trailingInlineImagePayloads.length > 0) {
-        const stableKey = `assistant-tool-resource-${stableToolSegmentKey(
-          trailingTools,
-        )}`;
-        computed.push({
-          kind: "assistant",
-          id: stableKey,
-          text: "",
-          cacheKey: stableKey,
-          replyToUserMessageId: lastDisplayMessage._id,
-          inlineImagePayloads: trailingInlineImagePayloads,
-        });
-      }
-    }
+    // No synthetic trailing artifact row: a `user_message` carrying inline-
+    // image tool events with no assistant reply yet is an in-progress turn,
+    // and inline artifact cards only render once their owning assistant
+    // message is finalized. The images resurface on that assistant row's
+    // tool events once it lands (see `showInlineArtifacts` above), so the
+    // fire-and-forget stand-in is no longer projected mid-flight.
 
     // Reconcile a thread that surfaces on more than one row. Two distinct
     // cases, distinguished by the per-thread `spawnedAtMs` (the source
