@@ -107,8 +107,9 @@ export function Composer({
   // race ahead of the dictated text. `commitAndSend` stops + finalizes the
   // recording, waits for the pending transcript to be appended to the
   // composer, and only then fires `onCommit` (→ onSend). For the idle case
-  // it sends immediately. Error/timeout paths still resolve to idle and fire
-  // the commit, so submit never hangs.
+  // it sends immediately. Transcription is time-bounded (see the dictation
+  // service's per-segment timeout), so a stalled request fails into a
+  // recoverable error and fires the commit instead of wedging submit.
   const submitComposer = () => {
     if (dictation.isRecording || dictation.isTranscribing) {
       dictation.commitAndSend();

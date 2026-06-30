@@ -17,6 +17,8 @@ type PostServiceJsonOptions = ServiceRequestOptions & {
   errorMessage?: (response: Response) => Promise<string> | string;
   onResponse?: (response: Response) => void;
   parseResponse?: boolean;
+  /** Abort signal for the underlying fetch (e.g. to enforce a timeout). */
+  signal?: AbortSignal;
 };
 
 const resolveCloudBaseUrl = (): string => {
@@ -88,6 +90,7 @@ export const postServiceJson = async <TResponse>(
     errorMessage,
     onResponse,
     parseResponse = true,
+    signal,
     ...requestOptions
   } = options;
   const { endpoint, headers: requestHeaders } = await createServiceRequest(
@@ -102,6 +105,7 @@ export const postServiceJson = async <TResponse>(
     method: "POST",
     headers: requestHeaders,
     body: JSON.stringify(body),
+    signal,
   });
   onResponse?.(response);
   if (!response.ok) {

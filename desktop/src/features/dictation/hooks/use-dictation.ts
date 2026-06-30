@@ -282,10 +282,22 @@ export const useDictation = ({
             queueMicrotask(fireCommitIfPending);
           }
         },
-        onFinalTranscript: (transcript) => {
+        onFinalTranscript: (transcript, meta) => {
           const next = joinTranscriptOntoBase(baseTextRef.current, transcript);
           setMessageRef.current(next);
           onTranscriptCommittedRef.current?.();
+          if (meta?.partial) {
+            // Some segments of a long dictation failed; the recovered text is
+            // already in the composer, so flag that it may be incomplete
+            // rather than letting the user assume it captured everything.
+            showToast({
+              title: "Part of your dictation was transcribed",
+              description:
+                "Some of the recording couldn't be transcribed, so the inserted text may be incomplete.",
+              variant: "error",
+              duration: 8000,
+            });
+          }
         },
         onLevel: (level) => {
           setLevels((prev) => appendRollingLevel(prev, level, MAX_LEVEL_BARS));
