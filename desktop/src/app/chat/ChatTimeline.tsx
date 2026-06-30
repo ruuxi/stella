@@ -144,6 +144,13 @@ const ROW_GAP = 20;
  */
 const ASSISTANT_RUN_GAP = 8;
 /**
+ * Spacing between two consecutive user rows — tightened (vs the full
+ * inter-turn `ROW_GAP`) so a burst of back-to-back user messages reads as
+ * one grouped sequence rather than a stack of separate turns, while still
+ * staying looser than the continuous assistant run.
+ */
+const USER_RUN_GAP = 10;
+/**
  * Spacing between two consecutive card/artifact-only assistant rows
  * (resource cards, source diffs, inline images, schedule receipts, …).
  * Zero so a run of stacked cards reads as a single grouped list.
@@ -177,6 +184,11 @@ const gapAfterRow = (
   if (isCardRow(current) && isCardRow(next)) return CARD_RUN_GAP;
   if (current.kind === "assistant" && next.kind === "assistant") {
     return ASSISTANT_RUN_GAP;
+  }
+  // A run of same-sender user bubbles groups tighter than a cross-sender
+  // turn boundary; different-sender turns keep the full inter-turn gap.
+  if (current.kind === "user" && next.kind === "user") {
+    return USER_RUN_GAP;
   }
   return ROW_GAP;
 };
