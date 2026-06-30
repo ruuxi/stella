@@ -125,7 +125,43 @@ const refreshEntry = (entry: LocalFilesWindowEntry): Promise<void> => {
   return entry.loading;
 };
 
+/**
+ * The only event types that can carry `fileChanges` / `producedFiles` (or the
+ * html canvas artifact, which is itself a `tool_result`), i.e. the only events
+ * a files window is ever derived from (mirrors the backend `listFiles` filter
+ * and `deriveConversationFiles`).
+ */
+const FILE_BEARING_EVENT_TYPES = new Set<EventRecord["type"]>([
+  "tool_result",
+  "agent-completed",
+]);
+
+/**
+ * Whether a `localChat:updated` notification could possibly change a files
+ * window. Each notification carries the single event that was just appended
+ * (see `notifyLocalChatUpdated`), so a file window — derived solely from
+ * file-carrying events — cannot have changed unless that event is a
+ * `tool_result` / `agent-completed`. During streaming the notification flood
+ * is overwhelmingly non-file events (assistant text chunks, reasoning,
+ * progress, tool requests, user messages); refetching the whole window for
+ * each of those returns identical data, so we skip them. Bulk / unknown
+ * updates (no event attached) are refetched conservatively.
+ */
+const updateMayAffectFilesWindow = (
+  payload: LocalChatUpdatedPayload | null,
+): boolean => {
+  const event = payload?.event;
+  if (!event) return true;
+  return FILE_BEARING_EVENT_TYPES.has(event.type);
+};
+
 const handleLocalChatUpdated = (payload: LocalChatUpdatedPayload | null) => {
+  // Skip the (expensive: full-window IPC refetch + deserialize + snapshot
+  // clone + re-render) refresh for updates that cannot touch a files window.
+  // This is what kept the files store refetching its entire window on every
+  // streamed delta and flooding microtasks; file events are rare, so the
+  // visible window is unchanged the vast majority of updates.
+  if (!updateMayAffectFilesWindow(payload)) return;
   for (const entry of localFilesWindows.values()) {
     if (
       payload?.conversationId &&
