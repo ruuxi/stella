@@ -91,6 +91,40 @@ export function buildInlineWorkingIndicatorProps({
   };
 }
 
+/**
+ * On run resume/reactivation the assistant's already-streamed answer is
+ * rehydrated from persistence (a real `assistant_message` row) with no
+ * live overlay, so `StreamingTextReveal` never mounts and never fires the
+ * first-paint hand-off (`notifyAssistantTextPainted` → `mark-streaming-
+ * text`). Because the resume snapshot seeds the active run with
+ * `isStreamingText: false`, the inline working indicator would otherwise
+ * hang "Thinking" *under* the fully-visible resumed answer until the run
+ * finally goes terminal.
+ *
+ * Detect exactly that shape — the run is still active, the indicator has
+ * not handed off yet, there is no live streaming overlay (a live turn
+ * always has at least a placeholder overlay), and the active turn's answer
+ * is already on screen — so the caller can treat the resumed text as
+ * painted. It is a no-op for live streaming, where `hasLiveStreamingOverlay`
+ * is true (or `isStreamingResponseText` already flipped via the reveal).
+ */
+export function shouldTreatResumedAnswerAsPainted({
+  isStreaming,
+  isStreamingResponseText,
+  hasLiveStreamingOverlay,
+  activeTurnAnswerVisible,
+}: {
+  isStreaming: boolean;
+  isStreamingResponseText: boolean;
+  hasLiveStreamingOverlay: boolean;
+  activeTurnAnswerVisible: boolean;
+}): boolean {
+  if (!isStreaming) return false;
+  if (isStreamingResponseText) return false;
+  if (hasLiveStreamingOverlay) return false;
+  return activeTurnAnswerVisible;
+}
+
 export function getRunningTaskIndicatorText(
   task: TaskItem,
 ): string | undefined {

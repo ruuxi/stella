@@ -7,6 +7,7 @@ import type { MessageMetadata } from '@/features/chat/lib/event-transforms'
 import type { EventRecord } from '@/features/chat/lib/event-transforms'
 import type { MessageRecord } from '../../../../../runtime/contracts/local-chat.js'
 import { resolveComposerContextState } from '../composer-context'
+import { shouldTreatResumedAnswerAsPainted } from '@/features/chat/working-indicator-state'
 import {
   buildAllLocalAttachments,
   toDisplayAttachments,
@@ -186,6 +187,41 @@ export function useStreamingChatCore({
     pendingUserMessageId,
     persistedMessages,
     setPendingUserMessageId,
+  ])
+
+  // Resume hand-off: when a run is resumed/reactivated, its already-
+  // streamed answer comes back from persistence with no live overlay, so
+  // `StreamingTextReveal` never mounts to fire the first-paint signal. Mark
+  // the resumed text as painted so the inline working indicator hands off
+  // instead of hanging "Thinking" under the visible answer until the run
+  // goes terminal. No-op during live streaming (overlay present / already
+  // handed off).
+  useEffect(() => {
+    if (!pendingUserMessageId) return
+    const activeTurnAnswerVisible = persistedMessages.some((message) => {
+      if (message.type !== 'assistant_message') return false
+      if (!message.payload || typeof message.payload !== 'object') return false
+      const payload = message.payload as { userMessageId?: string; text?: string }
+      if (payload.userMessageId !== pendingUserMessageId) return false
+      return typeof payload.text === 'string' && payload.text.trim().length > 0
+    })
+    if (
+      shouldTreatResumedAnswerAsPainted({
+        isStreaming,
+        isStreamingResponseText,
+        hasLiveStreamingOverlay: streamingAssistants.length > 0,
+        activeTurnAnswerVisible,
+      })
+    ) {
+      notifyAssistantTextPainted()
+    }
+  }, [
+    isStreaming,
+    isStreamingResponseText,
+    streamingAssistants,
+    pendingUserMessageId,
+    persistedMessages,
+    notifyAssistantTextPainted,
   ])
 
   useEffect(() => {

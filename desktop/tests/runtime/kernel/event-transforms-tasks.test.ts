@@ -16,6 +16,7 @@ import {
   getInlineWorkingIndicatorExitDelayMs,
   getRunningTaskIndicatorText,
   getWorkingIndicatorDisplayStatus,
+  shouldTreatResumedAnswerAsPainted,
 } from "@/features/chat/working-indicator-state";
 
 const event = (
@@ -574,6 +575,60 @@ describe("buildInlineWorkingIndicatorProps", () => {
       hasToolActivity: true,
     });
     expect(props.active).toBe(false);
+  });
+});
+
+describe("shouldTreatResumedAnswerAsPainted", () => {
+  it("treats a resumed, already-visible answer with no live overlay as painted", () => {
+    expect(
+      shouldTreatResumedAnswerAsPainted({
+        isStreaming: true,
+        isStreamingResponseText: false,
+        hasLiveStreamingOverlay: false,
+        activeTurnAnswerVisible: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("is a no-op while a live overlay is streaming the answer", () => {
+    expect(
+      shouldTreatResumedAnswerAsPainted({
+        isStreaming: true,
+        isStreamingResponseText: false,
+        hasLiveStreamingOverlay: true,
+        activeTurnAnswerVisible: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not fire when the resumed run has no visible answer yet (still thinking)", () => {
+    expect(
+      shouldTreatResumedAnswerAsPainted({
+        isStreaming: true,
+        isStreamingResponseText: false,
+        hasLiveStreamingOverlay: false,
+        activeTurnAnswerVisible: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("is a no-op once the indicator already handed off, or when no run is active", () => {
+    expect(
+      shouldTreatResumedAnswerAsPainted({
+        isStreaming: true,
+        isStreamingResponseText: true,
+        hasLiveStreamingOverlay: false,
+        activeTurnAnswerVisible: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldTreatResumedAnswerAsPainted({
+        isStreaming: false,
+        isStreamingResponseText: false,
+        hasLiveStreamingOverlay: false,
+        activeTurnAnswerVisible: true,
+      }),
+    ).toBe(false);
   });
 });
 
