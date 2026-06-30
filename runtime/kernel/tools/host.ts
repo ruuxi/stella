@@ -38,7 +38,6 @@ import type {
 } from "./types.js";
 
 import { log, logError, recoverStaleSecretFiles } from "./utils.js";
-import { setFileToolsConfig } from "./file.js";
 import { createShellState, type ShellState } from "./shell.js";
 import {
   createStateContext,
@@ -87,8 +86,6 @@ export const createToolHost = ({
 }: ToolHostOptions) => {
   const stateRoot = stellaDataDir ?? stellaAppDir;
   const toolCatalog = new Map<string, ToolMetadata>();
-
-  setFileToolsConfig({ stellaAppDir });
 
   const shellState: ShellState = createShellState(stateRoot, {
     stellaBrowserBinPath: _stellaBrowserBinPath,

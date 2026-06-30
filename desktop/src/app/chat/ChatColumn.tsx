@@ -24,8 +24,6 @@ import {
   type ComponentProps,
 } from "react";
 import { ChevronDown } from "@/ui/icons";
-import { useMergedBackgroundTasks } from "@/features/chat/hooks/use-merged-background-tasks";
-import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import { ConversationEvents } from "./ConversationEvents";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
@@ -175,14 +173,6 @@ export const ChatColumn = memo(function ChatColumn({
     disabled: conversation.streaming.isStreaming,
   });
 
-  const appSessionStartedAtMs = useAgentSessionStartedAt();
-  const backgroundTasks = useMergedBackgroundTasks({
-    activities: conversation.activity.activities,
-    liveTasks: conversation.streaming.liveTasks,
-    latestMessageTimestampMs: conversation.activity.latestMessageTimestampMs,
-    appSessionStartedAtMs,
-  });
-
   /**
    * Two synced instances of the (fully controlled) composer: one pinned at
    * the bottom of the persistently-mounted chat, one centered inside the
@@ -260,7 +250,6 @@ export const ChatColumn = memo(function ChatColumn({
               messages={conversation.messages}
               pendingUserMessageId={conversation.streaming.pendingUserMessageId}
               queuedUserMessages={conversation.streaming.queuedUserMessages}
-              backgroundTasks={backgroundTasks}
               indicator={indicatorProps}
               hasOlderMessages={conversation.history.hasOlderMessages}
               isLoadingOlder={conversation.history.isLoadingOlder}

@@ -8,7 +8,6 @@ import type { AgentResponseTarget } from "@/features/chat/streaming/streaming-ty
 import type { SelfModApplied } from "@/features/chat/self-mod-types";
 import type { WebSearchImageHit } from "@/features/chat/lib/derive-turn-web-search";
 import type { PastedTextDescriptor } from "@/features/chat/lib/paste-context";
-import type { ToolActivityGroup } from "@/features/chat/lib/tool-activity";
 import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
 import type { VoiceSessionSummaryMetadata } from "../../../../runtime/contracts/local-chat.js";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
@@ -90,24 +89,14 @@ export type AssistantRowViewModel = {
    */
   voiceSession?: VoiceSessionSummaryMetadata;
   /**
-   * Collapsed, expandable trace of the tool calls this row's turn ran after
-   * its text (one summary line, Claude-Code-style: "Read 3 files and
-   * searched code"). Derived from the row's `toolEvents` slice, counting only
-   * settled calls — so it appears once the first tool returns and ticks up as
-   * each subsequent one finishes, while the in-flight call stays owned by the
-   * footer working indicator. Delegation tools are excluded — those surface
-   * through `backgroundWork` instead.
-   */
-  toolActivity?: ToolActivityGroup;
-  /**
    * Inline "background work" card for a turn that kicked off (or updated)
    * one or more background threads (orchestrator `spawn_agent` /
    * `send_input`). Multiple in the same turn collapse onto one card —
    * `threadIds` carries every thread it covers and the card tallies them.
    * `completedThreadIds` is the reload-safe subset whose `agent-completed`
-   * event has landed in the message stream; live running/error/cancel
-   * narration comes from `BackgroundWorkProvider` instead so progress ticks
-   * don't re-project the row. `supersededThreadIds` is the subset a LATER
+   * event has landed in the message stream; the inline card itself is a
+   * static "started here" receipt (see `BackgroundWorkCard`) and no longer
+   * renders live running/error/cancel narration. `supersededThreadIds` is the subset a LATER
    * turn's card now owns — this (earlier) card freezes them as settled so it
    * doesn't re-animate when the thread is revived. `label` is the optional
    * friendly group label.

@@ -33,14 +33,6 @@
     border-color 160ms ease;
 }
 
-.background-work-card[data-state="error"] {
-  border-color: color-mix(
-    in oklch,
-    var(--danger, #d9534f) 45%,
-    var(--panel-surface-border)
-  );
-}
-
 .background-work-card__glyph {
   position: relative;
   display: inline-flex;
@@ -50,21 +42,6 @@
   width: 22px;
   height: 22px;
   color: var(--text-weak);
-}
-
-.background-work-card[data-state="done"] .background-work-card__glyph {
-  color: var(--text-base);
-}
-
-.background-work-card[data-state="error"] .background-work-card__glyph {
-  color: var(--danger, #d9534f);
-}
-
-.background-work-card__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--text-weaker);
 }
 
 .background-work-card__text {
