@@ -30,10 +30,21 @@ const PCM_WORKLET_URL = "/dictation-pcm-worklet.js";
 const DICTATION_SUPER_FAST_KEY = "stella-dictation-super-fast";
 const DICTATION_ENHANCE_KEY = "stella-dictation-enhance";
 const DICTATION_LOCAL_KEY = "stella-dictation-local";
-/** Cap a single dictation segment so the upload stays well under the
- *  backend's 14 MB base64 audio limit. 16 kHz int16 mono = 32 KB/s, so
- *  ~3 minutes of speech ≈ 5.7 MB raw → ~7.6 MB base64 → safely under. */
-const MAX_DICTATION_DURATION_MS = 3 * 60 * 1000;
+/** Hard cap on a single dictation recording before we auto-stop and
+ *  transcribe. 15 minutes lets users dictate long-form without being cut
+ *  off mid-thought. The managed transcription endpoint caps a single
+ *  upload (see `MANAGED_MAX_SEGMENT_SAMPLES`), so longer recordings sent
+ *  through it are split into segments that each stay under that limit; the
+ *  on-device path has no upload-size limit and transcribes in one pass. */
+const MAX_DICTATION_DURATION_MS = 15 * 60 * 1000;
+
+/** Per-request sample budget for the managed `/api/dictation/transcribe`
+ *  endpoint, which rejects uploads over ~14 MB of base64 audio. 16 kHz
+ *  int16 mono = 32 KB/s, so 4 minutes ≈ 7.68 MB raw → ~10.2 MB base64,
+ *  comfortably under the cap with WAV-header overhead. A 15-minute
+ *  recording therefore splits into 4 sequential segments. Recordings short
+ *  enough to fit in one segment are sent exactly as before. */
+const MANAGED_MAX_SEGMENT_SAMPLES = 4 * 60 * TARGET_SAMPLE_RATE;
 
 /** How often we emit a level tick to consumers (≈ 12 Hz). The waveform UI
  *  appends one bar per tick, so this also controls the bar density of the
@@ -459,9 +470,9 @@ export class InworldDictationSession {
     );
 
     try {
-      const wav = encodeWav16(this.pcmChunks, TARGET_SAMPLE_RATE);
+      const chunks = this.pcmChunks;
       this.pcmChunks = [];
-      const result = await this.sendForTranscription(wav);
+      const result = await this.transcribeCapturedAudio(chunks);
       const finalTranscript =
         result.source === "local"
           ? await enhanceTranscript(result.transcript)
@@ -482,16 +493,27 @@ export class InworldDictationSession {
     await this.stop();
   }
 
-  private async sendForTranscription(
-    wavBytes: Uint8Array,
+  /**
+   * Transcribe the full captured recording. The on-device (Parakeet) engine
+   * has no upload-size limit, so we transcribe the whole thing in a single
+   * pass. The managed endpoint caps a single upload, so when we fall back to
+   * it we split the audio into segments that each stay under the limit (see
+   * `MANAGED_MAX_SEGMENT_SAMPLES`), transcribe them sequentially, and join
+   * the partial transcripts. Short recordings produce a single segment, so
+   * their behaviour is unchanged.
+   */
+  private async transcribeCapturedAudio(
+    chunks: Int16Array[],
   ): Promise<DictationTranscriptResult> {
-    const audioBase64 = bytesToBase64(wavBytes);
     if (
       isLocalDictationPlatform() &&
       isLocalDictationEnabled() &&
       window.electronAPI?.dictation?.transcribeLocal
     ) {
       try {
+        const audioBase64 = bytesToBase64(
+          encodeWav16(chunks, TARGET_SAMPLE_RATE),
+        );
         const local = await window.electronAPI.dictation.transcribeLocal({
           audioBase64,
         });
@@ -504,6 +526,21 @@ export class InworldDictationSession {
       }
     }
 
+    const segments = splitPcmBySampleBudget(chunks, MANAGED_MAX_SEGMENT_SAMPLES);
+    const parts: string[] = [];
+    for (const segment of segments) {
+      const transcript = await this.sendManagedTranscription(
+        encodeWav16(segment, TARGET_SAMPLE_RATE),
+      );
+      if (transcript) parts.push(transcript);
+    }
+    return { transcript: parts.join(" ").trim(), source: "inworld" };
+  }
+
+  private async sendManagedTranscription(
+    wavBytes: Uint8Array,
+  ): Promise<string> {
+    const audioBase64 = bytesToBase64(wavBytes);
     const parsed = await postServiceJson<TranscribeResponse>(
       "/api/dictation/transcribe",
       {
@@ -517,7 +554,7 @@ export class InworldDictationSession {
         },
       },
     );
-    return { transcript: parsed.transcript ?? "", source: "inworld" };
+    return parsed.transcript ?? "";
   }
 
   private async setupAudioPipeline(stream: MediaStream): Promise<void> {
@@ -640,6 +677,38 @@ export class InworldDictationSession {
 // WAV encoding — Inworld's sync STT requires a container (WAV/MP3/OGG/FLAC),
 // raw LINEAR16 isn't accepted on this endpoint.
 // ---------------------------------------------------------------------------
+
+/**
+ * Split a list of PCM chunks into segments whose combined sample count never
+ * exceeds `maxSamples`, slicing across a chunk boundary when needed. Used to
+ * keep each managed-transcription upload under the backend's size limit so a
+ * long (up to 15-minute) recording can be transcribed in pieces. Returns a
+ * single segment when the whole recording already fits.
+ */
+const splitPcmBySampleBudget = (
+  chunks: Int16Array[],
+  maxSamples: number,
+): Int16Array[][] => {
+  const segments: Int16Array[][] = [];
+  let current: Int16Array[] = [];
+  let currentCount = 0;
+  for (const chunk of chunks) {
+    let offset = 0;
+    while (offset < chunk.length) {
+      const take = Math.min(maxSamples - currentCount, chunk.length - offset);
+      current.push(chunk.subarray(offset, offset + take));
+      currentCount += take;
+      offset += take;
+      if (currentCount >= maxSamples) {
+        segments.push(current);
+        current = [];
+        currentCount = 0;
+      }
+    }
+  }
+  if (currentCount > 0) segments.push(current);
+  return segments;
+};
 
 const encodeWav16 = (chunks: Int16Array[], sampleRate: number): Uint8Array => {
   const totalSamples = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
