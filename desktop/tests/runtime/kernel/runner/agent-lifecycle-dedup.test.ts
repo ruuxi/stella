@@ -51,17 +51,16 @@ describe("task lifecycle deduping", () => {
       "The agent has finished. The user cannot see this report. You must respond to the user.",
     );
     expect(completedPrompt).not.toContain("not waiting");
-    expect(completedPrompt).toContain("description: Open Spotify and play jazz");
+    expect(completedPrompt).toContain(
+      "description: Open Spotify and play jazz",
+    );
     expect(completedPrompt).toContain("result: Spotify is now open");
     expect(completedPrompt).toContain(
       "agent_state: paused; this agent is not currently working. Use send_input to resume the same thread if follow-up work is needed.",
     );
     expect(completedPrompt).toContain(
-      "presentation: if a canvas was generated it is already shown to the user — don't restate its contents. Give a short chat reply and stop.",
+      "presentation: if the result is a report or substantial/dense information, present it as a canvas with the `html` tool",
     );
-    // The old reminder nudging the orchestrator to render HTML itself is gone;
-    // the canvas is now produced automatically by the finish-html pass.
-    expect(completedPrompt).not.toMatch(/consider using.*html/i);
     expect(failedPrompt).toContain("[Task failed]");
     expect(failedPrompt).toContain("error: Spotify failed to open");
     expect(canceledPrompt).toContain("[Task canceled]");

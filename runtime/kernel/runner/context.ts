@@ -63,7 +63,11 @@ import {
   sanitizeConvexDeploymentUrl,
   sanitizeStellaBase,
 } from "./shared.js";
-import { resolveRunnerLlmRouteWithMetadata } from "./model-selection.js";
+import {
+  createRunnerSiteConfig,
+  resolveRunnerLlmRouteWithMetadata,
+} from "./model-selection.js";
+import { generateHtmlDocument } from "../agent-runtime/html-generation.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import { getResponseLanguageSystemPrompt } from "./locale-prompt.js";
 import {
@@ -497,6 +501,25 @@ export const createRunnerContext = ({
       const authToken = (context.state?.authToken ?? envAuthToken ?? "").trim();
       return baseUrl && authToken ? { baseUrl, authToken } : null;
     },
+    // Standalone HTML canvas generator backing the orchestrator's `html` tool.
+    // It turns the orchestrator's brief (+ optional scoped context) into a
+    // self-contained document on the dedicated HTML generation route. There is
+    // no auto-trigger and no generator-side "is a canvas warranted" decision —
+    // the orchestrator decides, then calls the tool.
+    generateHtml: async ({ brief, title, scopedContext, abortSignal }) =>
+      generateHtmlDocument({
+        stellaAppDir,
+        stellaDataDir,
+        site: createRunnerSiteConfig(context),
+        ...(context.deviceId ? { deviceId: context.deviceId } : {}),
+        ...(context.state?.modelCatalogUpdatedAt != null
+          ? { modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt }
+          : {}),
+        brief,
+        title,
+        ...(scopedContext ? { scopedContext } : {}),
+        ...(abortSignal ? { abortSignal } : {}),
+      }),
     actionConvex: async (ref, args) =>
       (await convexAction(ref, args)) as unknown,
     queryConvex: async (ref, args) => {
