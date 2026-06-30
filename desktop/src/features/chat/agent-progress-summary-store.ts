@@ -53,6 +53,21 @@ export const agentProgressSummaryStore = {
     return list && list.length > 0 ? list[list.length - 1].text : undefined;
   },
 
+  /**
+   * Plain `agentId -> [oldest…newest]` snapshot of every agent's summary
+   * phrases. Used to mirror the summaries to the electron main process so the
+   * desktop→mobile sync bridge can attach them to each task's
+   * `reasoningSummaries`. Agents with no summaries are omitted.
+   */
+  snapshotTexts(): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    for (const [agentId, list] of summariesByAgent) {
+      if (list.length === 0) continue;
+      out[agentId] = list.map((entry) => entry.text);
+    }
+    return out;
+  },
+
   addSummary(agentId: string, rawText: string): void {
     const text = rawText.trim();
     if (!text) return;

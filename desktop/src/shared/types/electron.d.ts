@@ -1537,6 +1537,17 @@ export type ElectronLocalChatApi = {
       artifacts?: DisplayPayload[];
     }>;
   }>;
+  /**
+   * Mirror the renderer's generated per-agent progress summaries (the short
+   * reasoning phrases shown under each active agent in the desktop activity
+   * tray) into the main-process snapshot the desktop→mobile sync serializer
+   * reads. The summaries ride each task as `reasoningSummaries` so mobile's
+   * activity tray shows the same text — they are renderer-generated only and
+   * never persisted, so this push is how they reach the bridge.
+   */
+  publishReasoningSummaries: (payload: {
+    summariesByAgentId: Record<string, string[]>;
+  }) => Promise<{ ok: true }>;
   getSyncCheckpoint: (payload: {
     conversationId: string;
   }) => Promise<string | null>;

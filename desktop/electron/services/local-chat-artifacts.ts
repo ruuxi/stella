@@ -59,6 +59,14 @@ export type MobileTask = {
   statusText?: string;
   createdAt: number;
   completedAt?: number;
+  /**
+   * Rolling LLM-generated progress phrases mirrored from the desktop activity
+   * tray, ordered oldest→newest. Bridged straight from the renderer's
+   * `agentProgressSummaryStore` (never regenerated on the bridge side) so the
+   * mobile activity tray shows the SAME short reasoning summaries the desktop
+   * tray renders. Only present while summaries exist for the agent.
+   */
+  reasoningSummaries?: string[];
 };
 
 export type LocalChatSyncMessageWithArtifacts = {
@@ -581,6 +589,7 @@ const terminalTaskStatus = (
 const buildMobileTasksById = (
   messages: readonly ArtifactMessageRecord[],
   nowMs: number,
+  reasoningSummariesByAgentId?: ReadonlyMap<string, readonly string[]>,
 ): Map<string, MobileTask> => {
   const builds = new Map<string, TaskBuild>();
   for (const message of messages) {
@@ -652,6 +661,7 @@ const buildMobileTasksById = (
       nowMs - build.spawnedAt > AGENT_WORK_STALE_MS
         ? "completed"
         : build.status;
+    const reasoningSummaries = reasoningSummariesByAgentId?.get(build.id);
     tasks.set(build.id, {
       id: build.id,
       title: build.title,
@@ -662,6 +672,9 @@ const buildMobileTasksById = (
       createdAt: build.createdAt,
       ...(build.completedAt !== undefined
         ? { completedAt: build.completedAt }
+        : {}),
+      ...(reasoningSummaries && reasoningSummaries.length > 0
+        ? { reasoningSummaries: [...reasoningSummaries] }
         : {}),
     });
   }
@@ -836,13 +849,18 @@ export const buildMobileSyncMessages = (
   messages: readonly ArtifactMessageRecord[],
   maxMessages: number,
   options?: MobileArtifactOptions,
+  reasoningSummariesByAgentId?: ReadonlyMap<string, readonly string[]>,
 ): LocalChatSyncMessageWithArtifacts[] => {
   const rows: LocalChatSyncMessageWithArtifacts[] = [];
   // Completion is scoped per run (see deriveAgentWorkPayload); precompute the
   // latest completion per thread across the whole synced set once.
   const completedAtMsById = buildCompletedAtMsById(messages);
   const nowMs = Date.now();
-  const tasksById = buildMobileTasksById(messages, nowMs);
+  const tasksById = buildMobileTasksById(
+    messages,
+    nowMs,
+    reasoningSummariesByAgentId,
+  );
   for (const message of messages) {
     if (isUiHiddenChatMessagePayload(message.payload ?? null)) continue;
     const role = message.type === "user_message" ? "user" : "assistant";
@@ -914,7 +932,13 @@ export const buildMobileSyncMessagesPage = (
   maxMessages: number,
   cursorSource: readonly ArtifactSourceRecord[] = messages,
   options?: MobileArtifactOptions,
+  reasoningSummariesByAgentId?: ReadonlyMap<string, readonly string[]>,
 ): LocalChatMobileSyncResult => ({
-  messages: buildMobileSyncMessages(messages, maxMessages, options),
+  messages: buildMobileSyncMessages(
+    messages,
+    maxMessages,
+    options,
+    reasoningSummariesByAgentId,
+  ),
   cursor: cursorForNewestSourceRecord(cursorSource),
 });

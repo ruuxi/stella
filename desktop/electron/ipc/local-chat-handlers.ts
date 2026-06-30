@@ -303,6 +303,25 @@ export const registerLocalChatHandlers = (
   );
 
   ipcMain.handle(
+    "localChat:publishReasoningSummaries",
+    async (
+      event,
+      payload: {
+        summariesByAgentId?: Record<string, readonly string[]>;
+      },
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:publishReasoningSummaries",
+        (client) =>
+          client.setReasoningSummaries({
+            summariesByAgentId: payload?.summariesByAgentId ?? {},
+          }),
+      ),
+  );
+
+  ipcMain.handle(
     "localChat:getSyncCheckpoint",
     async (
       event,
