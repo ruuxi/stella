@@ -2,7 +2,14 @@
  *
  * The row always reserves its height (it never collapses) so revealing it
  * on hover never reflows neighbouring rows — the chat scroll-follow logic
- * keys on stable row geometry. Visibility is purely an opacity fade. */
+ * keys on stable row geometry. Visibility is purely an opacity fade.
+ *
+ * It is mounted for the whole life of an assistant message, including while
+ * it streams, so its height is reserved from the first painted line and
+ * finalizing the message never adds a box (no layout jump). While the row is
+ * streaming (`.event-row--streaming` ancestor) the reveal is suppressed below
+ * so it stays invisible; the component also marks it `inert` so it's
+ * non-focusable / non-interactive / a11y-hidden until it settles. */
 .message-actions {
   display: flex;
   align-items: center;
@@ -25,8 +32,13 @@
   margin-top: calc(2px - var(--space-6));
 }
 
-.event-row:hover .message-actions,
-.event-row:focus-within .message-actions,
+/* Reveal only once the message has settled. The `:not(.event-row--streaming)`
+ * guard keeps a still-streaming row's (mounted, height-reserving) action row
+ * invisible — it must not flash in on hover while the answer is still
+ * arriving, and it has nothing to copy/read yet. `data-active` (read-aloud
+ * playing) can only be true on a finalized message, so it needs no guard. */
+.event-row:not(.event-row--streaming):hover .message-actions,
+.event-row:not(.event-row--streaming):focus-within .message-actions,
 .message-actions[data-active="true"] {
   opacity: 1;
   pointer-events: auto;
