@@ -44,6 +44,13 @@
   color: var(--text-weak);
 }
 
+/* Follow-up variant (`send_input` advancing an already-spawned thread):
+   same surface as the spawn receipt, just a tinted glyph so an update reads
+   as distinct from the initial "started here" breadcrumb at a glance. */
+.background-work-card[data-state="follow-up"] .background-work-card__glyph {
+  color: var(--primary);
+}
+
 .background-work-card__text {
   display: flex;
   flex-direction: column;
