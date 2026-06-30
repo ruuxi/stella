@@ -33,6 +33,7 @@ const createContext = (runId = "run-1") => {
       },
       activeRunAbortControllers: new Map([[runId, new AbortController()]]),
       queuedOrchestratorTurns: [],
+      pendingFollowUpReplies: new Map(),
     },
   } as unknown as RunnerContext;
 
@@ -142,6 +143,103 @@ describe("createOrchestratorCoordinator", () => {
     expect(clearAllQueues).not.toHaveBeenCalled();
     expect(callbacks.onEnd).toHaveBeenCalledOnce();
     expect(context.state.activeOrchestratorRunId).toBeNull();
+  });
+
+  it("flushes pending follow-up replies when a run fails fatally", () => {
+    const { context } = createContext();
+    const callbacks = createCallbacks();
+    const coordinator = createOrchestratorCoordinator(context);
+    const flush = vi.fn();
+    coordinator.setFollowUpReplyFlusher(flush);
+    context.state.pendingFollowUpReplies.set("conversation-1", [
+      { text: "are you there?" },
+    ]);
+    const runtimeCallbacks = coordinator.createRuntimeCallbacks(
+      "run-1",
+      callbacks,
+    );
+
+    runtimeCallbacks.onError({
+      runId: "run-1",
+      agentType: "orchestrator",
+      seq: 1,
+      error: "provider failed",
+      fatal: true,
+    });
+
+    expect(flush).toHaveBeenCalledExactlyOnceWith("conversation-1");
+  });
+
+  it("flushes pending follow-up replies when a run is interrupted", () => {
+    const { context } = createContext();
+    const callbacks = createCallbacks();
+    const coordinator = createOrchestratorCoordinator(context);
+    const flush = vi.fn();
+    coordinator.setFollowUpReplyFlusher(flush);
+    const runtimeCallbacks = coordinator.createRuntimeCallbacks(
+      "run-1",
+      callbacks,
+    );
+
+    runtimeCallbacks.onInterrupted?.({
+      runId: "run-1",
+      agentType: "orchestrator",
+      seq: 1,
+      userMessageId: "message-1",
+      reason: "Canceled",
+    });
+
+    expect(flush).toHaveBeenCalledExactlyOnceWith("conversation-1");
+  });
+
+  it("does not flush follow-up replies for non-fatal errors", () => {
+    const { context } = createContext();
+    const callbacks = createCallbacks();
+    const coordinator = createOrchestratorCoordinator(context);
+    const flush = vi.fn();
+    coordinator.setFollowUpReplyFlusher(flush);
+    const runtimeCallbacks = coordinator.createRuntimeCallbacks(
+      "run-1",
+      callbacks,
+    );
+
+    runtimeCallbacks.onError({
+      runId: "run-1",
+      agentType: "orchestrator",
+      seq: 1,
+      error: "transient",
+      fatal: false,
+    });
+
+    expect(flush).not.toHaveBeenCalled();
+  });
+
+  it("discards the follow-up recovery buffer when a run completes cleanly", () => {
+    const { context } = createContext();
+    const callbacks = createCallbacks();
+    const coordinator = createOrchestratorCoordinator(context);
+    const flush = vi.fn();
+    coordinator.setFollowUpReplyFlusher(flush);
+    context.state.pendingFollowUpReplies.set("conversation-1", [
+      { text: "are you there?" },
+    ]);
+    const runtimeCallbacks = coordinator.createRuntimeCallbacks(
+      "run-1",
+      callbacks,
+    );
+
+    runtimeCallbacks.onEnd({
+      runId: "run-1",
+      agentType: "orchestrator",
+      seq: 1,
+      finalText: "done",
+      timestamp: Date.now(),
+    });
+
+    expect(flush).not.toHaveBeenCalled();
+    expect(context.state.pendingFollowUpReplies.has("conversation-1")).toBe(
+      false,
+    );
   });
 
   it("still drains queued orchestrator turns after terminal cleanup", async () => {

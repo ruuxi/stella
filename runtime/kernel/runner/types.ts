@@ -229,6 +229,20 @@ export type QueuedOrchestratorTurn = {
   execute: () => Promise<void>;
 };
 
+/**
+ * A user chat message that arrived while a run was already active on the
+ * conversation and was injected into the live run as a `"followUp"` (so it
+ * could add context to the in-flight work). These follow-ups are delivered to
+ * the agent only at `agent_end`; if the active run is interrupted, fails
+ * fatally, or is otherwise torn down before draining them, the in-memory
+ * follow-up queue is discarded and the user is never answered. We mirror them
+ * here so a fresh reply turn can be fired after the active run drains. See
+ * `flushPendingFollowUpReplies` in `orchestrator.ts`.
+ */
+export type PendingFollowUpReply = {
+  text: string;
+};
+
 export type ParsedAgentLike = {
   id: string;
   name: string;
@@ -279,6 +293,14 @@ export type RunnerState = {
    */
   compactionScheduler: BackgroundCompactionScheduler;
   queuedOrchestratorTurns: QueuedOrchestratorTurn[];
+  /**
+   * Per-conversation buffer of user chat messages that were injected into an
+   * active run as follow-ups. Populated when a user message lands on a live
+   * streaming session; cleared when that run completes normally (the agent
+   * loop drains and answers follow-ups before `agent_end`) and flushed into a
+   * fresh reply turn when the run is interrupted or fails before draining.
+   */
+  pendingFollowUpReplies: Map<string, PendingFollowUpReply[]>;
   activeRunAbortControllers: Map<string, AbortController>;
   conversationCallbacks: Map<string, AgentCallbacks>;
   runCallbacksByRunId: Map<string, AgentCallbacks>;
