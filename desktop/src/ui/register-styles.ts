@@ -2,6 +2,7 @@ import "./avatar.css";
 import "./button.css";
 import "./dialog.css";
 import "./dropdown-menu.css";
+import "./image-lightbox.css";
 import "./keybind.css";
 import "./pill.css";
 import "./select.css";
