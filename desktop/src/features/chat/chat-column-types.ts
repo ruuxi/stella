@@ -9,19 +9,20 @@ import type {
   EventRecord,
   TaskItem,
 } from "@/features/chat/lib/event-transforms";
-import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 
 export type { EventRecord };
 import type { ChatContext } from "@/shared/types/electron";
 
+/**
+ * Stable per-conversation slice of the chat runtime.
+ *
+ * The high-frequency visible timeline (`MessageRecord[]`, mutated ~once
+ * per animation frame while a reply streams) is intentionally NOT here —
+ * it is published through `ChatMessagesContext` / `useChatMessages` so this
+ * value keeps a stable identity across streamed frames and its consumers
+ * (shell chrome, left sidebar) don't re-render per token.
+ */
 export type ChatColumnConversation = {
-  /**
-   * Visible chat timeline source. Each `MessageRecord` carries the
-   * tool/`agent-completed` events that landed between it and the next
-   * message on `toolEvents`, so the timeline renderer doesn't walk a
-   * flat event stream.
-   */
-  messages: MessageRecord[];
   /**
    * Agent-lifecycle activity for the conversation. Fed by
    * `useConversationActivity` in local mode and a `displayEvents` filter

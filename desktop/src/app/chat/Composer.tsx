@@ -3,7 +3,7 @@
  */
 
 import type { Dispatch, SetStateAction } from "react";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
 import { ComposerContextRow } from "./ComposerContextRow";
 import { ComposerLeadRow } from "./ComposerLeadRow";
@@ -52,7 +52,7 @@ type ComposerProps = {
   suggestionsActive?: boolean;
 };
 
-export function Composer({
+function ComposerImpl({
   message,
   setMessage,
   chatContext,
@@ -310,3 +310,12 @@ export function Composer({
     </div>
   );
 }
+
+/**
+ * Memoized so the chat surface re-rendering on every streamed frame (it
+ * subscribes to the live message timeline) does not reconcile the whole
+ * composer subtree. All props are shallow-comparable; during streaming they
+ * stay referentially stable, so the composer only re-renders on real input
+ * (typed text, context chips, focus requests, an active reply-peek).
+ */
+export const Composer = memo(ComposerImpl);

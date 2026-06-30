@@ -12,6 +12,6 @@ import type { useFullShellChat } from '@/shell/use-full-shell-chat'
  * consumers throw "must be used within ChatRuntimeProvider" until the next
  * full reload.
  */
-export type ChatRuntime = ReturnType<typeof useFullShellChat>
+export type ChatRuntime = ReturnType<typeof useFullShellChat>["runtime"]
 
 export const ChatRuntimeContext = createContext<ChatRuntime | null>(null)

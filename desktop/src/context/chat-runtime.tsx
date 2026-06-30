@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { useFullShellChat } from '@/shell/use-full-shell-chat'
 import { ChatRuntimeContext } from '@/context/chat-runtime-context'
+import { ChatMessagesContext } from '@/context/chat-messages-context'
 import { usePetStatusBroadcast } from '@/shell/pet/use-pet-status-broadcast'
 import { useAgentProgressSummaryEngine } from '@/features/chat/use-agent-progress-summary-engine'
 import { isTraceDiagnosticsEnabled } from '@/platform/diagnostics/trace-store'
@@ -26,7 +27,10 @@ export function ChatRuntimeProvider({
   isOnChatRoute,
   children,
 }: ChatRuntimeProviderProps) {
-  const runtime = useFullShellChat({
+  // `runtime` is the stable slice (identity changes only at tool/text
+  // boundaries); `messages` is the high-frequency timeline, published on its
+  // own context so only the timeline renderers re-render per streamed frame.
+  const { runtime, messages } = useFullShellChat({
     activeConversationId,
     isOnChatRoute,
     // Stella ships as a Vite dev server, so `import.meta.env.DEV` is TRUE for
@@ -39,7 +43,7 @@ export function ChatRuntimeProvider({
   // indicator so the floating pet always mirrors the same agent state
   // the chat surface displays.
   usePetStatusBroadcast({
-    messages: runtime.conversation.messages,
+    messages,
     liveTasks: runtime.conversation.streaming.liveTasks,
     runtimeStatusText: runtime.conversation.streaming.runtimeStatusText ?? '',
     isStreaming: runtime.conversation.isStreaming,
@@ -53,7 +57,9 @@ export function ChatRuntimeProvider({
 
   return (
     <ChatRuntimeContext.Provider value={runtime}>
-      {children}
+      <ChatMessagesContext.Provider value={messages}>
+        {children}
+      </ChatMessagesContext.Provider>
     </ChatRuntimeContext.Provider>
   )
 }
