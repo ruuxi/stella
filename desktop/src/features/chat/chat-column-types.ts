@@ -61,10 +61,6 @@ export type ChatColumnConversation = {
     /** True once the in-flight run has streamed any visible assistant text. */
     isStreamingResponseText: boolean;
     runtimeStatusText?: string | null;
-    /** Run id of the in-flight orchestrator run, used to scope the
-     * working indicator's "step aside for a sub-agent" behavior to the
-     * current run's own spawned agents. */
-    activeRunId?: string | null;
     activeToolCallId?: string | null;
     activeToolName?: string | null;
     hasToolActivity?: boolean;
