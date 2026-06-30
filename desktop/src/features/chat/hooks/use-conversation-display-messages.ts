@@ -47,6 +47,11 @@ type UseConversationDisplayMessagesOptions = {
   streamingAssistants: StreamingAssistantOverlay[];
 };
 
+const compareDisplayOrder = (a: MessageRecord, b: MessageRecord): number => {
+  if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+  return a._id.localeCompare(b._id);
+};
+
 const mergeMessageSources = (
   ...sources: MessageRecord[][]
 ): MessageRecord[] => {
@@ -58,10 +63,24 @@ const mergeMessageSources = (
       }
     }
   }
-  return [...seen.values()].sort((a, b) => {
-    if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
-    return a._id.localeCompare(b._id);
-  });
+  const merged = [...seen.values()];
+  // The dedup above preserves source + insertion order: persisted messages
+  // first (already in their ordered SQLite-window order), then overlays. In
+  // the common case — a freshly sent/streamed message carrying the newest
+  // timestamp appended onto an already-ordered list — `merged` is ALREADY in
+  // display order, so the O(n log n) sort is pure overhead on the membership-
+  // changing send frame (where this whole merge re-runs because the caches
+  // correctly bust). Detect that with an O(n) adjacency scan and skip the
+  // sort; otherwise sort exactly as before. Behavior-identical either way: a
+  // stable sort of an already-sorted array leaves it unchanged, so the skipped
+  // branch returns the same ordering the sort would have produced.
+  for (let i = 1; i < merged.length; i += 1) {
+    if (compareDisplayOrder(merged[i - 1]!, merged[i]!) > 0) {
+      merged.sort(compareDisplayOrder);
+      break;
+    }
+  }
+  return merged;
 };
 
 const getAssistantUserMessageId = (
