@@ -570,9 +570,12 @@ export function useLocalAgentStream({
           const anchorTurnId = storeState.runsById[runId]?.userMessageId
           return Object.values(taskMap).map((task) => ({
             ...task,
-            // Stamp the owning run id so consumers can tell a current-run
-            // sub-agent apart from a background task left over by an
-            // earlier turn (live task-upserts don't carry runId).
+            // Stamp the owning run id (live task-upserts don't carry it).
+            // Picking a task in the workspace strip turns it into a
+            // ChatContext.activity via `taskToActivityContext`, whose
+            // `runId` is emitted as `run-id="…"` in the agent prompt
+            // context (runtime/kernel/chat-prompt-context), so a still-live
+            // task needs it before it has been persisted.
             runId: task.runId ?? runId,
             anchorTurnId: task.anchorTurnId ?? anchorTurnId ?? undefined,
           }))
@@ -585,7 +588,6 @@ export function useLocalAgentStream({
   return {
     liveTasks,
     runtimeStatusText,
-    activeRunId,
     notifyAssistantTextPainted,
     activeToolCallId,
     activeToolName,
