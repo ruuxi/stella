@@ -127,15 +127,17 @@ const asNonEmptyString = (value: unknown): string | undefined =>
  * becomes the card's title.
  *
  * Only user-facing *delegated* work earns a card: the `general` agent and
- * any custom user-installed subagent — i.e. exactly the agent types
- * `spawn_agent` accepts. Orchestrator-reserved builtin agents (schedule,
+ * any custom user-installed subagent. This applies just the
+ * reserved-builtin *denylist* half of `spawn_agent`'s acceptance check, not
+ * its full validation — it does not also confirm the agent type is a
+ * registered subagent. Orchestrator-reserved builtin agents (schedule,
  * fashion, explore, dream, chronicle, install_update, …) run behind tools
  * as internal/system helpers, so their `agent-started` events are filtered
  * out here via the same `isOrchestratorReservedBuiltinAgentId` predicate
- * that `spawn_agent` uses to reject non-delegation targets. This is a
- * denylist rather than an allowlist of `general` so legitimate custom
- * subagents the user kicked off still surface, while any future internal
- * builtin is excluded automatically. (Tool-internal one-shot helpers like
+ * that `spawn_agent` uses to reject reserved targets. A denylist (rather
+ * than an allowlist of `general`) means legitimate custom subagents the
+ * user kicked off still surface, while any future internal builtin is
+ * excluded automatically. (Tool-internal one-shot helpers like
  * the HTML/canvas renderer and recall lookup never emit `agent-started`
  * events at all, so they can't produce a card regardless.)
  */
