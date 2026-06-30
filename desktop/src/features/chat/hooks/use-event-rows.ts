@@ -220,8 +220,13 @@ type UseEventRowsResult = {
  * receipt. Used by the dedup pass below to decide between clearing just the
  * card (the row has other content to keep) and dropping the synthetic
  * card-only row entirely.
+ *
+ * Keep in sync with `AssistantRowViewModel` content fields: every renderable
+ * field other than `backgroundWork` must be checked here, otherwise a row
+ * that carries only that (unchecked) content can be silently dropped when its
+ * duplicate background card is deduped.
  */
-const assistantRowHasNonBackgroundContent = (
+export const assistantRowHasNonBackgroundContent = (
   row: AssistantRowViewModel,
 ): boolean =>
   row.text.trim().length > 0 ||
