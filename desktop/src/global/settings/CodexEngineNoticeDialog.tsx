@@ -87,12 +87,10 @@ export function CodexEngineNoticeDialog() {
         <DialogHeader>
           <DialogTitle>Codex powers your agents, not Stella</DialogTitle>
           <DialogDescription>
-            Heads up — Codex works a little differently from the other engines.
-            Stella, the assistant you&rsquo;re chatting with, keeps running on
-            the default engine. When you select Codex, it powers the agents
-            Stella spawns to carry out tasks in the background. Your conversation
-            with Stella won&rsquo;t change; the hands-on work just gets handled by
-            Codex under the hood.
+            Codex only runs the agents Stella spawns for background tasks — not
+            Stella herself, who stays on the default engine. To put your OpenAI
+            subscription behind all of Stella instead, pick the OpenAI provider
+            on the default engine.
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="codex-engine-notice-dialog-body">
