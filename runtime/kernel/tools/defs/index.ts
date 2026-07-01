@@ -33,6 +33,7 @@ import { grepTool } from "./grep.js";
 import { createHtmlTool } from "./html.js";
 import { createImageGenTool } from "./image-gen.js";
 import { createLinqImessageTools } from "./linq-imessage.js";
+import { createMapTool } from "./map.js";
 import { createMultiToolUseParallelTool } from "./multi-tool-use-parallel.js";
 import { readTool } from "./read.js";
 import { createRememberTool } from "./remember.js";
@@ -118,6 +119,7 @@ export const buildBuiltinTools = (
       ...(options.generateHtml ? { generateHtml: options.generateHtml } : {}),
     }),
   );
+  tools.push(createMapTool());
   tools.push(createRecallTool({ contextProvider: options.contextProvider }));
   tools.push(
     createRememberTool({
