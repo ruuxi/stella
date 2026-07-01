@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildContextLookupUserPrompt,
+  formatActiveThreads,
   formatThreadSearch,
   parseRecallAction,
 } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
@@ -27,10 +28,9 @@ const createRoot = async (): Promise<{
   );
   roots.add(rootPath);
   await mkdir(path.join(rootPath, "memories"), { recursive: true });
-  await mkdir(
-    path.join(rootPath, "memories_extensions", "chronicle"),
-    { recursive: true },
-  );
+  await mkdir(path.join(rootPath, "memories_extensions", "chronicle"), {
+    recursive: true,
+  });
   const db = new DatabaseSync(getDesktopDatabasePath(rootPath), {
     timeout: 5000,
   }) as unknown as SqliteDatabase;
@@ -53,12 +53,7 @@ describe("buildContextLookupUserPrompt", () => {
       "Working on Stella memory routing.",
     );
     await writeFile(
-      path.join(
-        rootPath,
-        "memories_extensions",
-        "chronicle",
-        "10m-current.md",
-      ),
+      path.join(rootPath, "memories_extensions", "chronicle", "10m-current.md"),
       "User was looking at a browser tab about context tools.",
     );
 
@@ -191,9 +186,7 @@ describe("buildContextLookupUserPrompt", () => {
     db.close();
 
     expect(prompt).toContain("# Memory Search Results");
-    expect(prompt).toContain(
-      '<memory_search terms="mini window, pinned">',
-    );
+    expect(prompt).toContain('<memory_search terms="mini window, pinned">');
     expect(prompt).toContain(
       '<match path="~/.stella/memories/MEMORY.md" lines="2-6">',
     );
@@ -218,7 +211,9 @@ describe("parseRecallAction", () => {
     ).toEqual({ action: "search_threads", query: "flight research" });
 
     expect(
-      parseRecallAction('{"action":"answer","brief":"Nothing relevant found."}'),
+      parseRecallAction(
+        '{"action":"answer","brief":"Nothing relevant found."}',
+      ),
     ).toEqual({ action: "answer", brief: "Nothing relevant found." });
   });
 
@@ -237,30 +232,79 @@ describe("formatThreadSearch", () => {
       searchThreads: () => threads,
     }) as unknown as Parameters<typeof formatThreadSearch>[0];
 
-  it("renders resumable thread_ids with description and clamped summary", () => {
+  it("renders thread_ids with live state, description and clamped summary", () => {
+    const now = Date.now();
     const out = formatThreadSearch(
       makeStore([
         {
           threadId: "scrape-airline-a",
           description: "Scrape airline A fares",
           summary: "  found  cheap   fares  ",
+          lastUsedAt: now - 3 * 60_000,
+          agentStatus: "running",
+        },
+        {
+          threadId: "old-idle-thread",
+          description: "Draft the budget",
+          lastUsedAt: now - 20 * 60_000,
+          agentStatus: "completed",
         },
       ]),
       "conv-1",
       "flights",
       undefined,
     );
-    expect(out).toContain("- scrape-airline-a (resumable)");
+    // Recall surfaces the same active/paused signal as the roster.
+    expect(out).toContain("- scrape-airline-a (active, last active 3m ago)");
+    expect(out).toContain("- old-idle-thread (paused, last active 20m ago)");
     expect(out).toContain("description: Scrape airline A fares");
     expect(out).toContain("summary: found cheap fares");
   });
 
   it("explains an empty result differently with and without a query", () => {
-    expect(formatThreadSearch(makeStore([]), "conv-1", "flights", undefined)).toMatch(
-      /No past threads matched/,
+    expect(
+      formatThreadSearch(makeStore([]), "conv-1", "flights", undefined),
+    ).toMatch(/No past threads matched/);
+    expect(
+      formatThreadSearch(makeStore([]), "conv-1", undefined, undefined),
+    ).toMatch(/No past threads recorded/);
+  });
+});
+
+describe("formatActiveThreads", () => {
+  const makeStore = (threads: unknown[]) =>
+    ({
+      listActiveThreads: () => threads,
+    }) as unknown as Parameters<typeof formatActiveThreads>[0];
+
+  it("surfaces live active/paused state and last-active recency", () => {
+    const now = Date.now();
+    const out = formatActiveThreads(
+      makeStore([
+        {
+          threadId: "still-running",
+          description: "Deploy the backend",
+          lastUsedAt: now - 12 * 60_000,
+          agentUpdatedAt: now - 60_000,
+          agentStatus: "running",
+        },
+        {
+          threadId: "idle-thread",
+          description: "Draft the budget",
+          lastUsedAt: now - 30 * 60_000,
+          agentStatus: "completed",
+        },
+      ]),
+      "conv-1",
     );
-    expect(formatThreadSearch(makeStore([]), "conv-1", undefined, undefined)).toMatch(
-      /No past threads recorded/,
+    expect(out).toContain("- still-running (active, last active 1m ago)");
+    expect(out).toContain("- idle-thread (paused, last active 30m ago)");
+    expect(out).toContain("description: Deploy the backend");
+  });
+
+  it("reports no resumable threads when empty", () => {
+    expect(formatActiveThreads(makeStore([]), "conv-1")).toBe(
+      "No resumable agent threads.",
     );
   });
 });

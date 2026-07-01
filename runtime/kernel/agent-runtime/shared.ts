@@ -311,6 +311,21 @@ export const extractAssistantText = (
     .join("");
 };
 
+/**
+ * True when an assistant message carries at least one tool call. Such a
+ * message is *interim* — the agent loop runs the tools and then produces a
+ * further message — so any visible preamble text it contains is not the
+ * final answer. The working indicator uses this to avoid handing off (and
+ * disappearing) between a preamble and the tool call it precedes.
+ */
+export const assistantMessageHasToolCall = (
+  message: AgentMessage | undefined,
+): boolean => {
+  if (!message || message.role !== "assistant") return false;
+  const blocks = Array.isArray(message.content) ? message.content : [];
+  return blocks.some((block) => block.type === "toolCall");
+};
+
 const getLatestAssistantMessage = (
   messages: AgentMessage[],
 ): AgentMessage | undefined =>

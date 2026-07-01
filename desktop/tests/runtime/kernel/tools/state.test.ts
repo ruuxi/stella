@@ -37,6 +37,7 @@ describe("state tools", () => {
               createdAt: 1,
               lastUsedAt: now,
               description: "Previous task",
+              agentStatus: "running",
             },
           ],
         };
@@ -66,13 +67,12 @@ describe("state tools", () => {
         created: true,
         running_in_background: true,
         follow_up_on_completion: true,
-        note:
-          "Task has started but is NOT finished yet. Wait for the completion event before telling the user it is done.",
+        note: "Task has started but is NOT finished yet. Wait for the completion event before telling the user it is done.",
         other_threads: [
           {
             thread_id: "thread-0",
-            availability: "resumable",
-            last_used: "just now",
+            status: "active",
+            last_active: "just now",
             description: "Previous task",
           },
         ],
@@ -219,7 +219,8 @@ describe("state tools", () => {
       ctx,
       {
         description: "Task",
-        prompt: "Inspect the working indicator behavior and fix the stale footer text.",
+        prompt:
+          "Inspect the working indicator behavior and fix the stale footer text.",
       },
       {
         conversationId: "conversation-1",
@@ -235,7 +236,8 @@ describe("state tools", () => {
   });
 
   it("forwards pause_agent to cancelAgent with the pause sentinel reason", async () => {
-    const cancelCalls: Array<{ agentId: string; reason: string | undefined }> = [];
+    const cancelCalls: Array<{ agentId: string; reason: string | undefined }> =
+      [];
     const ctx = createStateContext("/tmp", {
       createAgent: async () => ({ threadId: "thread-1" }),
       getAgent: async () => null,
