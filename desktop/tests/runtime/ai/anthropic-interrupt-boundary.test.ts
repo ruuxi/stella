@@ -93,6 +93,23 @@ describe("createThinkingAbortGate", () => {
 		expect(onForwardAbort).toHaveBeenCalledTimes(1);
 	});
 
+	it("defaults the defer timeout to 3s when none is provided", () => {
+		let scheduledMs: number | undefined;
+		const gate = createThinkingAbortGate({
+			onForwardAbort: vi.fn(),
+			setTimer: (_fn, ms) => {
+				scheduledMs = ms;
+				return 1 as unknown as ReturnType<typeof setTimeout>;
+			},
+			clearTimer: () => {},
+		});
+
+		gate.openThinkingBlock();
+		gate.requestAbort();
+
+		expect(scheduledMs).toBe(3_000);
+	});
+
 	it("is idempotent across repeated abort requests", () => {
 		const onForwardAbort = vi.fn();
 		const gate = createThinkingAbortGate({ onForwardAbort });
