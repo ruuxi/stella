@@ -20,6 +20,7 @@ import {
   sanitizeToolVisibleText,
 } from "../tools/safety.js";
 import { resolveImageMimeType } from "../shared/image-mime.js";
+import { readImageFileSettled } from "../shared/read-image-file.js";
 import { formatDimensionNote, resizeImage } from "../shared/image-resize.js";
 import {
   detectImageMediaType,
@@ -269,7 +270,13 @@ export const extractAttachImageBlocks = async (
   // small and there's typically 1-2 per call.
   for (const { full, path: imgPath } of matches) {
     try {
-      const buf = await fs.readFile(imgPath);
+      // Settle the read against the capture -> read race: a screenshot the
+      // agent just captured can still be mid-flush when its path reaches us,
+      // and reading it early yields a truncated PNG that 400s Anthropic
+      // fatally. `readImageFileSettled` re-reads until the bytes complete (or
+      // the file stops growing / the budget is spent); the completeness gate
+      // below stays as defense-in-depth for genuinely corrupt files.
+      const buf = await readImageFileSettled(imgPath);
       const mimeType = resolveImageMimeType(imgPath, buf);
       if (!mimeType) {
         return { text, images: [] };
