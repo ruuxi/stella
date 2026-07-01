@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   removeQueuedUserMessageById,
+  restoreQueuedTextToComposer,
   shouldClearQueuedUserMessagesForRunOutcome,
   type QueuedUserMessage,
 } from '../../../src/features/chat/hooks/queued-user-messages'
@@ -29,5 +30,26 @@ describe('queued user message cleanup', () => {
     expect(shouldClearQueuedUserMessagesForRunOutcome('completed')).toBe(false)
     expect(shouldClearQueuedUserMessagesForRunOutcome('error')).toBe(true)
     expect(shouldClearQueuedUserMessagesForRunOutcome('canceled')).toBe(true)
+  })
+})
+
+describe('restoreQueuedTextToComposer', () => {
+  it('drops the cancelled message text straight into an empty composer', () => {
+    expect(restoreQueuedTextToComposer('', 'edit me')).toBe('edit me')
+    expect(restoreQueuedTextToComposer('   \n  ', 'edit me')).toBe('edit me')
+  })
+
+  it('appends below an existing draft without clobbering it', () => {
+    expect(restoreQueuedTextToComposer('half a thought  ', 'recovered')).toBe(
+      'half a thought\n\nrecovered',
+    )
+  })
+
+  it('leaves the composer untouched when the restored text is blank', () => {
+    expect(restoreQueuedTextToComposer('draft', '   ')).toBe('draft')
+  })
+
+  it('trims the restored text before inserting it', () => {
+    expect(restoreQueuedTextToComposer('', '  padded  ')).toBe('padded')
   })
 })
