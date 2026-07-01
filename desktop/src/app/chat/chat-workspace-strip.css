@@ -151,9 +151,12 @@
 
 .chat-workspace-strip__task-progress {
   list-style: none;
-  margin: 3px 0 1px;
-  /* Indent under the status icon so lines align with the row label. */
-  padding: 0 2px 0 23px;
+  /* Indent under the status icon so the rail sits where the row label
+     starts (13px margin + 1px rail + 9px gap = the 23px label indent). */
+  margin: 3px 0 1px 13px;
+  padding: 0 2px 0 9px;
+  /* Hairline rail grouping the live summary lines. */
+  border-left: 1px solid var(--border-base);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -331,8 +334,10 @@
 }
 
 .chat-workspace-strip__task-detail .chat-workspace-strip__task-progress {
+  /* The detail block already carries the 23px indent — the rail hangs at
+     its left edge, aligned under the row label. */
   margin: 0;
-  padding-left: 0;
+  padding-left: 9px;
 }
 
 .chat-workspace-strip__task-files {
