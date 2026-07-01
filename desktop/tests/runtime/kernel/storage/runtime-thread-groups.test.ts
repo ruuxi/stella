@@ -576,6 +576,39 @@ describe("searchThreads", () => {
     ]);
   });
 
+  it("is dual-scoped: current-conversation hits sort ahead of other conversations'", () => {
+    const { store } = createTestContext();
+    // The other conversation's thread is more recent AND matches the same
+    // token — scope still wins the tie-break ordering.
+    const mine = spawnThread(store, "conv-mine", "Compare flight prices");
+    const other = spawnThread(store, "conv-other", "Compare flight schedules");
+
+    const results = store.searchThreads({
+      conversationId: "conv-mine",
+      query: "flight",
+    });
+    expect(results.map((thread) => thread.threadId)).toEqual([
+      mine.threadId,
+      other.threadId,
+    ]);
+    // The record's own conversationId tells callers which scope a hit
+    // came from.
+    expect(results[0]?.conversationId).toBe("conv-mine");
+    expect(results[1]?.conversationId).toBe("conv-other");
+  });
+
+  it("finds another conversation's work even with zero current-conversation matches", () => {
+    const { store } = createTestContext();
+    const other = spawnThread(store, "conv-a", "Fix CarPlay blank screen");
+    spawnThread(store, "conv-b", "Organize tax documents");
+
+    const results = store.searchThreads({
+      conversationId: "conv-b",
+      query: "carplay",
+    });
+    expect(results.map((thread) => thread.threadId)).toEqual([other.threadId]);
+  });
+
   it("excludes orchestrator-typed threads and the conversation's own thread key", () => {
     const { store } = createTestContext();
     const conversationId = "conv-search-excluded";

@@ -166,10 +166,22 @@ const eventRoleForType = (type: string): string => {
 
 const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
 
-// English function words dropped from searchThreads queries before
-// matching. Under OR-with-ranking semantics a stray stopword can never
-// exclude a result, only pad the 6-token budget and inflate scores with
-// rows that merely contain "the" — so the list errs toward inclusion.
+// Hard cap on the text returned per transcript-search hit; the recall
+// formatter windows it further around the first match.
+const TRANSCRIPT_SEARCH_TEXT_CAP = 4_000;
+
+/** One chat-transcript hit from `searchTranscripts`. */
+export type TranscriptSearchHit = {
+  conversationId: string;
+  role: "user" | "assistant";
+  atMs: number;
+  text: string;
+};
+
+// English function words dropped from search queries before matching.
+// Under OR-with-ranking semantics a stray stopword can never exclude a
+// result, only pad the 6-token budget and inflate scores with rows that
+// merely contain "the" — so the list errs toward inclusion.
 const SEARCH_STOPWORDS = new Set([
   "a",
   "an",
@@ -269,6 +281,27 @@ const SEARCH_STOPWORDS = new Set([
   "last",
   "recent",
 ]);
+
+/**
+ * Shared tokenizer for the OR-with-ranking searches (`searchThreads`,
+ * `searchTranscripts`) and the recall formatter that scores their merged
+ * results: whitespace split, stopwords dropped — unless the query is ALL
+ * stopwords, which still searches with what it has rather than silently
+ * degrading into a recency dump — capped at 12 tokens. The cap was 6, but
+ * recall queries routinely enumerate candidates ("was it Apache Trail,
+ * Tortilla Flat, Bush Highway/Saguaro Lake?") and truncating at 6 cut
+ * exactly the tokens the right transcript rows contained.
+ */
+export const tokenizeSearchQuery = (query: string | undefined): string[] => {
+  const rawTokens = (query ?? "")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const meaningful = rawTokens.filter(
+    (token) => !SEARCH_STOPWORDS.has(token.toLowerCase()),
+  );
+  return (meaningful.length > 0 ? meaningful : rawTokens).slice(0, 12);
+};
 
 const toIsoTimestamp = (timestamp: number): string =>
   new Date(timestamp).toISOString();
@@ -2734,16 +2767,20 @@ export class SessionStore {
   }
 
   /**
-   * Search EVERY thread the conversation has ever spawned — including
-   * evicted ones — by key, name, summary, group label, and agent
-   * description. A result must match at least one token and ranks by how
-   * many tokens it matches (ties break newest-first). Strict AND would
-   * make the verbose natural-language queries an LLM writes ("the flight
-   * comparison from last week") return nothing — the one failure this
-   * tool exists to prevent — so stopwords are dropped up front and the
-   * rest is scored, not filtered. No query returns the most recent work
-   * first. The orchestrator's own thread is excluded (it is the
-   * conversation, not work).
+   * Search EVERY delegated agent thread across ALL conversations —
+   * including evicted ones — by key, name, summary, group label, and
+   * agent description. Results from `conversationId` (the caller's
+   * current conversation) sort ahead of other conversations' threads;
+   * the record's own `conversationId` lets callers label which scope a
+   * hit came from. A result must match at least one token and ranks by
+   * how many tokens it matches (ties break newest-first). Strict AND
+   * would make the verbose natural-language queries an LLM writes ("the
+   * flight comparison from last week") return nothing — the one failure
+   * this tool exists to prevent — so stopwords are dropped up front and
+   * the rest is scored, not filtered. No query returns the most recent
+   * work first. Orchestrator threads are excluded (they are the
+   * conversations themselves, not work — transcript content is
+   * `searchTranscripts`' job).
    */
   searchThreads(args: {
     conversationId: string;
@@ -2751,16 +2788,7 @@ export class SessionStore {
     limit?: number;
   }): RuntimeThreadRecord[] {
     const limit = Math.max(1, Math.min(25, Math.floor(args.limit ?? 12)));
-    const rawTokens = (args.query ?? "")
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter(Boolean);
-    const meaningful = rawTokens.filter(
-      (token) => !SEARCH_STOPWORDS.has(token.toLowerCase()),
-    );
-    // An all-stopword query still searches with what it has rather than
-    // silently degrading into a recency dump.
-    const tokens = (meaningful.length > 0 ? meaningful : rawTokens).slice(0, 6);
+    const tokens = tokenizeSearchQuery(args.query);
     const escapeLike = (value: string) => value.replace(/([\\%_])/g, "\\$1");
     const tokenClause = `(
         thread_key LIKE ? ESCAPE '\\'
@@ -2771,7 +2799,6 @@ export class SessionStore {
         OR runtime_agents.description LIKE ? ESCAPE '\\'
       )`;
     const where = [
-      "runtime_threads.conversation_id = ?",
       "runtime_threads.agent_type != 'orchestrator'",
       "thread_key != ?",
       // Implicit transcript rows (ephemeral workflow agents, internal
@@ -2782,24 +2809,28 @@ export class SessionStore {
         ? [`(${tokens.map(() => tokenClause).join("\n        OR ")})`]
         : []),
     ].join("\n        AND ");
+    // Current-conversation hits outrank other conversations' regardless of
+    // token score — the caller almost always means "my work" first, and the
+    // cross-conversation tail is the fallback.
+    const scopeOrder = `(runtime_threads.conversation_id = ?) DESC`;
     const orderBy =
       tokens.length > 0
-        ? `(${tokens
-            .map(() => `CASE WHEN ${tokenClause} THEN 1 ELSE 0 END`)
-            .join(" + ")}) DESC,
+        ? `${scopeOrder},
+      (${tokens
+        .map(() => `CASE WHEN ${tokenClause} THEN 1 ELSE 0 END`)
+        .join(" + ")}) DESC,
       runtime_threads.last_used_at DESC`
-        : "runtime_threads.last_used_at DESC";
-    const params: Array<string | number> = [
-      args.conversationId,
-      args.conversationId,
-    ];
+        : `${scopeOrder},
+      runtime_threads.last_used_at DESC`;
+    const params: Array<string | number> = [args.conversationId];
     const pushTokenParams = () => {
       for (const token of tokens) {
         const pattern = `%${escapeLike(token)}%`;
         params.push(pattern, pattern, pattern, pattern, pattern, pattern);
       }
     };
-    pushTokenParams(); // WHERE binds first,
+    pushTokenParams(); // WHERE token binds,
+    params.push(args.conversationId); // then the ORDER BY scope bind,
     pushTokenParams(); // then ORDER BY rebinds the same patterns.
     params.push(limit);
     const rows = this.db
@@ -2815,6 +2846,162 @@ export class SessionStore {
       Parameters<SessionStore["deserializeRuntimeThread"]>[0]
     >;
     return rows.map((row) => this.deserializeRuntimeThread(row));
+  }
+
+  /**
+   * Search what was actually SAID in chat: user/assistant message text
+   * across ALL conversations (not just the caller's). This is the only
+   * durable index over things the user merely mentioned in conversation —
+   * no agent thread, no memory note — so it is what answers episodic
+   * questions ("did I ever tell you…", "where did we…"). Same
+   * OR-with-ranking token semantics as `searchThreads`: a hit must match
+   * at least one non-stopword token, ranks by how many tokens it matches,
+   * ties break newest-first. Matching runs against the extracted `$.text`
+   * of each chat payload, never the raw JSON, so attachments/base64 and
+   * metadata cannot produce false hits.
+   */
+  searchTranscripts(args: {
+    query: string;
+    limit?: number;
+  }): TranscriptSearchHit[] {
+    const limit = Math.max(1, Math.min(25, Math.floor(args.limit ?? 12)));
+    const tokens = tokenizeSearchQuery(args.query);
+    if (tokens.length === 0) return [];
+    const escapeLike = (value: string) => value.replace(/([\\%_])/g, "\\$1");
+    const textExpr = `json_extract(part.data_json, '$.text')`;
+    const tokenClause = `${textExpr} LIKE ? ESCAPE '\\'`;
+    const rows = this.db
+      .prepare(
+        `
+      SELECT
+        message.session_id AS conversationId,
+        message.role AS role,
+        message.created_at AS atMs,
+        substr(${textExpr}, 1, ${TRANSCRIPT_SEARCH_TEXT_CAP}) AS text
+      FROM message
+      JOIN part ON part.message_id = message.id
+      WHERE message.role IN ('user', 'assistant')
+        AND message.type IN ('user_message', 'assistant_message')
+        AND ${textExpr} IS NOT NULL
+        AND (${tokens.map(() => tokenClause).join("\n          OR ")})
+      ORDER BY
+        (${tokens
+          .map(() => `CASE WHEN ${tokenClause} THEN 1 ELSE 0 END`)
+          .join(" + ")}) DESC,
+        message.created_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(
+        ...tokens.map((token) => `%${escapeLike(token)}%`), // WHERE binds,
+        ...tokens.map((token) => `%${escapeLike(token)}%`), // ORDER BY rebinds.
+        limit,
+      ) as Array<{
+      conversationId: string;
+      role: string;
+      atMs: number;
+      text: unknown;
+    }>;
+    return rows.flatMap((row) => {
+      const text = typeof row.text === "string" ? row.text.trim() : "";
+      if (!text) return [];
+      return [
+        {
+          conversationId: row.conversationId,
+          role: row.role === "assistant" ? ("assistant" as const) : ("user" as const),
+          atMs: row.atMs,
+          text,
+        },
+      ];
+    });
+  }
+
+  /**
+   * The chat messages immediately surrounding a `searchTranscripts` hit, in
+   * chronological order (excluding the hit itself). Keyword search finds the
+   * message that NAMES the thing; the messages around it are usually what
+   * actually happened ("give me the address" → drove there → "damn i love
+   * the car"), so recall renders a hit's neighbors as its evidence context.
+   */
+  listTranscriptNeighbors(args: {
+    conversationId: string;
+    atMs: number;
+    before?: number;
+    after?: number;
+    /** Neighbors farther than this from the hit are cut (default 2h). */
+    windowMs?: number;
+  }): TranscriptSearchHit[] {
+    const before = Math.max(0, Math.min(8, Math.floor(args.before ?? 2)));
+    const after = Math.max(0, Math.min(10, Math.floor(args.after ?? 2)));
+    // The follow-through to a matched message ("give me the address" → drove
+    // there → reaction) routinely lands tens of minutes later, so the
+    // episode boundary is a time window, not just a message count.
+    const windowMs = Math.max(60_000, args.windowMs ?? 2 * 60 * 60 * 1000);
+    const textExpr = `json_extract(part.data_json, '$.text')`;
+    const base = `
+      SELECT
+        message.session_id AS conversationId,
+        message.role AS role,
+        message.created_at AS atMs,
+        substr(${textExpr}, 1, ${TRANSCRIPT_SEARCH_TEXT_CAP}) AS text
+      FROM message
+      JOIN part ON part.message_id = message.id
+      WHERE message.session_id = ?
+        AND message.role IN ('user', 'assistant')
+        AND message.type IN ('user_message', 'assistant_message')
+        AND ${textExpr} IS NOT NULL
+    `;
+    type Row = {
+      conversationId: string;
+      role: string;
+      atMs: number;
+      text: unknown;
+    };
+    const rows: Row[] = [
+      ...(before > 0
+        ? (this.db
+            .prepare(
+              `${base} AND message.created_at < ? AND message.created_at >= ?
+               ORDER BY message.created_at DESC LIMIT ?`,
+            )
+            .all(
+              args.conversationId,
+              args.atMs,
+              args.atMs - windowMs,
+              before,
+            ) as Row[])
+        : []),
+      ...(after > 0
+        ? (this.db
+            .prepare(
+              `${base} AND message.created_at > ? AND message.created_at <= ?
+               ORDER BY message.created_at ASC LIMIT ?`,
+            )
+            .all(
+              args.conversationId,
+              args.atMs,
+              args.atMs + windowMs,
+              after,
+            ) as Row[])
+        : []),
+    ];
+    return rows
+      .flatMap((row) => {
+        const text = typeof row.text === "string" ? row.text.trim() : "";
+        if (!text) return [];
+        return [
+          {
+            conversationId: row.conversationId,
+            role:
+              row.role === "assistant"
+                ? ("assistant" as const)
+                : ("user" as const),
+            atMs: row.atMs,
+            text,
+          },
+        ];
+      })
+      .sort((a, b) => a.atMs - b.atMs);
   }
 
   getThreadGroup(
