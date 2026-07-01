@@ -275,7 +275,7 @@
 }
 
 .chat-workspace-strip__task-icon--running {
-  color: var(--primary);
+  color: var(--text-strong);
 }
 
 .chat-workspace-strip__task-icon--done {
