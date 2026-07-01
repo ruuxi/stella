@@ -271,7 +271,19 @@ describe("LocalAgentManager Exec fs locking", () => {
     finishSecondRun?.();
     await waitForAgentSettled(manager, task.threadId);
 
+    // The initial spawn's agent-started is NOT flagged a follow-up.
+    const spawnStarted = events
+      .slice(0, eventOffset)
+      .find(
+        (event) =>
+          event.type === "agent-started" && event.agentId === task.threadId,
+      );
+    expect(spawnStarted).toBeDefined();
+    expect(spawnStarted?.isFollowUp).toBeUndefined();
+
     const resumedEvents = events.slice(eventOffset);
+    // The send_input re-activation IS explicitly flagged a follow-up, and
+    // carries the follow-up's own message on `statusText`.
     expect(resumedEvents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -279,6 +291,7 @@ describe("LocalAgentManager Exec fs locking", () => {
           rootRunId: "root-current",
           agentId: task.threadId,
           statusText: "Resume current Nvidia web research",
+          isFollowUp: true,
         }),
         expect.objectContaining({
           type: "agent-completed",

@@ -4,15 +4,19 @@ import type { EventRecord } from "@/features/chat/lib/event-transforms";
 
 /**
  * `agent-started` lifecycle event as persisted into a turn's `toolEvents`.
- * A fresh `spawn_agent` falls `statusText` back to the spawn `description`
- * (so they match); a `send_input` re-activation carries the thread's ORIGINAL
- * `description` but the follow-up's own message on `statusText`.
+ * A fresh `spawn_agent` leaves `isFollowUp` unset; a `send_input` re-activation
+ * carries the thread's ORIGINAL `description` but stamps `isFollowUp: true` and
+ * puts the follow-up's own message on `statusText`. The card keys its follow-up
+ * variant off the explicit `isFollowUp` flag (not a description/statusText
+ * mismatch), so the follow-up's text becomes the title while the spawn card
+ * stays put.
  */
 const started = (
   agentId: string,
   description: string,
   opts: {
     statusText?: string;
+    isFollowUp?: boolean;
     agentType?: string;
     timestamp?: number;
   } = {},
@@ -26,12 +30,13 @@ const started = (
       description,
       agentType: opts.agentType ?? "general",
       ...(opts.statusText !== undefined ? { statusText: opts.statusText } : {}),
+      ...(opts.isFollowUp ? { isFollowUp: true } : {}),
     },
   }) as unknown as EventRecord;
 
 describe("getBackgroundWork spawn vs send_input follow-up", () => {
   it("reads a fresh spawn as a non-follow-up card titled by its description", () => {
-    // Spawn: statusText falls back to the spawn description.
+    // Spawn: no isFollowUp flag; statusText mirrors the spawn description.
     const work = getBackgroundWork([
       started("thread-a", "Research flights to Tokyo", {
         statusText: "Research flights to Tokyo",
@@ -46,10 +51,11 @@ describe("getBackgroundWork spawn vs send_input follow-up", () => {
 
   it("reads a send_input re-activation as a follow-up carrying the follow-up text, not the stale spawn description", () => {
     // send_input to the SAME thread: description is the original spawn summary,
-    // statusText is the follow-up's own message.
+    // statusText is the follow-up's own message, and isFollowUp is set.
     const work = getBackgroundWork([
       started("thread-a", "Research flights to Tokyo", {
         statusText: "Also check return flights on the 14th",
+        isFollowUp: true,
         timestamp: 200,
       }),
     ]);
@@ -64,10 +70,25 @@ describe("getBackgroundWork spawn vs send_input follow-up", () => {
     expect(work?.descriptions["thread-a"]).toBe("Research flights to Tokyo");
   });
 
-  it("does not flag a follow-up when statusText equals the description (plain spawn, only whitespace differs)", () => {
+  it("renders a follow-up as a follow-up EVEN when its text is identical to the spawn description (the case the heuristic missed)", () => {
+    // The old `statusText !== description` heuristic wrongly read this as a
+    // spawn; the explicit flag fixes it.
     const work = getBackgroundWork([
       started("thread-a", "Build the report", {
-        statusText: "  Build the report  ",
+        statusText: "Build the report",
+        isFollowUp: true,
+      }),
+    ]);
+    expect(work?.followUpThreadIds).toEqual(["thread-a"]);
+    expect(work?.statusTexts["thread-a"]).toBe("Build the report");
+  });
+
+  it("does not flag a spawn as a follow-up even when statusText differs from the description", () => {
+    // Without the explicit flag, a differing statusText no longer implies a
+    // follow-up — the flag is the sole signal.
+    const work = getBackgroundWork([
+      started("thread-a", "Original goal", {
+        statusText: "some in-flight status",
       }),
     ]);
     expect(work?.followUpThreadIds).toEqual([]);
@@ -79,6 +100,7 @@ describe("getBackgroundWork spawn vs send_input follow-up", () => {
       started("schedule-thread", "Schedule a reminder", {
         agentType: "schedule",
         statusText: "tweak the time",
+        isFollowUp: true,
       }),
     ]);
     expect(work).toBeUndefined();
@@ -89,6 +111,7 @@ describe("getBackgroundWork spawn vs send_input follow-up", () => {
       started("thread-a", "Spawned task", { statusText: "Spawned task" }),
       started("thread-b", "Original goal", {
         statusText: "Follow-up update for B",
+        isFollowUp: true,
         timestamp: 50,
       }),
     ]);
