@@ -665,6 +665,60 @@ describe("session-store", () => {
     expect(sourceEvents.map((event) => event._id)).toEqual([artifact._id]);
   });
 
+  it("listMessagesAfter returns existing rows when agent lifecycle state changes", () => {
+    const { store } = createTestContext();
+    const conversationId = store.getOrCreateDefaultConversationId();
+
+    store.appendEvent({
+      conversationId,
+      type: "user_message",
+      timestamp: 1_000,
+      payload: { text: "run background work" },
+    });
+    const assistant = store.appendEvent({
+      conversationId,
+      type: "assistant_message",
+      timestamp: 1_010,
+      payload: { text: "Working on it." },
+    });
+    const started = store.appendEvent({
+      conversationId,
+      type: "agent-started",
+      timestamp: 1_020,
+      payload: { agentId: "task-1", description: "Check docs" },
+    });
+    const progress = store.appendEvent({
+      conversationId,
+      type: "agent-progress",
+      timestamp: 1_030,
+      payload: { agentId: "task-1", statusText: "Reading docs" },
+    });
+    const failed = store.appendEvent({
+      conversationId,
+      type: "agent-failed",
+      timestamp: 1_040,
+      payload: { agentId: "task-1", error: "Timed out" },
+    });
+
+    const { messages, sourceEvents } = store.listMessagesAfter(conversationId, {
+      afterTimestampMs: assistant.timestamp,
+      afterId: assistant._id,
+      maxVisibleMessages: 10,
+    });
+
+    expect(messages.map((message) => message._id)).toEqual([assistant._id]);
+    expect(messages[0]?.toolEvents.map((event) => event._id)).toEqual([
+      started._id,
+      progress._id,
+      failed._id,
+    ]);
+    expect(sourceEvents.map((event) => event._id)).toEqual([
+      started._id,
+      progress._id,
+      failed._id,
+    ]);
+  });
+
   it("keeps listMessages bounded when the requested visible window exceeds the scan ceiling", () => {
     const { store } = createTestContext();
     const conversationId = store.getOrCreateDefaultConversationId();

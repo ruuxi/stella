@@ -377,9 +377,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
    * Latest `agent-completed` timestamp per background thread anywhere in the
    * loaded window. Scanned over the raw (unfiltered) messages since the
    * completion event attaches to a later turn's assistant message. This is
-   * the reload-safe "done" signal for the inline background-work card —
-   * `agent-failed` / `agent-canceled` are not in the message stream, so
-   * those terminal states come from live task state at render time.
+   * the reload-safe "done" signal for the inline background-work card. Failed
+   * / canceled terminal states are intentionally not counted as completed here;
+   * those states come from live task state at render time.
    *
    * Stored as a timestamp (not a bare set) so a card can scope completion to
    * its OWN run: a thread reused via `send_input` after a prior completion

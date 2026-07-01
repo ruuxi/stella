@@ -1518,6 +1518,21 @@ export type ElectronLocalChatApi = {
       requestId?: string;
       deviceId?: string;
       artifacts?: DisplayPayload[];
+      toolSteps?: Array<{
+        id: string;
+        toolName: string;
+        status: "completed" | "error";
+        args?: Record<string, string>;
+      }>;
+      tasks?: Array<{
+        id: string;
+        title: string;
+        status: "running" | "completed" | "error" | "canceled";
+        statusText?: string;
+        createdAt: number;
+        completedAt?: number;
+        reasoningSummaries?: string[];
+      }>;
     }>
   >;
   syncMessages: (payload: {
@@ -1535,6 +1550,21 @@ export type ElectronLocalChatApi = {
       requestId?: string;
       deviceId?: string;
       artifacts?: DisplayPayload[];
+      toolSteps?: Array<{
+        id: string;
+        toolName: string;
+        status: "completed" | "error";
+        args?: Record<string, string>;
+      }>;
+      tasks?: Array<{
+        id: string;
+        title: string;
+        status: "running" | "completed" | "error" | "canceled";
+        statusText?: string;
+        createdAt: number;
+        completedAt?: number;
+        reasoningSummaries?: string[];
+      }>;
     }>;
   }>;
   /**

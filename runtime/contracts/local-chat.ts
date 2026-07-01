@@ -159,7 +159,7 @@ export type VoiceSessionSummaryMetadata = {
  * Chat-timeline view over the underlying append-only event log.
  *
  * `listMessages` projects `user_message` / `assistant_message` rows into
- * `MessageRecord` and attaches each turn's tool/`agent-completed` events
+ * `MessageRecord` and attaches each turn's tool/agent lifecycle events
  * to the turn's anchor — first assistant when one exists, otherwise the
  * user_message of the turn. Turn-scoped decoration data (inline
  * artifacts, schedule receipts, file-change
@@ -184,7 +184,7 @@ export type MessageRecord = {
   payload?: Record<string, unknown>;
   channelEnvelope?: ChannelEnvelope;
   /**
-   * Tool/agent-completed events that fired during this message's turn,
+   * Tool/agent lifecycle events that fired during this message's turn,
    * attached when this message is the turn anchor (first assistant of
    * the turn, or — when no assistant fires — the user_message of the
    * turn). Empty for secondary assistants, hidden messages, and any

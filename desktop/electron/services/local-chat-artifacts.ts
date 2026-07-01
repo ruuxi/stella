@@ -472,22 +472,36 @@ const trimmedString = (value: unknown): string | undefined =>
 const isGenericDescription = (value: string | undefined): boolean =>
   !value || GENERIC_TASK_DESCRIPTION.test(value.trim());
 
-/** Latest `agent-completed` timestamp per agent id across the synced set. */
-const buildCompletedAtMsById = (
+const terminalTaskStatus = (
+  type: string,
+): "completed" | "error" | "canceled" | null => {
+  if (type === "agent-completed") return "completed";
+  if (type === "agent-failed") return "error";
+  if (type === "agent-canceled") return "canceled";
+  return null;
+};
+
+const isMobileTaskLifecycleEvent = (type: string): boolean =>
+  type === "agent-started" ||
+  type === "agent-progress" ||
+  terminalTaskStatus(type) !== null;
+
+/** Latest terminal timestamp per agent id across the synced set. */
+const buildSettledAtMsById = (
   messages: readonly ArtifactMessageRecord[],
 ): Map<string, number> => {
-  const completedAt = new Map<string, number>();
+  const settledAt = new Map<string, number>();
   for (const message of messages) {
     for (const event of message.toolEvents) {
-      if (event.type !== "agent-completed") continue;
+      if (!terminalTaskStatus(event.type)) continue;
       const agentId = trimmedString(event.payload?.agentId);
       if (!agentId) continue;
-      if (event.timestamp > (completedAt.get(agentId) ?? 0)) {
-        completedAt.set(agentId, event.timestamp);
+      if (event.timestamp > (settledAt.get(agentId) ?? 0)) {
+        settledAt.set(agentId, event.timestamp);
       }
     }
   }
-  return completedAt;
+  return settledAt;
 };
 
 /**
@@ -498,7 +512,7 @@ const buildCompletedAtMsById = (
  */
 const deriveAgentWorkPayload = (
   message: Pick<ArtifactMessageRecord, "toolEvents">,
-  completedAtMsById: ReadonlyMap<string, number>,
+  settledAtMsById: ReadonlyMap<string, number>,
   nowMs: number,
 ): MobileAgentWorkPayload | null => {
   const threadIds: string[] = [];
@@ -528,7 +542,7 @@ const deriveAgentWorkPayload = (
   let completed = 0;
   for (const id of threadIds) {
     const spawnedAt = spawnedAtMs[id] ?? 0;
-    const completedAt = completedAtMsById.get(id);
+    const completedAt = settledAtMsById.get(id);
     const isDone =
       (completedAt !== undefined && completedAt >= spawnedAt) ||
       nowMs - spawnedAt > AGENT_WORK_STALE_MS;
@@ -576,15 +590,6 @@ type TaskBuild = {
   completedAt?: number;
 };
 
-const terminalTaskStatus = (
-  type: string,
-): "completed" | "error" | "canceled" | null => {
-  if (type === "agent-completed") return "completed";
-  if (type === "agent-failed") return "error";
-  if (type === "agent-canceled") return "canceled";
-  return null;
-};
-
 /** Fold every turn's `agent-*` lifecycle events into one task per agent id. */
 const buildMobileTasksById = (
   messages: readonly ArtifactMessageRecord[],
@@ -604,11 +609,13 @@ const buildMobileTasksById = (
           trimmedString(payload.description) ||
           trimmedString(payload.groupLabel) ||
           "Background work";
+        const statusText = trimmedString(payload.statusText);
         if (!existing) {
           builds.set(agentId, {
             id: agentId,
             title,
             status: "running",
+            ...(statusText ? { statusText } : {}),
             createdAt: event.timestamp,
             spawnedAt: event.timestamp,
           });
@@ -619,6 +626,9 @@ const buildMobileTasksById = (
           ) {
             existing.title = title;
           }
+          existing.status = "running";
+          existing.completedAt = undefined;
+          if (statusText) existing.statusText = statusText;
           existing.createdAt = Math.min(existing.createdAt, event.timestamp);
           existing.spawnedAt = Math.max(existing.spawnedAt, event.timestamp);
         }
@@ -681,7 +691,7 @@ const buildMobileTasksById = (
   return tasks;
 };
 
-/** Tasks spawned by this message (its `agent-started` ids), resolved globally. */
+/** Task ids touched by this message's lifecycle events, resolved globally. */
 const deriveMobileTasksForMessage = (
   message: Pick<ArtifactMessageRecord, "toolEvents">,
   tasksById: ReadonlyMap<string, MobileTask>,
@@ -689,7 +699,7 @@ const deriveMobileTasksForMessage = (
   const out: MobileTask[] = [];
   const seen = new Set<string>();
   for (const event of message.toolEvents) {
-    if (event.type !== "agent-started") continue;
+    if (!isMobileTaskLifecycleEvent(event.type)) continue;
     const agentId = trimmedString(event.payload?.agentId);
     if (!agentId || seen.has(agentId)) continue;
     seen.add(agentId);
@@ -697,6 +707,54 @@ const deriveMobileTasksForMessage = (
     if (task) out.push(task);
   }
   return out;
+};
+
+const taskIdsTouchedByMessages = (
+  messages: readonly ArtifactMessageRecord[],
+): Set<string> => {
+  const touched = new Set<string>();
+  for (const message of messages) {
+    for (const event of message.toolEvents) {
+      if (!isMobileTaskLifecycleEvent(event.type)) continue;
+      const agentId = trimmedString(event.payload?.agentId);
+      if (agentId) touched.add(agentId);
+    }
+  }
+  return touched;
+};
+
+const messageStartsTouchedTask = (
+  message: ArtifactMessageRecord,
+  touchedTaskIds: ReadonlySet<string>,
+): boolean => {
+  for (const event of message.toolEvents) {
+    if (event.type !== "agent-started") continue;
+    const agentId = trimmedString(event.payload?.agentId);
+    if (agentId && touchedTaskIds.has(agentId)) return true;
+  }
+  return false;
+};
+
+const withTaskAnchorMessages = (
+  messages: readonly ArtifactMessageRecord[],
+  taskContextMessages: readonly ArtifactMessageRecord[],
+): ArtifactMessageRecord[] => {
+  if (taskContextMessages === messages || messages.length === 0) {
+    return [...messages];
+  }
+  const touchedTaskIds = taskIdsTouchedByMessages(messages);
+  if (touchedTaskIds.size === 0) return [...messages];
+
+  const seenMessageIds = new Set(messages.map((message) => message._id));
+  const anchors = taskContextMessages.filter(
+    (message) =>
+      !seenMessageIds.has(message._id) &&
+      messageStartsTouchedTask(message, touchedTaskIds),
+  );
+  if (anchors.length === 0) return [...messages];
+  return [...anchors, ...messages].sort(
+    (a, b) => a.timestamp - b.timestamp || a._id.localeCompare(b._id),
+  );
 };
 
 // Arg keys the mobile per-call title reads (see the mobile `tool-activity`
@@ -850,14 +908,15 @@ export const buildMobileSyncMessages = (
   maxMessages: number,
   options?: MobileArtifactOptions,
   reasoningSummariesByAgentId?: ReadonlyMap<string, readonly string[]>,
+  taskContextMessages: readonly ArtifactMessageRecord[] = messages,
 ): LocalChatSyncMessageWithArtifacts[] => {
   const rows: LocalChatSyncMessageWithArtifacts[] = [];
-  // Completion is scoped per run (see deriveAgentWorkPayload); precompute the
-  // latest completion per thread across the whole synced set once.
-  const completedAtMsById = buildCompletedAtMsById(messages);
+  // Terminal state is scoped per run (see deriveAgentWorkPayload); precompute
+  // the latest terminal timestamp per thread across the whole context once.
+  const settledAtMsById = buildSettledAtMsById(taskContextMessages);
   const nowMs = Date.now();
   const tasksById = buildMobileTasksById(
-    messages,
+    taskContextMessages,
     nowMs,
     reasoningSummariesByAgentId,
   );
@@ -867,7 +926,7 @@ export const buildMobileSyncMessages = (
     if (role !== "user" && role !== "assistant") continue;
     const text = textFromPayload(message.payload);
     const fileArtifacts = deriveMobileArtifactsForMessage(message, options);
-    const agentWork = deriveAgentWorkPayload(message, completedAtMsById, nowMs);
+    const agentWork = deriveAgentWorkPayload(message, settledAtMsById, nowMs);
     // Background tasks spawned by this turn (collected into the activity tray).
     const tasks = deriveMobileTasksForMessage(message, tasksById);
     // Settled tool calls for the inline tool-activity trace (assistant turns).
@@ -933,12 +992,24 @@ export const buildMobileSyncMessagesPage = (
   cursorSource: readonly ArtifactSourceRecord[] = messages,
   options?: MobileArtifactOptions,
   reasoningSummariesByAgentId?: ReadonlyMap<string, readonly string[]>,
-): LocalChatMobileSyncResult => ({
-  messages: buildMobileSyncMessages(
+  taskContextMessages: readonly ArtifactMessageRecord[] = messages,
+): LocalChatMobileSyncResult => {
+  const messagesWithTaskAnchors = withTaskAnchorMessages(
     messages,
-    maxMessages,
-    options,
-    reasoningSummariesByAgentId,
-  ),
-  cursor: cursorForNewestSourceRecord(cursorSource),
-});
+    taskContextMessages,
+  );
+  const extraAnchorBudget = Math.max(
+    0,
+    messagesWithTaskAnchors.length - messages.length,
+  );
+  return {
+    messages: buildMobileSyncMessages(
+      messagesWithTaskAnchors,
+      maxMessages + extraAnchorBudget,
+      options,
+      reasoningSummariesByAgentId,
+      taskContextMessages,
+    ),
+    cursor: cursorForNewestSourceRecord(cursorSource),
+  };
+};

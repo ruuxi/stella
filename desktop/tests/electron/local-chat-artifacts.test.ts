@@ -348,6 +348,57 @@ describe("local chat mobile artifacts", () => {
     });
   });
 
+  it("emits task updates from terminal-only sync rows using full task context", () => {
+    const now = Date.now();
+    const started = baseMessage({
+      _id: "a1",
+      timestamp: now - 10_000,
+      payload: { text: "Starting background work" },
+      toolEvents: [
+        {
+          _id: "as1",
+          timestamp: now - 10_000,
+          type: "agent-started",
+          payload: { agentId: "t1", description: "Book flights" },
+        },
+      ],
+    });
+    const finished = baseMessage({
+      _id: "a2",
+      timestamp: now,
+      payload: { text: "" },
+      toolEvents: [
+        {
+          _id: "af1",
+          timestamp: now,
+          type: "agent-failed",
+          payload: { agentId: "t1", error: "Provider timed out" },
+        },
+      ],
+    });
+
+    const page = buildMobileSyncMessagesPage(
+      [finished],
+      20,
+      [finished],
+      undefined,
+      undefined,
+      [started, finished],
+    );
+
+    expect(page.messages.map((message) => message.localMessageId)).toContain(
+      "a1",
+    );
+    const task = page.messages.find(
+      (message) => message.localMessageId === "a1",
+    )?.tasks?.[0];
+    expect(task).toMatchObject({
+      id: "t1",
+      title: "Book flights",
+      status: "error",
+    });
+  });
+
   it("emits a fire-and-forget agent card as its own assistant row", () => {
     const now = Date.now();
     const rows = buildMobileSyncMessages(
