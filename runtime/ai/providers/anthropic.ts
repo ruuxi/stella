@@ -483,7 +483,36 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
 			};
-			const response = await client.messages.create({ ...params, stream: true }, requestOptions).asResponse();
+
+			// Reactive safety net for the Anthropic "thinking blocks in the latest
+			// assistant message cannot be modified" 400. Interrupting a turn
+			// mid-reasoning (send_input / follow-up while the assistant is thinking)
+			// can leave a modified/partial thinking block in the latest assistant
+			// message; convertMessages strips dangling ones preemptively, but if a
+			// modified block still slips through, drop the most-recent thinking /
+			// redacted_thinking block(s) from the offending message and retry.
+			// Bounded so a persistent 400 can never loop forever.
+			let response: Response;
+			let thinkingStripAttempts = 0;
+			while (true) {
+				try {
+					response = await client.messages.create({ ...params, stream: true }, requestOptions).asResponse();
+					break;
+				} catch (err) {
+					if (
+						thinkingStripAttempts < MAX_THINKING_STRIP_RETRIES &&
+						isLatestAssistantThinkingModifiedError(err)
+					) {
+						const stripped = stripThinkingFromLastAssistantParam(params.messages);
+						if (stripped) {
+							params = { ...params, messages: stripped };
+							thinkingStripAttempts++;
+							continue;
+						}
+					}
+					throw err;
+				}
+			}
 			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 			stream.push({ type: "start", partial: output });
 
@@ -1023,6 +1052,130 @@ function normalizeToolCallId(id: string): string {
 	return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
 }
 
+/**
+ * Max attempts to strip modified `thinking`/`redacted_thinking` blocks from the
+ * latest assistant message and retry after Anthropic rejects the request with
+ * "thinking blocks in the latest assistant message cannot be modified".
+ */
+const MAX_THINKING_STRIP_RETRIES = 2;
+
+/** Matches Anthropic's 400 for a modified thinking block in the latest turn. */
+const THINKING_MODIFIED_ERROR_PATTERN = /blocks in the latest assistant message cannot be modified/i;
+
+/**
+ * True when the error is Anthropic's "`thinking` or `redacted_thinking` blocks
+ * in the latest assistant message cannot be modified" 400. The SDK surfaces
+ * this as an APIError whose message and nested `error` payload carry the text.
+ */
+export function isLatestAssistantThinkingModifiedError(error: unknown): boolean {
+	if (!error || typeof error !== "object") return false;
+	const parts: string[] = [];
+	const anyErr = error as { message?: unknown; error?: unknown };
+	if (typeof anyErr.message === "string") parts.push(anyErr.message);
+	const nested = anyErr.error as { message?: unknown; error?: { message?: unknown } } | undefined;
+	if (nested && typeof nested === "object") {
+		if (typeof nested.message === "string") parts.push(nested.message);
+		if (nested.error && typeof nested.error.message === "string") parts.push(nested.error.message);
+		try {
+			parts.push(JSON.stringify(nested));
+		} catch {
+			// ignore non-serializable payloads
+		}
+	}
+	return parts.some((part) => THINKING_MODIFIED_ERROR_PATTERN.test(part));
+}
+
+/**
+ * Reactive strip: remove `thinking`/`redacted_thinking` blocks from the latest
+ * assistant message in an already-built Anthropic payload, then return the new
+ * message array (or null if nothing changed). If the assistant turn was made up
+ * only of thinking, the whole (now-empty) message is dropped to avoid an empty
+ * content error — safe because the following user/injected turn drives the run.
+ */
+export function stripThinkingFromLastAssistantParam(messages: MessageParam[]): MessageParam[] | null {
+	let idx = -1;
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (messages[i].role === "assistant") {
+			idx = i;
+			break;
+		}
+	}
+	if (idx === -1) return null;
+	const msg = messages[idx];
+	if (!Array.isArray(msg.content)) return null;
+	const filtered = msg.content.filter((block) => block.type !== "thinking" && block.type !== "redacted_thinking");
+	if (filtered.length === msg.content.length) return null;
+	const next = messages.slice();
+	if (filtered.length === 0) {
+		next.splice(idx, 1);
+	} else {
+		next[idx] = { ...msg, content: filtered };
+	}
+	return next;
+}
+
+/**
+ * Preventive strip: clear dangling / incomplete `thinking` blocks from the
+ * latest assistant message before it is serialized to the Anthropic API.
+ *
+ * Interrupting a turn mid-reasoning (send_input / follow-up while the assistant
+ * is thinking) can leave the latest assistant message with a thinking block that
+ * is either trailing (a completed turn always ends in text or a tool call, never
+ * a bare thinking block) or incomplete (no signature, so it cannot be replayed
+ * verbatim and would be re-encoded — i.e. "modified"). Either shape trips
+ * Anthropic's "thinking blocks ... cannot be modified" 400, so we drop them
+ * rather than send them. Verbatim, signed thinking that precedes real content
+ * (e.g. thinking + tool_use) is preserved untouched, as Anthropic requires.
+ *
+ * Only the latest assistant message is touched; earlier turns keep their
+ * existing handling in convertMessages.
+ */
+export function stripDanglingThinkingFromLatestAssistant(messages: Message[]): Message[] {
+	let idx = -1;
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (messages[i].role === "assistant") {
+			idx = i;
+			break;
+		}
+	}
+	if (idx === -1) return messages;
+	const assistant = messages[idx] as AssistantMessage;
+	if (!assistant.content.some((block) => block.type === "thinking")) return messages;
+
+	// Index of the last non-thinking ("real") block. Anything after it is a
+	// dangling thinking block left by a mid-reasoning interruption.
+	let lastRealIdx = -1;
+	for (let i = assistant.content.length - 1; i >= 0; i--) {
+		if (assistant.content[i].type !== "thinking") {
+			lastRealIdx = i;
+			break;
+		}
+	}
+
+	let changed = false;
+	const nextContent = assistant.content.filter((block, i) => {
+		if (block.type !== "thinking") return true;
+		const thinking = block as ThinkingContent;
+		// Trailing thinking block (or thinking-only turn): dangling interruption.
+		if (i > lastRealIdx) {
+			changed = true;
+			return false;
+		}
+		// Incomplete: non-redacted thinking without a signature cannot be replayed
+		// verbatim and would be re-encoded on the wire.
+		if (!thinking.redacted && (!thinking.thinkingSignature || thinking.thinkingSignature.trim() === "")) {
+			changed = true;
+			return false;
+		}
+		return true;
+	});
+
+	if (!changed) return messages;
+	const next = messages.slice();
+	next[idx] = { ...assistant, content: nextContent };
+	return next;
+}
+
 function convertMessages(
 	messages: Message[],
 	model: Model<"anthropic-messages">,
@@ -1032,7 +1185,9 @@ function convertMessages(
 	const params: MessageParam[] = [];
 
 	// Transform messages for cross-provider compatibility
-	const transformedMessages = transformMessages(messages, model, normalizeToolCallId);
+	const transformedMessages = stripDanglingThinkingFromLatestAssistant(
+		transformMessages(messages, model, normalizeToolCallId),
+	);
 
 	for (let i = 0; i < transformedMessages.length; i++) {
 		const msg = transformedMessages[i];
