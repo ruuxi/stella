@@ -6,6 +6,7 @@ import {
   imageMimeTypeFromPath,
   resolveImageMimeType,
 } from "../shared/image-mime.js";
+import { readImageFileSettled } from "../shared/read-image-file.js";
 
 export const handleViewImage = async (
   args: Record<string, unknown>,
@@ -44,7 +45,11 @@ export const handleViewImage = async (
     return { error: `Image not found: ${filePath}` };
   }
 
-  const bytes = await fs.readFile(filePath);
+  // Settle the read against the capture -> read race: `view_image` is often
+  // called on a screenshot the agent just captured, whose bytes may still be
+  // flushing to disk. Reading early yields a truncated file; wait for it to
+  // complete before handing the path onward as a vision input.
+  const bytes = await readImageFileSettled(filePath);
   const mimeType = resolveImageMimeType(filePath, bytes);
   if (!mimeType) {
     return { error: `Unsupported image data: ${filePath}` };

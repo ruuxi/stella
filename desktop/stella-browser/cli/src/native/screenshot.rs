@@ -560,10 +560,58 @@ fn save_screenshot(
     let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_data)
         .map_err(|e| format!("Failed to decode screenshot: {}", e))?;
 
-    std::fs::write(&save_path, &bytes)
+    // Write to a sibling temp file, flush it to disk, then atomically rename
+    // into place. A plain `fs::write` truncates-then-writes the final path, so
+    // a concurrent reader (the runtime's view_image / auto-attach reading the
+    // path we return) can observe a partially written, truncated PNG. The
+    // rename makes the complete file appear at the final path in one step, so
+    // readers only ever see whole bytes.
+    write_file_atomic(&save_path, &bytes)
         .map_err(|e| format!("Failed to save screenshot to {}: {}", save_path, e))?;
 
     Ok(save_path)
+}
+
+/// Write `bytes` to `path` atomically: stage to a sibling temp file, fsync it,
+/// then rename over the destination so readers never observe a partial file.
+fn write_file_atomic(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let target = PathBuf::from(path);
+    let dir = target
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let file_name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "screenshot".to_string());
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp_path = dir.join(format!(
+        ".{}.{}.{}.tmp",
+        file_name,
+        std::process::id(),
+        nanos
+    ));
+
+    {
+        let mut file = std::fs::File::create(&tmp_path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
+
+    if let Err(err) = std::fs::rename(&tmp_path, &target) {
+        // Rename failed (e.g. cross-device): clean up the temp file and fall
+        // back to a direct write so the screenshot still lands.
+        let _ = std::fs::remove_file(&tmp_path);
+        std::fs::write(&target, bytes).map_err(|_| err)?;
+    }
+
+    Ok(())
 }
 
 fn round(value: f64) -> i64 {
@@ -670,5 +718,44 @@ mod tests {
         let projected = project_annotations(&annotations, None, Some((10.0, 1000.0)));
         assert_eq!(projected[0].box_.x, 15);
         assert_eq!(projected[0].box_.y, 1012);
+    }
+
+    #[test]
+    fn write_file_atomic_writes_complete_bytes_and_leaves_no_temp() {
+        let dir = std::env::temp_dir().join(format!(
+            "stella-browser-atomic-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("screenshot.png");
+        let target_str = target.to_string_lossy().to_string();
+
+        // A minimal, complete PNG (signature + IHDR + IEND-terminated stream).
+        let png = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+        )
+        .unwrap();
+
+        write_file_atomic(&target_str, &png).unwrap();
+
+        // The final path holds the whole file...
+        let read_back = std::fs::read(&target).unwrap();
+        assert_eq!(read_back, png);
+
+        // ...and no `.tmp` staging file is left behind in the directory.
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|name| name.ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "unexpected temp files: {:?}", leftovers);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
