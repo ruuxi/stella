@@ -116,6 +116,13 @@ export type RuntimeAssistantMessageEvent = {
   timestamp: number;
   uiVisibility?: "visible" | "hidden";
   responseTarget?: RuntimeAgentEventPayload["responseTarget"];
+  /**
+   * True when this assistant message ends with a tool call, i.e. it is an
+   * interim/preamble message rather than the run's final answer. The renderer
+   * keeps the working indicator up (instead of handing off) across the gap
+   * between this message and the tool it precedes.
+   */
+  followedByToolCall?: boolean;
 };
 
 export type RuntimeEndEvent = {

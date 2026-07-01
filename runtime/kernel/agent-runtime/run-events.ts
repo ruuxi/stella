@@ -13,7 +13,12 @@ import type {
 } from "../extensions/types.js";
 import type { PersistedRuntimeThreadPayload } from "../storage/shared.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
-import { extractAssistantText, getToolResultPreview, now } from "./shared.js";
+import {
+  assistantMessageHasToolCall,
+  extractAssistantText,
+  getToolResultPreview,
+  now,
+} from "./shared.js";
 import { persistThreadPayloadMessage } from "./thread-memory.js";
 import type {
   RuntimeEndEvent,
@@ -156,7 +161,11 @@ export const createRunEventRecorder = ({
 
     recordAssistantMessageEnd(message: AgentMessage): RuntimeAssistantMessageEvent | null {
       const text = extractAssistantText(message).trim();
-      return recordAssistantTextEnd(text, message.timestamp);
+      const event = recordAssistantTextEnd(text, message.timestamp);
+      if (event && assistantMessageHasToolCall(message)) {
+        event.followedByToolCall = true;
+      }
+      return event;
     },
     recordAssistantTextEnd,
 
