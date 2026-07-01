@@ -20,6 +20,10 @@ import {
   type PaceState,
 } from './stream-text-pacer-cadence'
 
+/** Assumed frame time for the first frame of a burst (before two timestamps
+ *  exist), ~60fps. */
+const DEFAULT_FRAME_MS = 16.7
+
 type PendingEntry = {
   runId: string
   text: string
@@ -54,12 +58,23 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
     new Map<string, { runId: string; pace: PaceState }>(),
   )
   const frameRef = useRef<number | null>(null)
+  // Timestamp of the previous drained frame, so the cadence integrates the
+  // real frame `dt` (frame-rate independent, robust to dropped frames). Reset
+  // to `null` whenever the loop goes idle so the gap where nothing was
+  // buffered is never counted as elapsed playout time (which would dump on
+  // resume).
+  const lastTickTimeRef = useRef<number | null>(null)
   // Always invoke the latest `release` without re-creating the rAF loop.
   const releaseRef = useRef(release)
   releaseRef.current = release
 
   const tick = useCallback(() => {
     frameRef.current = null
+    const now =
+      typeof performance !== 'undefined' ? performance.now() : Date.now()
+    const last = lastTickTimeRef.current
+    const dtMs = last === null ? DEFAULT_FRAME_MS : now - last
+    lastTickTimeRef.current = now
     const pending = pendingRef.current
     const paceState = paceStateRef.current
     let scheduleNext = false
@@ -76,22 +91,26 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         state = { runId: entry.runId, pace: createPaceState() }
         paceState.set(slotId, state)
       }
-      const count = stepPaceCount(state.pace, chars.length)
-      const out = chars.slice(0, count).join('')
-      const rest = chars.slice(count).join('')
+      const count = stepPaceCount(state.pace, chars.length, dtMs)
+      const out = count > 0 ? chars.slice(0, count).join('') : ''
+      const rest = count > 0 ? chars.slice(count).join('') : entry.text
       if (rest) {
         pending.set(slotId, { runId: entry.runId, text: rest })
         scheduleNext = true
       } else {
         // Keep the cadence state warm: the run may stream more text into
         // this same slot after a short gap, and resuming at the current
-        // rate avoids a fresh slow ramp (read: a stutter) on every delta.
+        // velocity avoids a fresh slow ramp (read: a stutter) on every delta.
         pending.delete(slotId)
       }
-      releaseRef.current(slotId, out)
+      if (out) releaseRef.current(slotId, out)
     }
     if (scheduleNext) {
       frameRef.current = window.requestAnimationFrame(tick)
+    } else {
+      // Idle: forget the last frame time so the next burst starts a fresh dt
+      // (the warm velocity resumes, but the idle gap isn't integrated).
+      lastTickTimeRef.current = null
     }
   }, [])
 
@@ -105,6 +124,7 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
     if (pendingRef.current.size === 0 && frameRef.current !== null) {
       window.cancelAnimationFrame(frameRef.current)
       frameRef.current = null
+      lastTickTimeRef.current = null
     }
   }, [])
 
@@ -170,6 +190,7 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         window.cancelAnimationFrame(frameRef.current)
         frameRef.current = null
       }
+      lastTickTimeRef.current = null
       pendingRef.current.clear()
       paceStateRef.current.clear()
     },
