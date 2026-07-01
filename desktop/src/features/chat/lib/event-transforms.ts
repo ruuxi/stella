@@ -731,6 +731,60 @@ export function groupActivityTasks(
   return rows
 }
 
+/** Persistent first-seen ordering state for {@link orderByFirstSeen}. */
+export type FirstSeenOrder = {
+  /** Frozen insertion index per item key. */
+  order: ReadonlyMap<string, number>
+  /** Next index to hand out to a newly-seen key. */
+  next: number
+}
+
+export const EMPTY_FIRST_SEEN_ORDER: FirstSeenOrder = {
+  order: new Map(),
+  next: 0,
+}
+
+/**
+ * Order `items` by the sequence in which their keys were *first* seen and
+ * pin them there for as long as they stay present. This gives running
+ * activity rows a stable position that survives live updates: sorting them
+ * by any recomputed field (e.g. `startedAtMs`, which drifts forward once an
+ * agent's original `agent-started` event ages out of the rolling activity
+ * window) would re-shuffle the list on every streamed delta.
+ *
+ * Keys that dropped out of `items` are pruned from the returned state, so a
+ * later re-activation of the same key re-enters at the end rather than
+ * reclaiming its old slot. Pure — the caller threads the returned state
+ * back in (typically via a ref) on the next call.
+ */
+export function orderByFirstSeen<T>(
+  items: readonly T[],
+  keyOf: (item: T) => string,
+  prev: FirstSeenOrder = EMPTY_FIRST_SEEN_ORDER,
+): { ordered: T[]; state: FirstSeenOrder } {
+  const order = new Map<string, number>()
+  let next = prev.next
+  for (const item of items) {
+    const key = keyOf(item)
+    if (order.has(key)) continue
+    const existing = prev.order.get(key)
+    if (existing === undefined) {
+      order.set(key, next)
+      next += 1
+    } else {
+      order.set(key, existing)
+    }
+  }
+  const ordered = [...items].sort((a, b) => {
+    const aKey = keyOf(a)
+    const bKey = keyOf(b)
+    const ai = order.get(aKey) ?? 0
+    const bi = order.get(bKey) ?? 0
+    return ai - bi || aKey.localeCompare(bKey)
+  })
+  return { ordered, state: { order, next } }
+}
+
 /**
  * Aggregate status line for a group header: while running, the most
  * recently updated running member's status text (the live narration);
