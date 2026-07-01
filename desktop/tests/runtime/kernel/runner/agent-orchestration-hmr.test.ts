@@ -416,7 +416,7 @@ describe("agent orchestration self-mod HMR tracking", () => {
     ).__stellaOrchHmrMock = mockRuntime;
     mockRuntime.patch = [
       "*** Begin Patch",
-      "*** Update File: desktop/src/foo.tsx",
+      `*** Update File: ${filePath}`,
       "@@",
       "-export const value = 'before';",
       "+export const value = 'after';",
@@ -763,7 +763,7 @@ describe("agent orchestration self-mod HMR tracking", () => {
     mockRuntime.mode = "interrupt_after_apply_patch";
     mockRuntime.patch = [
       "*** Begin Patch",
-      "*** Update File: desktop/src/foo.tsx",
+      `*** Update File: ${filePath}`,
       "@@",
       "-export const value = 'before';",
       "+export const value = 'after';",
@@ -836,15 +836,15 @@ describe("agent orchestration self-mod HMR tracking", () => {
     mockRuntime.mode = "send_input_then_apply_patch";
     mockRuntime.firstPatch = [
       "*** Begin Patch",
-      "*** Update File: desktop/src/a.tsx",
+      `*** Update File: ${path.join(srcDir, "a.tsx")}`,
       "@@",
       "-export const value = 'before';",
       "+export const value = 'after';",
-      "*** Update File: desktop/src/b.tsx",
+      `*** Update File: ${path.join(srcDir, "b.tsx")}`,
       "@@",
       "-export const value = 'before';",
       "+export const value = 'after';",
-      "*** Update File: desktop/src/c.tsx",
+      `*** Update File: ${path.join(srcDir, "c.tsx")}`,
       "@@",
       "-export const value = 'before';",
       "+export const value = 'after';",
@@ -853,11 +853,11 @@ describe("agent orchestration self-mod HMR tracking", () => {
     ].join("\n");
     mockRuntime.patch = [
       "*** Begin Patch",
-      "*** Update File: desktop/src/d.tsx",
+      `*** Update File: ${path.join(srcDir, "d.tsx")}`,
       "@@",
       "-export const value = 'before';",
       "+export const value = 'after';",
-      "*** Update File: desktop/src/e.tsx",
+      `*** Update File: ${path.join(srcDir, "e.tsx")}`,
       "@@",
       "-export const value = 'before';",
       "+export const value = 'after';",
