@@ -7,6 +7,7 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import type { AgentResponseTarget } from "@/features/chat/streaming/streaming-types";
 import type { SelfModApplied } from "@/features/chat/self-mod-types";
 import type { WebSearchImageHit } from "@/features/chat/lib/derive-turn-web-search";
+import type { TurnMapArtifact } from "@/features/chat/lib/derive-turn-map-artifacts";
 import type { PastedTextDescriptor } from "@/features/chat/lib/paste-context";
 import type { ToolActivityGroup } from "@/features/chat/lib/tool-activity";
 import type { AgentCompletionSection } from "@/features/chat/lib/agent-completion";
@@ -64,6 +65,12 @@ export type AssistantRowViewModel = {
    * a single row. See `deriveTurnWebSearchResults`.
    */
   webSearchResults?: WebSearchImageHit[];
+  /**
+   * Inline interactive map cards from this turn's `map` tool calls (the
+   * shared `map-route` artifact rendered via the hosted stella.sh embed).
+   * See `deriveTurnMapArtifacts`.
+   */
+  mapArtifacts?: TurnMapArtifact[];
   /**
    * Developer-resource source-diff payloads for this turn, in edit
    * order. Populated only when the developer-file-previews setting

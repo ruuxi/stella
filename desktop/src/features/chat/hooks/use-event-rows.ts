@@ -22,6 +22,7 @@ import {
   type AgentMeta,
 } from "@/features/chat/lib/agent-completion";
 import { deriveTurnWebSearchResults } from "@/features/chat/lib/derive-turn-web-search";
+import { deriveTurnMapArtifacts } from "@/features/chat/lib/derive-turn-map-artifacts";
 import { deriveToolActivity } from "@/features/chat/lib/tool-activity";
 import { filterMessagesForUiDisplay } from "@/features/chat/lib/message-display";
 import {
@@ -262,6 +263,7 @@ export const assistantRowHasNonBackgroundContent = (
   Boolean(row.resourcePayload) ||
   (row.inlineImagePayloads?.length ?? 0) > 0 ||
   (row.webSearchResults?.length ?? 0) > 0 ||
+  (row.mapArtifacts?.length ?? 0) > 0 ||
   (row.sourceDiffPayloads?.length ?? 0) > 0 ||
   Boolean(row.selfModApplied) ||
   Boolean(row.scheduleReceipt) ||
@@ -828,6 +830,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         );
         const inlineImagePayloads = deriveTurnInlineImagePayloads(toolEvents);
         const webSearchResults = deriveTurnWebSearchResults(toolEvents);
+        const mapArtifacts = deriveTurnMapArtifacts(toolEvents);
         const sourceDiffPayloads = collectTurnSourceDiffPayloads(toolEvents, {
           developerResourcesEnabled: developerResourcePreviewsEnabled,
         });
@@ -880,6 +883,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             : {}),
           ...(showInlineArtifacts && webSearchResults.length > 0
             ? { webSearchResults }
+            : {}),
+          ...(showInlineArtifacts && mapArtifacts.length > 0
+            ? { mapArtifacts }
             : {}),
           ...(showInlineArtifacts && sourceDiffPayloads.length > 0
             ? { sourceDiffPayloads }

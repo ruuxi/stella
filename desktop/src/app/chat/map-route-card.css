@@ -1,0 +1,102 @@
+.map-route-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  max-width: 100%;
+}
+
+.map-route-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  overflow: hidden;
+  background: var(--surface-inset);
+  max-width: 560px;
+}
+
+.map-route-card__frame {
+  position: relative;
+  height: 280px;
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.map-route-card__iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.map-route-card__offline {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-weak);
+}
+
+.map-route-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.map-route-card__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.map-route-card__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.map-route-card__summary {
+  font-size: 12px;
+  color: var(--text-weak);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.map-route-card__handoff {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-weak);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.map-route-card__handoff:hover {
+  color: var(--text-strong);
+  border-color: var(--border-strong);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.map-route-card__handoff:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

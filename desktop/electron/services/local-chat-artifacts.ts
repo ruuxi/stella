@@ -5,6 +5,10 @@ import {
   type FileChangeRecord,
 } from "../../../runtime/contracts/file-changes.js";
 import { isUiHiddenChatMessagePayload } from "../../../runtime/chat-event-visibility.js";
+import {
+  isMapRouteArtifact,
+  type MapRouteArtifact,
+} from "../../../runtime/contracts/map-artifact.js";
 
 /**
  * Inline "background work" card for the mobile chat — the companion to the
@@ -28,8 +32,16 @@ export type MobileAgentWorkPayload = {
   createdAt: number;
 };
 
-/** What the mobile sync transport can carry inline under a message. */
-export type MobileSyncArtifact = DisplayPayload | MobileAgentWorkPayload;
+/**
+ * What the mobile sync transport can carry inline under a message. Besides
+ * the shared display payloads this includes the bridge-only agent-work card
+ * and the `map-route` artifact (rendered on mobile as an inline map card via
+ * the hosted stella.sh embed).
+ */
+export type MobileSyncArtifact =
+  | DisplayPayload
+  | MobileAgentWorkPayload
+  | MapRouteArtifact;
 export type MobileSyncArtifactEntry =
   | MobileSyncArtifact
   | { id: string; payload: MobileSyncArtifact };
@@ -323,7 +335,7 @@ const artifactKey = (payload: DisplayPayload): string => {
 };
 
 const pushArtifact = (
-  artifacts: DisplayPayload[],
+  artifacts: MobileSyncArtifact[],
   seen: Set<string>,
   payload: DisplayPayload | null,
 ) => {
@@ -849,11 +861,24 @@ export const deriveMobileToolSteps = (
   return steps;
 };
 
+/**
+ * Lift a successful `map` tool_result's `map-route` artifact (see
+ * `runtime/kernel/tools/defs/map.ts`) for the mobile inline map card.
+ */
+const mapArtifactPayload = (
+  event: ArtifactEventRecord,
+): MapRouteArtifact | null => {
+  if (event.type !== "tool_result") return null;
+  const payload = event.payload;
+  if (!payload || payload.toolName !== "map" || payload.error) return null;
+  return isMapRouteArtifact(payload.map) ? payload.map : null;
+};
+
 export const deriveMobileArtifactsForMessage = (
   message: Pick<ArtifactMessageRecord, "toolEvents">,
   options?: MobileArtifactOptions,
-): DisplayPayload[] => {
-  const artifacts: DisplayPayload[] = [];
+): MobileSyncArtifact[] => {
+  const artifacts: MobileSyncArtifact[] = [];
   const seen = new Set<string>();
 
   for (const event of message.toolEvents) {
@@ -861,6 +886,17 @@ export const deriveMobileArtifactsForMessage = (
     if (!payload) continue;
 
     pushArtifact(artifacts, seen, imageGenPayload(event));
+
+    const mapArtifact = mapArtifactPayload(event);
+    if (mapArtifact) {
+      const key = `map:${mapArtifact.markers.map((m) => m.id).join("|")}:${
+        mapArtifact.route?.polyline ?? ""
+      }`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        artifacts.push(mapArtifact);
+      }
+    }
 
     if (
       event.type === "tool_result" &&
