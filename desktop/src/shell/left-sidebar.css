@@ -15,12 +15,20 @@
   /* Width slide mirrors the right display panel — the inner frame keeps a
      fixed width so content clips/reveals rather than reflowing during the
      animation. */
-  transition: width 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
+  transition:
+    width 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    visibility 0s linear;
 }
 
-/* Collapsed: animate width to 0; the fixed-width frame clips on the way out. */
+/* Collapsed: animate width to 0; the fixed-width frame clips on the way out.
+   `visibility` flips only after the slide finishes so the hidden panel drops
+   out of the tab order without cutting the exit animation short. */
 .left-sidebar--collapsed {
   width: 0;
+  visibility: hidden;
+  transition:
+    width 460ms cubic-bezier(0.32, 0.72, 0.16, 1),
+    visibility 0s linear 460ms;
 }
 
 .left-sidebar__frame {
@@ -34,10 +42,20 @@
   border-right: none;
   overflow: hidden;
   contain: layout paint;
+  /* Parallax: the frame drifts left as the container clips, so the panel
+     reads as sliding away under the content column (macOS sidebar feel)
+     rather than being wiped in place. Same duration/curve as the width
+     slide so the two motions track. */
+  transition: transform 460ms cubic-bezier(0.32, 0.72, 0.16, 1);
+}
+
+.left-sidebar--collapsed .left-sidebar__frame {
+  transform: translateX(calc(var(--left-sidebar-width) / -3));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .left-sidebar {
+  .left-sidebar,
+  .left-sidebar__frame {
     transition: none;
   }
 }
