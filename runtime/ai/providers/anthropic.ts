@@ -443,6 +443,33 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 			timestamp: Date.now(),
 		};
 
+		// Boundary-aware interrupt: when an external abort lands while the model is
+		// mid thinking block, hold the teardown until the block seals so we never
+		// truncate a thinking block on the wire (which corrupts Anthropic threads).
+		// The gate forwards the abort into `streamAbort` (which drives both the HTTP
+		// request and the SSE reader) either at the next thinking-block-close or
+		// after a bounded timeout. An abort outside a thinking block forwards
+		// immediately. Declared outside the try so the finally can dispose it.
+		const externalSignal = options?.signal;
+		const streamAbort = new AbortController();
+		const abortGate = createThinkingAbortGate({
+			timeoutMs: resolveThinkingAbortDeferTimeoutMs(),
+			onForwardAbort: () => {
+				if (!streamAbort.signal.aborted) {
+					streamAbort.abort((externalSignal as { reason?: unknown } | undefined)?.reason);
+				}
+			},
+		});
+		const onExternalAbort = () => abortGate.requestAbort();
+		if (externalSignal) {
+			if (externalSignal.aborted) {
+				abortGate.requestAbort();
+			} else {
+				externalSignal.addEventListener("abort", onExternalAbort);
+			}
+		}
+		const effectiveSignal = externalSignal ? streamAbort.signal : undefined;
+
 		try {
 			let client: Anthropic;
 			let isOAuth: boolean;
@@ -479,7 +506,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 				params = nextParams as MessageCreateParamsStreaming;
 			}
 			const requestOptions = {
-				...(options?.signal ? { signal: options.signal } : {}),
+				...(effectiveSignal ? { signal: effectiveSignal } : {}),
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
 			};
@@ -519,7 +546,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 			type Block = (ThinkingContent | TextContent | (ToolCall & { partialJson: string })) & { index: number };
 			const blocks = output.content as Block[];
 
-			for await (const event of iterateAnthropicEvents(response, options?.signal)) {
+			for await (const event of iterateAnthropicEvents(response, effectiveSignal)) {
 				if (event.type === "message_start") {
 					output.responseId = event.message.id;
 					// Capture initial token usage from message_start event
@@ -542,6 +569,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 						output.content.push(block);
 						stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
 					} else if (event.content_block.type === "thinking") {
+						abortGate.openThinkingBlock();
 						const block: Block = {
 							type: "thinking",
 							thinking: "",
@@ -551,6 +579,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 						output.content.push(block);
 						stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
 					} else if (event.content_block.type === "redacted_thinking") {
+						abortGate.openThinkingBlock();
 						const block: Block = {
 							type: "thinking",
 							thinking: "[Reasoning redacted]",
@@ -633,6 +662,9 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 								partial: output,
 							});
 						} else if (block.type === "thinking") {
+							// The thinking block is now sealed/signed and replay-safe: this is
+							// the clean boundary at which a deferred interrupt may be applied.
+							abortGate.closeThinkingBlock();
 							stream.push({
 								type: "thinking_end",
 								contentIndex: index,
@@ -697,6 +729,11 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
+		} finally {
+			abortGate.dispose();
+			if (externalSignal) {
+				externalSignal.removeEventListener("abort", onExternalAbort);
+			}
 		}
 	})();
 
@@ -1058,6 +1095,109 @@ function normalizeToolCallId(id: string): string {
  * "thinking blocks in the latest assistant message cannot be modified".
  */
 const MAX_THINKING_STRIP_RETRIES = 2;
+
+/**
+ * Default bound (ms) on how long an external abort waits for an in-flight
+ * Anthropic thinking block to seal before it is forced through anyway. Kept
+ * short so a runaway reasoning block can't wedge user input; on timeout the
+ * stream tears down and the strip-on-build / retry safety nets cover the
+ * truncated block. Overridable via STELLA_THINKING_ABORT_DEFER_TIMEOUT_MS.
+ */
+const DEFAULT_THINKING_ABORT_DEFER_TIMEOUT_MS = 5_000;
+
+function resolveThinkingAbortDeferTimeoutMs(): number {
+	const raw = typeof process !== "undefined" ? process.env.STELLA_THINKING_ABORT_DEFER_TIMEOUT_MS?.trim() : undefined;
+	if (raw) {
+		const parsed = Number(raw);
+		if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+	}
+	return DEFAULT_THINKING_ABORT_DEFER_TIMEOUT_MS;
+}
+
+export interface ThinkingAbortGate {
+	/** Signal that an external abort has been requested. */
+	requestAbort(): void;
+	/** Mark that a thinking / redacted_thinking content block has opened. */
+	openThinkingBlock(): void;
+	/** Mark that the current thinking content block has sealed / closed. */
+	closeThinkingBlock(): void;
+	/** True while an abort is being held for the current thinking block to seal. */
+	readonly isDeferring: boolean;
+	/** Release any pending timer. */
+	dispose(): void;
+}
+
+/**
+ * Boundary-aware interrupt gate for the Anthropic stream.
+ *
+ * Anthropic streams reasoning as discrete content blocks that only become
+ * replay-safe once sealed (signed). Tearing the stream down in the middle of an
+ * open thinking block leaves a modified/partial block that corrupts the thread
+ * (400 "thinking blocks ... cannot be modified"). This gate holds an external
+ * abort that lands mid-block until the block closes, then forwards it at that
+ * clean boundary. A bounded timeout forces the abort through anyway so a
+ * runaway block can't wedge user input — in that case teardown proceeds and the
+ * strip-on-build / retry safety nets cover the truncated block. An abort that
+ * lands outside a thinking block is forwarded immediately.
+ */
+export function createThinkingAbortGate(opts: {
+	onForwardAbort: () => void;
+	timeoutMs?: number;
+	setTimer?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
+	clearTimer?: (handle: ReturnType<typeof setTimeout>) => void;
+}): ThinkingAbortGate {
+	const timeoutMs = opts.timeoutMs ?? DEFAULT_THINKING_ABORT_DEFER_TIMEOUT_MS;
+	const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
+	const clearTimer = opts.clearTimer ?? ((handle) => clearTimeout(handle));
+
+	let open = false;
+	let pending = false;
+	let forwarded = false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+
+	const clearPendingTimer = () => {
+		if (timer !== undefined) {
+			clearTimer(timer);
+			timer = undefined;
+		}
+	};
+
+	const forward = () => {
+		if (forwarded) return;
+		forwarded = true;
+		pending = false;
+		clearPendingTimer();
+		opts.onForwardAbort();
+	};
+
+	return {
+		requestAbort() {
+			if (forwarded) return;
+			if (open) {
+				pending = true;
+				if (timer === undefined) {
+					timer = setTimer(forward, timeoutMs);
+					(timer as { unref?: () => void }).unref?.();
+				}
+				return;
+			}
+			forward();
+		},
+		openThinkingBlock() {
+			open = true;
+		},
+		closeThinkingBlock() {
+			open = false;
+			if (pending) forward();
+		},
+		get isDeferring() {
+			return pending && !forwarded;
+		},
+		dispose() {
+			clearPendingTimer();
+		},
+	};
+}
 
 /** Matches Anthropic's 400 for a modified thinking block in the latest turn. */
 const THINKING_MODIFIED_ERROR_PATTERN = /blocks in the latest assistant message cannot be modified/i;
