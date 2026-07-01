@@ -794,21 +794,14 @@ export function orderByFirstSeen<T>(
 }
 
 /**
- * Aggregate status line for a group header: while running, the most
- * recently updated running member's status text (the live narration);
- * otherwise (or when no member has one) the "2 of 3 done" tally.
+ * Meta line for a group header: a stable "{N} tasks" count of the group's
+ * members. Deliberately does NOT surface any individual member's
+ * description/narration — deriving the header from child agents made the
+ * row flicker between siblings' text on every streamed update. The group's
+ * own label carries the title; this count only changes when membership does.
  */
 export function getTaskGroupStatusText(group: TaskGroup): string {
-  if (group.status === 'running') {
-    const latestRunning = [...group.members]
-      .filter((member) => member.status === 'running')
-      .sort((a, b) => b.lastUpdatedAtMs - a.lastUpdatedAtMs)[0]
-    const statusText = latestRunning
-      ? normalizeTaskDisplayStatusText(latestRunning.statusText)
-      : undefined
-    if (statusText) return statusText
-  }
-  return `${group.completedCount} of ${group.totalCount} done`
+  return group.totalCount === 1 ? '1 task' : `${group.totalCount} tasks`
 }
 
 export function mergeFooterTasks(
