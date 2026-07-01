@@ -48,11 +48,19 @@ export interface Theme {
   name: string;
   /**
    * Pin this theme to a single appearance regardless of the user's
-   * Light/Dark/System choice. When set, the theme is also rendered with
-   * a flat (gradient-suppressed) background. Use for "standardized"
-   * single-mode themes like Pearl (white) and Noir (near-black).
+   * Light/Dark/System mode toggle. When set, the theme is also rendered with
+   * a flat (gradient-suppressed) background. Use only for genuinely
+   * single-appearance themes; the stock "Default" theme deliberately does NOT
+   * set this so its light↔dark rendering follows the mode toggle.
    */
   forcedMode?: "light" | "dark";
+  /**
+   * Render this theme with a flat, gradient-suppressed background (the solid
+   * macOS-native surface) without pinning its appearance. `forcedMode` implies
+   * flat too; use `flat` on its own for a mode-following theme (like Default)
+   * that should stay solid in both light and dark.
+   */
+  flat?: boolean;
   /**
    * Overlay theme. When set, this theme inherits every color from the theme
    * with this id and then applies `overrides` on top. Used by the built-in
