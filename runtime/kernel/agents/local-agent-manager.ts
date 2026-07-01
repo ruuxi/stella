@@ -178,6 +178,15 @@ type RuntimeAgentRecord = {
   activeSelfModRunId?: string;
   terminalEventEmitted: boolean;
   pendingStartStatusText?: string;
+  /**
+   * Set on the re-activation paths (`send_input` follow-up delivery:
+   * `sendAgentMessage` terminal/evicted resume, `deliverFollowUpAsNextTurn`)
+   * so the NEXT `agent-started` emitted from `tryStartNext` is stamped as a
+   * follow-up rather than a fresh spawn. Read-once and cleared alongside
+   * `pendingStartStatusText`; a plain retry/reset leaves it unset so it
+   * reads as a spawn.
+   */
+  pendingStartIsFollowUp?: boolean;
 };
 
 const formatTaskUpdateStatusText = (text: string): string =>
@@ -208,6 +217,15 @@ export type AgentLifecycleEvent = {
   producedFiles?: ProducedFileRecord[];
   error?: string;
   statusText?: string;
+  /**
+   * `agent-started` only. `true` when this start re-activates an existing
+   * thread (a `send_input` follow-up) rather than spawning fresh work — the
+   * explicit signal the inline "background work" card uses to render the
+   * follow-up variant. A fresh spawn leaves this unset. The follow-up's own
+   * message still rides on `statusText` (the card title); this flag is only
+   * the spawn-vs-follow-up discriminator.
+   */
+  isFollowUp?: boolean;
   /**
    * Delivery scope for the event. Terminal completions of interjection
    * turns are split in two: an immediate `orchestrator-only` event (the
@@ -660,6 +678,9 @@ export class LocalAgentManager implements AgentToolApi {
     task.currentTurnIsInterjection = false;
     task.terminalEventEmitted = false;
     task.pendingStartStatusText = undefined;
+    // Cleared here so a bare reset reads as a spawn; the follow-up callers
+    // (`sendAgentMessage` / `deliverFollowUpAsNextTurn`) re-set it right after.
+    task.pendingStartIsFollowUp = undefined;
     // The thread is live again — a deferred Done display from the previous
     // interjection turn must never fire on top of it.
     this.clearDeferredCompletionDisplay(task.threadId);
@@ -696,6 +717,9 @@ export class LocalAgentManager implements AgentToolApi {
       currentTurnIsInterjection: false,
       terminalEventEmitted: false,
       pendingStartStatusText: formatTaskUpdateStatusText(statusText),
+      // Resuming an evicted/persisted thread is always a `send_input`
+      // follow-up (this helper is only reached from that path).
+      pendingStartIsFollowUp: true,
     };
   }
 
@@ -732,6 +756,8 @@ export class LocalAgentManager implements AgentToolApi {
     // orchestrator usually continues from — defer its Done display.
     task.currentTurnIsInterjection = true;
     task.pendingStartStatusText = pendingStartStatusText;
+    // Interjected in-flight work is a `send_input` follow-up, not a spawn.
+    task.pendingStartIsFollowUp = true;
     task.recentActivity = [
       pendingStartStatusText ?? "Applying task update from orchestrator.",
     ];
@@ -793,7 +819,9 @@ export class LocalAgentManager implements AgentToolApi {
       this.runningCount += 1;
       task.status = "running";
       const startStatusText = task.pendingStartStatusText ?? task.description;
+      const startIsFollowUp = task.pendingStartIsFollowUp ?? false;
       task.pendingStartStatusText = undefined;
+      task.pendingStartIsFollowUp = undefined;
       this.persistTask(task);
       this.opts.onAgentEvent?.({
         type: "agent-started",
@@ -804,6 +832,7 @@ export class LocalAgentManager implements AgentToolApi {
         description: task.description,
         parentAgentId: task.parentAgentId,
         ...(startStatusText ? { statusText: startStatusText } : {}),
+        ...(startIsFollowUp ? { isFollowUp: true } : {}),
       });
       logWorkingIndicatorTrace("[stella:working-indicator:agent-started]", {
         threadId: task.threadId,
@@ -1457,6 +1486,7 @@ export class LocalAgentManager implements AgentToolApi {
       local.completedAt = Date.now();
       local.interruptedForFollowUp = false;
       local.pendingStartStatusText = undefined;
+      local.pendingStartIsFollowUp = undefined;
       this.opts.onAgentEvent?.({
         type: "agent-progress",
         conversationId: local.conversationId,
@@ -1613,6 +1643,8 @@ export class LocalAgentManager implements AgentToolApi {
       });
       this.resetTaskForNextAttempt(task, text);
       task.pendingStartStatusText = updateStatusText;
+      // Re-activating a terminal thread is a `send_input` follow-up.
+      task.pendingStartIsFollowUp = true;
       task.recentActivity = [updateStatusText];
       this.opts.onAgentEvent?.({
         type: "agent-progress",

@@ -141,28 +141,6 @@ const asNonEmptyString = (value: unknown): string | undefined =>
  * the HTML/canvas renderer and recall lookup never emit `agent-started`
  * events at all, so they can't produce a card regardless.)
  */
-/**
- * A `send_input` follow-up reuses an existing thread, so its `agent-started`
- * event carries the thread's ORIGINAL `description` unchanged — the follow-up's
- * own message/description rides on `statusText` instead. The runtime only sets
- * `statusText` to something other than the spawn description on a re-activation
- * (a fresh spawn falls `statusText` back to `description`; every `send_input`
- * path stamps the follow-up text via `pendingStartStatusText` — see
- * `LocalAgentManager.sendAgentMessage` / `tryStartNext`). So a `statusText`
- * that differs from `description` is the reload-safe marker that this start was
- * a follow-up, and its value is the follow-up text the card should surface.
- * Returns `undefined` for a plain spawn (no follow-up text to show).
- */
-const followUpStatusText = (
-  description: string | undefined,
-  statusText: string | undefined,
-): string | undefined => {
-  const followUp = asNonEmptyString(statusText);
-  if (!followUp) return undefined;
-  if (description && followUp.trim() === description.trim()) return undefined;
-  return followUp;
-};
-
 export const getBackgroundWork = (
   events: readonly EventRecord[],
 ):
@@ -171,11 +149,12 @@ export const getBackgroundWork = (
       descriptions: Record<string, string>;
       spawnedAtMs: Record<string, number>;
       /** Per-thread follow-up message/description for threads re-activated via
-       *  `send_input` on this turn (the card title for a follow-up). Absent for
-       *  plain spawns. */
+       *  `send_input` on this turn (the card title for a follow-up), lifted
+       *  from the `agent-started` `statusText`. Absent for plain spawns. */
       statusTexts: Record<string, string>;
-      /** Threads on this card that are `send_input` follow-ups rather than
-       *  fresh spawns, so the card can read them as an update breadcrumb. */
+      /** Threads on this card whose `agent-started` was flagged a `send_input`
+       *  follow-up (re-activation) rather than a fresh spawn — the explicit
+       *  discriminator the card reads to pick its follow-up variant. */
       followUpThreadIds: string[];
       groupKey?: string;
       label?: string;
@@ -205,13 +184,15 @@ export const getBackgroundWork = (
     const description = asNonEmptyString(event.payload.description);
     if (description && !descriptions[agentId])
       descriptions[agentId] = description;
-    const followUp = followUpStatusText(
-      event.payload.description,
-      event.payload.statusText,
-    );
-    if (followUp) {
-      statusTexts[agentId] = followUp;
+    // Explicit runtime signal: a `send_input` re-activation stamps
+    // `isFollowUp` (see `LocalAgentManager` `tryStartNext`), so a follow-up
+    // whose text is identical to the spawn description still reads as a
+    // follow-up. The follow-up's own message rides on `statusText` and
+    // becomes the card title.
+    if (event.payload.isFollowUp) {
       if (!followUpThreadIds.includes(agentId)) followUpThreadIds.push(agentId);
+      const followUp = asNonEmptyString(event.payload.statusText);
+      if (followUp && !statusTexts[agentId]) statusTexts[agentId] = followUp;
     }
     if (event.timestamp > (spawnedAtMs[agentId] ?? 0)) {
       spawnedAtMs[agentId] = event.timestamp;
