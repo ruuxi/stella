@@ -1587,11 +1587,14 @@ export type ElectronLocalChatApi = {
    * reasoning phrases shown under each active agent in the desktop activity
    * tray) into the main-process snapshot the desktop→mobile sync serializer
    * reads. The summaries ride each task as `reasoningSummaries` so mobile's
-   * activity tray shows the same text — they are renderer-generated only and
-   * never persisted, so this push is how they reach the bridge.
+   * activity tray shows the same text. The optional timestamped
+   * `entriesByAgentId` copies are additionally persisted to the shared SQLite
+   * store so the runtime's Recall agent can report what a running agent was
+   * doing as of a specific moment without interrupting it.
    */
   publishReasoningSummaries: (payload: {
     summariesByAgentId: Record<string, string[]>;
+    entriesByAgentId?: Record<string, { text: string; atMs: number }[]>;
   }) => Promise<{ ok: true }>;
   getSyncCheckpoint: (payload: {
     conversationId: string;

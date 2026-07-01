@@ -172,6 +172,7 @@ describe("buildContextLookupUserPrompt", () => {
 
     const store: Parameters<typeof buildContextLookupUserPrompt>[0]["store"] = {
       listActiveThreads: () => [],
+      listAgentProgressSummaries: () => [],
     };
 
     const prompt = await buildContextLookupUserPrompt({
@@ -227,9 +228,14 @@ describe("parseRecallAction", () => {
 });
 
 describe("formatThreadSearch", () => {
-  const makeStore = (threads: unknown[]) =>
+  const makeStore = (
+    threads: unknown[],
+    summariesByAgentId: Record<string, { text: string; atMs: number }[]> = {},
+  ) =>
     ({
       searchThreads: () => threads,
+      listAgentProgressSummaries: (agentId: string, limit = 3) =>
+        (summariesByAgentId[agentId] ?? []).slice(-limit),
     }) as unknown as Parameters<typeof formatThreadSearch>[0];
 
   it("renders thread_ids with live state, description and clamped summary", () => {
@@ -272,9 +278,14 @@ describe("formatThreadSearch", () => {
 });
 
 describe("formatActiveThreads", () => {
-  const makeStore = (threads: unknown[]) =>
+  const makeStore = (
+    threads: unknown[],
+    summariesByAgentId: Record<string, { text: string; atMs: number }[]> = {},
+  ) =>
     ({
       listActiveThreads: () => threads,
+      listAgentProgressSummaries: (agentId: string, limit = 3) =>
+        (summariesByAgentId[agentId] ?? []).slice(-limit),
     }) as unknown as Parameters<typeof formatActiveThreads>[0];
 
   it("surfaces live active/paused state and last-active recency", () => {
@@ -306,5 +317,82 @@ describe("formatActiveThreads", () => {
     expect(formatActiveThreads(makeStore([]), "conv-1")).toBe(
       "No resumable agent threads.",
     );
+  });
+
+  it("attaches timestamped live progress to ACTIVE threads only", () => {
+    const now = Date.now();
+    const out = formatActiveThreads(
+      makeStore(
+        [
+          {
+            threadId: "still-running",
+            description: "Deploy the backend",
+            lastUsedAt: now - 60_000,
+            agentUpdatedAt: now - 30_000,
+            agentStatus: "running",
+          },
+          {
+            threadId: "idle-thread",
+            description: "Draft the budget",
+            lastUsedAt: now - 30 * 60_000,
+            agentStatus: "completed",
+          },
+        ],
+        {
+          "still-running": [
+            { text: "building the deploy image", atMs: now - 90_000 },
+            { text: "running smoke tests", atMs: now - 30_000 },
+          ],
+          // Present in the buffer but the thread is paused — must not render
+          // as live status.
+          "idle-thread": [{ text: "summing spreadsheet rows", atMs: now }],
+        },
+      ),
+      "conv-1",
+    );
+    expect(out).toContain("live progress (newest last):");
+    expect(out).toContain("building the deploy image");
+    expect(out).toContain("running smoke tests");
+    // Each phrase carries its timestamp bracket.
+    expect(out).toMatch(/- \[[^\]]+\] running smoke tests/);
+    expect(out).not.toContain("summing spreadsheet rows");
+  });
+});
+
+describe("formatThreadSearch live progress", () => {
+  const makeStore = (
+    threads: unknown[],
+    summariesByAgentId: Record<string, { text: string; atMs: number }[]> = {},
+  ) =>
+    ({
+      searchThreads: () => threads,
+      listAgentProgressSummaries: (agentId: string, limit = 3) =>
+        (summariesByAgentId[agentId] ?? []).slice(-limit),
+    }) as unknown as Parameters<typeof formatThreadSearch>[0];
+
+  it("attaches live progress to matching ACTIVE threads", () => {
+    const now = Date.now();
+    const out = formatThreadSearch(
+      makeStore(
+        [
+          {
+            threadId: "scrape-airline-a",
+            description: "Scrape airline A fares",
+            lastUsedAt: now - 60_000,
+            agentStatus: "running",
+          },
+        ],
+        {
+          "scrape-airline-a": [
+            { text: "paging through fare results", atMs: now - 20_000 },
+          ],
+        },
+      ),
+      "conv-1",
+      "flights",
+      undefined,
+    );
+    expect(out).toContain("live progress (newest last):");
+    expect(out).toMatch(/- \[[^\]]+\] paging through fare results/);
   });
 });

@@ -68,6 +68,24 @@ export const agentProgressSummaryStore = {
     return out;
   },
 
+  /**
+   * Timestamped variant of `snapshotTexts` (`agentId -> [{text, atMs}…]`,
+   * oldest…newest). Published alongside the plain texts so the runtime can
+   * persist each phrase with the moment it was generated — Recall reports
+   * these as "as of <time> the agent was doing <phrase>".
+   */
+  snapshotEntries(): Record<string, { text: string; atMs: number }[]> {
+    const out: Record<string, { text: string; atMs: number }[]> = {};
+    for (const [agentId, list] of summariesByAgent) {
+      if (list.length === 0) continue;
+      out[agentId] = list.map((entry) => ({
+        text: entry.text,
+        atMs: entry.atMs,
+      }));
+    }
+    return out;
+  },
+
   addSummary(agentId: string, rawText: string): void {
     const text = rawText.trim();
     if (!text) return;
