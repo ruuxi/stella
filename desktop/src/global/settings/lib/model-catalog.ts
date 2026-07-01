@@ -125,6 +125,11 @@ const STELLA_PRESET_FALLBACK_DEFS: ReadonlyArray<{
     name: "Stella Vision",
     upstreamModel: "google/gemini-3-flash-preview",
   },
+  {
+    mode: "max",
+    name: "Stella Max",
+    upstreamModel: "anthropic/claude-fable-5",
+  },
 ];
 
 export const STELLA_PRESET_FALLBACK_MODELS: readonly CatalogModel[] =
