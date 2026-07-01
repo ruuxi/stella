@@ -81,6 +81,21 @@ import type {
   OfficePreviewSnapshot as SharedOfficePreviewSnapshot,
 } from "../../../../runtime/contracts/office-preview.js";
 import type { DisplayPayload } from "../contracts/display-payload";
+
+type MobileAgentWorkPayloadForSync = {
+  kind: "agent-work";
+  state: "running" | "done";
+  total: number;
+  completed: number;
+  title: string;
+  subtitle: string;
+  createdAt: number;
+};
+
+type MobileSyncArtifactForSync =
+  | DisplayPayload
+  | MobileAgentWorkPayloadForSync
+  | { id: string; payload: DisplayPayload | MobileAgentWorkPayloadForSync };
 import type {
   BackupNowResult as SharedBackupNowResult,
   BackupStatusSnapshot as SharedBackupStatusSnapshot,
@@ -1517,7 +1532,7 @@ export type ElectronLocalChatApi = {
       timestamp: number;
       requestId?: string;
       deviceId?: string;
-      artifacts?: DisplayPayload[];
+      artifacts?: MobileSyncArtifactForSync[];
       toolSteps?: Array<{
         id: string;
         toolName: string;
@@ -1549,7 +1564,7 @@ export type ElectronLocalChatApi = {
       timestamp: number;
       requestId?: string;
       deviceId?: string;
-      artifacts?: DisplayPayload[];
+      artifacts?: MobileSyncArtifactForSync[];
       toolSteps?: Array<{
         id: string;
         toolName: string;
