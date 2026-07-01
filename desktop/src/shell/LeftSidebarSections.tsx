@@ -32,12 +32,15 @@ import {
   useSectionCollapsed,
 } from "@/shell/section-collapse-store";
 import {
+  EMPTY_FIRST_SEEN_ORDER,
   extractTasksFromActivities,
   getTaskDisplayText,
   getTaskGroupStatusText,
   groupActivityTasks,
   mergeFooterTasks,
+  orderByFirstSeen,
   type ActivityRow,
+  type FirstSeenOrder,
   type TaskGroup,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
@@ -379,9 +382,6 @@ const activityRowStatus = (row: ActivityRow): TaskItem["status"] =>
 const activityRowId = (row: ActivityRow): string =>
   row.kind === "task" ? row.task.id : row.group.groupKey;
 
-const activityRowStartedAtMs = (row: ActivityRow): number =>
-  row.kind === "task" ? row.task.startedAtMs : row.group.startedAtMs;
-
 const activityRowCompletedAtMs = (row: ActivityRow): number => {
   const entry = row.kind === "task" ? row.task : row.group;
   return entry.completedAtMs ?? entry.lastUpdatedAtMs ?? entry.startedAtMs;
@@ -533,19 +533,26 @@ export function LeftSidebarSections({
   }, [allTasks, query]);
 
   // Running agents are no longer filtered out — they list alongside finished
-  // ones, newest first.
-  const runningRows = useMemo(
-    () =>
-      [...activityRows]
-        .filter((row) => activityRowStatus(row) === "running")
-        .sort(
-          (a, b) =>
-            activityRowStartedAtMs(b) - activityRowStartedAtMs(a) ||
-            activityRowId(a).localeCompare(activityRowId(b)),
-        )
-        .slice(0, caps.activity),
-    [activityRows, caps.activity],
-  );
+  // ones. Their position is pinned to the order in which each row first
+  // showed up as running (stable insertion order) rather than a live field:
+  // sorting by `startedAtMs` re-shuffled the list because that value drifts
+  // forward once an agent's original `agent-started` event ages out of the
+  // rolling activity window, so a still-running row would climb on every
+  // streamed update. A row only leaves this list — and moves into the done
+  // section — when it finishes or errors out.
+  const runningOrderRef = useRef<FirstSeenOrder>(EMPTY_FIRST_SEEN_ORDER);
+  const runningRows = useMemo(() => {
+    const running = activityRows.filter(
+      (row) => activityRowStatus(row) === "running",
+    );
+    const { ordered, state } = orderByFirstSeen(
+      running,
+      activityRowId,
+      runningOrderRef.current,
+    );
+    runningOrderRef.current = state;
+    return ordered.slice(0, caps.activity);
+  }, [activityRows, caps.activity]);
 
   const doneRows = useMemo(
     () =>
