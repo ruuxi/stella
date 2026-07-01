@@ -311,16 +311,6 @@
   white-space: nowrap;
 }
 
-.chat-workspace-strip__group-chevron {
-  flex: 0 0 auto;
-  color: var(--text-weak);
-  transition: transform 120ms ease;
-}
-
-.chat-workspace-strip__group-chevron[data-expanded="true"] {
-  transform: rotate(90deg);
-}
-
 .chat-workspace-strip__list.chat-workspace-strip__group-members {
   margin-top: 6px;
   padding-left: 23px;
@@ -343,20 +333,6 @@
 
 .chat-workspace-strip__task-files {
   gap: 2px;
-}
-
-.chat-workspace-strip__task-detail-empty {
-  margin: 0;
-  font-family: var(--font-family-sans);
-  font-size: var(--font-size-xs);
-  line-height: 1.4;
-  color: var(--text-weak);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-workspace-strip__group-chevron {
-    transition: none;
-  }
 }
 
 @keyframes chat-workspace-strip__spin {

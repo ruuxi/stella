@@ -15,7 +15,6 @@ import {
 import {
   History,
   CheckCircle2,
-  ChevronRight,
   Circle,
   LoaderCircle,
   AlertCircle,
@@ -192,7 +191,7 @@ const TaskRow = memo(function TaskRow({
 }: {
   task: TaskItem;
   expanded: boolean;
-  onToggle: (taskId: string) => void;
+  onToggle: (taskId: string, nextExpanded: boolean) => void;
   files: ReadonlyArray<ConversationFileEntry>;
   onOpenFile: (entry: ConversationFileEntry) => void;
 }) {
@@ -200,6 +199,7 @@ const TaskRow = memo(function TaskRow({
   const summaries = useAgentProgressSummaries(task.id);
   const hasSummaries = summaries.length > 0;
   const hasFiles = files.length > 0;
+  const hasDetail = hasSummaries || hasFiles;
   return (
     <li
       className="chat-workspace-strip__task-row"
@@ -211,7 +211,7 @@ const TaskRow = memo(function TaskRow({
         <button
           type="button"
           className="chat-workspace-strip__task-button"
-          onClick={() => onToggle(task.id)}
+          onClick={() => onToggle(task.id, !expanded)}
           aria-expanded={expanded}
           aria-label={`${label || "Activity"} — ${
             expanded ? "collapse" : "expand"
@@ -230,16 +230,9 @@ const TaskRow = memo(function TaskRow({
               label
             )}
           </span>
-          <ChevronRight
-            className="chat-workspace-strip__group-chevron"
-            data-expanded={expanded ? "true" : undefined}
-            size={13}
-            strokeWidth={2}
-            aria-hidden="true"
-          />
         </button>
       </div>
-      {expanded ? (
+      {expanded && hasDetail ? (
         <div className="chat-workspace-strip__task-detail">
           {hasSummaries ? (
             <AgentProgressSummaries agentId={task.id} max={AGENT_SUMMARY_CAP} />
@@ -269,11 +262,6 @@ const TaskRow = memo(function TaskRow({
               ))}
             </ul>
           ) : null}
-          {!hasSummaries && !hasFiles ? (
-            <p className="chat-workspace-strip__task-detail-empty">
-              No reasoning or files yet.
-            </p>
-          ) : null}
         </div>
       ) : null}
     </li>
@@ -284,7 +272,7 @@ const GroupRow = memo(function GroupRow({
   group,
   expanded,
   onToggle,
-  expandedTaskIds,
+  isTaskExpanded,
   onToggleTask,
   agentFiles,
   onOpenFile,
@@ -292,8 +280,8 @@ const GroupRow = memo(function GroupRow({
   group: TaskGroup;
   expanded: boolean;
   onToggle: (groupKey: string) => void;
-  expandedTaskIds: ReadonlySet<string>;
-  onToggleTask: (taskId: string) => void;
+  isTaskExpanded: (task: TaskItem) => boolean;
+  onToggleTask: (taskId: string, nextExpanded: boolean) => void;
   agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
   onOpenFile: (entry: ConversationFileEntry) => void;
 }) {
@@ -328,13 +316,6 @@ const GroupRow = memo(function GroupRow({
         <span className="chat-workspace-strip__row-meta chat-workspace-strip__group-status">
           {statusText}
         </span>
-        <ChevronRight
-          className="chat-workspace-strip__group-chevron"
-          data-expanded={expanded ? "true" : undefined}
-          size={13}
-          strokeWidth={2}
-          aria-hidden="true"
-        />
       </button>
       {expanded ? (
         <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks chat-workspace-strip__group-members">
@@ -342,7 +323,7 @@ const GroupRow = memo(function GroupRow({
             <TaskRow
               key={task.id}
               task={task}
-              expanded={expandedTaskIds.has(task.id)}
+              expanded={isTaskExpanded(task)}
               onToggle={onToggleTask}
               files={agentFiles.get(task.id) ?? EMPTY_FILES}
               onOpenFile={onOpenFile}
@@ -356,7 +337,7 @@ const GroupRow = memo(function GroupRow({
 
 const TasksList = memo(function TasksList({
   rows,
-  expandedTaskIds,
+  isTaskExpanded,
   onToggleTask,
   expandedGroupKeys,
   onToggleGroup,
@@ -364,8 +345,8 @@ const TasksList = memo(function TasksList({
   onOpenFile,
 }: {
   rows: ReadonlyArray<ActivityRow>;
-  expandedTaskIds: ReadonlySet<string>;
-  onToggleTask: (taskId: string) => void;
+  isTaskExpanded: (task: TaskItem) => boolean;
+  onToggleTask: (taskId: string, nextExpanded: boolean) => void;
   expandedGroupKeys: ReadonlySet<string>;
   onToggleGroup: (groupKey: string) => void;
   agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
@@ -378,7 +359,7 @@ const TasksList = memo(function TasksList({
           <TaskRow
             key={row.task.id}
             task={row.task}
-            expanded={expandedTaskIds.has(row.task.id)}
+            expanded={isTaskExpanded(row.task)}
             onToggle={onToggleTask}
             files={agentFiles.get(row.task.id) ?? EMPTY_FILES}
             onOpenFile={onOpenFile}
@@ -389,7 +370,7 @@ const TasksList = memo(function TasksList({
             group={row.group}
             expanded={expandedGroupKeys.has(row.group.groupKey)}
             onToggle={onToggleGroup}
-            expandedTaskIds={expandedTaskIds}
+            isTaskExpanded={isTaskExpanded}
             onToggleTask={onToggleTask}
             agentFiles={agentFiles}
             onOpenFile={onOpenFile}
@@ -517,17 +498,25 @@ export function LeftSidebarSections({
   }, []);
   // Per-agent expand/collapse: an expanded activity row reveals that
   // agent's recent reasoning summaries and the files it produced.
-  const [expandedTaskIds, setExpandedTaskIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
+  //
+  // Default state is derived from the agent's status — a running agent comes
+  // up expanded, a finished one collapsed — so a freshly-started agent auto-
+  // expands. `expandOverrides` records rows the user has explicitly toggled;
+  // those win over the status default and are never stomped by it.
+  const [expandOverrides, setExpandOverrides] = useState<
+    ReadonlyMap<string, boolean>
+  >(() => new Map());
+  const isTaskExpanded = useCallback(
+    (task: TaskItem): boolean => {
+      const override = expandOverrides.get(task.id);
+      return override ?? task.status === "running";
+    },
+    [expandOverrides],
   );
-  const toggleTask = useCallback((taskId: string) => {
-    setExpandedTaskIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(taskId)) {
-        next.delete(taskId);
-      } else {
-        next.add(taskId);
-      }
+  const toggleTask = useCallback((taskId: string, nextExpanded: boolean) => {
+    setExpandOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(taskId, nextExpanded);
       return next;
     });
   }, []);
@@ -670,7 +659,7 @@ export function LeftSidebarSections({
           >
             <TasksList
               rows={visibleActivityRows}
-              expandedTaskIds={expandedTaskIds}
+              isTaskExpanded={isTaskExpanded}
               onToggleTask={toggleTask}
               expandedGroupKeys={expandedGroupKeys}
               onToggleGroup={toggleGroup}
