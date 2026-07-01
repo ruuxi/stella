@@ -262,16 +262,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* Reserve the glyph's footprint even when it's empty (running rows carry
+     no icon — their shimmer is the working tell) so the label lines up with
+     the settled rows below. Matches the 23px indent used by the expanded
+     detail sections (15px slot + 8px button gap). */
+  width: 15px;
   height: calc(1em * 1.4);
 }
 
 .chat-workspace-strip__task-icon {
   color: var(--text-weak);
-}
-
-.chat-workspace-strip__task-icon--running {
-  color: var(--text-weak);
-  animation: chat-workspace-strip__spin 1.1s linear infinite;
 }
 
 .chat-workspace-strip__task-icon--done {
@@ -333,21 +333,6 @@
 
 .chat-workspace-strip__task-files {
   gap: 2px;
-}
-
-@keyframes chat-workspace-strip__spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-workspace-strip__task-icon--running {
-    animation: none;
-  }
 }
 
 .chat-workspace-strip__list {
