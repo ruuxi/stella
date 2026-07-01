@@ -358,6 +358,30 @@ describe("resolveLlmRoute", () => {
     );
   });
 
+  it("declares image input on synthesized gateway models, never the template's modalities", async () => {
+    // The template (like the real ai21/jamba-large-1.7) is text-only. If the
+    // synthesized clone inherited that, transformMessages would silently swap
+    // every user image for an "(image omitted: model does not support images)"
+    // placeholder — which is exactly how mobile photo attachments to a
+    // vision-capable OpenRouter model got dropped before the models.dev
+    // catalog finished loading. The gateway is the authority on modality: a
+    // truly text-only model rejects image blocks loudly upstream.
+    expect(OPENROUTER_TEMPLATE.input).toEqual(["text"]);
+    credentials.set("openrouter", "openrouter-key");
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaAppDir: "/tmp/stella",
+      modelName: "openrouter/anthropic/claude-opus-9.9",
+      agentType: "general",
+      site,
+    });
+
+    expect(resolved.model.input).toEqual(["text", "image"]);
+  });
+
   it("still requires a key for a synthesized gateway model", async () => {
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"
