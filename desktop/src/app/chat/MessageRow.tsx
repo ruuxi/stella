@@ -56,6 +56,7 @@ import {
 } from "@/app/chat/EndResourceCard";
 import { InlineGeneratedImageStrip } from "@/app/chat/InlineGeneratedImageCard";
 import { WebSearchResultsStrip } from "@/app/chat/WebSearchResultsStrip";
+import { MapRouteCards } from "@/app/chat/MapRouteCard";
 import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
@@ -545,6 +546,7 @@ export const AssistantMessageRow = memo(
     const hasResource = Boolean(row.resourcePayload);
     const hasInlineImages = (row.inlineImagePayloads?.length ?? 0) > 0;
     const hasWebSearchResults = (row.webSearchResults?.length ?? 0) > 0;
+    const hasMapArtifacts = (row.mapArtifacts?.length ?? 0) > 0;
     const hasSelfMod = Boolean(row.selfModApplied);
     const hasCustomSlot = Boolean(row.customSlot);
     const hasScheduleReceipt = Boolean(
@@ -570,6 +572,7 @@ export const AssistantMessageRow = memo(
       !hasResource &&
       !hasInlineImages &&
       !hasWebSearchResults &&
+      !hasMapArtifacts &&
       !hasSelfMod &&
       !hasCustomSlot &&
       !hasScheduleReceipt &&
@@ -634,6 +637,9 @@ export const AssistantMessageRow = memo(
           )}
           {hasWebSearchResults && row.webSearchResults && (
             <WebSearchResultsStrip results={row.webSearchResults} />
+          )}
+          {hasMapArtifacts && row.mapArtifacts && (
+            <MapRouteCards cards={row.mapArtifacts} />
           )}
           {row.officePreviewRef && (
             <OfficePreviewCard previewRef={row.officePreviewRef} />

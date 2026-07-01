@@ -298,6 +298,24 @@ const webSearchResultsEqual = (
   return true;
 };
 
+const mapArtifactsEqual = (
+  a: AssistantRowViewModel["mapArtifacts"],
+  b: AssistantRowViewModel["mapArtifacts"],
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return (a?.length ?? 0) === (b?.length ?? 0);
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i].id !== b[i].id) return false;
+    // Artifacts are immutable once persisted; id + marker count + polyline
+    // identity is enough to detect a different payload on the same slot.
+    if (a[i].map.markers.length !== b[i].map.markers.length) return false;
+    if ((a[i].map.route?.polyline ?? null) !== (b[i].map.route?.polyline ?? null))
+      return false;
+  }
+  return true;
+};
+
 const userRowEqual = (a: UserRowViewModel, b: UserRowViewModel): boolean =>
   a.id === b.id &&
   a.text === b.text &&
@@ -327,6 +345,7 @@ const assistantRowEqual = (
   sourceDiffPayloadsEqual(a.inlineImagePayloads, b.inlineImagePayloads) &&
   sourceDiffPayloadsEqual(a.sourceDiffPayloads, b.sourceDiffPayloads) &&
   webSearchResultsEqual(a.webSearchResults, b.webSearchResults) &&
+  mapArtifactsEqual(a.mapArtifacts, b.mapArtifacts) &&
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
   scheduleReceiptEqual(a.scheduleReceipt, b.scheduleReceipt) &&
   backgroundWorkEqual(a.backgroundWork, b.backgroundWork) &&

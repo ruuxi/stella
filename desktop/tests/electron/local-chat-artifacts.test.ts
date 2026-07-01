@@ -48,6 +48,43 @@ describe("local chat mobile artifacts", () => {
     ]);
   });
 
+  it("lifts map-route artifacts from successful map tool results", () => {
+    const map = {
+      kind: "map-route",
+      version: 1,
+      markers: [
+        { id: "p1", name: "Blue Bottle Coffee", lat: 37.7961, lng: -122.3939 },
+      ],
+    };
+    const artifacts = deriveMobileArtifactsForMessage(
+      baseMessage({
+        toolEvents: [
+          {
+            _id: "tool-1",
+            timestamp: 1_100,
+            type: "tool_result",
+            payload: { toolName: "map", map },
+          },
+          {
+            // Duplicate payload on the same turn dedupes to one card.
+            _id: "tool-2",
+            timestamp: 1_200,
+            type: "tool_result",
+            payload: { toolName: "map", map },
+          },
+          {
+            // Errored map calls never become cards.
+            _id: "tool-3",
+            timestamp: 1_300,
+            type: "tool_result",
+            payload: { toolName: "map", error: "Map lookup failed", map },
+          },
+        ],
+      }),
+    );
+    expect(artifacts).toEqual([map]);
+  });
+
   it("omits developer file artifacts unless explicitly enabled", () => {
     const message = baseMessage({
       toolEvents: [
