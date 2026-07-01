@@ -296,6 +296,9 @@ const buildLifecycleEventPayload = (
         agentType: event.agentType,
         ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
         ...(event.statusText ? { statusText: event.statusText } : {}),
+        // Persist the spawn-vs-follow-up discriminator so the inline
+        // background-work card can pick its follow-up variant on reload.
+        ...(event.isFollowUp ? { isFollowUp: true } : {}),
         ...groupFields,
       };
     case "agent-completed":

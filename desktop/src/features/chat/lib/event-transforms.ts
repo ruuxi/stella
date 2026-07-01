@@ -67,6 +67,11 @@ type AgentStartedEventPayload = AgentLifecycleGroupFields & {
   agentDepth?: number
   maxAgentDepth?: number
   statusText?: string
+  /** `true` when this start re-activates an existing thread (a `send_input`
+   *  follow-up) rather than spawning fresh work. The explicit signal the
+   *  inline background-work card keys its follow-up variant off. Absent on a
+   *  fresh spawn (and on legacy persisted events, which read as spawns). */
+  isFollowUp?: boolean
 }
 
 type AgentCompletedEventPayload = AgentLifecycleGroupFields & {
