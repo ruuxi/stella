@@ -821,9 +821,19 @@ export function convertMessages(
 						assistantMsg.content = assistantText;
 					}
 
-					// Use the signature from the first thinking block if available (for llama.cpp server + gpt-oss)
+					// Echo the reasoning back under the field it arrived on (for
+					// llama.cpp server + gpt-oss). Here `thinkingSignature` is the
+					// SOURCE FIELD NAME ("reasoning" / "reasoning_content"), a
+					// pseudo-signature — not a real provider-issued one. Only local,
+					// self-hosted servers want this replay; cloud reasoning models
+					// (OpenAI/OpenRouter) manage reasoning server-side and reject a
+					// plaintext reasoning field on input, so gate it on the compat
+					// flag (default off, on only for local endpoints). Cross-turn
+					// continuity for cloud reasoning models rides on opaque
+					// `reasoning_details` (see the tool-call `thoughtSignature` path
+					// below), which is unaffected by this gate.
 					const signature = nonEmptyThinkingBlocks[0].thinkingSignature;
-					if (signature && signature.length > 0) {
+					if (compat.replayReasoningContentField && signature && signature.length > 0) {
 						(assistantMsg as any)[signature] = nonEmptyThinkingBlocks.map((block) => block.thinking).join("\n");
 					}
 				}
@@ -1064,6 +1074,11 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 
 	const isGrok = provider === "xai" || baseUrl.includes("api.x.ai");
 	const isDeepSeek = provider === "deepseek" || baseUrl.includes("deepseek.com");
+	// Local/self-hosted OpenAI-compatible servers (llama.cpp, gpt-oss) are the
+	// only endpoints that expect their prior reasoning replayed back as a
+	// plaintext field. Cloud providers reject it.
+	const isLocal =
+		provider === "local" || baseUrl.includes("127.0.0.1") || baseUrl.includes("localhost");
 	const cacheControlFormat = provider === "openrouter" && model.id.startsWith("anthropic/") ? "anthropic" : undefined;
 
 	return {
@@ -1076,6 +1091,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 		requiresAssistantAfterToolResult: false,
 		requiresThinkingAsText: false,
 		requiresReasoningContentOnAssistantMessages: isDeepSeek,
+		replayReasoningContentField: isLocal,
 		thinkingFormat: isDeepSeek
 			? "deepseek"
 			: isZai
@@ -1097,7 +1113,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
  * Get resolved compatibility settings for a model.
  * Uses explicit model.compat if provided, otherwise auto-detects from provider/URL.
  */
-function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletionsCompat {
+export function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletionsCompat {
 	const detected = detectCompat(model);
 	if (!model.compat) return detected;
 
@@ -1114,6 +1130,8 @@ function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletion
 		requiresReasoningContentOnAssistantMessages:
 			model.compat.requiresReasoningContentOnAssistantMessages ??
 			detected.requiresReasoningContentOnAssistantMessages,
+		replayReasoningContentField:
+			model.compat.replayReasoningContentField ?? detected.replayReasoningContentField,
 		thinkingFormat: model.compat.thinkingFormat ?? detected.thinkingFormat,
 		openRouterRouting: model.compat.openRouterRouting ?? {},
 		vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
