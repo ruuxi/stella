@@ -504,7 +504,16 @@ export const createAgentOrchestration = (
         agentContext.resolvedLlm ??
         (await withStellaModelCatalogMetadata({
           route: resolveLlmRoute({
-            stellaAppDir: context.stellaAppDir,
+            // `resolveLlmRoute`'s `stellaAppDir` arg is the directory it reads
+            // BYOK/local provider credentials from, which live under the data
+            // dir (~/.stella), not the install/code tree. Every other runner
+            // call site (model-selection.ts, resolveSubsidiaryLlmRoute below)
+            // passes `stellaDataDir`; this fallback previously passed
+            // `stellaAppDir`, so if a subagent ever hit this branch it would
+            // look for credentials in the wrong place and diverge from the
+            // orchestrator's resolution — surfacing as a spurious
+            // missing-credential/provider error after a provider switch.
+            stellaAppDir: context.stellaDataDir,
             modelName: agentContext.model,
             agentType,
             site,
