@@ -27,9 +27,15 @@ export const toTrimmedString = (
  *
  *   fatal: cannot lock ref 'HEAD': is at <sha> but expected <sha>
  *   fatal: Unable to create '<repo>/.git/index.lock': File exists.
+ *
+ * The ref-lock race is caught by the `cannot lock ref … but expected` phrasing
+ * (and the sibling `*.lock` alternatives). A bare `but expected <sha>` clause
+ * is deliberately NOT matched on its own: it also appears in object-corruption
+ * errors (e.g. `error: sha1 mismatch … but expected …`) which are genuinely
+ * broken repos, not transient contention, and must not be retried 8×.
  */
 const REF_LOCK_CONTENTION_PATTERN =
-  /cannot lock ref|unable to (?:create|lock) [^\n]*\.lock|\.lock': File exists|but expected [0-9a-f]{7,}|another git process seems to be running/i;
+  /cannot lock ref .* but expected|unable to (?:create|lock) [^\n]*\.lock|\.lock': File exists|another git process seems to be running/i;
 
 export const isRefLockContentionOutput = (
   stderr: string | Buffer | undefined,

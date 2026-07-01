@@ -57,7 +57,13 @@ const canonicalRepoKey = (repoRoot: string): string => {
   }
 };
 
-const FILE_LOCK_TIMEOUT_MS = 30_000;
+// The cross-process advisory lock is only a best-effort backstop for the rare
+// second process touching the same repo; the in-process FIFO mutex already
+// serializes same-process callers (the reported failure mode). This budget is
+// awaited while HOLDING the FIFO slot, so keep it short to avoid head-of-line
+// blocking every queued same-process commit — if we can't take it quickly we
+// proceed unlocked and lean on the ref-lock retry in exec.ts.
+const FILE_LOCK_TIMEOUT_MS = 400;
 const FILE_LOCK_POLL_MS = 40;
 
 type FileLockHandle = { fd: number; lockFile: string };
@@ -131,6 +137,19 @@ const releaseCrossProcessLock = async (
     closeSync(handle.fd);
   } catch {
     // Ignore close errors during release.
+  }
+  // Only remove the lock file if we still own it. If our budget elapsed on the
+  // acquire side and another process stale-reclaimed the lock (rewriting the
+  // pid), unconditionally unlinking here would delete THEIR live lock. Re-read
+  // the pid and bail unless it's still ours.
+  try {
+    const raw = await fsPromises.readFile(handle.lockFile, "utf-8");
+    if (Number.parseInt(raw.trim(), 10) !== process.pid) {
+      return;
+    }
+  } catch {
+    // Lock file already gone (or unreadable) — nothing to release.
+    return;
   }
   await fsPromises.unlink(handle.lockFile).catch(() => undefined);
 };
