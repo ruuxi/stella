@@ -5,6 +5,7 @@ import {
   extractAttachImageBlocks,
   truncateModelVisibleToolText,
 } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
+import { MAX_IMAGE_BASE64_BYTES } from "../../../../../runtime/ai/utils/image-payload.js";
 import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
 const tempDirs = createSyncTempDirTracker();
@@ -176,6 +177,15 @@ App=com.apple.finder (pid 504)
     expect(result.text).toContain(`original ${size}x${size}`);
     expect(result.text).toContain("Multiply coordinates by");
     expect(result.text).not.toContain("[stella-attach-image]");
+  });
+
+  it("gates the raw-attach fallback on the shared Anthropic per-image ceiling", () => {
+    // The attach gate and the Anthropic send boundary must enforce the SAME
+    // base64 ceiling (a single shared constant): otherwise a 5-10MB image can
+    // pass the gate here and then be silently dropped to "[Image omitted]" at
+    // the wire. tool-adapters imports MAX_IMAGE_BASE64_BYTES from image-payload
+    // exactly so the two can't drift apart.
+    expect(MAX_IMAGE_BASE64_BYTES).toBe(5 * 1024 * 1024);
   });
 
   it("passes small images through byte-identical (no resize, no note)", async () => {

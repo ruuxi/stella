@@ -4,6 +4,11 @@ export type SupportedImageMimeType =
   | "image/gif"
   | "image/webp";
 
+// NOTE: this intentionally duplicates `detectImageMediaType` in
+// runtime/ai/utils/image-payload.ts. The `ai` layer must not import from
+// `kernel`, so the magic-byte sniffing is mirrored rather than shared. Keep the
+// two in sync — if you add or adjust a format here, mirror it there (and vice
+// versa) so they don't silently drift.
 export const detectImageMimeTypeFromBytes = (
   bytes: Uint8Array,
 ): SupportedImageMimeType | null => {
