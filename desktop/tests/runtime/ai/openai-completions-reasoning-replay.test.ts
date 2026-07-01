@@ -168,3 +168,122 @@ describe("openai-completions reasoning replay across a provider switch", () => {
     expect(getCompat(localModel).replayReasoningContentField).toBe(true);
   });
 });
+
+// A cloud DeepSeek-style reasoning model streams reasoning under
+// `reasoning_content`, so the parser tags the thinking block with that field
+// name as its pseudo-signature. DeepSeek is cloud (not local), so after the
+// a21e37f50 fix the placeholder must NOT be echoed back; instead the outgoing
+// assistant message carries an empty `reasoning_content` (required by
+// `requiresReasoningContentOnAssistantMessages`). Replaying the plaintext
+// reasoning here would make a multi-turn / parallel-tool loop get rejected.
+const deepseekReasoningTurn = (): AssistantMessage => ({
+  role: "assistant",
+  content: [
+    {
+      type: "thinking",
+      thinking: "**Planning** I should inspect the repo before editing.",
+      thinkingSignature: "reasoning_content",
+    },
+    {
+      type: "toolCall",
+      id: "call_ds_0",
+      name: "exec_command",
+      arguments: { cmd: "git status --short" },
+    },
+    {
+      type: "toolCall",
+      id: "call_ds_1",
+      name: "exec_command",
+      arguments: { cmd: "rg --files -g '*model*'" },
+    },
+  ],
+  api: "openai-completions",
+  provider: "deepseek" as never,
+  model: "deepseek-reasoner",
+  usage: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  },
+  stopReason: "toolUse",
+  timestamp: 0,
+});
+
+describe("openai-completions reasoning replay for a cloud DeepSeek model", () => {
+  it("emits an empty reasoning_content, not the echoed plaintext reasoning", () => {
+    const model = makeModel(
+      "deepseek",
+      "deepseek-reasoner",
+      "https://api.deepseek.com/v1",
+    );
+    // Cloud DeepSeek: required reasoning_content is on, replay is off.
+    const compat = getCompat(model);
+    expect(compat.requiresReasoningContentOnAssistantMessages).toBe(true);
+    expect(compat.replayReasoningContentField).toBe(false);
+
+    const context: Context = {
+      systemPrompt: "You are a Stella sub-agent.",
+      messages: [
+        { role: "user", content: "Investigate the repo.", timestamp: 0 },
+        deepseekReasoningTurn(),
+        toolResult("call_ds_0"),
+        toolResult("call_ds_1"),
+        { role: "user", content: "Continue.", timestamp: 0 },
+      ],
+    };
+
+    const messages = convertMessages(model, context, compat);
+    const assistant = assistantParams(messages)[0] as Record<string, unknown>;
+
+    // The bug would set reasoning_content to the plaintext reasoning; the fix
+    // leaves it empty so the request stays provider-valid across turns.
+    expect(assistant.reasoning_content).toBe("");
+    expect(assistant.reasoning).toBeUndefined();
+    // The parallel tool calls are preserved.
+    expect(Array.isArray(assistant.tool_calls)).toBe(true);
+    expect((assistant.tool_calls as unknown[]).length).toBe(2);
+  });
+});
+
+// Fix #2: local-endpoint detection must recognize IPv6 loopback, the wildcard
+// bind address, and mDNS `*.local` hosts (a self-hosted model reached via a
+// non-`local` provider on such an address) while never misreading a cloud
+// endpoint as local.
+describe("openai-completions local-endpoint detection", () => {
+  const replayFor = (baseUrl: string) =>
+    getCompat(makeModel("openai", "self-hosted", baseUrl))
+      .replayReasoningContentField;
+
+  it("treats loopback / self-hosted URLs as local", () => {
+    for (const baseUrl of [
+      "http://127.0.0.1:11434/v1",
+      "http://127.1.2.3:8080/v1",
+      "http://localhost:8080/v1",
+      "http://[::1]:8080/v1",
+      "http://0.0.0.0:8080/v1",
+      "http://my-box.local:8080/v1",
+    ]) {
+      expect(replayFor(baseUrl), baseUrl).toBe(true);
+    }
+  });
+
+  it("never misclassifies a cloud endpoint as local", () => {
+    for (const baseUrl of [
+      "https://api.openai.com/v1",
+      "https://openrouter.ai/api/v1",
+      "https://api.deepseek.com/v1",
+      "https://api.x.ai/v1",
+      "https://gateway.ai.cloudflare.com/v1/acct/gw/compat",
+    ]) {
+      expect(replayFor(baseUrl), baseUrl).toBe(false);
+    }
+  });
+
+  it("falls back safely on a malformed URL", () => {
+    expect(replayFor("not a url")).toBe(false);
+    expect(replayFor("http://127.0.0.1 bad url")).toBe(true);
+  });
+});

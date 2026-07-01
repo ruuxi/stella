@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import OpenAI from "openai";
 import type {
 	ChatCompletionAssistantMessageParam,
@@ -1043,6 +1044,52 @@ function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | str
 }
 
 /**
+ * Whether a base URL points at a local/self-hosted endpoint (loopback or an
+ * mDNS `*.local` host). Used to auto-enable reasoning replay only for the
+ * llama.cpp / gpt-oss style servers that expect it.
+ *
+ * Parses the host and checks it structurally (loopback IPv4 `127.0.0.0/8`,
+ * the wildcard-bind `0.0.0.0`, IPv6 loopback `::1`, `localhost`, `*.local`)
+ * instead of substring matching, so a self-hosted model on `[::1]` or a `.local`
+ * hostname is still recognized. Malformed URLs fall back to conservative token
+ * checks. In every path a public cloud hostname resolves to `false`, so a
+ * cloud endpoint can never be misclassified as local.
+ */
+function isLocalOrLoopbackUrl(baseUrl: string): boolean {
+	let hostname: string | null = null;
+	try {
+		hostname = new URL(baseUrl).hostname;
+	} catch {
+		hostname = null;
+	}
+	if (!hostname) {
+		// Malformed URL: only unambiguous loopback tokens count, so a cloud
+		// endpoint is never mistaken for a local one.
+		const lowerUrl = baseUrl.toLowerCase();
+		return (
+			lowerUrl.includes("127.0.0.1") ||
+			lowerUrl.includes("localhost") ||
+			lowerUrl.includes("[::1]") ||
+			lowerUrl.includes("0.0.0.0")
+		);
+	}
+	// URL keeps IPv6 hosts bracketed ("[::1]"); unwrap before net.isIP.
+	const host =
+		hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+	const lower = host.toLowerCase();
+	if (lower === "localhost" || lower.endsWith(".localhost")) return true;
+	if (lower.endsWith(".local")) return true;
+	switch (isIP(host)) {
+		case 4:
+			return host.startsWith("127.") || host === "0.0.0.0";
+		case 6:
+			return lower === "::1";
+		default:
+			return false;
+	}
+}
+
+/**
  * Detect compatibility settings from provider and baseUrl for known providers.
  * Provider takes precedence over URL-based detection since it's explicitly configured.
  * Returns a fully resolved OpenAICompletionsCompat object with all fields set.
@@ -1077,8 +1124,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 	// Local/self-hosted OpenAI-compatible servers (llama.cpp, gpt-oss) are the
 	// only endpoints that expect their prior reasoning replayed back as a
 	// plaintext field. Cloud providers reject it.
-	const isLocal =
-		provider === "local" || baseUrl.includes("127.0.0.1") || baseUrl.includes("localhost");
+	const isLocal = provider === "local" || isLocalOrLoopbackUrl(baseUrl);
 	const cacheControlFormat = provider === "openrouter" && model.id.startsWith("anthropic/") ? "anthropic" : undefined;
 
 	return {
