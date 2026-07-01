@@ -311,6 +311,29 @@ describe("resolveLlmRoute", () => {
     await expect(resolved.getApiKey()).resolves.toBe("openrouter-key");
   });
 
+  it("does not inherit the template's output/context limits when synthesizing", async () => {
+    // The cloned template is an arbitrary registry entry; its maxTokens can be
+    // tiny (4096 for some entries). buildBaseOptions turns model.maxTokens
+    // into a hard max_tokens cap per request, which a reasoning model can
+    // exhaust entirely on thinking — the run then truncates with no visible
+    // reply. Synthesized gateway models must send no cap (maxTokens: 0) and
+    // keep a generous context window so compaction doesn't fire early.
+    credentials.set("openrouter", "openrouter-key");
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaAppDir: "/tmp/stella",
+      modelName: "openrouter/anthropic/claude-opus-9.9",
+      agentType: "general",
+      site,
+    });
+
+    expect(resolved.model.maxTokens).toBe(0);
+    expect(resolved.model.contextWindow).toBeGreaterThanOrEqual(200_000);
+  });
+
   it("still requires a key for a synthesized gateway model", async () => {
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"

@@ -335,6 +335,28 @@ type AgentCompletionSource = {
   state: Pick<Agent["state"], "messages" | "error">;
 };
 
+/**
+ * True when the run's final assistant message is a truncated reasoning
+ * trace: `stopReason: "length"` with neither visible text nor a tool call
+ * (typically thinking-only). The provider hit its output-token cap while
+ * the model was still reasoning, so no reply was ever produced. This is a
+ * failure, not a success — without this check the run would finalize as
+ * "success" with an empty result and surface only the generic
+ * empty-result sentinel to the caller.
+ */
+const isTruncatedReasoningCompletion = (
+  message: AgentMessage | undefined,
+): message is Extract<AgentMessage, { role: "assistant" }> => {
+  if (!message || message.role !== "assistant") return false;
+  if (message.stopReason !== "length") return false;
+  const blocks = Array.isArray(message.content) ? message.content : [];
+  return !blocks.some(
+    (block) =>
+      block.type === "toolCall" ||
+      (block.type === "text" && block.text.trim().length > 0),
+  );
+};
+
 export const getAgentCompletion = (
   agent: AgentCompletionSource,
 ): { finalText: string; errorMessage?: string } => {
@@ -362,6 +384,16 @@ export const getAgentCompletion = (
       return {
         finalText,
         errorMessage: assistantError,
+      };
+    }
+
+    if (isTruncatedReasoningCompletion(latestAssistant)) {
+      const outputTokens = latestAssistant.usage?.output;
+      return {
+        finalText,
+        errorMessage: `Run truncated: model hit the output-token cap${
+          outputTokens ? ` (${outputTokens} tokens)` : ""
+        } while reasoning; no visible reply was produced.`,
       };
     }
   }
