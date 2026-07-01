@@ -12,7 +12,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { History, CheckCircle2, Circle, AlertCircle } from "@/ui/icons";
+import { History, CheckCircle2, Circle, CircleDot, AlertCircle } from "@/ui/icons";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import {
@@ -140,13 +140,19 @@ function WorkspaceSection({
 
 function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
   switch (status) {
-    // Running rows carry no status glyph — the label's text shimmer is the
-    // single working affordance (matching the inline agent cards), so the
-    // former loader spinner would be a redundant second indicator. The icon
-    // slot stays reserved (see `.chat-workspace-strip__task-icon-wrap`) so
-    // the label still lines up with the settled rows below it.
+    // Running rows carry a static "active" status dot (a ringed center dot)
+    // rather than a spinner — the label's text shimmer already conveys the
+    // working state, so this fills the reserved icon slot for alignment and
+    // reads as "this thread is live" without a second animation.
     case "running":
-      return null;
+      return (
+        <CircleDot
+          className="chat-workspace-strip__task-icon chat-workspace-strip__task-icon--running"
+          size={15}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
+      );
     case "completed":
       return (
         <CheckCircle2
