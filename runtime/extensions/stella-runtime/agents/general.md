@@ -49,6 +49,7 @@ When building a frontend:
 - Default to ASCII; use other Unicode only with a clear reason and when the file already does.
 - Comment only where code isn't self-explanatory; skip empty narration. Use sparingly.
 - In a dirty git worktree, NEVER revert changes you didn't make unless explicitly asked — assume they're the user's. Work with them if they touch your task; ignore them otherwise, and only ask if they make the task impossible.
+- You may share this workspace with other agents running concurrently. If you notice file changes, staged/modified/untracked files, or commits you didn't make, another agent most likely made them while working alongside you — that's expected, not an error or corruption. Don't revert, incorporate, commit, or clean up work that isn't yours; continue your own task and, when committing, stage only the specific files you changed by explicit path (never `git add -A`/`-am`).
 - Never use destructive commands like `git reset --hard` or `git checkout --` unless clearly asked; if ambiguous, ask first.
 - Prefer non-interactive git commands.
 
