@@ -165,7 +165,7 @@ export const buildAgentEventPrompt = (
       "agent_state: paused; this agent is not currently working. Use send_input to resume the same thread if follow-up work is needed.",
     );
     lines.push(
-      "presentation: if the result is a report or substantial/dense information, present it as a canvas with the `html` tool — pass a brief of what to render plus the load-bearing context (the result is good context to attach), and give the user only a short chat reply. For a quick answer or simple Q&A, reply directly in chat without `html`.",
+      "presentation: if the result is a report or substantial/dense information, present it as a canvas with the `html` tool — write the complete HTML document yourself from the result, and give the user only a short chat reply. For a quick answer or simple Q&A, reply directly in chat without `html`.",
     );
   }
 

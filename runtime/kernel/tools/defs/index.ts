@@ -113,12 +113,7 @@ export const buildBuiltinTools = (
   tools.push(toolSearchTool);
 
   // Orchestrator coordination surface
-  tools.push(
-    createHtmlTool({
-      stellaDataDir: options.stellaDataDir,
-      ...(options.generateHtml ? { generateHtml: options.generateHtml } : {}),
-    }),
-  );
+  tools.push(createHtmlTool({ stellaDataDir: options.stellaDataDir }));
   tools.push(createMapTool());
   tools.push(createRecallTool({ contextProvider: options.contextProvider }));
   tools.push(

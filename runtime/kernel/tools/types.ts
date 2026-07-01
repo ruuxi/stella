@@ -218,12 +218,6 @@ export type ToolHostOptions = {
    */
   getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
   /**
-   * Renders an HTML canvas from a brief for the orchestrator's `html` tool.
-   * The host wires this to the standalone HTML generation LLM. When omitted,
-   * the `html` tool reports that canvas generation is unavailable.
-   */
-  generateHtml?: HtmlGenerateFn;
-  /**
    * Optional authenticated Convex query bridge for polling backend-owned state
    * such as media job completion.
    */
@@ -445,20 +439,6 @@ export type ToolHandler = (
   context: ToolContext,
   extras?: ToolHandlerExtras,
 ) => Promise<ToolResult>;
-
-/**
- * Renders a brief into a complete, self-contained HTML document for the `html`
- * tool's canvas. Returns the document text, or `null` when generation was not
- * possible (no usable model route/credential, model error, empty output).
- * Backed by the standalone HTML generation LLM in
- * `agent-runtime/html-generation.ts`.
- */
-export type HtmlGenerateFn = (args: {
-  brief: string;
-  title: string;
-  scopedContext?: string;
-  abortSignal?: AbortSignal;
-}) => Promise<string | null>;
 
 /**
  * Self-contained tool definition. One file per tool under

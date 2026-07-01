@@ -59,7 +59,7 @@ describe("task lifecycle deduping", () => {
       "agent_state: paused; this agent is not currently working. Use send_input to resume the same thread if follow-up work is needed.",
     );
     expect(completedPrompt).toContain(
-      "presentation: if the result is a report or substantial/dense information, present it as a canvas with the `html` tool",
+      "presentation: if the result is a report or substantial/dense information, present it as a canvas with the `html` tool — write the complete HTML document yourself",
     );
     expect(failedPrompt).toContain("[Task failed]");
     expect(failedPrompt).toContain("error: Spotify failed to open");
