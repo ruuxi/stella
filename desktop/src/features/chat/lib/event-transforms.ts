@@ -756,11 +756,17 @@ export const EMPTY_FIRST_SEEN_ORDER: FirstSeenOrder = {
  * later re-activation of the same key re-enters at the end rather than
  * reclaiming its old slot. Pure — the caller threads the returned state
  * back in (typically via a ref) on the next call.
+ *
+ * With `descending`, the newest-seen key sorts first: a freshly-seen key
+ * prepends at the top while every already-seen key keeps its relative
+ * order (shifting down by one). Frozen indices are unchanged either way,
+ * so existing rows never reshuffle relative to each other.
  */
 export function orderByFirstSeen<T>(
   items: readonly T[],
   keyOf: (item: T) => string,
   prev: FirstSeenOrder = EMPTY_FIRST_SEEN_ORDER,
+  descending = false,
 ): { ordered: T[]; state: FirstSeenOrder } {
   const order = new Map<string, number>()
   let next = prev.next
@@ -780,7 +786,9 @@ export function orderByFirstSeen<T>(
     const bKey = keyOf(b)
     const ai = order.get(aKey) ?? 0
     const bi = order.get(bKey) ?? 0
-    return ai - bi || aKey.localeCompare(bKey)
+    return descending
+      ? bi - ai || bKey.localeCompare(aKey)
+      : ai - bi || aKey.localeCompare(bKey)
   })
   return { ordered, state: { order, next } }
 }
