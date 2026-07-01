@@ -526,11 +526,14 @@ export function LeftSidebarSections({
     liveTasks,
   ]);
 
+  const groupedRows = useMemo(() => groupActivityTasks(allTasks), [allTasks]);
+
   const activityRows = useMemo(() => {
-    const grouped = groupActivityTasks(allTasks);
-    if (!query) return grouped;
-    return grouped.filter((row) => matchesQuery(activityRowText(row), query));
-  }, [allTasks, query]);
+    if (!query) return groupedRows;
+    return groupedRows.filter((row) =>
+      matchesQuery(activityRowText(row), query),
+    );
+  }, [groupedRows, query]);
 
   // Running agents are no longer filtered out — they list alongside finished
   // ones, newest at the top. Each row is pinned to a frozen index captured
@@ -542,9 +545,16 @@ export function LeftSidebarSections({
   // event ages out of the rolling activity window — so a still-running row
   // would climb on every streamed update. A row only leaves this list — and
   // moves into the done section — when it finishes or errors out.
+  //
+  // First-seen indices are assigned over the *unfiltered* running population
+  // (`groupedRows`) and the sidebar search `query` is applied afterward, for
+  // display only. Ordering the already-filtered `activityRows` instead pruned
+  // running rows that didn't match the query from the frozen order map, so
+  // clearing the search re-admitted them as newly-seen — reshuffling the
+  // running list and jumping previously-hidden rows to the top.
   const runningOrderRef = useRef<FirstSeenOrder>(EMPTY_FIRST_SEEN_ORDER);
   const runningRows = useMemo(() => {
-    const running = activityRows.filter(
+    const running = groupedRows.filter(
       (row) => activityRowStatus(row) === "running",
     );
     const { ordered, state } = orderByFirstSeen(
@@ -553,9 +563,15 @@ export function LeftSidebarSections({
       runningOrderRef.current,
       true,
     );
+    // Safe to mutate the ref inside useMemo: orderByFirstSeen is idempotent
+    // for unchanged input, so a repeat run (e.g. StrictMode) yields the same
+    // frozen indices.
     runningOrderRef.current = state;
-    return ordered.slice(0, caps.activity);
-  }, [activityRows, caps.activity]);
+    const visible = query
+      ? ordered.filter((row) => matchesQuery(activityRowText(row), query))
+      : ordered;
+    return visible.slice(0, caps.activity);
+  }, [groupedRows, query, caps.activity]);
 
   const doneRows = useMemo(
     () =>
