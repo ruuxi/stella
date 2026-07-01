@@ -770,7 +770,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 };
 
 /**
- * Check if a model supports adaptive thinking (Opus 4.6+, Sonnet 4.6+).
+ * Check if a model supports adaptive thinking (Opus 4.6+, Sonnet 4.6+, Fable 5).
  * Adaptive-only models reject `thinking.type=enabled`, so this must stay in
  * sync with the Anthropic model catalog when new Opus/Sonnet minors ship.
  */
@@ -784,7 +784,8 @@ function supportsAdaptiveThinking(modelId: string): boolean {
 		modelId.includes("opus-4-8") ||
 		modelId.includes("opus-4.8") ||
 		modelId.includes("sonnet-4-6") ||
-		modelId.includes("sonnet-4.6")
+		modelId.includes("sonnet-4.6") ||
+		modelId.includes("fable-5")
 	);
 }
 
