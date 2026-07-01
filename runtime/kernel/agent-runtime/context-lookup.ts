@@ -13,7 +13,11 @@ import {
   sanitizeToolVisibleText,
 } from "../tools/safety.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
-import { formatRuntimeThreadStatusSuffix } from "../runtime-threads.js";
+import { formatDateTimeReminder } from "../message-timestamp.js";
+import {
+  deriveRuntimeThreadLiveState,
+  formatRuntimeThreadStatusSuffix,
+} from "../runtime-threads.js";
 import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
@@ -30,7 +34,13 @@ const MAX_MEMORY_SEARCH_CONTEXT_LINES = 1;
 const MAX_MEMORY_SEARCH_RESULTS_CHARS = 16_000;
 const CHRONICLE_DIR_SEGMENTS = ["memories_extensions", "chronicle"] as const;
 
-type ContextLookupStore = Pick<RuntimeStore, "listActiveThreads">;
+type ContextLookupStore = Pick<
+  RuntimeStore,
+  "listActiveThreads" | "listAgentProgressSummaries"
+>;
+
+/** Latest live progress phrases surfaced per ACTIVE thread. */
+const MAX_LIVE_PROGRESS_SUMMARIES = 3;
 
 const RECALL_SYSTEM_PROMPT = [
   "You are Stella's recall agent. Resolve the lookup request into a concise, useful answer for the orchestrator, drawing on the user's durable memory, past agent work (threads), recent activity, and live app/browser state.",
@@ -40,7 +50,9 @@ const RECALL_SYSTEM_PROMPT = [
   '  {"action":"search_threads","query":"..."}          — search every past agent thread (resumable) by topic/app/what it did. Omit query to browse recent work.',
   '  {"action":"answer","brief":"..."}                   — finish with a concise markdown brief.',
   "",
-  "The eager context below already includes the memory summary, a (possibly truncated) ledger, live app/browser state, recent activity, active threads, and chronicle. Search only when the answer likely lives in the deeper ledger or in older/unlisted threads. Resolve in as few steps as possible — answer the moment you can.",
+  "The eager context below already includes the current time, the memory summary, a (possibly truncated) ledger, live app/browser state, recent activity, active threads, and chronicle. Search only when the answer likely lives in the deeper ledger or in older/unlisted threads. Resolve in as few steps as possible — answer the moment you can.",
+  "",
+  "Threads are labeled active (running right now) or paused (idle but resumable), as of the current time above. Active threads also carry timestamped 'live progress' phrases — the agent's latest activity. For status questions ('is X still running?', 'what is it doing?'), answer from those labels and phrases, anchored to the current time (e.g. 'thread X is active; as of 3:04 PM it was searching documentation for rate limits'). Do not guess at status.",
   "",
   "When past threads are relevant, include their thread_id(s) in the brief so the orchestrator can resume them. Keep the brief tight — only what helps answer or route the request.",
   'If nothing is relevant, answer with exactly "Nothing relevant found."',
@@ -313,13 +325,61 @@ const readChronicleFiles = async (stellaDataDir: string): Promise<string> => {
     : "No Chronicle summaries found.";
 };
 
+const formatClockTime = (timestamp: number): string =>
+  new Date(timestamp).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+/**
+ * Live-progress lines for one thread: the latest timestamped progress
+ * phrases the UI's progress-summary engine generated for the agent, read
+ * from the persisted per-agent ring buffer. Only rendered for threads that
+ * are ACTIVE right now — a paused/finished thread's last phrases describe
+ * work that already stopped and would read as live status.
+ */
+const formatThreadLiveProgressLines = (
+  store: Pick<ContextLookupStore, "listAgentProgressSummaries">,
+  thread: { threadId: string; agentStatus?: unknown },
+): string[] => {
+  if (
+    deriveRuntimeThreadLiveState(
+      thread as Parameters<typeof deriveRuntimeThreadLiveState>[0],
+    ) !== "active"
+  ) {
+    return [];
+  }
+  let entries: Array<{ text: string; atMs: number }>;
+  try {
+    entries = store.listAgentProgressSummaries(
+      thread.threadId,
+      MAX_LIVE_PROGRESS_SUMMARIES,
+    );
+  } catch {
+    return [];
+  }
+  if (entries.length === 0) return [];
+  return [
+    "  live progress (newest last):",
+    ...entries.map(
+      (entry) =>
+        `    - [${formatClockTime(entry.atMs)}] ${sanitizeToolVisibleText(
+          entry.text,
+        )}`,
+    ),
+  ];
+};
+
 /**
  * The recall agent's eager "# Active Agent Threads" section: the resumable
  * threads for this conversation with their live active/paused state, so a
  * status question ("are my tasks still running?") is answerable directly.
  */
 export const formatActiveThreads = (
-  store: Pick<ContextLookupStore, "listActiveThreads">,
+  store: ContextLookupStore,
   conversationId: string,
 ): string => {
   const threads = store.listActiveThreads(conversationId).slice(0, 16);
@@ -334,6 +394,10 @@ export const formatActiveThreads = (
         `- ${thread.threadId} (${formatRuntimeThreadStatusSuffix(thread)})`,
         `  description: ${thread.description?.trim() || "No description recorded"}`,
         ...(summary ? [`  summary: ${summary}`] : []),
+        // ACTIVE threads additionally carry their latest timestamped
+        // progress phrases so "what is it doing right now?" is answerable
+        // without interrupting the agent.
+        ...formatThreadLiveProgressLines(store, thread),
       ].join("\n");
     })
     .join("\n");
@@ -363,6 +427,11 @@ export const buildContextLookupUserPrompt = async (args: {
   ]);
 
   const sections = [
+    "# Current Time",
+    // Anchors the whole lookup to "now": thread status, live-progress
+    // timestamps, and recency phrases are all relative to this moment.
+    formatDateTimeReminder(Date.now()),
+    "",
     "# Lookup Request",
     truncate(args.lookupPrompt.trim(), 2_000),
     "",
@@ -389,7 +458,7 @@ export const buildContextLookupUserPrompt = async (args: {
 
 /** Search every past agent thread (resumable), formatted for the recall agent. */
 export const formatThreadSearch = (
-  store: Pick<RuntimeStore, "searchThreads">,
+  store: Pick<RuntimeStore, "searchThreads" | "listAgentProgressSummaries">,
   conversationId: string,
   query: string | undefined,
   limit: number | undefined,
@@ -417,6 +486,7 @@ export const formatThreadSearch = (
           ? `  description: ${thread.description.trim()}`
           : "",
         summary ? `  summary: ${summary}` : "",
+        ...formatThreadLiveProgressLines(store, thread),
       ]
         .filter(Boolean)
         .join("\n");

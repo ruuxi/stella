@@ -308,6 +308,10 @@ export const registerLocalChatHandlers = (
       event,
       payload: {
         summariesByAgentId?: Record<string, readonly string[]>;
+        entriesByAgentId?: Record<
+          string,
+          readonly { text: string; atMs: number }[]
+        >;
       },
     ) =>
       await withLocalChatClient(
@@ -317,6 +321,9 @@ export const registerLocalChatHandlers = (
         (client) =>
           client.setReasoningSummaries({
             summariesByAgentId: payload?.summariesByAgentId ?? {},
+            ...(payload?.entriesByAgentId
+              ? { entriesByAgentId: payload.entriesByAgentId }
+              : {}),
           }),
       ),
   );

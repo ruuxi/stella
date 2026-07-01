@@ -116,6 +116,9 @@ type ThreadSessionEntryRow = {
   dataJson: string | null;
 };
 
+/** Renderer keeps ≤5 phrases per agent; persistence mirrors that cap. */
+export const MAX_PERSISTED_PROGRESS_SUMMARIES_PER_AGENT = 5;
+
 export type PersistedAgentRecord = {
   threadId: string;
   conversationId: string;
@@ -3371,6 +3374,72 @@ export class SessionStore {
         record.error ?? null,
         record.updatedAt,
       );
+  }
+
+  /**
+   * Mirror the renderer's rolling per-agent progress-summary phrases into
+   * SQLite so runtime consumers (Recall) can report what a running agent is
+   * doing right now. Ring-buffer semantics: each publish replaces an agent's
+   * rows wholesale with its newest phrases (the renderer already caps the
+   * list). Agents absent from the publish keep their previous rows — Recall
+   * only surfaces summaries for threads that are live, so stale rows for
+   * finished agents are inert.
+   */
+  replaceAgentProgressSummaries(
+    summariesByAgentId: Record<
+      string,
+      readonly { text: string; atMs: number }[]
+    >,
+  ): void {
+    const deleteStmt = this.db.prepare(
+      `DELETE FROM agent_progress_summaries WHERE agent_id = ?`,
+    );
+    const insertStmt = this.db.prepare(
+      `INSERT INTO agent_progress_summaries (agent_id, text, created_at) VALUES (?, ?, ?)`,
+    );
+    for (const [rawAgentId, rawList] of Object.entries(
+      summariesByAgentId ?? {},
+    )) {
+      const agentId = rawAgentId.trim();
+      if (!agentId || !Array.isArray(rawList)) continue;
+      const entries = rawList
+        .filter(
+          (entry): entry is { text: string; atMs: number } =>
+            !!entry &&
+            typeof entry.text === "string" &&
+            entry.text.trim().length > 0 &&
+            typeof entry.atMs === "number" &&
+            Number.isFinite(entry.atMs),
+        )
+        .slice(-MAX_PERSISTED_PROGRESS_SUMMARIES_PER_AGENT);
+      deleteStmt.run(agentId);
+      for (const entry of entries) {
+        insertStmt.run(agentId, entry.text.trim(), Math.floor(entry.atMs));
+      }
+    }
+  }
+
+  /** Newest-last recent progress phrases for one agent (runtime thread id). */
+  listAgentProgressSummaries(
+    agentId: string,
+    limit = 3,
+  ): Array<{ text: string; atMs: number }> {
+    const cappedLimit = Math.max(
+      1,
+      Math.min(MAX_PERSISTED_PROGRESS_SUMMARIES_PER_AGENT, Math.floor(limit)),
+    );
+    const rows = this.db
+      .prepare(
+        `
+      SELECT text, created_at AS atMs
+      FROM agent_progress_summaries
+      WHERE agent_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `,
+      )
+      .all(agentId, cappedLimit) as Array<{ text: string; atMs: number }>;
+    return rows.reverse();
   }
 
   getAgentRecord(threadId: string): PersistedAgentRecord | null {

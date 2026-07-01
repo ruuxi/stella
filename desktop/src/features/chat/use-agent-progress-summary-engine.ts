@@ -231,10 +231,16 @@ export function useAgentProgressSummaryEngine(
       const api = window.electronAPI?.localChat;
       if (!api?.publishReasoningSummaries) return;
       const snapshot = agentProgressSummaryStore.snapshotTexts();
+      const entries = agentProgressSummaryStore.snapshotEntries();
       const serialized = JSON.stringify(snapshot);
       if (serialized === lastPublishedRef.current) return;
       lastPublishedRef.current = serialized;
-      void api.publishReasoningSummaries({ summariesByAgentId: snapshot });
+      void api.publishReasoningSummaries({
+        summariesByAgentId: snapshot,
+        // Timestamped copies are persisted runtime-side so Recall can report
+        // what a running agent was doing as of a specific moment.
+        entriesByAgentId: entries,
+      });
     };
     publish();
     return agentProgressSummaryStore.subscribe(publish);

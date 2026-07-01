@@ -313,12 +313,15 @@ export class LocalChatHistoryService {
 
   /**
    * Mirror the renderer's generated per-agent reasoning summaries into the
-   * in-memory snapshot the mobile sync serializer reads. Renderer-only data
-   * (no SQLite row, no LLM call on this side) — just the current phrases keyed
-   * by agent id, replacing the previous snapshot wholesale.
+   * in-memory snapshot the mobile sync serializer reads — the current phrases
+   * keyed by agent id, replacing the previous snapshot wholesale. When the
+   * renderer also sends timestamped `entriesByAgentId`, those are persisted
+   * (best-effort) to the shared SQLite store so the runtime worker's Recall
+   * agent can report what a running agent was doing as of a specific moment.
    */
   setReasoningSummaries(args: {
     summariesByAgentId: Record<string, readonly string[]>;
+    entriesByAgentId?: Record<string, readonly { text: string; atMs: number }[]>;
   }): { ok: true } {
     const next = new Map<string, string[]>();
     for (const [rawAgentId, rawList] of Object.entries(
@@ -335,6 +338,21 @@ export class LocalChatHistoryService {
       if (cleaned.length > 0) next.set(agentId, cleaned);
     }
     this.reasoningSummariesByAgent = next;
+    if (args.entriesByAgentId && Object.keys(args.entriesByAgentId).length > 0) {
+      try {
+        this.getStore().replaceAgentProgressSummaries(
+          args.entriesByAgentId as Record<
+            string,
+            readonly { text: string; atMs: number }[]
+          >,
+        );
+      } catch (error) {
+        console.warn(
+          "[local-chat] Failed to persist agent progress summaries:",
+          error,
+        );
+      }
+    }
     return { ok: true };
   }
 
