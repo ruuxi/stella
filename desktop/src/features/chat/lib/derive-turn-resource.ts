@@ -119,23 +119,48 @@ const resolveRelativePathFromKnownAbsolute = (
 };
 
 /**
- * Inline-card file collection is orchestrator-DIRECT only: files arrive on
- * `tool_result` events (the orchestrator ran the tool itself). Delegated-agent
- * outputs ride a single `agent-completed` event (with `agentId`) and are
- * DELIBERATELY excluded here — they are surfaced as pills on that agent's own
- * completion card (see `AgentCompletionCard`), not rolled up as a jumpy inline
- * artifact card on the orchestrator's reply row. Prevention at the source, not
- * render-then-strip.
+ * Inline-card file collection is orchestrator-DIRECT only. Delegated-agent
+ * outputs are DELIBERATELY excluded here and surface as pills on that agent's
+ * own completion card (see `AgentCompletionCard`) instead of rolling up as a
+ * jumpy inline artifact card on the orchestrator's reply row. Prevention at
+ * the source, not render-then-strip. Two delegated shapes to exclude:
+ *
+ *   - `agent-completed` lifecycle events (the end-of-run rollup carrying
+ *     `agentId` + the run's full `fileChanges`/`producedFiles`).
+ *   - MID-RUN `tool_result` events from a delegated agent's own tool calls:
+ *     the runner forwards subagent tool ends into the conversation stream, so
+ *     they land on the orchestrator's current assistant row stamped with the
+ *     subagent's `agentType` (e.g. `general`, a custom subagent id) — but no
+ *     `agentId`. Without this guard each such write pops a loose standalone
+ *     pill while the agent is still working. Every mid-run write is also
+ *     collected into that run's `agent-completed` rollup, so excluding it
+ *     here loses nothing — it reappears inside the owning agent's completion
+ *     card, per-agent even when several agents run concurrently.
+ *
+ * A `tool_result` with `agentType === "orchestrator"` (the same gate
+ * `imageGenPayloadsByPath` / `orchestratorHtmlPayload` use) or with no
+ * `agentType` at all (legacy persisted events, which predate the stamp and
+ * were always orchestrator-direct) keeps rendering inline exactly as today.
  */
+const isDelegatedToolResult = (event: EventRecord): boolean => {
+  if (!isToolResult(event)) return false;
+  const agentType = (event.payload as { agentType?: unknown }).agentType;
+  return (
+    typeof agentType === "string" &&
+    agentType.trim().length > 0 &&
+    agentType !== "orchestrator"
+  );
+};
+
 const fileChangesForResult = (event: EventRecord): FileChangeRecord[] => {
-  if (!isToolResult(event)) return [];
+  if (!isToolResult(event) || isDelegatedToolResult(event)) return [];
   const candidate = (event.payload as { fileChanges?: unknown } | undefined)
     ?.fileChanges;
   return isFileChangeRecordArray(candidate) ? candidate : [];
 };
 
 const producedFilesForResult = (event: EventRecord): ProducedFileRecord[] => {
-  if (!isToolResult(event)) return [];
+  if (!isToolResult(event) || isDelegatedToolResult(event)) return [];
   const candidate = (event.payload as { producedFiles?: unknown } | undefined)
     ?.producedFiles;
   return isProducedFileRecordArray(candidate) ? candidate : [];

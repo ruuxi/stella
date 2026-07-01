@@ -40,7 +40,10 @@ describe("deriveTurnResource", () => {
     ).toBeNull();
   });
 
-  it("surfaces general-agent apply_patch writes to ~/.stella/outputs/html/* as canvas-html", () => {
+  it("surfaces orchestrator apply_patch writes to ~/.stella/outputs/html/* as canvas-html", () => {
+    // Delegated agents' html writes fold into their completion card instead
+    // (see the mid-run leak tests below); the orchestrator's own writes to
+    // the conventional output dir still surface as an inline canvas.
     expect(
       deriveTurnResource([
         event({
@@ -49,7 +52,7 @@ describe("deriveTurnResource", () => {
           timestamp: 7,
           payload: {
             toolName: "apply_patch",
-            agentType: "general",
+            agentType: "orchestrator",
             result: "ok",
             fileChanges: [
               {
@@ -268,6 +271,107 @@ describe("deriveTurnResource", () => {
         { developerResourcesEnabled: true },
       ),
     ).toEqual([]);
+  });
+
+  it("does NOT surface a delegated agent's MID-RUN tool_result files inline (loose-pill leak)", () => {
+    // A subagent's own tool calls are forwarded into the conversation stream
+    // as tool_result events stamped with the subagent's agentType (no
+    // agentId). They must not pop standalone pills on the orchestrator's
+    // row — the same files reach the agent-completed rollup and surface on
+    // the agent's completion card.
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 5,
+          payload: {
+            toolName: "exec_command",
+            agentType: "general",
+            result: "ok",
+            producedFiles: [{ path: "/out/chart.png", kind: { type: "add" } }],
+          },
+        }),
+        event({
+          _id: "r2",
+          type: "tool_result",
+          timestamp: 6,
+          payload: {
+            toolName: "apply_patch",
+            agentType: "my-custom-subagent",
+            result: "ok",
+            fileChanges: [{ path: "/out/report.pdf", kind: { type: "add" } }],
+          },
+        }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("does NOT surface a delegated agent's mid-run html output as an inline canvas", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 7,
+          payload: {
+            toolName: "apply_patch",
+            agentType: "general",
+            result: "ok",
+            fileChanges: [
+              {
+                path: "/Users/me/.stella/outputs/html/mid-run-canvas.html",
+                kind: { type: "add" },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("does NOT feed a delegated agent's mid-run fileChanges into collectTurnSourceDiffPayloads", () => {
+    expect(
+      collectTurnSourceDiffPayloads(
+        [
+          event({
+            _id: "r1",
+            type: "tool_result",
+            timestamp: 5,
+            payload: {
+              toolName: "apply_patch",
+              agentType: "general",
+              result: "ok",
+              fileChanges: [
+                { path: "/repo/src/main.ts", kind: { type: "update" } },
+              ],
+            },
+          }),
+        ],
+        { developerResourcesEnabled: true },
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps legacy tool_result events WITHOUT an agentType rendering inline (orchestrator-direct compat)", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 5,
+          payload: {
+            toolName: "exec_command",
+            result: "ok",
+            producedFiles: [{ path: "/out/chart.png", kind: { type: "add" } }],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "media",
+      asset: { kind: "image", filePaths: ["/out/chart.png"] },
+      createdAt: 5,
+    });
   });
 
   it("still surfaces orchestrator-DIRECT tool_result producedFiles inline (unchanged)", () => {
