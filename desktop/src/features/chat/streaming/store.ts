@@ -98,6 +98,18 @@ export type StreamStoreAction =
       runId: string
     }
   | {
+      type: 'assistant-message-boundary'
+      runId: string
+      /**
+       * True when the message that just finalized ends with a tool call
+       * (an interim preamble, not the run's final answer). Re-arms the
+       * working indicator by clearing `isStreamingText` at the boundary so
+       * it stays up across the gap until the tool starts — rather than
+       * lingering dismissed over the painted preamble text.
+       */
+      followedByToolCall?: boolean
+    }
+  | {
       type: 'tool-start'
       runId: string
       conversationId: string
@@ -297,6 +309,32 @@ export function streamStoreReducer(
           [action.runId]: {
             ...current,
             isStreamingText: true,
+          },
+        },
+      }
+    }
+    case 'assistant-message-boundary': {
+      // A preamble message that ends with a tool call is interim, not the
+      // final answer. Clear `isStreamingText` here so the working indicator
+      // re-appears immediately at the boundary and stays up across the gap
+      // before `tool-start` arrives — otherwise it lingers dismissed over
+      // the painted preamble text, making it look like nothing is happening.
+      // No-op for a plain boundary (final answer): the reveal keeps the
+      // hand-off it already made.
+      if (!action.followedByToolCall) {
+        return state
+      }
+      const current = state.runsById[action.runId]
+      if (!current || current.terminal || !current.isStreamingText) {
+        return state
+      }
+      return {
+        ...state,
+        runsById: {
+          ...state.runsById,
+          [action.runId]: {
+            ...current,
+            isStreamingText: false,
           },
         },
       }

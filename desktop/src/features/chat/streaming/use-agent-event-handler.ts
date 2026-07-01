@@ -387,6 +387,18 @@ export function useAgentEventHandler({
               runId: event.runId,
               userMessageId: event.userMessageId ?? null,
             })
+            // Preamble → tool-call handoff: if this finalized message ends
+            // with a tool call, clear the streaming-text flag now so the
+            // working indicator re-appears at the boundary and stays up
+            // across the gap until `tool-start` arrives, instead of
+            // lingering dismissed over the painted preamble text.
+            if (event.followedByToolCall) {
+              dispatch({
+                type: 'assistant-message-boundary',
+                runId: event.runId,
+                followedByToolCall: true,
+              })
+            }
           }
           break
         }
