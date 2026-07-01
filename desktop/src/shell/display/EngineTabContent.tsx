@@ -27,6 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
+import { requestCodexEngineNotice } from "@/global/settings/CodexEngineNoticeDialog";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
 import {
   ProviderOnlyPicker,
@@ -437,6 +438,13 @@ export function EngineTabContent() {
   const saveEngine = useCallback(
     async (engine: AgentRuntimeEngine) => {
       if (!preferences || engine === preferences.agentRuntimeEngine) return;
+      // Codex only runs the agents Stella spawns, not Stella herself. Hand off
+      // to the root-mounted notice dialog, which explains that and applies the
+      // switch once the user acknowledges it.
+      if (engine === "codex_cli") {
+        requestCodexEngineNotice();
+        return;
+      }
       await writePreferences({ agentRuntimeEngine: engine }, "engine");
     },
     [preferences, writePreferences],

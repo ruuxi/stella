@@ -1,0 +1,70 @@
+/* CodexEngineNoticeDialog — informational "Codex powers your agents" dialog.
+ * Matches the canonical Apple-polish dialog look used by ProviderConnectedDialog
+ * (glass background + weak border + display-font title), with a stacked header
+ * so the explanatory copy isn't squeezed. */
+
+[data-slot="dialog-content"].codex-engine-notice-dialog {
+  --codex-notice-pad-x: 24px;
+  max-width: 440px;
+  background: var(--panel-glass-bg);
+  backdrop-filter: var(--panel-glass-blur);
+  -webkit-backdrop-filter: var(--panel-glass-blur);
+  background-clip: padding-box;
+  border: 1px solid var(--border-weak);
+}
+
+.codex-engine-notice-dialog [data-slot="dialog-header"] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 20px var(--codex-notice-pad-x) 14px;
+  border-bottom: 1px solid var(--border-weak);
+}
+
+.codex-engine-notice-dialog [data-slot="dialog-title"] {
+  font-family: var(--font-family-display);
+  font-size: 1.4rem;
+  font-weight: var(--weight-regular);
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--text-strong);
+}
+
+.codex-engine-notice-dialog [data-slot="dialog-description"] {
+  display: block;
+  padding: 0;
+  margin: 6px 0 0;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: var(--font-size-base);
+  line-height: 1.55;
+  color: var(--text-base);
+  letter-spacing: -0.01em;
+}
+
+.codex-engine-notice-dialog [data-slot="dialog-body"] {
+  padding: 14px var(--codex-notice-pad-x) 20px;
+}
+
+.codex-engine-notice-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.codex-engine-notice-error {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-family: var(--font-family-sans, "Manrope", sans-serif);
+  font-size: var(--font-size-sm);
+  color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 10%, transparent);
+}
+
+.codex-engine-notice-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}

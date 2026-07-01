@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { requestCodexEngineNotice } from "./CodexEngineNoticeDialog";
 import { getSettingsErrorMessage } from "./tabs/shared";
 import "./LocalRuntimeOptions.css";
+
+const PREFS_CHANGED_EVENT = "stella:local-model-preferences-changed";
 
 const ENGINE_OPTIONS = [
   { id: "default", label: "Stella" },
@@ -53,15 +56,21 @@ export function LocalRuntimeOptions() {
       }
     };
     void load();
+    // Reload when preferences change elsewhere (e.g. the root-mounted Codex
+    // notice dialog applies the engine switch after this popover has lost
+    // focus) so the highlighted engine stays in sync.
+    const onExternalChange = () => void load();
+    window.addEventListener(PREFS_CHANGED_EVENT, onExternalChange);
     return () => {
       cancelled = true;
+      window.removeEventListener(PREFS_CHANGED_EVENT, onExternalChange);
     };
   }, []);
 
   const ready = preferences !== null;
   const engine: EngineId = preferences?.agentRuntimeEngine ?? "default";
 
-  const handleEngineChange = useCallback(
+  const commitEngineChange = useCallback(
     async (next: EngineId) => {
       if (saving || !preferences || preferences.agentRuntimeEngine === next)
         return;
@@ -88,6 +97,22 @@ export function LocalRuntimeOptions() {
       }
     },
     [preferences, saving],
+  );
+
+  const handleEngineChange = useCallback(
+    async (next: EngineId) => {
+      if (saving || !preferences || preferences.agentRuntimeEngine === next)
+        return;
+      // Codex only runs the agents Stella spawns, not Stella herself. Hand off
+      // to the root-mounted notice dialog, which explains that and applies the
+      // switch once the user acknowledges it.
+      if (next === "codex_cli") {
+        requestCodexEngineNotice();
+        return;
+      }
+      await commitEngineChange(next);
+    },
+    [commitEngineChange, preferences, saving],
   );
 
   return (
