@@ -62,18 +62,18 @@ describe("resolveAgentThinkingLevel", () => {
     ).toBe("medium");
   });
 
-  it("omits client reasoning on default Stella-routed runs", () => {
+  it("falls back to medium on default Stella-routed runs", () => {
     expect(
       resolveAgentThinkingLevel({
         resolvedLlm: stellaRoute(),
         agentContextReasoningEffort: "default",
       }),
-    ).toBe("off");
+    ).toBe("medium");
     expect(
       resolveAgentThinkingLevel({
         resolvedLlm: stellaRoute(),
       }),
-    ).toBe("off");
+    ).toBe("medium");
   });
 
   it("uses explicit effort on Stella-routed runs", () => {
