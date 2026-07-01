@@ -1,7 +1,7 @@
 /**
  * Renderer-side mirror of `SessionStore.assembleMessageWindow`. Walks a
  * flat `EventRecord[]` in chronological order, groups by turn (boundary
- * = `user_message`), and attaches each turn's tool/`agent-completed`
+ * = `user_message`), and attaches each turn's tool/agent lifecycle
  * events to the assistant message that most-recently preceded them in
  * the same turn (falling back to the turn's user_message when no
  * assistant has fired yet).
@@ -34,7 +34,10 @@ const isTurnDecorationEvent = (event: EventRecord): boolean =>
   event.type === "tool_request" ||
   event.type === "tool_result" ||
   event.type === "agent-started" ||
-  event.type === "agent-completed";
+  event.type === "agent-progress" ||
+  event.type === "agent-completed" ||
+  event.type === "agent-failed" ||
+  event.type === "agent-canceled";
 
 const toMessageRecord = (event: EventRecord): MessageRecord => ({
   _id: event._id,

@@ -377,12 +377,19 @@ export class LocalChatHistoryService {
           maxVisibleMessages: maxMessages,
         },
       );
+      const { messages: taskContextMessages } = this.getStore().listMessages(
+        args.conversationId,
+        {
+          maxVisibleMessages: maxMessages,
+        },
+      );
       return buildMobileSyncMessagesPage(
         messages,
         maxMessages,
         sourceEvents,
         artifactOptions,
         this.reasoningSummariesByAgent,
+        taskContextMessages,
       );
     }
 

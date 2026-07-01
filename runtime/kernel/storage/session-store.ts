@@ -1528,20 +1528,20 @@ export class SessionStore {
 
   /**
    * Window of visible chat messages with each assistant message's turn-
-   * scoped tool/`agent-completed` events attached as `toolEvents`. This is
+   * scoped tool/agent lifecycle events attached as `toolEvents`. This is
    * the read shape the chat UI consumes — pure event-log readers should
    * keep using `listEvents` / `listEventsBefore`.
    *
    * Two-step query: first locate the (timestamp, id) cutoff of the
    * `maxVisibleMessages`-th most-recent user/assistant row, then fetch all
-   * tool/agent-completed events from the cutoff forward and group them by
+   * tool/agent lifecycle events from the cutoff forward and group them by
    * turn (boundary = `user_message`). Mirrors the renderer's prior
    * `segmentToolEventsByAssistant` so the inline-artifact /
    * schedule-receipt projections that hung off the flat event stream keep
    * working without a flat event stream.
    *
    * `messages` is the ordered visible chat (oldest → newest). Trailing
-   * tool/agent-completed events that landed after the last visible
+   * tool/agent lifecycle events that landed after the last visible
    * `user_message` with no following assistant yet (typical for
    * fire-and-forget image submissions in-flight at fetch time) stay on
    * that user message's `toolEvents`, so the renderer can synthesize the
@@ -1726,7 +1726,7 @@ export class SessionStore {
   ): LocalChatEventRecord[] {
     const clauses: string[] = [
       "message.session_id = ?",
-      "message.type IN ('user_message', 'assistant_message', 'tool_request', 'tool_result', 'agent-started', 'agent-completed')",
+      "message.type IN ('user_message', 'assistant_message', 'tool_request', 'tool_result', 'agent-started', 'agent-progress', 'agent-completed', 'agent-failed', 'agent-canceled')",
     ];
     const params: Array<string | number> = [conversationId];
     if (cutoff) {
@@ -1877,7 +1877,7 @@ export class SessionStore {
 
   /**
    * Walk fetched rows forward, group them into turns (boundary =
-   * `user_message`), and attach every tool/`agent-completed` event in
+   * `user_message`), and attach every tool/agent lifecycle event in
    * a turn to the assistant message that most-recently preceded it:
    *
    *   - **most-recent preceding assistant** of the turn — orchestrator
