@@ -462,6 +462,78 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(activeFor(state)).toBe(false);
   });
 
+  it("re-arms the working indicator at a preamble→tool-call boundary before the tool starts", () => {
+    const runId = "run-preamble-boundary";
+    const conversationId = "conversation-1";
+    const activeFor = (current: typeof state) =>
+      getInlineWorkingIndicatorActive({
+        isStreaming: !current.runsById[runId]?.terminal,
+        isStreamingResponseText: Boolean(
+          current.runsById[runId]?.isStreamingText,
+        ),
+        isToolActive: Boolean(
+          Object.keys(current.runsById[runId]?.activeToolCalls ?? {}).length,
+        ),
+      });
+
+    let state = streamStoreReducer(initialStoreState, {
+      type: "run-started",
+      runId,
+      conversationId,
+      userMessageId: "user-1",
+    });
+
+    // Model streams a preamble ("Let me check…") — indicator steps aside as
+    // the painted text takes over.
+    state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
+    expect(state.runsById[runId]?.isStreamingText).toBe(true);
+    expect(activeFor(state)).toBe(false);
+
+    // The preamble message finalizes and it ends with a tool call. Without
+    // the re-arm the indicator would stay dismissed over the painted
+    // preamble until `tool-start` lands (a visible gap where nothing shows).
+    // The boundary clears the streaming-text flag so the indicator returns
+    // immediately.
+    state = streamStoreReducer(state, {
+      type: "assistant-message-boundary",
+      runId,
+      followedByToolCall: true,
+    });
+    expect(state.runsById[runId]?.isStreamingText).toBe(false);
+    expect(activeFor(state)).toBe(true);
+
+    // The tool then starts (redundant reset — indicator already showing).
+    state = streamStoreReducer(state, {
+      type: "tool-start",
+      runId,
+      conversationId,
+      toolCallId: "call-1",
+      toolName: "web",
+    });
+    expect(activeFor(state)).toBe(true);
+  });
+
+  it("leaves the hand-off intact for a final-answer boundary (no following tool)", () => {
+    const runId = "run-final-boundary";
+    const conversationId = "conversation-1";
+    let state = streamStoreReducer(initialStoreState, {
+      type: "run-started",
+      runId,
+      conversationId,
+      userMessageId: "user-1",
+    });
+    state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
+    expect(state.runsById[runId]?.isStreamingText).toBe(true);
+
+    // A plain boundary (the message did not end with a tool call) must not
+    // re-arm the indicator — the run's answer is on screen and handed off.
+    state = streamStoreReducer(state, {
+      type: "assistant-message-boundary",
+      runId,
+    });
+    expect(state.runsById[runId]?.isStreamingText).toBe(true);
+  });
+
   it("clears the in-flight tool even when tool-end is keyed differently than tool-start", () => {
     const runId = "run-tool-mismatch";
     const conversationId = "conversation-1";
@@ -504,6 +576,40 @@ describe("subscribeRuntimeAgentEvents", () => {
       toolCallId: "stale-id",
     });
     expect(state.runsById[runId]?.activeToolCalls).toEqual({});
+  });
+
+  it("flags a preamble message that ends with a tool call as followedByToolCall", () => {
+    const store = { recordRunEvent: vi.fn() };
+    const recorder = createRunEventRecorder({
+      store: store as never,
+      runId: "run-preamble",
+      conversationId: "conversation-1",
+      agentType: "orchestrator",
+      userMessageId: "user-1",
+      getResponseTarget: () => ({ type: "user_turn" }),
+    });
+
+    const preambleWithTool: AssistantMessage = {
+      role: "assistant",
+      content: [
+        { type: "text", text: "Let me look that up." },
+        { type: "toolCall", id: "call-web", name: "web", arguments: {} },
+      ],
+      api: "openai-completions",
+      provider: "openai",
+      model: "test-model",
+      usage,
+      stopReason: "toolUse",
+      timestamp: 7,
+    };
+    const preambleEvent = recorder.recordAssistantMessageEnd(preambleWithTool);
+    expect(preambleEvent?.followedByToolCall).toBe(true);
+
+    // A plain text message (the run's final answer) carries no such flag.
+    const finalAnswer = createTextMessage("All done.");
+    const finalEvent = recorder.recordAssistantMessageEnd(finalAnswer);
+    expect(finalEvent?.text).toBe("All done.");
+    expect(finalEvent?.followedByToolCall).toBeUndefined();
   });
 
   it("records a completed assistant text event without a Pi message object", () => {

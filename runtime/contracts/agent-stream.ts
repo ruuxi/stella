@@ -52,6 +52,14 @@ export type AgentStreamEvent = {
   replacedByRunId?: string;
   responseTarget?: AgentResponseTarget;
   /**
+   * On an `ASSISTANT_MESSAGE` boundary: true when the message that just
+   * finalized ends with a tool call, i.e. it is an interim/preamble message
+   * rather than the run's final answer. The renderer keeps the working
+   * indicator up (instead of handing off to the painted preamble text)
+   * across the gap between this message and the tool it precedes.
+   */
+  followedByToolCall?: boolean;
+  /**
    * Work group of the agent thread this event belongs to (`grp-…` key
    * plus its human label). Present on agent lifecycle events whose
    * thread was spawned into a group; the Activity UI collapses rows

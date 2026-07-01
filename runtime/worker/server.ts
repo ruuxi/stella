@@ -1784,6 +1784,13 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 ...(ev.responseTarget
                   ? { responseTarget: ev.responseTarget }
                   : {}),
+                // Preamble → tool-call handoff: when this finalized message
+                // ends with a tool call, the renderer keeps the working
+                // indicator up across the gap until the tool starts, instead
+                // of dismissing on the painted preamble text.
+                ...(ev.followedByToolCall
+                  ? { followedByToolCall: true }
+                  : {}),
               });
             }
           },
