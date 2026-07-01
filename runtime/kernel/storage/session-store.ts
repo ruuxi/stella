@@ -2666,6 +2666,8 @@ export class SessionStore {
     summary: string | null;
     groupKey?: string | null;
     groupLabel?: string | null;
+    agentStatus?: TaskLifecycleStatus | null;
+    agentUpdatedAt?: number | null;
   }): RuntimeThreadRecord {
     return {
       threadId: row.threadId,
@@ -2675,6 +2677,10 @@ export class SessionStore {
       status: row.status,
       createdAt: row.createdAt,
       lastUsedAt: row.lastUsedAt,
+      ...(row.agentStatus ? { agentStatus: row.agentStatus } : {}),
+      ...(typeof row.agentUpdatedAt === "number"
+        ? { agentUpdatedAt: row.agentUpdatedAt }
+        : {}),
       ...(row.description ? { description: row.description } : {}),
       ...(row.summary ? { summary: row.summary } : {}),
       ...(row.groupKey ? { groupKey: row.groupKey } : {}),
@@ -2694,7 +2700,9 @@ export class SessionStore {
         runtime_threads.summary AS summary,
         runtime_threads.group_key AS groupKey,
         runtime_threads.group_label AS groupLabel,
-        runtime_agents.description AS description
+        runtime_agents.description AS description,
+        runtime_agents.status AS agentStatus,
+        runtime_agents.updated_at AS agentUpdatedAt
       FROM runtime_threads
       LEFT JOIN runtime_agents
         ON runtime_agents.thread_id = runtime_threads.thread_key

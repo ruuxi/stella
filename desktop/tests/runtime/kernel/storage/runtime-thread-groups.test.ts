@@ -210,9 +210,9 @@ describe("group create-or-attach", () => {
     expect(second.groupKey).toBe(first.groupKey);
     expect(second.groupLabel).toBe("Flight research");
 
-    expect(
-      [...store.listGroupMemberThreadIds(first.groupKey!)].sort(),
-    ).toEqual([first.threadId, second.threadId].sort());
+    expect([...store.listGroupMemberThreadIds(first.groupKey!)].sort()).toEqual(
+      [first.threadId, second.threadId].sort(),
+    );
   });
 
   it("attaches by an existing grp- id", () => {
@@ -294,7 +294,9 @@ describe("slot-based eviction", () => {
     const conversationId = "conv-evict-singleton";
     const ids: string[] = [];
     for (let i = 0; i < MAX_ACTIVE_RUNTIME_THREADS; i += 1) {
-      ids.push(spawnThread(store, conversationId, `Singleton task ${i}`).threadId);
+      ids.push(
+        spawnThread(store, conversationId, `Singleton task ${i}`).threadId,
+      );
     }
     expect(store.listActiveThreads(conversationId)).toHaveLength(
       MAX_ACTIVE_RUNTIME_THREADS,
@@ -321,7 +323,12 @@ describe("slot-based eviction", () => {
     );
     const groupKey = first.groupKey!;
     for (let i = 2; i <= 4; i += 1) {
-      spawnThread(store, conversationId, `Fetch Q${i} numbers`, "Data pipeline");
+      spawnThread(
+        store,
+        conversationId,
+        `Fetch Q${i} numbers`,
+        "Data pipeline",
+      );
     }
     // Group (1 slot) + 15 singletons = 16 slots, 19 active threads.
     for (let i = 0; i < MAX_ACTIVE_RUNTIME_THREADS - 1; i += 1) {
@@ -439,8 +446,18 @@ describe("whole-group resurrection", () => {
   it("resurrects the whole group when attaching new work by grp- id", () => {
     const { db, store } = createTestContext();
     const conversationId = "conv-resurrect-attach";
-    const m1 = spawnThread(store, conversationId, "Index docs", "Knowledge base");
-    const m2 = spawnThread(store, conversationId, "Embed docs", "Knowledge base");
+    const m1 = spawnThread(
+      store,
+      conversationId,
+      "Index docs",
+      "Knowledge base",
+    );
+    const m2 = spawnThread(
+      store,
+      conversationId,
+      "Embed docs",
+      "Knowledge base",
+    );
     const groupKey = m1.groupKey!;
     const fillers: string[] = [];
     for (let i = 0; i < MAX_ACTIVE_RUNTIME_THREADS; i += 1) {
@@ -487,8 +504,16 @@ describe("searchThreads", () => {
       conversationId,
       "Compare flight prices Tokyo",
     );
-    const hotel = spawnThread(store, conversationId, "Compare hotel prices Tokyo");
-    const paris = spawnThread(store, conversationId, "Compare flight prices Paris");
+    const hotel = spawnThread(
+      store,
+      conversationId,
+      "Compare hotel prices Tokyo",
+    );
+    const paris = spawnThread(
+      store,
+      conversationId,
+      "Compare flight prices Paris",
+    );
     spawnThread(store, conversationId, "Organize tax documents");
 
     // Two-token match outranks single-token matches; among equal scores
@@ -596,9 +621,17 @@ describe("searchThreads", () => {
   it("treats LIKE wildcards in the query as literals", () => {
     const { store } = createTestContext();
     const conversationId = "conv-search-wildcards";
-    const percent = spawnThread(store, conversationId, "Reach 100% test coverage");
+    const percent = spawnThread(
+      store,
+      conversationId,
+      "Reach 100% test coverage",
+    );
     spawnThread(store, conversationId, "Process 1000 records");
-    const underscore = spawnThread(store, conversationId, "Audit snake_case columns");
+    const underscore = spawnThread(
+      store,
+      conversationId,
+      "Audit snake_case columns",
+    );
     spawnThread(store, conversationId, "Audit snakeycase columns");
 
     expect(
@@ -644,7 +677,12 @@ describe("getThreadGroup / listGroupMemberThreadIds", () => {
   it("returns the group key and label for grouped threads", () => {
     const { store } = createTestContext();
     const conversationId = "conv-group-lookup";
-    const grouped = spawnThread(store, conversationId, "Member one", "Research pod");
+    const grouped = spawnThread(
+      store,
+      conversationId,
+      "Member one",
+      "Research pod",
+    );
     expect(store.getThreadGroup(grouped.threadId)).toEqual({
       groupKey: "grp-research-pod",
       groupLabel: "Research pod",
@@ -702,32 +740,73 @@ describe("buildActiveThreadsPrompt", () => {
           groupLabel: "Flight research",
           lastUsedAt: now - 60_000,
           description: "Scrape airline A fares",
+          // Currently executing a turn.
+          agentStatus: "running",
         }),
         makeThread({
           threadId: "scrape-airline-b",
           groupKey: "grp-flight-research",
           groupLabel: "Flight research",
           lastUsedAt: now - 120_000,
+          agentStatus: "completed",
         }),
-        makeThread({ threadId: "solo-task", lastUsedAt: now - 30_000 }),
+        makeThread({
+          threadId: "solo-task",
+          lastUsedAt: now - 30_000,
+          agentStatus: "completed",
+        }),
       ],
       now,
     );
 
+    // The group has a running member, so its header aggregate reads active.
     expect(prompt).toContain(
-      "## Flight research [grp-flight-research] (last used 1m ago)",
+      "## Flight research [grp-flight-research] (active, last active 1m ago)",
     );
-    // Members are indented under the group header.
+    // Members are indented under the group header, each with its own state.
     expect(prompt).toContain(
-      "\n  - scrape-airline-a (resumable, last used 1m ago)",
+      "\n  - scrape-airline-a (active, last active 1m ago)",
     );
     expect(prompt).toContain(
-      "\n  - scrape-airline-b (resumable, last used 2m ago)",
+      "\n  - scrape-airline-b (paused, last active 2m ago)",
     );
     expect(prompt).toContain("    description: Scrape airline A fares");
     // The ungrouped singleton renders flat, exactly like the historical format.
-    expect(prompt).toContain("\n- solo-task (resumable, last used just now)");
+    expect(prompt).toContain("\n- solo-task (paused, last active just now)");
     expect(prompt).toContain("Recall");
+  });
+
+  it("labels a currently executing thread active and an idle one paused", () => {
+    const now = 1_700_000_000_000;
+    const prompt = buildActiveThreadsPrompt(
+      [
+        makeThread({
+          threadId: "running-now",
+          lastUsedAt: now - 10 * 60_000,
+          // A fresh agent turn keeps recency honest even if the thread row
+          // wasn't re-touched.
+          agentUpdatedAt: now - 60_000,
+          agentStatus: "running",
+        }),
+        makeThread({
+          threadId: "idle-thread",
+          lastUsedAt: now - 5 * 60_000,
+          agentStatus: "completed",
+        }),
+        makeThread({
+          threadId: "errored-thread",
+          lastUsedAt: now - 2 * 60_000,
+          agentStatus: "error",
+        }),
+      ],
+      now,
+    );
+
+    expect(prompt).toContain("\n- running-now (active, last active 1m ago)");
+    expect(prompt).toContain("\n- idle-thread (paused, last active 5m ago)");
+    expect(prompt).toContain(
+      "\n- errored-thread (paused (last run errored), last active 2m ago)",
+    );
   });
 
   it("renders a one-member group flat without a header", () => {
@@ -744,11 +823,55 @@ describe("buildActiveThreadsPrompt", () => {
       now,
     );
     expect(prompt).not.toContain("##");
-    expect(prompt).toContain("\n- lonely-member (resumable, last used just now)");
+    expect(prompt).toContain(
+      "\n- lonely-member (paused, last active just now)",
+    );
   });
 
   it("returns an empty string when there are no threads", () => {
     expect(buildActiveThreadsPrompt([], 1_700_000_000_000)).toBe("");
+  });
+
+  it("derives active vs paused end-to-end from the runtime_agents.status join", () => {
+    // Full-stack proof: real SessionStore + real SQLite. The roster's
+    // active/paused signal must come from runtime_agents.status via the
+    // LEFT JOIN, not from anything the caller mocks.
+    const { store } = createTestContext();
+    const conversationId = "conv-live-state";
+    const running = spawnThread(store, conversationId, "Deploy the backend");
+    const idle = spawnThread(store, conversationId, "Draft the budget memo");
+
+    const persistAgent = (
+      threadId: string,
+      status: "running" | "completed",
+    ): void => {
+      const at = Date.now();
+      store.saveAgentRecord({
+        threadId,
+        conversationId,
+        agentType: "general",
+        description:
+          threadId === running.threadId
+            ? "Deploy the backend"
+            : "Draft the budget memo",
+        agentDepth: 1,
+        status,
+        startedAt: at,
+        completedAt: status === "completed" ? at : null,
+        updatedAt: at,
+      });
+    };
+    persistAgent(running.threadId, "running");
+    persistAgent(idle.threadId, "completed");
+
+    const now = Date.now();
+    const prompt = buildActiveThreadsPrompt(
+      store.listActiveThreads(conversationId),
+      now,
+    );
+
+    expect(prompt).toContain(`- ${running.threadId} (active, last active`);
+    expect(prompt).toContain(`- ${idle.threadId} (paused, last active`);
   });
 });
 
