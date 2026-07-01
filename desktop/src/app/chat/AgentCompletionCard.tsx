@@ -19,7 +19,7 @@
  *     header + its own pills per agent, never merged into one flat list.
  *   - At most 5 pills per section, then an animated "+N more" expand/collapse.
  */
-import { useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { Check, ChevronDown } from "@/ui/icons";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
@@ -67,20 +67,11 @@ const CompletionSection = ({
   showHeader: boolean;
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const overflowRef = useRef<HTMLDivElement>(null);
   const total = section.files.length;
   const capped = total > PILL_CAP;
   const head = capped ? section.files.slice(0, PILL_CAP) : section.files;
   const rest = capped ? section.files.slice(PILL_CAP) : [];
   const hiddenCount = rest.length;
-
-  // Animate the overflow region by transitioning its max-height between 0 and
-  // its measured scroll height (an explicit pixel target so the ease works —
-  // `max-height: none` can't be transitioned).
-  const overflowMaxHeight = useMemo(() => {
-    if (!expanded) return 0;
-    return overflowRef.current?.scrollHeight ?? 9999;
-  }, [expanded]);
 
   return (
     <div className="agent-completion-card__section">
@@ -100,16 +91,21 @@ const CompletionSection = ({
         ))}
       </div>
       {capped ? (
+        // Animated reveal via `grid-template-rows: 0fr -> 1fr` — no JS
+        // measurement, stays correct across width changes / re-wraps.
+        // `inert` while collapsed keeps the hidden pills out of the tab
+        // order and away from screen readers.
         <div
-          ref={overflowRef}
           className="agent-completion-card__overflow"
           data-expanded={expanded ? "true" : undefined}
-          style={{ maxHeight: overflowMaxHeight }}
+          inert={expanded ? undefined : true}
         >
-          <div className="agent-completion-card__pills">
-            {rest.map((entry) => (
-              <FilePill key={entry.path} entry={entry} />
-            ))}
+          <div className="agent-completion-card__overflow-clip">
+            <div className="agent-completion-card__pills agent-completion-card__pills--overflow">
+              {rest.map((entry) => (
+                <FilePill key={entry.path} entry={entry} />
+              ))}
+            </div>
           </div>
         </div>
       ) : null}

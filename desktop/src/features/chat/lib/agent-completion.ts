@@ -16,8 +16,11 @@
  *      newly-produced files — never re-showing what an earlier completion
  *      already revealed.
  *   2. Each `agent-completed` event attaches to exactly one message row (see
- *      `group-events-into-messages`), so a completion card built from a row's
- *      own events never competes with another row for the same completion.
+ *      `group-events-into-messages`) — though during the SQLite/stream
+ *      handoff the same underlying event can briefly be projected onto both
+ *      the user-message fallback row and the assistant row; the dedup pass in
+ *      `use-event-rows` collapses that duplicate (keyed by `agentId` +
+ *      `completedAtMs`).
  *
  * Kept as a pure module (no React) so the derivation is unit-testable,
  * mirroring the other extracted chat derivations.
@@ -27,11 +30,8 @@ import {
   isAgentCompletedEvent,
   isAgentStartedEvent,
 } from "./event-transforms";
-import { isOrchestratorReservedBuiltinAgentId } from "../../../../../runtime/contracts/agent-runtime.js";
-import {
-  deriveConversationFiles,
-  type ConversationFileEntry,
-} from "@/features/workspace-display/derive-conversation-files";
+import { deriveAgentFilesMap } from "@/features/workspace-display/agent-files";
+import type { ConversationFileEntry } from "@/features/workspace-display/derive-conversation-files";
 
 /** One agent's completion, sectionalized on the card. Never merged with
  *  another agent — several agents completing at the same point each get their
@@ -39,13 +39,17 @@ import {
 export type AgentCompletionSection = {
   agentId: string;
   title: string;
+  /** Latest `agent-completed` timestamp backing this section. Used by the
+   *  handoff dedup in `use-event-rows` to tell an exact duplicate (same
+   *  completion projected onto two rows → collapse) from a genuine
+   *  `send_input` re-run (later completion on a later row → keep both). */
+  completedAtMs: number;
   files: ConversationFileEntry[];
 };
 
 /** Identity/label metadata for an agent, lifted from its `agent-started`
- *  lifecycle event(s). Used to title the completion card and to apply the
- *  reserved-builtin denylist (the `agent-completed` payload carries neither
- *  `description` nor `agentType`). */
+ *  lifecycle event(s). Used to title the completion card (the
+ *  `agent-completed` payload carries no `description`). */
 export type AgentMeta = {
   description?: string;
   agentType?: string;
@@ -89,57 +93,62 @@ export function buildAgentMetaMap(
 
 /**
  * Group a single row's `agent-completed` events by `agentId` and derive each
- * agent's produced files through the shared `deriveConversationFiles`
- * derivation (same path the sidebar Activity tray uses), so the pill list
- * dedupes by path exactly like everywhere else.
- *
- * Insertion order follows the first `agent-completed` event per agent, giving
- * a deterministic section order.
+ * agent's produced files through the shared `deriveAgentFilesMap` /
+ * `deriveConversationFiles` derivation (same path the sidebar Activity tray
+ * uses), so the pill list dedupes by path exactly like everywhere else.
+ * Restricted to `agent-completed` events — orchestrator-direct `tool_result`
+ * files keep their own inline rendering and never become agent pills.
  */
 export function deriveAgentCompletionFiles(
   toolEvents: ReadonlyArray<EventRecord>,
 ): Map<string, ConversationFileEntry[]> {
-  const eventsByAgent = new Map<string, EventRecord[]>();
-  for (const event of toolEvents) {
-    if (!isAgentCompletedEvent(event)) continue;
-    const agentId = asNonEmptyString(event.payload.agentId);
-    if (!agentId) continue;
-    const list = eventsByAgent.get(agentId);
-    if (list) list.push(event);
-    else eventsByAgent.set(agentId, [event]);
-  }
-  const filesByAgent = new Map<string, ConversationFileEntry[]>();
-  for (const [agentId, events] of eventsByAgent) {
-    const files = deriveConversationFiles(events);
-    if (files.length > 0) filesByAgent.set(agentId, files);
-  }
-  return filesByAgent;
+  return deriveAgentFilesMap(toolEvents, isAgentCompletedEvent);
 }
 
 /**
- * Build the sectioned completion card for a row: one section per delegated
- * agent that produced files at this completion point. Orchestrator-reserved
- * builtin agents (schedule, fashion, explore, …) are filtered out via the same
- * denylist `spawn_agent` and the background-work card use — their outputs are
- * internal plumbing, not user-facing deliverables. An agent whose
- * `agent-started` aged out of the window (no meta) is kept: it produced files,
- * so it's a real delegated deliverable.
+ * Build the sectioned completion card for a row: one section per agent that
+ * produced files at this completion point, in first-completion order.
+ *
+ * Deliberately NO reserved-builtin denylist here (unlike the spawn
+ * breadcrumb): an agent-produced FILE is a user-facing deliverable no matter
+ * which agent made it, and before the completion-card consolidation these
+ * files rendered inline for every agent type. Reserved builtins that run in
+ * hidden conversations (fashion, dream, chronicle) never land in the visible
+ * transcript anyway; ones that run in the user's conversation (e.g. the
+ * schedule subagent, whose toolset is not restricted away from file-writing
+ * tools) keep their files visible as pills. This also keeps behavior
+ * identical whether or not the agent's `agent-started` (and thus its
+ * `agentType`) aged out of the loaded event window.
  */
 export function buildAgentCompletionSections(
   toolEvents: ReadonlyArray<EventRecord>,
   agentMetaById: ReadonlyMap<string, AgentMeta>,
-  filesByAgent?: ReadonlyMap<string, ConversationFileEntry[]>,
 ): AgentCompletionSection[] {
-  const files = filesByAgent ?? deriveAgentCompletionFiles(toolEvents);
+  const files = deriveAgentCompletionFiles(toolEvents);
+  if (files.size === 0) return [];
+
+  // Latest completion timestamp per agent on this row (all of a section's
+  // files come from that agent's `agent-completed` event(s) on this row).
+  const completedAtByAgent = new Map<string, number>();
+  for (const event of toolEvents) {
+    if (!isAgentCompletedEvent(event)) continue;
+    const agentId = asNonEmptyString(event.payload.agentId);
+    if (!agentId) continue;
+    const prev = completedAtByAgent.get(agentId) ?? 0;
+    if (event.timestamp > prev) completedAtByAgent.set(agentId, event.timestamp);
+  }
+
   const sections: AgentCompletionSection[] = [];
   for (const [agentId, entries] of files) {
     const meta = agentMetaById.get(agentId);
-    if (meta?.agentType && isOrchestratorReservedBuiltinAgentId(meta.agentType)) {
-      continue;
-    }
     const title =
       meta?.description?.trim() || meta?.groupLabel?.trim() || "Task";
-    sections.push({ agentId, title, files: [...entries] });
+    sections.push({
+      agentId,
+      title,
+      completedAtMs: completedAtByAgent.get(agentId) ?? 0,
+      files: [...entries],
+    });
   }
   return sections;
 }

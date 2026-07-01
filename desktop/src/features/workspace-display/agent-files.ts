@@ -15,12 +15,21 @@ import {
   type ConversationFileEntry,
 } from "@/features/workspace-display/derive-conversation-files";
 
-/** Group the files an agent produced under its own id. */
+/**
+ * Group the files an agent produced under its own id.
+ *
+ * `eventFilter` optionally narrows which events participate (e.g. the chat
+ * completion card passes `isAgentCompletedEvent` so only the rolled-up
+ * completion records count); by default every agent-attributed event
+ * contributes, matching the sidebar Activity tray.
+ */
 export function deriveAgentFilesMap(
   activities: ReadonlyArray<EventRecord>,
+  eventFilter?: (event: EventRecord) => boolean,
 ): Map<string, ConversationFileEntry[]> {
   const eventsByAgent = new Map<string, EventRecord[]>();
   for (const event of activities) {
+    if (eventFilter && !eventFilter(event)) continue;
     const agentId = (event.payload as { agentId?: unknown } | undefined)
       ?.agentId;
     if (typeof agentId !== "string" || agentId.length === 0) continue;
