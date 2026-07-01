@@ -503,8 +503,12 @@ export const runRecall = async (args: {
       : {}),
   });
 
+  // Engine preferences live in the data dir (`~/.stella/preferences.json`) —
+  // same detection the one-shot completion path uses. When the Claude Code
+  // engine is active, the run needs no route credential and the engine maps a
+  // pinned `stella/light` model id to its own light model (haiku).
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-    stellaAppDir: args.stellaAppDir,
+    stellaAppDir: args.stellaDataDir,
     modelId: args.resolvedLlm.model.id,
   });
   const apiKey = useClaudeCode
