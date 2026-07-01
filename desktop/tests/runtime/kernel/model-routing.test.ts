@@ -20,6 +20,10 @@ const model = (
   provider: string,
   id: string,
   api = "openai-completions",
+  capacity: { contextWindow: number; maxTokens: number } = {
+    contextWindow: 128_000,
+    maxTokens: 8_192,
+  },
 ): Model<any> => ({
   id,
   name: id,
@@ -28,15 +32,27 @@ const model = (
   baseUrl: `https://${provider}.example.test`,
   input: ["text"],
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 128_000,
-  maxTokens: 8_192,
+  contextWindow: capacity.contextWindow,
+  maxTokens: capacity.maxTokens,
 });
+
+// The first OpenRouter registry entry the runtime clones as a synthesis
+// template. Give it deliberately tiny capacity — mirroring the real
+// `ai21/jamba-large-1.7` (maxTokens 4096) that caused the silent-finish bug —
+// so the synthesis tests prove capacity is NEVER inherited from whatever
+// model happens to sort first, regardless of how small its numbers are.
+const OPENROUTER_TEMPLATE = model(
+  "openrouter",
+  "anthropic/claude-opus-4.6",
+  "openai-completions",
+  { contextWindow: 8_000, maxTokens: 4_096 },
+);
 
 vi.mock("../../../../runtime/ai/models.js", () => ({
   getAllModels: () => [
     model("openai", "gpt-5.1-codex"),
     model("anthropic", "claude-opus-4.6"),
-    model("openrouter", "anthropic/claude-opus-4.6"),
+    OPENROUTER_TEMPLATE,
     model("vercel-ai-gateway", "openai/gpt-5.1-codex"),
   ],
   getModels: (provider: string) => {
@@ -46,7 +62,7 @@ vi.mock("../../../../runtime/ai/models.js", () => ({
       case "anthropic":
         return [model("anthropic", "claude-opus-4.6")];
       case "openrouter":
-        return [model("openrouter", "anthropic/claude-opus-4.6")];
+        return [OPENROUTER_TEMPLATE];
       case "vercel-ai-gateway":
         return [model("vercel-ai-gateway", "openai/gpt-5.1-codex")];
       default:
@@ -311,13 +327,16 @@ describe("resolveLlmRoute", () => {
     await expect(resolved.getApiKey()).resolves.toBe("openrouter-key");
   });
 
-  it("does not inherit the template's output/context limits when synthesizing", async () => {
-    // The cloned template is an arbitrary registry entry; its maxTokens can be
-    // tiny (4096 for some entries). buildBaseOptions turns model.maxTokens
+  it("uses self-contained capacity defaults, never the template's limits, when synthesizing", async () => {
+    // The cloned template (OPENROUTER_TEMPLATE) deliberately carries tiny
+    // capacity (maxTokens 4096, contextWindow 8000), mirroring the real
+    // ai21/jamba-large-1.7 that triggered the silent-finish bug. Synthesis
+    // must NOT inherit those numbers: buildBaseOptions turns model.maxTokens
     // into a hard max_tokens cap per request, which a reasoning model can
-    // exhaust entirely on thinking — the run then truncates with no visible
-    // reply. Synthesized gateway models must send no cap (maxTokens: 0) and
-    // keep a generous context window so compaction doesn't fire early.
+    // exhaust entirely on thinking (run truncates with no visible reply), and
+    // a small contextWindow makes compaction/overflow prune history early.
+    // The synthesized model must send no cap (maxTokens: 0) and carry a
+    // generous 200k context floor regardless of the template.
     credentials.set("openrouter", "openrouter-key");
     const { resolveLlmRoute } = await import(
       "../../../../runtime/kernel/model-routing.js"
@@ -330,8 +349,13 @@ describe("resolveLlmRoute", () => {
       site,
     });
 
+    // Exact constants, not the template's 4096 / 8000.
     expect(resolved.model.maxTokens).toBe(0);
-    expect(resolved.model.contextWindow).toBeGreaterThanOrEqual(200_000);
+    expect(resolved.model.contextWindow).toBe(200_000);
+    expect(resolved.model.maxTokens).not.toBe(OPENROUTER_TEMPLATE.maxTokens);
+    expect(resolved.model.contextWindow).not.toBe(
+      OPENROUTER_TEMPLATE.contextWindow,
+    );
   });
 
   it("still requires a key for a synthesized gateway model", async () => {
