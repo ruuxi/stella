@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   buildContextLookupUserPrompt,
   formatActiveThreads,
-  formatThreadSearch,
+  formatUnifiedSearch,
   parseRecallAction,
 } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
 import {
@@ -207,9 +207,18 @@ describe("parseRecallAction", () => {
 
     expect(
       parseRecallAction(
-        'Sure:\n```json\n{"action":"search_threads","query":"flight research"}\n```',
+        'Sure:\n```json\n{"action":"search","query":"flight research"}\n```',
       ),
-    ).toEqual({ action: "search_threads", query: "flight research" });
+    ).toEqual({ action: "search", query: "flight research" });
+
+    // Pre-unification action names still resolve to the unified search —
+    // models echo names they saw in older transcripts.
+    expect(
+      parseRecallAction('{"action":"search_threads","query":"flights"}'),
+    ).toEqual({ action: "search", query: "flights" });
+    expect(
+      parseRecallAction('{"action":"search_messages","query":"emira drive"}'),
+    ).toEqual({ action: "search", query: "emira drive" });
 
     expect(
       parseRecallAction(
@@ -227,23 +236,28 @@ describe("parseRecallAction", () => {
   });
 });
 
-describe("formatThreadSearch", () => {
+describe("formatUnifiedSearch", () => {
   const makeStore = (
     threads: unknown[],
+    messageHits: unknown[] = [],
     summariesByAgentId: Record<string, { text: string; atMs: number }[]> = {},
+    neighbors: unknown[] = [],
   ) =>
     ({
       searchThreads: () => threads,
+      searchTranscripts: () => messageHits,
+      listTranscriptNeighbors: () => neighbors,
       listAgentProgressSummaries: (agentId: string, limit = 3) =>
         (summariesByAgentId[agentId] ?? []).slice(-limit),
-    }) as unknown as Parameters<typeof formatThreadSearch>[0];
+    }) as unknown as Parameters<typeof formatUnifiedSearch>[0];
 
-  it("renders thread_ids with live state, description and clamped summary", () => {
+  it("renders typed agent-thread entries with live state, description and clamped summary", () => {
     const now = Date.now();
-    const out = formatThreadSearch(
+    const out = formatUnifiedSearch(
       makeStore([
         {
           threadId: "scrape-airline-a",
+          conversationId: "conv-1",
           description: "Scrape airline A fares",
           summary: "  found  cheap   fares  ",
           lastUsedAt: now - 3 * 60_000,
@@ -251,6 +265,7 @@ describe("formatThreadSearch", () => {
         },
         {
           threadId: "old-idle-thread",
+          conversationId: "conv-2",
           description: "Draft the budget",
           lastUsedAt: now - 20 * 60_000,
           agentStatus: "completed",
@@ -260,20 +275,162 @@ describe("formatThreadSearch", () => {
       "flights",
       undefined,
     );
-    // Recall surfaces the same active/paused signal as the roster.
-    expect(out).toContain("- scrape-airline-a (active, last active 3m ago)");
-    expect(out).toContain("- old-idle-thread (paused, last active 20m ago)");
+    // Recall surfaces the same active/paused signal as the roster, plus a
+    // type label and which conversation the work came from.
+    expect(out).toContain(
+      "- [agent thread] scrape-airline-a (active, last active 3m ago; from this conversation)",
+    );
+    expect(out).toContain(
+      "- [agent thread] old-idle-thread (paused, last active 20m ago; from another conversation)",
+    );
     expect(out).toContain("description: Scrape airline A fares");
     expect(out).toContain("summary: found cheap fares");
   });
 
+  it("renders typed message entries as dated snippets with conversation scope", () => {
+    const atMs = Date.UTC(2026, 5, 25);
+    const out = formatUnifiedSearch(
+      makeStore(
+        [],
+        [
+          {
+            conversationId: "conv-old",
+            role: "assistant",
+            atMs,
+            text: "closest good one is Bush Highway toward Saguaro Lake",
+          },
+          {
+            conversationId: "conv-1",
+            role: "user",
+            atMs,
+            text: "where should I go for a drive near Saguaro?",
+          },
+        ],
+      ),
+      "conv-1",
+      "saguaro drive",
+      undefined,
+    );
+    expect(out).toContain("[message]");
+    expect(out).toMatch(
+      /- \[message\] \[[^\]]*2026[^\]]*\] Stella \(conversation …nv-old\): closest good one is Bush Highway toward Saguaro Lake/,
+    );
+    expect(out).toMatch(/User \(this conversation\): where should I go/);
+  });
+
+  it("selects both types by matched-token score, rendering threads first and messages as an oldest-first timeline", () => {
+    const now = Date.now();
+    const out = formatUnifiedSearch(
+      makeStore(
+        [
+          {
+            threadId: "burrito-guide",
+            conversationId: "conv-1",
+            description: "Rank burritos near Tempe",
+            summary: "Flags spots near Saguaro Lake",
+            lastUsedAt: now,
+            agentStatus: "completed",
+          },
+        ],
+        [
+          {
+            conversationId: "conv-old",
+            role: "assistant",
+            atMs: now - 1_000,
+            text: "took the Emira out to Saguaro Lake",
+          },
+          {
+            conversationId: "conv-old",
+            role: "user",
+            atMs: now - 500_000,
+            // Older message renders FIRST in the timeline even though the
+            // newer one ranks higher on relevance.
+            text: "emira day",
+          },
+        ],
+      ),
+      "conv-1",
+      "emira saguaro",
+      undefined,
+    );
+    const threadIndex = out.indexOf("[agent thread]");
+    const timelineIndex = out.indexOf("[message results below, oldest → newest]");
+    expect(threadIndex).toBeGreaterThanOrEqual(0);
+    expect(timelineIndex).toBeGreaterThan(threadIndex);
+    expect(out.indexOf("emira day")).toBeLessThan(
+      out.indexOf("took the Emira out to Saguaro Lake"),
+    );
+  });
+
+  it("expands top message hits with their surrounding exchange", () => {
+    const atMs = Date.UTC(2026, 5, 25, 19);
+    const out = formatUnifiedSearch(
+      makeStore(
+        [],
+        [
+          {
+            conversationId: "conv-old",
+            role: "assistant",
+            atMs,
+            text: "drop this in maps: Saguaro Lake Marina, 14011 N Bush Hwy",
+          },
+        ],
+        {},
+        [
+          {
+            conversationId: "conv-old",
+            role: "user",
+            atMs: atMs - 60_000,
+            text: "Give me address so I can tap on my phone",
+          },
+          {
+            conversationId: "conv-old",
+            role: "user",
+            atMs: atMs + 60_000,
+            text: "damn i love the car. lol.",
+          },
+        ],
+      ),
+      "conv-1",
+      "saguaro marina",
+      undefined,
+    );
+    expect(out).toContain("surrounding exchange:");
+    expect(out).toMatch(/\[[^\]]+\] User: Give me address so I can tap/);
+    expect(out).toMatch(/\[[^\]]+\] User: damn i love the car/);
+  });
+
+  it("windows long message texts around the first matching token", () => {
+    const filler = "lorem ipsum dolor sit amet ".repeat(40);
+    const out = formatUnifiedSearch(
+      makeStore(
+        [],
+        [
+          {
+            conversationId: "conv-old",
+            role: "user",
+            atMs: Date.now(),
+            text: `${filler} the emira felt amazing on that road ${filler}`,
+          },
+        ],
+      ),
+      "conv-1",
+      "emira",
+      undefined,
+    );
+    expect(out).toContain("emira felt amazing");
+    expect(out).toContain("…");
+    // Snippet stays bounded instead of dumping the whole message.
+    expect(out.length).toBeLessThan(600);
+  });
+
   it("explains an empty result differently with and without a query", () => {
     expect(
-      formatThreadSearch(makeStore([]), "conv-1", "flights", undefined),
-    ).toMatch(/No past threads matched/);
+      formatUnifiedSearch(makeStore([]), "conv-1", "flights", undefined),
+    ).toMatch(/Nothing matched/);
     expect(
-      formatThreadSearch(makeStore([]), "conv-1", undefined, undefined),
-    ).toMatch(/No past threads recorded/);
+      formatUnifiedSearch(makeStore([]), "conv-1", undefined, undefined),
+    ).toMatch(/No past agent work recorded/);
   });
 });
 
@@ -359,24 +516,26 @@ describe("formatActiveThreads", () => {
   });
 });
 
-describe("formatThreadSearch live progress", () => {
+describe("formatUnifiedSearch live progress", () => {
   const makeStore = (
     threads: unknown[],
     summariesByAgentId: Record<string, { text: string; atMs: number }[]> = {},
   ) =>
     ({
       searchThreads: () => threads,
+      searchTranscripts: () => [],
       listAgentProgressSummaries: (agentId: string, limit = 3) =>
         (summariesByAgentId[agentId] ?? []).slice(-limit),
-    }) as unknown as Parameters<typeof formatThreadSearch>[0];
+    }) as unknown as Parameters<typeof formatUnifiedSearch>[0];
 
   it("attaches live progress to matching ACTIVE threads", () => {
     const now = Date.now();
-    const out = formatThreadSearch(
+    const out = formatUnifiedSearch(
       makeStore(
         [
           {
             threadId: "scrape-airline-a",
+            conversationId: "conv-1",
             description: "Scrape airline A fares",
             lastUsedAt: now - 60_000,
             agentStatus: "running",

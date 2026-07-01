@@ -13,6 +13,7 @@ import {
   sanitizeToolVisibleText,
 } from "../tools/safety.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
+import { tokenizeSearchQuery } from "../storage/runtime-store.js";
 import { formatDateTimeReminder } from "../message-timestamp.js";
 import {
   deriveRuntimeThreadLiveState,
@@ -26,7 +27,10 @@ import {
 const MAX_CONTEXT_OUTPUT_TOKENS = 900;
 const EAGER_MEMORY_FILE_CHAR_BUDGET = 4_000;
 const MAX_RECALL_STEPS = 4;
-const RECALL_OBSERVATION_CHAR_BUDGET = 6_000;
+// Sized so a full unified-search observation (12 ranked results, the top
+// several message hits carrying their surrounding-exchange lines) survives
+// untruncated; at 6k the exchange blocks pushed the tail results off.
+const RECALL_OBSERVATION_CHAR_BUDGET = 20_000;
 const MAX_MEMORY_SEARCH_TERMS = 12;
 const MAX_MEMORY_SEARCH_TERM_CHARS = 120;
 const MAX_MEMORY_SEARCH_MATCHES = 40;
@@ -43,14 +47,20 @@ type ContextLookupStore = Pick<
 const MAX_LIVE_PROGRESS_SUMMARIES = 3;
 
 const RECALL_SYSTEM_PROMPT = [
-  "You are Stella's recall agent. Resolve the lookup request into a concise, useful answer for the orchestrator, drawing on the user's durable memory, past agent work (threads), recent activity, and live app/browser state.",
+  "You are Stella's recall agent. Resolve the lookup request into a concise, useful answer for the orchestrator, drawing on the user's durable memory, past agent work, past conversation transcripts, recent activity, and live app/browser state.",
   "",
   "You work in up to a few steps. At each step respond with EXACTLY ONE JSON object and nothing else:",
   '  {"action":"search_memory","terms":["...", "..."]}  — keyword-search the durable memory ledger (MEMORY.md). 2-8 concrete terms.',
-  '  {"action":"search_threads","query":"..."}          — search every past agent thread (resumable) by topic/app/what it did. Omit query to browse recent work.',
+  '  {"action":"search","query":"..."}                   — ONE search over everything else: past delegated agent work (the background tasks Stella spawned) AND past conversation transcripts (what the user and Stella actually said, across ALL conversations). Returns one typed list: matching [agent thread] work first, then [message] hits in chronological order (oldest → newest) — read those as a timeline. Omit query to browse recent agent work.',
   '  {"action":"answer","brief":"..."}                   — finish with a concise markdown brief.',
   "",
-  "The eager context below already includes the current time, the memory summary, a (possibly truncated) ledger, live app/browser state, recent activity, active threads, and chronicle. Search only when the answer likely lives in the deeper ledger or in older/unlisted threads. Resolve in as few steps as possible — answer the moment you can.",
+  "Reading search results by their type labels: `[agent thread]` results are past work/tasks — they carry a resumable thread_id, live status, and summary. `[message]` results are things actually said in chat — dated snippets with their conversation context; these are what answer episodic questions (\"did I ever mention X\", \"where did we go\") that never became a task or memory note. You never pre-choose a source — just search; task questions surface agent threads, episodic questions surface messages. When memory search comes up empty on something the user plausibly said before, run search before answering \"nothing found\".",
+  "",
+  "Top [message] hits include a 'surrounding exchange' — the messages sent right before/after. Treat those exchanges as PRIMARY evidence and reconstruct what happened from them: a user asking where to go, getting an address, then sending en-route messages means they took that trip at that time, even though no message states it outright. Later retellings are NOT evidence of absence — especially Stella's own earlier \"I have no record of that\" replies, which may be the exact failure this lookup exists to fix; when primary messages imply the event, trust them over any later claim that nothing was recorded. For \"first/last time X happened\" questions: enumerate EVERY dated candidate event you can establish from the hits, then answer with the earliest/latest — never skip an older episode because a newer one is more vividly confirmed; include the enumeration in the brief so the orchestrator can see the timeline.",
+  "",
+  "Transcript search is keyword-based: generic words (\"first drive\") mostly find retellings, concrete nouns find the event. Enrich queries with specific names, places, and candidate terms you already have from the eager memory context or the lookup request (e.g. the flagged route names when looking for a drive), and re-search with different concrete terms before concluding anything is unrecorded.",
+  "",
+  "The eager context below already includes the current time, the memory summary, a (possibly truncated) ledger, live app/browser state, recent activity, active threads, and chronicle. Search only when the answer likely lives in the deeper ledger, in older/unlisted threads, or in past conversations. Resolve in as few steps as possible — answer the moment you can.",
   "",
   "Threads are labeled active (running right now) or paused (idle but resumable), as of the current time above. Active threads also carry timestamped 'live progress' phrases — the agent's latest activity. For status questions ('is X still running?', 'what is it doing?'), answer from those labels and phrases, anchored to the current time (e.g. 'thread X is active; as of 3:04 PM it was searching documentation for rate limits'). Do not guess at status.",
   "",
@@ -456,47 +466,243 @@ export const buildContextLookupUserPrompt = async (args: {
   return sections.join("\n");
 };
 
-/** Search every past agent thread (resumable), formatted for the recall agent. */
-export const formatThreadSearch = (
-  store: Pick<RuntimeStore, "searchThreads" | "listAgentProgressSummaries">,
+const MESSAGE_SNIPPET_CHAR_BUDGET = 360;
+
+const formatSnippetDate = (atMs: number): string =>
+  new Date(atMs).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+/** Window a matched transcript text around its first matching token. */
+const buildMessageSnippet = (text: string, tokens: string[]): string => {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= MESSAGE_SNIPPET_CHAR_BUDGET) return collapsed;
+  const lower = collapsed.toLocaleLowerCase();
+  let matchIndex = -1;
+  for (const token of tokens) {
+    const index = lower.indexOf(token.toLocaleLowerCase());
+    if (index !== -1 && (matchIndex === -1 || index < matchIndex)) {
+      matchIndex = index;
+    }
+  }
+  const center = matchIndex === -1 ? 0 : matchIndex;
+  const start = Math.max(
+    0,
+    center - Math.floor(MESSAGE_SNIPPET_CHAR_BUDGET / 2),
+  );
+  const end = Math.min(collapsed.length, start + MESSAGE_SNIPPET_CHAR_BUDGET);
+  return `${start > 0 ? "…" : ""}${collapsed.slice(start, end)}${
+    end < collapsed.length ? "…" : ""
+  }`;
+};
+
+type UnifiedSearchEntry = {
+  score: number;
+  sameConversation: boolean;
+  recency: number;
+  rendered: string;
+  /** Present on message entries so top hits can expand neighbor context. */
+  hit?: { conversationId: string; atMs: number };
+};
+
+/**
+ * How many distinct EPISODES get surrounding-context lines (episode dedupe
+ * below keeps same-hour repeat hits from burning slots, so in practice this
+ * covers nearly every distinct episode in a 12-result page).
+ */
+const MESSAGE_CONTEXT_TOP_HITS = 8;
+const MESSAGE_CONTEXT_LINE_CHAR_BUDGET = 170;
+// The follow-through usually comes AFTER the matched message (ask for
+// directions → go → react, sometimes an hour later), so the exchange
+// window leans hard forward; the store also time-boxes it to the episode.
+const MESSAGE_CONTEXT_BEFORE = 2;
+const MESSAGE_CONTEXT_AFTER = 8;
+// Two hits this close together in one conversation are the same episode —
+// one exchange covers both, so the second hit's slot goes to a new episode.
+const MESSAGE_EPISODE_WINDOW_MS = 45 * 60 * 1000;
+
+/**
+ * The recall agent's single `search` action: one query over BOTH sources —
+ * past delegated agent work (thread metadata, current-conversation hits
+ * first) and past conversation transcripts (what the user and Stella
+ * actually said, across ALL conversations). Results merge into one
+ * relevance-ranked list; each entry is typed (`[agent thread]` with a
+ * resumable thread_id/status/summary vs `[message]` with a dated snippet
+ * and conversation scope) so the model never has to pre-choose a source.
+ */
+export const formatUnifiedSearch = (
+  store: Pick<
+    RuntimeStore,
+    | "searchThreads"
+    | "searchTranscripts"
+    | "listTranscriptNeighbors"
+    | "listAgentProgressSummaries"
+  >,
   conversationId: string,
   query: string | undefined,
   limit: number | undefined,
 ): string => {
   const cappedLimit = Math.max(1, Math.min(25, Math.floor(limit ?? 12)));
+  const tokens = tokenizeSearchQuery(query);
+  // Both stores already rank internally; this rescoring exists so the two
+  // result types can interleave in ONE list under the same metric (matched
+  // token count, then current-conversation, then recency).
+  const countTokenHits = (
+    haystacks: Array<string | undefined | null>,
+  ): number => {
+    const lowered = haystacks
+      .filter((entry): entry is string => Boolean(entry))
+      .map((entry) => entry.toLocaleLowerCase());
+    return tokens.filter((token) => {
+      const needle = token.toLocaleLowerCase();
+      return lowered.some((haystack) => haystack.includes(needle));
+    }).length;
+  };
+
   const threads = store.searchThreads({
     conversationId,
     ...(query ? { query } : {}),
     limit: cappedLimit,
   });
-  if (threads.length === 0) {
-    return query
-      ? "No past threads matched. Try fewer/different words, or omit the query to browse recent work."
-      : "No past threads recorded yet.";
+  const messageHits =
+    tokens.length > 0
+      ? store.searchTranscripts({ query: query ?? "", limit: cappedLimit })
+      : [];
+
+  const entries: UnifiedSearchEntry[] = [];
+  for (const thread of threads) {
+    const summary = thread.summary?.trim().replace(/\s+/g, " ").slice(0, 300);
+    const sameConversation = thread.conversationId === conversationId;
+    const rendered = [
+      // Same live active/paused signal and last-active recency as the
+      // orchestrator's "# Other Threads" roster, so a Recall query about
+      // thread status answers with real state instead of a flat label.
+      `- [agent thread] ${thread.threadId} (${formatRuntimeThreadStatusSuffix(thread)}; from ${sameConversation ? "this conversation" : "another conversation"})`,
+      thread.description?.trim()
+        ? `  description: ${thread.description.trim()}`
+        : "",
+      summary ? `  summary: ${summary}` : "",
+      ...formatThreadLiveProgressLines(store, thread),
+    ]
+      .filter(Boolean)
+      .join("\n");
+    entries.push({
+      score: countTokenHits([
+        thread.threadId,
+        thread.name,
+        thread.summary,
+        thread.description,
+        thread.groupLabel,
+        thread.groupKey,
+      ]),
+      sameConversation,
+      recency: thread.lastUsedAt,
+      rendered,
+    });
   }
-  return threads
-    .map((thread) => {
-      const summary = thread.summary?.trim().replace(/\s+/g, " ").slice(0, 300);
-      return [
-        // Same live active/paused signal and last-active recency as the
-        // orchestrator's "# Other Threads" roster, so a Recall query about
-        // thread status answers with real state instead of a flat label.
-        `- ${thread.threadId} (${formatRuntimeThreadStatusSuffix(thread)})`,
-        thread.description?.trim()
-          ? `  description: ${thread.description.trim()}`
-          : "",
-        summary ? `  summary: ${summary}` : "",
-        ...formatThreadLiveProgressLines(store, thread),
-      ]
-        .filter(Boolean)
-        .join("\n");
-    })
-    .join("\n");
+  for (const hit of messageHits) {
+    const sameConversation = hit.conversationId === conversationId;
+    // A short conversation tag (instead of a bare "another conversation")
+    // lets the model tell that several hits came from the SAME earlier
+    // conversation — that co-location is often the story ("that evening").
+    const scope = sameConversation
+      ? "this conversation"
+      : `conversation …${hit.conversationId.slice(-6)}`;
+    entries.push({
+      score: countTokenHits([hit.text]),
+      sameConversation,
+      recency: hit.atMs,
+      rendered: `- [message] [${formatSnippetDate(hit.atMs)}] ${hit.role === "user" ? "User" : "Stella"} (${scope}): ${sanitizeToolVisibleText(buildMessageSnippet(hit.text, tokens))}`,
+      hit: { conversationId: hit.conversationId, atMs: hit.atMs },
+    });
+  }
+
+  if (entries.length === 0) {
+    return query
+      ? "Nothing matched — no past agent work and no chat messages. Try fewer/different words, or omit the query to browse recent work."
+      : "No past agent work recorded yet.";
+  }
+  entries.sort(
+    (a, b) =>
+      b.score - a.score ||
+      Number(b.sameConversation) - Number(a.sameConversation) ||
+      b.recency - a.recency,
+  );
+  const selected = entries.slice(0, cappedLimit);
+
+  // Relevance decides WHICH message hits get their surrounding exchange;
+  // hits inside an already-expanded episode don't burn a second slot.
+  const expandable = new Set<UnifiedSearchEntry>();
+  for (const entry of selected) {
+    if (!entry.hit || expandable.size >= MESSAGE_CONTEXT_TOP_HITS) continue;
+    const withinExpandedEpisode = [...expandable].some(
+      (other) =>
+        other.hit &&
+        entry.hit &&
+        other.hit.conversationId === entry.hit.conversationId &&
+        Math.abs(other.hit.atMs - entry.hit.atMs) <= MESSAGE_EPISODE_WINDOW_MS,
+    );
+    if (withinExpandedEpisode) continue;
+    expandable.add(entry);
+  }
+
+  // Expand a message hit with the surrounding exchange: the matched message
+  // names the thing, but the neighbors are usually the event itself. Only
+  // the most relevant few get this so the observation stays tight.
+  const renderEntry = (entry: UnifiedSearchEntry): string => {
+    if (!entry.hit || !expandable.has(entry)) return entry.rendered;
+    let neighbors: ReturnType<RuntimeStore["listTranscriptNeighbors"]>;
+    try {
+      neighbors = store.listTranscriptNeighbors({
+        conversationId: entry.hit.conversationId,
+        atMs: entry.hit.atMs,
+        before: MESSAGE_CONTEXT_BEFORE,
+        after: MESSAGE_CONTEXT_AFTER,
+      });
+    } catch {
+      return entry.rendered;
+    }
+    if (neighbors.length === 0) return entry.rendered;
+    const contextLines = neighbors.map((neighbor) => {
+      const collapsed = neighbor.text.replace(/\s+/g, " ").trim();
+      const clipped =
+        collapsed.length <= MESSAGE_CONTEXT_LINE_CHAR_BUDGET
+          ? collapsed
+          : `${collapsed.slice(0, MESSAGE_CONTEXT_LINE_CHAR_BUDGET)}…`;
+      return `    [${formatSnippetDate(neighbor.atMs)}] ${neighbor.role === "user" ? "User" : "Stella"}: ${sanitizeToolVisibleText(clipped)}`;
+    });
+    return [entry.rendered, "  surrounding exchange:", ...contextLines].join(
+      "\n",
+    );
+  };
+
+  // ...but the LIST presents agent threads first (by relevance), then the
+  // selected message hits in chronological order — episodic questions are
+  // answered by reading the messages as a timeline, and models reliably
+  // misread "first/last time" from a relevance-shuffled list.
+  const threadLines = selected
+    .filter((entry) => !entry.hit)
+    .map((entry) => renderEntry(entry));
+  const messageLines = selected
+    .filter((entry) => entry.hit)
+    .sort((a, b) => a.recency - b.recency)
+    .map((entry) => renderEntry(entry));
+  return [
+    ...threadLines,
+    ...(messageLines.length > 0
+      ? ["[message results below, oldest → newest]", ...messageLines]
+      : []),
+  ].join("\n");
 };
 
 type RecallAction =
   | { action: "search_memory"; terms: string[] }
-  | { action: "search_threads"; query?: string; limit?: number }
+  | { action: "search"; query?: string; limit?: number }
   | { action: "answer"; brief: string };
 
 /** Pull the first JSON object out of a model turn (tolerates fences/prose). */
@@ -529,9 +735,17 @@ export const parseRecallAction = (raw: string): RecallAction | null => {
       : [];
     return { action: "search_memory", terms };
   }
-  if (obj.action === "search_threads") {
+  // "search_threads" is the pre-unification action name; models
+  // occasionally echo action names they saw in older transcripts, so it
+  // (and the briefly-used split names) all resolve to the unified search.
+  if (
+    obj.action === "search" ||
+    obj.action === "search_threads" ||
+    obj.action === "search_agents" ||
+    obj.action === "search_messages"
+  ) {
     return {
-      action: "search_threads",
+      action: "search",
       ...(typeof obj.query === "string" ? { query: obj.query } : {}),
       ...(typeof obj.limit === "number" ? { limit: obj.limit } : {}),
     };
@@ -543,10 +757,11 @@ export const parseRecallAction = (raw: string): RecallAction | null => {
  * Agent-backed recall. Seeds the model with the cheap eager context (memory
  * summary, capped ledger, live app/browser state, recent activity, active
  * threads, chronicle), then runs a bounded JSON-action loop where the model
- * decides what to search — the deep memory ledger and/or every past agent
- * thread — before synthesizing a brief. Replaces the old one-shot lookup and
- * subsumes the standalone `search_threads` tool. Runs synchronously as the
- * `Recall` tool's backing.
+ * decides what to search — the deep memory ledger and/or the unified search
+ * over past delegated agent work plus past chat transcripts across all
+ * conversations — before synthesizing a brief. Replaces the old one-shot
+ * lookup and subsumes the standalone thread-search tool. Runs synchronously
+ * as the `Recall` tool's backing.
  */
 export const runRecall = async (args: {
   conversationId: string;
@@ -645,7 +860,7 @@ export const runRecall = async (args: {
     const raw = await step(
       buildTurn(
         scratchpad,
-        'Respond with one JSON action ({"action":"search_memory"|"search_threads"|"answer", ...}).',
+        'Respond with one JSON action ({"action":"search_memory"|"search"|"answer", ...}).',
       ),
     );
     const action = parseRecallAction(raw);
@@ -659,7 +874,7 @@ export const runRecall = async (args: {
     const observation =
       action.action === "search_memory"
         ? await readMemorySearchResults(args.stellaDataDir, action.terms)
-        : formatThreadSearch(
+        : formatUnifiedSearch(
             args.store,
             args.conversationId,
             action.query,

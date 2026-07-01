@@ -53,6 +53,7 @@ const MEMORY_REVIEW_SYSTEM_PROMPT = [
   "Worth saving:",
   "  - What the user is working on, planning, or thinking through — current goals, decisions, and open threads in the conversation.",
   "  - Durable facts the user shares about themselves, their projects, or their situation.",
+  "  - Things that actually happened to the user — events they did or experienced (a trip, a drive, a purchase, a meeting). Record these as episodic facts: what happened, when, and where, as their own note. Do NOT flatten an event into surrounding advice or recommendations — \"Stella suggested routes X and Y\" is not a substitute for \"on <date> the user drove route X for the first time\".",
   "  - Stable preferences and expectations for how Stella should behave.",
   "",
   "Not worth saving:",
