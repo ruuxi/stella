@@ -66,6 +66,7 @@ import {
 import {
   createRunnerSiteConfig,
   resolveRunnerLlmRouteWithMetadata,
+  resolveRunnerUtilityLlmRoute,
 } from "./model-selection.js";
 import { generateHtmlDocument } from "../agent-runtime/html-generation.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
@@ -559,7 +560,10 @@ export const createRunnerContext = ({
     contextProvider: async (payload) => {
       const agent = resolveAgent(context, AGENT_IDS.ORCHESTRATOR);
       const model = getConfiguredModel(context, AGENT_IDS.ORCHESTRATOR, agent);
-      const resolvedLlm = await resolveRunnerLlmRouteWithMetadata(
+      // Recall is a cheap internal utility pass — pin it to the light model
+      // instead of riding the orchestrator's (expensive) configured model.
+      // Falls back to the orchestrator pick for signed-out / pure-BYOK users.
+      const resolvedLlm = await resolveRunnerUtilityLlmRoute(
         context,
         AGENT_IDS.ORCHESTRATOR,
         model,
