@@ -321,6 +321,7 @@ function MiniChatSurface() {
     isStreamingResponseText,
     pendingUserMessageId,
     queuedUserMessages,
+    removeQueuedUserMessage,
     sendMessage,
     cancelCurrentStream,
   } = useStreamingChatCore({
@@ -412,6 +413,7 @@ function MiniChatSurface() {
               isToolActive={isToolActive}
               pendingUserMessageId={pendingUserMessageId}
               queuedUserMessages={queuedUserMessages}
+              removeQueuedUserMessage={removeQueuedUserMessage}
               liveTasks={liveTasks}
               hasOlderMessages={hasOlderMessages}
               isLoadingOlder={isLoadingOlderMessages}

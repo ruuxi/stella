@@ -36,6 +36,8 @@ type CompactConversationSurfaceProps = {
   runtimeStatusText?: string | null;
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
+  /** Reveals a hover "X" on each queued bubble to cancel + restore its text. */
+  onCancelQueued?: (message: QueuedUserMessage) => void;
   liveTasks?: TaskItem[];
   /**
    * Persisted agent-lifecycle activity + latest-message timestamp for the
@@ -65,6 +67,7 @@ export function CompactConversationSurface({
   maxItems,
   pendingUserMessageId,
   queuedUserMessages,
+  onCancelQueued,
   indicator,
   hasOlderMessages,
   isLoadingOlder,
@@ -93,6 +96,7 @@ export function CompactConversationSurface({
             maxItems={maxItems}
             pendingUserMessageId={pendingUserMessageId}
             queuedUserMessages={queuedUserMessages}
+            onCancelQueued={onCancelQueued}
             indicator={indicator}
             hasOlderMessages={hasOlderMessages}
             isLoadingOlder={isLoadingOlder}

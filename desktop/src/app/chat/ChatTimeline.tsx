@@ -80,6 +80,12 @@ type ChatTimelineProps = {
   extraTail?: React.ReactNode;
   queuedUserMessages?: QueuedUserMessage[];
   /**
+   * When provided, each queued bubble reveals a hover "X" that cancels just
+   * that message. The surface pairs queue removal with restoring the text to
+   * its composer input.
+   */
+  onCancelQueued?: (message: QueuedUserMessage) => void;
+  /**
    * Claude-style working/agent indicator. Rendered on its own line at the
    * top of the trailing region — directly below the streaming/last
    * assistant message and above any queued user messages. Toggling
@@ -227,6 +233,7 @@ export const ChatTimeline = memo(function ChatTimeline({
   emptyState,
   extraTail,
   queuedUserMessages,
+  onCancelQueued,
   indicator,
   listRef,
   onListScroll,
@@ -290,13 +297,16 @@ export const ChatTimeline = memo(function ChatTimeline({
             <InlineWorkingIndicator {...indicator} />
           </div>
         ) : null}
-        <ComposerQueuedMessages messages={queuedUserMessages ?? []} />
+        <ComposerQueuedMessages
+          messages={queuedUserMessages ?? []}
+          onCancel={onCancelQueued}
+        />
         {extraTail && (
           <div className="event-list-extra-tail">{extraTail}</div>
         )}
       </div>
     ),
-    [extraTail, indicator, queuedUserMessages],
+    [extraTail, indicator, queuedUserMessages, onCancelQueued],
   );
 
   if (isLoadingHistory && rows.length === 0) {

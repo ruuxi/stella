@@ -102,6 +102,8 @@
 .composer-queued-message {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   animation: composer-queued-enter 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
   transform-origin: right bottom;
@@ -135,6 +137,66 @@
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* When a long queued message is actually clamped (detected in JS), fade the
+   bottom edge instead of hard-cutting mid-line. `-webkit-line-clamp`'s own
+   ellipsis is suppressed under `white-space: pre-wrap` in Chromium, so the
+   soft mask is what makes the truncation read as intentional. The fade is
+   applied only on overflowing bubbles so short messages keep a crisp edge. */
+.composer-queued-message__bubble--truncated {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 calc(100% - 1.35em),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 calc(100% - 1.35em),
+    transparent 100%
+  );
+}
+
+/* Hover-reveal cancel control, mirroring the per-message action buttons
+   (`.message-actions__btn`). Sits to the right of the right-aligned bubble
+   and reserves its footprint so revealing it never reflows the stack. */
+.composer-queued-message__cancel {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.composer-queued-message:hover .composer-queued-message__cancel,
+.composer-queued-message:focus-within .composer-queued-message__cancel {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.composer-queued-message__cancel:hover {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.composer-queued-message__cancel:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 @keyframes composer-queued-enter {

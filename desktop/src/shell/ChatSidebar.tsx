@@ -41,6 +41,7 @@ import type {
 } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
+import { restoreQueuedTextToComposer } from "@/features/chat/hooks/queued-user-messages";
 import type { AnnotationSelection } from "./use-full-shell-chat";
 import { useCapturedChatContext } from "./use-captured-chat-context";
 import {
@@ -113,6 +114,8 @@ interface ChatPanelTabProps {
   isToolActive?: boolean;
   pendingUserMessageId: string | null;
   queuedUserMessages?: QueuedUserMessage[];
+  /** Removes a still-queued follow-up from the shared send queue by id. */
+  removeQueuedUserMessage?: (messageId: string) => void;
   liveTasks?: TaskItem[];
   hasOlderMessages: boolean;
   isLoadingOlder: boolean;
@@ -147,6 +150,7 @@ export function ChatPanelTab({
   isToolActive,
   pendingUserMessageId,
   queuedUserMessages,
+  removeQueuedUserMessage,
   liveTasks,
   hasOlderMessages,
   isLoadingOlder,
@@ -308,6 +312,17 @@ export function ChatPanelTab({
     if (!startAnnotation) return undefined;
     return () => startAnnotation({ submit: attachAnnotation });
   }, [startAnnotation, attachAnnotation]);
+
+  const handleCancelQueued = useCallback(
+    (message: QueuedUserMessage) => {
+      removeQueuedUserMessage?.(message.id);
+      setInputText((current) =>
+        restoreQueuedTextToComposer(current, message.text),
+      );
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+    [removeQueuedUserMessage],
+  );
 
   const handleNewChat = useCallback(async () => {
     await onNewChat();
@@ -483,6 +498,9 @@ export function ChatPanelTab({
                 runtimeStatusText={runtimeStatusText}
                 pendingUserMessageId={pendingUserMessageId}
                 queuedUserMessages={queuedUserMessages}
+                onCancelQueued={
+                  removeQueuedUserMessage ? handleCancelQueued : undefined
+                }
                 liveTasks={liveTasks}
                 activities={activities}
                 latestMessageTimestampMs={latestMessageTimestampMs}
