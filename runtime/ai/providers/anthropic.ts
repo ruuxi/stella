@@ -474,6 +474,11 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 		// request and the SSE reader) either at the next thinking-block-close or
 		// after a bounded timeout. An abort outside a thinking block forwards
 		// immediately. Declared outside the try so the finally can dispose it.
+		//
+		// Consequence: when an abort lands mid-thinking, teardown (and therefore
+		// the start of the next turn) can lag by up to the defer timeout
+		// (STELLA_THINKING_ABORT_DEFER_TIMEOUT_MS) while we wait for the block to
+		// seal — an intentional trade for not corrupting the thread.
 		const externalSignal = options?.signal;
 		const streamAbort = new AbortController();
 		const abortGate = createThinkingAbortGate({
@@ -1126,8 +1131,12 @@ const MAX_THINKING_STRIP_RETRIES = 2;
  * short so a runaway reasoning block can't wedge user input; on timeout the
  * stream tears down and the strip-on-build / retry safety nets cover the
  * truncated block. Overridable via STELLA_THINKING_ABORT_DEFER_TIMEOUT_MS.
+ *
+ * 3s: thinking blocks seal quickly, so a modest bound keeps a fresh turn
+ * snappy after an interrupt while still letting the common case reach the
+ * clean block-close boundary.
  */
-const DEFAULT_THINKING_ABORT_DEFER_TIMEOUT_MS = 5_000;
+const DEFAULT_THINKING_ABORT_DEFER_TIMEOUT_MS = 3_000;
 
 function resolveThinkingAbortDeferTimeoutMs(): number {
 	const raw = typeof process !== "undefined" ? process.env.STELLA_THINKING_ABORT_DEFER_TIMEOUT_MS?.trim() : undefined;
@@ -1327,6 +1336,15 @@ export function stripDanglingThinkingFromLatestAssistant(messages: Message[]): M
 		}
 		// Incomplete: non-redacted thinking without a signature cannot be replayed
 		// verbatim and would be re-encoded on the wire.
+		//
+		// We intentionally DROP this mid-thought reasoning for the interrupted
+		// latest turn rather than keep it. This differs on purpose from
+		// convertMessages, which downgrades an unsigned thinking block on an
+		// *earlier* turn to a plain text block (preserving the words as context).
+		// Here the block belongs to the turn the interrupt just cut, so keeping
+		// it as thinking would trip Anthropic's "thinking blocks ... cannot be
+		// modified" 400; discarding it is what makes the next turn clean. Don't
+		// "fix" this into a text-preserving path — that reintroduces the 400.
 		if (!thinking.redacted && (!thinking.thinkingSignature || thinking.thinkingSignature.trim() === "")) {
 			changed = true;
 			return false;
