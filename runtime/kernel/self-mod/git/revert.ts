@@ -7,6 +7,7 @@ import {
   toTrimmedString,
   uniqueSafeRepoPaths,
 } from "./exec.js";
+import { withRepoCommitLock } from "./commit-lock.js";
 import {
   STELLA_COMMIT_GREP_PATTERN,
   isStellaSelfModCommitMessage,
@@ -158,6 +159,26 @@ export const revertGitCommits = async (args: {
   resetToPreRevertHeadOnFailure?: boolean;
 }): Promise<string[]> => {
   await assertGitRepository(args.repoRoot);
+  // Serialize the ref-mutating region per repo (symmetric with
+  // commitGitMessage) so an "Undo changes"/rollback firing while another
+  // agent commits in the same repo can't race the HEAD ref lock; the
+  // ref-lock retry in runGitStatus remains the inner backstop.
+  return await withRepoCommitLock(args.repoRoot, () =>
+    revertGitCommitsUnlocked(args),
+  );
+};
+
+/**
+ * Ref-mutating revert core. Assumes the caller already holds the per-repo
+ * commit lock (`withRepoCommitLock`) — the mutex is NOT reentrant, so internal
+ * callers that already took the lock (revertSelfModCommit,
+ * rollbackGitChangesSince) MUST call this instead of `revertGitCommits`.
+ */
+const revertGitCommitsUnlocked = async (args: {
+  repoRoot: string;
+  commitHashes: string[];
+  resetToPreRevertHeadOnFailure?: boolean;
+}): Promise<string[]> => {
   const preRevertHead = args.resetToPreRevertHeadOnFailure
     ? await getGitHead(args.repoRoot)
     : null;
@@ -301,10 +322,11 @@ export const revertSelfModCommit = async (args: {
     // File enumeration is best-effort; reminder text just omits the list.
   }
 
-  const reverted = await revertGitCommits({
-    repoRoot,
-    commitHashes,
-  });
+  // Reads above are lock-free (safe); wrap only the ref-mutating revert, and
+  // use the unlocked core since we hold the lock here (non-reentrant mutex).
+  const reverted = await withRepoCommitLock(repoRoot, () =>
+    revertGitCommitsUnlocked({ repoRoot, commitHashes }),
+  );
 
   return {
     commitHash: startCommit,
@@ -319,13 +341,17 @@ export const revertSelfModCommit = async (args: {
   };
 };
 
-export const rollbackGitChangesSince = async (args: {
+type RollbackGitChangesSinceArgs = {
   repoRoot: string;
   startingHeadCommit: string;
   changedFiles?: string[];
   isOwnedCommitSubject?: (subject: string) => boolean;
   allowRevertWithLocalChanges?: boolean;
-}): Promise<GitRollbackSinceResult> => {
+};
+
+export const rollbackGitChangesSince = async (
+  args: RollbackGitChangesSinceArgs,
+): Promise<GitRollbackSinceResult> => {
   await assertGitRepository(args.repoRoot);
   const startingHeadCommit = args.startingHeadCommit.trim();
   if (!/^[0-9a-f]{40,64}$/i.test(startingHeadCommit)) {
@@ -334,7 +360,18 @@ export const rollbackGitChangesSince = async (args: {
       reason: "The rollback starting commit is invalid.",
     };
   }
+  // Serialize the ref-mutating rollback region per repo (symmetric with
+  // commitGitMessage). The mutex is NOT reentrant, so the locked body uses the
+  // unlocked revert core; the ref-lock retry stays the inner backstop.
+  return await withRepoCommitLock(args.repoRoot, () =>
+    rollbackGitChangesSinceLocked(args, startingHeadCommit),
+  );
+};
 
+const rollbackGitChangesSinceLocked = async (
+  args: RollbackGitChangesSinceArgs,
+  startingHeadCommit: string,
+): Promise<GitRollbackSinceResult> => {
   if (await abortMergeIfNeeded(args.repoRoot)) {
     return {
       status: "rolled-back",
@@ -366,7 +403,7 @@ export const rollbackGitChangesSince = async (args: {
             )
           ) {
             try {
-              await revertGitCommits({
+              await revertGitCommitsUnlocked({
                 repoRoot: args.repoRoot,
                 commitHashes: commits.map((commit) => commit.hash),
               });
@@ -433,8 +470,12 @@ export const discardGitDirtyFiles = async (
     return { discardedFileCount: 0, discardedFiles: [] };
   }
 
-  await runGit(repoRoot, ["reset", "--hard", "HEAD"]);
-  await runGit(repoRoot, ["clean", "-fd"]);
+  // Serialize the ref/index-mutating discard per repo (symmetric with
+  // commitGitMessage); the ref-lock retry stays the inner backstop.
+  await withRepoCommitLock(repoRoot, async () => {
+    await runGit(repoRoot, ["reset", "--hard", "HEAD"]);
+    await runGit(repoRoot, ["clean", "-fd"]);
+  });
 
   return { discardedFileCount: dirtyFiles.length, discardedFiles: dirtyFiles };
 };

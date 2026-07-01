@@ -12,6 +12,7 @@ import { commitGitMessage } from "../../../../../runtime/kernel/self-mod/git/com
 import { withRepoCommitLock } from "../../../../../runtime/kernel/self-mod/git/commit-lock.js";
 import { isRefLockContentionOutput } from "../../../../../runtime/kernel/self-mod/git/exec.js";
 import { getGitHead } from "../../../../../runtime/kernel/self-mod/git/log.js";
+import { revertGitCommits } from "../../../../../runtime/kernel/self-mod/git/revert.js";
 
 const git = (cwd: string, args: string[]) => {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -64,6 +65,21 @@ describe("isRefLockContentionOutput", () => {
       isRefLockContentionOutput("error: pathspec 'nope' did not match"),
     ).toBe(false);
     expect(isRefLockContentionOutput("", "")).toBe(false);
+  });
+
+  it("does not retry object-corruption 'but expected' errors", () => {
+    // A bare `but expected <sha>` shows up in genuinely-broken-repo errors;
+    // those are not transient contention and must NOT be retried 8×.
+    expect(
+      isRefLockContentionOutput(
+        "error: sha1 mismatch 1234abcdeadbeef but expected deadbeef1234abc",
+      ),
+    ).toBe(false);
+    expect(
+      isRefLockContentionOutput(
+        "fatal: object 1234abc is corrupt; got deadbee but expected 1234abc",
+      ),
+    ).toBe(false);
   });
 });
 
@@ -157,5 +173,94 @@ describe("commitGitMessage under concurrency", () => {
       .map((line) => line.trim())
       .filter(Boolean);
     expect(new Set(topHashes)).toEqual(new Set(hashes));
+  });
+});
+
+describe("commit vs revert serialization", () => {
+  it("shares the per-repo lock so a commit and a revert cannot overlap", async () => {
+    // Both commitGitMessage and revertGitCommits route through
+    // withRepoCommitLock(repoRoot). Prove the critical sections mutually
+    // exclude across the two entry points, not just among commits.
+    const repo = await initRepo();
+    let active = 0;
+    let maxActive = 0;
+    const order: string[] = [];
+    const enter = (label: string) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      order.push(label);
+    };
+    const leave = () => {
+      active -= 1;
+    };
+
+    const commitSide = withRepoCommitLock(repo, async () => {
+      enter("commit");
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      leave();
+    });
+    const revertSide = withRepoCommitLock(repo, async () => {
+      enter("revert");
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      leave();
+    });
+
+    await Promise.all([commitSide, revertSide]);
+    expect(maxActive).toBe(1);
+    expect(order).toEqual(["commit", "revert"]);
+  });
+
+  it("lands concurrent commits and a revert without a ref-lock abort", async () => {
+    const repo = await initRepo();
+
+    // A committed file we will revert while agent commits race alongside.
+    await writeFile(path.join(repo, "to-revert.txt"), "revert me\n", "utf8");
+    git(repo, ["add", "to-revert.txt"]);
+    git(repo, ["commit", "-q", "-m", "Add to-revert.txt"]);
+    const revertTarget = git(repo, ["rev-parse", "HEAD"]);
+
+    const agentCount = 6;
+    await Promise.all(
+      Array.from({ length: agentCount }, (_, i) =>
+        writeFile(path.join(repo, `agent-${i}.txt`), `content ${i}\n`, "utf8"),
+      ),
+    );
+
+    const commitTasks = Array.from({ length: agentCount }, (_, i) =>
+      commitGitMessage({
+        repoRoot: repo,
+        subject: `agent ${i} change`,
+        paths: [`agent-${i}.txt`],
+        trailers: { "Stella-Conversation": `conv-${i}` },
+      }),
+    );
+    const revertTask = revertGitCommits({
+      repoRoot: repo,
+      commitHashes: [revertTarget],
+    });
+
+    const [reverted, ...commitResults] = await Promise.all([
+      revertTask,
+      ...commitTasks,
+    ]);
+
+    // The revert landed (no HEAD-lock abort) and undid to-revert.txt.
+    expect(reverted).toEqual([revertTarget]);
+    expect(
+      git(repo, ["ls-files", "--", "to-revert.txt"]),
+    ).toBe("");
+
+    // Every agent commit landed with a distinct hash.
+    const hashes = commitResults.filter(
+      (hash): hash is string => Boolean(hash),
+    );
+    expect(hashes).toHaveLength(agentCount);
+    expect(new Set(hashes).size).toBe(agentCount);
+
+    // History is linear and complete: seed + to-revert.txt commit + one
+    // commit per agent + the revert commit, no lost/clobbered commits.
+    expect(Number(git(repo, ["rev-list", "--count", "HEAD"]))).toBe(
+      agentCount + 3,
+    );
   });
 });

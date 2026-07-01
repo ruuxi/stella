@@ -5,13 +5,10 @@
  * object artifacts and reference diffs for the direct Store publish pipeline.
  */
 import os from "node:os";
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
 import { deflateSync } from "node:zlib";
-import { setupEnvironment } from "dugite";
 import type {
   SelfModFeatureSnapshot,
   SelfModFeatureSnapshotItem,
@@ -19,10 +16,9 @@ import type {
   StoreReleaseGitArtifact,
   StoreReleaseGitObjectUpload,
 } from "../contracts/index.js";
+import { runGitStatus } from "../kernel/self-mod/git/exec.js";
 import { orderCommitHashesChronologically } from "../kernel/self-mod/git/log.js";
 import type { StoreModStore } from "../kernel/storage/store-mod-store.js";
-
-const execFileAsync = promisify(execFile);
 
 const STORE_RELEASE_SELECTED_FEATURE_LIMIT = 12;
 
@@ -123,33 +119,19 @@ const runStoreReleaseGit = async (
   stdout: string | Buffer;
   stderr: string | Buffer;
 }> => {
-  const { env, gitLocation } = setupEnvironment({});
-  const encoding = options?.encoding === "buffer" ? "buffer" : "utf8";
-  try {
-    const result = await execFileAsync(gitLocation, args, {
-      cwd: repoRoot,
-      env,
-      encoding,
-      maxBuffer: options?.maxBuffer ?? 10 * 1024 * 1024,
-      windowsHide: true,
-    });
-    return {
-      status: 0,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    };
-  } catch (error) {
-    const err = error as {
-      code?: unknown;
-      stdout?: string | Buffer;
-      stderr?: string | Buffer;
-    };
-    return {
-      status: typeof err.code === "number" ? err.code : 1,
-      stdout: err.stdout ?? (encoding === "buffer" ? Buffer.alloc(0) : ""),
-      stderr: err.stderr ?? (encoding === "buffer" ? Buffer.alloc(0) : ""),
-    };
-  }
+  // Route through the shared git runner so this publish-time commit path (a
+  // throwaway worktree that shares packed-refs/objects with the main repo)
+  // inherits the same ref-lock contention retry that guards agent commits and
+  // reverts, instead of aborting on a transient `cannot lock ref`/`*.lock`.
+  const result = await runGitStatus(repoRoot, args, {
+    encoding: options?.encoding,
+    maxBuffer: options?.maxBuffer,
+  });
+  return {
+    status: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 };
 
 const runStoreReleaseGitOrThrow = async (
