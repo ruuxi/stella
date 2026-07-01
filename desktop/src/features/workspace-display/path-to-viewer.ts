@@ -13,6 +13,44 @@ import type {
 } from "@/shared/contracts/display-payload";
 import { DEVELOPER_EXTS } from "@/shared/contracts/external-openers";
 
+/**
+ * Returns the first on-disk file path the payload references, or `null`
+ * when the payload has no real file (URLs, trash bins, text-only media).
+ * Shared by the inline `EndResourceCard`, the agent-completion file pills,
+ * and anywhere that needs to hand an external opener a concrete path — the
+ * "Open with…" affordance only appears when a path is available, since there
+ * is nothing external to open otherwise.
+ */
+export const localFilePathForPayload = (
+  payload: DisplayPayload,
+): string | null => {
+  switch (payload.kind) {
+    case "office":
+      return payload.previewRef.sourcePath;
+    case "markdown":
+    case "source-diff":
+    case "file-artifact":
+    case "pdf":
+      return payload.filePath;
+    case "canvas-html":
+      return payload.filePath;
+    case "media":
+      switch (payload.asset.kind) {
+        case "image":
+          return payload.asset.filePaths[0] ?? null;
+        case "video":
+        case "audio":
+        case "model3d":
+        case "download":
+          return payload.asset.filePath;
+        default:
+          return null;
+      }
+    default:
+      return null;
+  }
+};
+
 const IMAGE_EXTS = new Set([
   "png",
   "jpg",

@@ -16,6 +16,10 @@ import {
   deriveTurnInlineImagePayloads,
   deriveTurnResource,
 } from "@/features/chat/lib/derive-turn-resource";
+import {
+  buildAgentCompletionSections,
+  type AgentMeta,
+} from "@/features/chat/lib/agent-completion";
 import { deriveTurnWebSearchResults } from "@/features/chat/lib/derive-turn-web-search";
 import { deriveToolActivity } from "@/features/chat/lib/tool-activity";
 import { filterMessagesForUiDisplay } from "@/features/chat/lib/message-display";
@@ -262,6 +266,7 @@ export const assistantRowHasNonBackgroundContent = (
   Boolean(row.scheduleReceipt) ||
   Boolean(row.voiceSession) ||
   Boolean(row.toolActivity) ||
+  (row.agentCompletion?.sections.length ?? 0) > 0 ||
   Boolean(row.customSlot);
 
 const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
@@ -274,6 +279,7 @@ const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
   !row.scheduleReceipt &&
   !row.voiceSession &&
   !row.backgroundWork &&
+  !row.agentCompletion?.sections.length &&
   !row.toolActivity &&
   !row.customSlot;
 
@@ -297,6 +303,7 @@ const coalesceInlineImageRows = (
       !prev.selfModApplied &&
       !prev.scheduleReceipt &&
       !prev.backgroundWork &&
+      !prev.agentCompletion?.sections.length &&
       !prev.customSlot
     ) {
       out[out.length - 1] = {
@@ -323,6 +330,7 @@ const isVoiceOnlyRow = (row: AssistantRowViewModel): boolean =>
   !row.selfModApplied &&
   !row.scheduleReceipt &&
   !row.backgroundWork &&
+  !row.agentCompletion?.sections.length &&
   !row.toolActivity &&
   !row.customSlot;
 
@@ -464,6 +472,103 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       result: completedAt,
     };
     return completedAt;
+  }, [messages]);
+
+  /**
+   * Per-agent identity/label metadata, folded from every `agent-started`
+   * lifecycle event across the loaded window. The completion card needs this
+   * to title each section and to apply the reserved-builtin denylist — the
+   * `agent-completed` payload carries neither `description` nor `agentType`,
+   * and the spawn may live on an EARLIER row than the completion, so it can't
+   * be read from the completing row's own events alone.
+   *
+   * Same incremental, reference-gated build as `completedAtMsById`: cache each
+   * `toolEvents` array's `agent-started` contribution by reference and reuse
+   * the prior map whole when no `toolEvents` array changed (the common case
+   * during pure text streaming).
+   */
+  const agentMetaCacheRef = useRef<{
+    toolEventsByIndex: Array<EventRecord[] | undefined>;
+    contributionByToolEvents: WeakMap<
+      EventRecord[],
+      ReadonlyArray<readonly [string, AgentMeta]>
+    >;
+    result: Map<string, AgentMeta>;
+  } | null>(null);
+
+  const agentMetaById = useMemo(() => {
+    const cache = agentMetaCacheRef.current;
+    if (cache && cache.toolEventsByIndex.length === messages.length) {
+      let unchanged = true;
+      for (let i = 0; i < messages.length; i += 1) {
+        if (cache.toolEventsByIndex[i] !== messages[i].toolEvents) {
+          unchanged = false;
+          break;
+        }
+      }
+      if (unchanged) return cache.result;
+    }
+
+    const contributionByToolEvents =
+      cache?.contributionByToolEvents ??
+      new WeakMap<EventRecord[], ReadonlyArray<readonly [string, AgentMeta]>>();
+    const toolEventsByIndex: Array<EventRecord[] | undefined> = new Array(
+      messages.length,
+    );
+    const metaById = new Map<string, AgentMeta>();
+
+    for (let i = 0; i < messages.length; i += 1) {
+      const toolEvents = messages[i].toolEvents;
+      toolEventsByIndex[i] = toolEvents;
+      if (!toolEvents || toolEvents.length === 0) continue;
+
+      let contribution = contributionByToolEvents.get(toolEvents);
+      if (!contribution) {
+        const pairs: Array<readonly [string, AgentMeta]> = [];
+        for (const toolEvent of toolEvents) {
+          if (!isAgentStartedEvent(toolEvent)) continue;
+          const agentId = asNonEmptyString(toolEvent.payload.agentId);
+          if (!agentId) continue;
+          const meta: AgentMeta = {};
+          const description = asNonEmptyString(toolEvent.payload.description);
+          if (description) meta.description = description;
+          const agentType = asNonEmptyString(toolEvent.payload.agentType);
+          if (agentType) meta.agentType = agentType;
+          const groupLabel = asNonEmptyString(toolEvent.payload.groupLabel);
+          if (groupLabel) meta.groupLabel = groupLabel;
+          pairs.push([agentId, meta] as const);
+        }
+        contribution = pairs;
+        contributionByToolEvents.set(toolEvents, contribution);
+      }
+
+      // First non-empty value per field wins (an earlier richer spawn label
+      // isn't clobbered by a later `send_input` re-activation that reuses the
+      // original description).
+      for (const [agentId, meta] of contribution) {
+        const existing = metaById.get(agentId);
+        if (!existing) {
+          metaById.set(agentId, { ...meta });
+          continue;
+        }
+        if (!existing.description && meta.description) {
+          existing.description = meta.description;
+        }
+        if (!existing.agentType && meta.agentType) {
+          existing.agentType = meta.agentType;
+        }
+        if (!existing.groupLabel && meta.groupLabel) {
+          existing.groupLabel = meta.groupLabel;
+        }
+      }
+    }
+
+    agentMetaCacheRef.current = {
+      toolEventsByIndex,
+      contributionByToolEvents,
+      result: metaById,
+    };
+    return metaById;
   }, [messages]);
 
   /**
@@ -620,7 +725,11 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         // background work is still visible (the working indicator steps
         // aside once a task is running).
         const userBackgroundWork = buildBackgroundWork(message.toolEvents);
-        if (userBackgroundWork) {
+        const userAgentCompletion = buildAgentCompletionSections(
+          message.toolEvents,
+          agentMetaById,
+        );
+        if (userBackgroundWork || userAgentCompletion.length > 0) {
           const bgKey = `assistant-bgwork-${message._id}`;
           produced.push({
             kind: "assistant",
@@ -628,7 +737,12 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             text: "",
             cacheKey: bgKey,
             replyToUserMessageId: message._id,
-            backgroundWork: userBackgroundWork,
+            ...(userBackgroundWork
+              ? { backgroundWork: userBackgroundWork }
+              : {}),
+            ...(userAgentCompletion.length > 0
+              ? { agentCompletion: { sections: userAgentCompletion } }
+              : {}),
           });
         }
       } else if (isAssistantMessage(message)) {
@@ -679,6 +793,14 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const officePreviewRef = getOfficePreviewRef(toolEvents);
         const voiceSession = payload?.metadata?.voiceSession;
         const backgroundWork = buildBackgroundWork(toolEvents);
+        // Delegated-agent completion card: the "done + pills" surface anchored
+        // to the row this turn's `agent-completed` events land on (the
+        // chronological completion point). Append-only by construction — each
+        // completion carries only its run's files on its own row.
+        const agentCompletionSections = buildAgentCompletionSections(
+          toolEvents,
+          agentMetaById,
+        );
         const toolActivity = deriveToolActivity(toolEvents);
         const isStreamingOverlay =
           message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX) &&
@@ -723,6 +845,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             : {}),
           ...(voiceSession ? { voiceSession } : {}),
           ...(backgroundWork ? { backgroundWork } : {}),
+          ...(agentCompletionSections.length > 0
+            ? { agentCompletion: { sections: agentCompletionSections } }
+            : {}),
           ...(showInlineArtifacts && toolActivity ? { toolActivity } : {}),
         };
         produced.push(row);
@@ -735,7 +860,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       // function of the (stable) message identity + dev flag.
       const hasBackgroundWork = produced.some(
         (producedRow) =>
-          producedRow.kind === "assistant" && Boolean(producedRow.backgroundWork),
+          producedRow.kind === "assistant" &&
+          (Boolean(producedRow.backgroundWork) ||
+            (producedRow.agentCompletion?.sections.length ?? 0) > 0),
       );
       if (hasBackgroundWork) {
         cacheByMessage.delete(message);
@@ -863,7 +990,12 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         : computed;
 
     return coalesceVoiceSessionRows(coalesceInlineImageRows(deduped));
-  }, [completedAtMsById, developerResourcePreviewsEnabled, displayMessages]);
+  }, [
+    agentMetaById,
+    completedAtMsById,
+    developerResourcePreviewsEnabled,
+    displayMessages,
+  ]);
 
   const rowsStableRef = useRef<StableTurnRowsState<EventRowViewModel> | null>(
     null,

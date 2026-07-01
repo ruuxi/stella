@@ -259,6 +259,29 @@ const backgroundWorkEqual = (
   return true;
 };
 
+const agentCompletionEqual = (
+  a: AssistantRowViewModel["agentCompletion"],
+  b: AssistantRowViewModel["agentCompletion"],
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return a === b;
+  if (a.sections.length !== b.sections.length) return false;
+  for (let i = 0; i < a.sections.length; i += 1) {
+    const as = a.sections[i]!;
+    const bs = b.sections[i]!;
+    if (as.agentId !== bs.agentId) return false;
+    if (as.title !== bs.title) return false;
+    if (as.files.length !== bs.files.length) return false;
+    for (let j = 0; j < as.files.length; j += 1) {
+      const af = as.files[j]!;
+      const bf = bs.files[j]!;
+      if (af.path !== bf.path) return false;
+      if (af.timestamp !== bf.timestamp) return false;
+    }
+  }
+  return true;
+};
+
 const webSearchResultsEqual = (
   a: AssistantRowViewModel["webSearchResults"],
   b: AssistantRowViewModel["webSearchResults"],
@@ -305,6 +328,7 @@ const assistantRowEqual = (
   selfModAppliedEqual(a.selfModApplied, b.selfModApplied) &&
   scheduleReceiptEqual(a.scheduleReceipt, b.scheduleReceipt) &&
   backgroundWorkEqual(a.backgroundWork, b.backgroundWork) &&
+  agentCompletionEqual(a.agentCompletion, b.agentCompletion) &&
   toolActivityEqual(a.toolActivity, b.toolActivity) &&
   (a.voiceSession?.durationMs ?? null) ===
     (b.voiceSession?.durationMs ?? null) &&

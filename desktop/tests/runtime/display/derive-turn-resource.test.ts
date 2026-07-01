@@ -207,7 +207,10 @@ describe("deriveTurnResource", () => {
     });
   });
 
-  it("surfaces an auto finish-html canvas from agent-completed producedFiles", () => {
+  it("does NOT surface agent-completed producedFiles as an inline canvas (they belong on the agent completion card)", () => {
+    // Delegated-agent outputs ride `agent-completed` events; they must not
+    // roll up into the orchestrator's inline artifact card (the jumpy pop).
+    // They surface as pills on the agent's own completion card instead.
     expect(
       deriveTurnResource([
         event({
@@ -227,17 +230,10 @@ describe("deriveTurnResource", () => {
           },
         }),
       ]),
-    ).toEqual({
-      kind: "canvas-html",
-      filePath:
-        "/Users/me/.stella/outputs/html/q3-revenue-breakdown.html",
-      title: "Q3 Revenue Breakdown",
-      slug: "q3-revenue-breakdown",
-      createdAt: 9,
-    });
+    ).toBeNull();
   });
 
-  it("derives a payload from subagent completed producedFiles", () => {
+  it("does NOT derive an inline payload from subagent completed producedFiles", () => {
     expect(
       deriveTurnResource([
         event({
@@ -246,6 +242,26 @@ describe("deriveTurnResource", () => {
           timestamp: 5,
           payload: {
             agentId: "agent-1",
+            producedFiles: [{ path: "/out/chart.png", kind: { type: "add" } }],
+          },
+        }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("still surfaces orchestrator-DIRECT tool_result producedFiles inline (unchanged)", () => {
+    // The orchestrator ran the tool itself → files ride a `tool_result`
+    // event and must keep rendering exactly as before.
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 5,
+          payload: {
+            toolName: "exec_command",
+            agentType: "orchestrator",
+            result: "ok",
             producedFiles: [{ path: "/out/chart.png", kind: { type: "add" } }],
           },
         }),

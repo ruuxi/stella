@@ -60,6 +60,7 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import { OfficePreviewCard } from "@/app/chat/OfficePreviewCard";
 import { ScheduleReceiptChip } from "@/app/chat/ScheduleReceiptChip";
 import { BackgroundWorkCard } from "@/app/chat/BackgroundWorkCard";
+import { AgentCompletionCard } from "@/app/chat/AgentCompletionCard";
 import { ToolActivityTrace } from "@/app/chat/ToolActivityTrace";
 import { SelfModUndoButton } from "@/app/chat/SelfModUndoButton";
 import { VoiceSessionCard } from "@/app/chat/VoiceSessionCard";
@@ -553,6 +554,9 @@ export const AssistantMessageRow = memo(
     const hasBackgroundWork = Boolean(
       row.backgroundWork && row.backgroundWork.threadIds.length > 0,
     );
+    const hasAgentCompletion = Boolean(
+      row.agentCompletion && row.agentCompletion.sections.length > 0,
+    );
     // The in-flight call is owned by the footer WorkingIndicator; the trace
     // counts only settled calls (the group is undefined until the first one
     // returns), so the two never narrate the same tool at once.
@@ -571,6 +575,7 @@ export const AssistantMessageRow = memo(
       !hasScheduleReceipt &&
       !hasVoiceSession &&
       !hasBackgroundWork &&
+      !hasAgentCompletion &&
       !hasToolActivity
     ) {
       // Reserve a scroll-follow target before the first token lands;
@@ -623,6 +628,9 @@ export const AssistantMessageRow = memo(
               followUpThreadIds={row.backgroundWork.followUpThreadIds}
               label={row.backgroundWork.label}
             />
+          )}
+          {hasAgentCompletion && row.agentCompletion && (
+            <AgentCompletionCard sections={row.agentCompletion.sections} />
           )}
           {hasWebSearchResults && row.webSearchResults && (
             <WebSearchResultsStrip results={row.webSearchResults} />
