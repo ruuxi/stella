@@ -1685,6 +1685,15 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
        * if the run did not preamble).
        */
       let lastAssistantMessageEventId: string | null = null;
+      /**
+       * Worker-clock time of the CURRENT assistant segment's first stream
+       * chunk, per run. Set on the first `onStream` chunk after a segment
+       * boundary, consumed (and cleared) by `onAssistantMessage` so the
+       * persisted row carries `metadata.runtime.streamStartedAtMs` — the
+       * chronological anchor the renderer uses to place lifecycle cards
+       * before/after this text block.
+       */
+      const segmentFirstChunkAtMsByRunId = new Map<string, number>();
       const mergedAttachments = [
         ...modelImageAttachments,
         ...(windowScreenshotAttachment ? [windowScreenshotAttachment] : []),
@@ -1733,6 +1742,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             ) {
               return;
             }
+            const streamStartedAtMs = segmentFirstChunkAtMsByRunId.get(
+              ev.runId,
+            );
+            segmentFirstChunkAtMsByRunId.delete(ev.runId);
             const assistantEventId = appendAssistantMessageForTurn({
               conversationId: payload.conversationId,
               text: ev.text,
@@ -1741,6 +1754,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               seq: ev.seq,
               timezone: payload.timezone,
               responseTarget: ev.responseTarget,
+              ...(streamStartedAtMs !== undefined
+                ? { streamStartedAtMs }
+                : {}),
             });
             if (assistantEventId) {
               lastAssistantMessageEventId = assistantEventId;
@@ -1852,6 +1868,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             notifyLocalChatUpdated(peer, payload.conversationId, event);
           },
           onStream: (ev) => {
+            if (ev.chunk && !segmentFirstChunkAtMsByRunId.has(ev.runId)) {
+              segmentFirstChunkAtMsByRunId.set(ev.runId, Date.now());
+            }
             if (hiddenSystemRunIds.has(ev.runId)) {
               if (lastVisibleRunId) {
                 emitRunEvent({

@@ -36,6 +36,11 @@ import { useScheduledEvents } from "@/features/chat/hooks/use-scheduled-events";
 import type { EventRecord } from "@/features/chat/lib/event-transforms";
 import { groupEventsIntoMessages } from "@/features/chat/lib/group-events-into-messages";
 import type { StreamingAssistantOverlay } from "@/features/chat/streaming/streaming-types";
+import {
+  createLifecycleRoutingState,
+  routeLifecycleEvents,
+  type LifecycleRoutingState,
+} from "@/features/chat/lib/route-lifecycle-events";
 import type { MessageRecord } from "../../../../../runtime/contracts/local-chat.js";
 
 const SCHEDULED_EVENTS_OVERLAY_MAX = 200;
@@ -455,7 +460,7 @@ export const useConversationDisplayMessages = ({
 
   const cacheRef = useRef<DisplayMessagesCache | null>(null);
 
-  return useMemo(() => {
+  const merged = useMemo(() => {
     const cache = cacheRef.current;
     // Fast path: only the live overlay's content changed since the last
     // delta. Preconditions guaranteeing an identical merge ORDER + membership
@@ -511,4 +516,26 @@ export const useConversationDisplayMessages = ({
     persistedMessages,
     streamingAssistants,
   ]);
+
+  /**
+   * Arrival-order anchoring for agent lifecycle events (see
+   * `routeLifecycleEvents`). Runs on the merged timeline so cards routed
+   * mid-stream can target the streaming overlay row itself; the sticky map
+   * pins every decision for the session so the overlay -> persisted handoff
+   * can never move an already-painted card. Reset per conversation, like the
+   * frozen sort timestamps above.
+   */
+  const lifecycleRoutingRef = useRef<LifecycleRoutingState>(
+    createLifecycleRoutingState(),
+  );
+  const routingConversationIdRef = useRef<string | null>(conversationId);
+  if (routingConversationIdRef.current !== conversationId) {
+    routingConversationIdRef.current = conversationId;
+    lifecycleRoutingRef.current = createLifecycleRoutingState();
+  }
+
+  return useMemo(
+    () => routeLifecycleEvents(merged, lifecycleRoutingRef.current),
+    [merged],
+  );
 };
