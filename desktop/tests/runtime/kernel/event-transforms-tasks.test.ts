@@ -313,7 +313,7 @@ describe("work-group folding", () => {
     ]);
   });
 
-  it("aggregates the header status across member states", () => {
+  it("shows a stable {N} tasks count on the header, not child narration", () => {
     const running = groupActivityTasks([
       task({
         id: "task-1",
@@ -333,10 +333,9 @@ describe("work-group folding", () => {
     expect(running[0]!.kind).toBe("group");
     const runningGroup = running[0]!.kind === "group" ? running[0].group : undefined;
     expect(runningGroup?.status).toBe("running");
-    // Most recently updated running member's narration wins while running.
-    expect(getTaskGroupStatusText(runningGroup!)).toBe(
-      "Comparing 12 flight options",
-    );
+    // Never surface an individual member's narration on the group row —
+    // that made the header flicker between siblings. Show a stable count.
+    expect(getTaskGroupStatusText(runningGroup!)).toBe("3 tasks");
 
     const done = groupActivityTasks([
       task({
@@ -356,7 +355,7 @@ describe("work-group folding", () => {
     ]);
     const doneGroup = done[0]!.kind === "group" ? done[0].group : undefined;
     expect(doneGroup?.status).toBe("completed");
-    expect(getTaskGroupStatusText(doneGroup!)).toBe("2 of 2 done");
+    expect(getTaskGroupStatusText(doneGroup!)).toBe("2 tasks");
 
     const failed = groupActivityTasks([
       task({
@@ -376,7 +375,7 @@ describe("work-group folding", () => {
     ]);
     const failedGroup = failed[0]!.kind === "group" ? failed[0].group : undefined;
     expect(failedGroup?.status).toBe("error");
-    expect(getTaskGroupStatusText(failedGroup!)).toBe("1 of 2 done");
+    expect(getTaskGroupStatusText(failedGroup!)).toBe("2 tasks");
   });
 
   it("keeps the persisted group membership when live tasks lack group fields", () => {
