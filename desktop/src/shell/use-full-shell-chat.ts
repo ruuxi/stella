@@ -113,6 +113,7 @@ export function useFullShellChat({
     isStreamingResponseText,
     pendingUserMessageId,
     queuedUserMessages,
+    removeQueuedUserMessage,
     sendMessage,
     cancelCurrentStream,
   } = useStreamingChat({
@@ -412,6 +413,7 @@ export function useFullShellChat({
         isToolActive,
         pendingUserMessageId,
         queuedUserMessages,
+        removeQueuedUserMessage,
         liveTasks,
       },
       history: {
@@ -441,6 +443,7 @@ export function useFullShellChat({
       pendingUserMessageId,
       persistedFiles,
       queuedUserMessages,
+      removeQueuedUserMessage,
       reasoningText,
       runtimeStatusText,
       isStreaming,

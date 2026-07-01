@@ -66,6 +66,9 @@ function ChatDisplayTab({
       isToolActive={chat.conversation.streaming.isToolActive}
       pendingUserMessageId={chat.conversation.pendingUserMessageId}
       queuedUserMessages={chat.conversation.streaming.queuedUserMessages}
+      removeQueuedUserMessage={
+        chat.conversation.streaming.removeQueuedUserMessage
+      }
       liveTasks={chat.conversation.streaming.liveTasks}
       hasOlderMessages={chat.conversation.hasOlderMessages}
       isLoadingOlder={chat.conversation.isLoadingOlder}

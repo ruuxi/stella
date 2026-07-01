@@ -35,6 +35,8 @@ type Props = {
   maxItems?: number;
   pendingUserMessageId?: string | null;
   queuedUserMessages?: QueuedUserMessage[];
+  /** Reveals a hover "X" on each queued bubble to cancel + restore its text. */
+  onCancelQueued?: (message: QueuedUserMessage) => void;
   /** Working/agent indicator rendered below the last assistant message. */
   indicator?: InlineWorkingIndicatorMountProps;
   hasOlderMessages?: boolean;
@@ -102,6 +104,7 @@ export const ConversationEvents = memo(function ConversationEvents({
   maxItems,
   pendingUserMessageId,
   queuedUserMessages,
+  onCancelQueued,
   indicator,
   hasOlderMessages,
   isLoadingOlder,
@@ -144,6 +147,7 @@ export const ConversationEvents = memo(function ConversationEvents({
       isLoadingOlder={isLoadingOlder}
       isLoadingHistory={isLoadingHistory}
       queuedUserMessages={queuedUserMessages}
+      onCancelQueued={onCancelQueued}
       indicator={indicator}
       listRef={listRef}
       onListScroll={onListScroll}

@@ -36,6 +36,10 @@ import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import type { ChatColumnProps } from "@/features/chat/chat-column-types";
 import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
+import {
+  restoreQueuedTextToComposer,
+  type QueuedUserMessage,
+} from "@/features/chat/hooks/queued-user-messages";
 import "./full-shell.chat.css";
 
 /** Stable no-op so the paint-signal context value doesn't churn per render. */
@@ -227,6 +231,26 @@ export const ChatColumn = memo(function ChatColumn({
   });
 
   /**
+   * Cancel a still-queued follow-up: drop it from the send queue and hand its
+   * text back to the composer so the user can edit or resend it. Restoring
+   * only clobbers an empty composer (see `restoreQueuedTextToComposer`); an
+   * in-progress draft keeps its place and the recovered text is appended.
+   */
+  const { removeQueuedUserMessage } = conversation.streaming;
+  const { setMessage: setComposerMessage, requestFocus: requestComposerFocus } =
+    composer;
+  const handleCancelQueued = useCallback(
+    (message: QueuedUserMessage) => {
+      removeQueuedUserMessage(message.id);
+      setComposerMessage((current) =>
+        restoreQueuedTextToComposer(current, message.text),
+      );
+      requestComposerFocus?.();
+    },
+    [removeQueuedUserMessage, setComposerMessage, requestComposerFocus],
+  );
+
+  /**
    * Two synced instances of the (fully controlled) composer: one pinned at
    * the bottom of the persistently-mounted chat, one centered inside the
    * home overlay. Both read the same lifted state, so their content,
@@ -308,6 +332,7 @@ export const ChatColumn = memo(function ChatColumn({
                   conversation.streaming.pendingUserMessageId
                 }
                 queuedUserMessages={conversation.streaming.queuedUserMessages}
+                onCancelQueued={handleCancelQueued}
                 indicator={indicatorProps}
                 hasOlderMessages={conversation.history.hasOlderMessages}
                 isLoadingOlder={conversation.history.isLoadingOlder}

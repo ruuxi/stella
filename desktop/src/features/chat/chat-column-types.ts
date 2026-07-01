@@ -68,6 +68,12 @@ export type ChatColumnConversation = {
     isToolActive?: boolean;
     pendingUserMessageId: string | null;
     queuedUserMessages: QueuedUserMessage[];
+    /**
+     * Removes a still-queued follow-up message from the pending-send queue
+     * by id. Wired to the hover-cancel control on a queued bubble; the
+     * surface pairs it with restoring the bubble's text to its own composer.
+     */
+    removeQueuedUserMessage: (messageId: string) => void;
     liveTasks?: TaskItem[];
   };
   history: {

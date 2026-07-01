@@ -113,6 +113,12 @@ export function useStreamingChatCore({
     storageMode,
   } = useChatStore()
 
+  const removeQueuedUserMessage = useCallback((messageId: string) => {
+    setQueuedUserMessages((current) =>
+      removeQueuedUserMessageById(current, messageId),
+    )
+  }, [])
+
   const handleRunStarted = useCallback((event: { userMessageId?: string }) => {
     const userMessageId = event.userMessageId
     if (!userMessageId) return
@@ -417,6 +423,7 @@ export function useStreamingChatCore({
     isStreaming,
     isStreamingResponseText,
     pendingUserMessageId,
+    removeQueuedUserMessage,
     sendMessage,
     cancelCurrentStream,
   }
