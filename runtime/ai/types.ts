@@ -377,6 +377,23 @@ export interface OpenAICompletionsCompat {
   requiresThinkingAsText?: boolean;
   /** Whether all replayed assistant messages must include an empty reasoning_content field when reasoning is enabled. Default: auto-detected from URL. */
   requiresReasoningContentOnAssistantMessages?: boolean;
+  /**
+   * Whether to echo a prior assistant turn's reasoning text back onto the
+   * outgoing request under the field it arrived on (`reasoning` /
+   * `reasoning_content`). Some local, self-hosted OpenAI-compatible servers
+   * (llama.cpp, gpt-oss) maintain chain-of-thought by replaying reasoning, so
+   * the streamed reasoning is tagged with its source field name (used as a
+   * pseudo-signature) and replayed here.
+   *
+   * This must stay OFF for cloud reasoning models (OpenAI, OpenRouter, …):
+   * they manage reasoning server-side (via `reasoning_effort` and, for
+   * cross-turn continuity, opaque `reasoning_details`), and replaying a
+   * plaintext `reasoning` field derived from that pseudo-signature is invalid
+   * — it makes the provider reject the request ("Provider returned error"),
+   * which is what broke sub-agents on a mid-session switch to an OpenRouter
+   * OpenAI model. Default: auto-detected (only local/self-hosted endpoints).
+   */
+  replayReasoningContentField?: boolean;
   /** Format for reasoning/thinking parameter. "openai" uses reasoning_effort, "openrouter" uses reasoning: { effort }, "deepseek" uses thinking: { type } plus reasoning_effort, "zai" uses top-level enable_thinking: boolean, "qwen" uses top-level enable_thinking: boolean, and "qwen-chat-template" uses chat_template_kwargs.enable_thinking. Default: "openai". */
   thinkingFormat?:
     | "openai"
