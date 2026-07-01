@@ -103,6 +103,41 @@ const buildToolCallPayload = (args: {
   timestamp: now(),
 });
 
+/**
+ * Build an interim assistant message pairing streamed preamble text with the
+ * tool call it precedes. Passing this through `recordAssistantMessageEnd`
+ * stamps the emitted stream event with `followedByToolCall` (the recorder sets
+ * it whenever a message carries a tool-call block), so the renderer keeps the
+ * working indicator up across the preamble→tool gap instead of handing off to
+ * the painted preamble text. External engines stream a visible preamble but,
+ * unlike the default runtime, never record a message-end boundary before a
+ * tool — so without this the indicator would dismiss on the preamble and only
+ * reappear at tool-start.
+ */
+export const buildPreambleToolBoundaryMessage = (args: {
+  preamble: string;
+  toolCallId: string;
+  toolName: string;
+  toolArgs: Record<string, unknown>;
+}): AssistantMessage => ({
+  role: "assistant",
+  content: [
+    { type: "text", text: args.preamble },
+    {
+      type: "toolCall",
+      id: args.toolCallId,
+      name: args.toolName,
+      arguments: args.toolArgs,
+    },
+  ],
+  api: "anthropic-messages",
+  provider: "anthropic",
+  model: "codex",
+  usage: EMPTY_USAGE,
+  stopReason: "toolUse",
+  timestamp: now(),
+});
+
 const buildToolResultText = (toolResult: {
   result?: unknown;
   error?: string;
@@ -702,6 +737,33 @@ const runCodexHostedTurn = async (args: {
       args.callbacks?.onStatus?.(runEvents.recordStatus(statusText));
     }
   };
+  // Buffers the assistant text Codex has streamed since the last message
+  // boundary. When a tool call starts we flush it as an interim, tool-call-
+  // bearing message (see `flushPreambleBeforeTool`) so the working indicator
+  // does not dismiss on the preamble across the gap before the tool starts.
+  let streamedAssistantText = "";
+  const flushPreambleBeforeTool = (args2: {
+    toolCallId: string;
+    toolName: string;
+    toolArgs: Record<string, unknown>;
+  }) => {
+    const preamble = streamedAssistantText.trim();
+    streamedAssistantText = "";
+    if (!preamble) {
+      return;
+    }
+    const preambleEvent = runEvents.recordAssistantMessageEnd(
+      buildPreambleToolBoundaryMessage({
+        preamble,
+        toolCallId: args2.toolCallId,
+        toolName: args2.toolName,
+        toolArgs: args2.toolArgs,
+      }),
+    );
+    if (preambleEvent) {
+      args.callbacks?.onAssistantMessage?.(preambleEvent);
+    }
+  };
   const executeCodexTool = async (
     toolCallId: string,
     toolName: string,
@@ -709,6 +771,7 @@ const runCodexHostedTurn = async (args: {
     signal?: AbortSignal,
     onUpdate?: ToolUpdateCallback,
   ) => {
+    flushPreambleBeforeTool({ toolCallId, toolName, toolArgs });
     responseTargetTracker?.noteToolStart(toolName, toolArgs);
     args.callbacks?.onToolStart?.(
       runEvents.recordToolStart({
@@ -789,6 +852,7 @@ const runCodexHostedTurn = async (args: {
       args.callbacks?.onStatus?.(runEvents.recordStatus(status));
     },
     onStream: (chunk) => {
+      streamedAssistantText += chunk;
       args.opts.onProgress?.(chunk);
       args.callbacks?.onStream?.(runEvents.recordStream(chunk));
     },
@@ -830,6 +894,7 @@ const runCodexHostedTurn = async (args: {
         args.callbacks?.onStatus?.(runEvents.recordStatus(status));
       },
       onStream: (chunk) => {
+        streamedAssistantText += chunk;
         args.opts.onProgress?.(chunk);
         args.callbacks?.onStream?.(runEvents.recordStream(chunk));
       },
