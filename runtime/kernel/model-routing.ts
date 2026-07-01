@@ -259,6 +259,16 @@ const SYNTHESIZABLE_GATEWAY_PROVIDERS = new Set<string>([
  * `maxTokens: 0` makes `buildBaseOptions` omit the cap (the gateway enforces
  * the real limit), and a generous `contextWindow` floor keeps downstream
  * compaction/overflow from truncating based on the cloned window.
+ *
+ * Input modalities are also NOT inherited: the template is an arbitrary
+ * registry entry that may be text-only (the real first OpenRouter entry,
+ * ai21/jamba-large-1.7, is), and `transformMessages` silently replaces every
+ * image in the conversation with an "(image omitted: model does not support
+ * images)" placeholder when `model.input` lacks "image" — which dropped
+ * user-attached photos on vision-capable models resolved through this path.
+ * Declare image support and let the gateway be the authority: a genuinely
+ * text-only model rejects the request loudly upstream instead of Stella
+ * silently discarding the user's attachments.
  */
 const synthesizeGatewayModelFromTemplate = (
   registryProvider: string,
@@ -271,6 +281,7 @@ const synthesizeGatewayModelFromTemplate = (
     ...template,
     id: modelId,
     name: modelId,
+    input: ["text", "image"],
     maxTokens: 0,
     contextWindow: Math.max(template.contextWindow, 200_000),
   };
