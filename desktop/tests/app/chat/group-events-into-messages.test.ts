@@ -186,7 +186,13 @@ describe("groupEventsIntoMessages", () => {
     expect(messages[0]!.toolEvents).toEqual([]);
   });
 
-  it("skips non-decoration event types (e.g. agent-progress) but keeps agent-started", () => {
+  it("keeps every agent lifecycle event (incl. agent-progress) as a turn decoration", () => {
+    // Since 18894a8b7 (mobile task lifecycle sync) the full lifecycle set —
+    // agent-started/progress/completed/failed/canceled — rides along as turn
+    // decorations so downstream task-state consumers see terminal/progress
+    // signals in the message window. Pre-assistant decorations flush onto
+    // the first assistant here; the renderer's `routeLifecycleEvents` pass
+    // then re-anchors lifecycle events chronologically for display.
     const events: EventRecord[] = [
       event({ _id: "u1", type: "user_message", timestamp: 1 }),
       event({
@@ -205,10 +211,8 @@ describe("groupEventsIntoMessages", () => {
     ];
     const messages = groupEventsIntoMessages(events);
     expect(messages.map((m) => m._id)).toEqual(["u1", "a1"]);
-    // agent-progress is not a turn decoration (skipped); agent-started is,
-    // and — firing before any assistant — flushes onto the first assistant.
     expect(messages[0]!.toolEvents).toEqual([]);
-    expect(messages[1]!.toolEvents.map((e) => e._id)).toEqual(["as1"]);
+    expect(messages[1]!.toolEvents.map((e) => e._id)).toEqual(["ap1", "as1"]);
   });
 
   it("attaches agent-started to the user turn on a fire-and-forget spawn", () => {
