@@ -92,14 +92,30 @@ App=com.apple.finder (pid 504)
     expect(result.text).toBe(text);
   });
 
-  it("falls back to path extension when image bytes are not recognized", async () => {
+  it("omits (rather than attaches) a file whose bytes are not a valid image", async () => {
+    // Bytes that no image decoder can process (e.g. a corrupt/partial
+    // capture). Attaching them raw would 400 Anthropic fatally and poison
+    // the thread on every resume, so the marker is swapped for a note.
     const tempDir = createTempDir();
     const jpgPath = path.join(tempDir, "snap.jpg");
     writeFileSync(jpgPath, Buffer.from("not-enough-image-bytes"));
     const text = `[stella-attach-image] 100x100 inline=image/jpeg ${jpgPath}\n`;
     const result = await extractAttachImageBlocks(text);
-    expect(result.images).toHaveLength(1);
-    expect(result.images[0].mimeType).toBe("image/jpeg");
+    expect(result.images).toEqual([]);
+    expect(result.text).toContain("could not be decoded");
+    expect(result.text).not.toContain("[stella-attach-image]");
+  });
+
+  it("omits a truncated PNG whose header parses but stream is incomplete", async () => {
+    // The exact reproduction shape: valid PNG signature + IHDR, but the
+    // stream is cut off before IEND (a screenshot read mid-write).
+    const tempDir = createTempDir();
+    const imgPath = path.join(tempDir, "truncated.png");
+    writeFileSync(imgPath, ONE_BY_ONE_PNG.subarray(0, ONE_BY_ONE_PNG.length - 16));
+    const text = `[stella-attach-image] 1x1 inline=image/png ${imgPath}\n`;
+    const result = await extractAttachImageBlocks(text);
+    expect(result.images).toEqual([]);
+    expect(result.text).toContain("could not be decoded");
   });
 
   it("extracts JSON-escaped Windows image paths", async () => {

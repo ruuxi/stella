@@ -27,6 +27,7 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 } from "../types.js";
+import { sanitizeInlineImagePayload } from "../utils/image-payload.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.js";
@@ -105,6 +106,14 @@ const fromClaudeCodeName = (name: string, tools?: Tool[]) => {
 };
 
 /**
+ * Substituted for an image block that cannot be sent as a valid Anthropic
+ * base64 source (corrupt/truncated, unsupported format, or oversized). Keeping
+ * a short note preserves turn structure without failing the whole request.
+ */
+const UNPROCESSABLE_IMAGE_NOTE =
+	"[Image omitted: it could not be decoded as a valid image and was skipped.]";
+
+/**
  * Convert content blocks to Anthropic API format
  */
 function convertContentBlocks(content: (TextContent | ImageContent)[]):
@@ -134,12 +143,27 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
 				text: sanitizeSurrogates(block.text),
 			};
 		}
+		// Validate/repair the inline image before it reaches the wire. A
+		// truncated or corrupt tool-produced image (e.g. a screenshot captured
+		// mid-write) has clean base64 and a parseable header, so it slips
+		// through attach-time checks, but Anthropic decodes it server-side and
+		// fails the *entire* request with `400 "Could not process image"`.
+		// Since the bad block is persisted in history, every resume re-fails.
+		// Drop unprocessable images and leave a note instead of poisoning the
+		// request; valid images (incl. every user-attached one) pass untouched.
+		const sanitized = sanitizeInlineImagePayload(block.data, block.mimeType);
+		if (!sanitized) {
+			return {
+				type: "text" as const,
+				text: UNPROCESSABLE_IMAGE_NOTE,
+			};
+		}
 		return {
 			type: "image" as const,
 			source: {
 				type: "base64" as const,
-				media_type: block.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-				data: block.data,
+				media_type: sanitized.mediaType,
+				data: sanitized.data,
 			},
 		};
 	});
@@ -1316,7 +1340,9 @@ export function stripDanglingThinkingFromLatestAssistant(messages: Message[]): M
 	return next;
 }
 
-function convertMessages(
+// Exported for tests: asserts the outgoing Anthropic request shape, including
+// validation/repair of tool-produced image blocks.
+export function convertMessages(
 	messages: Message[],
 	model: Model<"anthropic-messages">,
 	isOAuthToken: boolean,
@@ -1348,12 +1374,23 @@ function convertMessages(
 							text: sanitizeSurrogates(item.text),
 						};
 					} else {
+						// Same validation/repair as the tool-result path: a
+						// complete, supported image passes through untouched;
+						// an unprocessable one is dropped with a note so a
+						// single bad block can't fail the whole request.
+						const sanitized = sanitizeInlineImagePayload(item.data, item.mimeType);
+						if (!sanitized) {
+							return {
+								type: "text",
+								text: UNPROCESSABLE_IMAGE_NOTE,
+							};
+						}
 						return {
 							type: "image",
 							source: {
 								type: "base64",
-								media_type: item.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-								data: item.data,
+								media_type: sanitized.mediaType,
+								data: sanitized.data,
 							},
 						};
 					}
