@@ -1274,6 +1274,14 @@ export const runCodexAgentTurn = async (request: {
     : null;
   const fileChanges: FileChangeRecord[] = [];
   let finalText = "";
+  // Tracks whether each streamed agentMessage item is a commentary preamble
+  // (keyed by item id). Codex streams a visible commentary preamble before a
+  // tool; external-engines flushes that preamble separately as its own bubble
+  // (see flushPreambleBeforeTool), so its deltas must not also accumulate into
+  // finalText — otherwise the same commentary can surface twice (once as the
+  // flushed preamble, once inside the persisted final answer) whenever no
+  // final-answer item overwrites finalText.
+  const agentMessageIsCommentary = new Map<string, boolean>();
   let threadId: string | undefined;
   let turnId: string | undefined;
   let turnFailure: string | null = null;
@@ -1384,7 +1392,15 @@ export const runCodexAgentTurn = async (request: {
           reject(new Error(turnFailure ?? "Codex run failed."));
           return;
         case "item/agentMessage/delta":
-          finalText += notification.params.delta;
+          // Only final-answer deltas accumulate into finalText. Commentary
+          // preambles are streamed live and flushed as their own bubble, so
+          // accumulating them here would duplicate the commentary in the
+          // persisted final answer when no final item overwrites finalText.
+          if (
+            agentMessageIsCommentary.get(notification.params.itemId) !== true
+          ) {
+            finalText += notification.params.delta;
+          }
           if (request.streamFinalAnswer !== false) {
             request.onStream?.(notification.params.delta);
           }
@@ -1400,6 +1416,9 @@ export const runCodexAgentTurn = async (request: {
           const item = notification.params.item;
           const status = statusFromCodexItem(item);
           if (status) request.onStatus?.(status);
+          if (item.type === "agentMessage") {
+            agentMessageIsCommentary.set(item.id, item.phase === "commentary");
+          }
           if (
             item.type === "agentMessage" &&
             item.text &&

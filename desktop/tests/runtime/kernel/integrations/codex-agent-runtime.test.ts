@@ -616,6 +616,75 @@ describe("Codex agent runtime", () => {
     }
   });
 
+  it("does not leak commentary preamble deltas into the final Codex answer", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-commentary-delta-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const readline = require("node:readline");',
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'thread/start') { send({ id: message.id, result: { thread: { id: 'thread-commentary-delta' } } }); return; }",
+        "  if (message.method === 'turn/start') {",
+        "    const threadId = message.params.threadId;",
+        "    const turn = { id: 'turn-commentary-delta', status: 'inProgress' };",
+        "    const completedTurn = { id: turn.id, status: 'completed' };",
+        "    send({ id: message.id, result: { turn } });",
+        "    send({ method: 'turn/started', params: { threadId, turn } });",
+        // Commentary preamble streamed as deltas (external-engines flushes it as
+        // its own bubble). These must NOT accumulate into finalText.
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-pre', text: '', phase: 'commentary' } } });",
+        "    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, itemId: 'msg-pre', delta: 'Let me look that up. ' } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-pre', text: 'Let me look that up.', phase: 'commentary' } } });",
+        // The authoritative final answer.
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-final', text: '', phase: 'final_answer' } } });",
+        "    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, itemId: 'msg-final', delta: 'The answer is 42.' } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-final', text: 'The answer is 42.', phase: 'final_answer' } } });",
+        // Trailing commentary streamed after the final item lands (arrives during
+        // the completion grace window) must also stay out of finalText.
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-note', text: '', phase: 'commentary' } } });",
+        "    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, itemId: 'msg-note', delta: ' Let me know if you need more.' } });",
+        "    send({ method: 'turn/completed', params: { threadId, turn: completedTurn } });",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    const streamed: string[] = [];
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    try {
+      const result = await runCodexAgentTurn({
+        runId: "run-commentary-delta",
+        prompt: "hello",
+        onStream: (chunk) => streamed.push(chunk),
+      });
+
+      // Persisted answer is the final answer only — never the commentary
+      // preamble or the trailing commentary.
+      expect(result.text).toBe("The answer is 42.");
+      // Streaming still surfaces every delta live (that is how the preamble
+      // bubble gets painted); only finalText excludes commentary.
+      expect(streamed).toContain("Let me look that up. ");
+      expect(streamed).toContain("The answer is 42.");
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("reuses the Codex app-server process for shared turns", async () => {
     const dir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-fake-codex-shared-"),

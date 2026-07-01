@@ -130,8 +130,8 @@ export const buildPreambleToolBoundaryMessage = (args: {
       arguments: args.toolArgs,
     },
   ],
-  api: "anthropic-messages",
-  provider: "anthropic",
+  api: "openai-codex-responses",
+  provider: "openai-codex",
   model: "codex",
   usage: EMPTY_USAGE,
   stopReason: "toolUse",
@@ -485,6 +485,13 @@ const runClaudeHostedTurn = async (args: {
       args.callbacks?.onStatus?.(runEvents.recordStatus(statusText));
     }
   };
+  // Unlike Codex (see runCodexHostedTurn.flushPreambleBeforeTool), Claude Code
+  // needs no preamble buffer/flush here: the Claude Code emitter suppresses
+  // streamed output for structured tool-request steps, so no visible preamble
+  // paints before its tools and the working indicator never dismisses across a
+  // preamble->tool gap. If that emitter ever starts streaming pre-tool
+  // commentary, the same gap would reappear here and would need the equivalent
+  // flush wiring.
   const executeClaudeTool = async (
     toolCallId: string,
     toolName: string,
