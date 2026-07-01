@@ -9,6 +9,7 @@ import type { SelfModApplied } from "@/features/chat/self-mod-types";
 import type { WebSearchImageHit } from "@/features/chat/lib/derive-turn-web-search";
 import type { PastedTextDescriptor } from "@/features/chat/lib/paste-context";
 import type { ToolActivityGroup } from "@/features/chat/lib/tool-activity";
+import type { AgentCompletionSection } from "@/features/chat/lib/agent-completion";
 import type { OfficePreviewRef } from "../../../../runtime/contracts/office-preview.js";
 import type { VoiceSessionSummaryMetadata } from "../../../../runtime/contracts/local-chat.js";
 import type { ScheduleToolAffectedRef } from "../../../../runtime/kernel/shared/scheduling";
@@ -134,6 +135,22 @@ export type AssistantRowViewModel = {
     spawnedAtMs?: Record<string, number>;
     groupKey?: string;
     label?: string;
+  };
+  /**
+   * Delegated-agent completion card, anchored to the assistant row the
+   * `agent-completed` lifecycle event attaches to (the chronological
+   * completion point in the transcript). Each section is one agent — its own
+   * header + its own produced-file pills; several agents completing at the
+   * same point stay sectionalized, never flattened into one merged card. This
+   * is the "done + pills" surface; the spawn/working breadcrumb stays at the
+   * spawn position via `backgroundWork`. Populated only on the row where the
+   * completion lands, and only for delegated (non-reserved) agents that
+   * produced files — so it's append-only across `send_input` re-runs by
+   * construction (each completion carries only that run's files on its own
+   * row).
+   */
+  agentCompletion?: {
+    sections: AgentCompletionSection[];
   };
   /**
    * Optional renderer for surface-specific row attachments (e.g. the Store

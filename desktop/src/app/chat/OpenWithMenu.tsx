@@ -8,7 +8,7 @@
  * auto-flips to a drop-down when the card is near the top.
  */
 
-import { ChevronDown } from "@/ui/icons";
+import { ChevronDown, Plus } from "@/ui/icons";
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -26,7 +26,19 @@ type Opener = {
   kind: "app" | "default" | "reveal";
 };
 
-export const OpenWithMenu = ({ filePath }: { filePath: string }) => {
+export const OpenWithMenu = ({
+  filePath,
+  variant = "button",
+}: {
+  filePath: string;
+  /**
+   * `"button"` — the default slim "Open ▾" pill used by `EndResourceCard`.
+   * `"plus"` — a compact circular "+" trigger used by the file pills on the
+   * agent completion card, where the pill body itself is the primary open
+   * target and the "+" only exposes the "open in other ways" menu.
+   */
+  variant?: "button" | "plus";
+}) => {
   const [open, setOpen] = useState(false);
   const [openers, setOpeners] = useState<Opener[] | null>(null);
 
@@ -68,15 +80,27 @@ export const OpenWithMenu = ({ filePath }: { filePath: string }) => {
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="open-with-menu__trigger"
-          onClick={(event) => event.stopPropagation()}
-          title="Open with…"
-        >
-          <span className="open-with-menu__trigger-label">Open</span>
-          <ChevronDown size={12} strokeWidth={2} aria-hidden />
-        </button>
+        {variant === "plus" ? (
+          <button
+            type="button"
+            className="open-with-menu__trigger open-with-menu__trigger--plus"
+            onClick={(event) => event.stopPropagation()}
+            title="Open in other ways…"
+            aria-label="Open in other ways"
+          >
+            <Plus size={13} strokeWidth={2} aria-hidden />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="open-with-menu__trigger"
+            onClick={(event) => event.stopPropagation()}
+            title="Open with…"
+          >
+            <span className="open-with-menu__trigger-label">Open</span>
+            <ChevronDown size={12} strokeWidth={2} aria-hidden />
+          </button>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent
         side="top"

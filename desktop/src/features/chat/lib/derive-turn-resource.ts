@@ -39,11 +39,7 @@ import {
   pickPrimaryEditedPath,
 } from "@/features/workspace-display/path-to-viewer";
 import type { EventRecord } from "./event-transforms";
-import {
-  isAgentCompletedEvent,
-  isToolRequest,
-  isToolResult,
-} from "./event-transforms";
+import { isToolRequest, isToolResult } from "./event-transforms";
 
 const asNonEmptyString = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -122,15 +118,24 @@ const resolveRelativePathFromKnownAbsolute = (
   return matches.length === 1 ? matches[0]! : null;
 };
 
+/**
+ * Inline-card file collection is orchestrator-DIRECT only: files arrive on
+ * `tool_result` events (the orchestrator ran the tool itself). Delegated-agent
+ * outputs ride a single `agent-completed` event (with `agentId`) and are
+ * DELIBERATELY excluded here — they are surfaced as pills on that agent's own
+ * completion card (see `AgentCompletionCard`), not rolled up as a jumpy inline
+ * artifact card on the orchestrator's reply row. Prevention at the source, not
+ * render-then-strip.
+ */
 const fileChangesForResult = (event: EventRecord): FileChangeRecord[] => {
-  if (!isToolResult(event) && !isAgentCompletedEvent(event)) return [];
+  if (!isToolResult(event)) return [];
   const candidate = (event.payload as { fileChanges?: unknown } | undefined)
     ?.fileChanges;
   return isFileChangeRecordArray(candidate) ? candidate : [];
 };
 
 const producedFilesForResult = (event: EventRecord): ProducedFileRecord[] => {
-  if (!isToolResult(event) && !isAgentCompletedEvent(event)) return [];
+  if (!isToolResult(event)) return [];
   const candidate = (event.payload as { producedFiles?: unknown } | undefined)
     ?.producedFiles;
   return isProducedFileRecordArray(candidate) ? candidate : [];
@@ -297,10 +302,11 @@ const fileChangeHtmlOutputPayload = (
     | { filePath: string; slug: string; createdAt: number }
     | null = null;
   for (const event of toolEvents) {
-    // Tool results (orchestrator/general writes) AND agent-completed events
-    // (the auto "finishing up" canvas folded into producedFiles) both carry
-    // html-output records.
-    if (!isToolResult(event) && !isAgentCompletedEvent(event)) continue;
+    // Orchestrator-DIRECT html writes only. Delegated-agent `agent-completed`
+    // events (which may fold an auto "finishing up" canvas into producedFiles)
+    // are excluded — that canvas surfaces as a pill on the agent's completion
+    // card, not as an inline orchestrator artifact.
+    if (!isToolResult(event)) continue;
     if ((event.payload as { error?: unknown }).error) continue;
     for (const record of [
       ...fileChangesForResult(event),
