@@ -245,14 +245,6 @@ const SYNTHESIZABLE_GATEWAY_PROVIDERS = new Set<string>([
 ]);
 
 /**
- * Floor for the context window of a synthesized gateway model. The template
- * we clone is an arbitrary registry entry (whichever sorts first), so its
- * window says nothing about the actual model; a small inherited value would
- * make compaction/overflow logic truncate history far too early.
- */
-const SYNTHESIZED_GATEWAY_CONTEXT_WINDOW_FLOOR = 200_000;
-
-/**
  * Build a routable model for `modelId` by cloning the gateway's registry
  * template — which carries the `api`, `baseUrl`, `headers`, and `compat`
  * needed to actually make the request, none of which models.dev provides.
@@ -264,8 +256,9 @@ const SYNTHESIZED_GATEWAY_CONTEXT_WINDOW_FLOOR = 200_000;
  * `buildBaseOptions` turns `model.maxTokens` into a hard `max_tokens` cap on
  * every request. For a reasoning model that cap can be consumed entirely by
  * thinking, truncating the run before any visible text is produced. Setting
- * `maxTokens: 0` makes `buildBaseOptions` omit the cap and lets the gateway
- * (which owns the id space) enforce the model's real limit.
+ * `maxTokens: 0` makes `buildBaseOptions` omit the cap (the gateway enforces
+ * the real limit), and a generous `contextWindow` floor keeps downstream
+ * compaction/overflow from truncating based on the cloned window.
  */
 const synthesizeGatewayModelFromTemplate = (
   registryProvider: string,
@@ -279,10 +272,7 @@ const synthesizeGatewayModelFromTemplate = (
     id: modelId,
     name: modelId,
     maxTokens: 0,
-    contextWindow: Math.max(
-      template.contextWindow,
-      SYNTHESIZED_GATEWAY_CONTEXT_WINDOW_FLOOR,
-    ),
+    contextWindow: Math.max(template.contextWindow, 200_000),
   };
 };
 
