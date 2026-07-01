@@ -10,6 +10,7 @@ import {
   runGitWithEnvStatus,
   toTrimmedString,
 } from "./exec.js";
+import { withRepoCommitLock } from "./commit-lock.js";
 import { getGitHead } from "./log.js";
 
 /**
@@ -222,10 +223,16 @@ export const commitGitMessage = async (
   if (trailerLines.length > 0) {
     commitArgs.push("-m", trailerLines.join("\n"));
   }
-  if (paths.length > 0) {
-    return await commitPathScopedChanges(args.repoRoot, paths, commitArgs);
-  }
+  // Serialize the ref-updating region per repo so concurrent agent commits
+  // (all in the shared worker process) queue instead of colliding on the HEAD
+  // ref lock. The staged-changes checks above are read-only and safe outside
+  // the lock; only the commit + HEAD read need the critical section.
+  return await withRepoCommitLock(args.repoRoot, async () => {
+    if (paths.length > 0) {
+      return await commitPathScopedChanges(args.repoRoot, paths, commitArgs);
+    }
 
-  await runGit(args.repoRoot, commitArgs);
-  return await getGitHead(args.repoRoot);
+    await runGit(args.repoRoot, commitArgs);
+    return await getGitHead(args.repoRoot);
+  });
 };
