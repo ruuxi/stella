@@ -35,6 +35,18 @@ describe("native Anthropic model registry", () => {
     expect(findModel("claude-opus-4-7")?.thinkingLevelMap?.xhigh).toBe("xhigh");
     expect(findModel("claude-opus-4-8")?.thinkingLevelMap?.xhigh).toBe("xhigh");
   });
+
+  it("includes Claude Fable 5 with adaptive-thinking capability", () => {
+    // Fable 5 rejects budget-based `thinking.type=enabled` — Anthropic returns
+    // a 400 telling callers to use `thinking.type.adaptive` + effort. The
+    // native API id is exactly `claude-fable-5` (verified against
+    // GET /v1/models); adaptive effort `max` is accepted.
+    const model = findModel("claude-fable-5");
+    expect(model, "expected claude-fable-5 in the native anthropic registry").toBeDefined();
+    expect(model?.api).toBe("anthropic-messages");
+    expect(model?.reasoning).toBe(true);
+    expect(model?.thinkingLevelMap?.xhigh).toBe("max");
+  });
 });
 
 describe("claude-opus-4-8 permits reasoning for a direct sub-agent route", () => {
