@@ -13,6 +13,7 @@ import {
   sanitizeToolVisibleText,
 } from "../tools/safety.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
+import { formatRuntimeThreadStatusSuffix } from "../runtime-threads.js";
 import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
@@ -312,7 +313,12 @@ const readChronicleFiles = async (stellaDataDir: string): Promise<string> => {
     : "No Chronicle summaries found.";
 };
 
-const formatActiveThreads = (
+/**
+ * The recall agent's eager "# Active Agent Threads" section: the resumable
+ * threads for this conversation with their live active/paused state, so a
+ * status question ("are my tasks still running?") is answerable directly.
+ */
+export const formatActiveThreads = (
   store: Pick<ContextLookupStore, "listActiveThreads">,
   conversationId: string,
 ): string => {
@@ -322,7 +328,10 @@ const formatActiveThreads = (
     .map((thread) => {
       const summary = thread.summary?.trim();
       return [
-        `- ${thread.threadId}`,
+        // Live active/paused state + last-active recency from the same
+        // runtime signal as the roster, so a Recall query like "are my
+        // in-progress tasks still running?" gets a real answer.
+        `- ${thread.threadId} (${formatRuntimeThreadStatusSuffix(thread)})`,
         `  description: ${thread.description?.trim() || "No description recorded"}`,
         ...(summary ? [`  summary: ${summary}`] : []),
       ].join("\n");
@@ -400,7 +409,10 @@ export const formatThreadSearch = (
     .map((thread) => {
       const summary = thread.summary?.trim().replace(/\s+/g, " ").slice(0, 300);
       return [
-        `- ${thread.threadId} (resumable)`,
+        // Same live active/paused signal and last-active recency as the
+        // orchestrator's "# Other Threads" roster, so a Recall query about
+        // thread status answers with real state instead of a flat label.
+        `- ${thread.threadId} (${formatRuntimeThreadStatusSuffix(thread)})`,
         thread.description?.trim()
           ? `  description: ${thread.description.trim()}`
           : "",
