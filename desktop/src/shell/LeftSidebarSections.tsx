@@ -533,13 +533,15 @@ export function LeftSidebarSections({
   }, [allTasks, query]);
 
   // Running agents are no longer filtered out — they list alongside finished
-  // ones. Their position is pinned to the order in which each row first
-  // showed up as running (stable insertion order) rather than a live field:
-  // sorting by `startedAtMs` re-shuffled the list because that value drifts
-  // forward once an agent's original `agent-started` event ages out of the
-  // rolling activity window, so a still-running row would climb on every
-  // streamed update. A row only leaves this list — and moves into the done
-  // section — when it finishes or errors out.
+  // ones, newest at the top. Each row is pinned to a frozen index captured
+  // the first time it showed up as running, then rendered newest-first
+  // (descending index): a newly-started agent prepends at the top while the
+  // existing running rows keep their relative order and shift down by one.
+  // Sorting by a live field like `startedAtMs` instead re-shuffled the list,
+  // because that value drifts forward once an agent's original `agent-started`
+  // event ages out of the rolling activity window — so a still-running row
+  // would climb on every streamed update. A row only leaves this list — and
+  // moves into the done section — when it finishes or errors out.
   const runningOrderRef = useRef<FirstSeenOrder>(EMPTY_FIRST_SEEN_ORDER);
   const runningRows = useMemo(() => {
     const running = activityRows.filter(
@@ -549,6 +551,7 @@ export function LeftSidebarSections({
       running,
       activityRowId,
       runningOrderRef.current,
+      true,
     );
     runningOrderRef.current = state;
     return ordered.slice(0, caps.activity);
