@@ -30,6 +30,9 @@ export type MobileAgentWorkPayload = {
 
 /** What the mobile sync transport can carry inline under a message. */
 export type MobileSyncArtifact = DisplayPayload | MobileAgentWorkPayload;
+export type MobileSyncArtifactEntry =
+  | MobileSyncArtifact
+  | { id: string; payload: MobileSyncArtifact };
 
 /**
  * One settled tool call, projected for the mobile inline tool-activity trace.
@@ -76,7 +79,7 @@ export type LocalChatSyncMessageWithArtifacts = {
   timestamp: number;
   requestId?: string;
   deviceId?: string;
-  artifacts?: MobileSyncArtifact[];
+  artifacts?: MobileSyncArtifactEntry[];
   /** Settled tool calls for this turn, oldest first (assistant rows only). */
   toolSteps?: MobileToolStep[];
   /** Background tasks spawned by this turn (collected into the activity tray). */
@@ -510,11 +513,16 @@ const buildSettledAtMsById = (
  * turn) so a thread reused via `send_input` doesn't inherit a prior run's
  * completion. Returns null for turns that started no background work.
  */
+const agentWorkArtifactId = (agentIds: readonly string[]): string => {
+  const key = agentIds.map((id) => id.trim()).filter(Boolean).sort().join(",");
+  return key ? `agent-work:${key}` : "agent-work";
+};
+
 const deriveAgentWorkPayload = (
   message: Pick<ArtifactMessageRecord, "toolEvents">,
   settledAtMsById: ReadonlyMap<string, number>,
   nowMs: number,
-): MobileAgentWorkPayload | null => {
+): { id: string; payload: MobileAgentWorkPayload } | null => {
   const threadIds: string[] = [];
   const descriptions: Record<string, string> = {};
   const spawnedAtMs: Record<string, number> = {};
@@ -570,13 +578,16 @@ const deriveAgentWorkPayload = (
   }
 
   return {
-    kind: "agent-work",
-    state,
-    total,
-    completed,
-    title,
-    subtitle,
-    createdAt,
+    id: agentWorkArtifactId(threadIds),
+    payload: {
+      kind: "agent-work",
+      state,
+      total,
+      completed,
+      title,
+      subtitle,
+      createdAt,
+    },
   };
 };
 
@@ -935,7 +946,7 @@ export const buildMobileSyncMessages = (
     // Inline the agent card on the assistant turn that spawned it. For a
     // fire-and-forget turn (no assistant message — the start event lands on
     // the user_message), it's emitted as its own assistant bubble below.
-    const artifacts: MobileSyncArtifact[] =
+    const artifacts: MobileSyncArtifactEntry[] =
       role === "assistant" && agentWork
         ? [...fileArtifacts, agentWork]
         : fileArtifacts;

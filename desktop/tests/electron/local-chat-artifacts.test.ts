@@ -144,12 +144,15 @@ describe("local chat mobile artifacts", () => {
       text: "On it",
       artifacts: [
         {
-          kind: "agent-work",
-          state: "running",
-          total: 1,
-          completed: 0,
-          title: "Book flights",
-          subtitle: "Working in background",
+          id: "agent-work:t1",
+          payload: {
+            kind: "agent-work",
+            state: "running",
+            total: 1,
+            completed: 0,
+            title: "Book flights",
+            subtitle: "Working in background",
+          },
         },
       ],
     });
@@ -183,12 +186,15 @@ describe("local chat mobile artifacts", () => {
     );
 
     expect(rows[0]?.artifacts?.[0]).toMatchObject({
-      kind: "agent-work",
-      state: "done",
-      total: 1,
-      completed: 1,
-      title: "Book flights",
-      subtitle: "Finished",
+      id: "agent-work:t1",
+      payload: {
+        kind: "agent-work",
+        state: "done",
+        total: 1,
+        completed: 1,
+        title: "Book flights",
+        subtitle: "Finished",
+      },
     });
   });
 
@@ -220,12 +226,15 @@ describe("local chat mobile artifacts", () => {
     );
 
     expect(rows[0]?.artifacts?.[0]).toMatchObject({
-      kind: "agent-work",
-      state: "running",
-      total: 2,
-      completed: 0,
-      title: "Working on 2 tasks",
-      subtitle: "0 of 2 done",
+      id: "agent-work:t1,t2",
+      payload: {
+        kind: "agent-work",
+        state: "running",
+        total: 2,
+        completed: 0,
+        title: "Working on 2 tasks",
+        subtitle: "0 of 2 done",
+      },
     });
   });
 
@@ -339,12 +348,18 @@ describe("local chat mobile artifacts", () => {
     // The original card saw a completion at/after its spawn → done. The
     // reactivation card's only completion predates its spawn → still running.
     expect(a1?.artifacts?.[0]).toMatchObject({
-      kind: "agent-work",
-      state: "done",
+      id: "agent-work:t1",
+      payload: {
+        kind: "agent-work",
+        state: "done",
+      },
     });
     expect(a3?.artifacts?.[0]).toMatchObject({
-      kind: "agent-work",
-      state: "running",
+      id: "agent-work:t1",
+      payload: {
+        kind: "agent-work",
+        state: "running",
+      },
     });
   });
 
@@ -426,7 +441,14 @@ describe("local chat mobile artifacts", () => {
     expect(rows[1]).toMatchObject({
       role: "assistant",
       artifacts: [
-        { kind: "agent-work", state: "running", title: "Book flights" },
+        {
+          id: "agent-work:t1",
+          payload: {
+            kind: "agent-work",
+            state: "running",
+            title: "Book flights",
+          },
+        },
       ],
     });
   });
