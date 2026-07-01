@@ -72,6 +72,14 @@ export const LoaderCircle = createIcon("loader-circle", <path d="M20.25 12A8.25 
 
 export const Circle = createIcon("circle", <circle cx="12" cy="12" r="8.25" />);
 
+export const CircleDot = createIcon(
+  "circle-dot",
+  <>
+    <circle cx="12" cy="12" r="8.25" />
+    <circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none" />
+  </>,
+);
+
 export const AlertCircle = createIcon(
   "alert-circle",
   <>

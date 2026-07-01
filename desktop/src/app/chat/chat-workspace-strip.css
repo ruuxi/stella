@@ -262,16 +262,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* Reserve the glyph's footprint even when it's empty (running rows carry
-     no icon — their shimmer is the working tell) so the label lines up with
-     the settled rows below. Matches the 23px indent used by the expanded
-     detail sections (15px slot + 8px button gap). */
+  /* Reserve the glyph's footprint so every row's label lines up. Matches the
+     23px indent used by the expanded detail sections (15px slot + 8px button
+     gap). Running rows show a static "active" dot here; settled rows show
+     their status glyph. */
   width: 15px;
   height: calc(1em * 1.4);
 }
 
 .chat-workspace-strip__task-icon {
   color: var(--text-weak);
+}
+
+.chat-workspace-strip__task-icon--running {
+  color: var(--primary);
 }
 
 .chat-workspace-strip__task-icon--done {
