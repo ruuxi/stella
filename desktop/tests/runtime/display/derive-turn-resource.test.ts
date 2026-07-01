@@ -249,6 +249,27 @@ describe("deriveTurnResource", () => {
     ).toBeNull();
   });
 
+  it("does NOT feed agent-completed fileChanges into collectTurnSourceDiffPayloads", () => {
+    expect(
+      collectTurnSourceDiffPayloads(
+        [
+          event({
+            _id: "agent-1",
+            type: "agent-completed",
+            timestamp: 5,
+            payload: {
+              agentId: "agent-1",
+              fileChanges: [
+                { path: "/repo/src/main.ts", kind: { type: "update" } },
+              ],
+            },
+          }),
+        ],
+        { developerResourcesEnabled: true },
+      ),
+    ).toEqual([]);
+  });
+
   it("still surfaces orchestrator-DIRECT tool_result producedFiles inline (unchanged)", () => {
     // The orchestrator ran the tool itself → files ride a `tool_result`
     // event and must keep rendering exactly as before.

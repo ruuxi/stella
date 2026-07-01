@@ -18,6 +18,7 @@ import {
 } from "@/features/chat/lib/derive-turn-resource";
 import {
   buildAgentCompletionSections,
+  buildAgentMetaMap,
   type AgentMeta,
 } from "@/features/chat/lib/agent-completion";
 import { deriveTurnWebSearchResults } from "@/features/chat/lib/derive-turn-web-search";
@@ -268,6 +269,59 @@ export const assistantRowHasNonBackgroundContent = (
   Boolean(row.toolActivity) ||
   (row.agentCompletion?.sections.length ?? 0) > 0 ||
   Boolean(row.customSlot);
+
+/**
+ * Reconcile a completion that surfaces on more than one row. During the
+ * SQLite/stream handoff the same `agent-completed` event can briefly be
+ * projected onto both the user-message fallback row and the assistant row,
+ * drawing two identical completion cards. Key each section by `agentId` +
+ * `completedAtMs`: the same pair on two rows is the same completion (the
+ * latest row wins, mirroring the background-work `latestOwnerByThread`
+ * duplicated handling); a different `completedAtMs` is a genuine `send_input`
+ * re-run's later completion and both stay. Redundant copies strip their
+ * duplicated sections and the row is marked dropped when nothing else
+ * remains. Mutates `rows` / `droppedRowIndices` in place (same contract as
+ * the background-work pass it sits beside).
+ */
+export const dedupeAgentCompletionRows = (
+  rows: EventRowViewModel[],
+  droppedRowIndices: Set<number>,
+): void => {
+  const completionKey = (agentId: string, completedAtMs: number) =>
+    `${agentId}\u001f${completedAtMs}`;
+  const latestCompletionOwner = new Map<string, number>();
+  rows.forEach((row, index) => {
+    if (row.kind !== "assistant" || !row.agentCompletion) return;
+    for (const section of row.agentCompletion.sections) {
+      latestCompletionOwner.set(
+        completionKey(section.agentId, section.completedAtMs),
+        index,
+      );
+    }
+  });
+  rows.forEach((row, index) => {
+    if (row.kind !== "assistant" || !row.agentCompletion) return;
+    const surviving = row.agentCompletion.sections.filter(
+      (section) =>
+        latestCompletionOwner.get(
+          completionKey(section.agentId, section.completedAtMs),
+        ) === index,
+    );
+    if (surviving.length === row.agentCompletion.sections.length) return;
+    if (surviving.length > 0) {
+      row.agentCompletion = { sections: surviving };
+      return;
+    }
+    const { agentCompletion: _omitCompletion, ...rest } = row;
+    if (assistantRowHasNonBackgroundContent(rest) || rest.backgroundWork) {
+      rows[index] = rest;
+    } else {
+      // Synthetic row whose sole content was the duplicated completion —
+      // drop it so the canonical copy is the only render.
+      droppedRowIndices.add(index);
+    }
+  });
+};
 
 const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
   row.text.trim().length === 0 &&
@@ -524,21 +578,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
 
       let contribution = contributionByToolEvents.get(toolEvents);
       if (!contribution) {
-        const pairs: Array<readonly [string, AgentMeta]> = [];
-        for (const toolEvent of toolEvents) {
-          if (!isAgentStartedEvent(toolEvent)) continue;
-          const agentId = asNonEmptyString(toolEvent.payload.agentId);
-          if (!agentId) continue;
-          const meta: AgentMeta = {};
-          const description = asNonEmptyString(toolEvent.payload.description);
-          if (description) meta.description = description;
-          const agentType = asNonEmptyString(toolEvent.payload.agentType);
-          if (agentType) meta.agentType = agentType;
-          const groupLabel = asNonEmptyString(toolEvent.payload.groupLabel);
-          if (groupLabel) meta.groupLabel = groupLabel;
-          pairs.push([agentId, meta] as const);
-        }
-        contribution = pairs;
+        // Same fold as the pure derivation — one implementation, cached per
+        // toolEvents array reference.
+        contribution = [...buildAgentMetaMap(toolEvents).entries()];
         contributionByToolEvents.set(toolEvents, contribution);
       }
 
@@ -730,12 +772,12 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           agentMetaById,
         );
         if (userBackgroundWork || userAgentCompletion.length > 0) {
-          const bgKey = `assistant-bgwork-${message._id}`;
+          const activityKey = `assistant-agent-activity-${message._id}`;
           produced.push({
             kind: "assistant",
-            id: bgKey,
+            id: activityKey,
             text: "",
-            cacheKey: bgKey,
+            cacheKey: activityKey,
             replyToUserMessageId: message._id,
             ...(userBackgroundWork
               ? { backgroundWork: userBackgroundWork }
@@ -796,7 +838,10 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         // Delegated-agent completion card: the "done + pills" surface anchored
         // to the row this turn's `agent-completed` events land on (the
         // chronological completion point). Append-only by construction — each
-        // completion carries only its run's files on its own row.
+        // completion carries only its run's files on its own row. Deliberately
+        // NOT gated on `showInlineArtifacts`: an agent finishing mid-stream
+        // should reveal its files at that moment (like the other lifecycle
+        // receipts), not wait for the orchestrator's text to finalize.
         const agentCompletionSections = buildAgentCompletionSections(
           toolEvents,
           agentMetaById,
@@ -854,17 +899,18 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       }
 
       // Cache the projection for reuse on the next delta, EXCEPT rows that
-      // carry a background-work card: those are mutated by the dedup pass
-      // below and their completion subset depends on the per-frame completion
-      // map, so they must be rebuilt each frame. Everything else is a pure
-      // function of the (stable) message identity + dev flag.
-      const hasBackgroundWork = produced.some(
+      // carry a background-work or agent-completion card: those are mutated
+      // by the dedup pass below and depend on per-frame cross-row inputs
+      // (the completion map / the agent-meta map), so they must be rebuilt
+      // each frame. Everything else is a pure function of the (stable)
+      // message identity + dev flag.
+      const hasAgentActivityCard = produced.some(
         (producedRow) =>
           producedRow.kind === "assistant" &&
           (Boolean(producedRow.backgroundWork) ||
             (producedRow.agentCompletion?.sections.length ?? 0) > 0),
       );
-      if (hasBackgroundWork) {
+      if (hasAgentActivityCard) {
         cacheByMessage.delete(message);
       } else {
         cacheByMessage.set(message, { rows: produced, indexWithinTurn });
@@ -983,6 +1029,8 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           : {}),
       };
     });
+
+    dedupeAgentCompletionRows(computed, droppedRowIndices);
 
     const deduped =
       droppedRowIndices.size > 0

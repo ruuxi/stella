@@ -271,12 +271,14 @@ const agentCompletionEqual = (
     const bs = b.sections[i]!;
     if (as.agentId !== bs.agentId) return false;
     if (as.title !== bs.title) return false;
+    if (as.completedAtMs !== bs.completedAtMs) return false;
     if (as.files.length !== bs.files.length) return false;
     for (let j = 0; j < as.files.length; j += 1) {
       const af = as.files[j]!;
       const bf = bs.files[j]!;
       if (af.path !== bf.path) return false;
       if (af.timestamp !== bf.timestamp) return false;
+      if (af.payload.kind !== bf.payload.kind) return false;
     }
   }
   return true;
