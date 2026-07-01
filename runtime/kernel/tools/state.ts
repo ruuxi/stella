@@ -10,7 +10,9 @@ import type {
 } from "./types.js";
 import {
   THREAD_GROUP_KEY_PREFIX,
+  deriveRuntimeThreadLiveState,
   formatRuntimeThreadAge,
+  runtimeThreadLastActiveAt,
   type RuntimeThreadRecord,
 } from "../runtime-threads.js";
 import { AGENT_PAUSE_CANCEL_REASON } from "../agents/local-agent-manager.js";
@@ -75,15 +77,27 @@ export const getAvailableSubagentTypes = (
 };
 
 const buildOtherThreadsResult = (
-  threads: Array<Pick<RuntimeThreadRecord, "threadId" | "description" | "lastUsedAt">>,
+  threads: Array<
+    Pick<
+      RuntimeThreadRecord,
+      | "threadId"
+      | "description"
+      | "lastUsedAt"
+      | "agentStatus"
+      | "agentUpdatedAt"
+    >
+  >,
   currentThreadId: string,
 ) =>
   threads
     .filter((thread) => thread.threadId !== currentThreadId)
     .map((thread) => ({
       thread_id: thread.threadId,
-      availability: "resumable",
-      last_used: formatRuntimeThreadAge(thread.lastUsedAt),
+      // Live execution state from the same runtime signal as the "# Other
+      // Threads" roster: "active" = executing a turn now, "paused" = idle
+      // but resumable via send_input.
+      status: deriveRuntimeThreadLiveState(thread),
+      last_active: formatRuntimeThreadAge(runtimeThreadLastActiveAt(thread)),
       ...(thread.description ? { description: thread.description } : {}),
     }));
 
@@ -316,6 +330,7 @@ export const handleSpawnAgent = async (
     threadId: task.id,
     description: task.description,
     lastUsedAt: task.completedAt ?? task.startedAt,
+    agentStatus: task.status,
   }));
   const otherThreads = buildOtherThreadsResult(activeThreads, id);
   return {
