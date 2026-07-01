@@ -25,14 +25,16 @@ const task = (id: string, startedAtMs: number): ActivityRow => ({
 const activityRowId = (row: ActivityRow): string =>
   row.kind === "task" ? row.task.id : row.group.groupKey;
 
-describe("orderByFirstSeen", () => {
-  it("keeps first-seen order regardless of a live-updating sort field", () => {
+describe("orderByFirstSeen (newest-at-top)", () => {
+  it("renders newest-first and ignores a live-updating sort field", () => {
     const first = orderByFirstSeen(
       [{ id: "a" }, { id: "b" }, { id: "c" }],
       keyOf,
       EMPTY_FIRST_SEEN_ORDER,
+      true,
     );
-    expect(first.ordered.map(keyOf)).toEqual(["a", "b", "c"]);
+    // c was seen last → it sits at the top; a (seen first) is at the bottom.
+    expect(first.ordered.map(keyOf)).toEqual(["c", "b", "a"]);
 
     // The upstream feed re-orders the same items (e.g. because a recomputed
     // `startedAtMs` drifted) — the frozen order must ignore that.
@@ -40,64 +42,81 @@ describe("orderByFirstSeen", () => {
       [{ id: "c" }, { id: "a" }, { id: "b" }],
       keyOf,
       first.state,
+      true,
     );
-    expect(second.ordered.map(keyOf)).toEqual(["a", "b", "c"]);
+    expect(second.ordered.map(keyOf)).toEqual(["c", "b", "a"]);
   });
 
-  it("appends newly-seen items at the end without moving existing ones", () => {
-    const first = orderByFirstSeen(
-      [{ id: "a" }, { id: "b" }],
-      keyOf,
-      EMPTY_FIRST_SEEN_ORDER,
-    );
-    const second = orderByFirstSeen(
-      [{ id: "b" }, { id: "d" }, { id: "a" }, { id: "c" }],
-      keyOf,
-      first.state,
-    );
-    // a,b hold their slots; c,d appear after them in encounter order.
-    expect(second.ordered.map(keyOf)).toEqual(["a", "b", "d", "c"]);
-  });
-
-  it("prunes dropped keys so a re-activated key re-enters at the end", () => {
+  it("prepends a newly-started row and keeps existing rows' relative order", () => {
     const first = orderByFirstSeen(
       [{ id: "a" }, { id: "b" }, { id: "c" }],
       keyOf,
       EMPTY_FIRST_SEEN_ORDER,
+      true,
+    );
+    expect(first.ordered.map(keyOf)).toEqual(["c", "b", "a"]);
+
+    // A new agent "d" starts; the feed also re-orders the survivors.
+    const second = orderByFirstSeen(
+      [{ id: "b" }, { id: "d" }, { id: "a" }, { id: "c" }],
+      keyOf,
+      first.state,
+      true,
+    );
+    // d prepends at the top; c,b,a keep their prior relative order below it,
+    // each shifted down by one.
+    expect(second.ordered.map(keyOf)).toEqual(["d", "c", "b", "a"]);
+  });
+
+  it("prunes dropped keys so a re-activated key re-enters at the top", () => {
+    const first = orderByFirstSeen(
+      [{ id: "a" }, { id: "b" }, { id: "c" }],
+      keyOf,
+      EMPTY_FIRST_SEEN_ORDER,
+      true,
     );
     // "a" finishes and leaves the running set.
     const second = orderByFirstSeen(
       [{ id: "b" }, { id: "c" }],
       keyOf,
       first.state,
+      true,
     );
-    expect(second.ordered.map(keyOf)).toEqual(["b", "c"]);
+    expect(second.ordered.map(keyOf)).toEqual(["c", "b"]);
     expect(second.state.order.has("a")).toBe(false);
-    // "a" comes back (send_input re-activation): it lands after b,c.
+    // "a" comes back (send_input re-activation): treated as newest → top.
     const third = orderByFirstSeen(
       [{ id: "a" }, { id: "b" }, { id: "c" }],
       keyOf,
       second.state,
+      true,
     );
-    expect(third.ordered.map(keyOf)).toEqual(["b", "c", "a"]);
+    expect(third.ordered.map(keyOf)).toEqual(["a", "c", "b"]);
   });
 
   it("pins running activity rows even when startedAtMs drifts forward", () => {
     // Reproduces the sidebar bug: the activity window rolls, so the derived
-    // startedAtMs for still-running rows keeps increasing. Newest-first
-    // sorting would reorder them; first-seen order does not.
+    // startedAtMs for still-running rows keeps increasing. Sorting by that
+    // field would reorder them; frozen first-seen order does not.
     const initial = [task("agent-1", 100), task("agent-2", 200)];
     const first = orderByFirstSeen(
       initial,
       activityRowId,
       EMPTY_FIRST_SEEN_ORDER,
+      true,
     );
-    expect(first.ordered.map(activityRowId)).toEqual(["agent-1", "agent-2"]);
+    // agent-2 started later → top; agent-1 stays below.
+    expect(first.ordered.map(activityRowId)).toEqual(["agent-2", "agent-1"]);
 
     // agent-1's started event ages out; its startedAtMs is recomputed higher
-    // than agent-2's. The feed order flips, but the pinned order does not.
+    // than agent-2's and the feed order flips, but the pinned order does not.
     const drifted = [task("agent-2", 200), task("agent-1", 300)];
-    const second = orderByFirstSeen(drifted, activityRowId, first.state);
-    expect(second.ordered.map(activityRowId)).toEqual(["agent-1", "agent-2"]);
+    const second = orderByFirstSeen(
+      drifted,
+      activityRowId,
+      first.state,
+      true,
+    );
+    expect(second.ordered.map(activityRowId)).toEqual(["agent-2", "agent-1"]);
   });
 });
