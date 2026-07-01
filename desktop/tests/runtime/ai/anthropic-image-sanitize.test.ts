@@ -7,7 +7,12 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import { convertMessages } from "../../../../runtime/ai/providers/anthropic.js";
-import { sanitizeInlineImagePayload } from "../../../../runtime/ai/utils/image-payload.js";
+import {
+	detectImageMediaType,
+	isCompleteImage,
+	MAX_IMAGE_BASE64_BYTES,
+	sanitizeInlineImagePayload,
+} from "../../../../runtime/ai/utils/image-payload.js";
 import type { Message, Model } from "../../../../runtime/ai/types.js";
 
 const model: Model<"anthropic-messages"> = {
@@ -37,6 +42,49 @@ const TRUNCATED_PNG_BASE64 = (() => {
 	// Drop the trailing IEND chunk (and part of IDAT) to truncate the stream.
 	return full.subarray(0, full.length - 16).toString("base64");
 })();
+
+// A complete, valid PNG with exporter-style metadata appended AFTER the IEND
+// terminator — the shape that an exact last-8-bytes match would false-reject.
+const PNG_WITH_TRAILING_BASE64 = (() => {
+	const full = Buffer.from(VALID_PNG_BASE64, "base64");
+	const trailer = Buffer.from([0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77]);
+	return Buffer.concat([full, trailer]).toString("base64");
+})();
+
+// A minimal complete JPEG (SOI + APP0/JFIF + EOI) with padding after the EOI
+// marker — cameras/exporters commonly append bytes after 0xFFD9.
+const JPEG_WITH_TRAILING_BASE64 = (() => {
+	const jpeg = Buffer.from([
+		0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
+		0xff, 0xd9,
+	]);
+	const trailer = Buffer.from([0x00, 0x00, 0x00, 0x00]);
+	return Buffer.concat([jpeg, trailer]);
+})();
+
+// A minimal complete WEBP: RIFF preamble whose declared size matches the bytes
+// that follow it.
+const VALID_WEBP_BYTES = (() => {
+	const bytes = Buffer.alloc(20);
+	bytes.write("RIFF", 0, "ascii");
+	bytes.writeUInt32LE(bytes.length - 8, 4); // declared payload size
+	bytes.write("WEBP", 8, "ascii");
+	return bytes;
+})();
+
+// Build a PNG-shaped buffer of an exact base64 length: valid PNG signature at
+// the head and a real IEND+CRC terminator at the tail, so only the size gate
+// can reject it.
+const pngOfBase64Length = (targetBase64Len: number): string => {
+	const binaryLen = Math.floor((targetBase64Len / 4) * 3);
+	const buf = Buffer.alloc(binaryLen, 0x00);
+	const full = Buffer.from(VALID_PNG_BASE64, "base64");
+	full.copy(buf, 0); // PNG signature + IHDR at the head
+	// IEND chunk (length + "IEND" + CRC) as the final 12 bytes.
+	full.subarray(full.length - 12).copy(buf, buf.length - 12);
+	const data = buf.toString("base64");
+	return data;
+};
 
 const OMISSION_NOTE = "[Image omitted:";
 
@@ -150,6 +198,21 @@ describe("anthropic image sanitization (tool-produced images)", () => {
 		expect((image!.source as { media_type: string }).media_type).toBe("image/png");
 	});
 
+	it("passes a valid image with trailing bytes after its terminator (no false-reject)", () => {
+		const messages: Message[] = withToolCall([
+			{ type: "text", text: "here is the screenshot" },
+			{ type: "image", data: PNG_WITH_TRAILING_BASE64, mimeType: "image/png" },
+		]);
+
+		const params = convertMessages(messages, model, false);
+		const blocks = firstToolResult(params).content as Array<
+			TextBlockParam | ImageBlockParam
+		>;
+		const image = blocks.find((b): b is ImageBlockParam => b.type === "image");
+		expect(image, "PNG with post-IEND metadata must not be dropped").toBeDefined();
+		expect((image!.source as { media_type: string }).media_type).toBe("image/png");
+	});
+
 	it("does not regress the user-attached image path", () => {
 		const messages: Message[] = [
 			{
@@ -200,5 +263,71 @@ describe("sanitizeInlineImagePayload (unit)", () => {
 		png.copy(oversized, 0);
 		png.subarray(png.length - 12).copy(oversized, oversized.length - 12);
 		expect(sanitizeInlineImagePayload(oversized.toString("base64"), "image/png")).toBeNull();
+	});
+
+	it("keeps a valid image whose bytes carry trailing data after the terminator", () => {
+		expect(sanitizeInlineImagePayload(PNG_WITH_TRAILING_BASE64, "image/png")).toEqual({
+			mediaType: "image/png",
+			data: PNG_WITH_TRAILING_BASE64,
+		});
+		const jpeg = JPEG_WITH_TRAILING_BASE64.toString("base64");
+		expect(sanitizeInlineImagePayload(jpeg, "image/jpeg")).toEqual({
+			mediaType: "image/jpeg",
+			data: jpeg,
+		});
+	});
+
+	it("enforces the shared 5MB base64 ceiling at its exact boundary", () => {
+		expect(MAX_IMAGE_BASE64_BYTES).toBe(5 * 1024 * 1024);
+
+		// Exactly at the ceiling passes (`>` comparison, not `>=`).
+		const atLimit = pngOfBase64Length(MAX_IMAGE_BASE64_BYTES);
+		expect(atLimit.length).toBe(MAX_IMAGE_BASE64_BYTES);
+		expect(sanitizeInlineImagePayload(atLimit, "image/png")).not.toBeNull();
+
+		// One base64 quantum over the ceiling is rejected.
+		const overLimit = pngOfBase64Length(MAX_IMAGE_BASE64_BYTES + 4);
+		expect(overLimit.length).toBeGreaterThan(MAX_IMAGE_BASE64_BYTES);
+		expect(sanitizeInlineImagePayload(overLimit, "image/png")).toBeNull();
+	});
+});
+
+describe("isCompleteImage (terminator scanning)", () => {
+	it("accepts terminators found within the bounded trailing window", () => {
+		const png = Buffer.from(PNG_WITH_TRAILING_BASE64, "base64");
+		expect(isCompleteImage(png, "image/png")).toBe(true);
+		expect(isCompleteImage(JPEG_WITH_TRAILING_BASE64, "image/jpeg")).toBe(true);
+
+		// GIF: header + trailer (0x3B) + a couple trailing bytes within window.
+		const gif = Buffer.concat([
+			Buffer.from("GIF89a", "ascii"),
+			Buffer.from([0x00, 0x00, 0x3b, 0x00, 0x00]),
+		]);
+		expect(isCompleteImage(gif, "image/gif")).toBe(true);
+	});
+
+	it("still rejects genuinely truncated streams (no terminator present)", () => {
+		const truncatedPng = Buffer.from(TRUNCATED_PNG_BASE64, "base64");
+		expect(isCompleteImage(truncatedPng, "image/png")).toBe(false);
+
+		const truncatedJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+		expect(isCompleteImage(truncatedJpeg, "image/jpeg")).toBe(false);
+	});
+
+	it("reads the WEBP declared size as unsigned (no signed <<24 overflow)", () => {
+		expect(detectImageMediaType(VALID_WEBP_BYTES)).toBe("image/webp");
+		expect(isCompleteImage(VALID_WEBP_BYTES, "image/webp")).toBe(true);
+
+		// Declared size with bit 31 set (~2GiB): read signed it would be a large
+		// negative number and `bytes.length >= declared + 8` would wrongly pass.
+		// Read unsigned it is huge, so a tiny buffer is correctly incomplete.
+		const bogus = Buffer.alloc(20);
+		bogus.write("RIFF", 0, "ascii");
+		bogus[4] = 0x00;
+		bogus[5] = 0x00;
+		bogus[6] = 0x00;
+		bogus[7] = 0x80; // MSB set
+		bogus.write("WEBP", 8, "ascii");
+		expect(isCompleteImage(bogus, "image/webp")).toBe(false);
 	});
 });

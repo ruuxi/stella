@@ -37,15 +37,34 @@ const SUPPORTED_MEDIA_TYPES: readonly SupportedImageMediaType[] = [
 ];
 
 /**
- * Hard ceiling on the base64 payload, matched to Anthropic's documented
- * per-image limit (5MB). Well-behaved callers resize below this at attach
- * time; this is only a last-resort guard for payloads that slipped through.
+ * Single shared ceiling on the base64 payload of an inline image, matched to
+ * Anthropic's documented per-image limit (5MB) — users hit real 400s at that
+ * size. It is enforced against the base64 *string* length (what the API
+ * actually counts), NOT the decoded byte length.
+ *
+ * This is the one source of truth for both boundaries that guard inline
+ * images, so an image can never pass one and then be silently dropped by the
+ * other:
+ *   - the tool-attach gate in kernel/agent-runtime/tool-adapters.ts, and
+ *   - the Anthropic send boundary in providers/anthropic.ts (via
+ *     `sanitizeInlineImagePayload`).
+ *
+ * Well-behaved callers resize below this at attach time; this stays a
+ * last-resort guard for payloads that slipped through.
  */
-const MAX_IMAGE_BASE64_BYTES = 5 * 1024 * 1024;
+export const MAX_IMAGE_BASE64_BYTES = 5 * 1024 * 1024;
 
 const DATA_URL_PREFIX_RE = /^data:([^;,]+)(;base64)?,/i;
 
-/** Detect a supported image media type purely from magic bytes. */
+/**
+ * Detect a supported image media type purely from magic bytes.
+ *
+ * NOTE: this intentionally duplicates `detectImageMimeTypeFromBytes` in
+ * runtime/kernel/shared/image-mime.ts. The `ai` layer must not import from
+ * `kernel`, so the sniffing logic is mirrored rather than shared. Keep the two
+ * in sync — if you add or adjust a format here, mirror it there (and vice
+ * versa) so they don't silently drift.
+ */
 export const detectImageMediaType = (
 	bytes: Uint8Array,
 ): SupportedImageMediaType | null => {
@@ -82,9 +101,52 @@ export const detectImageMediaType = (
 };
 
 /**
+ * Bounded trailing windows for terminator scans (see `tailContainsMarker`).
+ * The distinctive multi-byte markers (PNG's IEND+CRC, JPEG's EOI) tolerate a
+ * wider window without false-accepting a truncated stream; GIF's single-byte
+ * trailer needs a tight window so a cut-off LZW stream (whose bytes can be
+ * anything, incl. 0x3B) doesn't read as complete.
+ */
+const MULTIBYTE_TERMINATOR_SCAN_WINDOW = 256;
+const GIF_TERMINATOR_SCAN_WINDOW = 8;
+
+/**
+ * Scan the trailing `window` bytes for `marker`, matching it anywhere in that
+ * window rather than requiring it to be the exact final bytes. Real, valid
+ * images frequently carry a little data after their terminator (exporter
+ * metadata after a PNG's IEND, padding or an appended thumbnail after a JPEG's
+ * EOI); demanding an exact tail match false-rejects them and drops a good
+ * image to a "[Image omitted]" note. The window stays bounded and we only scan
+ * the tail — a genuinely truncated stream (no terminator present near the end)
+ * is still rejected, so truncation detection isn't weakened.
+ */
+const tailContainsMarker = (
+	bytes: Uint8Array,
+	marker: readonly number[],
+	window: number,
+): boolean => {
+	if (marker.length === 0 || bytes.length < marker.length) return false;
+	const lastStart = bytes.length - marker.length;
+	const earliestStart = Math.max(0, bytes.length - window);
+	for (let i = lastStart; i >= earliestStart; i--) {
+		let matched = true;
+		for (let j = 0; j < marker.length; j++) {
+			if (bytes[i + j] !== marker[j]) {
+				matched = false;
+				break;
+			}
+		}
+		if (matched) return true;
+	}
+	return false;
+};
+
+/**
  * Structural completeness check per format. This is what catches the
  * truncated-screenshot bug: the header is intact but the stream is cut off
- * before its terminator, so the provider can't decode it.
+ * before its terminator, so the provider can't decode it. The terminator is
+ * scanned for within a bounded trailing window (not required to be the exact
+ * final bytes) so valid images with trailing data still pass.
  */
 export const isCompleteImage = (
 	bytes: Uint8Array,
@@ -95,35 +157,31 @@ export const isCompleteImage = (
 			// A complete PNG ends with the IEND chunk: "IEND" + its fixed CRC
 			// (0xAE426082). The chunk carries no data, so the CRC is constant.
 			if (bytes.length < 12) return false;
-			const tail = bytes.slice(bytes.length - 8);
-			return (
-				tail[0] === 0x49 && // I
-				tail[1] === 0x45 && // E
-				tail[2] === 0x4e && // N
-				tail[3] === 0x44 && // D
-				tail[4] === 0xae &&
-				tail[5] === 0x42 &&
-				tail[6] === 0x60 &&
-				tail[7] === 0x82
+			return tailContainsMarker(
+				bytes,
+				[0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82],
+				MULTIBYTE_TERMINATOR_SCAN_WINDOW,
 			);
 		}
 		case "image/jpeg": {
 			// Complete JPEGs end with the EOI marker 0xFFD9.
 			if (bytes.length < 4) return false;
-			return bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
+			return tailContainsMarker(bytes, [0xff, 0xd9], MULTIBYTE_TERMINATOR_SCAN_WINDOW);
 		}
 		case "image/gif": {
 			// Complete GIFs end with the trailer byte 0x3B.
 			if (bytes.length < 6) return false;
-			return bytes[bytes.length - 1] === 0x3b;
+			return tailContainsMarker(bytes, [0x3b], GIF_TERMINATOR_SCAN_WINDOW);
 		}
 		case "image/webp": {
 			// The RIFF header declares the payload size in bytes 4..8 (LE);
 			// the file is complete when it contains that many bytes after the
-			// 8-byte RIFF/size preamble.
+			// 8-byte RIFF/size preamble. Read as unsigned (`>>> 0`) so a
+			// declared size with bit 31 set (>= 2GiB) doesn't come out negative
+			// from the signed `<< 24` and wrongly pass the length check.
 			if (bytes.length < 12) return false;
 			const declared =
-				bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24);
+				(bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24)) >>> 0;
 			return bytes.length >= declared + 8;
 		}
 	}

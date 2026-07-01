@@ -25,6 +25,7 @@ import { formatDimensionNote, resizeImage } from "../shared/image-resize.js";
 import {
   detectImageMediaType,
   isCompleteImage,
+  MAX_IMAGE_BASE64_BYTES,
 } from "../../ai/utils/image-payload.js";
 
 export const STELLA_LOCAL_TOOLS = [
@@ -201,16 +202,6 @@ const STELLA_ATTACH_IMAGE_RE =
 
 type ImageBlock = { type: "image"; mimeType: string; data: string };
 
-/**
- * Per-image cap for vision attachments, measured on the base64 payload.
- * Anthropic rejects any image whose base64 exceeds 10MiB with a fatal
- * 400 that kills the whole turn — so oversized files are never attached
- * raw. `resizeImage` (pi-mono's Photon-based pipeline) normally shrinks
- * anything large well under this; the cap only matters on its null
- * fallback path.
- */
-const MAX_ATTACH_IMAGE_BASE64_BYTES = 10 * 1024 * 1024;
-
 const base64Length = (binaryBytes: number) => Math.ceil(binaryBytes / 3) * 4;
 
 const omittedAttachImageNote = (imgPath: string, binaryBytes: number) =>
@@ -313,9 +304,15 @@ export const extractAttachImageBlocks = async (
         });
         continue;
       }
-      // Over the provider per-image cap: swap the marker for a note rather
-      // than inline an over-cap image that would 400 fatally.
-      if (base64Length(buf.length) > MAX_ATTACH_IMAGE_BASE64_BYTES) {
+      // We already prefer resizing-to-fit above: `resizeImage` shrinks any
+      // large image well under the ceiling, so this raw-attach fallback is
+      // only reached when resize is unavailable (Photon missing) or returned
+      // null. Guard it against the *shared* per-image ceiling
+      // (`MAX_IMAGE_BASE64_BYTES`, the same value the Anthropic send boundary
+      // enforces): swap the marker for a note rather than inline an over-cap
+      // image. Using the shared constant means an image can't pass here and
+      // then be silently dropped at the wire.
+      if (base64Length(buf.length) > MAX_IMAGE_BASE64_BYTES) {
         markerReplacements.push({
           full,
           replacement: omittedAttachImageNote(imgPath, buf.length),
