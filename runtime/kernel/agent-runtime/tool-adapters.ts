@@ -21,6 +21,10 @@ import {
 } from "../tools/safety.js";
 import { resolveImageMimeType } from "../shared/image-mime.js";
 import { formatDimensionNote, resizeImage } from "../shared/image-resize.js";
+import {
+  detectImageMediaType,
+  isCompleteImage,
+} from "../../ai/utils/image-payload.js";
 
 export const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -211,6 +215,9 @@ const base64Length = (binaryBytes: number) => Math.ceil(binaryBytes / 3) * 4;
 const omittedAttachImageNote = (imgPath: string, binaryBytes: number) =>
   `[Image omitted: ${imgPath} is ${(binaryBytes / (1024 * 1024)).toFixed(1)}MB and could not be resized below the inline image size limit.]`;
 
+const unreadableAttachImageNote = (imgPath: string) =>
+  `[Image omitted: ${imgPath} could not be decoded as a valid image (it may be corrupt or truncated) and was skipped.]`;
+
 const normalizeAttachImagePath = (filePath: string) =>
   /^[A-Za-z]:\\\\/.test(filePath) ? filePath.replace(/\\\\/g, "\\") : filePath;
 
@@ -284,10 +291,23 @@ export const extractAttachImageBlocks = async (
         });
         continue;
       }
-      // Resize unavailable (Photon missing or a format it can't decode,
-      // e.g. some GIFs): attach the original when it's under the provider
-      // per-image cap, otherwise swap the marker for a note — an over-cap
-      // image inlined into the request 400s fatally and kills the turn.
+      // Resize unavailable: either Photon is missing (image is likely fine)
+      // OR Photon threw because the bytes can't be decoded — which is exactly
+      // what a truncated/corrupt capture (e.g. a screenshot read mid-write)
+      // looks like. Only attach the raw file when it's a structurally
+      // complete, supported image; a broken payload inlined into the request
+      // 400s fatally ("Could not process image") and, because it lands in
+      // thread history, poisons every subsequent resume.
+      const detected = detectImageMediaType(buf);
+      if (!detected || !isCompleteImage(buf, detected)) {
+        markerReplacements.push({
+          full,
+          replacement: unreadableAttachImageNote(imgPath),
+        });
+        continue;
+      }
+      // Over the provider per-image cap: swap the marker for a note rather
+      // than inline an over-cap image that would 400 fatally.
       if (base64Length(buf.length) > MAX_ATTACH_IMAGE_BASE64_BYTES) {
         markerReplacements.push({
           full,
