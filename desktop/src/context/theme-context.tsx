@@ -44,6 +44,12 @@ interface ThemeReadValue {
    * themes that follow the user's Light/Dark choice.
    */
   forcedMode?: "light" | "dark";
+  /**
+   * Whether the active theme renders flat (gradient-suppressed). True for the
+   * stock Default theme (solid macOS surface in both modes) and for any
+   * `forcedMode`-pinned theme. Undefined-vs-false is coerced to boolean.
+   */
+  flat: boolean;
   gradientMode: GradientMode;
   gradientColor: GradientColor;
   colors: ThemeColors;
@@ -78,6 +84,23 @@ const GRADIENT_COLOR_STORAGE_KEY = "stella-gradient-color";
 
 function getSystemColorMode(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+// The old separate "light"/"dark" themes were `forcedMode`-pinned and are now a
+// single mode-driven "Default" theme. Migrate any stored selection onto Default.
+const LEGACY_FORCED_THEME_IDS = new Set(["light", "dark"]);
+function migrateThemeId<T extends string | null>(id: T): T | string {
+  return id && LEGACY_FORCED_THEME_IDS.has(id) ? "default" : id;
+}
+// The pinned appearance a legacy "light"/"dark" selection was actually showing,
+// so migration can carry it onto the Appearance mode toggle instead of silently
+// flipping the look. Reads the raw stored ids (theme first, then Custom base).
+function readLegacyForcedAppearance(): "light" | "dark" | null {
+  const stored = uiState.getItem(THEME_STORAGE_KEY);
+  if (stored === "light" || stored === "dark") return stored;
+  const base = uiState.getItem(CUSTOM_BASE_STORAGE_KEY);
+  if (base === "light" || base === "dark") return base;
+  return null;
 }
 
 // Module-level single-entry memo for the OKLCH gradient math. The inputs only
@@ -182,9 +205,11 @@ interface PersistedThemeState {
 function useThemePersistence(
   clearPreviews: () => void,
 ): PersistedThemeState {
-  const [themeId, setThemeIdRaw] = useState(() => readStorage(THEME_STORAGE_KEY, defaultTheme.id));
-  const [customBase, setCustomBaseRaw] = useState<string | null>(() => uiState.getItem(CUSTOM_BASE_STORAGE_KEY));
-  const [colorMode, setColorModeRaw] = useState(() => readStorage<ColorMode>(COLOR_MODE_STORAGE_KEY, "light"));
+  const [themeId, setThemeIdRaw] = useState(() => migrateThemeId(readStorage(THEME_STORAGE_KEY, defaultTheme.id)));
+  const [customBase, setCustomBaseRaw] = useState<string | null>(() => migrateThemeId(uiState.getItem(CUSTOM_BASE_STORAGE_KEY)));
+  const [colorMode, setColorModeRaw] = useState<ColorMode>(
+    () => readLegacyForcedAppearance() ?? readStorage<ColorMode>(COLOR_MODE_STORAGE_KEY, "light"),
+  );
   const [gradientMode, setGradientModeRaw] = useState(() => readStorage<GradientMode>(GRADIENT_MODE_STORAGE_KEY, "soft"));
   const [gradientColor, setGradientColorRaw] = useState(() => readStorage<GradientColor>(GRADIENT_COLOR_STORAGE_KEY, "relative"));
   const [systemMode, setSystemMode] = useState<"light" | "dark">(getSystemColorMode);
@@ -208,12 +233,27 @@ function useThemePersistence(
     return () => mq.removeEventListener("change", handler);
   }, []);
 
+  // One-time migration of legacy "light"/"dark" theme selections. The init
+  // state above already reflects the migrated values; here we persist them so
+  // the migration is durable and does not re-fire, carrying the pinned
+  // appearance onto the Appearance mode toggle to preserve the current look.
+  useEffect(() => {
+    const legacy = readLegacyForcedAppearance();
+    if (!legacy) return;
+    const rawTheme = uiState.getItem(THEME_STORAGE_KEY);
+    if (rawTheme === "light" || rawTheme === "dark") uiState.setItem(THEME_STORAGE_KEY, "default");
+    const rawBase = uiState.getItem(CUSTOM_BASE_STORAGE_KEY);
+    if (rawBase === "light" || rawBase === "dark") uiState.setItem(CUSTOM_BASE_STORAGE_KEY, "default");
+    uiState.setItem(COLOR_MODE_STORAGE_KEY, legacy);
+    setColorModeRaw(legacy);
+  }, []);
+
   // Cross-window and cross-host changes arrive as synthetic `storage` events
   // dispatched by the shared UI state client.
   useEffect(() => {
     const handler = (e: StorageEvent) => {
-      if (e.key === THEME_STORAGE_KEY && e.newValue) { setThemeIdRaw(e.newValue); clearPreviews(); }
-      else if (e.key === CUSTOM_BASE_STORAGE_KEY && e.newValue) { setCustomBaseRaw(e.newValue); clearPreviews(); }
+      if (e.key === THEME_STORAGE_KEY && e.newValue) { setThemeIdRaw(migrateThemeId(e.newValue)); clearPreviews(); }
+      else if (e.key === CUSTOM_BASE_STORAGE_KEY && e.newValue) { setCustomBaseRaw(migrateThemeId(e.newValue)); clearPreviews(); }
       else if (e.key === COLOR_MODE_STORAGE_KEY && e.newValue) setColorModeRaw(e.newValue as ColorMode);
       else if (e.key === GRADIENT_MODE_STORAGE_KEY && e.newValue) { setGradientModeRaw(e.newValue as GradientMode); clearPreviews(); }
       else if (e.key === GRADIENT_COLOR_STORAGE_KEY && e.newValue) { setGradientColorRaw(e.newValue as GradientColor); clearPreviews(); }
@@ -301,16 +341,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const activeThemeId = preview.previewThemeId ?? effectiveActiveId;
   const theme = getThemeById(activeThemeId) ?? defaultTheme;
   const userResolvedColorMode = persisted.colorMode === "system" ? persisted.systemMode : persisted.colorMode;
-  // Custom inherits colors and forced mode from the base it currently displays;
-  // themes with `forcedMode` (Pearl, Noir) ignore the user's Light/Dark choice
-  // and the Gradient controls — standardized single-mode surfaces, no blob.
-  const { colors, baseThemeId, forcedMode } = resolveThemeColors(
+  // Custom inherits colors, forced mode, and flatness from the base it
+  // currently displays. The stock Default theme is `flat` (solid surface, no
+  // blob) but has no `forcedMode`, so its light↔dark follows the mode toggle.
+  // Any `forcedMode`-pinned theme still ignores the mode toggle and the
+  // Gradient controls.
+  const { colors, baseThemeId, forcedMode, flat } = resolveThemeColors(
     theme,
     userResolvedColorMode === "dark",
     theme.id === "custom" ? customBaseId : undefined,
   );
   const resolvedColorMode = forcedMode ?? userResolvedColorMode;
-  const effectiveGradientMode = forcedMode
+  const effectiveGradientMode = flat
     ? "flat"
     : preview.previewGradientMode ?? persisted.gradientMode;
   const effectiveGradientColor = preview.previewGradientColor ?? persisted.gradientColor;
@@ -331,10 +373,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const readValue = useMemo<ThemeReadValue>(
     () => ({
-      theme, themeId: effectiveActiveId, selectedThemeId, colorMode: persisted.colorMode, resolvedColorMode, forcedMode,
+      theme, themeId: effectiveActiveId, selectedThemeId, colorMode: persisted.colorMode, resolvedColorMode, forcedMode, flat,
       gradientMode: effectiveGradientMode, gradientColor: effectiveGradientColor, colors, themes: availableThemes,
     }),
-    [theme, effectiveActiveId, selectedThemeId, persisted.colorMode, resolvedColorMode, forcedMode, effectiveGradientMode, effectiveGradientColor, colors, availableThemes],
+    [theme, effectiveActiveId, selectedThemeId, persisted.colorMode, resolvedColorMode, forcedMode, flat, effectiveGradientMode, effectiveGradientColor, colors, availableThemes],
   );
 
   const controlValue = useMemo<ThemeControlValue>(

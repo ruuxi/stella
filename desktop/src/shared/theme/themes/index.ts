@@ -1,6 +1,5 @@
 import custom from "./custom";
-import light from "./light";
-import dark from "./dark";
+import defaultTheme_ from "./default";
 import oc1 from "./oc1";
 import dracula from "./dracula";
 import catppuccin from "./catppuccin";
@@ -20,14 +19,16 @@ import type { Theme, ThemeColors } from "./types";
 
 export type { Theme, ThemeColors };
 
-// Two flat, macOS-native defaults — Light and Dark (forcedMode → solid, no
-// gradient) — plus the invisible Custom overlay every user starts on, and the
-// colorful character themes, which render the ShiftingGradient backdrop behind
-// clean opaque panels. (The old "Pearl"/"Noir" standardized themes were removed
-// — Light/Dark are their successors.)
+// One flat, macOS-native "Default" theme with light+dark variants driven by
+// the Appearance mode toggle (Light / Dark / System) — plus the invisible
+// Custom overlay every user starts on, and the colorful character themes, which
+// render the ShiftingGradient backdrop behind clean opaque panels. (The old
+// separate "Light"/"Dark" themes were collapsed into Default: they duplicated
+// the mode toggle and, being `forcedMode`-pinned, made "Light theme + Dark
+// mode" a no-op.)
 const themes: Theme[] = [
   custom,
-  light, dark,
+  defaultTheme_,
   oc1, dracula, catppuccin, monokai, solarized,
   shadesofpurple, nightowl, vesper, gruvbox, ayu, aura,
   sage, crimson, slate, cocoa,
@@ -52,7 +53,7 @@ export const getThemeById = (id: string): Theme | undefined => {
 };
 
 // Everyone starts on the Custom overlay; while empty it renders as its base
-// (Pearl), so the default look is unchanged.
+// (Default), so the default look is unchanged.
 export const defaultTheme = themes.find((t) => t.id === "custom")!;
 
 /**
@@ -65,12 +66,19 @@ export const resolveThemeColors = (
   theme: Theme,
   isDark: boolean,
   baseOverrideId?: string,
-): { colors: ThemeColors; baseThemeId?: string; forcedMode?: "light" | "dark" } => {
+): {
+  colors: ThemeColors;
+  baseThemeId?: string;
+  forcedMode?: "light" | "dark";
+  /** Whether the theme renders flat (gradient-suppressed). `forcedMode` implies flat. */
+  flat: boolean;
+} => {
   if (!theme.base && !baseOverrideId) {
     const dark = theme.forcedMode ? theme.forcedMode === "dark" : isDark;
     return {
       colors: dark ? theme.dark : theme.light,
       forcedMode: theme.forcedMode,
+      flat: theme.forcedMode !== undefined || theme.flat === true,
     };
   }
   // Overlay: inherit from the runtime base override (the base the user has
@@ -87,10 +95,12 @@ export const resolveThemeColors = (
       ? theme.dark
       : theme.light;
   const modeOverrides = resolvedDark ? theme.overrides?.dark : theme.overrides?.light;
+  const flatFlag = theme.flat ?? baseTheme?.flat ?? false;
   return {
     colors: modeOverrides ? { ...baseColors, ...modeOverrides } : baseColors,
     baseThemeId: baseTheme?.id ?? baseId,
     forcedMode,
+    flat: forcedMode !== undefined || flatFlag,
   };
 };
 

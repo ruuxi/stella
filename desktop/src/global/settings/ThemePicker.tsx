@@ -54,7 +54,7 @@ export function ThemePicker({
   side = "top",
   align = "end",
 }: ThemePickerProps) {
-  const { selectedThemeId, themes, colorMode, gradientMode, gradientColor } = useTheme();
+  const { selectedThemeId, themes, colorMode, gradientMode, gradientColor, flat } = useTheme();
   const {
     setTheme,
     setColorMode,
@@ -158,6 +158,10 @@ export function ThemePicker({
               </div>
             </div>
 
+            {/* Flat themes (the stock Default, plus any forcedMode-pinned
+                theme) render a solid surface, so the gradient controls would
+                be no-ops — hide them to keep the panel honest. */}
+            {!flat && (
             <div data-slot="theme-picker-section" data-bordered>
               <div data-slot="theme-picker-label">Gradient Style</div>
               <div data-slot="theme-picker-button-row">
@@ -189,6 +193,7 @@ export function ThemePicker({
                 ))}
               </div>
             </div>
+            )}
 
             <div
               data-slot="theme-picker-theme-list"

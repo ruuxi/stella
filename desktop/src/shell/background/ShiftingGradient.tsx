@@ -190,7 +190,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
   // The canvas path runs a per-pixel CPU blend loop on the main thread at
   // paint time, so low-power devices always take the CSS-gradient path.
   const lightweight = lightweightProp || shouldUseLowPowerEffects();
-  const { resolvedColorMode, theme, colors, forcedMode } = useTheme();
+  const { resolvedColorMode, theme, colors, flat } = useTheme();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -256,7 +256,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     // Include a palette signature: the Custom overlay keeps a constant
     // `theme.id` while its displayed base (and thus colors) changes, so the id
     // alone can't detect a base swap between two non-forced themes.
-    const key = `${theme.id}-${resolvedColorMode}-${mode}-${colorMode}-${forcedMode ?? ""}-${colors.background}-${colors.primary}-${colors.interactive}`;
+    const key = `${theme.id}-${resolvedColorMode}-${mode}-${colorMode}-${flat ? "flat" : ""}-${colors.background}-${colors.primary}-${colors.interactive}`;
     const settingsChanged = prevKeyRef.current !== key;
 
     if (!settingsChanged) {
@@ -275,10 +275,10 @@ export const ShiftingGradient = memo(function ShiftingGradient({
     if (!ctx) return;
 
     const palette = getPalette();
-    // Forced-mode themes (Pearl, Noir) want a clean, flat single-color
-    // surface — no blob at all, otherwise the brand-derived palette
-    // tints the whole canvas (Pearl ends up gray, Noir muddied).
-    const blobs = forcedMode ? [] : generateBlobs(palette, mode);
+    // Flat themes (the stock Default, plus any forcedMode-pinned theme) want a
+    // clean, flat single-color surface — no blob at all, otherwise the
+    // brand-derived palette tints the whole canvas.
+    const blobs = flat ? [] : generateBlobs(palette, mode);
     blobsRef.current = blobs;
 
     const bg = parseColor(colors.background) ?? { r: 248, g: 247, b: 247 };
@@ -288,7 +288,7 @@ export const ShiftingGradient = memo(function ShiftingGradient({
 
     renderGradient(ctx, w, h, bg, blobs, 0.25);
 
-  }, [theme.id, resolvedColorMode, mode, colorMode, getPalette, lightweight, colors, forcedMode]);
+  }, [theme.id, resolvedColorMode, mode, colorMode, getPalette, lightweight, colors, flat]);
 
   // First-render fallback only. We intentionally do NOT re-render on
   // window/parent resize: the blob positions are normalized fractions
@@ -350,12 +350,12 @@ export const ShiftingGradient = memo(function ShiftingGradient({
         <div
           className="gradient-base"
           style={{
-            // Forced-mode themes (the flat Light/Dark defaults) want a clean
-            // solid surface — no colored blobs. The canvas path already drops
-            // the blobs for `forcedMode`; the lightweight CSS path (taken on
-            // low-power machines, including most ≤8GB Windows boxes) has to do
-            // the same or the gradient bleeds through as visible color blobs.
-            background: forcedMode
+            // Flat themes (the stock Default, plus any forcedMode-pinned theme)
+            // want a clean solid surface — no colored blobs. The canvas path
+            // already drops the blobs for `flat`; the lightweight CSS path
+            // (taken on low-power machines, including most ≤8GB Windows boxes)
+            // has to do the same or the gradient bleeds through as color blobs.
+            background: flat
               ? "var(--background)"
               : [
                   `radial-gradient(circle at 18% 20%, color-mix(in srgb, ${colors.primary} 12%, transparent) 0%, transparent 30%)`,
