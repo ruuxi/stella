@@ -47,12 +47,51 @@ type UseConversationDisplayMessagesOptions = {
   streamingAssistants: StreamingAssistantOverlay[];
 };
 
-const compareDisplayOrder = (a: MessageRecord, b: MessageRecord): number => {
-  if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
+/**
+ * Resolves the timestamp a message sorts by. Defaults to the message's own
+ * `timestamp`, but the hook overrides it for assistant slots seen live this
+ * session so the streaming overlay and its eventual persisted twin sort to
+ * the SAME position — see `useConversationDisplayMessages` for why the raw
+ * timestamps differ across that handoff and cause card reorders.
+ */
+export type SortTimestampResolver = (message: MessageRecord) => number;
+
+const defaultSortTimestamp: SortTimestampResolver = (message) =>
+  message.timestamp;
+
+const compareDisplayOrder = (
+  a: MessageRecord,
+  b: MessageRecord,
+  getSortTimestamp: SortTimestampResolver = defaultSortTimestamp,
+): number => {
+  const ta = getSortTimestamp(a);
+  const tb = getSortTimestamp(b);
+  if (ta !== tb) return ta - tb;
   return a._id.localeCompare(b._id);
 };
 
+/**
+ * Returns `messages` ordered by `getSortTimestamp`, reusing the input array
+ * reference when it is already ordered (the common case — the SQLite window is
+ * pre-sorted and, with the default resolver, needs no work). Only allocates a
+ * sorted copy when the resolver actually reorders something.
+ */
+const orderByResolver = (
+  messages: MessageRecord[],
+  getSortTimestamp: SortTimestampResolver,
+): MessageRecord[] => {
+  for (let i = 1; i < messages.length; i += 1) {
+    if (compareDisplayOrder(messages[i - 1]!, messages[i]!, getSortTimestamp) > 0) {
+      const copy = messages.slice();
+      copy.sort((a, b) => compareDisplayOrder(a, b, getSortTimestamp));
+      return copy;
+    }
+  }
+  return messages;
+};
+
 const mergeMessageSources = (
+  getSortTimestamp: SortTimestampResolver,
   ...sources: MessageRecord[][]
 ): MessageRecord[] => {
   const seen = new Map<string, MessageRecord>();
@@ -74,13 +113,7 @@ const mergeMessageSources = (
   // sort; otherwise sort exactly as before. Behavior-identical either way: a
   // stable sort of an already-sorted array leaves it unchanged, so the skipped
   // branch returns the same ordering the sort would have produced.
-  for (let i = 1; i < merged.length; i += 1) {
-    if (compareDisplayOrder(merged[i - 1]!, merged[i]!) > 0) {
-      merged.sort(compareDisplayOrder);
-      break;
-    }
-  }
-  return merged;
+  return orderByResolver(merged, getSortTimestamp);
 };
 
 const getAssistantUserMessageId = (
@@ -154,17 +187,38 @@ export const mergeConversationDisplayMessageSources = (args: {
   overlayMessages: MessageRecord[];
   streamingAssistants: StreamingAssistantOverlay[];
   persistedAssistantSlots: Map<string, MessageRecord[]>;
+  /**
+   * Optional stable sort-timestamp resolver. When omitted, messages sort by
+   * their own `timestamp` (unchanged behavior). The hook passes one only when
+   * at least one assistant slot was seen live this session, so a persisted
+   * twin inherits the sort position its streaming overlay first held instead
+   * of hopping to the runtime's (different) message timestamp.
+   */
+  getSortTimestamp?: SortTimestampResolver;
 }): MessageRecord[] => {
   const {
     persistedMessages,
     overlayMessages,
     streamingAssistants,
     persistedAssistantSlots,
+    getSortTimestamp = defaultSortTimestamp,
   } = args;
+  const resolverActive = getSortTimestamp !== defaultSortTimestamp;
   if (streamingAssistants.length === 0) {
-    return overlayMessages.length === 0
-      ? persistedMessages
-      : mergeMessageSources(persistedMessages, overlayMessages);
+    if (overlayMessages.length === 0) {
+      // No overlays: the SQLite window is already timestamp-ordered. Re-order
+      // it only when a frozen-slot resolver is in play (it can move a persisted
+      // twin back to its overlay's original position); otherwise return the
+      // input reference untouched (the hot idle path).
+      return resolverActive
+        ? orderByResolver(persistedMessages, getSortTimestamp)
+        : persistedMessages;
+    }
+    return mergeMessageSources(
+      getSortTimestamp,
+      persistedMessages,
+      overlayMessages,
+    );
   }
 
   const maskedPersistedIds = new Set<string>();
@@ -185,9 +239,15 @@ export const mergeConversationDisplayMessageSources = (args: {
         );
 
   if (overlayMessages.length === 0) {
-    return persistedMessagesForDisplay;
+    return resolverActive
+      ? orderByResolver(persistedMessagesForDisplay, getSortTimestamp)
+      : persistedMessagesForDisplay;
   }
-  return mergeMessageSources(persistedMessagesForDisplay, overlayMessages);
+  return mergeMessageSources(
+    getSortTimestamp,
+    persistedMessagesForDisplay,
+    overlayMessages,
+  );
 };
 
 /* -------------------------------------------------------------------------
@@ -307,6 +367,60 @@ export const useConversationDisplayMessages = ({
     [persistedMessages],
   );
 
+  /**
+   * Per-slot frozen sort timestamps (`userMessageId:indexInTurn` -> ts).
+   *
+   * A streaming assistant overlay sorts by a renderer `Date.now()` captured at
+   * its first chunk (message START), while the persisted twin that later
+   * replaces it sorts by the runtime's `message.timestamp` (message END). Those
+   * two values differ, so at the overlay -> persisted handoff (message
+   * finalizes, or the next run drops the prior-run overlay) the row's sort key
+   * changes. If any adjacent row's timestamp falls between the two, the row
+   * re-sorts across it and its card/artifact visibly hops before/after the
+   * neighbor.
+   *
+   * We freeze the FIRST sort timestamp observed for each slot (the overlay's
+   * value) and reuse it for the persisted twin for the rest of this session, so
+   * the position a card first rendered at never changes. Reset per conversation;
+   * a reload starts empty and falls back to canonical persisted timestamps.
+   */
+  const frozenSlotSortTsRef = useRef<Map<string, number>>(new Map());
+  const frozenConversationIdRef = useRef<string | null>(conversationId);
+  if (frozenConversationIdRef.current !== conversationId) {
+    frozenConversationIdRef.current = conversationId;
+    frozenSlotSortTsRef.current = new Map();
+  }
+  for (const slot of streamingAssistants) {
+    const slotKey = `${slot.userMessageId}:${slot.indexInTurn}`;
+    if (!frozenSlotSortTsRef.current.has(slotKey)) {
+      frozenSlotSortTsRef.current.set(slotKey, slot.timestamp);
+    }
+  }
+
+  // Map each persisted assistant twin whose slot was seen live this session to
+  // its frozen sort timestamp. Recomputed only when the persisted slots change
+  // or a new overlay appears — i.e. exactly the handoff frames that matter.
+  const sortTimestampByMessageId = useMemo(() => {
+    const map = new Map<string, number>();
+    const frozen = frozenSlotSortTsRef.current;
+    if (frozen.size === 0) return map;
+    for (const [userMessageId, slotMessages] of persistedAssistantSlots) {
+      for (let i = 0; i < slotMessages.length; i += 1) {
+        const frozenTs = frozen.get(`${userMessageId}:${i + 1}`);
+        if (frozenTs !== undefined) {
+          map.set(slotMessages[i]!._id, frozenTs);
+        }
+      }
+    }
+    return map;
+  }, [persistedAssistantSlots, streamingAssistants]);
+
+  const getSortTimestamp = useMemo<SortTimestampResolver | undefined>(() => {
+    if (sortTimestampByMessageId.size === 0) return undefined;
+    return (message) =>
+      sortTimestampByMessageId.get(message._id) ?? message.timestamp;
+  }, [sortTimestampByMessageId]);
+
   const overlayMessages = useMemo(() => {
     const overlayEvents: EventRecord[] = [];
     for (const event of optimisticEvents) overlayEvents.push(event);
@@ -380,6 +494,7 @@ export const useConversationDisplayMessages = ({
       overlayMessages,
       streamingAssistants,
       persistedAssistantSlots,
+      ...(getSortTimestamp ? { getSortTimestamp } : {}),
     });
     cacheRef.current = {
       persistedMessages,
@@ -390,6 +505,7 @@ export const useConversationDisplayMessages = ({
     };
     return result;
   }, [
+    getSortTimestamp,
     overlayMessages,
     persistedAssistantSlots,
     persistedMessages,

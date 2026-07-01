@@ -307,3 +307,79 @@ describe("conversation display merge — structural-sharing fast path", () => {
     );
   });
 });
+
+describe("stable slot ordering across the overlay -> persisted handoff", () => {
+  // Reproduces the agent/artifact-card reorder: an assistant turn's card
+  // sorts by the overlay's `Date.now()` (message START) while streaming, then
+  // by the runtime `message.timestamp` (message END) once persisted. A
+  // neighbor whose timestamp lands between the two makes the card cross it on
+  // handoff. A frozen per-slot resolver pins the persisted twin to the
+  // position its overlay first held.
+  const user = message({ _id: "u1", type: "user_message", timestamp: 10 });
+  // A concurrent producer's row (e.g. scheduled/heartbeat turn) that landed
+  // WHILE the card turn was still streaming — its runtime timestamp (25) sits
+  // between the overlay's first-chunk time (20) and the persisted twin's
+  // message-end time (40).
+  const neighbor = message({
+    _id: "assistant-neighbor",
+    timestamp: 25,
+    payload: { text: "concurrent turn", userMessageId: "u-other" },
+  });
+  const persistedTwin = message({
+    _id: "assistant-msg-run-1-10",
+    timestamp: 40,
+    payload: { text: "I started the agent", userMessageId: "u1" },
+  });
+  const live = overlay({ userMessageId: "u1", indexInTurn: 1, timestamp: 20 });
+
+  it("streaming phase: overlay card renders above the concurrent neighbor", () => {
+    const merged = mergeConversationDisplayMessageSources({
+      // Twin already persisted (masked) but overlay still owns the slot.
+      persistedMessages: [user, neighbor, persistedTwin],
+      overlayMessages: [overlayToMessageRecord(live, persistedTwin)],
+      streamingAssistants: [live],
+      persistedAssistantSlots: getPersistedAssistantSlots([persistedTwin]),
+    });
+    expect(merged.map((m) => m._id)).toEqual([
+      "u1",
+      "stream-overlay:u1:1",
+      "assistant-neighbor",
+    ]);
+  });
+
+  it("finalized WITHOUT the resolver: the card hops below the neighbor (the bug)", () => {
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages: [user, neighbor, persistedTwin],
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots([persistedTwin]),
+    });
+    // Twin's own timestamp (40) sorts it AFTER the neighbor (25): reorder.
+    expect(merged.map((m) => m._id)).toEqual([
+      "u1",
+      "assistant-neighbor",
+      "assistant-msg-run-1-10",
+    ]);
+  });
+
+  it("finalized WITH the frozen resolver: the card holds its position", () => {
+    // Frozen slot ts captured from the overlay (20) — the position the card
+    // first rendered at.
+    const getSortTimestamp = (m: MessageRecord): number =>
+      m._id === persistedTwin._id ? 20 : m.timestamp;
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages: [user, neighbor, persistedTwin],
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots([persistedTwin]),
+      getSortTimestamp,
+    });
+    // Twin holds the overlay's slot (20 < 25), so the card stays above the
+    // neighbor exactly where it first appeared.
+    expect(merged.map((m) => m._id)).toEqual([
+      "u1",
+      "assistant-msg-run-1-10",
+      "assistant-neighbor",
+    ]);
+  });
+});
