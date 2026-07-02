@@ -1,139 +1,131 @@
 /**
- * Pure per-slot playout-buffer cadence for `useStreamTextPacer`.
+ * Pure per-slot playout cadence for `useStreamTextPacer` — a JITTER BUFFER.
  *
- * Provider tokens arrive in bursts (a token, a 40-char clump, a stall). To
- * make the on-screen text read as a steady typewriter that HIDES that jitter,
- * this drains the buffer like a video/audio playout buffer: a smooth display
- * VELOCITY (chars/sec) that is steered by how deep the buffer is, not by the
- * instantaneous arrival.
+ * Provider tokens arrive in bursts at wildly varying rates (a token, a
+ * 40-char clump, a multi-second stall). The design goal, in priority order:
  *
- * Why the previous model still stuttered: it set the per-frame release to
- * `backlog / CATCH_UP_FRAMES` (and floored at `backlog / MAX_CATCH_UP_FRAMES`),
- * i.e. the velocity was proportional to the *instantaneous backlog* and the
- * buffer was designed to drain to EMPTY within ~6-14 frames. That can't hold a
- * cushion, so a clump drained in a fast burst, the buffer emptied, the reveal
- * stalled until the next clump, then burst again — the visible text tracked
- * the bursty arrival.
+ *   1. CONSTANT PERCEIVED VELOCITY — the on-screen reveal should read as one
+ *      continuous smooth pour for the whole turn, never mirroring arrival
+ *      chop. Added latency is an accepted cost.
+ *   2. Prompt finish — when the stream ends, the remaining backlog glides
+ *      out quickly (but never dumps in a single frame).
  *
- * New model (this file):
- *  - The display velocity eases (low-pass) toward a target that rises gently
- *    only as the buffer fills past a soft setpoint, so a single burst barely
- *    moves the velocity (no dump) and a gap doesn't stall it (it keeps
- *    draining the cushion at its steady rate).
- *  - The proportional depth term makes the steady-state velocity self-tune to
- *    the model's average arrival rate: the buffer settles at the depth where
- *    `target == arrival`, so the average display rate equals the average
- *    arrival rate (no unbounded drift) while the per-burst jitter is filtered
- *    out.
- *  - A hard latency cap guarantees the visible text never falls more than
- *    `MAX_LATENCY_MS` behind the model: a fast model (or the end of a burst)
- *    accelerates to catch up promptly, so the text is never seconds stale and
- *    a fast finish doesn't crawl.
+ * Model (classic playout/jitter buffer):
  *
- * Velocity is in chars/sec and integrated with the real frame `dt`, so the
- * cadence is frame-rate independent (a dropped frame releases proportionally
- * more, keeping the visual rate constant) and a tab stall can't dump the
- * buffer (dt is clamped).
+ *   STARTUP CUSHION  A fresh slot holds fully hidden until it has buffered
+ *                    `START_HOLD_MS` of content — and until the arrival rate
+ *                    is measurable (needs a second delta), bounded by
+ *                    `START_MAX_HOLD_MS` / `START_MAX_HOLD_CHARS`. The reveal
+ *                    then starts pre-loaded with a lookahead cushion and its
+ *                    velocity SEEDED from the measured arrival rate (slightly
+ *                    under it, so the cushion keeps growing toward target).
  *
- * ARRIVAL-ADAPTIVE PACING (slow / choppy streams):
- * The fixed knobs above tune well for healthy token rates (≳ 40 cps), but a
- * slow or choppy provider (a clump every couple of seconds) breaks the fixed
- * model three ways: the 18 cps floor OUTRUNS the model so the buffer empties
- * mid-gap and the reveal stalls; the 16-char cushion can't bridge a
- * multi-second gap; and the 900 ms latency cap burst-dumps a clump that lands
- * after a long gap. To fix that without touching the fast path, callers feed
- * every inbound chunk through `recordArrival`, which maintains two smoothed
- * estimates on the state:
- *   arrivalCps  exponentially-weighted arrival rate (chars/sec).
- *   gapEmaMs    time-weighted inter-arrival gap — long stalls dominate,
- *               dense in-burst deltas barely move it.
- * `stepPaceCount` then derives, per frame:
- *   floor    tracks slightly UNDER a slow model's arrival rate (so a cushion
- *            builds) instead of the fixed 18 cps; clamped so fast streams
- *            keep the exact fixed floor.
- *   cushion  grows to ~one typical gap's worth of text at the arrival rate,
- *            so the buffer holds enough to glide across the next gap.
- *   latency  the hard cap stretches toward the observed gap length (bounded
- *            by MAX_SLOW_LATENCY_MS), so a post-gap clump is absorbed into
- *            the continuous reveal rather than dumped inside 900 ms.
- * With no recorded arrivals (or a fast, steady stream) every derived value
- * collapses to the fixed knob, so the normal case is byte-identical.
+ *   RATE TRACKING    The playout velocity targets the smoothed arrival rate
+ *                    (`recordArrival`'s time-weighted EMA), nudged by a small
+ *                    buffer-health correction (bounded ±MAX_RATE_CORRECTION)
+ *                    that steers the buffered depth toward one "desired
+ *                    latency" worth of text — itself adapted to the observed
+ *                    inter-arrival gap so choppier providers hold deeper
+ *                    cushions. The correction is deliberately weak: latency
+ *                    drift corrects invisibly over seconds instead of the
+ *                    velocity visibly chasing every clump.
  *
- * Stream end: `finishing: true` swaps the latency cap to FINISH_LATENCY_MS so
- * the remaining backlog glides out in ~a quarter second — prompt, but not the
- * instant dump a hard flush produces.
+ *   SLEW LIMITING    The velocity may change by at most `RATE_SLEW_PER_SEC`
+ *                    (fractional) per second, on top of a low-pass filter.
+ *                    Even a 10x arrival-rate shift ramps over ~2-3 s — speed
+ *                    changes are below the threshold of notice, and a
+ *                    per-frame rate jump is structurally impossible.
+ *
+ *   STREAM END       `finishing: true` bypasses the hold and drains the
+ *                    backlog within ~FINISH_LATENCY_MS (with a FINISH_MIN_CPS
+ *                    floor so the tail lands linearly) — prompt, but a glide
+ *                    rather than a dump.
+ *
+ *   EMERGENCY VALVE  Outside of finishing, a backlog representing more than
+ *                    `EMERGENCY_LAG_MS` of delay drains proportionally faster
+ *                    (pathological mid-message dumps only; normal operation
+ *                    never touches it).
+ *
+ * Velocity is chars/sec integrated with the real frame `dt` (frame-rate
+ * independent; `dt` clamped so a tab stall can't dump the buffer). Kept pure
+ * (no React, no timers) so the cadence is unit-testable, matching
+ * `streaming-text-reveal-frontier.ts`.
  *
  * ──────────────────────────────────────────────────────────────────────────
  * TUNING KNOBS (safe to adjust; all exported):
- *   SOFT_TARGET_CHARS        cushion the buffer aims to hold — bigger = smoother
- *                            across gaps but more lag. (default 16)
- *   DEPTH_GAIN_CPS_PER_CHAR  how much faster per char of buffer above the
- *                            setpoint — higher = catches a burst sooner / less
- *                            cushion drift. (default 1.4)
- *   MIN_PLAYOUT_CPS          slowest steady reveal while draining — keep below
- *                            slow-model rates so it tracks, not outruns, them.
- *                            (default 18)
- *   MAX_PLAYOUT_CPS          ceiling for the SMOOTH band (≈ comfortable fast
- *                            read); beyond this only the latency cap speeds up.
- *                            (default 190)
- *   INITIAL_CPS              starting velocity before the buffer settles.
- *                            (default 30)
- *   VELOCITY_SMOOTHING_HZ    low-pass cutoff for velocity changes — higher =
- *                            snappier ramps, lower = glassier. (default 6)
- *   MAX_LATENCY_MS           hard cap on how far the text may lag the model;
- *                            the catch-up floor that finishes fast models
- *                            promptly. (default 900)
- *   ARRIVAL_TAU_MS           smoothing window for the arrival-rate estimate —
- *                            longer = steadier but slower to adapt. (1800)
- *   GAP_TAU_MS               smoothing window for the inter-arrival gap
- *                            estimate. (4000)
- *   SLOW_TRACK_RATIO         fraction of the arrival rate a slow stream's
- *                            floor tracks — < 1 so a cushion accrues. (0.9)
- *   SLOW_MIN_PLAYOUT_CPS     absolute floor so text never crawls unreadably
- *                            however slow the model. (6)
- *   GAP_LATENCY_HEADROOM     how much longer than a typical gap the latency
- *                            cap stretches on choppy streams. (2)
- *   MAX_SLOW_LATENCY_MS      ceiling for the stretched latency cap. (3200)
- *   MAX_CUSHION_CHARS        ceiling for the adaptive cushion. (320)
+ *   START_HOLD_MS            startup cushion: content buffered before the
+ *                            first character reveals. (300)
+ *   START_MAX_HOLD_MS        reveal starts by this even if the arrival rate
+ *                            is still unknown (single-clump case). (1200)
+ *   START_MAX_HOLD_CHARS     ...or once this much text is already waiting. (150)
+ *   START_SEED_RATIO         starting velocity as a fraction of the measured
+ *                            arrival rate — < 1 so the cushion grows. (0.9)
+ *   TARGET_LATENCY_MIN_MS    smallest steady-state playout delay. (350)
+ *   TARGET_LATENCY_MAX_MS    largest steady-state playout delay. (3500)
+ *   GAP_LATENCY_MARGIN       desired delay vs the observed inter-arrival gap
+ *                            (1.5 gaps of cushion). (1.5)
+ *   DEPTH_ERROR_GAIN         how strongly buffer-depth error nudges the rate
+ *                            — small = steadier, slower latency correction. (0.25)
+ *   MAX_RATE_CORRECTION      bound on that nudge, as a fraction of the
+ *                            arrival rate. (0.3)
+ *   RATE_SMOOTHING_HZ        low-pass cutoff for velocity changes. (2)
+ *   RATE_SLEW_PER_SEC        hard cap on fractional velocity change per
+ *                            second. (0.8)
+ *   MIN_PLAYOUT_CPS          absolute reveal floor — text never crawls
+ *                            unreadably. (6)
+ *   MAX_PLAYOUT_CPS          smooth-band ceiling (≈ comfortable fast read);
+ *                            only finish/emergency exceed it. (190)
+ *   INITIAL_CPS              fallback velocity when the reveal must start
+ *                            before any rate is measurable. (30)
+ *   ARRIVAL_TAU_MS           smoothing window for the arrival-rate EMA. (1800)
+ *   GAP_TAU_MS               smoothing window for the gap EMA. (4000)
+ *   EMERGENCY_LAG_MS         mid-stream lag bound (pathological only). (6000)
  *   FINISH_LATENCY_MS        drain window once the stream has ended. (280)
+ *   FINISH_MIN_CPS           linear-landing floor while finishing. (120)
  * ──────────────────────────────────────────────────────────────────────────
- *
- * Kept pure (no React, no timers; `dt` is passed in) so the cadence is
- * unit-testable, matching `streaming-text-reveal-frontier.ts`.
  */
 
-/** Cushion (code points) the buffer aims to hold to ride arrival gaps. */
-export const SOFT_TARGET_CHARS = 16;
-/** Velocity rise (chars/sec) per code point of buffer above the setpoint. */
-export const DEPTH_GAIN_CPS_PER_CHAR = 1.4;
-/** Slowest steady reveal velocity while text remains buffered (chars/sec). */
-export const MIN_PLAYOUT_CPS = 18;
+/** Startup cushion (ms of buffered content) before the first reveal. */
+export const START_HOLD_MS = 300;
+/** Hard bound on the startup hold when the arrival rate stays unknown. */
+export const START_MAX_HOLD_MS = 1200;
+/** Start immediately once this much text is already buffered. */
+export const START_MAX_HOLD_CHARS = 150;
+/** Starting velocity as a fraction of the measured arrival rate. */
+export const START_SEED_RATIO = 0.9;
+/** Smallest steady-state playout delay the buffer aims to hold (ms). */
+export const TARGET_LATENCY_MIN_MS = 350;
+/** Largest steady-state playout delay the buffer aims to hold (ms). */
+export const TARGET_LATENCY_MAX_MS = 3500;
+/** Desired playout delay relative to the observed inter-arrival gap. */
+export const GAP_LATENCY_MARGIN = 1.5;
+/** Fractional rate nudge per unit of buffer-depth error. */
+export const DEPTH_ERROR_GAIN = 0.25;
+/** Bound on the depth nudge, as a fraction of the arrival rate. */
+export const MAX_RATE_CORRECTION = 0.3;
+/** Low-pass cutoff (Hz) for velocity changes. */
+export const RATE_SMOOTHING_HZ = 2;
+/** Hard cap on fractional velocity change per second (slew limit). */
+export const RATE_SLEW_PER_SEC = 0.8;
+/** Absolute reveal floor (chars/sec). */
+export const MIN_PLAYOUT_CPS = 6;
 /** Ceiling of the smooth velocity band (chars/sec). */
 export const MAX_PLAYOUT_CPS = 190;
-/** Velocity a fresh slot starts at before the buffer settles (chars/sec). */
+/** Fallback starting velocity when no arrival rate is measurable. */
 export const INITIAL_CPS = 30;
-/** Low-pass cutoff (Hz) for how fast the display velocity may change. */
-export const VELOCITY_SMOOTHING_HZ = 6;
-/** Hard cap (ms) on how far the visible text may lag the model. */
-export const MAX_LATENCY_MS = 900;
 /** Frame-time clamp (ms): a tab stall / GC pause can't dump the buffer. */
 export const MAX_FRAME_MS = 64;
 /** Smoothing window (ms) for the exponentially-weighted arrival rate. */
 export const ARRIVAL_TAU_MS = 1800;
 /** Smoothing window (ms) for the time-weighted inter-arrival gap. */
 export const GAP_TAU_MS = 4000;
-/** Slow streams reveal at this fraction of their arrival rate (cushion accrues). */
-export const SLOW_TRACK_RATIO = 0.9;
-/** Absolute reveal floor (chars/sec) — text never crawls slower than this. */
-export const SLOW_MIN_PLAYOUT_CPS = 6;
-/** Latency-cap stretch relative to the observed inter-arrival gap. Two gaps'
- *  worth: right after a clump lands the backlog is ~cushion + clump ≈ two
- *  gaps of text, and the cap must not fire on that normal steady state. */
-export const GAP_LATENCY_HEADROOM = 2;
-/** Ceiling (ms) for the stretched latency cap on choppy streams. */
-export const MAX_SLOW_LATENCY_MS = 3200;
-/** Ceiling (code points) for the adaptive gap-riding cushion. */
-export const MAX_CUSHION_CHARS = 320;
+/** Evidence mass (Σ decayed sample weights, ≈ 300 ms of inter-arrival time
+ *  at τ=1800) before the arrival-rate estimate counts as trustworthy. Two
+ *  deltas microseconds apart must NOT unlock the startup hold with a wild
+ *  instantaneous rate. */
+export const RATE_CONFIDENCE_WEIGHT = 0.15;
+/** Mid-stream lag bound (ms) — the emergency drain valve. */
+export const EMERGENCY_LAG_MS = 6000;
 /** Latency cap (ms) once the stream has ended — a fast glide, not a dump. */
 export const FINISH_LATENCY_MS = 280;
 /** Floor velocity (chars/sec) while finishing. The latency cap alone decays
@@ -146,39 +138,55 @@ export type PaceState = {
   cps: number;
   /** Fractional carry so sub-integer per-frame counts produce an even cadence. */
   carry: number;
-  /** Exponentially-weighted arrival rate (code points/sec); 0 = no data yet. */
+  /** Bias-corrected arrival-rate estimate (code points/sec); 0 = no data. */
   arrivalCps: number;
-  /** Time-weighted inter-arrival gap estimate (ms); 0 = no data yet. */
+  /** Accumulated evidence mass behind `arrivalCps` (0..1). */
+  arrivalWeight: number;
+  /** Bias-corrected inter-arrival gap estimate (ms); 0 = no data yet. */
   gapEmaMs: number;
+  /** Accumulated evidence mass behind `gapEmaMs` (0..1). */
+  gapWeight: number;
   /** Timestamp of the last recorded arrival (ms), or null before the first. */
   lastArrivalAtMs: number | null;
+  /** Time (ms) spent buffering content during the startup hold. */
+  heldMs: number;
+  /** Whether the reveal has started (the startup hold is over). */
+  started: boolean;
 };
 
 export const createPaceState = (): PaceState => ({
   cps: INITIAL_CPS,
   carry: 0,
   arrivalCps: 0,
+  arrivalWeight: 0,
   gapEmaMs: 0,
+  gapWeight: 0,
   lastArrivalAtMs: null,
+  heldMs: 0,
+  started: false,
 });
 
 /**
  * Record `count` code points arriving at `atMs`. Keeps the arrival-rate and
- * inter-arrival-gap estimates that `stepPaceCount` uses to adapt the reveal
- * to slow / choppy streams.
+ * inter-arrival-gap estimates that `stepPaceCount` uses to pace the reveal.
  *
- * Rate estimator: EMA over the instantaneous rate `count/gap`, with each
- * sample's blend weight scaling with its own gap length (time-weighted). This
- * is unbiased for clumpy schedules — e.g. 20 chars every 2 s converges to
- * exactly 10 cps, where a decay-then-add estimator sampled right after each
- * clump overshoots by ~1.6x for gaps comparable to τ.
+ * Rate estimator: BIAS-CORRECTED EMA over the instantaneous rate
+ * `count/gap`, with each sample's blend weight scaling with its own gap
+ * length (time-weighted). Time-weighting makes it unbiased for clumpy
+ * schedules — 20 chars every 2 s converges to exactly 10 cps — and the bias
+ * correction (dividing out the accumulated evidence mass, implemented as an
+ * effective alpha of `a/w`) removes the toward-zero warm-up skew of a
+ * zero-initialized EMA, so the estimate is usable within the startup hold
+ * instead of lagging the true rate for seconds and letting the buffer
+ * balloon.
  *
- * Gap estimator: same time-weighted EMA over the gaps themselves — a single
- * 3 s stall moves it sharply, while the dense ~0 ms deltas inside a burst
- * barely dilute it.
+ * Gap estimator: same construction over the gaps themselves — a single 3 s
+ * stall moves it sharply, while the dense ~0 ms deltas inside a burst barely
+ * dilute it.
  *
- * The first arrival has no gap, so it leaves both estimates at 0 (= "no
- * data"; the cadence falls back to the fixed knobs until a second delta).
+ * The first arrival has no gap, so it leaves both estimates empty; the
+ * `*Weight` fields say how much evidence stands behind each estimate
+ * (`RATE_CONFIDENCE_WEIGHT` gates the startup hold on that).
  */
 export function recordArrival(
   state: PaceState,
@@ -192,20 +200,25 @@ export function recordArrival(
   const gap = Math.max(atMs - last, 1);
   const instantCps = (count * 1000) / gap;
   const alpha = 1 - Math.exp(-gap / ARRIVAL_TAU_MS);
-  state.arrivalCps += (instantCps - state.arrivalCps) * alpha;
+  state.arrivalWeight += (1 - state.arrivalWeight) * alpha;
+  state.arrivalCps += (instantCps - state.arrivalCps) * (alpha / state.arrivalWeight);
   const gapAlpha = 1 - Math.exp(-gap / GAP_TAU_MS);
-  state.gapEmaMs += (gap - state.gapEmaMs) * gapAlpha;
+  state.gapWeight += (1 - state.gapWeight) * gapAlpha;
+  state.gapEmaMs += (gap - state.gapEmaMs) * (gapAlpha / state.gapWeight);
 }
+
+const clamp = (value: number, lo: number, hi: number): number =>
+  value < lo ? lo : value > hi ? hi : value;
 
 /**
  * Advance the playout cadence by one frame of `dtMs` for a slot holding
  * `backlog` buffered code points. Mutates `state` and returns how many code
- * points to release this frame (`0` is valid for a sub-one-per-frame velocity;
- * the carry releases evenly across frames). Never returns more than `backlog`.
+ * points to release this frame (`0` is valid — during the startup hold, and
+ * for sub-one-per-frame velocities whose fractional carry releases evenly
+ * across frames). Never returns more than `backlog`.
  *
- * `finishing: true` means the stream has ended for this slot: the latency cap
- * drops to `FINISH_LATENCY_MS` so the backlog glides out promptly instead of
- * trickling on (or being dumped by a hard flush).
+ * `finishing: true` means the stream has ended for this slot: the startup
+ * hold is bypassed and the backlog drains within ~FINISH_LATENCY_MS.
  */
 export function stepPaceCount(
   state: PaceState,
@@ -214,62 +227,92 @@ export function stepPaceCount(
   finishing = false,
 ): number {
   if (backlog <= 0) return 0;
-  const dt = Math.min(Math.max(dtMs, 1), MAX_FRAME_MS) / 1000;
+  const dtClampedMs = Math.min(Math.max(dtMs, 1), MAX_FRAME_MS);
+  const dt = dtClampedMs / 1000;
 
-  // Arrival-adaptive floor: a slow model's reveal tracks slightly under its
-  // own arrival rate (so a cushion accrues instead of the buffer being
-  // outrun), never above the fixed floor (fast path unchanged) and never
-  // below an absolute readability floor.
+  // ── Startup cushion ────────────────────────────────────────────────────
+  // Hold fully hidden until enough content is buffered AND the arrival rate
+  // is measurable, so the reveal starts at the stream's own pace with a
+  // lookahead cushion already banked (bounded so a single-clump message or
+  // a big first dump never waits long).
+  if (!state.started) {
+    const rateKnown = state.arrivalWeight >= RATE_CONFIDENCE_WEIGHT;
+    if (!finishing) {
+      state.heldMs += dtClampedMs;
+      const heldLongEnough = rateKnown
+        ? state.heldMs >= START_HOLD_MS
+        : state.heldMs >= START_MAX_HOLD_MS;
+      if (!heldLongEnough && backlog < START_MAX_HOLD_CHARS) return 0;
+    }
+    state.started = true;
+    // Seed the velocity from the measured rate (slightly under it so the
+    // cushion keeps growing toward the desired latency). Nothing has been
+    // revealed yet, so the seed is free — no visible speed jump.
+    if (rateKnown) {
+      state.cps = clamp(
+        state.arrivalCps * START_SEED_RATIO,
+        MIN_PLAYOUT_CPS,
+        MAX_PLAYOUT_CPS,
+      );
+    } else if (!finishing) {
+      // Rate unknowable (a single clump so far): stretch the held text
+      // over a full worst-case playout window rather than guessing fast —
+      // a provider this sparse is likely slow, and outrunning it stalls
+      // the reveal (the slew-limited ramp recovers quickly if it turns
+      // out to be fast).
+      state.cps = clamp(
+        (backlog * 1000) / TARGET_LATENCY_MAX_MS,
+        MIN_PLAYOUT_CPS,
+        MAX_PLAYOUT_CPS,
+      );
+    }
+  }
+
+  // ── Target velocity: track the arrival rate, gently steer the depth ─────
   const arrival = state.arrivalCps;
-  const floor =
-    arrival > 0 && arrival * SLOW_TRACK_RATIO < MIN_PLAYOUT_CPS
-      ? Math.max(arrival * SLOW_TRACK_RATIO, SLOW_MIN_PLAYOUT_CPS)
-      : MIN_PLAYOUT_CPS;
+  let target = state.cps; // no trustworthy rate yet → hold course
+  if (arrival > 0 && state.arrivalWeight >= RATE_CONFIDENCE_WEIGHT) {
+    const desiredLatencyMs = clamp(
+      state.gapEmaMs * GAP_LATENCY_MARGIN,
+      TARGET_LATENCY_MIN_MS,
+      TARGET_LATENCY_MAX_MS,
+    );
+    const desiredDepth = Math.max(1, (arrival * desiredLatencyMs) / 1000);
+    const depthError = (backlog - desiredDepth) / desiredDepth;
+    const correction = clamp(
+      depthError * DEPTH_ERROR_GAIN,
+      -MAX_RATE_CORRECTION,
+      MAX_RATE_CORRECTION,
+    );
+    target = arrival * (1 + correction);
+  }
+  target = clamp(target, MIN_PLAYOUT_CPS, MAX_PLAYOUT_CPS);
 
-  // Arrival-adaptive cushion: on a choppy stream, hold ~one typical gap's
-  // worth of text (at the arrival rate) so the reveal glides across the next
-  // gap instead of stalling. Smooth/fast streams keep the fixed setpoint.
-  const gapCushion = (arrival * state.gapEmaMs) / 1000;
-  const cushion = Math.min(
-    Math.max(SOFT_TARGET_CHARS, gapCushion),
-    MAX_CUSHION_CHARS,
+  // ── Smooth + slew-limit the velocity ────────────────────────────────────
+  // Low-pass toward the target, then hard-cap the fractional change per
+  // second: even a 10x arrival shift ramps over seconds, so the perceived
+  // speed never jumps frame-to-frame.
+  const alpha = 1 - Math.exp(-RATE_SMOOTHING_HZ * dt);
+  const eased = state.cps + (target - state.cps) * alpha;
+  const maxStep = state.cps * RATE_SLEW_PER_SEC * dt;
+  state.cps = clamp(
+    clamp(eased, state.cps - maxStep, state.cps + maxStep),
+    MIN_PLAYOUT_CPS,
+    MAX_PLAYOUT_CPS,
   );
 
-  // Depth-steered target velocity: stays at the floor until the buffer is
-  // deeper than the setpoint, then rises proportionally. Self-tunes to the
-  // arrival rate (the buffer settles where target == arrival), clamped to the
-  // smooth band.
-  const depthError = backlog - cushion;
-  let target = floor + Math.max(0, depthError) * DEPTH_GAIN_CPS_PER_CHAR;
-  if (target > MAX_PLAYOUT_CPS) target = MAX_PLAYOUT_CPS;
-
-  // Low-pass the velocity (frame-rate independent) so bursts/gaps don't snap
-  // it — this is what turns bursty arrival into a near-constant visual rate.
-  const alpha = 1 - Math.exp(-VELOCITY_SMOOTHING_HZ * dt);
-  state.cps += (target - state.cps) * alpha;
-  if (state.cps < floor) state.cps = floor;
-
-  // Hard latency cap: if the buffer would represent more than the allowed
-  // delay at the smoothed velocity, drain faster this frame to catch up
-  // (bounds lag; finishes a fast model / end-of-burst promptly). Applied
-  // WITHOUT writing back into `state.cps`, so the velocity eases back down
-  // afterward instead of latching the spike. The allowance stretches toward
-  // the observed inter-arrival gap on choppy streams (a post-gap clump is
-  // paced into the reveal, not dumped) and collapses to FINISH_LATENCY_MS
-  // once the stream has ended.
-  let latencyMs = MAX_LATENCY_MS;
-  if (finishing) {
-    latencyMs = FINISH_LATENCY_MS;
-  } else if (state.gapEmaMs > 0) {
-    latencyMs = Math.min(
-      Math.max(MAX_LATENCY_MS, state.gapEmaMs * GAP_LATENCY_HEADROOM),
-      MAX_SLOW_LATENCY_MS,
-    );
-  }
+  // ── Release ─────────────────────────────────────────────────────────────
+  // Finishing and the emergency valve act on the frame's effective velocity
+  // WITHOUT writing back into `state.cps`, so the smooth rate resumes cleanly
+  // if more text arrives.
   let cps = state.cps;
-  const latencyCps = (backlog * 1000) / latencyMs;
-  if (latencyCps > cps) cps = latencyCps;
-  if (finishing && cps < FINISH_MIN_CPS) cps = FINISH_MIN_CPS;
+  if (finishing) {
+    const finishCps = (backlog * 1000) / FINISH_LATENCY_MS;
+    cps = Math.max(cps, finishCps, FINISH_MIN_CPS);
+  } else {
+    const emergencyCps = (backlog * 1000) / EMERGENCY_LAG_MS;
+    if (emergencyCps > cps) cps = emergencyCps;
+  }
 
   state.carry += cps * dt;
   let count = Math.floor(state.carry);
