@@ -90,6 +90,13 @@ type MobileAgentWorkPayloadForSync = {
   title: string;
   subtitle: string;
   createdAt: number;
+  /** Per-agent completion-file sections (see `MobileAgentWorkFileSection`
+   *  in `local-chat-artifacts.ts`). */
+  agents?: Array<{
+    agentId: string;
+    title: string;
+    files: DisplayPayload[];
+  }>;
 };
 
 type MobileSyncArtifactForSync =
