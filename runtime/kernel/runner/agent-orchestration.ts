@@ -358,6 +358,10 @@ export const createAgentOrchestration = (
       agentType: string;
       runId: string;
       threadId?: string;
+      /** Per-spawn model override from spawn_agent's `model` parameter. */
+      model?: string;
+      /** Per-spawn engine selection from spawn_agent's `model` parameter. */
+      spawnEngine?: AgentToolRequest["spawnEngine"];
       selfModMetadata?: AgentToolRequest["selfModMetadata"];
     }) => Promise<LocalAgentContext>;
     sendMessage: (input: {

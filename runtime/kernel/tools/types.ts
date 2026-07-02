@@ -3,6 +3,7 @@
  */
 
 import type { TaskLifecycleStatus } from "../../contracts/agent-runtime.js";
+import type { SpawnEngineSelection } from "../../contracts/agent-engine.js";
 import type {
   FileChangeRecord,
   ProducedFileRecord,
@@ -117,6 +118,18 @@ export type AgentToolRequest = {
   description: string;
   prompt: string;
   agentType: string;
+  /**
+   * Per-spawn model override (plain model-reference string, e.g.
+   * `stella/light` or `anthropic/claude-...`). Resolved through the normal
+   * model-routing path, exactly as if the user had set it as the agent's
+   * model override. Never persisted.
+   */
+  model?: string;
+  /**
+   * Per-spawn external-engine selection (`codex` / `claude-code`, optionally
+   * with a pinned engine-native model). Never persisted.
+   */
+  spawnEngine?: SpawnEngineSelection;
   toolWorkspaceRoot?: string;
   rootRunId?: string;
   agentDepth?: number;
@@ -197,7 +210,12 @@ export type ToolHostOptions = {
   cliBridgeSocketPath?: string;
   agentApi?: AgentToolApi;
   sourceImportApi?: SourceImportToolApi;
-  getSubagentTypes?: () => readonly string[];
+  /**
+   * Validates a plain model-reference string passed to spawn_agent's `model`
+   * parameter. Throws with the standard route-failure message when the model
+   * cannot be resolved, so the spawn fails loudly instead of falling back.
+   */
+  validateSpawnModel?: (modelName: string) => void;
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;
   extensionTools?: import("../extensions/types.js").ToolDefinition[];

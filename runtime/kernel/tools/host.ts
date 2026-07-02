@@ -39,11 +39,7 @@ import type {
 
 import { log, logError, recoverStaleSecretFiles } from "./utils.js";
 import { createShellState, type ShellState } from "./shell.js";
-import {
-  createStateContext,
-  getAvailableSubagentTypes,
-  type StateContext,
-} from "./state.js";
+import { createStateContext, type StateContext } from "./state.js";
 import {
   createShellToolHandlers,
   mergeToolHandlers,
@@ -72,7 +68,7 @@ export const createToolHost = ({
   requestCredential,
   agentApi,
   sourceImportApi,
-  getSubagentTypes,
+  validateSpawnModel,
   scheduleApi,
 
   fashionApi,
@@ -99,7 +95,7 @@ export const createToolHost = ({
   const stateContext: StateContext = createStateContext(
     stateRoot,
     agentApi,
-    getSubagentTypes,
+    validateSpawnModel,
   );
 
   void recoverStaleSecretFiles(stateRoot)
@@ -369,31 +365,6 @@ export const createToolHost = ({
           return false;
         }
         return true;
-      })
-      .map((tool) => {
-        if (tool.name !== "spawn_agent") {
-          return tool;
-        }
-        const subagentTypes = getAvailableSubagentTypes(
-          stateContext.getSubagentTypes,
-        );
-        return {
-          ...tool,
-          parameters: {
-            ...tool.parameters,
-            properties: {
-              ...(tool.parameters.properties as
-                | Record<string, unknown>
-                | undefined),
-              agent_type: {
-                type: "string",
-                enum: subagentTypes,
-                description:
-                  "Optional agent type to spawn. Defaults to `general`. Use one of the available values in this schema.",
-              },
-            },
-          },
-        };
       });
   };
 

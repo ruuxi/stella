@@ -55,7 +55,10 @@ import type {
 } from "../storage/shared.js";
 import type { RuntimeThreadRecord } from "../runtime-threads.js";
 import type { ReasoningEffort } from "../preferences/local-preferences.js";
-import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
+import type {
+  AgentRuntimeEngine,
+  SpawnEngineSelection,
+} from "../../contracts/agent-engine.js";
 import type { RuntimeActiveRun } from "../../protocol/index.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import {
@@ -92,6 +95,14 @@ export type LocalAgentContext = {
   }>;
   activeThreadId?: string;
   agentEngine?: AgentRuntimeEngine;
+  /**
+   * Per-spawn engine selection from spawn_agent's `model` parameter. When
+   * set, `agentEngine` reflects the selected engine for this run and external
+   * engines honor the pinned engine-native model (if any). For Claude Code
+   * this also switches the run to vanilla pass-through mode (stock CC tools,
+   * no Stella system-prompt override).
+   */
+  spawnEngine?: SpawnEngineSelection;
   maxAgentConcurrency?: number;
 };
 
@@ -114,6 +125,10 @@ type RuntimeAgentRecord = {
   description: string;
   prompt: string;
   agentType: string;
+  /** Per-spawn model override (plain model-reference string). */
+  model?: string;
+  /** Per-spawn external-engine selection. */
+  spawnEngine?: SpawnEngineSelection;
   toolWorkspaceRoot?: string;
   agentDepth: number;
   maxAgentDepth?: number;
@@ -309,6 +324,8 @@ type LocalAgentManagerOpts = {
     agentType: string;
     runId: string;
     threadId?: string;
+    model?: string;
+    spawnEngine?: SpawnEngineSelection;
     toolWorkspaceRoot?: string;
     selfModMetadata?: AgentToolRequest["selfModMetadata"];
   }) => Promise<LocalAgentContext>;
@@ -935,6 +952,8 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: task.agentType,
         runId,
         threadId: task.threadId,
+        ...(task.model ? { model: task.model } : {}),
+        ...(task.spawnEngine ? { spawnEngine: task.spawnEngine } : {}),
         ...(task.toolWorkspaceRoot
           ? { toolWorkspaceRoot: task.toolWorkspaceRoot }
           : {}),
@@ -1272,6 +1291,8 @@ export class LocalAgentManager implements AgentToolApi {
       description: request.description,
       prompt: request.prompt,
       agentType: request.agentType,
+      ...(request.model ? { model: request.model } : {}),
+      ...(request.spawnEngine ? { spawnEngine: request.spawnEngine } : {}),
       ...(request.toolWorkspaceRoot
         ? { toolWorkspaceRoot: request.toolWorkspaceRoot }
         : {}),

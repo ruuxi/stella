@@ -527,6 +527,7 @@ const normalizeCodexRuntimeReasoningEffort = (
 export const getCodexRuntimePreferences = (
   stellaDataDir?: string,
   stellaModel?: string,
+  modelOverride?: string,
 ): { model: string; reasoningEffort?: CodexReasoningEffort } => {
   const prefs = stellaDataDir ? loadLocalPreferences(stellaDataDir) : null;
   const lightDefault =
@@ -536,7 +537,11 @@ export const getCodexRuntimePreferences = (
     preferredModel && preferredModel !== DEFAULT_CODEX_MODEL
       ? preferredModel
       : undefined;
+  // A per-spawn pin (spawn_agent `model: codex/<model>`) is an explicit user
+  // request for this one run — it outranks the env escape hatch and the saved
+  // codexModel preference, neither of which it modifies.
   const model =
+    modelOverride?.trim() ||
     process.env.STELLA_CODEX_MODEL?.trim() ||
     userSelectedModel ||
     lightDefault ||
@@ -1240,6 +1245,8 @@ export const runCodexAgentTurn = async (request: {
   stellaDataDir?: string;
   stellaAppDir?: string;
   stellaModel?: string;
+  /** Per-spawn engine-native model pin (`codex/<model>`); never persisted. */
+  modelOverride?: string;
   attachments?: RuntimeAttachmentRef[];
   abortSignal?: AbortSignal;
   onStatus?: (status: string) => void;
@@ -1263,6 +1270,7 @@ export const runCodexAgentTurn = async (request: {
   const { model, reasoningEffort } = getCodexRuntimePreferences(
     request.stellaDataDir,
     request.stellaModel,
+    request.modelOverride,
   );
   const { input, cleanupDir } = buildCodexUserInput({
     runId: request.runId,

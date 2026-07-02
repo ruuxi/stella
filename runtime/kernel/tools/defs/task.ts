@@ -40,6 +40,11 @@ export const createAgentTools = (
           description:
             "Detailed instructions for the sub-agent. This is the agent's only context.",
         },
+        model: {
+          type: "string",
+          description:
+            "Optional model or engine for this one spawn. Omit (or pass `default`) to use the user's configured setup. Accepts a model reference (`stella/light`, `stella/max`, `anthropic/...`, `openrouter/<vendor>/<model>`) or an engine — `codex` / `claude-code` for the engine's configured model, `codex/<model>` / `claude-code/<model>` to pin one. Use ONLY when the user explicitly asked for it or has a recorded standing preference; when in doubt, omit.",
+        },
         group: {
           type: "string",
           description:

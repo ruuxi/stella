@@ -135,6 +135,67 @@ describe("LocalAgentManager Exec fs locking", () => {
     );
   });
 
+  it("threads per-spawn model and engine selections into the agent context fetch", async () => {
+    const contextFetches: Array<Record<string, unknown>> = [];
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async (args) => {
+        contextFetches.push({
+          agentType: args.agentType,
+          model: args.model,
+          spawnEngine: args.spawnEngine,
+        });
+        return {
+          systemPrompt: "",
+          dynamicContext: "",
+          maxAgentDepth: 3,
+        };
+      },
+      runSubagent: async (args) => ({
+        runId: args.runId,
+        result: "done",
+      }),
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const modelTask = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "cheap task",
+      prompt: "do work",
+      agentType: "general",
+      model: "stella/light",
+      storageMode: "local",
+    });
+    await waitForAgentSettled(manager, modelTask.threadId);
+
+    const engineTask = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "cc task",
+      prompt: "do work",
+      agentType: "general",
+      spawnEngine: { engine: "claude_code_local", model: "opus" },
+      storageMode: "local",
+    });
+    await waitForAgentSettled(manager, engineTask.threadId);
+
+    expect(contextFetches).toEqual([
+      {
+        agentType: "general",
+        model: "stella/light",
+        spawnEngine: undefined,
+      },
+      {
+        agentType: "general",
+        model: undefined,
+        spawnEngine: { engine: "claude_code_local", model: "opus" },
+      },
+    ]);
+  });
+
   it("exposes active background agent root runs", async () => {
     let releaseRun: (() => void) | null = null;
     const running = new Promise<void>((resolve) => {

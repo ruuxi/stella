@@ -456,18 +456,35 @@ const runClaudeHostedTurn = async (args: {
     agentType: args.opts.agentType,
     stellaAppDir: args.opts.stellaAppDir,
   });
-  const sessionKey = args.opts.agentContext.activeThreadId
+  // Per-spawn claude-code selection (spawn_agent `model: claude-code[/...]`)
+  // runs vanilla Claude Code: stock CC tools and config, no Stella tool
+  // bridge, no system-prompt override. The global engine preference keeps the
+  // full takeover behavior (spawnEngine is never set on that path).
+  const spawnEngine = args.opts.agentContext.spawnEngine;
+  const vanilla = spawnEngine?.engine === "claude_code_local";
+  const baseSessionKey = args.opts.agentContext.activeThreadId
     ? `${args.opts.conversationId}:${args.opts.agentContext.activeThreadId}`
     : `${args.opts.conversationId}:run:${runId}`;
+  // Mode-suffixed so a later default-engine run on the same thread never
+  // reuses a CLI process that was started with vanilla arguments.
+  const sessionKey = vanilla ? `${baseSessionKey}:vanilla` : baseSessionKey;
   const persistedSessionId = getExternalEngineSessionId({
     store: args.opts.store,
     threadKey,
     engine: "claude_code_local",
   });
-  const toolMetadata = getRuntimeToolMetadata({
-    toolsAllowlist: args.opts.agentContext.toolsAllowlist,
-    toolCatalog: args.opts.toolCatalog,
-  });
+  const toolMetadata = vanilla
+    ? []
+    : getRuntimeToolMetadata({
+        toolsAllowlist: args.opts.agentContext.toolsAllowlist,
+        toolCatalog: args.opts.toolCatalog,
+      });
+  const claudeCodeModelId = getClaudeCodeAgentModelId(
+    args.opts.stellaAppDir,
+    args.opts.agentContext.model,
+    args.opts.agentType,
+    vanilla ? spawnEngine?.model : undefined,
+  );
   const emitToolUpdateStatus = (update: {
     result?: unknown;
     details?: unknown;
@@ -579,11 +596,8 @@ const runClaudeHostedTurn = async (args: {
     runId,
     sessionKey,
     persistedSessionId,
-    modelId: getClaudeCodeAgentModelId(
-      args.opts.stellaAppDir,
-      args.opts.agentContext.model,
-      args.opts.agentType,
-    ),
+    modelId: claudeCodeModelId,
+    ...(vanilla ? { vanilla } : {}),
     ...(claudeCodeEffortLevel ? { effortLevel: claudeCodeEffortLevel } : {}),
     prompt,
     ...(resumeFallbackPrompt ? { resumeFallbackPrompt } : {}),
@@ -632,11 +646,8 @@ const runClaudeHostedTurn = async (args: {
       runId,
       sessionKey,
       persistedSessionId: finalResult.sessionId,
-      modelId: getClaudeCodeAgentModelId(
-        args.opts.stellaAppDir,
-        args.opts.agentContext.model,
-        args.opts.agentType,
-      ),
+      modelId: claudeCodeModelId,
+      ...(vanilla ? { vanilla } : {}),
       ...(claudeCodeEffortLevel ? { effortLevel: claudeCodeEffortLevel } : {}),
       prompt: queuedPrompt,
       ...(queuedResumeFallbackPrompt
@@ -852,6 +863,11 @@ const runCodexHostedTurn = async (args: {
     stellaDataDir: args.opts.stellaDataDir,
     stellaAppDir: args.opts.stellaAppDir,
     stellaModel: args.opts.agentContext.model,
+    // Per-spawn codex model pin (spawn_agent `model: codex/<model>`).
+    ...(args.opts.agentContext.spawnEngine?.engine === "codex_cli" &&
+    args.opts.agentContext.spawnEngine.model
+      ? { modelOverride: args.opts.agentContext.spawnEngine.model }
+      : {}),
     attachments: args.opts.attachments,
     abortSignal: args.opts.abortSignal,
     onStatus: (status) => {
@@ -894,6 +910,10 @@ const runCodexHostedTurn = async (args: {
       stellaDataDir: args.opts.stellaDataDir,
       stellaAppDir: args.opts.stellaAppDir,
       stellaModel: args.opts.agentContext.model,
+      ...(args.opts.agentContext.spawnEngine?.engine === "codex_cli" &&
+      args.opts.agentContext.spawnEngine.model
+        ? { modelOverride: args.opts.agentContext.spawnEngine.model }
+        : {}),
       attachments: queuedAttachments,
       abortSignal: args.opts.abortSignal,
       onStatus: (status) => {

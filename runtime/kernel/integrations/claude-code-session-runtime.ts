@@ -86,6 +86,15 @@ type ClaudeCodeTurnRequest = {
    * Undefined leaves the CLI on its model default.
    */
   effortLevel?: string;
+  /**
+   * Vanilla pass-through mode (per-spawn `model: claude-code` selection):
+   * runs stock Claude Code with its own tool suite and configuration — no
+   * Stella tool bridge, no built-in-tool strip, no MCP override, no Stella
+   * system prompt, no structured decision schema. `tools`/`executeTool` are
+   * ignored; the turn's natural result text is the final answer. The global
+   * claude-code engine takeover (preferences) never sets this.
+   */
+  vanilla?: boolean;
   cwd?: string;
   attachments?: RuntimeAttachmentRef[];
   tools: ToolMetadata[];
@@ -708,10 +717,11 @@ class ClaudeCodeSessionRuntime {
     session: SessionState,
     request: ClaudeCodeTurnRequest,
   ): Promise<ClaudeCodeTurnResult> {
-    const effectiveSystemPrompt = buildClaudeCodeToolRuntimePrompt(
-      request.systemPrompt,
-      request.tools,
-    );
+    // Vanilla mode sends the prompt to stock Claude Code untouched: no
+    // Stella runtime contract, no system-prompt override.
+    const effectiveSystemPrompt = request.vanilla
+      ? ""
+      : buildClaudeCodeToolRuntimePrompt(request.systemPrompt, request.tools);
     let usage: ClaudeUsage | undefined;
     let nextPrompt = buildInitialPrompt(session, request);
 
@@ -832,10 +842,6 @@ class ClaudeCodeSessionRuntime {
     const args = [
       "-p",
       "--dangerously-skip-permissions",
-      "--strict-mcp-config",
-      "--mcp-config",
-      '{"mcpServers":{}}',
-      "--disable-slash-commands",
       "--input-format",
       "stream-json",
       "--output-format",
@@ -845,11 +851,23 @@ class ClaudeCodeSessionRuntime {
       "--include-hook-events",
       "--settings",
       CLAUDE_CODE_HOOK_SETTINGS,
-      "--json-schema",
-      CLAUDE_CODE_RESPONSE_SCHEMA,
-      "--tools",
-      "",
     ];
+    if (!request.vanilla) {
+      // Stella takeover mode: strip Claude Code's own tools and MCP servers
+      // and route every tool call through the Stella bridge via the
+      // structured decision schema. Vanilla mode leaves stock Claude Code
+      // fully intact.
+      args.push(
+        "--strict-mcp-config",
+        "--mcp-config",
+        '{"mcpServers":{}}',
+        "--disable-slash-commands",
+        "--json-schema",
+        CLAUDE_CODE_RESPONSE_SCHEMA,
+        "--tools",
+        "",
+      );
+    }
     if (effectiveSystemPrompt.trim()) {
       args.push("--system-prompt", effectiveSystemPrompt.trim());
     }
@@ -945,6 +963,7 @@ class ClaudeCodeSessionRuntime {
                 session,
                 parsedLine,
                 processState.stderrText,
+                Boolean(completed.request.vanilla),
               ),
             );
           } catch (error) {
@@ -1112,6 +1131,7 @@ class ClaudeCodeSessionRuntime {
     session: SessionState,
     parsed: Record<string, unknown>,
     stderrText: string,
+    vanilla = false,
   ): StructuredStepResult {
     let resultError: string | undefined;
     if (parsed.is_error === true) {
@@ -1133,6 +1153,20 @@ class ClaudeCodeSessionRuntime {
       inputTokens !== undefined || outputTokens !== undefined
         ? { inputTokens, outputTokens }
         : undefined;
+    if (vanilla) {
+      // No decision schema in vanilla mode — the result text IS the final
+      // answer, even when it happens to look like JSON.
+      session.turnCount += 1;
+      session.lastUsedAt = Date.now();
+      return {
+        action: {
+          type: "final",
+          message: typeof parsed.result === "string" ? parsed.result.trim() : "",
+        },
+        sessionId: session.sessionId,
+        usage,
+      };
+    }
     const decision =
       parseClaudeCodeDecision(parsed.structured_output) ??
       (typeof parsed.result === "string"

@@ -326,6 +326,105 @@ describe("claude-code-session-runtime", () => {
     }
   });
 
+  it("runs vanilla Claude Code untouched for per-spawn engine selections", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-vanilla-"));
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "prompts.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "let buffer = '';",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "function handle(line) {",
+        "  const parsed = JSON.parse(line);",
+        "  fs.appendFileSync(logPath, JSON.stringify({",
+        "    argv: process.argv.slice(2),",
+        "    content: parsed.message.content,",
+        "  }) + '\\n');",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    session_id: 'fake-session',",
+        "    is_error: false,",
+        "    usage: { input_tokens: 1, output_tokens: 1 },",
+        "    result: '{\\\"final\\\": \\\"answer that looks like JSON\\\"}',",
+        "  }) + '\\n');",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle(line);",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-vanilla-1",
+        sessionKey: `test-vanilla:${Date.now()}`,
+        prompt: "Fix the failing test in the repo.",
+        modelId: "claude-code/opus",
+        vanilla: true,
+        systemPrompt: "Stella system prompt that must NOT be forwarded.",
+        tools: [
+          {
+            name: "Read",
+            description: "Read a file",
+            parameters: { type: "object" },
+          },
+        ],
+        executeTool: async () => {
+          throw new Error("Stella tools must not be invoked in vanilla mode.");
+        },
+      });
+
+      const records = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { argv: string[]; content: string });
+      // Vanilla answers pass through verbatim — even JSON-looking text is the
+      // final answer, never a structured Stella decision.
+      expect(result.text).toBe('{"final": "answer that looks like JSON"}');
+      expect(records).toHaveLength(1);
+      const argv = records[0]?.argv ?? [];
+      // Stock Claude Code: no built-in-tool strip, no Stella decision schema,
+      // no MCP override, no injected system prompt.
+      expect(argv).toContain("--dangerously-skip-permissions");
+      expect(argv).toContain("--model");
+      expect(argv).toContain("opus");
+      expect(argv).not.toContain("--tools");
+      expect(argv).not.toContain("--json-schema");
+      expect(argv).not.toContain("--system-prompt");
+      expect(argv).not.toContain("--mcp-config");
+      expect(argv).not.toContain("--strict-mcp-config");
+      expect(argv).not.toContain("--disable-slash-commands");
+      expect(records[0]?.content).toContain("Fix the failing test in the repo.");
+      expect(records[0]?.content).not.toContain("must NOT be forwarded");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("resumes after an aborted Claude Code turn once a session id was observed", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-abort-"));
     const binDir = path.join(dir, "bin");

@@ -24,7 +24,7 @@ type TestHostContext = {
 const activeContexts = new Set<TestHostContext>();
 
 const createTestHost = async (
-  getSubagentTypes?: () => readonly string[],
+  validateSpawnModel?: (modelName: string) => void,
 ): Promise<TestHostContext> => {
   const rootPath = path.join(
     os.tmpdir(),
@@ -50,13 +50,15 @@ const createTestHost = async (
           description: request.description,
           prompt: request.prompt,
           agentType: request.agentType,
+          ...(request.model ? { model: request.model } : {}),
+          ...(request.spawnEngine ? { spawnEngine: request.spawnEngine } : {}),
         });
         return { threadId: `thread-${createdTasks.length}` };
       },
       getAgent: async () => null,
       cancelAgent: async () => ({ canceled: false }),
     },
-    getSubagentTypes,
+    validateSpawnModel,
     webSearch: async (query) => ({ text: `results for ${query}` }),
     contextProvider: async (payload) => {
       contextLookups.push(payload);
@@ -137,12 +139,14 @@ describe("orchestrator direct tool surface", () => {
     const sendInputTool = host
       .getToolCatalog("orchestrator")
       .find((tool) => tool.name === "send_input");
+    const spawnAgentProperties = spawnAgentTool?.parameters.properties as
+      | Record<string, unknown>
+      | undefined;
+    expect(spawnAgentProperties?.agent_type).toBeUndefined();
+    expect(spawnAgentProperties?.model).toMatchObject({ type: "string" });
     expect(
-      (
-        (spawnAgentTool?.parameters.properties as Record<string, unknown>)
-          .agent_type as { enum?: string[] }
-      ).enum,
-    ).toEqual(["general"]);
+      spawnAgentTool?.parameters.required as string[] | undefined,
+    ).not.toContain("model");
     expect(
       (sendInputTool?.parameters.properties as Record<string, unknown>)
         .description,
@@ -374,33 +378,52 @@ describe("orchestrator direct tool surface", () => {
     expect(generalResult.error).toContain("only available to the orchestrator");
   });
 
-  it("surfaces custom agent types in spawn_agent schema", async () => {
-    const { host } = await createTestHost(() => ["general", "research"]);
+  it("fails spawn_agent loudly when the model override cannot be routed", async () => {
+    const { host, createdTasks } = await createTestHost(() => {
+      throw new Error('No provider route for model "banana/split".');
+    });
 
-    const spawnAgentTool = host
-      .getToolCatalog("orchestrator")
-      .find((tool) => tool.name === "spawn_agent");
+    const result = await host.executeTool(
+      "spawn_agent",
+      {
+        description: "Should fail",
+        prompt: "This spawn names an unroutable model.",
+        model: "banana/split",
+      },
+      makeToolContext("orchestrator"),
+    );
 
-    expect(
-      (
-        (spawnAgentTool?.parameters.properties as Record<string, unknown>)
-          .agent_type as { enum?: string[] }
-      ).enum,
-    ).toEqual(["general", "research"]);
+    expect(result.error).toBe('No provider route for model "banana/split".');
+    expect(createdTasks).toEqual([]);
   });
 
-  it("falls back to general when custom agent type discovery returns empty", async () => {
-    const { host } = await createTestHost(() => []);
+  it("forwards per-spawn model and engine selections to createAgent", async () => {
+    const { host, createdTasks } = await createTestHost();
 
-    const spawnAgentTool = host
-      .getToolCatalog("orchestrator")
-      .find((tool) => tool.name === "spawn_agent");
+    await host.executeTool(
+      "spawn_agent",
+      {
+        description: "Cheap bulk pass",
+        prompt: "Process the files.",
+        model: "stella/light",
+      },
+      makeToolContext("orchestrator"),
+    );
+    await host.executeTool(
+      "spawn_agent",
+      {
+        description: "Repo work",
+        prompt: "Fix the bug.",
+        model: "claude-code/opus",
+      },
+      makeToolContext("orchestrator"),
+    );
 
-    expect(
-      (
-        (spawnAgentTool?.parameters.properties as Record<string, unknown>)
-          .agent_type as { enum?: string[] }
-      ).enum,
-    ).toEqual(["general"]);
+    expect(createdTasks).toEqual([
+      expect.objectContaining({ model: "stella/light" }),
+      expect.objectContaining({
+        spawnEngine: { engine: "claude_code_local", model: "opus" },
+      }),
+    ]);
   });
 });
