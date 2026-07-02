@@ -45,6 +45,13 @@ export type LifecycleServerOptions = {
    * merely client attachment.
    */
   shouldKeepAlive?: () => Promise<boolean> | boolean;
+  /**
+   * Build stamp of the runtime code this worker process loaded at boot
+   * (see `runtime/worker/runtime-build-stamp.ts`). Persisted to
+   * `paths.buildStampFile` so a later host can compare it against the
+   * on-disk runtime and detect a stale worker on reattach.
+   */
+  runtimeBuildStamp?: string;
   onShutdown: (reason: "idle" | "signal") => Promise<void> | void;
 };
 
@@ -143,6 +150,17 @@ export class WorkerLifecycleServer {
         `${hostExecutablePath}\n`,
         "utf-8",
       );
+    }
+    if (this.options.runtimeBuildStamp) {
+      await fsPromises.writeFile(
+        this.paths.buildStampFile,
+        `${this.options.runtimeBuildStamp}\n`,
+        "utf-8",
+      );
+    } else {
+      // No stamp (unexpected in detached mode): remove any stale stamp from
+      // a previous worker so the host doesn't compare against dead data.
+      await fsPromises.unlink(this.paths.buildStampFile).catch(() => undefined);
     }
 
     // Open the log stream lazily; entry.ts decides whether to redirect
@@ -289,6 +307,7 @@ export const removeStaleRuntimeArtifacts = async (
     paths.pidFile,
     paths.lockFile,
     paths.hostExecutableFile,
+    paths.buildStampFile,
   ];
   if (runtimeIpcPathUsesFilesystem(paths.socketPath)) {
     maybeFilePaths.push(paths.socketPath);

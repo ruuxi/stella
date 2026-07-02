@@ -124,6 +124,7 @@ export const buildUdsConnectionFactory = (
       process: buildProcessShim(lifecycle.socket, lifecycle.pid),
       peer,
       pid: lifecycle.pid,
+      attachedToExistingWorker: !lifecycle.spawned,
     };
   };
 };

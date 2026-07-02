@@ -14,6 +14,14 @@ export type WorkerConnection = {
   process: ChildProcessWithoutNullStreams;
   peer: JsonRpcPeer;
   pid: number;
+  /**
+   * True when the connection factory attached to an already-running
+   * detached worker instead of spawning a fresh one. Reattached workers may
+   * be running stale runtime code (the desktop restarted across a self-mod
+   * apply or update), so the host runs the staleness handshake on them;
+   * freshly spawned workers are by definition current.
+   */
+  attachedToExistingWorker?: boolean;
 };
 
 export type WorkerLifecycleState = "idle" | "starting" | "running" | "stopping";

@@ -10,6 +10,10 @@ import {
 import { WorkerPeerBroker } from "./peer-broker.js";
 import { createRuntimeWorkerServer } from "./server.js";
 import {
+  computeRuntimeBuildStamp,
+  RUNTIME_BUILD_STAMP_UNAVAILABLE,
+} from "./runtime-build-stamp.js";
+import {
   parseWorkerArgs,
   parseWorkerListenUrl,
   startWorkerTransport,
@@ -116,8 +120,16 @@ const main = async () => {
     const logger = initFileLogger(cliArgs.stellaAppDir, "worker");
     installGlobalErrorLogging(logger);
     logger.process("worker.starting", { pid: process.pid });
+    // Snapshot the runtime tree's identity as loaded by THIS process
+    // (process.argv[1] is the entry file the host spawned). The host compares
+    // this stamp against the on-disk tree when it reattaches to detect a
+    // worker running stale code after a self-mod apply or desktop update.
+    const runtimeBuildStamp = computeRuntimeBuildStamp(process.argv[1] ?? "");
     lifecycle = new WorkerLifecycleServer({
       stellaAppDir: cliArgs.stellaAppDir,
+      ...(runtimeBuildStamp !== RUNTIME_BUILD_STAMP_UNAVAILABLE
+        ? { runtimeBuildStamp }
+        : {}),
       ...(cliArgs.idleShutdownMs ? { idleShutdownMs: cliArgs.idleShutdownMs } : {}),
       shouldKeepAlive: () => runtimeServer.hasActiveWork(),
       onShutdown: async (reason) => {

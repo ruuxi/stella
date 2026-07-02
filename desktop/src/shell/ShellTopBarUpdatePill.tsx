@@ -1,5 +1,5 @@
-import { useCallback, useSyncExternalStore } from "react";
-import { Download, X } from "@/ui/icons";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { Download, RefreshCw, X } from "@/ui/icons";
 import { showToast } from "@/ui/toast";
 import { useWindowType } from "@/shared/hooks/use-window-type";
 import { useDesktopUpdate } from "@/global/updates/use-desktop-update";
@@ -17,8 +17,30 @@ import "./shell-topbar-update-pill.css";
  * flow that previously lived in the Settings banner. Clean merges apply
  * directly; conflict cases fall back to a background install-update agent.
  */
+/**
+ * Quiet awareness of a deferred runtime-worker restart: the host detected
+ * new runtime code (self-mod apply / update) while work was in flight and
+ * will restart the worker when it goes quiescent. Sourced from the
+ * `runtime:availability` broadcasts.
+ */
+const usePendingRuntimeRestart = (): boolean => {
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.agent?.onAvailability?.(
+      (snapshot) => {
+        setPending(snapshot.pendingRuntimeRestart === true);
+      },
+    );
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+  return pending;
+};
+
 export const ShellTopBarUpdatePill = () => {
   const isMiniWindow = useWindowType() === "mini";
+  const pendingRuntimeRestart = usePendingRuntimeRestart();
   const {
     installManifest,
     currentRelease,
@@ -121,7 +143,33 @@ export const ShellTopBarUpdatePill = () => {
   }, []);
 
   if (isMiniWindow) return null;
-  if (!updateAvailable || !currentRelease) return null;
+  if (!updateAvailable || !currentRelease) {
+    // No desktop update to offer, but a runtime restart may be queued behind
+    // in-flight work — show a quiet, non-interactive note so the deferral is
+    // never silent.
+    if (pendingRuntimeRestart) {
+      return (
+        <div
+          className="shell-topbar-update-pill"
+          data-state="pending-runtime"
+          title="Runtime update pending — applies when current work finishes"
+        >
+          <span className="shell-topbar-update-pill__main shell-topbar-update-pill__main--passive">
+            <RefreshCw
+              className="shell-topbar-update-pill__icon"
+              size={12}
+              strokeWidth={2}
+              aria-hidden
+            />
+            <span className="shell-topbar-update-pill__label">
+              Runtime update pending
+            </span>
+          </span>
+        </div>
+      );
+    }
+    return null;
+  }
   if (activeUpdate?.status === "background") return null;
 
   const isActive = updateState !== "idle";
