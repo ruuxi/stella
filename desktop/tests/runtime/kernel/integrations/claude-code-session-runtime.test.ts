@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   buildToolResultPrompt,
   buildClaudeCodeToolRuntimePrompt,
+  createClaudeCodeStreamEmitter,
   getClaudeCodeStatusChangeFromStreamEvent,
   getClaudeCodeTextDeltaFromStreamEvent,
   isClaudeCodeModel,
@@ -241,6 +242,139 @@ describe("claude-code-session-runtime", () => {
     ).toBeNull();
   });
 
+  describe("createClaudeCodeStreamEmitter", () => {
+    const streamEvent = (event: Record<string, unknown>) => ({
+      type: "stream_event",
+      event,
+    });
+    const textDelta = (text: string) =>
+      streamEvent({
+        type: "content_block_delta",
+        delta: { type: "text_delta", text },
+      });
+    const messageStart = () => streamEvent({ type: "message_start" });
+    const textBlockStart = () =>
+      streamEvent({
+        type: "content_block_start",
+        content_block: { type: "text", text: "" },
+      });
+    const structuredOutputStart = () =>
+      streamEvent({
+        type: "content_block_start",
+        content_block: { type: "tool_use", id: "t1", name: "StructuredOutput", input: {} },
+      });
+    const jsonDelta = (partial: string) =>
+      streamEvent({
+        type: "content_block_delta",
+        delta: { type: "input_json_delta", partial_json: partial },
+      });
+    const collect = () => {
+      const chunks: string[] = [];
+      const emit = createClaudeCodeStreamEmitter((chunk) => chunks.push(chunk));
+      return { chunks, emit };
+    };
+
+    it("streams natural text deltas through unchanged", () => {
+      const { chunks, emit } = collect();
+      emit(messageStart());
+      emit(textBlockStart());
+      emit(textDelta("Hello"));
+      emit(textDelta(" world"));
+      expect(chunks.join("")).toBe("Hello world");
+    });
+
+    it("injects a paragraph break at message boundaries that would fuse words", () => {
+      const { chunks, emit } = collect();
+      emit(messageStart());
+      emit(textBlockStart());
+      emit(textDelta("First message ends here."));
+      // Claude Code streams the next assistant message through the same
+      // step emitter with no separator of its own.
+      emit(messageStart());
+      emit(textBlockStart());
+      emit(textDelta("Second message starts here."));
+      expect(chunks.join("")).toBe(
+        "First message ends here.\n\nSecond message starts here.",
+      );
+    });
+
+    it("does not inject a separator when one already exists", () => {
+      const { chunks, emit } = collect();
+      emit(textBlockStart());
+      emit(textDelta("Ends with newline.\n"));
+      emit(messageStart());
+      emit(textBlockStart());
+      emit(textDelta("Next paragraph."));
+      expect(chunks.join("")).toBe("Ends with newline.\nNext paragraph.");
+
+      const second = collect();
+      second.emit(textBlockStart());
+      second.emit(textDelta("Ends without whitespace."));
+      second.emit(messageStart());
+      second.emit(textBlockStart());
+      second.emit(textDelta(" starts with space"));
+      expect(second.chunks.join("")).toBe(
+        "Ends without whitespace. starts with space",
+      );
+    });
+
+    it("streams the decoded final message from StructuredOutput input deltas", () => {
+      const { chunks, emit } = collect();
+      emit(messageStart());
+      emit(structuredOutputStart());
+      emit(jsonDelta(""));
+      emit(jsonDelta('{"type": "final'));
+      emit(jsonDelta('", "message": "Paris is'));
+      emit(jsonDelta(' rainy.\\nBring an umbrella \\u2602'));
+      emit(jsonDelta('"}'));
+      expect(chunks.join("")).toBe("Paris is rainy.\nBring an umbrella ☂");
+    });
+
+    it("emits nothing for structured tool requests", () => {
+      const { chunks, emit } = collect();
+      emit(structuredOutputStart());
+      emit(jsonDelta('{"type": "tool_request", "toolName": "get_weather"'));
+      emit(jsonDelta(', "args": {"city": "Paris"}}'));
+      expect(chunks).toEqual([]);
+    });
+
+    it("mutes the structured restatement after a natural-text answer already streamed", () => {
+      const { chunks, emit } = collect();
+      emit(messageStart());
+      emit(textBlockStart());
+      emit(textDelta("The answer, streamed naturally."));
+      emit(messageStart());
+      emit(structuredOutputStart());
+      emit(jsonDelta('{"type": "final", "message": "The answer, restated."}'));
+      expect(chunks.join("")).toBe("The answer, streamed naturally.");
+    });
+
+    it("streams the message from a text step that is itself a final decision payload", () => {
+      const { chunks, emit } = collect();
+      emit(textBlockStart());
+      emit(textDelta('{"type":"fin'));
+      emit(textDelta('al","message":"Decoded from'));
+      emit(textDelta(' text JSON."}'));
+      expect(chunks.join("")).toBe("Decoded from text JSON.");
+    });
+
+    it("suppresses non-final JSON text steps entirely", () => {
+      const { chunks, emit } = collect();
+      emit(textBlockStart());
+      emit(textDelta('{"type":"tool_request","toolName":"x","args":{}}'));
+      expect(chunks).toEqual([]);
+    });
+
+    it("holds back split surrogate pairs until they complete", () => {
+      const { chunks, emit } = collect();
+      emit(structuredOutputStart());
+      emit(jsonDelta('{"type": "final", "message": "emoji \\ud83d'));
+      expect(chunks.join("")).toBe("emoji ");
+      emit(jsonDelta('\\ude00 done"}'));
+      expect(chunks.join("")).toBe("emoji 😀 done");
+    });
+  });
+
   it("summarizes Stella inline image tool attachments without forwarding raw markers", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-claude-test-"));
     try {
@@ -366,6 +500,88 @@ describe("claude-code-session-runtime", () => {
       } else {
         process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
       }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("streams preamble text and decoded structured final messages across tool steps", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-stream-"));
+    const binDir = path.join(dir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "let buffer = '';",
+        "let count = 0;",
+        "function emit(payload) {",
+        "  process.stdout.write(JSON.stringify(payload) + '\\n');",
+        "}",
+        "function streamEvent(event) {",
+        "  emit({ type: 'stream_event', session_id: 'fake-session', event });",
+        "}",
+        "function handle(line) {",
+        "  count += 1;",
+        "  if (count === 1) {",
+        "    streamEvent({ type: 'message_start' });",
+        "    streamEvent({ type: 'content_block_start', content_block: { type: 'text', text: '' } });",
+        "    streamEvent({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'Checking the weather.' } });",
+        "    streamEvent({ type: 'message_start' });",
+        "    streamEvent({ type: 'content_block_start', content_block: { type: 'tool_use', id: 't1', name: 'StructuredOutput', input: {} } });",
+        "    streamEvent({ type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{\"type\": \"tool_request\", \"toolName\": \"get_weather\", \"args\": {\"city\": \"Paris\"}}' } });",
+        "    emit({ type: 'result', session_id: 'fake-session', is_error: false, usage: { input_tokens: 1, output_tokens: 1 }, structured_output: { type: 'tool_request', toolName: 'get_weather', args: { city: 'Paris' } } });",
+        "    return;",
+        "  }",
+        "  streamEvent({ type: 'message_start' });",
+        "  streamEvent({ type: 'content_block_start', content_block: { type: 'tool_use', id: 't2', name: 'StructuredOutput', input: {} } });",
+        "  streamEvent({ type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{\"type\": \"final\", \"message\": \"Paris is' } });",
+        "  streamEvent({ type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: ' 7\\u00b0C with light rain.\"}' } });",
+        "  emit({ type: 'result', session_id: 'fake-session', is_error: false, usage: { input_tokens: 1, output_tokens: 1 }, structured_output: { type: 'final', message: 'Paris is 7\\u00b0C with light rain.' } });",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle(line);",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    try {
+      const chunks: string[] = [];
+      const result = await runClaudeCodeTurn({
+        runId: "run-stream-1",
+        sessionKey: `test-stream:${Date.now()}`,
+        prompt: "What's the weather in Paris?",
+        modelId: "claude-code/default",
+        tools: [
+          {
+            name: "get_weather",
+            description: "Get weather",
+            parameters: { type: "object" },
+          },
+        ],
+        onStream: (chunk) => chunks.push(chunk),
+        executeTool: async () => ({ result: "7C light rain" }),
+      });
+
+      expect(result.text).toBe("Paris is 7°C with light rain.");
+      // The step-1 preamble streams; the tool-request payload stays silent.
+      expect(chunks[0]).toBe("Checking the weather.");
+      // The step-2 structured final message streams incrementally instead of
+      // popping in whole at result time.
+      expect(chunks.slice(1)).toEqual(["Paris is", " 7°C with light rain."]);
+      expect(chunks.join("")).not.toContain("tool_request");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });

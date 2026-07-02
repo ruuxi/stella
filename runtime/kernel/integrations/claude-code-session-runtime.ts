@@ -604,29 +604,209 @@ export const getClaudeCodeTextDeltaFromStreamEvent = (
   return null;
 };
 
-const createClaudeCodeStreamEmitter = (onStream?: (chunk: string) => void) => {
+const JSON_STRING_ESCAPES: Record<string, string> = {
+  '"': '"',
+  "\\": "\\",
+  "/": "/",
+  b: "\b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "\t",
+};
+
+const isHighSurrogate = (char: string): boolean => {
+  const code = char.charCodeAt(0);
+  return code >= 0xd800 && code <= 0xdbff;
+};
+
+/**
+ * Incrementally decodes the `message` string out of a streaming Claude Code
+ * "final" decision payload (`{"type":"final","message":"..."}`). Claude Code
+ * delivers that payload either as `StructuredOutput` tool-input JSON
+ * (`input_json_delta`) or as plain text deltas that ARE the JSON — in both
+ * cases the user-visible answer would otherwise not stream at all and pop in
+ * whole at result time. Feed raw JSON fragments to `push`; it returns the
+ * newly decoded message text (empty until `"type":"final","message":"` has
+ * arrived, and forever for any other payload shape, e.g. tool requests).
+ *
+ * Decoding handles fragment boundaries that split JSON escape sequences
+ * (`\n`, `\uXXXX`) and surrogate pairs: incomplete tails are held back until
+ * the next fragment completes them.
+ */
+export const createClaudeCodeFinalMessageDecoder = () => {
+  let raw = "";
+  let phase: "detect" | "message" | "done" | "reject" = "detect";
+  /** Scan cursor into `raw` once inside the message string. */
+  let cursor = 0;
+  /** Held-back high surrogate awaiting its low half. */
+  let carry = "";
+
+  const FINAL_MESSAGE_PREFIX = /^\s*\{\s*"type"\s*:\s*"final"\s*,\s*"message"\s*:\s*"/;
+  const TYPE_VALUE = /^\s*\{\s*"type"\s*:\s*"([^"]*)"/;
+
+  return {
+    push(fragment: string): string {
+      if (!fragment || phase === "done" || phase === "reject") return "";
+      raw += fragment;
+      if (phase === "detect") {
+        const typeMatch = TYPE_VALUE.exec(raw);
+        if (typeMatch && typeMatch[1] !== "final") {
+          phase = "reject";
+          raw = "";
+          return "";
+        }
+        const prefixMatch = FINAL_MESSAGE_PREFIX.exec(raw);
+        if (!prefixMatch) return "";
+        cursor = prefixMatch[0].length;
+        phase = "message";
+      }
+      let out = carry;
+      carry = "";
+      while (cursor < raw.length) {
+        const char = raw[cursor]!;
+        if (char === '"') {
+          phase = "done";
+          break;
+        }
+        if (char === "\\") {
+          const escape = raw[cursor + 1];
+          if (escape === undefined) break; // wait for the rest of the escape
+          if (escape === "u") {
+            const hex = raw.slice(cursor + 2, cursor + 6);
+            if (hex.length < 4) break;
+            const code = Number.parseInt(hex, 16);
+            out += Number.isNaN(code) ? "" : String.fromCharCode(code);
+            cursor += 6;
+            continue;
+          }
+          out += JSON_STRING_ESCAPES[escape] ?? escape;
+          cursor += 2;
+          continue;
+        }
+        out += char;
+        cursor += 1;
+      }
+      // Never emit a dangling high surrogate; hold it for the low half.
+      const last = out.at(-1);
+      if (phase === "message" && last && isHighSurrogate(last)) {
+        carry = last;
+        out = out.slice(0, -1);
+      }
+      return out;
+    },
+  };
+};
+
+/**
+ * Per-step stream emitter. Turns raw Claude Code stream-json events into the
+ * user-visible text stream:
+ *
+ * - Natural assistant text deltas pass through, except when a step's visible
+ *   text starts with `{`/`[` — that step IS a decision payload, so instead of
+ *   suppressing it wholesale the final-message decoder streams its `message`
+ *   field (tool requests still emit nothing).
+ * - `StructuredOutput` tool-input deltas stream the decoded final `message`
+ *   the same way — without this, tool-loop answers never stream and pop in
+ *   whole at result time.
+ * - Only the FIRST source to produce visible output owns the step: when
+ *   Claude streams a natural-text answer and then restates it as structured
+ *   output, the restatement stays silent instead of double-emitting.
+ * - Message/text-block boundaries within a step (multiple assistant messages
+ *   stream through one emitter, e.g. around vanilla-mode tool use) inject a
+ *   paragraph break when the joined halves would otherwise fuse — Claude Code
+ *   emits no separator between them, which used to concatenate the last word
+ *   of one message with the first word of the next.
+ */
+export const createClaudeCodeStreamEmitter = (
+  onStream?: (chunk: string) => void,
+) => {
   let mode: "unknown" | "emit" | "suppress" = "unknown";
   let pending = "";
+  let owner: "none" | "text" | "structured" = "none";
+  let lastVisibleChar = "";
+  let boundaryPending = false;
+  let structuredDecoder: ReturnType<typeof createClaudeCodeFinalMessageDecoder> | null =
+    null;
+  let suppressedTextDecoder: ReturnType<
+    typeof createClaudeCodeFinalMessageDecoder
+  > | null = null;
+
+  const emitVisible = (source: "text" | "structured", text: string) => {
+    if (!text) return;
+    if (owner === "none") {
+      owner = source;
+    } else if (owner !== source) {
+      return;
+    }
+    let out = text;
+    if (
+      boundaryPending &&
+      lastVisibleChar &&
+      !/\s/.test(lastVisibleChar) &&
+      !/^\s/.test(out)
+    ) {
+      out = `\n\n${out}`;
+    }
+    boundaryPending = false;
+    lastVisibleChar = out.at(-1) ?? lastVisibleChar;
+    onStream?.(out);
+  };
+
   return (event: Record<string, unknown>) => {
+    if (event.type !== "stream_event") return;
+    const source = asObject(event.event) ?? event;
+    if (source.type === "message_start") {
+      boundaryPending = true;
+      return;
+    }
+    if (source.type === "content_block_start") {
+      const block = asObject(source.content_block);
+      if (block?.type === "text") {
+        boundaryPending = true;
+      }
+      structuredDecoder =
+        block?.type === "tool_use" && block.name === "StructuredOutput"
+          ? createClaudeCodeFinalMessageDecoder()
+          : null;
+      return;
+    }
+    if (source.type === "content_block_delta") {
+      const rawDelta = asObject(source.delta);
+      if (
+        rawDelta?.type === "input_json_delta" &&
+        structuredDecoder &&
+        typeof rawDelta.partial_json === "string"
+      ) {
+        emitVisible("structured", structuredDecoder.push(rawDelta.partial_json));
+        return;
+      }
+    }
     const delta = getClaudeCodeTextDeltaFromStreamEvent(event);
     if (!delta) return;
     if (mode === "emit") {
-      onStream?.(delta);
+      emitVisible("text", delta);
       return;
     }
     if (mode === "suppress") {
+      emitVisible("text", suppressedTextDecoder?.push(delta) ?? "");
       return;
     }
     pending += delta;
     const firstVisible = pending.trimStart().at(0);
     if (!firstVisible) return;
     if (firstVisible === "{" || firstVisible === "[") {
-      pending = "";
+      // The step's visible text is a decision payload. Don't paint the raw
+      // JSON — but if it turns out to be a "final" decision, stream its
+      // decoded `message` so the answer still reveals progressively.
       mode = "suppress";
+      suppressedTextDecoder = createClaudeCodeFinalMessageDecoder();
+      emitVisible("text", suppressedTextDecoder.push(pending));
+      pending = "";
       return;
     }
     mode = "emit";
-    onStream?.(pending);
+    emitVisible("text", pending);
     pending = "";
   };
 };
