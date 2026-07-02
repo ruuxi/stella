@@ -90,6 +90,12 @@
   cursor: not-allowed;
 }
 
+.local-runtime-options-model-select {
+  flex-shrink: 0;
+  min-width: 0;
+  max-width: 55%;
+}
+
 .local-runtime-options-number {
   flex-shrink: 0;
   width: 72px;

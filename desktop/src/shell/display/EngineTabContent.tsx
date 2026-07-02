@@ -117,6 +117,7 @@ type CodexModelOption = {
 type ClaudeCodeModelOption = {
   id: string;
   displayName: string;
+  description?: string;
   source: "alias" | "anthropic";
 };
 
@@ -636,7 +637,7 @@ function ModelsSection({
       claudeCodeModels.map((model) => ({
         id: model.id,
         label: model.displayName || model.id,
-        subtitle: model.source === "alias" ? undefined : model.id,
+        subtitle: model.source === "alias" ? model.description : model.id,
       })),
     [claudeCodeModels],
   );

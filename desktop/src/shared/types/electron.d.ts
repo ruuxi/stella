@@ -1013,6 +1013,7 @@ export type ElectronSystemApi = {
     models: Array<{
       id: string;
       displayName: string;
+      description?: string;
       source: "alias" | "anthropic";
     }>;
   }>;

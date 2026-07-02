@@ -18,6 +18,11 @@ import { Select } from "@/ui/select";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
+  readRecentModels,
+  recordRecentModel,
+} from "@/global/settings/lib/recent-models";
+import type { CompactModelListEntry } from "@/global/settings/CompactStellaModelList";
+import {
   buildModelDefaultsMap,
   buildResolvedModelDefaultsMap,
   getConfigurableAgents,
@@ -168,10 +173,30 @@ function isReasoningEffort(value: string): value is ReasoningEffort {
   return REASONING_EFFORT_OPTIONS.some((option) => option.id === value);
 }
 
+/** Friendly names for Claude Code CLI model aliases. */
+const CLAUDE_CODE_ALIAS_LABELS: Record<string, string> = {
+  default: "Default",
+  best: "Best",
+  fable: "Fable",
+  opus: "Opus",
+  sonnet: "Sonnet",
+  haiku: "Haiku",
+  opusplan: "Opus Plan",
+  "sonnet[1m]": "Sonnet · 1M",
+  "opus[1m]": "Opus · 1M",
+};
+
 function getModelPickerDisplayLabel(
   modelId: string,
   modelNamesById: ReadonlyMap<string, string>,
 ): string {
+  if (modelId.startsWith("claude-code/")) {
+    const engineModel = modelId.slice("claude-code/".length);
+    return `Claude Code · ${CLAUDE_CODE_ALIAS_LABELS[engineModel] ?? engineModel}`;
+  }
+  if (modelId.startsWith("codex-cli/")) {
+    return `Codex · ${modelId.slice("codex-cli/".length)}`;
+  }
   if (modelId.startsWith("local/")) {
     const localId = modelId.slice("local/".length);
     const slash = localId.indexOf("/");
@@ -249,6 +274,9 @@ export function AgentModelPicker({
     useState<LocalModelPreferences | null>(() => cachedLocalPreferences);
   const [pendingAgent, setPendingAgent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recentModelIds, setRecentModelIds] = useState<string[]>(() =>
+    readRecentModels(),
+  );
 
   // Mirror state writes into the module-level cache so re-mounting the
   // picker (Radix unmounts popover content on close) shows the last
@@ -474,6 +502,7 @@ export function AgentModelPicker({
           new CustomEvent("stella:local-model-preferences-changed"),
         );
         setError(null);
+        if (value) setRecentModelIds(recordRecentModel(value));
         // Restricted-tier picks used to fire a toast here. The picker
         // now disables Stella-provider models that aren't available on
         // the user's plan up front, so reaching this path means the
@@ -788,6 +817,47 @@ export function AgentModelPicker({
         ? getModelPickerDisplayLabel(current, modelNamesById)
         : defaultLabel
       : "Loading…";
+  /**
+   * Rows pinned above the compact Stella presets: the current selection
+   * (when it isn't a preset already listed below — e.g. a BYOK provider
+   * model or an engine model) plus the most recently used models. Keeps
+   * the active pick visible+checked the moment the popover opens and puts
+   * the user's usual back-and-forth switches one click away.
+   */
+  const compactRecentEntries = useMemo<CompactModelListEntry[]>(() => {
+    if (activeProviderSetting) return [];
+    const presetIds = new Set(
+      stellaModels
+        .filter(
+          (model) =>
+            model.provider === "stella" &&
+            model.id.startsWith("stella/") &&
+            !model.modelId.includes("/"),
+        )
+        .map((model) => model.id),
+    );
+    const ids: string[] = [];
+    const push = (id: string) => {
+      if (!id || presetIds.has(id) || ids.includes(id)) return;
+      ids.push(id);
+    };
+    push(current);
+    for (const id of recentModelIds) {
+      if (ids.length >= 4) break;
+      push(id);
+    }
+    return ids.slice(0, 4).map((id) => ({
+      id,
+      label: getModelPickerDisplayLabel(id, modelNamesById),
+    }));
+  }, [
+    activeProviderSetting,
+    current,
+    modelNamesById,
+    recentModelIds,
+    stellaModels,
+  ]);
+
   const currentReasoningEffort = activeAssistant
     ? (preferences?.reasoningEfforts?.orchestrator ??
       preferences?.reasoningEfforts?.general ??
@@ -972,6 +1042,7 @@ export function AgentModelPicker({
           <CompactStellaModelList
             stellaModels={stellaModels}
             value={current}
+            recents={compactRecentEntries}
             defaultLabel={defaultLabel}
             onSelect={handleSelect}
             disabled={!ready || pendingAgent !== null}
