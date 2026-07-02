@@ -22,6 +22,7 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import type { DocumentType } from "@smithy/types";
 import { calculateCost } from "../models.js";
+import { supportsAdaptiveThinking as modelRequiresAdaptiveThinking } from "./anthropic.js";
 import type {
 	Api,
 	AssistantMessage,
@@ -483,7 +484,8 @@ function handleContentBlockStop(
 }
 
 /**
- * Check if the model supports adaptive thinking (Opus 4.6+, Sonnet 4.6).
+ * Check if the model supports adaptive thinking (Opus/Sonnet 4.6+ and all
+ * 5-generation Claude models; see `supportsAdaptiveThinking` in anthropic.ts).
  * Checks both model ID and model name to support application inference profiles
  * whose ARNs don't contain the model name.
  */
@@ -497,7 +499,7 @@ function getModelMatchCandidates(modelId: string, modelName?: string): string[] 
 
 function supportsAdaptiveThinking(modelId: string, modelName?: string): boolean {
 	const candidates = getModelMatchCandidates(modelId, modelName);
-	return candidates.some((s) => s.includes("opus-4-6") || s.includes("opus-4-7") || s.includes("sonnet-4-6"));
+	return candidates.some((s) => modelRequiresAdaptiveThinking(s));
 }
 
 function supportsNativeXhighEffort(model: Model<"bedrock-converse-stream">): boolean {
