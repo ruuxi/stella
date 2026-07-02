@@ -774,6 +774,8 @@ export type ElectronSystemApi = {
     updatedAt: number | null;
   }) => Promise<{ ok: boolean }>;
   onAuthCallback: (callback: (data: { url: string }) => void) => () => void;
+  onSocialInvite: (callback: (data: { url: string }) => void) => () => void;
+  consumePendingSocialInvite: () => Promise<string | null>;
   consumePendingAuthCallback: () => Promise<string | null>;
   onRuntimeAuthRefreshRequested: (
     callback: (data: {
@@ -1344,6 +1346,11 @@ export type ElectronStoreApi = {
       | "other";
     manifest: Record<string, unknown>;
     releaseNotes?: string;
+    /**
+     * "store" (default): manual approval queue for the public store.
+     * "circle": unlisted, live immediately — trusted-circle shares.
+     */
+    audience?: "store" | "circle";
   }) => Promise<StorePackageReleaseRecord>;
   uninstallPackage: (packageId: string) => Promise<{
     packageId: string;

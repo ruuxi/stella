@@ -2738,6 +2738,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       displayName: payload.displayName ?? "",
       ...(payload.description ? { description: payload.description } : {}),
       ...(payload.releaseNotes ? { releaseNotes: payload.releaseNotes } : {}),
+      ...(payload.audience ? { audience: payload.audience } : {}),
       manifest: { ...baseManifest },
       artifact,
       gitObjectUploads: gitArtifactBuild.objectUploads,

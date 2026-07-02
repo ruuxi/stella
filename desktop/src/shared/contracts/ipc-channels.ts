@@ -195,6 +195,12 @@ export const IPC_HOST_SET_MODEL_CATALOG_UPDATED_AT =
 export const IPC_AUTH_CALLBACK = "auth:callback" as const;
 export const IPC_AUTH_CONSUME_PENDING_CALLBACK =
   "auth:consumePendingCallback" as const;
+// Social invite deep links (`stella://join/<code>`,
+// `stella://add-friend/<username>`) — broadcast + cold-boot pull, mirroring
+// the auth callback pair above.
+export const IPC_SOCIAL_INVITE = "social:invite" as const;
+export const IPC_SOCIAL_CONSUME_PENDING_INVITE =
+  "social:consumePendingInvite" as const;
 export const IPC_AUTH_RUNTIME_REFRESH_REQUESTED =
   "auth:runtimeRefreshRequested" as const;
 export const IPC_AUTH_RUNTIME_REFRESH_COMPLETE =

@@ -12,6 +12,7 @@ import { TextField } from "@/ui/text-field";
 import { Avatar } from "@/ui/avatar";
 import { ChevronLeft } from "@/ui/icons";
 import { useSocialCommunities } from "./hooks/use-social-communities";
+import { buildCommunityInviteLink } from "./invite-links";
 import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import { getSocialActionErrorMessage } from "./social-errors";
 
@@ -342,18 +343,25 @@ function CommunityManagePane({
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(name);
-  const [codeCopied, setCodeCopied] = useState(false);
+  const [copied, setCopied] = useState<"code" | "link" | null>(null);
   const [confirmingDanger, setConfirmingDanger] = useState(false);
   const [pendingMemberOwnerId, setPendingMemberOwnerId] = useState<
     string | null
   >(null);
 
-  const handleCopyCode = useCallback(() => {
-    if (!inviteCode) return;
-    void navigator.clipboard.writeText(formatInviteCode(inviteCode));
-    setCodeCopied(true);
-    setTimeout(() => setCodeCopied(false), 2000);
-  }, [inviteCode]);
+  const handleCopy = useCallback(
+    (what: "code" | "link") => {
+      if (!inviteCode) return;
+      void navigator.clipboard.writeText(
+        what === "code"
+          ? formatInviteCode(inviteCode)
+          : buildCommunityInviteLink(inviteCode),
+      );
+      setCopied(what);
+      setTimeout(() => setCopied(null), 2000);
+    },
+    [inviteCode],
+  );
 
   const handleRename = useCallback(async () => {
     const nextName = nameInput.trim();
@@ -477,24 +485,36 @@ function CommunityManagePane({
       </header>
 
       {inviteCode ? (
-        <button
-          type="button"
-          className="friends-code-card"
-          onClick={handleCopyCode}
-          title="Click to copy"
-        >
+        <div className="friends-code-card">
           <div className="friends-code-card-info">
             <span className="friends-section-label">Invite code</span>
             <span className="friends-code-card-value">
               {formatInviteCode(inviteCode)}
             </span>
           </div>
-          <span className="pill-btn">{codeCopied ? "Copied!" : "Copy"}</span>
-        </button>
+          <div className="friends-item-actions">
+            <button
+              type="button"
+              className="pill-btn"
+              onClick={() => handleCopy("code")}
+            >
+              {copied === "code" ? "Copied!" : "Copy code"}
+            </button>
+            <button
+              type="button"
+              className="pill-btn pill-btn--primary"
+              title="Copy a link that opens Stella and joins this community"
+              onClick={() => handleCopy("link")}
+            >
+              {copied === "link" ? "Copied!" : "Copy invite link"}
+            </button>
+          </div>
+        </div>
       ) : null}
       <p className="communities-invite-hint">
-        Anyone with this code can join, so only share it with people you
-        trust.
+        The link works anywhere — paste it in a Stella chat or send it over
+        iMessage or Discord. Anyone with it can join, so only share it with
+        people you trust.
       </p>
 
       {status ? (

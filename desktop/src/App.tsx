@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { AuthDeepLinkHandler } from "./global/auth/AuthDeepLinkHandler";
+import { SocialInviteLayer } from "./global/social/SocialInviteLayer";
 import { PhoneAccessBridge } from "./global/mobile/PhoneAccessBridge";
 import { AppBootstrap } from "./bootstrap/AppBootstrap";
 import { ChatStoreProvider } from "@/context/chat-store";
@@ -54,6 +55,7 @@ function App() {
               <PhoneAccessBridge />
               <CredentialRequestLayer />
               <ConnectorCredentialRequestLayer />
+              <SocialInviteLayer />
             </>
           )}
           <FullShell />

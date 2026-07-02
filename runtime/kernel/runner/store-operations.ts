@@ -534,6 +534,7 @@ export const createStoreOperations = (
       ).data.store_packages.createFirstRelease,
       {
         packageId: args.packageId,
+        ...(args.audience ? { audience: args.audience } : {}),
         category: args.manifest.category,
         displayName: args.displayName,
         ...(args.description ? { description: args.description } : {}),
@@ -594,6 +595,7 @@ export const createStoreOperations = (
       ).data.store_packages.createUpdateRelease,
       {
         packageId: args.packageId,
+        ...(args.audience ? { audience: args.audience } : {}),
         releaseNotes: args.releaseNotes,
         manifest: toBackendStoreManifest(args.manifest),
         blueprintMarkdown: args.artifact.blueprintMarkdown,
