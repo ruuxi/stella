@@ -777,23 +777,32 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 };
 
 /**
- * Check if a model supports adaptive thinking (Opus 4.6+, Sonnet 4.6+, Fable 5).
- * Adaptive-only models reject `thinking.type=enabled`, so this must stay in
- * sync with the Anthropic model catalog when new Opus/Sonnet minors ship.
+ * Matches new-style Claude ids: `claude-<family>-<major>[.-<minor>]`, with or
+ * without a date/revision suffix (e.g. `claude-sonnet-4-5-20250929`,
+ * `us.anthropic.claude-opus-4-6`, `claude-fable-5`). Major/minor are capped at
+ * two digits with a trailing digit guard so date suffixes (`-20241022`) never
+ * parse as versions; old-style ids like `claude-3-5-sonnet-*` (version before
+ * family) intentionally don't match and fall back to the legacy shape.
  */
-function supportsAdaptiveThinking(modelId: string): boolean {
-	// Adaptive-thinking model IDs (with or without date suffix)
-	return (
-		modelId.includes("opus-4-6") ||
-		modelId.includes("opus-4.6") ||
-		modelId.includes("opus-4-7") ||
-		modelId.includes("opus-4.7") ||
-		modelId.includes("opus-4-8") ||
-		modelId.includes("opus-4.8") ||
-		modelId.includes("sonnet-4-6") ||
-		modelId.includes("sonnet-4.6") ||
-		modelId.includes("fable-5")
-	);
+const CLAUDE_FAMILY_VERSION_PATTERN = /claude[-.]([a-z]+)[-.](\d{1,2})(?:[-.](\d{1,2}))?(?!\d)/;
+
+/**
+ * Check if a model requires the adaptive thinking request shape
+ * (`thinking.type=adaptive` + `output_config.effort`) rather than the legacy
+ * budget-based `thinking.type=enabled`:
+ * - Every 5-generation (or later) Claude model (fable-5, sonnet-5, ...) —
+ *   these reject `thinking.type=enabled` with a 400.
+ * - Opus and Sonnet 4.6+ — adaptive since 4.6.
+ * Older models (haiku 3.x/4.5, sonnet ≤4.5, opus ≤4.5) keep the legacy shape.
+ */
+export function supportsAdaptiveThinking(modelId: string): boolean {
+	const match = CLAUDE_FAMILY_VERSION_PATTERN.exec(modelId.toLowerCase());
+	if (!match) return false;
+	const family = match[1];
+	const major = Number(match[2]);
+	const minor = match[3] !== undefined ? Number(match[3]) : 0;
+	if (major >= 5) return true;
+	return (family === "opus" || family === "sonnet") && major === 4 && minor >= 6;
 }
 
 /**
