@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   createPaceState,
+  recordArrival,
   stepPaceCount,
+  FINISH_LATENCY_MS,
   MAX_LATENCY_MS,
+  MIN_PLAYOUT_CPS,
+  SLOW_MIN_PLAYOUT_CPS,
   SOFT_TARGET_CHARS,
+  type PaceState,
 } from "@/features/chat/streaming/stream-text-pacer-cadence";
 
 /** One 60fps frame. */
@@ -139,11 +144,138 @@ describe("stepPaceCount — playout buffer cadence", () => {
     expect(warmRelease).toBeGreaterThanOrEqual(1);
   });
 
+  it("drains a finishing backlog promptly but not instantly", () => {
+    // Stream end with text still buffered: the finish cadence should glide
+    // the tail out within ~FINISH_LATENCY_MS — neither a single-frame dump
+    // nor a lingering trickle.
+    const state = createPaceState();
+    const counts: number[] = [];
+    let remaining = 120;
+    while (remaining > 0 && counts.length < 200) {
+      const c = stepPaceCount(state, remaining, DT, true);
+      remaining -= c;
+      counts.push(c);
+    }
+    expect(remaining).toBe(0);
+    // Not a dump: the first frame releases only a slice of the backlog.
+    expect(counts[0]).toBeLessThan(30);
+    // Prompt: done within ~2.5x the finish window (exponential phase down to
+    // the FINISH_MIN_CPS floor, then a linear landing).
+    expect(counts.length * DT).toBeLessThanOrEqual(FINISH_LATENCY_MS * 2.5);
+    // Not instant: it took more than a couple of frames.
+    expect(counts.length).toBeGreaterThan(3);
+  });
+
   it("respects the latency-cap constant relationship", () => {
     // At a backlog equal to MAX_LATENCY worth of the min rate, the cap is at
     // the floor; deeper than that, the cap dominates. Guards the knobs staying
     // internally consistent.
     expect(MAX_LATENCY_MS).toBeGreaterThan(0);
     expect(SOFT_TARGET_CHARS).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Feed clumps on a schedule, RECORDING each arrival into the pace state so
+ * the arrival-adaptive path engages, and drain through the pacer.
+ */
+function simulateAdaptive(
+  state: PaceState,
+  feedPerFrame: (frame: number) => number,
+  frames: number,
+): { counts: number[]; backlog: number[] } {
+  const counts: number[] = [];
+  const backlog: number[] = [];
+  let buf = 0;
+  for (let f = 0; f < frames; f += 1) {
+    const fed = feedPerFrame(f);
+    if (fed > 0) {
+      recordArrival(state, fed, f * DT);
+      buf += fed;
+    }
+    const c = stepPaceCount(state, buf, DT);
+    buf -= c;
+    counts.push(c);
+    backlog.push(buf);
+  }
+  return { counts, backlog };
+}
+
+/** Longest run of consecutive zero-release frames (the visible stalls). */
+function longestStallFrames(counts: number[]): number {
+  let longest = 0;
+  let run = 0;
+  for (const c of counts) {
+    run = c === 0 ? run + 1 : 0;
+    if (run > longest) longest = run;
+  }
+  return longest;
+}
+
+describe("stepPaceCount — arrival-adaptive pacing (slow/choppy streams)", () => {
+  it("recordArrival converges to the mean rate of a bursty feed", () => {
+    // 12 chars every 12 frames (~200 ms) is ~60 cps delivered in clumps.
+    const state = createPaceState();
+    for (let f = 0; f < 600; f += 1) {
+      if (f % 12 === 0) recordArrival(state, 12, f * DT);
+    }
+    expect(state.arrivalCps).toBeGreaterThan(45);
+    expect(state.arrivalCps).toBeLessThan(75);
+    // The gap estimate reflects the clump period, not the in-burst deltas.
+    expect(state.gapEmaMs).toBeGreaterThan(100);
+    expect(state.gapEmaMs).toBeLessThan(300);
+  });
+
+  it("keeps the reveal flowing across the gaps of a slow choppy stream", () => {
+    // 20 chars every 2 s (~10 cps) — well below the fixed 18 cps floor. The
+    // fixed model drains each clump early and stalls ~0.9 s per period; the
+    // adaptive floor tracks under 10 cps so a cushion bridges the gaps.
+    const state = createPaceState();
+    const { counts } = simulateAdaptive(
+      state,
+      (f) => (f % 120 === 0 ? 20 : 0),
+      1_800, // 30 s: warm-up + steady state
+    );
+    const tail = counts.slice(900);
+    // No visible stall: at ~9 cps a release lands every ~7 frames, so any
+    // zero-run beyond ~0.5 s means the buffer was outrun (the old failure).
+    expect(longestStallFrames(tail)).toBeLessThan(30);
+    // And no clump dump: single-frame releases stay tiny.
+    expect(Math.max(...tail)).toBeLessThanOrEqual(2);
+    // Throughput still matches the arrival rate (~10 cps ≈ 0.167/frame).
+    const avg = tail.reduce((a, b) => a + b, 0) / tail.length;
+    expect(avg).toBeGreaterThan(0.1);
+    expect(avg).toBeLessThan(0.25);
+  });
+
+  it("adaptive floor never reveals slower than the absolute minimum", () => {
+    // A near-dead stream (a few chars every several seconds) must still
+    // reveal at >= SLOW_MIN_PLAYOUT_CPS, never crawl to nothing.
+    const state = createPaceState();
+    for (let i = 0; i < 6; i += 1) recordArrival(state, 4, i * 4000);
+    expect(state.arrivalCps).toBeLessThan(SLOW_MIN_PLAYOUT_CPS);
+    let remaining = 12;
+    let frames = 0;
+    while (remaining > 0 && frames < 600) {
+      remaining -= stepPaceCount(state, remaining, DT);
+      frames += 1;
+    }
+    expect(remaining).toBe(0);
+    // 12 chars at >= 6 cps completes within ~2 s (plus smoothing slack).
+    expect(frames * DT).toBeLessThan(2_600);
+  });
+
+  it("does not regress a fast stream when arrivals are recorded", () => {
+    // ~120 cps steady: arrival-aware pacing must collapse to the fixed-knob
+    // behavior — bounded backlog, throughput matching arrival.
+    const state = createPaceState();
+    const { counts, backlog } = simulateAdaptive(state, () => 2, 600);
+    expect(Math.max(...backlog.slice(300))).toBeLessThan(120);
+    const tail = counts.slice(300);
+    const avg = tail.reduce((a, b) => a + b, 0) / tail.length;
+    expect(avg).toBeGreaterThan(1.7);
+    expect(avg).toBeLessThan(2.3);
+    // Fast arrival keeps the fixed floor: no slow-stream throttling.
+    expect(state.cps).toBeGreaterThan(MIN_PLAYOUT_CPS);
   });
 });

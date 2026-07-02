@@ -156,9 +156,32 @@ export function useLocalAgentStream({
 
   const {
     enqueue: enqueueStreamText,
-    flush: flushStreamText,
+    finish: finishStreamText,
     discard: discardStreamText,
   } = useStreamTextPacer({ release: appendPacedText })
+
+  /**
+   * Lock an overlay slot (trim + mark no-longer-streaming). With a `slotId`
+   * it targets that exact slot — used by the paced stream-end drain, whose
+   * callback can fire after a newer slot has already been appended for the
+   * same run. Without one it locks the run's last slot (the synchronous
+   * no-backlog path, matching the pre-drain behavior).
+   */
+  const lockRunSlot = useCallback(
+    (runId: string, slotId: string | null) => {
+      setStreamingAssistants((current) => {
+        const index = slotId
+          ? current.findIndex((slot) => slot._id === slotId)
+          : current.length - 1
+        const slot = index >= 0 ? current[index] : undefined
+        if (!slot || slot.runId !== runId || slot.locked) return current
+        const next = current.slice()
+        next[index] = { ...slot, text: slot.text.trim(), locked: true }
+        return next
+      })
+    },
+    [],
+  )
 
   /**
    * RUN_STARTED for a visible run: clear any leftover overlays scoped
@@ -235,8 +258,14 @@ export function useLocalAgentStream({
   const finalizeMessageBoundary = useCallback(
     (args: { runId: string; userMessageId: string | null }) => {
       // Drain any buffered text into the slot before locking it so the
-      // locked/persisted text is never short of what the model sent.
-      flushStreamText((entry) => entry.runId === args.runId)
+      // locked/persisted text is never short of what the model sent. The
+      // drain is paced (fast finish cadence) so the buffered tail glides out
+      // instead of popping in as one chunk; the lock follows once the slot's
+      // text is complete.
+      const draining = finishStreamText(
+        (entry) => entry.runId === args.runId,
+        (slotId) => lockRunSlot(args.runId, slotId),
+      )
       if (args.userMessageId) {
         const current =
           nextSlotIndexByUserMessageIdRef.current.get(args.userMessageId) ?? 1
@@ -249,19 +278,9 @@ export function useLocalAgentStream({
           current + 1,
         )
       }
-      setStreamingAssistants((current) => {
-        if (current.length === 0) return current
-        const last = current[current.length - 1]
-        if (last.runId !== args.runId) return current
-        const lockedLast: StreamingAssistantOverlay = {
-          ...last,
-          text: last.text.trim(),
-          locked: true,
-        }
-        return [...current.slice(0, -1), lockedLast]
-      })
+      if (!draining) lockRunSlot(args.runId, null)
     },
-    [flushStreamText],
+    [finishStreamText, lockRunSlot],
   )
 
   /**
@@ -272,22 +291,17 @@ export function useLocalAgentStream({
    */
   const finalizeRunOnFinish = useCallback(
     (args: { runId: string }) => {
-      // Release the remaining buffer before locking so the final text
-      // isn't truncated to whatever the pacer had revealed so far.
-      flushStreamText((entry) => entry.runId === args.runId)
-      setStreamingAssistants((current) => {
-        if (current.length === 0) return current
-        const last = current[current.length - 1]
-        if (last.runId !== args.runId || last.locked) return current
-        const lockedLast: StreamingAssistantOverlay = {
-          ...last,
-          text: last.text.trim(),
-          locked: true,
-        }
-        return [...current.slice(0, -1), lockedLast]
-      })
+      // Release the remaining buffer before locking so the final text isn't
+      // truncated to whatever the pacer had revealed so far. Paced (fast
+      // finish cadence) rather than dumped, so a run that ends with text
+      // still buffered finishes its reveal in a quick glide.
+      const draining = finishStreamText(
+        (entry) => entry.runId === args.runId,
+        (slotId) => lockRunSlot(args.runId, slotId),
+      )
+      if (!draining) lockRunSlot(args.runId, null)
     },
-    [flushStreamText],
+    [finishStreamText, lockRunSlot],
   )
 
   /**

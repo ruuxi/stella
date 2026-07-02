@@ -9,6 +9,17 @@
  * of frames. The buffer can never grow unbounded, so the reveal stays
  * smooth without ever lagging meaningfully behind the model.
  *
+ * Every inbound chunk is also recorded into the slot's cadence state
+ * (`recordArrival`), which lets the cadence adapt to slow / choppy
+ * providers: the reveal slows to track a slow arrival rate and holds a
+ * deeper cushion across bursty gaps (see stream-text-pacer-cadence.ts).
+ *
+ * `finish` is the graceful counterpart to `flush` for stream end: instead
+ * of dumping the backlog synchronously, it switches matching slots to a
+ * fast drain (~FINISH_LATENCY_MS) and invokes a callback once each slot's
+ * buffered text has fully landed, backed by a hard-flush safety timeout in
+ * case rAF is throttled (hidden window).
+ *
  * Mirrors `useReasoningBatcher`'s rAF-coalescing shape, but meters the
  * release instead of flushing everything each frame. `prefers-reduced-
  * motion` bypasses pacing entirely.
@@ -16,6 +27,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import {
   createPaceState,
+  recordArrival,
   stepPaceCount,
   type PaceState,
 } from './stream-text-pacer-cadence'
@@ -24,9 +36,19 @@ import {
  *  exist), ~60fps. */
 const DEFAULT_FRAME_MS = 16.7
 
+/** Hard-flush fallback if a finishing slot's rAF drain can't run (hidden
+ *  window throttles rAF); comfortably beyond FINISH_LATENCY_MS. */
+const FINISH_FALLBACK_MS = 1200
+
 type PendingEntry = {
   runId: string
   text: string
+  /** Stream ended for this slot — drain fast and report when empty. */
+  finishing?: boolean
+  /** Invoked once the slot's buffered text has fully released. */
+  onDrained?: (slotId: string) => void
+  /** Safety hard-flush timer armed while `finishing`. */
+  finishTimer?: number
 }
 
 type StreamSlotPredicate = (entry: {
@@ -91,11 +113,16 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         state = { runId: entry.runId, pace: createPaceState() }
         paceState.set(slotId, state)
       }
-      const count = stepPaceCount(state.pace, chars.length, dtMs)
+      const count = stepPaceCount(
+        state.pace,
+        chars.length,
+        dtMs,
+        entry.finishing === true,
+      )
       const out = count > 0 ? chars.slice(0, count).join('') : ''
       const rest = count > 0 ? chars.slice(count).join('') : entry.text
       if (rest) {
-        pending.set(slotId, { runId: entry.runId, text: rest })
+        entry.text = rest
         scheduleNext = true
       } else {
         // Keep the cadence state warm: the run may stream more text into
@@ -104,6 +131,16 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         pending.delete(slotId)
       }
       if (out) releaseRef.current(slotId, out)
+      if (!rest && entry.finishing) {
+        // Finishing slot fully drained: reclaim its cadence state (no more
+        // text is coming for this slot) and report AFTER the final release
+        // so the callback observes the complete text.
+        if (entry.finishTimer !== undefined) {
+          window.clearTimeout(entry.finishTimer)
+        }
+        paceState.delete(slotId)
+        entry.onDrained?.(slotId)
+      }
     }
     if (scheduleNext) {
       frameRef.current = window.requestAnimationFrame(tick)
@@ -137,10 +174,24 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         return
       }
       const existing = pendingRef.current.get(slotId)
-      pendingRef.current.set(slotId, {
-        runId,
-        text: `${existing?.text ?? ''}${chunk}`,
-      })
+      if (existing) {
+        existing.text += chunk
+      } else {
+        pendingRef.current.set(slotId, { runId, text: chunk })
+      }
+      // Feed the slot's arrival-rate/gap estimators so the cadence adapts
+      // to slow or choppy providers (created here, ahead of the first tick,
+      // so the very first frame already sees arrival data).
+      let state = paceStateRef.current.get(slotId)
+      if (!state) {
+        state = { runId, pace: createPaceState() }
+        paceStateRef.current.set(slotId, state)
+      }
+      recordArrival(
+        state.pace,
+        Array.from(chunk).length,
+        typeof performance !== 'undefined' ? performance.now() : Date.now(),
+      )
       ensureLoop()
     },
     [ensureLoop],
@@ -162,12 +213,57 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
       for (const [slotId, entry] of [...pending.entries()]) {
         if (predicate && !predicate({ slotId, runId: entry.runId })) continue
         pending.delete(slotId)
+        if (entry.finishTimer !== undefined) {
+          window.clearTimeout(entry.finishTimer)
+        }
         if (entry.text) releaseRef.current(slotId, entry.text)
+        // A hard flush overtaking a graceful finish still owes the caller
+        // its drained notification (e.g. the slot lock).
+        entry.onDrained?.(slotId)
       }
       dropPaceState(predicate)
       cancelLoopIfIdle()
     },
     [cancelLoopIfIdle, dropPaceState],
+  )
+
+  /**
+   * Gracefully end the stream for matching slots: keep draining each slot's
+   * buffered text but at the fast finish pace, then invoke `onDrained` once
+   * the slot's text has fully released (a safety timeout hard-flushes if rAF
+   * is throttled). Returns whether any matching slot is still draining —
+   * `false` means nothing was buffered and the caller should run its
+   * post-drain work synchronously.
+   */
+  const finish = useCallback(
+    (
+      predicate: StreamSlotPredicate | undefined,
+      onDrained: (slotId: string) => void,
+    ): boolean => {
+      let draining = false
+      for (const [slotId, entry] of pendingRef.current) {
+        if (predicate && !predicate({ slotId, runId: entry.runId })) continue
+        if (!entry.text) continue
+        draining = true
+        entry.finishing = true
+        entry.onDrained = onDrained
+        if (entry.finishTimer !== undefined) {
+          window.clearTimeout(entry.finishTimer)
+        }
+        entry.finishTimer = window.setTimeout(() => {
+          const current = pendingRef.current.get(slotId)
+          if (current !== entry) return
+          pendingRef.current.delete(slotId)
+          paceStateRef.current.delete(slotId)
+          if (current.text) releaseRef.current(slotId, current.text)
+          cancelLoopIfIdle()
+          current.onDrained?.(slotId)
+        }, FINISH_FALLBACK_MS)
+        ensureLoop()
+      }
+      return draining
+    },
+    [cancelLoopIfIdle, ensureLoop],
   )
 
   /** Drop buffered text for matching slots without releasing it. */
@@ -177,6 +273,9 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
       for (const [slotId, entry] of [...pending.entries()]) {
         if (predicate && !predicate({ slotId, runId: entry.runId })) continue
         pending.delete(slotId)
+        if (entry.finishTimer !== undefined) {
+          window.clearTimeout(entry.finishTimer)
+        }
       }
       dropPaceState(predicate)
       cancelLoopIfIdle()
@@ -191,11 +290,16 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         frameRef.current = null
       }
       lastTickTimeRef.current = null
+      for (const entry of pendingRef.current.values()) {
+        if (entry.finishTimer !== undefined) {
+          window.clearTimeout(entry.finishTimer)
+        }
+      }
       pendingRef.current.clear()
       paceStateRef.current.clear()
     },
     [],
   )
 
-  return { enqueue, flush, discard }
+  return { enqueue, flush, finish, discard }
 }
