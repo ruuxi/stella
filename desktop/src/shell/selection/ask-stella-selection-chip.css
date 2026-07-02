@@ -1,6 +1,13 @@
-.ask-stella-selection-chip {
+.ask-stella-selection-chip-group {
   position: fixed;
   z-index: 1300;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: ask-stella-selection-chip-in 120ms ease-out;
+}
+
+.ask-stella-selection-chip {
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text-base);
@@ -9,7 +16,12 @@
   transition:
     background 120ms ease,
     border-color 120ms ease;
-  animation: ask-stella-selection-chip-in 120ms ease-out;
+}
+
+.ask-stella-selection-chip--icon {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
 }
 
 .ask-stella-selection-chip:hover {

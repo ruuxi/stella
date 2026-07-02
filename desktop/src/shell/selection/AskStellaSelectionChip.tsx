@@ -4,7 +4,9 @@
  *
  * Click opens the panel chat with the selection attached as a
  * SelectedTextChip via the standard chat-context broadcast (mirrors the
- * radial gesture's path).
+ * radial gesture's path). A companion copy icon button to the pill's right
+ * copies the same text to the clipboard (icon swaps to a checkmark briefly,
+ * matching MessageActions' copy feedback).
  *
  * Hidden in any of the following surfaces (where a chip would either be
  * redundant or actively get in the user's way):
@@ -19,6 +21,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, Copy } from "@/ui/icons";
+import { copyTextToClipboard } from "@/shared/lib/clipboard";
 import { dispatchComposeText } from "@/shared/lib/stella-orb-chat";
 import "./ask-stella-selection-chip.css";
 
@@ -27,6 +31,9 @@ const PILL_OFFSET = 8;
 const PILL_MIN_WIDTH = 88;
 const VIEWPORT_MARGIN = 6;
 const MIN_CHARS = 2;
+/** Copy icon button + gap to the pill's right — included when clamping. */
+const COPY_BUTTON_EXTENT = 28 + 6;
+const COPIED_RESET_MS = 1200;
 
 type ChipState = {
   text: string;
@@ -86,7 +93,10 @@ const clampTop = (rawTop: number): number => {
 const computePillPosition = (rect: DOMRect): { left: number; top: number } => {
   const pillWidth = Math.max(PILL_MIN_WIDTH, rect.width * 0.5);
   const centerX = rect.left + rect.width / 2;
-  const left = clampLeft(centerX - pillWidth / 2, pillWidth);
+  const left = clampLeft(
+    centerX - pillWidth / 2,
+    pillWidth + COPY_BUTTON_EXTENT,
+  );
   const naturalTop = rect.top - PILL_HEIGHT - PILL_OFFSET;
   const top =
     naturalTop < VIEWPORT_MARGIN ? rect.bottom + PILL_OFFSET : naturalTop;
@@ -172,8 +182,21 @@ const readCanvasSelectionState = (
 
 export function AskStellaSelectionChip() {
   const [chip, setChip] = useState<ChipState | null>(null);
-  const chipRef = useRef<HTMLButtonElement | null>(null);
+  const [copied, setCopied] = useState(false);
+  const chipRef = useRef<HTMLDivElement | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingClickRef = useRef(false);
+
+  useEffect(() => {
+    setCopied(false);
+  }, [chip]);
+
+  useEffect(
+    () => () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    },
+    [],
+  );
 
   const refreshFromSelection = useCallback(() => {
     if (pendingClickRef.current) return;
@@ -294,27 +317,68 @@ export function AskStellaSelectionChip() {
     [chip],
   );
 
+  const handleCopy = useCallback(
+    async (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const text = chip?.text;
+      if (!text) return;
+
+      const ok = await copyTextToClipboard(text);
+      if (!ok) {
+        console.warn("[ask-stella-selection-chip] copy failed");
+        return;
+      }
+      setCopied(true);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(
+        () => setCopied(false),
+        COPIED_RESET_MS,
+      );
+    },
+    [chip],
+  );
+
   if (!chip) return null;
 
   return (
-    <button
+    <div
       ref={chipRef}
-      type="button"
-      className="floating-selection-chip ask-stella-selection-chip"
+      className="ask-stella-selection-chip-group"
       style={{ left: chip.left, top: chip.top }}
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={handleClick}
-      title="Ask Stella about this selection"
     >
-      <img
-        src="stella-logo.svg"
-        alt=""
-        aria-hidden="true"
-        className="floating-selection-chip__logo ask-stella-selection-chip__logo"
-      />
-      <span className="floating-selection-chip__label ask-stella-selection-chip__label">
-        Ask Stella
-      </span>
-    </button>
+      <button
+        type="button"
+        className="floating-selection-chip ask-stella-selection-chip"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={handleClick}
+        title="Ask Stella about this selection"
+      >
+        <img
+          src="stella-logo.svg"
+          alt=""
+          aria-hidden="true"
+          className="floating-selection-chip__logo ask-stella-selection-chip__logo"
+        />
+        <span className="floating-selection-chip__label ask-stella-selection-chip__label">
+          Ask Stella
+        </span>
+      </button>
+      <button
+        type="button"
+        className="floating-selection-chip ask-stella-selection-chip ask-stella-selection-chip--icon"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={handleCopy}
+        aria-label={copied ? "Copied" : "Copy"}
+        title={copied ? "Copied" : "Copy"}
+      >
+        {copied ? (
+          <Check size={14} strokeWidth={2} aria-hidden="true" />
+        ) : (
+          <Copy size={14} strokeWidth={2} aria-hidden="true" />
+        )}
+      </button>
+    </div>
   );
 }
