@@ -50,9 +50,11 @@ import {
   type OrchestratorResponseTargetTracker,
 } from "./response-target.js";
 import { PiSessionCore } from "./pi-session-core.js";
+import { safetySwapStatusMessage } from "./provider-abort-containment.js";
 import {
   buildOrchestratorPromptMessages,
   buildRunThreadKey,
+  persistThreadCustomMessage,
 } from "./thread-memory.js";
 import { createPiTools } from "./tool-adapters.js";
 import type { OrchestratorRunOptions, RuntimeRunCallbacks } from "./types.js";
@@ -197,6 +199,14 @@ export class OrchestratorSession extends PiSessionCore {
       ...(opts.callbacks ? { callbacks: opts.callbacks } : {}),
     };
 
+    const containmentTurn = this.beginAbortContainmentTurn(agent, {
+      conversationId: this.conversationId,
+      runId,
+    });
+    let swapAttempted:
+      | { fromModelId: string; toModelId: string }
+      | undefined;
+
     opts.onExecutionSessionCreated?.({
       runId,
       threadKey: this.threadKey,
@@ -239,7 +249,7 @@ export class OrchestratorSession extends PiSessionCore {
         },
       });
 
-      const { finalText, errorMessage } = await executeRuntimeAgentPrompt({
+      const executionArgs = {
         agent,
         promptMessages: promptMessages.map((message, index) => ({
           ...message,
@@ -258,7 +268,39 @@ export class OrchestratorSession extends PiSessionCore {
         threadKey: this.threadKey,
         conversationId: opts.conversationId,
         ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
-      });
+      };
+      let execution = await executeRuntimeAgentPrompt(executionArgs);
+
+      // Safety model swap: a fable-5 refusal/safety abort gets one retry on
+      // opus-4.8 (same auth path, per-run only). `prepareSafetyModelSwap`
+      // returns null for anything else, and this block runs at most once per
+      // turn, so there is no swap ping-pong.
+      if (execution.errorMessage && !opts.abortSignal?.aborted) {
+        const swap = this.prepareSafetyModelSwap(agent, {
+          errorMessage: execution.errorMessage,
+          logContext: { conversationId: this.conversationId, runId },
+        });
+        if (swap) {
+          swapAttempted = {
+            fromModelId: swap.fromModelId,
+            toModelId: swap.toModelId,
+          };
+          const statusText = safetySwapStatusMessage(swapAttempted);
+          opts.callbacks?.onStatus?.(
+            runEvents.recordStatus(statusText, "provider-retry"),
+          );
+          persistThreadCustomMessage(opts.store, {
+            threadKey: this.threadKey,
+            customType: "containment.safety-model-swap",
+            content: [{ type: "text", text: statusText }],
+          });
+          execution = await executeRuntimeAgentPrompt({
+            ...executionArgs,
+            resume: true,
+          });
+        }
+      }
+      const { finalText, errorMessage } = execution;
 
       const interruptedReason = resolveInterruptionReason({
         abortSignal: opts.abortSignal,
@@ -278,6 +320,7 @@ export class OrchestratorSession extends PiSessionCore {
         throw new Error(errorMessage);
       }
 
+      this.noteAbortContainmentSuccess();
       await finalizeOrchestratorSuccess({
         opts,
         runId,
@@ -303,14 +346,27 @@ export class OrchestratorSession extends PiSessionCore {
         });
         return runId;
       }
+      const surfacedMessage = this.noteAbortContainmentFailure(agent, {
+        messagesBefore: containmentTurn.messagesBefore,
+        errorMessage:
+          error instanceof Error
+            ? error.message || "Stella runtime failed"
+            : String(error),
+        swapAttempted,
+        logContext: { conversationId: this.conversationId, runId },
+      });
+      const surfacedError =
+        error instanceof Error && surfacedMessage === error.message
+          ? error
+          : new Error(surfacedMessage);
       finalizeOrchestratorError({
         opts,
         runEvents,
-        error,
+        error: surfacedError,
         runId,
         threadKey: this.threadKey,
       });
-      throw markOrchestratorErrorReported(error);
+      throw markOrchestratorErrorReported(surfacedError);
     } finally {
       this.currentResponseTargetTracker = null;
       this.currentRetryStatusContext = null;
