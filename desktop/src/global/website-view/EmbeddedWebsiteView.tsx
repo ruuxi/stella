@@ -186,7 +186,9 @@ export function EmbeddedWebsiteView({
       preload={config.preloadUrl}
       // Same-origin popups (OAuth, checkout) open as real windows; main's
       // window-open handler sends everything else to the system browser.
-      allowpopups
+      // React drops `true` for attributes it doesn't recognize, so pass the
+      // string form to guarantee the attribute lands on the element.
+      allowpopups={"true" as unknown as boolean}
     />
   );
 }
