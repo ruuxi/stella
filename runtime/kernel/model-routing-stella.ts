@@ -13,7 +13,14 @@ import {
 import { readConfiguredStellaSiteUrl } from "./convex-urls.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 
-const STELLA_CONTEXT_WINDOW = 80_000;
+/**
+ * Advertised context window for Stella-managed model routes. The orchestrator
+ * thread-store compaction trigger (`THREAD_COMPACTION_TRIGGER_TOKENS`, 60k) is
+ * deliberately below this so the model-facing window stays inside 80k; the
+ * claude-code engine mirrors the same budget via
+ * `getClaudeCodeAutoCompactConfig` (external-engines.ts).
+ */
+export const STELLA_CONTEXT_WINDOW = 80_000;
 const STELLA_MAX_TOKENS = 16_384;
 const STELLA_AUTH_REFRESH_SKEW_MS = 15_000;
 export const STELLA_PROVIDER = "stella";

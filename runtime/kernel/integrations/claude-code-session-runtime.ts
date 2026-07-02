@@ -101,6 +101,19 @@ type ClaudeCodeTurnRequest = {
    */
   effortLevel?: string;
   /**
+   * Context capacity in tokens for Claude Code's own auto-compaction,
+   * forwarded via the `CLAUDE_CODE_AUTO_COMPACT_WINDOW` env var. Undefined
+   * leaves the CLI on its model-default window (e.g. 200k). Read at CLI
+   * startup, so it applies to newly spawned session processes.
+   */
+  autoCompactWindowTokens?: number;
+  /**
+   * Percentage (1-100) of `autoCompactWindowTokens` at which the CLI
+   * auto-compacts, forwarded via `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`. The CLI
+   * only honors values below its default (~95).
+   */
+  autoCompactTriggerPct?: number;
+  /**
    * Vanilla pass-through mode (per-spawn `model: claude-code` selection):
    * Claude Code keeps its own tool suite, MCP config, and system prompt — no
    * Stella tool bridge, no built-in-tool strip, no MCP override, no Stella
@@ -932,6 +945,26 @@ class ClaudeCodeSessionRuntime {
     }
 
     const effortLevel = request.effortLevel?.trim();
+    const childEnv: NodeJS.ProcessEnv = { ...process.env };
+    if (effortLevel) {
+      childEnv.CLAUDE_CODE_EFFORT_LEVEL = effortLevel;
+    }
+    if (
+      Number.isFinite(request.autoCompactWindowTokens) &&
+      (request.autoCompactWindowTokens ?? 0) > 0
+    ) {
+      childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(
+        Math.floor(request.autoCompactWindowTokens!),
+      );
+    }
+    if (
+      Number.isFinite(request.autoCompactTriggerPct) &&
+      (request.autoCompactTriggerPct ?? 0) > 0
+    ) {
+      childEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = String(
+        Math.min(100, Math.max(1, Math.floor(request.autoCompactTriggerPct!))),
+      );
+    }
     const child = spawn("claude", this.buildClaudeCodeArgs(
       session,
       request,
@@ -941,9 +974,7 @@ class ClaudeCodeSessionRuntime {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
       cwd: request.cwd,
-      env: effortLevel
-        ? { ...process.env, CLAUDE_CODE_EFFORT_LEVEL: effortLevel }
-        : process.env,
+      env: childEnv,
     });
     const processState: ClaudeCodeStreamingProcess = {
       child,

@@ -14,6 +14,12 @@ const THREAD_COMPACTION_RESERVE_TOKENS = 16_384;
  * Orchestrator compaction trigger. Exported so the Dream scheduler / memory
  * review can detect when a compaction is imminent and flush a capture +
  * consolidation pass at that boundary (before the middle is summarized).
+ *
+ * Deliberately below the 80k `STELLA_CONTEXT_WINDOW` advertised by Stella
+ * routes (see model-routing-stella.ts): compacting at 60k leaves ~20k of
+ * headroom for the kept tail, system prompt, and the next turn so the
+ * model-facing window never overflows 80k. The claude-code engine mirrors
+ * the same 60k-of-80k budget through `getClaudeCodeAutoCompactConfig`.
  */
 export const THREAD_COMPACTION_TRIGGER_TOKENS = 60_000;
 const THREAD_COMPACTION_PROTECT_HEAD_MESSAGES = 3;
