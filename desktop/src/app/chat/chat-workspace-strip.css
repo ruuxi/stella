@@ -407,6 +407,28 @@
   color: var(--text-strong);
 }
 
+/* Quiet "View all (N)" / "Show less" toggle under a capped file list. */
+.chat-workspace-strip__files-toggle {
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+}
+
+.chat-workspace-strip__files-toggle-chevron {
+  flex-shrink: 0;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chat-workspace-strip__files-toggle-chevron[data-expanded="true"] {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace-strip__files-toggle-chevron {
+    transition: none;
+  }
+}
+
 .chat-workspace-strip__row-meta {
   flex-shrink: 0;
   font-size: var(--font-size-xs);
