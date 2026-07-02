@@ -4,15 +4,12 @@
  * Provider deltas arrive in bursts (one token, then a 40-char clump, then
  * a stall), so appending each delta 1:1 to the rendered overlay makes the
  * text lurch. This pacer buffers inbound text per overlay slot and
- * releases it on a rAF loop at an adaptive rate: a steady floor while the
- * buffer is small, scaling up so any backlog drains within a fixed number
- * of frames. The buffer can never grow unbounded, so the reveal stays
- * smooth without ever lagging meaningfully behind the model.
- *
- * Every inbound chunk is also recorded into the slot's cadence state
- * (`recordArrival`), which lets the cadence adapt to slow / choppy
- * providers: the reveal slows to track a slow arrival rate and holds a
- * deeper cushion across bursty gaps (see stream-text-pacer-cadence.ts).
+ * releases it on a rAF loop through a jitter-buffer cadence: a startup
+ * cushion is banked before the first character reveals, then playout runs
+ * at a slew-limited velocity tracking the smoothed arrival rate — one
+ * continuous pour that never mirrors arrival chop (see
+ * stream-text-pacer-cadence.ts). Every inbound chunk is recorded into the
+ * slot's cadence state (`recordArrival`) to feed those estimates.
  *
  * `finish` is the graceful counterpart to `flush` for stream end: instead
  * of dumping the backlog synchronously, it switches matching slots to a

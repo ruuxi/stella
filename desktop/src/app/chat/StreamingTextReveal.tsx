@@ -23,6 +23,7 @@
  * invisibly) lives in `streaming-text-reveal-frontier.ts`.
  */
 import { useEffect, useRef, type ReactNode } from "react";
+import { notifyAssistantScrollFollowLayoutChange } from "@/shell/chat-scroll-follow";
 import { useNotifyAssistantTextPainted } from "./assistant-text-paint-context";
 import {
   advanceRevealFrontier,
@@ -33,6 +34,37 @@ import {
   buildRevealMask,
   findCodeBlockBottom,
 } from "./streaming-text-reveal-mask";
+
+/**
+ * Wrapper-relative y (px) of the bottom of the currently REVEALED content —
+ * the mask's visible edge, not the (possibly much taller) masked DOM.
+ * Published as a data attribute so the chat auto-follow scroll can track the
+ * frontier the user actually sees instead of buffered-but-hidden growth
+ * (which reads as "the page scrolls but nothing new appears"). Absent while
+ * no mask is active (caught up / reduced motion / not streaming), meaning
+ * "the whole row is visible — follow its real bottom".
+ */
+export const REVEAL_VISIBLE_BOTTOM_ATTR = "data-reveal-visible-bottom";
+
+type VisibleBottomRef = { current: number | null };
+
+/** Write (or clear, with `null`) the visible-bottom attribute, deduped to
+ *  whole pixels, and re-run scroll-follow targeting when it moves. */
+function publishVisibleBottom(
+  el: HTMLElement,
+  value: number | null,
+  lastRef: VisibleBottomRef,
+): void {
+  const rounded = value === null ? null : Math.max(0, Math.round(value));
+  if (lastRef.current === rounded) return;
+  lastRef.current = rounded;
+  if (rounded === null) {
+    el.removeAttribute(REVEAL_VISIBLE_BOTTOM_ATTR);
+  } else {
+    el.setAttribute(REVEAL_VISIBLE_BOTTOM_ATTR, String(rounded));
+  }
+  notifyAssistantScrollFollowLayoutChange();
+}
 
 /**
  * Deepest last visible node — the live caret position lives at its
@@ -139,6 +171,9 @@ export function StreamingTextReveal({
   // Signature of the mask currently written to the DOM, so the rAF loop can
   // skip re-applying (and re-rasterizing) an unchanged mask frame-to-frame.
   const lastMaskKeyRef = useRef<string | null>(null);
+  // Last published visible-bottom (whole px), deduping the attribute write
+  // and the scroll-follow notification.
+  const lastVisibleBottomRef = useRef<number | null>(null);
   const notifyPainted = useNotifyAssistantTextPainted();
   const paintedRef = useRef(false);
 
@@ -199,9 +234,13 @@ export function StreamingTextReveal({
         // first chunk paints, then reveal from the line's left edge.
         if (activeRef.current) {
           applyHoldMask(el, lastMaskKeyRef);
+          // Nothing revealed yet — the follow frontier sits at the row top,
+          // so buffered pre-paint growth never drags the scroll.
+          publishVisibleBottom(el, 0, lastVisibleBottomRef);
           frameRef.current = requestAnimationFrame(tick);
         } else {
           clearMask(el, lastMaskKeyRef);
+          publishVisibleBottom(el, null, lastVisibleBottomRef);
           state.initialized = false;
           frameRef.current = null;
         }
@@ -223,6 +262,7 @@ export function StreamingTextReveal({
 
       if (caughtUp) {
         clearMask(el, lastMaskKeyRef);
+        publishVisibleBottom(el, null, lastVisibleBottomRef);
         state.initialized = false;
         state.x = 0;
         frameRef.current = null;
@@ -240,6 +280,10 @@ export function StreamingTextReveal({
           ? Math.max(state.lineBottom, caretBottom, codeBlockBottom)
           : state.lineBottom;
       applyMask(el, state, caretBottom, clipBottom, lastMaskKeyRef);
+      // The mask shows content down to `clipBottom` (the current reveal
+      // line, extended over code-block chrome); publish it so auto-follow
+      // scrolls with the frontier the user sees, not the masked DOM height.
+      publishVisibleBottom(el, clipBottom, lastVisibleBottomRef);
       frameRef.current = requestAnimationFrame(tick);
     };
 
