@@ -335,10 +335,16 @@ export function SocialChatPane({
             const shareLink = parseShareLink(msg.body);
             // Same whole-body rule for community/friend invite links —
             // they render as a tappable invite card that opens the join /
-            // add-friend confirmation dialog.
-            const inviteLink = shareLink
+            // add-friend confirmation dialog. Store-view invites can't
+            // occur here (parseShareLink claims those bodies first), but
+            // narrow anyway so the card only ever gets social kinds.
+            const parsedInvite = shareLink
               ? null
               : parseSocialInviteLink(msg.body);
+            const inviteLink =
+              parsedInvite && parsedInvite.kind !== "view-store-package"
+                ? parsedInvite
+                : null;
             return (
               <div
                 key={msg.id}

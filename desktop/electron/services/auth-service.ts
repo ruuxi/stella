@@ -24,6 +24,7 @@ import type {
   HostRuntimeAuthRefreshResult,
   RuntimeAuthRefreshSource,
 } from "../../../runtime/protocol/index.js";
+import { isSocialInviteDeepLink } from "./social-deep-links.js";
 
 const AUTH_CALLBACK_TOKEN_PATTERN = /^[A-Za-z0-9._~-]{8,2048}$/;
 const RUNTIME_AUTH_REFRESH_TIMEOUT_MS = 12_000;
@@ -669,34 +670,13 @@ export class AuthService {
   }
 
   /**
-   * `stella://join/<inviteCode>` or `stella://add-friend/<username>` — the
-   * social invite deep links. Strictly shaped: one hostname keyword plus a
-   * single identifier path segment; anything else stays untrusted.
+   * `stella://join/<inviteCode>`, `stella://add-friend/<username>`, or
+   * `stella://store/<handle>/<packageId>` — the social/store deep links.
+   * Classification lives in `social-deep-links.ts` so the shapes are unit
+   * tested; anything unrecognized stays untrusted.
    */
   private isSocialInviteUrl(value: string) {
-    try {
-      const parsed = new URL(value);
-      if (
-        parsed.protocol.toLowerCase() !==
-        `${this.options.authProtocol.toLowerCase()}:`
-      ) {
-        return false;
-      }
-      const host = parsed.hostname.trim().toLowerCase();
-      if (host !== "join" && host !== "add-friend") {
-        return false;
-      }
-      const segments = parsed.pathname
-        .split("/")
-        .map((segment) => segment.trim())
-        .filter(Boolean);
-      if (segments.length !== 1) {
-        return false;
-      }
-      return /^[A-Za-z0-9_-]{1,64}$/.test(segments[0]!);
-    } catch {
-      return false;
-    }
+    return isSocialInviteDeepLink(value, this.options.authProtocol);
   }
 
   private handleSocialInvite(url: string) {

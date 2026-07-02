@@ -34,6 +34,14 @@ type FriendPreview = {
   avatarUrl?: string;
 } | null;
 
+type StorePackagePreview = {
+  packageId: string;
+  displayName: string;
+  description?: string;
+  iconUrl?: string;
+  authorUsername?: string;
+} | null;
+
 /**
  * Global consumer for social invite links (`stella://join/<code>`,
  * `stella://add-friend/<username>` and their `https://stella.sh/...`
@@ -73,7 +81,9 @@ export function SocialInviteLayer() {
       key={
         invite.kind === "join-community"
           ? `join:${invite.inviteCode}`
-          : `friend:${invite.username}`
+          : invite.kind === "add-friend"
+            ? `friend:${invite.username}`
+            : `store:${invite.packageId}`
       }
     />
   );
@@ -104,12 +114,32 @@ function SocialInviteDialog() {
       : "skip",
   ) as FriendPreview | undefined;
 
+  // Same read the in-chat share cards use. Public/unlisted resolve;
+  // private returns null and the dialog shows "unavailable". No auth gate:
+  // the Store is browsable signed-out, and viewing is all confirm does.
+  const storePreview = useQuery(
+    api.data.store_packages.getPublicPackage,
+    invite?.kind === "view-store-package"
+      ? { packageId: invite.packageId }
+      : "skip",
+  ) as StorePackagePreview | undefined;
+
   const close = useCallback(() => {
     setPendingSocialInvite(null);
   }, []);
 
   const handleConfirm = useCallback(async () => {
     if (!invite) return;
+    if (invite.kind === "view-store-package") {
+      // Viewing is navigation, not a mutation — the confirm exists so an
+      // external link never force-drives the app without the user's nod.
+      setPendingSocialInvite(null);
+      void router.navigate({
+        to: "/store",
+        search: { tab: "discover", package: invite.packageId },
+      });
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -146,18 +176,33 @@ function SocialInviteDialog() {
   if (!invite) return null;
 
   const isJoin = invite.kind === "join-community";
-  const previewLoading = isJoin
-    ? communityPreview === undefined
-    : friendPreview === undefined;
-  const previewMissing = hasConnectedAccount && !previewLoading
-    ? isJoin
-      ? communityPreview === null
-      : friendPreview === null
-    : false;
+  const isStore = invite.kind === "view-store-package";
+  const previewLoading = isStore
+    ? storePreview === undefined
+    : isJoin
+      ? communityPreview === undefined
+      : friendPreview === undefined;
+  const previewMissing = isStore
+    ? storePreview === null
+    : hasConnectedAccount && !previewLoading
+      ? isJoin
+        ? communityPreview === null
+        : friendPreview === null
+      : false;
   const alreadyDone = isJoin && communityPreview?.alreadyMember === true;
+  // Store views don't need an account; the other two are mutations.
+  const needsAccount = !isStore && !hasConnectedAccount;
 
-  const title = isJoin ? "Join community" : "Add friend";
-  const confirmLabel = isJoin ? "Join" : "Send friend request";
+  const title = isStore
+    ? "Open add-on"
+    : isJoin
+      ? "Join community"
+      : "Add friend";
+  const confirmLabel = isStore
+    ? "View in Store"
+    : isJoin
+      ? "Join"
+      : "Send friend request";
 
   return (
     <Dialog open onOpenChange={(next) => (next ? null : close())}>
@@ -175,14 +220,16 @@ function SocialInviteDialog() {
           <header className="friends-dialog-header">
             <p className="friends-dialog-title">{title}</p>
             <p className="friends-dialog-sub">
-              {isJoin
-                ? "You were invited to a community — a trusted circle where members share add-ons with each other."
-                : "You were invited to connect on Stella."}
+              {isStore
+                ? "A link you opened points at a Stella add-on. Nothing installs — this only opens its Store page."
+                : isJoin
+                  ? "You were invited to a community — a trusted circle where members share add-ons with each other."
+                  : "You were invited to connect on Stella."}
             </p>
           </header>
 
           <div className="social-invite-preview">
-            {!hasConnectedAccount ? (
+            {needsAccount ? (
               <div className="friends-empty">
                 Sign in to Stella to accept this invite.
               </div>
@@ -190,9 +237,30 @@ function SocialInviteDialog() {
               <div className="friends-empty">Looking up the invite…</div>
             ) : previewMissing ? (
               <div className="friends-empty">
-                {isJoin
-                  ? "No community was found for this invite code. Ask for a fresh link."
-                  : "No user was found for this invite link."}
+                {isStore
+                  ? "This add-on is private or no longer published."
+                  : isJoin
+                    ? "No community was found for this invite code. Ask for a fresh link."
+                    : "No user was found for this invite link."}
+              </div>
+            ) : isStore && storePreview ? (
+              <div className="friends-item">
+                <Avatar
+                  fallback={storePreview.displayName}
+                  src={storePreview.iconUrl}
+                  size="normal"
+                />
+                <div className="friends-item-info">
+                  <div className="friends-item-name">
+                    {storePreview.displayName}
+                  </div>
+                  <div className="friends-item-tag">
+                    Stella add-on
+                    {storePreview.authorUsername
+                      ? ` \u00b7 by @${storePreview.authorUsername}`
+                      : ""}
+                  </div>
+                </div>
               </div>
             ) : isJoin && communityPreview ? (
               <div className="friends-item">
@@ -247,7 +315,7 @@ function SocialInviteDialog() {
               onClick={() => void handleConfirm()}
               disabled={
                 busy ||
-                !hasConnectedAccount ||
+                needsAccount ||
                 previewLoading ||
                 previewMissing ||
                 alreadyDone
