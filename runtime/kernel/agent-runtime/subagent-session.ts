@@ -9,7 +9,11 @@ import { executeRuntimeAgentPrompt } from "./run-execution.js";
 import { buildSubagentSystemPrompt } from "./run-preparation.js";
 import { createRunEventRecorder } from "./run-events.js";
 import { PiSessionCore } from "./pi-session-core.js";
-import { safetySwapStatusMessage } from "./provider-abort-containment.js";
+import {
+  QUARANTINE_CUSTOM_TYPE,
+  safetySwapStatusMessage,
+  serializeQuarantineRecord,
+} from "./provider-abort-containment.js";
 import {
   buildRunThreadKey,
   buildSubagentPromptMessages,
@@ -104,10 +108,27 @@ export class SubagentSession extends PiSessionCore {
       },
     });
 
-    const containmentTurn = this.beginAbortContainmentTurn(agent, {
-      threadId: this.threadId,
-      runId,
-    });
+    const containmentTurn = this.beginAbortContainmentTurn(
+      agent,
+      opts.agentContext,
+      {
+        threadId: this.threadId,
+        runId,
+      },
+    );
+    if (containmentTurn.newlyQuarantined) {
+      // Durable record so the quarantine survives session/app restarts.
+      persistThreadCustomMessage(opts.store, {
+        threadKey: this.threadKey,
+        customType: QUARANTINE_CUSTOM_TYPE,
+        content: [
+          {
+            type: "text",
+            text: serializeQuarantineRecord(containmentTurn.newlyQuarantined),
+          },
+        ],
+      });
+    }
     let swapAttempted:
       | { fromModelId: string; toModelId: string }
       | undefined;
@@ -246,11 +267,15 @@ export class SubagentSession extends PiSessionCore {
         swapAttempted,
         logContext: { threadId: this.threadId, runId },
       });
+      const surfacedError =
+        error instanceof Error && surfacedMessage === error.message
+          ? error
+          : new Error(surfacedMessage);
       return finalizeSubagentError({
         opts,
         runEvents,
         runId,
-        error: new Error(surfacedMessage),
+        error: surfacedError,
         threadKey: this.threadKey,
       });
     }

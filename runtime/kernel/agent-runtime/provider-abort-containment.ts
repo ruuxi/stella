@@ -1,6 +1,10 @@
 import type { AgentMessage } from "../agent-core/types.js";
 import type { Api, Model } from "../../ai/types.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
+import {
+  findRegistryModel,
+  uniqueModelCandidates,
+} from "../model-routing-matching.js";
 
 /**
  * Containment for provider content aborts.
@@ -48,22 +52,26 @@ export const DETERMINISTIC_ABORT_THRESHOLD = 2;
 const SUSPECT_TAIL_ENTRIES = 8;
 
 /**
- * Error-message fingerprints of provider-side content aborts. Sources:
- * - `providerAbortedStopMessage` (runtime/ai/utils/provider-stop.ts), the
- *   normalized layer-1 message carrying the raw stop reason.
- * - `anomalousStreamStopError`'s no-detail fallback.
- * - openai-completions' pre-existing content-filter / error-stop messages.
- * - the legacy opaque string, so threads poisoned before layer 1 shipped
- *   still classify.
- * Context-overflow and connection errors intentionally do NOT match: they
- * have their own handling (compaction, provider retry).
+ * Error-message fingerprints of provider-side content aborts.
+ *
+ * Deliberately narrow: only the safety-worded form of
+ * `providerAbortedStopMessage` (runtime/ai/utils/provider-stop.ts) — which
+ * is emitted exclusively for safety-class raw stop reasons — plus the two
+ * legacy openai-completions strings. Everything else must NOT classify:
+ * - the neutral non-safety wording ("Provider ended the stream
+ *   abnormally…") used for `failed`/`cancelled`/`OTHER`-style stops,
+ * - `anomalousStreamStopError`'s no-detail fallback (fires on ANY
+ *   error/aborted stream end, including proxy/mid-stream truncation),
+ * - network/connection errors, context overflow, and the legacy opaque
+ *   "An unknown error occurred" (post-fix runs never produce it, and
+ *   treating it as a content abort would misclassify unknown failures).
+ * Misclassification here would quarantine healthy thread content or swap
+ * models on transient failures.
  */
 const PROVIDER_ABORT_ERROR_PATTERNS: RegExp[] = [
-  /provider aborted the response/i,
-  /provider stream ended with stopReason/i,
+  /provider aborted the response \(stop reason: "/i,
   /provider finish_reason: content_filter/i,
   /provider returned an error stop reason/i,
-  /^an unknown error occurred$/i,
 ];
 
 export const isProviderContentAbortMessage = (
@@ -99,10 +107,62 @@ export const isInstantFirstCallFailure = (
   );
 };
 
-type QuarantineRecord = {
+export type QuarantineRecord = {
   key: string;
   toolName: string;
   timestamp: number;
+};
+
+/**
+ * Thread custom-message type used to persist quarantine records so healed
+ * threads stay healed across app restarts (the containment registry itself
+ * is in-memory, per session). Sessions persist one entry per newly
+ * quarantined record and re-seed from thread history on the next turn.
+ */
+export const QUARANTINE_CUSTOM_TYPE = "containment.quarantine";
+
+export const serializeQuarantineRecord = (record: QuarantineRecord): string =>
+  JSON.stringify(record);
+
+/**
+ * Parse a persisted quarantine record from custom-message content (string
+ * or text-block form). Returns null for anything malformed.
+ */
+export const parseQuarantineRecord = (
+  content: unknown,
+): QuarantineRecord | null => {
+  const text =
+    typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content
+            .map((block) =>
+              block &&
+              typeof block === "object" &&
+              (block as { type?: string }).type === "text"
+                ? String((block as { text?: unknown }).text ?? "")
+                : "",
+            )
+            .join("")
+        : "";
+  try {
+    const parsed = JSON.parse(text) as {
+      key?: unknown;
+      toolName?: unknown;
+      timestamp?: unknown;
+    };
+    if (!parsed || typeof parsed.key !== "string" || !parsed.key) return null;
+    return {
+      key: parsed.key,
+      toolName: typeof parsed.toolName === "string" ? parsed.toolName : "",
+      timestamp:
+        typeof parsed.timestamp === "number" && Number.isFinite(parsed.timestamp)
+          ? parsed.timestamp
+          : 0,
+    };
+  } catch {
+    return null;
+  }
 };
 
 const toolResultQuarantineKey = (
@@ -162,6 +222,17 @@ export class ProviderAbortContainment {
    */
   get shouldQuarantine(): boolean {
     return this.consecutiveInstantAborts >= DETERMINISTIC_ABORT_THRESHOLD;
+  }
+
+  /**
+   * Re-seed the registry from persisted records (idempotent). Called at
+   * turn start so quarantines survive session/app restarts.
+   */
+  seedQuarantined(records: QuarantineRecord[]): void {
+    for (const record of records) {
+      if (!record.key || this.quarantined.has(record.key)) continue;
+      this.quarantined.set(record.key, record);
+    }
   }
 
   noteRunSuccess(): void {
@@ -277,9 +348,32 @@ const maskToolResult = (
 
 const FABLE_MODEL_RE = /fable-5/i;
 
+/**
+ * Exact fable slug required for direct-route id rewrites. Versioned ids
+ * (e.g. `claude-fable-5-20260201`) would rewrite to model ids that don't
+ * exist, so they never swap and fall through to quarantine instead.
+ */
+const EXACT_FABLE_SLUG_RE = /(^|\/)claude-fable-5$/i;
+
 /** Stella-relay requested id for the swap target (Rahul's auth path). */
 export const SAFETY_SWAP_STELLA_MODEL_ID = "stella/anthropic/claude-opus-4.8";
 const SAFETY_SWAP_STELLA_UPSTREAM_ID = "claude-opus-4.8";
+
+/**
+ * Validate that the opus-4.8 swap target still exists in the model
+ * registry (guards against catalog regenerations renaming/removing it).
+ * The target is an Anthropic model regardless of transport, so the
+ * anthropic registry section is the source of truth.
+ */
+const safetySwapTargetInCatalog = (): boolean =>
+  findRegistryModel(
+    "anthropic",
+    uniqueModelCandidates([
+      SAFETY_SWAP_STELLA_UPSTREAM_ID,
+      "claude-opus-4-8",
+      "anthropic/claude-opus-4.8",
+    ]),
+  ) !== null;
 
 type ModelWithUpstream = Model<Api> & { upstreamModelId?: string };
 
@@ -310,6 +404,7 @@ export const buildSafetyAbortSwapRoute = (
   current: ResolvedLlmRoute,
 ): SafetySwapRoute | null => {
   if (!isFable5Route(current)) return null;
+  if (!safetySwapTargetInCatalog()) return null;
 
   const fromModelId = current.model.id;
   if (current.route === "stella") {
@@ -327,9 +422,12 @@ export const buildSafetyAbortSwapRoute = (
   }
 
   // Direct-provider routes: rewrite the fable slug in place so the provider,
-  // API family, and credentials all stay the same.
+  // API family, and credentials all stay the same. Only the exact,
+  // unversioned slug is rewritten — anything else (versioned/dated ids,
+  // bedrock-style ids) falls through to quarantine.
   // - openrouter-style: anthropic/claude-fable-5 → anthropic/claude-opus-4.8
   // - native anthropic: claude-fable-5 → claude-opus-4-8 (registry id shape)
+  if (!EXACT_FABLE_SLUG_RE.test(current.model.id)) return null;
   const toModelId = current.model.id.includes("/")
     ? current.model.id.replace(FABLE_MODEL_RE, "opus-4.8")
     : current.model.id.replace(FABLE_MODEL_RE, "opus-4-8");

@@ -685,6 +685,11 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
 								if (output.content.some((b) => b.type === "toolCall")) {
 									output.stopReason = "toolUse";
 								}
+								// Keep the raw finish reason (SAFETY/PROHIBITED_CONTENT/...)
+								// so the surfaced error explains why the stream died.
+								if (output.stopReason === "error" && !output.errorMessage) {
+									output.errorMessage = providerAbortedStopMessage(candidate.finishReason);
+								}
 							}
 
 							if (responseData.usageMetadata) {

@@ -50,7 +50,11 @@ import {
   type OrchestratorResponseTargetTracker,
 } from "./response-target.js";
 import { PiSessionCore } from "./pi-session-core.js";
-import { safetySwapStatusMessage } from "./provider-abort-containment.js";
+import {
+  QUARANTINE_CUSTOM_TYPE,
+  safetySwapStatusMessage,
+  serializeQuarantineRecord,
+} from "./provider-abort-containment.js";
 import {
   buildOrchestratorPromptMessages,
   buildRunThreadKey,
@@ -199,10 +203,27 @@ export class OrchestratorSession extends PiSessionCore {
       ...(opts.callbacks ? { callbacks: opts.callbacks } : {}),
     };
 
-    const containmentTurn = this.beginAbortContainmentTurn(agent, {
-      conversationId: this.conversationId,
-      runId,
-    });
+    const containmentTurn = this.beginAbortContainmentTurn(
+      agent,
+      opts.agentContext,
+      {
+        conversationId: this.conversationId,
+        runId,
+      },
+    );
+    if (containmentTurn.newlyQuarantined) {
+      // Durable record so the quarantine survives session/app restarts.
+      persistThreadCustomMessage(opts.store, {
+        threadKey: this.threadKey,
+        customType: QUARANTINE_CUSTOM_TYPE,
+        content: [
+          {
+            type: "text",
+            text: serializeQuarantineRecord(containmentTurn.newlyQuarantined),
+          },
+        ],
+      });
+    }
     let swapAttempted:
       | { fromModelId: string; toModelId: string }
       | undefined;
