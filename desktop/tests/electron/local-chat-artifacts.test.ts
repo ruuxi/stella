@@ -490,6 +490,336 @@ describe("local chat mobile artifacts", () => {
     });
   });
 
+  it("excludes delegated mid-run tool_result files from loose artifacts", () => {
+    const artifacts = deriveMobileArtifactsForMessage(
+      baseMessage({
+        toolEvents: [
+          {
+            _id: "tool-1",
+            timestamp: 1_100,
+            type: "tool_result",
+            payload: {
+              toolName: "exec_command",
+              agentType: "general",
+              producedFiles: [
+                { path: "/tmp/delegated.pdf", kind: { type: "add" } },
+              ],
+            },
+          },
+          {
+            _id: "tool-2",
+            timestamp: 1_200,
+            type: "tool_result",
+            payload: {
+              toolName: "exec_command",
+              agentType: "orchestrator",
+              producedFiles: [
+                { path: "/tmp/direct.pdf", kind: { type: "add" } },
+              ],
+            },
+          },
+          {
+            // Legacy events predate the agentType stamp and were always
+            // orchestrator-direct — they keep rendering inline.
+            _id: "tool-3",
+            timestamp: 1_300,
+            type: "tool_result",
+            payload: {
+              toolName: "exec_command",
+              producedFiles: [
+                { path: "/tmp/legacy.pdf", kind: { type: "add" } },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(artifacts).toMatchObject([
+      { kind: "pdf", filePath: "/tmp/direct.pdf" },
+      { kind: "pdf", filePath: "/tmp/legacy.pdf" },
+    ]);
+  });
+
+  it("filters noise producedFiles from loose artifacts", () => {
+    const artifacts = deriveMobileArtifactsForMessage(
+      baseMessage({
+        toolEvents: [
+          {
+            _id: "tool-1",
+            timestamp: 1_100,
+            type: "tool_result",
+            payload: {
+              toolName: "exec_command",
+              producedFiles: [
+                {
+                  path: "/Users/me/.brave-profile/state.pdf",
+                  kind: { type: "add" },
+                },
+                { path: "/tmp/report.pdf", kind: { type: "add" } },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(artifacts).toMatchObject([
+      { kind: "pdf", filePath: "/tmp/report.pdf" },
+    ]);
+  });
+
+  it("surfaces html written anywhere under the outputs tree as canvas", () => {
+    const artifacts = deriveMobileArtifactsForMessage(
+      baseMessage({
+        toolEvents: [
+          {
+            _id: "tool-1",
+            timestamp: 1_100,
+            type: "tool_result",
+            payload: {
+              toolName: "exec_command",
+              fileChanges: [
+                {
+                  path: "/Users/me/.stella/outputs/recall-report.html",
+                  kind: { type: "add" },
+                },
+                // Outside the outputs tree stays a developer resource
+                // (omitted unless developer artifacts are enabled).
+                { path: "/Users/me/site/index.html", kind: { type: "add" } },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(artifacts).toMatchObject([
+      {
+        kind: "canvas-html",
+        filePath: "/Users/me/.stella/outputs/recall-report.html",
+        slug: "recall-report",
+      },
+    ]);
+  });
+
+  it("consolidates agent-completed files onto the card's per-agent sections", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now,
+          payload: { text: "On it" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now - 3_000,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Write the report" },
+            },
+            {
+              _id: "ac1",
+              timestamp: now - 1_000,
+              type: "agent-completed",
+              payload: {
+                agentId: "t1",
+                fileChanges: [
+                  { path: "/Users/me/work/scratch.md", kind: { type: "add" } },
+                ],
+                producedFiles: [
+                  {
+                    path: "/Users/me/.stella/outputs/report.pdf",
+                    kind: { type: "add" },
+                  },
+                  {
+                    // Snapshot noise never reaches the section.
+                    path: "/Users/me/.brave-profile/cache.pdf",
+                    kind: { type: "add" },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      ],
+      20,
+    );
+
+    expect(rows).toHaveLength(1);
+    const artifacts = rows[0]?.artifacts ?? [];
+    // The rollup's files never appear loose — only inside the card.
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]).toMatchObject({
+      id: "agent-work:t1",
+      payload: {
+        kind: "agent-work",
+        state: "done",
+        agents: [
+          {
+            agentId: "t1",
+            title: "Write the report",
+            files: [
+              // Declared deliverables lead the section.
+              {
+                kind: "pdf",
+                filePath: "/Users/me/.stella/outputs/report.pdf",
+              },
+              { kind: "markdown", filePath: "/Users/me/work/scratch.md" },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("attributes files per agent when several complete in one turn", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now,
+          payload: { text: "On it" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now - 4_000,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Draft the memo" },
+            },
+            {
+              _id: "as2",
+              timestamp: now - 3_900,
+              type: "agent-started",
+              payload: { agentId: "t2", description: "Crunch the numbers" },
+            },
+            {
+              _id: "ac1",
+              timestamp: now - 2_000,
+              type: "agent-completed",
+              payload: {
+                agentId: "t1",
+                fileChanges: [
+                  { path: "/Users/me/memo.md", kind: { type: "add" } },
+                ],
+              },
+            },
+            {
+              _id: "ac2",
+              timestamp: now - 1_000,
+              type: "agent-completed",
+              payload: {
+                agentId: "t2",
+                fileChanges: [
+                  { path: "/Users/me/numbers.csv", kind: { type: "add" } },
+                ],
+              },
+            },
+          ],
+        }),
+      ],
+      20,
+    );
+
+    expect(rows[0]?.artifacts?.[0]).toMatchObject({
+      payload: {
+        kind: "agent-work",
+        state: "done",
+        total: 2,
+        completed: 2,
+        agents: [
+          {
+            agentId: "t1",
+            title: "Draft the memo",
+            files: [{ kind: "markdown", filePath: "/Users/me/memo.md" }],
+          },
+          {
+            agentId: "t2",
+            title: "Crunch the numbers",
+            files: [
+              {
+                kind: "file-artifact",
+                filePath: "/Users/me/numbers.csv",
+                artifactKind: "delimited-table",
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("files a fire-and-forget completion onto the spawning row's card", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "u1",
+          type: "user_message",
+          timestamp: now - 5_000,
+          payload: { text: "Book me a flight" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now - 5_000,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Book flights" },
+            },
+          ],
+        }),
+        baseMessage({
+          _id: "a2",
+          timestamp: now - 1_000,
+          payload: { text: "All booked." },
+          toolEvents: [
+            {
+              _id: "ac1",
+              timestamp: now - 1_000,
+              type: "agent-completed",
+              payload: {
+                agentId: "t1",
+                producedFiles: [
+                  {
+                    path: "/Users/me/.stella/outputs/itinerary.pdf",
+                    kind: { type: "add" },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      ],
+      20,
+    );
+
+    expect(rows.map((row) => row.localMessageId)).toEqual([
+      "u1",
+      "u1:agent",
+      "a2",
+    ]);
+    // The completion row itself ships no loose copy of the rollup files.
+    expect(rows[2]?.artifacts).toBeUndefined();
+    expect(rows[1]?.artifacts?.[0]).toMatchObject({
+      id: "agent-work:t1",
+      payload: {
+        kind: "agent-work",
+        state: "done",
+        agents: [
+          {
+            agentId: "t1",
+            files: [
+              {
+                kind: "pdf",
+                filePath: "/Users/me/.stella/outputs/itinerary.pdf",
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   it("returns an opaque cursor for the newest source event in a sync page", () => {
     const page = buildMobileSyncMessagesPage(
       [

@@ -30,6 +30,29 @@ export type MobileAgentWorkPayload = {
   /** Status line ("Working in background" / "N of M done" / "Finished"). */
   subtitle: string;
   createdAt: number;
+  /**
+   * Per-agent produced-file sections — the mobile analogue of the desktop
+   * `AgentCompletionCard`. Each covered agent's `agent-completed` rollup
+   * files (deduped by path, noise-filtered, deliverables first) ride the
+   * card so mobile folds them into the lifecycle card with per-agent
+   * attribution instead of loose file rows. A section only exists once its
+   * agent actually completed, so files reveal at completion by construction.
+   *
+   * Always present (possibly empty) on bridges that consolidate: its
+   * presence tells mobile that any loose file artifacts remaining on the
+   * row are orchestrator-direct and safe to render standalone. Older mobile
+   * clients ignore the extra field.
+   */
+  agents?: MobileAgentWorkFileSection[];
+};
+
+/** One agent's completion files on the mobile agent-work card. */
+export type MobileAgentWorkFileSection = {
+  agentId: string;
+  /** Section header — the agent's task description (or group label). */
+  title: string;
+  /** Display payloads for the files this agent's completion(s) revealed. */
+  files: DisplayPayload[];
 };
 
 /**
@@ -252,8 +275,42 @@ const DEVELOPER_EXTS = new Set([
   "yml",
 ]);
 
+// Any `.html` under the declared outputs tree crosses as a canvas artifact
+// (canvases in `outputs/html/`, but also reports written straight into
+// `outputs/`) — mirrors the renderer's `HTML_OUTPUT_PATH_RE` widening in
+// `derive-turn-resource.ts`.
 const HTML_OUTPUT_PATH_RE =
-  /(?:^|\/)(?:\.stella|state)\/outputs\/html\/([^/]+)\.html$/;
+  /(?:^|\/)(?:\.stella|state)\/outputs\/(?:.+\/)?([^/]+)\.html$/;
+
+/** Declared deliverables home. Mirrors `path-to-viewer.ts`
+ *  `DECLARED_OUTPUTS_RE` (duplicated: that renderer module resolves imports
+ *  through the `@/` alias, which the electron main build doesn't). */
+const DECLARED_OUTPUTS_RE = /(?:^|[\\/])(?:\.stella|state)[\\/]outputs[\\/]/;
+
+const isDeclaredOutputPath = (filePath: string): boolean =>
+  DECLARED_OUTPUTS_RE.test(filePath);
+
+const NOISE_PATH_SEGMENTS = new Set(["node_modules", "__pycache__"]);
+const NOISE_EXTS = new Set(["log", "tmp", "lock", "pid"]);
+
+/**
+ * Snapshot-detected `producedFiles` sweep up incidental writes (browser
+ * profiles, launch logs, caches, scratch dirs) alongside real deliverables;
+ * keep them off every mobile artifact surface. Explicit `fileChanges`
+ * (deliberate tool edits) are NOT run through this — only indirect snapshot
+ * detections. Mirrors `path-to-viewer.ts` `isNoiseProducedPath`.
+ */
+const isNoiseProducedPath = (filePath: string): boolean => {
+  const trimmed = filePath.trim();
+  if (!trimmed) return true;
+  for (const segment of trimmed.split(/[\\/]/)) {
+    if (!segment) continue;
+    if (segment.startsWith(".") && segment !== ".stella") return true;
+    if (NOISE_PATH_SEGMENTS.has(segment)) return true;
+  }
+  const ext = extensionOf(trimmed);
+  return ext != null && NOISE_EXTS.has(ext);
+};
 
 const asNonEmptyString = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -302,6 +359,20 @@ const resolveFileChange = (
       : record.path;
   const trimmed = asNonEmptyString(filePath);
   return trimmed ? { filePath: trimmed, timestamp } : null;
+};
+
+/**
+ * A `tool_result` stamped with a non-orchestrator `agentType` is a delegated
+ * agent's mid-run write forwarded into the conversation stream — it
+ * contributes nothing loose (its files arrive consolidated on the run's
+ * `agent-completed` rollup instead). Missing `agentType` (legacy persisted
+ * events, always orchestrator-direct) keeps rendering inline. Mirrors the
+ * renderer gate in `derive-turn-resource.ts` (`de4bd52c1`).
+ */
+const isDelegatedToolResult = (event: ArtifactEventRecord): boolean => {
+  if (event.type !== "tool_result") return false;
+  const agentType = asNonEmptyString(event.payload?.agentType);
+  return agentType != null && agentType !== "orchestrator";
 };
 
 const artifactKey = (payload: DisplayPayload): string => {
@@ -519,6 +590,79 @@ const buildSettledAtMsById = (
   return settledAt;
 };
 
+/** Cap on files per agent section — deliverables rank first, so truncation
+ *  drops incidental writes, not the asked-for files. */
+const AGENT_SECTION_FILE_LIMIT = 8;
+
+/**
+ * Fold every `agent-completed` event across the synced context into a
+ * per-agent display-payload list for the agent-work card's file sections.
+ * Files are deduped by path (first sighting wins, preserving the rollup's
+ * order), snapshot-detected `producedFiles` are noise-filtered, and declared
+ * deliverables (`~/.stella/outputs/**`) lead so the section cap truncates
+ * scratch instead of the files the user asked for — mirroring the desktop
+ * `agent-completion.ts` derivation.
+ */
+const buildAgentFilesById = (
+  messages: readonly ArtifactMessageRecord[],
+  options?: MobileArtifactOptions,
+): Map<string, DisplayPayload[]> => {
+  type Candidate = { filePath: string; payload: DisplayPayload };
+  const byAgent = new Map<string, Map<string, Candidate>>();
+  for (const message of messages) {
+    for (const event of message.toolEvents) {
+      if (event.type !== "agent-completed") continue;
+      const payload = event.payload;
+      const agentId = trimmedString(payload?.agentId);
+      if (!payload || !agentId) continue;
+      const fileChanges = isFileChangeRecordArray(payload.fileChanges)
+        ? payload.fileChanges
+        : [];
+      const producedFiles = isProducedFileRecordArray(payload.producedFiles)
+        ? payload.producedFiles
+        : [];
+      const candidates = byAgent.get(agentId) ?? new Map<string, Candidate>();
+      byAgent.set(agentId, candidates);
+      const consider = (record: FileChangeRecord, noiseFiltered: boolean) => {
+        const resolved = resolveFileChange(record, event.timestamp);
+        if (!resolved) return;
+        if (noiseFiltered && isNoiseProducedPath(resolved.filePath)) return;
+        if (candidates.has(resolved.filePath)) return;
+        const display = payloadFromFilePath(
+          resolved.filePath,
+          resolved.timestamp,
+          options,
+        );
+        if (!display) return;
+        candidates.set(resolved.filePath, {
+          filePath: resolved.filePath,
+          payload: display,
+        });
+      };
+      for (const record of fileChanges) consider(record, false);
+      for (const record of producedFiles) consider(record, true);
+    }
+  }
+
+  const files = new Map<string, DisplayPayload[]>();
+  for (const [agentId, candidates] of byAgent) {
+    const entries = [...candidates.values()];
+    const ranked = [
+      ...entries.filter((entry) => isDeclaredOutputPath(entry.filePath)),
+      ...entries.filter((entry) => !isDeclaredOutputPath(entry.filePath)),
+    ];
+    if (ranked.length > 0) {
+      files.set(
+        agentId,
+        ranked
+          .slice(0, AGENT_SECTION_FILE_LIMIT)
+          .map((entry) => entry.payload),
+      );
+    }
+  }
+  return files;
+};
+
 /**
  * Background-work card for a turn, from its `agent-started` events. Completion
  * is scoped per run (an `agent-completed` at/after the thread's spawn on this
@@ -534,6 +678,7 @@ const deriveAgentWorkPayload = (
   message: Pick<ArtifactMessageRecord, "toolEvents">,
   settledAtMsById: ReadonlyMap<string, number>,
   nowMs: number,
+  filesByAgentId: ReadonlyMap<string, DisplayPayload[]> = new Map(),
 ): { id: string; payload: MobileAgentWorkPayload } | null => {
   const threadIds: string[] = [];
   const descriptions: Record<string, string> = {};
@@ -589,6 +734,22 @@ const deriveAgentWorkPayload = (
     subtitle = state === "running" ? "Working in background" : "Finished";
   }
 
+  // Per-agent completion-file sections, in spawn order. A section exists
+  // only once its agent's `agent-completed` rollup landed, so the pill
+  // reveal is completion-scoped by construction. Always attached (possibly
+  // empty): the field's presence tells mobile this bridge consolidates and
+  // any loose file artifacts left on the row are orchestrator-direct.
+  const agents: MobileAgentWorkFileSection[] = [];
+  for (const id of threadIds) {
+    const files = filesByAgentId.get(id);
+    if (!files || files.length === 0) continue;
+    agents.push({
+      agentId: id,
+      title: descriptions[id] || groupLabel || "Task",
+      files,
+    });
+  }
+
   return {
     id: agentWorkArtifactId(threadIds),
     payload: {
@@ -599,6 +760,7 @@ const deriveAgentWorkPayload = (
       title,
       subtitle,
       createdAt,
+      agents,
     },
   };
 };
@@ -885,6 +1047,14 @@ export const deriveMobileArtifactsForMessage = (
     const payload = event.payload;
     if (!payload) continue;
 
+    // Consolidation: delegated agents' mid-run tool_results and the
+    // `agent-completed` rollups contribute nothing loose — their files ride
+    // the agent-work card's per-agent sections (see `buildAgentFilesById`),
+    // revealed together at completion like the desktop completion card.
+    if (event.type === "agent-completed" || isDelegatedToolResult(event)) {
+      continue;
+    }
+
     pushArtifact(artifacts, seen, imageGenPayload(event));
 
     const mapArtifact = mapArtifactPayload(event);
@@ -936,9 +1106,21 @@ export const deriveMobileArtifactsForMessage = (
     const producedFiles = isProducedFileRecordArray(payload.producedFiles)
       ? payload.producedFiles
       : [];
-    for (const record of [...fileChanges, ...producedFiles]) {
+    for (const record of fileChanges) {
       const resolved = resolveFileChange(record, event.timestamp);
       if (!resolved) continue;
+      pushArtifact(
+        artifacts,
+        seen,
+        payloadFromFilePath(resolved.filePath, resolved.timestamp, options),
+      );
+    }
+    for (const record of producedFiles) {
+      const resolved = resolveFileChange(record, event.timestamp);
+      // Snapshot-detected writes get the noise filter (deliberate
+      // `fileChanges` above do not) — mirrors the desktop produced-file
+      // surfaces.
+      if (!resolved || isNoiseProducedPath(resolved.filePath)) continue;
       pushArtifact(
         artifacts,
         seen,
@@ -967,13 +1149,21 @@ export const buildMobileSyncMessages = (
     nowMs,
     reasoningSummariesByAgentId,
   );
+  // Completion files resolve across the whole context so a fire-and-forget
+  // agent completing on a later row still files onto its spawning row's card.
+  const filesByAgentId = buildAgentFilesById(taskContextMessages, options);
   for (const message of messages) {
     if (isUiHiddenChatMessagePayload(message.payload ?? null)) continue;
     const role = message.type === "user_message" ? "user" : "assistant";
     if (role !== "user" && role !== "assistant") continue;
     const text = textFromPayload(message.payload);
     const fileArtifacts = deriveMobileArtifactsForMessage(message, options);
-    const agentWork = deriveAgentWorkPayload(message, settledAtMsById, nowMs);
+    const agentWork = deriveAgentWorkPayload(
+      message,
+      settledAtMsById,
+      nowMs,
+      filesByAgentId,
+    );
     // Background tasks spawned by this turn (collected into the activity tray).
     const tasks = deriveMobileTasksForMessage(message, tasksById);
     // Settled tool calls for the inline tool-activity trace (assistant turns).
