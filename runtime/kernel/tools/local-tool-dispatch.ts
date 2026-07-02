@@ -9,6 +9,7 @@ import {
 import { redactMemoryText } from "../memory/redaction.js";
 import type { DreamInboxStore } from "../memory/dream-inbox-store.js";
 import { localNoResponse } from "./local-tool-overrides.js";
+import { withFileWriteLock, writeFileWithNulGuard } from "./file-write-lock.js";
 
 export type LocalToolStore = {
   dreamInboxStore?: DreamInboxStore;
@@ -178,50 +179,54 @@ export async function dispatchLocalTool(
       const resolvedPath = deps.dream
         ? await ensureDreamWritePath(deps.dream, filePath)
         : filePath;
-      const original = await fs.readFile(resolvedPath, "utf-8");
-      if (!original.includes(oldString)) {
-        return {
-          handled: true,
-          text: JSON.stringify({
-            success: false,
-            error: "old_string not found in file.",
-          }),
-        };
-      }
-      let updated: string;
-      let count: number;
-      if (replaceAll) {
-        const parts = original.split(oldString);
-        count = parts.length - 1;
-        updated = parts.join(newString);
-      } else {
-        const occurrences = original.split(oldString).length - 1;
-        if (occurrences > 1) {
+      // Same per-path lock as Edit/Write: the read-modify-write cycle must
+      // not interleave with sibling edits of the same file.
+      return await withFileWriteLock(resolvedPath, async () => {
+        const original = await fs.readFile(resolvedPath, "utf-8");
+        if (!original.includes(oldString)) {
           return {
             handled: true,
             text: JSON.stringify({
               success: false,
-              error: `old_string appears ${occurrences} times; pass replace_all=true or extend the anchor for uniqueness.`,
+              error: "old_string not found in file.",
             }),
           };
         }
-        const idx = original.indexOf(oldString);
-        updated =
-          original.slice(0, idx) +
-          newString +
-          original.slice(idx + oldString.length);
-        count = 1;
-      }
-      await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-      await fs.writeFile(resolvedPath, updated, "utf-8");
-      return {
-        handled: true,
-        text: JSON.stringify({
-          success: true,
-          path: resolvedPath,
-          replacements: count,
-        }),
-      };
+        let updated: string;
+        let count: number;
+        if (replaceAll) {
+          const parts = original.split(oldString);
+          count = parts.length - 1;
+          updated = parts.join(newString);
+        } else {
+          const occurrences = original.split(oldString).length - 1;
+          if (occurrences > 1) {
+            return {
+              handled: true,
+              text: JSON.stringify({
+                success: false,
+                error: `old_string appears ${occurrences} times; pass replace_all=true or extend the anchor for uniqueness.`,
+              }),
+            };
+          }
+          const idx = original.indexOf(oldString);
+          updated =
+            original.slice(0, idx) +
+            newString +
+            original.slice(idx + oldString.length);
+          count = 1;
+        }
+        await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+        await writeFileWithNulGuard(resolvedPath, updated);
+        return {
+          handled: true,
+          text: JSON.stringify({
+            success: true,
+            path: resolvedPath,
+            replacements: count,
+          }),
+        };
+      });
     } catch (error) {
       return {
         handled: true,
