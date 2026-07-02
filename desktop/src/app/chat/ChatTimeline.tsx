@@ -63,6 +63,7 @@ import {
   type InlineWorkingIndicatorMountProps,
 } from "./InlineWorkingIndicator";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
+import { eventRowRendersContent } from "@/features/chat/lib/assistant-row-content";
 import { LoaderCircle } from "@/ui/icons";
 
 type ChatTimelineProps = {
@@ -139,7 +140,22 @@ type ChatTimelineProps = {
   contentContainerStyle?: CSSProperties;
 };
 
-/** Default spacing between two chat rows. */
+/* ------------------------------------------------------------------
+ * Chat vertical-rhythm contract — the BETWEEN-rows half.
+ *
+ * These constants are THE definition of inter-row spacing for every
+ * chat surface (full chat, sidebar, mini, orb — they all mount this
+ * timeline). They render as virtualized separator heights below each
+ * row. The WITHIN-row half (message -> cards -> action strip) is
+ * `--chat-item-part-gap` in full-shell.chat.css.
+ *
+ * When judging perceived spacing remember each text-bearing assistant
+ * row already ends with an invisible ~32px tail (8px part gap + 24px
+ * always-reserved hover action strip), so the visual gap between two
+ * assistant paragraphs is `32 + ASSISTANT_RUN_GAP`.
+ * ------------------------------------------------------------------ */
+
+/** Turn boundary: spacing across a sender change (user <-> assistant). */
 const ROW_GAP = 20;
 /**
  * Spacing between two consecutive assistant rows (no user message or
@@ -157,9 +173,12 @@ const USER_RUN_GAP = 10;
 /**
  * Spacing between two consecutive card/artifact-only assistant rows
  * (resource cards, source diffs, inline images, schedule receipts, …).
- * Zero so a run of stacked cards reads as a single grouped list.
+ * Matches the within-row part gap so a run of stacked cards reads as one
+ * grouped list. (Card rows used to sit inside 12px+12px of invisible
+ * assistant-bubble padding, which is why this could be 0 before; that
+ * padding is gone, so the group gap is explicit now.)
  */
-const CARD_RUN_GAP = 0;
+const CARD_RUN_GAP = 8;
 
 /**
  * A "card row" is an assistant row whose body is purely an inline
@@ -244,15 +263,20 @@ export const ChatTimeline = memo(function ChatTimeline({
   className,
   contentContainerStyle,
 }: ChatTimelineProps) {
-  const listItems = useMemo<TimelineListItem[]>(
-    () =>
-      rows.map((row, index) => ({
-        id: row.id,
-        row,
-        gapAfter: gapAfterRow(row, rows[index + 1]),
-      })),
-    [rows],
-  );
+  const listItems = useMemo<TimelineListItem[]>(() => {
+    // Drop rows that paint nothing (empty assistant segments: tool-only
+    // stream slices, rows whose lifecycle cards were re-anchored away by
+    // route-lifecycle-events). If they stayed, each would still occupy a
+    // virtualized item + its separator gap — invisible spacers that
+    // stack into large voids between turns. Gaps are computed on the
+    // filtered list so neighbors join at their real spacing.
+    const visibleRows = rows.filter(eventRowRendersContent);
+    return visibleRows.map((row, index) => ({
+      id: row.id,
+      row,
+      gapAfter: gapAfterRow(row, visibleRows[index + 1]),
+    }));
+  }, [rows]);
 
   const renderItem = useCallback(
     ({ item }: LegendListRenderItemProps<TimelineListItem>) =>

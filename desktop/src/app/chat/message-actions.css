@@ -25,11 +25,12 @@
 }
 
 /* User actions sit a hair below the right-aligned bubble. The user row's
-   flex `gap` is `--space-6`; pull the row back up to a tight 2px. */
+   flex `gap` is `--chat-item-part-gap`; pull the row back up to a tight
+   2px. */
 .message-actions--end {
   justify-content: flex-end;
   align-self: flex-end;
-  margin-top: calc(2px - var(--space-6));
+  margin-top: calc(2px - var(--chat-item-part-gap, 8px));
 }
 
 /* Reveal only once the message has settled. The `:not(.event-row--streaming)`
