@@ -111,6 +111,13 @@ import {
   IPC_VOICE_RUNTIME_STATE,
   IPC_VOICE_WEB_SEARCH,
 } from "../../../src/shared/contracts/ipc-channels.js";
+import {
+  BRIDGE_FEATURE_BINARY_FILE,
+  BRIDGE_FEATURE_BINARY_UPLOAD,
+  BRIDGE_FEATURE_DEFLATE,
+  BRIDGE_FEATURE_HELLO,
+  BRIDGE_FEATURE_LOCAL_CHAT_PUSH,
+} from "./crypto.js";
 
 export type MobileBridgeCapabilityMode =
   | "remote-request"
@@ -370,6 +377,10 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
   invoke("store.installRelease", IPC_STORE_INSTALL_FROM_BLUEPRINT),
   invoke("store.uninstallPackage", IPC_STORE_UNINSTALL),
 
+  // One-RTT connect: conversation id + developer flag + message delta +
+  // feature list in a single invoke (see registerMobileHelloHandlers).
+  invoke("mobile.hello", "mobile:hello"),
+
   invoke(
     "localChat.getOrCreateDefaultConversationId",
     IPC_LOCAL_CHAT_GET_OR_CREATE_ID,
@@ -420,3 +431,17 @@ export const buildMobileBridgeCapabilityManifest =
     version: 1,
     capabilities: [...MOBILE_BRIDGE_CAPABILITIES],
   });
+
+/**
+ * Optional bridge features this desktop supports, advertised to the phone in
+ * the `mobile:hello` response (and implied by hello answering at all). Kept
+ * as plain strings so the phone can gate each lane independently; every
+ * feature degrades to the legacy path when absent on either peer.
+ */
+export const MOBILE_BRIDGE_FEATURES = [
+  BRIDGE_FEATURE_HELLO,
+  BRIDGE_FEATURE_DEFLATE,
+  BRIDGE_FEATURE_BINARY_FILE,
+  BRIDGE_FEATURE_BINARY_UPLOAD,
+  BRIDGE_FEATURE_LOCAL_CHAT_PUSH,
+] as const;

@@ -12,26 +12,57 @@ import {
 import type { MobileBridgeBootstrap } from "./bootstrap-payload.js";
 import {
   BRIDGE_CRYPTO_PROTOCOL,
+  BRIDGE_FEATURE_DEFLATE,
   createBridgeKeyPair,
+  createBridgeReplayGuard,
+  decryptBridgeBytes,
   decryptBridgePayload,
   deriveBridgeCryptoSession,
+  encryptBridgeBytes,
   encryptBridgePayload,
   isBridgeEncryptedEnvelope,
   type BridgeCryptoSession,
+  type BridgeReplayGuard,
 } from "./crypto.js";
 import { getHandler, getOnHandlers } from "./handler-registry.js";
 import { probeBridgePublicHealth } from "./public-health.js";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
 const REGISTRATION_REFRESH_MS = 60_000;
-const SESSION_TTL_MS = 15 * 60 * 1000;
+/**
+ * Local cap on bridge session lifetime. Convex mints sessions with its own
+ * TTL (currently 60 minutes) and `authorizeBridgeSession` takes the min of
+ * both, so this mostly guards against a misconfigured backend expiry.
+ */
+const SESSION_TTL_MS = 60 * 60 * 1000;
 const CHALLENGE_TTL_MS = 60_000;
 const COOKIE_NAME = "stella_mobile_bridge";
 const MAX_BODY_SIZE = 5 * 1024 * 1024;
 const BODY_TIMEOUT_MS = 10_000;
 const ALLOW_METHODS = "GET, POST, OPTIONS";
 const ALLOW_HEADERS =
-  "Content-Type, X-Stella-Bridge-Session-Id, X-Stella-Bridge-Session-Secret, X-Stella-Bridge-Challenge-Id, X-Stella-Bridge-Encrypted";
+  "Content-Type, X-Stella-Bridge-Session-Id, X-Stella-Bridge-Session-Secret, X-Stella-Bridge-Challenge-Id, X-Stella-Bridge-Encrypted, X-Stella-Bridge-Features, X-Stella-Bridge-Bin-Seq, X-Stella-Bridge-Bin-Iv, X-Stella-Bridge-Bin-Mime";
+/**
+ * Bare (no `?d=<desktopDeviceId>`) challenge GETs come only from legacy phone
+ * builds; they leak the device id + public key to anyone who finds the tunnel
+ * hostname, so they are throttled hard. Callers that present the device id
+ * they expect (all current builds) prove they already know it.
+ */
+const BARE_CHALLENGE_LIMIT = 30;
+const BARE_CHALLENGE_WINDOW_MS = 60_000;
+/** Uploaded attachment staging: entries expire and total bytes are capped. */
+const UPLOAD_TTL_MS = 10 * 60_000;
+const UPLOAD_TOTAL_BYTE_CAP = 64 * 1024 * 1024;
+
+const parseBridgeFeaturesHeader = (value: unknown): Set<string> => {
+  if (typeof value !== "string") return new Set();
+  return new Set(
+    value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+};
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
 const MOBILE_BRIDGE_SENDER_URL = "stella-mobile-bridge://mobile";
 const DEVELOPER_RESOURCE_PREVIEWS_KEY = "stella-developer-resource-previews";
@@ -76,6 +107,10 @@ type BridgeSessionRecord = {
   crypto?: BridgeCryptoSession;
   mobileDeviceId?: string;
   sessionSecret?: string;
+  /** Anti-replay window over received (m2d) envelope/binary seqs. */
+  rxGuard?: BridgeReplayGuard;
+  /** Optional features the phone advertised (X-Stella-Bridge-Features). */
+  peerFeatures?: Set<string>;
 };
 
 type BridgeChallengeRecord = {
@@ -156,6 +191,50 @@ const dispatchCapturedIpc = async (
     }
   }
   return { kind: "event" };
+};
+
+const readBodyBuffer = (req: IncomingMessage): Promise<Buffer> => {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error("Body read timeout"));
+        req.destroy();
+      }
+    }, BODY_TIMEOUT_MS);
+
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(new Error("Body too large"));
+          req.destroy();
+        }
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(Buffer.concat(chunks));
+      }
+    });
+    req.on("error", (err) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      }
+    });
+  });
 };
 
 const readBody = (req: IncomingMessage): Promise<string> => {
@@ -296,6 +375,14 @@ export class MobileBridgeService {
   private getBootstrapPayload: (() => Promise<MobileBridgeBootstrap>) | null =
     null;
   private lastBootstrapPayload: MobileBridgeBootstrap | null = null;
+  private bareChallengeWindowStart = 0;
+  private bareChallengeCount = 0;
+  /** Staged binary uploads awaiting an `agent:startChat` that references them. */
+  private readonly uploads = new Map<
+    string,
+    { dataUrl: string; mimeType: string; expiresAt: number; bytes: number }
+  >();
+  private uploadTotalBytes = 0;
 
   constructor(private readonly options: MobileBridgeServiceOptions) {}
 
@@ -629,7 +716,7 @@ export class MobileBridgeService {
       return;
     }
 
-    if (req.url === "/bridge/challenge") {
+    if (req.url.split("?")[0] === "/bridge/challenge") {
       if (!this.isBridgeAccessEnabled()) {
         sendJson(
           res,
@@ -637,6 +724,22 @@ export class MobileBridgeService {
           { error: "Desktop bridge unavailable" },
           requestOrigin,
         );
+        return;
+      }
+      // Callers that already know the desktop device id present it as `?d=`;
+      // a mismatch gets an opaque 404 (no id / public key disclosed). Bare
+      // requests (legacy phone builds) still work but are rate limited — the
+      // endpoint is unauthenticated on a public hostname.
+      const requestedDeviceId = new URL(req.url, "http://localhost").searchParams
+        .get("d")
+        ?.trim();
+      if (requestedDeviceId) {
+        if (!this.deviceId || requestedDeviceId !== this.deviceId) {
+          sendJson(res, 404, { error: "Not found" }, requestOrigin);
+          return;
+        }
+      } else if (!this.consumeBareChallengeBudget()) {
+        sendJson(res, 429, { error: "Too many requests" }, requestOrigin);
         return;
       }
       sendJson(res, 200, this.createBridgeChallenge(), requestOrigin);
@@ -667,6 +770,35 @@ export class MobileBridgeService {
       return;
     }
 
+    // Binary file lane — requires auth + encrypted session
+    if (req.url === "/bridge/file" && req.method === "POST") {
+      const authenticated = await this.ensureAuthorized(
+        req,
+        res,
+        requestOrigin,
+      );
+      if (!authenticated) return;
+      await this.handleBinaryFileRequest(req, res, requestOrigin, authenticated);
+      return;
+    }
+
+    // Binary attachment upload — requires auth + encrypted session
+    if (req.url === "/bridge/upload" && req.method === "POST") {
+      const authenticated = await this.ensureAuthorized(
+        req,
+        res,
+        requestOrigin,
+      );
+      if (!authenticated) return;
+      await this.handleBinaryUploadRequest(
+        req,
+        res,
+        requestOrigin,
+        authenticated,
+      );
+      return;
+    }
+
     // Everything else: serve the desktop frontend (requires auth)
     const authenticated = await this.ensureAuthorized(req, res, requestOrigin);
     if (!authenticated) return;
@@ -687,7 +819,33 @@ export class MobileBridgeService {
     if (!session.crypto || !isBridgeEncryptedEnvelope(envelope)) {
       throw new Error("Encrypted bridge session required");
     }
-    return decryptBridgePayload(session.crypto, "m2d", envelope);
+    return decryptBridgePayload(
+      session.crypto,
+      "m2d",
+      envelope,
+      this.getSessionReplayGuard(session),
+    );
+  }
+
+  private getSessionReplayGuard(session: BridgeSessionRecord) {
+    if (!session.rxGuard) {
+      session.rxGuard = createBridgeReplayGuard();
+    }
+    return session.rxGuard;
+  }
+
+  private sessionSupportsDeflate(session: BridgeSessionRecord) {
+    return session.peerFeatures?.has(BRIDGE_FEATURE_DEFLATE) === true;
+  }
+
+  private consumeBareChallengeBudget() {
+    const now = Date.now();
+    if (now - this.bareChallengeWindowStart >= BARE_CHALLENGE_WINDOW_MS) {
+      this.bareChallengeWindowStart = now;
+      this.bareChallengeCount = 0;
+    }
+    this.bareChallengeCount += 1;
+    return this.bareChallengeCount <= BARE_CHALLENGE_LIMIT;
   }
 
   private sendMaybeEncryptedJson(
@@ -714,9 +872,230 @@ export class MobileBridgeService {
     sendJson(
       res,
       status,
-      { envelope: encryptBridgePayload(session.crypto, "d2m", data) },
+      {
+        envelope: encryptBridgePayload(session.crypto, "d2m", data, {
+          compress: this.sessionSupportsDeflate(session),
+        }),
+      },
       origin,
     );
+  }
+
+  // ── Binary lane ───────────────────────────────────────────────────────
+
+  /**
+   * `POST /bridge/file` — encrypted-binary download of a display file.
+   * Request body is a normal encrypted JSON envelope `{ filePath,
+   * conversationId }`; the response ships the raw file bytes AES-GCM
+   * encrypted with seq/iv/mime riding headers — no JSON byte arrays, no
+   * base64 (~1.0x wire size instead of the legacy lane's ~8-10x).
+   * Authorization and path containment are the same `display:readFile`
+   * handler the legacy lane uses.
+   */
+  private async handleBinaryFileRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+    requestOrigin: string | null,
+    session: BridgeSessionRecord,
+  ) {
+    if (!session.crypto) {
+      sendJson(
+        res,
+        403,
+        { error: "Encrypted bridge session required" },
+        requestOrigin,
+      );
+      return;
+    }
+    try {
+      const body = JSON.parse(await readBody(req)) as { envelope?: unknown };
+      const decoded = this.decryptBridgePayload(session, body?.envelope) as {
+        filePath?: unknown;
+        conversationId?: unknown;
+      };
+      const dispatchResult = await dispatchCapturedIpc(
+        "display:readFile",
+        [
+          {
+            filePath:
+              typeof decoded?.filePath === "string" ? decoded.filePath : "",
+            conversationId:
+              typeof decoded?.conversationId === "string"
+                ? decoded.conversationId
+                : "",
+          },
+        ],
+        this.broadcastToMobile,
+      );
+      if (dispatchResult.kind !== "handle") {
+        throw new Error("display:readFile did not return a result");
+      }
+      const result = dispatchResult.result as {
+        missing?: boolean;
+        bytes?: Uint8Array;
+        sizeBytes?: number;
+        mimeType?: string;
+        path?: string;
+      };
+      if (result?.missing === true || !(result?.bytes instanceof Uint8Array)) {
+        this.sendMaybeEncryptedJson(
+          res,
+          200,
+          {
+            result: {
+              missing: true,
+              mimeType: result?.mimeType ?? "application/octet-stream",
+              path: result?.path ?? "",
+            },
+          },
+          requestOrigin,
+          session,
+          true,
+        );
+        return;
+      }
+      const frame = encryptBridgeBytes(session.crypto, "d2m", result.bytes);
+      res.writeHead(200, {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": frame.ciphertext.byteLength,
+        "X-Stella-Bridge-Bin": "1",
+        "X-Stella-Bridge-Bin-Seq": String(frame.seq),
+        "X-Stella-Bridge-Bin-Iv": frame.iv,
+        "X-Stella-Bridge-Bin-Mime":
+          result.mimeType ?? "application/octet-stream",
+        "X-Stella-Bridge-Bin-Size": String(
+          result.sizeBytes ?? result.bytes.byteLength,
+        ),
+        ...getCorsHeaders(requestOrigin),
+        ...NO_STORE_HEADERS,
+      });
+      res.end(Buffer.from(frame.ciphertext));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Internal error";
+      sendJson(res, 400, { error: message }, requestOrigin);
+    }
+  }
+
+  /**
+   * `POST /bridge/upload` — encrypted-binary attachment staging. The body is
+   * raw AES-GCM ciphertext of the file bytes (seq/iv/mime in headers); the
+   * decrypted bytes are staged and referenced from a subsequent
+   * `agent:startChat` as `{ uploadId, mimeType }`, escaping the base64-in-JSON
+   * inflation that previously capped attachments at ~2.6 MB under the 5 MB
+   * body limit (now ~5 MB of raw bytes).
+   */
+  private async handleBinaryUploadRequest(
+    req: IncomingMessage,
+    res: ServerResponse,
+    requestOrigin: string | null,
+    session: BridgeSessionRecord,
+  ) {
+    if (!session.crypto) {
+      sendJson(
+        res,
+        403,
+        { error: "Encrypted bridge session required" },
+        requestOrigin,
+      );
+      return;
+    }
+    try {
+      const seqHeader = req.headers["x-stella-bridge-bin-seq"];
+      const ivHeader = req.headers["x-stella-bridge-bin-iv"];
+      const mimeHeader = req.headers["x-stella-bridge-bin-mime"];
+      const seq = typeof seqHeader === "string" ? Number(seqHeader) : NaN;
+      const iv = typeof ivHeader === "string" ? ivHeader.trim() : "";
+      const mimeType =
+        typeof mimeHeader === "string" && mimeHeader.trim()
+          ? mimeHeader.trim()
+          : "application/octet-stream";
+      if (!Number.isFinite(seq) || !iv) {
+        sendJson(
+          res,
+          400,
+          { error: "Missing binary frame headers" },
+          requestOrigin,
+        );
+        return;
+      }
+      const ciphertext = await readBodyBuffer(req);
+      const bytes = decryptBridgeBytes(
+        session.crypto,
+        "m2d",
+        { seq, iv, ciphertext: new Uint8Array(ciphertext) },
+        this.getSessionReplayGuard(session),
+      );
+      this.pruneUploads();
+      if (this.uploadTotalBytes + bytes.byteLength > UPLOAD_TOTAL_BYTE_CAP) {
+        sendJson(res, 413, { error: "Upload staging full" }, requestOrigin);
+        return;
+      }
+      const uploadId = crypto.randomUUID();
+      this.uploads.set(uploadId, {
+        dataUrl: `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`,
+        mimeType,
+        expiresAt: Date.now() + UPLOAD_TTL_MS,
+        bytes: bytes.byteLength,
+      });
+      this.uploadTotalBytes += bytes.byteLength;
+      this.sendMaybeEncryptedJson(
+        res,
+        200,
+        { result: { uploadId, sizeBytes: bytes.byteLength } },
+        requestOrigin,
+        session,
+        true,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Internal error";
+      sendJson(res, 400, { error: message }, requestOrigin);
+    }
+  }
+
+  private pruneUploads(now = Date.now()) {
+    for (const [id, upload] of this.uploads) {
+      if (upload.expiresAt <= now) {
+        this.uploads.delete(id);
+        this.uploadTotalBytes -= upload.bytes;
+      }
+    }
+    if (this.uploadTotalBytes < 0) this.uploadTotalBytes = 0;
+  }
+
+  /**
+   * Swap staged-upload references in `agent:startChat` attachments for the
+   * data URLs the chat pipeline expects. Entries without an `uploadId` (legacy
+   * inline data URLs) pass through untouched.
+   */
+  private resolveUploadedAttachments(channel: string, args: unknown): unknown {
+    if (channel !== "agent:startChat" || !Array.isArray(args)) return args;
+    const [first, ...rest] = args as [unknown, ...unknown[]];
+    if (!first || typeof first !== "object") return args;
+    const record = first as Record<string, unknown>;
+    if (!Array.isArray(record.attachments)) return args;
+    this.pruneUploads();
+    const attachments = record.attachments.map((attachment) => {
+      if (!attachment || typeof attachment !== "object") return attachment;
+      const entry = attachment as Record<string, unknown>;
+      const uploadId =
+        typeof entry.uploadId === "string" ? entry.uploadId.trim() : "";
+      if (!uploadId) return attachment;
+      const upload = this.uploads.get(uploadId);
+      if (!upload) {
+        throw new Error("Attachment upload expired; please retry the send.");
+      }
+      // Not deleted on use: a reconnect can legitimately re-issue the same
+      // startChat (deduped downstream by clientRequestId) and must still be
+      // able to resolve its uploads. TTL pruning owns cleanup.
+      return {
+        url: upload.dataUrl,
+        mimeType:
+          typeof entry.mimeType === "string" && entry.mimeType.trim()
+            ? entry.mimeType
+            : upload.mimeType,
+      };
+    });
+    return [{ ...record, attachments }, ...rest];
   }
 
   private async handleIpcRequest(
@@ -960,7 +1339,7 @@ export class MobileBridgeService {
     try {
       const dispatchResult = await dispatchCapturedIpc(
         channel,
-        args,
+        this.resolveUploadedAttachments(channel, args),
         this.broadcastToMobile,
       );
       if (dispatchResult.kind === "handle") {
@@ -1014,12 +1393,23 @@ export class MobileBridgeService {
   private async resolveBridgeSession(
     req: IncomingMessage,
   ): Promise<{ session: BridgeSessionRecord; fromHeaders: boolean } | null> {
-    if (this.hasExplicitSessionHeaders(req)) {
-      const session = await this.authorizeBridgeSession(req.headers);
-      return session ? { session, fromHeaders: true } : null;
+    const resolved = await (async () => {
+      if (this.hasExplicitSessionHeaders(req)) {
+        const session = await this.authorizeBridgeSession(req.headers);
+        return session ? { session, fromHeaders: true } : null;
+      }
+      const cookieSession = this.getValidSession(req);
+      return cookieSession
+        ? { session: cookieSession, fromHeaders: false }
+        : null;
+    })();
+    // Phones send their optional-feature set on every request; refresh it so
+    // response-side gating (envelope deflate) always reflects the live client.
+    const featuresHeader = req.headers["x-stella-bridge-features"];
+    if (resolved && typeof featuresHeader === "string") {
+      resolved.session.peerFeatures = parseBridgeFeaturesHeader(featuresHeader);
     }
-    const cookieSession = this.getValidSession(req);
-    return cookieSession ? { session: cookieSession, fromHeaders: false } : null;
+    return resolved;
   }
 
   private async ensureAuthorized(
