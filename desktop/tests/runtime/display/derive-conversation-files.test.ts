@@ -73,4 +73,75 @@ describe("deriveConversationFiles", () => {
       ]),
     ).toEqual([]);
   });
+
+  it("surfaces html files written anywhere under ~/.stella/outputs/ as canvas files", () => {
+    const files = deriveConversationFiles([
+      event({
+        _id: "r1",
+        type: "tool_result",
+        timestamp: 8,
+        payload: {
+          toolName: "exec_command",
+          producedFiles: [
+            {
+              path: "/Users/me/.stella/outputs/recall-blindspot-report.html",
+              kind: { type: "add" },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    expect(files).toEqual<ConversationFileEntry[]>([
+      {
+        path: "/Users/me/.stella/outputs/recall-blindspot-report.html",
+        timestamp: 8,
+        payload: {
+          kind: "canvas-html",
+          filePath: "/Users/me/.stella/outputs/recall-blindspot-report.html",
+          slug: "recall-blindspot-report",
+          title: "Recall Blindspot Report",
+          createdAt: 8,
+        },
+      },
+    ]);
+  });
+
+  it("drops profile/log noise from producedFiles but keeps explicit fileChanges", () => {
+    const files = deriveConversationFiles([
+      event({
+        _id: "r1",
+        type: "tool_result",
+        timestamp: 9,
+        payload: {
+          toolName: "exec_command",
+          fileChanges: [
+            {
+              path: "/Users/me/.stella/outputs/demos/notes.md",
+              kind: { type: "update" },
+            },
+          ],
+          producedFiles: [
+            {
+              path: "/Users/me/stella/.stella-launch.log",
+              kind: { type: "update" },
+            },
+            {
+              path: "/Users/me/.stella/outputs/demos/.brave-profile/Local State",
+              kind: { type: "update" },
+            },
+            {
+              path: "/Users/me/.stella/outputs/demos/demo1.mp4",
+              kind: { type: "update" },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    expect(files.map((entry) => entry.path)).toEqual([
+      "/Users/me/.stella/outputs/demos/notes.md",
+      "/Users/me/.stella/outputs/demos/demo1.mp4",
+    ]);
+  });
 });

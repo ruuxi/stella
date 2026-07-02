@@ -73,7 +73,7 @@ describe("deriveTurnResource", () => {
     });
   });
 
-  it("ignores html files written outside ~/.stella/outputs/html/", () => {
+  it("ignores html files written outside ~/.stella/outputs/", () => {
     expect(
       deriveTurnResource([
         event({
@@ -94,6 +94,168 @@ describe("deriveTurnResource", () => {
         }),
       ]),
     ).toBeNull();
+  });
+
+  it("surfaces html reports written anywhere under ~/.stella/outputs/ as canvas-html", () => {
+    // Not just `outputs/html/<slug>.html` — a report dropped straight into
+    // the declared deliverables dir (e.g. `outputs/recall-report.html`) is a
+    // user-facing document, not developer source, and must get a card.
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 9,
+          payload: {
+            toolName: "exec_command",
+            agentType: "orchestrator",
+            result: "wrote report",
+            producedFiles: [
+              {
+                path: "/Users/me/.stella/outputs/recall-blindspot-report.html",
+                kind: { type: "add" },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "canvas-html",
+      filePath: "/Users/me/.stella/outputs/recall-blindspot-report.html",
+      title: "Recall Blindspot Report",
+      slug: "recall-blindspot-report",
+      createdAt: 9,
+    });
+  });
+
+  it("surfaces html files in nested outputs subdirectories as canvas-html", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 4,
+          payload: {
+            toolName: "exec_command",
+            agentType: "orchestrator",
+            result: "ok",
+            producedFiles: [
+              {
+                path: "/Users/me/.stella/outputs/stella-demos/demos-review.html",
+                kind: { type: "update" },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "canvas-html",
+      filePath: "/Users/me/.stella/outputs/stella-demos/demos-review.html",
+      title: "Demos Review",
+      slug: "demos-review",
+      createdAt: 4,
+    });
+  });
+
+  it("drops profile/log noise from producedFiles and cards the real deliverable", () => {
+    // Shell snapshot detection sweeps up incidental writes (launch logs,
+    // browser profile state) alongside the actual output — those must never
+    // become or block a card.
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 11,
+          payload: {
+            toolName: "exec_command",
+            result: "rendered video",
+            producedFiles: [
+              {
+                path: "/Users/me/stella/.stella-launch.log",
+                kind: { type: "update" },
+              },
+              {
+                path: "/Users/me/.stella/outputs/demos/.brave-profile/Local State",
+                kind: { type: "update" },
+              },
+              {
+                path: "/Users/me/.stella/outputs/demos/demo1.mp4",
+                kind: { type: "update" },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "media",
+      asset: {
+        kind: "video",
+        filePath: "/Users/me/.stella/outputs/demos/demo1.mp4",
+      },
+      createdAt: 11,
+    });
+  });
+
+  it("returns null when producedFiles contain only noise", () => {
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 2,
+          payload: {
+            toolName: "exec_command",
+            result: "ok",
+            producedFiles: [
+              {
+                path: "/Users/me/stella/.stella-launch.log",
+                kind: { type: "update" },
+              },
+              {
+                path: "/Users/me/work/.cache/blob.bin",
+                kind: { type: "add" },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("ranks ~/.stella/outputs/ deliverables above incidental produced files", () => {
+    // Both are preferred-extension media, but the declared deliverable wins
+    // the card even when the scratch file was detected first.
+    expect(
+      deriveTurnResource([
+        event({
+          _id: "r1",
+          type: "tool_result",
+          timestamp: 6,
+          payload: {
+            toolName: "exec_command",
+            result: "rendered",
+            producedFiles: [
+              {
+                path: "/Users/me/worktree/demo/frames/f00074.jpg",
+                kind: { type: "update" },
+              },
+              {
+                path: "/Users/me/.stella/outputs/demos/demo1.mp4",
+                kind: { type: "add" },
+              },
+            ],
+          },
+        }),
+      ]),
+    ).toEqual({
+      kind: "media",
+      asset: {
+        kind: "video",
+        filePath: "/Users/me/.stella/outputs/demos/demo1.mp4",
+      },
+      createdAt: 6,
+    });
   });
 
   it("prefers the orchestrator html tool result over a fileChange fallback", () => {

@@ -161,6 +161,47 @@ describe("buildAgentCompletionSections", () => {
     expect(sections[0]!.title).toBe("Task");
     expect(sections[0]!.files.map((f) => f.path)).toEqual(["/out/report.md"]);
   });
+
+  it("ranks ~/.stella/outputs/ deliverables ahead of incidental files in the pill list", () => {
+    // A big rollup mixes real deliverables with scratch assets; the declared
+    // outputs must lead so the pill cap truncates the scratch, not the
+    // deliverables.
+    const sections = buildAgentCompletionSections(
+      [
+        completed("a1", [
+          "/Users/me/worktree/demo/frames/f00074.jpg",
+          "/Users/me/.stella/outputs/demos/demo1.mp4",
+          "/Users/me/worktree/demo/frames/f00075.jpg",
+          "/Users/me/.stella/outputs/demos/demo2.mp4",
+        ]),
+      ],
+      new Map(),
+    );
+    expect(sections).toHaveLength(1);
+    expect(sections[0]!.files.map((f) => f.path)).toEqual([
+      "/Users/me/.stella/outputs/demos/demo1.mp4",
+      "/Users/me/.stella/outputs/demos/demo2.mp4",
+      "/Users/me/worktree/demo/frames/f00074.jpg",
+      "/Users/me/worktree/demo/frames/f00075.jpg",
+    ]);
+  });
+
+  it("drops profile/log noise from a completion's producedFiles pills", () => {
+    const sections = buildAgentCompletionSections(
+      [
+        completed("a1", [
+          "/Users/me/stella/.stella-launch.log",
+          "/Users/me/.stella/outputs/demos/.brave-profile/Local State",
+          "/Users/me/.stella/outputs/demos/demo1.mp4",
+        ]),
+      ],
+      new Map(),
+    );
+    expect(sections).toHaveLength(1);
+    expect(sections[0]!.files.map((f) => f.path)).toEqual([
+      "/Users/me/.stella/outputs/demos/demo1.mp4",
+    ]);
+  });
 });
 
 describe("append-only across a send_input re-run", () => {
