@@ -1,8 +1,3 @@
-import type { EmbeddedWebsiteTheme } from "@/shared/types/electron";
-import { readStoredStoreTab } from "@/features/store/store-tabs";
-import { readEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
-import { isLowPowerDevice } from "@/shared/lib/device-perf";
-
 type PreloadKey =
   | "auth"
   | "billing"
