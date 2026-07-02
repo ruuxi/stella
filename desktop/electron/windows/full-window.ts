@@ -101,6 +101,8 @@ export class FullWindowController {
           webPreferences: createSharedWebPreferences({
             preloadPath: this.options.preloadPath,
             sessionPartition: this.options.sessionPartition,
+            // The full shell hosts the Store/Billing `<webview>` embeds.
+            webviewTag: true,
           }),
         })
       },

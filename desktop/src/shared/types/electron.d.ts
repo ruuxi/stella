@@ -1361,34 +1361,16 @@ export type EmbeddedWebsiteTheme = {
   background?: string;
 };
 
+/** Everything the renderer needs to mount the Store/Billing `<webview>`.
+ *  Mirrors `WindowManager.getStoreWebEmbedConfig` in the main process. */
+export type StoreWebEmbedConfig = {
+  baseUrl: string;
+  partition: string;
+  preloadUrl: string;
+};
+
 export type ElectronStoreWebApi = {
-  show: (payload?: {
-    route?: "store" | "billing";
-    tab?: string;
-    package?: string;
-    packageId?: string;
-    embedded?: boolean;
-    theme?: EmbeddedWebsiteTheme;
-  }) => Promise<{ ok: boolean }>;
-  prewarm: (payload?: {
-    route?: "store" | "billing";
-    tab?: string;
-    package?: string;
-    packageId?: string;
-    embedded?: boolean;
-    theme?: EmbeddedWebsiteTheme;
-  }) => Promise<{ ok: boolean }>;
-  hide: () => Promise<{ ok: boolean }>;
-  setLayout: (payload: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }) => Promise<{ ok: boolean }>;
-  setTheme: (payload: EmbeddedWebsiteTheme) => Promise<{ ok: boolean }>;
-  goBack: () => Promise<{ ok: boolean }>;
-  goForward: () => Promise<{ ok: boolean }>;
-  reload: () => Promise<{ ok: boolean }>;
+  getEmbedConfig: () => Promise<StoreWebEmbedConfig | null>;
 };
 
 export type ElectronStoreWebLocalApi = {

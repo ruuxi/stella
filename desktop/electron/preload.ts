@@ -2018,57 +2018,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   storeWeb: {
-    show: (payload?: {
-      route?: "store" | "billing";
-      tab?: string;
-      package?: string;
-      packageId?: string;
-      embedded?: boolean;
-      theme?: {
-        mode?: "light" | "dark";
-        foreground?: string;
-        foregroundWeak?: string;
-        border?: string;
-        primary?: string;
-        surface?: string;
-        background?: string;
-      };
-    }) => ipcRenderer.invoke("storeWeb:show", payload),
-    prewarm: (payload?: {
-      route?: "store" | "billing";
-      tab?: string;
-      package?: string;
-      packageId?: string;
-      embedded?: boolean;
-      theme?: {
-        mode?: "light" | "dark";
-        foreground?: string;
-        foregroundWeak?: string;
-        border?: string;
-        primary?: string;
-        surface?: string;
-        background?: string;
-      };
-    }) => ipcRenderer.invoke("storeWeb:prewarm", payload),
-    hide: () => ipcRenderer.invoke("storeWeb:hide"),
-    setLayout: (payload: {
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    }) => ipcRenderer.invoke("storeWeb:setLayout", payload),
-    setTheme: (payload: {
-      mode?: "light" | "dark";
-      foreground?: string;
-      foregroundWeak?: string;
-      border?: string;
-      primary?: string;
-      surface?: string;
-      background?: string;
-    }) => ipcRenderer.invoke("storeWeb:setTheme", payload),
-    goBack: () => ipcRenderer.invoke("storeWeb:goBack"),
-    goForward: () => ipcRenderer.invoke("storeWeb:goForward"),
-    reload: () => ipcRenderer.invoke("storeWeb:reload"),
+    getEmbedConfig: () => ipcRenderer.invoke("storeWeb:getEmbedConfig"),
   },
 
   storeWebLocal: {

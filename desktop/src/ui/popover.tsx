@@ -1,7 +1,6 @@
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { cn } from "@/shared/lib/utils";
-import { NativeWebsiteOverlayRegistrar } from "@/shared/lib/native-website-overlay";
 
 const PopoverRoot = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -19,7 +18,6 @@ const PopoverContent = React.forwardRef<
       style={{ ...style, zIndex: 9999 }}
       {...props}
     >
-      <NativeWebsiteOverlayRegistrar />
       {children}
     </PopoverPrimitive.Content>
   </PopoverPrimitive.Portal>

@@ -2,7 +2,6 @@ import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { ChevronDown } from "@/ui/icons";
 import { cn } from "@/shared/lib/utils";
-import { NativeWebsiteOverlayRegistrar } from "@/shared/lib/native-website-overlay";
 
 export interface SelectOption<T extends string = string> {
   value: T;
@@ -73,7 +72,6 @@ export function Select<T extends string = string>({
             align="start"
             collisionPadding={8}
           >
-            <NativeWebsiteOverlayRegistrar />
             <DropdownMenuPrimitive.RadioGroup
               value={value}
               onValueChange={(next) => onValueChange?.(next as T)}

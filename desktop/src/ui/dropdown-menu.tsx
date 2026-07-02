@@ -1,7 +1,6 @@
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/shared/lib/utils";
-import { NativeWebsiteOverlayRegistrar } from "@/shared/lib/native-website-overlay";
 
 const DropdownMenuRoot = DropdownMenuPrimitive.Root;
 
@@ -30,7 +29,6 @@ const DropdownMenuContent = React.forwardRef<
       className={cn(className)}
       {...props}
     >
-      <NativeWebsiteOverlayRegistrar />
       {children}
     </DropdownMenuPrimitive.Content>
   </DropdownMenuPrimitive.Portal>

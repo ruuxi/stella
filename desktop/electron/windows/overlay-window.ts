@@ -446,9 +446,9 @@ export type SelectionChipPayload = {
 
 // Perf: after the overlay has been idle (no active feature) this long, drop
 // its renderer process. The next show entrypoint rebuilds it via
-// `ensureReady()`. Mirrors `MINI_IDLE_DESTROY_DELAY_MS` /
-// `STORE_WEB_IDLE_DESTROY_DELAY_MS` in window-manager.ts so a chat-only
-// session doesn't carry a resident second renderer it never uses.
+// `ensureReady()`. Mirrors `MINI_IDLE_DESTROY_DELAY_MS` in
+// window-manager.ts so a chat-only session doesn't carry a resident second
+// renderer it never uses.
 const OVERLAY_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
 
 export class OverlayWindowController {

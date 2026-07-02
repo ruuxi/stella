@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { uiState } from "@/platform/ui-state";
 import {
@@ -25,13 +25,8 @@ import {
 } from "@/app/chat/emoji-sprites/active-emoji-pack";
 import { writeCachedPetById } from "@/shell/pet/pet-catalog-cache";
 import { normalizePet } from "@/shell/pet/built-in-pets";
-import {
-  useDisplayPanelExpanded,
-  useDisplayPanelOpen,
-} from "@/features/workspace-display/tab-store";
 import { useEmbeddedWebsiteTheme } from "@/global/website-view/use-embedded-website-theme";
-import { EmbeddedWebsiteGlassPlaceholder } from "@/global/website-view/EmbeddedWebsiteGlassPlaceholder";
-import { useNativeWebsiteGlassSuspension } from "@/shared/lib/native-website-overlay";
+import { EmbeddedWebsiteView } from "@/global/website-view/EmbeddedWebsiteView";
 import { showToast, type ToastOptions } from "@/ui/toast";
 
 const getPetState = () => ({
@@ -169,35 +164,11 @@ const handleStoreWebLocalAction = async (
 export function StoreApp() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/store" });
-  const panelOpen = useDisplayPanelOpen();
-  const panelExpanded = useDisplayPanelExpanded();
-  const layoutFrameRef = useRef<number | null>(null);
   const embeddedTheme = useEmbeddedWebsiteTheme();
-  const { viewSuspended, placeholderVisible, placeholderActive } =
-    useNativeWebsiteGlassSuspension();
 
   const requestedTab = normalizeStoreTab(search.tab);
   const urlIsLegacy =
     typeof search.tab === "string" && search.tab !== requestedTab;
-
-  const syncStoreWebLayout = useCallback(() => {
-    const contentArea = document.querySelector<HTMLElement>(".content-area");
-    if (!contentArea) return;
-    const rect = contentArea.getBoundingClientRect();
-    const styles = window.getComputedStyle(contentArea);
-    const topInset = Number.parseFloat(styles.paddingTop) || 0;
-    void window.electronAPI?.storeWeb?.setLayout?.({
-      x: Math.round(rect.left),
-      y: Math.round(rect.top + topInset),
-      width:
-        viewSuspended || (panelOpen && panelExpanded)
-          ? 0
-          : Math.round(rect.width),
-      height: viewSuspended
-        ? 0
-        : Math.max(0, Math.round(rect.height - topInset)),
-    });
-  }, [panelExpanded, panelOpen, viewSuspended]);
 
   const openSignIn = useCallback(() => {
     void navigate({
@@ -208,33 +179,6 @@ export function StoreApp() {
       }),
     });
   }, [navigate]);
-
-  const scheduleStoreWebLayout = useCallback(() => {
-    if (layoutFrameRef.current !== null) return;
-    layoutFrameRef.current = window.requestAnimationFrame(() => {
-      layoutFrameRef.current = null;
-      syncStoreWebLayout();
-    });
-  }, [syncStoreWebLayout]);
-
-  useEffect(() => {
-    scheduleStoreWebLayout();
-    const contentArea = document.querySelector<HTMLElement>(".content-area");
-    const displaySidebar =
-      document.querySelector<HTMLElement>(".right-sidebar");
-    const resizeObserver = new ResizeObserver(scheduleStoreWebLayout);
-    if (contentArea) resizeObserver.observe(contentArea);
-    if (displaySidebar) resizeObserver.observe(displaySidebar);
-    window.addEventListener("resize", scheduleStoreWebLayout);
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", scheduleStoreWebLayout);
-      if (layoutFrameRef.current !== null) {
-        window.cancelAnimationFrame(layoutFrameRef.current);
-        layoutFrameRef.current = null;
-      }
-    };
-  }, [panelExpanded, panelOpen, scheduleStoreWebLayout, viewSuspended]);
 
   // Two redirects share this effect:
   //   - Legacy `?tab=installed`/`?tab=publish` URLs collapse to Discover.
@@ -259,34 +203,6 @@ export function StoreApp() {
   }, [requestedTab]);
 
   useEffect(() => {
-    let cancelled = false;
-    const frame = window.requestAnimationFrame(() => {
-      if (cancelled) return;
-      syncStoreWebLayout();
-      void window.electronAPI?.storeWeb?.show({
-        route: "store",
-        tab: requestedTab,
-        package:
-          typeof search.package === "string" && search.package.trim()
-            ? search.package
-            : undefined,
-        embedded: true,
-        theme: embeddedTheme,
-      });
-    });
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frame);
-      void window.electronAPI?.storeWeb?.hide();
-    };
-    // `embeddedTheme` intentionally omitted: live theme updates flow
-    // through `useEmbeddedWebsiteTheme`'s own `setTheme` IPC, so we don't
-    // re-issue `show()` (which can race the route navigation) every time
-    // the user previews a theme.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestedTab, search.package, syncStoreWebLayout]);
-
-  useEffect(() => {
     return window.electronAPI?.storeWebLocal?.onAction?.((payload) => {
       void handleStoreWebLocalAction(payload.action, { openSignIn })
         .then((result) => {
@@ -309,10 +225,15 @@ export function StoreApp() {
   return (
     <div className="workspace-area">
       <div className="workspace-content workspace-content--full">
-        <EmbeddedWebsiteGlassPlaceholder
-          visible={placeholderVisible}
-          active={placeholderActive}
-          surfaceLabel="Store"
+        <EmbeddedWebsiteView
+          route="store"
+          tab={requestedTab}
+          packageId={
+            typeof search.package === "string" && search.package.trim()
+              ? search.package
+              : undefined
+          }
+          theme={embeddedTheme}
         />
       </div>
     </div>

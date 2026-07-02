@@ -19,51 +19,12 @@ import { assertPrivilegedRequest } from "./privileged-ipc.js";
 
 const STORE_INSTALL_ARTIFACT_LIMIT = 20;
 
-/** Minimal theme payload forwarded to the embedded website view. Mirrors
- *  `WebsiteViewTheme` in `desktop/electron/windows/website-view.ts`; the
- *  type is duplicated locally because this module is also imported by the
- *  IPC layer that doesn't otherwise depend on the controller. */
-type WebsiteViewThemePayload = {
-  mode?: "light" | "dark";
-  foreground?: string;
-  foregroundWeak?: string;
-  border?: string;
-  primary?: string;
-  surface?: string;
-  background?: string;
-};
-
-const sanitizeWebsiteViewTheme = (
-  raw: unknown,
-): WebsiteViewThemePayload | undefined => {
-  if (!raw || typeof raw !== "object") return undefined;
-  const value = raw as Record<string, unknown>;
-  const pickString = (key: string): string | undefined => {
-    const candidate = value[key];
-    if (typeof candidate !== "string") return undefined;
-    const trimmed = candidate.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  };
-  const mode =
-    value.mode === "light" || value.mode === "dark"
-      ? (value.mode as "light" | "dark")
-      : undefined;
-  const sanitized: WebsiteViewThemePayload = {
-    ...(mode ? { mode } : {}),
-    ...(pickString("foreground")
-      ? { foreground: pickString("foreground") }
-      : {}),
-    ...(pickString("foregroundWeak")
-      ? { foregroundWeak: pickString("foregroundWeak") }
-      : {}),
-    ...(pickString("border") ? { border: pickString("border") } : {}),
-    ...(pickString("primary") ? { primary: pickString("primary") } : {}),
-    ...(pickString("surface") ? { surface: pickString("surface") } : {}),
-    ...(pickString("background")
-      ? { background: pickString("background") }
-      : {}),
-  };
-  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+/** Everything the renderer needs to mount the Store/Billing `<webview>`.
+ *  Mirrors `WindowManager.getStoreWebEmbedConfig`. */
+type StoreWebEmbedConfigPayload = {
+  baseUrl: string;
+  partition: string;
+  preloadUrl: string;
 };
 
 type StoreHandlersOptions = {
@@ -83,28 +44,7 @@ type StoreHandlersOptions = {
     channel: string,
   ) => boolean;
   getStoreAuthToken?: () => Promise<string | null>;
-  showStoreWebView?: (params?: {
-    route?: "store" | "billing";
-    tab?: string;
-    packageId?: string;
-    embedded?: boolean;
-    theme?: WebsiteViewThemePayload;
-  }) => void;
-  prewarmStoreWebView?: (params?: {
-    route?: "store" | "billing";
-    tab?: string;
-    packageId?: string;
-    embedded?: boolean;
-    theme?: WebsiteViewThemePayload;
-  }) => void;
-  hideStoreWebView?: () => void;
-  setStoreWebViewLayout?: (
-    layout: { x: number; y: number; width: number; height: number } | null,
-  ) => void;
-  setStoreWebViewTheme?: (theme: WebsiteViewThemePayload) => void;
-  goBackInStoreWebView?: () => void;
-  goForwardInStoreWebView?: () => void;
-  reloadStoreWebView?: () => void;
+  getStoreWebEmbedConfig?: () => StoreWebEmbedConfigPayload | null;
   dispatchStoreWebLocalAction?: (
     action: unknown,
     opts?: { timeoutMs?: number },
@@ -270,112 +210,9 @@ export const registerStoreHandlers = (options: StoreHandlersOptions) => {
     return await action(await waitForRunner());
   };
 
-  ipcMain.handle(
-    "storeWeb:show",
-    async (
-      event,
-      payload?: {
-        route?: "store" | "billing";
-        tab?: string;
-        package?: string;
-        packageId?: string;
-        embedded?: boolean;
-        theme?: unknown;
-      },
-    ) => {
-      assertPrivilegedRequest(options, event, "storeWeb:show");
-      options.showStoreWebView?.({
-        route: payload?.route,
-        tab: payload?.tab,
-        packageId: payload?.packageId ?? payload?.package,
-        embedded: payload?.embedded === true,
-        theme: sanitizeWebsiteViewTheme(payload?.theme),
-      });
-      return { ok: true };
-    },
-  );
-
-  ipcMain.handle(
-    "storeWeb:prewarm",
-    async (
-      event,
-      payload?: {
-        route?: "store" | "billing";
-        tab?: string;
-        package?: string;
-        packageId?: string;
-        embedded?: boolean;
-        theme?: unknown;
-      },
-    ) => {
-      assertPrivilegedRequest(options, event, "storeWeb:prewarm");
-      options.prewarmStoreWebView?.({
-        route: payload?.route,
-        tab: payload?.tab,
-        packageId: payload?.packageId ?? payload?.package,
-        embedded: payload?.embedded === true,
-        theme: sanitizeWebsiteViewTheme(payload?.theme),
-      });
-      return { ok: true };
-    },
-  );
-
-  ipcMain.handle("storeWeb:setTheme", async (event, payload?: unknown) => {
-    assertPrivilegedRequest(options, event, "storeWeb:setTheme");
-    const theme = sanitizeWebsiteViewTheme(payload);
-    if (theme) {
-      options.setStoreWebViewTheme?.(theme);
-    }
-    return { ok: true };
-  });
-
-  ipcMain.handle("storeWeb:hide", async (event) => {
-    assertPrivilegedRequest(options, event, "storeWeb:hide");
-    options.hideStoreWebView?.();
-    return { ok: true };
-  });
-
-  ipcMain.handle(
-    "storeWeb:setLayout",
-    async (
-      event,
-      payload?: { x?: number; y?: number; width?: number; height?: number },
-    ) => {
-      assertPrivilegedRequest(options, event, "storeWeb:setLayout");
-      const layout =
-        payload &&
-        Number.isFinite(payload.x) &&
-        Number.isFinite(payload.y) &&
-        Number.isFinite(payload.width) &&
-        Number.isFinite(payload.height)
-          ? {
-              x: Math.round(payload.x!),
-              y: Math.round(payload.y!),
-              width: Math.max(0, Math.round(payload.width!)),
-              height: Math.max(0, Math.round(payload.height!)),
-            }
-          : null;
-      options.setStoreWebViewLayout?.(layout);
-      return { ok: true };
-    },
-  );
-
-  ipcMain.handle("storeWeb:goBack", async (event) => {
-    assertPrivilegedRequest(options, event, "storeWeb:goBack");
-    options.goBackInStoreWebView?.();
-    return { ok: true };
-  });
-
-  ipcMain.handle("storeWeb:goForward", async (event) => {
-    assertPrivilegedRequest(options, event, "storeWeb:goForward");
-    options.goForwardInStoreWebView?.();
-    return { ok: true };
-  });
-
-  ipcMain.handle("storeWeb:reload", async (event) => {
-    assertPrivilegedRequest(options, event, "storeWeb:reload");
-    options.reloadStoreWebView?.();
-    return { ok: true };
+  ipcMain.handle("storeWeb:getEmbedConfig", async (event) => {
+    assertPrivilegedRequest(options, event, "storeWeb:getEmbedConfig");
+    return options.getStoreWebEmbedConfig?.() ?? null;
   });
 
   ipcMain.handle("storeWeb:getAuthToken", async (event) => {
