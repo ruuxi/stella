@@ -218,6 +218,36 @@ export const getBackgroundWork = (
   };
 };
 
+/**
+ * Run-scoped "paused" subset for a background-work card: threads whose
+ * latest `agent-canceled` (a) postdates this card's spawn and (b) is not
+ * outdated by a completion. The orchestrator's pause_agent lands as an
+ * agent-canceled lifecycle event and the runtime's thread live-state
+ * (`deriveRuntimeThreadLiveState`) reads any non-running thread as
+ * paused/resumable, so this is the reload-safe mirror of that signal for
+ * the inline card. A resume emits a fresh `agent-started` whose newer card
+ * supersedes the paused one.
+ */
+export const derivePausedThreadIds = (
+  threadIds: readonly string[],
+  spawnedAtMs: Record<string, number>,
+  completedAtMsById: ReadonlyMap<string, number>,
+  canceledAtMsById: ReadonlyMap<string, number>,
+): string[] =>
+  threadIds.filter((id) => {
+    const canceledAt = canceledAtMsById.get(id);
+    const spawnedAt = spawnedAtMs[id];
+    if (
+      canceledAt === undefined ||
+      spawnedAt === undefined ||
+      canceledAt < spawnedAt
+    ) {
+      return false;
+    }
+    const completedAt = completedAtMsById.get(id);
+    return completedAt === undefined || canceledAt > completedAt;
+  });
+
 const getCwd = (events: readonly EventRecord[]): string | undefined => {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
@@ -470,12 +500,15 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     toolEventsByIndex: Array<EventRecord[] | undefined>;
     contributionByToolEvents: WeakMap<
       EventRecord[],
-      ReadonlyArray<readonly [string, number]>
+      ReadonlyArray<readonly [string, number, "completed" | "canceled"]>
     >;
-    result: Map<string, number>;
+    result: {
+      completedAtMsById: Map<string, number>;
+      canceledAtMsById: Map<string, number>;
+    };
   } | null>(null);
 
-  const completedAtMsById = useMemo(() => {
+  const { completedAtMsById, canceledAtMsById } = useMemo(() => {
     const cache = completedCacheRef.current;
     if (cache && cache.toolEventsByIndex.length === messages.length) {
       let unchanged = true;
@@ -490,11 +523,20 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
 
     const contributionByToolEvents =
       cache?.contributionByToolEvents ??
-      new WeakMap<EventRecord[], ReadonlyArray<readonly [string, number]>>();
+      new WeakMap<
+        EventRecord[],
+        ReadonlyArray<readonly [string, number, "completed" | "canceled"]>
+      >();
     const toolEventsByIndex: Array<EventRecord[] | undefined> = new Array(
       messages.length,
     );
     const completedAt = new Map<string, number>();
+    // Latest `agent-canceled` per thread — the reload-safe "paused" signal.
+    // The orchestrator's pause_agent lands as an agent-canceled lifecycle
+    // event (the runtime's thread live-state calls any non-running thread
+    // paused/resumable), so the inline card can reflect Paused without any
+    // live task context.
+    const canceledAt = new Map<string, number>();
 
     for (let i = 0; i < messages.length; i += 1) {
       const toolEvents = messages[i].toolEvents;
@@ -503,31 +545,47 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
 
       let contribution = contributionByToolEvents.get(toolEvents);
       if (!contribution) {
-        const pairs: Array<readonly [string, number]> = [];
+        const pairs: Array<
+          readonly [string, number, "completed" | "canceled"]
+        > = [];
         for (const toolEvent of toolEvents) {
-          if (toolEvent.type !== "agent-completed") continue;
+          if (
+            toolEvent.type !== "agent-completed" &&
+            toolEvent.type !== "agent-canceled"
+          ) {
+            continue;
+          }
           const agentId = (
             toolEvent.payload as { agentId?: unknown } | undefined
           )?.agentId;
           if (typeof agentId === "string" && agentId.length > 0) {
-            pairs.push([agentId, toolEvent.timestamp] as const);
+            pairs.push([
+              agentId,
+              toolEvent.timestamp,
+              toolEvent.type === "agent-completed" ? "completed" : "canceled",
+            ] as const);
           }
         }
         contribution = pairs;
         contributionByToolEvents.set(toolEvents, contribution);
       }
 
-      for (const [agentId, ts] of contribution) {
-        if (ts > (completedAt.get(agentId) ?? 0)) completedAt.set(agentId, ts);
+      for (const [agentId, ts, kind] of contribution) {
+        const target = kind === "completed" ? completedAt : canceledAt;
+        if (ts > (target.get(agentId) ?? 0)) target.set(agentId, ts);
       }
     }
 
+    const result = {
+      completedAtMsById: completedAt,
+      canceledAtMsById: canceledAt,
+    };
     completedCacheRef.current = {
       toolEventsByIndex,
       contributionByToolEvents,
-      result: completedAt,
+      result,
     };
-    return completedAt;
+    return result;
   }, [messages]);
 
   /**
@@ -678,6 +736,14 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             completedAt !== undefined && completedAt >= base.spawnedAtMs[id]
           );
         }),
+        // Paused subset, same run-scoping — drives the card's "Paused"
+        // label + stopped shimmer (see `derivePausedThreadIds`).
+        pausedThreadIds: derivePausedThreadIds(
+          base.threadIds,
+          base.spawnedAtMs,
+          completedAtMsById,
+          canceledAtMsById,
+        ),
       };
     };
 
@@ -1026,6 +1092,13 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         completedThreadIds: row.backgroundWork.completedThreadIds.filter(
           (id) => !duplicated.has(id),
         ),
+        ...(row.backgroundWork.pausedThreadIds
+          ? {
+              pausedThreadIds: row.backgroundWork.pausedThreadIds.filter(
+                (id) => !duplicated.has(id),
+              ),
+            }
+          : {}),
         descriptions,
         spawnedAtMs,
         statusTexts,
@@ -1046,6 +1119,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     return coalesceVoiceSessionRows(coalesceInlineImageRows(deduped));
   }, [
     agentMetaById,
+    canceledAtMsById,
     completedAtMsById,
     developerResourcePreviewsEnabled,
     displayMessages,

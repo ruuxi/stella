@@ -624,6 +624,7 @@ export const AssistantMessageRow = memo(
             <BackgroundWorkCard
               threadIds={row.backgroundWork.threadIds}
               completedThreadIds={row.backgroundWork.completedThreadIds}
+              pausedThreadIds={row.backgroundWork.pausedThreadIds}
               supersededThreadIds={row.backgroundWork.supersededThreadIds}
               spawnedAtMs={row.backgroundWork.spawnedAtMs}
               descriptions={row.backgroundWork.descriptions}
