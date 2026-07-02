@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { CollaborationIllustration } from "./CollaborationIllustration";
-import { Copy, Pencil, SquarePen, Users } from "@/ui/icons";
+import { Copy, Globe, Pencil, SquarePen, Users } from "@/ui/icons";
 import { Avatar } from "@/ui/avatar";
 import { showToast } from "@/ui/toast";
 import { getSocialActionErrorMessage } from "./social-errors";
@@ -10,6 +10,7 @@ import { useSocialRooms, type SocialRoomSummary } from "./hooks/use-social-rooms
 import { getSocialRoomDisplayName } from "./room-display";
 import {
   preloadSocialChatPane,
+  preloadSocialCommunitiesDialog,
   preloadSocialFriendsDialog,
   preloadSocialNewChatDialog,
 } from "@/shell/topbar/nav-surface-preloads";
@@ -30,6 +31,12 @@ const FriendsDialog = lazy(() =>
 const NewChatDialog = lazy(() =>
   import("./NewChatDialog").then((m) => ({
     default: m.NewChatDialog,
+  })),
+);
+
+const CommunitiesDialog = lazy(() =>
+  import("./CommunitiesDialog").then((m) => ({
+    default: m.CommunitiesDialog,
   })),
 );
 
@@ -68,6 +75,8 @@ function getRoomAvatar(
     }
     case "group":
       return { fallback: room.room.title ?? "G" };
+    case "community":
+      return { fallback: room.room.title ?? "C" };
     default: {
       const exhaustiveCheck: never = room.room.kind;
       return exhaustiveCheck;
@@ -89,6 +98,7 @@ export function SocialView({ onSignIn }: SocialViewProps) {
 
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [friendsOpen, setFriendsOpen] = useState(false);
+  const [communitiesOpen, setCommunitiesOpen] = useState(false);
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [editingUsername, setEditingUsername] = useState(false);
   const [usernameInput, setUsernameInput] = useState("");
@@ -210,6 +220,11 @@ export function SocialView({ onSignIn }: SocialViewProps) {
     setFriendsOpen(true);
   }, []);
 
+  const handleOpenCommunities = useCallback(() => {
+    preloadSocialCommunitiesDialog();
+    setCommunitiesOpen(true);
+  }, []);
+
   const handleOpenNewChat = useCallback(() => {
     preloadSocialNewChatDialog();
     setNewChatOpen(true);
@@ -280,6 +295,17 @@ export function SocialView({ onSignIn }: SocialViewProps) {
             <button
               type="button"
               className="social-sidebar-action"
+              title="Communities"
+              aria-label="Communities"
+              onClick={handleOpenCommunities}
+              onFocus={preloadSocialCommunitiesDialog}
+              onMouseEnter={preloadSocialCommunitiesDialog}
+            >
+              <Globe size={18} />
+            </button>
+            <button
+              type="button"
+              className="social-sidebar-action"
               title="New message"
               onClick={handleOpenNewChat}
               onFocus={preloadSocialNewChatDialog}
@@ -334,6 +360,14 @@ export function SocialView({ onSignIn }: SocialViewProps) {
                   <div className="social-room-item-content">
                     <div className="social-room-item-row">
                       <span className="social-room-item-name">{name}</span>
+                      {room.room.kind === "community" ? (
+                        <span
+                          className="social-room-item-kind"
+                          title="Shared with everyone in this community"
+                        >
+                          Community
+                        </span>
+                      ) : null}
                       <span className="social-room-item-time">
                         {formatRoomTime(room.room.latestMessageAt)}
                       </span>
@@ -481,6 +515,16 @@ export function SocialView({ onSignIn }: SocialViewProps) {
             open
             onOpenChange={setFriendsOpen}
             onStartChat={handleStartChat}
+          />
+        </Suspense>
+      ) : null}
+      {communitiesOpen ? (
+        <Suspense fallback={null}>
+          <CommunitiesDialog
+            open
+            onOpenChange={setCommunitiesOpen}
+            currentOwnerId={currentOwnerId}
+            onOpenRoom={handleOpenRoom}
           />
         </Suspense>
       ) : null}
