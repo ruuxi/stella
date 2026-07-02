@@ -28,6 +28,7 @@ import {
 } from "@/features/chat/composer-context";
 import { buildInlineWorkingIndicatorProps } from "@/features/chat/working-indicator-state";
 import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
+import { useComposerMessageState } from "@/features/chat/hooks/use-composer-message-state";
 import { handleComposerPaste } from "@/features/chat/lib/paste-context";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import {
@@ -160,14 +161,17 @@ export function ChatPanelTab({
   onStop,
   onNewChat,
 }: ChatPanelTabProps) {
-  const [inputText, setInputText] = useState("");
-  // Always-current mirror of `inputText`. A dictation transcript is appended
-  // via `setInputText` right before the dictate-and-submit commit fires (the
-  // commit is rAF-deferred and can beat React's passive effect refreshing the
-  // send closure). Reading the latest text from a ref keeps the send from
-  // racing ahead with the pre-transcript value and dropping the dictated text.
-  const inputTextRef = useRef(inputText);
-  inputTextRef.current = inputText;
+  // Input state + always-current mirror ref, synced at WRITE time. The
+  // dictate-and-submit commit is rAF-deferred and can fire before React
+  // flushes the render carrying the appended transcript — a ref synced in the
+  // render body would still hold the pre-transcript text at that point, so
+  // `sendCurrentMessage` would see `canSubmit === false` and silently no-op,
+  // leaving the transcript in the composer. See use-composer-message-state.
+  const {
+    message: inputText,
+    setMessage: setInputText,
+    messageRef: inputTextRef,
+  } = useComposerMessageState();
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const restoredConversationScrollRef = useRef<string | null>(null);
@@ -321,7 +325,7 @@ export function ChatPanelTab({
       );
       requestAnimationFrame(() => inputRef.current?.focus());
     },
-    [removeQueuedUserMessage],
+    [removeQueuedUserMessage, setInputText],
   );
 
   const handleNewChat = useCallback(async () => {
@@ -330,7 +334,7 @@ export function ChatPanelTab({
     setChatContext(null);
     setSelectedText(null);
     setSidebarExpanded(false);
-  }, [onNewChat, setChatContext, setSelectedText]);
+  }, [onNewChat, setChatContext, setInputText, setSelectedText]);
 
   const dictation = useDictation({
     message: inputText,
@@ -357,7 +361,7 @@ export function ChatPanelTab({
       setInputText(openRequest.prefillText);
     }
     requestAnimationFrame(() => inputRef.current?.focus());
-  }, [openRequest, setChatContext]);
+  }, [openRequest, setChatContext, setInputText]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -368,7 +372,7 @@ export function ChatPanelTab({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [setInputText]);
 
   useAnimatedComposerShell({
     active: true,
@@ -414,10 +418,12 @@ export function ChatPanelTab({
     }
   }, [
     chatContext,
+    inputTextRef,
     isStreaming,
     onSend,
     selectedText,
     setChatContext,
+    setInputText,
     setSelectedText,
     sidebarScroll,
   ]);

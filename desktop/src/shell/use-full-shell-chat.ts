@@ -14,6 +14,7 @@ import { useConversationActivity } from "@/features/chat/hooks/use-conversation-
 import { useConversationDisplayMessages } from "@/features/chat/hooks/use-conversation-display-messages";
 import { useConversationFiles } from "@/features/chat/hooks/use-conversation-files";
 import { useConversationMessages } from "@/features/chat/hooks/use-conversation-messages";
+import { useComposerMessageState } from "@/features/chat/hooks/use-composer-message-state";
 import { useStreamingChat } from "@/features/chat/hooks/use-streaming-chat";
 import {
   useTraceEventMonitor,
@@ -57,15 +58,17 @@ export function useFullShellChat({
   traceEnabled,
 }: UseFullShellChatOptions) {
   const { setConversationId } = useUiState();
-  const [message, setMessage] = useState("");
-  // Always-current mirror of `message`. A dictation transcript is appended via
-  // `setMessage` immediately before the dictate-and-submit commit fires (the
-  // commit is rAF-deferred and can beat React's passive effect that refreshes
-  // the `onSend` closure). Reading the latest text from a ref keeps the send
-  // from racing ahead with the pre-transcript value — which, with an image
-  // attached, would otherwise submit image-only and drop the dictated text.
-  const latestMessageRef = useRef(message);
-  latestMessageRef.current = message;
+  // Message state + always-current mirror ref, synced at WRITE time. The
+  // dictate-and-submit commit is rAF-deferred and can fire before React
+  // flushes the render that carries the appended transcript — a ref synced in
+  // the render body would still hold the pre-transcript text at that point,
+  // so the send would go out empty (and silently no-op), leaving the
+  // transcript sitting in the composer unsent. See use-composer-message-state.
+  const {
+    message,
+    setMessage,
+    messageRef: latestMessageRef,
+  } = useComposerMessageState();
   const [composerFocusRequestId, setComposerFocusRequestId] = useState(0);
   const annotationIdRef = useRef(0);
   const annotationTargetRef = useRef<AnnotationContextTarget | null>(null);
@@ -199,6 +202,7 @@ export function useFullShellChat({
     isOnChatRoute,
     setChatContext,
     setConversationId,
+    setMessage,
     setSelectedText,
     showHome,
   ]);
@@ -358,6 +362,7 @@ export function useFullShellChat({
     enterChatSurfaceForInteraction,
     getIsFollowing,
     isStreaming,
+    latestMessageRef,
     nudgeAfterSend,
     nudgeQueuedMessagesIntoView,
     releaseFollow,
@@ -365,6 +370,7 @@ export function useFullShellChat({
     selectedText,
     sendMessage,
     setChatContext,
+    setMessage,
     setSelectedText,
     showHomeContent,
   ]);
