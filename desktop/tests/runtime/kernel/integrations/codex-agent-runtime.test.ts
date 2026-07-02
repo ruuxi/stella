@@ -275,6 +275,34 @@ describe("Codex agent runtime", () => {
     }
   });
 
+  it("honors a per-spawn pinned Codex model over env and preferences", () => {
+    const previousModel = process.env.STELLA_CODEX_MODEL;
+    process.env.STELLA_CODEX_MODEL = "env-codex-model";
+    const stellaDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-codex-spawn-model-"),
+    );
+    try {
+      updateLocalModelPreferences(stellaDataDir, {
+        codexModel: "custom-codex-model",
+      });
+      expect(
+        getCodexRuntimePreferences(stellaDataDir, undefined, "gpt-5.4-codex")
+          .model,
+      ).toBe("gpt-5.4-codex");
+      // The pin is per-run only — without it the existing order holds.
+      expect(getCodexRuntimePreferences(stellaDataDir, undefined).model).toBe(
+        "env-codex-model",
+      );
+    } finally {
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
+      if (previousModel === undefined) {
+        delete process.env.STELLA_CODEX_MODEL;
+      } else {
+        process.env.STELLA_CODEX_MODEL = previousModel;
+      }
+    }
+  });
+
   it("keeps an explicit Codex model preference for Stella Light agents", () => {
     const previousModel = process.env.STELLA_CODEX_MODEL;
     delete process.env.STELLA_CODEX_MODEL;

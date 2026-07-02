@@ -40,10 +40,7 @@ import {
   agentHasCapability,
   isLocalCliAgentId,
 } from "../../contracts/agent-runtime.js";
-import {
-  collectSubagentRoster,
-  renderSubagentRosterBlock,
-} from "./subagent-roster.js";
+import type { SpawnEngineSelection } from "../../contracts/agent-engine.js";
 import type {
   PersistedRuntimeThreadPayload,
   RuntimeThreadMessage,
@@ -64,6 +61,7 @@ import {
   sanitizeStellaBase,
 } from "./shared.js";
 import {
+  resolveRunnerLlmRoute,
   resolveRunnerLlmRouteWithMetadata,
   resolveRunnerUtilityLlmRoute,
 } from "./model-selection.js";
@@ -476,10 +474,12 @@ export const createRunnerContext = ({
     stellaXApiCliPath,
     cliBridgeSocketPath,
     requestCredential,
-    getSubagentTypes: () =>
-      collectSubagentRoster(context.state.loadedAgents).map(
-        (entry) => entry.type,
-      ),
+    // spawn_agent's `model` parameter: throws the standard route-failure
+    // message when a plain model reference can't be resolved, so the spawn
+    // fails loudly instead of silently falling back to the default.
+    validateSpawnModel: (modelName) => {
+      resolveRunnerLlmRoute(context, AGENT_IDS.GENERAL, modelName);
+    },
     scheduleApi,
 
     fashionApi: resolvedFashionApi,
@@ -741,6 +741,11 @@ export type BuildAgentContextArgs = {
   agentType: string;
   runId: string;
   threadId?: string;
+  /**
+   * Per-spawn external-engine selection (spawn_agent's `model` parameter).
+   * Overrides the preference-configured engine for this run only.
+   */
+  spawnEngine?: SpawnEngineSelection;
   toolWorkspaceRoot?: string;
   selfModMetadata?: {
     packageId?: string;
@@ -848,7 +853,10 @@ export const buildAgentContext = async (
           shouldInjectDynamicReminder: false,
           reminderTokensSinceLastInjection: 0,
         };
-  const agentEngine = getAgentRuntimeEngine(context.stellaDataDir);
+  // A per-spawn engine selection wins over the preference-configured engine
+  // for this run only; saved preferences are never touched.
+  const agentEngine =
+    args.spawnEngine?.engine ?? getAgentRuntimeEngine(context.stellaDataDir);
 
   const fileEditToolFamily = getFileEditToolFamily({
     agentType: args.agentType,
@@ -885,14 +893,6 @@ export const buildAgentContext = async (
       await renderSkillCatalogBlock(context.stellaDataDir, skillCatalogOptions),
     );
   }
-  if (agentHasCapability(args.agentType, "injectsSubagentRoster")) {
-    dynamicContextSections.push(
-      renderSubagentRosterBlock(
-        collectSubagentRoster(context.state.loadedAgents),
-      ),
-    );
-  }
-
   // Read the live prompt from `~/.stella/agents/` so edits take effect on the
   // next turn (mtime-gated — unchanged files are not re-read). Falls back to
   // the registered/bundled prompt when there's no home prompt for this type.
@@ -943,6 +943,7 @@ export const buildAgentContext = async (
     threadHistory: threadHistory.length > 0 ? threadHistory : undefined,
     activeThreadId: threadKey,
     agentEngine,
+    ...(args.spawnEngine ? { spawnEngine: args.spawnEngine } : {}),
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)
       ? getMaxAgentConcurrency(context.stellaDataDir)
       : undefined,

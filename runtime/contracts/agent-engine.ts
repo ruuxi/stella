@@ -14,6 +14,17 @@ const AGENT_RUNTIME_ENGINE_LABELS: Record<AgentRuntimeEngine, string> = {
   codex_cli: "Codex",
 };
 
+/**
+ * Per-spawn engine selection carried by spawn_agent's optional `model`
+ * parameter (`codex`, `codex/<model>`, `claude-code`, `claude-code/<model>`).
+ * Scoped to a single spawned agent run — never persisted to preferences.
+ */
+export type SpawnEngineSelection = {
+  engine: Exclude<AgentRuntimeEngine, "default">;
+  /** Engine-native model id pinned for this run (e.g. `gpt-5.4-codex`, `opus`). */
+  model?: string;
+};
+
 export const isAgentRuntimeEngine = (
   value: unknown,
 ): value is AgentRuntimeEngine =>

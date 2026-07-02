@@ -16,16 +16,21 @@ import {
   type RuntimeThreadRecord,
 } from "../runtime-threads.js";
 import { AGENT_PAUSE_CANCEL_REASON } from "../agents/local-agent-manager.js";
-import {
-  AGENT_IDS,
-  isOrchestratorReservedBuiltinAgentId,
-} from "../../contracts/agent-runtime.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
+import type {
+  AgentRuntimeEngine,
+  SpawnEngineSelection,
+} from "../../contracts/agent-engine.js";
 
 export type StateContext = {
   stateRoot: string;
   tasks: Map<string, AgentRecord>;
   agentApi?: AgentToolApi;
-  getSubagentTypes?: () => readonly string[];
+  /**
+   * Validates a plain model-reference string for spawn_agent. Throws with the
+   * standard route-failure message when the model cannot be resolved.
+   */
+  validateSpawnModel?: (modelName: string) => void;
 };
 
 const toOptionalString = (value: unknown): string | undefined => {
@@ -58,22 +63,38 @@ const logWorkingIndicatorTrace = (label: string, payload: Record<string, unknown
   process.stderr.write(`${JSON.stringify({ label, ...payload })}\n`);
 };
 
-export const getAvailableSubagentTypes = (
-  getSubagentTypes?: () => readonly string[],
-): readonly string[] => {
-  const seen = new Set<string>();
-  const subagentTypes: string[] = [];
-  for (const agentType of getSubagentTypes?.() ?? []) {
-    if (isOrchestratorReservedBuiltinAgentId(agentType) || seen.has(agentType)) {
-      continue;
-    }
-    seen.add(agentType);
-    subagentTypes.push(agentType);
+/** Engine ids accepted in spawn_agent's `model` parameter. */
+const SPAWN_ENGINE_IDS: Record<string, Exclude<AgentRuntimeEngine, "default">> =
+  {
+    codex: "codex_cli",
+    "claude-code": "claude_code_local",
+  };
+
+export type SpawnModelSelection =
+  | { kind: "default" }
+  | { kind: "model"; model: string }
+  | { kind: "engine"; engine: SpawnEngineSelection };
+
+/**
+ * Parses spawn_agent's optional `model` parameter:
+ *
+ *   - omitted / `default`            → the user's configured setup, untouched
+ *   - `codex` / `claude-code`        → that engine with its configured model
+ *   - `codex/<m>` / `claude-code/<m>`→ that engine with `<m>` pinned
+ *   - anything else                  → plain model reference, resolved through
+ *                                      the normal model-routing path
+ */
+export const parseSpawnAgentModel = (value: unknown): SpawnModelSelection => {
+  const raw = toOptionalString(value);
+  if (!raw || raw === "default") return { kind: "default" };
+  const slash = raw.indexOf("/");
+  const head = slash === -1 ? raw : raw.slice(0, slash);
+  const engine = SPAWN_ENGINE_IDS[head];
+  if (engine) {
+    const model = slash === -1 ? undefined : raw.slice(slash + 1).trim();
+    return { kind: "engine", engine: { engine, ...(model ? { model } : {}) } };
   }
-  if (!seen.has(AGENT_IDS.GENERAL)) {
-    subagentTypes.unshift(AGENT_IDS.GENERAL);
-  }
-  return subagentTypes;
+  return { kind: "model", model: raw };
 };
 
 const buildOtherThreadsResult = (
@@ -104,12 +125,12 @@ const buildOtherThreadsResult = (
 export const createStateContext = (
   stateRoot: string,
   agentApi?: AgentToolApi,
-  getSubagentTypes?: () => readonly string[],
+  validateSpawnModel?: (modelName: string) => void,
 ): StateContext => ({
   stateRoot,
   tasks: new Map(),
   agentApi,
-  getSubagentTypes,
+  validateSpawnModel,
 });
 
 export const handleSendInput = async (
@@ -224,7 +245,7 @@ export const handleSpawnAgent = async (
     };
   }
 
-  const agentType = toOptionalString(args.agent_type) ?? AGENT_IDS.GENERAL;
+  const agentType = AGENT_IDS.GENERAL;
   const parentAgentId =
     toOptionalString(context.cloudAgentId) ??
     toOptionalString(context.agentId);
@@ -239,14 +260,15 @@ export const handleSpawnAgent = async (
     };
   }
 
-  const subagentTypes = getAvailableSubagentTypes(ctx.getSubagentTypes);
-  if (
-    isOrchestratorReservedBuiltinAgentId(agentType) ||
-    !subagentTypes.includes(agentType)
-  ) {
-    return {
-      error: `Unknown or unavailable agent_type: ${agentType}. Available agent_type values: ${subagentTypes.join(", ")}`,
-    };
+  const modelSelection = parseSpawnAgentModel(args.model);
+  if (modelSelection.kind === "model" && ctx.validateSpawnModel) {
+    // Fail the spawn loudly on an unroutable model — never silently fall
+    // back to the configured default.
+    try {
+      ctx.validateSpawnModel(modelSelection.model);
+    } catch (error) {
+      return { error: (error as Error).message };
+    }
   }
 
   if (typeof maxAgentDepth === "number" && nextAgentDepth > maxAgentDepth) {
@@ -281,6 +303,12 @@ export const handleSpawnAgent = async (
         description,
         prompt,
         agentType,
+        ...(modelSelection.kind === "model"
+          ? { model: modelSelection.model }
+          : {}),
+        ...(modelSelection.kind === "engine"
+          ? { spawnEngine: modelSelection.engine }
+          : {}),
         rootRunId: context.rootRunId,
         agentDepth: nextAgentDepth,
         ...(typeof maxAgentDepth === "number" ? { maxAgentDepth } : {}),

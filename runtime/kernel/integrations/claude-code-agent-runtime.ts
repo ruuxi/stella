@@ -50,7 +50,14 @@ export const getClaudeCodeAgentModelId = (
   stellaAppDir?: string,
   stellaModel?: string,
   agentType?: string,
+  modelOverride?: string,
 ): string => {
+  // A per-spawn pin (spawn_agent `model: claude-code/<model>`) wins for this
+  // one run and never touches the saved claudeCodeModel preference.
+  const pinnedModel = modelOverride?.trim();
+  if (pinnedModel) {
+    return `claude-code/${pinnedModel}`;
+  }
   const configuredStellaModel =
     stellaModel ??
     (stellaAppDir && agentType

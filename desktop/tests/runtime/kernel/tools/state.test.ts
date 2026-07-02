@@ -80,106 +80,159 @@ describe("state tools", () => {
     });
   });
 
-  it("forwards an available custom agent_type", async () => {
-    let createdRequest: AgentToolRequest | null = null;
+  const createSpawnContext = (
+    validateSpawnModel?: (modelName: string) => void,
+  ) => {
+    const created: AgentToolRequest[] = [];
     const ctx = createStateContext(
       "/tmp",
       {
         createAgent: async (request) => {
-          createdRequest = request;
+          created.push(request);
           return { threadId: "thread-1" };
         },
         getAgent: async () => null,
         cancelAgent: async () => ({ canceled: false }),
       },
-      () => [AGENT_IDS.GENERAL, "research"],
+      validateSpawnModel,
     );
+    return { ctx, created };
+  };
+
+  const orchestratorToolContext = {
+    conversationId: "conversation-1",
+    deviceId: "device-1",
+    requestId: "request-1",
+    agentType: AGENT_IDS.ORCHESTRATOR,
+  };
+
+  it("treats `model: default` exactly like an omitted model", async () => {
+    const validated: string[] = [];
+    const { ctx, created } = createSpawnContext((modelName) => {
+      validated.push(modelName);
+    });
+
+    const result = await handleSpawnAgent(
+      ctx,
+      { description: "Do work", prompt: "Do the work.", model: "default" },
+      orchestratorToolContext,
+    );
+
+    expect(result).toMatchObject({ result: { thread_id: "thread-1" } });
+    expect(validated).toEqual([]);
+    expect(created).toHaveLength(1);
+    expect(created[0]?.agentType).toBe(AGENT_IDS.GENERAL);
+    expect(created[0]?.model).toBeUndefined();
+    expect(created[0]?.spawnEngine).toBeUndefined();
+  });
+
+  it("forwards a plain model override through validation", async () => {
+    const validated: string[] = [];
+    const { ctx, created } = createSpawnContext((modelName) => {
+      validated.push(modelName);
+    });
 
     const result = await handleSpawnAgent(
       ctx,
       {
-        description: "Research account setup",
-        prompt: "Research the user's account setup options.",
-        agent_type: "research",
+        description: "Bulk file processing",
+        prompt: "Process the files.",
+        model: "openrouter/moonshotai/kimi-k2.5",
       },
-      {
-        conversationId: "conversation-1",
-        deviceId: "device-1",
-        requestId: "request-1",
-        agentType: AGENT_IDS.ORCHESTRATOR,
-      },
+      orchestratorToolContext,
     );
 
-    expect(createdRequest?.agentType).toBe("research");
-    expect(result).toMatchObject({
-      result: {
-        thread_id: "thread-1",
-        created: true,
+    expect(result).toMatchObject({ result: { thread_id: "thread-1" } });
+    expect(validated).toEqual(["openrouter/moonshotai/kimi-k2.5"]);
+    expect(created[0]?.model).toBe("openrouter/moonshotai/kimi-k2.5");
+    expect(created[0]?.spawnEngine).toBeUndefined();
+  });
+
+  it("forwards stella aliases as plain model overrides", async () => {
+    const { ctx, created } = createSpawnContext();
+
+    await handleSpawnAgent(
+      ctx,
+      { description: "Cheap task", prompt: "Do it.", model: "stella/light" },
+      orchestratorToolContext,
+    );
+
+    expect(created[0]?.model).toBe("stella/light");
+    expect(created[0]?.spawnEngine).toBeUndefined();
+  });
+
+  it("selects an engine from a bare engine id without validating a route", async () => {
+    const validated: string[] = [];
+    const { ctx, created } = createSpawnContext((modelName) => {
+      validated.push(modelName);
+    });
+
+    await handleSpawnAgent(
+      ctx,
+      { description: "Repo work", prompt: "Fix the bug.", model: "codex" },
+      orchestratorToolContext,
+    );
+
+    expect(validated).toEqual([]);
+    expect(created[0]?.model).toBeUndefined();
+    expect(created[0]?.spawnEngine).toEqual({ engine: "codex_cli" });
+  });
+
+  it("pins an engine-native model via engine/<model>", async () => {
+    const { ctx, created } = createSpawnContext();
+
+    await handleSpawnAgent(
+      ctx,
+      {
+        description: "Repo work",
+        prompt: "Fix the bug.",
+        model: "codex/gpt-5.4-codex",
       },
+      orchestratorToolContext,
+    );
+
+    expect(created[0]?.spawnEngine).toEqual({
+      engine: "codex_cli",
+      model: "gpt-5.4-codex",
     });
   });
 
-  it("rejects built-in Stella agents even when requested by agent_type", async () => {
-    const ctx = createStateContext(
-      "/tmp",
-      {
-        createAgent: async () => ({ threadId: "thread-1" }),
-        getAgent: async () => null,
-        cancelAgent: async () => ({ canceled: false }),
-      },
-      () => [AGENT_IDS.GENERAL],
-    );
+  it("selects claude-code per-spawn, with and without a pinned model", async () => {
+    const { ctx, created } = createSpawnContext();
 
-    const result = await handleSpawnAgent(
+    await handleSpawnAgent(
       ctx,
-      {
-        description: "Run schedule work",
-        prompt: "Schedule this.",
-        agent_type: AGENT_IDS.SCHEDULE,
-      },
-      {
-        conversationId: "conversation-1",
-        deviceId: "device-1",
-        requestId: "request-1",
-        agentType: AGENT_IDS.ORCHESTRATOR,
-      },
+      { description: "CC task", prompt: "Do it.", model: "claude-code" },
+      orchestratorToolContext,
+    );
+    await handleSpawnAgent(
+      ctx,
+      { description: "CC task", prompt: "Do it.", model: "claude-code/opus" },
+      orchestratorToolContext,
     );
 
-    expect(result).toEqual({
-      error: `Unknown or unavailable agent_type: ${AGENT_IDS.SCHEDULE}. Available agent_type values: general`,
+    expect(created[0]?.spawnEngine).toEqual({ engine: "claude_code_local" });
+    expect(created[1]?.spawnEngine).toEqual({
+      engine: "claude_code_local",
+      model: "opus",
     });
   });
 
-  it("rejects unknown custom agent_type values with available options", async () => {
-    const ctx = createStateContext(
-      "/tmp",
-      {
-        createAgent: async () => ({ threadId: "thread-1" }),
-        getAgent: async () => null,
-        cancelAgent: async () => ({ canceled: false }),
-      },
-      () => [AGENT_IDS.GENERAL, "research"],
-    );
+  it("fails the spawn loudly when the model cannot be routed", async () => {
+    const routeError =
+      'No provider route for model "banana/split". Connect the provider or pick a different model.';
+    const { ctx, created } = createSpawnContext(() => {
+      throw new Error(routeError);
+    });
 
     const result = await handleSpawnAgent(
       ctx,
-      {
-        description: "Do something",
-        prompt: "Do the work.",
-        agent_type: "totally_made_up",
-      },
-      {
-        conversationId: "conversation-1",
-        deviceId: "device-1",
-        requestId: "request-1",
-        agentType: AGENT_IDS.ORCHESTRATOR,
-      },
+      { description: "Do work", prompt: "Do it.", model: "banana/split" },
+      orchestratorToolContext,
     );
 
-    expect(result).toEqual({
-      error:
-        "Unknown or unavailable agent_type: totally_made_up. Available agent_type values: general, research",
-    });
+    expect(result).toEqual({ error: routeError });
+    expect(created).toHaveLength(0);
   });
 
   it("rejects task creation from non-orchestrator agents", async () => {
@@ -253,7 +306,6 @@ describe("state tools", () => {
         action: "cancel",
         thread_id: "thread-7",
         reason: "user changed their mind",
-        agent_type: AGENT_IDS.SCHEDULE,
       },
       {
         conversationId: "conversation-1",

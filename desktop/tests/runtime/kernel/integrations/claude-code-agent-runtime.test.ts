@@ -59,6 +59,26 @@ describe("Claude Code agent runtime selector", () => {
     expect(getClaudeCodeAgentModelId()).toBe("claude-code/default");
   });
 
+  it("honors a per-spawn pinned model over preferences without persisting it", () => {
+    const stellaDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-claude-spawn-model-"),
+    );
+    try {
+      updateLocalModelPreferences(stellaDataDir, {
+        claudeCodeModel: "sonnet",
+      });
+      expect(
+        getClaudeCodeAgentModelId(stellaDataDir, undefined, "general", "opus"),
+      ).toBe("claude-code/opus");
+      // The pin is per-run only — the saved preference still wins afterwards.
+      expect(getClaudeCodeAgentModelId(stellaDataDir, undefined, "general")).toBe(
+        "claude-code/sonnet",
+      );
+    } finally {
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
+    }
+  });
+
   it("uses Haiku for agents that default to Stella Light", () => {
     expect(getClaudeCodeAgentModelId(undefined, "stella/light")).toBe(
       "claude-code/haiku",
