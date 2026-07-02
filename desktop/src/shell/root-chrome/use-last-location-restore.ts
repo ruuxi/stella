@@ -31,7 +31,17 @@ export function useLastLocationRestore(router: Router): void {
       string,
       unknown
     >;
-    if (!Object.prototype.hasOwnProperty.call(knownPaths, pathname)) return;
+    // User apps live on the dynamic `/apps/$slug` route, which never
+    // appears in `routesByPath`, so restores to them were silently
+    // dropped — a self-mod covered reload or app restart while the user
+    // was on an app page dumped them back to /chat.
+    const isUserAppPath = /^\/apps\/[a-z][a-z0-9-]*$/.test(pathname);
+    if (
+      !isUserAppPath &&
+      !Object.prototype.hasOwnProperty.call(knownPaths, pathname)
+    ) {
+      return;
+    }
 
     const search = queryIndex === -1 ? "" : target.slice(queryIndex + 1);
     const searchParams = Object.fromEntries(new URLSearchParams(search));
