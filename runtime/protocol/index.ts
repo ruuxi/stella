@@ -399,6 +399,13 @@ export type RuntimeHealthSnapshot = {
   deviceId: string | null;
   activeRunId: string | null;
   activeAgentCount: number;
+  /**
+   * True when the host detected that the connected worker is running stale
+   * runtime code (build-stamp mismatch on reattach, or a runtime-relevant
+   * self-mod apply) but deferred the restart because work is in flight.
+   * The worker restarts automatically at the first quiescent moment.
+   */
+  pendingWorkerRestart?: boolean;
 };
 
 export type RuntimeAttachmentRef = {

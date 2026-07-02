@@ -705,6 +705,8 @@ export type ElectronAgentApi = {
       connected: boolean;
       ready: boolean;
       reason?: string;
+      /** Runtime update detected but deferred until current work finishes. */
+      pendingRuntimeRestart?: boolean;
     }) => void,
   ) => () => void;
   selfModApply: (commitHash?: string) => Promise<unknown>;

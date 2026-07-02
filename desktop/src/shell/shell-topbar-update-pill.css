@@ -57,6 +57,21 @@
   }
 }
 
+/* Deferred runtime-worker restart: informational only, deliberately muted. */
+.shell-topbar-update-pill[data-state="pending-runtime"] {
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+  border-color: color-mix(in oklch, var(--foreground) 8%, transparent);
+  color: color-mix(in oklch, var(--text-base) 70%, transparent);
+}
+
+.shell-topbar-update-pill__main--passive {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  cursor: default;
+}
+
 .shell-topbar-update-pill:hover {
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
   border-color: color-mix(in oklch, var(--foreground) 16%, transparent);

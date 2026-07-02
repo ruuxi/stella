@@ -46,6 +46,12 @@ export type RuntimeAvailabilitySnapshot = {
   connected: boolean;
   ready: boolean;
   reason?: string;
+  /**
+   * True while the host has detected the worker is running stale runtime
+   * code but deferred its restart until in-flight work finishes. Surfaced
+   * quietly in the shell so the user knows a runtime update is queued.
+   */
+  pendingRuntimeRestart?: boolean;
 };
 
 const isRunTerminalEvent = (type: string) =>
@@ -428,6 +434,9 @@ export class RuntimeHostAdapter {
       connected: this.connected,
       ready,
       ...(reason ? { reason } : {}),
+      ...(this.lastRuntimeHealth?.pendingWorkerRestart
+        ? { pendingRuntimeRestart: true }
+        : {}),
     };
   }
 

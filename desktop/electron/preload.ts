@@ -981,6 +981,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       connected: boolean;
       ready: boolean;
       reason?: string;
+      pendingRuntimeRestart?: boolean;
     }>("runtime:availability"),
     selfModApply: (commitHash?: string) =>
       ipcRenderer.invoke("selfmod:apply", { commitHash }),

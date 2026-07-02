@@ -1,5 +1,11 @@
 import { EventEmitter } from "node:events";
-import { existsSync, promises as fs, watch, type FSWatcher } from "node:fs";
+import {
+  existsSync,
+  promises as fs,
+  readFileSync,
+  watch,
+  type FSWatcher,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ConvexClient } from "convex/browser";
@@ -91,6 +97,11 @@ import {
   buildUdsConnectionFactory,
   killDetachedWorker,
 } from "./uds-connection.js";
+import { resolveRuntimePaths } from "../worker/runtime-paths.js";
+import {
+  computeRuntimeBuildStamp,
+  RUNTIME_BUILD_STAMP_UNAVAILABLE,
+} from "../worker/runtime-build-stamp.js";
 
 type RuntimeHostEvents = {
   "runtime-connected": void;
@@ -318,6 +329,25 @@ const bufferAgentEvent = (
   buffers.set(event.runId, { events: [event], updatedAt: Date.now() });
 };
 
+/**
+ * "Busy" for the purposes of stale-worker restarts: anything that a worker
+ * kill would visibly interrupt. `activeRun`/`activeAgentCount` come from the
+ * worker's active-run registry (the authoritative in-flight signal); voice
+ * fields cover a live voice orchestrator turn. A `null` health snapshot
+ * means the worker is unreachable, so there is nothing to preserve.
+ */
+export const isWorkerBusyForRestart = (
+  health: Pick<
+    WorkerHealthSnapshot,
+    "activeRun" | "activeAgentCount" | "voiceBusy" | "pendingVoiceRequestCount"
+  > | null,
+): boolean =>
+  health != null &&
+  (health.activeRun != null ||
+    health.activeAgentCount > 0 ||
+    health.voiceBusy === true ||
+    (health.pendingVoiceRequestCount ?? 0) > 0);
+
 export const shouldAckWorkerRunEvent = (
   event: Pick<RuntimeAgentEventPayload, "seq" | "type">,
 ): boolean => {
@@ -348,6 +378,22 @@ export class StellaRuntimeHost {
   // the controller's stop/start promises keep concurrent calls safe.
   private restartInProgress = false;
   private restartRequestedDuringRestart = false;
+  /**
+   * Set when the connected worker is known to be running stale runtime code
+   * (build-stamp mismatch detected on reattach, or a runtime-relevant
+   * self-mod apply landed) but the restart was deferred because work is in
+   * flight. Mirrored to `pendingWorkerRestartFile` on disk so the flag
+   * survives an Electron restart; cleared whenever a freshly spawned worker
+   * connects (fresh worker == current code).
+   */
+  private pendingStaleWorkerRestart: {
+    reason: string;
+    detectedAtMs: number;
+  } | null = null;
+  private staleWorkerQuiescencePollTimer: ReturnType<
+    typeof setInterval
+  > | null = null;
+  private staleWorkerQuiescenceCheckInFlight = false;
   private readonly pausedRuntimeReloadRuns = new Set<string>();
   private reloadQueue = Promise.resolve();
   private configCache: RuntimeConfigureParams = {};
@@ -453,10 +499,19 @@ export class StellaRuntimeHost {
         getFileLogger()?.process("host.worker-connected", {
           pid: connection.pid,
           generation: this.workerGeneration,
+          attached: connection.attachedToExistingWorker === true,
         });
         this.workerHealthCache = await this.workerController.getHealth({
           ensureWorker: false,
         });
+        try {
+          await this.evaluateWorkerStalenessOnConnect(connection);
+        } catch (error) {
+          console.warn(
+            "[runtime-host] Worker staleness handshake failed:",
+            (error as Error).message,
+          );
+        }
         this.events.emit("runtime-ready", await this.health());
       },
       onUnexpectedExit: async () => {
@@ -547,6 +602,14 @@ export class StellaRuntimeHost {
     if (this.pausedRuntimeReloadRuns.size > 0) {
       return;
     }
+    if (this.pendingStaleWorkerRestart) {
+      // A stale-worker restart was blocked on the self-mod pause; re-check
+      // quiescence now that the last pause released.
+      const timer = setTimeout(() => {
+        void this.maybeRestartStaleWorkerWhenQuiescent();
+      }, 1_000);
+      timer.unref?.();
+    }
     const hadDeferredReload = this.deferredRuntimeReload;
     this.deferredRuntimeReload = false;
     if (!hadDeferredReload || options?.allowDeferredReload === false) {
@@ -609,6 +672,231 @@ export class StellaRuntimeHost {
           }
         });
     }, 150);
+  }
+
+  /*
+   * ---- Stale-worker detection + idle/deferred restart -------------------
+   *
+   * The detached worker survives Electron restarts by design (grace window
+   * that preserves in-flight runs). Without this machinery, runtime code
+   * changes (self-mod applies, desktop updates) never reach a surviving
+   * worker: the new host reconnects and keeps running old code forever.
+   *
+   * On every reattach we compare the worker's boot-time build stamp with the
+   * on-disk runtime tree. Stale + idle => restart immediately. Stale + busy
+   * => mark "restart pending" (persisted, survives further Electron
+   * restarts) and restart the moment the worker goes quiescent — checked on
+   * every RUN_FINISHED plus a slow safety poll. Auto-resuming runs killed by
+   * a restart is intentionally out of scope for v1: deferral means we never
+   * kill in-flight work in the first place.
+   */
+
+  private getRuntimeControlPaths() {
+    return resolveRuntimePaths(this.options.initializeParams.stellaAppDir);
+  }
+
+  private readWorkerReportedBuildStamp(): string | null {
+    try {
+      const raw = readFileSync(
+        this.getRuntimeControlPaths().buildStampFile,
+        "utf-8",
+      ).trim();
+      return raw || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private hasPersistedPendingWorkerRestart(): boolean {
+    return existsSync(this.getRuntimeControlPaths().pendingWorkerRestartFile);
+  }
+
+  getPendingWorkerRestart() {
+    return this.pendingStaleWorkerRestart;
+  }
+
+  private async markPendingWorkerRestart(reason: string) {
+    if (!this.pendingStaleWorkerRestart) {
+      this.pendingStaleWorkerRestart = { reason, detectedAtMs: Date.now() };
+    }
+    getFileLogger()?.process("host.worker-restart-pending", { reason });
+    console.warn(
+      `[runtime-host] Runtime update pending (${reason}); the worker restarts when current work finishes.`,
+    );
+    try {
+      const paths = this.getRuntimeControlPaths();
+      await fs.mkdir(paths.rootDir, { recursive: true });
+      await fs.writeFile(
+        paths.pendingWorkerRestartFile,
+        JSON.stringify(this.pendingStaleWorkerRestart, null, 2),
+        "utf-8",
+      );
+    } catch (error) {
+      console.warn(
+        "[runtime-host] Failed to persist pending worker restart flag:",
+        (error as Error).message,
+      );
+    }
+    this.startStaleWorkerQuiescencePoll();
+    if (this.started) {
+      this.events.emit("runtime-ready", await this.health());
+    }
+  }
+
+  private async clearPendingWorkerRestart() {
+    this.stopStaleWorkerQuiescencePoll();
+    this.pendingStaleWorkerRestart = null;
+    await fs
+      .unlink(this.getRuntimeControlPaths().pendingWorkerRestartFile)
+      .catch(() => undefined);
+  }
+
+  private startStaleWorkerQuiescencePoll() {
+    if (this.staleWorkerQuiescencePollTimer) return;
+    // Safety net for busy signals that don't end in a RUN_FINISHED event
+    // (e.g. voice-only activity) or a missed event during churn.
+    this.staleWorkerQuiescencePollTimer = setInterval(() => {
+      void this.maybeRestartStaleWorkerWhenQuiescent();
+    }, 30_000);
+    this.staleWorkerQuiescencePollTimer.unref?.();
+  }
+
+  private stopStaleWorkerQuiescencePoll() {
+    if (!this.staleWorkerQuiescencePollTimer) return;
+    clearInterval(this.staleWorkerQuiescencePollTimer);
+    this.staleWorkerQuiescencePollTimer = null;
+  }
+
+  /**
+   * Reconnect handshake: decide whether the worker we just connected to is
+   * running stale runtime code. Runs from `onConnectionStarted` after the
+   * health snapshot is cached.
+   */
+  private async evaluateWorkerStalenessOnConnect(connection: WorkerConnection) {
+    if (connection.attachedToExistingWorker !== true) {
+      // Freshly spawned worker loaded the current on-disk code; any deferred
+      // restart bookkeeping from a previous generation is now satisfied.
+      await this.clearPendingWorkerRestart();
+      return;
+    }
+    let reason: string | null = null;
+    if (this.hasPersistedPendingWorkerRestart()) {
+      reason = "pending-restart-flag";
+    } else {
+      const workerStamp = this.readWorkerReportedBuildStamp();
+      if (!workerStamp) {
+        // Pre-stamp worker (older build) — by definition running old code.
+        reason = "worker-stamp-missing";
+      } else {
+        const onDiskStamp = computeRuntimeBuildStamp(
+          resolveDefaultWorkerEntryPath(this.options),
+        );
+        if (
+          onDiskStamp !== RUNTIME_BUILD_STAMP_UNAVAILABLE &&
+          workerStamp !== onDiskStamp
+        ) {
+          reason = "build-stamp-mismatch";
+        }
+      }
+    }
+    if (!reason) {
+      await this.clearPendingWorkerRestart();
+      return;
+    }
+    getFileLogger()?.process("host.worker-stale-detected", {
+      reason,
+      pid: connection.pid,
+    });
+    console.warn(
+      `[runtime-host] Reconnected to a stale runtime worker (pid=${connection.pid}, ${reason}).`,
+    );
+    await this.markPendingWorkerRestart(reason);
+    if (!isWorkerBusyForRestart(this.workerHealthCache)) {
+      // Idle: restart right away — but off this callback (we're still inside
+      // the controller's startup sequence) and through the quiescence path so
+      // a run that starts in the meantime re-defers instead of being killed.
+      const timer = setTimeout(() => {
+        void this.maybeRestartStaleWorkerWhenQuiescent();
+      }, 1_000);
+      timer.unref?.();
+    }
+  }
+
+  /**
+   * Runtime-relevant self-mod apply landed while no dev watcher is running
+   * (packaged/prod: the dev dist-electron watcher otherwise owns this).
+   * Same policy as the reconnect handshake: idle => restart now; busy =>
+   * pending restart, persisted so it survives the Electron relaunch that a
+   * process-restart-classified apply triggers.
+   */
+  private async noteRuntimeCodeChangedByApply(reason: string) {
+    const health = await this.getWorkerHealth({ ensureWorker: false }).catch(
+      () => null,
+    );
+    await this.markPendingWorkerRestart(reason);
+    if (!isWorkerBusyForRestart(health)) {
+      const timer = setTimeout(() => {
+        void this.maybeRestartStaleWorkerWhenQuiescent();
+      }, 1_000);
+      timer.unref?.();
+    }
+  }
+
+  private async maybeRestartStaleWorkerWhenQuiescent() {
+    if (!this.started || !this.pendingStaleWorkerRestart) return;
+    if (this.staleWorkerQuiescenceCheckInFlight) return;
+    this.staleWorkerQuiescenceCheckInFlight = true;
+    try {
+      const health = await this.getWorkerHealth({ ensureWorker: false }).catch(
+        () => null,
+      );
+      if (isWorkerBusyForRestart(health)) return;
+      this.requestStaleWorkerRestart();
+    } finally {
+      this.staleWorkerQuiescenceCheckInFlight = false;
+    }
+  }
+
+  /**
+   * Queue the actual stale-worker restart. Re-checks busy-ness immediately
+   * before the kill so a run that started after the quiescence check is
+   * never cut down — the pending flag stays set and the next RUN_FINISHED /
+   * poll tick tries again. Reuses the same in-progress coalescing as the
+   * dev-watcher reload path.
+   */
+  private requestStaleWorkerRestart() {
+    if (this.pausedRuntimeReloadRuns.size > 0) return;
+    if (this.restartInProgress) {
+      this.restartRequestedDuringRestart = true;
+      return;
+    }
+    this.restartInProgress = true;
+    this.reloadQueue = this.reloadQueue
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          if (!this.started || !this.pendingStaleWorkerRestart) return;
+          const health = await this.getWorkerHealth({
+            ensureWorker: false,
+          }).catch(() => null);
+          if (isWorkerBusyForRestart(health)) return;
+          getFileLogger()?.process("host.worker-stale-restart", {
+            reason: this.pendingStaleWorkerRestart.reason,
+          });
+          console.warn(
+            `[runtime-host] Restarting stale runtime worker (${this.pendingStaleWorkerRestart.reason}).`,
+          );
+          await this.restartWorker();
+        } finally {
+          this.restartInProgress = false;
+          if (this.restartRequestedDuringRestart) {
+            this.restartRequestedDuringRestart = false;
+            setTimeout(() => {
+              void this.scheduleRuntimeReload();
+            }, 0);
+          }
+        }
+      });
   }
 
   private getConfiguredHostAuthToken() {
@@ -1693,6 +1981,10 @@ export class StellaRuntimeHost {
     this.scheduledRuntimeReload = false;
     this.restartInProgress = false;
     this.restartRequestedDuringRestart = false;
+    // The on-disk pending-restart flag intentionally survives host stop so
+    // the next host's reconnect handshake picks the deferral back up.
+    this.pendingStaleWorkerRestart = null;
+    this.stopStaleWorkerQuiescencePoll();
     if (this.reloadTimer) clearTimeout(this.reloadTimer);
     this.reloadTimer = null;
     this.watcher?.close();
@@ -2757,6 +3049,9 @@ export class StellaRuntimeHost {
         this.workerController.getState() === "starting",
       workerGeneration: this.workerGeneration,
       deviceId: workerHealth?.deviceId ?? this.deviceIdentity?.deviceId ?? null,
+      ...(this.pendingStaleWorkerRestart
+        ? { pendingWorkerRestart: true }
+        : {}),
       activeRunId: workerHealth?.activeRun?.runId ?? null,
       activeAgentCount: workerHealth?.activeAgentCount ?? 0,
     };
@@ -3026,6 +3321,23 @@ export class StellaRuntimeHost {
             }
           },
         });
+        // Runtime-relevant apply with no dev watcher running (packaged /
+        // prod): nothing else will restart the worker for this change, so
+        // route it through the stale-worker policy — restart now when idle,
+        // defer (persisted across the Electron relaunch that a
+        // process-restart apply triggers) when busy. In dev the
+        // dist-electron watcher owns runtime reloads and this stays off.
+        if (
+          !this.watcher &&
+          (payload.requiresRuntimeRestart === true ||
+            payload.requiresProcessRestart === true)
+        ) {
+          await this.noteRuntimeCodeChangedByApply(
+            payload.requiresProcessRestart === true
+              ? "self-mod-apply-process-restart"
+              : "self-mod-apply-runtime-restart",
+          );
+        }
         return { ok: true };
       },
     );
@@ -3123,6 +3435,17 @@ export class StellaRuntimeHost {
       // would prune lower ordinary run seqs, including terminal rows.
       if (payload.runId && shouldAckWorkerRunEvent(payload)) {
         this.scheduleRunEventAck(payload.runId, payload.seq);
+      }
+      if (
+        this.pendingStaleWorkerRestart &&
+        payload.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED
+      ) {
+        // A deferred stale-worker restart is waiting for quiescence; give
+        // immediate follow-up runs a moment to register before checking.
+        const timer = setTimeout(() => {
+          void this.maybeRestartStaleWorkerWhenQuiescent();
+        }, 500);
+        timer.unref?.();
       }
     });
     peer.registerNotificationHandler(

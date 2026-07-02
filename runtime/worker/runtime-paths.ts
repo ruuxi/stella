@@ -71,6 +71,21 @@ export type RuntimePaths = {
   logDir: string;
   logFile: string;
   hostExecutableFile: string;
+  /**
+   * Runtime build stamp of the code the currently-running worker loaded at
+   * boot (see `runtime/worker/runtime-build-stamp.ts`). Written by the
+   * worker's `WorkerLifecycleServer.start`; read by the host on attach to
+   * detect a stale worker after a self-mod apply or desktop update.
+   */
+  buildStampFile: string;
+  /**
+   * Host-written flag recording that the worker is known-stale but was busy
+   * (active run / streaming turn) when detected, so the restart was
+   * deferred. Survives Electron restarts; the next host's reconnect
+   * handshake picks it up and restarts the worker at the first quiescent
+   * moment. Cleared whenever a freshly spawned worker connects.
+   */
+  pendingWorkerRestartFile: string;
   rootMarkerFile: string;
 };
 
@@ -130,6 +145,8 @@ export const resolveRuntimePaths = (
     logDir,
     logFile: path.join(logDir, "runtime.log"),
     hostExecutableFile: path.join(rootDir, "host-executable.txt"),
+    buildStampFile: path.join(rootDir, "build-stamp.txt"),
+    pendingWorkerRestartFile: path.join(rootDir, "pending-worker-restart.json"),
     rootMarkerFile: path.join(rootDir, "root.txt"),
   };
 };
