@@ -4,17 +4,21 @@ import { api } from "@/convex/api";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import type { SocialProfile } from "./use-social-profile";
 
-type SocialRoomKind = "dm" | "group";
+type SocialRoomKind = "dm" | "group" | "community";
 
 export type SocialRoomSummary = {
   room: {
     _id: string;
     kind: SocialRoomKind;
     title?: string;
+    createdByOwnerId?: string;
     stellaSessionId?: string;
+    /** Community rooms only: the join code members share to invite people. */
+    inviteCode?: string;
     latestMessageAt?: number;
   };
   membership: {
+    role?: "owner" | "member";
     lastReadAt?: number;
   };
   latestMessage: {

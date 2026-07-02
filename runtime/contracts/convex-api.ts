@@ -214,6 +214,14 @@ export type PublicApiType = {
     };
   };
   "social": {
+    "communities": {
+      "createCommunity": FunctionReference<'mutation', 'public', { name: string; }, any, string | undefined>;
+      "joinCommunity": FunctionReference<'mutation', 'public', { inviteCode: string; }, any, string | undefined>;
+      "renameCommunity": FunctionReference<'mutation', 'public', { roomId: Id<'social_rooms'>; name: string; }, any, string | undefined>;
+      "removeCommunityMember": FunctionReference<'mutation', 'public', { roomId: Id<'social_rooms'>; memberOwnerId: string; }, any, string | undefined>;
+      "leaveCommunity": FunctionReference<'mutation', 'public', { roomId: Id<'social_rooms'>; }, any, string | undefined>;
+      "deleteCommunity": FunctionReference<'mutation', 'public', { roomId: Id<'social_rooms'>; }, any, string | undefined>;
+    };
     "messages": {
       "listRoomMessages": FunctionReference<'query', 'public', { roomId: Id<'social_rooms'>; paginationOpts: { id?: number; endCursor?: string | null; maximumRowsRead?: number; maximumBytesRead?: number; numItems: number; cursor: string | null; }; }, any, string | undefined>;
       "sendRoomMessage": FunctionReference<'mutation', 'public', { clientMessageId?: string | undefined; roomId: Id<'social_rooms'>; body: string; }, any, string | undefined>;

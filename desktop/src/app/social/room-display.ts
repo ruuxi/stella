@@ -20,6 +20,9 @@ export function getSocialRoomDisplayName(
           .map((member) => `@${member.username}`)
           .join(", ") || "Group"
       );
+    // Communities always carry a title, so this only covers a missing one.
+    case "community":
+      return "Community";
     default: {
       const exhaustiveCheck: never = room.room.kind;
       return exhaustiveCheck;

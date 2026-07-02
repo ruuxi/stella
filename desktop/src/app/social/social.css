@@ -185,6 +185,20 @@
   opacity: 0.5;
 }
 
+/* Quiet marker so community rooms read differently from DMs/groups. */
+.social-room-item-kind {
+  font-family: var(--social-mono);
+  font-size: var(--font-size-2xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  border: 1px solid var(--border-weak);
+  border-radius: 999px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
 .social-room-item-preview {
   font-size: var(--font-size-sm);
   color: var(--text-weak);
@@ -1115,6 +1129,43 @@
 .friends-status-message[data-type="error"] {
   background: color-mix(in srgb, var(--destructive) 10%, transparent);
   color: var(--destructive);
+}
+
+/* ============================================
+   Communities Dialog
+   ============================================ */
+
+/* Manage pane header keeps the centered dialog header but hosts a
+   back button pinned to the top-left corner. */
+.communities-manage-header {
+  position: relative;
+  padding-top: 4px;
+}
+
+.communities-back-button {
+  position: absolute;
+  top: -12px;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.communities-invite-hint {
+  margin: -8px 4px 0;
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.communities-manage-footer {
+  justify-content: flex-start;
+}
+
+.communities-footer-spacer {
+  flex: 1;
 }
 
 /* ============================================
