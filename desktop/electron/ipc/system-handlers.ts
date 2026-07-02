@@ -2122,7 +2122,7 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     const oauthToken = stellaAppDir
       ? await getLocalLlmOAuthApiKey(stellaAppDir, "anthropic")
       : null;
-    return listClaudeCodeModels({ apiKey, oauthToken });
+    return listClaudeCodeModels({ apiKey, oauthToken }, stellaAppDir ?? undefined);
   });
 
   ipcMain.handle(

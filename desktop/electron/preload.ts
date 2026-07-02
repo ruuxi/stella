@@ -1385,6 +1385,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         models: Array<{
           id: string;
           displayName: string;
+          description?: string;
           source: "alias" | "anthropic";
         }>;
       }>,

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Select, type SelectOption } from "@/ui/select";
 import { requestCodexEngineNotice } from "./CodexEngineNoticeDialog";
 import { getSettingsErrorMessage } from "./tabs/shared";
 import "./LocalRuntimeOptions.css";
@@ -25,6 +26,15 @@ type LocalModelPreferences = {
   claudeCodeModel: string;
 };
 
+type EngineModelOption = {
+  id: string;
+  label: string;
+  description?: string;
+};
+
+const DEFAULT_CODEX_MODEL = "gpt-5.5";
+const DEFAULT_CLAUDE_CODE_MODEL = "default";
+
 /**
  * Engine selector for the local agent runtime. Lives inside the expanded
  * section of `AgentModelPicker` so it shows up in both the sidebar popover
@@ -36,6 +46,12 @@ export function LocalRuntimeOptions() {
   );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [codexModels, setCodexModels] = useState<EngineModelOption[] | null>(
+    null,
+  );
+  const [claudeCodeModels, setClaudeCodeModels] = useState<
+    EngineModelOption[] | null
+  >(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +85,105 @@ export function LocalRuntimeOptions() {
 
   const ready = preferences !== null;
   const engine: EngineId = preferences?.agentRuntimeEngine ?? "default";
+
+  // Fetch the engine's own model catalog the first time it's selected so
+  // the Model select is populated when Codex / Claude Code is active.
+  useEffect(() => {
+    let cancelled = false;
+    if (engine === "codex_cli" && codexModels === null) {
+      void window.electronAPI?.system
+        ?.listCodexModels?.()
+        .then((result) => {
+          if (cancelled) return;
+          setCodexModels(
+            (result?.models ?? [])
+              .filter((model) => !model.hidden)
+              .map((model) => ({
+                id: model.id,
+                label: model.displayName || model.id,
+                description: model.description || undefined,
+              })),
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setCodexModels([]);
+        });
+    }
+    if (engine === "claude_code_local" && claudeCodeModels === null) {
+      void window.electronAPI?.system
+        ?.listClaudeCodeModels?.()
+        .then((result) => {
+          if (cancelled) return;
+          setClaudeCodeModels(
+            (result?.models ?? []).map((model) => ({
+              id: model.id,
+              label: model.displayName || model.id,
+              description: model.description,
+            })),
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setClaudeCodeModels([]);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [claudeCodeModels, codexModels, engine]);
+
+  const engineModels = engine === "codex_cli" ? codexModels : claudeCodeModels;
+  const engineModelValue =
+    engine === "codex_cli"
+      ? preferences?.codexModel || DEFAULT_CODEX_MODEL
+      : preferences?.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL;
+
+  const engineModelOptions = useMemo<SelectOption[]>(() => {
+    const options: SelectOption[] = (engineModels ?? []).map((model) => ({
+      value: model.id,
+      label: model.label,
+    }));
+    // Keep an out-of-catalog saved value (e.g. hidden or hand-set model)
+    // selectable instead of rendering an empty trigger.
+    if (
+      engineModelValue &&
+      !options.some((option) => option.value === engineModelValue)
+    ) {
+      options.push({ value: engineModelValue, label: engineModelValue });
+    }
+    return options;
+  }, [engineModels, engineModelValue]);
+
+  const engineModelDescription = engineModels?.find(
+    (model) => model.id === engineModelValue,
+  )?.description;
+
+  const handleEngineModelChange = useCallback(
+    async (nextModel: string) => {
+      if (saving || !preferences || nextModel === engineModelValue) return;
+      const previous = preferences;
+      const patch =
+        engine === "codex_cli"
+          ? { codexModel: nextModel }
+          : { claudeCodeModel: nextModel };
+      setSaving(true);
+      setPreferences({ ...preferences, ...patch });
+      setError(null);
+      try {
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.(patch);
+        if (saved) setPreferences(saved);
+        window.dispatchEvent(new CustomEvent(PREFS_CHANGED_EVENT));
+      } catch (caught) {
+        setPreferences(previous);
+        setError(
+          getSettingsErrorMessage(caught, "Failed to update the engine model."),
+        );
+      } finally {
+        setSaving(false);
+      }
+    },
+    [engine, engineModelValue, preferences, saving],
+  );
 
   const commitEngineChange = useCallback(
     async (next: EngineId) => {
@@ -154,6 +269,31 @@ export function LocalRuntimeOptions() {
           })}
         </div>
       </div>
+      {engine !== "default" ? (
+        <div className="local-runtime-options-row">
+          <div className="local-runtime-options-row-info">
+            <div className="local-runtime-options-row-label">Model</div>
+            <div className="local-runtime-options-row-sublabel">
+              {engineModelDescription ??
+                (engine === "codex_cli"
+                  ? "Model Codex runs agents on."
+                  : "Model Claude Code runs agents on.")}
+            </div>
+          </div>
+          <div className="local-runtime-options-model-select">
+            <Select
+              value={engineModelValue}
+              onValueChange={(value) => void handleEngineModelChange(value)}
+              options={engineModelOptions}
+              disabled={!ready || saving}
+              placeholder={engineModels === null ? "Loading…" : undefined}
+              aria-label={
+                engine === "codex_cli" ? "Codex model" : "Claude Code model"
+              }
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

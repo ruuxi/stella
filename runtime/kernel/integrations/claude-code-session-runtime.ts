@@ -10,18 +10,73 @@ import type {
   ToolUpdateCallback,
 } from "../tools/types.js";
 import { extractAttachImageBlocks } from "../agent-runtime/tool-adapters.js";
+import {
+  formatClaudeCodeResolvedModel,
+  readClaudeCodeResolvedModels,
+  recordClaudeCodeResolvedModel,
+} from "./claude-code-resolved-models.js";
 
 const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
+/**
+ * Model aliases the `claude` CLI accepts via `--model`
+ * (https://code.claude.com/docs/en/model-config). `default` is special: it
+ * clears any override and runs the recommended model for the account, so we
+ * pass no `--model` flag for it and surface the CLI-reported resolved model
+ * next to it in pickers when known.
+ */
 const CLAUDE_CODE_ALIASES = [
   "default",
-  "sonnet",
-  "opus",
-  "haiku",
   "best",
+  "fable",
+  "opus",
+  "sonnet",
+  "haiku",
   "opusplan",
   "sonnet[1m]",
   "opus[1m]",
 ] as const;
+
+const CLAUDE_CODE_ALIAS_LABELS: Record<
+  (typeof CLAUDE_CODE_ALIASES)[number],
+  { displayName: string; description: string }
+> = {
+  default: {
+    displayName: "Default",
+    description: "Recommended model for your Claude account",
+  },
+  best: {
+    displayName: "Best",
+    description: "Most capable model available to you",
+  },
+  fable: {
+    displayName: "Fable",
+    description: "Long, hard tasks and deep autonomy",
+  },
+  opus: {
+    displayName: "Opus",
+    description: "Latest Opus for complex reasoning",
+  },
+  sonnet: {
+    displayName: "Sonnet",
+    description: "Latest Sonnet for everyday work",
+  },
+  haiku: {
+    displayName: "Haiku",
+    description: "Fast and efficient for simple tasks",
+  },
+  opusplan: {
+    displayName: "Opus Plan",
+    description: "Plans on Opus, executes on Sonnet",
+  },
+  "sonnet[1m]": {
+    displayName: "Sonnet · 1M context",
+    description: "Sonnet with a 1M-token context window",
+  },
+  "opus[1m]": {
+    displayName: "Opus · 1M context",
+    description: "Opus with a 1M-token context window",
+  },
+};
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
@@ -125,6 +180,12 @@ type ClaudeCodeTurnRequest = {
    */
   vanilla?: boolean;
   cwd?: string;
+  /**
+   * Stella data dir. When set, the CLI-reported resolved model from the
+   * stream-json init event is persisted so pickers can show the real model
+   * behind aliases like `default`.
+   */
+  stellaAppDir?: string;
   attachments?: RuntimeAttachmentRef[];
   tools: ToolMetadata[];
   executeTool: (
@@ -147,6 +208,7 @@ type ClaudeCodeTurnRequest = {
 export type ClaudeCodeModelOption = {
   id: string;
   displayName: string;
+  description?: string;
   source: "alias" | "anthropic";
 };
 
@@ -1017,6 +1079,20 @@ class ClaudeCodeSessionRuntime {
           session.sessionId = processState.finalSessionId;
           session.resumeReady = true;
         }
+        // The init event names the model the CLI actually resolved the
+        // requested alias to (e.g. default -> claude-opus-4-8[1m]).
+        if (
+          parsedLine.type === "system" &&
+          parsedLine.subtype === "init" &&
+          typeof parsedLine.model === "string" &&
+          request.stellaAppDir
+        ) {
+          recordClaudeCodeResolvedModel(
+            request.stellaAppDir,
+            parseClaudeCodeModel(request.modelId) ?? "default",
+            parsedLine.model,
+          );
+        }
         const status = getClaudeCodeStatusChangeFromStreamEvent(parsedLine);
         if (status) {
           // Count discrete compactions (compacting -> running transitions),
@@ -1351,12 +1427,23 @@ export const runClaudeCodeTurn = async (request: ClaudeCodeTurnRequest): Promise
 
 export const listClaudeCodeModels = async (
   auth?: { apiKey?: string | null; oauthToken?: string | null },
+  stellaAppDir?: string,
 ): Promise<{ models: ClaudeCodeModelOption[] }> => {
   const models = new Map<string, ClaudeCodeModelOption>();
+  const resolvedModels = stellaAppDir
+    ? readClaudeCodeResolvedModels(stellaAppDir)
+    : {};
   for (const alias of CLAUDE_CODE_ALIASES) {
+    const labels = CLAUDE_CODE_ALIAS_LABELS[alias];
+    const resolved = resolvedModels[alias];
     models.set(alias, {
       id: alias,
-      displayName: alias === "default" ? "Default" : alias,
+      // Show the CLI-reported real model behind the alias when we've seen
+      // one (e.g. "Default · Opus 4.8 (1M context)").
+      displayName: resolved
+        ? `${labels.displayName} · ${formatClaudeCodeResolvedModel(resolved)}`
+        : labels.displayName,
+      description: labels.description,
       source: "alias",
     });
   }

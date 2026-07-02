@@ -7,11 +7,23 @@ import {
 } from "@/global/settings/lib/model-catalog";
 import "./CompactStellaModelList.css";
 
+export interface CompactModelListEntry {
+  id: string;
+  label: string;
+  subtitle?: string;
+}
+
 interface CompactStellaModelListProps {
   /** All Stella catalog models. */
   stellaModels: readonly CatalogModel[];
   /** Currently selected override id ("" means default). */
   value: string;
+  /**
+   * Recently used models pinned above the presets. Always includes the
+   * current selection when it isn't a curated Stella preset, so a pick
+   * from another provider or engine stays visible (and checked) here.
+   */
+  recents?: readonly CompactModelListEntry[];
   /** Label rendered for the default-mode entry. */
   defaultLabel: string;
   /** Selection callback. Empty string ⇒ revert to default. */
@@ -43,6 +55,7 @@ interface CompactStellaModelListProps {
 export function CompactStellaModelList({
   stellaModels,
   value,
+  recents = [],
   defaultLabel,
   onSelect,
   disabled = false,
@@ -74,6 +87,41 @@ export function CompactStellaModelList({
       role="listbox"
       aria-label="Stella models"
     >
+      {recents.length > 0 ? (
+        <>
+          <div className="compact-stella-list-heading">Recent</div>
+          {recents.map((entry) => {
+            const selected = entry.id === value;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                className="compact-stella-list-item"
+                data-selected={selected || undefined}
+                onClick={() => onSelect(entry.id)}
+                disabled={disabled}
+              >
+                <span className="compact-stella-list-item-text">
+                  <span className="compact-stella-list-item-name">
+                    {entry.label}
+                  </span>
+                  {entry.subtitle ? (
+                    <span className="compact-stella-list-item-sub">
+                      {entry.subtitle}
+                    </span>
+                  ) : null}
+                </span>
+                {selected ? (
+                  <Check size={13} className="compact-stella-list-item-check" />
+                ) : null}
+              </button>
+            );
+          })}
+          <div className="compact-stella-list-divider" role="presentation" />
+        </>
+      ) : null}
       <button
         type="button"
         role="option"

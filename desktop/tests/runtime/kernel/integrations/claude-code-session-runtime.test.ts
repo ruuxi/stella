@@ -13,6 +13,7 @@ import {
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
 } from "../../../../../runtime/kernel/integrations/claude-code-session-runtime.js";
+import { recordClaudeCodeResolvedModel } from "../../../../../runtime/kernel/integrations/claude-code-resolved-models.js";
 import {
   buildClaudeCodeTurnPrompts,
   buildClaudePromptFromMessages,
@@ -120,14 +121,43 @@ describe("claude-code-session-runtime", () => {
 
     expect(models.map((model) => model.id)).toEqual([
       "default",
-      "sonnet",
-      "opus",
-      "haiku",
       "best",
+      "fable",
+      "opus",
+      "sonnet",
+      "haiku",
       "opusplan",
       "sonnet[1m]",
       "opus[1m]",
     ]);
+    // Aliases surface friendly names + descriptions, not raw CLI tokens.
+    const defaultOption = models.find((model) => model.id === "default");
+    expect(defaultOption?.displayName).toBe("Default");
+    expect(defaultOption?.description).toContain("Recommended");
+    expect(models.find((model) => model.id === "opusplan")?.displayName).toBe(
+      "Opus Plan",
+    );
+  });
+
+  it("labels the default alias with the CLI-reported resolved model", async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_OAUTH_TOKEN;
+    const stellaAppDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-claude-models-"),
+    );
+    try {
+      recordClaudeCodeResolvedModel(
+        stellaAppDir,
+        "default",
+        "claude-opus-4-8[1m]",
+      );
+      const { models } = await listClaudeCodeModels({}, stellaAppDir);
+      expect(models.find((model) => model.id === "default")?.displayName).toBe(
+        "Default · Opus 4.8 (1M context)",
+      );
+    } finally {
+      fs.rmSync(stellaAppDir, { recursive: true, force: true });
+    }
   });
 
   it("merges Anthropic endpoint models into Claude Code aliases", async () => {
