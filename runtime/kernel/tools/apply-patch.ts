@@ -5,6 +5,11 @@ import { isBlockedPath } from "./command-safety.js";
 import type { ToolContext, ToolResult } from "./types.js";
 import { expandHomePath } from "./utils.js";
 import {
+  withFileWriteLock,
+  withFileWriteLocks,
+  writeFileWithNulGuard,
+} from "./file-write-lock.js";
+import {
   type FileChangeRecord,
   fileChange,
 } from "../../contracts/file-changes.js";
@@ -460,50 +465,55 @@ const applyUpdate = async (
   const block = isBlockedPath(op.path, context);
   if (block) throw new Error(block);
 
-  let original: string;
-  try {
-    original = await fs.readFile(op.path, "utf-8");
-  } catch {
-    throw new Error(`apply_patch: file not found for Update: ${op.path}`);
-  }
-
-  const trailingNewline = original.endsWith("\n");
-  let fileLines = original.split("\n");
-  if (trailingNewline) {
-    fileLines = fileLines.slice(0, -1);
-  }
-
-  const replacements = computeReplacements(fileLines, op.hunks, op.path);
-  fileLines = applyReplacements(fileLines, replacements);
-
-  let newContent = fileLines.join("\n");
-  if (trailingNewline) newContent += "\n";
-
-  const targetPath = op.moveTo ?? op.path;
-  if (op.moveTo) {
-    const moveBlock = isBlockedPath(op.moveTo, context);
-    if (moveBlock) throw new Error(moveBlock);
-    await fs.mkdir(path.dirname(op.moveTo), { recursive: true });
-    await fs.writeFile(op.moveTo, newContent, "utf-8");
-    if (op.moveTo !== op.path) {
-      try {
-        await fs.unlink(op.path);
-      } catch {
-        throw new Error(
-          `apply_patch: failed to remove original '${op.path}' after move to '${op.moveTo}'.`,
-        );
-      }
+  const lockPaths = op.moveTo ? [op.path, op.moveTo] : [op.path];
+  // Read → apply hunks → write happens under the per-path lock so a
+  // concurrent Edit/Write/apply_patch of the same file can't interleave.
+  return withFileWriteLocks(lockPaths, async () => {
+    let original: string;
+    try {
+      original = await fs.readFile(op.path, "utf-8");
+    } catch {
+      throw new Error(`apply_patch: file not found for Update: ${op.path}`);
     }
-  } else {
-    await fs.writeFile(op.path, newContent, "utf-8");
-  }
 
-  return {
-    kind: "update" as const,
-    path: op.path,
-    ...(op.moveTo ? { movedTo: op.moveTo } : {}),
-    written: targetPath,
-  };
+    const trailingNewline = original.endsWith("\n");
+    let fileLines = original.split("\n");
+    if (trailingNewline) {
+      fileLines = fileLines.slice(0, -1);
+    }
+
+    const replacements = computeReplacements(fileLines, op.hunks, op.path);
+    fileLines = applyReplacements(fileLines, replacements);
+
+    let newContent = fileLines.join("\n");
+    if (trailingNewline) newContent += "\n";
+
+    const targetPath = op.moveTo ?? op.path;
+    if (op.moveTo) {
+      const moveBlock = isBlockedPath(op.moveTo, context);
+      if (moveBlock) throw new Error(moveBlock);
+      await fs.mkdir(path.dirname(op.moveTo), { recursive: true });
+      await writeFileWithNulGuard(op.moveTo, newContent);
+      if (op.moveTo !== op.path) {
+        try {
+          await fs.unlink(op.path);
+        } catch {
+          throw new Error(
+            `apply_patch: failed to remove original '${op.path}' after move to '${op.moveTo}'.`,
+          );
+        }
+      }
+    } else {
+      await writeFileWithNulGuard(op.path, newContent);
+    }
+
+    return {
+      kind: "update" as const,
+      path: op.path,
+      ...(op.moveTo ? { movedTo: op.moveTo } : {}),
+      written: targetPath,
+    };
+  });
 };
 
 const applyAdd = async (
@@ -512,10 +522,12 @@ const applyAdd = async (
 ) => {
   const block = isBlockedPath(op.path, context);
   if (block) throw new Error(block);
-  await fs.mkdir(path.dirname(op.path), { recursive: true });
-  const content = op.lines.join("\n") + (op.lines.length > 0 ? "\n" : "");
-  await fs.writeFile(op.path, content, { encoding: "utf-8", flag: "wx" });
-  return { kind: "add" as const, path: op.path };
+  return withFileWriteLock(op.path, async () => {
+    await fs.mkdir(path.dirname(op.path), { recursive: true });
+    const content = op.lines.join("\n") + (op.lines.length > 0 ? "\n" : "");
+    await writeFileWithNulGuard(op.path, content, { flag: "wx" });
+    return { kind: "add" as const, path: op.path };
+  });
 };
 
 const applyDelete = async (
@@ -524,8 +536,10 @@ const applyDelete = async (
 ) => {
   const block = isBlockedPath(op.path, context);
   if (block) throw new Error(block);
-  await fs.unlink(op.path);
-  return { kind: "delete" as const, path: op.path };
+  return withFileWriteLock(op.path, async () => {
+    await fs.unlink(op.path);
+    return { kind: "delete" as const, path: op.path };
+  });
 };
 
 export const extractApplyPatchTargetPaths = (patch: string): string[] =>

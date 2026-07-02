@@ -19,6 +19,7 @@ import {
 } from "./utils.js";
 import { isBlockedPath } from "./command-safety.js";
 import { sanitizeToolVisibleText } from "./safety.js";
+import { withFileWriteLock, writeFileWithNulGuard } from "./file-write-lock.js";
 
 const isPathInsideRoot = (candidate: string, root: string): boolean => {
   const relative = path.relative(root, candidate);
@@ -92,27 +93,31 @@ export const writeTextFile = async (
     throw new Error(pathBlock);
   }
 
-  let existed = false;
-  let originalEnding: "\r\n" | "\n" = "\n";
+  // The whole read-current-state → write cycle runs under the per-path lock
+  // so parallel Write/Edit calls against the same file cannot interleave.
+  return withFileWriteLock(filePath, async () => {
+    let existed = false;
+    let originalEnding: "\r\n" | "\n" = "\n";
 
-  try {
-    const rawContent = await fs.readFile(filePath, "utf-8");
-    existed = true;
-    const { text } = stripBom(rawContent);
-    originalEnding = detectLineEnding(text);
-  } catch {
-    existed = false;
-  }
+    try {
+      const rawContent = await fs.readFile(filePath, "utf-8");
+      existed = true;
+      const { text } = stripBom(rawContent);
+      originalEnding = detectLineEnding(text);
+    } catch {
+      existed = false;
+    }
 
-  const normalizedContent = normalizeToLF(content);
-  const finalContent = existed
-    ? restoreLineEndings(normalizedContent, originalEnding)
-    : content;
+    const normalizedContent = normalizeToLF(content);
+    const finalContent = existed
+      ? restoreLineEndings(normalizedContent, originalEnding)
+      : content;
 
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, finalContent, "utf-8");
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await writeFileWithNulGuard(filePath, finalContent);
 
-  return { path: filePath, created: !existed };
+    return { path: filePath, created: !existed };
+  });
 };
 
 export const replaceTextInFile = async (
@@ -132,51 +137,57 @@ export const replaceTextInFile = async (
     throw new Error(pathBlock);
   }
 
-  let rawContent: string;
-  try {
-    rawContent = await fs.readFile(filePath, "utf-8");
-  } catch (error) {
-    throw new Error(`Error reading file: ${(error as Error).message}`);
-  }
+  // Read → apply → write must be atomic relative to sibling edits of the
+  // same file: parallel tool calls otherwise clobber each other's hunks.
+  return withFileWriteLock(filePath, async () => {
+    let rawContent: string;
+    try {
+      rawContent = await fs.readFile(filePath, "utf-8");
+    } catch (error) {
+      throw new Error(`Error reading file: ${(error as Error).message}`);
+    }
 
-  const { bom, text: content } = stripBom(rawContent);
-  const originalEnding = detectLineEnding(content);
-  const normalizedContent = normalizeToLF(content);
-  const normalizedOld = normalizeToLF(args.oldString);
-  const normalizedNew = normalizeToLF(args.newString);
+    const { bom, text: content } = stripBom(rawContent);
+    const originalEnding = detectLineEnding(content);
+    const normalizedContent = normalizeToLF(content);
+    const normalizedOld = normalizeToLF(args.oldString);
+    const normalizedNew = normalizeToLF(args.newString);
 
-  if (replaceAll) {
-    const occurrences = normalizedContent.split(normalizedOld).length - 1;
-    if (occurrences === 0) {
+    if (replaceAll) {
+      const occurrences = normalizedContent.split(normalizedOld).length - 1;
+      if (occurrences === 0) {
+        throw new Error("old_string not found in file.");
+      }
+      const replaced = normalizedContent
+        .split(normalizedOld)
+        .join(normalizedNew);
+      const final = bom + restoreLineEndings(replaced, originalEnding);
+      await writeFileWithNulGuard(filePath, final);
+      return { path: filePath, replacements: occurrences };
+    }
+
+    const matchResult = fuzzyFindText(normalizedContent, normalizedOld);
+    if (!matchResult.found) {
       throw new Error("old_string not found in file.");
     }
-    const replaced = normalizedContent.split(normalizedOld).join(normalizedNew);
+
+    const baseContent = matchResult.contentForReplacement;
+    const replaced =
+      baseContent.substring(0, matchResult.index) +
+      normalizedNew +
+      baseContent.substring(matchResult.index + matchResult.matchLength);
+
+    if (baseContent === replaced) {
+      throw new Error(
+        "old_string and new_string are identical — no changes made.",
+      );
+    }
+
     const final = bom + restoreLineEndings(replaced, originalEnding);
-    await fs.writeFile(filePath, final, "utf-8");
-    return { path: filePath, replacements: occurrences };
-  }
+    await writeFileWithNulGuard(filePath, final);
 
-  const matchResult = fuzzyFindText(normalizedContent, normalizedOld);
-  if (!matchResult.found) {
-    throw new Error("old_string not found in file.");
-  }
-
-  const baseContent = matchResult.contentForReplacement;
-  const replaced =
-    baseContent.substring(0, matchResult.index) +
-    normalizedNew +
-    baseContent.substring(matchResult.index + matchResult.matchLength);
-
-  if (baseContent === replaced) {
-    throw new Error(
-      "old_string and new_string are identical — no changes made.",
-    );
-  }
-
-  const final = bom + restoreLineEndings(replaced, originalEnding);
-  await fs.writeFile(filePath, final, "utf-8");
-
-  return { path: filePath, replacements: 1 };
+    return { path: filePath, replacements: 1 };
+  });
 };
 
 export const handleRead = async (
