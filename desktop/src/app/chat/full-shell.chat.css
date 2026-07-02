@@ -349,15 +349,18 @@
   font-size: var(--font-size-sm);
   font-weight: var(--weight-medium);
   line-height: 1;
-  color: var(--text-weak);
+  /* Muted version of the bubble's own text color so the affordance stays
+     legible on the solid `--primary` user bubble (and on compact tinted
+     bubbles, which re-point `--chat-text-color`) in both themes. */
+  color: color-mix(in srgb, var(--chat-text-color) 68%, transparent);
   cursor: default;
   border-radius: 6px;
   transition: color 0.12s ease, background 0.12s ease;
 }
 
 .event-user-toggle:hover {
-  color: var(--text-strong);
-  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  color: var(--chat-text-color);
+  background: color-mix(in srgb, var(--chat-text-color) 10%, transparent);
 }
 
 .event-user-toggle:focus-visible {
