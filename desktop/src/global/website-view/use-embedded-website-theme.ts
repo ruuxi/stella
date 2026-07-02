@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useTheme } from "@/context/theme-context";
 import type { EmbeddedWebsiteTheme } from "@/shared/types/electron";
 
@@ -30,14 +30,14 @@ export const readEmbeddedWebsiteTheme = (
 };
 
 /**
- * Push the current desktop theme tokens to the embedded website view
- * whenever they change. Returns the latest theme so callers can also
- * pass it as URL params on the initial `storeWeb.show` call (avoiding a
- * flash of the website's default light gradient before the IPC arrives).
+ * Live snapshot of the desktop theme tokens for the embedded website.
+ * `EmbeddedWebsiteView` seeds the initial URL params from this (avoiding a
+ * flash of the website's default light gradient) and pushes subsequent
+ * changes into the `<webview>` over the theme IPC channel.
  */
 export const useEmbeddedWebsiteTheme = (): EmbeddedWebsiteTheme => {
   const { resolvedColorMode, colors } = useTheme();
-  const theme = useMemo(
+  return useMemo(
     () => readEmbeddedWebsiteTheme(resolvedColorMode),
     // `colors` is part of the dep set so the snapshot recomputes on any
     // theme change, even though we don't read its fields directly — the
@@ -45,10 +45,4 @@ export const useEmbeddedWebsiteTheme = (): EmbeddedWebsiteTheme => {
     // synchronously whenever `colors` does.
     [resolvedColorMode, colors],
   );
-
-  useEffect(() => {
-    void window.electronAPI?.storeWeb?.setTheme?.(theme);
-  }, [theme]);
-
-  return theme;
 };

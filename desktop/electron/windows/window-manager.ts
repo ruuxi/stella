@@ -10,27 +10,23 @@ import {
   moveResizeWindowAtPoint,
   type WindowInfo,
 } from '../window-capture.js'
+import { pathToFileURL } from 'node:url'
 import { FullWindowController } from './full-window.js'
 import { MiniWindowController } from './mini-window.js'
 import {
-  WebsiteViewController,
-  type WebsiteViewLayout,
-  type WebsiteViewParams,
-  type WebsiteViewTheme,
-} from './website-view.js'
+  attachStoreWebviewGuards,
+  isStoreWebviewWebContents,
+} from './store-webview.js'
 import { getMainLogger } from '../observability/main-logger.js'
 import type { UiState } from '../types.js'
 import type { ExternalLinkService } from '../services/external-link-service.js'
-import {
-  getTotalSystemMemoryMb,
-  isLowMemoryWindowsDevice,
-} from '../resource-profile.js'
+import { isLowMemoryWindowsDevice } from '../resource-profile.js'
 
 type WindowManagerOptions = {
   electronDir: string
   preloadPath: string
   storeWebPreloadPath: string
-  getStoreWebUrl: (params?: WebsiteViewParams) => string
+  storeWebBaseUrl: string
   isAllowedStoreWebUrl: (url: string) => boolean
   sessionPartition: string
   isDev: boolean
@@ -53,13 +49,6 @@ const compactSize = MINI_SHELL_SIZE
 const LOW_MEMORY_WINDOWS_IDLE_DESTROY_DELAY_MS = 30 * 1000
 const DEFAULT_IDLE_DESTROY_DELAY_MS = 5 * 60 * 1000
 const MINI_IDLE_DESTROY_DELAY_MS = isLowMemoryWindowsDevice()
-  ? LOW_MEMORY_WINDOWS_IDLE_DESTROY_DELAY_MS
-  : DEFAULT_IDLE_DESTROY_DELAY_MS
-// The store/billing `WebContentsView` is a full resident renderer (remote
-// website bundle). Drop it after the surface has been closed for a while so
-// users who aren't in Store/Billing don't carry it; a later hover re-warms it
-// via `prewarmStoreWebView`. Mirrors the mini-window idle-destroy lifecycle.
-const STORE_WEB_IDLE_DESTROY_DELAY_MS = isLowMemoryWindowsDevice()
   ? LOW_MEMORY_WINDOWS_IDLE_DESTROY_DELAY_MS
   : DEFAULT_IDLE_DESTROY_DELAY_MS
 const MINI_ATTACH_GAP = 8
@@ -163,7 +152,7 @@ const RELOAD_RETRY_RESET_MS = 5_000
  * (~30s of ignored input event pings), so this timer is *additional*
  * slack on top of that — total wall-clock freeze before recovery is
  * roughly hang-monitor + this value. Heavy work in Stella runs in the
- * runtime worker / backend / WebContentsViews, not the renderer's JS
+ * runtime worker / backend / embedded webviews, not the renderer's JS
  * main thread, so a renderer that's still frozen this far past the
  * hang-monitor threshold is genuinely stuck (infinite render loop,
  * runaway sync work, pathological compute) and the user deserves an
@@ -181,8 +170,6 @@ export class WindowManager {
   private miniShouldRestoreExternalApp = false
   private miniAlwaysOnTop = true
   private miniIdleDestroyTimer: ReturnType<typeof setTimeout> | null = null
-  private storeWebIdleDestroyTimer: ReturnType<typeof setTimeout> | null = null
-  private readonly websiteViewController: WebsiteViewController
   private readonly transientReloadStateByMode = new Map<
     ShellWindowMode,
     TransientReloadState
@@ -193,12 +180,6 @@ export class WindowManager {
   >()
 
   constructor(private readonly options: WindowManagerOptions) {
-    this.websiteViewController = new WebsiteViewController({
-      preloadPath: options.storeWebPreloadPath,
-      sessionPartition: `${options.sessionPartition}:website`,
-      getUrl: options.getStoreWebUrl,
-      isAllowedUrl: options.isAllowedStoreWebUrl,
-    })
     this.fullWindowController = new FullWindowController({
       electronDir: options.electronDir,
       preloadPath: options.preloadPath,
@@ -241,7 +222,6 @@ export class WindowManager {
       onClosed: () => {
         this.cancelTransientReload('full')
         this.cancelUnresponsiveWatchdog('full')
-        this.cancelStoreWebIdleDestroy()
         this.syncLastActiveWindowMode()
       },
     })
@@ -429,7 +409,10 @@ export class WindowManager {
   createFullWindow() {
     const window = this.fullWindowController.create()
     this.observeShellWindow(window, 'full')
-    this.websiteViewController.attachResizeTracking(window)
+    attachStoreWebviewGuards(window, {
+      preloadPath: this.options.storeWebPreloadPath,
+      isAllowedUrl: this.options.isAllowedStoreWebUrl,
+    })
     return window
   }
 
@@ -456,78 +439,23 @@ export class WindowManager {
     return BrowserWindow.getAllWindows()
   }
 
-  showStoreWebView(params?: WebsiteViewParams) {
-    this.cancelStoreWebIdleDestroy()
-    const fullWindow = this.getFullWindow() ?? this.createFullWindow()
-    this.websiteViewController.show(fullWindow, {
-      route: params?.route ?? 'store',
-      tab: params?.tab,
-      packageId: params?.packageId,
-      embedded: params?.embedded,
-      theme: params?.theme,
-    })
-  }
-
-  prewarmStoreWebView(params?: WebsiteViewParams) {
-    if (isLowMemoryWindowsDevice()) {
-      getMainLogger()?.process('store.prewarm.skipped-low-memory-windows', {
-        totalMemoryMb: getTotalSystemMemoryMb(),
-      })
-      return
+  /**
+   * Everything the renderer needs to mount the Store/Billing `<webview>`:
+   * the first-party base URL, the (persisted) website session partition the
+   * old `WebContentsView` used — so cookies/login carry over identically —
+   * and the desktop-bridge preload as a `file:` URL for the tag's `preload`
+   * attribute. `attachStoreWebviewGuards` re-enforces all of this on attach.
+   */
+  getStoreWebEmbedConfig() {
+    return {
+      baseUrl: this.options.storeWebBaseUrl,
+      partition: `${this.options.sessionPartition}:website`,
+      preloadUrl: pathToFileURL(this.options.storeWebPreloadPath).toString(),
     }
-    this.cancelStoreWebIdleDestroy()
-    this.websiteViewController.prewarm({
-      route: params?.route ?? 'store',
-      tab: params?.tab,
-      packageId: params?.packageId,
-      embedded: params?.embedded,
-      theme: params?.theme,
-    })
-  }
-
-  hideStoreWebView() {
-    this.websiteViewController.hide()
-    this.scheduleStoreWebIdleDestroy()
-  }
-
-  private cancelStoreWebIdleDestroy() {
-    if (!this.storeWebIdleDestroyTimer) {
-      return
-    }
-    clearTimeout(this.storeWebIdleDestroyTimer)
-    this.storeWebIdleDestroyTimer = null
-  }
-
-  private scheduleStoreWebIdleDestroy() {
-    this.cancelStoreWebIdleDestroy()
-    this.storeWebIdleDestroyTimer = setTimeout(() => {
-      this.storeWebIdleDestroyTimer = null
-      this.websiteViewController.disposeView()
-    }, STORE_WEB_IDLE_DESTROY_DELAY_MS)
-  }
-
-  setStoreWebViewLayout(layout: WebsiteViewLayout | null) {
-    this.websiteViewController.setLayout(layout)
-  }
-
-  setStoreWebViewTheme(theme: WebsiteViewTheme) {
-    this.websiteViewController.setTheme(theme)
-  }
-
-  goBackInStoreWebView() {
-    this.websiteViewController.goBack()
-  }
-
-  goForwardInStoreWebView() {
-    this.websiteViewController.goForward()
-  }
-
-  reloadStoreWebView() {
-    this.websiteViewController.reload()
   }
 
   isStoreWebViewWebContents(id: number) {
-    return this.websiteViewController.hasWebContentsId(id)
+    return isStoreWebviewWebContents(id)
   }
 
   isCompactMode() {
