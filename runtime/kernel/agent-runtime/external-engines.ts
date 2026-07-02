@@ -369,6 +369,42 @@ export const buildExternalStellaHistoryPromptMessage = (args: {
   };
 };
 
+/**
+ * Build the per-turn Claude Code prompt pair.
+ *
+ * The stored Stella history (already checkpoint-compacted by
+ * `loadThreadMessages`) is prepended to the main prompt only when there is no
+ * resumable CLI session for this thread — a brand-new session or an
+ * engine-switch takeover. Resumed turns must NOT re-send it: the resumed CLI
+ * conversation already contains everything from prior turns, and re-injecting
+ * the full history every turn grows the session transcript quadratically
+ * until Claude Code's own auto-compaction fires on every turn (an endless
+ * "Compacting context" loop). A lost or looping session still reseeds from
+ * the checkpoint-style history through `resumeFallbackPrompt`.
+ */
+export const buildClaudeCodeTurnPrompts = (args: {
+  historyPromptMessage: RuntimePromptMessage | null;
+  promptMessages: RuntimePromptMessage[];
+  hasPersistedSession: boolean;
+}): { prompt: string; resumeFallbackPrompt?: string } => {
+  const historyPrefixedPrompt = args.historyPromptMessage
+    ? buildClaudePromptFromMessages([
+        args.historyPromptMessage,
+        ...args.promptMessages,
+      ])
+    : undefined;
+  const prompt =
+    !args.hasPersistedSession && historyPrefixedPrompt
+      ? historyPrefixedPrompt
+      : buildClaudePromptFromMessages(args.promptMessages);
+  return {
+    prompt,
+    ...(historyPrefixedPrompt
+      ? { resumeFallbackPrompt: historyPrefixedPrompt }
+      : {}),
+  };
+};
+
 const formatQueuedClaudeMessage = (
   entry: ExternalQueuedMessage,
   index: number,
@@ -593,13 +629,11 @@ const runClaudeHostedTurn = async (args: {
     opts: args.opts,
     promptMessages: args.promptMessages,
   });
-  const promptMessagesWithHistory = historyPromptMessage
-    ? [historyPromptMessage, ...args.promptMessages]
-    : args.promptMessages;
-  const prompt = buildClaudePromptFromMessages(promptMessagesWithHistory);
-  const resumeFallbackPrompt = historyPromptMessage
-    ? buildClaudePromptFromMessages(promptMessagesWithHistory)
-    : undefined;
+  const { prompt, resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
+    historyPromptMessage,
+    promptMessages: args.promptMessages,
+    hasPersistedSession: Boolean(persistedSessionId),
+  });
   const claudeCodeEffortLevel = getClaudeCodeRuntimeEffortLevel(
     args.opts.stellaAppDir,
   );
@@ -645,15 +679,15 @@ const runClaudeHostedTurn = async (args: {
       opts: args.opts,
       promptMessages: queuedPromptMessages,
     });
-    const queuedPromptMessagesWithHistory = queuedHistoryPromptMessage
-      ? [queuedHistoryPromptMessage, ...queuedPromptMessages]
-      : queuedPromptMessages;
-    const queuedPrompt = buildClaudePromptFromMessages(
-      queuedPromptMessagesWithHistory,
-    );
-    const queuedResumeFallbackPrompt = queuedHistoryPromptMessage
-      ? buildClaudePromptFromMessages(queuedPromptMessagesWithHistory)
-      : undefined;
+    // Queued follow-ups always continue the session the turn just ran on, so
+    // the main prompt never re-sends history; a lost resume reseeds via the
+    // fallback prompt.
+    const { prompt: queuedPrompt, resumeFallbackPrompt: queuedResumeFallbackPrompt } =
+      buildClaudeCodeTurnPrompts({
+        historyPromptMessage: queuedHistoryPromptMessage,
+        promptMessages: queuedPromptMessages,
+        hasPersistedSession: true,
+      });
     finalResult = await runClaudeCodeTurn({
       runId,
       sessionKey,

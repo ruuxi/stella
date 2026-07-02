@@ -14,10 +14,19 @@ import {
   shutdownClaudeCodeRuntime,
 } from "../../../../../runtime/kernel/integrations/claude-code-session-runtime.js";
 import {
+  buildClaudeCodeTurnPrompts,
   buildClaudePromptFromMessages,
+  buildExternalStellaHistoryPromptMessage,
   getExternalEngineSessionId,
   setExternalEngineSessionId,
 } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
+import {
+  getDesktopDatabasePath,
+  initializeDesktopDatabase,
+} from "../../../../../runtime/kernel/storage/database-init.js";
+import { SessionStore } from "../../../../../runtime/kernel/storage/session-store.js";
+import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/shared.js";
+import { DatabaseSync } from "node:sqlite";
 
 describe("claude-code-session-runtime", () => {
   const originalFetch = globalThis.fetch;
@@ -814,5 +823,212 @@ describe("claude-code-session-runtime", () => {
     expect(prompt).toContain('type="user"');
     expect(prompt).toContain('visibility="visible"');
     expect(prompt).toContain("What should I do next?");
+  });
+
+  it("keeps the Stella history out of resumed turn prompts", () => {
+    const historyPromptMessage = {
+      messageType: "message" as const,
+      uiVisibility: "hidden" as const,
+      customType: "runtime.stella_thread_history",
+      text: '<stella_thread_history source="stella">\n<history_message index="1" role="user">\nEarlier request\n</history_message>\n</stella_thread_history>',
+    };
+    const { prompt, resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
+      historyPromptMessage,
+      promptMessages: [{ text: "What should I do next?" }],
+      hasPersistedSession: true,
+    });
+
+    expect(prompt).toContain("What should I do next?");
+    expect(prompt).not.toContain("<stella_thread_history");
+    // A lost resume still reseeds the fresh session from the history.
+    expect(resumeFallbackPrompt).toContain("<stella_thread_history");
+    expect(resumeFallbackPrompt).toContain("What should I do next?");
+  });
+
+  it("seeds fresh Claude Code sessions with the Stella history", () => {
+    const historyPromptMessage = {
+      messageType: "message" as const,
+      uiVisibility: "hidden" as const,
+      customType: "runtime.stella_thread_history",
+      text: '<stella_thread_history source="stella">\n<history_message index="1" role="assistant">\nEarlier answer\n</history_message>\n</stella_thread_history>',
+    };
+    const { prompt, resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
+      historyPromptMessage,
+      promptMessages: [{ text: "Continue the plan." }],
+      hasPersistedSession: false,
+    });
+
+    expect(prompt).toContain("<stella_thread_history");
+    expect(prompt).toContain("Continue the plan.");
+    expect(resumeFallbackPrompt).toBe(prompt);
+
+    const withoutHistory = buildClaudeCodeTurnPrompts({
+      historyPromptMessage: null,
+      promptMessages: [{ text: "Continue the plan." }],
+      hasPersistedSession: false,
+    });
+    expect(withoutHistory.prompt).toContain("Continue the plan.");
+    expect(withoutHistory.prompt).not.toContain("<stella_thread_history");
+    expect(withoutHistory.resumeFallbackPrompt).toBeUndefined();
+  });
+
+  it("hydrates the Stella history block from compaction checkpoints, not raw disk history", () => {
+    const rootPath = path.join(
+      os.tmpdir(),
+      `stella-claude-history-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const db = new DatabaseSync(getDesktopDatabasePath(rootPath), {
+      timeout: 5000,
+    }) as unknown as SqliteDatabase;
+    try {
+      initializeDesktopDatabase(db);
+      const store = new SessionStore(db);
+      const threadKey = "conversation-1:orchestrator:run-1";
+      store.appendThreadMessage({
+        threadKey,
+        timestamp: 1_000,
+        role: "user",
+        content: "Original giant request",
+        payload: {
+          role: "user",
+          content: "Original giant request",
+          timestamp: 1_000,
+        },
+      });
+      store.appendThreadMessage({
+        threadKey,
+        timestamp: 1_001,
+        role: "assistant",
+        content: "Original giant answer",
+      });
+      store.appendThreadMessage({
+        threadKey,
+        timestamp: 1_002,
+        role: "user",
+        content: "Latest request",
+        payload: {
+          role: "user",
+          content: "Latest request",
+          timestamp: 1_002,
+        },
+      });
+      const rawMessages = store.loadThreadMessages(threadKey);
+      expect(rawMessages).toHaveLength(3);
+      store.compactThread({
+        threadKey,
+        summary: "Condensed earlier work",
+        fromEntryId: rawMessages[0]!.entryId!,
+        toEntryId: rawMessages[1]!.entryId!,
+        tokensBefore: 1_234,
+        timestamp: 1_100,
+      });
+
+      // The claude-code engine hydrates through the same overlay-applying
+      // `loadThreadMessages` the native engine uses: pre-checkpoint messages
+      // are replaced by the checkpoint summary.
+      const threadHistory = store.loadThreadMessages(threadKey);
+      const historyPromptMessage = buildExternalStellaHistoryPromptMessage({
+        opts: {
+          agentContext: { threadHistory },
+        } as unknown as Parameters<
+          typeof buildExternalStellaHistoryPromptMessage
+        >[0]["opts"],
+        promptMessages: [{ text: "What is next?" }],
+      });
+
+      expect(historyPromptMessage).not.toBeNull();
+      expect(historyPromptMessage?.text).toContain("[[THREAD_CHECKPOINT]]");
+      expect(historyPromptMessage?.text).toContain("Condensed earlier work");
+      expect(historyPromptMessage?.text).toContain("Latest request");
+      expect(historyPromptMessage?.text).not.toContain("Original giant request");
+      expect(historyPromptMessage?.text).not.toContain("Original giant answer");
+    } finally {
+      db.close();
+      fs.rmSync(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it("breaks a Claude Code compaction loop by reseeding a fresh session from the fallback prompt", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-loop-"));
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "loop.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "const argv = process.argv.slice(2);",
+        "let buffer = '';",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  const idx = buffer.indexOf('\\n');",
+        "  if (idx === -1) return;",
+        "  const parsed = JSON.parse(buffer.slice(0, idx));",
+        "  fs.appendFileSync(logPath, JSON.stringify({ argv, content: parsed.message.content }) + '\\n');",
+        "  if (argv.includes('--resume')) {",
+        "    for (let i = 0; i < 4; i += 1) {",
+        "      process.stdout.write(JSON.stringify({",
+        "        type: 'system', subtype: 'status', status: 'compacting',",
+        "      }) + '\\n');",
+        "      process.stdout.write(JSON.stringify({",
+        "        type: 'system', subtype: 'hook_response', hook_event: 'PostCompact',",
+        "      }) + '\\n');",
+        "    }",
+        "    setInterval(() => {}, 1000);",
+        "    return;",
+        "  }",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    session_id: 'fresh-after-loop',",
+        "    is_error: false,",
+        "    structured_output: { type: 'final', message: 'Recovered after loop.' },",
+        "    usage: { input_tokens: 1, output_tokens: 1 },",
+        "  }) + '\\n');",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-loop",
+        sessionKey: `test:loop:${Date.now()}`,
+        persistedSessionId: "looping-session",
+        prompt: "Continue the plan.",
+        resumeFallbackPrompt:
+          "<stella_thread_history>Checkpoint summary seed</stella_thread_history>\n\nContinue the plan.",
+        modelId: "claude-code/default",
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      const records = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { argv: string[]; content: string });
+      expect(result.text).toBe("Recovered after loop.");
+      expect(result.sessionId).toBe("fresh-after-loop");
+      expect(records).toHaveLength(2);
+      expect(records[0]?.argv).toContain("--resume");
+      expect(records[0]?.content).not.toContain("<stella_thread_history>");
+      expect(records[1]?.argv).not.toContain("--resume");
+      expect(records[1]?.content).toContain("Checkpoint summary seed");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

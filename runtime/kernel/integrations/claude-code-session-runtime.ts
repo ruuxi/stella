@@ -32,6 +32,20 @@ const DEFAULT_STEP_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_STEP_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const CLAUDE_CODE_COMPACTING_TEXT = "Compacting context";
 const CLAUDE_CODE_RUNNING_TEXT = "Working";
+/**
+ * Loop breaker for Claude Code's own auto-compaction. A healthy turn compacts
+ * at most once; repeated compactions within one Stella turn mean the session
+ * context can no longer fit and compaction will keep re-triggering forever.
+ * Past this count the session process is killed and the turn restarts on a
+ * fresh session seeded from `resumeFallbackPrompt` (the checkpoint-compacted
+ * Stella history).
+ */
+const MAX_COMPACTIONS_PER_TURN = 3;
+const CLAUDE_CODE_COMPACTION_LOOP_MESSAGE =
+  "Claude Code entered a compaction loop.";
+
+const isCompactionLoopError = (message: string): boolean =>
+  message.includes(CLAUDE_CODE_COMPACTION_LOOP_MESSAGE);
 
 const buildClaudeCodeHookSettings = (): string => {
   const command = `"${process.execPath}" -e ""`;
@@ -152,6 +166,10 @@ type ClaudeCodeStreamingProcess = {
   finalSessionId: string;
   pending: PendingStructuredPrompt[];
   closed: boolean;
+  /** True while the CLI is inside a compaction (PreCompact seen, no PostCompact yet). */
+  compacting: boolean;
+  /** Discrete compactions observed in the current Stella turn (reset per turn). */
+  compactionCount: number;
 };
 
 type SessionState = {
@@ -578,16 +596,6 @@ export const getClaudeCodeStatusChangeFromStreamEvent = (
   return null;
 };
 
-const emitClaudeCodeStatusFromStreamEvent = (
-  event: Record<string, unknown>,
-  onStatusChange?: (status: ClaudeCodeStatusChange) => void,
-) => {
-  const status = getClaudeCodeStatusChangeFromStreamEvent(event);
-  if (status) {
-    onStatusChange?.(status);
-  }
-};
-
 const cleanupSessionArtifacts = (session: SessionState) => {
   if (!session.artifactDir) {
     return;
@@ -727,6 +735,13 @@ class ClaudeCodeSessionRuntime {
     let usage: ClaudeUsage | undefined;
     let nextPrompt = buildInitialPrompt(session, request);
 
+    // The compaction loop breaker counts per Stella turn, across all
+    // structured steps of that turn.
+    if (session.process) {
+      session.process.compacting = false;
+      session.process.compactionCount = 0;
+    }
+
     for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
       const response = await this.executeStructuredStep(
         session,
@@ -796,6 +811,7 @@ class ClaudeCodeSessionRuntime {
     effectiveSystemPrompt: string,
     prompt: string,
     useResume: boolean,
+    allowCompactionLoopRestart = true,
   ): Promise<StructuredStepResult> {
     try {
       const processState = this.ensureStreamingProcess(
@@ -815,6 +831,7 @@ class ClaudeCodeSessionRuntime {
           effectiveSystemPrompt,
           prompt,
           true,
+          allowCompactionLoopRestart,
         );
       }
       if (useResume && isMissingResumeSessionError(message)) {
@@ -827,6 +844,27 @@ class ClaudeCodeSessionRuntime {
           request,
           effectiveSystemPrompt,
           request.resumeFallbackPrompt ?? prompt,
+          false,
+          allowCompactionLoopRestart,
+        );
+      }
+      if (allowCompactionLoopRestart && isCompactionLoopError(message)) {
+        // The session context can no longer fit and Claude Code keeps
+        // re-compacting. Abandon the CLI conversation and restart the turn on
+        // a fresh session seeded from the checkpoint-compacted Stella
+        // history. The caller persists the fresh session id at turn end,
+        // replacing the looping one. At most once per step, so a fresh
+        // session that still loops fails loudly instead of cycling.
+        this.resetStreamingProcess(request.sessionKey, session);
+        session.sessionId = crypto.randomUUID();
+        session.turnCount = 0;
+        session.resumeReady = false;
+        return await this.executeStructuredStepWithMode(
+          session,
+          request,
+          effectiveSystemPrompt,
+          request.resumeFallbackPrompt ?? prompt,
+          false,
           false,
         );
       }
@@ -914,6 +952,8 @@ class ClaudeCodeSessionRuntime {
       finalSessionId: session.sessionId,
       pending: [],
       closed: false,
+      compacting: false,
+      compactionCount: 0,
     };
     session.process = processState;
     this.activeProcesses.set(request.sessionKey, child);
@@ -946,12 +986,26 @@ class ClaudeCodeSessionRuntime {
           session.sessionId = processState.finalSessionId;
           session.resumeReady = true;
         }
+        const status = getClaudeCodeStatusChangeFromStreamEvent(parsedLine);
+        if (status) {
+          // Count discrete compactions (compacting -> running transitions),
+          // not every compaction-related stream event.
+          if (status.state === "compacting" && !processState.compacting) {
+            processState.compacting = true;
+            processState.compactionCount += 1;
+            if (processState.compactionCount > MAX_COMPACTIONS_PER_TURN) {
+              this.failCompactionLoop(request.sessionKey, session, processState);
+              return;
+            }
+          } else if (status.state === "running") {
+            processState.compacting = false;
+          }
+        }
         const current = processState.pending[0];
         if (current) {
-          emitClaudeCodeStatusFromStreamEvent(
-            parsedLine,
-            current.request.onStatusChange,
-          );
+          if (status) {
+            current.request.onStatusChange?.(status);
+          }
           current.emitStreamDelta(parsedLine);
         }
         if (parsedLine.type === "result") {
@@ -1220,6 +1274,30 @@ class ClaudeCodeSessionRuntime {
       sessionId: session.sessionId,
       usage,
     };
+  }
+
+  /**
+   * Kill a session process stuck in a compaction loop and fail its in-flight
+   * prompts with a recognizable error so `executeStructuredStepWithMode` can
+   * restart the turn on a fresh session seeded from the checkpoint history.
+   */
+  private failCompactionLoop(
+    sessionKey: string,
+    session: SessionState,
+    processState: ClaudeCodeStreamingProcess,
+  ): void {
+    processState.closed = true;
+    if (session.process === processState) {
+      session.process = undefined;
+    }
+    this.activeProcesses.delete(sessionKey);
+    const failed = processState.pending.splice(0);
+    killProcess(processState.child);
+    const error = new Error(CLAUDE_CODE_COMPACTION_LOOP_MESSAGE);
+    for (const pending of failed) {
+      this.detachAbortListener(pending);
+      pending.reject(error);
+    }
   }
 
   private resetStreamingProcess(sessionKey: string, session: SessionState): void {
