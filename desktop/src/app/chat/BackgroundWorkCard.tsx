@@ -51,13 +51,16 @@ const TITLE_SHIMMER_MS = 1900;
 function computeWorking(
   threadIds: string[],
   completedThreadIds: readonly string[],
+  pausedThreadIds: readonly string[],
   supersededThreadIds: readonly string[],
   spawnedAtMs: Record<string, number>,
-): { working: boolean; nextStaleDeadlineMs?: number } {
+): { working: boolean; paused: boolean; nextStaleDeadlineMs?: number } {
   const completedSet = new Set(completedThreadIds);
+  const pausedSet = new Set(pausedThreadIds);
   const supersededSet = new Set(supersededThreadIds);
   const now = Date.now();
   let working = false;
+  let paused = false;
   let nextStaleDeadlineMs: number | undefined;
 
   for (const id of threadIds) {
@@ -66,6 +69,13 @@ function computeWorking(
     if (supersededSet.has(id)) continue;
     // Its `agent-completed` has landed in the message stream.
     if (completedSet.has(id)) continue;
+    // Paused (its latest `agent-canceled` postdates this card's spawn):
+    // not working — the shimmer stops — but flagged so the card can label
+    // itself "Paused" instead of reading as settled.
+    if (pausedSet.has(id)) {
+      paused = true;
+      continue;
+    }
     // No completion signal: a fresh spawn reads as working; one whose
     // lifecycle aged out of the loaded windows is presumed settled so the
     // card doesn't shimmer "working" forever after a reload.
@@ -82,6 +92,7 @@ function computeWorking(
 
   return {
     working,
+    paused,
     // Only arm a timer while the card is still shimmering — once settled,
     // crossing a deadline wouldn't change anything.
     ...(working && nextStaleDeadlineMs !== undefined
@@ -107,6 +118,7 @@ function resolveDescriptions(
 export function BackgroundWorkCard({
   threadIds,
   completedThreadIds,
+  pausedThreadIds,
   supersededThreadIds,
   spawnedAtMs,
   descriptions,
@@ -118,6 +130,10 @@ export function BackgroundWorkCard({
   /** Reload-safe subset whose `agent-completed` event has landed — used to
    *  decide whether the title still shimmers. */
   completedThreadIds?: string[];
+  /** Subset paused since this card's spawn (latest `agent-canceled` wins) —
+   *  the shimmer stops and the subtitle reads "Paused" until a resume's
+   *  fresh `agent-started` supersedes this card. */
+  pausedThreadIds?: string[];
   /** Subset a later turn's card now owns; frozen as settled here. */
   supersededThreadIds?: string[];
   /** Per-thread spawn/last-advanced time (ms) for the stale-spawn fallback. */
@@ -132,16 +148,24 @@ export function BackgroundWorkCard({
   // Bumped by the stale-deadline timer so the working check re-evaluates its
   // time-based branch on its own rather than waiting for an unrelated render.
   const [tick, setTick] = useState(0);
-  const { working, nextStaleDeadlineMs } = useMemo(
+  const { working, paused, nextStaleDeadlineMs } = useMemo(
     () =>
       computeWorking(
         threadIds,
         completedThreadIds ?? [],
+        pausedThreadIds ?? [],
         supersededThreadIds ?? [],
         spawnedAtMs ?? {},
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [threadIds, completedThreadIds, supersededThreadIds, spawnedAtMs, tick],
+    [
+      threadIds,
+      completedThreadIds,
+      pausedThreadIds,
+      supersededThreadIds,
+      spawnedAtMs,
+      tick,
+    ],
   );
 
   // While a thread reads as working only because it hasn't yet crossed the
@@ -177,11 +201,22 @@ export function BackgroundWorkCard({
       ? label?.trim() || resolved[0] || `${threadIds.length} tasks`
       : resolved[0] || label?.trim() || "Background work";
 
+  // "Paused" only replaces the ACTIVE presentation: while any covered thread
+  // is still genuinely working the card keeps its shimmer + normal subtitle,
+  // and a settled card keeps its plain historical label.
+  const showPaused = paused && !working;
+  const subtitle = showPaused
+    ? "Paused"
+    : isFollowUp
+      ? "Follow-up sent"
+      : "Started in background";
+
   return (
     <div
       className="background-work-card"
       data-state={isFollowUp ? "follow-up" : "started"}
       data-working={working ? "true" : undefined}
+      data-paused={showPaused ? "true" : undefined}
     >
       <span className="background-work-card__glyph" aria-hidden="true">
         {isFollowUp ? (
@@ -198,9 +233,7 @@ export function BackgroundWorkCard({
             title
           )}
         </span>
-        <span className="background-work-card__subtitle">
-          {isFollowUp ? "Follow-up sent" : "Started in background"}
-        </span>
+        <span className="background-work-card__subtitle">{subtitle}</span>
       </span>
     </div>
   );

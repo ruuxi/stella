@@ -123,6 +123,13 @@ export type AssistantRowViewModel = {
   backgroundWork?: {
     threadIds: string[];
     completedThreadIds: string[];
+    /** Reload-safe subset whose latest `agent-canceled` postdates this card's
+     *  spawn (and any completion) — the thread was paused (the orchestrator's
+     *  pause_agent lands as a cancel; the runtime treats non-running threads
+     *  as paused/resumable). The card renders a "Paused" label and stops its
+     *  shimmer for these; a resume (`send_input`) emits a fresh
+     *  `agent-started` whose newer card supersedes this one. */
+    pausedThreadIds?: string[];
     supersededThreadIds?: string[];
     /** Per-thread work description (the spawn's user-friendly summary),
      *  used as the card title — mirrors the sidebar Activity surface. */

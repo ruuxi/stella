@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getBackgroundWork } from "@/features/chat/hooks/use-event-rows";
+import {
+  derivePausedThreadIds,
+  getBackgroundWork,
+} from "@/features/chat/hooks/use-event-rows";
 import type { EventRecord } from "@/features/chat/lib/event-transforms";
 
 /**
@@ -119,5 +122,59 @@ describe("getBackgroundWork spawn vs send_input follow-up", () => {
     expect(work?.followUpThreadIds).toEqual(["thread-b"]);
     expect(work?.statusTexts["thread-b"]).toBe("Follow-up update for B");
     expect(work?.statusTexts["thread-a"]).toBeUndefined();
+  });
+});
+
+describe("derivePausedThreadIds — paused state for the inline cards", () => {
+  it("flags a thread whose agent-canceled (pause_agent) postdates this card's spawn", () => {
+    const paused = derivePausedThreadIds(
+      ["thread-a"],
+      { "thread-a": 100 },
+      new Map(),
+      new Map([["thread-a", 250]]),
+    );
+    expect(paused).toEqual(["thread-a"]);
+  });
+
+  it("ignores a cancel from a PREVIOUS run (before this card's spawn)", () => {
+    // Thread paused earlier, then re-activated via send_input: the follow-up
+    // card (spawn 300) must read as active again — labels + shimmer return.
+    const paused = derivePausedThreadIds(
+      ["thread-a"],
+      { "thread-a": 300 },
+      new Map(),
+      new Map([["thread-a", 250]]),
+    );
+    expect(paused).toEqual([]);
+  });
+
+  it("completion after the cancel wins — a finished thread is settled, not Paused", () => {
+    const paused = derivePausedThreadIds(
+      ["thread-a"],
+      { "thread-a": 100 },
+      new Map([["thread-a", 400]]),
+      new Map([["thread-a", 250]]),
+    );
+    expect(paused).toEqual([]);
+  });
+
+  it("pause after a completion (thread revived then paused) reads as Paused", () => {
+    const paused = derivePausedThreadIds(
+      ["thread-a"],
+      { "thread-a": 100 },
+      new Map([["thread-a", 200]]),
+      new Map([["thread-a", 500]]),
+    );
+    expect(paused).toEqual(["thread-a"]);
+  });
+
+  it("only flags threads with a cancel signal at all", () => {
+    const paused = derivePausedThreadIds(
+      ["thread-a", "thread-b"],
+      { "thread-a": 100, "thread-b": 100 },
+      new Map(),
+      new Map([["thread-b", 150]]),
+    );
+    expect(paused).toEqual(["thread-b"]);
   });
 });
