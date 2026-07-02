@@ -202,8 +202,8 @@ export function PublishDialog({
           releaseNumber: release.releaseNumber,
         });
         showToast({
-          title: "Published",
-          description: `${toastName} is now in the store.`,
+          title: "Submitted for review",
+          description: `${toastName} was sent to the Stella team. It goes live in the store once it's approved.`,
         });
       } catch (error) {
         showToast({
