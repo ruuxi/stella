@@ -17,6 +17,7 @@ import {
   buildClaudeCodeTurnPrompts,
   buildClaudePromptFromMessages,
   buildExternalStellaHistoryPromptMessage,
+  getClaudeCodeAutoCompactConfig,
   getExternalEngineSessionId,
   setExternalEngineSessionId,
 } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
@@ -945,6 +946,87 @@ describe("claude-code-session-runtime", () => {
     } finally {
       db.close();
       fs.rmSync(rootPath, { recursive: true, force: true });
+    }
+  });
+
+  it("aligns Claude Code auto-compaction with the native budget for the orchestrator only", () => {
+    // Orchestrator takeover runs mirror the native engine: 80k window,
+    // compaction at 60k (75% of the window).
+    expect(
+      getClaudeCodeAutoCompactConfig({ agentType: "orchestrator", vanilla: false }),
+    ).toEqual({ autoCompactWindowTokens: 80_000, autoCompactTriggerPct: 75 });
+    // Worker agents keep Claude Code's default compaction behavior.
+    expect(
+      getClaudeCodeAutoCompactConfig({ agentType: "explore", vanilla: false }),
+    ).toBeUndefined();
+    // Vanilla per-spawn Claude Code sessions are never budget-overridden.
+    expect(
+      getClaudeCodeAutoCompactConfig({ agentType: "orchestrator", vanilla: true }),
+    ).toBeUndefined();
+  });
+
+  it("forwards the auto-compaction budget to the Claude Code CLI environment", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-compact-env-"));
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "env.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "let buffer = '';",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  const idx = buffer.indexOf('\\n');",
+        "  if (idx === -1) return;",
+        "  fs.appendFileSync(process.env.STELLA_FAKE_CLAUDE_LOG, JSON.stringify({",
+        "    autoCompactWindow: process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ?? null,",
+        "    autoCompactPct: process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE ?? null,",
+        "  }) + '\\n');",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    session_id: 'compact-env-session',",
+        "    is_error: false,",
+        "    structured_output: { type: 'final', message: 'ok' },",
+        "    usage: { input_tokens: 1, output_tokens: 1 },",
+        "  }) + '\\n');",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-compact-env",
+        sessionKey: `test:compact-env:${Date.now()}`,
+        prompt: "Hello.",
+        modelId: "claude-code/default",
+        autoCompactWindowTokens: 80_000,
+        autoCompactTriggerPct: 75,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      const record = JSON.parse(
+        fs.readFileSync(logPath, "utf8").trim().split("\n")[0]!,
+      ) as { autoCompactWindow: string | null; autoCompactPct: string | null };
+      expect(result.text).toBe("ok");
+      expect(record.autoCompactWindow).toBe("80000");
+      expect(record.autoCompactPct).toBe("75");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
