@@ -141,6 +141,32 @@ const FOLLOW_REARM_EXTRA_PX = 24
 const followRearmThresholdPx = (trailingRegionMinPx: number): number =>
   trailingRegionMinPx + FOLLOW_REARM_EXTRA_PX
 
+/**
+ * Resolved reduce-motion state. Prefer the `data-reduce-motion` attribute
+ * written by `interface-preferences` (covers the in-app override as well as
+ * the OS setting); fall back to the media query if the attribute hasn't
+ * been applied yet. Gentle one-shot reframes land instantly under reduced
+ * motion; the continuous stream-follow is position tracking, not a
+ * decorative transition, so it is unaffected.
+ */
+const prefersReducedMotion = (): boolean => {
+  if (typeof document === 'undefined') return false
+  const attr = document.documentElement.getAttribute('data-reduce-motion')
+  if (attr) return attr === 'reduce'
+  return (
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+  )
+}
+
+/**
+ * Turn identity (`userMessageId`) embedded in an assistant scroll-follow
+ * key (`assistant-<userMessageId>-<indexInTurn>`). Used to tell "a new
+ * turn started streaming" (gentle reframe) apart from "the same turn
+ * grew or advanced to its next slot" (spring follow / hard snap).
+ */
+const followKeyTurnId = (followKey: string): string =>
+  followKey.replace(/^assistant-/, '').replace(/-\d+$/, '')
+
 type ChatScrollSurface = keyof typeof TRAILING_REGION_MIN_PX
 
 type ChatScrollManagementOptions = {
@@ -473,6 +499,16 @@ export function useChatScrollManagement({
       let followVel = 0
       let lastFrameTime = 0
       let lastTargetTime = 0
+      // Turn-start reframe latch. When the followed turn changes (a fresh
+      // send, or a queued follow-up dispatching once its turn comes) the
+      // first catch-up is a one-shot reframe with no reading continuity to
+      // preserve, so it uses the gentle ease-out instead of the
+      // stream-tuned spring — whose hard-snap branch is exactly the
+      // jarring jump on queued-message dispatch. The latch holds gentle
+      // across the per-chunk retargets until the loop first catches up,
+      // then the spring owns the follow for the rest of the turn.
+      let lastFollowedTurnId: string | null = null
+      let turnStartGlide = false
 
       const stopLoop = () => {
         if (followRaf) cancelAnimationFrame(followRaf)
@@ -482,6 +518,7 @@ export function useChatScrollManagement({
         followVel = 0
         lastFrameTime = 0
         lastTargetTime = 0
+        turnStartGlide = false
       }
 
       const stepFollow = () => {
@@ -510,6 +547,7 @@ export function useChatScrollManagement({
           attached.scrollTop = target
           followVel = 0
           lastFrameTime = 0
+          turnStartGlide = false
           if (
             followGentle ||
             performance.now() - lastTargetTime > FOLLOW_STREAM_IDLE_MS
@@ -595,6 +633,18 @@ export function useChatScrollManagement({
           return
         }
         const gentle = Boolean(options.gentle)
+        // Reduced motion: gentle one-shot reframes land instantly instead
+        // of easing (the animation is the point of `gentle`, so there is
+        // nothing slower to fall back to).
+        if (gentle && prefersReducedMotion()) {
+          attached.scrollTop = clamped
+          followTarget = null
+          followGentle = false
+          followVel = 0
+          lastFrameTime = 0
+          turnStartGlide = false
+          return
+        }
         // Switching from a warm spring glide into a gentle one-shot (or
         // vice versa) shouldn't carry stale velocity between the two
         // motion profiles.
@@ -703,6 +753,15 @@ export function useChatScrollManagement({
         if (!attached || !followRef.current) return
         const followKey = getAssistantScrollFollowKey()
         if (!followKey) return
+        // A different turn started streaming — arm the gentle turn-start
+        // reframe. Same-turn key changes (next slot after a tool call)
+        // keep the spring so post-tool content dumps still hard-snap into
+        // view instead of gliding with the text off-screen.
+        const turnId = followKeyTurnId(followKey)
+        if (turnId !== lastFollowedTurnId) {
+          lastFollowedTurnId = turnId
+          turnStartGlide = true
+        }
         const streamingRow = attached.querySelector<HTMLElement>(
           `[data-scroll-follow-key="${CSS.escape(followKey)}"]`,
         )
@@ -741,7 +800,7 @@ export function useChatScrollManagement({
         // (their `pinnedTop` sits below `bottomFollow`, so it never bites).
         const pinnedTop = Math.max(0, rowTop - FOLLOW_TOP_PEEK_PX)
         const target = Math.min(bottomFollow, pinnedTop)
-        setTarget(target)
+        setTarget(target, turnStartGlide ? { gentle: true } : undefined)
       }
       let followAssistantRowRaf = 0
       const scheduleFollowActiveAssistantRow = () => {
