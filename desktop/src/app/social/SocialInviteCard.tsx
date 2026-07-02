@@ -6,8 +6,15 @@ import { setPendingSocialInvite } from "@/global/social/social-invite-store";
 import type { SocialInvite } from "./invite-links";
 import "./social.css";
 
+/**
+ * Only the two social kinds render as invite cards. Store links never
+ * reach this component: a whole-body `stella://store/...` message is
+ * claimed by `parseShareLink` → `AddonShareCard` first.
+ */
+type SocialChatInvite = Exclude<SocialInvite, { kind: "view-store-package" }>;
+
 type SocialInviteCardProps = {
-  invite: SocialInvite;
+  invite: SocialChatInvite;
 };
 
 const INVITE_CARD_CACHE_TTL_MS = 5 * 60 * 1000;

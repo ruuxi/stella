@@ -19,10 +19,19 @@ const WEB_HOST = "stella.sh";
 
 const INVITE_CODE_PATTERN = /^[A-Za-z0-9-]{8,9}$/;
 const USERNAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+// Same shape `features/store/share-link.ts` accepts (dots allowed).
+const PACKAGE_ID_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
 export type SocialInvite =
   | { kind: "join-community"; inviteCode: string }
-  | { kind: "add-friend"; username: string };
+  | { kind: "add-friend"; username: string }
+  /**
+   * Externally-arriving `stella://store/<handle>/<packageId>` deep link.
+   * Deliberately has NO `https://stella.sh/store/...` web form yet — the
+   * website half is intentionally unbuilt, so store links pasted outside
+   * Stella don't resolve in browsers until that trust/safety call is made.
+   */
+  | { kind: "view-store-package"; authorUsername: string; packageId: string };
 
 /** Strip the display hyphen ("ABCD-EFGH" → "ABCDEFGH") and uppercase. */
 const normalizeInviteCode = (raw: string): string =>
@@ -59,8 +68,25 @@ export const parseSocialInviteLink = (input: string): SocialInvite | null => {
 
   if (protocol === "stella") {
     // stella://join/<code> — the action is the hostname.
-    if (segments.length !== 1) return null;
     action = parsed.hostname.trim().toLowerCase();
+    if (action === "store") {
+      // Deep-link-only (no web form; see `view-store-package` above).
+      if (segments.length !== 2) return null;
+      const authorUsername = segments[0]!;
+      const packageId = segments[1]!;
+      if (
+        !USERNAME_PATTERN.test(authorUsername) ||
+        !PACKAGE_ID_PATTERN.test(packageId)
+      ) {
+        return null;
+      }
+      return {
+        kind: "view-store-package",
+        authorUsername: authorUsername.toLowerCase(),
+        packageId: packageId.toLowerCase(),
+      };
+    }
+    if (segments.length !== 1) return null;
     value = segments[0]!;
   } else if (protocol === "https" || protocol === "http") {
     if (parsed.hostname.trim().toLowerCase() !== WEB_HOST) return null;
