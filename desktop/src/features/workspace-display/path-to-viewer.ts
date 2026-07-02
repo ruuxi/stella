@@ -186,6 +186,45 @@ export const fileArtifactPayloadForPath = (
 const isMarkdownExtension = (extension: string | null): boolean =>
   extension != null && MARKDOWN_EXTS.has(extension);
 
+/**
+ * `~/.stella/outputs/**` (or the portable `state/outputs/**`) is the
+ * conventional deliverables directory — agents are instructed to put
+ * user-facing generated files there. Surfaces that rank or pick produced
+ * files treat these paths as first-class deliverables.
+ */
+const DECLARED_OUTPUTS_RE = /(?:^|[\\/])(?:\.stella|state)[\\/]outputs[\\/]/;
+
+export const isDeclaredOutputPath = (filePath: string): boolean =>
+  DECLARED_OUTPUTS_RE.test(filePath);
+
+const NOISE_PATH_SEGMENTS = new Set(["node_modules", "__pycache__"]);
+const NOISE_EXTS = new Set(["log", "tmp", "lock", "pid"]);
+
+/**
+ * Snapshot-detected `producedFiles` sweep up incidental writes alongside real
+ * deliverables: browser profiles (`.brave-profile/Local State`), launch logs
+ * (`.stella-launch.log`), caches, `.DS_Store`, scratch dirs. Filter those out
+ * of every user-facing produced-file surface (inline artifact card pool,
+ * completion-card pills, Recent files) so a 900-record shell rollup doesn't
+ * drown the actual outputs. Explicit `fileChanges` (deliberate tool edits)
+ * are NOT run through this — only indirect snapshot detections.
+ *
+ * A dot-segment means a hidden/profile/cache dir and is always noise, with
+ * one carve-out: `.stella` itself, since `~/.stella/outputs/**` is the
+ * declared deliverables home.
+ */
+export const isNoiseProducedPath = (filePath: string): boolean => {
+  const trimmed = filePath.trim();
+  if (!trimmed) return true;
+  for (const segment of trimmed.split(/[\\/]/)) {
+    if (!segment) continue;
+    if (segment.startsWith(".") && segment !== ".stella") return true;
+    if (NOISE_PATH_SEGMENTS.has(segment)) return true;
+  }
+  const ext = extensionOf(trimmed);
+  return ext != null && NOISE_EXTS.has(ext);
+};
+
 export const isDeveloperResourceExtension = (
   extension: string | null,
 ): boolean => extension != null && DEVELOPER_RESOURCE_EXTS.has(extension);

@@ -9,12 +9,14 @@
  * attaches to — i.e. the chronological completion point in the transcript.
  *
  * Two structural facts make this clean and append-only by construction:
- *   1. Each `agent-completed` event carries ONLY that run's files (the runner
- *      builds a fresh file-change collector per `runSubagentTask` and the
- *      manager overwrites `task.fileChanges` with the latest run's result), so
- *      a `send_input` re-run's completion lands on a LATER row with only the
- *      newly-produced files — never re-showing what an earlier completion
- *      already revealed.
+ *   1. Each `agent-completed` event carries ONLY files not yet revealed by an
+ *      earlier completion: the manager banks every run's collected records
+ *      (including runs a `send_input` follow-up aborted before their rollup
+ *      could fire) and drains the bank when a completion event is actually
+ *      emitted. A `send_input` re-run's completion therefore lands on a LATER
+ *      row with the files produced since the last emitted rollup — never
+ *      re-showing what an earlier completion already revealed, and never
+ *      losing what an interrupted run produced.
  *   2. Each `agent-completed` event attaches to exactly one message row (see
  *      `group-events-into-messages`) — though during the SQLite/stream
  *      handoff the same underlying event can briefly be projected onto both
@@ -32,6 +34,7 @@ import {
 } from "./event-transforms";
 import { deriveAgentFilesMap } from "@/features/workspace-display/agent-files";
 import type { ConversationFileEntry } from "@/features/workspace-display/derive-conversation-files";
+import { isDeclaredOutputPath } from "@/features/workspace-display/path-to-viewer";
 
 /** One agent's completion, sectionalized on the card. Never merged with
  *  another agent — several agents completing at the same point each get their
@@ -60,6 +63,21 @@ const asNonEmptyString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
+
+/**
+ * Declared deliverables (`~/.stella/outputs/**`) lead the pill list; the pill
+ * cap then truncates incidental writes (worktree scratch, intermediate
+ * assets) instead of the files the user actually asked for. Stable within
+ * each group, so `deriveConversationFiles`' most-recent-first order is
+ * preserved among peers. Entries are already deduped by path upstream
+ * (`deriveConversationFiles` keys its map by path).
+ */
+const rankDeliverablesFirst = (
+  entries: ConversationFileEntry[],
+): ConversationFileEntry[] => [
+  ...entries.filter((entry) => isDeclaredOutputPath(entry.path)),
+  ...entries.filter((entry) => !isDeclaredOutputPath(entry.path)),
+];
 
 /**
  * Fold every `agent-started` event across the loaded window into a per-agent
@@ -147,7 +165,7 @@ export function buildAgentCompletionSections(
       agentId,
       title,
       completedAtMs: completedAtByAgent.get(agentId) ?? 0,
-      files: [...entries],
+      files: rankDeliverablesFirst([...entries]),
     });
   }
   return sections;

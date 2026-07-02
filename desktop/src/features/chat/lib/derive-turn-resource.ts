@@ -35,7 +35,9 @@ import {
   basenameOf,
   extensionOf,
   fileArtifactPayloadForPath,
+  isDeclaredOutputPath,
   isDeveloperResourceExtension,
+  isNoiseProducedPath,
   pickPrimaryEditedPath,
 } from "@/features/workspace-display/path-to-viewer";
 import type { EventRecord } from "./event-transforms";
@@ -159,11 +161,26 @@ const fileChangesForResult = (event: EventRecord): FileChangeRecord[] => {
   return isFileChangeRecordArray(candidate) ? candidate : [];
 };
 
+/**
+ * Post-change path of a file record (`move_path` wins for moves) — the
+ * location surfaces would actually open.
+ */
+const postChangePathForRecord = (record: FileChangeRecord): string =>
+  record.kind.type === "update" && record.kind.move_path
+    ? record.kind.move_path
+    : record.path;
+
 const producedFilesForResult = (event: EventRecord): ProducedFileRecord[] => {
   if (!isToolResult(event) || isDelegatedToolResult(event)) return [];
   const candidate = (event.payload as { producedFiles?: unknown } | undefined)
     ?.producedFiles;
-  return isProducedFileRecordArray(candidate) ? candidate : [];
+  if (!isProducedFileRecordArray(candidate)) return [];
+  // Snapshot-detected outputs sweep up profile/cache/log noise alongside the
+  // real deliverables — drop the noise at the extraction choke point so every
+  // consumer in this module (produced pool, html-output payload) is covered.
+  return candidate.filter(
+    (record) => !isNoiseProducedPath(postChangePathForRecord(record)),
+  );
 };
 
 const officeRefForResult = (event: EventRecord): OfficePreviewRef | null => {
@@ -299,16 +316,19 @@ const orchestratorHtmlPayload = (
 
 /**
  * Pull a `canvas-html` payload from any tool-result this turn whose
- * `fileChanges` touch `~/.stella/outputs/html/*.html`. Lets the general
- * agent (or any future tool that uses `apply_patch`/`exec_command`)
- * write a canvas to the same conventional output dir and have it
- * surface as an inline artifact + Canvas tab, the same way the
- * orchestrator's `html` tool does. The orchestrator's richer
- * (title-carrying) result is preferred — this is the fallback when no
- * orchestrator html tool was used. Latest write in the turn wins.
+ * `fileChanges` touch an `.html` file anywhere under `~/.stella/outputs/**`
+ * (the declared deliverables dir — `outputs/html/` canvases included, but
+ * also e.g. reports written straight to `outputs/report.html`, which are
+ * user-facing documents, not developer source). Lets the general agent (or
+ * any future tool that uses `apply_patch`/`exec_command`) write a canvas to
+ * the conventional output dir and have it surface as an inline artifact +
+ * Canvas tab, the same way the orchestrator's `html` tool does. The
+ * orchestrator's richer (title-carrying) result is preferred — this is the
+ * fallback when no orchestrator html tool was used. Latest write in the
+ * turn wins.
  */
 const HTML_OUTPUT_PATH_RE =
-  /(?:^|\/)(?:\.stella|state)\/outputs\/html\/([^/]+)\.html$/;
+  /(?:^|\/)(?:\.stella|state)\/outputs\/(?:.+\/)?([^/]+)\.html$/;
 
 const titleFromHtmlSlug = (slug: string): string => {
   const trimmed = slug.trim();
@@ -447,10 +467,11 @@ export const buildPayloadFromBarePath = (
     patch?: string;
   },
 ): DisplayPayload | null => {
-  // Canvas HTML artifacts live under `~/.stella/outputs/html/<slug>.html` and
-  // need to surface as a `canvas-html` payload (not a generic .html source
-  // diff) so the home overview's Recent files list, the inline chat card,
-  // and the workspace Canvas tab all open the same viewer.
+  // HTML artifacts under `~/.stella/outputs/**` (canvases in `outputs/html/`
+  // plus reports/documents written anywhere in the outputs tree) need to
+  // surface as a `canvas-html` payload (not a generic .html source diff) so
+  // the home overview's Recent files list, the inline chat card, completion
+  // pills, and the workspace Canvas tab all open the same viewer.
   const htmlMatch = HTML_OUTPUT_PATH_RE.exec(filePath);
   if (htmlMatch) {
     const slug = htmlMatch[1]!;
@@ -789,7 +810,21 @@ export const deriveTurnResource = (
     );
   }
 
-  const candidatePaths = [...editedPaths, ...producedPaths, ...referencedPaths];
+  // Within the produced pool, declared deliverables (`~/.stella/outputs/**`)
+  // outrank incidental writes elsewhere: `pickPrimaryEditedPath` returns the
+  // FIRST preferred-extension path, so ordering decides which file anchors
+  // the card when a run produced both (e.g. a rendered video in outputs plus
+  // scratch frames in a worktree).
+  const rankedProducedPaths = [
+    ...producedPaths.filter(isDeclaredOutputPath),
+    ...producedPaths.filter((path) => !isDeclaredOutputPath(path)),
+  ];
+
+  const candidatePaths = [
+    ...editedPaths,
+    ...rankedProducedPaths,
+    ...referencedPaths,
+  ];
   if (candidatePaths.length === 0) return null;
 
   const primary = pickPrimaryEditedPath(candidatePaths, {

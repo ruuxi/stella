@@ -123,6 +123,19 @@ type RuntimeAgentRecord = {
   result?: string;
   fileChanges?: FileChangeRecord[];
   producedFiles?: ProducedFileRecord[];
+  /**
+   * File records banked across runs whose terminal `agent-completed` was
+   * never emitted. A `send_input` follow-up aborts the in-flight
+   * `runSubagent` before its completion rollup fires, and without banking,
+   * everything that run wrote (e.g. rendered videos in
+   * `~/.stella/outputs/`) would never surface on any completion card.
+   * Merged into `task.fileChanges` / `task.producedFiles` when a completion
+   * finally lands, then drained at emission so a later re-run's completion
+   * only reveals files produced since the last emitted rollup (preserving
+   * the append-only reveal property the completion card relies on).
+   */
+  bankedFileChanges?: FileChangeRecord[];
+  bankedProducedFiles?: ProducedFileRecord[];
   error?: string;
   controller: AbortController;
   storageMode: "cloud" | "local";
@@ -191,6 +204,34 @@ type RuntimeAgentRecord = {
 
 const formatTaskUpdateStatusText = (text: string): string =>
   truncate(text.replace(/\s+/g, " ").trim(), 200);
+
+const fileRecordKey = (record: FileChangeRecord): string =>
+  `${record.kind.type}:${record.path}:${
+    record.kind.type === "update" ? (record.kind.move_path ?? "") : ""
+  }`;
+
+/**
+ * Append-merge file records, deduped by `(kind, path, move_path)` — the same
+ * identity the runner's per-run collectors use. First occurrence wins so a
+ * banked record from an interrupted run keeps its original position when the
+ * completing run re-reports the same write.
+ */
+const mergeUniqueFileRecords = <T extends FileChangeRecord>(
+  existing: T[] | undefined,
+  incoming: T[] | undefined,
+): T[] | undefined => {
+  if (!incoming?.length) return existing;
+  if (!existing?.length) return [...incoming];
+  const out: T[] = [];
+  const seen = new Set<string>();
+  for (const record of [...existing, ...incoming]) {
+    const key = fileRecordKey(record);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(record);
+  }
+  return out;
+};
 
 type FsLock = {
   id: string;
@@ -1036,6 +1077,18 @@ export class LocalAgentManager implements AgentToolApi {
       const result = await this.opts.runSubagent(runSubagentArgs);
 
       task.completedAt = Date.now();
+      // Bank this run's collected file records immediately, before any
+      // branch below decides the run's fate. A `send_input` follow-up
+      // aborts the run without emitting its completion; banking is what
+      // lets those files survive into the eventual rollup.
+      task.bankedFileChanges = mergeUniqueFileRecords(
+        task.bankedFileChanges,
+        result.fileChanges,
+      );
+      task.bankedProducedFiles = mergeUniqueFileRecords(
+        task.bankedProducedFiles,
+        result.producedFiles,
+      );
       if (this.shouldDeliverFollowUp(task)) {
         // `send_input` aborted the current `runSubagent` on purpose so
         // we can deliver the queued follow-up as the next user turn on
@@ -1054,8 +1107,13 @@ export class LocalAgentManager implements AgentToolApi {
       } else {
         task.status = "completed";
         task.result = result.result;
-        task.fileChanges = result.fileChanges;
-        task.producedFiles = result.producedFiles;
+        // Completion rollup = banked records from send_input-interrupted
+        // runs + this run's (already merged into the bank above). Drained
+        // when the `agent-completed` event is actually emitted, so files
+        // are never re-revealed across rollups but survive completions
+        // that get skipped (e.g. a queued follow-up re-entering the loop).
+        task.fileChanges = task.bankedFileChanges;
+        task.producedFiles = task.bankedProducedFiles;
       }
     } catch (error) {
       task.completedAt = Date.now();
@@ -1115,6 +1173,10 @@ export class LocalAgentManager implements AgentToolApi {
             ? { producedFiles: task.producedFiles }
             : {}),
         };
+        // The rollup is now captured on the event — drain the bank so a
+        // send_input re-run's later completion only reveals new files.
+        task.bankedFileChanges = undefined;
+        task.bankedProducedFiles = undefined;
         if (task.currentTurnIsInterjection) {
           // Interjection turn: tell the orchestrator immediately (it
           // needs the result to reply and decide whether to resume),

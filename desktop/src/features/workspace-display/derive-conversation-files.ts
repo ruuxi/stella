@@ -20,6 +20,7 @@ import {
   type DisplayTabPayload,
 } from "@/shared/contracts/display-payload";
 import { buildPayloadFromBarePath } from "@/features/chat/lib/derive-turn-resource";
+import { isNoiseProducedPath } from "@/features/workspace-display/path-to-viewer";
 
 export type ConversationFileEntry = {
   path: string;
@@ -85,9 +86,19 @@ export function deriveConversationFiles(
     const fileChanges = isFileChangeRecordArray(payload.fileChanges)
       ? payload.fileChanges
       : [];
-    const produced = isProducedFileRecordArray(payload.producedFiles)
-      ? payload.producedFiles
-      : [];
+    // Snapshot-detected produced files sweep up profile/cache/log noise
+    // (e.g. `.brave-profile/Local State`, `.stella-launch.log`) alongside
+    // real deliverables — drop the noise here so completion-card pills and
+    // the Recent files list only show user-facing outputs. Explicit
+    // `fileChanges` are deliberate tool edits and stay unfiltered.
+    const produced = (
+      isProducedFileRecordArray(payload.producedFiles)
+        ? payload.producedFiles
+        : []
+    ).filter((record) => {
+      const path = resolvedPathForChange(record);
+      return path === null || !isNoiseProducedPath(path);
+    });
 
     for (const record of [...fileChanges, ...produced]) {
       const path = resolvedPathForChange(record);

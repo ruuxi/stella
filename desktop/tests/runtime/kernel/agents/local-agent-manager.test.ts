@@ -760,3 +760,162 @@ describe("LocalAgentManager Exec fs locking", () => {
     expect(maxConcurrentRuns).toBe(2);
   });
 });
+
+describe("LocalAgentManager file records across send_input re-runs", () => {
+  it("banks a send_input-interrupted run's files into the eventual completion rollup, then drains", async () => {
+    const events: AgentLifecycleEvent[] = [];
+    let runCount = 0;
+    let firstRunStarted: (() => void) | null = null;
+    const firstRunStartedPromise = new Promise<void>((resolve) => {
+      firstRunStarted = resolve;
+    });
+    const completions = () =>
+      events.filter((event) => event.type === "agent-completed");
+    const waitForCompletions = async (count: number) => {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (completions().length >= count) return;
+        await sleep(25);
+      }
+      throw new Error(`Expected ${count} completion event(s) in time.`);
+    };
+
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => {
+        runCount += 1;
+        if (runCount === 1) {
+          firstRunStarted?.();
+          await new Promise<void>((resolve) => {
+            if (args.abortSignal.aborted) {
+              resolve();
+              return;
+            }
+            args.abortSignal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+          });
+          // The interrupted run DID produce real files (e.g. rendered
+          // videos in ~/.stella/outputs) before the send_input cut it off.
+          return {
+            runId: args.runId,
+            result: "",
+            interrupted: true,
+            fileChanges: [
+              {
+                path: "/home/u/.stella/outputs/demos/review.html",
+                kind: { type: "update" as const },
+              },
+            ],
+            producedFiles: [
+              {
+                path: "/home/u/.stella/outputs/demos/demo1.mp4",
+                kind: { type: "add" as const },
+              },
+            ],
+          };
+        }
+        if (runCount === 2) {
+          // Follow-up run re-reports one banked write (dedupe) and adds a
+          // new one.
+          return {
+            runId: args.runId,
+            result: `done-${runCount}`,
+            producedFiles: [
+              {
+                path: "/home/u/.stella/outputs/demos/demo1.mp4",
+                kind: { type: "add" as const },
+              },
+              {
+                path: "/home/u/.stella/outputs/demos/demo2.mp4",
+                kind: { type: "add" as const },
+              },
+            ],
+          };
+        }
+        // Post-drain run: only its own new file.
+        return {
+          runId: args.runId,
+          result: `done-${runCount}`,
+          producedFiles: [
+            {
+              path: "/home/u/.stella/outputs/demos/final.pdf",
+              kind: { type: "add" as const },
+            },
+          ],
+        };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => {
+        events.push(event);
+      },
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "render demo videos",
+      prompt: "render the demos",
+      agentType: AGENT_IDS.GENERAL,
+      rootRunId: "root-1",
+      storageMode: "local",
+    });
+    await firstRunStartedPromise;
+
+    // send_input mid-run: aborts run 1 (its completion is never emitted)
+    // and delivers the follow-up as the next turn on the same session.
+    await manager.sendAgentMessage(
+      task.threadId,
+      "add music to the videos",
+      "orchestrator",
+      { rootRunId: "root-2" },
+    );
+    await waitForCompletions(1);
+
+    // The first EMITTED completion must carry run 1's banked files merged
+    // with run 2's, deduped by path+kind.
+    const first = completions()[0]!;
+    expect(first.fileChanges).toEqual([
+      {
+        path: "/home/u/.stella/outputs/demos/review.html",
+        kind: { type: "update" },
+      },
+    ]);
+    expect(first.producedFiles).toEqual([
+      {
+        path: "/home/u/.stella/outputs/demos/demo1.mp4",
+        kind: { type: "add" },
+      },
+      {
+        path: "/home/u/.stella/outputs/demos/demo2.mp4",
+        kind: { type: "add" },
+      },
+    ]);
+
+    // Resume the thread: the bank was drained at emission, so the next
+    // completion only reveals the new run's files (append-only property).
+    await manager.sendAgentMessage(
+      task.threadId,
+      "export a final pdf",
+      "orchestrator",
+      { rootRunId: "root-3" },
+    );
+    await waitForCompletions(2);
+
+    const second = completions()[1]!;
+    expect(second.fileChanges).toBeUndefined();
+    expect(second.producedFiles).toEqual([
+      {
+        path: "/home/u/.stella/outputs/demos/final.pdf",
+        kind: { type: "add" },
+      },
+    ]);
+  });
+});
