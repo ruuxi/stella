@@ -42,6 +42,7 @@ import type {
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
+import { anomalousStreamStopError, providerAbortedStopMessage } from "../utils/provider-stop.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { adjustMaxTokensForThinking, buildBaseOptions, clampReasoning } from "./simple-options.js";
 import { transformMessages } from "./transform-messages.js";
@@ -237,6 +238,11 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream", BedrockOpt
 					handleContentBlockStop(item.contentBlockStop, blocks, output, stream);
 				} else if (item.messageStop) {
 					output.stopReason = mapStopReason(item.messageStop.stopReason);
+					// Keep the raw stop reason (guardrail_intervened/content_filtered/...)
+					// so the surfaced error explains why the stream died.
+					if (output.stopReason === "error" && !output.errorMessage && item.messageStop.stopReason) {
+						output.errorMessage = providerAbortedStopMessage(String(item.messageStop.stopReason));
+					}
 				} else if (item.metadata) {
 					handleMetadata(item.metadata, model, output);
 				} else if (item.internalServerException) {
@@ -257,7 +263,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream", BedrockOpt
 			}
 
 			if (output.stopReason === "error" || output.stopReason === "aborted") {
-				throw new Error("An unknown error occurred");
+				throw anomalousStreamStopError(output);
 			}
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });

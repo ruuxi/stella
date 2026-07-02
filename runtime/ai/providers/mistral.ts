@@ -25,6 +25,7 @@ import type {
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { shortHash } from "../utils/hash.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
+import { anomalousStreamStopError, providerAbortedStopMessage } from "../utils/provider-stop.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { buildBaseOptions } from "./simple-options.js";
 import { transformMessages } from "./transform-messages.js";
@@ -85,7 +86,7 @@ export const streamMistral: StreamFunction<"mistral-conversations", MistralOptio
 			}
 
 			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new Error("An unknown error occurred");
+				throw anomalousStreamStopError(output);
 			}
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
@@ -319,6 +320,11 @@ async function consumeChatStream(
 
 		if (choice.finishReason) {
 			output.stopReason = mapChatStopReason(choice.finishReason);
+			// Keep the raw finish reason so the surfaced error explains why the
+			// stream died.
+			if (output.stopReason === "error" && !output.errorMessage) {
+				output.errorMessage = providerAbortedStopMessage(String(choice.finishReason));
+			}
 		}
 
 		const delta = choice.delta;

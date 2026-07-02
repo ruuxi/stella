@@ -21,6 +21,7 @@ import type {
 	ToolCall,
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
+import { anomalousStreamStopError, providerAbortedStopMessage } from "../utils/provider-stop.js";
 import { retryWithBackoff } from "../utils/retry.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import type { GoogleThinkingLevel } from "./google-gemini-cli.js";
@@ -224,6 +225,11 @@ export const streamGoogleVertex: StreamFunction<"google-vertex", GoogleVertexOpt
 					if (output.content.some((b) => b.type === "toolCall")) {
 						output.stopReason = "toolUse";
 					}
+					// Keep the raw finish reason (SAFETY/PROHIBITED_CONTENT/...) so the
+					// surfaced error explains why the stream died.
+					if (output.stopReason === "error" && !output.errorMessage) {
+						output.errorMessage = providerAbortedStopMessage(String(candidate.finishReason));
+					}
 				}
 
 				if (chunk.usageMetadata) {
@@ -270,7 +276,7 @@ export const streamGoogleVertex: StreamFunction<"google-vertex", GoogleVertexOpt
 			}
 
 			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new Error("An unknown error occurred");
+				throw anomalousStreamStopError(output);
 			}
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });

@@ -30,6 +30,7 @@ import type {
 import type { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { shortHash } from "../utils/hash.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
+import { providerAbortedStopMessage } from "../utils/provider-stop.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { transformMessages } from "./transform-messages.js";
 
@@ -608,6 +609,18 @@ export async function processResponsesStream<TApi extends Api>(
 			output.stopReason = mapStopReason(response?.status);
 			if (output.content.some((b) => b.type === "toolCall") && output.stopReason === "stop") {
 				output.stopReason = "toolUse";
+			}
+			// Keep the raw terminal status (and any error/incomplete detail on the
+			// response) so the surfaced error explains why the stream died.
+			if (output.stopReason === "error" && !output.errorMessage) {
+				const responseError = response?.error;
+				const incompleteReason = response?.incomplete_details?.reason;
+				const detail = responseError
+					? ` — ${responseError.code || "unknown"}: ${responseError.message || "no message"}`
+					: incompleteReason
+						? ` — incomplete: ${incompleteReason}`
+						: "";
+				output.errorMessage = `${providerAbortedStopMessage(String(response?.status))}${detail}`;
 			}
 		} else if (event.type === "error") {
 			throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");

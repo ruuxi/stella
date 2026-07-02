@@ -16,6 +16,7 @@ import type {
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
+import { anomalousStreamStopError } from "../utils/provider-stop.js";
 import { isCloudflareProvider, resolveCloudflareBaseUrl } from "./cloudflare.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.js";
@@ -118,7 +119,7 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 			}
 
 			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new Error("An unknown error occurred");
+				throw anomalousStreamStopError(output);
 			}
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });

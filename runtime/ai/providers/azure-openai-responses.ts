@@ -12,6 +12,7 @@ import type {
 	StreamOptions,
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
+import { anomalousStreamStopError } from "../utils/provider-stop.js";
 import { retryWithBackoff } from "../utils/retry.js";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.js";
 import { buildBaseOptions, clampReasoning } from "./simple-options.js";
@@ -104,7 +105,7 @@ export const streamAzureOpenAIResponses: StreamFunction<"azure-openai-responses"
 			}
 
 			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new Error("An unknown error occurred");
+				throw anomalousStreamStopError(output);
 			}
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });

@@ -31,6 +31,7 @@ import { sanitizeInlineImagePayload } from "../utils/image-payload.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.js";
+import { anomalousStreamStopError, providerAbortedStopMessage } from "../utils/provider-stop.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 
 import { resolveCloudflareBaseUrl } from "./cloudflare.js";
@@ -716,6 +717,12 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 				} else if (event.type === "message_delta") {
 					if (event.delta.stop_reason) {
 						output.stopReason = mapStopReason(event.delta.stop_reason);
+						// Preserve the raw provider stop reason (refusal/sensitive/etc.)
+						// so the surfaced error explains WHY the stream died instead of
+						// collapsing into an opaque "unknown error".
+						if (output.stopReason === "error" && !output.errorMessage) {
+							output.errorMessage = providerAbortedStopMessage(event.delta.stop_reason);
+						}
 					}
 					// Only update usage fields if present (not null).
 					// Preserves input_tokens from message_start when proxies omit it in message_delta.
@@ -743,7 +750,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 			}
 
 			if (output.stopReason === "aborted" || output.stopReason === "error") {
-				throw new Error("An unknown error occurred");
+				throw anomalousStreamStopError(output);
 			}
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
