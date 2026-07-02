@@ -281,9 +281,9 @@ describe("routeLifecycleEvents", () => {
   });
 
   it("releases a card immediately when the overlay vanishes WITHOUT a persisted twin (aborted segment)", () => {
-    // Overlay-slot routings are per-frame, never sticky: if the segment
-    // aborts (canceled run / empty text) and no twin ever lands, the very
-    // next derive re-homes the event onto the surviving anchors instead of
+    // A pin to a slot key that never returns (canceled run / empty text —
+    // no twin ever lands) falls back to a per-frame derive, so the very
+    // next frame re-homes the event onto the surviving anchors instead of
     // leaving it parked on a dead slot until some later event.
     const state = createLifecycleRoutingState();
     const midStreamCompleted = event({
@@ -322,6 +322,183 @@ describe("routeLifecycleEvents", () => {
     // Overlay cleared, nothing persisted for the slot.
     const released = routeLifecycleEvents([userWithEvent()], state);
     expect(released[0]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+  });
+
+  it("keeps a mid-stream card on the twin's row across a gap frame (overlay cleared before the twin loads)", () => {
+    // The overlay -> persisted handoff is not atomic: RUN_STARTED of the
+    // next run (or a reset) can clear the overlay a frame before the
+    // SQLite tail refresh delivers the twin. The transient frame renders
+    // the card at the fallback anchor, but the slot pin must survive so
+    // the twin reclaims the card — a gap frame must never permanently
+    // re-home a painted card above the text.
+    const state = createLifecycleRoutingState();
+    const midStreamCompleted = event({
+      _id: "c-mid",
+      type: "agent-completed",
+      timestamp: 350,
+      payload: { agentId: "agent-a" },
+    });
+    const userRow = (toolEvents: EventRecord[]) =>
+      message({
+        _id: "u1",
+        timestamp: 100,
+        type: "user_message",
+        toolEvents,
+      });
+
+    // Frame 1: streaming; the card routes onto the overlay row.
+    const liveFrame = routeLifecycleEvents(
+      [
+        userRow([midStreamCompleted]),
+        message({
+          _id: "stream-overlay:u1:1",
+          timestamp: 300,
+          type: "assistant_message",
+          payload: {
+            text: "streaming…",
+            userMessageId: "u1",
+            metadata: { runtime: { isStreaming: true } },
+          },
+          toolEvents: [],
+        }),
+      ],
+      state,
+    );
+    expect(liveFrame[1]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+
+    // Gap frame: overlay cleared, twin not delivered yet. The card falls
+    // back to the user anchor for this frame only.
+    const gapFrame = routeLifecycleEvents([userRow([midStreamCompleted])], state);
+    expect(gapFrame[0]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+
+    // Twin frame: the persisted twin occupies the overlay's slot — the
+    // card must be back on the finished text's row, not stuck above it.
+    const settled = routeLifecycleEvents(
+      [
+        userRow([]),
+        message({
+          _id: "assistant-msg-run1-9",
+          timestamp: 400,
+          type: "assistant_message",
+          payload: {
+            text: "final text",
+            userMessageId: "u1",
+            metadata: { runtime: { streamStartedAtMs: 300 } },
+          },
+          toolEvents: [midStreamCompleted],
+        }),
+      ],
+      state,
+    );
+    expect(settled[1]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+    expect(settled[0]!.toolEvents).toEqual([]);
+  });
+
+  it("keeps a mid-stream card on the twin's row when the worker-stamped stream start postdates the event (clock skew)", () => {
+    // The overlay's start is renderer-observed; the twin's
+    // streamStartedAtMs is worker-stamped. A few ms of skew can push the
+    // twin's start past the event's timestamp — the shared slot pin, not
+    // the timestamps, must carry the routing across the handoff.
+    const state = createLifecycleRoutingState();
+    const midStreamCompleted = event({
+      _id: "c-mid",
+      type: "agent-completed",
+      timestamp: 350,
+      payload: { agentId: "agent-a" },
+    });
+
+    routeLifecycleEvents(
+      [
+        message({
+          _id: "u1",
+          timestamp: 100,
+          type: "user_message",
+          toolEvents: [midStreamCompleted],
+        }),
+        message({
+          _id: "stream-overlay:u1:1",
+          timestamp: 349,
+          type: "assistant_message",
+          payload: {
+            text: "streaming…",
+            userMessageId: "u1",
+            metadata: { runtime: { isStreaming: true } },
+          },
+          toolEvents: [],
+        }),
+      ],
+      state,
+    );
+
+    const settled = routeLifecycleEvents(
+      [
+        message({
+          _id: "u1",
+          timestamp: 100,
+          type: "user_message",
+          toolEvents: [],
+        }),
+        message({
+          _id: "assistant-msg-run1-9",
+          timestamp: 400,
+          type: "assistant_message",
+          payload: {
+            text: "final text",
+            userMessageId: "u1",
+            metadata: { runtime: { streamStartedAtMs: 352 } },
+          },
+          toolEvents: [midStreamCompleted],
+        }),
+      ],
+      state,
+    );
+    expect(settled[1]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+    expect(settled[0]!.toolEvents).toEqual([]);
+  });
+
+  it("does not let a stale pin capture a NEW stream that reuses an aborted segment's slot", () => {
+    // Segment 1 streams, the event routes onto it, then the segment
+    // aborts without persisting — its slot key dangles. A later stream
+    // for the same user message re-mints the same positional slot key;
+    // the old pin must be detected as stale (the new overlay's start
+    // postdates the event) instead of pulling the old card into the new
+    // run's streaming row.
+    const state = createLifecycleRoutingState();
+    const midStreamCompleted = event({
+      _id: "c-mid",
+      type: "agent-completed",
+      timestamp: 350,
+      payload: { agentId: "agent-a" },
+    });
+    const userRow = () =>
+      message({
+        _id: "u1",
+        timestamp: 100,
+        type: "user_message",
+        toolEvents: [midStreamCompleted],
+      });
+    const overlayRow = (timestamp: number) =>
+      message({
+        _id: "stream-overlay:u1:1",
+        timestamp,
+        type: "assistant_message",
+        payload: {
+          text: "streaming…",
+          userMessageId: "u1",
+          metadata: { runtime: { isStreaming: true } },
+        },
+        toolEvents: [],
+      });
+
+    // Segment 1 streams and claims the event.
+    routeLifecycleEvents([userRow(), overlayRow(300)], state);
+    // Segment 1 aborts: overlay gone, nothing persisted.
+    routeLifecycleEvents([userRow()], state);
+    // Segment 2 streams in the same slot, starting AFTER the event.
+    const retryFrame = routeLifecycleEvents([userRow(), overlayRow(600)], state);
+
+    expect(retryFrame[0]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+    expect(retryFrame[1]!.toolEvents).toEqual([]);
   });
 
   it("keeps a mid-stream card on the twin's row when the twin lacks streamStartedAtMs (legacy worker)", () => {
