@@ -13,7 +13,11 @@ import {
   runClaudeCodeTurn,
   shutdownClaudeCodeRuntime,
 } from "../../../../../runtime/kernel/integrations/claude-code-session-runtime.js";
-import { buildClaudePromptFromMessages } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
+import {
+  buildClaudePromptFromMessages,
+  getExternalEngineSessionId,
+  setExternalEngineSessionId,
+} from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
 
 describe("claude-code-session-runtime", () => {
   const originalFetch = globalThis.fetch;
@@ -421,6 +425,113 @@ describe("claude-code-session-runtime", () => {
       } else {
         process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
       }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps vanilla and takeover Claude Code persisted session ids separate", () => {
+    const values = new Map<string, string>();
+    const store = {
+      getThreadExternalSessionId: (threadKey: string) =>
+        values.get(threadKey),
+      setThreadExternalSessionId: (threadKey: string, value: string) => {
+        values.set(threadKey, value);
+      },
+    } as unknown as Parameters<typeof getExternalEngineSessionId>[0]["store"];
+
+    setExternalEngineSessionId({
+      store,
+      threadKey: "thread-1",
+      engine: "claude_code_local_vanilla",
+      sessionId: "vanilla-session",
+    });
+    expect(
+      getExternalEngineSessionId({
+        store,
+        threadKey: "thread-1",
+        engine: "claude_code_local_vanilla",
+      }),
+    ).toBe("vanilla-session");
+    // A takeover run on the same thread must never resume the vanilla id.
+    expect(
+      getExternalEngineSessionId({
+        store,
+        threadKey: "thread-1",
+        engine: "claude_code_local",
+      }),
+    ).toBeUndefined();
+
+    setExternalEngineSessionId({
+      store,
+      threadKey: "thread-1",
+      engine: "claude_code_local",
+      sessionId: "takeover-session",
+    });
+    expect(
+      getExternalEngineSessionId({
+        store,
+        threadKey: "thread-1",
+        engine: "claude_code_local",
+      }),
+    ).toBe("takeover-session");
+    // ...and the reverse holds once the takeover id overwrites the slot.
+    expect(
+      getExternalEngineSessionId({
+        store,
+        threadKey: "thread-1",
+        engine: "claude_code_local_vanilla",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("fails a vanilla Claude Code turn that returns an empty result", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-empty-"));
+    const binDir = path.join(dir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "let buffer = '';",
+        "function handle() {",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    session_id: 'fake-session',",
+        "    is_error: false,",
+        "    result: '   ',",
+        "  }) + '\\n');",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle();",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    try {
+      await expect(
+        runClaudeCodeTurn({
+          runId: "run-vanilla-empty",
+          sessionKey: `test-vanilla-empty:${Date.now()}`,
+          prompt: "Do the task.",
+          modelId: "claude-code/default",
+          vanilla: true,
+          tools: [],
+          executeTool: async () => ({ result: "unused" }),
+        }),
+      ).rejects.toThrow("Claude Code returned an empty result.");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });

@@ -88,7 +88,9 @@ export const parseSpawnAgentModel = (value: unknown): SpawnModelSelection => {
   const raw = toOptionalString(value);
   if (!raw || raw === "default") return { kind: "default" };
   const slash = raw.indexOf("/");
-  const head = slash === -1 ? raw : raw.slice(0, slash);
+  // Engine ids are matched case-insensitively so `Codex/gpt-x` selects the
+  // engine instead of falling through to a confusing route error.
+  const head = (slash === -1 ? raw : raw.slice(0, slash)).toLowerCase();
   const engine = SPAWN_ENGINE_IDS[head];
   if (engine) {
     const model = slash === -1 ? undefined : raw.slice(slash + 1).trim();
@@ -260,10 +262,25 @@ export const handleSpawnAgent = async (
     };
   }
 
+  // agent_type was removed with the custom-agent-types story; error loudly
+  // instead of silently ignoring a stale argument.
+  if (toOptionalString(args.agent_type)) {
+    return {
+      error:
+        "agent_type has been removed from spawn_agent. Every spawn runs the general agent; use the optional `model` parameter to pick a model or engine instead.",
+    };
+  }
+
   const modelSelection = parseSpawnAgentModel(args.model);
-  if (modelSelection.kind === "model" && ctx.validateSpawnModel) {
+  if (modelSelection.kind === "model") {
     // Fail the spawn loudly on an unroutable model — never silently fall
-    // back to the configured default.
+    // back to the configured default. A host without a validator can't
+    // honor the override, which is also a loud failure, not a fallback.
+    if (!ctx.validateSpawnModel) {
+      return {
+        error: `Cannot honor model "${modelSelection.model}": model routing is not available in this runtime. Omit the model parameter to use the configured default.`,
+      };
+    }
     try {
       ctx.validateSpawnModel(modelSelection.model);
     } catch (error) {

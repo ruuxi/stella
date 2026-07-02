@@ -99,8 +99,8 @@ export type LocalAgentContext = {
    * Per-spawn engine selection from spawn_agent's `model` parameter. When
    * set, `agentEngine` reflects the selected engine for this run and external
    * engines honor the pinned engine-native model (if any). For Claude Code
-   * this also switches the run to vanilla pass-through mode (stock CC tools,
-   * no Stella system-prompt override).
+   * this also switches the run to vanilla pass-through mode (CC's own tools
+   * and config, no Stella tool bridge or system-prompt override).
    */
   spawnEngine?: SpawnEngineSelection;
   maxAgentConcurrency?: number;

@@ -161,7 +161,10 @@ const buildToolResultContent = async (toolResult: {
   return content;
 };
 
-type ExternalEngineSessionKind = "claude_code_local" | "codex_cli";
+type ExternalEngineSessionKind =
+  | "claude_code_local"
+  | "claude_code_local_vanilla"
+  | "codex_cli";
 
 type ExternalOrchestratorEngine = "claude_code_local";
 
@@ -185,10 +188,14 @@ export const selectExternalOrchestratorEngine = (
 
 const EXTERNAL_ENGINE_SESSION_PREFIXES: readonly string[] = [
   "claude_code_local:",
+  // Vanilla per-spawn Claude Code sessions are persisted under their own
+  // namespace so a takeover run never `--resume`s a vanilla conversation
+  // (and vice versa).
+  "claude_code_local_vanilla:",
   "codex_cli:",
 ];
 
-const getExternalEngineSessionId = (args: {
+export const getExternalEngineSessionId = (args: {
   store: BaseRunOptions["store"];
   threadKey: string;
   engine: ExternalEngineSessionKind;
@@ -209,7 +216,7 @@ const getExternalEngineSessionId = (args: {
   return args.engine === "claude_code_local" ? raw : undefined;
 };
 
-const setExternalEngineSessionId = (args: {
+export const setExternalEngineSessionId = (args: {
   store: BaseRunOptions["store"];
   threadKey: string;
   engine: ExternalEngineSessionKind;
@@ -457,9 +464,10 @@ const runClaudeHostedTurn = async (args: {
     stellaAppDir: args.opts.stellaAppDir,
   });
   // Per-spawn claude-code selection (spawn_agent `model: claude-code[/...]`)
-  // runs vanilla Claude Code: stock CC tools and config, no Stella tool
-  // bridge, no system-prompt override. The global engine preference keeps the
-  // full takeover behavior (spawnEngine is never set on that path).
+  // runs vanilla Claude Code: CC keeps its own tools and config — no Stella
+  // tool bridge, no system-prompt override (the headless flags and hook
+  // settings still apply). The global engine preference keeps the full
+  // takeover behavior (spawnEngine is never set on that path).
   const spawnEngine = args.opts.agentContext.spawnEngine;
   const vanilla = spawnEngine?.engine === "claude_code_local";
   const baseSessionKey = args.opts.agentContext.activeThreadId
@@ -468,10 +476,14 @@ const runClaudeHostedTurn = async (args: {
   // Mode-suffixed so a later default-engine run on the same thread never
   // reuses a CLI process that was started with vanilla arguments.
   const sessionKey = vanilla ? `${baseSessionKey}:vanilla` : baseSessionKey;
+  // The persisted CLI session id is namespaced by mode too, so a takeover
+  // run never resumes a vanilla conversation on the same thread.
+  const sessionEngine: "claude_code_local" | "claude_code_local_vanilla" =
+    vanilla ? "claude_code_local_vanilla" : "claude_code_local";
   const persistedSessionId = getExternalEngineSessionId({
     store: args.opts.store,
     threadKey,
-    engine: "claude_code_local",
+    engine: sessionEngine,
   });
   const toolMetadata = vanilla
     ? []
@@ -687,7 +699,7 @@ const runClaudeHostedTurn = async (args: {
   setExternalEngineSessionId({
     store: args.opts.store,
     threadKey,
-    engine: "claude_code_local",
+    engine: sessionEngine,
     sessionId: finalResult.sessionId,
   });
 
