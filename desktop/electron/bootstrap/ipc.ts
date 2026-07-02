@@ -8,6 +8,7 @@ import { registerMeetingCaptureHandlers } from "../ipc/meeting-capture-handlers.
 import { registerDisplayHandlers } from "../ipc/display-handlers.js";
 import { registerHomeHandlers } from "../ipc/home-handlers.js";
 import { registerLocalChatHandlers } from "../ipc/local-chat-handlers.js";
+import { registerMobileHelloHandlers } from "../ipc/mobile-hello-handlers.js";
 import { registerMemoryHandlers } from "../ipc/memory-handlers.js";
 import { registerMigrationHandlers } from "../ipc/migration-handlers.js";
 import { registerMorphHandlers } from "../ipc/morph-handlers.js";
@@ -402,6 +403,14 @@ export const registerBootstrapIpcHandlers = (
 
   registerLocalChatHandlers({
     localChatHistoryService: services.localChatHistoryService,
+    assertPrivilegedSender: (event, channel) =>
+      services.externalLinkService.assertPrivilegedSender(event, channel),
+  });
+
+  registerMobileHelloHandlers({
+    localChatHistoryService: services.localChatHistoryService,
+    getActiveConversationId: () => services.uiStateService.state.conversationId,
+    getUiStateSnapshot: () => state.uiStateKvStore?.snapshot() ?? {},
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
   });

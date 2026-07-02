@@ -9,7 +9,17 @@ import {
 } from "./cloudflare-tunnel-resource.js";
 
 const AUTH_SYNC_INTERVAL_MS = 30_000;
-const MOBILE_SESSION_IDLE_TIMEOUT_MS = 10 * 60_000;
+/**
+ * How long the bridge server + Cloudflare tunnel stay up with no phone
+ * activity. This used to be 10 minutes, which meant nearly every app-open on
+ * the phone paid the full cold path (cloudflared spawn, edge registration,
+ * readiness probing, registration lease — 8-30s). Idle cost of keeping it up
+ * is small (cloudflared ~20-40 MB RSS, a keepalive connection, no CPU), the
+ * hostname is already public/stable, and sessions still expire on their own
+ * TTL — so we keep the transport warm for half a day and let truly dormant
+ * desktops wind down.
+ */
+const MOBILE_SESSION_IDLE_TIMEOUT_MS = 12 * 60 * 60_000;
 const WINDOW_RETRY_DELAY_MS = 1_000;
 const PORT_RETRY_DELAY_MS = 500;
 
