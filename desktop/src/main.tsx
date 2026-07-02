@@ -7,6 +7,7 @@ import "./shared/styles/app-components.css";
 import "./shared/i18n/rtl.css";
 
 import "./platform/dev/vite-error-recovery";
+import "./platform/dev/morph-settle-signal";
 import "./shared/lib/interface-preferences";
 import { applyLowPowerDocumentFlag } from "./shared/lib/device-perf";
 import "./shared/lib/native-font-smoothing";

@@ -345,6 +345,52 @@ export function selfModHmrControl(): Plugin {
   let suppressedClientMessages = 0
   let clientUpdateReleaseDepth = 0
   let clientFullReloadRequestedDuringApply = false
+  /**
+   * Timed suppression window for STRAY post-apply `full-reload` broadcasts.
+   *
+   * When the host applies with `suppressClientFullReload` (it is about to
+   * run its own COVERED reloadIgnoringCache — the reload morph tier), the
+   * apply dispatches synthetic watcher events (e.g. for index.html). Vite's
+   * watcher pipeline processes those ASYNCHRONOUSLY, after
+   * `clientUpdateReleaseDepth` has dropped and the run's pause released —
+   * so its `full-reload` broadcast escaped both suppression gates and
+   * raw-reloaded the renderer a second time. Depending on timing that
+   * second reload landed mid morph-capture (capture #2 = pure white
+   * backing, revealed by the morph) or after the morph ended (raw
+   * uncovered white reload) — the "white flash on hard reload".
+   *
+   * The host reloads the renderer itself in this mode, so any full-reload
+   * inside this window is redundant by construction and safe to drop.
+   *
+   * The window is tied to the ACTUAL swap lifecycle, not a wall-clock guess:
+   * it opens when a suppress-mode apply returns and closes shortly after the
+   * next NEW ws client connects (that connection IS the covered reload's
+   * fresh document booting — proof the host's swap happened). A grace period
+   * after the connection absorbs watcher-pipeline stragglers, and a hard
+   * failsafe cap guarantees a wedged swap can never suppress forever.
+   */
+  let hostOwnedSwapActivatedAtMs = 0
+  let hostOwnedSwapDeactivateTimer: ReturnType<typeof setTimeout> | null = null
+  const HOST_OWNED_SWAP_CONNECTION_GRACE_MS = 1_500
+  const HOST_OWNED_SWAP_FAILSAFE_MS = 30_000
+  const hostOwnedSwapSuppressing = () =>
+    hostOwnedSwapActivatedAtMs > 0 &&
+    Date.now() - hostOwnedSwapActivatedAtMs < HOST_OWNED_SWAP_FAILSAFE_MS
+  const openHostOwnedSwapWindow = () => {
+    hostOwnedSwapActivatedAtMs = Date.now()
+    if (hostOwnedSwapDeactivateTimer) {
+      clearTimeout(hostOwnedSwapDeactivateTimer)
+      hostOwnedSwapDeactivateTimer = null
+    }
+  }
+  const scheduleHostOwnedSwapClose = () => {
+    if (hostOwnedSwapDeactivateTimer) clearTimeout(hostOwnedSwapDeactivateTimer)
+    hostOwnedSwapDeactivateTimer = setTimeout(() => {
+      hostOwnedSwapDeactivateTimer = null
+      hostOwnedSwapActivatedAtMs = 0
+    }, HOST_OWNED_SWAP_CONNECTION_GRACE_MS)
+    hostOwnedSwapDeactivateTimer.unref?.()
+  }
   let shellMutationDepth = 0
 
   const hasOwnedClientUpdatePause = () =>
@@ -576,6 +622,19 @@ export function selfModHmrControl(): Plugin {
         )
       })
 
+      // A NEW client connecting while the host-owned swap window is open is
+      // the covered reload's fresh document booting — schedule the window
+      // closed after a short straggler grace. (Connections in the first
+      // ~250ms can't be the covered reload; ignore them.)
+      server.ws.on('connection', () => {
+        if (
+          hostOwnedSwapActivatedAtMs > 0 &&
+          Date.now() - hostOwnedSwapActivatedAtMs > 250
+        ) {
+          scheduleHostOwnedSwapClose()
+        }
+      })
+
       const sendClientMessage = server.ws.send.bind(server.ws)
       server.ws.send = ((payload: unknown, ...args: unknown[]) => {
         if (
@@ -586,6 +645,18 @@ export function selfModHmrControl(): Plugin {
         ) {
           clientFullReloadRequestedDuringApply = true
           suppressedClientMessages += 1
+          return
+        }
+        if (
+          payload &&
+          typeof payload === 'object' &&
+          (payload as { type?: unknown }).type === 'full-reload' &&
+          hostOwnedSwapSuppressing()
+        ) {
+          suppressedClientMessages += 1
+          console.info(
+            '[self-mod-hmr] suppressed stray post-apply full-reload (host covered reload owns the renderer swap)',
+          )
           return
         }
         if (shouldSuppressClientMessage(payload)) {
@@ -783,6 +854,13 @@ export function selfModHmrControl(): Plugin {
           for (const absPath of appliedOverlayPaths) {
             appliedOverlay.delete(absPath)
           }
+          // The host performs its own covered reload after this response —
+          // drop any full-reload the async watcher pipeline emits for this
+          // apply (it escapes both suppression gates otherwise and
+          // raw-reloads the renderer a second time). Window closes when the
+          // covered reload's fresh client connects (+grace); see
+          // `openHostOwnedSwapWindow`.
+          openHostOwnedSwapWindow()
           return {
             appliedPaths,
             reloadedModules,

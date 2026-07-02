@@ -75,16 +75,27 @@ void main() {
 }`;
 
 /**
- * Calm "blur + glimm band sweep". The old screenshot frosts (golden-angle
- * disk blur) as `u_strength` ramps up and holds during the HMR/reload work.
- * Then `u_reveal` drives a left→right band; the sharp new screenshot is
- * revealed behind the band as it travels, frosted old ahead of it.
+ * Layered-glass morph cover.
  *
- * The band reproduces glimm's flat-band look (https://glimm.dev) — gaussian
- * band profile (`bandTight` 14), edge wave, and the synthesized-normal
- * Fresnel/spec "swell" that reads as iOS name-drop iridescence. Rather than
- * painting a color, the band acts as a saturation lens: it pushes the
- * underlying content's own colors more vivid as the sweep passes over it.
+ * The old screenshot settles back behind a sheet of glass as `u_strength`
+ * ramps: it recedes ~1% and keeps a barely-there breathe, while a
+ * PROGRESSIVE frost builds — clear-ish at the centre, deep at the edges —
+ * composited from two blur planes (a broad base and a finer floating layer,
+ * both derived from the same golden-angle tap set, so depth costs no extra
+ * texture fetches). The frosted state is graded like a material, not dimmed:
+ * gentle desaturation, a centre lift with an edge vignette, a soft-knee
+ * highlight bloom, and a slow specular sheen drifting diagonally through the
+ * glass so the hold feels alive instead of frozen.
+ *
+ * `u_reveal` then drives the glimm-lineage band sweep (gaussian profile,
+ * edge wave, synthesized-normal specular crest), kept as a saturation lens
+ * over the user's own content but toned down from the previous pass. The
+ * reveal boundary now has material character: a soft leading edge melting
+ * into the frost with a crisp trail, a meniscus refraction where the frost
+ * bends toward the sweep, and a sub-2px chromatic whisper on the incoming
+ * sharp side that exists only inside the band.
+ *
+ * All design knobs are the consts at the top of the fragment shader.
  */
 // Low-power devices drop to 16 taps; the IGN per-pixel spiral rotation turns
 // the undersampling into film grain rather than visible rings.
@@ -109,14 +120,38 @@ const float TWO_PI = 6.28318530718;
 const float PI = 3.14159265359;
 const float GOLDEN_ANGLE = 2.39996323;
 
-// Band width as an intuitive thickness knob — higher = thicker. Converted to
-// the gaussian's internal tightness (which is inverse) below.
+// ——— Design knobs ————————————————————————————————————————————————
+// Progressive frost: blur radius across the depth field (df 0 = screen
+// centre, 1 = corners). Centre stays readable, edges sink into deep glass.
+const float FROST_RADIUS_NEAR = 0.024;
+const float FROST_RADIUS_FAR  = 0.058;
+// Blend between the fine floating plane and the broad base plane, by depth.
+const float PLANE_MIX_NEAR = 0.35;
+const float PLANE_MIX_FAR  = 0.80;
+// Covered snapshot recede + breathe (fractions of frame size).
+const float RECEDE_AMOUNT  = 0.012;
+const float BREATHE_AMOUNT = 0.0035;
+const float BREATHE_RATE   = 0.55;
+// Frost material grading (all scaled by frost strength).
+const float FROST_DESAT    = 0.10;
+const float CENTER_LIFT    = 0.045;
+const float VIGNETTE_AMOUNT = 0.085;
+const float BLOOM_AMOUNT   = 0.12;
+// Drifting sheen through the steady frost (one pass ≈ 6.5s).
+const float SHEEN_RATE     = 0.155;
+const float SHEEN_AMOUNT   = 0.045;
+const float SHEEN_TIGHT    = 55.0;
+// Reveal boundary material.
+const float EDGE_SOFT_LEAD  = 0.055;
+const float EDGE_SOFT_TRAIL = 0.018;
+const float REFRACT_AMOUNT  = 0.010;
+const float CHROMA_AMOUNT   = 0.0012;
+// Band (glimm lineage, toned down from the previous pass).
 const float BAND_WIDTH = 16.0;
 const float WAVE_AMOUNT = 1.0;
-const float SWELL_AMOUNT = 0.8;
-// Vibrance multiplier for the saturation-lens band: 1.0 = unchanged, higher
-// pushes the content's own colors more vivid as the sweep passes over it.
-const float SAT_BOOST = 1.8;
+const float SWELL_AMOUNT = 0.65;
+const float SAT_BOOST = 1.5;
+// ————————————————————————————————————————————————————————————————————
 
 // Interleaved gradient noise — a cheap, well-distributed per-pixel value.
 // We use it to rotate each pixel's sampling spiral by a unique angle so
@@ -125,12 +160,27 @@ float ign(vec2 p) {
   return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
 }
 
-vec3 frostedSample(sampler2D tex, vec2 uv, float radius, float rot) {
+float lumaOf(vec3 c) {
+  return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
+// Two frost planes from ONE golden-angle tap set: every tap is weighted
+// under a broad kernel (deep glass) and a tight kernel (fine floating
+// layer). Layered depth for zero extra texture fetches.
+void frostedDual(
+  sampler2D tex, vec2 uv, float radius, float rot,
+  out vec3 broad, out vec3 fine
+) {
   if (radius < 0.0006) {
-    return texture2D(tex, uv).rgb;
+    vec3 s = texture2D(tex, uv).rgb;
+    broad = s;
+    fine = s;
+    return;
   }
-  vec3 acc = vec3(0.0);
-  float wsum = 0.0;
+  vec3 accB = vec3(0.0);
+  float wsumB = 0.0;
+  vec3 accF = vec3(0.0);
+  float wsumF = 0.0;
   for (int i = 0; i < BLUR_TAPS; i++) {
     float fi = float(i) + 0.5;
     float t = fi / float(BLUR_TAPS);
@@ -138,28 +188,86 @@ vec3 frostedSample(sampler2D tex, vec2 uv, float radius, float rot) {
     float r = sqrt(t) * radius;
     float a = fi * GOLDEN_ANGLE + rot;
     vec2 off = vec2(cos(a) / u_aspect, sin(a)) * r;
-    // Gaussian-ish radial falloff so the kernel is soft, not a hard disk.
-    float w = exp(-2.2 * t);
-    acc += texture2D(tex, clamp(uv + off, 0.0, 1.0)).rgb * w;
-    wsum += w;
+    vec3 s = texture2D(tex, clamp(uv + off, 0.0, 1.0)).rgb;
+    float wB = exp(-2.2 * t);
+    float wF = exp(-9.0 * t);
+    accB += s * wB;
+    wsumB += wB;
+    accF += s * wF;
+    wsumF += wF;
   }
-  return acc / wsum;
+  broad = accB / wsumB;
+  fine = accF / wsumF;
 }
 
 void main() {
   float rot = ign(gl_FragCoord.xy) * TWO_PI;
-  vec3 frostedOld = frostedSample(u_tex, v_uv, u_strength * 0.04, rot);
-  vec3 sharpNew = texture2D(u_tex2, v_uv).rgb;
-
-  // glimm ltr sweep travels from -0.2 to 1.2; the reveal boundary rides the
-  // band centre so the band masks the old→new seam as it passes.
   float axis = v_uv.x;
   float crossAxis = v_uv.y;
-  float pos = mix(-0.2, 1.2, u_reveal);
+  vec2 centered = v_uv - 0.5;
 
-  float revealed = smoothstep(pos - 0.035, pos + 0.035, axis);
-  revealed = 1.0 - revealed;
-  vec3 base = mix(frostedOld, sharpNew, revealed);
+  // ——— band geometry first: the reveal boundary refracts the frost ———
+  float pos = mix(-0.2, 1.2, u_reveal);
+  float tw = u_time;
+  float waveX =
+      sin(crossAxis * 6.0 + tw * 1.3) * 0.020
+    + sin(crossAxis * 13.0 - tw * 0.9 + 1.4) * 0.012
+    + sin(crossAxis * 21.0 + tw * 1.7 + 2.6) * 0.006;
+  waveX *= WAVE_AMOUNT;
+  float bandTight = 140.0 / BAND_WIDTH;
+  float d = (axis - pos) - waveX;
+  float band = exp(-d * d * bandTight);
+  float dhDaxis = -2.0 * d * bandTight * band;
+  float gate = smoothstep(0.0, 0.04, u_reveal) * smoothstep(1.0, 0.96, u_reveal);
+
+  // ——— covered snapshot recedes + breathes behind the glass ———
+  float breathe = 0.5 + 0.5 * sin(u_time * BREATHE_RATE);
+  float recede = u_strength * (RECEDE_AMOUNT + BREATHE_AMOUNT * breathe);
+  vec2 uvOld = centered * (1.0 + recede) + 0.5;
+  // Meniscus: near the sweep the frost bends toward the boundary.
+  float refr = clamp(dhDaxis, -1.2, 1.2) * REFRACT_AMOUNT * gate;
+  uvOld.x = clamp(uvOld.x + refr, 0.0, 1.0);
+  uvOld.y = clamp(uvOld.y, 0.0, 1.0);
+
+  // ——— progressive layered frost ———
+  // Depth field: 0 at the centre, 1 at the corners (aspect-corrected).
+  float rad = length(centered * vec2(u_aspect, 1.0)) /
+    (0.5 * length(vec2(u_aspect, 1.0)));
+  float df = smoothstep(0.15, 1.0, rad);
+  float radius = u_strength * mix(FROST_RADIUS_NEAR, FROST_RADIUS_FAR, df);
+  vec3 broadF;
+  vec3 fineF;
+  frostedDual(u_tex, uvOld, radius, rot, broadF, fineF);
+  vec3 frost = mix(fineF, broadF, mix(PLANE_MIX_NEAR, PLANE_MIX_FAR, df));
+
+  // ——— frost material grading ———
+  float fs = smoothstep(0.0, 0.9, u_strength);
+  float fl = lumaOf(frost);
+  frost = mix(frost, vec3(fl), FROST_DESAT * fs);
+  float shade = 1.0 + CENTER_LIFT * (1.0 - df) * fs - VIGNETTE_AMOUNT * df * fs;
+  frost *= shade;
+  float knee = smoothstep(0.68, 1.0, fl);
+  frost += frost * knee * BLOOM_AMOUNT * fs;
+
+  // ——— drifting sheen: a slow light pass so the hold feels alive ———
+  float sd = dot(v_uv, normalize(vec2(0.80, 0.60)));
+  float sPos = mix(-0.45, 1.85, fract(u_time * SHEEN_RATE * 0.5));
+  float sheenD = sd - sPos;
+  float sheen = exp(-sheenD * sheenD * SHEEN_TIGHT);
+  frost += vec3(sheen * SHEEN_AMOUNT * fs * (0.55 + 0.45 * fl));
+  frost = clamp(frost, 0.0, 1.0);
+
+  // ——— reveal: soft leading edge melting into the frost, crisp trail ———
+  float revealed = 1.0 - smoothstep(pos - EDGE_SOFT_TRAIL, pos + EDGE_SOFT_LEAD, axis);
+
+  // Chromatic whisper only inside the band, on the incoming sharp side.
+  float chroma = CHROMA_AMOUNT * band * gate;
+  vec3 sharpNew;
+  sharpNew.r = texture2D(u_tex2, clamp(v_uv + vec2(chroma, 0.0), 0.0, 1.0)).r;
+  sharpNew.g = texture2D(u_tex2, v_uv).g;
+  sharpNew.b = texture2D(u_tex2, clamp(v_uv - vec2(chroma, 0.0), 0.0, 1.0)).b;
+
+  vec3 base = mix(frost, sharpNew, revealed);
 
   // Updating label baked onto the cover: sharp text over the frosted-old side,
   // fading in with the frost (u_strength) and swept away with the reveal band
@@ -170,22 +278,9 @@ void main() {
     base = mix(base, lbl.rgb, lbl.a * labelFade);
   }
 
-  // ——— glimm flat-band look ———
-  float tw = u_time;
-  float waveX =
-      sin(crossAxis * 6.0 + tw * 1.3) * 0.020
-    + sin(crossAxis * 13.0 - tw * 0.9 + 1.4) * 0.012
-    + sin(crossAxis * 21.0 + tw * 1.7 + 2.6) * 0.006;
-  waveX *= WAVE_AMOUNT;
-
-  // Higher BAND_WIDTH → smaller tightness → wider/thicker band.
-  float bandTight = 140.0 / BAND_WIDTH;
-  float d = (axis - pos) - waveX;
-  float band = exp(-d * d * bandTight);
-
+  // ——— glimm flat-band look (geometry computed above, pre-refraction) ———
   // Synthesized surface normal from the band's analytic slope → the basis for
   // the iridescent hue shift + specular crest (glimm's name-drop trick).
-  float dhDaxis = -2.0 * d * bandTight * band;
   vec3 N = normalize(vec3(-dhDaxis * 0.18, 0.0, 1.0));
 
   float trail = clamp(0.5 - d * 1.3, 0.0, 1.0);
@@ -206,10 +301,8 @@ void main() {
   float fresnel = pow(1.0 - NdotV, 3.0);
   float spec = pow(NdotH, 80.0);
 
-  // Soften the band's entry/exit, and gate it fully off during the cover hold
-  // (u_reveal == 0) and at the very end so no band residue lingers.
+  // Soften the band's entry/exit (gate computed above with the geometry).
   float entryFade = mix(0.2, 1.0, 4.0 * u_reveal * (1.0 - u_reveal));
-  float gate = smoothstep(0.0, 0.04, u_reveal) * smoothstep(1.0, 0.96, u_reveal);
 
   // Saturation lens: the sweep pushes the content's own colors more vivid (with
   // a slight contrast/brightness lift toward the crest) instead of painting a
@@ -226,8 +319,8 @@ void main() {
   float highMask = band * vfade * entryFade * gate * SWELL_AMOUNT;
   vec3 iris = 0.5 + 0.5 * cos(vec3(0.0, 2.1, 4.2) + d * 18.0 + tw * 0.8);
   vec3 bandColor = mix(vec3(0.55, 0.82, 1.0), iris, 0.55);
-  outRGB = mix(outRGB, bandColor, clamp(lensBand * vfade * entryFade * gate * 0.28, 0.0, 0.32));
-  outRGB += (vec3(spec) * 1.05 + bandColor * fresnel * 0.38) * highMask;
+  outRGB = mix(outRGB, bandColor, clamp(lensBand * vfade * entryFade * gate * 0.16, 0.0, 0.20));
+  outRGB += (vec3(spec) * 0.85 + bandColor * fresnel * 0.30) * highMask;
   outRGB = clamp(outRGB, 0.0, 1.0);
 
   gl_FragColor = vec4(outRGB, u_alpha);
