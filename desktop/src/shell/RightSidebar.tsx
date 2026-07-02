@@ -102,18 +102,27 @@ const resolveDisplayPanelWidth = (preferredWidth: number | null): number => {
 const DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD = 260;
 const DISPLAY_PANEL_WIDTH_CSS_VAR = "--display-panel-width";
 
+// Last rounded px written to `:root`, shared by every writer (RO sync,
+// pointer drags) so redundant writes can be skipped — re-setting an inline
+// custom property on the root invalidates style for every `var()` consumer,
+// and during the left sidebar's 460ms width slide the ResizeObserver below
+// fires on every animation frame.
+let lastAppliedDisplayPanelWidthPx: number | null = null;
+
 // Set on `:root` (not on `.right-sidebar`) so siblings outside the panel
 // (e.g. the topbar tab strip width calc) can inherit the same value.
 const applyDisplayPanelWidthCssVar = (width: number | null): void => {
-  const root = document.documentElement;
-  const nextWidth = resolveDisplayPanelWidth(width);
-  root.style.setProperty(
+  const nextWidth = Math.round(resolveDisplayPanelWidth(width));
+  if (nextWidth === lastAppliedDisplayPanelWidthPx) return;
+  lastAppliedDisplayPanelWidthPx = nextWidth;
+  document.documentElement.style.setProperty(
     DISPLAY_PANEL_WIDTH_CSS_VAR,
-    `${Math.round(nextWidth)}px`,
+    `${nextWidth}px`,
   );
 };
 
 const clearDisplayPanelWidthCssVar = (): void => {
+  lastAppliedDisplayPanelWidthPx = null;
   document.documentElement.style.removeProperty(DISPLAY_PANEL_WIDTH_CSS_VAR);
 };
 
@@ -216,12 +225,30 @@ export const RightSidebar = forwardRef<
     };
 
     const scheduleWidthVarSync = () => {
+      // While the panel is closed nothing consumes the var, so re-measuring
+      // the shell + left sidebar on every ResizeObserver tick (a forced
+      // layout per animation frame during the left sidebar's width slide)
+      // is wasted work. `syncOnLayoutChange` below refreshes the var the
+      // moment the panel opens, so it can never go stale for an open panel.
+      if (!displayTabs.getLayoutSnapshot().panelOpen) return;
       if (frame !== 0) return;
       frame = requestAnimationFrame(syncWidthVarNow);
     };
 
+    // Store changes (open/close, width commits) sync immediately instead of
+    // via rAF so the var is fresh before the open transition's first paint —
+    // a deferred sync would let the panel start animating toward a width
+    // measured while it was closed.
+    const syncOnLayoutChange = () => {
+      if (frame !== 0) {
+        cancelAnimationFrame(frame);
+        frame = 0;
+      }
+      syncWidthVarNow();
+    };
+
     syncWidthVarNow();
-    const unsubscribe = displayTabs.subscribeLayout(scheduleWidthVarSync);
+    const unsubscribe = displayTabs.subscribeLayout(syncOnLayoutChange);
     const resizeObserver =
       typeof ResizeObserver === "undefined"
         ? null

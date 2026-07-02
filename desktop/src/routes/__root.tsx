@@ -502,31 +502,44 @@ function RootChrome() {
     };
   }, []);
 
+  const applyShellBreakpoints = useCallback(
+    (width: number, sidebarVisible: boolean) => {
+      const next = getShellBreakpointState(Math.round(width), sidebarVisible);
+      const previous = shellBreakpointsRef.current;
+      if (
+        next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
+        next.hideDisplayPanel === previous.hideDisplayPanel &&
+        next.hideLeftSidebar === previous.hideLeftSidebar
+      ) {
+        return;
+      }
+      shellBreakpointsRef.current = next;
+      setShellBreakpoints(next);
+    },
+    [],
+  );
+
+  // The observer mounts once; `leftSidebarVisible` flows in via a ref so a
+  // sidebar toggle doesn't tear down / recreate the ResizeObserver and force
+  // a synchronous re-measure on the very frame the collapse animation starts.
+  const leftSidebarVisibleRef = useRef(leftSidebarVisible);
+  leftSidebarVisibleRef.current = leftSidebarVisible;
+  const shellWidthRef = useRef(0);
+
   useEffect(() => {
     const shell = document.querySelector<HTMLElement>(".full-body");
     if (!shell) return;
 
     let frame = 0;
-    let pendingWidth = 0;
     const syncWidth = (width: number) => {
-      pendingWidth = width;
+      shellWidthRef.current = width;
       if (frame !== 0) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        const next = getShellBreakpointState(
-          Math.round(pendingWidth),
-          leftSidebarVisible,
+        applyShellBreakpoints(
+          shellWidthRef.current,
+          leftSidebarVisibleRef.current,
         );
-        const previous = shellBreakpointsRef.current;
-        if (
-          next.hideWorkspaceStrip === previous.hideWorkspaceStrip &&
-          next.hideDisplayPanel === previous.hideDisplayPanel &&
-          next.hideLeftSidebar === previous.hideLeftSidebar
-        ) {
-          return;
-        }
-        shellBreakpointsRef.current = next;
-        setShellBreakpoints(next);
       });
     };
 
@@ -552,7 +565,15 @@ function RootChrome() {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [leftSidebarVisible]);
+  }, [applyShellBreakpoints]);
+
+  // Breakpoints also depend on the sidebar's visibility (the strip / display
+  // panel auto-hide thresholds shift by its width) — recompute from the
+  // cached shell width instead of re-measuring on toggle.
+  useEffect(() => {
+    if (shellWidthRef.current <= 0) return;
+    applyShellBreakpoints(shellWidthRef.current, leftSidebarVisible);
+  }, [applyShellBreakpoints, leftSidebarVisible]);
 
   useEffect(() => {
     if (isMiniWindow || isMobileWebView) {
