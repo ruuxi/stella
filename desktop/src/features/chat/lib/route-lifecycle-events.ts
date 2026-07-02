@@ -181,6 +181,9 @@ export const routeLifecycleEvents = (
       (entry) => entry.anchor.startTs !== undefined,
     );
 
+    const isOverlayEntry = (entry: TurnEntry): boolean =>
+      entry.message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX);
+
     const resolveTarget = (
       source: TurnEntry,
       event: EventRecord,
@@ -189,12 +192,18 @@ export const routeLifecycleEvents = (
       if (stickyKey !== undefined) {
         const pinned = anchorsByKey.get(stickyKey);
         if (pinned) return pinned;
+        // The pinned anchor is not in this window (trimmed / not yet
+        // loaded). Fall back to a per-frame computation but KEEP the pin —
+        // the anchor may come back, and stomping it here is what let a
+        // transient frame permanently re-home a painted card.
       }
       // Legacy assistants (no stream-start metadata) keep their events:
       // there is no way to place them chronologically, and moving them
       // would churn transcripts persisted before this rule existed.
       if (source.anchor.startTs === undefined) {
-        state.sticky.set(event._id, source.anchor.key);
+        if (stickyKey === undefined) {
+          state.sticky.set(event._id, source.anchor.key);
+        }
         return source;
       }
       let resolved: TurnEntry | undefined;
@@ -205,40 +214,93 @@ export const routeLifecycleEvents = (
         }
       }
       const target = resolved ?? source;
-      state.sticky.set(event._id, target.anchor.key);
+      // Overlay anchors are TRANSIENT: they exist only while their segment
+      // streams, and a segment can end without ever persisting a twin
+      // (aborted / canceled / empty-text runs). Never record a sticky pin
+      // to one — routing onto a live overlay is recomputed every frame, so
+      // the moment the overlay goes away the event immediately re-derives
+      // against the persisted anchors (the stream-end "release"), instead
+      // of dangling on a dead slot key until some later event forces it.
+      if (stickyKey === undefined && !isOverlayEntry(target)) {
+        state.sticky.set(event._id, target.anchor.key);
+      }
       return target;
     };
 
-    // Incoming lifecycle events per anchor key (routed from elsewhere).
-    const incomingByKey = new Map<string, EventRecord[]>();
-    // Event ids that left their source message.
-    const movedOut = new Map<TurnEntry, Set<string>>();
-
+    // One routing decision per EVENT ID. The SQLite/tail-refresh handoff
+    // can briefly leave the same lifecycle event on two rows (the stale
+    // pre-assistant copy on the user anchor plus the fresh copy the
+    // grouping forward-attached to the assistant); resolving per id
+    // collapses those duplicates onto a single target so the card can
+    // never render twice (or produce a doubled toolEvents list). The
+    // LAST source in walk order is the canonical one — for a duplicate
+    // it is the anchor the grouping most recently attached the event to,
+    // while the earlier copy is the stale leftover.
+    const sourcesByEventId = new Map<
+      string,
+      { event: EventRecord; sources: TurnEntry[] }
+    >();
     for (const entry of entries) {
       for (const event of entry.message.toolEvents) {
         if (!isLifecycleEvent(event)) continue;
-        const target = resolveTarget(entry, event);
-        if (target === entry) continue;
-        let out = movedOut.get(entry);
-        if (!out) movedOut.set(entry, (out = new Set()));
-        out.add(event._id);
+        const existing = sourcesByEventId.get(event._id);
+        if (existing) {
+          existing.sources.push(entry);
+        } else {
+          sourcesByEventId.set(event._id, { event, sources: [entry] });
+        }
+      }
+    }
+    if (sourcesByEventId.size === 0) return;
+    const targetByEventId = new Map<string, TurnEntry>();
+    for (const [eventId, { event, sources }] of sourcesByEventId) {
+      targetByEventId.set(
+        eventId,
+        resolveTarget(sources[sources.length - 1]!, event),
+      );
+    }
+
+    // Incoming lifecycle events per anchor key (routed from elsewhere),
+    // and the set of ids each target already carries (so a routed-in copy
+    // is added at most once and prefers the copy already on the target).
+    const incomingByKey = new Map<string, EventRecord[]>();
+    const placedIds = new Set<string>();
+    for (const [eventId, target] of targetByEventId) {
+      if (
+        target.message.toolEvents.some(
+          (event) => event._id === eventId && isLifecycleEvent(event),
+        )
+      ) {
+        placedIds.add(eventId);
+      }
+    }
+    for (const entry of entries) {
+      for (const event of entry.message.toolEvents) {
+        if (!isLifecycleEvent(event)) continue;
+        const target = targetByEventId.get(event._id);
+        if (!target || target === entry) continue;
+        if (placedIds.has(event._id)) continue;
+        placedIds.add(event._id);
         let incoming = incomingByKey.get(target.anchor.key);
         if (!incoming) incomingByKey.set(target.anchor.key, (incoming = []));
         incoming.push(event);
       }
     }
-    if (movedOut.size === 0) return;
 
     for (const entry of entries) {
-      const out = movedOut.get(entry);
       const incoming = incomingByKey.get(entry.anchor.key);
-      if (!out && !incoming) continue;
-      // Preserve the original sequence for events that stay, then append
+      // Keep events that stay on this anchor, dropping moved-away copies
+      // and any duplicate occurrences beyond the first, then append
       // routed-in lifecycle events in chronological order — so a message
       // whose events did not move keeps an identical id sequence.
-      const kept = out
-        ? entry.message.toolEvents.filter((event) => !out.has(event._id))
-        : [...entry.message.toolEvents];
+      const seenHere = new Set<string>();
+      const kept = entry.message.toolEvents.filter((event) => {
+        if (!isLifecycleEvent(event)) return true;
+        if (targetByEventId.get(event._id) !== entry) return false;
+        if (seenHere.has(event._id)) return false;
+        seenHere.add(event._id);
+        return true;
+      });
       const next = incoming ? [...kept, ...incoming.sort(compareEvents)] : kept;
       if (sameToolEventIds(next, entry.message.toolEvents)) continue;
       routedEventsByIndex.set(entry.anchor.messageIndex, next);
