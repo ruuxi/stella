@@ -5,11 +5,14 @@ import {
   DETERMINISTIC_ABORT_THRESHOLD,
   isInstantFirstCallFailure,
   isProviderContentAbortMessage,
+  parseQuarantineRecord,
   ProviderAbortContainment,
   QUARANTINE_PLACEHOLDER,
   SAFETY_SWAP_STELLA_MODEL_ID,
   safetySwapStatusMessage,
+  serializeQuarantineRecord,
 } from "../../../../../runtime/kernel/agent-runtime/provider-abort-containment.js";
+import { providerAbortedStopMessage } from "../../../../../runtime/ai/utils/provider-stop.js";
 import type { AgentMessage } from "../../../../../runtime/kernel/agent-core/types.js";
 import type { Api, Model, StopReason } from "../../../../../runtime/ai/types.js";
 import type { ResolvedLlmRoute } from "../../../../../runtime/kernel/model-routing.js";
@@ -59,29 +62,50 @@ const toolResultMessage = (
   timestamp,
 });
 
-const PROVIDER_ABORT_MESSAGE =
-  'Provider aborted the response (stop reason: "refusal"). This is typically a provider-side refusal/safety/content-filter stop triggered by something in the request content.';
+// The safety-worded layer-1 form emitted for safety-class stop reasons.
+const PROVIDER_ABORT_MESSAGE = providerAbortedStopMessage("refusal");
 
 describe("isProviderContentAbortMessage", () => {
-  it("matches the normalized layer-1 abort message", () => {
+  it("matches the safety-worded layer-1 abort message", () => {
+    expect(PROVIDER_ABORT_MESSAGE).toContain('stop reason: "refusal"');
     expect(isProviderContentAbortMessage(PROVIDER_ABORT_MESSAGE)).toBe(true);
+    expect(
+      isProviderContentAbortMessage(providerAbortedStopMessage("SAFETY")),
+    ).toBe(true);
   });
 
-  it("matches the legacy opaque message and content-filter stops", () => {
-    expect(isProviderContentAbortMessage("An unknown error occurred")).toBe(
-      true,
-    );
+  it("matches the legacy openai-completions strings", () => {
     expect(
       isProviderContentAbortMessage("Provider finish_reason: content_filter"),
     ).toBe(true);
     expect(
-      isProviderContentAbortMessage(
-        'Provider stream ended with stopReason "error" but the provider supplied no error detail.',
-      ),
+      isProviderContentAbortMessage("Provider returned an error stop reason"),
     ).toBe(true);
   });
 
-  it("does not match overflow / connection / empty errors", () => {
+  it("does not match non-safety terminal stops or the no-detail fallback", () => {
+    // Neutral wording for failed/cancelled/OTHER-style stops.
+    expect(
+      isProviderContentAbortMessage(providerAbortedStopMessage("cancelled")),
+    ).toBe(false);
+    expect(
+      isProviderContentAbortMessage(providerAbortedStopMessage("failed")),
+    ).toBe(false);
+    // The no-detail fallback fires on ANY error/aborted stream end
+    // (proxy/mid-stream truncation included) and must not classify.
+    expect(
+      isProviderContentAbortMessage(
+        'Provider stream ended with stopReason "error" but the provider supplied no error detail.',
+      ),
+    ).toBe(false);
+    // The pre-fix opaque string no longer classifies either: post-fix runs
+    // never produce it, and it says nothing about content.
+    expect(isProviderContentAbortMessage("An unknown error occurred")).toBe(
+      false,
+    );
+  });
+
+  it("does not match overflow / network / empty errors", () => {
     expect(
       isProviderContentAbortMessage(
         "Context overflow: model context window is 200000 tokens.",
@@ -90,6 +114,10 @@ describe("isProviderContentAbortMessage", () => {
     expect(isProviderContentAbortMessage("fetch failed: ECONNRESET")).toBe(
       false,
     );
+    expect(isProviderContentAbortMessage("terminated")).toBe(false);
+    expect(
+      isProviderContentAbortMessage("The socket connection was terminated"),
+    ).toBe(false);
     expect(isProviderContentAbortMessage(undefined)).toBe(false);
     expect(isProviderContentAbortMessage("  ")).toBe(false);
   });
@@ -179,6 +207,20 @@ describe("ProviderAbortContainment deterministic-abort detection", () => {
     expect(surfaced).toMatch(/not model-specific/i);
   });
 
+  it("does not advance the streak on user aborts", () => {
+    const containment = new ProviderAbortContainment();
+    failedRun(containment);
+    containment.noteRunFailure({
+      history,
+      appended: [
+        userMessage(60),
+        assistantMessage(61, "aborted", "Request was aborted"),
+      ],
+      errorMessage: "Request was aborted",
+    });
+    expect(containment.consecutiveInstantAbortCount).toBe(0);
+  });
+
   it("resets the streak on success and on non-abort failures", () => {
     const containment = new ProviderAbortContainment();
     failedRun(containment);
@@ -247,6 +289,38 @@ describe("ProviderAbortContainment quarantine", () => {
     if (older.role === "toolResult") {
       expect((older.content[0] as { text: string }).text).toBe(
         "older quoted content",
+      );
+    }
+  });
+
+  it("survives a restart via persisted records: serialize → parse → seed → re-mask", () => {
+    const containment = new ProviderAbortContainment();
+    reachThreshold(containment);
+    const application = containment.applyQuarantine(buildMessages());
+    expect(application.newlyQuarantined).not.toBeNull();
+
+    // Round-trip through the persisted custom-message form.
+    const serialized = serializeQuarantineRecord(application.newlyQuarantined!);
+    const parsed = parseQuarantineRecord([{ type: "text", text: serialized }]);
+    expect(parsed).toEqual(application.newlyQuarantined);
+    expect(parseQuarantineRecord(serialized)).toEqual(
+      application.newlyQuarantined,
+    );
+    expect(parseQuarantineRecord("not json")).toBeNull();
+    expect(parseQuarantineRecord(undefined)).toBeNull();
+
+    // Fresh containment = app restart. Seeding restores the mask without
+    // needing a new abort streak.
+    const restarted = new ProviderAbortContainment();
+    restarted.seedQuarantined([parsed!]);
+    const reloaded = buildMessages();
+    const reapplied = restarted.applyQuarantine(reloaded);
+    expect(reapplied.reappliedKeys).toContain(parsed!.key);
+    expect(reapplied.newlyQuarantined).toBeNull();
+    const masked = reloaded[2];
+    if (masked.role === "toolResult") {
+      expect((masked.content[0] as { text: string }).text).toContain(
+        QUARANTINE_PLACEHOLDER,
       );
     }
   });
@@ -332,6 +406,21 @@ describe("safety abort model swap (fable-5 → opus-4.8)", () => {
       getApiKey: () => "sk",
     });
     expect(swap?.toModelId).toBe("anthropic/claude-opus-4.8");
+  });
+
+  it("returns null for versioned fable ids that would rewrite to nonexistent models", () => {
+    const versioned = buildSafetyAbortSwapRoute({
+      route: "direct-provider",
+      model: {
+        ...stellaFableModel(),
+        id: "anthropic/claude-fable-5-20260201",
+        api: "openai-completions",
+        provider: "openrouter",
+        upstreamModelId: undefined,
+      } as Model<Api>,
+      getApiKey: () => "sk",
+    });
+    expect(versioned).toBeNull();
   });
 
   it("returns null for non-fable routes — no swap ping-pong", () => {

@@ -21,14 +21,51 @@
  */
 
 /**
+ * Raw provider stop/finish reasons that signal a content/safety abort
+ * (as opposed to generic terminal failures like `failed`, `cancelled`,
+ * `OTHER`, or `network_error`). Spans the adapters that surface raw stop
+ * reasons: Anthropic (`refusal`/`sensitive`), Google
+ * (`SAFETY`/`PROHIBITED_CONTENT`/…), OpenAI-compatible (`content_filter`),
+ * and Bedrock (`guardrail_intervened`/`content_filtered`).
+ */
+const SAFETY_STOP_REASONS = new Set([
+	"refusal",
+	"sensitive",
+	"safety",
+	"image_safety",
+	"prohibited_content",
+	"image_prohibited_content",
+	"blocklist",
+	"spii",
+	"recitation",
+	"image_recitation",
+	"content_filter",
+	"content_filtered",
+	"guardrail_intervened",
+]);
+
+/** True when the raw stop reason is a refusal/safety/content-filter stop. */
+export function isSafetyStopReason(rawStopReason: string): boolean {
+	return SAFETY_STOP_REASONS.has(rawStopReason.trim().toLowerCase());
+}
+
+/**
  * Message for a stream the provider deliberately terminated with an
  * anomalous stop reason instead of a completed message.
+ *
+ * Safety-class stop reasons get the refusal/safety wording that downstream
+ * containment (`isProviderContentAbortMessage`) classifies on; everything
+ * else (`failed`, `cancelled`, `OTHER`, …) gets neutral wording so generic
+ * terminal failures are never mistaken for content aborts.
  */
 export function providerAbortedStopMessage(rawStopReason: string): string {
-	return (
-		`Provider aborted the response (stop reason: "${rawStopReason}"). ` +
-		"This is typically a provider-side refusal/safety/content-filter stop triggered by something in the request content."
-	);
+	if (isSafetyStopReason(rawStopReason)) {
+		return (
+			`Provider aborted the response (stop reason: "${rawStopReason}"). ` +
+			"This is a provider-side refusal/safety/content-filter stop triggered by something in the request content."
+		);
+	}
+	return `Provider ended the stream abnormally (stop reason: "${rawStopReason}") without a completed response.`;
 }
 
 /**

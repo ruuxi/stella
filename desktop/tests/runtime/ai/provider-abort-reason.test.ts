@@ -1,7 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { streamAnthropic } from "../../../../runtime/ai/providers/anthropic.js";
+import { streamGoogleGeminiCli } from "../../../../runtime/ai/providers/google-gemini-cli.js";
 import type { AssistantMessageEvent, Context, Model } from "../../../../runtime/ai/types.js";
 import { anomalousStreamStopError, providerAbortedStopMessage } from "../../../../runtime/ai/utils/provider-stop.js";
 
@@ -105,11 +106,77 @@ describe("provider abort reason surfacing (anthropic)", () => {
 	});
 });
 
+describe("provider abort reason surfacing (google-gemini-cli)", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("captures the raw SAFETY finish reason from the Cloud Code Assist stream", async () => {
+		const encoder = new TextEncoder();
+		const sse = [
+			`data: ${JSON.stringify({
+				response: {
+					candidates: [
+						{
+							content: { parts: [{ text: "partial reply before the filter" }] },
+							finishReason: "SAFETY",
+						},
+					],
+					usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 2 },
+				},
+			})}`,
+			"",
+			"",
+		].join("\n");
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				new Response(encoder.encode(sse), {
+					status: 200,
+					headers: { "content-type": "text/event-stream" },
+				}),
+			),
+		);
+
+		const geminiModel: Model<"google-gemini-cli"> = {
+			...(model as unknown as Model<"google-gemini-cli">),
+			id: "gemini-3-pro",
+			api: "google-gemini-cli",
+			provider: "google-gemini-cli",
+			baseUrl: "https://cloudcode.example",
+		};
+		const stream = streamGoogleGeminiCli(geminiModel, context, {
+			apiKey: JSON.stringify({ token: "test-token", projectId: "proj" }),
+		});
+		const events: AssistantMessageEvent[] = [];
+		for await (const event of stream) events.push(event);
+
+		const error = events.find((event) => event.type === "error") as
+			| Extract<AssistantMessageEvent, { type: "error" }>
+			| undefined;
+		expect(error).toBeDefined();
+		expect(error!.error.errorMessage).toContain('stop reason: "SAFETY"');
+		expect(error!.error.errorMessage).toMatch(/refusal\/safety\/content-filter/i);
+	});
+});
+
 describe("provider-stop helpers", () => {
-	it("providerAbortedStopMessage carries the raw stop reason", () => {
+	it("providerAbortedStopMessage uses safety wording for safety-class stop reasons", () => {
 		const message = providerAbortedStopMessage("sensitive");
 		expect(message).toContain('stop reason: "sensitive"');
 		expect(message).toMatch(/refusal\/safety\/content-filter/i);
+		expect(providerAbortedStopMessage("PROHIBITED_CONTENT")).toMatch(
+			/refusal\/safety\/content-filter/i,
+		);
+	});
+
+	it("providerAbortedStopMessage stays neutral for non-safety terminal stops", () => {
+		for (const raw of ["cancelled", "failed", "OTHER", "network_error"]) {
+			const message = providerAbortedStopMessage(raw);
+			expect(message).toContain(`stop reason: "${raw}"`);
+			expect(message).not.toMatch(/refusal\/safety\/content-filter/i);
+			expect(message).toMatch(/ended the stream abnormally/i);
+		}
 	});
 
 	it("anomalousStreamStopError prefers captured detail over the fallback", () => {

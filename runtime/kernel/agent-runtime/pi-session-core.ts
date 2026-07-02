@@ -6,7 +6,10 @@ import type { HookEmitter } from "../extensions/hook-emitter.js";
 import {
   buildSafetyAbortSwapRoute,
   isProviderContentAbortMessage,
+  parseQuarantineRecord,
   ProviderAbortContainment,
+  QUARANTINE_CUSTOM_TYPE,
+  type QuarantineRecord,
   type SafetySwapRoute,
 } from "./provider-abort-containment.js";
 import { createRuntimeAgent, resolveAgentThinkingLevel } from "./shared.js";
@@ -90,16 +93,31 @@ export class PiSessionCore {
   }
 
   /**
-   * Start a containment-tracked turn. Re-masks previously quarantined
-   * entries (history refreshes rebuild the message array from the intact
-   * store) and, after two consecutive instant provider aborts, quarantines
-   * the newest suspect tool-result entry from the request assembly. Returns
-   * the pre-run message count so failures can be classified later.
+   * Start a containment-tracked turn. Re-seeds the quarantine registry from
+   * persisted thread records (so healed threads survive app restarts),
+   * re-masks previously quarantined entries (history refreshes rebuild the
+   * message array from the intact store) and, after two consecutive instant
+   * provider aborts, quarantines the newest suspect tool-result entry from
+   * the request assembly. Returns the pre-run message count so failures can
+   * be classified later, plus any newly quarantined record so the caller
+   * can persist it.
    */
   protected beginAbortContainmentTurn(
     agent: Agent,
+    agentContext: LocalAgentContext,
     logContext: SessionLogContext,
-  ): { messagesBefore: number } {
+  ): { messagesBefore: number; newlyQuarantined: QuarantineRecord | null } {
+    const persisted = (agentContext.threadHistory ?? [])
+      .map((entry) =>
+        entry.customMessage?.customType === QUARANTINE_CUSTOM_TYPE
+          ? parseQuarantineRecord(entry.customMessage.content)
+          : null,
+      )
+      .filter((record): record is QuarantineRecord => record !== null);
+    if (persisted.length > 0) {
+      this.abortContainment.seedQuarantined(persisted);
+    }
+
     const application = this.abortContainment.applyQuarantine(
       agent.state.messages,
     );
@@ -113,7 +131,10 @@ export class PiSessionCore {
         ...logContext,
       });
     }
-    return { messagesBefore: agent.state.messages.length };
+    return {
+      messagesBefore: agent.state.messages.length,
+      newlyQuarantined: application.newlyQuarantined,
+    };
   }
 
   /**
@@ -135,20 +156,27 @@ export class PiSessionCore {
     const swap = buildSafetyAbortSwapRoute(this.currentResolvedLlm);
     if (!swap) return null;
 
+    // Inspect the context tail WITHOUT mutating it: only commit to the pop
+    // once the swap is definitely happening. Bailing after a pop would
+    // corrupt the appended-messages slice that failure classification
+    // reads, silently resetting the deterministic-abort streak.
     const messages = agent.state.messages;
     const last = messages[messages.length - 1];
-    if (
+    const popErroredTail =
       last?.role === "assistant" &&
-      (last.stopReason === "error" || last.stopReason === "aborted")
-    ) {
-      // Drop the aborted stream's partial output so `continue()` resumes
-      // from the prompt instead of refusing on a trailing assistant message.
-      messages.pop();
-    }
-    if (messages[messages.length - 1]?.role === "assistant") {
+      (last.stopReason === "error" || last.stopReason === "aborted");
+    const tailAfterPop = popErroredTail
+      ? messages[messages.length - 2]
+      : last;
+    if (tailAfterPop?.role === "assistant") {
       // Unexpected shape (e.g. failure mid-tool-loop) — resuming would
       // throw. Skip the swap and let normal failure handling run.
       return null;
+    }
+    if (popErroredTail) {
+      // Drop the aborted stream's partial output so `continue()` resumes
+      // from the prompt instead of refusing on a trailing assistant message.
+      messages.pop();
     }
 
     this.setResolvedLlm(swap.route);
