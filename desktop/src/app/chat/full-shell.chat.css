@@ -16,6 +16,25 @@
   --chat-text-tracking: 0;
   --chat-text-line-height: 1.5;
   --chat-text-color: var(--text-strong);
+
+  /* ------------------------------------------------------------
+   * Vertical rhythm contract (see also the ROW_GAP family of
+   * constants in ChatTimeline.tsx — the BETWEEN-rows half of the
+   * budget lives there as JS separator heights):
+   *
+   *   --chat-item-part-gap — spacing between the parts of ONE row
+   *     (message text -> cards -> action strip, context chips ->
+   *     user bubble). Everything inside a row groups at this gap so
+   *     a turn reads as one block.
+   *
+   * The assistant bubble is transparent/borderless, so it must NOT
+   * carry the visible bubbles' 12px vertical padding — that used to
+   * add 24px of invisible chrome around every assistant message and
+   * was the main contributor to the huge inter-message voids.
+   * `--chat-bubble-padding` is the seam: visible bubbles keep the
+   * default, the assistant variant zeroes the vertical component.
+   * ------------------------------------------------------------ */
+  --chat-item-part-gap: 8px;
 }
 
 /* Fallback wrapper used only by the empty / loading-history states in
@@ -43,10 +62,10 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  /* Inter-turn gap. Kept clearly larger than the intra-row `.event-item`
-     gap (8px) so a turn separates from its own attached artifacts
-     (cards/chips that render below the assistant text). */
-  gap: var(--space-6);
+  /* Intra-row gap between the row's own parts (context chips, bubble,
+     action strip). Spacing BETWEEN rows is the virtualized separator
+     rendered by ChatTimeline (`gapAfterRow`), not this flex gap. */
+  gap: var(--chat-item-part-gap);
   overflow-anchor: none;
 }
 
@@ -232,13 +251,17 @@
 
 /* Event item - iOS-style speech bubbles */
 .event-item {
-  padding: 12px;
+  /* Custom-property seam (not a direct `padding` override on the
+     assistant variant) so the compact surfaces' own
+     `.chat-conversation-surface .event-item { padding: … }` rules keep
+     winning by specificity regardless of CSS import order. */
+  padding: var(--chat-bubble-padding, 12px);
   border-radius: var(--radius-3xl);
   background: var(--surface-inset);
   border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--chat-item-part-gap);
   width: 100%;
   position: relative;
 }
@@ -292,6 +315,11 @@
   border: none;
   width: 100%;
   max-width: 100%;
+  /* No visible bubble -> no vertical bubble padding. The 12px sides stay
+     so assistant text/cards keep their gutter alignment; the 12px top +
+     12px bottom were pure dead space stacked into every inter-message
+     gap. */
+  --chat-bubble-padding: 0 12px;
 }
 
 .event-item.system {
@@ -421,16 +449,9 @@
   min-width: 0;
 }
 
-/* Chips sit above the bubble as their own row; pull them closer to the
-   bubble than the default inter-row gap. Scoped to `:not(:last-child)` so
-   the negative margin only applies when a bubble actually follows — a
-   chips-only message (e.g. pasted text with no typed text) is the row's
-   last child, and the negative margin would otherwise push the chip's
-   bottom border outside the measured row box, which legend-list clips via
-   its per-item `contain: paint`. */
-.event-context-chips:not(:last-child) {
-  margin-bottom: -6px;
-}
+/* Chips sit above the bubble as their own row at the row's part gap.
+   (The old 24px row gap needed a negative-margin pull-in here; the 8px
+   `--chat-item-part-gap` already groups them with the bubble.) */
 
 /* Off-flow row used purely to measure each chip's natural width so the
    layout effect can decide how many fit before collapsing the rest into

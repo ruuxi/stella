@@ -69,6 +69,7 @@ import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import { UserMessageBody } from "@/app/chat/UserMessageBody";
 import { MessageActions } from "@/app/chat/MessageActions";
 import { eventRowEqual } from "@/features/chat/lib/row-equality";
+import { assistantRowHasVisibleContent } from "@/features/chat/lib/assistant-row-content";
 import type {
   AssistantRowViewModel,
   UserRowViewModel,
@@ -542,13 +543,8 @@ export const AssistantMessageRow = memo(
   function AssistantMessageRow({ row, conversationId }: AssistantRowProps) {
     const text = row.text;
     const hasText = text.trim().length > 0;
-    const hasOfficePreview = Boolean(row.officePreviewRef);
-    const hasResource = Boolean(row.resourcePayload);
-    const hasInlineImages = (row.inlineImagePayloads?.length ?? 0) > 0;
     const hasWebSearchResults = (row.webSearchResults?.length ?? 0) > 0;
     const hasMapArtifacts = (row.mapArtifacts?.length ?? 0) > 0;
-    const hasSelfMod = Boolean(row.selfModApplied);
-    const hasCustomSlot = Boolean(row.customSlot);
     const hasScheduleReceipt = Boolean(
       row.scheduleReceipt && row.scheduleReceipt.affected.length > 0,
     );
@@ -566,21 +562,9 @@ export const AssistantMessageRow = memo(
       row.toolActivity && row.toolActivity.steps.length > 0,
     );
 
-    if (
-      !hasText &&
-      !hasOfficePreview &&
-      !hasResource &&
-      !hasInlineImages &&
-      !hasWebSearchResults &&
-      !hasMapArtifacts &&
-      !hasSelfMod &&
-      !hasCustomSlot &&
-      !hasScheduleReceipt &&
-      !hasVoiceSession &&
-      !hasBackgroundWork &&
-      !hasAgentCompletion &&
-      !hasToolActivity
-    ) {
+    // Shared predicate with ChatTimeline (which drops renderless rows
+    // before virtualization) — see assistant-row-content.ts.
+    if (!assistantRowHasVisibleContent(row)) {
       // Reserve a scroll-follow target before the first token lands;
       // otherwise `followActiveAssistantRow` can't find
       // `[data-scroll-follow-key]` and auto-follow waits on ResizeObserver
