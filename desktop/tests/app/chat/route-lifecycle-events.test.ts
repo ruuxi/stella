@@ -211,6 +211,212 @@ describe("routeLifecycleEvents", () => {
     expect(routed).toBe(input);
   });
 
+  it("releases a card born mid-stream the moment the stream ends (persisted twin, no further events)", () => {
+    // Rahul's exact sequence: agent finishes WHILE text streams (card held
+    // after the streaming block), stream ends and the segment persists —
+    // the card must be on the finished text's row immediately, without any
+    // subsequent event forcing a re-derive.
+    const state = createLifecycleRoutingState();
+    const midStreamCompleted = event({
+      _id: "c-mid",
+      type: "agent-completed",
+      timestamp: 350,
+      payload: { agentId: "agent-a" },
+    });
+
+    // Frame 1: streaming; the completion (grouped onto the user anchor)
+    // routes to the live overlay row — after the growing text block.
+    const liveFrame = routeLifecycleEvents(
+      [
+        message({
+          _id: "u1",
+          timestamp: 100,
+          type: "user_message",
+          toolEvents: [midStreamCompleted],
+        }),
+        message({
+          _id: "stream-overlay:u1:1",
+          timestamp: 300,
+          type: "assistant_message",
+          payload: {
+            text: "streaming…",
+            userMessageId: "u1",
+            metadata: { runtime: { isStreaming: true } },
+          },
+          toolEvents: [],
+        }),
+      ],
+      state,
+    );
+    expect(liveFrame[1]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+
+    // Frame 2: stream ended — overlay gone, twin persisted (event
+    // forward-attached by the grouping). No other events arrived.
+    const settled = routeLifecycleEvents(
+      [
+        message({
+          _id: "u1",
+          timestamp: 100,
+          type: "user_message",
+          toolEvents: [],
+        }),
+        message({
+          _id: "assistant-msg-run1-9",
+          timestamp: 400,
+          type: "assistant_message",
+          payload: {
+            text: "final text",
+            userMessageId: "u1",
+            metadata: { runtime: { streamStartedAtMs: 300 } },
+          },
+          toolEvents: [midStreamCompleted],
+        }),
+      ],
+      state,
+    );
+    // Same slot as the overlay row it was displayed after — card visible
+    // on the finished text's row, immediately.
+    expect(settled[1]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+    expect(settled[0]!.toolEvents).toEqual([]);
+  });
+
+  it("releases a card immediately when the overlay vanishes WITHOUT a persisted twin (aborted segment)", () => {
+    // Overlay-slot routings are per-frame, never sticky: if the segment
+    // aborts (canceled run / empty text) and no twin ever lands, the very
+    // next derive re-homes the event onto the surviving anchors instead of
+    // leaving it parked on a dead slot until some later event.
+    const state = createLifecycleRoutingState();
+    const midStreamCompleted = event({
+      _id: "c-mid",
+      type: "agent-completed",
+      timestamp: 350,
+      payload: { agentId: "agent-a" },
+    });
+    const userWithEvent = () =>
+      message({
+        _id: "u1",
+        timestamp: 100,
+        type: "user_message",
+        toolEvents: [midStreamCompleted],
+      });
+
+    const liveFrame = routeLifecycleEvents(
+      [
+        userWithEvent(),
+        message({
+          _id: "stream-overlay:u1:1",
+          timestamp: 300,
+          type: "assistant_message",
+          payload: {
+            text: "streaming…",
+            userMessageId: "u1",
+            metadata: { runtime: { isStreaming: true } },
+          },
+          toolEvents: [],
+        }),
+      ],
+      state,
+    );
+    expect(liveFrame[1]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+
+    // Overlay cleared, nothing persisted for the slot.
+    const released = routeLifecycleEvents([userWithEvent()], state);
+    expect(released[0]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+  });
+
+  it("keeps a mid-stream card on the twin's row when the twin lacks streamStartedAtMs (legacy worker)", () => {
+    const state = createLifecycleRoutingState();
+    const midStreamCompleted = event({
+      _id: "c-mid",
+      type: "agent-completed",
+      timestamp: 350,
+      payload: { agentId: "agent-a" },
+    });
+
+    routeLifecycleEvents(
+      [
+        message({
+          _id: "u1",
+          timestamp: 100,
+          type: "user_message",
+          toolEvents: [midStreamCompleted],
+        }),
+        message({
+          _id: "stream-overlay:u1:1",
+          timestamp: 300,
+          type: "assistant_message",
+          payload: {
+            text: "streaming…",
+            userMessageId: "u1",
+            metadata: { runtime: { isStreaming: true } },
+          },
+          toolEvents: [],
+        }),
+      ],
+      state,
+    );
+
+    // Twin persisted WITHOUT metadata (legacy). It occupies the same slot
+    // the overlay rendered in, so the card must stay on that row.
+    const settled = routeLifecycleEvents(
+      [
+        message({
+          _id: "u1",
+          timestamp: 100,
+          type: "user_message",
+          toolEvents: [],
+        }),
+        message({
+          _id: "assistant-msg-run1-9",
+          timestamp: 400,
+          type: "assistant_message",
+          payload: { text: "final text", userMessageId: "u1" },
+          toolEvents: [midStreamCompleted],
+        }),
+      ],
+      state,
+    );
+    expect(settled[1]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+    expect(settled[0]!.toolEvents).toEqual([]);
+  });
+
+  it("collapses a tail-refresh duplicate (stale user copy + assistant copy) onto one anchor", () => {
+    // The tail refresh replaces only changed rows, so after the segment
+    // persists, the stale user row can still carry the event the grouping
+    // moved onto the assistant. One event id must resolve to ONE anchor
+    // with ONE copy — never a doubled toolEvents list.
+    const midStreamCompleted = event({
+      _id: "c-mid",
+      type: "agent-completed",
+      timestamp: 350,
+      payload: { agentId: "agent-a" },
+    });
+    const routed = routeLifecycleEvents(
+      [
+        message({
+          _id: "u1",
+          timestamp: 100,
+          type: "user_message",
+          toolEvents: [midStreamCompleted],
+        }),
+        message({
+          _id: "assistant-msg-run1-9",
+          timestamp: 400,
+          type: "assistant_message",
+          payload: {
+            text: "final text",
+            userMessageId: "u1",
+            metadata: { runtime: { streamStartedAtMs: 300 } },
+          },
+          toolEvents: [midStreamCompleted],
+        }),
+      ],
+      createLifecycleRoutingState(),
+    );
+    expect(routed[0]!.toolEvents).toEqual([]);
+    expect(routed[1]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
+  });
+
   it("reuses routed message identity across repeated calls (structural sharing)", () => {
     const state = createLifecycleRoutingState();
     const user = message({
