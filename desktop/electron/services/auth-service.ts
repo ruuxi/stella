@@ -59,11 +59,19 @@ type AuthServiceOptions = {
   sessionPartition: string;
   runnerTarget: PiRunnerTarget;
   onAuthCallback: (url: string) => void;
+  /**
+   * Social invite deep link (`stella://join/<code>`,
+   * `stella://add-friend/<username>`) arrived while the app was running.
+   * Cold-boot links sit in the pending buffer until the renderer pulls
+   * `social:consumePendingInvite`.
+   */
+  onSocialInvite?: (url: string) => void;
   onSecondInstanceFocus: () => void;
 };
 
 export class AuthService {
   private pendingAuthCallback: string | null = null;
+  private pendingSocialInvite: string | null = null;
   private pendingConvexUrl: string | null = null;
   private pendingConvexSiteUrl: string | null = null;
   private hostAuthAuthenticated = false;
@@ -660,6 +668,52 @@ export class AuthService {
     }
   }
 
+  /**
+   * `stella://join/<inviteCode>` or `stella://add-friend/<username>` — the
+   * social invite deep links. Strictly shaped: one hostname keyword plus a
+   * single identifier path segment; anything else stays untrusted.
+   */
+  private isSocialInviteUrl(value: string) {
+    try {
+      const parsed = new URL(value);
+      if (
+        parsed.protocol.toLowerCase() !==
+        `${this.options.authProtocol.toLowerCase()}:`
+      ) {
+        return false;
+      }
+      const host = parsed.hostname.trim().toLowerCase();
+      if (host !== "join" && host !== "add-friend") {
+        return false;
+      }
+      const segments = parsed.pathname
+        .split("/")
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+      if (segments.length !== 1) {
+        return false;
+      }
+      return /^[A-Za-z0-9_-]{1,64}$/.test(segments[0]!);
+    } catch {
+      return false;
+    }
+  }
+
+  private handleSocialInvite(url: string) {
+    // Same buffer-always semantics as the auth callback: the renderer-side
+    // handler pulls on mount (cold boot) and also listens live.
+    this.pendingSocialInvite = url;
+    if (app.isReady()) {
+      this.options.onSocialInvite?.(url);
+    }
+  }
+
+  consumePendingSocialInvite() {
+    const invite = this.pendingSocialInvite;
+    this.pendingSocialInvite = null;
+    return invite;
+  }
+
   stopAuthRefreshLoop() {
     const runner = this.options.runnerTarget.getRunner();
     this.hostHasConnectedAccount = false;
@@ -707,9 +761,17 @@ export class AuthService {
 
   captureInitialAuthUrl(argv: string[]) {
     const initialAuthUrl = this.getDeepLinkUrl(argv);
-    if (initialAuthUrl) {
-      this.pendingAuthCallback = initialAuthUrl;
+    if (!initialAuthUrl) {
+      return;
     }
+    // Social invites get their own buffer: the auth and social renderer
+    // handlers pull independently, so a cold-boot invite must not be
+    // consumed (and dropped) by the auth pull.
+    if (this.isSocialInviteUrl(initialAuthUrl)) {
+      this.pendingSocialInvite = initialAuthUrl;
+      return;
+    }
+    this.pendingAuthCallback = initialAuthUrl;
   }
 
   consumePendingAuthCallback() {
@@ -720,6 +782,10 @@ export class AuthService {
 
   handleAuthCallback(url: string) {
     if (!url) {
+      return;
+    }
+    if (this.isSocialInviteUrl(url)) {
+      this.handleSocialInvite(url);
       return;
     }
     if (!this.isTrustedAuthCallbackUrl(url)) {

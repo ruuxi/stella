@@ -78,6 +78,7 @@ import {
   IPC_APP_QUIT_FOR_RESTART,
   IPC_AUTH_APPLY_SESSION_COOKIE,
   IPC_AUTH_CONSUME_PENDING_CALLBACK,
+  IPC_SOCIAL_CONSUME_PENDING_INVITE,
   IPC_AUTH_DELETE_USER,
   IPC_AUTH_GET_CONVEX_TOKEN,
   IPC_AUTH_GET_SESSION,
@@ -1160,6 +1161,13 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   // its subscription is live.
   ipcMain.handle(IPC_AUTH_CONSUME_PENDING_CALLBACK, () => {
     return options.authService.consumePendingAuthCallback();
+  });
+
+  // Renderer-pull for cold-boot social invite deep links
+  // (`stella://join/<code>`, `stella://add-friend/<username>`) — same
+  // pull-on-mount contract as the auth callback above.
+  ipcMain.handle(IPC_SOCIAL_CONSUME_PENDING_INVITE, () => {
+    return options.authService.consumePendingSocialInvite();
   });
 
   ipcMain.handle(

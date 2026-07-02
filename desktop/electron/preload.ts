@@ -59,6 +59,8 @@ import {
   IPC_APP_QUIT_FOR_RESTART,
   IPC_AUTH_APPLY_SESSION_COOKIE,
   IPC_AUTH_CONSUME_PENDING_CALLBACK,
+  IPC_SOCIAL_INVITE,
+  IPC_SOCIAL_CONSUME_PENDING_INVITE,
   IPC_AUTH_DELETE_USER,
   IPC_AUTH_GET_CONVEX_TOKEN,
   IPC_AUTH_GET_SESSION,
@@ -1050,6 +1052,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     onAuthCallback: onIpc<{ url: string }>("auth:callback"),
     consumePendingAuthCallback: () =>
       ipcRenderer.invoke(IPC_AUTH_CONSUME_PENDING_CALLBACK) as Promise<
+        string | null
+      >,
+    onSocialInvite: onIpc<{ url: string }>(IPC_SOCIAL_INVITE),
+    consumePendingSocialInvite: () =>
+      ipcRenderer.invoke(IPC_SOCIAL_CONSUME_PENDING_INVITE) as Promise<
         string | null
       >,
     onRuntimeAuthRefreshRequested: onIpc<{

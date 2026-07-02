@@ -792,6 +792,9 @@ export type HostAppBrowserContextSnapshot = {
   activeBrowserTab: HostActiveBrowserTab | null;
 };
 
+/** See `StorePublishSelectedFeaturesArgs.audience`. */
+export type StoreReleaseAudience = "store" | "circle";
+
 export type StorePublishArgs = {
   packageId: string;
   releaseNumber: number;
@@ -802,6 +805,8 @@ export type StorePublishArgs = {
   manifest: StoreReleaseArtifact["manifest"];
   artifact: StoreReleaseArtifact;
   gitObjectUploads?: StoreReleaseGitObjectUpload[];
+  /** See `StorePublishSelectedFeaturesArgs.audience`. */
+  audience?: StoreReleaseAudience;
 };
 
 /**
@@ -824,6 +829,12 @@ export type StorePublishSelectedFeaturesArgs = {
   category?: StoreReleaseArtifact["manifest"]["category"];
   manifest: StoreReleaseArtifact["manifest"];
   releaseNotes?: string;
+  /**
+   * Release destination. "store" (default) submits into the manual
+   * approval queue for the public store; "circle" is the trusted-circle
+   * share path — unlisted, link-only, live immediately without review.
+   */
+  audience?: StoreReleaseAudience;
 };
 
 export type RuntimeStoreApi = {

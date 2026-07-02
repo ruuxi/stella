@@ -33,7 +33,7 @@ function RecentRow({ name, meta, selected, onToggle }: RecentRowProps) {
       title={
         selected
           ? "Click to remove from selection"
-          : "Click to include in publish"
+          : "Click to include in share"
       }
     >
       <span
@@ -58,9 +58,9 @@ function RecentRow({ name, meta, selected, onToggle }: RecentRowProps) {
 }
 
 function publishButtonLabel(selectedCount: number): string {
-  if (selectedCount === 0) return "Select changes to publish";
-  if (selectedCount === 1) return "Publish · 1 selected";
-  return `Publish · ${selectedCount} selected`;
+  if (selectedCount === 0) return "Select changes to share";
+  if (selectedCount === 1) return "Share · 1 selected";
+  return `Share · ${selectedCount} selected`;
 }
 
 type RecentChangesListProps = {

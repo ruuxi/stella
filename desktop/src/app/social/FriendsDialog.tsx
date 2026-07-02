@@ -12,6 +12,7 @@ import { TextField } from "@/ui/text-field";
 import { Avatar } from "@/ui/avatar";
 import { useSocialFriends } from "./hooks/use-social-friends";
 import { useSocialProfile } from "./hooks/use-social-profile";
+import { buildFriendInviteLink } from "./invite-links";
 import { getSocialActionErrorMessage } from "./social-errors";
 
 type FriendsDialogProps = {
@@ -104,6 +105,15 @@ export function FriendsDialog({
     setStatus({ type: "success", text: "Username copied!" });
   }, [profile]);
 
+  const handleCopyInviteLink = useCallback(() => {
+    if (!profile) return;
+    void navigator.clipboard.writeText(buildFriendInviteLink(profile.username));
+    setStatus({
+      type: "success",
+      text: "Invite link copied — send it anywhere.",
+    });
+  }, [profile]);
+
   const { incoming, outgoing } = pendingRequests;
 
   useEffect(() => {
@@ -136,20 +146,32 @@ export function FriendsDialog({
           </header>
 
           {profile ? (
-            <button
-              type="button"
-              className="friends-code-card"
-              onClick={handleCopyCode}
-              title="Click to copy"
-            >
+            <div className="friends-code-card">
               <div className="friends-code-card-info">
                 <span className="friends-section-label">Your username</span>
                 <span className="friends-code-card-value">
                   @{profile.username}
                 </span>
               </div>
-              <span className="pill-btn">Copy</span>
-            </button>
+              <div className="friends-item-actions">
+                <button
+                  type="button"
+                  className="pill-btn"
+                  title="Copy your username"
+                  onClick={handleCopyCode}
+                >
+                  Copy
+                </button>
+                <button
+                  type="button"
+                  className="pill-btn pill-btn--primary"
+                  title="Copy a link that opens Stella and sends you a friend request — works in iMessage, Discord, anywhere"
+                  onClick={handleCopyInviteLink}
+                >
+                  Copy invite link
+                </button>
+              </div>
+            </div>
           ) : null}
 
           <form

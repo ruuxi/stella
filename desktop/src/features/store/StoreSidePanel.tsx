@@ -14,15 +14,15 @@ import {
 } from "./store-side-panel-store";
 import "./store.css";
 import {
-  PublishDialog,
-  type PublishFeatureRef,
-} from "./store-side-panel/PublishDialog";
+  ShareDialog,
+  type ShareFeatureRef,
+} from "./store-side-panel/ShareDialog";
 import { RecentChangesList } from "./store-side-panel/RecentChangesList";
 import { StoreIllustration } from "@/shell/display/illustrations/StoreIllustration";
 
 export function StoreSidePanel() {
   const state = useStoreSidePanelState();
-  const [publishFeatures, setPublishFeatures] = useState<PublishFeatureRef[]>(
+  const [publishFeatures, setPublishFeatures] = useState<ShareFeatureRef[]>(
     [],
   );
   const [publishOpen, setPublishOpen] = useState(false);
@@ -76,20 +76,20 @@ export function StoreSidePanel() {
             <StoreIllustration />
           </div>
           <p className="store-side-panel-empty-state-body">
-            After Stella makes a change for you, publish it to the store from
-            here.
+            After Stella makes a change for you, share it with friends, a
+            community, or the store from here.
           </p>
         </div>
       ) : null}
 
-      <PublishDialog
+      <ShareDialog
         open={publishOpen}
         selectedFeatures={publishFeatures}
         onClose={() => {
           setPublishOpen(false);
           setPublishFeatures([]);
         }}
-        onPublished={handlePublished}
+        onShared={handlePublished}
       />
     </div>
   );

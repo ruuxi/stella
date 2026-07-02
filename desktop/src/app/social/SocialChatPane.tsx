@@ -22,6 +22,8 @@ import type { SocialProfile } from "./hooks/use-social-profile";
 import { MessageSquare } from "@/ui/icons";
 import { AddonShareCard } from "@/features/store/AddonShareCard";
 import { parseShareLink } from "@/features/store/share-link";
+import { SocialInviteCard } from "./SocialInviteCard";
+import { parseSocialInviteLink } from "./invite-links";
 
 type SocialChatPaneProps = {
   roomId: string;
@@ -331,16 +333,30 @@ export function SocialChatPane({
             // gets `data-embed` so the CSS strips its padding/bg and
             // lets the card become the message.
             const shareLink = parseShareLink(msg.body);
+            // Same whole-body rule for community/friend invite links —
+            // they render as a tappable invite card that opens the join /
+            // add-friend confirmation dialog.
+            const inviteLink = shareLink
+              ? null
+              : parseSocialInviteLink(msg.body);
             return (
               <div
                 key={msg.id}
                 className="social-message-bubble"
                 data-role={role}
                 data-pending={msg.pending || undefined}
-                data-embed={shareLink ? "addon-share" : undefined}
+                data-embed={
+                  shareLink
+                    ? "addon-share"
+                    : inviteLink
+                      ? "social-invite"
+                      : undefined
+                }
               >
                 {shareLink ? (
                   <AddonShareCard link={shareLink} variant="wide" />
+                ) : inviteLink ? (
+                  <SocialInviteCard invite={inviteLink} />
                 ) : (
                   msg.body
                 )}

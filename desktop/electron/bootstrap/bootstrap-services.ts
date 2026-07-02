@@ -32,6 +32,7 @@ export const createBootstrapServices = (options: {
   getAllWindows: () => BrowserWindow[];
   getMobileBroadcast: () => MobileBroadcastFn | null;
   onAuthCallback: (url: string) => void;
+  onSocialInvite: (url: string) => void;
 }): BootstrapServices => {
   const { config, lifecycle, state } = options;
 
@@ -77,6 +78,12 @@ export const createBootstrapServices = (options: {
       }
       state.windowManager?.showWindow("full");
       options.onAuthCallback(url);
+    },
+    onSocialInvite: (url) => {
+      // An invite click means the user is heading for the app — surface it
+      // before broadcasting so the confirm dialog is actually visible.
+      state.windowManager?.showWindow("full");
+      options.onSocialInvite(url);
     },
     onSecondInstanceFocus: () => {
       state.windowManager?.getFullWindow()?.focus();
