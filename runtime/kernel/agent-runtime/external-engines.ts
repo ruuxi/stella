@@ -587,13 +587,40 @@ const runClaudeHostedTurn = async (args: {
       args.callbacks?.onStatus?.(runEvents.recordStatus(statusText));
     }
   };
-  // Unlike Codex (see runCodexHostedTurn.flushPreambleBeforeTool), Claude Code
-  // needs no preamble buffer/flush here: the Claude Code emitter suppresses
-  // streamed output for structured tool-request steps, so no visible preamble
-  // paints before its tools and the working indicator never dismisses across a
-  // preamble->tool gap. If that emitter ever starts streaming pre-tool
-  // commentary, the same gap would reappear here and would need the equivalent
-  // flush wiring.
+  // Buffers the assistant text Claude Code has streamed since the last
+  // message boundary (mirrors runCodexHostedTurn.flushPreambleBeforeTool).
+  // Claude Code CAN stream a natural-text preamble before a structured
+  // tool-request step resolves; without a boundary event the next step's text
+  // would append to the same overlay slot with no separator — visually fusing
+  // the preamble's last word with the answer's first word — and the working
+  // indicator would dismiss on the preamble across the preamble->tool gap.
+  let streamedAssistantText = "";
+  const acceptClaudeStreamChunk = (chunk: string) => {
+    streamedAssistantText += chunk;
+    args.callbacks?.onStream?.(runEvents.recordStream(chunk));
+  };
+  const flushPreambleBeforeTool = (toolArgs2: {
+    toolCallId: string;
+    toolName: string;
+    toolArgs: Record<string, unknown>;
+  }) => {
+    const preamble = streamedAssistantText.trim();
+    streamedAssistantText = "";
+    if (!preamble) {
+      return;
+    }
+    const preambleEvent = runEvents.recordAssistantMessageEnd(
+      buildPreambleToolBoundaryMessage({
+        preamble,
+        toolCallId: toolArgs2.toolCallId,
+        toolName: toolArgs2.toolName,
+        toolArgs: toolArgs2.toolArgs,
+      }),
+    );
+    if (preambleEvent) {
+      args.callbacks?.onAssistantMessage?.(preambleEvent);
+    }
+  };
   const executeClaudeTool = async (
     toolCallId: string,
     toolName: string,
@@ -601,6 +628,7 @@ const runClaudeHostedTurn = async (args: {
     signal?: AbortSignal,
     onUpdate?: ToolUpdateCallback,
   ) => {
+    flushPreambleBeforeTool({ toolCallId, toolName, toolArgs });
     responseTargetTracker?.noteToolStart(toolName, toolArgs);
     args.callbacks?.onToolStart?.(
       runEvents.recordToolStart({
@@ -702,9 +730,7 @@ const runClaudeHostedTurn = async (args: {
         runEvents.recordStatus(status.text, status.state),
       );
     },
-    onStream: (chunk) => {
-      args.callbacks?.onStream?.(runEvents.recordStream(chunk));
-    },
+    onStream: acceptClaudeStreamChunk,
     onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     executeTool: executeClaudeTool,
   });
@@ -756,9 +782,7 @@ const runClaudeHostedTurn = async (args: {
           runEvents.recordStatus(status.text, status.state),
         );
       },
-      onStream: (chunk) => {
-        args.callbacks?.onStream?.(runEvents.recordStream(chunk));
-      },
+      onStream: acceptClaudeStreamChunk,
       executeTool: executeClaudeTool,
       onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     });
