@@ -398,7 +398,7 @@ describe("orchestrator direct tool surface", () => {
   });
 
   it("forwards per-spawn model and engine selections to createAgent", async () => {
-    const { host, createdTasks } = await createTestHost();
+    const { host, createdTasks } = await createTestHost(() => {});
 
     await host.executeTool(
       "spawn_agent",

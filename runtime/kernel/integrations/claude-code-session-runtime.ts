@@ -88,11 +88,13 @@ type ClaudeCodeTurnRequest = {
   effortLevel?: string;
   /**
    * Vanilla pass-through mode (per-spawn `model: claude-code` selection):
-   * runs stock Claude Code with its own tool suite and configuration — no
+   * Claude Code keeps its own tool suite, MCP config, and system prompt — no
    * Stella tool bridge, no built-in-tool strip, no MCP override, no Stella
    * system prompt, no structured decision schema. `tools`/`executeTool` are
-   * ignored; the turn's natural result text is the final answer. The global
-   * claude-code engine takeover (preferences) never sets this.
+   * ignored; the turn's natural result text is the final answer. It is not
+   * a bare CLI invocation: the headless plumbing stays (stream-json I/O,
+   * `--dangerously-skip-permissions`, compaction-status hook settings). The
+   * global claude-code engine takeover (preferences) never sets this.
    */
   vanilla?: boolean;
   cwd?: string;
@@ -855,8 +857,9 @@ class ClaudeCodeSessionRuntime {
     if (!request.vanilla) {
       // Stella takeover mode: strip Claude Code's own tools and MCP servers
       // and route every tool call through the Stella bridge via the
-      // structured decision schema. Vanilla mode leaves stock Claude Code
-      // fully intact.
+      // structured decision schema. Vanilla mode keeps Claude Code's own
+      // tools/config (though still headless: permissions-skip, stream-json,
+      // and hook settings above apply in both modes).
       args.push(
         "--strict-mcp-config",
         "--mcp-config",
@@ -1155,13 +1158,21 @@ class ClaudeCodeSessionRuntime {
         : undefined;
     if (vanilla) {
       // No decision schema in vanilla mode — the result text IS the final
-      // answer, even when it happens to look like JSON.
+      // answer, even when it happens to look like JSON. An empty result is
+      // an error, not a silent empty success.
+      const message =
+        typeof parsed.result === "string" ? parsed.result.trim() : "";
+      if (!message) {
+        throw new Error(
+          stderrText.trim() || "Claude Code returned an empty result.",
+        );
+      }
       session.turnCount += 1;
       session.lastUsedAt = Date.now();
       return {
         action: {
           type: "final",
-          message: typeof parsed.result === "string" ? parsed.result.trim() : "",
+          message,
         },
         sessionId: session.sessionId,
         usage,

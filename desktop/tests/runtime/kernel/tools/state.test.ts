@@ -149,7 +149,7 @@ describe("state tools", () => {
   });
 
   it("forwards stella aliases as plain model overrides", async () => {
-    const { ctx, created } = createSpawnContext();
+    const { ctx, created } = createSpawnContext(() => {});
 
     await handleSpawnAgent(
       ctx,
@@ -159,6 +159,67 @@ describe("state tools", () => {
 
     expect(created[0]?.model).toBe("stella/light");
     expect(created[0]?.spawnEngine).toBeUndefined();
+  });
+
+  it("fails a plain model override when no validator is wired instead of dying mid-run", async () => {
+    const { ctx, created } = createSpawnContext();
+
+    const result = await handleSpawnAgent(
+      ctx,
+      { description: "Cheap task", prompt: "Do it.", model: "stella/light" },
+      orchestratorToolContext,
+    );
+
+    expect(result).toEqual({
+      error:
+        'Cannot honor model "stella/light": model routing is not available in this runtime. Omit the model parameter to use the configured default.',
+    });
+    expect(created).toHaveLength(0);
+  });
+
+  it("matches engine ids case-insensitively", async () => {
+    const { ctx, created } = createSpawnContext();
+
+    await handleSpawnAgent(
+      ctx,
+      {
+        description: "Repo work",
+        prompt: "Fix the bug.",
+        model: "Codex/gpt-5.4-codex",
+      },
+      orchestratorToolContext,
+    );
+    await handleSpawnAgent(
+      ctx,
+      { description: "CC task", prompt: "Do it.", model: "Claude-Code" },
+      orchestratorToolContext,
+    );
+
+    expect(created[0]?.spawnEngine).toEqual({
+      engine: "codex_cli",
+      model: "gpt-5.4-codex",
+    });
+    expect(created[1]?.spawnEngine).toEqual({ engine: "claude_code_local" });
+  });
+
+  it("rejects the removed agent_type argument loudly", async () => {
+    const { ctx, created } = createSpawnContext();
+
+    const result = await handleSpawnAgent(
+      ctx,
+      {
+        description: "Research task",
+        prompt: "Research it.",
+        agent_type: "research",
+      },
+      orchestratorToolContext,
+    );
+
+    expect(result).toEqual({
+      error:
+        "agent_type has been removed from spawn_agent. Every spawn runs the general agent; use the optional `model` parameter to pick a model or engine instead.",
+    });
+    expect(created).toHaveLength(0);
   });
 
   it("selects an engine from a bare engine id without validating a route", async () => {
