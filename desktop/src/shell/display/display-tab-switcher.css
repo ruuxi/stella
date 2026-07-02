@@ -1,3 +1,26 @@
+/* The surface menu can accumulate many ephemeral entries (open files,
+   apps). Cap it the way select.css does — Radix's collision-aware
+   available-height var, further bounded to ~64% of the window — and let
+   only the dynamic block scroll; pinned destinations (Chat/Canvas/Media/…)
+   stay in view above it. */
+[data-component="dropdown-menu-content"].display-tab-switcher-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: min(
+    64vh,
+    var(--radix-dropdown-menu-content-available-height, 480px)
+  );
+  overflow: hidden;
+}
+
+.display-tab-switcher-menu__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
 .display-tab-switcher-group {
   display: inline-flex;
   align-items: center;
