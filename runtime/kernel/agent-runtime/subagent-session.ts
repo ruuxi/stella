@@ -9,9 +9,11 @@ import { executeRuntimeAgentPrompt } from "./run-execution.js";
 import { buildSubagentSystemPrompt } from "./run-preparation.js";
 import { createRunEventRecorder } from "./run-events.js";
 import { PiSessionCore } from "./pi-session-core.js";
+import { safetySwapStatusMessage } from "./provider-abort-containment.js";
 import {
   buildRunThreadKey,
   buildSubagentPromptMessages,
+  persistThreadCustomMessage,
 } from "./thread-memory.js";
 import { createPiTools } from "./tool-adapters.js";
 import type { SubagentRunOptions, SubagentRunResult } from "./types.js";
@@ -102,6 +104,14 @@ export class SubagentSession extends PiSessionCore {
       },
     });
 
+    const containmentTurn = this.beginAbortContainmentTurn(agent, {
+      threadId: this.threadId,
+      runId,
+    });
+    let swapAttempted:
+      | { fromModelId: string; toModelId: string }
+      | undefined;
+
     runEvents.recordRunStart();
 
     if (opts.abortSignal?.aborted) {
@@ -133,7 +143,7 @@ export class SubagentSession extends PiSessionCore {
           ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
         },
       });
-      const { finalText: result, errorMessage } = await executeRuntimeAgentPrompt({
+      const executionArgs = {
         agent,
         promptMessages: promptMessages.map((message, index) => ({
           ...message,
@@ -153,7 +163,39 @@ export class SubagentSession extends PiSessionCore {
         threadKey: this.threadKey,
         conversationId: opts.conversationId,
         ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
-      });
+      };
+      let execution = await executeRuntimeAgentPrompt(executionArgs);
+
+      // Safety model swap: a fable-5 refusal/safety abort gets one retry on
+      // opus-4.8 (same auth path, per-run only). `prepareSafetyModelSwap`
+      // returns null for anything else, and this block runs at most once per
+      // turn, so there is no swap ping-pong.
+      if (execution.errorMessage && !opts.abortSignal?.aborted) {
+        const swap = this.prepareSafetyModelSwap(agent, {
+          errorMessage: execution.errorMessage,
+          logContext: { threadId: this.threadId, runId },
+        });
+        if (swap) {
+          swapAttempted = {
+            fromModelId: swap.fromModelId,
+            toModelId: swap.toModelId,
+          };
+          const statusText = safetySwapStatusMessage(swapAttempted);
+          opts.callbacks?.onStatus?.(
+            runEvents.recordStatus(statusText, "provider-retry"),
+          );
+          persistThreadCustomMessage(opts.store, {
+            threadKey: this.threadKey,
+            customType: "containment.safety-model-swap",
+            content: [{ type: "text", text: statusText }],
+          });
+          execution = await executeRuntimeAgentPrompt({
+            ...executionArgs,
+            resume: true,
+          });
+        }
+      }
+      const { finalText: result, errorMessage } = execution;
 
       const interruptedReason = resolveInterruptionReason({
         abortSignal: opts.abortSignal,
@@ -172,6 +214,7 @@ export class SubagentSession extends PiSessionCore {
         throw new Error(errorMessage);
       }
 
+      this.noteAbortContainmentSuccess();
       return await finalizeSubagentSuccess({
         opts,
         runEvents,
@@ -194,11 +237,20 @@ export class SubagentSession extends PiSessionCore {
           threadKey: this.threadKey,
         });
       }
+      const surfacedMessage = this.noteAbortContainmentFailure(agent, {
+        messagesBefore: containmentTurn.messagesBefore,
+        errorMessage:
+          error instanceof Error
+            ? error.message || "Subagent failed"
+            : String(error),
+        swapAttempted,
+        logContext: { threadId: this.threadId, runId },
+      });
       return finalizeSubagentError({
         opts,
         runEvents,
         runId,
-        error,
+        error: new Error(surfacedMessage),
         threadKey: this.threadKey,
       });
     }

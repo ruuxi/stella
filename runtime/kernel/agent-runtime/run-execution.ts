@@ -107,6 +107,14 @@ export const executeRuntimeAgentPrompt = async (args: {
   threadKey?: string;
   conversationId?: string;
   uiVisibility?: "visible" | "hidden";
+  /**
+   * Resume the agent loop from its existing in-memory context instead of
+   * appending a new prompt. Used by the safety model-swap retry: the failed
+   * attempt's prompt is already in context (and persisted), so re-prompting
+   * would duplicate it. Requires the context's last message to not be an
+   * assistant message (callers pop the errored assistant before resuming).
+   */
+  resume?: boolean;
   onAfterPrompt?: () => Promise<void> | void;
   onCleanup?: () => Promise<void> | void;
 }): Promise<{ finalText: string; errorMessage?: string }> => {
@@ -170,6 +178,17 @@ export const executeRuntimeAgentPrompt = async (args: {
   });
 
   try {
+    if (args.resume) {
+      const continuePromise = args.agent.continue();
+      continuePromise.catch(() => undefined);
+      await Promise.race([continuePromise, idleFailure]);
+      await args.onAfterPrompt?.();
+      const completion = getAgentCompletion(args.agent);
+      return {
+        ...completion,
+        finalText: completion.finalText.trim(),
+      };
+    }
     const promptInputs =
       args.promptMessages && args.promptMessages.length > 0
         ? await Promise.all(

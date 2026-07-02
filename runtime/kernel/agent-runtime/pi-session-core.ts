@@ -3,6 +3,12 @@ import { createRuntimeLogger } from "../debug.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
+import {
+  buildSafetyAbortSwapRoute,
+  isProviderContentAbortMessage,
+  ProviderAbortContainment,
+  type SafetySwapRoute,
+} from "./provider-abort-containment.js";
 import { createRuntimeAgent, resolveAgentThinkingLevel } from "./shared.js";
 import { buildHistorySource } from "./thread-memory.js";
 
@@ -28,6 +34,12 @@ export class PiSessionCore {
   private agent: Agent | null = null;
   private currentResolvedLlm: ResolvedLlmRoute | null = null;
   private pendingHistoryRefresh = false;
+  /**
+   * Deterministic provider-abort tracking for this durable thread: instant
+   * first-call failure counting and the request-assembly quarantine
+   * registry. Survives across turns for the lifetime of the session.
+   */
+  protected readonly abortContainment = new ProviderAbortContainment();
   readonly threadKey: string;
 
   constructor(opts: PiSessionCoreOptions) {
@@ -75,6 +87,118 @@ export class PiSessionCore {
       historyLength: refreshed.length,
       ...logContext,
     });
+  }
+
+  /**
+   * Start a containment-tracked turn. Re-masks previously quarantined
+   * entries (history refreshes rebuild the message array from the intact
+   * store) and, after two consecutive instant provider aborts, quarantines
+   * the newest suspect tool-result entry from the request assembly. Returns
+   * the pre-run message count so failures can be classified later.
+   */
+  protected beginAbortContainmentTurn(
+    agent: Agent,
+    logContext: SessionLogContext,
+  ): { messagesBefore: number } {
+    const application = this.abortContainment.applyQuarantine(
+      agent.state.messages,
+    );
+    if (application.newlyQuarantined || application.reappliedKeys.length > 0) {
+      this.logger.warn("provider-abort-quarantine", {
+        threadKey: this.threadKey,
+        reapplied: application.reappliedKeys,
+        newlyQuarantined: application.newlyQuarantined,
+        consecutiveInstantAborts:
+          this.abortContainment.consecutiveInstantAbortCount,
+        ...logContext,
+      });
+    }
+    return { messagesBefore: agent.state.messages.length };
+  }
+
+  /**
+   * After a failed attempt, decide whether to auto-swap a fable-5 route to
+   * opus-4.8 and retry once (fable's safety guardrails false-positive on
+   * benign quoted content). When eligible, this pops the errored assistant
+   * tail, points the live Agent at the swapped route, and returns the swap
+   * so the caller re-runs via `resume`. Per-run only: the next turn's
+   * `setResolvedLlm(opts.resolvedLlm)` restores the configured model. The
+   * caller invokes this at most once per turn, which enforces the
+   * one-swap-attempt cap (no ping-pong).
+   */
+  protected prepareSafetyModelSwap(
+    agent: Agent,
+    args: { errorMessage: string; logContext: SessionLogContext },
+  ): SafetySwapRoute | null {
+    if (!this.currentResolvedLlm) return null;
+    if (!isProviderContentAbortMessage(args.errorMessage)) return null;
+    const swap = buildSafetyAbortSwapRoute(this.currentResolvedLlm);
+    if (!swap) return null;
+
+    const messages = agent.state.messages;
+    const last = messages[messages.length - 1];
+    if (
+      last?.role === "assistant" &&
+      (last.stopReason === "error" || last.stopReason === "aborted")
+    ) {
+      // Drop the aborted stream's partial output so `continue()` resumes
+      // from the prompt instead of refusing on a trailing assistant message.
+      messages.pop();
+    }
+    if (messages[messages.length - 1]?.role === "assistant") {
+      // Unexpected shape (e.g. failure mid-tool-loop) — resuming would
+      // throw. Skip the swap and let normal failure handling run.
+      return null;
+    }
+
+    this.setResolvedLlm(swap.route);
+    agent.state.model = swap.route.model;
+    this.logger.warn("safety-model-swap", {
+      threadKey: this.threadKey,
+      fromModel: swap.fromModelId,
+      toModel: swap.toModelId,
+      providerError: args.errorMessage,
+      ...args.logContext,
+    });
+    return swap;
+  }
+
+  protected noteAbortContainmentSuccess(): void {
+    this.abortContainment.noteRunSuccess();
+  }
+
+  /**
+   * Record a failed turn with the containment tracker. Returns the error
+   * message to surface — the original, or the deterministic-abort
+   * containment error once the threshold is reached.
+   */
+  protected noteAbortContainmentFailure(
+    agent: Agent,
+    args: {
+      messagesBefore: number;
+      errorMessage: string;
+      swapAttempted?: { fromModelId: string; toModelId: string } | undefined;
+      logContext: SessionLogContext;
+    },
+  ): string {
+    const messages = agent.state.messages;
+    const surfaced = this.abortContainment.noteRunFailure({
+      history: messages.slice(0, args.messagesBefore),
+      appended: messages.slice(args.messagesBefore),
+      errorMessage: args.errorMessage,
+      swapAttempted: args.swapAttempted,
+    });
+    if (surfaced !== args.errorMessage) {
+      this.logger.warn("deterministic-provider-abort", {
+        threadKey: this.threadKey,
+        consecutiveInstantAborts:
+          this.abortContainment.consecutiveInstantAbortCount,
+        quarantinedEntries: this.abortContainment.quarantinedCount,
+        providerError: args.errorMessage,
+        ...args.logContext,
+      });
+    }
+    return surfaced;
   }
 
   protected createOrReuseAgent(args: {
