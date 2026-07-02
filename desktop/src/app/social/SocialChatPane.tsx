@@ -21,7 +21,6 @@ import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import type { SocialProfile } from "./hooks/use-social-profile";
 import { MessageSquare } from "@/ui/icons";
 import { AddonShareCard } from "@/features/store/AddonShareCard";
-import { parseShareLink } from "@/features/store/share-link";
 import { SocialInviteCard } from "./SocialInviteCard";
 import { parseSocialInviteLink } from "./invite-links";
 
@@ -328,23 +327,23 @@ export function SocialChatPane({
             </div>
           )}
           {group.messages.map((msg) => {
-            // Whole-body Stella share links render as an embedded
-            // add-on card instead of a plain text bubble. The bubble
-            // gets `data-embed` so the CSS strips its padding/bg and
-            // lets the card become the message.
-            const shareLink = parseShareLink(msg.body);
-            // Same whole-body rule for community/friend invite links —
-            // they render as a tappable invite card that opens the join /
-            // add-friend confirmation dialog. Store-view invites can't
-            // occur here (parseShareLink claims those bodies first), but
-            // narrow anyway so the card only ever gets social kinds.
-            const parsedInvite = shareLink
-              ? null
-              : parseSocialInviteLink(msg.body);
-            const inviteLink =
-              parsedInvite && parsedInvite.kind !== "view-store-package"
-                ? parsedInvite
+            // Whole-body Stella links render as embedded cards instead of
+            // a plain text bubble: store share links become an add-on
+            // card, community/friend invites become a tappable card that
+            // opens the join / add-friend confirmation dialog. The bubble
+            // gets `data-embed` so the CSS strips its padding/bg and lets
+            // the card become the message. One parse decides the kind —
+            // the grammar lives in `shared/social/invite-links`.
+            const parsed = parseSocialInviteLink(msg.body);
+            const shareLink =
+              parsed?.kind === "view-store-package"
+                ? {
+                    authorUsername: parsed.authorUsername,
+                    packageId: parsed.packageId,
+                  }
                 : null;
+            const inviteLink =
+              parsed && parsed.kind !== "view-store-package" ? parsed : null;
             return (
               <div
                 key={msg.id}

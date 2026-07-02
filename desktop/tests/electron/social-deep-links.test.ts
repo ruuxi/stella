@@ -16,6 +16,19 @@ describe("isSocialInviteDeepLink", () => {
     );
   });
 
+  it("rejects join codes the renderer's parser would drop", () => {
+    // The classifier delegates to the shared grammar: a URL accepted here
+    // but dropped by `parseSocialInviteLink` would vanish silently after
+    // being diverted off the auth path.
+    expect(isSocialInviteDeepLink("stella://join/abc", "stella")).toBe(false);
+    expect(isSocialInviteDeepLink("stella://join/my_code99", "stella")).toBe(
+      false,
+    );
+    expect(
+      isSocialInviteDeepLink("stella://join/waytoolongcode", "stella"),
+    ).toBe(false);
+  });
+
   it("accepts add-friend links", () => {
     expect(
       isSocialInviteDeepLink("stella://add-friend/swift-otter-42", "stella"),
