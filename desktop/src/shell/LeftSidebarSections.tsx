@@ -12,7 +12,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { History, CheckCircle2, Circle, CircleDot, AlertCircle } from "@/ui/icons";
+import { History, CheckCircle2, Circle, CircleDot, AlertCircle, ChevronDown } from "@/ui/icons";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import {
@@ -84,6 +84,8 @@ const EMPTY_TASKS: TaskItem[] = [];
 const EMPTY_FILES: ReadonlyArray<ConversationFileEntry> = [];
 /** Most-recent reasoning summaries shown under an expanded agent. */
 const AGENT_SUMMARY_CAP = 3;
+/** File rows shown under an expanded agent before "View all (N)" kicks in. */
+const AGENT_FILE_CAP = 5;
 
 const activityRowText = (row: ActivityRow): string =>
   row.kind === "task"
@@ -198,8 +200,13 @@ const TaskRow = memo(function TaskRow({
 }) {
   const label = (getTaskDisplayText(task) || task.description).trim();
   const summaries = useAgentProgressSummaries(task.id);
+  // Per-session only; resets when the row unmounts, which is fine.
+  const [showAllFiles, setShowAllFiles] = useState(false);
   const hasSummaries = summaries.length > 0;
   const hasFiles = files.length > 0;
+  const filesCapped = files.length > AGENT_FILE_CAP;
+  const visibleFiles =
+    filesCapped && !showAllFiles ? files.slice(0, AGENT_FILE_CAP) : files;
   const hasDetail = hasSummaries || hasFiles;
   return (
     <li
@@ -240,7 +247,7 @@ const TaskRow = memo(function TaskRow({
           ) : null}
           {hasFiles ? (
             <ul className="chat-workspace-strip__list chat-workspace-strip__task-files">
-              {files.map((file) => (
+              {visibleFiles.map((file) => (
                 <li
                   key={file.path}
                   className="chat-workspace-strip__row"
@@ -261,6 +268,27 @@ const TaskRow = memo(function TaskRow({
                   </button>
                 </li>
               ))}
+              {filesCapped ? (
+                <li className="chat-workspace-strip__row">
+                  <button
+                    type="button"
+                    className="chat-workspace-strip__file-button chat-workspace-strip__files-toggle"
+                    onClick={() => setShowAllFiles((value) => !value)}
+                    aria-expanded={showAllFiles}
+                  >
+                    <ChevronDown
+                      size={13}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                      className="chat-workspace-strip__files-toggle-chevron"
+                      data-expanded={showAllFiles ? "true" : undefined}
+                    />
+                    <span className="chat-workspace-strip__file-name">
+                      {showAllFiles ? "Show less" : `View all (${files.length})`}
+                    </span>
+                  </button>
+                </li>
+              ) : null}
             </ul>
           ) : null}
         </div>
