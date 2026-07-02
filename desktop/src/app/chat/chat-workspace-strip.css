@@ -323,6 +323,51 @@
   padding-left: 23px;
 }
 
+/* Animated expand/collapse for a task row's detail (reasoning summaries +
+   files) and a group's member list — same grid-template-rows pattern as the
+   section collapse above, with a short fade so the content reads as
+   revealing rather than unclipping. The wrapper stays mounted so both the
+   user toggle and the first summary/file arriving animate open. */
+.chat-workspace-strip__task-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 200ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.chat-workspace-strip__task-collapse[data-collapsed="true"] {
+  grid-template-rows: 0fr;
+}
+
+.chat-workspace-strip__task-collapse-clip {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 1;
+  /* Fade trails the reveal slightly and leads the collapse. */
+  transition: opacity 160ms ease 60ms;
+}
+
+.chat-workspace-strip__task-collapse[data-collapsed="true"]
+  > .chat-workspace-strip__task-collapse-clip {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+/* Activity rows animate height on enter/exit (motion). Clip vertically so
+   the shrinking row doesn't paint over its neighbors; horizontal overflow
+   stays visible for the buttons' negative-margin hover backgrounds. */
+.chat-workspace-strip__list--tasks > .chat-workspace-strip__task-row {
+  overflow: visible clip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace-strip__task-collapse,
+  .chat-workspace-strip__task-collapse-clip,
+  .chat-workspace-strip__task-collapse[data-collapsed="true"]
+    > .chat-workspace-strip__task-collapse-clip {
+    transition: none;
+  }
+}
+
 /* Expanded agent detail: recent reasoning summaries + the files it produced,
    indented to line up under the row label (clearing the status icon). */
 .chat-workspace-strip__task-detail {

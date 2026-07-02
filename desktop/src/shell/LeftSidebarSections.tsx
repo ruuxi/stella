@@ -12,6 +12,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { History, CheckCircle2, Circle, CircleDot, AlertCircle, ChevronDown } from "@/ui/icons";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
@@ -91,6 +92,68 @@ const activityRowText = (row: ActivityRow): string =>
   row.kind === "task"
     ? getTaskDisplayText(row.task) || row.task.description
     : row.group.label;
+
+// ── Row enter / exit / reorder motion ───────────────────────────────
+//
+// Mirrors the 10px `gap` on `.chat-workspace-strip__list--tasks`: entering
+// and exiting rows animate a matching negative top margin alongside their
+// height so the flex gap they occupy opens and closes with them — otherwise
+// the list snaps by one gap width the instant the row unmounts.
+const LIST_GAP_PX = 10;
+
+const ROW_HIDDEN = { height: 0, opacity: 0, marginTop: -LIST_GAP_PX };
+
+// Enter: the space opens first (height spring), then the row fades in.
+const ROW_ENTER = {
+  height: "auto",
+  opacity: 1,
+  marginTop: 0,
+  transition: {
+    height: { type: "spring", duration: 0.32, bounce: 0 },
+    marginTop: { type: "spring", duration: 0.32, bounce: 0 },
+    opacity: { duration: 0.2, delay: 0.1, ease: "easeOut" },
+  },
+} as const;
+
+// Exit: the fade leads, then the space closes behind it.
+const ROW_EXIT = {
+  height: 0,
+  opacity: 0,
+  marginTop: -LIST_GAP_PX,
+  transition: {
+    height: { type: "spring", duration: 0.28, bounce: 0, delay: 0.05 },
+    marginTop: { type: "spring", duration: 0.28, bounce: 0, delay: 0.05 },
+    opacity: { duration: 0.14, ease: "easeOut" },
+  },
+} as const;
+
+// Reorders (running → done, resorts) FLIP the row to its new slot.
+const ROW_REORDER_TRANSITION = {
+  type: "spring",
+  duration: 0.32,
+  bounce: 0,
+} as const;
+
+const ROW_EXIT_INSTANT = { ...ROW_HIDDEN, transition: { duration: 0 } };
+
+/**
+ * Shared motion props for activity rows. `layout="position"` FLIPs reorders
+ * with compositor-only transforms; `layoutDependency` pins measurement to the
+ * row's list index so streamed content deltas (which re-render rows without
+ * moving them) never force per-row layout reads. Reduced motion renders
+ * every state instantly.
+ */
+const useActivityRowMotionProps = (orderIndex: number) => {
+  const reduceMotion = useReducedMotion();
+  return {
+    layout: reduceMotion ? (false as const) : ("position" as const),
+    layoutDependency: orderIndex,
+    initial: reduceMotion ? false : ROW_HIDDEN,
+    animate: ROW_ENTER,
+    exit: reduceMotion ? ROW_EXIT_INSTANT : ROW_EXIT,
+    transition: ROW_REORDER_TRANSITION,
+  };
+};
 
 function WorkspaceSection({
   title,
@@ -191,13 +254,17 @@ const TaskRow = memo(function TaskRow({
   onToggle,
   files,
   onOpenFile,
+  orderIndex,
 }: {
   task: TaskItem;
   expanded: boolean;
   onToggle: (taskId: string, nextExpanded: boolean) => void;
   files: ReadonlyArray<ConversationFileEntry>;
   onOpenFile: (entry: ConversationFileEntry) => void;
+  /** Position in the host list; drives reorder FLIP measurement. */
+  orderIndex: number;
 }) {
+  const motionProps = useActivityRowMotionProps(orderIndex);
   const label = (getTaskDisplayText(task) || task.description).trim();
   const summaries = useAgentProgressSummaries(task.id);
   // Per-session only; resets when the row unmounts, which is fine.
@@ -208,8 +275,10 @@ const TaskRow = memo(function TaskRow({
   const visibleFiles =
     filesCapped && !showAllFiles ? files.slice(0, AGENT_FILE_CAP) : files;
   const hasDetail = hasSummaries || hasFiles;
+  const detailOpen = expanded && hasDetail;
   return (
-    <li
+    <motion.li
+      {...motionProps}
       className="chat-workspace-strip__task-row"
       data-status={task.status}
       data-expanded={expanded ? "true" : undefined}
@@ -240,11 +309,24 @@ const TaskRow = memo(function TaskRow({
           </span>
         </button>
       </div>
-      {expanded && hasDetail ? (
-        <div className="chat-workspace-strip__task-detail">
-          {hasSummaries ? (
-            <AgentProgressSummaries agentId={task.id} max={AGENT_SUMMARY_CAP} />
-          ) : null}
+      {/* Always mounted so both the user toggle and the first summary/file
+          arriving animate open — grid-rows 0fr↔1fr, same pattern as the
+          section header collapse. `inert` keeps the hidden detail out of the
+          tab order and the accessibility tree while it stays in the DOM. */}
+      <div
+        className="chat-workspace-strip__task-collapse"
+        data-collapsed={detailOpen ? undefined : "true"}
+        inert={!detailOpen}
+      >
+        <div className="chat-workspace-strip__task-collapse-clip">
+          {hasDetail ? (
+            <div className="chat-workspace-strip__task-detail">
+              {hasSummaries ? (
+                <AgentProgressSummaries
+                  agentId={task.id}
+                  max={AGENT_SUMMARY_CAP}
+                />
+              ) : null}
           {hasFiles ? (
             <ul className="chat-workspace-strip__list chat-workspace-strip__task-files">
               {visibleFiles.map((file) => (
@@ -291,9 +373,11 @@ const TaskRow = memo(function TaskRow({
               ) : null}
             </ul>
           ) : null}
+            </div>
+          ) : null}
         </div>
-      ) : null}
-    </li>
+      </div>
+    </motion.li>
   );
 });
 
@@ -305,19 +389,24 @@ const GroupRow = memo(function GroupRow({
   onToggleTask,
   agentFiles,
   onOpenFile,
+  orderIndex,
 }: {
   group: TaskGroup;
   expanded: boolean;
-  onToggle: (groupKey: string) => void;
+  onToggle: (groupKey: string, nextExpanded: boolean) => void;
   isTaskExpanded: (task: TaskItem) => boolean;
   onToggleTask: (taskId: string, nextExpanded: boolean) => void;
   agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
   onOpenFile: (entry: ConversationFileEntry) => void;
+  /** Position in the host list; drives reorder FLIP measurement. */
+  orderIndex: number;
 }) {
+  const motionProps = useActivityRowMotionProps(orderIndex);
   const label = group.label.trim();
   const statusText = getTaskGroupStatusText(group);
   return (
-    <li
+    <motion.li
+      {...motionProps}
       className="chat-workspace-strip__task-row chat-workspace-strip__group-row"
       data-status={group.status}
       title={`${label} — ${statusText}`}
@@ -325,7 +414,7 @@ const GroupRow = memo(function GroupRow({
       <button
         type="button"
         className="chat-workspace-strip__task-button"
-        onClick={() => onToggle(group.groupKey)}
+        onClick={() => onToggle(group.groupKey, !expanded)}
         aria-expanded={expanded}
         aria-label={`${label || "Task group"}: ${statusText}`}
       >
@@ -346,21 +435,31 @@ const GroupRow = memo(function GroupRow({
           {statusText}
         </span>
       </button>
-      {expanded ? (
-        <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks chat-workspace-strip__group-members">
-          {group.members.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              expanded={isTaskExpanded(task)}
-              onToggle={onToggleTask}
-              files={agentFiles.get(task.id) ?? EMPTY_FILES}
-              onOpenFile={onOpenFile}
-            />
-          ))}
-        </ul>
-      ) : null}
-    </li>
+      {/* Always mounted so expand/collapse animates (grid-rows 0fr↔1fr). */}
+      <div
+        className="chat-workspace-strip__task-collapse"
+        data-collapsed={expanded ? undefined : "true"}
+        inert={!expanded}
+      >
+        <div className="chat-workspace-strip__task-collapse-clip">
+          <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks chat-workspace-strip__group-members">
+            <AnimatePresence initial={false}>
+              {group.members.map((task, index) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  expanded={isTaskExpanded(task)}
+                  onToggle={onToggleTask}
+                  files={agentFiles.get(task.id) ?? EMPTY_FILES}
+                  onOpenFile={onOpenFile}
+                  orderIndex={index}
+                />
+              ))}
+            </AnimatePresence>
+          </ul>
+        </div>
+      </div>
+    </motion.li>
   );
 });
 
@@ -368,7 +467,7 @@ const TasksList = memo(function TasksList({
   rows,
   isTaskExpanded,
   onToggleTask,
-  expandedGroupKeys,
+  isGroupExpanded,
   onToggleGroup,
   agentFiles,
   onOpenFile,
@@ -376,36 +475,42 @@ const TasksList = memo(function TasksList({
   rows: ReadonlyArray<ActivityRow>;
   isTaskExpanded: (task: TaskItem) => boolean;
   onToggleTask: (taskId: string, nextExpanded: boolean) => void;
-  expandedGroupKeys: ReadonlySet<string>;
-  onToggleGroup: (groupKey: string) => void;
+  isGroupExpanded: (group: TaskGroup) => boolean;
+  onToggleGroup: (groupKey: string, nextExpanded: boolean) => void;
   agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
   onOpenFile: (entry: ConversationFileEntry) => void;
 }) {
   return (
     <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks">
-      {rows.map((row) =>
-        row.kind === "task" ? (
-          <TaskRow
-            key={row.task.id}
-            task={row.task}
-            expanded={isTaskExpanded(row.task)}
-            onToggle={onToggleTask}
-            files={agentFiles.get(row.task.id) ?? EMPTY_FILES}
-            onOpenFile={onOpenFile}
-          />
-        ) : (
-          <GroupRow
-            key={`group:${row.group.groupKey}`}
-            group={row.group}
-            expanded={expandedGroupKeys.has(row.group.groupKey)}
-            onToggle={onToggleGroup}
-            isTaskExpanded={isTaskExpanded}
-            onToggleTask={onToggleTask}
-            agentFiles={agentFiles}
-            onOpenFile={onOpenFile}
-          />
-        ),
-      )}
+      {/* `initial={false}` keeps the first paint of an already-populated
+          list static — only rows that appear/leave/move afterwards animate. */}
+      <AnimatePresence initial={false}>
+        {rows.map((row, index) =>
+          row.kind === "task" ? (
+            <TaskRow
+              key={row.task.id}
+              task={row.task}
+              expanded={isTaskExpanded(row.task)}
+              onToggle={onToggleTask}
+              files={agentFiles.get(row.task.id) ?? EMPTY_FILES}
+              onOpenFile={onOpenFile}
+              orderIndex={index}
+            />
+          ) : (
+            <GroupRow
+              key={`group:${row.group.groupKey}`}
+              group={row.group}
+              expanded={isGroupExpanded(row.group)}
+              onToggle={onToggleGroup}
+              isTaskExpanded={isTaskExpanded}
+              onToggleTask={onToggleTask}
+              agentFiles={agentFiles}
+              onOpenFile={onOpenFile}
+              orderIndex={index}
+            />
+          ),
+        )}
+      </AnimatePresence>
     </ul>
   );
 });
@@ -513,20 +618,28 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     useState<ActivityHistorySection | null>(null);
   const [openScheduleEntry, setOpenScheduleEntry] =
     useState<ScheduleEntry | null>(null);
-  const [expandedGroupKeys, setExpandedGroupKeys] = useState<
-    ReadonlySet<string>
-  >(() => new Set());
-  const toggleGroup = useCallback((groupKey: string) => {
-    setExpandedGroupKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupKey)) {
-        next.delete(groupKey);
-      } else {
-        next.add(groupKey);
-      }
-      return next;
-    });
-  }, []);
+  // Group expand/collapse mirrors the per-task semantics below: a running
+  // group comes up expanded (its members are live), a finished one collapsed.
+  // `groupExpandOverrides` records explicit user toggles, which win over the
+  // status default and are never stomped by it.
+  const [groupExpandOverrides, setGroupExpandOverrides] = useState<
+    ReadonlyMap<string, boolean>
+  >(() => new Map());
+  const isGroupExpanded = useCallback(
+    (group: TaskGroup): boolean =>
+      groupExpandOverrides.get(group.groupKey) ?? group.status === "running",
+    [groupExpandOverrides],
+  );
+  const toggleGroup = useCallback(
+    (groupKey: string, nextExpanded: boolean) => {
+      setGroupExpandOverrides((prev) => {
+        const next = new Map(prev);
+        next.set(groupKey, nextExpanded);
+        return next;
+      });
+    },
+    [],
+  );
   // Per-agent expand/collapse: an expanded activity row reveals that
   // agent's recent reasoning summaries and the files it produced.
   //
@@ -718,7 +831,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
               rows={visibleActivityRows}
               isTaskExpanded={isTaskExpanded}
               onToggleTask={toggleTask}
-              expandedGroupKeys={expandedGroupKeys}
+              isGroupExpanded={isGroupExpanded}
               onToggleGroup={toggleGroup}
               agentFiles={agentFiles}
               onOpenFile={handleOpenFile}
