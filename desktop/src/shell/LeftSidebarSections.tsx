@@ -433,7 +433,12 @@ const scheduleEntryToAffectedRef = (
   nextRunAtMs: entry.nextRunAtMs,
 });
 
-export function LeftSidebarSections({
+// Memoized: the host sidebar re-renders whenever root chrome state changes
+// (e.g. the collapse toggle flipping its className on the animation's first
+// frame), and re-reconciling this whole subtree there adds a hitch right as
+// the width slide starts. Context-driven updates (chat runtime, stores)
+// still re-render as usual.
+export const LeftSidebarSections = memo(function LeftSidebarSections({
   query = "",
   variant = "strip",
   renderEmpty,
@@ -830,4 +835,4 @@ export function LeftSidebarSections({
       />
     </>
   );
-}
+});
