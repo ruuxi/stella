@@ -45,6 +45,62 @@ export function deriveAgentFilesMap(
   return filesByAgent;
 }
 
+const eventAgentId = (event: EventRecord): string | null => {
+  const agentId = (event.payload as { agentId?: unknown } | undefined)
+    ?.agentId;
+  return typeof agentId === "string" && agentId.length > 0 ? agentId : null;
+};
+
+/**
+ * Merge the activity window (agent lifecycle events, notably the
+ * `agent-completed` file rollup) with the files window's agent-attributed
+ * file events (`tool_result` rows stamped with `agentId` as tools finish) so
+ * per-agent file lists update LIVE while the agent works instead of waiting
+ * for completion.
+ *
+ * - Only agent-attributed, file-carrying file events are admitted — pure
+ *   text/reasoning deltas never enter, so downstream signatures stay
+ *   unchanged during streaming.
+ * - Events present in both windows (`agent-completed` appears in each) are
+ *   deduped by `_id`; a file reported live AND in the completion rollup
+ *   collapses by path inside `deriveConversationFiles`, so nothing
+ *   double-lists when the agent finishes.
+ * - Both inputs arrive ASC by `(timestamp, _id)` (SQL ordering of
+ *   `listActivity` / `listFiles`), and the output preserves that ordering so
+ *   "most recent occurrence wins" path-dedup semantics hold.
+ *
+ * Returns the `activities` array untouched when the files window adds
+ * nothing, keeping the reference stable for memoized consumers.
+ */
+export function mergeAgentFileEvents(
+  activities: ReadonlyArray<EventRecord>,
+  fileEvents: ReadonlyArray<EventRecord>,
+): ReadonlyArray<EventRecord> {
+  if (fileEvents.length === 0) return activities;
+  const seenIds = new Set<string>();
+  for (const event of activities) seenIds.add(event._id);
+  const extras = fileEvents.filter(
+    (event) =>
+      !seenIds.has(event._id) &&
+      eventAgentId(event) !== null &&
+      eventContributesFiles(event),
+  );
+  if (extras.length === 0) return activities;
+  const before = (a: EventRecord, b: EventRecord): boolean =>
+    a.timestamp < b.timestamp ||
+    (a.timestamp === b.timestamp && a._id <= b._id);
+  const merged: EventRecord[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < activities.length && j < extras.length) {
+    if (before(activities[i], extras[j])) merged.push(activities[i++]);
+    else merged.push(extras[j++]);
+  }
+  while (i < activities.length) merged.push(activities[i++]);
+  while (j < extras.length) merged.push(extras[j++]);
+  return merged;
+}
+
 /**
  * Whether an event could contribute a file entry to an agent's files (the
  * only inputs `deriveAgentFilesMap` -> `deriveConversationFiles` turns into

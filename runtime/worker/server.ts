@@ -2052,6 +2052,10 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                   ? { producedFiles: ev.producedFiles }
                   : {}),
                 ...(ev.agentType ? { agentType: ev.agentType } : {}),
+                // Attributes the tool result to a spawned agent's thread so
+                // per-agent file lists (left sidebar Activity tray) can pick
+                // up file changes live, before `agent-completed` rolls up.
+                ...(ev.agentId ? { agentId: ev.agentId } : {}),
               },
             });
             notifyLocalChatUpdated(peer, payload.conversationId, event);

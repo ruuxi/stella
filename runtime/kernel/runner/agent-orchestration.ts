@@ -924,7 +924,13 @@ export const createAgentOrchestration = (
                   }),
                 );
               }
-              runnerCallbacks?.onToolEnd(event);
+              // Stamp the spawned agent's thread id onto the tool-end event
+              // so the persisted `tool_result` payload carries `agentId` —
+              // that's what lets the left sidebar attribute files to this
+              // agent's Activity row live, before the completion rollup.
+              runnerCallbacks?.onToolEnd(
+                agentId ? { ...event, agentId } : event,
+              );
             },
           },
           hookEmitter: context.hookEmitter,

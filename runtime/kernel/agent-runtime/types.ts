@@ -79,6 +79,13 @@ export type RuntimeToolEndEvent = {
   details?: unknown;
   fileChanges?: FileChangeRecord[];
   producedFiles?: ProducedFileRecord[];
+  /**
+   * Spawned-agent thread id (`task.threadId`) stamped by the subagent
+   * runner so persisted `tool_result` payloads can be attributed to the
+   * agent's Activity row live, before the `agent-completed` rollup lands.
+   * Absent for the orchestrator's own direct tool calls.
+   */
+  agentId?: string;
   uiVisibility?: "visible" | "hidden";
 };
 
