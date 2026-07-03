@@ -8,6 +8,7 @@ import {
   RECALL_BUDGET_EXHAUSTED_TEXT,
   RECALL_EMPTY_BRIEF_TEXT,
   RECALL_INDEX_BASE_LIMIT,
+  RECALL_INDEX_CHAR_BUDGET,
   RECALL_INDEX_HIGH_VOLUME_LIMIT,
   buildContextLookupUserPrompt,
   formatRecallThreadIndex,
@@ -582,6 +583,26 @@ describe("formatRecallThreadIndex", () => {
     );
     const empty = formatRecallThreadIndex(makeStore([]), now);
     expect(empty.index).toBe("No delegated agent threads recorded yet.");
+  });
+
+  it("enforces the rendered-char budget by dropping the OLDEST entries whole", () => {
+    const now = Date.now();
+    const threads = Array.from({ length: 700 }, (_, i) => ({
+      threadId: `thread-${String(i).padStart(4, "0")}`,
+      conversationId: "conv-1",
+      name: `Task number ${i}`,
+      createdAt: now - (700 - i) * 60_000,
+      lastUsedAt: now - (700 - i) * 60_000,
+      resultExcerpt: "x".repeat(400),
+    }));
+    const out = formatRecallThreadIndex(makeStore(threads), now);
+    expect(out.index.length).toBeLessThanOrEqual(
+      RECALL_INDEX_CHAR_BUDGET + 200,
+    );
+    expect(out.index).toMatch(/^\[index truncated to fit its budget: showing the \d+ most recently active of 700 threads/);
+    // Newest survives; oldest is dropped.
+    expect(out.index).toContain("thread-0699");
+    expect(out.index).not.toContain("thread-0000 |");
   });
 
   it("widens the index after a high-volume day", () => {

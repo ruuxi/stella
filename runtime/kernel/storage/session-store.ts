@@ -2881,6 +2881,15 @@ export class SessionStore {
    * what a finished thread actually did). Exclusions mirror
    * `searchThreads`: orchestrator threads and implicit subagent sessions
    * are not resumable work.
+   *
+   * Ordering by MAX(last_used_at, agent updated_at) can't use an index
+   * directly, so the query gathers candidates from TWO indexed recency
+   * scans (top `limit` by thread last_used_at, top `limit` by agent
+   * updated_at) and only sorts that ≤2·limit union by the MAX. That union
+   * provably contains the true top `limit` by last-active: if a thread
+   * ranked top-N by the max of the two columns, it must rank top-N on
+   * whichever column supplied that max. No full-table scan or whole-table
+   * temp sort as history grows.
    */
   listThreadsForRecallIndex(args: {
     limit: number;
@@ -2889,6 +2898,25 @@ export class SessionStore {
     const rows = this.db
       .prepare(
         `
+      WITH candidates(thread_key) AS (
+        SELECT thread_key FROM (
+          SELECT thread_key
+          FROM runtime_threads
+          WHERE agent_type != 'orchestrator'
+            AND thread_key NOT LIKE '%::subagent::%'
+          ORDER BY last_used_at DESC
+          LIMIT ?
+        )
+        UNION
+        SELECT thread_id FROM (
+          SELECT thread_id
+          FROM runtime_agents
+          WHERE agent_type != 'orchestrator'
+            AND thread_id NOT LIKE '%::subagent::%'
+          ORDER BY updated_at DESC
+          LIMIT ?
+        )
+      )
       SELECT
         thread_key AS threadId,
         runtime_threads.conversation_id AS conversationId,
@@ -2903,7 +2931,8 @@ export class SessionStore {
       FROM runtime_threads
       LEFT JOIN runtime_agents
         ON runtime_agents.thread_id = runtime_threads.thread_key
-      WHERE runtime_threads.agent_type != 'orchestrator'
+      WHERE thread_key IN (SELECT thread_key FROM candidates)
+        AND runtime_threads.agent_type != 'orchestrator'
         AND thread_key NOT LIKE '%::subagent::%'
       ORDER BY MAX(
         runtime_threads.last_used_at,
@@ -2912,7 +2941,7 @@ export class SessionStore {
       LIMIT ?
     `,
       )
-      .all(limit) as Array<{
+      .all(limit, limit, limit) as Array<{
       threadId: string;
       conversationId: string;
       name: string;
