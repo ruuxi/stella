@@ -15,6 +15,7 @@ import type {
   FileChangeRecord,
 } from "../../contracts/file-changes.js";
 import {
+  CLAUDE_CODE_MODEL_ALIASES,
   formatClaudeCodeResolvedModel,
   readClaudeCodeResolvedModels,
   recordClaudeCodeResolvedModel,
@@ -22,23 +23,13 @@ import {
 
 const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
 /**
- * Model aliases the `claude` CLI accepts via `--model`
- * (https://code.claude.com/docs/en/model-config). `default` is special: it
- * clears any override and runs the recommended model for the account, so we
- * pass no `--model` flag for it and surface the CLI-reported resolved model
- * next to it in pickers when known.
+ * Model aliases the `claude` CLI accepts via `--model` — canonical list in
+ * claude-code-resolved-models.ts. `default` is special: it clears any
+ * override and runs the recommended model for the account, so we pass no
+ * `--model` flag for it and surface the CLI-reported resolved model next
+ * to it in pickers when known.
  */
-const CLAUDE_CODE_ALIASES = [
-  "default",
-  "best",
-  "fable",
-  "opus",
-  "sonnet",
-  "haiku",
-  "opusplan",
-  "sonnet[1m]",
-  "opus[1m]",
-] as const;
+const CLAUDE_CODE_ALIASES = CLAUDE_CODE_MODEL_ALIASES;
 
 const CLAUDE_CODE_ALIAS_LABELS: Record<
   (typeof CLAUDE_CODE_ALIASES)[number],
@@ -1626,7 +1617,7 @@ class ClaudeCodeSessionRuntime {
           typeof parsedLine.model === "string" &&
           request.stellaAppDir
         ) {
-          recordClaudeCodeResolvedModel(
+          void recordClaudeCodeResolvedModel(
             request.stellaAppDir,
             parseClaudeCodeModel(request.modelId) ?? "default",
             parsedLine.model,

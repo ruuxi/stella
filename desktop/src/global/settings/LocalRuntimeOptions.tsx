@@ -199,6 +199,9 @@ export function LocalRuntimeOptions() {
             agentRuntimeEngine: next,
           });
         if (saved) setPreferences(saved);
+        // Keep other mounted surfaces (Engine tab, AgentModelPicker) in
+        // sync — they reload preferences on this event.
+        window.dispatchEvent(new CustomEvent(PREFS_CHANGED_EVENT));
       } catch (caught) {
         setPreferences(previous);
         setError(

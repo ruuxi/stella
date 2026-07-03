@@ -10,17 +10,81 @@
  *
  * The session runtime (which may run in a separate worker process) writes
  * this file; the desktop main process reads it when listing Claude Code
- * models. Both sides tolerate a missing or corrupt file.
+ * models. Writes are serialized per file through an in-process mutex and
+ * land via temp-file + rename, so concurrent sessions can't interleave
+ * read-modify-write cycles and a crash mid-write never leaves partial
+ * JSON behind. Both sides tolerate a missing or corrupt file.
  */
 
+import crypto from "crypto";
 import fs from "fs";
+import { promises as fsPromises } from "fs";
 import path from "path";
-import { writePrivateFileSync } from "../shared/private-fs.js";
+import { writePrivateFile } from "../shared/private-fs.js";
 
 const RESOLVED_MODELS_FILE = "claude-code-resolved-models.json";
 
+/**
+ * Model aliases the `claude` CLI accepts via `--model`
+ * (https://code.claude.com/docs/en/model-config). Canonical list — the
+ * session runtime derives its picker options from it, and stored keys
+ * outside this set (full model ids) are bounded by a small LRU below.
+ */
+export const CLAUDE_CODE_MODEL_ALIASES = [
+  "default",
+  "best",
+  "fable",
+  "opus",
+  "sonnet",
+  "haiku",
+  "opusplan",
+  "sonnet[1m]",
+  "opus[1m]",
+] as const;
+
+const ALIAS_KEYS: ReadonlySet<string> = new Set(CLAUDE_CODE_MODEL_ALIASES);
+
+/** Non-alias keys (full model ids) kept, newest-first, before eviction. */
+const MAX_NON_ALIAS_KEYS = 8;
+
 const resolvedModelsPath = (stellaAppDir: string): string =>
   path.join(stellaAppDir, RESOLVED_MODELS_FILE);
+
+/**
+ * Per-file write queue. Chaining every record onto the previous one makes
+ * the read-modify-write cycle atomic within this process even though the
+ * file IO is async.
+ */
+const writeQueues = new Map<string, Promise<void>>();
+
+const withFileQueue = (
+  filePath: string,
+  task: () => Promise<void>,
+): Promise<void> => {
+  const previous = writeQueues.get(filePath) ?? Promise.resolve();
+  const next = previous.then(task, task);
+  writeQueues.set(filePath, next);
+  void next.finally(() => {
+    if (writeQueues.get(filePath) === next) writeQueues.delete(filePath);
+  });
+  return next;
+};
+
+const writeFileAtomic = async (
+  filePath: string,
+  content: string,
+): Promise<void> => {
+  const tmpPath = `${filePath}.${process.pid}.${crypto
+    .randomBytes(4)
+    .toString("hex")}.tmp`;
+  try {
+    await writePrivateFile(tmpPath, content);
+    await fsPromises.rename(tmpPath, filePath);
+  } catch (error) {
+    await fsPromises.rm(tmpPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
+};
 
 export const readClaudeCodeResolvedModels = (
   stellaAppDir: string,
@@ -41,24 +105,42 @@ export const readClaudeCodeResolvedModels = (
   }
 };
 
+/**
+ * Persist a requested -> resolved mapping. Best-effort: failures are
+ * swallowed (never fail a turn over display metadata), but the returned
+ * promise resolves only after the write settles so tests can await it.
+ */
 export const recordClaudeCodeResolvedModel = (
   stellaAppDir: string,
   requestedModel: string,
   resolvedModel: string,
-): void => {
+): Promise<void> => {
   const requested = requestedModel.trim() || "default";
   const resolved = resolvedModel.trim();
-  if (!resolved) return;
-  try {
-    const current = readClaudeCodeResolvedModels(stellaAppDir);
-    if (current[requested] === resolved) return;
-    writePrivateFileSync(
-      resolvedModelsPath(stellaAppDir),
-      JSON.stringify({ ...current, [requested]: resolved }, null, 2),
-    );
-  } catch {
-    // Resolved-model capture is best-effort; never fail a turn over it.
-  }
+  if (!resolved) return Promise.resolve();
+  const filePath = resolvedModelsPath(stellaAppDir);
+  return withFileQueue(filePath, async () => {
+    try {
+      const current = readClaudeCodeResolvedModels(stellaAppDir);
+      if (current[requested] === resolved) return;
+      // Re-insert the key so object order doubles as recency order for
+      // the non-alias LRU below.
+      delete current[requested];
+      const entries = [...Object.entries(current), [requested, resolved]];
+      const aliasEntries = entries.filter(([key]) => ALIAS_KEYS.has(key));
+      const nonAliasEntries = entries.filter(([key]) => !ALIAS_KEYS.has(key));
+      const bounded = [
+        ...aliasEntries,
+        ...nonAliasEntries.slice(-MAX_NON_ALIAS_KEYS),
+      ];
+      await writeFileAtomic(
+        filePath,
+        JSON.stringify(Object.fromEntries(bounded), null, 2),
+      );
+    } catch {
+      // Resolved-model capture is best-effort; never fail a turn over it.
+    }
+  });
 };
 
 /**
