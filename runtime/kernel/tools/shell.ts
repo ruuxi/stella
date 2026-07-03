@@ -10,6 +10,8 @@ import { readdir, stat } from "fs/promises";
 import { setupEnvironment } from "dugite";
 import {
   fileChange,
+  isNoiseProducedPath,
+  MAX_PRODUCED_FILES_PER_COMMAND,
   type FileChangeRecord,
   type ProducedFileRecord,
 } from "../../contracts/file-changes.js";
@@ -161,6 +163,11 @@ const SNAPSHOT_IGNORED_DIRS = new Set([
   "coverage",
   ".cache",
   "electron-user-data",
+  // Electron build output (`desktop/dist-electron`) — segment-exact matching
+  // means the plain "dist" entry above doesn't cover it. Dev-instance builds
+  // copy the whole runtime-extension tree (agents/skills manifests) in here,
+  // which showed up in production as phantom "update" produced files.
+  "dist-electron",
 ]);
 
 const APPROX_BYTES_PER_TOKEN = 4;
@@ -401,6 +408,23 @@ const diffExternalCandidateSnapshots = async (
   return changes.length > 0 ? changes : undefined;
 };
 
+/**
+ * Merge + sanitize snapshot-detected produced files. Every shell
+ * `producedFiles` emission (foreground exec, background completion via
+ * `takeCompletedProducedFiles`, `write_stdin` / shell-status drains) funnels
+ * through here, so collection semantics live in one place:
+ *
+ *  1. Dedupe across the root-workspace diff and external-candidate diffs.
+ *  2. Drop noise paths (`isNoiseProducedPath`: hidden/profile/cache dirs,
+ *     logs, locks) so they never persist into `tool_result` payloads.
+ *  3. Bulk-churn guard: if a single command still "produced" more than
+ *     `MAX_PRODUCED_FILES_PER_COMMAND` files, the diff is environment churn
+ *     (spawned app bootstrap seeding its data dir, git checkout/worktree
+ *     mtime rewrites, dependency installs) — not deliverables. Drop the
+ *     whole batch; deliberate writes still surface via explicit
+ *     `fileChanges` from Write/Edit/apply_patch, which never pass through
+ *     snapshot detection.
+ */
 const mergeProducedFiles = (
   ...groups: Array<ProducedFileRecord[] | undefined>
 ): ProducedFileRecord[] | undefined => {
@@ -409,12 +433,14 @@ const mergeProducedFiles = (
   for (const group of groups) {
     if (!group) continue;
     for (const file of group) {
+      if (isNoiseProducedPath(file.path)) continue;
       const key = `${file.kind.type}:${file.path}:${file.kind.type === "update" ? (file.kind.move_path ?? "") : ""}`;
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(file);
     }
   }
+  if (out.length > MAX_PRODUCED_FILES_PER_COMMAND) return undefined;
   return out.length > 0 ? out : undefined;
 };
 

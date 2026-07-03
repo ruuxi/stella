@@ -197,33 +197,16 @@ const DECLARED_OUTPUTS_RE = /(?:^|[\\/])(?:\.stella|state)[\\/]outputs[\\/]/;
 export const isDeclaredOutputPath = (filePath: string): boolean =>
   DECLARED_OUTPUTS_RE.test(filePath);
 
-const NOISE_PATH_SEGMENTS = new Set(["node_modules", "__pycache__"]);
-const NOISE_EXTS = new Set(["log", "tmp", "lock", "pid"]);
-
 /**
- * Snapshot-detected `producedFiles` sweep up incidental writes alongside real
- * deliverables: browser profiles (`.brave-profile/Local State`), launch logs
- * (`.stella-launch.log`), caches, `.DS_Store`, scratch dirs. Filter those out
- * of every user-facing produced-file surface (inline artifact card pool,
- * completion-card pills, Recent files) so a 900-record shell rollup doesn't
- * drown the actual outputs. Explicit `fileChanges` (deliberate tool edits)
- * are NOT run through this — only indirect snapshot detections.
- *
- * A dot-segment means a hidden/profile/cache dir and is always noise, with
- * one carve-out: `.stella` itself, since `~/.stella/outputs/**` is the
- * declared deliverables home.
+ * Noise filter for snapshot-detected `producedFiles`. The definition moved
+ * into the shared runtime contract so the shell collector (which now filters
+ * at collection time, before persistence) and every renderer surface (inline
+ * artifact card pool, completion-card pills, Recent files, sidebar Activity
+ * tray — still needed for rows persisted before collection-side filtering)
+ * apply ONE filter. Re-exported here to keep this module the renderer-side
+ * home for path classification.
  */
-export const isNoiseProducedPath = (filePath: string): boolean => {
-  const trimmed = filePath.trim();
-  if (!trimmed) return true;
-  for (const segment of trimmed.split(/[\\/]/)) {
-    if (!segment) continue;
-    if (segment.startsWith(".") && segment !== ".stella") return true;
-    if (NOISE_PATH_SEGMENTS.has(segment)) return true;
-  }
-  const ext = extensionOf(trimmed);
-  return ext != null && NOISE_EXTS.has(ext);
-};
+export { isNoiseProducedPath } from "../../../../runtime/contracts/file-changes.js";
 
 export const isDeveloperResourceExtension = (
   extension: string | null,

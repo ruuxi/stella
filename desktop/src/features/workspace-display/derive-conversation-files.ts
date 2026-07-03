@@ -13,6 +13,7 @@ import type { EventRecord } from "@/features/chat/lib/event-transforms";
 import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
+  MAX_PRODUCED_FILES_PER_COMMAND,
   type FileChangeRecord,
 } from "../../../../runtime/contracts/file-changes.js";
 import {
@@ -91,7 +92,16 @@ export function deriveConversationFiles(
     // real deliverables — drop the noise here so completion-card pills and
     // the Recent files list only show user-facing outputs. Explicit
     // `fileChanges` are deliberate tool edits and stay unfiltered.
-    const produced = (
+    //
+    // The shell collector now applies the same filter (plus a bulk-churn
+    // cap) at collection time; this pass remains for rows persisted before
+    // that existed. The per-command bulk guard is mirrored here for legacy
+    // `tool_result` rows only: a single command that "produced" dozens of
+    // files was environment churn (spawned dev-instance bootstrap seeding,
+    // git checkout mtime rewrites), not deliverables. `agent-completed`
+    // rollups aggregate many commands and may legitimately exceed the
+    // per-command cap, so they're exempt.
+    const producedDenoised = (
       isProducedFileRecordArray(payload.producedFiles)
         ? payload.producedFiles
         : []
@@ -99,6 +109,11 @@ export function deriveConversationFiles(
       const path = resolvedPathForChange(record);
       return path === null || !isNoiseProducedPath(path);
     });
+    const produced =
+      event.type === "tool_result" &&
+      producedDenoised.length > MAX_PRODUCED_FILES_PER_COMMAND
+        ? []
+        : producedDenoised;
 
     for (const record of [...fileChanges, ...produced]) {
       const path = resolvedPathForChange(record);
