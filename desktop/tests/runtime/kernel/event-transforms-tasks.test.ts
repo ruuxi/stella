@@ -11,6 +11,8 @@ import {
   groupActivityTasks,
   mergeFooterTasks,
   pruneGroupExpandOverrides,
+  updateSeenRunningGroupKeys,
+  updateSeenRunningTaskIds,
   type EventRecord,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
@@ -810,5 +812,82 @@ describe("getInlineWorkingIndicatorExitDelayMs", () => {
         nowMs: 3_100,
       }),
     ).toBe(0);
+  });
+});
+
+describe("seen-running expansion stickiness", () => {
+  const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
+    description: "Task",
+    agentType: "general",
+    status: "running",
+    startedAtMs: 100,
+    lastUpdatedAtMs: 100,
+    ...overrides,
+  });
+
+  it("keeps a task's id after it completes (row must not auto-collapse)", () => {
+    const whileRunning = updateSeenRunningTaskIds(new Set(), [
+      task({ id: "a1" }),
+    ]);
+    expect(whileRunning.has("a1")).toBe(true);
+    const afterCompletion = updateSeenRunningTaskIds(whileRunning, [
+      task({ id: "a1", status: "completed" }),
+    ]);
+    expect(afterCompletion.has("a1")).toBe(true);
+  });
+
+  it("never admits tasks that were only ever seen completed (history rows)", () => {
+    const seen = updateSeenRunningTaskIds(new Set(), [
+      task({ id: "old", status: "completed" }),
+    ]);
+    expect(seen.has("old")).toBe(false);
+  });
+
+  it("prunes ids whose task left the list and keeps the reference stable otherwise", () => {
+    const seen = updateSeenRunningTaskIds(new Set(), [task({ id: "a1" })]);
+    // Unchanged input → same reference (memo-friendly).
+    expect(updateSeenRunningTaskIds(seen, [task({ id: "a1" })])).toBe(seen);
+    // Task aged out of the window → id pruned.
+    const pruned = updateSeenRunningTaskIds(seen, [
+      task({ id: "other", status: "completed" }),
+    ]);
+    expect(pruned.has("a1")).toBe(false);
+  });
+
+  it("survives a send_input re-run cycle (running → completed → running → completed)", () => {
+    let seen: ReadonlySet<string> = new Set();
+    seen = updateSeenRunningTaskIds(seen, [task({ id: "a1" })]);
+    seen = updateSeenRunningTaskIds(seen, [
+      task({ id: "a1", status: "completed" }),
+    ]);
+    seen = updateSeenRunningTaskIds(seen, [task({ id: "a1" })]);
+    seen = updateSeenRunningTaskIds(seen, [
+      task({ id: "a1", status: "completed" }),
+    ]);
+    expect(seen.has("a1")).toBe(true);
+  });
+
+  it("tracks group keys while any member runs and keeps them after all finish", () => {
+    const whileRunning = updateSeenRunningGroupKeys(new Set(), [
+      task({ id: "a1", groupKey: "g1" }),
+      task({ id: "a2", groupKey: "g1", status: "completed" }),
+    ]);
+    expect(whileRunning.has("g1")).toBe(true);
+    const done = updateSeenRunningGroupKeys(whileRunning, [
+      task({ id: "a1", groupKey: "g1", status: "completed" }),
+      task({ id: "a2", groupKey: "g1", status: "completed" }),
+    ]);
+    expect(done.has("g1")).toBe(true);
+    // Group keeps its key even when it shrinks to a single member (renders
+    // as a plain task row), mirroring pruneGroupExpandOverrides.
+    const shrunk = updateSeenRunningGroupKeys(done, [
+      task({ id: "a1", groupKey: "g1", status: "completed" }),
+    ]);
+    expect(shrunk.has("g1")).toBe(true);
+    // ...and prunes once no member remains.
+    const gone = updateSeenRunningGroupKeys(shrunk, [
+      task({ id: "b1", status: "completed" }),
+    ]);
+    expect(gone.has("g1")).toBe(false);
   });
 });

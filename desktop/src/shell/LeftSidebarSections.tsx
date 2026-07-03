@@ -41,6 +41,8 @@ import {
   mergeFooterTasks,
   orderByFirstSeen,
   pruneGroupExpandOverrides,
+  updateSeenRunningGroupKeys,
+  updateSeenRunningTaskIds,
   type ActivityRow,
   type FirstSeenOrder,
   type TaskGroup,
@@ -620,16 +622,23 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     useState<ActivityHistorySection | null>(null);
   const [openScheduleEntry, setOpenScheduleEntry] =
     useState<ScheduleEntry | null>(null);
+  // Ids/group-keys seen running this session — the sticky half of the
+  // expansion defaults below (rolled forward next to `allTasks`).
+  const seenRunningTasksRef = useRef<ReadonlySet<string>>(new Set());
+  const seenRunningGroupsRef = useRef<ReadonlySet<string>>(new Set());
   // Group expand/collapse mirrors the per-task semantics below: a running
-  // group comes up expanded (its members are live), a finished one collapsed.
-  // `groupExpandOverrides` records explicit user toggles, which win over the
-  // status default and are never stomped by it.
+  // group comes up expanded (its members are live) and STAYS expanded once
+  // it finishes (seen-running set), so completion never yanks the group's
+  // work out of view. `groupExpandOverrides` records explicit user toggles,
+  // which win over the status default and are never stomped by it.
   const [groupExpandOverrides, setGroupExpandOverrides] = useState<
     ReadonlyMap<string, boolean>
   >(() => new Map());
   const isGroupExpanded = useCallback(
     (group: TaskGroup): boolean =>
-      groupExpandOverrides.get(group.groupKey) ?? group.status === "running",
+      groupExpandOverrides.get(group.groupKey) ??
+      (group.status === "running" ||
+        seenRunningGroupsRef.current.has(group.groupKey)),
     [groupExpandOverrides],
   );
   const toggleGroup = useCallback(
@@ -645,17 +654,25 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   // Per-agent expand/collapse: an expanded activity row reveals that
   // agent's recent reasoning summaries and the files it produced.
   //
-  // Default state is derived from the agent's status — a running agent comes
-  // up expanded, a finished one collapsed — so a freshly-started agent auto-
-  // expands. `expandOverrides` records rows the user has explicitly toggled;
-  // those win over the status default and are never stomped by it.
+  // Default state: a running agent comes up expanded (freshly-started agents
+  // auto-expand), and an agent seen running THIS session stays expanded
+  // after it finishes — completion must not collapse the row and hide the
+  // work the user was just watching (prod bug: finish → auto-collapse →
+  // detail gone). Rows loaded already-completed (history, conversation
+  // switch) default collapsed as before, since their ids were never seen
+  // running. `expandOverrides` records rows the user has explicitly toggled;
+  // those win over every default and are never stomped by it.
   const [expandOverrides, setExpandOverrides] = useState<
     ReadonlyMap<string, boolean>
   >(() => new Map());
   const isTaskExpanded = useCallback(
     (task: TaskItem): boolean => {
       const override = expandOverrides.get(task.id);
-      return override ?? task.status === "running";
+      return (
+        override ??
+        (task.status === "running" ||
+          seenRunningTasksRef.current.has(task.id))
+      );
     },
     [expandOverrides],
   );
@@ -679,6 +696,21 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     appSessionStartedAtMs,
     liveTasks,
   ]);
+
+  // Roll the seen-running sets forward in a memo (same idempotent-mutation
+  // pattern as `runningOrderRef`) so they're current before any row computes
+  // its expansion; pruned to ids still present in the task list so they
+  // can't grow unboundedly.
+  useMemo(() => {
+    seenRunningTasksRef.current = updateSeenRunningTaskIds(
+      seenRunningTasksRef.current,
+      allTasks,
+    );
+    seenRunningGroupsRef.current = updateSeenRunningGroupKeys(
+      seenRunningGroupsRef.current,
+      allTasks,
+    );
+  }, [allTasks]);
 
   const groupedRows = useMemo(() => groupActivityTasks(allTasks), [allTasks]);
 

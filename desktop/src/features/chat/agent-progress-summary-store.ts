@@ -23,6 +23,16 @@ export type ProgressSummary = {
 /** Most recent summaries kept per agent; older ones scroll out / drop. */
 export const MAX_SUMMARIES_PER_AGENT = 5;
 
+/**
+ * Memory bound now that summaries persist after an agent completes (they
+ * used to be wiped via `retainOnly` the moment the agent left the running
+ * set — which blanked the completed row's reasoning history in the sidebar).
+ * The map keeps LRU order (an agent's entry is re-appended on every new
+ * phrase); when a NEW agent would exceed the cap, the least-recently-updated
+ * agent's summaries are evicted. ~50 agents x ≤5 short phrases is a few KB.
+ */
+export const MAX_TRACKED_AGENTS = 50;
+
 const EMPTY_SUMMARIES: ReadonlyArray<ProgressSummary> = Object.freeze([]);
 
 const summariesByAgent = new Map<string, ProgressSummary[]>();
@@ -103,26 +113,17 @@ export const agentProgressSummaryStore = {
     if (next.length > MAX_SUMMARIES_PER_AGENT) {
       next.splice(0, next.length - MAX_SUMMARIES_PER_AGENT);
     }
+    // Delete-then-set keeps the Map in least-recently-updated → most-recent
+    // insertion order, which is what the eviction below leans on.
+    summariesByAgent.delete(agentId);
     summariesByAgent.set(agentId, next);
+    while (summariesByAgent.size > MAX_TRACKED_AGENTS) {
+      const oldest = summariesByAgent.keys().next().value;
+      if (oldest === undefined) break;
+      summariesByAgent.delete(oldest);
+      collapsedAgents.delete(oldest);
+    }
     emit();
-  },
-
-  /** Drop summaries (and collapse state) for agents no longer active. */
-  retainOnly(agentIds: ReadonlySet<string>): void {
-    let changed = false;
-    for (const id of summariesByAgent.keys()) {
-      if (!agentIds.has(id)) {
-        summariesByAgent.delete(id);
-        changed = true;
-      }
-    }
-    for (const id of collapsedAgents) {
-      if (!agentIds.has(id)) {
-        collapsedAgents.delete(id);
-        changed = true;
-      }
-    }
-    if (changed) emit();
   },
 
   isCollapsed(agentId: string): boolean {

@@ -807,6 +807,71 @@ export function pruneGroupExpandOverrides(
   return next
 }
 
+/**
+ * Roll the "has been seen running this session" id set forward for a new
+ * task list. An id enters the set while its task is running and STAYS in it
+ * after the task completes — this is what keeps a finished agent's activity
+ * row expanded (its default expansion is `running || seenRunning`) instead
+ * of snapping shut the moment the terminal lifecycle event lands. Ids whose
+ * task left the list entirely (aged out of the activity window, conversation
+ * switch) are pruned so the set can't grow unboundedly. Returns `seen`
+ * unchanged (same reference) when nothing changed.
+ */
+export function updateSeenRunningTaskIds(
+  seen: ReadonlySet<string>,
+  tasks: readonly TaskItem[],
+): ReadonlySet<string> {
+  let changed = false
+  const present = new Set<string>()
+  for (const task of tasks) present.add(task.id)
+  const next = new Set<string>()
+  for (const id of seen) {
+    if (present.has(id)) next.add(id)
+    else changed = true
+  }
+  for (const task of tasks) {
+    if (task.status === 'running' && !next.has(task.id)) {
+      next.add(task.id)
+      changed = true
+    }
+  }
+  return changed ? next : seen
+}
+
+/**
+ * Group-key variant of {@link updateSeenRunningTaskIds}: a group counts as
+ * running while ANY member is running, and its key survives (keeping the
+ * group's default expansion open) until no member remains in the task list.
+ * Keyed off tasks' `groupKey` — not the rendered group rows — for the same
+ * reason as {@link pruneGroupExpandOverrides}: a group that shrinks to a
+ * single member renders as a plain task row but must not lose its state.
+ */
+export function updateSeenRunningGroupKeys(
+  seen: ReadonlySet<string>,
+  tasks: readonly TaskItem[],
+): ReadonlySet<string> {
+  let changed = false
+  const presentKeys = new Set<string>()
+  const runningKeys = new Set<string>()
+  for (const task of tasks) {
+    if (!task.groupKey) continue
+    presentKeys.add(task.groupKey)
+    if (task.status === 'running') runningKeys.add(task.groupKey)
+  }
+  const next = new Set<string>()
+  for (const key of seen) {
+    if (presentKeys.has(key)) next.add(key)
+    else changed = true
+  }
+  for (const key of runningKeys) {
+    if (!next.has(key)) {
+      next.add(key)
+      changed = true
+    }
+  }
+  return changed ? next : seen
+}
+
 /** Persistent first-seen ordering state for {@link orderByFirstSeen}. */
 export type FirstSeenOrder = {
   /** Frozen insertion index per item key. */
