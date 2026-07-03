@@ -642,12 +642,39 @@ function ModelsSection({
     [claudeCodeModels],
   );
 
-  const activeRuntimeModels =
-    runtimeModelEngine === "codex_cli"
-      ? codexRuntimeModels
-      : runtimeModelEngine === "claude_code_local"
-        ? claudeRuntimeModels
-        : [];
+  const activeRuntimeModels = useMemo(() => {
+    const base =
+      runtimeModelEngine === "codex_cli"
+        ? codexRuntimeModels
+        : runtimeModelEngine === "claude_code_local"
+          ? claudeRuntimeModels
+          : [];
+    // A stale saved model (removed from the engine's list) would otherwise
+    // render no row at all; pin it as a disabled "Unavailable" entry so the
+    // configured value stays visible. Only once the list has loaded — an
+    // empty base means loading/failed, not stale.
+    if (
+      !selectedRuntimeModelId ||
+      base.length === 0 ||
+      base.some((model) => model.id === selectedRuntimeModelId)
+    ) {
+      return base;
+    }
+    return [
+      ...base,
+      {
+        id: selectedRuntimeModelId,
+        label: selectedRuntimeModelId,
+        subtitle: "Unavailable",
+        unavailable: true,
+      },
+    ];
+  }, [
+    claudeRuntimeModels,
+    codexRuntimeModels,
+    runtimeModelEngine,
+    selectedRuntimeModelId,
+  ]);
 
   const restricted = isRestrictedModelOverrideAudience(audience);
   const restrictedPlanLabel = audience ? getPlanLabel(audience) : null;

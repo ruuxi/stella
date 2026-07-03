@@ -60,6 +60,31 @@ export const pruneRecentModels = (
   return next;
 };
 
+/**
+ * Availability predicate for override ids. `catalogModelIds` must cover the
+ * FULL merged catalog (Stella + connected BYOK providers + local models) —
+ * validating against the Stella subset alone would prune perfectly valid
+ * `openrouter/…` / `anthropic/…` / `local/…` picks. Engine ids
+ * (`claude-code/…`, `codex-cli/…`) are aliases resolved by the engine at
+ * run time, so they stay valid independent of the catalog. An empty id set
+ * means the catalog hasn't loaded (or failed, e.g. offline): everything
+ * passes — never wipe or grey out recents on missing data.
+ */
+export const createKnownModelIdPredicate = (
+  catalogModelIds: ReadonlySet<string>,
+): ((modelId: string) => boolean) => {
+  return (modelId: string): boolean => {
+    if (catalogModelIds.size === 0) return true;
+    if (
+      modelId.startsWith("claude-code/") ||
+      modelId.startsWith("codex-cli/")
+    ) {
+      return true;
+    }
+    return catalogModelIds.has(modelId);
+  };
+};
+
 export interface RecentModelRow {
   id: string;
   /**
