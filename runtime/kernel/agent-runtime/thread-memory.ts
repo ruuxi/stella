@@ -826,6 +826,7 @@ export const compactRuntimeThreadHistory = async (args: {
   agentType: string;
   overrideSummary?: string;
   preserveLastN?: number;
+  stellaDataDir?: string;
 }): Promise<{ compacted: boolean }> => {
   try {
     return await maybeCompactRuntimeThread({
@@ -839,6 +840,7 @@ export const compactRuntimeThreadHistory = async (args: {
       ...(args.preserveLastN !== undefined
         ? { preserveLastN: args.preserveLastN }
         : {}),
+      ...(args.stellaDataDir ? { stellaDataDir: args.stellaDataDir } : {}),
     });
   } catch (error) {
     logger.warn("thread.compaction.failed", {
@@ -856,6 +858,7 @@ export const persistAssistantReply = async (args: {
   resolvedLlm: ResolvedLlmRoute;
   agentType: string;
   content: string;
+  stellaDataDir?: string;
 }): Promise<void> => {
   if (!args.content.trim()) {
     return;

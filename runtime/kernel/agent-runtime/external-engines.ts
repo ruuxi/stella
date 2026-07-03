@@ -816,6 +816,7 @@ const runClaudeHostedTurn = async (args: {
     resolvedLlm: args.opts.resolvedLlm,
     agentType: args.opts.agentType,
     content: finalResult.text,
+    stellaDataDir: args.opts.stellaDataDir,
   });
   const assistantMessageEvent = runEvents.recordAssistantTextEnd(
     finalResult.text,
@@ -1081,6 +1082,7 @@ const runCodexHostedTurn = async (args: {
     resolvedLlm: args.opts.resolvedLlm,
     agentType: args.opts.agentType,
     content: finalResult.text,
+    stellaDataDir: args.opts.stellaDataDir,
   });
   const assistantMessageEvent = runEvents.recordAssistantTextEnd(
     finalResult.text,
