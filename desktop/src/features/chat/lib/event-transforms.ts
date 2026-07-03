@@ -132,6 +132,34 @@ export function isGenericTaskDescription(
   return !description || GENERIC_TASK_DESCRIPTION_PATTERN.test(description.trim())
 }
 
+/**
+ * Best-effort display name for a task whose spawn description is missing
+ * (e.g. a resumed legacy thread rebuilt from reasoning-only events). Thread
+ * ids are slugs of the original spawn description (`compare-flight-prices`),
+ * so de-slugging the id recovers a meaningful label. Ordinal/namespace ids
+ * (`task-7`, `grp-…`) carry no words, so they fall back to plain "Task".
+ */
+export function fallbackTaskDescription(agentId: string | undefined): string {
+  const slug = (agentId ?? '').trim()
+  if (!slug || /^(task|grp|legacy)-/i.test(slug)) return 'Task'
+  const words = slug.split(/[-_]+/).filter(Boolean)
+  const text = words.join(' ')
+  if (!/[a-z]/i.test(text)) return 'Task'
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** True when a description is the generic placeholder or merely the
+ *  de-slugged id — i.e. it should lose to any real spawn description. */
+export function isFallbackTaskDescription(
+  description: string | undefined,
+  agentId: string | undefined,
+): boolean {
+  return (
+    isGenericTaskDescription(description) ||
+    description?.trim() === fallbackTaskDescription(agentId)
+  )
+}
+
 export function isStandaloneTaskStatusText(
   statusText: string | undefined,
 ): boolean {
@@ -410,7 +438,7 @@ export function extractTasksFromActivities(
     const previous = tasksById.get(agentId)
     return {
       id: agentId,
-      description: previous?.description ?? 'Task',
+      description: previous?.description ?? fallbackTaskDescription(agentId),
       agentType: previous?.agentType ?? 'general',
       status: previous?.status ?? 'running',
       parentAgentId: previous?.parentAgentId,

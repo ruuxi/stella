@@ -29,6 +29,7 @@
  */
 import type { EventRecord } from "./event-transforms";
 import {
+  fallbackTaskDescription,
   isAgentCompletedEvent,
   isAgentStartedEvent,
 } from "./event-transforms";
@@ -160,7 +161,9 @@ export function buildAgentCompletionSections(
   for (const [agentId, entries] of files) {
     const meta = agentMetaById.get(agentId);
     const title =
-      meta?.description?.trim() || meta?.groupLabel?.trim() || "Task";
+      meta?.description?.trim() ||
+      meta?.groupLabel?.trim() ||
+      fallbackTaskDescription(agentId);
     sections.push({
       agentId,
       title,
