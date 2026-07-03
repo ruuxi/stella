@@ -980,7 +980,9 @@ export function mergeFooterTasks(
     if (
       persistedTask &&
       isTerminalTaskLifecycleStatus(persistedTask.status) &&
-      !isTerminalTaskLifecycleStatus(task.status)
+      !isTerminalTaskLifecycleStatus(task.status) &&
+      (typeof persistedTask.completedAtMs !== 'number' ||
+        task.startedAtMs <= persistedTask.completedAtMs)
     ) {
       continue
     }
@@ -1004,6 +1006,14 @@ export function mergeFooterTasks(
             statusText:
               normalizeTaskDisplayStatusText(task.statusText) ??
               normalizeTaskDisplayStatusText(persistedTask.statusText),
+            completedAtMs:
+              task.status === 'running'
+                ? undefined
+                : (task.completedAtMs ?? persistedTask.completedAtMs),
+            outputPreview:
+              task.status === 'running'
+                ? undefined
+                : (task.outputPreview ?? persistedTask.outputPreview),
             // Live tasks hydrated from resume snapshots don't carry group
             // fields; never let them clear the persisted group membership.
             groupKey: task.groupKey ?? persistedTask.groupKey,

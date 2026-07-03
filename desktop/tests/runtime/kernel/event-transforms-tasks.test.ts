@@ -183,6 +183,68 @@ describe("extractTasksFromEvents", () => {
     expect(task.description).toBe("Open Spotify");
   });
 
+  it("revives a completed task when send_input emits a fresh agent-started", () => {
+    const events = [
+      event("1", 100, "agent-started", {
+        agentId: "task-1",
+        description: "Inspect settings",
+        agentType: "general",
+      }),
+      event("2", 200, "agent-completed", {
+        agentId: "task-1",
+        result: "Done",
+      }),
+      event("3", 300, "agent-started", {
+        agentId: "task-1",
+        description: "Inspect settings",
+        agentType: "general",
+        statusText: "Check one more path",
+        isFollowUp: true,
+      }),
+      event("4", 350, "agent-progress", {
+        agentId: "task-1",
+        statusText: "Running read",
+      }),
+    ];
+
+    const [task] = extractTasksFromEvents(events);
+    expect(task.status).toBe("running");
+    expect(task.completedAtMs).toBeUndefined();
+    expect(task.statusText).toBe("Reading");
+    expect(shouldShowTaskReasoningSummaries(task)).toBe(true);
+  });
+
+  it("marks a resumed completed task finished at the follow-up completion", () => {
+    const events = [
+      event("1", 100, "agent-started", {
+        agentId: "task-1",
+        description: "Inspect settings",
+        agentType: "general",
+      }),
+      event("2", 200, "agent-completed", {
+        agentId: "task-1",
+        result: "First pass done",
+      }),
+      event("3", 300, "agent-started", {
+        agentId: "task-1",
+        description: "Inspect settings",
+        agentType: "general",
+        statusText: "Check one more path",
+        isFollowUp: true,
+      }),
+      event("4", 400, "agent-completed", {
+        agentId: "task-1",
+        result: "Follow-up done",
+      }),
+    ];
+
+    const [task] = extractTasksFromEvents(events);
+    expect(task.status).toBe("completed");
+    expect(task.completedAtMs).toBe(400);
+    expect(task.outputPreview).toBe("Follow-up done");
+    expect(shouldShowTaskReasoningSummaries(task)).toBe(false);
+  });
+
   it("uses send_input description text as the running task display text", () => {
     const events = [
       event("1", 100, "agent-started", {
@@ -533,6 +595,41 @@ describe("mergeFooterTasks", () => {
 
     expect(merged[0]?.status).toBe("completed");
     expect(merged[0]?.outputPreview).toBe("Done");
+  });
+
+  it("lets a newer live send_input run revive a completed persisted task", () => {
+    const merged = mergeFooterTasks(
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "completed",
+          startedAtMs: 100,
+          completedAtMs: 200,
+          lastUpdatedAtMs: 200,
+          outputPreview: "Done",
+        },
+      ],
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "running",
+          runId: "run-2",
+          startedAtMs: 300,
+          lastUpdatedAtMs: 350,
+          statusText: "Running read",
+        },
+      ],
+    );
+
+    expect(merged[0]?.status).toBe("running");
+    expect(merged[0]?.completedAtMs).toBeUndefined();
+    expect(merged[0]?.outputPreview).toBeUndefined();
+    expect(getTaskDisplayText(merged[0]!)).toBe("Reading");
+    expect(shouldShowTaskReasoningSummaries(merged[0]!)).toBe(true);
   });
 
   it("preserves persisted status text when live state only has a generic placeholder", () => {
