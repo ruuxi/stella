@@ -2074,6 +2074,18 @@ export class StellaRuntimeHost {
     const startedAt = Date.now();
     this.events.emit("runtime-reloading", { reason: "worker-restart" });
     await this.workerController.stop("restart");
+    // The restart killed the worker, and every self-mod run it was tracking
+    // died with it. Any runtime-reload pauses those runs held would never be
+    // resumed (the resume RPC comes from the worker-side run lifecycle), so
+    // clear them here instead of leaking a permanent reload deferral.
+    if (this.pausedRuntimeReloadRuns.size > 0) {
+      getFileLogger()?.warn("host.runtime-reload-pauses-cleared-on-restart", {
+        count: this.pausedRuntimeReloadRuns.size,
+      });
+      this.pausedRuntimeReloadRuns.clear();
+      this.deferredRuntimeReload = false;
+      await this.persistRuntimeReloadPauseState().catch(() => undefined);
+    }
     const stoppedAt = Date.now();
     await this.workerController.ensureStarted();
     const readyAt = Date.now();

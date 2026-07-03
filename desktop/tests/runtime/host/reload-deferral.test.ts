@@ -88,6 +88,27 @@ describe("runtime reload deferral", () => {
     expect(restartWorker).toHaveBeenCalledTimes(1);
   });
 
+  it("clears runtime-reload pauses held by runs that died with the restarted worker", async () => {
+    const host = createHost();
+    const anyHost = host as any;
+    anyHost.workerController = {
+      stop: vi.fn().mockResolvedValue(undefined),
+      ensureStarted: vi.fn().mockResolvedValue(undefined),
+    };
+
+    // A self-mod / desktop-update run paused reloads, then the worker was
+    // restarted out from under it (e.g. an update shipping runtime code).
+    // The run can never send its resume — the pause must not leak.
+    await anyHost.pauseRuntimeReloads("update-run");
+    anyHost.deferredRuntimeReload = true;
+    expect(anyHost.pausedRuntimeReloadRuns.size).toBe(1);
+
+    await host.restartWorker();
+
+    expect(anyHost.pausedRuntimeReloadRuns.size).toBe(0);
+    expect(anyHost.deferredRuntimeReload).toBe(false);
+  });
+
   it("echoes internal runIds for stale cleanup but emits HMR state for visible root run ids", async () => {
     const host = createHost();
     const anyHost = host as any;
