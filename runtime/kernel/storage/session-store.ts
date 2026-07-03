@@ -178,6 +178,29 @@ export type TranscriptSearchHit = {
   text: string;
 };
 
+// SQL-side truncation for the index's result/error excerpts: real final
+// results average ~4k chars, so untruncated excerpts would multiply the
+// index size ~10x for no identification gain.
+const RECALL_INDEX_RESULT_EXCERPT_CHARS = 400;
+const RECALL_INDEX_ERROR_EXCERPT_CHARS = 300;
+
+/** One thread row for Recall's inline "# Thread Index". */
+export type RecallIndexThreadRow = {
+  threadId: string;
+  conversationId: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number;
+  description?: string;
+  /** Live lifecycle status from `runtime_agents.status` ("running" = active). */
+  agentStatus?: TaskLifecycleStatus;
+  agentUpdatedAt?: number;
+  /** First chars of the agent's final result — what the thread actually did. */
+  resultExcerpt?: string;
+  /** First chars of the agent's terminal error, if the last run crashed. */
+  errorExcerpt?: string;
+};
+
 // English function words dropped from search queries before matching.
 // Under OR-with-ranking semantics a stray stopword can never exclude a
 // result, only pad the 6-token budget and inflate scores with rows that
@@ -2846,6 +2869,99 @@ export class SessionStore {
       Parameters<SessionStore["deserializeRuntimeThread"]>[0]
     >;
     return rows.map((row) => this.deserializeRuntimeThread(row));
+  }
+
+  /**
+   * The rows behind Recall's inline "# Thread Index": the most recent
+   * `limit` delegated agent threads across ALL conversations (including
+   * evicted ones), by genuine last-active time. Carries the fields the
+   * index renders that the generic thread record lacks — the agent's final
+   * `result` and `error` text (truncated in SQL; `summary` is empty on
+   * nearly every real thread, so `result` is the only durable record of
+   * what a finished thread actually did). Exclusions mirror
+   * `searchThreads`: orchestrator threads and implicit subagent sessions
+   * are not resumable work.
+   */
+  listThreadsForRecallIndex(args: {
+    limit: number;
+  }): RecallIndexThreadRow[] {
+    const limit = Math.max(1, Math.min(2_000, Math.floor(args.limit)));
+    const rows = this.db
+      .prepare(
+        `
+      SELECT
+        thread_key AS threadId,
+        runtime_threads.conversation_id AS conversationId,
+        runtime_threads.name AS name,
+        runtime_threads.created_at AS createdAt,
+        runtime_threads.last_used_at AS lastUsedAt,
+        runtime_agents.description AS description,
+        runtime_agents.status AS agentStatus,
+        runtime_agents.updated_at AS agentUpdatedAt,
+        substr(runtime_agents.result, 1, ${RECALL_INDEX_RESULT_EXCERPT_CHARS}) AS resultExcerpt,
+        substr(runtime_agents.error, 1, ${RECALL_INDEX_ERROR_EXCERPT_CHARS}) AS errorExcerpt
+      FROM runtime_threads
+      LEFT JOIN runtime_agents
+        ON runtime_agents.thread_id = runtime_threads.thread_key
+      WHERE runtime_threads.agent_type != 'orchestrator'
+        AND thread_key NOT LIKE '%::subagent::%'
+      ORDER BY MAX(
+        runtime_threads.last_used_at,
+        COALESCE(runtime_agents.updated_at, 0)
+      ) DESC
+      LIMIT ?
+    `,
+      )
+      .all(limit) as Array<{
+      threadId: string;
+      conversationId: string;
+      name: string;
+      createdAt: number;
+      lastUsedAt: number;
+      description: string | null;
+      agentStatus: string | null;
+      agentUpdatedAt: number | null;
+      resultExcerpt: string | null;
+      errorExcerpt: string | null;
+    }>;
+    return rows.map((row) => ({
+      threadId: row.threadId,
+      conversationId: row.conversationId,
+      name: row.name,
+      createdAt: row.createdAt,
+      lastUsedAt: row.lastUsedAt,
+      ...(row.description ? { description: row.description } : {}),
+      ...(row.agentStatus
+        ? { agentStatus: row.agentStatus as TaskLifecycleStatus }
+        : {}),
+      ...(typeof row.agentUpdatedAt === "number"
+        ? { agentUpdatedAt: row.agentUpdatedAt }
+        : {}),
+      ...(row.resultExcerpt?.trim()
+        ? { resultExcerpt: row.resultExcerpt }
+        : {}),
+      ...(row.errorExcerpt?.trim() ? { errorExcerpt: row.errorExcerpt } : {}),
+    }));
+  }
+
+  /**
+   * How many index-eligible threads were created since `sinceMs` — the
+   * cheap signal Recall uses to size its thread index (a high-volume day
+   * widens the index so heavy users keep their realistic recall window).
+   */
+  countThreadsCreatedSince(sinceMs: number): number {
+    const row = this.db
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+      FROM runtime_threads
+      WHERE agent_type != 'orchestrator'
+        AND thread_key NOT LIKE '%::subagent::%'
+        AND created_at >= ?
+    `,
+      )
+      .get(sinceMs) as { count?: unknown } | undefined;
+    return typeof row?.count === "number" ? row.count : 0;
   }
 
   /**

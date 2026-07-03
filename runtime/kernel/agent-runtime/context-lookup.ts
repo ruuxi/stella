@@ -12,12 +12,16 @@ import {
   sanitizePromptContext,
   sanitizeToolVisibleText,
 } from "../tools/safety.js";
-import type { RuntimeStore } from "../storage/runtime-store.js";
+import type {
+  RecallIndexThreadRow,
+  RuntimeStore,
+} from "../storage/runtime-store.js";
 import { tokenizeSearchQuery } from "../storage/runtime-store.js";
 import { formatDateTimeReminder } from "../message-timestamp.js";
 import {
   deriveRuntimeThreadLiveState,
   formatRuntimeThreadStatusSuffix,
+  runtimeThreadLastActiveAt,
 } from "../runtime-threads.js";
 import {
   runClaudeCodeAgentTextCompletion,
@@ -40,33 +44,87 @@ const CHRONICLE_DIR_SEGMENTS = ["memories_extensions", "chronicle"] as const;
 
 type ContextLookupStore = Pick<
   RuntimeStore,
-  "listActiveThreads" | "listAgentProgressSummaries"
+  | "listThreadsForRecallIndex"
+  | "countThreadsCreatedSince"
+  | "listAgentProgressSummaries"
 >;
+
+/**
+ * Thread lookup is an LLM read over an inline index, not a query: the seed
+ * carries the most recent N threads and the model identifies candidates
+ * directly, so recall no longer depends on how a status question is phrased.
+ * N covers ~a month of realistic recall at heavy usage; a high-volume day
+ * (heavy fan-out users) widens it.
+ */
+export const RECALL_INDEX_BASE_LIMIT = 500;
+export const RECALL_INDEX_HIGH_VOLUME_LIMIT = 1_000;
+const RECALL_INDEX_HIGH_VOLUME_DAILY_THREADS = 100;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Latest live progress phrases surfaced per ACTIVE thread. */
 const MAX_LIVE_PROGRESS_SUMMARIES = 3;
 
-const RECALL_SYSTEM_PROMPT = [
+// Exported so replay/eval harnesses can drive the exact production prompt.
+export const RECALL_SYSTEM_PROMPT = [
   "You are Stella's recall agent. Resolve the lookup request into a concise, useful answer for the orchestrator, drawing on the user's durable memory, past agent work, past conversation transcripts, recent activity, and live app/browser state.",
   "",
   "You work in up to a few steps. At each step respond with EXACTLY ONE JSON object and nothing else:",
   '  {"action":"search_memory","terms":["...", "..."]}  — keyword-search the durable memory ledger (MEMORY.md). 2-8 concrete terms.',
-  '  {"action":"search","query":"..."}                   — ONE search over everything else: past delegated agent work (the background tasks Stella spawned) AND past conversation transcripts (what the user and Stella actually said, across ALL conversations). Returns one typed list: matching [agent thread] work first, then [message] hits in chronological order (oldest → newest) — read those as a timeline. Omit query to browse recent agent work.',
+  '  {"action":"search","query":"..."}                   — keyword-search past conversation transcripts (what the user and Stella actually said, across ALL conversations) plus agent work too old for the thread index. Returns matching [agent thread] entries first, then [message] hits in chronological order (oldest → newest) — read those as a timeline.',
   '  {"action":"answer","brief":"..."}                   — finish with a concise markdown brief.',
   "",
-  "Reading search results by their type labels: `[agent thread]` results are past work/tasks — they carry a resumable thread_id, live status, and summary. `[message]` results are things actually said in chat — dated snippets with their conversation context; these are what answer episodic questions (\"did I ever mention X\", \"where did we go\") that never became a task or memory note. You never pre-choose a source — just search; task questions surface agent threads, episodic questions surface messages. When memory search comes up empty on something the user plausibly said before, run search before answering \"nothing found\".",
+  "THREAD QUESTIONS ARE ANSWERED FROM THE INDEX, NOT BY SEARCHING. The context below carries a # Thread Index — the full record of Stella's recent delegated agent threads (name, description, last-active time, final-result excerpt, error) — and a # Live Thread Status tail listing the threads executing a turn RIGHT NOW with timestamped live-progress phrases. Any indexed thread absent from that tail is paused (idle but resumable); there is no 'dead' state. For any question about past work, a task, or a thread's status ('is X still running?', 'did it crash?', 'what did the Y agent do?'): scan the ENTIRE index for candidates — match on meaning, not exact wording — and OPEN YOUR BRIEF BY QUOTING the candidate thread_id(s) you matched, then answer from the entry, the live-status tail, and the current time (e.g. 'thread X is active; as of 3:04 PM it was searching documentation for rate limits'). Quote the error excerpt when a run errored. Do not guess at status, and do not conclude a thread doesn't exist until you have scanned the whole index.",
+  "",
+  "Reading search results by their type labels: `[agent thread]` results are past work/tasks — they carry a resumable thread_id, live status, and summary. `[message]` results are things actually said in chat — dated snippets with their conversation context; these are what answer episodic questions (\"did I ever mention X\", \"where did we go\") that never became a task or memory note. When memory search comes up empty on something the user plausibly said before, run search before answering \"nothing found\".",
   "",
   "Top [message] hits include a 'surrounding exchange' — the messages sent right before/after. Treat those exchanges as PRIMARY evidence and reconstruct what happened from them: a user asking where to go, getting an address, then sending en-route messages means they took that trip at that time, even though no message states it outright. Later retellings are NOT evidence of absence — especially Stella's own earlier \"I have no record of that\" replies, which may be the exact failure this lookup exists to fix; when primary messages imply the event, trust them over any later claim that nothing was recorded. For \"first/last time X happened\" questions: enumerate EVERY dated candidate event you can establish from the hits, then answer with the earliest/latest — never skip an older episode because a newer one is more vividly confirmed; include the enumeration in the brief so the orchestrator can see the timeline.",
   "",
-  "Transcript search is keyword-based: generic words (\"first drive\") mostly find retellings, concrete nouns find the event. Enrich queries with specific names, places, and candidate terms you already have from the eager memory context or the lookup request (e.g. the flagged route names when looking for a drive), and re-search with different concrete terms before concluding anything is unrecorded.",
+  "Transcript search is keyword-based: generic words (\"first drive\") mostly find retellings, concrete nouns find the event. Status/filler words (\"active\", \"crashed\", \"latest\", \"progress\") match chatter, not the thing — build queries from concrete nouns: names, places, file paths, slugs, error text, and candidate terms you already have from the eager context or the lookup request.",
   "",
-  "The eager context below already includes the current time, the memory summary, a (possibly truncated) ledger, live app/browser state, recent activity, active threads, and chronicle. Search only when the answer likely lives in the deeper ledger, in older/unlisted threads, or in past conversations. Resolve in as few steps as possible — answer the moment you can.",
-  "",
-  "Threads are labeled active (running right now) or paused (idle but resumable), as of the current time above. Active threads also carry timestamped 'live progress' phrases — the agent's latest activity. For status questions ('is X still running?', 'what is it doing?'), answer from those labels and phrases, anchored to the current time (e.g. 'thread X is active; as of 3:04 PM it was searching documentation for rate limits'). Do not guess at status.",
+  "The context below already includes the thread index, the memory summary, a (possibly truncated) ledger, the current time, live app/browser state, recent activity, live thread status, and chronicle. Search only when the answer likely lives in the deeper ledger or in past conversations. Resolve in as few steps as possible — answer the moment you can.",
   "",
   "When past threads are relevant, include their thread_id(s) in the brief so the orchestrator can resume them. Keep the brief tight — only what helps answer or route the request.",
-  'If nothing is relevant, answer with exactly "Nothing relevant found."',
+  'Answer with exactly "Nothing relevant found." ONLY when you have earned it: for thread/work questions, after scanning the entire # Thread Index; for episodic/message questions, after running search at least TWICE with DIFFERENT concrete terms (reformulate — drop status/filler words, use names, slugs, file paths, places). Never conclude nothing-found from a single noisy search.',
 ].join("\n");
+
+/** The one legitimate no-result answer — everything else is an error. */
+export const RECALL_NO_MATCH_TEXT = "Nothing relevant found.";
+/**
+ * Failure outcomes get texts DISTINCT from the no-match answer so the
+ * orchestrator can tell "searched and found nothing" from "the lookup
+ * itself failed" — the latter previously masqueraded as a confident miss.
+ */
+export const RECALL_EMPTY_BRIEF_TEXT =
+  "Recall failed: the model returned an empty brief. This is a lookup failure, NOT evidence that nothing exists — retry with concrete anchors (thread ids, file names, exact phrases).";
+export const RECALL_NO_OUTPUT_TEXT =
+  "Recall failed: the model produced no usable output. This is a lookup failure, NOT evidence that nothing exists — retry with concrete anchors (thread ids, file names, exact phrases).";
+export const RECALL_BUDGET_EXHAUSTED_TEXT =
+  "Recall failed: search-step budget exhausted without a final answer. Retry with concrete anchors (thread ids, file names, exact phrases).";
+
+/**
+ * Recall internals go to stderr as JSON lines (the same channel as the
+ * working-indicator traces, landing in runtime.log), so a bad answer is
+ * reconstructable after the fact: which actions ran, what each observation
+ * held, and how the run ended. Before this, only the final brief was
+ * persisted and every miss was undiagnosable.
+ */
+const logRecallTrace = (
+  label: string,
+  payload: Record<string, unknown>,
+): void => {
+  try {
+    process.stderr.write(`${JSON.stringify({ label, ...payload })}\n`);
+  } catch {
+    // Tracing must never break a lookup.
+  }
+};
+
+const previewForTrace = (value: string, maxChars = 300): string => {
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  return collapsed.length <= maxChars
+    ? collapsed
+    : `${collapsed.slice(0, maxChars)}…`;
+};
 
 const truncate = (value: string, maxChars: number): string =>
   value.length <= maxChars
@@ -383,34 +441,122 @@ const formatThreadLiveProgressLines = (
   ];
 };
 
+/** Index limit for this call: widened when the last day was high-volume. */
+export const resolveRecallIndexLimit = (
+  store: Pick<ContextLookupStore, "countThreadsCreatedSince">,
+  now = Date.now(),
+): number =>
+  store.countThreadsCreatedSince(now - DAY_MS) >=
+  RECALL_INDEX_HIGH_VOLUME_DAILY_THREADS
+    ? RECALL_INDEX_HIGH_VOLUME_LIMIT
+    : RECALL_INDEX_BASE_LIMIT;
+
+const formatIndexTimestamp = (timestamp: number): string =>
+  new Date(timestamp).toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+const collapseWhitespace = (value: string): string =>
+  value.replace(/\s+/g, " ").trim();
+
+export type RecallThreadIndexSections = {
+  /**
+   * The "# Thread Index" body: every entry's STABLE fields, ordered oldest →
+   * newest by last-active so churn concentrates at the end and the long head
+   * of the seed stays byte-stable for prompt caching.
+   */
+  index: string;
+  /**
+   * The volatile "# Live Thread Status" tail: only the threads executing a
+   * turn right now, with their latest timestamped progress phrases. Any
+   * indexed thread absent here is paused (idle but resumable).
+   */
+  liveStatus: string;
+};
+
 /**
- * The recall agent's eager "# Active Agent Threads" section: the resumable
- * threads for this conversation with their live active/paused state, so a
- * status question ("are my tasks still running?") is answerable directly.
+ * Recall's inline thread index — the replacement for query-based thread
+ * search. The model reads the full index (most recent `limit` threads across
+ * ALL conversations, including evicted ones) and identifies candidates
+ * directly, so a status lookup no longer depends on the phrasing of the
+ * question or on lexical token overlap.
  */
-export const formatActiveThreads = (
+export const formatRecallThreadIndex = (
   store: ContextLookupStore,
-  conversationId: string,
-): string => {
-  const threads = store.listActiveThreads(conversationId).slice(0, 16);
-  if (threads.length === 0) return "No resumable agent threads.";
-  return threads
-    .map((thread) => {
-      const summary = thread.summary?.trim();
-      return [
-        // Live active/paused state + last-active recency from the same
-        // runtime signal as the roster, so a Recall query like "are my
-        // in-progress tasks still running?" gets a real answer.
-        `- ${thread.threadId} (${formatRuntimeThreadStatusSuffix(thread)})`,
-        `  description: ${thread.description?.trim() || "No description recorded"}`,
-        ...(summary ? [`  summary: ${summary}`] : []),
-        // ACTIVE threads additionally carry their latest timestamped
-        // progress phrases so "what is it doing right now?" is answerable
-        // without interrupting the agent.
-        ...formatThreadLiveProgressLines(store, thread),
-      ].join("\n");
-    })
+  now = Date.now(),
+): RecallThreadIndexSections => {
+  const limit = resolveRecallIndexLimit(store, now);
+  const threads = store.listThreadsForRecallIndex({ limit });
+  if (threads.length === 0) {
+    return {
+      index: "No delegated agent threads recorded yet.",
+      liveStatus: "No agent threads are executing a turn right now.",
+    };
+  }
+  const ordered = [...threads].sort(
+    (a, b) =>
+      runtimeThreadLastActiveAt(a) - runtimeThreadLastActiveAt(b) ||
+      a.threadId.localeCompare(b.threadId),
+  );
+  const index = ordered
+    .map((thread) => formatRecallIndexEntry(thread, now))
     .join("\n");
+  const running = ordered.filter(
+    (thread) => deriveRuntimeThreadLiveState(thread) === "active",
+  );
+  const liveStatus =
+    running.length === 0
+      ? "No agent threads are executing a turn right now; every indexed thread is paused (idle but resumable)."
+      : running
+          .map((thread) =>
+            [
+              `- ${thread.threadId} (${formatRuntimeThreadStatusSuffix(thread, now)})`,
+              ...formatThreadLiveProgressLines(store, thread),
+            ].join("\n"),
+          )
+          .join("\n");
+  return { index, liveStatus };
+};
+
+/**
+ * One dense index entry. Only STABLE fields live here (id, name,
+ * description, last-active timestamp, result/error excerpts) — live
+ * active/paused state is deliberately left to the volatile tail so a
+ * thread's entry stops changing once it goes quiet.
+ */
+const formatRecallIndexEntry = (
+  thread: RecallIndexThreadRow,
+  now: number,
+): string => {
+  const name = collapseWhitespace(thread.name);
+  const description = thread.description
+    ? collapseWhitespace(thread.description)
+    : "";
+  const lastActive = Math.min(runtimeThreadLastActiveAt(thread), now);
+  const lines = [
+    `- ${thread.threadId} | last active ${formatIndexTimestamp(lastActive)} | ${sanitizeToolVisibleText(name)}`,
+  ];
+  // Names are minted from descriptions, so most pairs are identical — only
+  // render a description that adds information.
+  if (description && description !== name) {
+    lines.push(`  description: ${sanitizeToolVisibleText(description)}`);
+  }
+  if (thread.resultExcerpt) {
+    lines.push(
+      `  result: ${sanitizeToolVisibleText(collapseWhitespace(thread.resultExcerpt))}`,
+    );
+  }
+  if (thread.errorExcerpt) {
+    lines.push(
+      `  error: ${sanitizeToolVisibleText(collapseWhitespace(thread.errorExcerpt))}`,
+    );
+  }
+  return lines.join("\n");
 };
 
 export const buildContextLookupUserPrompt = async (args: {
@@ -436,17 +582,28 @@ export const buildContextLookupUserPrompt = async (args: {
     readChronicleFiles(args.stellaDataDir),
   ]);
 
+  const threadIndex = formatRecallThreadIndex(args.store);
+
+  // Section order is stable → volatile: the big thread index leads so its
+  // prefix stays cacheable across calls, live/current state follows, and the
+  // lookup request comes LAST so it sits closest to the model's answer.
   const sections = [
+    "# Thread Index",
+    "Every delegated agent thread Stella has run recently (most recent first-class threads across ALL conversations, including evicted ones), oldest → newest by last activity. Each entry: thread_id | last active | name, plus description, final-result excerpt, and error when recorded.",
+    threadIndex.index,
+    "",
+    "# Memory Files",
+    memoryFiles,
+  ];
+  if (hasSearchTerms) {
+    sections.push("", "# Memory Search Results", memorySearchResults);
+  }
+  sections.push(
+    "",
     "# Current Time",
     // Anchors the whole lookup to "now": thread status, live-progress
     // timestamps, and recency phrases are all relative to this moment.
     formatDateTimeReminder(Date.now()),
-    "",
-    "# Lookup Request",
-    truncate(args.lookupPrompt.trim(), 2_000),
-    "",
-    "# Memory Files",
-    memoryFiles,
     "",
     "# Local App And Browser Context",
     formatLiveAppBrowserContext(args.appBrowserContext),
@@ -454,15 +611,16 @@ export const buildContextLookupUserPrompt = async (args: {
     "# Message-Attached App And Browser Context",
     formatLatestLocalContext(args.localEvents),
     "",
-    "# Active Agent Threads",
-    formatActiveThreads(args.store, args.conversationId),
+    "# Live Thread Status",
+    "Threads executing a turn RIGHT NOW, with their latest timestamped progress phrases. Any indexed thread not listed here is paused (idle but resumable) as of the current time above.",
+    threadIndex.liveStatus,
     "",
     "# Chronicle Context",
     chronicleFiles,
-  ];
-  if (hasSearchTerms) {
-    sections.push("", "# Memory Search Results", memorySearchResults);
-  }
+    "",
+    "# Lookup Request",
+    truncate(args.lookupPrompt.trim(), 2_000),
+  );
   return sections.join("\n");
 };
 
@@ -849,12 +1007,31 @@ export const runRecall = async (args: {
 
   let scratchpad = "";
 
+  logRecallTrace("[stella:recall:start]", {
+    conversationId: args.conversationId,
+    promptPreview: previewForTrace(args.lookupPrompt, 200),
+    seedChars: seed.length,
+  });
+  const finish = (outcome: string, brief: string): string => {
+    logRecallTrace("[stella:recall:answer]", {
+      conversationId: args.conversationId,
+      outcome,
+      briefPreview: previewForTrace(brief),
+    });
+    return brief;
+  };
+
   // Honor an orchestrator-provided search hint as a pre-run observation.
   const seedTerms = normalizeMemorySearchTerms(args.memorySearchTerms);
   if (seedTerms.length > 0) {
     const initial = await readMemorySearchResults(args.stellaDataDir, seedTerms);
     scratchpad += `\nAction: ${JSON.stringify({ action: "search_memory", terms: seedTerms })}\nObservation:\n${truncate(initial, RECALL_OBSERVATION_CHAR_BUDGET)}\n`;
   }
+
+  const isNothingFoundBrief = (brief: string): boolean =>
+    brief.trim().toLocaleLowerCase().startsWith("nothing relevant found");
+  let ranSearch = false;
+  let rejectedUnsearchedNothingFound = false;
 
   for (let i = 0; i < MAX_RECALL_STEPS; i += 1) {
     const raw = await step(
@@ -866,11 +1043,44 @@ export const runRecall = async (args: {
     const action = parseRecallAction(raw);
     if (!action) {
       // Model returned prose instead of JSON — accept it as the answer.
-      return raw || "Nothing relevant found.";
+      logRecallTrace("[stella:recall:step]", {
+        conversationId: args.conversationId,
+        step: i,
+        action: "unparseable",
+        rawPreview: previewForTrace(raw),
+      });
+      return finish(
+        raw ? "prose" : "no-output",
+        raw || RECALL_NO_OUTPUT_TEXT,
+      );
     }
     if (action.action === "answer") {
-      return action.brief.trim() || "Nothing relevant found.";
+      const brief = action.brief.trim();
+      // A nothing-found verdict without a single search behind it is the
+      // exact failure mode observed in the field (the model glancing past
+      // the context and giving up) — reject it ONCE and demand a search.
+      if (
+        isNothingFoundBrief(brief) &&
+        !ranSearch &&
+        !rejectedUnsearchedNothingFound &&
+        i < MAX_RECALL_STEPS - 1
+      ) {
+        rejectedUnsearchedNothingFound = true;
+        logRecallTrace("[stella:recall:step]", {
+          conversationId: args.conversationId,
+          step: i,
+          action: "answer-rejected",
+          reason: "nothing-found-without-search",
+        });
+        scratchpad += `\nAction: ${JSON.stringify(action)}\nObservation:\nRejected: you answered "Nothing relevant found." without running a single search action. Re-scan the # Thread Index for candidates, and run {"action":"search"} with concrete terms from the lookup request (names, slugs, file paths — not status words) before concluding nothing exists.\n`;
+        continue;
+      }
+      return finish(
+        brief ? "answer" : "empty-brief",
+        brief || RECALL_EMPTY_BRIEF_TEXT,
+      );
     }
+    if (action.action === "search") ranSearch = true;
     const observation =
       action.action === "search_memory"
         ? await readMemorySearchResults(args.stellaDataDir, action.terms)
@@ -880,6 +1090,16 @@ export const runRecall = async (args: {
             action.query,
             action.limit,
           );
+    logRecallTrace("[stella:recall:step]", {
+      conversationId: args.conversationId,
+      step: i,
+      action:
+        action.action === "search_memory"
+          ? { action: "search_memory", terms: action.terms }
+          : { action: "search", query: action.query ?? null },
+      observationChars: observation.length,
+      observationPreview: previewForTrace(observation),
+    });
     scratchpad += `\nAction: ${JSON.stringify(action)}\nObservation:\n${truncate(observation, RECALL_OBSERVATION_CHAR_BUDGET)}\n`;
   }
 
@@ -892,7 +1112,14 @@ export const runRecall = async (args: {
   );
   const finalAction = parseRecallAction(finalRaw);
   if (finalAction?.action === "answer") {
-    return finalAction.brief.trim() || "Nothing relevant found.";
+    const brief = finalAction.brief.trim();
+    return finish(
+      brief ? "forced-answer" : "empty-brief",
+      brief || RECALL_EMPTY_BRIEF_TEXT,
+    );
   }
-  return finalRaw || "Nothing relevant found.";
+  return finish(
+    finalRaw ? "forced-prose" : "budget-exhausted",
+    finalRaw || RECALL_BUDGET_EXHAUSTED_TEXT,
+  );
 };
