@@ -161,9 +161,10 @@ export type AgentToolSnapshot = {
   error?: string;
   recentActivity?: string[];
   /**
-   * Last liveness signal (streamed progress or tool start/end). Pollers that
-   * implement idle timeouts should prefer this over diffing `recentActivity`,
-   * which only moves on streamed text.
+   * Last discrete liveness event (streamed progress or tool start/end).
+   * Goes stale mid-call while a tool is running — check `activeToolCount`
+   * first; only fall back to this stamp (or diffing `recentActivity`) when
+   * no tool is in flight. Never implement an idle timeout on this alone.
    */
   lastActivityAt?: number;
   /**
