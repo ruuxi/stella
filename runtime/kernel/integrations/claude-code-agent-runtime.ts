@@ -152,6 +152,11 @@ const toolsToMetadata = (tools: Tool[] | undefined): ToolMetadata[] =>
   }));
 
 export const runClaudeCodeAgentTextCompletion = async (args: {
+  /**
+   * Stella DATA dir: where local preferences (claudeCodeModel, reasoning
+   * effort, per-agent model overrides) live. Used for model/effort selection
+   * only — it is NOT the CLI working directory unless no `cwd` is given.
+   */
   stellaAppDir: string;
   agentType: string;
   context: Context;
@@ -159,6 +164,12 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
   sessionKey?: string;
   abortSignal?: AbortSignal;
   stellaModel?: string;
+  /**
+   * Explicit CLI working directory. Callers whose data dir differs from the
+   * agent workspace should pass this; otherwise the cwd falls back to
+   * `resolveLocalCliCwd` over `stellaAppDir`.
+   */
+  cwd?: string;
   executeTool?: (
     toolCallId: string,
     toolName: string,
@@ -180,10 +191,12 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
     ...(effortLevel ? { effortLevel } : {}),
     prompt: buildPromptFromMessages(args.context.messages),
     systemPrompt: args.context.systemPrompt,
-    cwd: resolveLocalCliCwd({
-      agentType: args.agentType,
-      stellaAppDir: args.stellaAppDir,
-    }),
+    cwd:
+      args.cwd?.trim() ||
+      resolveLocalCliCwd({
+        agentType: args.agentType,
+        stellaAppDir: args.stellaAppDir,
+      }),
     tools: toolsToMetadata(args.context.tools),
     abortSignal: args.abortSignal,
     executeTool: async (toolCallId, toolName, toolArgs, signal) => {

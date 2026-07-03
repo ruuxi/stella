@@ -71,6 +71,19 @@ describe("runOneShotCompletion", () => {
     expect(completeSimpleCalls).toHaveLength(0);
   });
 
+  it("splits CC preferences (data dir) from the CLI working directory (app dir)", async () => {
+    claudeCodeEngineActive = true;
+    await runOneShotCompletion({
+      request,
+      runtime: makeRuntime({ authToken: null, dataDir }),
+    });
+    expect(claudeCodeCalls).toHaveLength(1);
+    // Preferences (claudeCodeModel, effort) resolve against the data dir…
+    expect(claudeCodeCalls[0]?.stellaAppDir).toBe(dataDir);
+    // …while the CLI runs in the app dir, never inside the data dir.
+    expect(claudeCodeCalls[0]?.cwd).toBe("/tmp/does-not-matter-app-dir");
+  });
+
   it("still fails loudly when signed out on the native engine", async () => {
     await expect(
       runOneShotCompletion({

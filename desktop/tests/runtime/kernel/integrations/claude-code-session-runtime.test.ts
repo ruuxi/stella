@@ -148,7 +148,7 @@ describe("claude-code-session-runtime", () => {
       path.join(os.tmpdir(), "stella-claude-models-"),
     );
     try {
-      recordClaudeCodeResolvedModel(
+      await recordClaudeCodeResolvedModel(
         stellaAppDir,
         "default",
         "claude-opus-4-8[1m]",
@@ -329,6 +329,27 @@ describe("claude-code-session-runtime", () => {
       emit(jsonDelta(' rainy.\\nBring an umbrella \\u2602'));
       emit(jsonDelta('"}'));
       expect(chunks.join("")).toBe("Paris is rainy.\nBring an umbrella ☂");
+    });
+
+    it("emits a message-first structured final once the trailing type confirms it", () => {
+      const { chunks, emit } = collect();
+      emit(messageStart());
+      emit(structuredOutputStart());
+      emit(jsonDelta('{"message": "Par'));
+      emit(jsonDelta('is is rainy."'));
+      // Nothing may stream before the payload is known to be final.
+      expect(chunks).toEqual([]);
+      emit(jsonDelta(', "type": "final"}'));
+      expect(chunks.join("")).toBe("Paris is rainy.");
+    });
+
+    it("does not leak a message-first tool request's message field", () => {
+      const { chunks, emit } = collect();
+      emit(messageStart());
+      emit(structuredOutputStart());
+      emit(jsonDelta('{"message": "Checking the weather."'));
+      emit(jsonDelta(', "type": "tool_request", "toolName": "get_weather", "args": {}}'));
+      expect(chunks).toEqual([]);
     });
 
     it("emits nothing for structured tool requests", () => {
@@ -1130,6 +1151,168 @@ describe("claude-code-session-runtime", () => {
       } else {
         process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
       }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not replay a step whose attempt already applied native file writes", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-mutated-exit-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "prompts.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "const spawnCount = (fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8').trim().split('\\n').length : 0) + 1;",
+        "let buffer = '';",
+        "function handle(line) {",
+        "  const parsed = JSON.parse(line);",
+        "  fs.appendFileSync(logPath, JSON.stringify({ spawnCount, content: parsed.message.content }) + '\\n');",
+        "  if (spawnCount === 1) {",
+        "    // Apply a native Edit, then die cleanly before the result line.",
+        "    process.stdout.write(JSON.stringify({",
+        "      type: 'assistant',",
+        "      session_id: 'fake-session',",
+        "      message: { content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/tmp/mutated.md' } }] },",
+        "    }) + '\\n');",
+        "    setTimeout(() => process.exit(0), 20);",
+        "    return;",
+        "  }",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    session_id: 'fake-session',",
+        "    is_error: false,",
+        "    result: 'Reconciled without redoing edits.',",
+        "  }) + '\\n');",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle(line);",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-mutated-exit",
+        sessionKey: `test-mutated-exit:${Date.now()}`,
+        prompt: "Apply the hardening edits.",
+        modelId: "claude-code/default",
+        vanilla: true,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      expect(result.text).toBe("Reconciled without redoing edits.");
+      // The interrupted attempt's file write still reaches the turn result.
+      expect(result.fileChanges).toEqual([
+        { path: "/tmp/mutated.md", kind: { type: "update" } },
+      ]);
+      const prompts = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map(
+          (line) => JSON.parse(line) as { spawnCount: number; content: string },
+        );
+      expect(prompts).toHaveLength(2);
+      // The retry must NOT replay the original (mutating) prompt.
+      expect(prompts[1]?.content).not.toContain("Apply the hardening edits.");
+      expect(prompts[1]?.content).toContain(
+        "Do NOT redo, repeat, or revert any file operations",
+      );
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps file writes observed on a malformed step across the nudge recovery", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-malformed-files-"),
+    );
+    const binDir = path.join(dir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "let buffer = '';",
+        "let count = 0;",
+        "function emit(payload) {",
+        "  process.stdout.write(JSON.stringify(payload) + '\\n');",
+        "}",
+        "function handle() {",
+        "  count += 1;",
+        "  if (count === 1) {",
+        "    // A native Write lands, but the step's result comes back empty.",
+        "    emit({",
+        "      type: 'assistant',",
+        "      session_id: 'fake-session',",
+        "      message: { content: [{ type: 'tool_use', id: 't1', name: 'Write', input: { file_path: '/tmp/report.md' } }] },",
+        "    });",
+        "    emit({ type: 'result', session_id: 'fake-session', is_error: false, result: '   ' });",
+        "    return;",
+        "  }",
+        "  emit({ type: 'result', session_id: 'fake-session', is_error: false, result: 'Recovered final answer.' });",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle();",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-malformed-files",
+        sessionKey: `test-malformed-files:${Date.now()}`,
+        prompt: "Write the report.",
+        modelId: "claude-code/default",
+        vanilla: true,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      expect(result.text).toBe("Recovered final answer.");
+      // Files written during the malformed attempt are not dropped.
+      expect(result.fileChanges).toEqual([
+        { path: "/tmp/report.md", kind: { type: "add" } },
+      ]);
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
