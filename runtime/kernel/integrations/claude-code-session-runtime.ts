@@ -111,9 +111,6 @@ const CLAUDE_CODE_COMPACTION_LOOP_MESSAGE =
  */
 const MAX_STEP_RECOVERIES_PER_TURN = 2;
 
-const isCompactionLoopError = (message: string): boolean =>
-  message.includes(CLAUDE_CODE_COMPACTION_LOOP_MESSAGE);
-
 /**
  * The CLI process ended (exit, spawn stream teardown) while a step was still
  * waiting on its `result` line. `exitCode` 0 means a clean-but-early exit.
@@ -161,6 +158,23 @@ export class ClaudeCodeMalformedResultError extends Error {
   }
 }
 
+/**
+ * The CLI re-compacted past `MAX_COMPACTIONS_PER_TURN` within one Stella
+ * turn. Handled inside `executeStructuredStepWithMode` (fresh-session
+ * reseed), NOT by the step-recovery budget — a reseeded session that loops
+ * again fails loudly. Carries the failed step's observed native file writes
+ * so the reseed can reconcile instead of replaying them.
+ */
+export class ClaudeCodeCompactionLoopError extends Error {
+  readonly fileChanges: FileChangeRecord[];
+
+  constructor(fileChanges: FileChangeRecord[] = []) {
+    super(CLAUDE_CODE_COMPACTION_LOOP_MESSAGE);
+    this.name = "ClaudeCodeCompactionLoopError";
+    this.fileChanges = fileChanges;
+  }
+}
+
 const asRecoverableStepError = (
   error: unknown,
 ): ClaudeCodeProcessEndedError | ClaudeCodeMalformedResultError | null =>
@@ -176,16 +190,38 @@ const asRecoverableStepError = (
  */
 /**
  * Recovery prompt for a step that died AFTER native file writes were already
- * observed. Blind-replaying the original prompt could re-run those mutations
- * on the respawned session, so the retry must reconcile instead of redo.
+ * observed. Blind-replaying the original prompt (or the history-seeded
+ * `resumeFallbackPrompt`) could re-run those mutations, so the retry must
+ * reconcile instead of redo. Names the affected paths so the model can
+ * verify what already landed.
+ *
+ * `referenceContext` is included (framed as reference-only) when the retry
+ * lands on a FRESH session that has no transcript — a bare reconciliation
+ * directive would otherwise arrive without any task context.
  */
-const buildSideEffectReconciliationPrompt = (): string =>
-  [
+const buildSideEffectReconciliationPrompt = (
+  mutations: readonly FileChangeRecord[],
+  referenceContext?: string,
+): string => {
+  const paths = [...new Set(mutations.map((change) => change.path))];
+  return [
     "The previous step was interrupted after some of its file operations had already been applied.",
+    paths.length > 0
+      ? ["File operations were already applied to:", ...paths.map((p) => `- ${p}`)].join("\n")
+      : "",
     "Do NOT redo, repeat, or revert any file operations from that step.",
     "If you are unsure what was applied, inspect the current state of the affected files first.",
-    "Then report your final answer for the pending request.",
-  ].join("\n");
+    referenceContext?.trim()
+      ? [
+          "Original request context, for reference only — do not re-execute work that already completed:",
+          referenceContext.trim(),
+        ].join("\n\n")
+      : "",
+    "Reconcile with the current state and report your final answer for the pending request.",
+  ]
+    .filter((section) => section.trim().length > 0)
+    .join("\n\n");
+};
 
 const buildDecisionRetryPrompt = (vanilla: boolean): string =>
   vanilla
@@ -1171,6 +1207,16 @@ class ClaudeCodeSessionRuntime {
     });
   }
 
+  /**
+   * Diagnostic/test hook: whether a live CLI child is tracked for the
+   * session key. Guards against restart races where a stale close handler
+   * would otherwise evict the replacement child from tracking.
+   */
+  hasActiveProcess(sessionKey: string): boolean {
+    const child = this.activeProcesses.get(sessionKey);
+    return Boolean(child && !child.killed && child.exitCode === null);
+  }
+
   dispose(): void {
     for (const child of this.activeProcesses.values()) {
       killProcess(child);
@@ -1320,6 +1366,7 @@ class ClaudeCodeSessionRuntime {
           request,
           effectiveSystemPrompt,
           currentPrompt,
+          failedAttemptFileChanges,
         );
         if (failedAttemptFileChanges.length === 0) {
           return result;
@@ -1354,7 +1401,9 @@ class ClaudeCodeSessionRuntime {
           // stay invisible to this guard — the stream only names file-tool
           // paths.)
           if (failedAttemptFileChanges.length > 0) {
-            currentPrompt = buildSideEffectReconciliationPrompt();
+            currentPrompt = buildSideEffectReconciliationPrompt(
+              failedAttemptFileChanges,
+            );
           }
           continue;
         }
@@ -1368,6 +1417,7 @@ class ClaudeCodeSessionRuntime {
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
     prompt: string,
+    observedMutations: readonly FileChangeRecord[] = [],
   ): Promise<StructuredStepResult> {
     return await this.executeStructuredStepWithMode(
       session,
@@ -1375,9 +1425,18 @@ class ClaudeCodeSessionRuntime {
       effectiveSystemPrompt,
       prompt,
       session.resumeReady,
+      true,
+      observedMutations,
     );
   }
 
+  /**
+   * `observedMutations` carries native file writes already applied by
+   * earlier attempts of THIS step. Every reseed path below (missing resume,
+   * compaction loop) must honor it: once mutations are known, the reseed
+   * prompt is the reconciliation prompt — never `resumeFallbackPrompt`,
+   * whose history+request would replay the mutations on the fresh session.
+   */
   private async executeStructuredStepWithMode(
     session: SessionState,
     request: ClaudeCodeTurnRequest,
@@ -1385,7 +1444,19 @@ class ClaudeCodeSessionRuntime {
     prompt: string,
     useResume: boolean,
     allowCompactionLoopRestart = true,
+    observedMutations: readonly FileChangeRecord[] = [],
   ): Promise<StructuredStepResult> {
+    // Reseeded sessions have no transcript, so a mutation-guarded reseed
+    // embeds the would-be seed prompt as reference-only context.
+    const buildReseedPrompt = (
+      mutations: readonly FileChangeRecord[],
+    ): string =>
+      mutations.length > 0
+        ? buildSideEffectReconciliationPrompt(
+            mutations,
+            request.resumeFallbackPrompt ?? prompt,
+          )
+        : (request.resumeFallbackPrompt ?? prompt);
     try {
       const processState = this.ensureStreamingProcess(
         session,
@@ -1405,6 +1476,7 @@ class ClaudeCodeSessionRuntime {
           prompt,
           true,
           allowCompactionLoopRestart,
+          observedMutations,
         );
       }
       if (useResume && isMissingResumeSessionError(message)) {
@@ -1416,30 +1488,48 @@ class ClaudeCodeSessionRuntime {
           session,
           request,
           effectiveSystemPrompt,
-          request.resumeFallbackPrompt ?? prompt,
+          buildReseedPrompt(observedMutations),
           false,
           allowCompactionLoopRestart,
+          observedMutations,
         );
       }
-      if (allowCompactionLoopRestart && isCompactionLoopError(message)) {
+      if (
+        allowCompactionLoopRestart &&
+        error instanceof ClaudeCodeCompactionLoopError
+      ) {
         // The session context can no longer fit and Claude Code keeps
         // re-compacting. Abandon the CLI conversation and restart the turn on
         // a fresh session seeded from the checkpoint-compacted Stella
-        // history. The caller persists the fresh session id at turn end,
-        // replacing the looping one. At most once per step, so a fresh
-        // session that still loops fails loudly instead of cycling.
+        // history — or, if this or an earlier attempt already applied native
+        // file writes, from the reconciliation prompt so they never replay.
+        // The caller persists the fresh session id at turn end, replacing
+        // the looping one. At most once per step, so a fresh session that
+        // still loops fails loudly instead of cycling.
+        const mutations = [...observedMutations];
+        const mutationKeys = new Set(mutations.map(fileChangeDedupeKey));
+        mergeFileChanges(mutations, mutationKeys, error.fileChanges);
         this.resetStreamingProcess(request.sessionKey, session);
         session.sessionId = crypto.randomUUID();
         session.turnCount = 0;
         session.resumeReady = false;
-        return await this.executeStructuredStepWithMode(
+        const result = await this.executeStructuredStepWithMode(
           session,
           request,
           effectiveSystemPrompt,
-          request.resumeFallbackPrompt ?? prompt,
+          buildReseedPrompt(mutations),
           false,
           false,
+          mutations,
         );
+        if (error.fileChanges.length === 0) {
+          return result;
+        }
+        // Keep the interrupted attempt's writes on the step result.
+        const combined = [...error.fileChanges];
+        const combinedKeys = new Set(combined.map(fileChangeDedupeKey));
+        mergeFileChanges(combined, combinedKeys, result.fileChanges);
+        return { ...result, fileChanges: combined };
       }
       throw error;
     }
@@ -1709,7 +1799,11 @@ class ClaudeCodeSessionRuntime {
       if (session.process === processState) {
         session.process = undefined;
       }
-      this.activeProcesses.delete(request.sessionKey);
+      // A restart may already have registered a replacement child under this
+      // session key; only remove OUR child from tracking.
+      if (this.activeProcesses.get(request.sessionKey) === child) {
+        this.activeProcesses.delete(request.sessionKey);
+      }
       for (const pending of processState.pending.splice(0)) {
         this.detachAbortListener(pending);
         pending.reject(wrapped);
@@ -1722,7 +1816,11 @@ class ClaudeCodeSessionRuntime {
       if (session.process === processState) {
         session.process = undefined;
       }
-      this.activeProcesses.delete(request.sessionKey);
+      // A restart may already have registered a replacement child under this
+      // session key; only remove OUR child from tracking.
+      if (this.activeProcesses.get(request.sessionKey) === child) {
+        this.activeProcesses.delete(request.sessionKey);
+      }
       const message =
         processState.stderrText.trim() ||
         `Claude Code exited with code ${code ?? "unknown"} before returning a result.`;
@@ -1953,13 +2051,17 @@ class ClaudeCodeSessionRuntime {
     if (session.process === processState) {
       session.process = undefined;
     }
-    this.activeProcesses.delete(sessionKey);
+    if (this.activeProcesses.get(sessionKey) === processState.child) {
+      this.activeProcesses.delete(sessionKey);
+    }
     const failed = processState.pending.splice(0);
     killProcess(processState.child);
-    const error = new Error(CLAUDE_CODE_COMPACTION_LOOP_MESSAGE);
     for (const pending of failed) {
       this.detachAbortListener(pending);
-      pending.reject(error);
+      // Typed and file-change-aware: the reseed path must know which native
+      // writes this step already applied so it reconciles instead of
+      // replaying them, and reports them on the eventual result.
+      pending.reject(new ClaudeCodeCompactionLoopError(pending.fileChanges));
     }
   }
 
@@ -1967,9 +2069,12 @@ class ClaudeCodeSessionRuntime {
     if (!session.process) {
       return;
     }
-    killProcess(session.process.child);
+    const child = session.process.child;
+    killProcess(child);
     session.process = undefined;
-    this.activeProcesses.delete(sessionKey);
+    if (this.activeProcesses.get(sessionKey) === child) {
+      this.activeProcesses.delete(sessionKey);
+    }
   }
 }
 
@@ -1980,6 +2085,10 @@ export const isClaudeCodeModel = (modelId: string): boolean =>
 
 export const runClaudeCodeTurn = async (request: ClaudeCodeTurnRequest): Promise<ClaudeCodeTurnResult> =>
   await runtime.runTurn(request);
+
+/** Diagnostic/test hook: is a live CLI process tracked for this session key? */
+export const claudeCodeSessionHasActiveProcess = (sessionKey: string): boolean =>
+  runtime.hasActiveProcess(sessionKey);
 
 export const listClaudeCodeModels = async (
   auth?: { apiKey?: string | null; oauthToken?: string | null },
