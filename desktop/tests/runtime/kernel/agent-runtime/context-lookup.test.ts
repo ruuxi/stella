@@ -2,14 +2,29 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  RECALL_BUDGET_EXHAUSTED_TEXT,
+  RECALL_EMPTY_BRIEF_TEXT,
+  RECALL_INDEX_BASE_LIMIT,
+  RECALL_INDEX_HIGH_VOLUME_LIMIT,
   buildContextLookupUserPrompt,
-  formatActiveThreads,
+  formatRecallThreadIndex,
   formatUnifiedSearch,
   parseRecallAction,
+  runRecall,
 } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
+import { completeSimple } from "../../../../../runtime/ai/stream.js";
+
+// runRecall drives its steps through completeSimple; the tests script its
+// responses. readAssistantText stays real (it reads the fake message text).
+vi.mock("../../../../../runtime/ai/stream.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../../../runtime/ai/stream.js")
+  >()),
+  completeSimple: vi.fn(),
+}));
 import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
@@ -58,19 +73,19 @@ describe("buildContextLookupUserPrompt", () => {
     );
 
     const store: Parameters<typeof buildContextLookupUserPrompt>[0]["store"] = {
-      listActiveThreads: () => [
+      countThreadsCreatedSince: () => 1,
+      listThreadsForRecallIndex: () => [
         {
           conversationId: "conv-1",
           threadId: "thread-1",
           name: "Context work",
-          agentType: "general",
-          status: "active",
           createdAt: 1,
           lastUsedAt: 2,
           description: "Implement context tool",
-          summary: "Added a read-only context lookup",
+          resultExcerpt: "Added a read-only context lookup",
         },
       ],
+      listAgentProgressSummaries: () => [],
     };
 
     const prompt = await buildContextLookupUserPrompt({
@@ -144,9 +159,21 @@ describe("buildContextLookupUserPrompt", () => {
     expect(prompt).toContain("https://example.com/context-tools");
     expect(prompt).toContain("Selected Stella panel");
     expect(prompt).toContain("thread-1");
+    expect(prompt).toContain("result: Added a read-only context lookup");
     expect(prompt).toContain('<chronicle_snapshot window="last ~10 minutes"');
+    // Stable → volatile ordering: the big cacheable thread index leads, the
+    // volatile live/current sections follow, the lookup request comes LAST.
+    expect(prompt.indexOf("# Thread Index")).toBeLessThan(
+      prompt.indexOf("# Memory Files"),
+    );
     expect(prompt.indexOf("# Memory Files")).toBeLessThan(
+      prompt.indexOf("# Current Time"),
+    );
+    expect(prompt.indexOf("# Live Thread Status")).toBeLessThan(
       prompt.indexOf("# Chronicle Context"),
+    );
+    expect(prompt.indexOf("# Chronicle Context")).toBeLessThan(
+      prompt.indexOf("# Lookup Request"),
     );
   });
 
@@ -171,7 +198,8 @@ describe("buildContextLookupUserPrompt", () => {
     );
 
     const store: Parameters<typeof buildContextLookupUserPrompt>[0]["store"] = {
-      listActiveThreads: () => [],
+      countThreadsCreatedSince: () => 0,
+      listThreadsForRecallIndex: () => [],
       listAgentProgressSummaries: () => [],
     };
 
@@ -434,70 +462,90 @@ describe("formatUnifiedSearch", () => {
   });
 });
 
-describe("formatActiveThreads", () => {
+describe("formatRecallThreadIndex", () => {
   const makeStore = (
     threads: unknown[],
     summariesByAgentId: Record<string, { text: string; atMs: number }[]> = {},
+    createdLastDay = 0,
+    onList?: (args: { limit: number }) => void,
   ) =>
     ({
-      listActiveThreads: () => threads,
+      countThreadsCreatedSince: () => createdLastDay,
+      listThreadsForRecallIndex: (args: { limit: number }) => {
+        onList?.(args);
+        return threads;
+      },
       listAgentProgressSummaries: (agentId: string, limit = 3) =>
         (summariesByAgentId[agentId] ?? []).slice(-limit),
-    }) as unknown as Parameters<typeof formatActiveThreads>[0];
+    }) as unknown as Parameters<typeof formatRecallThreadIndex>[0];
 
-  it("surfaces live active/paused state and last-active recency", () => {
-    const now = Date.now();
-    const out = formatActiveThreads(
+  it("renders dense stable entries oldest → newest by last-active with absolute timestamps", () => {
+    const now = Date.UTC(2026, 0, 2, 20, 0);
+    const out = formatRecallThreadIndex(
       makeStore([
         {
-          threadId: "still-running",
+          threadId: "newer-thread",
+          conversationId: "conv-1",
+          name: "Deploy the backend",
+          createdAt: now - 3 * 60_000,
+          lastUsedAt: now - 60_000,
           description: "Deploy the backend",
-          lastUsedAt: now - 12 * 60_000,
-          agentUpdatedAt: now - 60_000,
-          agentStatus: "running",
+          resultExcerpt: "Deployed   rev  42\nto prod",
         },
         {
-          threadId: "idle-thread",
-          description: "Draft the budget",
-          lastUsedAt: now - 30 * 60_000,
-          agentStatus: "completed",
+          threadId: "older-thread",
+          conversationId: "conv-2",
+          name: "Draft the budget",
+          createdAt: now - 90 * 60_000,
+          lastUsedAt: now - 60 * 60_000,
+          description: "Draft the household budget spreadsheet",
+          errorExcerpt: "spreadsheet API returned 401",
         },
       ]),
-      "conv-1",
+      now,
     );
-    expect(out).toContain("- still-running (active, last active 1m ago)");
-    expect(out).toContain("- idle-thread (paused, last active 30m ago)");
-    expect(out).toContain("description: Deploy the backend");
+    // Oldest first: churn concentrates at the end for prompt caching.
+    expect(out.index.indexOf("older-thread")).toBeLessThan(
+      out.index.indexOf("newer-thread"),
+    );
+    // Absolute timestamps, never relative ages, so entries stay byte-stable.
+    expect(out.index).toMatch(/- older-thread \| last active [A-Z][a-z]{2} \d/);
+    expect(out.index).not.toMatch(/\dm ago/);
+    // Result/error excerpts collapse whitespace into one dense line.
+    expect(out.index).toContain("result: Deployed rev 42 to prod");
+    expect(out.index).toContain("error: spreadsheet API returned 401");
+    // A description identical to the name adds nothing — deduped.
+    expect(out.index).toContain(
+      "description: Draft the household budget spreadsheet",
+    );
+    expect(out.index).not.toContain("description: Deploy the backend");
   });
 
-  it("reports no resumable threads when empty", () => {
-    expect(formatActiveThreads(makeStore([]), "conv-1")).toBe(
-      "No resumable agent threads.",
-    );
-  });
-
-  it("attaches timestamped live progress to ACTIVE threads only", () => {
+  it("puts only RUNNING threads in the live-status tail, with progress phrases", () => {
     const now = Date.now();
-    const out = formatActiveThreads(
+    const out = formatRecallThreadIndex(
       makeStore(
         [
           {
             threadId: "still-running",
-            description: "Deploy the backend",
+            conversationId: "conv-1",
+            name: "Deploy the backend",
+            createdAt: now - 5 * 60_000,
             lastUsedAt: now - 60_000,
             agentUpdatedAt: now - 30_000,
             agentStatus: "running",
           },
           {
             threadId: "idle-thread",
-            description: "Draft the budget",
+            conversationId: "conv-1",
+            name: "Draft the budget",
+            createdAt: now - 60 * 60_000,
             lastUsedAt: now - 30 * 60_000,
             agentStatus: "completed",
           },
         ],
         {
           "still-running": [
-            { text: "building the deploy image", atMs: now - 90_000 },
             { text: "running smoke tests", atMs: now - 30_000 },
           ],
           // Present in the buffer but the thread is paused — must not render
@@ -505,14 +553,46 @@ describe("formatActiveThreads", () => {
           "idle-thread": [{ text: "summing spreadsheet rows", atMs: now }],
         },
       ),
-      "conv-1",
+      now,
     );
-    expect(out).toContain("live progress (newest last):");
-    expect(out).toContain("building the deploy image");
-    expect(out).toContain("running smoke tests");
-    // Each phrase carries its timestamp bracket.
-    expect(out).toMatch(/- \[[^\]]+\] running smoke tests/);
-    expect(out).not.toContain("summing spreadsheet rows");
+    expect(out.liveStatus).toContain("- still-running (active, last active");
+    expect(out.liveStatus).toContain("live progress (newest last):");
+    expect(out.liveStatus).toMatch(/- \[[^\]]+\] running smoke tests/);
+    expect(out.liveStatus).not.toContain("idle-thread");
+    expect(out.liveStatus).not.toContain("summing spreadsheet rows");
+  });
+
+  it("reports an explicit all-paused tail and an empty index", () => {
+    const now = Date.now();
+    const paused = formatRecallThreadIndex(
+      makeStore([
+        {
+          threadId: "idle-thread",
+          conversationId: "conv-1",
+          name: "Draft the budget",
+          createdAt: now - 60 * 60_000,
+          lastUsedAt: now - 30 * 60_000,
+          agentStatus: "completed",
+        },
+      ]),
+      now,
+    );
+    expect(paused.liveStatus).toContain(
+      "No agent threads are executing a turn right now",
+    );
+    const empty = formatRecallThreadIndex(makeStore([]), now);
+    expect(empty.index).toBe("No delegated agent threads recorded yet.");
+  });
+
+  it("widens the index after a high-volume day", () => {
+    const limits: number[] = [];
+    const record = (args: { limit: number }) => limits.push(args.limit);
+    formatRecallThreadIndex(makeStore([], {}, 40, record), Date.now());
+    formatRecallThreadIndex(makeStore([], {}, 150, record), Date.now());
+    expect(limits).toEqual([
+      RECALL_INDEX_BASE_LIMIT,
+      RECALL_INDEX_HIGH_VOLUME_LIMIT,
+    ]);
   });
 });
 
@@ -553,5 +633,101 @@ describe("formatUnifiedSearch live progress", () => {
     );
     expect(out).toContain("live progress (newest last):");
     expect(out).toMatch(/- \[[^\]]+\] paging through fare results/);
+  });
+});
+
+describe("runRecall", () => {
+  const assistantText = (text: string) => ({
+    role: "assistant" as const,
+    content: [{ type: "text" as const, text }],
+    timestamp: Date.now(),
+  });
+
+  const makeRunArgs = async (rootPath: string) => ({
+    conversationId: "conv-1",
+    lookupPrompt: "Is the connector-discovery thread still running?",
+    stellaAppDir: rootPath,
+    stellaDataDir: rootPath,
+    store: {
+      countThreadsCreatedSince: () => 1,
+      listThreadsForRecallIndex: () => [
+        {
+          threadId: "connector-discovery-take-2",
+          conversationId: "conv-1",
+          name: "Connector discovery + connect cards",
+          createdAt: 1,
+          lastUsedAt: 2,
+          agentStatus: "running",
+        },
+      ],
+      listAgentProgressSummaries: () => [],
+      searchThreads: () => [],
+      searchTranscripts: () => [],
+      listTranscriptNeighbors: () => [],
+    } as unknown as Parameters<typeof runRecall>[0]["store"],
+    localEvents: [],
+    resolvedLlm: {
+      model: { id: "test-model" },
+      getApiKey: async () => "test-key",
+    } as unknown as Parameters<typeof runRecall>[0]["resolvedLlm"],
+  });
+
+  it("rejects a nothing-found answer given without any search, then accepts the corrected answer", async () => {
+    const { rootPath, db } = await createRoot();
+    db.close();
+    const completions = vi.mocked(completeSimple);
+    completions.mockReset();
+    completions
+      .mockResolvedValueOnce(
+        assistantText('{"action":"answer","brief":"Nothing relevant found."}'),
+      )
+      .mockResolvedValueOnce(
+        assistantText(
+          '{"action":"answer","brief":"connector-discovery-take-2 is active."}',
+        ),
+      );
+
+    const out = await runRecall(await makeRunArgs(rootPath));
+
+    expect(out).toBe("connector-discovery-take-2 is active.");
+    expect(completions).toHaveBeenCalledTimes(2);
+    // The retry turn carries the rejection observation.
+    const retryText = (
+      completions.mock.calls[1]?.[1] as {
+        messages: Array<{ content: Array<{ text: string }> }>;
+      }
+    ).messages[0]?.content[0]?.text;
+    expect(retryText).toContain("Rejected: you answered");
+  });
+
+  it("returns a distinct failure text for an empty brief instead of a fake no-match", async () => {
+    const { rootPath, db } = await createRoot();
+    db.close();
+    const completions = vi.mocked(completeSimple);
+    completions.mockReset();
+    completions.mockResolvedValueOnce(
+      assistantText('{"action":"answer","brief":""}'),
+    );
+
+    const out = await runRecall(await makeRunArgs(rootPath));
+    expect(out).toBe(RECALL_EMPTY_BRIEF_TEXT);
+  });
+
+  it("returns a distinct failure text when the step budget runs out without an answer", async () => {
+    const { rootPath, db } = await createRoot();
+    db.close();
+    const completions = vi.mocked(completeSimple);
+    completions.mockReset();
+    // Four search steps burn the budget; the forced final synthesis
+    // produces nothing.
+    for (let i = 0; i < 4; i += 1) {
+      completions.mockResolvedValueOnce(
+        assistantText('{"action":"search","query":"connector discovery"}'),
+      );
+    }
+    completions.mockResolvedValueOnce(assistantText(""));
+
+    const out = await runRecall(await makeRunArgs(rootPath));
+    expect(out).toBe(RECALL_BUDGET_EXHAUSTED_TEXT);
   });
 });
