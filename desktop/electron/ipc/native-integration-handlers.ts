@@ -331,13 +331,13 @@ const toServerNativeConnectorEntry = (
 };
 
 const createBackendIntegrationConnectLink = async (
-  options: NativeCredentialFlowOptions,
+  // Pre-resolved auth: the caller carries the SAME values into the
+  // completion-status wait afterwards, so a transient auth loss between
+  // link creation and polling can't silently skip the confirmation.
+  auth: { siteUrl: string; authToken: string },
   id: string,
 ) => {
-  const siteUrl = options.getConvexSiteUrl?.()?.trim().replace(/\/+$/u, "");
-  if (!siteUrl) throw new Error("Stella backend is unavailable.");
-  const authToken = await options.getConvexAuthToken?.();
-  if (!authToken) throw new Error("Sign in to Stella before connecting this integration.");
+  const { siteUrl, authToken } = auth;
   const response = await fetch(`${siteUrl}/api/native-integrations/connect-link`, {
     method: "POST",
     headers: {
@@ -428,7 +428,22 @@ export const ensureNativeCredential = async (
     if (!options.requestExternalOAuthApproval) {
       throw new Error(`${entry.name} connection is unavailable.`);
     }
-    const url = await createBackendIntegrationConnectLink(options, id);
+    // Resolve auth ONCE and reuse it for both the connect link and the
+    // completion wait below. Re-reading it after the browser hop could
+    // silently come back empty (transient auth loss / sign-out) and must
+    // not turn into an implicit "connected".
+    const siteUrl = options.getConvexSiteUrl?.()?.trim().replace(/\/+$/u, "");
+    if (!siteUrl) throw new Error("Stella backend is unavailable.");
+    const authToken = await options.getConvexAuthToken?.();
+    if (!authToken) {
+      throw new Error(
+        `Sign in to Stella before connecting ${entry.name}.`,
+      );
+    }
+    const url = await createBackendIntegrationConnectLink(
+      { siteUrl, authToken },
+      id,
+    );
     // "ok" here only means the browser was opened with the user's
     // consent — Composio OAuth finishes on a hosted page with no
     // deep-link back to the desktop, so completion is confirmed below.
@@ -442,12 +457,10 @@ export const ensureNativeCredential = async (
       throw new Error(`Could not connect ${entry.name}: ${approved.reason}`);
     }
     // Real completion signal: poll the backend for the Composio
-    // account status instead of assuming success. "unsupported" means
-    // the status endpoint isn't deployed yet — proceed as before
-    // rather than bricking connects during the rollout window.
-    const siteUrl = options.getConvexSiteUrl?.()?.trim().replace(/\/+$/u, "");
-    const authToken = await options.getConvexAuthToken?.();
-    if (!siteUrl || !authToken) return;
+    // account status (with the auth carried from link creation) instead
+    // of assuming success. ONLY "unsupported" (status endpoint not
+    // deployed yet, 404/405) may degrade to the previous optimistic
+    // behavior; every other non-connected outcome fails the enable.
     const wait = await waitForBackendIntegrationConnection({
       siteUrl,
       authToken,
@@ -457,6 +470,11 @@ export const ensureNativeCredential = async (
     if (wait === "connected" || wait === "unsupported") return;
     if (wait === "cancelled") {
       throw new Error(`Could not connect ${entry.name}: cancelled`);
+    }
+    if (wait === "auth_unavailable") {
+      throw new Error(
+        `Could not confirm the ${entry.name} connection because Stella's sign-in expired. Sign in and try connecting again.`,
+      );
     }
     throw new Error(
       `${entry.name} authorization was not completed in the browser. Finish signing in on the ${entry.name} page that opened, then try connecting again.`,

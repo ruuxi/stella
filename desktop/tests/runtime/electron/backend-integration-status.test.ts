@@ -108,6 +108,31 @@ describe("waitForBackendIntegrationConnection", () => {
     expect(result).toBe("timeout");
   });
 
+  it("fails closed when auth is unavailable — never polls, never reports connected", async () => {
+    // Transient auth loss between connect-link creation and polling must
+    // surface as a failure, not degrade into an optimistic success.
+    const { fetchImpl, calls } = fetchSequence([
+      () => jsonResponse({ connected: true }),
+    ]);
+    expect(
+      await waitForBackendIntegrationConnection({
+        ...baseOptions,
+        authToken: "",
+        fetchImpl,
+        intervalMs: 1,
+      }),
+    ).toBe("auth_unavailable");
+    expect(
+      await waitForBackendIntegrationConnection({
+        ...baseOptions,
+        siteUrl: "   ",
+        fetchImpl,
+        intervalMs: 1,
+      }),
+    ).toBe("auth_unavailable");
+    expect(calls.length).toBe(0);
+  });
+
   it("cancels immediately when the abort signal fires", async () => {
     const controller = new AbortController();
     const { fetchImpl } = fetchSequence([
