@@ -272,11 +272,19 @@ export const handleSchedule = async (
     if (!snapshot) {
       throw new Error(`Schedule task not found: ${created.threadId}`);
     }
-    // Liveness: prefer the manager's `lastActivityAt` stamp (moves on
-    // streamed progress AND tool start/end, so one long tool call still
-    // reads as alive). Fall back to diffing `recentActivity` for older
-    // snapshot providers that don't report the stamp.
-    if (typeof snapshot.lastActivityAt === "number") {
+    // Liveness, in priority order:
+    // 1. A tool in flight is active work by definition — the stamp below
+    //    only moves on discrete events, so a single tool call that outlasts
+    //    the idle window would otherwise read as idle mid-call. Reset the
+    //    idle clock every poll while one is running; the hard cap still
+    //    bounds a tool that never returns.
+    // 2. The manager's `lastActivityAt` stamp (streamed progress and tool
+    //    start/end).
+    // 3. Diffing `recentActivity`, for older snapshot providers that report
+    //    neither of the above.
+    if ((snapshot.activeToolCount ?? 0) > 0) {
+      lastActivityAt = Date.now();
+    } else if (typeof snapshot.lastActivityAt === "number") {
       lastActivityAt = Math.max(lastActivityAt, snapshot.lastActivityAt);
     } else {
       const activitySignature = JSON.stringify(snapshot.recentActivity ?? []);
