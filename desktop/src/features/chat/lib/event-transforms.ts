@@ -1,4 +1,5 @@
 import {
+  AGENT_IDS,
   isTerminalTaskLifecycleStatus,
   type TaskLifecycleStatus,
 } from '../../../../../runtime/contracts/agent-runtime.js'
@@ -161,6 +162,19 @@ export function fallbackTaskDescription(agentId: string | undefined): string {
   if (letterCount === 0) return 'Task'
   const text = words.join(' ')
   return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/**
+ * The user-facing activity feed shows the user's delegated work: GENERAL
+ * agents spawned via `spawn_agent`. Orchestrator-internal helpers (schedule
+ * specialists, recall lookups, and any future machinery agent types) are
+ * execution detail — they must not surface as activity rows, and must not
+ * burn progress-summary LLM calls.
+ */
+export function isActivityFeedTask(
+  task: Pick<TaskItem, 'agentType'>,
+): boolean {
+  return task.agentType === AGENT_IDS.GENERAL
 }
 
 /** True when a description is the generic placeholder or merely the
@@ -427,12 +441,11 @@ export function extractTasksFromEvents(
  * the stale-schedule auto-completion.
  *
  * Non-activity events in `activities` are ignored, so callers that have
- * the raw event stream can pass it through unchanged — but the cheap
- * path is to pass only the lifecycle events plus
- * `latestMessageTimestampMs` (the latest user/assistant message
- * timestamp anywhere in the conversation, used to auto-complete tasks
- * whose agent never emitted a terminal event but a later turn message
- * proves the work is done).
+ * the raw event stream can pass it through unchanged — the cheap path is
+ * to pass only the lifecycle events. (`latestMessageTimestampMs` is
+ * accepted for caller compatibility; it only drove the auto-completion of
+ * stale schedule-specialist rows, which are now excluded entirely by the
+ * general-agents-only activity filter.)
  */
 export function extractTasksFromActivities(
   activities: EventRecord[],
@@ -442,7 +455,6 @@ export function extractTasksFromActivities(
   },
 ): TaskItem[] {
   const appSessionStartedAtMs = options?.appSessionStartedAtMs ?? null
-  const latestMessageTimestampMs = options?.latestMessageTimestampMs ?? null
   const tasksById = new Map<string, TaskItem>()
 
   const ensureTask = (
@@ -585,22 +597,11 @@ export function extractTasksFromActivities(
   }
 
   return [...tasksById.values()]
+    // Internal helper agents (schedule specialists, etc.) are not user
+    // work — keep them out of every activity-derived task list.
+    .filter(isActivityFeedTask)
     .map((task) => {
       let nextTask = task
-
-      if (
-        nextTask.status === 'running' &&
-        nextTask.agentType === 'schedule' &&
-        latestMessageTimestampMs !== null &&
-        latestMessageTimestampMs > nextTask.startedAtMs
-      ) {
-        nextTask = {
-          ...nextTask,
-          status: 'completed',
-          completedAtMs: nextTask.completedAtMs ?? nextTask.lastUpdatedAtMs,
-          outputPreview: nextTask.outputPreview ?? 'Scheduling updated.',
-        }
-      }
 
       if (
         nextTask.status === 'running' &&

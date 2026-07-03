@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   fallbackTaskDescription,
+  isActivityFeedTask,
   isFallbackTaskDescription,
   extractStepsFromEvents,
   extractTasksFromEvents,
@@ -32,6 +33,39 @@ const event = (
   timestamp,
   type,
   payload,
+});
+
+describe("internal helper agent exclusion", () => {
+  it("keeps only general agents in the activity feed", () => {
+    expect(isActivityFeedTask({ agentType: "general" })).toBe(true);
+    expect(isActivityFeedTask({ agentType: "schedule" })).toBe(false);
+    expect(isActivityFeedTask({ agentType: "dream" })).toBe(false);
+    expect(isActivityFeedTask({ agentType: "orchestrator" })).toBe(false);
+  });
+
+  it("drops schedule-specialist lifecycle events from extracted activity tasks", () => {
+    // The Schedule tool spawns an internal `schedule` sub-agent
+    // (thread-NNN) while the orchestrator is busy — it must never render
+    // as a user-facing activity row.
+    const events = [
+      event("1", 100, "agent-started", {
+        agentId: "thread-177",
+        description: "Apply local scheduling changes",
+        agentType: "schedule",
+      }),
+      event("2", 150, "agent-started", {
+        agentId: "compare-flight-prices",
+        description: "Compare flight prices",
+        agentType: "general",
+      }),
+      event("3", 200, "agent-completed", {
+        agentId: "thread-177",
+        result: "done",
+      }),
+    ];
+    const tasks = extractTasksFromEvents(events);
+    expect(tasks.map((task) => task.id)).toEqual(["compare-flight-prices"]);
+  });
 });
 
 describe("fallbackTaskDescription", () => {

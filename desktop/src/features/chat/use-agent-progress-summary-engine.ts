@@ -16,7 +16,10 @@
  */
 
 import { useEffect, useMemo, useRef } from "react";
-import type { TaskItem } from "@/features/chat/lib/event-transforms";
+import {
+  isActivityFeedTask,
+  type TaskItem,
+} from "@/features/chat/lib/event-transforms";
 import { agentProgressSummaryStore } from "@/features/chat/agent-progress-summary-store";
 
 const FIRST_DELAY_MS = 10_000;
@@ -179,7 +182,12 @@ export function useAgentProgressSummaryEngine(
   const runningIdsKey = useMemo(
     () =>
       liveTasks
-        .filter((task) => task.status === "running")
+        // Belt-and-braces: only user-facing activity rows earn summary
+        // ticks; internal helper agents must never burn LLM calls here
+        // even if a caller passes an unfiltered task list.
+        .filter(
+          (task) => task.status === "running" && isActivityFeedTask(task),
+        )
         .map((task) => task.id)
         .sort()
         .join("\u0000"),
