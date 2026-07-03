@@ -1,0 +1,83 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
+
+// Capture calls into the Claude Code agent runtime so we can assert the
+// one-shot pipeline reaches the local engine without any resolvable route.
+const claudeCodeCalls: Array<Record<string, unknown>> = [];
+let claudeCodeEngineActive = false;
+
+vi.mock(
+  "../../../../../runtime/kernel/integrations/claude-code-agent-runtime.js",
+  () => ({
+    shouldUseClaudeCodeAgentRuntime: () => claudeCodeEngineActive,
+    runClaudeCodeAgentTextCompletion: async (args: Record<string, unknown>) => {
+      claudeCodeCalls.push(args);
+      return "summarizing agent progress now";
+    },
+  }),
+);
+
+const completeSimpleCalls: Array<Record<string, unknown>> = [];
+vi.mock("../../../../../runtime/ai/stream.js", () => ({
+  completeSimple: async (model: unknown) => {
+    completeSimpleCalls.push({ model });
+    return { content: [{ type: "text", text: "relay summary" }] };
+  },
+  readAssistantText: () => "relay summary",
+}));
+
+import { runOneShotCompletion } from "../../../../../runtime/kernel/agent-runtime/one-shot-completion.js";
+
+const makeRuntime = (args: { authToken: string | null; dataDir: string }) => ({
+  stellaAppDir: "/tmp/does-not-matter-app-dir",
+  stellaDataDir: args.dataDir,
+  siteBaseUrl: args.authToken ? "https://site.example.test" : null,
+  getAuthToken: () => args.authToken,
+  hasConnectedAccount: () => Boolean(args.authToken),
+});
+
+const request = {
+  agentType: "progress_summary",
+  model: "stella/light",
+  fallbackAgentTypes: ["general"],
+  systemPrompt: "narrate",
+  userText: "Task: test\nCurrent activity: working",
+  maxOutputTokens: 24,
+  temperature: 0.4,
+};
+
+let dataDir: string;
+
+beforeEach(() => {
+  claudeCodeCalls.length = 0;
+  completeSimpleCalls.length = 0;
+  claudeCodeEngineActive = false;
+  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "one-shot-test-"));
+});
+
+describe("runOneShotCompletion", () => {
+  it("uses the Claude Code engine when no LLM route resolves (signed-out CC user)", async () => {
+    claudeCodeEngineActive = true;
+    const result = await runOneShotCompletion({
+      request,
+      runtime: makeRuntime({ authToken: null, dataDir }),
+    });
+    expect(result.text).toBe("summarizing agent progress now");
+    expect(claudeCodeCalls).toHaveLength(1);
+    // The explicit stella/light pin must flow through so CC maps it to Haiku.
+    expect(claudeCodeCalls[0]?.stellaModel).toBe("stella/light");
+    expect(completeSimpleCalls).toHaveLength(0);
+  });
+
+  it("still fails loudly when signed out on the native engine", async () => {
+    await expect(
+      runOneShotCompletion({
+        request,
+        runtime: makeRuntime({ authToken: null, dataDir }),
+      }),
+    ).rejects.toThrow();
+    expect(claudeCodeCalls).toHaveLength(0);
+  });
+});

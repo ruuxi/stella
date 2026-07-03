@@ -128,24 +128,37 @@ export const runOneShotCompletion = async (args: {
   let lastRouteError: unknown;
 
   for (const candidate of candidateModelNames) {
-    let candidateRoute: ResolvedLlmRoute;
+    let candidateRoute: ResolvedLlmRoute | undefined;
     try {
       candidateRoute = buildRoute(candidate);
     } catch (error) {
       lastRouteError = error;
-      continue;
+      // The Claude Code engine runs completions through the local CLI and
+      // needs no resolvable LLM route or API credential. A candidate that
+      // fails route resolution (e.g. `stella/light` while signed out on a
+      // BYOK Claude Code setup) must still reach the engine check below —
+      // otherwise progress summaries silently never run for CC users.
+      if (
+        !shouldUseClaudeCodeAgentRuntime({
+          stellaAppDir: runtime.stellaDataDir,
+          modelId: candidate,
+        })
+      ) {
+        continue;
+      }
     }
     const candidateUsesClaudeCode = shouldUseClaudeCodeAgentRuntime({
       stellaAppDir: runtime.stellaDataDir,
-      modelId: candidateRoute.model.id,
+      modelId: candidateRoute?.model.id ?? candidate,
     });
     const candidateApiKey = candidateUsesClaudeCode
       ? undefined
-      : (await candidateRoute.getApiKey())?.trim();
+      : (await candidateRoute?.getApiKey())?.trim();
     const usable =
       candidateUsesClaudeCode ||
       Boolean(candidateApiKey) ||
-      resolvedLlmSupportsCredentiallessCalls(candidateRoute);
+      (candidateRoute != null &&
+        resolvedLlmSupportsCredentiallessCalls(candidateRoute));
     if (!usable) {
       continue;
     }
@@ -156,7 +169,7 @@ export const runOneShotCompletion = async (args: {
     break;
   }
 
-  if (!route) {
+  if (!route && !useClaudeCode) {
     if (lastRouteError instanceof Error) {
       throw lastRouteError;
     }
@@ -180,12 +193,20 @@ export const runOneShotCompletion = async (args: {
   try {
     if (useClaudeCode) {
       const text = await runClaudeCodeAgentTextCompletion({
-        stellaAppDir: runtime.stellaAppDir,
+        // Data dir, matching the other CC completion callers: preferences
+        // (claudeCodeModel, reasoning effort) live under the data dir.
+        stellaAppDir: runtime.stellaDataDir,
         agentType: request.agentType,
-        stellaModel: modelName ?? route.model.id,
+        ...(modelName ?? route?.model.id
+          ? { stellaModel: (modelName ?? route?.model.id) as string }
+          : {}),
         context,
       });
       return { text: text.trim() };
+    }
+    if (!route) {
+      // Unreachable: a non-Claude-Code selection always carries a route.
+      throw new Error("No usable model route was selected.");
     }
     const response = await completeSimple(route.model, context, {
       apiKey,
@@ -200,7 +221,7 @@ export const runOneShotCompletion = async (args: {
   } catch (error) {
     logger.debug("one-shot.completion.failed", {
       agentType: request.agentType,
-      provider: route.model.provider,
+      provider: useClaudeCode ? "claude-code" : route?.model.provider,
       error: error instanceof Error ? error.message : String(error),
     });
     throw error;
