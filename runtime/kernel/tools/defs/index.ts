@@ -44,6 +44,7 @@ import { createScriptDraftTool } from "./script-draft.js";
 import { createSourceImportTool } from "./source-import.js";
 import { strReplaceTool } from "./str-replace.js";
 import { createAgentTools } from "./task.js";
+import { createConnectorStatusTool } from "./connector-status.js";
 import { toolSearchTool } from "./tool-search.js";
 import { viewImageTool } from "./view-image.js";
 import { createWebTool } from "./web.js";
@@ -169,6 +170,19 @@ export const buildBuiltinTools = (
   // catalogs and are exposed by `tool_search` only in matching contexts.
   tools.push(
     ...createLinqImessageTools({ actionConvex: options.actionConvex }),
+  );
+  // Deferred orchestrator connector check + inline connect card. Surfaced
+  // situationally by the connector-availability system reminder.
+  tools.push(
+    createConnectorStatusTool({
+      stellaDataDir: options.stellaDataDir,
+      ...(options.getStellaSiteAuth
+        ? { getStellaSiteAuth: options.getStellaSiteAuth }
+        : {}),
+      ...(options.requestConnectorConnection
+        ? { requestConnectorConnection: options.requestConnectorConnection }
+        : {}),
+    }),
   );
 
   // Subagent file/search/dream surface

@@ -152,6 +152,25 @@ export type StellaHostRunnerOptions = {
         reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
       }
   >;
+  /**
+   * Desktop hop for the orchestrator's `connector_status` tool: render the
+   * inline connector connect card (ConnectorConnectService) and resolve
+   * with the user's outcome.
+   */
+  requestConnectorConnection?: (payload: {
+    id: string;
+    name: string;
+    description?: string;
+    iconUrl?: string;
+    category?: string;
+    reason?: string;
+  }) => Promise<
+    | { ok: true; status: "connected" | "already_connected" }
+    | {
+        ok: false;
+        reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
+      }
+  >;
   requestRuntimeAuthRefresh?: (payload: {
     source: RuntimeAuthRefreshSource;
   }) => Promise<HostRuntimeAuthRefreshResult>;

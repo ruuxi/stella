@@ -283,6 +283,12 @@ export type ToolHostOptions = {
    * or declines so the tool can re-run the command automatically.
    */
   requestBrowserExtensionConnect?: import("./browser-extension-offer.js").BrowserExtensionConnectRequester;
+  /**
+   * Optional desktop hop for the orchestrator's `connector_status` tool:
+   * render the inline connector connect card and resolve with the user's
+   * outcome (same ConnectorConnectService flow the CLI bridge uses).
+   */
+  requestConnectorConnection?: import("./defs/connector-status.js").ConnectorConnectionRequester;
 };
 
 export type FashionShopProduct = {

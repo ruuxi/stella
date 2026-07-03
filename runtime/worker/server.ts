@@ -1121,6 +1121,29 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           };
         }
       },
+      requestConnectorConnection: async (payload) => {
+        try {
+          return await peer.request<
+            | { ok: true; status: "connected" | "already_connected" }
+            | {
+                ok: false;
+                reason:
+                  | "declined"
+                  | "cancelled"
+                  | "timeout"
+                  | "unsupported"
+                  | string;
+              }
+          >(METHOD_NAMES.HOST_CONNECTOR_CONNECT_REQUEST, payload, {
+            retryOnDisconnect: true,
+          });
+        } catch (error) {
+          return {
+            ok: false,
+            reason: (error as Error).message || "host_unreachable",
+          };
+        }
+      },
       requestRuntimeAuthRefresh: async (payload) =>
         await peer.request(METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH, payload, {
           retryOnDisconnect: true,
