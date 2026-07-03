@@ -19,6 +19,7 @@ import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
   buildRecentModelRows,
+  createKnownModelIdPredicate,
   pruneRecentModels,
   readRecentModels,
   recordRecentModel,
@@ -263,6 +264,7 @@ export function AgentModelPicker({
   const expanded = isSettings ? true : expandedState;
   const {
     models: stellaModels,
+    allModels,
     defaults: stellaDefaultModels,
     groups,
     refresh,
@@ -347,16 +349,18 @@ export function AgentModelPicker({
     );
   }, [preferences, stellaDefaultModels]);
 
+  // Labels come from the FULL merged catalog so BYOK / local override ids
+  // (openrouter/…, anthropic/…, local/…) render their display names too.
   const modelNamesById = useMemo(() => {
     const next = new Map<string, string>();
-    for (const model of stellaModels) {
+    for (const model of allModels) {
       const label =
         model.provider === "stella" ? getStellaDisplayName(model) : model.name;
       next.set(model.id, label);
       if (model.upstreamModel) next.set(model.upstreamModel, label);
     }
     return next;
-  }, [stellaModels]);
+  }, [allModels]);
 
   const defaultModelMap = useMemo(
     () => buildModelDefaultsMap(modelDefaults),
@@ -819,38 +823,35 @@ export function AgentModelPicker({
         ? getModelPickerDisplayLabel(current, modelNamesById)
         : defaultLabel
       : "Loading…";
-  /**
-   * Whether an override id still resolves to something selectable.
-   * Catalog ids must be present in the live merged catalog (Stella +
-   * connected providers + local models); engine ids (`claude-code/…`,
-   * `codex-cli/…`) are aliases the engine resolves at run time, so they
-   * stay valid independent of the catalog. While the catalog hasn't
-   * loaded yet (or failed, e.g. offline) everything passes — never wipe
-   * or grey out recents on missing data.
-   */
-  const isKnownModelId = useCallback(
-    (modelId: string): boolean => {
-      if (stellaModels.length === 0) return true;
-      if (
-        modelId.startsWith("claude-code/") ||
-        modelId.startsWith("codex-cli/")
-      ) {
-        return true;
-      }
-      return stellaModels.some((model) => model.id === modelId);
-    },
-    [stellaModels],
+  // Whether an override id still resolves to something selectable — see
+  // createKnownModelIdPredicate for the rules. Validated against the FULL
+  // merged catalog (allModels), never the Stella subset.
+  const catalogModelIds = useMemo(
+    () => new Set(allModels.map((model) => model.id)),
+    [allModels],
+  );
+  // Validation is suspended (everything passes) while any catalog fetch is
+  // still in flight: the merged catalog lands in pieces (Stella first,
+  // BYOK/local after), and validating against a partial merge would
+  // briefly mislabel valid picks as unavailable.
+  const catalogSettled = !catalogLoading && !refreshing;
+  const isKnownModelId = useMemo(
+    () =>
+      catalogSettled
+        ? createKnownModelIdPredicate(catalogModelIds)
+        : () => true,
+    [catalogModelIds, catalogSettled],
   );
 
   // Once the catalog is in, drop persisted recents that no longer resolve
   // so stale ids can't be re-selected and written back into overrides.
   useEffect(() => {
-    if (catalogLoading || stellaModels.length === 0) return;
+    if (!catalogSettled || allModels.length === 0) return;
     setRecentModelIds((currentIds) => {
       const next = pruneRecentModels(isKnownModelId);
       return next.length === currentIds.length ? currentIds : next;
     });
-  }, [catalogLoading, isKnownModelId, stellaModels]);
+  }, [allModels, catalogSettled, isKnownModelId]);
 
   /**
    * Rows pinned above the compact Stella presets: the current selection

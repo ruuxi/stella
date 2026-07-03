@@ -467,6 +467,11 @@
   color: var(--select-text);
 }
 
+/* Saved selection that no longer exists in the engine's model list. */
+.engine-runtime-model-panel__model[data-unavailable] {
+  opacity: 0.45;
+}
+
 .engine-runtime-model-panel__model-text {
   display: flex;
   flex-direction: column;

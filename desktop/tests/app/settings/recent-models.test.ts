@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   buildRecentModelRows,
+  createKnownModelIdPredicate,
   pruneRecentModels,
   readRecentModels,
   recordRecentModel,
@@ -76,6 +77,46 @@ describe("recent models", () => {
       isKnownModelId: () => true,
     });
     expect(rows.map((row) => row.id)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("recognizes BYOK and local ids against the full merged catalog", () => {
+    // The id set must be built from allModels (merged catalog) — a
+    // Stella-only set would prune valid BYOK/local picks (regression).
+    const mergedCatalog = new Set([
+      "stella/designer",
+      "openrouter/qwen-3-coder",
+      "anthropic/claude-opus-4-5",
+      "local/http%3A%2F%2Flocalhost%3A1234/qwen2.5",
+    ]);
+    const isKnown = createKnownModelIdPredicate(mergedCatalog);
+    expect(isKnown("openrouter/qwen-3-coder")).toBe(true);
+    expect(isKnown("anthropic/claude-opus-4-5")).toBe(true);
+    expect(isKnown("local/http%3A%2F%2Flocalhost%3A1234/qwen2.5")).toBe(true);
+    expect(isKnown("openrouter/removed-model")).toBe(false);
+
+    // Engine aliases resolve at run time; valid regardless of catalog.
+    expect(isKnown("claude-code/opus")).toBe(true);
+    expect(isKnown("codex-cli/gpt-5.5")).toBe(true);
+
+    // Empty set = catalog not loaded: validation suspended.
+    const unloaded = createKnownModelIdPredicate(new Set());
+    expect(unloaded("openrouter/anything")).toBe(true);
+  });
+
+  it("keeps BYOK and local recents when pruning against the merged catalog", () => {
+    recordRecentModel("local/http%3A%2F%2Flocalhost%3A1234/qwen2.5");
+    recordRecentModel("openrouter/qwen-3-coder");
+    recordRecentModel("openrouter/removed-model");
+    const isKnown = createKnownModelIdPredicate(
+      new Set([
+        "openrouter/qwen-3-coder",
+        "local/http%3A%2F%2Flocalhost%3A1234/qwen2.5",
+      ]),
+    );
+    expect(pruneRecentModels(isKnown)).toEqual([
+      "openrouter/qwen-3-coder",
+      "local/http%3A%2F%2Flocalhost%3A1234/qwen2.5",
+    ]);
   });
 
   it("omits the current slot when nothing is selected", () => {

@@ -37,6 +37,12 @@ export type EngineRuntimeModelOption = {
   id: string;
   label: string;
   subtitle?: string;
+  /**
+   * The saved selection no longer exists in the engine's model list.
+   * Rendered dimmed + disabled so the configured value stays visible
+   * without offering a dead pick.
+   */
+  unavailable?: boolean;
 };
 
 interface EngineRuntimeModelPanelProps {
@@ -197,7 +203,8 @@ const EngineRuntimeModelRow = memo(function EngineRuntimeModelRow({
   onSelectReasoning,
 }: EngineRuntimeModelRowProps) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
-  const showReasoning = Boolean(onSelectReasoning);
+  const showReasoning = Boolean(onSelectReasoning) && !model.unavailable;
+  const rowDisabled = disabled || Boolean(model.unavailable);
   return (
     <div
       className="engine-runtime-model-panel__row"
@@ -207,9 +214,16 @@ const EngineRuntimeModelRow = memo(function EngineRuntimeModelRow({
         type="button"
         role="option"
         aria-selected={selected}
+        aria-disabled={model.unavailable || undefined}
         className="engine-runtime-model-panel__model"
         data-selected={selected || undefined}
-        disabled={disabled}
+        data-unavailable={model.unavailable || undefined}
+        title={
+          model.unavailable
+            ? "This model is no longer available — pick another."
+            : undefined
+        }
+        disabled={rowDisabled}
         onClick={() => onSelect(model.id)}
       >
         <span className="engine-runtime-model-panel__model-text">
@@ -270,7 +284,7 @@ const EngineRuntimeModelRow = memo(function EngineRuntimeModelRow({
         aria-pressed={favorite}
         aria-label={favorite ? "Remove favorite" : "Add favorite"}
         title={favorite ? "Remove favorite" : "Favorite — pin to top"}
-        disabled={disabled}
+        disabled={rowDisabled}
         onClick={(event) => {
           event.stopPropagation();
           onToggleFavorite(model.id);
