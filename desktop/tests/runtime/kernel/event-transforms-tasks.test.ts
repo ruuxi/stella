@@ -11,6 +11,7 @@ import {
   groupActivityTasks,
   mergeFooterTasks,
   pruneGroupExpandOverrides,
+  shouldShowTaskReasoningSummaries,
   updateSeenRunningGroupKeys,
   updateSeenRunningTaskIds,
   type EventRecord,
@@ -812,6 +813,21 @@ describe("getInlineWorkingIndicatorExitDelayMs", () => {
         nowMs: 3_100,
       }),
     ).toBe(0);
+  });
+});
+
+describe("shouldShowTaskReasoningSummaries", () => {
+  it("shows summaries only while the agent is actively running", () => {
+    expect(shouldShowTaskReasoningSummaries({ status: "running" })).toBe(true);
+    // Once the agent stops, the summaries section collapses away — the row
+    // stays expanded with its files, but live-narration phrases hide.
+    expect(shouldShowTaskReasoningSummaries({ status: "completed" })).toBe(
+      false,
+    );
+    expect(shouldShowTaskReasoningSummaries({ status: "error" })).toBe(false);
+    expect(shouldShowTaskReasoningSummaries({ status: "canceled" })).toBe(
+      false,
+    );
   });
 });
 

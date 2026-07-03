@@ -41,6 +41,7 @@ import {
   mergeFooterTasks,
   orderByFirstSeen,
   pruneGroupExpandOverrides,
+  shouldShowTaskReasoningSummaries,
   updateSeenRunningGroupKeys,
   updateSeenRunningTaskIds,
   type ActivityRow,
@@ -273,7 +274,12 @@ const TaskRow = memo(function TaskRow({
   const summaries = useAgentProgressSummaries(task.id);
   // Per-session only; resets when the row unmounts, which is fine.
   const [showAllFiles, setShowAllFiles] = useState(false);
-  const hasSummaries = summaries.length > 0;
+  // Summaries narrate live work — display them only while the agent is
+  // active. They stay accumulated in the store, so a send_input
+  // re-activation brings them straight back; a finished row shows files
+  // only.
+  const hasSummaries =
+    summaries.length > 0 && shouldShowTaskReasoningSummaries(task);
   const hasFiles = files.length > 0;
   const filesCapped = files.length > AGENT_FILE_CAP;
   const visibleFiles =
