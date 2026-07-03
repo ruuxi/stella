@@ -26,7 +26,13 @@ export type BackendIntegrationWaitResult =
   | "connected"
   | "timeout"
   | "cancelled"
-  | "unsupported";
+  | "unsupported"
+  /**
+   * siteUrl/authToken missing — completion cannot be confirmed. Callers
+   * must treat this as a failure, never as an optimistic success (only
+   * the explicit 404/405 "unsupported" rollout path may degrade).
+   */
+  | "auth_unavailable";
 
 const readConnected = (payload: unknown): boolean =>
   Boolean(
@@ -89,6 +95,9 @@ export const waitForBackendIntegrationConnection = async (options: {
   /** Injectable clock for tests. */
   now?: () => number;
 }): Promise<BackendIntegrationWaitResult> => {
+  if (!options.siteUrl.trim() || !options.authToken.trim()) {
+    return "auth_unavailable";
+  }
   const timeoutMs = options.timeoutMs ?? 4 * 60 * 1000;
   const intervalMs = options.intervalMs ?? 2_500;
   const now = options.now ?? Date.now;
