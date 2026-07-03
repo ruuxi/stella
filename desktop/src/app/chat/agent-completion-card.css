@@ -52,19 +52,45 @@
 
 /* Fileless completion: a compact, muted result excerpt stands in for the
    file pills so the card still shows what the agent accomplished. */
-.agent-completion-card__summary {
-  color: var(--text-weak);
-  overflow-wrap: anywhere;
-}
-
 /* The excerpt renders through the chat markdown pipeline but must read as a
    subtle muted one-liner, clearly secondary to the task title above it —
    the same quiet register as the sidebar's reasoning-summary lines
    (`chat-workspace-strip__task-progress-item`: --text-weak ink, a size step
-   below the row label). Block constructs are already stripped at
-   derivation; these overrides pull the surviving inline markdown down to
-   that register — markdown.css paints strong/b and inline code at
-   `--text-strong`, which reads as full body-text contrast here. */
+   below the row label).
+
+   TWO facts about the REAL rendered DOM shape everything below (confirmed
+   by unit-rendering the card — see agent-completion-render.test.tsx):
+
+   1. The card sits inside a chat row, where full-shell.chat.css's
+      `.event-item.assistant .markdown` (0,3,0) paints the markdown root
+      with the chat typography tokens (`--chat-text-color` = --text-strong,
+      `--chat-text-size` = --font-size-lg). Any plain
+      `.agent-completion-card__summary .markdown` (0,2,0) override silently
+      LOSES that cascade fight. The chat surface's own contract is to
+      re-point the tokens per surface, so that's what we do — token
+      re-pointing wins by inheritance, no specificity war.
+
+   2. Streamdown does NOT emit `<strong>`/`<b>` for bold — it renders
+      `<span data-streamdown="strong" class="font-semibold">` (and links as
+      `<a data-streamdown="link" class="… text-primary …">`, inline code as
+      `<code data-streamdown="inline-code" class="… bg-muted text-sm">`).
+      Element selectors for strong/b match NOTHING; the rules must target
+      the `data-streamdown` attributes. The Tailwind utility classes live
+      in `@layer utilities`, so these unlayered rules win regardless of
+      order. */
+.agent-completion-card__summary {
+  /* Chat-token re-point: mutes + shrinks the excerpt even under the
+     higher-specificity `.event-item.assistant .markdown` chat rule. */
+  --chat-text-color: var(--text-weak);
+  --chat-text-size: var(--font-size-sm);
+  --chat-text-line-height: 1.45;
+  --chat-text-strong-weight: var(--weight-medium);
+  color: var(--text-weak);
+  overflow-wrap: anywhere;
+}
+
+/* Non-chat hosts (no `.event-item` ancestor, chat tokens unset): style the
+   markdown root directly to the same register. */
 .agent-completion-card__summary .markdown {
   font-size: var(--font-size-sm);
   line-height: 1.45;
@@ -76,31 +102,36 @@
 }
 
 /* Bold = a modest weight bump WITHIN the muted tone, not a jump back to
-   full-contrast foreground. */
-.agent-completion-card__summary .markdown strong,
-.agent-completion-card__summary .markdown b {
-  color: inherit;
+   full-contrast foreground. `[data-streamdown="strong"]` is what actually
+   renders; `strong`/`b` kept for raw-HTML / future renderer output. */
+.agent-completion-card__summary .markdown :is(strong, b, [data-streamdown="strong"]) {
+  color: var(--text-weak);
   font-weight: var(--weight-medium);
 }
 
 .agent-completion-card__summary .markdown em {
-  color: inherit;
+  color: var(--text-weak);
 }
 
 /* Links keep the muted ink too (underline carries the affordance) — a
-   `--primary` link would be the loudest thing on the card. */
-.agent-completion-card__summary .markdown a {
-  color: inherit;
+   `--primary` link would be the loudest thing on the card. Streamdown
+   emits `text-primary font-medium underline` utilities on the anchor. */
+.agent-completion-card__summary .markdown :is(a, [data-streamdown="link"]) {
+  color: var(--text-weak);
+  font-weight: inherit;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 /* Quiet code spans: muted ink, a dimmer chip than the document-scale
-   `--surface-inset`, slightly smaller so mono glyphs don't shout. */
-.agent-completion-card__summary .markdown :not(pre) > code {
-  color: inherit;
-  font-weight: inherit;
-  font-size: 0.92em;
+   `--surface-inset`, slightly smaller so mono glyphs don't shout. Explicit
+   color/size (not `inherit`/em) so a host-level hijack of the markdown
+   root can't re-brighten the chips. */
+.agent-completion-card__summary .markdown :is(:not(pre) > code, [data-streamdown="inline-code"]) {
+  color: var(--text-weak);
+  font-weight: var(--weight-regular);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
   padding: 1px 4px;
   background: color-mix(
     in srgb,
