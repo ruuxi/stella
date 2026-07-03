@@ -309,6 +309,9 @@ export class ConnectorConnectService {
     const flowOptions: NativeCredentialFlowOptions = {
       getConvexAuthToken: this.options.getConvexAuthToken,
       getConvexSiteUrl: this.options.getConvexSiteUrl,
+      // Cancels the backend Composio completion wait too, so a
+      // dismissed/aborted card doesn't keep polling for minutes.
+      abortSignal: meta.oauthAbort.signal,
       // Headless: the card click was the launch gesture, so the browser
       // opens directly instead of routing through the approval modal.
       requestPreregisteredOAuth: (payload) =>

@@ -13,6 +13,7 @@
 
 import { useSyncExternalStore } from "react";
 import { getElectronApi } from "@/platform/electron/electron";
+import { isConnectRequestVisibleToSurface } from "@/features/chat/connector-connect-scope";
 
 export type ConnectorConnectCardPhase =
   | "offer"
@@ -116,19 +117,17 @@ const getSnapshot = () => queue;
 
 /**
  * First connect offer visible to the given chat surface, or null. A card
- * scoped to a conversation renders only in that conversation's surfaces;
- * unscoped cards (no conversationId on the request) render everywhere.
+ * scoped to a conversation renders only in that conversation's surfaces
+ * (a surface with no conversation id never shows scoped cards); unscoped
+ * cards (no conversationId on the request) render everywhere.
  */
 export const useConnectorConnectRequest = (
   conversationId?: string | null,
 ): ConnectorConnectCardRequest | null => {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   return (
-    snapshot.find(
-      (entry) =>
-        !entry.conversationId ||
-        !conversationId ||
-        entry.conversationId === conversationId,
+    snapshot.find((entry) =>
+      isConnectRequestVisibleToSurface(entry, conversationId),
     ) ?? null
   );
 };
