@@ -408,12 +408,12 @@ describe("buildAgentCompletionSections", () => {
 
 describe("append-only across a send_input re-run", () => {
   it("a resumed thread's earlier AND later completions each render a card (0.0.389 regression)", () => {
-    // Regression shape: an interjection-turn completion whose display was
-    // deferred and flushed at revival (runtime fix in local-agent-manager)
-    // persists an agent-completed row BEFORE the follow-up's agent-started.
-    // Both completions must survive the per-row derivation + handoff dedup
-    // as their own cards — nothing about a thread's SECOND completion may
-    // suppress either card.
+    // Regression shape: a thread finishes (its completion emits
+    // immediately under the state-based rule in local-agent-manager),
+    // then a send_input on the idle thread starts a new run that finishes
+    // again. Both completions must survive the per-row derivation +
+    // handoff dedup as their own cards — nothing about a thread's SECOND
+    // completion may suppress either card.
     const meta = buildAgentMetaMap([
       started("a1", "Open the HTML file in the browser", { timestamp: 1 }),
       started("a1", "Open the HTML file in the browser", { timestamp: 50 }),

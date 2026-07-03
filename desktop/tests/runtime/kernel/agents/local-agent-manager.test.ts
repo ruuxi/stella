@@ -408,7 +408,7 @@ describe("LocalAgentManager Exec fs locking", () => {
     expect(rootTasks.filter((task) => task.status === "running")).toEqual([]);
   });
 
-  it("defers the Done display for interjection completions and flushes it when the thread resumes", async () => {
+  it("emits an interjected turn's real finish immediately — no deferral, no audience split", async () => {
     const events: AgentLifecycleEvent[] = [];
     let runCount = 0;
     let firstRunStarted: (() => void) | null = null;
@@ -469,7 +469,11 @@ describe("LocalAgentManager Exec fs locking", () => {
     });
     await firstRunStartedPromise;
 
-    // User message relayed mid-task: hard-cut interjection turn.
+    // User message relayed mid-task: hard-cut interjection. The follow-up
+    // turn runs, and when it finishes the thread is idle with no pending
+    // follow-up — that IS the real finish, so the full completion (chat
+    // card included) emits immediately. State-based rule: no grace timer,
+    // no orchestrator-only/display-only split.
     await manager.sendAgentMessage(
       task.threadId,
       "how is it going?",
@@ -478,61 +482,61 @@ describe("LocalAgentManager Exec fs locking", () => {
     );
     await waitForCompletions(1);
 
-    // The orchestrator hears about the completion immediately, but the
-    // Done display is deferred — no audience-less / display-only event.
     expect(completions()).toHaveLength(1);
-    expect(completions()[0]).toMatchObject({
-      audience: "orchestrator-only",
-      result: "done-2",
-    });
-    // Deferred display still pending → the thread counts as active work.
-    expect(manager.getActiveAgentCount()).toBe(1);
+    expect(completions()[0]).toMatchObject({ result: "done-2" });
+    expect(completions()[0]?.audience).toBeUndefined();
+    // Fully finished — nothing pending keeps the thread "active".
+    expect(manager.getActiveAgentCount()).toBe(0);
 
-    // Orchestrator resumes the thread: the deferred Done display must be
-    // FLUSHED (not dropped) — the completion is real history and the chat
-    // completion card renders on every completion (regression: resumed
-    // threads showed no finish card because revival erased the deferred
-    // display). The genuine completion of the resumed turn then displays
-    // normally.
+    // Orchestrator resumes the now-idle thread: that's a NEW run with its
+    // own completion card at its own completion. Done → running-again is
+    // honest history, not a glitch to suppress.
     await manager.sendAgentMessage(
       task.threadId,
       "continue the task",
       "orchestrator",
       { rootRunId: "root-2" },
     );
-    await waitForCompletions(3);
+    await waitForCompletions(2);
 
-    const displayed = completions().filter(
-      (event) => event.audience === "display-only",
-    );
-    expect(displayed).toHaveLength(1);
-    expect(displayed[0]).toMatchObject({ result: "done-2" });
-    // Flushed BEFORE the resumed turn's start events, so the activity fold
-    // sees completed→started in order and the thread reads as running.
-    const displayIndex = events.indexOf(displayed[0]!);
-    const resumeProgressIndex = events.findIndex(
-      (event, index) =>
-        index > displayIndex &&
-        event.type === "agent-progress" &&
-        event.agentId === task.threadId,
-    );
-    expect(resumeProgressIndex).toBeGreaterThan(displayIndex);
-
-    const final = completions().filter((event) => !event.audience);
-    expect(final).toHaveLength(1);
-    expect(final[0]).toMatchObject({ result: "done-3" });
+    expect(completions()).toHaveLength(2);
+    expect(completions()[1]).toMatchObject({ result: "done-3" });
+    expect(completions()[1]?.audience).toBeUndefined();
+    expect(
+      events.every(
+        (event) =>
+          event.audience !== "display-only" &&
+          event.audience !== "orchestrator-only",
+      ),
+    ).toBe(true);
     expect(manager.getActiveAgentCount()).toBe(0);
   });
 
-  it("flushes a deferred interjection Done display on shutdown", async () => {
+  it("classifies a send_input racing turn completion atomically: pre-dispatch = busy, no boundary card", async () => {
+    // The dangerous window: `runSubagent` has resolved but the completion
+    // dispatch hasn't run yet. A send_input landing there sees the task
+    // still "running" and queues a follow-up; the dispatch then
+    // short-circuits into the follow-up delivery WITHOUT emitting a
+    // completion for that internal boundary. Exactly one completion — the
+    // continued turn's real finish — ever emits. (Single-threaded state:
+    // there is no await between runSubagent resolving and the emit, so the
+    // classification can never straddle the boundary.)
     const events: AgentLifecycleEvent[] = [];
     let runCount = 0;
+    let releaseFirstRun: (() => void) | null = null;
     let firstRunStarted: (() => void) | null = null;
     const firstRunStartedPromise = new Promise<void>((resolve) => {
       firstRunStarted = resolve;
     });
     const completions = () =>
       events.filter((event) => event.type === "agent-completed");
+    const waitForCompletions = async (count: number) => {
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (completions().length >= count) return;
+        await sleep(25);
+      }
+      throw new Error(`Expected ${count} completion event(s) in time.`);
+    };
 
     const manager = new LocalAgentManager({
       maxConcurrent: 1,
@@ -545,16 +549,14 @@ describe("LocalAgentManager Exec fs locking", () => {
         runCount += 1;
         if (runCount === 1) {
           firstRunStarted?.();
+          // Hold the turn open until the racing send_input has been
+          // classified, then complete NORMALLY (ignore the abort signal —
+          // models the turn finishing at the same instant the input
+          // arrives).
           await new Promise<void>((resolve) => {
-            if (args.abortSignal.aborted) {
-              resolve();
-              return;
-            }
-            args.abortSignal.addEventListener("abort", () => resolve(), {
-              once: true,
-            });
+            releaseFirstRun = resolve;
           });
-          return { runId: args.runId, result: "", interrupted: true };
+          return { runId: args.runId, result: "done-1" };
         }
         return { runId: args.runId, result: `done-${runCount}` };
       },
@@ -570,31 +572,34 @@ describe("LocalAgentManager Exec fs locking", () => {
 
     const task = await manager.createAgent({
       conversationId: "conv-1",
-      description: "long research task",
-      prompt: "do long research",
+      description: "racy task",
+      prompt: "do the work",
       agentType: AGENT_IDS.GENERAL,
       rootRunId: "root-1",
       storageMode: "local",
     });
     await firstRunStartedPromise;
+
+    // send_input while the turn is still in flight → busy classification
+    // (queued follow-up), even though the turn completes immediately after.
     await manager.sendAgentMessage(
       task.threadId,
-      "how is it going?",
+      "one more thing",
       "orchestrator",
       { rootRunId: "root-2" },
     );
-    for (let attempt = 0; attempt < 100 && completions().length < 1; attempt += 1) {
-      await sleep(25);
-    }
+    releaseFirstRun?.();
+
+    await waitForCompletions(1);
+    // Exactly one completion: the continued turn's. The interjected
+    // boundary (done-1) never emitted a completion/card.
     expect(completions()).toHaveLength(1);
-
-    manager.shutdown();
-
-    const displayed = completions().filter(
-      (event) => event.audience === "display-only",
-    );
-    expect(displayed).toHaveLength(1);
-    expect(displayed[0]).toMatchObject({ result: "done-2" });
+    expect(completions()[0]).toMatchObject({ result: "done-2" });
+    expect(completions()[0]?.audience).toBeUndefined();
+    expect(
+      completions().every((event) => event.result !== "done-1"),
+    ).toBe(true);
+    expect(manager.getActiveAgentCount()).toBe(0);
   });
 
   it("emits failed terminal events when an engine turn throws", async () => {
@@ -976,27 +981,22 @@ describe("LocalAgentManager file records across send_input re-runs", () => {
       },
     ]);
 
-    // Resume the thread. The revival flushes the deferred display-only
-    // copy of the first completion (same rollup — it's the same completion
-    // reaching the display surfaces), then the bank was drained at
-    // emission, so the resumed run's own completion only reveals the new
-    // run's files (append-only property).
+    // Resume the now-idle thread: the bank was drained when the first
+    // completion emitted, so the resumed run's own completion only reveals
+    // the new run's files (append-only property). No audience-split
+    // duplicates exist under the state-based completion rule.
     await manager.sendAgentMessage(
       task.threadId,
       "export a final pdf",
       "orchestrator",
       { rootRunId: "root-3" },
     );
-    await waitForCompletions(3);
+    await waitForCompletions(2);
 
-    const flushedDisplay = completions().find(
-      (event) => event.audience === "display-only",
-    )!;
-    expect(flushedDisplay.producedFiles).toEqual(first.producedFiles);
-
-    const second = completions().find(
-      (event) => !event.audience && event.result === "done-3",
-    )!;
+    expect(completions()).toHaveLength(2);
+    const second = completions()[1]!;
+    expect(second.audience).toBeUndefined();
+    expect(second.result).toBe("done-3");
     expect(second.fileChanges).toBeUndefined();
     expect(second.producedFiles).toEqual([
       {
