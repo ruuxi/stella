@@ -40,11 +40,17 @@ describe("fallbackTaskDescription", () => {
     ).toBe("Morph animation test rig in harness hmr reload");
   });
 
-  it("keeps 'Task' for ordinal/namespace ids with no words", () => {
+  it("keeps 'Task' for ordinal/namespace/opaque ids with no real words", () => {
     expect(fallbackTaskDescription("task-7")).toBe("Task");
     expect(fallbackTaskDescription("grp-abc123")).toBe("Task");
     expect(fallbackTaskDescription(undefined)).toBe("Task");
     expect(fallbackTaskDescription("1234-5678")).toBe("Task");
+    expect(fallbackTaskDescription("a1")).toBe("Task");
+    expect(fallbackTaskDescription("x7f")).toBe("Task");
+  });
+
+  it("still de-slugs meaningful single-word ids", () => {
+    expect(fallbackTaskDescription("research")).toBe("Research");
   });
 
   it("marks generic and id-derived labels as fallback, real ones not", () => {
