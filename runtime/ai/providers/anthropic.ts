@@ -806,6 +806,22 @@ export function supportsAdaptiveThinking(modelId: string): boolean {
 }
 
 /**
+ * Check if a model accepts `thinking.type=disabled`.
+ *
+ * Fable-family models reject it with a 400 ("\"thinking.type.disabled\" is not
+ * supported for this model. Thinking defaults to adaptive"): thinking cannot
+ * be turned off on Fable, only left to the adaptive default. This silently
+ * broke every no-reasoning `completeSimple` call (thread compaction summaries,
+ * utility passes) the moment `stella/max` remapped to `claude-fable-5`
+ * upstream. For these models the `thinking` param must be omitted entirely.
+ */
+export function supportsDisablingThinking(modelId: string): boolean {
+	const match = CLAUDE_FAMILY_VERSION_PATTERN.exec(modelId.toLowerCase());
+	if (!match) return true;
+	return match[1] !== "fable";
+}
+
+/**
  * Resolve the upstream model id to use for capability checks.
  *
  * The Stella relay sets `model.id` to the user-facing model alias
@@ -1107,7 +1123,12 @@ function buildParams(
 					display,
 				};
 			}
-		} else if (options?.thinkingEnabled === false) {
+		} else if (
+			options?.thinkingEnabled === false &&
+			supportsDisablingThinking(resolveModelIdForCapabilities(model))
+		) {
+			// Models that can't disable thinking (Fable) 400 on this shape;
+			// omitting the param leaves them on their adaptive default instead.
 			params.thinking = { type: "disabled" };
 		}
 	}

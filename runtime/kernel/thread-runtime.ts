@@ -6,6 +6,9 @@ import type {
 import type { RuntimeStore } from "./storage/runtime-store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 import { AGENT_IDS } from "../contracts/agent-runtime.js";
+import { createRuntimeLogger } from "./debug.js";
+
+const logger = createRuntimeLogger("thread-runtime");
 
 const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
 const THREAD_COMPACTION_SYSTEM_PROMPT = "Output ONLY the summary content.";
@@ -484,12 +487,44 @@ export const formatThreadCheckpointMessage = (checkpoint: ThreadCheckpoint): str
 const computeSummaryBudget = (messages: StoredThreadMessage[]): number =>
   Math.max(100, Math.floor(getThreadTokenEstimate(messages) * 0.2));
 
+/**
+ * Estimated chars-per-token used to cap the summary request input.
+ */
+const SUMMARY_INPUT_CHARS_PER_TOKEN = 4;
+
+/**
+ * Cap the formatted conversation fed to the summary model so a large backlog
+ * of uncompacted turns can never push the request over the summarizer's
+ * context window. Without this, one failed compaction lets the middle grow
+ * turn over turn until every subsequent attempt overflows the window and
+ * fails too — compaction then never recovers. Keeps the most recent tail
+ * (the previous checkpoint summary already covers older ground) and notes
+ * the elision.
+ */
+const capSummaryConversation = (formatted: string, maxChars: number): string => {
+  if (maxChars <= 0 || formatted.length <= maxChars) {
+    return formatted;
+  }
+  const omittedChars = formatted.length - maxChars;
+  return [
+    `[Compaction input truncated: the oldest ~${Math.round(
+      omittedChars / SUMMARY_INPUT_CHARS_PER_TOKEN,
+    )} tokens of unsummarized conversation were omitted so this request fits the summary model's context window. Rely on the previous summary (when present) for older details.]`,
+    formatted.slice(formatted.length - maxChars),
+  ].join("\n\n");
+};
+
+const getSummaryInputCharBudget = (route: ResolvedLlmRoute): number =>
+  Math.max(
+    MIN_TRIGGER_TOKENS,
+    getContextWindow(route) - THREAD_COMPACTION_RESERVE_TOKENS,
+  ) * SUMMARY_INPUT_CHARS_PER_TOKEN;
+
 const buildSummaryPrompt = (
-  messages: StoredThreadMessage[],
+  formattedConversation: string,
   previousSummary: string | undefined,
   budget: number,
 ): string => {
-  const formattedConversation = formatThreadMessagesForCompaction(messages).trim();
   if (!formattedConversation) {
     return previousSummary?.trim() ?? "";
   }
@@ -548,42 +583,57 @@ const generateThreadSummary = async (args: {
 }): Promise<string | null> => {
   const apiKey = (await args.resolvedLlm.getApiKey())?.trim();
   if (!apiKey) {
+    // Silent-null here previously hid every failed compaction; keep the
+    // benign no-credential skip but make it diagnosable.
+    logger.warn("thread.compaction.summary-skipped", {
+      reason: "no-api-key",
+      model: args.resolvedLlm.model.id,
+    });
     return null;
   }
 
-  const formattedConversation = formatThreadMessagesForCompaction(args.messages);
-  if (!formattedConversation.trim()) {
+  const formattedConversation = capSummaryConversation(
+    formatThreadMessagesForCompaction(args.messages).trim(),
+    getSummaryInputCharBudget(args.resolvedLlm),
+  );
+  if (!formattedConversation) {
     return args.previousSummary?.trim() || null;
   }
 
   const promptBody = buildSummaryPrompt(
-    args.messages,
+    formattedConversation,
     args.previousSummary,
     computeSummaryBudget(args.messages),
   );
 
-  try {
-    const message = await completeSimple(
-      args.resolvedLlm.model,
-      {
-        systemPrompt: THREAD_COMPACTION_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: promptBody }],
-            timestamp: Date.now(),
-          },
-        ],
-      },
-      {
-        apiKey,
-      },
-    );
-    const text = readAssistantText(message);
-    return text || null;
-  } catch {
+  // LLM failures propagate to `compactRuntimeThreadHistory`, which logs
+  // `thread.compaction.failed` — a swallowed error here previously made
+  // compaction fail invisibly on every turn (e.g. the Fable-5
+  // `thinking.type.disabled` 400).
+  const message = await completeSimple(
+    args.resolvedLlm.model,
+    {
+      systemPrompt: THREAD_COMPACTION_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: promptBody }],
+          timestamp: Date.now(),
+        },
+      ],
+    },
+    {
+      apiKey,
+    },
+  );
+  const text = readAssistantText(message);
+  if (!text) {
+    logger.warn("thread.compaction.summary-empty", {
+      model: args.resolvedLlm.model.id,
+    });
     return null;
   }
+  return text;
 };
 
 /**
