@@ -200,13 +200,14 @@ export function useAgentProgressSummaryEngine(
     );
     // Deliberately NO store pruning here. This used to call
     // `retainOnly(running)`, which deleted an agent's summaries the moment
-    // it left the running set — so a completed agent's activity row lost
-    // its reasoning history right when the user wants to review the work
-    // (and a `send_input` follow-up started from a blank list instead of
-    // accumulating). Summaries now persist for the session; the store
-    // bounds its own memory (`MAX_TRACKED_AGENTS` LRU). Only the TIMERS
-    // below are torn down for non-running agents, so no summary LLM call
-    // ever fires for a finished agent.
+    // it left the running set — so a `send_input` follow-up started from a
+    // blank list instead of accumulating onto the thread's history.
+    // Summaries now persist in the store for the session (display is
+    // separately gated: the sidebar only SHOWS them while the task is
+    // running — see `shouldShowTaskReasoningSummaries`); the store bounds
+    // its own memory (`MAX_TRACKED_AGENTS` LRU). Only the TIMERS below are
+    // torn down for non-running agents, so no summary LLM call ever fires
+    // for a finished agent.
     const timers = timersRef.current;
     for (const agentId of running) {
       if (timers.has(agentId)) continue;

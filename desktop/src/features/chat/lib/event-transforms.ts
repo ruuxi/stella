@@ -808,6 +808,22 @@ export function pruneGroupExpandOverrides(
 }
 
 /**
+ * Whether an activity row should render its rolling reasoning/progress
+ * summaries. Summaries narrate what the agent is doing RIGHT NOW, so they
+ * only display while it's actually working; once the agent stops (finished,
+ * failed, canceled) they collapse away and the row keeps just the files —
+ * per Rahul: "it's correct to collapse the reasoning summaries specifically
+ * and no longer show them when not active. but the files should still
+ * display." A `send_input` re-activation flips the task back to running and
+ * the (still-accumulated) summaries show again.
+ */
+export function shouldShowTaskReasoningSummaries(
+  task: Pick<TaskItem, 'status'>,
+): boolean {
+  return task.status === 'running'
+}
+
+/**
  * Roll the "has been seen running this session" id set forward for a new
  * task list. An id enters the set while its task is running and STAYS in it
  * after the task completes — this is what keeps a finished agent's activity

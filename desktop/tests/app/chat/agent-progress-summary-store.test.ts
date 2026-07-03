@@ -3,9 +3,11 @@
  *
  * Regression focus (prod 0.0.389): summaries used to be wiped via
  * `retainOnly(runningIds)` the moment an agent left the running set, which
- * blanked the completed row's reasoning history in the sidebar and reset a
- * `send_input` follow-up to an empty list. Summaries now persist for the
- * session and the store bounds its own memory with an LRU agent cap.
+ * reset a `send_input` follow-up to an empty list. Summaries now persist in
+ * the store for the session (display is separately gated to active tasks by
+ * `shouldShowTaskReasoningSummaries` — a finished row shows files only, and
+ * a re-activated run resumes from the accumulated list) and the store bounds
+ * its own memory with an LRU agent cap.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import {
