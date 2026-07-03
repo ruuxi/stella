@@ -16,6 +16,7 @@ import {
   hashSourceTree,
   type StellaSourceTree,
 } from "../../../../runtime/kernel/self-mod/stella-source-control.js";
+import { createRuntimeUnavailableError } from "../../../../runtime/protocol/rpc-peer.js";
 import {
   recoverInterruptedDesktopUpdate,
   tryApplyCleanDesktopUpdate,
@@ -381,12 +382,11 @@ describe("recoverInterruptedDesktopUpdate", () => {
       finishExternalSelfMod: vi.fn(async (payload: { succeeded: boolean }) => {
         events.push(`finish:${await readFile(path.join(repoRoot, "app.txt"), "utf8")}`);
         expect(payload.succeeded).toBe(true);
+        // The reload morph runs BEFORE completion is recorded, so at finish
+        // time the manifest must still point at the base commit — "complete"
+        // means the running app actually reloaded.
         await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
-          installState: { desktopReleaseCommit: targetCommit },
-          lastUpdateAttempt: {
-            status: "complete",
-            targetCommit,
-          },
+          installState: { desktopReleaseCommit: baseCommit },
         });
       }),
     } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
@@ -398,9 +398,17 @@ describe("recoverInterruptedDesktopUpdate", () => {
     });
 
     expect(result.status).toBe("applied");
+    expect(result.status === "applied" && result.reloaded).toBe(true);
     expect(runner?.beginExternalSelfMod).toHaveBeenCalledTimes(1);
     expect(runner?.finishExternalSelfMod).toHaveBeenCalledTimes(1);
     expect(events).toEqual(["begin:base\n", "finish:git target\n"]);
+    await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
+      installState: { desktopReleaseCommit: targetCommit },
+      lastUpdateAttempt: {
+        status: "complete",
+        targetCommit,
+      },
+    });
   });
 
   it("brackets source-pack batch apply in the external self-mod morph lifecycle", async () => {
@@ -454,12 +462,9 @@ describe("recoverInterruptedDesktopUpdate", () => {
       finishExternalSelfMod: vi.fn(async (payload: { succeeded: boolean }) => {
         events.push(`finish:${await readFile(path.join(repoRoot, "app.txt"), "utf8")}`);
         expect(payload.succeeded).toBe(true);
+        // Reload-before-record: the pointer must not have advanced yet.
         await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
-          installState: { desktopReleaseCommit: targetCommit },
-          lastUpdateAttempt: {
-            status: "complete",
-            targetCommit,
-          },
+          installState: { desktopReleaseCommit: baseCommit },
         });
       }),
     } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
@@ -472,8 +477,238 @@ describe("recoverInterruptedDesktopUpdate", () => {
     });
 
     expect(result.status).toBe("applied");
+    expect(result.status === "applied" && result.reloaded).toBe(true);
     expect(runner?.beginExternalSelfMod).toHaveBeenCalledTimes(1);
     expect(runner?.finishExternalSelfMod).toHaveBeenCalledTimes(1);
     expect(events).toEqual(["begin:base\n", "finish:source-pack target\n"]);
+    await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
+      installState: { desktopReleaseCommit: targetCommit },
+      lastUpdateAttempt: {
+        status: "complete",
+        targetCommit,
+      },
+    });
+  });
+
+  it("recovers the reload when the runtime restarts underneath finish", async () => {
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: null,
+    });
+    await writeNativeHelperDownloadStub(repoRoot);
+    const baseTree: StellaSourceTree = {
+      "app.txt": text("base\n"),
+    };
+    const nextTree: StellaSourceTree = {
+      "app.txt": text("restart target\n"),
+    };
+    const baseRevisionId = hashSourceTree(baseTree);
+    const pack = createStellaSourcePack({
+      baseRevisionId: `git:${baseCommit}`,
+      changeSets: [
+        createStellaSourceChangeSetFromTrees({
+          baseRevisionId,
+          baseTree,
+          nextTree,
+          featureId: "desktop-release",
+          description: "Desktop release desktop-v9.9.6",
+        }),
+      ],
+      featureId: "desktop-release",
+      description: "Desktop release desktop-v9.9.6",
+    });
+    const sourcePackRef = sourcePackRefFor(pack);
+    const sourcePackRaw = JSON.stringify(pack);
+    const targetCommit = "e".repeat(40);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const value = String(url);
+        if (value === sourcePackRef.url) {
+          return new Response(sourcePackRaw, { status: 200 });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    // The original worker connection dies mid-finish — exactly what happens
+    // when the update's own runtime/ changes (or a concurrent self-mod apply)
+    // restart the worker while the update flow still holds the old transport.
+    const runner = {
+      beginExternalSelfMod: vi.fn(async () => undefined),
+      finishExternalSelfMod: vi.fn(async () => {
+        throw createRuntimeUnavailableError("Runtime RPC transport is closed.");
+      }),
+    } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
+    const reconnectedRunner = {
+      beginExternalSelfMod: vi.fn(async () => undefined),
+      finishExternalSelfMod: vi.fn(async () => undefined),
+    };
+    const reacquireRunner = vi.fn(
+      async () => reconnectedRunner,
+    ) as unknown as NonNullable<
+      Parameters<typeof tryApplyCleanDesktopUpdate>[3]["reacquireRunner"]
+    > &
+      ReturnType<typeof vi.fn>;
+
+    const result = await tryApplyCleanDesktopUpdate(repoRoot, repoRoot, runner, {
+      baseCommit,
+      targetCommit,
+      releaseTag: "desktop-v9.9.6",
+      sourcePackRef,
+      reacquireRunner,
+    });
+
+    expect(result.status).toBe("applied");
+    expect(result.status === "applied" && result.reloaded).toBe(true);
+    // Cleanup finish for the dead run, then a replayed begin/finish cycle so
+    // the renderer actually reloads the updated code.
+    expect(reacquireRunner).toHaveBeenCalled();
+    expect(reconnectedRunner.finishExternalSelfMod).toHaveBeenCalledTimes(2);
+    expect(reconnectedRunner.beginExternalSelfMod).toHaveBeenCalledTimes(1);
+    const replayBegin = reconnectedRunner.beginExternalSelfMod.mock
+      .calls[0]?.[0] as { runId: string; paths: string[] };
+    expect(replayBegin.runId).toMatch(/:reload-replay$/);
+    expect(replayBegin.paths).toContain("app.txt");
+    await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
+      installState: { desktopReleaseCommit: targetCommit },
+      lastUpdateAttempt: { status: "complete", targetCommit },
+    });
+  });
+
+  it("resumes an interrupted update instead of fake-applying when the tree already matches", async () => {
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    // Simulate a previous attempt that wrote + committed the update but died
+    // before the reload: the tree matches the target while the manifest
+    // pointer is still at the base commit.
+    await writeFile(path.join(repoRoot, "app.txt"), "resume target\n", "utf8");
+    git(repoRoot, ["commit", "-am", "Update to desktop-v9.9.5"]);
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: null,
+    });
+    await writeNativeHelperDownloadStub(repoRoot);
+    const baseTree: StellaSourceTree = {
+      "app.txt": text("base\n"),
+    };
+    const nextTree: StellaSourceTree = {
+      "app.txt": text("resume target\n"),
+    };
+    const baseRevisionId = hashSourceTree(baseTree);
+    const pack = createStellaSourcePack({
+      baseRevisionId: `git:${baseCommit}`,
+      changeSets: [
+        createStellaSourceChangeSetFromTrees({
+          baseRevisionId,
+          baseTree,
+          nextTree,
+          featureId: "desktop-release",
+          description: "Desktop release desktop-v9.9.5",
+        }),
+      ],
+      featureId: "desktop-release",
+      description: "Desktop release desktop-v9.9.5",
+    });
+    const sourcePackRef = sourcePackRefFor(pack);
+    const sourcePackRaw = JSON.stringify(pack);
+    const targetCommit = "b".repeat(40);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const value = String(url);
+        if (value === sourcePackRef.url) {
+          return new Response(sourcePackRaw, { status: 200 });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    const runner = {
+      beginExternalSelfMod: vi.fn(async (payload: { paths: string[] }) => {
+        expect(payload.paths).toContain("app.txt");
+      }),
+      finishExternalSelfMod: vi.fn(async (payload: { succeeded: boolean }) => {
+        expect(payload.succeeded).toBe(true);
+      }),
+    } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
+
+    const result = await tryApplyCleanDesktopUpdate(repoRoot, repoRoot, runner, {
+      baseCommit,
+      targetCommit,
+      releaseTag: "desktop-v9.9.5",
+      sourcePackRef,
+    });
+
+    // No files changed on disk, but the reload cycle must still run so the
+    // running app picks up the previously written code.
+    expect(result.status).toBe("applied");
+    expect(result.status === "applied" && result.reloaded).toBe(true);
+    expect(runner?.beginExternalSelfMod).toHaveBeenCalledTimes(1);
+    expect(runner?.finishExternalSelfMod).toHaveBeenCalledTimes(1);
+    await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
+      installState: { desktopReleaseCommit: targetCommit },
+      lastUpdateAttempt: { status: "complete", targetCommit },
+    });
+  });
+
+  it("does not record completion when the resume reload cannot run", async () => {
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    await writeFile(path.join(repoRoot, "app.txt"), "resume target\n", "utf8");
+    git(repoRoot, ["commit", "-am", "Update to desktop-v9.9.4"]);
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: null,
+    });
+    await writeNativeHelperDownloadStub(repoRoot);
+    const baseTree: StellaSourceTree = {
+      "app.txt": text("base\n"),
+    };
+    const nextTree: StellaSourceTree = {
+      "app.txt": text("resume target\n"),
+    };
+    const baseRevisionId = hashSourceTree(baseTree);
+    const pack = createStellaSourcePack({
+      baseRevisionId: `git:${baseCommit}`,
+      changeSets: [
+        createStellaSourceChangeSetFromTrees({
+          baseRevisionId,
+          baseTree,
+          nextTree,
+          featureId: "desktop-release",
+          description: "Desktop release desktop-v9.9.4",
+        }),
+      ],
+      featureId: "desktop-release",
+      description: "Desktop release desktop-v9.9.4",
+    });
+    const sourcePackRef = sourcePackRefFor(pack);
+    const sourcePackRaw = JSON.stringify(pack);
+    const targetCommit = "c".repeat(40);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const value = String(url);
+        if (value === sourcePackRef.url) {
+          return new Response(sourcePackRaw, { status: 200 });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    // No runtime available: the tree matches the target but nothing can
+    // reload the running app — the update must not claim to be live.
+    const result = await tryApplyCleanDesktopUpdate(repoRoot, repoRoot, null, {
+      baseCommit,
+      targetCommit,
+      releaseTag: "desktop-v9.9.4",
+      sourcePackRef,
+    });
+
+    expect(result.status).toBe("applied");
+    expect(result.status === "applied" && result.reloaded).toBe(false);
+    await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
+      installState: { desktopReleaseCommit: baseCommit },
+    });
   });
 });

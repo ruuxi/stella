@@ -71,6 +71,13 @@ type ApplyDesktopUpdateResult = {
   requestId: string;
   conversationId: string;
   mode: "auto" | "agent";
+  /**
+   * For `mode: "auto"`: whether the running app verifiably reloaded onto the
+   * new code. `false` means the update is on disk but not live — the caller
+   * must not announce it as applied (a restart, or retrying the update,
+   * finishes it).
+   */
+  reloaded?: boolean;
   cancel: () => boolean;
 };
 
@@ -256,6 +263,7 @@ export const applyDesktopUpdate = async (
         requestId: `desktop-update-fast:${conversationId}`,
         conversationId,
         mode: "auto",
+        reloaded: fastApply.reloaded !== false,
         cancel: () => false,
       };
     }

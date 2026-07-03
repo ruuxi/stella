@@ -99,10 +99,21 @@ export const ShellTopBarUpdatePill = () => {
       });
       if (result) {
         if (result.mode === "auto") {
-          showToast({
-            title: "Update applied",
-            description: `Stella updated to ${currentRelease.tag}.`,
-          });
+          if (result.reloaded === false) {
+            // The update landed on disk but the running app couldn't be
+            // reloaded onto it (e.g. the runtime restarted mid-update).
+            // Don't claim success — the code on screen is still the old one.
+            showToast({
+              title: "Update installed — restart to finish",
+              description: `Stella downloaded ${currentRelease.tag}, but couldn't hot-reload onto it. Restart Stella (or click Update again) to finish.`,
+              variant: "error",
+            });
+          } else {
+            showToast({
+              title: "Update applied",
+              description: `Stella updated to ${currentRelease.tag}.`,
+            });
+          }
         } else {
           showToast({
             title: "Stella is updating",

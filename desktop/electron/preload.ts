@@ -1636,6 +1636,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
             changedFiles: string[];
             dependencyInstallRan: boolean;
             nativeHelpersRefreshed: boolean;
+            reloaded: boolean;
           }
         | {
             status: "needs-agent";

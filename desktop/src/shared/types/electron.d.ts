@@ -1191,6 +1191,12 @@ export type DesktopUpdateFastApplyResult =
       changedFiles: string[];
       dependencyInstallRan: boolean;
       nativeHelpersRefreshed: boolean;
+      /**
+       * True when the running app verifiably reloaded onto the updated code.
+       * False means the update landed on disk but the app still runs the old
+       * code — the UI must not claim the update is live.
+       */
+      reloaded: boolean;
     }
   | {
       status: "needs-agent";

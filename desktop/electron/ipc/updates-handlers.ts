@@ -48,6 +48,7 @@ import {
   type StellaSourceBlob,
 } from "../../../runtime/kernel/self-mod/stella-source-control.js";
 import { rollbackGitChangesSince } from "../../../runtime/kernel/self-mod/git/revert.js";
+import { isRuntimeUnavailableError } from "../../../runtime/protocol/rpc-peer.js";
 import {
   applyCleanSourceImportToWorkingTree,
   preflightSourcePackImport,
@@ -686,6 +687,14 @@ type DesktopUpdateFastApplyResult =
       changedFiles: string[];
       dependencyInstallRan: boolean;
       nativeHelpersRefreshed: boolean;
+      /**
+       * True when the running app verifiably reloaded onto the updated code
+       * (the external self-mod morph/reload cycle completed). When false the
+       * update landed on disk but the app is still executing the old code —
+       * callers must not report the update as applied-and-live; a restart
+       * (or a retry, which replays the reload) finishes it.
+       */
+      reloaded: boolean;
     }
   | {
       status: "needs-agent";
@@ -727,6 +736,113 @@ const expandExternalSelfModPaths = (paths: string[]): string[] => {
     }
   }
   return [...expanded];
+};
+
+type ReacquireRunner = () => Promise<StellaHostRunner>;
+
+/**
+ * True when a runner RPC failed because the runtime worker's transport went
+ * away mid-call (the worker restarted or was restarting underneath the
+ * caller), as opposed to a real handler failure.
+ */
+const isRuntimeTransportClosedError = (error: unknown): boolean =>
+  isRuntimeUnavailableError(error) ||
+  /transport is closed|peer is closed|runtime is not available/i.test(
+    error instanceof Error ? error.message : String(error),
+  );
+
+/**
+ * Finish an external self-mod update run, tolerating the runtime worker
+ * restarting underneath the update.
+ *
+ * Updates that ship runtime/ code (and concurrent self-mod applies) can
+ * restart the worker while this flow still holds RPCs against the old
+ * transport. Without recovery the update then fails with "Runtime RPC
+ * transport is closed" AFTER the working tree was already updated and
+ * committed, the host-side runtime-reload pause registered by
+ * `beginExternalSelfMod` leaks, and the morph/reload never runs — the app
+ * keeps executing old code while a retry sees a no-op tree and would
+ * fake-report success.
+ *
+ * Recovery: re-issue the finish against the reconnected worker (idempotent —
+ * an unknown runId just releases the leaked reload pause), then replay a
+ * fresh begin/finish cycle over the same paths so the renderer actually
+ * reloads the updated code. Returns whether the reload cycle is known to
+ * have completed.
+ */
+const finishUpdateSelfModRun = async (args: {
+  runner: StellaHostRunner;
+  reacquireRunner?: ReacquireRunner | undefined;
+  runId: string;
+  paths: string[];
+  logScope: "source-pack" | "git";
+  logFields: LogFields;
+}): Promise<{ reloaded: boolean }> => {
+  try {
+    await args.runner.finishExternalSelfMod({
+      runId: args.runId,
+      succeeded: true,
+    });
+    return { reloaded: true };
+  } catch (error) {
+    if (!isRuntimeTransportClosedError(error) || !args.reacquireRunner) {
+      throw error;
+    }
+    logDesktopUpdateWarn(
+      `desktop-update.${args.logScope}.finish-transport-closed`,
+      {
+        ...args.logFields,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+    let reconnected: StellaHostRunner;
+    try {
+      reconnected = await args.reacquireRunner();
+    } catch (reconnectError) {
+      logDesktopUpdateError(
+        `desktop-update.${args.logScope}.reconnect-failed`,
+        reconnectError,
+        args.logFields,
+      );
+      return { reloaded: false };
+    }
+    // Unknown runId on the fresh worker → releases the leaked reload pause.
+    await reconnected
+      .finishExternalSelfMod({ runId: args.runId, succeeded: true })
+      .catch(() => undefined);
+    if (args.paths.length === 0) {
+      return { reloaded: false };
+    }
+    const replayRunId = `${args.runId}:reload-replay`;
+    try {
+      await reconnected.beginExternalSelfMod({
+        runId: replayRunId,
+        paths: expandExternalSelfModPaths(args.paths),
+      });
+      await reconnected.finishExternalSelfMod({
+        runId: replayRunId,
+        succeeded: true,
+      });
+      logDesktopUpdateProcess(
+        `desktop-update.${args.logScope}.reload-replayed`,
+        args.logFields,
+      );
+      return { reloaded: true };
+    } catch (replayError) {
+      logDesktopUpdateError(
+        `desktop-update.${args.logScope}.reload-replay-failed`,
+        replayError,
+        args.logFields,
+      );
+      await args
+        .reacquireRunner()
+        .then((fresh) =>
+          fresh.finishExternalSelfMod({ runId: replayRunId, succeeded: false }),
+        )
+        .catch(() => undefined);
+      return { reloaded: false };
+    }
+  }
 };
 
 const gitFailureDetail = (result: GitRunResult, fallback: string): string => {
@@ -2127,6 +2243,7 @@ const tryApplySourcePackDesktopUpdate = async (
     sourcePackRef: DesktopReleaseSourcePackRef;
     artifactRefs?: StellaReleaseArtifactRef[];
     transaction?: DesktopUpdateTransaction;
+    reacquireRunner?: ReacquireRunner;
   },
 ): Promise<DesktopUpdateFastApplyResult> => {
   await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
@@ -2296,16 +2413,94 @@ const tryApplySourcePackDesktopUpdate = async (
   }
 
   if (preflight.sourceApply.appliedPaths.length === 0) {
+    const manifestBefore = await readManifestWithRecovery(stellaAppDir).catch(
+      () => null,
+    );
+    const alreadyLive =
+      manifestBefore?.installState?.desktopReleaseCommit === args.targetCommit;
     logDesktopUpdateProcess("desktop-update.source-pack.noop", {
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
+      alreadyLive,
     });
+    // The tree already matches the target. If the install was recorded
+    // complete for this exact commit, the app already reloaded onto it and
+    // there is nothing to do. Otherwise a previous attempt was interrupted
+    // after writing files but before the reload — the disk is updated while
+    // the running app is stale. Replay the self-mod reload cycle over the
+    // pack's paths instead of fake-reporting success.
+    let reloaded = alreadyLive;
+    if (!alreadyLive && runner && preflight.sourcePaths.length > 0) {
+      const resumeRunId = `desktop-update-source-pack-resume:${Date.now()}:${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      try {
+        await withDesktopUpdateTimeout(
+          "source-pack.resume-begin-external-self-mod",
+          UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+          runner.beginExternalSelfMod({
+            runId: resumeRunId,
+            paths: expandExternalSelfModPaths(preflight.sourcePaths),
+          }),
+          {
+            runId: resumeRunId,
+            releaseTag: args.releaseTag,
+            targetCommit: shortCommit(args.targetCommit),
+            changedFileCount: preflight.sourcePaths.length,
+          },
+        );
+        ({ reloaded } = await finishUpdateSelfModRun({
+          runner,
+          reacquireRunner: args.reacquireRunner,
+          runId: resumeRunId,
+          paths: preflight.sourcePaths,
+          logScope: "source-pack",
+          logFields: {
+            runId: resumeRunId,
+            releaseTag: args.releaseTag,
+            targetCommit: shortCommit(args.targetCommit),
+          },
+        }));
+      } catch (error) {
+        logDesktopUpdateError(
+          "desktop-update.source-pack.resume-reload-failed",
+          error,
+          {
+            runId: resumeRunId,
+            releaseTag: args.releaseTag,
+            targetCommit: shortCommit(args.targetCommit),
+          },
+        );
+        await runner
+          .finishExternalSelfMod({ runId: resumeRunId, succeeded: false })
+          .catch(() => undefined);
+        reloaded = false;
+      }
+    }
     await recordSourceHistory();
     await refreshNativeHelpers(stellaAppDir, args.releaseTag, args.artifactRefs, {
       transaction: args.transaction,
       mode: "source-pack",
       changedFiles: [],
     });
+    if (!reloaded) {
+      // Leave the attempt in its resumable phase: the update pill keeps
+      // offering the update (retry replays the reload) and startup recovery
+      // records completion once the app is actually running the new code.
+      logDesktopUpdateWarn("desktop-update.source-pack.applied-without-reload", {
+        releaseTag: args.releaseTag,
+        targetCommit: shortCommit(args.targetCommit),
+      });
+      return {
+        status: "applied",
+        manifest: null,
+        headCommit: await readHeadCommit(stellaAppDir),
+        changedFiles: [],
+        dependencyInstallRan: false,
+        nativeHelpersRefreshed: true,
+        reloaded: false,
+      };
+    }
     await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
       phase: "record-complete",
       mode: "source-pack",
@@ -2324,6 +2519,7 @@ const tryApplySourcePackDesktopUpdate = async (
       changedFiles: [],
       dependencyInstallRan: false,
       nativeHelpersRefreshed: true,
+      reloaded: true,
     };
   }
 
@@ -2430,11 +2626,45 @@ const tryApplySourcePackDesktopUpdate = async (
     });
 
     await recordSourceHistory(await readHeadCommit(stellaAppDir));
+    // Drive the reload morph BEFORE the slow native-helper refresh and before
+    // recording completion: "complete" in the manifest must mean the running
+    // app actually reloaded onto the new code, and finishing promptly shrinks
+    // the window in which the update's own runtime changes can restart the
+    // worker underneath this flow.
+    const { reloaded } = await finishUpdateSelfModRun({
+      runner,
+      reacquireRunner: args.reacquireRunner,
+      runId,
+      paths: preflight.sourceApply.appliedPaths,
+      logScope: "source-pack",
+      logFields: {
+        runId,
+        releaseTag: args.releaseTag,
+        targetCommit: shortCommit(args.targetCommit),
+      },
+    });
+    hmrRunStarted = false;
     await refreshNativeHelpers(stellaAppDir, args.releaseTag, args.artifactRefs, {
       transaction: args.transaction,
       mode: "source-pack",
       changedFiles: preflight.sourceApply.appliedPaths,
     });
+    if (!reloaded) {
+      logDesktopUpdateWarn("desktop-update.source-pack.applied-without-reload", {
+        runId,
+        releaseTag: args.releaseTag,
+        targetCommit: shortCommit(args.targetCommit),
+      });
+      return {
+        status: "applied",
+        manifest: null,
+        headCommit: await readHeadCommit(stellaAppDir),
+        changedFiles: preflight.sourceApply.appliedPaths,
+        dependencyInstallRan,
+        nativeHelpersRefreshed: true,
+        reloaded: false,
+      };
+    }
     await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
       phase: "record-complete",
       mode: "source-pack",
@@ -2446,8 +2676,6 @@ const tryApplySourcePackDesktopUpdate = async (
       args.targetCommit,
       args.releaseTag,
     );
-    await runner.finishExternalSelfMod({ runId, succeeded: true });
-    hmrRunStarted = false;
     return {
       status: "applied",
       manifest,
@@ -2455,6 +2683,7 @@ const tryApplySourcePackDesktopUpdate = async (
       changedFiles: preflight.sourceApply.appliedPaths,
       dependencyInstallRan,
       nativeHelpersRefreshed: true,
+      reloaded: true,
     };
   } catch (error) {
     logDesktopUpdateError("desktop-update.source-pack.failed", error, {
@@ -2462,11 +2691,25 @@ const tryApplySourcePackDesktopUpdate = async (
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
       hmrRunStarted,
+      transportClosed: isRuntimeTransportClosedError(error),
     });
     if (hmrRunStarted) {
       await runner
         .finishExternalSelfMod({ runId, succeeded: sourcePackCommitLanded })
-        .catch(() => undefined);
+        .catch(async () => {
+          // The old transport may be gone (worker restarted mid-update); try
+          // once more against the reconnected worker so the host-side
+          // runtime-reload pause for this runId is not leaked forever.
+          await args
+            .reacquireRunner?.()
+            .then((fresh) =>
+              fresh.finishExternalSelfMod({
+                runId,
+                succeeded: sourcePackCommitLanded,
+              }),
+            )
+            .catch(() => undefined);
+        });
     }
     throw error;
   }
@@ -2483,6 +2726,7 @@ export const tryApplyCleanDesktopUpdate = async (
     sourcePackRef?: DesktopReleaseSourcePackRef;
     artifactRefs?: StellaReleaseArtifactRef[];
     transaction?: DesktopUpdateTransaction;
+    reacquireRunner?: ReacquireRunner;
   },
 ): Promise<DesktopUpdateFastApplyResult> => {
   logDesktopUpdateProcess("desktop-update.fast.start", {
@@ -2504,6 +2748,9 @@ export const tryApplyCleanDesktopUpdate = async (
           sourcePackRef: args.sourcePackRef,
           ...(args.artifactRefs ? { artifactRefs: args.artifactRefs } : {}),
           ...(args.transaction ? { transaction: args.transaction } : {}),
+          ...(args.reacquireRunner
+            ? { reacquireRunner: args.reacquireRunner }
+            : {}),
         },
       );
       if (
@@ -2583,9 +2830,20 @@ export const tryApplyCleanDesktopUpdate = async (
     "HEAD",
   ]);
   if (alreadyApplied.exitCode === 0) {
+    // HEAD already contains the target but the pointer may be behind (a
+    // previous attempt was interrupted before recording completion). Only
+    // treat the update as live when the manifest already says so; otherwise
+    // report applied-but-not-reloaded so the caller stays honest about the
+    // running code being stale until a reload/restart.
+    const manifestBefore = await readManifestWithRecovery(stellaAppDir).catch(
+      () => null,
+    );
+    const alreadyLive =
+      manifestBefore?.installState?.desktopReleaseCommit === args.targetCommit;
     logDesktopUpdateProcess("desktop-update.git.already-applied", {
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
+      alreadyLive,
     });
     await refreshNativeHelpers(stellaAppDir, args.releaseTag, args.artifactRefs, {
       transaction: args.transaction,
@@ -2610,6 +2868,7 @@ export const tryApplyCleanDesktopUpdate = async (
       changedFiles: [],
       dependencyInstallRan: false,
       nativeHelpersRefreshed: true,
+      reloaded: alreadyLive,
     };
   }
 
@@ -2798,11 +3057,45 @@ export const tryApplyCleanDesktopUpdate = async (
       changedFileCount: changedFiles.length,
       dependencyInstallRan,
     });
+    // Drive the reload morph BEFORE the native-helper refresh and before
+    // recording completion — see the source-pack path for rationale.
+    let reloaded = true;
+    if (hmrRunStarted && runner) {
+      ({ reloaded } = await finishUpdateSelfModRun({
+        runner,
+        reacquireRunner: args.reacquireRunner,
+        runId,
+        paths: changedFiles,
+        logScope: "git",
+        logFields: {
+          runId,
+          releaseTag: args.releaseTag,
+          targetCommit: shortCommit(args.targetCommit),
+        },
+      }));
+      hmrRunStarted = false;
+    }
     await refreshNativeHelpers(stellaAppDir, args.releaseTag, args.artifactRefs, {
       transaction: args.transaction,
       mode: "git",
       changedFiles,
     });
+    if (!reloaded) {
+      logDesktopUpdateWarn("desktop-update.git.applied-without-reload", {
+        runId,
+        releaseTag: args.releaseTag,
+        targetCommit: shortCommit(args.targetCommit),
+      });
+      return {
+        status: "applied",
+        manifest: null,
+        headCommit: await readHeadCommit(stellaAppDir),
+        changedFiles,
+        dependencyInstallRan,
+        nativeHelpersRefreshed: true,
+        reloaded: false,
+      };
+    }
     await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
       phase: "record-complete",
       mode: "git",
@@ -2814,10 +3107,6 @@ export const tryApplyCleanDesktopUpdate = async (
       args.targetCommit,
       args.releaseTag,
     );
-    if (hmrRunStarted && runner) {
-      await runner.finishExternalSelfMod({ runId, succeeded: true });
-      hmrRunStarted = false;
-    }
     return {
       status: "applied",
       manifest,
@@ -2825,6 +3114,7 @@ export const tryApplyCleanDesktopUpdate = async (
       changedFiles,
       dependencyInstallRan,
       nativeHelpersRefreshed: true,
+      reloaded: true,
     };
   } catch (error) {
     logDesktopUpdateError("desktop-update.fast.failed", error, {
@@ -2833,15 +3123,24 @@ export const tryApplyCleanDesktopUpdate = async (
       targetCommit: shortCommit(args.targetCommit),
       hmrRunStarted,
       mergeLanded,
+      transportClosed: isRuntimeTransportClosedError(error),
     });
     if (hmrRunStarted && runner) {
       await runner
         .finishExternalSelfMod({ runId, succeeded: mergeLanded })
-        .catch((finishError) => {
+        .catch(async (finishError) => {
           console.warn(
             "[updates] Failed to finalize fast-update self-mod lifecycle:",
             finishError,
           );
+          // Clear a leaked host-side reload pause if the worker restarted
+          // underneath the update.
+          await args
+            .reacquireRunner?.()
+            .then((fresh) =>
+              fresh.finishExternalSelfMod({ runId, succeeded: mergeLanded }),
+            )
+            .catch(() => undefined);
         });
     }
     throw error;
@@ -2952,6 +3251,25 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
           ? payload.artifactRefs.length
           : 0,
       });
+      // The update can restart the runtime worker underneath the flow (its
+      // own runtime/ changes, or a concurrent self-mod apply). Give the flow
+      // a way to reach the reconnected worker so it can recover instead of
+      // failing after the tree was already updated.
+      const reacquireRunner: ReacquireRunner = async () => {
+        const runner = await waitForConnectedRunner(
+          () => options.getStellaHostRunner?.() ?? null,
+          {
+            timeoutMs: UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+            unavailableMessage:
+              "Stella runtime did not reconnect during the update.",
+            ...(options.onStellaHostRunnerChanged
+              ? { onRunnerChanged: options.onStellaHostRunnerChanged }
+              : {}),
+          },
+        );
+        await runner.waitUntilReady(UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS);
+        return runner;
+      };
       try {
         const result = await tryApplyCleanDesktopUpdate(
           stellaAppDir,
@@ -2968,6 +3286,7 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
               ? { artifactRefs: payload.artifactRefs }
               : {}),
             transaction,
+            reacquireRunner,
           },
         );
         if (result.status === "needs-agent") {
@@ -2993,6 +3312,7 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
             result.status === "applied"
               ? result.changedFiles.length
               : (result.changedFiles?.length ?? 0),
+          ...(result.status === "applied" ? { reloaded: result.reloaded } : {}),
           ...(result.status === "needs-agent" ? { reason: result.reason } : {}),
         });
         return result;
