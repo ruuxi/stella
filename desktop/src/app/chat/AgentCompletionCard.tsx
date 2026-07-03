@@ -27,6 +27,7 @@ import { displayTabKindForPayload } from "@/features/workspace-display/payload-k
 import { basenameOf, localFilePathForPayload } from "@/features/workspace-display/path-to-viewer";
 import type { ConversationFileEntry } from "@/features/workspace-display/derive-conversation-files";
 import type { AgentCompletionSection } from "@/features/chat/lib/agent-completion";
+import { Markdown } from "./Markdown";
 import { OpenWithMenu } from "./OpenWithMenu";
 import "./agent-completion-card.css";
 
@@ -93,8 +94,16 @@ const CompletionSection = ({
         </div>
       ) : section.summary ? (
         // Fileless completion: the result excerpt stands in for the pills so
-        // the card still shows what the agent accomplished.
-        <div className="agent-completion-card__summary">{section.summary}</div>
+        // the card still shows what the agent accomplished. Rendered through
+        // the chat markdown pipeline (the excerpt is inline-only markdown —
+        // block constructs are stripped at derivation) so `**bold**` /
+        // `` `code` `` read as formatting, not literals.
+        <div className="agent-completion-card__summary">
+          <Markdown
+            text={section.summary}
+            cacheKey={`agent-completion-summary:${section.agentId}:${section.completedAtMs}`}
+          />
+        </div>
       ) : null}
       {capped ? (
         // Animated reveal via `grid-template-rows: 0fr -> 1fr` — no JS

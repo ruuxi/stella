@@ -237,6 +237,96 @@ describe("buildAgentCompletionSections", () => {
     expect(summary.endsWith("…")).toBe(true);
   });
 
+  it("strips block markdown to inline-only (the 0.0.383 literal-markers regression)", () => {
+    // Exact shape from the live report: headings and bullets collapsed into
+    // the one-liner as literal "##" / "-" characters, while inline bold/code
+    // rendered as raw asterisks/backticks. Block constructs must be stripped
+    // line-by-line before newline collapse; inline markdown passes through
+    // for the card's Markdown renderer.
+    const sections = buildAgentCompletionSections(
+      [
+        ev({
+          _id: "completed:a1:42",
+          timestamp: 42,
+          type: "agent-completed",
+          payload: {
+            agentId: "a1",
+            result: [
+              "**Outcome: done.** Committed `22ba2696e`.",
+              "",
+              "## What was actually leaking",
+              "",
+              "- Internal helper agents showed in the activity feed.",
+              "> quoted note",
+              "```ts",
+              "const x = 1;",
+              "```",
+            ].join("\n"),
+          },
+        }),
+      ],
+      new Map(),
+    );
+    expect(sections[0]!.summary).toBe(
+      "**Outcome: done.** Committed `22ba2696e`. What was actually leaking " +
+        "Internal helper agents showed in the activity feed. quoted note const x = 1;",
+    );
+  });
+
+  it("drops an inline marker left dangling by the truncation cut", () => {
+    // The cap lands inside a `**…**` span: the surviving opener must be
+    // removed so the rendered tail stays plain instead of bolding (or, for
+    // a code span, swallowing) the rest of the excerpt.
+    const bold = (filler: string) =>
+      `${filler} **bold text that keeps going well past the cap**`;
+    const sections = buildAgentCompletionSections(
+      [
+        ev({
+          _id: "completed:a1:42",
+          timestamp: 42,
+          type: "agent-completed",
+          payload: { agentId: "a1", result: bold("x".repeat(180)) },
+        }),
+        ev({
+          _id: "completed:a2:42",
+          timestamp: 42,
+          type: "agent-completed",
+          payload: {
+            agentId: "a2",
+            result: `${"y".repeat(180)} \`code span that also runs past the cap\``,
+          },
+        }),
+      ],
+      new Map(),
+    );
+    const boldSummary = sections[0]!.summary!;
+    expect(boldSummary.endsWith("…")).toBe(true);
+    expect(boldSummary).not.toContain("**");
+    const codeSummary = sections[1]!.summary!;
+    expect(codeSummary.endsWith("…")).toBe(true);
+    expect(codeSummary).not.toContain("`");
+  });
+
+  it("keeps balanced inline markdown intact", () => {
+    const sections = buildAgentCompletionSections(
+      [
+        ev({
+          _id: "completed:a1:42",
+          timestamp: 42,
+          type: "agent-completed",
+          payload: {
+            agentId: "a1",
+            result: "**Outcome: done.** See `run.log` for *details*.",
+          },
+        }),
+      ],
+      new Map(),
+    );
+    expect(sections[0]!.summary).toBe(
+      "**Outcome: done.** See `run.log` for *details*.",
+    );
+  });
+
   it("a later completion without a result clears the older summary", () => {
     const sections = buildAgentCompletionSections(
       [

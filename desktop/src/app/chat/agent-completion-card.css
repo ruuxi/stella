@@ -57,6 +57,33 @@
   overflow-wrap: anywhere;
 }
 
+/* The excerpt renders through the chat markdown pipeline but must stay a
+   muted one-liner: inline emphasis/code only, no document-scale spacing.
+   Block constructs are already stripped at derivation; these overrides
+   neutralize the document chrome for whatever the parser still wraps the
+   text in (the paragraph, stray strong/heading fallbacks). */
+.agent-completion-card__summary .markdown {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.agent-completion-card__summary .markdown p {
+  margin: 0;
+}
+
+.agent-completion-card__summary .markdown h1,
+.agent-completion-card__summary .markdown h2,
+.agent-completion-card__summary .markdown h3,
+.agent-completion-card__summary .markdown h4,
+.agent-completion-card__summary .markdown h5,
+.agent-completion-card__summary .markdown h6 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: var(--weight-medium);
+  color: inherit;
+}
+
 /* Per-agent section: several agents completing at the same point each get
    their own header + pills (never one merged card). */
 .agent-completion-card__section {
