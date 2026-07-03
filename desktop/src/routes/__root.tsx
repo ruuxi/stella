@@ -70,6 +70,7 @@ const SubscriptionUpgradeDialog = lazy(() =>
 import { ShellTopBar } from "@/shell/ShellTopBar";
 import { WindowControls } from "@/shell/WindowControls";
 import { LeftSidebar } from "@/shell/LeftSidebar";
+import { leftSidebarVisibilityStore } from "@/shell/left-sidebar-visibility-store";
 import {
   displayTabs,
   useDisplayPanelExpanded,
@@ -270,9 +271,14 @@ function RootChrome() {
       "--shell-left-sidebar-width",
       dockedLeftSidebarVisible ? "252px" : "0px",
     );
+    // Mirror the effective sidebar state into the module store so the
+    // composer activity pill (a separate tree) can stand down while the
+    // sidebar's Activity section is on screen.
+    leftSidebarVisibilityStore.setDocked(dockedLeftSidebarVisible);
     return () => {
       delete root.dataset.shellLeftSidebarDocked;
       root.style.removeProperty("--shell-left-sidebar-width");
+      leftSidebarVisibilityStore.setDocked(false);
     };
   }, [dockedLeftSidebarVisible]);
 

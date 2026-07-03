@@ -168,6 +168,7 @@ function ComposerImpl({
     <div className="composer">
       <ComposerLeadRow
         replyPeek={replyPeek}
+        showActivityPill
         suggestionsActive={suggestionsActive}
         chatContext={chatContext}
         setChatContext={setChatContext}
