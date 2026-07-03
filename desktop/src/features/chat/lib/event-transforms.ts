@@ -143,8 +143,12 @@ export function fallbackTaskDescription(agentId: string | undefined): string {
   const slug = (agentId ?? '').trim()
   if (!slug || /^(task|grp|legacy)-/i.test(slug)) return 'Task'
   const words = slug.split(/[-_]+/).filter(Boolean)
+  const letterCount = (words.join('').match(/[a-z]/gi) ?? []).length
+  // Short single-token ids ("a1", "x7f3") are opaque junk, not slugged
+  // descriptions — keep the generic label for those.
+  if (words.length < 2 && letterCount < 4) return 'Task'
+  if (letterCount === 0) return 'Task'
   const text = words.join(' ')
-  if (!/[a-z]/i.test(text)) return 'Task'
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
