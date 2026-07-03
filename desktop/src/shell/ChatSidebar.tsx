@@ -523,7 +523,7 @@ export function ChatPanelTab({
             </AssistantTextPaintContext.Provider>
 
             <div className="chat-sidebar-composer">
-              <ConnectorConnectCard compact />
+              <ConnectorConnectCard compact conversationId={conversationId} />
               <ComposerLeadRow
                 replyPeek={
                   assistantReplyPeek.visible

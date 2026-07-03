@@ -360,7 +360,7 @@ export const ChatColumn = memo(function ChatColumn({
 
           {/* Inline connect offer (agent-initiated) pinned above the
               composer while the agent's turn waits on the answer. */}
-          <ConnectorConnectCard />
+          <ConnectorConnectCard conversationId={conversationId} />
 
           {/* Composer: normal flow below the scroll viewport */}
           <div

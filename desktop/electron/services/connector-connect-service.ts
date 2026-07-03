@@ -42,6 +42,8 @@ type PendingConnectMeta = {
   name: string;
   kind: "integration" | "browser-extension";
   state: "pending" | "connecting";
+  /** Worker-generated handle for turn-abort cancellation. */
+  offerId?: string;
   oauthAbort: AbortController;
   windows: BrowserWindow[];
 };
@@ -85,6 +87,8 @@ export class ConnectorConnectService {
     iconUrl?: string;
     category?: string;
     reason?: string;
+    conversationId?: string;
+    offerId?: string;
   }): Promise<ConnectorConnectOutcome> {
     const stellaAppDir = this.options.getStellaAppDir();
     if (!stellaAppDir) {
@@ -105,6 +109,7 @@ export class ConnectorConnectService {
       name: payload.name,
       kind: "integration",
       state: "pending",
+      ...(payload.offerId ? { offerId: payload.offerId } : {}),
       oauthAbort: new AbortController(),
       windows: targetWindows,
     });
@@ -118,6 +123,9 @@ export class ConnectorConnectService {
       category: payload.category,
       reason: payload.reason,
       kind: "integration",
+      ...(payload.conversationId
+        ? { conversationId: payload.conversationId }
+        : {}),
     };
 
     const settled = new Promise<ConnectorConnectOutcome>((resolve) => {
@@ -153,10 +161,11 @@ export class ConnectorConnectService {
    * the extension install to appear on disk; the worker re-runs the
    * failed command once this resolves `{ ok: true }`.
    */
-  async requestBrowserExtensionConnect(_payload: {
+  async requestBrowserExtensionConnect(payload: {
     conversationId?: string;
     agentId?: string;
     command?: string;
+    offerId?: string;
   }): Promise<ConnectorConnectOutcome> {
     for (const meta of this.meta.values()) {
       if (meta.kind === "browser-extension") {
@@ -180,6 +189,7 @@ export class ConnectorConnectService {
       name: "the Stella browser extension",
       kind: "browser-extension",
       state: "pending",
+      ...(payload.offerId ? { offerId: payload.offerId } : {}),
       oauthAbort: new AbortController(),
       windows: targetWindows,
     });
@@ -193,6 +203,9 @@ export class ConnectorConnectService {
       reason:
         "Stella needs your browser to continue this task, but the extension isn't connected yet.",
       kind: "browser-extension",
+      ...(payload.conversationId
+        ? { conversationId: payload.conversationId }
+        : {}),
     };
 
     const settled = new Promise<ConnectorConnectOutcome>((resolve) => {
@@ -262,6 +275,23 @@ export class ConnectorConnectService {
       meta.oauthAbort.abort(new Error("Connection cancelled."));
       this.settle(requestId, { ok: false, reason: "cancelled" }, "cancelled");
     }
+  }
+
+  /**
+   * Turn-abort cancellation from the worker (`host.connectorConnect.cancel`).
+   * Settles a pending card as cancelled; an in-flight OAuth/install flow is
+   * aborted and settles through its own catch/loop.
+   */
+  cancelByOfferId(offerId: string): { ok: boolean } {
+    for (const [requestId, meta] of this.meta) {
+      if (meta.offerId !== offerId) continue;
+      meta.oauthAbort.abort(new Error("Connection cancelled."));
+      if (meta.state === "pending") {
+        this.settle(requestId, { ok: false, reason: "cancelled" }, "cancelled");
+      }
+      return { ok: true };
+    }
+    return { ok: false };
   }
 
   private async runConnectFlow(requestId: string, meta: PendingConnectMeta) {

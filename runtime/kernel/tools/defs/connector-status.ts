@@ -35,14 +35,24 @@ import type { ToolDefinition } from "../types.js";
 
 export const CONNECTOR_STATUS_TOOL_NAME = "connector_status";
 
-export type ConnectorConnectionRequester = (payload: {
-  id: string;
-  name: string;
-  description?: string;
-  iconUrl?: string;
-  category?: string;
-  reason?: string;
-}) => Promise<
+export type ConnectorConnectionRequester = (
+  payload: {
+    id: string;
+    name: string;
+    description?: string;
+    iconUrl?: string;
+    category?: string;
+    reason?: string;
+    /** Chat the card belongs to; the renderer scopes the card to it. */
+    conversationId?: string;
+  },
+  /**
+   * Turn abort signal. The worker-side implementation cancels the
+   * pending desktop card when it fires, so a cancelled/superseded turn
+   * doesn't leave a card up for the desktop's full timeout.
+   */
+  signal?: AbortSignal,
+) => Promise<
   | { ok: true; status: "connected" | "already_connected" }
   | {
       ok: false;
@@ -193,7 +203,7 @@ export const createConnectorStatusTool = (
     required: ["connector"],
     additionalProperties: false,
   },
-  execute: async (args) => {
+  execute: async (args, context, extras) => {
     const query =
       typeof args.connector === "string" ? args.connector.trim() : "";
     if (!query) {
@@ -247,14 +257,20 @@ export const createConnectorStatusTool = (
       };
     }
 
-    const outcome = await options.requestConnectorConnection({
-      id: entry.id,
-      name: entry.name,
-      ...(entry.description ? { description: entry.description } : {}),
-      ...(entry.iconUrl ? { iconUrl: entry.iconUrl } : {}),
-      ...(entry.category ? { category: entry.category } : {}),
-      ...(reason ? { reason } : {}),
-    });
+    const outcome = await options.requestConnectorConnection(
+      {
+        id: entry.id,
+        name: entry.name,
+        ...(entry.description ? { description: entry.description } : {}),
+        ...(entry.iconUrl ? { iconUrl: entry.iconUrl } : {}),
+        ...(entry.category ? { category: entry.category } : {}),
+        ...(reason ? { reason } : {}),
+        ...(context?.conversationId
+          ? { conversationId: context.conversationId }
+          : {}),
+      },
+      extras?.signal,
+    );
 
     if (outcome.ok) {
       return {
@@ -271,9 +287,20 @@ export const createConnectorStatusTool = (
         details: { id: entry.id, status: "declined" },
       };
     }
-    if (outcome.reason === "cancelled" || outcome.reason === "timeout") {
+    if (outcome.reason === "cancelled" && extras?.signal?.aborted) {
+      // The turn itself was cancelled; the desktop card was settled as
+      // cancelled too. Nothing to tell the user.
       return {
-        result: `The connect card for ${entry.name} was ${outcome.reason === "timeout" ? "not answered in time" : "dismissed"}. Don't re-offer now; mention once that ${entry.name} is available in the Store, and proceed via other means (browser fallback).`,
+        result: `The turn was cancelled before the user answered the ${entry.name} connect card.`,
+        details: { id: entry.id, status: "cancelled" },
+      };
+    }
+    if (outcome.reason === "cancelled" || outcome.reason === "timeout") {
+      // No decline is persisted for these — suppression only holds for
+      // the current context window (the availability reminder's window
+      // gate), so say "this conversation", not "ever".
+      return {
+        result: `The connect card for ${entry.name} was ${outcome.reason === "timeout" ? "not answered in time" : "dismissed"}. Don't re-offer it again in this conversation; mention once that ${entry.name} is available in the Store, and proceed via other means (browser fallback).`,
         details: { id: entry.id, status: outcome.reason },
       };
     }

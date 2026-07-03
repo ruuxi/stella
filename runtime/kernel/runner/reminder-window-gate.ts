@@ -28,9 +28,12 @@
  * over window resets).
  */
 
-import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import {
+  readJsonStateFile,
+  updateJsonStateFile,
+} from "../shared/atomic-json-state.js";
 import { parseThreadCheckpoint } from "../thread-runtime.js";
 
 export type ReminderWindowStore = {
@@ -53,19 +56,17 @@ type ReminderWindowStateFile = {
 const statePath = (stellaDataDir: string) =>
   path.join(stellaDataDir, ...STATE_FILE_SEGMENTS);
 
-const readState = async (
-  stellaDataDir: string,
-): Promise<ReminderWindowStateFile> => {
-  try {
-    const parsed = JSON.parse(
-      await fs.readFile(statePath(stellaDataDir), "utf-8"),
-    ) as ReminderWindowStateFile;
-    if (parsed?.version === 1 && parsed.shown) return parsed;
-  } catch {
-    // Missing/corrupt state file means nothing has been shown.
-  }
+const parseState = (raw: unknown): ReminderWindowStateFile => {
+  const parsed = raw as ReminderWindowStateFile | undefined;
+  if (parsed?.version === 1 && parsed.shown) return parsed;
+  // Missing/corrupt state file means nothing has been shown.
   return { version: 1, shown: {} };
 };
+
+const readState = async (
+  stellaDataDir: string,
+): Promise<ReminderWindowStateFile> =>
+  readJsonStateFile(statePath(stellaDataDir), parseState);
 
 const pruneState = (state: ReminderWindowStateFile) => {
   const flat: Array<{ threadKey: string; key: string; at: number }> = [];
@@ -84,15 +85,7 @@ const pruneState = (state: ReminderWindowStateFile) => {
   state.shown = shown;
 };
 
-const writeState = async (
-  stellaDataDir: string,
-  state: ReminderWindowStateFile,
-) => {
-  pruneState(state);
-  const filePath = statePath(stellaDataDir);
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
-};
+
 
 /**
  * Timestamp of the latest compaction checkpoint visible in the thread's
@@ -147,8 +140,13 @@ export const recordReminderShown = async (options: {
   key: string;
   timestamp?: number;
 }): Promise<void> => {
-  const state = await readState(options.stellaDataDir);
-  (state.shown[options.threadKey] ??= {})[options.key] =
-    options.timestamp ?? Date.now();
-  await writeState(options.stellaDataDir, state);
+  await updateJsonStateFile({
+    filePath: statePath(options.stellaDataDir),
+    parse: parseState,
+    update: (state) => {
+      (state.shown[options.threadKey] ??= {})[options.key] =
+        options.timestamp ?? Date.now();
+      pruneState(state);
+    },
+  });
 };

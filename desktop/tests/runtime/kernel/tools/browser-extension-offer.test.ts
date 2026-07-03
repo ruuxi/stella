@@ -133,6 +133,35 @@ describe("maybeOfferBrowserExtensionConnect", () => {
     expect(result).toBe(original);
   });
 
+  it("forwards the turn abort signal to the requester and keeps the original result", async () => {
+    const controller = new AbortController();
+    const original = execResult(EXTENSION_ERROR);
+    let receivedSignal: AbortSignal | undefined;
+    const pending = maybeOfferBrowserExtensionConnect({
+      result: original,
+      command: "stella-browser snapshot",
+      requestConnect: (_payload, signal) => {
+        receivedSignal = signal;
+        return new Promise((resolve) => {
+          signal?.addEventListener(
+            "abort",
+            () => resolve({ ok: false, reason: "cancelled" }),
+            { once: true },
+          );
+        });
+      },
+      rerun: async () => {
+        throw new Error("must not re-run after abort");
+      },
+      signal: controller.signal,
+    });
+    controller.abort();
+    const result = await pending;
+    expect(receivedSignal).toBe(controller.signal);
+    // Aborted turn: the original failure passes through untouched.
+    expect(result).toBe(original);
+  });
+
   it("passes unrelated results through untouched", async () => {
     const original = execResult("hello world");
     const result = await maybeOfferBrowserExtensionConnect({

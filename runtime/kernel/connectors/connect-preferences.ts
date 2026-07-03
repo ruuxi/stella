@@ -11,9 +11,12 @@
  * desktop reads it only indirectly through CLI output.
  */
 
-import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import {
+  readJsonStateFile,
+  updateJsonStateFile,
+} from "../shared/atomic-json-state.js";
 import { getConnectorStateRoot } from "./state.js";
 
 const PREFERENCES_FILE = "connect-preferences.json";
@@ -32,32 +35,17 @@ type ConnectPreferencesFile = {
 const preferencesPath = (stellaAppDir: string) =>
   path.join(getConnectorStateRoot(stellaAppDir), PREFERENCES_FILE);
 
-const readPreferences = async (
-  stellaAppDir: string,
-): Promise<ConnectPreferencesFile> => {
-  try {
-    const parsed = JSON.parse(
-      await fs.readFile(preferencesPath(stellaAppDir), "utf-8"),
-    ) as ConnectPreferencesFile;
-    if (parsed?.version === 1 && parsed.declined) return parsed;
-  } catch {
-    // Missing/corrupt file is an empty preference set.
-  }
+const parsePreferences = (raw: unknown): ConnectPreferencesFile => {
+  const parsed = raw as ConnectPreferencesFile | undefined;
+  if (parsed?.version === 1 && parsed.declined) return parsed;
+  // Missing/corrupt file is an empty preference set.
   return { version: 1, declined: {} };
 };
 
-const writePreferences = async (
+const readPreferences = async (
   stellaAppDir: string,
-  preferences: ConnectPreferencesFile,
-) => {
-  const filePath = preferencesPath(stellaAppDir);
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(
-    filePath,
-    `${JSON.stringify(preferences, null, 2)}\n`,
-    "utf-8",
-  );
-};
+): Promise<ConnectPreferencesFile> =>
+  readJsonStateFile(preferencesPath(stellaAppDir), parsePreferences);
 
 export const getConnectorDecline = async (
   stellaAppDir: string,
@@ -78,13 +66,18 @@ export const recordConnectorDecline = async (
   stellaAppDir: string,
   id: string,
 ): Promise<ConnectorDeclineEntry> => {
-  const preferences = await readPreferences(stellaAppDir);
-  const entry: ConnectorDeclineEntry = {
-    declinedAt: Date.now(),
-    count: (preferences.declined[id]?.count ?? 0) + 1,
-  };
-  preferences.declined[id] = entry;
-  await writePreferences(stellaAppDir, preferences);
+  let entry: ConnectorDeclineEntry = { declinedAt: Date.now(), count: 1 };
+  await updateJsonStateFile({
+    filePath: preferencesPath(stellaAppDir),
+    parse: parsePreferences,
+    update: (preferences) => {
+      entry = {
+        declinedAt: Date.now(),
+        count: (preferences.declined[id]?.count ?? 0) + 1,
+      };
+      preferences.declined[id] = entry;
+    },
+  });
   return entry;
 };
 
@@ -92,8 +85,11 @@ export const clearConnectorDecline = async (
   stellaAppDir: string,
   id: string,
 ): Promise<void> => {
-  const preferences = await readPreferences(stellaAppDir);
-  if (!(id in preferences.declined)) return;
-  delete preferences.declined[id];
-  await writePreferences(stellaAppDir, preferences);
+  await updateJsonStateFile({
+    filePath: preferencesPath(stellaAppDir),
+    parse: parsePreferences,
+    update: (preferences) => {
+      delete preferences.declined[id];
+    },
+  });
 };

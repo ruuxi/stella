@@ -178,30 +178,38 @@ describe("native OAuth integration readiness", () => {
       provider: "google-workspace",
     });
 
-    expect(
-      buildNativeConnectorCatalog([
-        {
-          id: "gmail",
-          name: "Gmail",
-          category: "email",
-          auth: ["OAUTH2"],
-          catalogToolCount: 61,
-          availability: "ready",
-          provider: "backend-composio",
-          description: "Connect Gmail through Composio.",
-          connectable: true,
-          backendConnector: {
-            type: "composio",
-            toolkit: "GMAIL",
-          },
+    // Server catalog entries OVERLAY the bundled catalog (by id) instead of
+    // replacing it: gmail flips to the backend provider while the other
+    // bundled entries (googlecalendar, …) remain resolvable for the
+    // Store/connect paths.
+    const overlaid = buildNativeConnectorCatalog([
+      {
+        id: "gmail",
+        name: "Gmail",
+        category: "email",
+        auth: ["OAUTH2"],
+        catalogToolCount: 61,
+        availability: "ready",
+        provider: "backend-composio",
+        description: "Connect Gmail through Composio.",
+        connectable: true,
+        backendConnector: {
+          type: "composio",
+          toolkit: "GMAIL",
         },
-      ]),
+      },
+    ]);
+    expect(
+      overlaid.filter((entry) => entry.id === "gmail"),
     ).toEqual([
       expect.objectContaining({
         id: "gmail",
         provider: "backend-composio",
       }),
     ]);
+    expect(
+      overlaid.find((entry) => entry.id === "googlecalendar"),
+    ).toMatchObject({ provider: "google-workspace" });
   });
 
   it("keeps backend-owned communication integrations out of the OAuth catalog source and Store surface", async () => {

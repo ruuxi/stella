@@ -220,6 +220,10 @@ export type RuntimeHostHandlers = {
     iconUrl?: string;
     category?: string;
     reason?: string;
+    /** Chat the card belongs to; the renderer scopes the card to it. */
+    conversationId?: string;
+    /** Worker-generated handle so a turn abort can cancel the card. */
+    offerId?: string;
   }) => Promise<
     | { ok: true; status: "connected" | "already_connected" }
     | {
@@ -227,6 +231,14 @@ export type RuntimeHostHandlers = {
         reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
       }
   >;
+  /**
+   * Cancel a pending connect card (connector or browser-extension) by
+   * the worker-generated `offerId`. Fired when the originating turn is
+   * aborted so the card doesn't linger until its own timeout.
+   */
+  cancelConnectorConnection?: (payload: {
+    offerId: string;
+  }) => Promise<{ ok: boolean }>;
   /**
    * Offer connecting the Stella browser extension via an inline card in
    * the active chat when a stella-browser command fails on the missing
@@ -238,6 +250,8 @@ export type RuntimeHostHandlers = {
     conversationId?: string;
     agentId?: string;
     command?: string;
+    /** Worker-generated handle so a turn abort can cancel the card. */
+    offerId?: string;
   }) => Promise<
     | { ok: true; status: "connected" | "already_connected" }
     | {
@@ -3215,8 +3229,26 @@ export class StellaRuntimeHost {
             iconUrl?: string;
             category?: string;
             reason?: string;
+            conversationId?: string;
+            offerId?: string;
           },
         );
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_CONNECTOR_CONNECT_CANCEL,
+      async (params) => {
+        if (!this.options.hostHandlers.cancelConnectorConnection) {
+          return { ok: false };
+        }
+        const offerId =
+          params && typeof params === "object"
+            ? String((params as { offerId?: unknown }).offerId ?? "")
+            : "";
+        if (!offerId) return { ok: false };
+        return await this.options.hostHandlers.cancelConnectorConnection({
+          offerId,
+        });
       },
     );
     peer.registerRequestHandler(
@@ -3230,6 +3262,7 @@ export class StellaRuntimeHost {
             conversationId?: string;
             agentId?: string;
             command?: string;
+            offerId?: string;
           },
         );
       },

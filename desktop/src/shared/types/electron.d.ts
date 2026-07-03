@@ -1111,6 +1111,7 @@ export type ElectronSystemApi = {
         category?: string;
         reason?: string;
         kind?: "integration" | "browser-extension";
+        conversationId?: string;
       },
     ) => void,
   ) => () => void;

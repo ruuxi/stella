@@ -29,12 +29,19 @@ export type BrowserExtensionConnectOutcome =
       reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
     };
 
-export type BrowserExtensionConnectRequester = (payload: {
-  conversationId?: string;
-  agentId?: string;
-  /** The failing command, for context in logs — never rendered verbatim. */
-  command?: string;
-}) => Promise<BrowserExtensionConnectOutcome>;
+export type BrowserExtensionConnectRequester = (
+  payload: {
+    conversationId?: string;
+    agentId?: string;
+    /** The failing command, for context in logs — never rendered verbatim. */
+    command?: string;
+  },
+  /**
+   * Turn abort signal. The worker-side implementation cancels the
+   * pending desktop card when it fires.
+   */
+  signal?: AbortSignal,
+) => Promise<BrowserExtensionConnectOutcome>;
 
 /**
  * Error strings printed by the stella-browser CLI/daemon when the Chrome
@@ -173,11 +180,14 @@ export const maybeOfferBrowserExtensionConnect = async (options: {
   let outcome: BrowserExtensionConnectOutcome;
   try {
     outcome = await withTimeout(
-      requestConnect({
-        ...(conversationId ? { conversationId } : {}),
-        ...(agentId ? { agentId } : {}),
-        command,
-      }),
+      requestConnect(
+        {
+          ...(conversationId ? { conversationId } : {}),
+          ...(agentId ? { agentId } : {}),
+          command,
+        },
+        signal,
+      ),
       OFFER_WAIT_TIMEOUT_MS,
     );
   } catch (error) {

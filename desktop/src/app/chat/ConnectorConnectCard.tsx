@@ -19,10 +19,13 @@ import "./connector-connect-card.css";
 
 export const ConnectorConnectCard = ({
   compact = false,
+  conversationId,
 }: {
   compact?: boolean;
+  /** Scope: only requests for this chat (or unscoped ones) render here. */
+  conversationId?: string | null;
 }) => {
-  const request = useConnectorConnectRequest();
+  const request = useConnectorConnectRequest(conversationId);
   const [iconFailed, setIconFailed] = useState(false);
   if (!request) return null;
 
