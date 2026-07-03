@@ -4,10 +4,18 @@ import path from "node:path";
 
 import { callApiConnector } from "../connectors/api-client.js";
 import {
+  requestConnectorConnectionFromBridge,
   requestConnectorCredentialFromBridge,
   requestStellaSiteAuthFromBridge,
+  type ConnectorConnectionResult,
   type ConnectorCredentialResult,
 } from "../connectors/cli-broker-client.js";
+import {
+  clearConnectorDecline,
+  getConnectorDecline,
+  recordConnectorDecline,
+} from "../connectors/connect-preferences.js";
+import { discoverConnectors } from "../connectors/discovery.js";
 import {
   callConnectorBridgeTool,
   closeConnectorBridgeSessions,
@@ -60,6 +68,17 @@ const printJson = (value: unknown) => {
 const fail = (message: string): never => {
   process.stderr.write(`${message}\n`);
   process.exit(1);
+};
+
+/**
+ * Expected refusals (user declined, bridge missing, timeout) exit 2 with
+ * a structured `{ ok: false, error }` payload on stdout — same contract
+ * as the `auth_required` envelope — so agents can branch on the outcome
+ * without parsing prose.
+ */
+const exitStructured = (payload: Record<string, unknown>): never => {
+  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+  process.exit(2);
 };
 
 const parseJson = <T>(value: string | undefined, fallback: T): T => {
@@ -941,6 +960,13 @@ const HELP_TEXT = [
   "Commands:",
   "  installed                         List configured CLI/API/native connectors.",
   "  apps                              List native Store integrations and enabled state.",
+  "  discover <keywords>               Search the full integration catalog (Store natives +",
+  "                                    imported connectors) and report enabled/connected/",
+  "                                    declined state for the best matches.",
+  '  request-connection <id> [--reason "..."] [--requested-by-user]',
+  "                                    Offer connecting a Store integration via an inline",
+  "                                    connect card in the chat; blocks until the user",
+  "                                    accepts (then OAuth + enable run) or declines.",
   "  enable-native <id>                Enable a native Store integration and write its skill.",
   "  disable-native <id>               Disable a native Store integration and remove its generated skill.",
   "  import-mcp --id <id> (--url <u> | --command <cmd> [--args-json '[]'])",
@@ -991,6 +1017,175 @@ const main = async () => {
               authStatus: await nativeConnectorAuthStatus(entry),
             })),
         ),
+      });
+      return;
+    }
+    case "discover":
+    case "find": {
+      const { positionals } = parseOptions(rest);
+      const query = positionals.join(" ").trim();
+      if (!query) fail('Usage: stella-connect discover <keywords>');
+      const native = await listNativeConnectors(
+        stellaAppDir,
+        {},
+        serverNativeCatalog,
+      );
+      const enabledNativeIds = new Set(
+        native.filter((entry) => entry.enabled).map((entry) => entry.id),
+      );
+      const matches = await discoverConnectors(stellaAppDir, query, {
+        catalogOverride: serverNativeCatalog,
+        enabledNativeIds,
+      });
+      const enriched = await Promise.all(
+        matches.map(async (match) => {
+          let connected = false;
+          if (match.kind === "native") {
+            const entry = findNative(match.id, serverNativeCatalog);
+            const authStatus = entry
+              ? await nativeConnectorAuthStatus(entry)
+              : ("unsupported" as const);
+            connected = match.enabled && authStatus === "connected";
+          } else {
+            const config =
+              match.kind === "mcp"
+                ? await findCommand(match.id)
+                : await findApi(match.id);
+            const authStatus = await connectorAuthStatus(config?.auth);
+            // "unsupported" means the connector needs no credential —
+            // it is usable as-is.
+            connected =
+              authStatus === "connected" || authStatus === "unsupported";
+          }
+          const next = connected
+            ? `Ready. Inspect actions: stella-connect tools ${match.id}`
+            : match.declined
+              ? "The user previously declined connecting this in chat. Do not offer it again; they can enable it in the Store. Only rerun request-connection with --requested-by-user if the user explicitly asks to connect it now."
+              : match.kind === "native"
+                ? `Not connected. Offer it in chat: stella-connect request-connection ${match.id} --reason "<short why>"`
+                : `Configured but not authorized. Calling it pops the auth dialog: stella-connect tools ${match.id}`;
+          return {
+            id: match.id,
+            name: match.name,
+            kind: match.kind,
+            ...(match.category ? { category: match.category } : {}),
+            description: match.description,
+            enabled: match.enabled,
+            connected,
+            declined: match.declined,
+            next,
+          };
+        }),
+      );
+      printJson({ query, matches: enriched });
+      return;
+    }
+    case "request-connection": {
+      const { positionals, options } = parseOptions(rest);
+      const id = positionals[0];
+      if (!id) {
+        fail(
+          'Usage: stella-connect request-connection <integration-id> [--reason "..."] [--requested-by-user]',
+        );
+      }
+      const entry = findNative(id, serverNativeCatalog);
+      if (!entry) {
+        fail(
+          `Unknown native integration: ${id}. Imported MCP/API connectors do not need this — calling them pops the auth dialog automatically.`,
+        );
+      }
+      if (!entry) return;
+      const enabled = await isNativeConnectorEnabled(stellaAppDir, entry.id);
+      const authStatus = await nativeConnectorAuthStatus(entry);
+      const skillPath = `~/.stella/skills/${entry.id}/SKILL.md`;
+      if (enabled && authStatus === "connected") {
+        printJson({
+          ok: true,
+          status: "already_connected",
+          id: entry.id,
+          skillPath,
+          hint: `Proceed with the task. Inspect actions: stella-connect tools ${entry.id}`,
+        });
+        return;
+      }
+      const requestedByUser = options["requested-by-user"] === true;
+      const decline = await getConnectorDecline(stellaAppDir, entry.id);
+      if (decline && !requestedByUser) {
+        exitStructured({
+          ok: false,
+          error: "previously_declined",
+          id: entry.id,
+          declinedAt: decline.declinedAt,
+          message: `The user previously declined connecting ${entry.name} from chat. Do not offer it again; they can enable it anytime in the Store. If the user explicitly asks to connect it now, rerun with --requested-by-user.`,
+        });
+      }
+      const socketPath = process.env.STELLA_CLI_BRIDGE_SOCK;
+      if (!socketPath) {
+        exitStructured({
+          ok: false,
+          error: "bridge_unavailable",
+          id: entry.id,
+          message: `The desktop bridge is not available in this session, so the in-chat connect card cannot be shown. Ask the user to enable ${entry.name} in the Store.`,
+        });
+      }
+      let result: ConnectorConnectionResult;
+      try {
+        result = await requestConnectorConnectionFromBridge({
+          socketPath: socketPath!,
+          id: entry.id,
+          name: entry.name,
+          description: entry.description,
+          iconUrl: entry.iconUrl,
+          category: entry.category,
+          reason: optionString(options, "reason"),
+        });
+      } catch (bridgeError) {
+        process.stderr.write(
+          `[stella-connect] cli-bridge unreachable: ${(bridgeError as Error).message}\n`,
+        );
+        exitStructured({
+          ok: false,
+          error: "bridge_unavailable",
+          id: entry.id,
+          message: `The in-chat connect card could not be shown. Ask the user to enable ${entry.name} in the Store.`,
+        });
+        return;
+      }
+      if (result.ok) {
+        // The desktop's enable path clears the decline too; clearing
+        // here as well keeps the file correct when the enable happened
+        // in a different process context.
+        await clearConnectorDecline(stellaAppDir, entry.id).catch(
+          () => undefined,
+        );
+        printJson({
+          ok: true,
+          status: result.status,
+          id: entry.id,
+          skillPath,
+          hint: `${entry.name} is connected. Proceed with the user's original request now — do not re-ask what they wanted. Inspect actions: stella-connect tools ${entry.id}`,
+        });
+        return;
+      }
+      if (result.reason === "declined") {
+        await recordConnectorDecline(stellaAppDir, entry.id).catch(
+          () => undefined,
+        );
+        exitStructured({
+          ok: false,
+          error: "declined",
+          id: entry.id,
+          message: `The user declined connecting ${entry.name}. Acknowledge briefly once, mention they can enable it later in the Store, and continue helping by other means. Do not offer this connection again.`,
+        });
+      }
+      exitStructured({
+        ok: false,
+        error: result.reason,
+        id: entry.id,
+        message:
+          result.reason === "timeout"
+            ? `The connect card timed out without a response. Continue without ${entry.name}; the user can enable it in the Store later.`
+            : `Could not connect ${entry.name}: ${result.reason}. Continue without it, or suggest the Store if the user wants it set up.`,
       });
       return;
     }

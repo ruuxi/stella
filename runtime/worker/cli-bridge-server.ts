@@ -80,6 +80,26 @@ export type CliBridgeHandlers = {
     | { ok: true }
     | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string }
   >;
+  /**
+   * Show an inline connect card in the active chat offering to connect
+   * a native Store integration. Resolves once the user accepts and the
+   * host finishes the enable + OAuth flow (`{ ok: true }`), or when the
+   * user declines / the card times out (`{ ok: false, reason }`).
+   */
+  requestConnectorConnection?: (params: {
+    id: string;
+    name: string;
+    description?: string;
+    iconUrl?: string;
+    category?: string;
+    reason?: string;
+  }) => Promise<
+    | { ok: true; status: "connected" | "already_connected" }
+    | {
+        ok: false;
+        reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
+      }
+  >;
   getStellaSiteAuth?: () =>
     | Promise<
         | { ok: true; baseUrl: string; authToken: string }
@@ -378,6 +398,36 @@ const dispatch = async (
         preregisteredOAuth: normalizedPreregisteredOAuth,
         description,
         placeholder,
+      });
+    }
+    case "connector.requestConnection": {
+      if (!handlers.requestConnectorConnection) {
+        return { ok: false, reason: "unsupported" };
+      }
+      const record =
+        params && typeof params === "object"
+          ? (params as Record<string, unknown>)
+          : {};
+      const id =
+        typeof record.id === "string" ? record.id.trim().toLowerCase() : "";
+      if (!id) {
+        throw new Error("connector.requestConnection: id is required");
+      }
+      const name =
+        typeof record.name === "string" && record.name.trim()
+          ? record.name.trim()
+          : id;
+      const readOptional = (key: string) =>
+        typeof record[key] === "string" && (record[key] as string).trim()
+          ? (record[key] as string).trim()
+          : undefined;
+      return await handlers.requestConnectorConnection({
+        id,
+        name,
+        description: readOptional("description"),
+        iconUrl: readOptional("iconUrl"),
+        category: readOptional("category"),
+        reason: readOptional("reason"),
       });
     }
     default:

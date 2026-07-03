@@ -167,6 +167,7 @@ export const METHOD_NAMES = {
   HOST_DEVICE_HEARTBEAT_SIGN: "host.deviceHeartbeat.sign",
   HOST_CREDENTIALS_REQUEST: "host.credentials.request",
   HOST_CONNECTOR_CREDENTIAL_REQUEST: "host.connectorCredential.request",
+  HOST_CONNECTOR_CONNECT_REQUEST: "host.connectorConnect.request",
   HOST_APP_BROWSER_CONTEXT_GET: "host.appBrowserContext.get",
   HOST_DISPLAY_UPDATE: "host.display.update",
   HOST_NOTIFICATION_SHOW: "host.notification.show",

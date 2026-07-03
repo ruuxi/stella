@@ -1006,6 +1006,29 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 };
               }
             },
+            requestConnectorConnection: async (params) => {
+              try {
+                return await peer.request<
+                  | { ok: true; status: "connected" | "already_connected" }
+                  | {
+                      ok: false;
+                      reason:
+                        | "declined"
+                        | "cancelled"
+                        | "timeout"
+                        | "unsupported"
+                        | string;
+                    }
+                >(METHOD_NAMES.HOST_CONNECTOR_CONNECT_REQUEST, params, {
+                  retryOnDisconnect: true,
+                });
+              } catch (error) {
+                return {
+                  ok: false,
+                  reason: (error as Error).message || "host_unreachable",
+                };
+              }
+            },
             getStellaSiteAuth: () => {
               const baseUrl =
                 state.init?.convexSiteUrl?.trim() ?? init.convexSiteUrl?.trim();
