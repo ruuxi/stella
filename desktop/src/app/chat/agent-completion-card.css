@@ -57,19 +57,56 @@
   overflow-wrap: anywhere;
 }
 
-/* The excerpt renders through the chat markdown pipeline but must stay a
-   muted one-liner: inline emphasis/code only, no document-scale spacing.
-   Block constructs are already stripped at derivation; these overrides
-   neutralize the document chrome for whatever the parser still wraps the
-   text in (the paragraph, stray strong/heading fallbacks). */
+/* The excerpt renders through the chat markdown pipeline but must read as a
+   subtle muted one-liner, clearly secondary to the task title above it —
+   the same quiet register as the sidebar's reasoning-summary lines
+   (`chat-workspace-strip__task-progress-item`: --text-weak ink, a size step
+   below the row label). Block constructs are already stripped at
+   derivation; these overrides pull the surviving inline markdown down to
+   that register — markdown.css paints strong/b and inline code at
+   `--text-strong`, which reads as full body-text contrast here. */
 .agent-completion-card__summary .markdown {
-  font-size: inherit;
-  line-height: inherit;
-  color: inherit;
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  color: var(--text-weak);
 }
 
 .agent-completion-card__summary .markdown p {
   margin: 0;
+}
+
+/* Bold = a modest weight bump WITHIN the muted tone, not a jump back to
+   full-contrast foreground. */
+.agent-completion-card__summary .markdown strong,
+.agent-completion-card__summary .markdown b {
+  color: inherit;
+  font-weight: var(--weight-medium);
+}
+
+.agent-completion-card__summary .markdown em {
+  color: inherit;
+}
+
+/* Links keep the muted ink too (underline carries the affordance) — a
+   `--primary` link would be the loudest thing on the card. */
+.agent-completion-card__summary .markdown a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Quiet code spans: muted ink, a dimmer chip than the document-scale
+   `--surface-inset`, slightly smaller so mono glyphs don't shout. */
+.agent-completion-card__summary .markdown :not(pre) > code {
+  color: inherit;
+  font-weight: inherit;
+  font-size: 0.92em;
+  padding: 1px 4px;
+  background: color-mix(
+    in srgb,
+    var(--surface-inset, var(--muted)) 55%,
+    transparent
+  );
 }
 
 .agent-completion-card__summary .markdown h1,
