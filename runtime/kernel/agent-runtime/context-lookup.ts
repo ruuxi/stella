@@ -60,6 +60,16 @@ export const RECALL_INDEX_BASE_LIMIT = 500;
 export const RECALL_INDEX_HIGH_VOLUME_LIMIT = 1_000;
 const RECALL_INDEX_HIGH_VOLUME_DAILY_THREADS = 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * Hard ceiling on the RENDERED index, enforced regardless of row limit —
+ * the row caps only bound entry COUNT, and unbounded descriptions/excerpts
+ * at 1000 rows could otherwise blow the seed. ~240k chars ≈ ~60k tokens.
+ * When exceeded, the oldest-by-last-active entries drop first (they are the
+ * least likely recall targets) and the index says how many were cut.
+ */
+export const RECALL_INDEX_CHAR_BUDGET = 240_000;
+/** Per-entry cap on the description line; result/error are SQL-truncated. */
+const RECALL_INDEX_DESCRIPTION_CHARS = 300;
 
 /** Latest live progress phrases surfaced per ACTIVE thread. */
 const MAX_LIVE_PROGRESS_SUMMARIES = 3;
@@ -104,9 +114,14 @@ export const RECALL_BUDGET_EXHAUSTED_TEXT =
 /**
  * Recall internals go to stderr as JSON lines (the same channel as the
  * working-indicator traces, landing in runtime.log), so a bad answer is
- * reconstructable after the fact: which actions ran, what each observation
- * held, and how the run ended. Before this, only the final brief was
- * persisted and every miss was undiagnosable.
+ * reconstructable after the fact: which actions ran, how big each
+ * observation was, and how the run ended. Before this, only the final brief
+ * was persisted and every miss was undiagnosable.
+ *
+ * The always-on trace is STRUCTURAL only (step, action kind, sizes,
+ * outcome) — runtime.log should not accumulate memory/transcript content.
+ * Content previews (prompt, queries, observations, brief) are included only
+ * when STELLA_RECALL_TRACE_VERBOSE is set for a debugging session.
  */
 const logRecallTrace = (
   label: string,
@@ -117,6 +132,11 @@ const logRecallTrace = (
   } catch {
     // Tracing must never break a lookup.
   }
+};
+
+const recallTraceVerbose = (): boolean => {
+  const flag = process.env.STELLA_RECALL_TRACE_VERBOSE?.trim().toLowerCase();
+  return flag === "1" || flag === "true";
 };
 
 const previewForTrace = (value: string, maxChars = 300): string => {
@@ -467,8 +487,12 @@ const collapseWhitespace = (value: string): string =>
 export type RecallThreadIndexSections = {
   /**
    * The "# Thread Index" body: every entry's STABLE fields, ordered oldest →
-   * newest by last-active so churn concentrates at the end and the long head
-   * of the seed stays byte-stable for prompt caching.
+   * newest by last-active so churn concentrates at the end. Prefix stability
+   * for prompt caching is PARTIAL, not absolute: within a burst of recall
+   * calls the head is byte-stable, but once the rolling window is full each
+   * new thread evicts the oldest entry and shifts the head. Good enough for
+   * the burst-of-lookups case caching actually serves; an append-only pinned
+   * prefix was deliberately not worth the bookkeeping.
    */
   index: string;
   /**
@@ -503,9 +527,29 @@ export const formatRecallThreadIndex = (
       runtimeThreadLastActiveAt(a) - runtimeThreadLastActiveAt(b) ||
       a.threadId.localeCompare(b.threadId),
   );
-  const index = ordered
-    .map((thread) => formatRecallIndexEntry(thread, now))
-    .join("\n");
+  // Enforce the rendered-char budget newest-first: keep the most recent
+  // entries whole, drop entire oldest entries once the budget is spent.
+  const rendered = ordered.map((thread) =>
+    formatRecallIndexEntry(thread, now),
+  );
+  let keptChars = 0;
+  let firstKept = rendered.length;
+  for (let i = rendered.length - 1; i >= 0; i -= 1) {
+    const cost = rendered[i]!.length + 1;
+    if (keptChars + cost > RECALL_INDEX_CHAR_BUDGET) break;
+    keptChars += cost;
+    firstKept = i;
+  }
+  const dropped = firstKept;
+  const kept = rendered.slice(firstKept);
+  const index = [
+    ...(dropped > 0
+      ? [
+          `[index truncated to fit its budget: showing the ${kept.length} most recently active of ${rendered.length} threads; ${dropped} older entries omitted]`,
+        ]
+      : []),
+    ...kept,
+  ].join("\n");
   const running = ordered.filter(
     (thread) => deriveRuntimeThreadLiveState(thread) === "active",
   );
@@ -535,7 +579,10 @@ const formatRecallIndexEntry = (
 ): string => {
   const name = collapseWhitespace(thread.name);
   const description = thread.description
-    ? collapseWhitespace(thread.description)
+    ? collapseWhitespace(thread.description).slice(
+        0,
+        RECALL_INDEX_DESCRIPTION_CHARS,
+      )
     : "";
   const lastActive = Math.min(runtimeThreadLastActiveAt(thread), now);
   const lines = [
@@ -1007,16 +1054,21 @@ export const runRecall = async (args: {
 
   let scratchpad = "";
 
+  const verbose = recallTraceVerbose();
   logRecallTrace("[stella:recall:start]", {
     conversationId: args.conversationId,
-    promptPreview: previewForTrace(args.lookupPrompt, 200),
+    promptChars: args.lookupPrompt.length,
     seedChars: seed.length,
+    ...(verbose
+      ? { promptPreview: previewForTrace(args.lookupPrompt, 200) }
+      : {}),
   });
   const finish = (outcome: string, brief: string): string => {
     logRecallTrace("[stella:recall:answer]", {
       conversationId: args.conversationId,
       outcome,
-      briefPreview: previewForTrace(brief),
+      briefChars: brief.length,
+      ...(verbose ? { briefPreview: previewForTrace(brief) } : {}),
     });
     return brief;
   };
@@ -1047,7 +1099,8 @@ export const runRecall = async (args: {
         conversationId: args.conversationId,
         step: i,
         action: "unparseable",
-        rawPreview: previewForTrace(raw),
+        rawChars: raw.length,
+        ...(verbose ? { rawPreview: previewForTrace(raw) } : {}),
       });
       return finish(
         raw ? "prose" : "no-output",
@@ -1093,12 +1146,19 @@ export const runRecall = async (args: {
     logRecallTrace("[stella:recall:step]", {
       conversationId: args.conversationId,
       step: i,
-      action:
-        action.action === "search_memory"
-          ? { action: "search_memory", terms: action.terms }
-          : { action: "search", query: action.query ?? null },
+      action: action.action,
       observationChars: observation.length,
-      observationPreview: previewForTrace(observation),
+      // Search terms/queries and observation content are user data — only
+      // traced when explicitly debugging.
+      ...(verbose
+        ? {
+            actionDetail:
+              action.action === "search_memory"
+                ? { terms: action.terms }
+                : { query: action.query ?? null },
+            observationPreview: previewForTrace(observation),
+          }
+        : {}),
     });
     scratchpad += `\nAction: ${JSON.stringify(action)}\nObservation:\n${truncate(observation, RECALL_OBSERVATION_CHAR_BUDGET)}\n`;
   }
