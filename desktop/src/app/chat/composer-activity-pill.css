@@ -10,11 +10,14 @@
    ============================================================ */
 
 /* Motion wrapper the pill animates in/out of when the sidebar toggles.
-   Transform + opacity only — compositor-friendly; layout settles once. */
+   Fade + slide are compositor-driven; the slot's width also tweens 0 ↔ auto
+   (see ComposerActivityPill) so the neighboring chips slide over instead of
+   jumping — overflow clips the pill while the window narrows. */
 .composer-activity-pill-slot {
   display: inline-flex;
   flex-shrink: 0;
   min-width: 0;
+  overflow: hidden;
 }
 
 .composer-activity-pill {
@@ -47,9 +50,12 @@
   color: var(--text-strong);
 }
 
+/* Inset ring (not the shared --focus-ring box-shadow): the slot clips at
+   the pill's bounds for the width tween, so an outside ring would be cut
+   off. Inset keeps keyboard focus fully visible. */
 .composer-activity-pill:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 
 .composer-activity-pill[data-state="error"] {
