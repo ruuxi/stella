@@ -52,6 +52,7 @@ import {
 import {
   agentFilesSignature,
   deriveAgentFilesMap,
+  mergeAgentFileEvents,
 } from "@/features/workspace-display/agent-files";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
@@ -751,6 +752,17 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   // Files produced by each agent, keyed by agentId, nested under that agent's
   // expanded row (replacing the old standalone Files section).
   //
+  // Sourcing merges two feeds so files show up LIVE while an agent works:
+  //  - `activity.activities` (lifecycle events) carries the
+  //    `agent-completed` rollup — the only file source for engines that
+  //    report changes on the turn result (e.g. claude-code agents).
+  //  - `filesFeed.files` carries agent-attributed `tool_result` events as
+  //    each tool finishes, so a native agent's files appear the moment
+  //    they're written. The files store only refetches on file-bearing
+  //    events, so this input is quiet during pure text streaming.
+  // `mergeAgentFileEvents` dedupes overlap by event id; per-path dedupe in
+  // `deriveConversationFiles` keeps live + rollup copies from double-listing.
+  //
   // `activity.activities` gets a fresh array identity on every streamed delta
   // (the activity window is refetched per `localChat:updated`), so a plain
   // `useMemo([activity.activities])` re-ran the heavy per-agent file
@@ -759,18 +771,22 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   // events so it only re-runs when an agent's files actually change; the
   // returned Map keeps a stable reference across deltas otherwise (so the
   // memoized task rows that take it as a prop also stop re-reconciling).
+  const agentFileEvents = useMemo(
+    () => mergeAgentFileEvents(activity.activities, filesFeed.files),
+    [activity.activities, filesFeed.files],
+  );
   const agentFilesCacheRef = useRef<{
     signature: string;
     result: Map<string, ConversationFileEntry[]>;
   } | null>(null);
   const agentFiles = useMemo(() => {
-    const signature = agentFilesSignature(activity.activities);
+    const signature = agentFilesSignature(agentFileEvents);
     const cached = agentFilesCacheRef.current;
     if (cached && cached.signature === signature) return cached.result;
-    const result = deriveAgentFilesMap(activity.activities);
+    const result = deriveAgentFilesMap(agentFileEvents);
     agentFilesCacheRef.current = { signature, result };
     return result;
-  }, [activity.activities]);
+  }, [agentFileEvents]);
 
   const filteredSchedules = useMemo(() => {
     if (!query) return schedules;
