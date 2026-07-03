@@ -33,6 +33,10 @@ Then snapshot:
 
 Stella auto-injects `stella-browser` into the shell PATH, so no setup or env wiring is required.
 
+## Missing extension
+
+If a command fails with `Extension not connected. Install the Stella Browser Bridge extension and connect it.`, Stella handles it for you: an inline install card appears in the user's chat, and once they add the extension your failed command is re-run automatically — the tool result you see is the retried run plus a `note`. If the `note` says the user declined (or recently declined), do not retry `stella-browser` and do not re-offer; fall back to `stella-computer` GUI automation on a visible browser window, or continue without the browser. `Extension connection is dead (service worker terminated)` is different — that one self-heals; just retry the command once.
+
 ## Extension Mode Workflow
 
 Every browser automation follows this pattern:

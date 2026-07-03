@@ -23,6 +23,8 @@ stella-connect request-connection gmail --reason "To check your recent purchase 
 
 `discover` returns the best matches with `enabled`/`connected`/`declined` state and an explicit next step. `request-connection` shows the user an inline connect card in the chat and **blocks** until they respond: on `{ ok: true }` the integration is enabled + authorized (Composio/OAuth in the browser) — continue the original task immediately, do not re-ask what the user wanted. On exit 2 with `error: "declined"` or `"previously_declined"`, acknowledge once, mention the Store, and continue by other means without offering again. Declines are persisted; only rerun with `--requested-by-user` if the user explicitly asks to connect.
 
+Don't idle while the card is open: connecting is an optimization, not a gate. Run `request-connection` through `exec_command` with a short `yield_time_ms` so the blocking call becomes a background session, keep working on the task via the browser/computer fallback in the meantime, and poll the session with `write_stdin`. If it resolves connected, switch to the connector for the rest of the work; if it resolves declined, stay on the fallback.
+
 ## Source layout
 
 - CLI entrypoint: `runtime/kernel/cli/stella-connect.ts`

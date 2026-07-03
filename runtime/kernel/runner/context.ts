@@ -905,6 +905,7 @@ export const buildAgentContext = async (
         "Stella can connect external services (email, calendar, docs, CRMs, and hundreds more) on demand — only already-connected ones appear as skills above.",
         'When a request implies an external service with no matching skill, run `stella-connect discover "<keywords>"`. It cheaply returns the best catalog matches with connection state and a next step.',
         'To use one that is not connected, run `stella-connect request-connection <id> --reason "<short why>"`. This shows the user an inline connect card in chat and blocks until they respond; on success, continue the original task immediately without re-asking.',
+        "Connecting is an optimization, not a gate — don't sit idle on the card. Start `request-connection` with a short `yield_time_ms` so it becomes a background session, proceed with the task via the browser/computer fallback meanwhile, and poll the session; if it resolves connected, switch to the connector for the rest of the work.",
         "If it reports a decline (now or earlier), acknowledge once, mention it can be enabled later in the Store, and continue by other means without re-offering.",
         "Never connect an integration without the user's consent through the card or the Store.",
       ].join("\n"),
