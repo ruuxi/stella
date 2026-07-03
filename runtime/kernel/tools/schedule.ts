@@ -15,8 +15,29 @@ import type {
 const formatResult = (value: unknown) =>
   typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
 
-const SCHEDULE_TASK_TIMEOUT_MS = 45_000;
-const SCHEDULE_TASK_POLL_MS = 150;
+/**
+ * Waiting policy for the delegated schedule subagent. A flat wall-clock
+ * timeout proved too aggressive in practice: scheduling prompts that mention
+ * external integrations (e.g. "check Gmail every morning") legitimately make
+ * the subagent probe connectors/skills for a minute or more before writing
+ * the cron job. So the tool cancels only when the agent has gone idle — no
+ * new activity for `idleTimeoutMs` — or when the generous `maxWaitMs` hard
+ * cap trips as a backstop against a truly wedged run.
+ */
+export type ScheduleWaitPolicy = {
+  /** Hard cap on total wait, regardless of activity. */
+  maxWaitMs: number;
+  /** Cancel when the agent reports no new activity for this long. */
+  idleTimeoutMs: number;
+  /** Poll interval. */
+  pollMs: number;
+};
+
+const DEFAULT_SCHEDULE_WAIT_POLICY: ScheduleWaitPolicy = {
+  maxWaitMs: 300_000,
+  idleTimeoutMs: 90_000,
+  pollMs: 150,
+};
 
 const getConversationId = (
   args: Record<string, unknown>,
@@ -197,6 +218,7 @@ export const handleSchedule = async (
   scheduleApi: ScheduleToolApi | undefined,
   args: Record<string, unknown>,
   context: ToolContext,
+  waitPolicy: ScheduleWaitPolicy = DEFAULT_SCHEDULE_WAIT_POLICY,
 ): Promise<ToolResult> => {
   const api = requireAgentApi(agentApi);
   const prompt = getSchedulePrompt(args);
@@ -226,10 +248,19 @@ export const handleSchedule = async (
   });
 
   const startedAt = Date.now();
-  while (Date.now() - startedAt < SCHEDULE_TASK_TIMEOUT_MS) {
+  let lastActivityAt = startedAt;
+  let lastActivitySignature = "";
+  while (Date.now() - startedAt < waitPolicy.maxWaitMs) {
     const snapshot = await api.getAgent(created.threadId);
     if (!snapshot) {
       throw new Error(`Schedule task not found: ${created.threadId}`);
+    }
+    // `recentActivity` moves whenever the subagent streams progress or runs a
+    // tool; treat any change as liveness and reset the idle clock.
+    const activitySignature = JSON.stringify(snapshot.recentActivity ?? []);
+    if (activitySignature !== lastActivitySignature) {
+      lastActivitySignature = activitySignature;
+      lastActivityAt = Date.now();
     }
     if (snapshot.status === "completed") {
       const summary =
@@ -249,7 +280,10 @@ export const handleSchedule = async (
     if (snapshot.status === "error" || snapshot.status === "canceled") {
       throw new Error(snapshot.error || "Scheduling request failed.");
     }
-    await sleep(SCHEDULE_TASK_POLL_MS);
+    if (Date.now() - lastActivityAt >= waitPolicy.idleTimeoutMs) {
+      break;
+    }
+    await sleep(waitPolicy.pollMs);
   }
 
   await api.cancelAgent(
