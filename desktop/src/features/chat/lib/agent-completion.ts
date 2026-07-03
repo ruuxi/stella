@@ -54,7 +54,9 @@ export type AgentCompletionSection = {
   /** Compact excerpt of the agent's `result` text, from the latest
    *  `agent-completed` event backing this section. The card renders it only
    *  for fileless sections, where it stands in for the file pills as the
-   *  completion's substance. */
+   *  completion's substance. Inline-only markdown, safe for the chat
+   *  `Markdown` component: block constructs are stripped and truncation-
+   *  dangled inline markers removed (see `toSummaryExcerpt`). */
   summary?: string;
 };
 
@@ -162,9 +164,76 @@ const truncateAtGrapheme = (value: string, max: number): string => {
   return value.slice(0, end);
 };
 
+/**
+ * Reduce a markdown result to inline-only markdown before the excerpt is
+ * collapsed to one line. The excerpt renders through the chat `Markdown`
+ * component, but it's a muted one-liner, not a document: block constructs
+ * would either render at document scale (headings) or — worse — turn into
+ * stray literals once newlines collapse (`## Heading` mid-line renders as a
+ * literal "##"). Strip them line-by-line while newline context still
+ * exists; inline emphasis / code spans pass through untouched.
+ */
+const stripBlockMarkdown = (text: string): string =>
+  text
+    .split(/\r?\n/)
+    // Drop fence delimiter lines; fenced content stays as plain text.
+    .filter((line) => !/^\s*(?:```|~~~)/.test(line))
+    .map((line) =>
+      line
+        // ATX headings (`## Title`) → plain text.
+        .replace(/^\s{0,3}#{1,6}\s+/, "")
+        // Blockquote markers (possibly nested).
+        .replace(/^\s*(?:>\s?)+/, "")
+        // Bullet / ordered list markers.
+        .replace(/^\s*(?:[-*+]|\d{1,3}[.)])\s+/, "")
+        // Horizontal rules become nothing.
+        .replace(/^\s*(?:[-*_]\s*){3,}$/, ""),
+    )
+    .join("\n");
+
+const removeLastOccurrence = (text: string, marker: string): string => {
+  const index = text.lastIndexOf(marker);
+  if (index === -1) return text;
+  return text.slice(0, index) + text.slice(index + marker.length);
+};
+
+const countOccurrences = (text: string, marker: string): number =>
+  text.split(marker).length - 1;
+
+/**
+ * The excerpt cut can land mid-construct, leaving an unclosed `**` /
+ * `` ` `` / `~~` / `*` that would style (or, for a code span, swallow) the
+ * rest of the rendered excerpt. Drop the dangling opener so the truncated
+ * tail renders as plain text. Approximate on purpose: pair-counting is
+ * exact enough for a one-line 200-char excerpt and avoids a full inline-
+ * markdown parse. Underscores are deliberately left alone — they're
+ * overwhelmingly `snake_case` identifiers here, and intraword `_` never
+ * triggers emphasis anyway.
+ */
+const dropDanglingInlineMarkers = (text: string): string => {
+  let out = text;
+  if (countOccurrences(out, "`") % 2 === 1) {
+    out = removeLastOccurrence(out, "`");
+  }
+  if (countOccurrences(out, "**") % 2 === 1) {
+    out = removeLastOccurrence(out, "**");
+  }
+  if (countOccurrences(out, "~~") % 2 === 1) {
+    out = removeLastOccurrence(out, "~~");
+  }
+  const singleStars =
+    countOccurrences(out, "*") - 2 * countOccurrences(out, "**");
+  if (singleStars % 2 === 1) {
+    out = removeLastOccurrence(out, "*");
+  }
+  return out;
+};
+
 const toSummaryExcerpt = (result: string): string => {
-  const compact = result.replace(/\s+/g, " ").trim();
-  if (compact.length <= SUMMARY_MAX_CHARS) return compact;
+  const compact = stripBlockMarkdown(result).replace(/\s+/g, " ").trim();
+  if (compact.length <= SUMMARY_MAX_CHARS) {
+    return dropDanglingInlineMarkers(compact);
+  }
   // Prefer a word boundary near the cap; otherwise cut between graphemes.
   const head = truncateAtGrapheme(compact, SUMMARY_MAX_CHARS);
   const lastSpace = head.lastIndexOf(" ");
@@ -172,7 +241,7 @@ const toSummaryExcerpt = (result: string): string => {
     lastSpace >= SUMMARY_MAX_CHARS - SUMMARY_BOUNDARY_SLACK
       ? head.slice(0, lastSpace)
       : head;
-  return `${cut.trimEnd()}…`;
+  return `${dropDanglingInlineMarkers(cut.trimEnd()).trimEnd()}…`;
 };
 
 /**
