@@ -304,13 +304,26 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
         <motion.div
           key="composer-activity-pill"
           className="composer-activity-pill-slot"
-          initial={{ opacity: 0, x: -8, scale: 0.96 }}
-          animate={{ opacity: 1, x: 0, scale: 1 }}
-          exit={{ opacity: 0, x: -8, scale: 0.96 }}
+          // The slot's occupied width animates 0 ↔ auto so the neighboring
+          // suggestion chips slide over instead of teleporting when the pill
+          // enters/leaves; `marginRight: -6` cancels the lead row's 6px flex
+          // gap at zero width so the chips settle exactly where they'd sit
+          // with no pill at all. Fade + slide ride on top (compositor); the
+          // width tween matches the sidebar's own 460ms slide so the two
+          // read as one motion.
+          initial={{ opacity: 0, x: -8, scale: 0.96, width: 0, marginRight: -6 }}
+          animate={{ opacity: 1, x: 0, scale: 1, width: "auto", marginRight: 0 }}
+          exit={{ opacity: 0, x: -8, scale: 0.96, width: 0, marginRight: -6 }}
           transition={
             reduceMotion
               ? { duration: 0 }
-              : { duration: 0.18, ease: [0.32, 0.72, 0, 1] }
+              : {
+                  duration: 0.42,
+                  ease: [0.32, 0.72, 0.16, 1],
+                  // Fade resolves ahead of the width so the pill never
+                  // lingers as a squished sliver mid-collapse.
+                  opacity: { duration: 0.26, ease: "easeOut" },
+                }
           }
         >
           <ActivityPillBody
