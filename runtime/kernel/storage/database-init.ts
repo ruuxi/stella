@@ -179,6 +179,13 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     CREATE INDEX IF NOT EXISTS idx_runtime_threads_last_used
     ON runtime_threads(last_used_at);
   `);
+  // Recall's adaptive-limit preflight counts threads created in the last
+  // day on every call; this recency index keeps that COUNT a range scan
+  // instead of a full-table scan over all history.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_runtime_threads_created
+    ON runtime_threads(created_at);
+  `);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS runtime_thread_sessions (

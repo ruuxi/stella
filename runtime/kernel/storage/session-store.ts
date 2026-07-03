@@ -2977,6 +2977,9 @@ export class SessionStore {
    * How many index-eligible threads were created since `sinceMs` — the
    * cheap signal Recall uses to size its thread index (a high-volume day
    * widens the index so heavy users keep their realistic recall window).
+   * `idx_runtime_threads_created` makes this a range scan over just the
+   * recent window (the eligibility filters apply as residuals on those few
+   * rows), so the preflight scales with daily volume, not total history.
    */
   countThreadsCreatedSince(sinceMs: number): number {
     const row = this.db
