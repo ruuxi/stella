@@ -3,7 +3,9 @@ import {
   createPaceState,
   recordArrival,
   stepPaceCount,
+  CATCHUP_MAX_CPS,
   FINISH_LATENCY_MS,
+  FINISH_MAX_CPS,
   MIN_PLAYOUT_CPS,
   RATE_SLEW_PER_SEC,
   START_HOLD_MS,
@@ -263,6 +265,87 @@ describe("stepPaceCount — jitter-buffer playout cadence", () => {
     expect(remaining).toBe(0);
     // 12 chars at >= 6 cps completes within ~2 s (plus slack).
     expect(count * DT).toBeLessThan(2_600);
+  });
+
+  it("pours a giant mid-stream burst at a bounded catch-up rate (no dump)", () => {
+    // The production symptom: a small first chunk, a pause, then the whole
+    // rest of the answer in one fat clump (big native SSE chunks after TTFB,
+    // or a structured-output final decoded in one burst). The emergency
+    // valve used to drain proportionally to the backlog — thousands of
+    // chars/sec, "first word, then everything". It must stay a bounded pour.
+    const state = createPaceState();
+    const { counts, backlog } = simulate(
+      state,
+      (f) => (f === 0 ? 6 : f === 60 ? 2_400 : 0),
+      3_000, // 50 s — plenty to drain 2,406 chars at the capped rate
+    );
+    // Bounded per-frame release: never more than one frame's worth at the
+    // catch-up ceiling (with carry rounding slack).
+    const maxPerFrame = Math.ceil((CATCHUP_MAX_CPS * DT) / 1000) + 1;
+    expect(Math.max(...counts)).toBeLessThanOrEqual(maxPerFrame);
+    // And it does catch up — the whole burst lands.
+    expect(backlog[backlog.length - 1]).toBe(0);
+    // Once the burst starts revealing, it's continuous — no visible stall.
+    const firstAfterBurst = counts.findIndex((c, f) => f > 60 && c > 0);
+    const draining = counts.slice(
+      firstAfterBurst,
+      counts.findIndex((_, f) => f > 60 && backlog[f] === 0),
+    );
+    expect(longestStallFrames(draining)).toBeLessThan(frames(350));
+  });
+
+  it("finishes a whole-message backlog as an accelerated pour, not a teleport", () => {
+    // Stream end with the entire answer still buffered: the finish drain
+    // used to be time-bounded only (backlog / FINISH_LATENCY_MS), which
+    // teleported a 2,400-char message out in ~a quarter second. It must
+    // accelerate to FINISH_MAX_CPS and no further.
+    const state = createPaceState();
+    const counts: number[] = [];
+    let remaining = 2_400;
+    while (remaining > 0 && counts.length < 3_000) {
+      const c = stepPaceCount(state, remaining, DT, true);
+      remaining -= c;
+      counts.push(c);
+    }
+    expect(remaining).toBe(0);
+    const maxPerFrame = Math.ceil((FINISH_MAX_CPS * DT) / 1000) + 1;
+    expect(Math.max(...counts)).toBeLessThanOrEqual(maxPerFrame);
+    // Not a teleport: the glide spans a readable stretch...
+    expect(counts.length * DT).toBeGreaterThan(
+      ((2_400 / FINISH_MAX_CPS) * 1000) / 1.25,
+    );
+    // ...but stays prompt: capped rate plus the time-bounded tail.
+    expect(counts.length * DT).toBeLessThan(
+      (2_400 / FINISH_MAX_CPS) * 1000 + FINISH_LATENCY_MS * 2.5,
+    );
+  });
+
+  it("keeps the full first-word-then-burst-then-finish turn bounded", () => {
+    // End-to-end shape of the reported bug: tiny first chunk, ~1 s pause,
+    // giant burst, stream end ~100 ms later. Every frame of the reveal —
+    // through the burst AND the finish — must stay bounded.
+    const state = createPaceState();
+    let buf = 0;
+    const counts: number[] = [];
+    for (let f = 0; f < 3_000 && (f < 70 || buf > 0); f += 1) {
+      if (f === 0) {
+        recordArrival(state, 6, 0);
+        buf += 6;
+      }
+      if (f === 60) {
+        recordArrival(state, 2_400, f * DT);
+        buf += 2_400;
+      }
+      const c = stepPaceCount(state, buf, DT, f >= 66);
+      buf -= c;
+      counts.push(c);
+    }
+    expect(buf).toBe(0);
+    const maxPerFrame = Math.ceil((FINISH_MAX_CPS * DT) / 1000) + 1;
+    expect(Math.max(...counts)).toBeLessThanOrEqual(maxPerFrame);
+    // The reveal after the burst spans seconds, not a blink.
+    const drainingFrames = counts.length - 60;
+    expect(drainingFrames * DT).toBeGreaterThan(1_500);
   });
 
   it("drains a finishing backlog promptly but not instantly", () => {

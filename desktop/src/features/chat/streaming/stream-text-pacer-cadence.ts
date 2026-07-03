@@ -38,13 +38,18 @@
  *
  *   STREAM END       `finishing: true` bypasses the hold and drains the
  *                    backlog within ~FINISH_LATENCY_MS (with a FINISH_MIN_CPS
- *                    floor so the tail lands linearly) — prompt, but a glide
- *                    rather than a dump.
+ *                    floor so the tail lands linearly), capped at
+ *                    `FINISH_MAX_CPS` — a whole-message backlog (a provider
+ *                    that delivered the answer in one fat burst right before
+ *                    the end event) still reveals as an accelerated pour,
+ *                    never a single-blink teleport.
  *
  *   EMERGENCY VALVE  Outside of finishing, a backlog representing more than
- *                    `EMERGENCY_LAG_MS` of delay drains proportionally faster
- *                    (pathological mid-message dumps only; normal operation
- *                    never touches it).
+ *                    `EMERGENCY_LAG_MS` of delay drains proportionally faster,
+ *                    capped at `CATCHUP_MAX_CPS` so even a giant mid-message
+ *                    burst catches up as a bounded fast pour instead of
+ *                    dumping (pathological mid-message dumps only; normal
+ *                    operation never touches it).
  *
  * Velocity is chars/sec integrated with the real frame `dt` (frame-rate
  * independent; `dt` clamped so a tab stall can't dump the buffer). Kept pure
@@ -80,8 +85,12 @@
  *   ARRIVAL_TAU_MS           smoothing window for the arrival-rate EMA. (1800)
  *   GAP_TAU_MS               smoothing window for the gap EMA. (4000)
  *   EMERGENCY_LAG_MS         mid-stream lag bound (pathological only). (6000)
+ *   CATCHUP_MAX_CPS          ceiling on the emergency drain — bounded fast
+ *                            pour, never a dump. (450)
  *   FINISH_LATENCY_MS        drain window once the stream has ended. (280)
  *   FINISH_MIN_CPS           linear-landing floor while finishing. (120)
+ *   FINISH_MAX_CPS           ceiling on the finish glide — accelerate, don't
+ *                            teleport. (700)
  * ──────────────────────────────────────────────────────────────────────────
  */
 
@@ -126,12 +135,24 @@ export const GAP_TAU_MS = 4000;
 export const RATE_CONFIDENCE_WEIGHT = 0.15;
 /** Mid-stream lag bound (ms) — the emergency drain valve. */
 export const EMERGENCY_LAG_MS = 6000;
+/** Ceiling (chars/sec) on the emergency drain. Without it the valve's rate
+ *  is proportional to the backlog, so a provider that dumps a whole answer
+ *  mid-stream (fat SSE clumps after TTFB, structured-output finals decoded
+ *  in one burst) revealed thousands of chars per second — "first word, then
+ *  everything". Capped, a giant burst catches up as a bounded fast pour. */
+export const CATCHUP_MAX_CPS = 450;
 /** Latency cap (ms) once the stream has ended — a fast glide, not a dump. */
 export const FINISH_LATENCY_MS = 280;
 /** Floor velocity (chars/sec) while finishing. The latency cap alone decays
  *  the backlog exponentially (rate ∝ remaining), leaving a long asymptotic
  *  tail; this floor makes the last stretch land linearly and promptly. */
 export const FINISH_MIN_CPS = 120;
+/** Ceiling (chars/sec) on the finish glide. FINISH_LATENCY_MS alone is a
+ *  time bound (rate ∝ backlog), so a whole-message backlog at stream end
+ *  teleported out in ~a quarter second. The cap keeps the finish an
+ *  accelerated pour: small tails still land within ~FINISH_LATENCY_MS,
+ *  large backlogs stream out at a fast but readable bounded rate. */
+export const FINISH_MAX_CPS = 700;
 
 export type PaceState = {
   /** Smoothed display velocity, in code points per second. */
@@ -218,7 +239,8 @@ const clamp = (value: number, lo: number, hi: number): number =>
  * across frames). Never returns more than `backlog`.
  *
  * `finishing: true` means the stream has ended for this slot: the startup
- * hold is bypassed and the backlog drains within ~FINISH_LATENCY_MS.
+ * hold is bypassed and the backlog drains within ~FINISH_LATENCY_MS (rate
+ * capped at FINISH_MAX_CPS, so a large backlog glides rather than dumps).
  */
 export function stepPaceCount(
   state: PaceState,
@@ -307,10 +329,18 @@ export function stepPaceCount(
   // if more text arrives.
   let cps = state.cps;
   if (finishing) {
-    const finishCps = (backlog * 1000) / FINISH_LATENCY_MS;
+    // Time-bounded drain (~FINISH_LATENCY_MS) for small tails, rate-bounded
+    // (FINISH_MAX_CPS) for large ones — accelerate, never teleport.
+    const finishCps = Math.min(
+      (backlog * 1000) / FINISH_LATENCY_MS,
+      FINISH_MAX_CPS,
+    );
     cps = Math.max(cps, finishCps, FINISH_MIN_CPS);
   } else {
-    const emergencyCps = (backlog * 1000) / EMERGENCY_LAG_MS;
+    const emergencyCps = Math.min(
+      (backlog * 1000) / EMERGENCY_LAG_MS,
+      CATCHUP_MAX_CPS,
+    );
     if (emergencyCps > cps) cps = emergencyCps;
   }
 

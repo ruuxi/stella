@@ -34,7 +34,11 @@ import {
 const DEFAULT_FRAME_MS = 16.7
 
 /** Hard-flush fallback if a finishing slot's rAF drain can't run (hidden
- *  window throttles rAF); comfortably beyond FINISH_LATENCY_MS. */
+ *  window throttles rAF); comfortably beyond FINISH_LATENCY_MS. The timer
+ *  is progress-aware: while the drain is visibly shrinking the buffer it
+ *  re-arms instead of flushing, so a large backlog's rate-capped finish
+ *  glide (FINISH_MAX_CPS) is never cut short — only a genuinely stalled
+ *  drain dumps. */
 const FINISH_FALLBACK_MS = 1200
 
 type PendingEntry = {
@@ -46,6 +50,8 @@ type PendingEntry = {
   onDrained?: (slotId: string) => void
   /** Safety hard-flush timer armed while `finishing`. */
   finishTimer?: number
+  /** Buffered length when `finishTimer` was (re)armed — progress check. */
+  finishTimerTextLength?: number
 }
 
 type StreamSlotPredicate = (entry: {
@@ -247,15 +253,29 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         if (entry.finishTimer !== undefined) {
           window.clearTimeout(entry.finishTimer)
         }
-        entry.finishTimer = window.setTimeout(() => {
-          const current = pendingRef.current.get(slotId)
-          if (current !== entry) return
-          pendingRef.current.delete(slotId)
-          paceStateRef.current.delete(slotId)
-          if (current.text) releaseRef.current(slotId, current.text)
-          cancelLoopIfIdle()
-          current.onDrained?.(slotId)
-        }, FINISH_FALLBACK_MS)
+        const armFallback = () => {
+          entry.finishTimerTextLength = entry.text.length
+          entry.finishTimer = window.setTimeout(() => {
+            const current = pendingRef.current.get(slotId)
+            if (current !== entry) return
+            // The paced drain is making progress (rAF is running): a large
+            // backlog legitimately outlasts the timeout at the bounded
+            // finish rate — keep gliding, re-check later.
+            if (
+              current.text.length <
+              (current.finishTimerTextLength ?? Number.POSITIVE_INFINITY)
+            ) {
+              armFallback()
+              return
+            }
+            pendingRef.current.delete(slotId)
+            paceStateRef.current.delete(slotId)
+            if (current.text) releaseRef.current(slotId, current.text)
+            cancelLoopIfIdle()
+            current.onDrained?.(slotId)
+          }, FINISH_FALLBACK_MS)
+        }
+        armFallback()
         ensureLoop()
       }
       return draining
