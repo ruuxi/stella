@@ -680,6 +680,35 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
 
   const groupedRows = useMemo(() => groupActivityTasks(allTasks), [allTasks]);
 
+  // Drop overrides for groups that have left the task list (aged out of the
+  // activity window / conversation switch) so the map can't grow unboundedly
+  // across a long session. Uses the unfiltered rows: a group merely hidden
+  // by the sidebar search keeps its override.
+  useEffect(() => {
+    setGroupExpandOverrides((prev) => {
+      if (prev.size === 0) return prev;
+      const liveKeys = new Set<string>();
+      for (const row of groupedRows) {
+        if (row.kind === "group") liveKeys.add(row.group.groupKey);
+      }
+      if (prev.size <= liveKeys.size) {
+        let allLive = true;
+        for (const key of prev.keys()) {
+          if (!liveKeys.has(key)) {
+            allLive = false;
+            break;
+          }
+        }
+        if (allLive) return prev;
+      }
+      const next = new Map<string, boolean>();
+      for (const [key, value] of prev) {
+        if (liveKeys.has(key)) next.set(key, value);
+      }
+      return next;
+    });
+  }, [groupedRows]);
+
   const activityRows = useMemo(() => {
     if (!query) return groupedRows;
     return groupedRows.filter((row) =>
