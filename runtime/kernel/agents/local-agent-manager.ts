@@ -168,6 +168,15 @@ type RuntimeAgentRecord = {
    * tool's idle timeout) don't mistake "one slow tool" for a wedged agent.
    */
   lastActivityAt: number;
+  /**
+   * Number of tool calls currently in flight (incremented on tool start,
+   * decremented on tool end). The stamp above only moves on discrete events,
+   * so a single tool call that runs longer than a poller's idle window would
+   * still read as idle mid-call; a non-zero count tells pollers "working,
+   * not idle" for the whole duration. Reset at turn boundaries so a run that
+   * dies without emitting tool-end events can't leak a stuck non-zero count.
+   */
+  activeToolCount: number;
   progressBuffer: string;
   toSubagentQueue: string[];
   toOrchestratorQueue: string[];
@@ -708,6 +717,10 @@ export class LocalAgentManager implements AgentToolApi {
           ? task.recentActivity
           : undefined,
       lastActivityAt: task.lastActivityAt,
+      activeToolCount:
+        task.status === "running" || task.status === "pending"
+          ? task.activeToolCount
+          : 0,
       messages: task.messageLog.slice(-10),
     };
   }
@@ -776,6 +789,7 @@ export class LocalAgentManager implements AgentToolApi {
       activeSelfModRunId: undefined,
       recentActivity: [`Continuing thread: ${truncate(prompt, 200)}`],
       lastActivityAt: Date.now(),
+      activeToolCount: 0,
       progressBuffer: "",
       toSubagentQueue: [],
       toOrchestratorQueue: [],
@@ -1051,6 +1065,7 @@ export class LocalAgentManager implements AgentToolApi {
           // agent is working.
           task.recentActivity = [truncate(statusText, 500)];
           task.lastActivityAt = Date.now();
+          task.activeToolCount += 1;
           this.opts.onAgentEvent?.({
             type: "agent-progress",
             conversationId: task.conversationId,
@@ -1077,6 +1092,7 @@ export class LocalAgentManager implements AgentToolApi {
             return;
           }
           task.lastActivityAt = Date.now();
+          task.activeToolCount = Math.max(0, task.activeToolCount - 1);
         },
         toolExecutor: async (toolName, toolArgs, toolContext, signal) => {
           if (
@@ -1115,7 +1131,16 @@ export class LocalAgentManager implements AgentToolApi {
           }
         },
       };
-      const result = await this.opts.runSubagent(runSubagentArgs);
+      let result: Awaited<ReturnType<LocalAgentManagerOpts["runSubagent"]>>;
+      // Turn boundary: whatever the run reports, no tool is in flight once
+      // `runSubagent` returns (or throws). Clearing here — not just in
+      // onToolEnd — keeps the in-flight signal honest for runs that die
+      // mid-tool without ever emitting a tool-end event.
+      try {
+        result = await this.opts.runSubagent(runSubagentArgs);
+      } finally {
+        task.activeToolCount = 0;
+      }
 
       task.completedAt = Date.now();
       // Bank this run's collected file records immediately, before any
@@ -1333,6 +1358,7 @@ export class LocalAgentManager implements AgentToolApi {
       activeSelfModRunId: undefined,
       recentActivity: [],
       lastActivityAt: Date.now(),
+      activeToolCount: 0,
       progressBuffer: "",
       toSubagentQueue: [],
       toOrchestratorQueue: [],

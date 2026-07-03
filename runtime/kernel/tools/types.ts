@@ -166,6 +166,13 @@ export type AgentToolSnapshot = {
    * which only moves on streamed text.
    */
   lastActivityAt?: number;
+  /**
+   * Tool calls currently in flight. `lastActivityAt` only moves on discrete
+   * events (progress, tool start/end), so a single tool call outlasting an
+   * idle window would read as idle mid-call; a non-zero count means the
+   * agent is actively working regardless of how stale the stamp looks.
+   */
+  activeToolCount?: number;
   messages?: Array<{
     from: "orchestrator" | "subagent";
     text: string;

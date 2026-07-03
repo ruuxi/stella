@@ -1038,20 +1038,31 @@ describe("LocalAgentManager file records across send_input re-runs", () => {
 
     const midToolSnapshot = await manager.getAgent(task.threadId);
     expect(midToolSnapshot?.status).toBe("running");
-    // Tool start alone must register as liveness even with no streamed text.
+    // Tool start stamped liveness and marked the tool in flight.
     expect(midToolSnapshot?.lastActivityAt).toBeGreaterThanOrEqual(
       beforeCreate,
     );
+    expect(midToolSnapshot?.activeToolCount).toBe(1);
     expect(midToolSnapshot?.recentActivity).toEqual(["Running exec_command"]);
 
+    // Real manager behavior while the tool keeps running: the stamp does
+    // NOT move (nothing re-stamps it mid-call) — `activeToolCount` is the
+    // only signal that the agent isn't idle. This is exactly the window
+    // where a stamp-only idle test would wrongly cancel.
     const stampAfterStart = midToolSnapshot?.lastActivityAt ?? 0;
-    await sleep(15);
+    await sleep(30);
+    const stillMidToolSnapshot = await manager.getAgent(task.threadId);
+    expect(stillMidToolSnapshot?.lastActivityAt).toBe(stampAfterStart);
+    expect(stillMidToolSnapshot?.activeToolCount).toBe(1);
+
     releaseRun?.();
     await waitForAgentSettled(manager, task.threadId);
 
     const finalSnapshot = await manager.getAgent(task.threadId);
     expect(finalSnapshot?.status).toBe("completed");
-    // Tool end bumped the stamp past the tool-start one.
+    // Tool end bumped the stamp past the tool-start one and cleared the
+    // in-flight count.
     expect(finalSnapshot?.lastActivityAt).toBeGreaterThan(stampAfterStart);
+    expect(finalSnapshot?.activeToolCount).toBe(0);
   });
 });

@@ -4,10 +4,12 @@ import {
   handleSchedule,
   type ScheduleWaitPolicy,
 } from "../../../../../runtime/kernel/tools/schedule.js";
+import { LocalAgentManager } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type {
   AgentToolApi,
   AgentToolSnapshot,
   ToolContext,
+  ToolResult,
 } from "../../../../../runtime/kernel/tools/types.js";
 
 const context: ToolContext = {
@@ -36,6 +38,7 @@ const makeAgentApi = (
 const runningSnapshot = (
   recentActivity?: string[],
   lastActivityAt?: number,
+  activeToolCount?: number,
 ): AgentToolSnapshot => ({
   id: "thread-1",
   status: "running",
@@ -44,6 +47,7 @@ const runningSnapshot = (
   completedAt: null,
   ...(recentActivity ? { recentActivity } : {}),
   ...(typeof lastActivityAt === "number" ? { lastActivityAt } : {}),
+  ...(typeof activeToolCount === "number" ? { activeToolCount } : {}),
 });
 
 const fastPolicy = (
@@ -109,14 +113,15 @@ describe("handleSchedule wait policy", () => {
     expect(api.canceled).toEqual([]);
   });
 
-  it("stays alive through one slow tool call via lastActivityAt, with static recentActivity", async () => {
-    // Simulates LocalAgentManager during a single long-running tool: the
-    // display string never changes, but the liveness stamp keeps moving
-    // (tool start already bumped it; here we refresh it each poll as the
-    // manager does on tool start/end).
+  it("stays alive through one slow tool call: static stamp, tool in flight", async () => {
+    // Faithful to LocalAgentManager mid-tool: lastActivityAt was stamped
+    // once at tool start and does NOT move while the tool runs; the only
+    // liveness signal is activeToolCount > 0. The tool outlasts the idle
+    // window several times over.
     const start = Date.now();
+    const stampAtToolStart = Date.now();
     const api = makeAgentApi(() => {
-      if (Date.now() - start > 250) {
+      if (Date.now() - start > 350) {
         return {
           ...runningSnapshot(),
           status: "completed",
@@ -124,7 +129,7 @@ describe("handleSchedule wait policy", () => {
           result: "Cron created after slow connector probe.",
         };
       }
-      return runningSnapshot(["Running exec_command"], Date.now());
+      return runningSnapshot(["Running exec_command"], stampAtToolStart, 1);
     });
 
     const result = await handleSchedule(
@@ -136,6 +141,20 @@ describe("handleSchedule wait policy", () => {
     );
     expect(result.result).toBe("Cron created after slow connector probe.");
     expect(api.canceled).toEqual([]);
+  });
+
+  it("cancels on a static stamp once no tool is in flight", async () => {
+    // Same static stamp, but activeToolCount is 0 — a genuinely idle agent
+    // (e.g. wedged between turns) still gets cancelled after the idle window.
+    const staleStamp = Date.now();
+    const api = makeAgentApi(() =>
+      runningSnapshot(["Running exec_command"], staleStamp, 0),
+    );
+
+    await expect(
+      handleSchedule(api, undefined, args, context, fastPolicy()),
+    ).rejects.toThrow("Scheduling request timed out.");
+    expect(api.canceled).toEqual(["thread-1"]);
   });
 
   it("cancels when lastActivityAt goes stale even if recentActivity churns", async () => {
@@ -208,6 +227,65 @@ describe("handleSchedule wait policy", () => {
       ),
     ).rejects.toThrow("Scheduling request timed out.");
     expect(api.canceled).toEqual(["thread-1"]);
+  });
+
+  it("survives a real LocalAgentManager run whose single tool outlasts the idle window", async () => {
+    // End-to-end contract test: the genuine manager (not a hand-rolled
+    // snapshot) runs a subagent whose only activity is one tool call that
+    // takes ~3x the idle window, with zero streamed progress. The static
+    // mid-tool lastActivityAt must not get the agent cancelled.
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (runArgs) => {
+        runArgs.onToolStart?.({
+          runId: runArgs.runId,
+          seq: 1,
+          toolCallId: "call-1",
+          toolName: "exec_command",
+          statusText: "Running exec_command",
+        });
+        await sleep(300);
+        runArgs.onToolEnd?.({
+          runId: runArgs.runId,
+          seq: 2,
+          toolCallId: "call-1",
+          toolName: "exec_command",
+          resultPreview: "ok",
+        });
+        return { runId: runArgs.runId, result: "Cron created." };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+    const canceled: string[] = [];
+    const api: AgentToolApi = {
+      createAgent: (request) => manager.createAgent(request),
+      getAgent: (threadId) => manager.getAgent(threadId),
+      cancelAgent: async (threadId, reason) => {
+        canceled.push(threadId);
+        return manager.cancelAgent(threadId, reason);
+      },
+    };
+
+    const result = await handleSchedule(
+      api,
+      undefined,
+      args,
+      context,
+      fastPolicy({ idleTimeoutMs: 100, maxWaitMs: 2_000, pollMs: 10 }),
+    );
+    expect(result.result).toBe("Cron created.");
+    expect(canceled).toEqual([]);
   });
 
   it("surfaces subagent errors instead of timing out", async () => {
