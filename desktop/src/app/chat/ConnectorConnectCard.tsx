@@ -26,12 +26,17 @@ export const ConnectorConnectCard = ({
   const [iconFailed, setIconFailed] = useState(false);
   if (!request) return null;
 
+  const isBrowserExtension = request.kind === "browser-extension";
   const showIconImage = Boolean(request.iconUrl) && !iconFailed;
   const sub =
     request.phase === "connecting"
-      ? `Finish signing in to ${request.name} in your browser. Stella will continue once it's approved.`
+      ? isBrowserExtension
+        ? "Add the extension from the Chrome Web Store tab that just opened. Stella continues automatically once it's installed."
+        : `Finish signing in to ${request.name} in your browser. Stella will continue once it's approved.`
       : request.phase === "connected"
-        ? "Connected. Stella is continuing with your request."
+        ? isBrowserExtension
+          ? "Extension detected. Stella is continuing with your request."
+          : "Connected. Stella is continuing with your request."
         : request.phase === "error"
           ? (request.message ?? `Could not connect ${request.name}.`)
           : (request.reason ?? request.description ?? undefined);
@@ -43,7 +48,9 @@ export const ConnectorConnectCard = ({
         ? `Waiting for ${request.name}`
         : request.phase === "error"
           ? `Couldn't connect ${request.name}`
-          : `Connect ${request.name}?`;
+          : isBrowserExtension
+            ? `Connect the ${request.name}?`
+            : `Connect ${request.name}?`;
 
   return (
     <div
@@ -85,7 +92,7 @@ export const ConnectorConnectCard = ({
             className="pill-btn pill-btn--primary connector-connect-card__accept"
             onClick={() => respondToConnectorConnect(request.requestId, "accept")}
           >
-            Connect
+            {isBrowserExtension ? "Install" : "Connect"}
           </Button>
         </div>
       ) : request.phase === "connecting" ? (

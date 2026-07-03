@@ -1098,6 +1098,29 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         await peer.request(METHOD_NAMES.HOST_CREDENTIALS_REQUEST, payload, {
           retryOnDisconnect: true,
         }),
+      requestBrowserExtensionConnect: async (payload) => {
+        try {
+          return await peer.request<
+            | { ok: true; status: "connected" | "already_connected" }
+            | {
+                ok: false;
+                reason:
+                  | "declined"
+                  | "cancelled"
+                  | "timeout"
+                  | "unsupported"
+                  | string;
+              }
+          >(METHOD_NAMES.HOST_BROWSER_EXTENSION_CONNECT_REQUEST, payload, {
+            retryOnDisconnect: true,
+          });
+        } catch (error) {
+          return {
+            ok: false,
+            reason: (error as Error).message || "host_unreachable",
+          };
+        }
+      },
       requestRuntimeAuthRefresh: async (payload) =>
         await peer.request(METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH, payload, {
           retryOnDisconnect: true,

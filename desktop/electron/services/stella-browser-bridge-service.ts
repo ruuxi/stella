@@ -645,7 +645,7 @@ const getChromiumUserDataRoots = (): string[] => {
  * standard roots is the only remaining miss; that case is covered by the
  * on-demand start path in the browser IPC handlers.)
  */
-const isStellaExtensionInstalled = (): boolean => {
+export const isStellaExtensionInstalled = (): boolean => {
   for (const root of getChromiumUserDataRoots()) {
     let entries;
     try {

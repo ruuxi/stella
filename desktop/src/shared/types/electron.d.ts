@@ -1110,6 +1110,7 @@ export type ElectronSystemApi = {
         iconUrl?: string;
         category?: string;
         reason?: string;
+        kind?: "integration" | "browser-extension";
       },
     ) => void,
   ) => () => void;
