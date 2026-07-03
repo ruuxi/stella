@@ -420,4 +420,148 @@ describe("fileChanges emission", () => {
     expect(repeated.error).toBeUndefined();
     expect(repeated.producedFiles).toBeUndefined();
   });
+
+  const execContext = (root: string) => ({
+    conversationId: "c1",
+    deviceId: "d1",
+    requestId: "r1",
+    stellaAppDir: root,
+  });
+
+  it("exec_command reports nothing for a read-heavy command (non-allowlisted reads)", async () => {
+    const root = await createTempDir();
+    await writeFile(path.join(root, "a.txt"), "alpha\n", "utf-8");
+    await writeFile(path.join(root, "b.txt"), "beta\n", "utf-8");
+    const shellState = createShellState(root);
+
+    // `bash -c` is not on the known-safe list, so the snapshot machinery
+    // runs — and must find nothing, because reading files is not producing
+    // them.
+    const result = await handleExecCommand(
+      shellState,
+      {
+        cmd: "bash -c 'cat a.txt b.txt > /dev/null; grep -c alpha a.txt'",
+        workdir: root,
+        yield_time_ms: 2000,
+      },
+      execContext(root),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.producedFiles).toBeUndefined();
+  });
+
+  it("exec_command drops a bulk seed into a mentioned external directory (spawned-bootstrap churn)", async () => {
+    const root = await createTempDir();
+    const external = await createTempDir();
+    const dataDir = path.join(external, "stella-data");
+    const shellState = createShellState(root);
+
+    // Simulates a launched dev instance seeding its fresh data dir with
+    // bundled agent/skill manifests: the command mentions the dir (making it
+    // an external snapshot candidate) and 20 files appear inside it.
+    const seed = Array.from(
+      { length: 20 },
+      (_, index) => `printf x > "${dataDir}/agent-${index}.md"`,
+    ).join(" && ");
+    const result = await handleExecCommand(
+      shellState,
+      {
+        cmd: `mkdir -p "${dataDir}" && ${seed}`,
+        workdir: root,
+        yield_time_ms: 5000,
+      },
+      execContext(root),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.producedFiles).toBeUndefined();
+  });
+
+  it("exec_command drops bulk mtime churn in the workspace (checkout-style rewrites)", async () => {
+    const root = await createTempDir();
+    const docs = path.join(root, "agents");
+    await mkdir(docs, { recursive: true });
+    await Promise.all(
+      Array.from({ length: 20 }, (_, index) =>
+        writeFile(path.join(docs, `doc-${index}.md`), "original\n", "utf-8"),
+      ),
+    );
+    const shellState = createShellState(root);
+
+    // Rewrite every tracked file in place (what git checkout / worktree sync
+    // does): none of these are deliverables the agent produced.
+    const result = await handleExecCommand(
+      shellState,
+      {
+        cmd: 'for f in agents/*.md; do printf rewritten > "$f"; done',
+        workdir: root,
+        yield_time_ms: 5000,
+      },
+      execContext(root),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.producedFiles).toBeUndefined();
+  });
+
+  it("exec_command still reports a small genuine output alongside filtered noise", async () => {
+    const root = await createTempDir();
+    const shellState = createShellState(root);
+    const reportPath = path.join(root, "report.md");
+    const dataPath = path.join(root, "data.csv");
+
+    const result = await handleExecCommand(
+      shellState,
+      {
+        // Two deliverables plus collection-time noise: a log file and a
+        // hidden profile dir. Only the deliverables may surface.
+        cmd: "printf '# r' > report.md && printf 'a,b' > data.csv && printf noise > run.log && mkdir -p .profile && printf x > .profile/state",
+        workdir: root,
+        yield_time_ms: 5000,
+      },
+      execContext(root),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.producedFiles).toEqual(
+      expect.arrayContaining([
+        { path: reportPath, kind: { type: "add" } },
+        { path: dataPath, kind: { type: "add" } },
+      ]),
+    );
+    expect(result.producedFiles).toHaveLength(2);
+  });
+
+  it("write_stdin drops bulk churn produced while a session ran (background seeding)", async () => {
+    const root = await createTempDir();
+    const shellState = createShellState(root);
+    const context = execContext(root);
+
+    const started = await handleExecCommand(
+      shellState,
+      {
+        cmd: 'read line; for i in $(seq 1 20); do printf x > "seeded-$i.md"; done',
+        workdir: root,
+        yield_time_ms: 100,
+      },
+      context,
+    );
+    const sessionId = (started.result as { session_id: string | null })
+      .session_id;
+    expect(typeof sessionId).toBe("string");
+
+    const finished = await handleWriteStdin(
+      shellState,
+      {
+        session_id: sessionId,
+        chars: "go\n",
+        yield_time_ms: 5000,
+      },
+      context,
+    );
+
+    expect(finished.error).toBeUndefined();
+    expect(finished.producedFiles).toBeUndefined();
+  });
 });

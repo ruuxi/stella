@@ -78,3 +78,60 @@ export const fileChange = (
   path: string,
   kind: FileChangeKind,
 ): FileChangeRecord => ({ path, kind });
+
+const NOISE_PATH_SEGMENTS = new Set(["node_modules", "__pycache__"]);
+const NOISE_EXTS = new Set(["log", "tmp", "lock", "pid"]);
+
+const extensionOfPath = (filePath: string): string | null => {
+  const base = filePath.split(/[\\/]/).pop() ?? "";
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0 || dot === base.length - 1) return null;
+  return base.slice(dot + 1).toLowerCase();
+};
+
+/**
+ * Snapshot-detected `producedFiles` sweep up incidental writes alongside real
+ * deliverables: browser profiles (`.brave-profile/Local State`), launch logs
+ * (`.stella-launch.log`), caches, `.DS_Store`, scratch dirs. Filter those out
+ * of every produced-file surface — BOTH at collection time (shell snapshot
+ * diffs, so junk never persists into `tool_result` / rollup payloads) and on
+ * render (legacy rows persisted before collection-side filtering existed).
+ * Explicit `fileChanges` (deliberate tool edits) are NOT run through this —
+ * only indirect snapshot detections.
+ *
+ * A dot-segment means a hidden/profile/cache dir and is always noise, with
+ * one carve-out: `.stella` itself, since `~/.stella/outputs/**` is the
+ * declared deliverables home.
+ *
+ * Lives in the shared contract so the runtime collector and the renderer
+ * surfaces apply ONE definition of noise (previously renderer-only in
+ * `path-to-viewer.ts`).
+ */
+export const isNoiseProducedPath = (filePath: string): boolean => {
+  const trimmed = filePath.trim();
+  if (!trimmed) return true;
+  for (const segment of trimmed.split(/[\\/]/)) {
+    if (!segment) continue;
+    if (segment.startsWith(".") && segment !== ".stella") return true;
+    if (NOISE_PATH_SEGMENTS.has(segment)) return true;
+  }
+  const ext = extensionOfPath(trimmed);
+  return ext != null && NOISE_EXTS.has(ext);
+};
+
+/**
+ * Bulk-churn guard for snapshot-detected produced files. A single shell
+ * command that deliberately produces user-facing output yields a handful of
+ * files; a diff that reports MORE than this many (after noise filtering) is
+ * overwhelmingly environment churn — a spawned dev instance seeding its data
+ * dir on first launch, `git checkout`/worktree sync rewriting tracked files'
+ * mtimes, dependency installs, build pipelines copying trees. Observed in
+ * production as 90–2000-record `producedFiles` floods attributing bundled
+ * agent/skill manifests to an agent that never touched them. When a batch
+ * exceeds the cap the whole batch is dropped: there is no per-path signal
+ * that separates "the three files the user asked for" from the churn around
+ * them, and the agent's own deliberate writes (Write / Edit / apply_patch /
+ * `html`) still arrive via explicit `fileChanges`, which this cap never
+ * touches.
+ */
+export const MAX_PRODUCED_FILES_PER_COMMAND = 12;
