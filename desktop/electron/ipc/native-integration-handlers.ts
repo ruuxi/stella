@@ -14,6 +14,7 @@ import {
   isNativeOAuthProviderConfigReady,
 } from "../../../runtime/kernel/connectors/native-oauth-provider-config.js";
 import { loadConnectorAccessToken } from "../../../runtime/kernel/connectors/oauth.js";
+import { waitForBackendIntegrationConnection } from "./backend-integration-status.js";
 import { loadConfig } from "../../../runtime/kernel/google-workspace/config.js";
 import { SCOPES as GOOGLE_WORKSPACE_SCOPES } from "../../../runtime/kernel/google-workspace/scopes.js";
 import { assertPrivilegedRequest } from "./privileged-ipc.js";
@@ -93,7 +94,13 @@ export type NativeCredentialFlowOptions = Pick<
   | "requestExternalOAuthApproval"
   | "getConvexAuthToken"
   | "getConvexSiteUrl"
->;
+> & {
+  /**
+   * Abort hook for the backend Composio completion wait (the in-chat
+   * connect card threads its cancel/abort controller through here).
+   */
+  abortSignal?: AbortSignal;
+};
 
 type BackendOAuthProvidersResponse = {
   providers?: Array<{
@@ -422,16 +429,38 @@ export const ensureNativeCredential = async (
       throw new Error(`${entry.name} connection is unavailable.`);
     }
     const url = await createBackendIntegrationConnectLink(options, id);
-    const connected = await options.requestExternalOAuthApproval({
+    // "ok" here only means the browser was opened with the user's
+    // consent — Composio OAuth finishes on a hosted page with no
+    // deep-link back to the desktop, so completion is confirmed below.
+    const approved = await options.requestExternalOAuthApproval({
       tokenKey: `backend-integration:${id}`,
       displayName: entry.name,
       resourceUrl: url,
       description: `Stella needs to open ${entry.name} in your browser so you can sign in and approve access.`,
     });
-    if (!connected.ok) {
-      throw new Error(`Could not connect ${entry.name}: ${connected.reason}`);
+    if (!approved.ok) {
+      throw new Error(`Could not connect ${entry.name}: ${approved.reason}`);
     }
-    return;
+    // Real completion signal: poll the backend for the Composio
+    // account status instead of assuming success. "unsupported" means
+    // the status endpoint isn't deployed yet — proceed as before
+    // rather than bricking connects during the rollout window.
+    const siteUrl = options.getConvexSiteUrl?.()?.trim().replace(/\/+$/u, "");
+    const authToken = await options.getConvexAuthToken?.();
+    if (!siteUrl || !authToken) return;
+    const wait = await waitForBackendIntegrationConnection({
+      siteUrl,
+      authToken,
+      id,
+      ...(options.abortSignal ? { signal: options.abortSignal } : {}),
+    });
+    if (wait === "connected" || wait === "unsupported") return;
+    if (wait === "cancelled") {
+      throw new Error(`Could not connect ${entry.name}: cancelled`);
+    }
+    throw new Error(
+      `${entry.name} authorization was not completed in the browser. Finish signing in on the ${entry.name} page that opened, then try connecting again.`,
+    );
   }
 
   if (entry?.provider === "oauth-catalog") {

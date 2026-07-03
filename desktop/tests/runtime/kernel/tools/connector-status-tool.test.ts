@@ -159,7 +159,7 @@ describe("connector_status tool", () => {
     const tool = makeTool(root, requester);
     const result = await tool.execute({ connector: "notion" }, context);
     expect(resultText(result)).toContain("not answered in time");
-    expect(resultText(result)).toContain("in this conversation");
+    expect(resultText(result)).toContain("for now");
     expect(await getConnectorDecline(root, "notion")).toBeNull();
   });
 

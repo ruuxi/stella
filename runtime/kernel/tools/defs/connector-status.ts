@@ -298,9 +298,10 @@ export const createConnectorStatusTool = (
     if (outcome.reason === "cancelled" || outcome.reason === "timeout") {
       // No decline is persisted for these — suppression only holds for
       // the current context window (the availability reminder's window
-      // gate), so say "this conversation", not "ever".
+      // gate), so the honest phrasing is "for now", not "ever" or even
+      // "this conversation".
       return {
-        result: `The connect card for ${entry.name} was ${outcome.reason === "timeout" ? "not answered in time" : "dismissed"}. Don't re-offer it again in this conversation; mention once that ${entry.name} is available in the Store, and proceed via other means (browser fallback).`,
+        result: `The connect card for ${entry.name} was ${outcome.reason === "timeout" ? "not answered in time" : "dismissed"}. Don't re-offer it for now; mention once that ${entry.name} is available in the Store, and proceed via other means (browser fallback).`,
         details: { id: entry.id, status: outcome.reason },
       };
     }

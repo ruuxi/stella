@@ -442,6 +442,12 @@ export class ConnectorCredentialService {
       // transition `submitCredential` would perform, minus the modal.
       if (payload.kind === "external_approval") {
         if (payload.resourceUrl) {
+          // NOTE: `ok: true` here means "browser opened with the user's
+          // consent", NOT "authorization completed" — external approvals
+          // finish on a hosted page with no callback to the desktop.
+          // Callers that need real completion (backend Composio enables)
+          // confirm it afterwards via the backend status poll
+          // (`waitForBackendIntegrationConnection`).
           void shell
             .openExternal(payload.resourceUrl)
             .then(() => {
@@ -775,6 +781,8 @@ export class ConnectorCredentialService {
         if (meta.resourceUrl) {
           await shell.openExternal(meta.resourceUrl);
         }
+        // "ok" = launched with consent; real completion is confirmed by
+        // the caller's backend status poll (see ensureNativeCredential).
         const outcome = { ok: true } as const;
         this.pending.resolve(payload.requestId, outcome);
         this.meta.delete(payload.requestId);
