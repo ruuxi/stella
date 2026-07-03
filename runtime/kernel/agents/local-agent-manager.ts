@@ -161,11 +161,12 @@ type RuntimeAgentRecord = {
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
   recentActivity: string[];
   /**
-   * Wall-clock timestamp of the last observed liveness signal: streamed
-   * progress, a tool starting, or a tool finishing. Unlike `recentActivity`
-   * (a display string that only moves on streamed text), this also advances
-   * across a single long-running tool call, so pollers (e.g. the Schedule
-   * tool's idle timeout) don't mistake "one slow tool" for a wedged agent.
+   * Wall-clock timestamp of the last discrete liveness event: streamed
+   * progress, a tool starting, or a tool finishing. It does NOT advance
+   * while a tool call is running, so mid-call this stamp goes stale by
+   * design — `activeToolCount` below is the authoritative in-flight signal.
+   * Timeout/idle logic must never trust this timestamp alone; check the
+   * count first (see the Schedule tool's idle test in tools/schedule.ts).
    */
   lastActivityAt: number;
   /**
