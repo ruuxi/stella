@@ -194,8 +194,8 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
         description: trimmedPrompt,
       });
       // Pet atlas generation runs entirely inside this dialog; suppress
-      // the global media materializer so the raw PNG never pops the
-      // display sidebar.
+      // the global media materializer so the raw PNG never registers as a
+      // workspace media item.
       markMediaJobMaterialized(submission.jobId);
       setState({
         jobId: submission.jobId,

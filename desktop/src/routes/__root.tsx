@@ -426,8 +426,6 @@ function RootChrome() {
   const { latestDisplayPayloadRef } = useDisplayPayloadRouting({
     rightSidebarRef,
     isMiniWindow,
-    isOnChatRoute,
-    showHomeContent: chat.showHomeContent,
   });
 
   useDictationToggleBridge();

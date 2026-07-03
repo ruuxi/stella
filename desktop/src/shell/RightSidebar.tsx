@@ -39,8 +39,8 @@ import "./shell-junction.css";
 
 export interface RightSidebarHandle {
   /**
-   * Open (or refresh) a tab for the given payload and activate it. The
-   * panel auto-opens as a side effect of `displayTabs.openTab`.
+   * User-initiated open (or refresh) for a payload tab. Activates the tab and
+   * opens the panel through `displayTabs.openTab`.
    */
   open(payload: DisplayTabPayload): void;
   /**

@@ -9,8 +9,6 @@ import type { RightSidebarHandle } from "@/shell/RightSidebar";
 type UseDisplayPayloadRoutingOptions = {
   rightSidebarRef: RefObject<RightSidebarHandle | null>;
   isMiniWindow: boolean;
-  isOnChatRoute: boolean;
-  showHomeContent: boolean;
 };
 
 type UseDisplayPayloadRoutingResult = {
@@ -26,12 +24,9 @@ type UseDisplayPayloadRoutingResult = {
 /**
  * Push payloads into the workspace panel.
  *
- * - `media`, `url`, and `trash` payloads always open the panel
- *   (generated artifacts and live previews are the user's main goal in
- *   that moment).
- * - For everything else (office / pdf / markdown / source-diff), keep
- *   the existing behavior: open on the chat home pane, hot-update
- *   elsewhere so we don't steal focus mid-conversation.
+ * Programmatic payloads register or refresh tabs without opening the
+ * workspace panel. The panel should only open from an explicit user action
+ * (toggle, keyboard/context-menu summon, or clicking a resource/card).
  * - In the mini window, register payloads passively (`ds.update`) and
  *   let the user summon the panel via the right-click context menu.
  *
@@ -43,8 +38,6 @@ type UseDisplayPayloadRoutingResult = {
 export function useDisplayPayloadRouting({
   rightSidebarRef,
   isMiniWindow,
-  isOnChatRoute,
-  showHomeContent,
 }: UseDisplayPayloadRoutingOptions): UseDisplayPayloadRoutingResult {
   const latestDisplayPayloadRef = useRef<DisplayTabPayload | null>(null);
 
@@ -57,22 +50,9 @@ export function useDisplayPayloadRouting({
         ds.update(payload);
         return;
       }
-      if (
-        payload.kind === "media" ||
-        payload.kind === "canvas-html" ||
-        payload.kind === "url" ||
-        payload.kind === "trash"
-      ) {
-        ds.open(payload);
-        return;
-      }
-      if (showHomeContent && isOnChatRoute) {
-        ds.open(payload);
-      } else {
-        ds.update(payload);
-      }
+      ds.update(payload);
     },
-    [rightSidebarRef, isMiniWindow, isOnChatRoute, showHomeContent],
+    [rightSidebarRef, isMiniWindow],
   );
 
   // Structured display payloads from main process.
