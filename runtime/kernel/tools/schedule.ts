@@ -247,6 +247,23 @@ export const handleSchedule = async (
     storageMode: context.storageMode ?? "local",
   });
 
+  const buildSuccessResult = async (summary: string): Promise<ToolResult> => {
+    const after = await snapshotConversationSchedules(
+      scheduleApi,
+      context.conversationId,
+    );
+    const details = buildScheduleDetails(before, after);
+    return {
+      result: summary,
+      ...(isEmptyDetails(details) ? {} : { details }),
+    };
+  };
+
+  const summaryFromSnapshot = (snapshot: { result?: string }): string =>
+    typeof snapshot.result === "string" && snapshot.result.trim().length > 0
+      ? snapshot.result
+      : "Scheduling updated.";
+
   const startedAt = Date.now();
   let lastActivityAt = startedAt;
   let lastActivitySignature = "";
@@ -255,27 +272,21 @@ export const handleSchedule = async (
     if (!snapshot) {
       throw new Error(`Schedule task not found: ${created.threadId}`);
     }
-    // `recentActivity` moves whenever the subagent streams progress or runs a
-    // tool; treat any change as liveness and reset the idle clock.
-    const activitySignature = JSON.stringify(snapshot.recentActivity ?? []);
-    if (activitySignature !== lastActivitySignature) {
-      lastActivitySignature = activitySignature;
-      lastActivityAt = Date.now();
+    // Liveness: prefer the manager's `lastActivityAt` stamp (moves on
+    // streamed progress AND tool start/end, so one long tool call still
+    // reads as alive). Fall back to diffing `recentActivity` for older
+    // snapshot providers that don't report the stamp.
+    if (typeof snapshot.lastActivityAt === "number") {
+      lastActivityAt = Math.max(lastActivityAt, snapshot.lastActivityAt);
+    } else {
+      const activitySignature = JSON.stringify(snapshot.recentActivity ?? []);
+      if (activitySignature !== lastActivitySignature) {
+        lastActivitySignature = activitySignature;
+        lastActivityAt = Date.now();
+      }
     }
     if (snapshot.status === "completed") {
-      const summary =
-        typeof snapshot.result === "string" && snapshot.result.trim().length > 0
-          ? snapshot.result
-          : "Scheduling updated.";
-      const after = await snapshotConversationSchedules(
-        scheduleApi,
-        context.conversationId,
-      );
-      const details = buildScheduleDetails(before, after);
-      return {
-        result: summary,
-        ...(isEmptyDetails(details) ? {} : { details }),
-      };
+      return await buildSuccessResult(summaryFromSnapshot(snapshot));
     }
     if (snapshot.status === "error" || snapshot.status === "canceled") {
       throw new Error(snapshot.error || "Scheduling request failed.");
@@ -290,6 +301,12 @@ export const handleSchedule = async (
     created.threadId,
     "Schedule tool timed out waiting for completion.",
   );
+  // The agent may have finished between the last poll and the cancel; return
+  // its real result instead of a spurious timeout in that case.
+  const finalSnapshot = await api.getAgent(created.threadId).catch(() => null);
+  if (finalSnapshot?.status === "completed") {
+    return await buildSuccessResult(summaryFromSnapshot(finalSnapshot));
+  }
   throw new Error("Scheduling request timed out.");
 };
 

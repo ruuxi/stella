@@ -160,6 +160,12 @@ export type AgentToolSnapshot = {
   result?: string;
   error?: string;
   recentActivity?: string[];
+  /**
+   * Last liveness signal (streamed progress or tool start/end). Pollers that
+   * implement idle timeouts should prefer this over diffing `recentActivity`,
+   * which only moves on streamed text.
+   */
+  lastActivityAt?: number;
   messages?: Array<{
     from: "orchestrator" | "subagent";
     text: string;

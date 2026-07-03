@@ -160,6 +160,14 @@ type RuntimeAgentRecord = {
   parentAgentId?: string;
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
   recentActivity: string[];
+  /**
+   * Wall-clock timestamp of the last observed liveness signal: streamed
+   * progress, a tool starting, or a tool finishing. Unlike `recentActivity`
+   * (a display string that only moves on streamed text), this also advances
+   * across a single long-running tool call, so pollers (e.g. the Schedule
+   * tool's idle timeout) don't mistake "one slow tool" for a wedged agent.
+   */
+  lastActivityAt: number;
   progressBuffer: string;
   toSubagentQueue: string[];
   toOrchestratorQueue: string[];
@@ -699,6 +707,7 @@ export class LocalAgentManager implements AgentToolApi {
         task.status === "running" || task.status === "pending"
           ? task.recentActivity
           : undefined,
+      lastActivityAt: task.lastActivityAt,
       messages: task.messageLog.slice(-10),
     };
   }
@@ -766,6 +775,7 @@ export class LocalAgentManager implements AgentToolApi {
       selfModMetadata: record.selfModMetadata,
       activeSelfModRunId: undefined,
       recentActivity: [`Continuing thread: ${truncate(prompt, 200)}`],
+      lastActivityAt: Date.now(),
       progressBuffer: "",
       toSubagentQueue: [],
       toOrchestratorQueue: [],
@@ -1024,6 +1034,7 @@ export class LocalAgentManager implements AgentToolApi {
           const compact = task.progressBuffer.replace(/\s+/g, " ").trim();
           if (!compact) return;
           task.recentActivity = [truncate(compact, 500)];
+          task.lastActivityAt = Date.now();
         },
         onToolStart: (ev) => {
           // Once cancelAgent has marked this task canceled, suppress any
@@ -1035,6 +1046,11 @@ export class LocalAgentManager implements AgentToolApi {
             return;
           }
           const statusText = ev.statusText ?? `Running ${ev.toolName}`;
+          // Tool lifecycle is a liveness signal too: without this, a single
+          // long tool call looks idle to snapshot pollers even though the
+          // agent is working.
+          task.recentActivity = [truncate(statusText, 500)];
+          task.lastActivityAt = Date.now();
           this.opts.onAgentEvent?.({
             type: "agent-progress",
             conversationId: task.conversationId,
@@ -1055,6 +1071,12 @@ export class LocalAgentManager implements AgentToolApi {
               statusText,
             },
           );
+        },
+        onToolEnd: () => {
+          if (task.controller.signal.aborted || task.status === "canceled") {
+            return;
+          }
+          task.lastActivityAt = Date.now();
         },
         toolExecutor: async (toolName, toolArgs, toolContext, signal) => {
           if (
@@ -1310,6 +1332,7 @@ export class LocalAgentManager implements AgentToolApi {
       selfModMetadata: request.selfModMetadata,
       activeSelfModRunId: undefined,
       recentActivity: [],
+      lastActivityAt: Date.now(),
       progressBuffer: "",
       toSubagentQueue: [],
       toOrchestratorQueue: [],

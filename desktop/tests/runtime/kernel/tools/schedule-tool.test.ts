@@ -35,6 +35,7 @@ const makeAgentApi = (
 
 const runningSnapshot = (
   recentActivity?: string[],
+  lastActivityAt?: number,
 ): AgentToolSnapshot => ({
   id: "thread-1",
   status: "running",
@@ -42,6 +43,7 @@ const runningSnapshot = (
   startedAt: Date.now(),
   completedAt: null,
   ...(recentActivity ? { recentActivity } : {}),
+  ...(typeof lastActivityAt === "number" ? { lastActivityAt } : {}),
 });
 
 const fastPolicy = (
@@ -105,6 +107,79 @@ describe("handleSchedule wait policy", () => {
     );
     expect(result.result).toBe("Done after long active run.");
     expect(api.canceled).toEqual([]);
+  });
+
+  it("stays alive through one slow tool call via lastActivityAt, with static recentActivity", async () => {
+    // Simulates LocalAgentManager during a single long-running tool: the
+    // display string never changes, but the liveness stamp keeps moving
+    // (tool start already bumped it; here we refresh it each poll as the
+    // manager does on tool start/end).
+    const start = Date.now();
+    const api = makeAgentApi(() => {
+      if (Date.now() - start > 250) {
+        return {
+          ...runningSnapshot(),
+          status: "completed",
+          completedAt: Date.now(),
+          result: "Cron created after slow connector probe.",
+        };
+      }
+      return runningSnapshot(["Running exec_command"], Date.now());
+    });
+
+    const result = await handleSchedule(
+      api,
+      undefined,
+      args,
+      context,
+      fastPolicy({ idleTimeoutMs: 100, maxWaitMs: 2_000 }),
+    );
+    expect(result.result).toBe("Cron created after slow connector probe.");
+    expect(api.canceled).toEqual([]);
+  });
+
+  it("cancels when lastActivityAt goes stale even if recentActivity churns", async () => {
+    // lastActivityAt is authoritative when present: a frozen stamp means
+    // idle, regardless of cosmetic recentActivity changes.
+    const staleStamp = Date.now();
+    let polls = 0;
+    const api = makeAgentApi(() => {
+      polls += 1;
+      return runningSnapshot([`cosmetic ${polls}`], staleStamp);
+    });
+
+    await expect(
+      handleSchedule(api, undefined, args, context, fastPolicy()),
+    ).rejects.toThrow("Scheduling request timed out.");
+    expect(api.canceled).toEqual(["thread-1"]);
+  });
+
+  it("returns the result when the agent completes right as the cancel lands", async () => {
+    let canceled = false;
+    const api = makeAgentApi(() =>
+      canceled
+        ? {
+            ...runningSnapshot(),
+            status: "completed",
+            completedAt: Date.now(),
+            result: "Finished during cancellation race.",
+          }
+        : runningSnapshot(["stuck on one step"]),
+    );
+    const innerCancel = api.cancelAgent;
+    api.cancelAgent = async (threadId: string, reason?: string) => {
+      canceled = true;
+      return innerCancel(threadId, reason);
+    };
+
+    const result = await handleSchedule(
+      api,
+      undefined,
+      args,
+      context,
+      fastPolicy(),
+    );
+    expect(result.result).toBe("Finished during cancellation race.");
   });
 
   it("cancels the subagent after sustained inactivity", async () => {

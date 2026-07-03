@@ -979,4 +979,79 @@ describe("LocalAgentManager file records across send_input re-runs", () => {
       },
     ]);
   });
+
+  it("advances snapshot lastActivityAt on tool lifecycle during one long tool call", async () => {
+    let releaseRun: (() => void) | undefined;
+    const runGate = new Promise<void>((resolve) => {
+      releaseRun = resolve;
+    });
+    let toolStarted: (() => void) | undefined;
+    const toolStartedPromise = new Promise<void>((resolve) => {
+      toolStarted = resolve;
+    });
+
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      // Simulates a run whose only activity is one slow tool: no streamed
+      // progress (onProgress never fires), just a tool_start then a long wait.
+      runSubagent: async (args) => {
+        args.onToolStart?.({
+          runId: args.runId,
+          seq: 1,
+          toolCallId: "call-1",
+          toolName: "exec_command",
+          statusText: "Running exec_command",
+        });
+        toolStarted?.();
+        await runGate;
+        args.onToolEnd?.({
+          runId: args.runId,
+          seq: 2,
+          toolCallId: "call-1",
+          toolName: "exec_command",
+          resultPreview: "ok",
+        });
+        return { runId: args.runId, result: "done" };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const beforeCreate = Date.now();
+    const task = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "slow connector probe",
+      prompt: "probe the connector",
+      agentType: AGENT_IDS.GENERAL,
+      rootRunId: "root-1",
+      storageMode: "local",
+    });
+    await toolStartedPromise;
+
+    const midToolSnapshot = await manager.getAgent(task.threadId);
+    expect(midToolSnapshot?.status).toBe("running");
+    // Tool start alone must register as liveness even with no streamed text.
+    expect(midToolSnapshot?.lastActivityAt).toBeGreaterThanOrEqual(
+      beforeCreate,
+    );
+    expect(midToolSnapshot?.recentActivity).toEqual(["Running exec_command"]);
+
+    const stampAfterStart = midToolSnapshot?.lastActivityAt ?? 0;
+    await sleep(15);
+    releaseRun?.();
+    await waitForAgentSettled(manager, task.threadId);
+
+    const finalSnapshot = await manager.getAgent(task.threadId);
+    expect(finalSnapshot?.status).toBe("completed");
+    // Tool end bumped the stamp past the tool-start one.
+    expect(finalSnapshot?.lastActivityAt).toBeGreaterThan(stampAfterStart);
+  });
 });
