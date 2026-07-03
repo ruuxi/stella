@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { supportsAdaptiveThinking } from "../../../../runtime/ai/providers/anthropic.js";
+import {
+  supportsAdaptiveThinking,
+  supportsDisablingThinking,
+} from "../../../../runtime/ai/providers/anthropic.js";
 
 // Regression guard for the thinking-shape gate. 5-generation Claude models
 // (and Opus/Sonnet 4.6+) reject the legacy budget-based
@@ -56,5 +59,26 @@ describe("supportsAdaptiveThinking", () => {
   it("returns false for non-Claude ids", () => {
     expect(supportsAdaptiveThinking("gpt-5.2")).toBe(false);
     expect(supportsAdaptiveThinking("gemini-3-pro")).toBe(false);
+  });
+});
+
+// Fable models reject `thinking.type=disabled` with a 400 ("Thinking defaults
+// to adaptive"); the request must omit the `thinking` param instead. This is
+// the shape that silently killed thread compaction when `stella/max` remapped
+// to `claude-fable-5` upstream.
+describe("supportsDisablingThinking", () => {
+  it("rejects disabling for Fable-family models", () => {
+    expect(supportsDisablingThinking("claude-fable-5")).toBe(false);
+    expect(supportsDisablingThinking("claude-fable-5-20260601")).toBe(false);
+    expect(supportsDisablingThinking("claude-fable-5.1")).toBe(false);
+    expect(supportsDisablingThinking("us.anthropic.claude-fable-5")).toBe(false);
+  });
+
+  it("keeps the disabled shape for models that accept it", () => {
+    expect(supportsDisablingThinking("claude-opus-4-8")).toBe(true);
+    expect(supportsDisablingThinking("claude-sonnet-5")).toBe(true);
+    expect(supportsDisablingThinking("claude-sonnet-4-5-20250929")).toBe(true);
+    expect(supportsDisablingThinking("claude-haiku-4-5")).toBe(true);
+    expect(supportsDisablingThinking("gpt-5.2")).toBe(true);
   });
 });
