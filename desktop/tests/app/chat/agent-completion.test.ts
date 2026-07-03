@@ -186,6 +186,73 @@ describe("buildAgentCompletionSections", () => {
     ]);
   });
 
+  it("renders a section for a completion with no files (fileless card)", () => {
+    // The card must never depend on produced files: an agent that finished
+    // without observable file output (investigative work, or an engine whose
+    // writes Stella can't track) still completed. Its result excerpt stands
+    // in for the pills.
+    const meta = buildAgentMetaMap([started("a1", "Investigate the flaky test")]);
+    const sections = buildAgentCompletionSections(
+      [
+        ev({
+          _id: "completed:a1:42",
+          timestamp: 42,
+          type: "agent-completed",
+          payload: {
+            agentId: "a1",
+            result: "Root cause: a race in the fixture teardown.",
+          },
+        }),
+      ],
+      meta,
+    );
+    expect(sections).toHaveLength(1);
+    expect(sections[0]!.agentId).toBe("a1");
+    expect(sections[0]!.title).toBe("Investigate the flaky test");
+    expect(sections[0]!.completedAtMs).toBe(42);
+    expect(sections[0]!.files).toEqual([]);
+    expect(sections[0]!.summary).toBe(
+      "Root cause: a race in the fixture teardown.",
+    );
+  });
+
+  it("collapses whitespace and caps the fileless summary excerpt", () => {
+    const sections = buildAgentCompletionSections(
+      [
+        ev({
+          _id: "completed:a1:42",
+          timestamp: 42,
+          type: "agent-completed",
+          payload: {
+            agentId: "a1",
+            result: `first line\n\nsecond   line ${"x".repeat(400)}`,
+          },
+        }),
+      ],
+      new Map(),
+    );
+    const summary = sections[0]!.summary!;
+    expect(summary.startsWith("first line second line x")).toBe(true);
+    expect(summary.length).toBeLessThanOrEqual(201);
+    expect(summary.endsWith("…")).toBe(true);
+  });
+
+  it("a noise-only producedFiles rollup still yields a (fileless) section", () => {
+    const sections = buildAgentCompletionSections(
+      [
+        completed("a1", [
+          "/Users/me/stella/.stella-launch.log",
+          "/Users/me/.stella/outputs/demos/.brave-profile/Local State",
+        ]),
+      ],
+      new Map(),
+    );
+    expect(sections).toHaveLength(1);
+    expect(sections[0]!.files).toEqual([]);
+    // The `completed` helper stamps result: "done".
+    expect(sections[0]!.summary).toBe("done");
+  });
+
   it("drops profile/log noise from a completion's producedFiles pills", () => {
     const sections = buildAgentCompletionSections(
       [
@@ -375,6 +442,19 @@ describe("agentCompletion row equality", () => {
       section("a1", 42, ["/out/a.md"], "New title"),
     ]);
     expect(eventRowEqual(base(), b)).toBe(false);
+  });
+
+  it("detects summary change (fileless card content)", () => {
+    const a = completionRow("r1", [
+      { ...section("a1", 42, []), summary: "Found the race." },
+    ]);
+    const b = completionRow("r1", [
+      { ...section("a1", 42, []), summary: "Still looking." },
+    ]);
+    const missing = completionRow("r1", [section("a1", 42, [])]);
+    expect(eventRowEqual(a, b)).toBe(false);
+    expect(eventRowEqual(a, missing)).toBe(false);
+    expect(eventRowEqual(a, a)).toBe(true);
   });
 
   it("detects completedAtMs change", () => {

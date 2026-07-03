@@ -50,6 +50,13 @@
   text-overflow: ellipsis;
 }
 
+/* Fileless completion: a compact, muted result excerpt stands in for the
+   file pills so the card still shows what the agent accomplished. */
+.agent-completion-card__summary {
+  color: var(--text-weak);
+  overflow-wrap: anywhere;
+}
+
 /* Per-agent section: several agents completing at the same point each get
    their own header + pills (never one merged card). */
 .agent-completion-card__section {

@@ -48,7 +48,14 @@ export type AgentCompletionSection = {
    *  completion projected onto two rows → collapse) from a genuine
    *  `send_input` re-run (later completion on a later row → keep both). */
   completedAtMs: number;
+  /** May be empty: a completion without produced files still gets a card
+   *  (files enrich the card; their absence never suppresses it). */
   files: ConversationFileEntry[];
+  /** Compact excerpt of the agent's `result` text, from the latest
+   *  `agent-completed` event backing this section. The card renders it only
+   *  for fileless sections, where it stands in for the file pills as the
+   *  completion's substance. */
+  summary?: string;
 };
 
 /** Identity/label metadata for an agent, lifted from its `agent-started`
@@ -124,9 +131,23 @@ export function deriveAgentCompletionFiles(
   return deriveAgentFilesMap(toolEvents, isAgentCompletedEvent);
 }
 
+/** Cap for the fileless-section summary excerpt (whitespace-collapsed). */
+const SUMMARY_MAX_CHARS = 200;
+
+const toSummaryExcerpt = (result: string): string => {
+  const compact = result.replace(/\s+/g, " ").trim();
+  if (compact.length <= SUMMARY_MAX_CHARS) return compact;
+  return `${compact.slice(0, SUMMARY_MAX_CHARS).trimEnd()}…`;
+};
+
 /**
  * Build the sectioned completion card for a row: one section per agent that
- * produced files at this completion point, in first-completion order.
+ * COMPLETED at this point, in first-completion order. Deliberately not
+ * gated on produced files: an agent that finished without any observable
+ * file output (purely investigative work, or an engine whose writes Stella
+ * can't track — e.g. vanilla Claude Code Bash-side writes) still gets its
+ * "done" card; files enrich the card when present, and a fileless section
+ * carries a compact `summary` excerpt of the agent's result instead.
  *
  * Deliberately NO reserved-builtin denylist here (unlike the spawn
  * breadcrumb): an agent-produced FILE is a user-facing deliverable no matter
@@ -144,31 +165,41 @@ export function buildAgentCompletionSections(
   agentMetaById: ReadonlyMap<string, AgentMeta>,
 ): AgentCompletionSection[] {
   const files = deriveAgentCompletionFiles(toolEvents);
-  if (files.size === 0) return [];
 
-  // Latest completion timestamp per agent on this row (all of a section's
-  // files come from that agent's `agent-completed` event(s) on this row).
+  // Enumerate completed agents from the row's `agent-completed` events (in
+  // first-completion order), tracking each agent's latest completion
+  // timestamp and the result excerpt from that latest completion.
+  const completedAgentIds: string[] = [];
   const completedAtByAgent = new Map<string, number>();
+  const summaryByAgent = new Map<string, string>();
   for (const event of toolEvents) {
     if (!isAgentCompletedEvent(event)) continue;
     const agentId = asNonEmptyString(event.payload.agentId);
     if (!agentId) continue;
-    const prev = completedAtByAgent.get(agentId) ?? 0;
-    if (event.timestamp > prev) completedAtByAgent.set(agentId, event.timestamp);
+    const prev = completedAtByAgent.get(agentId);
+    if (prev === undefined) completedAgentIds.push(agentId);
+    if (prev === undefined || event.timestamp >= prev) {
+      completedAtByAgent.set(agentId, Math.max(prev ?? 0, event.timestamp));
+      const result = asNonEmptyString(event.payload.result);
+      if (result) summaryByAgent.set(agentId, toSummaryExcerpt(result));
+    }
   }
 
   const sections: AgentCompletionSection[] = [];
-  for (const [agentId, entries] of files) {
+  for (const agentId of completedAgentIds) {
     const meta = agentMetaById.get(agentId);
     const title =
       meta?.description?.trim() ||
       meta?.groupLabel?.trim() ||
       fallbackTaskDescription(agentId);
+    const entries = files.get(agentId) ?? [];
+    const summary = summaryByAgent.get(agentId);
     sections.push({
       agentId,
       title,
       completedAtMs: completedAtByAgent.get(agentId) ?? 0,
       files: rankDeliverablesFirst([...entries]),
+      ...(summary ? { summary } : {}),
     });
   }
   return sections;

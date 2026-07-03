@@ -85,11 +85,17 @@ const CompletionSection = ({
           </span>
         </div>
       ) : null}
-      <div className="agent-completion-card__pills">
-        {head.map((entry) => (
-          <FilePill key={entry.path} entry={entry} />
-        ))}
-      </div>
+      {total > 0 ? (
+        <div className="agent-completion-card__pills">
+          {head.map((entry) => (
+            <FilePill key={entry.path} entry={entry} />
+          ))}
+        </div>
+      ) : section.summary ? (
+        // Fileless completion: the result excerpt stands in for the pills so
+        // the card still shows what the agent accomplished.
+        <div className="agent-completion-card__summary">{section.summary}</div>
+      ) : null}
       {capped ? (
         // Animated reveal via `grid-template-rows: 0fr -> 1fr` — no JS
         // measurement, stays correct across width changes / re-wraps.
@@ -135,7 +141,9 @@ export function AgentCompletionCard({
 }: {
   sections: AgentCompletionSection[];
 }) {
-  const visible = sections.filter((section) => section.files.length > 0);
+  // Every completion renders — a fileless agent still finished its task, so
+  // the card must not depend on produced files (files only enrich it).
+  const visible = sections;
   if (visible.length === 0) return null;
   const multi = visible.length > 1;
 
