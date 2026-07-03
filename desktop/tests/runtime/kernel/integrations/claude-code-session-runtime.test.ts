@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   buildToolResultPrompt,
   buildClaudeCodeToolRuntimePrompt,
+  collectClaudeCodeNativeFileChanges,
   createClaudeCodeStreamEmitter,
   getClaudeCodeStatusChangeFromStreamEvent,
   getClaudeCodeTextDeltaFromStreamEvent,
@@ -401,6 +402,126 @@ describe("claude-code-session-runtime", () => {
       expect(prompt).toContain("visible tree");
       expect(prompt).not.toContain("[stella-attach-image]");
     } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  describe("collectClaudeCodeNativeFileChanges", () => {
+    const assistantToolUse = (
+      blocks: Array<Record<string, unknown>>,
+    ): Record<string, unknown> => ({
+      type: "assistant",
+      message: { role: "assistant", content: blocks },
+    });
+
+    it("collects Write/Edit/MultiEdit/NotebookEdit file paths", () => {
+      expect(
+        collectClaudeCodeNativeFileChanges(
+          assistantToolUse([
+            { type: "tool_use", name: "Write", input: { file_path: "/tmp/a.txt", content: "x" } },
+            { type: "tool_use", name: "Edit", input: { file_path: "/tmp/b.ts", old_string: "a", new_string: "b" } },
+            { type: "tool_use", name: "MultiEdit", input: { file_path: "/tmp/c.ts", edits: [] } },
+            { type: "tool_use", name: "NotebookEdit", input: { notebook_path: "/tmp/d.ipynb" } },
+          ]),
+        ),
+      ).toEqual([
+        { path: "/tmp/a.txt", kind: { type: "add" } },
+        { path: "/tmp/b.ts", kind: { type: "update" } },
+        { path: "/tmp/c.ts", kind: { type: "update" } },
+        { path: "/tmp/d.ipynb", kind: { type: "update" } },
+      ]);
+    });
+
+    it("ignores non-file tools, missing paths, and non-assistant events", () => {
+      expect(
+        collectClaudeCodeNativeFileChanges(
+          assistantToolUse([
+            { type: "tool_use", name: "Bash", input: { command: "touch /tmp/e.txt" } },
+            { type: "tool_use", name: "StructuredOutput", input: { type: "final", message: "done" } },
+            { type: "tool_use", name: "Write", input: { content: "no path" } },
+            { type: "text", text: "hello" },
+          ]),
+        ),
+      ).toEqual([]);
+      expect(
+        collectClaudeCodeNativeFileChanges({
+          type: "user",
+          message: {
+            role: "user",
+            content: [
+              { type: "tool_use", name: "Write", input: { file_path: "/tmp/f.txt" } },
+            ],
+          },
+        }),
+      ).toEqual([]);
+    });
+  });
+
+  it("surfaces vanilla-mode native file writes on the turn result", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-files-"));
+    const binDir = path.join(dir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "let buffer = '';",
+        "function emit(payload) {",
+        "  process.stdout.write(JSON.stringify(payload) + '\\n');",
+        "}",
+        "function handle(line) {",
+        "  emit({",
+        "    type: 'assistant',",
+        "    session_id: 'fake-session',",
+        "    message: { role: 'assistant', content: [",
+        "      { type: 'tool_use', name: 'Write', input: { file_path: '/tmp/report.html', content: '<html/>' } },",
+        "      { type: 'tool_use', name: 'Write', input: { file_path: '/tmp/report.html', content: '<html/>' } },",
+        "      { type: 'tool_use', name: 'Edit', input: { file_path: '/tmp/notes.md', old_string: 'a', new_string: 'b' } },",
+        "    ] },",
+        "  });",
+        "  emit({",
+        "    type: 'result',",
+        "    session_id: 'fake-session',",
+        "    is_error: false,",
+        "    usage: { input_tokens: 1, output_tokens: 1 },",
+        "    result: 'Wrote the report.',",
+        "  });",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle(line);",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-files-1",
+        sessionKey: `test-files:${Date.now()}`,
+        prompt: "Write the report.",
+        modelId: "claude-code/fable",
+        vanilla: true,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      expect(result.text).toBe("Wrote the report.");
+      expect(result.fileChanges).toEqual([
+        { path: "/tmp/report.html", kind: { type: "add" } },
+        { path: "/tmp/notes.md", kind: { type: "update" } },
+      ]);
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });

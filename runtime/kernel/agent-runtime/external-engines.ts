@@ -516,7 +516,11 @@ const runClaudeHostedTurn = async (args: {
   promptMessages: RuntimePromptMessage[];
   callbacks?: Partial<RuntimeRunCallbacks>;
   liveAgent?: ReturnType<typeof createExternalLiveAgent>;
-}): Promise<{ finalText: string; sessionId: string }> => {
+}): Promise<{
+  finalText: string;
+  sessionId: string;
+  fileChanges?: SubagentRunResult["fileChanges"];
+}> => {
   const { runId, threadKey, runEvents } = args.session;
   // Orchestrator sessions own the response-target tracker; subagent sessions
   // do not (they don't drive the user-facing chat surface).
@@ -709,6 +713,22 @@ const runClaudeHostedTurn = async (args: {
     vanilla,
   });
 
+  // Native-tool file writes (vanilla mode) accumulated across the main turn
+  // and any queued follow-up turns, deduped by path + change kind.
+  const collectedFileChanges: NonNullable<SubagentRunResult["fileChanges"]> =
+    [];
+  const collectedFileChangeKeys = new Set<string>();
+  const collectTurnFileChanges = (
+    fileChanges: SubagentRunResult["fileChanges"],
+  ) => {
+    for (const change of fileChanges ?? []) {
+      const key = `${change.kind.type}:${change.path}:${change.kind.type === "update" ? (change.kind.move_path ?? "") : ""}`;
+      if (collectedFileChangeKeys.has(key)) continue;
+      collectedFileChangeKeys.add(key);
+      collectedFileChanges.push(change);
+    }
+  };
+
   let finalResult = await runClaudeCodeTurn({
     runId,
     sessionKey,
@@ -734,6 +754,7 @@ const runClaudeHostedTurn = async (args: {
     onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     executeTool: executeClaudeTool,
   });
+  collectTurnFileChanges(finalResult.fileChanges);
 
   for (;;) {
     const queued = args.liveAgent?.drain() ?? [];
@@ -786,6 +807,7 @@ const runClaudeHostedTurn = async (args: {
       executeTool: executeClaudeTool,
       onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     });
+    collectTurnFileChanges(finalResult.fileChanges);
   }
 
   await persistAssistantReply({
@@ -811,6 +833,9 @@ const runClaudeHostedTurn = async (args: {
   return {
     finalText: finalResult.text,
     sessionId: finalResult.sessionId,
+    ...(collectedFileChanges.length > 0
+      ? { fileChanges: collectedFileChanges }
+      : {}),
   };
 };
 
@@ -1242,7 +1267,15 @@ export const runExternalSubagentTurn = async (
       promptMessages,
       callbacks: opts.callbacks,
     });
-    return await session.finalizeSuccess(result.finalText);
+    const finalized = await session.finalizeSuccess(result.finalText);
+    // Vanilla-mode Claude Code executes its own file tools, so no Stella
+    // tool-end events carry these writes — surface them on the run result
+    // (same contract as the Codex branch above) so the agent-completed
+    // rollup and the chat finish card get the produced artifacts.
+    if (result.fileChanges?.length) {
+      finalized.fileChanges = result.fileChanges;
+    }
+    return finalized;
   } catch (error) {
     const interruptedReason = resolveInterruptionReason({
       abortSignal: opts.abortSignal,

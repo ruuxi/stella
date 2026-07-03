@@ -10,6 +10,10 @@ import type {
   ToolUpdateCallback,
 } from "../tools/types.js";
 import { extractAttachImageBlocks } from "../agent-runtime/tool-adapters.js";
+import type {
+  FileChangeKind,
+  FileChangeRecord,
+} from "../../contracts/file-changes.js";
 import {
   formatClaudeCodeResolvedModel,
   readClaudeCodeResolvedModels,
@@ -139,6 +143,15 @@ export type ClaudeCodeTurnResult = {
   text: string;
   sessionId: string;
   usage?: ClaudeUsage;
+  /**
+   * File writes performed by Claude Code's own native tools (Write/Edit/
+   * MultiEdit/NotebookEdit), collected from the stream-json `assistant`
+   * tool_use blocks. Only vanilla mode produces these (takeover mode strips
+   * CC's tools and routes writes through the Stella bridge, which reports
+   * fileChanges on each tool result instead). Bash-side writes are invisible
+   * here — CC does not report which paths a shell command touched.
+   */
+  fileChanges?: FileChangeRecord[];
 };
 
 type ClaudeCodeTurnRequest = {
@@ -222,6 +235,8 @@ type StructuredStepResult = {
   action: ClaudeCodeDecision;
   sessionId: string;
   usage?: ClaudeUsage;
+  /** Native-tool file writes observed during this step (vanilla mode). */
+  fileChanges?: FileChangeRecord[];
 };
 
 type PendingStructuredPrompt = {
@@ -229,6 +244,8 @@ type PendingStructuredPrompt = {
   resolve: (value: StructuredStepResult) => void;
   reject: (reason?: unknown) => void;
   emitStreamDelta: (event: Record<string, unknown>) => void;
+  /** Accumulates native-tool file writes seen while this prompt streams. */
+  fileChanges: FileChangeRecord[];
   abortListener?: () => void;
   idleTimer?: ReturnType<typeof setTimeout>;
   hasOutput?: boolean;
@@ -602,6 +619,64 @@ export const getClaudeCodeTextDeltaFromStreamEvent = (
     return source.text;
   }
   return null;
+};
+
+/**
+ * Claude Code native file tools whose stream-json `tool_use` inputs name the
+ * file they touch. `Write` may create or overwrite; without a filesystem
+ * probe we call it an `add` (the chat artifact card treats add/update the
+ * same for display). Bash writes are inherently untrackable from the stream.
+ */
+const CLAUDE_CODE_NATIVE_FILE_TOOLS: Record<
+  string,
+  { pathKey: string; kind: FileChangeKind }
+> = {
+  Write: { pathKey: "file_path", kind: { type: "add" } },
+  Edit: { pathKey: "file_path", kind: { type: "update" } },
+  MultiEdit: { pathKey: "file_path", kind: { type: "update" } },
+  NotebookEdit: { pathKey: "notebook_path", kind: { type: "update" } },
+};
+
+/**
+ * Extract native-tool file writes from one parsed stream-json line. Vanilla
+ * mode is the only mode where Claude Code runs its own Write/Edit tools, but
+ * the collector is safe to run on every line: takeover mode strips CC's
+ * tools (`--tools ""`), so its assistant messages never carry these blocks.
+ */
+export const collectClaudeCodeNativeFileChanges = (
+  event: Record<string, unknown>,
+): FileChangeRecord[] => {
+  if (event.type !== "assistant") return [];
+  const message = asObject(event.message);
+  const content = Array.isArray(message?.content) ? message.content : [];
+  const out: FileChangeRecord[] = [];
+  for (const raw of content) {
+    const block = asObject(raw);
+    if (block?.type !== "tool_use" || typeof block.name !== "string") continue;
+    const spec = CLAUDE_CODE_NATIVE_FILE_TOOLS[block.name];
+    if (!spec) continue;
+    const input = asObject(block.input);
+    const filePath = input?.[spec.pathKey];
+    if (typeof filePath !== "string" || !filePath.trim()) continue;
+    out.push({ path: filePath.trim(), kind: spec.kind });
+  }
+  return out;
+};
+
+const fileChangeDedupeKey = (record: FileChangeRecord): string =>
+  `${record.kind.type}:${record.path}:${record.kind.type === "update" ? (record.kind.move_path ?? "") : ""}`;
+
+const mergeFileChanges = (
+  target: FileChangeRecord[],
+  seen: Set<string>,
+  records: ReadonlyArray<FileChangeRecord> | undefined,
+): void => {
+  for (const record of records ?? []) {
+    const key = fileChangeDedupeKey(record);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    target.push(record);
+  }
 };
 
 const JSON_STRING_ESCAPES: Record<string, string> = {
@@ -988,6 +1063,8 @@ class ClaudeCodeSessionRuntime {
       ? ""
       : buildClaudeCodeToolRuntimePrompt(request.systemPrompt, request.tools);
     let usage: ClaudeUsage | undefined;
+    const turnFileChanges: FileChangeRecord[] = [];
+    const turnFileChangeKeys = new Set<string>();
     let nextPrompt = buildInitialPrompt(session, request);
 
     // The compaction loop breaker counts per Stella turn, across all
@@ -1005,11 +1082,15 @@ class ClaudeCodeSessionRuntime {
         nextPrompt,
       );
       usage = mergeUsage(usage, response.usage);
+      mergeFileChanges(turnFileChanges, turnFileChangeKeys, response.fileChanges);
       if (response.action.type === "final") {
         return {
           text: response.action.message,
           sessionId: response.sessionId,
           usage,
+          ...(turnFileChanges.length > 0
+            ? { fileChanges: turnFileChanges }
+            : {}),
         };
       }
       const toolName = response.action.toolName;
@@ -1046,11 +1127,7 @@ class ClaudeCodeSessionRuntime {
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
     prompt: string,
-  ): Promise<{
-    action: ClaudeCodeDecision;
-    sessionId: string;
-    usage?: ClaudeUsage;
-  }> {
+  ): Promise<StructuredStepResult> {
     return await this.executeStructuredStepWithMode(
       session,
       request,
@@ -1294,6 +1371,11 @@ class ClaudeCodeSessionRuntime {
             current.request.onStatusChange?.(status);
           }
           current.emitStreamDelta(parsedLine);
+          const nativeFileChanges =
+            collectClaudeCodeNativeFileChanges(parsedLine);
+          if (nativeFileChanges.length > 0) {
+            current.fileChanges.push(...nativeFileChanges);
+          }
         }
         if (parsedLine.type === "result") {
           const completed = processState.pending.shift();
@@ -1302,13 +1384,16 @@ class ClaudeCodeSessionRuntime {
           }
           this.detachAbortListener(completed);
           try {
+            const stepResult = this.parseStructuredResultPayload(
+              session,
+              parsedLine,
+              processState.stderrText,
+              Boolean(completed.request.vanilla),
+            );
             completed.resolve(
-              this.parseStructuredResultPayload(
-                session,
-                parsedLine,
-                processState.stderrText,
-                Boolean(completed.request.vanilla),
-              ),
+              completed.fileChanges.length > 0
+                ? { ...stepResult, fileChanges: completed.fileChanges }
+                : stepResult,
             );
           } catch (error) {
             completed.reject(error);
@@ -1388,6 +1473,7 @@ class ClaudeCodeSessionRuntime {
         resolve,
         reject,
         emitStreamDelta: createClaudeCodeStreamEmitter(request.onStream),
+        fileChanges: [],
       };
       this.refreshPendingIdleTimer(processState, pending);
       if (request.abortSignal) {
