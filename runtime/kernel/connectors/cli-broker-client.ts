@@ -26,6 +26,13 @@ export type DesktopPermissionRequestResult =
   | { ok: true; granted: boolean; alreadyGranted: boolean }
   | { ok: false; reason: string };
 
+export type ConnectorConnectionResult =
+  | { ok: true; status: "connected" | "already_connected" }
+  | {
+      ok: false;
+      reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
+    };
+
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 let nextRequestId = 1;
 
@@ -168,6 +175,58 @@ export const requestConnectorCredentialFromBridge = async ({
   }
   const record = result as Record<string, unknown>;
   if (record.ok === true) return { ok: true };
+  return {
+    ok: false,
+    reason:
+      typeof record.reason === "string" && record.reason
+        ? record.reason
+        : "unknown",
+  };
+};
+
+/**
+ * Ask the desktop to offer connecting a native Store integration via an
+ * inline connect card in the active chat. Blocks until the user accepts
+ * (and the OAuth/enable flow finishes), declines, or the request times
+ * out — the calling agent stays mid-turn the whole time, so on
+ * `{ ok: true }` it can continue the original task immediately.
+ */
+export const requestConnectorConnectionFromBridge = async ({
+  socketPath,
+  id,
+  name,
+  description,
+  iconUrl,
+  category,
+  reason,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+}: {
+  socketPath: string;
+  id: string;
+  name: string;
+  description?: string;
+  iconUrl?: string;
+  category?: string;
+  /** One-line agent-provided context shown on the card ("To check your recent purchases"). */
+  reason?: string;
+  timeoutMs?: number;
+}): Promise<ConnectorConnectionResult> => {
+  const result = await sendRequest(
+    socketPath,
+    "connector.requestConnection",
+    { id, name, description, iconUrl, category, reason },
+    timeoutMs,
+  );
+  if (!result || typeof result !== "object") {
+    return { ok: false, reason: "invalid_response" };
+  }
+  const record = result as Record<string, unknown>;
+  if (record.ok === true) {
+    return {
+      ok: true,
+      status: record.status === "already_connected" ? "already_connected" : "connected",
+    };
+  }
   return {
     ok: false,
     reason:

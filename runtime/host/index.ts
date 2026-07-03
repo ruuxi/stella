@@ -206,6 +206,28 @@ export type RuntimeHostHandlers = {
     | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string }
   >;
   /**
+   * Offer connecting a native Store integration via an inline connect
+   * card in the active chat. The desktop owns the card UI plus the
+   * enable + OAuth flow; the promise resolves when the user accepts
+   * (and the flow finishes), declines, or the request times out.
+   * Called from the worker's CLI bridge for
+   * `stella-connect request-connection <id>`.
+   */
+  requestConnectorConnection?: (payload: {
+    id: string;
+    name: string;
+    description?: string;
+    iconUrl?: string;
+    category?: string;
+    reason?: string;
+  }) => Promise<
+    | { ok: true; status: "connected" | "already_connected" }
+    | {
+        ok: false;
+        reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
+      }
+  >;
+  /**
    * Push a display update to the renderer. The payload is either a raw
    * HTML string or a structured payload object that the renderer hands
    * to its workspace panel tab manager. The host handler is responsible for forwarding
@@ -3157,6 +3179,24 @@ export class StellaRuntimeHost {
             };
             description?: string;
             placeholder?: string;
+          },
+        );
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_CONNECTOR_CONNECT_REQUEST,
+      async (params) => {
+        if (!this.options.hostHandlers.requestConnectorConnection) {
+          return { ok: false, reason: "unsupported" };
+        }
+        return await this.options.hostHandlers.requestConnectorConnection(
+          params as {
+            id: string;
+            name: string;
+            description?: string;
+            iconUrl?: string;
+            category?: string;
+            reason?: string;
           },
         );
       },
