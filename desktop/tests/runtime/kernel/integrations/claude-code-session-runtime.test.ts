@@ -646,6 +646,128 @@ describe("claude-code-session-runtime", () => {
     }
   });
 
+  it("restarts the CLI process when the model or effort changes mid-session", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-model-change-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "prompts.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "let buffer = '';",
+        "function handle(line) {",
+        "  const parsed = JSON.parse(line);",
+        "  fs.appendFileSync(logPath, JSON.stringify({",
+        "    pid: process.pid,",
+        "    argv: process.argv.slice(2),",
+        "    effortEnv: process.env.CLAUDE_CODE_EFFORT_LEVEL ?? null,",
+        "    content: parsed.message.content,",
+        "  }) + '\\n');",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    session_id: 'fake-session',",
+        "    is_error: false,",
+        "    result: 'Done.',",
+        "  }) + '\\n');",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle(line);",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const sessionKey = `test-model-change:${Date.now()}`;
+      const baseRequest = {
+        sessionKey,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      };
+      await runClaudeCodeTurn({
+        ...baseRequest,
+        runId: "run-1",
+        prompt: "First turn.",
+        modelId: "claude-code/sonnet",
+      });
+      // Same session, new model: the streaming process must restart with
+      // the new --model (resuming the same CLI conversation).
+      await runClaudeCodeTurn({
+        ...baseRequest,
+        runId: "run-2",
+        prompt: "Second turn.",
+        modelId: "claude-code/opus",
+      });
+      // Unchanged config: the process is reused, not respawned.
+      await runClaudeCodeTurn({
+        ...baseRequest,
+        runId: "run-3",
+        prompt: "Third turn.",
+        modelId: "claude-code/opus",
+      });
+      // Effort change alone also forces a restart (env-var config).
+      await runClaudeCodeTurn({
+        ...baseRequest,
+        runId: "run-4",
+        prompt: "Fourth turn.",
+        modelId: "claude-code/opus",
+        effortLevel: "high",
+      });
+
+      const records = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map(
+          (line) =>
+            JSON.parse(line) as {
+              pid: number;
+              argv: string[];
+              effortEnv: string | null;
+            },
+        );
+      expect(records).toHaveLength(4);
+      expect(records[0]?.argv).toContain("sonnet");
+      expect(records[0]?.argv).not.toContain("--resume");
+
+      expect(records[1]?.pid).not.toBe(records[0]?.pid);
+      const modelIndex = records[1]!.argv.indexOf("--model");
+      expect(records[1]?.argv[modelIndex + 1]).toBe("opus");
+      expect(records[1]?.argv).toContain("--resume");
+      expect(records[1]?.argv).toContain("fake-session");
+
+      expect(records[2]?.pid).toBe(records[1]?.pid);
+
+      expect(records[3]?.pid).not.toBe(records[2]?.pid);
+      expect(records[3]?.effortEnv).toBe("high");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("streams preamble text and decoded structured final messages across tool steps", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-stream-"));
     const binDir = path.join(dir, "bin");

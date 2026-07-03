@@ -18,6 +18,8 @@ import { Select } from "@/ui/select";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
+  buildRecentModelRows,
+  pruneRecentModels,
   readRecentModels,
   recordRecentModel,
 } from "@/global/settings/lib/recent-models";
@@ -818,11 +820,46 @@ export function AgentModelPicker({
         : defaultLabel
       : "Loading…";
   /**
+   * Whether an override id still resolves to something selectable.
+   * Catalog ids must be present in the live merged catalog (Stella +
+   * connected providers + local models); engine ids (`claude-code/…`,
+   * `codex-cli/…`) are aliases the engine resolves at run time, so they
+   * stay valid independent of the catalog. While the catalog hasn't
+   * loaded yet (or failed, e.g. offline) everything passes — never wipe
+   * or grey out recents on missing data.
+   */
+  const isKnownModelId = useCallback(
+    (modelId: string): boolean => {
+      if (stellaModels.length === 0) return true;
+      if (
+        modelId.startsWith("claude-code/") ||
+        modelId.startsWith("codex-cli/")
+      ) {
+        return true;
+      }
+      return stellaModels.some((model) => model.id === modelId);
+    },
+    [stellaModels],
+  );
+
+  // Once the catalog is in, drop persisted recents that no longer resolve
+  // so stale ids can't be re-selected and written back into overrides.
+  useEffect(() => {
+    if (catalogLoading || stellaModels.length === 0) return;
+    setRecentModelIds((currentIds) => {
+      const next = pruneRecentModels(isKnownModelId);
+      return next.length === currentIds.length ? currentIds : next;
+    });
+  }, [catalogLoading, isKnownModelId, stellaModels]);
+
+  /**
    * Rows pinned above the compact Stella presets: the current selection
    * (when it isn't a preset already listed below — e.g. a BYOK provider
    * model or an engine model) plus the most recently used models. Keeps
    * the active pick visible+checked the moment the popover opens and puts
-   * the user's usual back-and-forth switches one click away.
+   * the user's usual back-and-forth switches one click away. A current
+   * selection that no longer resolves renders disabled as "Unavailable"
+   * instead of silently offering a dead pick.
    */
   const compactRecentEntries = useMemo<CompactModelListEntry[]>(() => {
     if (activeProviderSetting) return [];
@@ -836,23 +873,20 @@ export function AgentModelPicker({
         )
         .map((model) => model.id),
     );
-    const ids: string[] = [];
-    const push = (id: string) => {
-      if (!id || presetIds.has(id) || ids.includes(id)) return;
-      ids.push(id);
-    };
-    push(current);
-    for (const id of recentModelIds) {
-      if (ids.length >= 4) break;
-      push(id);
-    }
-    return ids.slice(0, 4).map((id) => ({
-      id,
-      label: getModelPickerDisplayLabel(id, modelNamesById),
+    return buildRecentModelRows({
+      currentId: current,
+      recentIds: recentModelIds,
+      excludeIds: presetIds,
+      isKnownModelId,
+    }).map((row) => ({
+      id: row.id,
+      label: getModelPickerDisplayLabel(row.id, modelNamesById),
+      ...(row.unavailable ? { unavailable: true } : {}),
     }));
   }, [
     activeProviderSetting,
     current,
+    isKnownModelId,
     modelNamesById,
     recentModelIds,
     stellaModels,

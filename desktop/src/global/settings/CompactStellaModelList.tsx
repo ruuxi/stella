@@ -11,6 +11,13 @@ export interface CompactModelListEntry {
   id: string;
   label: string;
   subtitle?: string;
+  /**
+   * The id no longer resolves against the live catalog (provider
+   * disconnected, model removed). Rendered dimmed + disabled with an
+   * "Unavailable" tag so the configured value stays visible without
+   * offering a dead pick.
+   */
+  unavailable?: boolean;
 }
 
 interface CompactStellaModelListProps {
@@ -92,24 +99,34 @@ export function CompactStellaModelList({
           <div className="compact-stella-list-heading">Recent</div>
           {recents.map((entry) => {
             const selected = entry.id === value;
+            const subtitle = entry.unavailable
+              ? "Unavailable"
+              : entry.subtitle;
             return (
               <button
                 key={entry.id}
                 type="button"
                 role="option"
                 aria-selected={selected}
+                aria-disabled={entry.unavailable || undefined}
                 className="compact-stella-list-item"
                 data-selected={selected || undefined}
+                data-restricted={entry.unavailable || undefined}
+                title={
+                  entry.unavailable
+                    ? "This model is no longer available — pick another."
+                    : undefined
+                }
                 onClick={() => onSelect(entry.id)}
-                disabled={disabled}
+                disabled={disabled || entry.unavailable}
               >
                 <span className="compact-stella-list-item-text">
                   <span className="compact-stella-list-item-name">
                     {entry.label}
                   </span>
-                  {entry.subtitle ? (
+                  {subtitle ? (
                     <span className="compact-stella-list-item-sub">
-                      {entry.subtitle}
+                      {subtitle}
                     </span>
                   ) : null}
                 </span>
