@@ -139,10 +139,21 @@ export function isGenericTaskDescription(
  * so de-slugging the id recovers a meaningful label. Ordinal/namespace ids
  * (`task-7`, `grp-…`) carry no words, so they fall back to plain "Task".
  */
+// Spawn-thread ids are minted by `slugify()` (runtime/kernel/shared/slug.ts):
+// lowercase a-z0-9 words joined by single dashes, no leading/trailing dash,
+// capped at 48 chars. Ids from any other generator (uppercase, underscores,
+// other alphabets, overlong) may embed text that was never meant as a display
+// label — treat those as opaque and keep the generic "Task".
+const SPAWN_SLUG_MAX_LENGTH = 48
+const SPAWN_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 export function fallbackTaskDescription(agentId: string | undefined): string {
   const slug = (agentId ?? '').trim()
   if (!slug || /^(task|grp|legacy)-/i.test(slug)) return 'Task'
-  const words = slug.split(/[-_]+/).filter(Boolean)
+  if (slug.length > SPAWN_SLUG_MAX_LENGTH || !SPAWN_SLUG_PATTERN.test(slug)) {
+    return 'Task'
+  }
+  const words = slug.split('-')
   const letterCount = (words.join('').match(/[a-z]/gi) ?? []).length
   // Short single-token ids ("a1", "x7f3") are opaque junk, not slugged
   // descriptions — keep the generic label for those.
@@ -864,9 +875,16 @@ export function mergeFooterTasks(
         ? {
             ...persistedTask,
             ...task,
+            // A live task can carry a fallback label that is merely the
+            // de-slugged id ("Fix the bug" from `fix-the-bug`) — that must
+            // not overwrite a richer persisted spawn description, so compare
+            // with the fallback-aware check rather than generic-only.
             description:
-              isGenericTaskDescription(task.description) &&
-              !isGenericTaskDescription(persistedTask.description)
+              isFallbackTaskDescription(task.description, task.id) &&
+              !isFallbackTaskDescription(
+                persistedTask.description,
+                persistedTask.id,
+              )
                 ? persistedTask.description
                 : task.description,
             statusText:

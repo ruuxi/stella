@@ -134,10 +134,45 @@ export function deriveAgentCompletionFiles(
 /** Cap for the fileless-section summary excerpt (whitespace-collapsed). */
 const SUMMARY_MAX_CHARS = 200;
 
+/** How far below the cap a word boundary may sit and still be preferred. */
+const SUMMARY_BOUNDARY_SLACK = 32;
+
+const graphemeSegmenter =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null;
+
+/**
+ * Truncate to at most `max` UTF-16 units without splitting a grapheme
+ * cluster — a blind `slice` can cut a surrogate pair (emoji, rare CJK) in
+ * half and render a replacement character at the excerpt's edge.
+ */
+const truncateAtGrapheme = (value: string, max: number): string => {
+  if (value.length <= max) return value;
+  if (!graphemeSegmenter) {
+    // Fallback: only guard the surrogate-pair case at the cut point.
+    const cut = value.slice(0, max);
+    return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
+  }
+  let end = 0;
+  for (const { index, segment } of graphemeSegmenter.segment(value)) {
+    if (index + segment.length > max) break;
+    end = index + segment.length;
+  }
+  return value.slice(0, end);
+};
+
 const toSummaryExcerpt = (result: string): string => {
   const compact = result.replace(/\s+/g, " ").trim();
   if (compact.length <= SUMMARY_MAX_CHARS) return compact;
-  return `${compact.slice(0, SUMMARY_MAX_CHARS).trimEnd()}…`;
+  // Prefer a word boundary near the cap; otherwise cut between graphemes.
+  const head = truncateAtGrapheme(compact, SUMMARY_MAX_CHARS);
+  const lastSpace = head.lastIndexOf(" ");
+  const cut =
+    lastSpace >= SUMMARY_MAX_CHARS - SUMMARY_BOUNDARY_SLACK
+      ? head.slice(0, lastSpace)
+      : head;
+  return `${cut.trimEnd()}…`;
 };
 
 /**
@@ -181,7 +216,11 @@ export function buildAgentCompletionSections(
     if (prev === undefined || event.timestamp >= prev) {
       completedAtByAgent.set(agentId, Math.max(prev ?? 0, event.timestamp));
       const result = asNonEmptyString(event.payload.result);
+      // The summary always mirrors the LATEST completion: a re-run that
+      // finishes without a result clears the older excerpt rather than
+      // leaving stale text attributed to the newer completion.
       if (result) summaryByAgent.set(agentId, toSummaryExcerpt(result));
+      else summaryByAgent.delete(agentId);
     }
   }
 

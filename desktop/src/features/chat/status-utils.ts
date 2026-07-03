@@ -324,6 +324,9 @@ const RAW_TOOL_STATUS_PATTERN =
 const toToolStatusKey = (value: string): string =>
   value
     .trim()
+    // Acronym → word boundary first (`HTMLPreview` → `HTML_Preview`) so
+    // consecutive capitals don't collapse into one token below.
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .replace(/[_\s-]+/g, "_")
     .replace(/:+$/g, "")
