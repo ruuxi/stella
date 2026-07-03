@@ -5,11 +5,25 @@
  * Required: `session_id` returned by a still-running `exec_command`.
  */
 
-import { handleWriteStdin, type ShellState } from "../shell.js";
+import {
+  maybeOfferBrowserExtensionConnect,
+  type BrowserExtensionConnectRequester,
+} from "../browser-extension-offer.js";
+import {
+  handleExecCommand,
+  handleWriteStdin,
+  type ShellState,
+} from "../shell.js";
 import type { ToolDefinition } from "../types.js";
+
+export type WriteStdinToolOptions = {
+  /** See `ExecCommandToolOptions.requestBrowserExtensionConnect`. */
+  requestBrowserExtensionConnect?: BrowserExtensionConnectRequester;
+};
 
 export const createWriteStdinTool = (
   shellState: ShellState,
+  options: WriteStdinToolOptions = {},
 ): ToolDefinition => ({
   name: "write_stdin",
   description:
@@ -41,6 +55,48 @@ export const createWriteStdinTool = (
     },
     required: ["session_id"],
   },
-  execute: (args, context, extras) =>
-    handleWriteStdin(shellState, args, context, extras?.signal),
+  execute: async (args, context, extras) => {
+    const result = await handleWriteStdin(
+      shellState,
+      args,
+      context,
+      extras?.signal,
+    );
+    if (!options.requestBrowserExtensionConnect) return result;
+    // A cold-start stella-browser failure usually outlives exec_command's
+    // default yield (the daemon waits up to 60s for the extension), so the
+    // "Extension not connected" error typically surfaces on a poll here
+    // rather than on the original exec_command call. Same offer + re-run
+    // flow, reconstructing the command from the completed session record.
+    const payload = result.result;
+    const record =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : null;
+    const command = typeof record?.command === "string" ? record.command : "";
+    if (!command) return result;
+    return await maybeOfferBrowserExtensionConnect({
+      result,
+      command,
+      requestConnect: options.requestBrowserExtensionConnect,
+      rerun: () =>
+        handleExecCommand(
+          shellState,
+          {
+            cmd: command,
+            ...(typeof record?.cwd === "string"
+              ? { workdir: record.cwd }
+              : {}),
+          },
+          context,
+          extras?.signal,
+          extras?.onUpdate,
+        ),
+      ...(context?.conversationId
+        ? { conversationId: context.conversationId }
+        : {}),
+      ...(context?.agentId ? { agentId: context.agentId } : {}),
+      signal: extras?.signal,
+    });
+  },
 });
