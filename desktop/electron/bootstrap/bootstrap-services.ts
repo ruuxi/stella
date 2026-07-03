@@ -7,6 +7,7 @@ import { RadialGestureService } from "../services/radial-gesture-service.js";
 import { togglePetVoice } from "../services/pet-voice-control.js";
 import { CredentialService } from "../services/credential-service.js";
 import { ConnectorCredentialService } from "../services/connector-credential-service.js";
+import { ConnectorConnectService } from "../services/connector-connect-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
 import { LocalChatHistoryService } from "../services/local-chat-history-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
@@ -98,6 +99,14 @@ export const createBootstrapServices = (options: {
   connectorCredentialService = new ConnectorCredentialService({
     windowManagerTarget: lifecycle,
     getStellaAppDir: () => lifecycle.getStellaDataDir(),
+    getConvexAuthToken: () => authService.getConvexAuthToken(),
+    getConvexSiteUrl: () => authService.getConvexSiteUrl(),
+  });
+
+  const connectorConnectService = new ConnectorConnectService({
+    windowManagerTarget: lifecycle,
+    getStellaAppDir: () => lifecycle.getStellaDataDir(),
+    connectorCredentialService,
     getConvexAuthToken: () => authService.getConvexAuthToken(),
     getConvexSiteUrl: () => authService.getConvexSiteUrl(),
   });
@@ -267,6 +276,7 @@ export const createBootstrapServices = (options: {
     radialGestureService,
     credentialService,
     connectorCredentialService,
+    connectorConnectService,
     externalLinkService,
     localChatHistoryService,
     securityPolicyService,

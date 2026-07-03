@@ -518,6 +518,14 @@ type SystemHandlersOptions = {
     ok: boolean;
     error?: string;
   };
+  /**
+   * Inline in-chat connect card responses (accept / decline / cancel)
+   * for agent-initiated `stella-connect request-connection` offers.
+   */
+  respondConnectorConnect: (payload: {
+    requestId: string;
+    action: "accept" | "decline" | "cancel";
+  }) => { ok: boolean; error?: string };
   getBroadcastToMobile?: () =>
     | ((channel: string, data: unknown) => void)
     | null;
@@ -1338,6 +1346,34 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         throw new Error("Blocked untrusted connector credential cancellation.");
       }
       return options.cancelConnectorCredential(payload);
+    },
+  );
+
+  ipcMain.handle(
+    "connector-connect:respond",
+    (
+      event,
+      payload: {
+        requestId: string;
+        action: "accept" | "decline" | "cancel";
+      },
+    ) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "connector-connect:respond",
+        )
+      ) {
+        throw new Error("Blocked untrusted connector connect response.");
+      }
+      if (
+        payload.action !== "accept" &&
+        payload.action !== "decline" &&
+        payload.action !== "cancel"
+      ) {
+        throw new Error("Invalid connector connect action.");
+      }
+      return options.respondConnectorConnect(payload);
     },
   );
 

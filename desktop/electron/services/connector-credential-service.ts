@@ -34,6 +34,14 @@ type ConnectorCredentialOutcome =
   | { ok: true }
   | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string };
 
+/**
+ * `"dialog"` (default) broadcasts `connector-credential:request` so the
+ * renderer pops the credential/OAuth modal. `"headless"` skips the
+ * modal and launches the flow immediately — only valid for OAuth-mode
+ * requests where another surface already collected the user's gesture.
+ */
+export type ConnectorCredentialPresentation = "dialog" | "headless";
+
 type PendingMeta = {
   tokenKey: string;
   mode: ConnectorCredentialRequestMode;
@@ -122,6 +130,12 @@ export class ConnectorCredentialService {
     displayName: string;
     resourceUrl: string;
     description?: string;
+    /**
+     * `"headless"` skips the renderer approval dialog and opens the
+     * browser immediately — used when another surface (the in-chat
+     * connect card) already collected the user's launch gesture.
+     */
+    presentation?: ConnectorCredentialPresentation;
   }): Promise<ConnectorCredentialOutcome> {
     return await this.enqueueRequest({
       tokenKey: payload.tokenKey,
@@ -129,6 +143,7 @@ export class ConnectorCredentialService {
       authType: "oauth",
       resourceUrl: payload.resourceUrl,
       description: payload.description,
+      presentation: payload.presentation,
       kind: "external_approval",
     });
   }
@@ -157,6 +172,14 @@ export class ConnectorCredentialService {
       provider: string;
     };
     description?: string;
+    /**
+     * `"headless"` starts the browser OAuth flow immediately instead of
+     * popping the renderer dialog — the caller's surface (in-chat
+     * connect card) already collected the user's launch gesture.
+     */
+    presentation?: ConnectorCredentialPresentation;
+    /** External abort hook so a headless caller can cancel the flow. */
+    oauthAbort?: AbortController;
   }): Promise<ConnectorCredentialOutcome> {
     return await this.enqueueRequest({
       tokenKey: payload.tokenKey,
@@ -167,6 +190,8 @@ export class ConnectorCredentialService {
       scopes: payload.scopes,
       scopeSeparator: payload.scopeSeparator,
       description: payload.description,
+      presentation: payload.presentation,
+      oauthAbort: payload.oauthAbort,
       kind: "credential",
       preregisteredOAuth: {
         clientId: payload.clientId,
@@ -252,6 +277,7 @@ export class ConnectorCredentialService {
     oauthUserCode?: string;
     oauthVerificationUri?: string;
     oauthAbort?: AbortController;
+    presentation?: ConnectorCredentialPresentation;
     kind: "credential" | "external_approval";
     preregisteredOAuth?: {
       clientId: string;
@@ -394,10 +420,6 @@ export class ConnectorCredentialService {
       windows: targetWindows,
     });
 
-    for (const window of targetWindows) {
-      window.webContents.send("connector-credential:request", request);
-    }
-
     const settled = new Promise<ConnectorCredentialOutcome>((resolve) => {
       const timeout = setTimeout(() => {
         if (this.pending.has(requestId)) {
@@ -412,6 +434,56 @@ export class ConnectorCredentialService {
         timeout,
       });
     });
+
+    if (payload.presentation === "headless") {
+      // Another surface (the in-chat connect card) already collected
+      // the user's launch gesture — start the flow now instead of
+      // popping the renderer dialog. This is exactly the state
+      // transition `submitCredential` would perform, minus the modal.
+      if (payload.kind === "external_approval") {
+        if (payload.resourceUrl) {
+          void shell
+            .openExternal(payload.resourceUrl)
+            .then(() => {
+              this.pending.resolve(requestId, { ok: true });
+              this.meta.delete(requestId);
+            })
+            .catch((error) => {
+              this.pending.resolve(requestId, {
+                ok: false,
+                reason:
+                  (error as Error).message || "Could not open the browser.",
+              });
+              this.meta.delete(requestId);
+            });
+        } else {
+          this.pending.resolve(requestId, {
+            ok: false,
+            reason: "unsupported",
+          });
+          this.meta.delete(requestId);
+        }
+        return settled;
+      }
+      const headlessMeta = this.meta.get(requestId);
+      if (headlessMeta?.oauthFlow && !headlessMeta.oauthStarted) {
+        headlessMeta.oauthStarted = true;
+        void this.runOauthFlow({
+          requestId,
+          ...headlessMeta.oauthFlow,
+        });
+      } else {
+        // api_key mode (or a flow without connection details) still
+        // needs the modal — headless has no way to collect a pasted key.
+        this.pending.resolve(requestId, { ok: false, reason: "unsupported" });
+        this.meta.delete(requestId);
+      }
+      return settled;
+    }
+
+    for (const window of targetWindows) {
+      window.webContents.send("connector-credential:request", request);
+    }
 
     return settled;
   }

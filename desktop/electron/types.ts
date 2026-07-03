@@ -98,6 +98,43 @@ export type ConnectorCredentialSubmitPayload = {
   label?: string;
 };
 
+/**
+ * Inline in-chat connect card (agent-initiated via
+ * `stella-connect request-connection`). The renderer shows the card in
+ * the active chat surface; accept runs the same enable + OAuth flow as
+ * the Store, decline resolves back to the CLI which persists a
+ * "don't re-offer" preference.
+ */
+export type ConnectorConnectRequestPayload = {
+  requestId: string;
+  id: string;
+  name: string;
+  description?: string;
+  iconUrl?: string;
+  category?: string;
+  /** One-line agent-provided context, e.g. "To check your recent purchases". */
+  reason?: string;
+};
+
+export type ConnectorConnectPhase =
+  | "connecting"
+  | "connected"
+  | "declined"
+  | "cancelled"
+  | "timeout"
+  | "error";
+
+export type ConnectorConnectUpdatePayload = {
+  requestId: string;
+  phase: ConnectorConnectPhase;
+  message?: string;
+};
+
+export type ConnectorConnectRespondPayload = {
+  requestId: string;
+  action: "accept" | "decline" | "cancel";
+};
+
 export const toChatContextWindow = (
   windowInfo: WindowInfo | null | undefined,
 ): ChatContext["window"] => {

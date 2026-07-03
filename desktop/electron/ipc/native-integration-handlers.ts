@@ -18,7 +18,7 @@ import { loadConfig } from "../../../runtime/kernel/google-workspace/config.js";
 import { SCOPES as GOOGLE_WORKSPACE_SCOPES } from "../../../runtime/kernel/google-workspace/scopes.js";
 import { assertPrivilegedRequest } from "./privileged-ipc.js";
 
-type NativeIntegrationHandlersOptions = {
+export type NativeIntegrationHandlersOptions = {
   getStellaAppDir: () => string | null;
   requestPreregisteredOAuth?: (payload: {
     tokenKey: string;
@@ -80,6 +80,21 @@ type NativeIntegrationHandlersOptions = {
   ) => boolean;
 };
 
+/**
+ * The subset of the handler options that the credential/enable flow
+ * actually consumes. Exported so the in-chat connect card service can
+ * run the exact Store connect flow with its own (headless) OAuth
+ * callbacks instead of the modal-backed ones.
+ */
+export type NativeCredentialFlowOptions = Pick<
+  NativeIntegrationHandlersOptions,
+  | "requestPreregisteredOAuth"
+  | "requestDeviceOAuth"
+  | "requestExternalOAuthApproval"
+  | "getConvexAuthToken"
+  | "getConvexSiteUrl"
+>;
+
 type BackendOAuthProvidersResponse = {
   providers?: Array<{
     id?: unknown;
@@ -119,8 +134,8 @@ const emptyConfiguredOAuthProviders = (): ConfiguredOAuthProviderSets => ({
   externalCallback: new Set(),
 });
 
-const loadConfiguredOAuthProviders = async (
-  options: NativeIntegrationHandlersOptions,
+export const loadConfiguredOAuthProviders = async (
+  options: NativeCredentialFlowOptions,
 ) => {
   const siteUrl = options.getConvexSiteUrl?.()?.trim().replace(/\/+$/u, "");
   if (!siteUrl) return emptyConfiguredOAuthProviders();
@@ -309,7 +324,7 @@ const toServerNativeConnectorEntry = (
 };
 
 const createBackendIntegrationConnectLink = async (
-  options: NativeIntegrationHandlersOptions,
+  options: NativeCredentialFlowOptions,
   id: string,
 ) => {
   const siteUrl = options.getConvexSiteUrl?.()?.trim().replace(/\/+$/u, "");
@@ -342,8 +357,8 @@ const createBackendIntegrationConnectLink = async (
   return url;
 };
 
-const loadServerNativeConnectorCatalog = async (
-  options: NativeIntegrationHandlersOptions,
+export const loadServerNativeConnectorCatalog = async (
+  options: NativeCredentialFlowOptions,
 ) => {
   const siteUrl = options.getConvexSiteUrl?.()?.trim().replace(/\/+$/u, "");
   if (!siteUrl) return null;
@@ -359,8 +374,8 @@ const loadServerNativeConnectorCatalog = async (
     .filter((entry): entry is NativeConnectorCatalogEntry => Boolean(entry));
 };
 
-const ensureNativeCredential = async (
-  options: NativeIntegrationHandlersOptions,
+export const ensureNativeCredential = async (
+  options: NativeCredentialFlowOptions,
   stellaAppDir: string,
   id: string,
 ) => {
