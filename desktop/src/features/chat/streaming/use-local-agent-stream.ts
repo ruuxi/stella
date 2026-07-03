@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { isActivityFeedTask } from '@/features/chat/lib/event-transforms'
 import { showToast } from '@/ui/toast'
 import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
 import {
@@ -591,17 +592,21 @@ export function useLocalAgentStream({
         )
         .flatMap(([runId, taskMap]) => {
           const anchorTurnId = storeState.runsById[runId]?.userMessageId
-          return Object.values(taskMap).map((task) => ({
-            ...task,
-            // Stamp the owning run id (live task-upserts don't carry it).
-            // Picking a task in the workspace strip turns it into a
-            // ChatContext.activity via `taskToActivityContext`, whose
-            // `runId` is emitted as `run-id="…"` in the agent prompt
-            // context (runtime/kernel/chat-prompt-context), so a still-live
-            // task needs it before it has been persisted.
-            runId: task.runId ?? runId,
-            anchorTurnId: task.anchorTurnId ?? anchorTurnId ?? undefined,
-          }))
+          // Orchestrator-internal helper agents (schedule specialists, …)
+          // are execution detail — never user-facing activity rows.
+          return Object.values(taskMap)
+            .filter(isActivityFeedTask)
+            .map((task) => ({
+              ...task,
+              // Stamp the owning run id (live task-upserts don't carry it).
+              // Picking a task in the workspace strip turns it into a
+              // ChatContext.activity via `taskToActivityContext`, whose
+              // `runId` is emitted as `run-id="…"` in the agent prompt
+              // context (runtime/kernel/chat-prompt-context), so a still-live
+              // task needs it before it has been persisted.
+              runId: task.runId ?? runId,
+              anchorTurnId: task.anchorTurnId ?? anchorTurnId ?? undefined,
+            }))
         })
     : []
   const liveTasks = conversationTasks.sort(
