@@ -136,6 +136,22 @@ export type StellaHostRunnerOptions = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
+  /**
+   * Desktop hop for the inline "connect the Stella browser extension" chat
+   * card. Blocks until the user connects, declines, or the card times out;
+   * `exec_command` re-runs the failed stella-browser command on success.
+   */
+  requestBrowserExtensionConnect?: (payload: {
+    conversationId?: string;
+    agentId?: string;
+    command?: string;
+  }) => Promise<
+    | { ok: true; status: "connected" | "already_connected" }
+    | {
+        ok: false;
+        reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
+      }
+  >;
   requestRuntimeAuthRefresh?: (payload: {
     source: RuntimeAuthRefreshSource;
   }) => Promise<HostRuntimeAuthRefreshResult>;

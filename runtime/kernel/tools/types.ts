@@ -276,6 +276,13 @@ export type ToolHostOptions = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
+  /**
+   * Optional desktop hop for `exec_command`: render an inline "connect the
+   * Stella browser extension" card in the chat when a stella-browser command
+   * fails on the missing extension bridge, resolving once the user connects
+   * or declines so the tool can re-run the command automatically.
+   */
+  requestBrowserExtensionConnect?: import("./browser-extension-offer.js").BrowserExtensionConnectRequester;
 };
 
 export type FashionShopProduct = {

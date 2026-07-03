@@ -1501,6 +1501,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       iconUrl?: string;
       category?: string;
       reason?: string;
+      kind?: "integration" | "browser-extension";
     }>("connector-connect:request"),
     onConnectorConnectUpdate: onIpcWithEvent<{
       requestId: string;

@@ -8,12 +8,14 @@
 // user's original task the moment the connection lands.
 
 import { randomUUID } from "crypto";
-import { BrowserWindow } from "electron";
+import { BrowserWindow, shell } from "electron";
 import {
   buildNativeConnectorCatalog,
   enableNativeConnector,
   getNativeConnectorCatalogEntry,
 } from "../../../runtime/kernel/connectors/native-integrations.js";
+import { STELLA_BROWSER_EXTENSION_ID } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
+import { isStellaExtensionInstalled } from "./stella-browser-bridge-service.js";
 import type { WindowManagerTarget } from "../../../runtime/kernel/lifecycle-targets.js";
 import {
   ensureNativeCredential,
@@ -38,6 +40,7 @@ export type ConnectorConnectOutcome =
 type PendingConnectMeta = {
   id: string;
   name: string;
+  kind: "integration" | "browser-extension";
   state: "pending" | "connecting";
   oauthAbort: AbortController;
   windows: BrowserWindow[];
@@ -46,6 +49,20 @@ type PendingConnectMeta = {
 // Slightly under the CLI's 10-minute bridge timeout so the card always
 // resolves (and disappears) before the agent-side wait gives up.
 const CARD_TIMEOUT_MS = 9.5 * 60 * 1000;
+
+// Browser-extension flavor: how the install wait behaves after the user
+// accepts. Detection is the same cheap profile-directory scan the bridge
+// service uses at startup; the grace delays give the freshly installed
+// extension time to boot and dial the native messaging host before the
+// worker re-runs the failed stella-browser command.
+const BROWSER_EXTENSION_WEB_STORE_URL = `https://chromewebstore.google.com/detail/${STELLA_BROWSER_EXTENSION_ID}`;
+const EXTENSION_POLL_INTERVAL_MS = 2_000;
+const EXTENSION_CONNECT_GRACE_MS = 6_000;
+const EXTENSION_ALREADY_INSTALLED_GRACE_MS = 8_000;
+const EXTENSION_FLOW_TIMEOUT_MS = 4 * 60 * 1000;
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export class ConnectorConnectService {
   private readonly pending = new PendingRequestStore<ConnectorConnectOutcome>();
@@ -86,6 +103,7 @@ export class ConnectorConnectService {
     this.meta.set(requestId, {
       id: payload.id,
       name: payload.name,
+      kind: "integration",
       state: "pending",
       oauthAbort: new AbortController(),
       windows: targetWindows,
@@ -99,6 +117,7 @@ export class ConnectorConnectService {
       iconUrl: payload.iconUrl,
       category: payload.category,
       reason: payload.reason,
+      kind: "integration",
     };
 
     const settled = new Promise<ConnectorConnectOutcome>((resolve) => {
@@ -108,6 +127,78 @@ export class ConnectorConnectService {
         // A card the user never answered times out; a flow that is
         // mid-OAuth stays owned by the credential service's own
         // timeout, which settles the connect flow promise below.
+        if (meta?.state === "pending") {
+          this.settle(requestId, { ok: false, reason: "timeout" }, "timeout");
+        }
+      }, CARD_TIMEOUT_MS);
+      this.pending.set(requestId, {
+        resolve,
+        reject: () => undefined,
+        timeout,
+      });
+    });
+
+    for (const window of targetWindows) {
+      if (window.isDestroyed()) continue;
+      window.webContents.send("connector-connect:request", request);
+    }
+
+    return settled;
+  }
+
+  /**
+   * Browser-extension flavor of the same card, triggered by the worker
+   * when a `stella-browser` command fails on the missing Chrome
+   * extension bridge. Accept opens the Chrome Web Store and waits for
+   * the extension install to appear on disk; the worker re-runs the
+   * failed command once this resolves `{ ok: true }`.
+   */
+  async requestBrowserExtensionConnect(_payload: {
+    conversationId?: string;
+    agentId?: string;
+    command?: string;
+  }): Promise<ConnectorConnectOutcome> {
+    for (const meta of this.meta.values()) {
+      if (meta.kind === "browser-extension") {
+        // One extension card at a time; the worker-side gate makes this
+        // rare, but a second concurrent agent can still race it.
+        return { ok: false, reason: "already_pending" };
+      }
+    }
+    const windowManager = this.options.windowManagerTarget.getWindowManager();
+    const fullWindow = windowManager?.getFullWindow() ?? null;
+    const targetWindows = fullWindow
+      ? [fullWindow]
+      : BrowserWindow.getAllWindows();
+    if (targetWindows.length === 0) {
+      return { ok: false, reason: "unsupported" };
+    }
+
+    const requestId = randomUUID();
+    this.meta.set(requestId, {
+      id: "stella-browser-extension",
+      name: "the Stella browser extension",
+      kind: "browser-extension",
+      state: "pending",
+      oauthAbort: new AbortController(),
+      windows: targetWindows,
+    });
+
+    const request: ConnectorConnectRequestPayload = {
+      requestId,
+      id: "stella-browser-extension",
+      name: "Stella browser extension",
+      description:
+        "Lets Stella work inside your real browser — your logged-in sites, tabs, and pages.",
+      reason:
+        "Stella needs your browser to continue this task, but the extension isn't connected yet.",
+      kind: "browser-extension",
+    };
+
+    const settled = new Promise<ConnectorConnectOutcome>((resolve) => {
+      const timeout = setTimeout(() => {
+        const meta = this.meta.get(requestId);
+        if (!this.pending.has(requestId)) return;
         if (meta?.state === "pending") {
           this.settle(requestId, { ok: false, reason: "timeout" }, "timeout");
         }
@@ -158,7 +249,11 @@ export class ConnectorConnectService {
     }
     meta.state = "connecting";
     this.broadcastUpdate(meta.windows, payload.requestId, "connecting");
-    void this.runConnectFlow(payload.requestId, meta);
+    if (meta.kind === "browser-extension") {
+      void this.runBrowserExtensionFlow(payload.requestId, meta);
+    } else {
+      void this.runConnectFlow(payload.requestId, meta);
+    }
     return { ok: true };
   }
 
@@ -237,6 +332,64 @@ export class ConnectorConnectService {
         cancelled ? "cancelled" : "error",
         cancelled ? undefined : message,
       );
+    }
+  }
+
+  private async runBrowserExtensionFlow(
+    requestId: string,
+    meta: PendingConnectMeta,
+  ) {
+    const signal = meta.oauthAbort.signal;
+    const settleCancelled = () =>
+      this.settle(requestId, { ok: false, reason: "cancelled" }, "cancelled");
+    const alreadyInstalled = isStellaExtensionInstalled();
+    void shell
+      .openExternal(BROWSER_EXTENSION_WEB_STORE_URL)
+      .catch(() => undefined);
+
+    if (alreadyInstalled) {
+      // Extension files exist — it's likely disabled or the browser is
+      // closed. Give the user a moment with the Web Store page (which
+      // shows the enable state), then let the worker's re-run test
+      // whether the bridge is actually back.
+      await sleep(EXTENSION_ALREADY_INSTALLED_GRACE_MS);
+      if (!this.pending.has(requestId)) return;
+      if (signal.aborted) {
+        settleCancelled();
+        return;
+      }
+      this.settle(
+        requestId,
+        { ok: true, status: "already_connected" },
+        "connected",
+      );
+      return;
+    }
+
+    const deadline = Date.now() + EXTENSION_FLOW_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      if (!this.pending.has(requestId)) return;
+      if (signal.aborted) {
+        settleCancelled();
+        return;
+      }
+      if (isStellaExtensionInstalled()) {
+        // Freshly installed: give the extension time to boot and dial
+        // the native messaging host before the worker re-runs the
+        // failed command.
+        await sleep(EXTENSION_CONNECT_GRACE_MS);
+        if (!this.pending.has(requestId)) return;
+        if (signal.aborted) {
+          settleCancelled();
+          return;
+        }
+        this.settle(requestId, { ok: true, status: "connected" }, "connected");
+        return;
+      }
+      await sleep(EXTENSION_POLL_INTERVAL_MS);
+    }
+    if (this.pending.has(requestId)) {
+      this.settle(requestId, { ok: false, reason: "timeout" }, "timeout");
     }
   }
 

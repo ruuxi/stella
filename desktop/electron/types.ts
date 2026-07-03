@@ -114,6 +114,12 @@ export type ConnectorConnectRequestPayload = {
   category?: string;
   /** One-line agent-provided context, e.g. "To check your recent purchases". */
   reason?: string;
+  /**
+   * What the card connects. "integration" (default) runs the Store
+   * enable + OAuth flow; "browser-extension" opens the Chrome Web Store
+   * for the Stella Browser Bridge extension and waits for the install.
+   */
+  kind?: "integration" | "browser-extension";
 };
 
 export type ConnectorConnectPhase =

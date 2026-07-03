@@ -228,6 +228,24 @@ export type RuntimeHostHandlers = {
       }
   >;
   /**
+   * Offer connecting the Stella browser extension via an inline card in
+   * the active chat when a stella-browser command fails on the missing
+   * extension bridge. Resolves when the user installs/connects the
+   * extension, declines, or the request times out; on success the worker
+   * re-runs the failed command automatically.
+   */
+  requestBrowserExtensionConnect?: (payload: {
+    conversationId?: string;
+    agentId?: string;
+    command?: string;
+  }) => Promise<
+    | { ok: true; status: "connected" | "already_connected" }
+    | {
+        ok: false;
+        reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
+      }
+  >;
+  /**
    * Push a display update to the renderer. The payload is either a raw
    * HTML string or a structured payload object that the renderer hands
    * to its workspace panel tab manager. The host handler is responsible for forwarding
@@ -3197,6 +3215,21 @@ export class StellaRuntimeHost {
             iconUrl?: string;
             category?: string;
             reason?: string;
+          },
+        );
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_BROWSER_EXTENSION_CONNECT_REQUEST,
+      async (params) => {
+        if (!this.options.hostHandlers.requestBrowserExtensionConnect) {
+          return { ok: false, reason: "unsupported" };
+        }
+        return await this.options.hostHandlers.requestBrowserExtensionConnect(
+          params as {
+            conversationId?: string;
+            agentId?: string;
+            command?: string;
           },
         );
       },

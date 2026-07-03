@@ -88,7 +88,16 @@ export const buildBuiltinTools = (
   const tools: ToolDefinition[] = [];
 
   // General-agent surface
-  tools.push(createExecCommandTool(options.shellState));
+  tools.push(
+    createExecCommandTool(options.shellState, {
+      ...(options.requestBrowserExtensionConnect
+        ? {
+            requestBrowserExtensionConnect:
+              options.requestBrowserExtensionConnect,
+          }
+        : {}),
+    }),
+  );
   tools.push(createWriteStdinTool(options.shellState));
   tools.push(applyPatchTool);
   tools.push(writeTool);

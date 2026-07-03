@@ -28,6 +28,8 @@ export type ConnectorConnectCardRequest = {
   iconUrl?: string;
   category?: string;
   reason?: string;
+  /** "integration" (Store enable + OAuth) or "browser-extension" (Web Store install). */
+  kind?: "integration" | "browser-extension";
   phase: ConnectorConnectCardPhase;
   message?: string;
 };
