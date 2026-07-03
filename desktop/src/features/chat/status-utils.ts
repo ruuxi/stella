@@ -79,6 +79,31 @@ const TOOL_STATUS_BY_NAME: Record<string, readonly string[]> = {
     "Getting oriented",
     "Looking at what matters",
   ],
+  // Recall delegates to a recall agent that greps the memory ledger and
+  // past threads — often the orchestrator's longest wait, so the copy
+  // must read as memory-digging rather than generic thinking.
+  recall: [
+    "Searching my memory",
+    "Digging through history",
+    "Jogging my memory",
+    "Thinking back",
+    "Retracing our steps",
+    "Flipping through old notes",
+    "Rummaging through the archives",
+    "Pulling up past threads",
+    "Checking what we did before",
+    "Dusting off the records",
+  ],
+  remember: [
+    "Making a note",
+    "Filing that away",
+    "Writing it down",
+    "Committing it to memory",
+    "Jotting that down",
+    "Saving that for later",
+    "Tucking it away",
+    "Adding it to my notes",
+  ],
   spawn_agent: AGENT_WORK_VARIATIONS,
   send_input: AGENT_WORK_VARIATIONS,
   pause_agent: [
@@ -290,9 +315,16 @@ const TOOL_STATUS_BY_NAME: Record<string, readonly string[]> = {
 const RAW_TOOL_STATUS_PATTERN =
   /^(?:running|executing|calling|invoking)\s+(.+)$/i;
 
+/**
+ * Normalize a tool identifier to the snake_case keys used in
+ * `TOOL_STATUS_BY_NAME`. Handles the runtime's mixed naming — snake_case
+ * (`spawn_agent`), PascalCase (`Recall`, `RequestCredential`, `CronAdd`)
+ * and space-separated humanized labels (`Running Spawn Agent`).
+ */
 const toToolStatusKey = (value: string): string =>
   value
     .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .replace(/[_\s-]+/g, "_")
     .replace(/:+$/g, "")
     .toLowerCase();
@@ -389,7 +421,7 @@ export function computeStatus({
   isReasoning?: boolean;
 } = {}): string {
   if (toolName) {
-    const normalizedToolName = toolName.toLowerCase();
+    const normalizedToolName = toToolStatusKey(toolName);
     const mapped = TOOL_STATUS_BY_NAME[normalizedToolName];
     if (mapped) return pickVariation(mapped, seed ?? normalizedToolName);
     // Unknown / future orchestrator tool — keep it neutral instead of
