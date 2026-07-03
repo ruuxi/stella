@@ -4,8 +4,10 @@ import {
   recordArrival,
   stepPaceCount,
   CATCHUP_MAX_CPS,
+  CATCHUP_RAMP_PER_SEC,
   FINISH_LATENCY_MS,
   FINISH_MAX_CPS,
+  FINISH_MIN_CPS,
   MIN_PLAYOUT_CPS,
   RATE_SLEW_PER_SEC,
   START_HOLD_MS,
@@ -267,6 +269,63 @@ describe("stepPaceCount — jitter-buffer playout cadence", () => {
     expect(count * DT).toBeLessThan(2_600);
   });
 
+  it("keeps holding a tiny unknown-rate head instead of painting two letters", () => {
+    // The fable-5 shape: a 2-char first fragment, then a multi-second model
+    // think-gap. Revealing the fragment paints "de", starves, and turns the
+    // eventual answer into a catch-up burst. The head must stay held (the
+    // working indicator covers the wait) until real content arrives.
+    const state = createPaceState();
+    recordArrival(state, 2, 0);
+    for (let f = 0; f < frames(5_000); f += 1) {
+      expect(stepPaceCount(state, 2, DT)).toBe(0);
+    }
+    expect(state.started).toBe(false);
+    // Stream end still releases a genuinely tiny message.
+    let remaining = 2;
+    for (let f = 0; f < 60 && remaining > 0; f += 1) {
+      remaining -= stepPaceCount(state, remaining, DT, true);
+    }
+    expect(remaining).toBe(0);
+  });
+
+  it("resumes a post-stall burst with a ramped catch-up, not a rate jump", () => {
+    // Head trickles out, buffer starves for seconds (velocity decays toward
+    // the floor), then the rest of the answer lands at once. The catch-up
+    // must ACCELERATE from the current crawl — bounded frame-over-frame
+    // growth — rather than snapping to the emergency/finish rate.
+    const state = createPaceState();
+    // Warm start: enough head that the reveal begins, then total starvation.
+    recordArrival(state, 40, 0);
+    recordArrival(state, 40, 400);
+    let buf = 80;
+    for (let f = 0; f < frames(2_000); f += 1) buf -= stepPaceCount(state, buf, DT);
+    for (let f = 0; f < frames(4_000); f += 1) stepPaceCount(state, 0, DT);
+    // Burst: the rest of the message, stream still open.
+    recordArrival(state, 2_000, 6_400);
+    buf = 2_000;
+    const counts: number[] = [];
+    for (let f = 0; f < 3_000 && buf > 0; f += 1) {
+      const c = stepPaceCount(state, buf, DT, f > frames(200));
+      buf -= c;
+      counts.push(c);
+    }
+    expect(buf).toBe(0);
+    // Bounded ceiling (finish cap) and bounded acceleration: each frame's
+    // release grows by at most the catch-up ramp factor (plus integer slack).
+    const maxPerFrame = Math.ceil((FINISH_MAX_CPS * DT) / 1000) + 1;
+    expect(Math.max(...counts)).toBeLessThanOrEqual(maxPerFrame);
+    const rampPerFrame = Math.exp(CATCHUP_RAMP_PER_SEC * (DT / 1000));
+    for (let i = 1; i < counts.length; i += 1) {
+      if (counts[i - 1] > 0 && counts[i] > counts[i - 1]) {
+        expect(counts[i]).toBeLessThanOrEqual(
+          counts[i - 1] * rampPerFrame + 2,
+        );
+      }
+    }
+    // The reveal spans seconds — not a blink.
+    expect(counts.length * DT).toBeGreaterThan(2_000);
+  });
+
   it("pours a giant mid-stream burst at a bounded catch-up rate (no dump)", () => {
     // The production symptom: a small first chunk, a pause, then the whole
     // rest of the answer in one fat clump (big native SSE chunks after TTFB,
@@ -314,9 +373,14 @@ describe("stepPaceCount — jitter-buffer playout cadence", () => {
     expect(counts.length * DT).toBeGreaterThan(
       ((2_400 / FINISH_MAX_CPS) * 1000) / 1.25,
     );
-    // ...but stays prompt: capped rate plus the time-bounded tail.
+    // ...but stays prompt: capped rate plus the spool-up ramp (from the
+    // finish floor to the cap at e^CATCHUP_RAMP_PER_SEC per second) plus
+    // the time-bounded tail.
+    const rampMs =
+      (Math.log(FINISH_MAX_CPS / FINISH_MIN_CPS) / CATCHUP_RAMP_PER_SEC) *
+      1000;
     expect(counts.length * DT).toBeLessThan(
-      (2_400 / FINISH_MAX_CPS) * 1000 + FINISH_LATENCY_MS * 2.5,
+      (2_400 / FINISH_MAX_CPS) * 1000 + rampMs + FINISH_LATENCY_MS * 2.5,
     );
   });
 
@@ -350,8 +414,9 @@ describe("stepPaceCount — jitter-buffer playout cadence", () => {
 
   it("drains a finishing backlog promptly but not instantly", () => {
     // Stream end with text still buffered: the finish cadence bypasses the
-    // startup hold and glides the tail out within ~FINISH_LATENCY_MS —
-    // neither a single-frame dump nor a lingering trickle.
+    // startup hold and glides the tail out within ~FINISH_LATENCY_MS (plus
+    // the short spool-up ramp from the finish floor) — neither a
+    // single-frame dump nor a lingering trickle.
     const state = createPaceState();
     const counts: number[] = [];
     let remaining = 120;
@@ -362,7 +427,7 @@ describe("stepPaceCount — jitter-buffer playout cadence", () => {
     }
     expect(remaining).toBe(0);
     expect(counts[0]).toBeLessThan(30);
-    expect(counts.length * DT).toBeLessThanOrEqual(FINISH_LATENCY_MS * 2.5);
+    expect(counts.length * DT).toBeLessThanOrEqual(FINISH_LATENCY_MS * 3);
     expect(counts.length).toBeGreaterThan(3);
   });
 });
