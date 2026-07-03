@@ -164,8 +164,8 @@ type SocialSessionServiceDeps = {
   onLocalChatUpdated?: () => void;
   /**
    * Push a structured payload to the desktop display panel. Used to open
-   * a "Social" preview tab pointing at the per-session Vite dev server
-   * URL once it is listening.
+   * or refresh a "Social" preview tab pointing at the per-session Vite dev
+   * server URL once it is listening.
    */
   pushDisplayPayload?: (payload: Record<string, unknown>) => void;
 };
@@ -214,7 +214,7 @@ export class SocialSessionService {
    * its URL we push a "Social" tab to the desktop display panel.
    */
   private readonly previewManager: SocialPreviewServerManager;
-  /** Sessions for which we have already pushed the display tab open command. */
+  /** Sessions for which we have already pushed the display tab command. */
   private displayedSessions = new Set<string>();
   /** Host-owned sessions already submitted for same-owner device reattachment. */
   private reattachingHostSessions = new Set<string>();

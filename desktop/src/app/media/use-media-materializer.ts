@@ -3,10 +3,10 @@
  * materializes its outputs into `~/.stella/media/outputs/`. This is the single
  * place that turns a remote media job (started by MediaStudio, by the
  * agent's `MediaGenerate` tool, by a CLI, …) into a local file plus a
- * `DisplayPayload` the sidebar can render.
+ * `DisplayPayload` the sidebar can render when the user opens it.
  *
  * Decoupling production from materialization is what makes "all generated
- * media auto-shows in the workspace panel" robust: it doesn't matter who
+ * media is available in the workspace panel" robust: it doesn't matter who
  * `curl`'d the managed media API — every job lives in `media_jobs` keyed by
  * `ownerId`, this hook drains the queue, and downstream UI subscribes to a
  * single payload stream.
