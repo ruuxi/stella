@@ -98,7 +98,16 @@ export const buildBuiltinTools = (
         : {}),
     }),
   );
-  tools.push(createWriteStdinTool(options.shellState));
+  tools.push(
+    createWriteStdinTool(options.shellState, {
+      ...(options.requestBrowserExtensionConnect
+        ? {
+            requestBrowserExtensionConnect:
+              options.requestBrowserExtensionConnect,
+          }
+        : {}),
+    }),
+  );
   tools.push(applyPatchTool);
   tools.push(writeTool);
   tools.push(editTool);
