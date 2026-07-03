@@ -307,6 +307,27 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(web.statusAfterToolEnd).toBeNull();
     expect(web.displayStatus).toBe("Searching");
 
+    // Recall is the orchestrator's longest wait (delegates to a recall
+    // agent); the indicator must read as memory-digging, not a generic
+    // thinking/working verb, and revert to normal labels once it returns.
+    const recall = await runToolStatusIntegration("Recall");
+    expect(recall.rawStatusText).toBe("Running Recall");
+    expect(recall.rawToolStartStatusText).toBe("Running Recall");
+    expect(recall.rawToolEndName).toBe("Recall");
+    expect(recall.persistedToolEvent).toEqual(
+      expect.objectContaining({ type: "tool_start", toolName: "Recall" }),
+    );
+    expect(recall.activeBeforeTool).toBe(true);
+    expect(recall.activeDuringTool).toBe(true);
+    expect(recall.activeAfterToolBeforeAnswer).toBe(true);
+    expect(recall.statusAfterToolEnd).toBeNull();
+    expect(recall.displayStatus).toBe("Searching my memory");
+    // Direct tool-name path: TOOL_START carries the runtime's PascalCase
+    // name, which must normalize onto the recall phrase pool.
+    expect(
+      getWorkingIndicatorDisplayStatus({ toolName: "Recall", toolCallId: "" }),
+    ).toBe("Searching my memory");
+
     const spawnAgent = await runToolStatusIntegration("spawn_agent");
     expect(spawnAgent.rawStatusText).toBe("Running Spawn Agent");
     expect(spawnAgent.rawToolStartStatusText).toBe("Running Spawn Agent");
