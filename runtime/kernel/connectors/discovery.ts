@@ -127,7 +127,9 @@ export const discoverConnectors = async (
   const [commands, apis, declines] = await Promise.all([
     listConfiguredConnectorCommands(stellaAppDir).catch(() => []),
     listConfiguredApiConnectors(stellaAppDir).catch(() => []),
-    listConnectorDeclines(stellaAppDir).catch(() => ({})),
+    listConnectorDeclines(stellaAppDir).catch(
+      (): Awaited<ReturnType<typeof listConnectorDeclines>> => ({}),
+    ),
   ]);
 
   const matches: ConnectorDiscoveryMatch[] = [];

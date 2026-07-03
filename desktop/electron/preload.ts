@@ -1493,6 +1493,34 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("connector-credential:submit", payload),
     cancelConnectorCredential: (payload: { requestId: string }) =>
       ipcRenderer.invoke("connector-credential:cancel", payload),
+    onConnectorConnectRequest: onIpcWithEvent<{
+      requestId: string;
+      id: string;
+      name: string;
+      description?: string;
+      iconUrl?: string;
+      category?: string;
+      reason?: string;
+    }>("connector-connect:request"),
+    onConnectorConnectUpdate: onIpcWithEvent<{
+      requestId: string;
+      phase:
+        | "connecting"
+        | "connected"
+        | "declined"
+        | "cancelled"
+        | "timeout"
+        | "error";
+      message?: string;
+    }>("connector-connect:update"),
+    respondConnectorConnect: (payload: {
+      requestId: string;
+      action: "accept" | "decline" | "cancel";
+    }) =>
+      ipcRenderer.invoke("connector-connect:respond", payload) as Promise<{
+        ok: boolean;
+        error?: string;
+      }>,
   },
 
   updates: {

@@ -1099,6 +1099,40 @@ export type ElectronSystemApi = {
   cancelConnectorCredential: (payload: {
     requestId: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  onConnectorConnectRequest: (
+    callback: (
+      event: unknown,
+      data: {
+        requestId: string;
+        id: string;
+        name: string;
+        description?: string;
+        iconUrl?: string;
+        category?: string;
+        reason?: string;
+      },
+    ) => void,
+  ) => () => void;
+  onConnectorConnectUpdate: (
+    callback: (
+      event: unknown,
+      data: {
+        requestId: string;
+        phase:
+          | "connecting"
+          | "connected"
+          | "declined"
+          | "cancelled"
+          | "timeout"
+          | "error";
+        message?: string;
+      },
+    ) => void,
+  ) => () => void;
+  respondConnectorConnect: (payload: {
+    requestId: string;
+    action: "accept" | "decline" | "cancel";
+  }) => Promise<{ ok: boolean; error?: string }>;
 };
 
 export type InstallManifestSnapshot = {
