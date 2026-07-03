@@ -9,6 +9,7 @@ import {
   getFooterTasksFromEvents,
   groupActivityTasks,
   mergeFooterTasks,
+  pruneGroupExpandOverrides,
   type EventRecord,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
@@ -552,6 +553,58 @@ describe("mergeFooterTasks", () => {
     expect(task?.description).toBe(
       "Fix the flaky teardown race in the fixture suite",
     );
+  });
+});
+
+describe("pruneGroupExpandOverrides", () => {
+  const member = (id: string, groupKey?: string): TaskItem => ({
+    id,
+    description: id,
+    agentType: "general",
+    status: "running",
+    startedAtMs: 1,
+    lastUpdatedAtMs: 1,
+    ...(groupKey ? { groupKey, groupLabel: "Research" } : {}),
+  });
+
+  it("keeps an override while the group is shrunk to a single member, so it still applies after a regrow", () => {
+    const overrides: ReadonlyMap<string, boolean> = new Map([
+      ["grp-research", false],
+    ]);
+
+    // Shrunk to one member: renders as a plain task row, but the group is
+    // still alive — the user's explicit collapse must not be pruned.
+    const shrunk = pruneGroupExpandOverrides(overrides, [
+      member("a", "grp-research"),
+    ]);
+    expect(shrunk.get("grp-research")).toBe(false);
+
+    // Regrown to a group row: the collapse choice still applies.
+    const regrown = pruneGroupExpandOverrides(shrunk, [
+      member("a", "grp-research"),
+      member("b", "grp-research"),
+    ]);
+    expect(regrown.get("grp-research")).toBe(false);
+  });
+
+  it("drops an override once no member of the group remains", () => {
+    const overrides: ReadonlyMap<string, boolean> = new Map([
+      ["grp-research", true],
+    ]);
+    const pruned = pruneGroupExpandOverrides(overrides, [member("solo")]);
+    expect(pruned.has("grp-research")).toBe(false);
+    expect(pruned.size).toBe(0);
+  });
+
+  it("returns the same map reference when nothing is stale", () => {
+    const overrides: ReadonlyMap<string, boolean> = new Map([
+      ["grp-research", true],
+    ]);
+    expect(
+      pruneGroupExpandOverrides(overrides, [member("a", "grp-research")]),
+    ).toBe(overrides);
+    const empty: ReadonlyMap<string, boolean> = new Map();
+    expect(pruneGroupExpandOverrides(empty, [member("solo")])).toBe(empty);
   });
 });
 

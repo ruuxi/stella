@@ -774,6 +774,38 @@ export function groupActivityTasks(
   return rows
 }
 
+/**
+ * Prune group expand/collapse overrides whose group no longer has ANY member
+ * in the task list. Deliberately keyed off tasks' `groupKey` rather than the
+ * rendered group rows: a group that temporarily shrinks to a single member
+ * renders as a plain task row (see {@link groupActivityTasks}), and the
+ * user's explicit expand/collapse choice must survive until the group
+ * regrows. Returns `overrides` unchanged when nothing is stale.
+ */
+export function pruneGroupExpandOverrides(
+  overrides: ReadonlyMap<string, boolean>,
+  tasks: readonly TaskItem[],
+): ReadonlyMap<string, boolean> {
+  if (overrides.size === 0) return overrides
+  const liveKeys = new Set<string>()
+  for (const task of tasks) {
+    if (task.groupKey) liveKeys.add(task.groupKey)
+  }
+  let stale = false
+  for (const key of overrides.keys()) {
+    if (!liveKeys.has(key)) {
+      stale = true
+      break
+    }
+  }
+  if (!stale) return overrides
+  const next = new Map<string, boolean>()
+  for (const [key, value] of overrides) {
+    if (liveKeys.has(key)) next.set(key, value)
+  }
+  return next
+}
+
 /** Persistent first-seen ordering state for {@link orderByFirstSeen}. */
 export type FirstSeenOrder = {
   /** Frozen insertion index per item key. */
