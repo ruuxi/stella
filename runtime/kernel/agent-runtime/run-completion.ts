@@ -260,6 +260,7 @@ const runCompactionWithHooks = async (args: {
     | "resolvedLlm"
     | "store"
     | "hookEmitter"
+    | "stellaDataDir"
   >;
   threadKey: string;
   runId: string;
@@ -310,6 +311,7 @@ const runCompactionWithHooks = async (args: {
     threadKey: args.threadKey,
     resolvedLlm: args.opts.resolvedLlm,
     agentType: args.opts.agentType,
+    stellaDataDir: args.opts.stellaDataDir,
     ...(hookCompaction
       ? {
           overrideSummary: hookCompaction.summary,

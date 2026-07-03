@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Regression coverage for the production compaction outage: `stella/max`
@@ -124,6 +127,72 @@ describe("orchestrator thread compaction failure handling", () => {
     // middle entirely); the oldest middle messages are elided.
     expect(prompt).toContain("message 50");
     expect(prompt).not.toContain("message 3 ");
+  });
+
+  it("threads summary guidelines and the durable-memory reference into the prompt", async () => {
+    const stellaDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-compaction-memory-"),
+    );
+    fs.mkdirSync(path.join(stellaDataDir, "memories"), { recursive: true });
+    fs.writeFileSync(
+      path.join(stellaDataDir, "memories", "profile.md"),
+      "Rahul's workshop address is 123 Elm Street.",
+    );
+    fs.writeFileSync(
+      path.join(stellaDataDir, "memories", "memory_summary.md"),
+      "Workflow tiers: tier-1 ships without review.",
+    );
+    try {
+      const { store } = createFakeStore();
+      completeSimpleMock.mockResolvedValue({
+        content: [{ type: "text", text: "Summary." }],
+      });
+
+      await maybeCompactRuntimeThread({
+        store,
+        threadKey: "conversation-1",
+        resolvedLlm: createRoute("auth-token"),
+        agentType: "orchestrator",
+        stellaDataDir,
+      });
+
+      const context = completeSimpleMock.mock.calls[0]![1] as {
+        messages: Array<{ content: Array<{ type: string; text: string }> }>;
+      };
+      const prompt = context.messages[0]!.content[0]!.text;
+      // Thread-id mapping + verbatim pending-decision guidelines.
+      expect(prompt).toContain("thread_id");
+      expect(prompt).toContain("quoted verbatim");
+      // The always-loaded docs ride along as a do-not-repeat reference.
+      expect(prompt).toContain("ALREADY KNOWN");
+      expect(prompt).toContain("123 Elm Street");
+      expect(prompt).toContain("tier-1 ships without review");
+      expect(prompt).toContain("Do not restate durable memory");
+
+      // Non-orchestrator agents don't get the docs injected per turn, so
+      // their summaries must keep such facts: no reference, no omit rule.
+      completeSimpleMock.mockClear();
+      completeSimpleMock.mockResolvedValue({
+        content: [{ type: "text", text: "Summary." }],
+      });
+      await maybeCompactRuntimeThread({
+        store: createFakeStore().store,
+        threadKey: "conversation-2",
+        resolvedLlm: createRoute("auth-token"),
+        agentType: "general",
+        stellaDataDir,
+      });
+      const subagentContext = completeSimpleMock.mock.calls[0]![1] as {
+        messages: Array<{ content: Array<{ type: string; text: string }> }>;
+      };
+      const subagentPrompt = subagentContext.messages[0]!.content[0]!.text;
+      expect(subagentPrompt).toContain("thread_id");
+      expect(subagentPrompt).not.toContain("ALREADY KNOWN");
+      expect(subagentPrompt).not.toContain("123 Elm Street");
+      expect(subagentPrompt).not.toContain("Do not restate durable memory");
+    } finally {
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
+    }
   });
 
   it("skips without calling the model when no credential is available", async () => {

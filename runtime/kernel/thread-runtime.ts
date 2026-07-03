@@ -6,7 +6,10 @@ import type {
 import type { RuntimeStore } from "./storage/runtime-store.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 import { AGENT_IDS } from "../contracts/agent-runtime.js";
+import fs from "node:fs";
+import path from "node:path";
 import { createRuntimeLogger } from "./debug.js";
+import { redactMemoryText } from "./memory/redaction.js";
 
 const logger = createRuntimeLogger("thread-runtime");
 
@@ -520,18 +523,64 @@ const getSummaryInputCharBudget = (route: ResolvedLlmRoute): number =>
     getContextWindow(route) - THREAD_COMPACTION_RESERVE_TOKENS,
   ) * SUMMARY_INPUT_CHARS_PER_TOKEN;
 
+const SUMMARY_STRUCTURE = `## Topic
+[What the conversation is about]
+
+## Key Points
+[Important information, decisions, and conclusions from the conversation]
+
+## Current State
+[Where things stand now — what has been done, what is in progress]
+
+## Open Items
+[Unresolved questions, pending tasks, or next steps discussed]`;
+
+const buildSummaryGuidelines = (hasDurableMemoryReference: boolean): string =>
+  [
+    "Guidelines:",
+    '- Thread ids: delegated/background work appears in the conversation as spawn_agent / send_input / check-status tool calls and results carrying a `thread_id`. Name that exact thread_id alongside every workstream you mention (e.g. "shell redesign polish — thread_id: shell-redesign-v2-full-polish") so follow-ups after this checkpoint route to the existing thread instead of spawning a duplicate.',
+    "- Pending user decisions: any question posed to the user that was not yet answered by the end of the conversation goes under Open Items with the exact question quoted verbatim; if the user gave a partial or nuanced answer, quote the user's exact relevant words too. Never paraphrase half-answered decisions — quote them.",
+    // The durable-memory rule only applies when the always-loaded docs are
+    // actually injected for this agent (orchestrator); for other agents the
+    // summary is the only carrier of such facts, so omitting them would lose
+    // information.
+    ...(hasDurableMemoryReference
+      ? [
+          "- Do not restate durable memory: facts already present in the ALREADY KNOWN section below (user profile facts, addresses, standing rules, workflow tiers, long-term preferences) must be omitted from the summary — the assistant is given that section separately on every turn. Summarize only thread-specific state.",
+        ]
+      : []),
+  ].join("\n");
+
+const buildAlreadyKnownSection = (
+  durableMemoryReference: string | undefined,
+): string =>
+  durableMemoryReference?.trim()
+    ? `ALREADY KNOWN (durable memory, injected separately on every turn — do NOT repeat any of this in the summary):
+${durableMemoryReference.trim()}
+
+`
+    : "";
+
 const buildSummaryPrompt = (
   formattedConversation: string,
   previousSummary: string | undefined,
   budget: number,
+  durableMemoryReference?: string,
 ): string => {
   if (!formattedConversation) {
     return previousSummary?.trim() ?? "";
   }
+  const guidelines = buildSummaryGuidelines(
+    Boolean(durableMemoryReference?.trim()),
+  );
+  const alreadyKnown = buildAlreadyKnownSection(durableMemoryReference);
+  const footer = `${guidelines}
+
+Target ~${budget} tokens. Be factual — only include information that was explicitly discussed in the conversation. Do NOT invent file paths, commands, or details that were not mentioned. Write only the summary body.`;
   if (previousSummary?.trim()) {
     return `You are updating a conversation summary. A previous summary exists below. New conversation turns have occurred since then and need to be incorporated.
 
-PREVIOUS SUMMARY:
+${alreadyKnown}PREVIOUS SUMMARY:
 ${previousSummary.trim()}
 
 NEW TURNS TO INCORPORATE:
@@ -539,47 +588,82 @@ ${formattedConversation}
 
 Update the summary. PRESERVE existing information that is still relevant. ADD new information. Remove information only if it is clearly obsolete.
 
-## Topic
-[What the conversation is about]
+${SUMMARY_STRUCTURE}
 
-## Key Points
-[Important information, decisions, and conclusions from the conversation]
-
-## Current State
-[Where things stand now — what has been done, what is in progress]
-
-## Open Items
-[Unresolved questions, pending tasks, or next steps discussed]
-
-Target ~${budget} tokens. Be factual — only include information that was explicitly discussed in the conversation. Do NOT invent file paths, commands, or details that were not mentioned. Write only the summary body.`;
+${footer}`;
   }
 
   return `Create a concise summary of this conversation that preserves the important information for future context.
 
-CONVERSATION TO SUMMARIZE:
+${alreadyKnown}CONVERSATION TO SUMMARIZE:
 ${formattedConversation}
 
 Use this structure:
 
-## Topic
-[What the conversation is about]
+${SUMMARY_STRUCTURE}
 
-## Key Points
-[Important information, decisions, and conclusions from the conversation]
+${footer}`;
+};
 
-## Current State
-[Where things stand now — what has been done, what is in progress]
+// Per-doc cap for the ALREADY KNOWN reference. The docs are small
+// always-loaded files; the cap only guards against a runaway doc inflating
+// the compaction request.
+const DURABLE_MEMORY_DOC_MAX_CHARS = 8_000;
 
-## Open Items
-[Unresolved questions, pending tasks, or next steps discussed]
+/**
+ * Read one always-loaded durable-memory doc. Mirrors
+ * `readResidentMemoryDoc` in runner/shared.ts, which cannot be imported here
+ * without creating a module cycle (runner/shared → local-agent-manager →
+ * subagent-session → pi-session-core → thread-memory → thread-runtime).
+ */
+const readDurableMemoryDoc = (filePath: string): string | undefined => {
+  try {
+    const content = fs.readFileSync(filePath, "utf-8").trim();
+    return content ? redactMemoryText(content) : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
-Target ~${budget} tokens. Be factual — only include information that was explicitly discussed in the conversation. Do NOT invent file paths, commands, or details that were not mentioned. Write only the summary body.`;
+/**
+ * Build the "already known — do not repeat" reference from the always-loaded
+ * durable-memory docs (user profile + Dream memory summary), so the
+ * summarizer can skip restating facts the assistant sees on every turn.
+ */
+export const buildDurableMemoryReference = (
+  stellaDataDir: string | undefined,
+): string | undefined => {
+  if (!stellaDataDir?.trim()) {
+    return undefined;
+  }
+  const sections = [
+    {
+      label: "User profile (memories/profile.md)",
+      docPath: path.join(stellaDataDir, "memories", "profile.md"),
+    },
+    {
+      label: "Memory summary (memories/memory_summary.md)",
+      docPath: path.join(stellaDataDir, "memories", "memory_summary.md"),
+    },
+  ]
+    .map(({ label, docPath }) => {
+      const text = readDurableMemoryDoc(docPath);
+      if (!text) return "";
+      const capped =
+        text.length > DURABLE_MEMORY_DOC_MAX_CHARS
+          ? `${text.slice(0, DURABLE_MEMORY_DOC_MAX_CHARS)}\n[truncated]`
+          : text;
+      return `### ${label}\n${capped}`;
+    })
+    .filter((section) => section.length > 0);
+  return sections.length > 0 ? sections.join("\n\n") : undefined;
 };
 
 const generateThreadSummary = async (args: {
   messages: StoredThreadMessage[];
   previousSummary?: string;
   resolvedLlm: ResolvedLlmRoute;
+  durableMemoryReference?: string;
 }): Promise<string | null> => {
   const apiKey = (await args.resolvedLlm.getApiKey())?.trim();
   if (!apiKey) {
@@ -604,6 +688,7 @@ const generateThreadSummary = async (args: {
     formattedConversation,
     args.previousSummary,
     computeSummaryBudget(args.messages),
+    args.durableMemoryReference,
   );
 
   // LLM failures propagate to `compactRuntimeThreadHistory`, which logs
@@ -700,6 +785,11 @@ export const maybeCompactRuntimeThread = async (args: {
   agentType: string;
   overrideSummary?: string;
   preserveLastN?: number;
+  /**
+   * When set, the always-loaded durable-memory docs under this data dir are
+   * passed to the summarizer as an "already known — do not repeat" reference.
+   */
+  stellaDataDir?: string;
 }): Promise<ThreadCompactionResult> => {
   const storedMessages = args.store.loadThreadMessages(args.threadKey);
   if (storedMessages.length === 0) {
@@ -731,6 +821,12 @@ export const maybeCompactRuntimeThread = async (args: {
       messages: splitMessages.middleMessages,
       previousSummary: splitMessages.previousSummary,
       resolvedLlm: args.resolvedLlm,
+      // Only the orchestrator has the durable-memory docs injected on every
+      // turn; other agents must keep such facts in the summary itself.
+      durableMemoryReference:
+        args.agentType === AGENT_IDS.ORCHESTRATOR
+          ? buildDurableMemoryReference(args.stellaDataDir)
+          : undefined,
     }));
   if (!summary) {
     return { compacted: false };
