@@ -102,9 +102,85 @@ const CLAUDE_CODE_RUNNING_TEXT = "Working";
 const MAX_COMPACTIONS_PER_TURN = 3;
 const CLAUDE_CODE_COMPACTION_LOOP_MESSAGE =
   "Claude Code entered a compaction loop.";
+/**
+ * Recovery budget for flaky step endings, shared across all structured steps
+ * of one Stella turn. Covers two observed CLI failure shapes:
+ *
+ * - The CLI process ends (often cleanly, exit code 0) while a step prompt is
+ *   still in flight, without ever emitting its `result` line. Recovery
+ *   respawns the CLI and resends the same step prompt — `--resume` restores
+ *   the on-disk transcript when one exists, and the missing-resume fallback
+ *   reseeds from the checkpoint history otherwise.
+ * - The step's `result` arrives but carries no usable payload (an empty
+ *   result, or a decision JSON missing required fields — the CLI sometimes
+ *   emits a truncated `StructuredOutput` like `{"type":"tool_request"}`).
+ *   Recovery nudges the still-live session to restate the decision.
+ *
+ * Past the budget the turn fails to the caller with an actionable message.
+ */
+const MAX_STEP_RECOVERIES_PER_TURN = 2;
 
 const isCompactionLoopError = (message: string): boolean =>
   message.includes(CLAUDE_CODE_COMPACTION_LOOP_MESSAGE);
+
+/**
+ * The CLI process ended (exit, spawn stream teardown) while a step was still
+ * waiting on its `result` line. `exitCode` 0 means a clean-but-early exit.
+ */
+export class ClaudeCodeProcessEndedError extends Error {
+  readonly exitCode: number | null;
+
+  constructor(message: string, exitCode: number | null = null) {
+    super(message);
+    this.name = "ClaudeCodeProcessEndedError";
+    this.exitCode = exitCode;
+  }
+}
+
+/**
+ * The step completed but its `result` payload was unusable: empty result
+ * text, or no parseable Stella decision (takeover mode).
+ */
+export class ClaudeCodeMalformedResultError extends Error {
+  readonly kind: "empty_result" | "invalid_decision";
+
+  constructor(message: string, kind: "empty_result" | "invalid_decision") {
+    super(message);
+    this.name = "ClaudeCodeMalformedResultError";
+    this.kind = kind;
+  }
+}
+
+type RecoverableStepErrorKind = "process_ended" | "malformed_result";
+
+const classifyRecoverableStepError = (
+  error: unknown,
+): RecoverableStepErrorKind | null => {
+  if (error instanceof ClaudeCodeProcessEndedError) return "process_ended";
+  if (error instanceof ClaudeCodeMalformedResultError) return "malformed_result";
+  return null;
+};
+
+/**
+ * Corrective prompt for a malformed step result. The CLI session is still
+ * alive and already has the full step context (including any tool result we
+ * just forwarded), so the nudge only needs to ask for a well-formed restate.
+ */
+const buildDecisionRetryPrompt = (vanilla: boolean): string =>
+  vanilla
+    ? "Your previous reply produced no result text. Provide your complete final answer to the pending request now."
+    : [
+        "Your previous reply did not contain a valid Stella decision payload, so it was discarded.",
+        "Respond with JSON only, in exactly one of these forms:",
+        '{"type":"tool_request","toolName":"<tool>","args":{...}} to run a Stella tool, or',
+        '{"type":"final","message":"<your complete answer>"} when you are done.',
+        "Restate your full next step or final answer now.",
+      ].join("\n");
+
+const withStepRecoveryExhausted = (error: unknown): Error =>
+  new Error(
+    `${normalizeErrorMessage(error)} Stella retried ${MAX_STEP_RECOVERIES_PER_TURN} time(s) but Claude Code kept ending the step without a usable result. Check the \`claude\` CLI health (\`claude --version\`, login status), then retry the request.`,
+  );
 
 const buildClaudeCodeHookSettings = (): string => {
   const command = `"${process.execPath}" -e ""`;
@@ -1074,12 +1150,14 @@ class ClaudeCodeSessionRuntime {
       session.process.compactionCount = 0;
     }
 
+    const recoveryBudget = { remaining: MAX_STEP_RECOVERIES_PER_TURN };
     for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
-      const response = await this.executeStructuredStep(
+      const response = await this.executeStructuredStepWithRecovery(
         session,
         request,
         effectiveSystemPrompt,
         nextPrompt,
+        recoveryBudget,
       );
       usage = mergeUsage(usage, response.usage);
       mergeFileChanges(turnFileChanges, turnFileChangeKeys, response.fileChanges);
@@ -1120,6 +1198,58 @@ class ClaudeCodeSessionRuntime {
     throw new Error(
       `Claude Code exceeded the Stella tool-step limit of ${MAX_TOOL_STEPS}.`,
     );
+  }
+
+  /**
+   * Run one structured step, absorbing recoverable CLI flakiness within the
+   * turn's shared recovery budget:
+   *
+   * - `process_ended`: the CLI died (or exited cleanly) before delivering the
+   *   step's result. Respawn and resend the same prompt; the spawn path
+   *   resumes the persisted transcript when possible and otherwise falls back
+   *   to reseeding from `resumeFallbackPrompt`.
+   * - `malformed_result`: the CLI answered but the payload was unusable
+   *   (empty result / invalid decision JSON). The session process is still
+   *   alive with full context, so send a corrective nudge prompt instead.
+   *
+   * Aborted runs never retry; exhausted budgets rethrow with an actionable
+   * message.
+   */
+  private async executeStructuredStepWithRecovery(
+    session: SessionState,
+    request: ClaudeCodeTurnRequest,
+    effectiveSystemPrompt: string,
+    prompt: string,
+    recoveryBudget: { remaining: number },
+  ): Promise<StructuredStepResult> {
+    let currentPrompt = prompt;
+    for (;;) {
+      try {
+        return await this.executeStructuredStep(
+          session,
+          request,
+          effectiveSystemPrompt,
+          currentPrompt,
+        );
+      } catch (error) {
+        if (request.abortSignal?.aborted) {
+          throw error;
+        }
+        const recovery = classifyRecoverableStepError(error);
+        if (!recovery) {
+          throw error;
+        }
+        if (recoveryBudget.remaining <= 0) {
+          throw withStepRecoveryExhausted(error);
+        }
+        recoveryBudget.remaining -= 1;
+        if (recovery === "process_ended") {
+          this.resetStreamingProcess(request.sessionKey, session);
+          continue;
+        }
+        currentPrompt = buildDecisionRetryPrompt(Boolean(request.vanilla));
+      }
+    }
   }
 
   private async executeStructuredStep(
@@ -1444,13 +1574,13 @@ class ClaudeCodeSessionRuntime {
       this.activeProcesses.delete(request.sessionKey);
       const message =
         processState.stderrText.trim() ||
-        `Claude Code exited with code ${code ?? "unknown"}.`;
+        `Claude Code exited with code ${code ?? "unknown"} before returning a result.`;
       for (const pending of processState.pending.splice(0)) {
         this.detachAbortListener(pending);
         pending.reject(
           pending.request.abortSignal?.aborted
             ? new Error("Claude Code run aborted.")
-            : new Error(message),
+            : new ClaudeCodeProcessEndedError(message, code),
         );
       }
     });
@@ -1465,7 +1595,7 @@ class ClaudeCodeSessionRuntime {
     prompt: string,
   ): Promise<StructuredStepResult> {
     if (processState.closed || processState.child.stdin.destroyed) {
-      throw new Error("Claude Code stream is closed.");
+      throw new ClaudeCodeProcessEndedError("Claude Code stream is closed.");
     }
     return await new Promise<StructuredStepResult>((resolve, reject) => {
       const pending: PendingStructuredPrompt = {
@@ -1505,8 +1635,12 @@ class ClaudeCodeSessionRuntime {
           processState.pending.splice(index, 1);
         }
         this.detachAbortListener(pending);
+        // A failed stdin write means the process died under us (EPIPE);
+        // classify it as process-ended so the step recovery can respawn.
         reject(
-          new Error(`Failed to write Claude Code prompt: ${normalizeErrorMessage(error)}`),
+          new ClaudeCodeProcessEndedError(
+            `Failed to write Claude Code prompt: ${normalizeErrorMessage(error)}`,
+          ),
         );
       });
     });
@@ -1590,8 +1724,9 @@ class ClaudeCodeSessionRuntime {
       const message =
         typeof parsed.result === "string" ? parsed.result.trim() : "";
       if (!message) {
-        throw new Error(
+        throw new ClaudeCodeMalformedResultError(
           stderrText.trim() || "Claude Code returned an empty result.",
+          "empty_result",
         );
       }
       session.turnCount += 1;
@@ -1634,8 +1769,10 @@ class ClaudeCodeSessionRuntime {
     }
     if (!decision) {
       const stderrMessage = stderrText.trim();
-      throw new Error(
-        stderrMessage || "Claude Code returned an invalid Stella decision payload.",
+      throw new ClaudeCodeMalformedResultError(
+        stderrMessage ||
+          "Claude Code returned an invalid Stella decision payload.",
+        "invalid_decision",
       );
     }
 
