@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  fallbackTaskDescription,
+  isFallbackTaskDescription,
   extractStepsFromEvents,
   extractTasksFromEvents,
   getTaskDisplayText,
@@ -29,6 +31,29 @@ const event = (
   timestamp,
   type,
   payload,
+});
+
+describe("fallbackTaskDescription", () => {
+  it("de-slugs descriptive thread ids into a readable label", () => {
+    expect(
+      fallbackTaskDescription("morph-animation-test-rig-in-harness-hmr-reload"),
+    ).toBe("Morph animation test rig in harness hmr reload");
+  });
+
+  it("keeps 'Task' for ordinal/namespace ids with no words", () => {
+    expect(fallbackTaskDescription("task-7")).toBe("Task");
+    expect(fallbackTaskDescription("grp-abc123")).toBe("Task");
+    expect(fallbackTaskDescription(undefined)).toBe("Task");
+    expect(fallbackTaskDescription("1234-5678")).toBe("Task");
+  });
+
+  it("marks generic and id-derived labels as fallback, real ones not", () => {
+    expect(isFallbackTaskDescription("Task", "fix-the-bug")).toBe(true);
+    expect(isFallbackTaskDescription("Fix the bug", "fix-the-bug")).toBe(true);
+    expect(
+      isFallbackTaskDescription("Fix the sidebar labeling bug", "fix-the-bug"),
+    ).toBe(false);
+  });
 });
 
 describe("extractTasksFromEvents", () => {

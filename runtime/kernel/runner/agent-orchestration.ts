@@ -888,6 +888,9 @@ export const createAgentOrchestration = (
                       ...event,
                       agentId,
                       ...(rootRunId ? { rootRunId } : {}),
+                      ...(taskDescription
+                        ? { description: taskDescription }
+                        : {}),
                     });
                   },
                   onToolStart: (event) => runnerCallbacks.onToolStart(event),

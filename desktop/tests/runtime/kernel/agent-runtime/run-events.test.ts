@@ -759,3 +759,79 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(onReasoning).not.toHaveBeenCalled();
   });
 });
+
+describe("resumed-thread task labeling", () => {
+  const runId = "run-resumed";
+  const conversationId = "conversation-1";
+
+  it("names a reasoning-only task from the event description, never bare 'Task'", () => {
+    // A resumed legacy thread whose agent-started event was lost (finished
+    // root run / restart) rebuilds its activity row from reasoning events.
+    let state = streamStoreReducer(initialStoreState, {
+      type: "agent-reasoning",
+      runId,
+      conversationId,
+      agentId: "morph-animation-test-rig",
+      description: "Morph animation test rig in the dev harness",
+      chunk: "scaffolding remotion project structure",
+    });
+    expect(
+      state.tasksByRunId[runId]?.["morph-animation-test-rig"]?.description,
+    ).toBe("Morph animation test rig in the dev harness");
+
+    // Without a description on the event, fall back to the de-slugged
+    // thread id instead of the generic placeholder.
+    state = streamStoreReducer(initialStoreState, {
+      type: "agent-reasoning",
+      runId,
+      conversationId,
+      agentId: "morph-animation-test-rig",
+      chunk: "scaffolding remotion project structure",
+    });
+    expect(
+      state.tasksByRunId[runId]?.["morph-animation-test-rig"]?.description,
+    ).toBe("Morph animation test rig");
+  });
+
+  it("upgrades a placeholder description once a real one arrives, and keeps it", () => {
+    let state = streamStoreReducer(initialStoreState, {
+      type: "agent-reasoning",
+      runId,
+      conversationId,
+      agentId: "task-3",
+      chunk: "working",
+    });
+    expect(state.tasksByRunId[runId]?.["task-3"]?.description).toBe("Task");
+
+    state = streamStoreReducer(state, {
+      type: "agent-reasoning",
+      runId,
+      conversationId,
+      agentId: "task-3",
+      description: "Compare flight prices",
+      chunk: "more work",
+    });
+    expect(state.tasksByRunId[runId]?.["task-3"]?.description).toBe(
+      "Compare flight prices",
+    );
+
+    // A later upsert carrying only the generic placeholder must not clobber
+    // the real description.
+    state = streamStoreReducer(state, {
+      type: "task-upsert",
+      runId,
+      conversationId,
+      task: {
+        id: "task-3",
+        description: "Task",
+        agentType: AGENT_IDS.GENERAL,
+        status: "running",
+        startedAtMs: 1_000,
+        lastUpdatedAtMs: 1_000,
+      },
+    });
+    expect(state.tasksByRunId[runId]?.["task-3"]?.description).toBe(
+      "Compare flight prices",
+    );
+  });
+});

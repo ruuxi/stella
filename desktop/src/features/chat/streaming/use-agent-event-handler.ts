@@ -16,6 +16,7 @@
  */
 import { useCallback, type Dispatch, type MutableRefObject } from 'react'
 import {
+  fallbackTaskDescription,
   normalizeTaskDisplayStatusText,
   TASK_COMPLETION_INDICATOR_MS,
 } from '@/features/chat/lib/event-transforms'
@@ -40,6 +41,7 @@ type ReasoningQueueEntry = {
   conversationId: string
   userMessageId?: string
   agentId: string
+  description?: string
   chunk: string
 }
 
@@ -471,6 +473,7 @@ export function useAgentEventHandler({
               conversationId,
               userMessageId: event.userMessageId,
               agentId: event.agentId,
+              description: event.description,
               chunk: event.chunk,
             })
             break
@@ -507,7 +510,8 @@ export function useAgentEventHandler({
             userMessageId: event.userMessageId,
             task: {
               id: event.agentId,
-              description: event.description ?? 'Task',
+              description:
+                event.description ?? fallbackTaskDescription(event.agentId),
               agentType: event.agentType || AGENT_IDS.GENERAL,
               status:
                 event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED

@@ -7,6 +7,8 @@
  * without a React renderer.
  */
 import {
+  fallbackTaskDescription,
+  isFallbackTaskDescription,
   isGenericTaskDescription,
   normalizeTaskDisplayStatusText,
   type TaskItem,
@@ -146,6 +148,7 @@ export type StreamStoreAction =
       conversationId: string
       userMessageId?: string
       agentId: string
+      description?: string
       chunk: string
     }
   | {
@@ -455,7 +458,9 @@ export function streamStoreReducer(
       const runTasks = state.tasksByRunId[action.runId] ?? {}
       const existing = runTasks[action.task.id]
       const nextDescription =
-        action.task.description === 'Task' && existing?.description
+        isFallbackTaskDescription(action.task.description, action.task.id) &&
+        existing?.description &&
+        !isFallbackTaskDescription(existing.description, action.task.id)
           ? existing.description
           : action.task.description
       const nextTask: TaskItem = {
@@ -537,13 +542,22 @@ export function streamStoreReducer(
             [action.agentId]: {
               ...(existing ?? {
                 id: action.agentId,
-                description: 'Task',
+                description:
+                  action.description ??
+                  fallbackTaskDescription(action.agentId),
                 agentType: AGENT_IDS.GENERAL,
                 status: 'running',
                 anchorTurnId: runRecord?.userMessageId,
                 startedAtMs: nowMs,
                 lastUpdatedAtMs: nowMs,
               }),
+              // A reasoning event carrying the spawn description upgrades a
+              // placeholder created before the description was known.
+              ...(existing &&
+              action.description &&
+              isFallbackTaskDescription(existing.description, action.agentId)
+                ? { description: action.description }
+                : {}),
               reasoningText: storedReasoningText,
               lastUpdatedAtMs: nowMs,
             },
@@ -720,7 +734,8 @@ export const toTaskFromResumeSnapshot = (
 ): TaskItem => ({
   id: snapshot.agentId,
   runId: snapshot.runId,
-  description: snapshot.description ?? 'Task',
+  description:
+    snapshot.description ?? fallbackTaskDescription(snapshot.agentId),
   agentType: snapshot.agentType || AGENT_IDS.GENERAL,
   status:
     snapshot.status === 'completed'

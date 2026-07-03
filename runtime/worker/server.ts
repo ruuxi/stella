@@ -2077,6 +2077,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               agentId: ev.agentId,
               rootRunId: runId,
               agentType: ev.agentType,
+              ...(ev.description ? { description: ev.description } : {}),
               chunk: ev.chunk,
             });
           },

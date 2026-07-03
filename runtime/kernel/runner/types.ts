@@ -206,7 +206,13 @@ export type AgentCallbacks = {
   onAssistantMessage?: (event: RuntimeAssistantMessageEvent) => void;
   onStream: (event: RuntimeStreamEvent) => void;
   onAgentReasoning?: (
-    event: RuntimeReasoningEvent & { agentId: string; rootRunId?: string },
+    event: RuntimeReasoningEvent & {
+      agentId: string;
+      rootRunId?: string;
+      /** The task's spawn description, so downstream task snapshots built
+       *  from reasoning-only streams keep a real display name. */
+      description?: string;
+    },
   ) => void;
   onStatus?: (event: RuntimeStatusEvent) => void;
   onToolStart: (event: RuntimeToolStartEvent) => void;

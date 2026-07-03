@@ -14,6 +14,7 @@ export type PendingReasoningEntry = {
   conversationId: string
   userMessageId?: string
   agentId: string
+  description?: string
   chunk: string
 }
 
@@ -47,6 +48,7 @@ export function useReasoningBatcher(
           conversationId: entry.conversationId,
           userMessageId: entry.userMessageId,
           agentId: entry.agentId,
+          description: entry.description,
           chunk: entry.chunk,
         })
       }
@@ -60,6 +62,7 @@ export function useReasoningBatcher(
       const current = pendingReasoningChunksRef.current.get(key)
       pendingReasoningChunksRef.current.set(key, {
         ...entry,
+        description: entry.description ?? current?.description,
         chunk: `${current?.chunk ?? ''}${entry.chunk}`,
       })
 
