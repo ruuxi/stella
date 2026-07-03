@@ -120,6 +120,12 @@ export type ConnectorConnectRequestPayload = {
    * for the Stella Browser Bridge extension and waits for the install.
    */
   kind?: "integration" | "browser-extension";
+  /**
+   * Chat the card belongs to. Renderer surfaces show the card only in
+   * the matching conversation; unscoped requests (legacy CLI path) show
+   * everywhere.
+   */
+  conversationId?: string;
 };
 
 export type ConnectorConnectPhase =

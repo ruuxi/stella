@@ -30,6 +30,8 @@ export type ConnectorConnectCardRequest = {
   reason?: string;
   /** "integration" (Store enable + OAuth) or "browser-extension" (Web Store install). */
   kind?: "integration" | "browser-extension";
+  /** Owning chat; undefined = unscoped (legacy CLI path), shown everywhere. */
+  conversationId?: string;
   phase: ConnectorConnectCardPhase;
   message?: string;
 };
@@ -112,12 +114,24 @@ const subscribe = (listener: () => void) => {
 
 const getSnapshot = () => queue;
 
-/** Head-of-queue connect offer, or null when there is nothing to show. */
-export const useConnectorConnectRequest =
-  (): ConnectorConnectCardRequest | null => {
-    const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-    return snapshot[0] ?? null;
-  };
+/**
+ * First connect offer visible to the given chat surface, or null. A card
+ * scoped to a conversation renders only in that conversation's surfaces;
+ * unscoped cards (no conversationId on the request) render everywhere.
+ */
+export const useConnectorConnectRequest = (
+  conversationId?: string | null,
+): ConnectorConnectCardRequest | null => {
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return (
+    snapshot.find(
+      (entry) =>
+        !entry.conversationId ||
+        !conversationId ||
+        entry.conversationId === conversationId,
+    ) ?? null
+  );
+};
 
 export const respondToConnectorConnect = (
   requestId: string,

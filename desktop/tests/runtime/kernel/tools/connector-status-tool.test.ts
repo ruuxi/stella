@@ -97,7 +97,11 @@ describe("connector_status tool", () => {
         name: "Notion",
         reason: "To file your notes",
         iconUrl: "https://example.com/notion.png",
+        // Card scoping: the originating chat rides along so the renderer
+        // shows the card only in that conversation.
+        conversationId: "c1",
       }),
+      undefined,
     );
     expect(resultText(result)).toContain("now connected");
     expect(resultText(result)).toContain("Continue the original task");
@@ -155,6 +159,33 @@ describe("connector_status tool", () => {
     const tool = makeTool(root, requester);
     const result = await tool.execute({ connector: "notion" }, context);
     expect(resultText(result)).toContain("not answered in time");
+    expect(resultText(result)).toContain("in this conversation");
+    expect(await getConnectorDecline(root, "notion")).toBeNull();
+  });
+
+  it("cancels the pending card when the turn is aborted", async () => {
+    const root = makeRoot();
+    await writeCachedServerCatalog(root, [notionEntry]);
+    const controller = new AbortController();
+    // Requester models the worker hop: it resolves `cancelled` when the
+    // abort signal fires (after cancelling the desktop card).
+    const requester: ConnectorConnectionRequester = (_payload, signal) =>
+      new Promise((resolve) => {
+        const finish = () => resolve({ ok: false, reason: "cancelled" });
+        if (signal?.aborted) {
+          finish();
+          return;
+        }
+        signal?.addEventListener("abort", finish, { once: true });
+      });
+    const tool = makeTool(root, requester);
+    const pending = tool.execute({ connector: "notion" }, context, {
+      signal: controller.signal,
+    });
+    controller.abort();
+    const result = await pending;
+    expect(resultText(result)).toContain("cancelled");
+    // A turn abort is not a user decline.
     expect(await getConnectorDecline(root, "notion")).toBeNull();
   });
 });

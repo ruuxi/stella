@@ -11,6 +11,59 @@ import {
   imageMimeTypeFromPath,
 } from "../kernel/shared/image-mime.js";
 import type { WorkerPeerLike } from "./peer-broker.js";
+
+type ConnectCardOutcome =
+  | { ok: true; status: "connected" | "already_connected" }
+  | {
+      ok: false;
+      reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
+    };
+
+/**
+ * Host hop for the inline connect cards (connector + browser extension).
+ * Attaches a worker-generated `offerId` so a turn abort can cancel the
+ * pending desktop card via `host.connectorConnect.cancel` instead of
+ * leaving it up until the desktop's own timeout.
+ */
+const requestConnectCardFromHost = async (
+  peer: WorkerPeerLike,
+  method: string,
+  payload: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<ConnectCardOutcome> => {
+  if (signal?.aborted) return { ok: false, reason: "cancelled" };
+  const offerId = crypto.randomUUID();
+  const request: Promise<ConnectCardOutcome> = peer
+    .request<ConnectCardOutcome>(
+      method,
+      { ...payload, offerId },
+      { retryOnDisconnect: true },
+    )
+    .catch((error: unknown) => ({
+      ok: false as const,
+      reason: (error as Error).message || "host_unreachable",
+    }));
+  if (!signal) return await request;
+
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<"aborted">((resolve) => {
+    onAbort = () => resolve("aborted");
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    const winner = await Promise.race([request, aborted]);
+    if (winner !== "aborted") return winner;
+    // Best-effort: settle the desktop card as cancelled right away.
+    void peer
+      .request(METHOD_NAMES.HOST_CONNECTOR_CONNECT_CANCEL, { offerId })
+      .catch(() => undefined);
+    // Swallow the eventual host response — the turn is gone.
+    void request.catch(() => undefined);
+    return { ok: false, reason: "cancelled" };
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+};
 import { getFileLogger } from "../observability/file-logger.js";
 import {
   METHOD_NAMES,
@@ -1098,52 +1151,20 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         await peer.request(METHOD_NAMES.HOST_CREDENTIALS_REQUEST, payload, {
           retryOnDisconnect: true,
         }),
-      requestBrowserExtensionConnect: async (payload) => {
-        try {
-          return await peer.request<
-            | { ok: true; status: "connected" | "already_connected" }
-            | {
-                ok: false;
-                reason:
-                  | "declined"
-                  | "cancelled"
-                  | "timeout"
-                  | "unsupported"
-                  | string;
-              }
-          >(METHOD_NAMES.HOST_BROWSER_EXTENSION_CONNECT_REQUEST, payload, {
-            retryOnDisconnect: true,
-          });
-        } catch (error) {
-          return {
-            ok: false,
-            reason: (error as Error).message || "host_unreachable",
-          };
-        }
-      },
-      requestConnectorConnection: async (payload) => {
-        try {
-          return await peer.request<
-            | { ok: true; status: "connected" | "already_connected" }
-            | {
-                ok: false;
-                reason:
-                  | "declined"
-                  | "cancelled"
-                  | "timeout"
-                  | "unsupported"
-                  | string;
-              }
-          >(METHOD_NAMES.HOST_CONNECTOR_CONNECT_REQUEST, payload, {
-            retryOnDisconnect: true,
-          });
-        } catch (error) {
-          return {
-            ok: false,
-            reason: (error as Error).message || "host_unreachable",
-          };
-        }
-      },
+      requestBrowserExtensionConnect: (payload, signal) =>
+        requestConnectCardFromHost(
+          peer,
+          METHOD_NAMES.HOST_BROWSER_EXTENSION_CONNECT_REQUEST,
+          payload as Record<string, unknown>,
+          signal,
+        ),
+      requestConnectorConnection: (payload, signal) =>
+        requestConnectCardFromHost(
+          peer,
+          METHOD_NAMES.HOST_CONNECTOR_CONNECT_REQUEST,
+          payload as Record<string, unknown>,
+          signal,
+        ),
       requestRuntimeAuthRefresh: async (payload) =>
         await peer.request(METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH, payload, {
           retryOnDisconnect: true,

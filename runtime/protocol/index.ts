@@ -168,6 +168,7 @@ export const METHOD_NAMES = {
   HOST_CREDENTIALS_REQUEST: "host.credentials.request",
   HOST_CONNECTOR_CREDENTIAL_REQUEST: "host.connectorCredential.request",
   HOST_CONNECTOR_CONNECT_REQUEST: "host.connectorConnect.request",
+  HOST_CONNECTOR_CONNECT_CANCEL: "host.connectorConnect.cancel",
   HOST_BROWSER_EXTENSION_CONNECT_REQUEST:
     "host.browserExtensionConnect.request",
   HOST_APP_BROWSER_CONTEXT_GET: "host.appBrowserContext.get",

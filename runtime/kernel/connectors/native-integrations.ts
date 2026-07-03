@@ -223,11 +223,27 @@ const getNativeConnectorCatalog = (): NativeConnectorCatalogEntry[] => {
   return cachedNativeConnectorCatalog;
 };
 
+/**
+ * Bundled catalog with optional server entries overlaid (server wins by
+ * id; new server entries are appended). The overlay deliberately does
+ * NOT replace the bundled catalog: locally-owned entries (Google
+ * Workspace, recovered OAuth providers) must stay resolvable even when
+ * the backend catalog only carries its Composio set — otherwise Gmail
+ * could be offered by discovery yet fail to resolve in the Store/connect
+ * paths that pass the server catalog through.
+ */
 export const buildNativeConnectorCatalog = (
   serverCatalog?: NativeConnectorCatalogOverride,
 ): NativeConnectorCatalogEntry[] => {
-  if (serverCatalog === undefined) return getNativeConnectorCatalog();
-  return [...serverCatalog];
+  const base = getNativeConnectorCatalog();
+  if (serverCatalog === undefined || serverCatalog.length === 0) {
+    return [...base];
+  }
+  const byId = new Map(base.map((entry) => [entry.id, entry]));
+  for (const entry of serverCatalog) {
+    byId.set(entry.id, entry);
+  }
+  return [...byId.values()];
 };
 
 const statePath = (stellaAppDir: string) =>

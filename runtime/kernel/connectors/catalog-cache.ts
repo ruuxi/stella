@@ -159,24 +159,15 @@ export const writeCachedServerCatalog = async (
 };
 
 /**
- * Bundled catalog merged with server entries (server wins by id, new
- * server entries appended). Unlike `buildNativeConnectorCatalog(override)`
- * — which *replaces* the catalog with the override — this keeps the
- * locally-owned entries (Google Workspace, recovered OAuth providers)
- * visible alongside the backend Composio set, which is what keyword
- * matching and status lookups want.
+ * Bundled catalog merged with server entries. Alias for
+ * `buildNativeConnectorCatalog`, which overlays (rather than replaces)
+ * the bundled catalog — kept as a named export so cache consumers read
+ * naturally.
  */
 export const buildMergedConnectorCatalog = (
   serverEntries?: readonly NativeConnectorCatalogEntry[],
-): NativeConnectorCatalogEntry[] => {
-  const base = buildNativeConnectorCatalog();
-  if (!serverEntries || serverEntries.length === 0) return base;
-  const byId = new Map(base.map((entry) => [entry.id, entry]));
-  for (const entry of serverEntries) {
-    byId.set(entry.id, entry);
-  }
-  return [...byId.values()];
-};
+): NativeConnectorCatalogEntry[] =>
+  buildNativeConnectorCatalog(serverEntries ? [...serverEntries] : undefined);
 
 /**
  * Fetch the live backend catalog. Returns null on any failure (signed

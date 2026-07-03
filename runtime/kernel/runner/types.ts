@@ -141,11 +141,14 @@ export type StellaHostRunnerOptions = {
    * card. Blocks until the user connects, declines, or the card times out;
    * `exec_command` re-runs the failed stella-browser command on success.
    */
-  requestBrowserExtensionConnect?: (payload: {
-    conversationId?: string;
-    agentId?: string;
-    command?: string;
-  }) => Promise<
+  requestBrowserExtensionConnect?: (
+    payload: {
+      conversationId?: string;
+      agentId?: string;
+      command?: string;
+    },
+    signal?: AbortSignal,
+  ) => Promise<
     | { ok: true; status: "connected" | "already_connected" }
     | {
         ok: false;
@@ -155,16 +158,20 @@ export type StellaHostRunnerOptions = {
   /**
    * Desktop hop for the orchestrator's `connector_status` tool: render the
    * inline connector connect card (ConnectorConnectService) and resolve
-   * with the user's outcome.
+   * with the user's outcome. The abort signal cancels the pending card.
    */
-  requestConnectorConnection?: (payload: {
-    id: string;
-    name: string;
-    description?: string;
-    iconUrl?: string;
-    category?: string;
-    reason?: string;
-  }) => Promise<
+  requestConnectorConnection?: (
+    payload: {
+      id: string;
+      name: string;
+      description?: string;
+      iconUrl?: string;
+      category?: string;
+      reason?: string;
+      conversationId?: string;
+    },
+    signal?: AbortSignal,
+  ) => Promise<
     | { ok: true; status: "connected" | "already_connected" }
     | {
         ok: false;
