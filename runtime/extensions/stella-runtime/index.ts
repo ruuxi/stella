@@ -4,6 +4,7 @@ import type {
   ExtensionFactory,
   HookDefinition,
 } from "../../kernel/extensions/types.js";
+import { createConnectorAvailabilityReminderHook } from "./hooks/connector-availability-reminder.hook.js";
 import { createConnectorFormatReminderHook } from "./hooks/connector-format-reminder.hook.js";
 import { createDreamSchedulerNotifyHook } from "./hooks/dream-scheduler-notify.hook.js";
 import { createDynamicMemoryReminderHook } from "./hooks/dynamic-memory-reminder.hook.js";
@@ -68,6 +69,16 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   // connector / connector ⇄ different connector). Cheap — the
   // transition decision is precomputed in `prepareOrchestratorRun`.
   register(createConnectorFormatReminderHook());
+  // Connector-availability reminder: deterministic keyword match of each
+  // user message against the connector catalog; injects a hidden
+  // connected/not-connected note for the orchestrator, deduped once per
+  // active context window (compaction resets eligibility; declines win).
+  register(
+    createConnectorAvailabilityReminderHook({
+      stellaDataDir: services.stellaDataDir,
+      store: services.store,
+    }),
+  );
   // Revert-notice: one hidden `<system_reminder>` per pending self-mod
   // revert, drained on the next user turn for the affected conversation.
   // Runs alongside the other before_user_message reminders since it

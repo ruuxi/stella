@@ -402,6 +402,7 @@ export const createRunnerContext = ({
   selfModHmrController,
   requestCredential,
   requestBrowserExtensionConnect,
+  requestConnectorConnection,
   requestRuntimeAuthRefresh,
   scheduleApi,
   sourceImportApi,
@@ -478,6 +479,7 @@ export const createRunnerContext = ({
     ...(requestBrowserExtensionConnect
       ? { requestBrowserExtensionConnect }
       : {}),
+    ...(requestConnectorConnection ? { requestConnectorConnection } : {}),
     // spawn_agent's `model` parameter: throws the standard route-failure
     // message when a plain model reference can't be resolved, so the spawn
     // fails loudly instead of silently falling back to the default.
@@ -896,20 +898,11 @@ export const buildAgentContext = async (
     dynamicContextSections.push(
       await renderSkillCatalogBlock(context.stellaDataDir, skillCatalogOptions),
     );
-    // Deliberately tiny: the full integration catalog never enters
-    // context. Agents pull matches on demand with `stella-connect
-    // discover`, and the inline connect card handles consent + OAuth.
-    dynamicContextSections.push(
-      [
-        "## External Integrations",
-        "Stella can connect external services (email, calendar, docs, CRMs, and hundreds more) on demand — only already-connected ones appear as skills above.",
-        'When a request implies an external service with no matching skill, run `stella-connect discover "<keywords>"`. It cheaply returns the best catalog matches with connection state and a next step.',
-        'To use one that is not connected, run `stella-connect request-connection <id> --reason "<short why>"`. This shows the user an inline connect card in chat and blocks until they respond; on success, continue the original task immediately without re-asking.',
-        "Connecting is an optimization, not a gate — don't sit idle on the card. Start `request-connection` with a short `yield_time_ms` so it becomes a background session, proceed with the task via the browser/computer fallback meanwhile, and poll the session; if it resolves connected, switch to the connector for the rest of the work.",
-        "If it reports a decline (now or earlier), acknowledge once, mention it can be enabled later in the Store, and continue by other means without re-offering.",
-        "Never connect an integration without the user's consent through the card or the Store.",
-      ].join("\n"),
-    );
+    // Connector discovery + connect offers are orchestrator-driven now:
+    // a deterministic keyword reminder (connector-availability hook) plus
+    // the deferred `connector_status` tool own the offer flow. Agents just
+    // use already-connected integrations via their skills; no standing
+    // integration guidance is injected here.
   }
   // Read the live prompt from `~/.stella/agents/` so edits take effect on the
   // next turn (mtime-gated — unchanged files are not re-read). Falls back to

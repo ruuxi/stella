@@ -4,6 +4,11 @@ import path from "node:path";
 
 import { callApiConnector } from "../connectors/api-client.js";
 import {
+  fetchServerNativeCatalog,
+  writeCachedServerCatalog,
+} from "../connectors/catalog-cache.js";
+import { nativeConnectorAuthStatus as sharedNativeConnectorAuthStatus } from "../connectors/connection-status.js";
+import {
   requestConnectorConnectionFromBridge,
   requestConnectorCredentialFromBridge,
   requestStellaSiteAuthFromBridge,
@@ -354,60 +359,8 @@ const withConnectorBridgeCleanup = async <T>(
   }
 };
 
-const readStringArray = (value: unknown): string[] | undefined => {
-  if (!Array.isArray(value)) return undefined;
-  const entries = value
-    .filter((entry): entry is string => typeof entry === "string")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  return entries.length > 0 ? entries : undefined;
-};
-
-const toBackendComposioEntry = (
-  value: unknown,
-): NativeConnectorCatalogEntry | null => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  const connector =
-    record.connector && typeof record.connector === "object"
-      ? (record.connector as Record<string, unknown>)
-      : null;
-  if (connector?.type !== "composio") return null;
-  const id = typeof record.id === "string" ? record.id.trim().toLowerCase() : "";
-  const name = typeof record.name === "string" ? record.name.trim() : "";
-  const description =
-    typeof record.description === "string" ? record.description.trim() : "";
-  const toolkit =
-    typeof connector.toolkit === "string"
-      ? connector.toolkit.trim().toUpperCase()
-      : "";
-  if (!id || !name || !description || !toolkit) return null;
-  return {
-    id,
-    name,
-    category:
-      typeof record.category === "string"
-        ? record.category.trim()
-        : "integrations",
-    auth: readStringArray(record.auth) ?? ["OAUTH2"],
-    catalogToolCount:
-      typeof record.catalogToolCount === "number" ? record.catalogToolCount : 0,
-    availability: "ready",
-    provider: "backend-composio",
-    description,
-    ...(typeof record.sourceUrl === "string" && record.sourceUrl.trim()
-      ? { sourceUrl: record.sourceUrl.trim() }
-      : {}),
-    ...(typeof record.iconUrl === "string" && record.iconUrl.trim()
-      ? { iconUrl: record.iconUrl.trim() }
-      : {}),
-    connectable: true,
-    backendConnector: {
-      type: "composio",
-      toolkit,
-    },
-  };
-};
+// `toBackendComposioEntry` moved to `../connectors/catalog-cache.js` so the
+// connector keyword index and the `connector_status` tool share the parser.
 
 const loadStellaSiteAuth = async () => {
   const envBaseUrl =
@@ -434,23 +387,15 @@ const loadServerNativeCatalog = async (): Promise<
 > => {
   const siteAuth = await loadStellaSiteAuth();
   if (!siteAuth.ok) return undefined;
-  const response = await fetch(
-    `${siteAuth.baseUrl.replace(/\/+$/u, "")}/api/native-integrations/catalog`,
-    {
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${siteAuth.authToken}`,
-      },
-    },
-  ).catch(() => null);
-  if (!response?.ok) return undefined;
-  const payload = (await response.json().catch(() => null)) as
-    | { integrations?: unknown[] }
-    | null;
-  const entries = (payload?.integrations ?? [])
-    .map(toBackendComposioEntry)
-    .filter((entry): entry is NativeConnectorCatalogEntry => Boolean(entry));
-  return entries.length > 0 ? entries : undefined;
+  const entries = await fetchServerNativeCatalog({
+    baseUrl: siteAuth.baseUrl,
+    authToken: siteAuth.authToken,
+  });
+  if (!entries) return undefined;
+  // Write-through so the connector keyword reminder's index (built from
+  // the disk cache) stays in sync with the live catalog.
+  await writeCachedServerCatalog(stellaAppDir, entries).catch(() => undefined);
+  return entries;
 };
 
 const callBackendNativeIntegration = async (
@@ -512,19 +457,7 @@ const connectorAuthStatus = async (auth: ConnectorCommandConfig["auth"]) => {
 
 const nativeConnectorAuthStatus = async (
   entry: NonNullable<ReturnType<typeof getNativeConnectorCatalogEntry>>,
-) => {
-  if (entry.provider === "google-workspace") {
-    return (await loadConnectorAccessToken(stellaAppDir, "google-workspace"))
-      ? "connected"
-      : "not_logged_in";
-  }
-  if (entry.provider === "backend-composio") return "connected" as const;
-  const config = getNativeOAuthProviderConfig(entry.id);
-  if (!config?.tokenKey) return "unsupported" as const;
-  return (await loadConnectorAccessToken(stellaAppDir, config.tokenKey))
-    ? "connected"
-    : "not_logged_in";
-};
+) => sharedNativeConnectorAuthStatus(stellaAppDir, entry);
 
 const ensureNativeEnabled = async (
   id: string,
@@ -1062,7 +995,7 @@ const main = async () => {
             : match.declined
               ? "The user previously declined connecting this in chat. Do not offer it again; they can enable it in the Store. Only rerun request-connection with --requested-by-user if the user explicitly asks to connect it now."
               : match.kind === "native"
-                ? `Not connected. Offer it in chat: stella-connect request-connection ${match.id} --reason "<short why>"`
+                ? "Not connected. Connect offers are handled by the orchestrator's inline connect card (or the Store) — do not initiate one from here unless the user explicitly asked this turn (then: stella-connect request-connection). Proceed via the browser/computer fallback meanwhile."
                 : `Configured but not authorized. Calling it pops the auth dialog: stella-connect tools ${match.id}`;
           return {
             id: match.id,
