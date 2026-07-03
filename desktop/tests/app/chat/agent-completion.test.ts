@@ -407,6 +407,63 @@ describe("buildAgentCompletionSections", () => {
 });
 
 describe("append-only across a send_input re-run", () => {
+  it("a resumed thread's earlier AND later completions each render a card (0.0.389 regression)", () => {
+    // Regression shape: an interjection-turn completion whose display was
+    // deferred and flushed at revival (runtime fix in local-agent-manager)
+    // persists an agent-completed row BEFORE the follow-up's agent-started.
+    // Both completions must survive the per-row derivation + handoff dedup
+    // as their own cards — nothing about a thread's SECOND completion may
+    // suppress either card.
+    const meta = buildAgentMetaMap([
+      started("a1", "Open the HTML file in the browser", { timestamp: 1 }),
+      started("a1", "Open the HTML file in the browser", { timestamp: 50 }),
+    ]);
+    // Row 1: the flushed interjection completion (fileless, one-line result).
+    const rowOne = buildAgentCompletionSections(
+      [
+        ev({
+          _id: "completed:a1:10",
+          timestamp: 10,
+          type: "agent-completed",
+          payload: { agentId: "a1", result: "Opened it in the browser." },
+        }),
+      ],
+      meta,
+    );
+    // Row 2: the resumed turn's final completion.
+    const rowTwo = buildAgentCompletionSections(
+      [
+        ev({
+          _id: "completed:a1:60",
+          timestamp: 60,
+          type: "agent-completed",
+          payload: { agentId: "a1", result: "Re-opened after the fix." },
+        }),
+      ],
+      meta,
+    );
+    expect(rowOne).toHaveLength(1);
+    expect(rowOne[0]!.summary).toBe("Opened it in the browser.");
+    expect(rowTwo).toHaveLength(1);
+    expect(rowTwo[0]!.summary).toBe("Re-opened after the fix.");
+
+    // Handoff dedup keeps both (distinct completedAtMs = distinct
+    // completions), so neither card is reconciled away.
+    const rows: EventRowViewModel[] = [
+      completionRow("assistant-1", rowOne),
+      completionRow("assistant-2", rowTwo),
+    ];
+    const dropped = new Set<number>();
+    dedupeAgentCompletionRows(rows, dropped);
+    expect(dropped.size).toBe(0);
+    expect(
+      (rows[0] as AssistantRowViewModel).agentCompletion?.sections,
+    ).toHaveLength(1);
+    expect(
+      (rows[1] as AssistantRowViewModel).agentCompletion?.sections,
+    ).toHaveLength(1);
+  });
+
   it("a later completion carries only its own run's files (per-row scoping)", () => {
     const meta = buildAgentMetaMap([
       started("a1", "Build the report", { timestamp: 1 }),

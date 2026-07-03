@@ -408,7 +408,7 @@ describe("LocalAgentManager Exec fs locking", () => {
     expect(rootTasks.filter((task) => task.status === "running")).toEqual([]);
   });
 
-  it("defers the Done display for interjection completions and drops it when the thread resumes", async () => {
+  it("defers the Done display for interjection completions and flushes it when the thread resumes", async () => {
     const events: AgentLifecycleEvent[] = [];
     let runCount = 0;
     let firstRunStarted: (() => void) | null = null;
@@ -489,7 +489,10 @@ describe("LocalAgentManager Exec fs locking", () => {
     expect(manager.getActiveAgentCount()).toBe(1);
 
     // Orchestrator resumes the thread: the deferred Done display must be
-    // dropped, and the genuine completion of the resumed turn displays
+    // FLUSHED (not dropped) — the completion is real history and the chat
+    // completion card renders on every completion (regression: resumed
+    // threads showed no finish card because revival erased the deferred
+    // display). The genuine completion of the resumed turn then displays
     // normally.
     await manager.sendAgentMessage(
       task.threadId,
@@ -497,14 +500,27 @@ describe("LocalAgentManager Exec fs locking", () => {
       "orchestrator",
       { rootRunId: "root-2" },
     );
-    await waitForCompletions(2);
+    await waitForCompletions(3);
 
-    expect(completions()).toHaveLength(2);
-    expect(completions()[1]).toMatchObject({ result: "done-3" });
-    expect(completions()[1]?.audience).toBeUndefined();
-    expect(events.some((event) => event.audience === "display-only")).toBe(
-      false,
+    const displayed = completions().filter(
+      (event) => event.audience === "display-only",
     );
+    expect(displayed).toHaveLength(1);
+    expect(displayed[0]).toMatchObject({ result: "done-2" });
+    // Flushed BEFORE the resumed turn's start events, so the activity fold
+    // sees completed→started in order and the thread reads as running.
+    const displayIndex = events.indexOf(displayed[0]!);
+    const resumeProgressIndex = events.findIndex(
+      (event, index) =>
+        index > displayIndex &&
+        event.type === "agent-progress" &&
+        event.agentId === task.threadId,
+    );
+    expect(resumeProgressIndex).toBeGreaterThan(displayIndex);
+
+    const final = completions().filter((event) => !event.audience);
+    expect(final).toHaveLength(1);
+    expect(final[0]).toMatchObject({ result: "done-3" });
     expect(manager.getActiveAgentCount()).toBe(0);
   });
 
@@ -960,17 +976,27 @@ describe("LocalAgentManager file records across send_input re-runs", () => {
       },
     ]);
 
-    // Resume the thread: the bank was drained at emission, so the next
-    // completion only reveals the new run's files (append-only property).
+    // Resume the thread. The revival flushes the deferred display-only
+    // copy of the first completion (same rollup — it's the same completion
+    // reaching the display surfaces), then the bank was drained at
+    // emission, so the resumed run's own completion only reveals the new
+    // run's files (append-only property).
     await manager.sendAgentMessage(
       task.threadId,
       "export a final pdf",
       "orchestrator",
       { rootRunId: "root-3" },
     );
-    await waitForCompletions(2);
+    await waitForCompletions(3);
 
-    const second = completions()[1]!;
+    const flushedDisplay = completions().find(
+      (event) => event.audience === "display-only",
+    )!;
+    expect(flushedDisplay.producedFiles).toEqual(first.producedFiles);
+
+    const second = completions().find(
+      (event) => !event.audience && event.result === "done-3",
+    )!;
     expect(second.fileChanges).toBeUndefined();
     expect(second.producedFiles).toEqual([
       {
