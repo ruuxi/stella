@@ -12,6 +12,7 @@ import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
 import { useChatScrollManagement } from "@/shell/use-chat-scroll-management";
 import { ComposerContextRow } from "@/app/chat/ComposerContextRow";
 import { ComposerLeadRow } from "@/app/chat/ComposerLeadRow";
+import { ConnectorConnectCard } from "@/app/chat/ConnectorConnectCard";
 import { ComposerAddMenu } from "@/app/chat/ComposerAddMenu";
 import {
   ComposerMicButton,
@@ -522,6 +523,7 @@ export function ChatPanelTab({
             </AssistantTextPaintContext.Provider>
 
             <div className="chat-sidebar-composer">
+              <ConnectorConnectCard compact />
               <ComposerLeadRow
                 replyPeek={
                   assistantReplyPeek.visible

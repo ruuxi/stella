@@ -1,0 +1,129 @@
+.connector-connect-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(50rem, 100%);
+  margin: 0 auto 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  background: var(--surface-inset);
+  animation: connector-connect-card-enter 200ms ease-out;
+}
+
+@keyframes connector-connect-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.connector-connect-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  color: var(--text-weak);
+  overflow: hidden;
+}
+
+.connector-connect-card__icon img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.connector-connect-card--connected .connector-connect-card__icon {
+  color: var(--success, #3ba55d);
+}
+
+.connector-connect-card--error .connector-connect-card__icon {
+  color: var(--danger, #d4574e);
+}
+
+.connector-connect-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.connector-connect-card__title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.connector-connect-card__sub {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text-weak);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.connector-connect-card--connecting .connector-connect-card__title {
+  animation: connector-connect-card-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes connector-connect-card-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.connector-connect-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* Compact sidebar variant: tighter paddings, stacked actions never
+   overflow the narrow column. */
+.connector-connect-card--compact {
+  gap: 9px;
+  margin: 0 0 8px;
+  padding: 9px 10px;
+  border-radius: var(--radius-xl, 14px);
+  flex-wrap: wrap;
+}
+
+.connector-connect-card--compact .connector-connect-card__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.connector-connect-card--compact .connector-connect-card__icon img {
+  width: 16px;
+  height: 16px;
+}
+
+.connector-connect-card--compact .connector-connect-card__title {
+  font-size: 12.5px;
+}
+
+.connector-connect-card--compact .connector-connect-card__sub {
+  font-size: 11.5px;
+}
+
+.connector-connect-card--compact .connector-connect-card__actions {
+  width: 100%;
+  justify-content: flex-end;
+}

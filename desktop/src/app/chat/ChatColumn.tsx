@@ -25,6 +25,7 @@ import {
   type ComponentProps,
 } from "react";
 import { ChevronDown } from "@/ui/icons";
+import { ConnectorConnectCard } from "./ConnectorConnectCard";
 import { ConversationEvents } from "./ConversationEvents";
 import { useChatMessages } from "@/context/use-chat-messages";
 import { AssistantTextPaintContext } from "./assistant-text-paint-context";
@@ -356,6 +357,10 @@ export const ChatColumn = memo(function ChatColumn({
               </button>
             )}
           </div>
+
+          {/* Inline connect offer (agent-initiated) pinned above the
+              composer while the agent's turn waits on the answer. */}
+          <ConnectorConnectCard />
 
           {/* Composer: normal flow below the scroll viewport */}
           <div
