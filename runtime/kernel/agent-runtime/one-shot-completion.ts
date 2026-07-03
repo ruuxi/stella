@@ -28,6 +28,7 @@ import {
   type ResolvedLlmRoute,
 } from "../model-routing.js";
 import { getModelOverride } from "../preferences/local-preferences.js";
+import { resolveLocalCliCwd } from "./shared.js";
 import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
@@ -196,6 +197,12 @@ export const runOneShotCompletion = async (args: {
         // Data dir, matching the other CC completion callers: preferences
         // (claudeCodeModel, reasoning effort) live under the data dir.
         stellaAppDir: runtime.stellaDataDir,
+        // The CLI must NOT run inside the data dir — resolve its working
+        // directory against the app dir (home for home-scoped agents).
+        cwd: resolveLocalCliCwd({
+          agentType: request.agentType,
+          stellaAppDir: runtime.stellaAppDir,
+        }),
         agentType: request.agentType,
         ...(modelName ?? route?.model.id
           ? { stellaModel: (modelName ?? route?.model.id) as string }

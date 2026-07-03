@@ -129,11 +129,23 @@ const isCompactionLoopError = (message: string): boolean =>
  */
 export class ClaudeCodeProcessEndedError extends Error {
   readonly exitCode: number | null;
+  /**
+   * Native-tool file writes observed on the failed step before the process
+   * ended (vanilla mode only; takeover mode strips CC's file tools). Recovery
+   * merges these into the eventual turn result and switches to a
+   * non-mutating reconciliation prompt instead of replaying the step.
+   */
+  readonly fileChanges: FileChangeRecord[];
 
-  constructor(message: string, exitCode: number | null = null) {
+  constructor(
+    message: string,
+    exitCode: number | null = null,
+    fileChanges: FileChangeRecord[] = [],
+  ) {
     super(message);
     this.name = "ClaudeCodeProcessEndedError";
     this.exitCode = exitCode;
+    this.fileChanges = fileChanges;
   }
 }
 
@@ -143,29 +155,47 @@ export class ClaudeCodeProcessEndedError extends Error {
  */
 export class ClaudeCodeMalformedResultError extends Error {
   readonly kind: "empty_result" | "invalid_decision";
+  /** Native-tool file writes observed on the failed step (vanilla mode). */
+  readonly fileChanges: FileChangeRecord[];
 
-  constructor(message: string, kind: "empty_result" | "invalid_decision") {
+  constructor(
+    message: string,
+    kind: "empty_result" | "invalid_decision",
+    fileChanges: FileChangeRecord[] = [],
+  ) {
     super(message);
     this.name = "ClaudeCodeMalformedResultError";
     this.kind = kind;
+    this.fileChanges = fileChanges;
   }
 }
 
-type RecoverableStepErrorKind = "process_ended" | "malformed_result";
-
-const classifyRecoverableStepError = (
+const asRecoverableStepError = (
   error: unknown,
-): RecoverableStepErrorKind | null => {
-  if (error instanceof ClaudeCodeProcessEndedError) return "process_ended";
-  if (error instanceof ClaudeCodeMalformedResultError) return "malformed_result";
-  return null;
-};
+): ClaudeCodeProcessEndedError | ClaudeCodeMalformedResultError | null =>
+  error instanceof ClaudeCodeProcessEndedError ||
+  error instanceof ClaudeCodeMalformedResultError
+    ? error
+    : null;
 
 /**
  * Corrective prompt for a malformed step result. The CLI session is still
  * alive and already has the full step context (including any tool result we
  * just forwarded), so the nudge only needs to ask for a well-formed restate.
  */
+/**
+ * Recovery prompt for a step that died AFTER native file writes were already
+ * observed. Blind-replaying the original prompt could re-run those mutations
+ * on the respawned session, so the retry must reconcile instead of redo.
+ */
+const buildSideEffectReconciliationPrompt = (): string =>
+  [
+    "The previous step was interrupted after some of its file operations had already been applied.",
+    "Do NOT redo, repeat, or revert any file operations from that step.",
+    "If you are unsure what was applied, inspect the current state of the affected files first.",
+    "Then report your final answer for the pending request.",
+  ].join("\n");
+
 const buildDecisionRetryPrompt = (vanilla: boolean): string =>
   vanilla
     ? "Your previous reply produced no result text. Provide your complete final answer to the pending request now."
@@ -338,6 +368,14 @@ type ClaudeCodeStreamingProcess = {
   compacting: boolean;
   /** Discrete compactions observed in the current Stella turn (reset per turn). */
   compactionCount: number;
+  /**
+   * Fingerprint of the spawn-time configuration (model, effort, vanilla
+   * mode, system prompt, auto-compact env). A later request with a
+   * different fingerprint restarts the process so mid-session model or
+   * effort changes apply on the next prompt instead of silently keeping
+   * the old configuration until the process dies.
+   */
+  launchConfig: string;
 };
 
 type SessionState = {
@@ -778,8 +816,15 @@ const isHighSurrogate = (char: string): boolean => {
  * (`input_json_delta`) or as plain text deltas that ARE the JSON — in both
  * cases the user-visible answer would otherwise not stream at all and pop in
  * whole at result time. Feed raw JSON fragments to `push`; it returns the
- * newly decoded message text (empty until `"type":"final","message":"` has
- * arrived, and forever for any other payload shape, e.g. tool requests).
+ * newly decoded message text (empty until the payload is known to be a final
+ * message, and forever for any other payload shape, e.g. tool requests).
+ *
+ * Field order is tolerated: type-first payloads
+ * (`{"type":"final","message":"..."}`) stream the message incrementally,
+ * while message-first payloads (`{"message":"...","type":"final"}`) buffer
+ * the message and emit it whole once the trailing `type` confirms the
+ * payload is a final answer (emitting earlier could leak a tool request's
+ * commentary).
  *
  * Decoding handles fragment boundaries that split JSON escape sequences
  * (`\n`, `\uXXXX`) and surrogate pairs: incomplete tails are held back until
@@ -787,14 +832,54 @@ const isHighSurrogate = (char: string): boolean => {
  */
 export const createClaudeCodeFinalMessageDecoder = () => {
   let raw = "";
-  let phase: "detect" | "message" | "done" | "reject" = "detect";
+  let phase:
+    | "detect"
+    | "message"
+    | "buffered-message"
+    | "await-type"
+    | "done"
+    | "reject" = "detect";
   /** Scan cursor into `raw` once inside the message string. */
   let cursor = 0;
   /** Held-back high surrogate awaiting its low half. */
   let carry = "";
+  /** Decoded message held back until a trailing `type` confirms `final`. */
+  let buffered = "";
 
-  const FINAL_MESSAGE_PREFIX = /^\s*\{\s*"type"\s*:\s*"final"\s*,\s*"message"\s*:\s*"/;
+  const FINAL_MESSAGE_PREFIX =
+    /^\s*\{\s*"type"\s*:\s*"final"\s*,\s*"message"\s*:\s*"/;
   const TYPE_VALUE = /^\s*\{\s*"type"\s*:\s*"([^"]*)"/;
+  const MESSAGE_FIRST_PREFIX = /^\s*\{\s*"message"\s*:\s*"/;
+  const TRAILING_TYPE_VALUE = /"type"\s*:\s*"([^"]*)"/;
+
+  /** Decode string content from `cursor`; stops at the closing quote. */
+  const decodeStringChunk = (): { text: string; closed: boolean } => {
+    let out = "";
+    while (cursor < raw.length) {
+      const char = raw[cursor]!;
+      if (char === '"') {
+        return { text: out, closed: true };
+      }
+      if (char === "\\") {
+        const escape = raw[cursor + 1];
+        if (escape === undefined) break; // wait for the rest of the escape
+        if (escape === "u") {
+          const hex = raw.slice(cursor + 2, cursor + 6);
+          if (hex.length < 4) break;
+          const code = Number.parseInt(hex, 16);
+          out += Number.isNaN(code) ? "" : String.fromCharCode(code);
+          cursor += 6;
+          continue;
+        }
+        out += JSON_STRING_ESCAPES[escape] ?? escape;
+        cursor += 2;
+        continue;
+      }
+      out += char;
+      cursor += 1;
+    }
+    return { text: out, closed: false };
+  };
 
   return {
     push(fragment: string): string {
@@ -808,43 +893,52 @@ export const createClaudeCodeFinalMessageDecoder = () => {
           return "";
         }
         const prefixMatch = FINAL_MESSAGE_PREFIX.exec(raw);
-        if (!prefixMatch) return "";
-        cursor = prefixMatch[0].length;
-        phase = "message";
+        if (prefixMatch) {
+          cursor = prefixMatch[0].length;
+          phase = "message";
+        } else {
+          const messageFirstMatch = MESSAGE_FIRST_PREFIX.exec(raw);
+          if (!messageFirstMatch) return "";
+          cursor = messageFirstMatch[0].length;
+          phase = "buffered-message";
+        }
       }
-      let out = carry;
-      carry = "";
-      while (cursor < raw.length) {
-        const char = raw[cursor]!;
-        if (char === '"') {
+      if (phase === "message") {
+        const { text, closed } = decodeStringChunk();
+        if (closed) {
           phase = "done";
-          break;
         }
-        if (char === "\\") {
-          const escape = raw[cursor + 1];
-          if (escape === undefined) break; // wait for the rest of the escape
-          if (escape === "u") {
-            const hex = raw.slice(cursor + 2, cursor + 6);
-            if (hex.length < 4) break;
-            const code = Number.parseInt(hex, 16);
-            out += Number.isNaN(code) ? "" : String.fromCharCode(code);
-            cursor += 6;
-            continue;
-          }
-          out += JSON_STRING_ESCAPES[escape] ?? escape;
-          cursor += 2;
-          continue;
+        let out = carry + text;
+        carry = "";
+        // Never emit a dangling high surrogate; hold it for the low half.
+        const last = out.at(-1);
+        if (phase === "message" && last && isHighSurrogate(last)) {
+          carry = last;
+          out = out.slice(0, -1);
         }
-        out += char;
-        cursor += 1;
+        return out;
       }
-      // Never emit a dangling high surrogate; hold it for the low half.
-      const last = out.at(-1);
-      if (phase === "message" && last && isHighSurrogate(last)) {
-        carry = last;
-        out = out.slice(0, -1);
+      if (phase === "buffered-message") {
+        const { text, closed } = decodeStringChunk();
+        buffered += text;
+        if (!closed) return "";
+        cursor += 1; // past the closing quote
+        phase = "await-type";
       }
-      return out;
+      // phase === "await-type": the message string closed before `type`
+      // arrived; wait for it to confirm the payload is a final answer.
+      const typeMatch = TRAILING_TYPE_VALUE.exec(raw.slice(cursor));
+      if (!typeMatch) return "";
+      if (typeMatch[1] === "final") {
+        phase = "done";
+        const out = buffered;
+        buffered = "";
+        return out;
+      }
+      phase = "reject";
+      buffered = "";
+      raw = "";
+      return "";
     },
   };
 };
@@ -1207,13 +1301,16 @@ class ClaudeCodeSessionRuntime {
    * - `process_ended`: the CLI died (or exited cleanly) before delivering the
    *   step's result. Respawn and resend the same prompt; the spawn path
    *   resumes the persisted transcript when possible and otherwise falls back
-   *   to reseeding from `resumeFallbackPrompt`.
+   *   to reseeding from `resumeFallbackPrompt`. If the failed attempt had
+   *   already applied native file writes, the retry switches to a
+   *   non-mutating reconciliation prompt so those edits are never replayed.
    * - `malformed_result`: the CLI answered but the payload was unusable
    *   (empty result / invalid decision JSON). The session process is still
    *   alive with full context, so send a corrective nudge prompt instead.
    *
-   * Aborted runs never retry; exhausted budgets rethrow with an actionable
-   * message.
+   * Native file writes observed on failed attempts are merged into the
+   * eventual step result so recoveries never drop artifacts. Aborted runs
+   * never retry; exhausted budgets rethrow with an actionable message.
    */
   private async executeStructuredStepWithRecovery(
     session: SessionState,
@@ -1223,28 +1320,51 @@ class ClaudeCodeSessionRuntime {
     recoveryBudget: { remaining: number },
   ): Promise<StructuredStepResult> {
     let currentPrompt = prompt;
+    const failedAttemptFileChanges: FileChangeRecord[] = [];
+    const failedAttemptFileChangeKeys = new Set<string>();
     for (;;) {
       try {
-        return await this.executeStructuredStep(
+        const result = await this.executeStructuredStep(
           session,
           request,
           effectiveSystemPrompt,
           currentPrompt,
         );
+        if (failedAttemptFileChanges.length === 0) {
+          return result;
+        }
+        mergeFileChanges(
+          failedAttemptFileChanges,
+          failedAttemptFileChangeKeys,
+          result.fileChanges,
+        );
+        return { ...result, fileChanges: failedAttemptFileChanges };
       } catch (error) {
         if (request.abortSignal?.aborted) {
           throw error;
         }
-        const recovery = classifyRecoverableStepError(error);
-        if (!recovery) {
+        const recoverable = asRecoverableStepError(error);
+        if (!recoverable) {
           throw error;
         }
+        mergeFileChanges(
+          failedAttemptFileChanges,
+          failedAttemptFileChangeKeys,
+          recoverable.fileChanges,
+        );
         if (recoveryBudget.remaining <= 0) {
           throw withStepRecoveryExhausted(error);
         }
         recoveryBudget.remaining -= 1;
-        if (recovery === "process_ended") {
+        if (recoverable instanceof ClaudeCodeProcessEndedError) {
           this.resetStreamingProcess(request.sessionKey, session);
+          // Never blind-replay a prompt whose attempt already mutated files:
+          // the respawned session must reconcile, not redo. (Bash-side writes
+          // stay invisible to this guard — the stream only names file-tool
+          // paths.)
+          if (failedAttemptFileChanges.length > 0) {
+            currentPrompt = buildSideEffectReconciliationPrompt();
+          }
           continue;
         }
         currentPrompt = buildDecisionRetryPrompt(Boolean(request.vanilla));
@@ -1383,14 +1503,45 @@ class ClaudeCodeSessionRuntime {
     return args;
   }
 
+  private buildProcessLaunchConfig(
+    request: ClaudeCodeTurnRequest,
+    effectiveSystemPrompt: string,
+  ): string {
+    return JSON.stringify([
+      parseClaudeCodeModel(request.modelId) ?? "",
+      request.effortLevel?.trim() ?? "",
+      Boolean(request.vanilla),
+      effectiveSystemPrompt.trim(),
+      request.autoCompactWindowTokens ?? null,
+      request.autoCompactTriggerPct ?? null,
+    ]);
+  }
+
   private ensureStreamingProcess(
     session: SessionState,
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
     useResume: boolean,
   ): ClaudeCodeStreamingProcess {
+    const launchConfig = this.buildProcessLaunchConfig(
+      request,
+      effectiveSystemPrompt,
+    );
     if (session.process && !session.process.closed) {
-      return session.process;
+      if (session.process.launchConfig === launchConfig) {
+        return session.process;
+      }
+      if (session.process.pending.length > 0) {
+        // Prompts are still in flight on the old configuration; swapping
+        // now would fail them. Keep the process — the next idle step
+        // picks the new configuration up.
+        return session.process;
+      }
+      // The request wants a different CLI configuration (the user changed
+      // the model / effort mid-session, or the mode flipped). Restart the
+      // process; `useResume` continues the same CLI conversation on the
+      // new configuration.
+      this.resetStreamingProcess(request.sessionKey, session);
     }
 
     const effortLevel = request.effortLevel?.trim();
@@ -1434,6 +1585,7 @@ class ClaudeCodeSessionRuntime {
       closed: false,
       compacting: false,
       compactionCount: 0,
+      launchConfig,
     };
     session.process = processState;
     this.activeProcesses.set(request.sessionKey, child);
@@ -1526,6 +1678,14 @@ class ClaudeCodeSessionRuntime {
                 : stepResult,
             );
           } catch (error) {
+            // Carry file writes observed during the failed step so a nudge
+            // recovery still reports them on the eventual turn result.
+            if (
+              error instanceof ClaudeCodeMalformedResultError &&
+              completed.fileChanges.length > 0
+            ) {
+              error.fileChanges.push(...completed.fileChanges);
+            }
             completed.reject(error);
           }
         }
@@ -1580,7 +1740,7 @@ class ClaudeCodeSessionRuntime {
         pending.reject(
           pending.request.abortSignal?.aborted
             ? new Error("Claude Code run aborted.")
-            : new ClaudeCodeProcessEndedError(message, code),
+            : new ClaudeCodeProcessEndedError(message, code, pending.fileChanges),
         );
       }
     });
@@ -1640,6 +1800,8 @@ class ClaudeCodeSessionRuntime {
         reject(
           new ClaudeCodeProcessEndedError(
             `Failed to write Claude Code prompt: ${normalizeErrorMessage(error)}`,
+            null,
+            pending.fileChanges,
           ),
         );
       });
