@@ -209,18 +209,6 @@ type RuntimeAgentRecord = {
    * the outer `executeTask` invocation re-enters.
    */
   interruptedForFollowUp: boolean;
-  /**
-   * True while the turn being executed was delivered via
-   * `deliverFollowUpAsNextTurn` — an orchestrator `send_input` that
-   * hard-cut (or chained onto) in-flight work. When such a turn
-   * completes, that is usually a turn boundary rather than a task
-   * completion: the agent answered the interjected message and the
-   * orchestrator typically resumes the thread seconds later. Surfacing
-   * the terminal `agent-completed` immediately makes the task UI flash
-   * Done → running, so the display half of the event is deferred (see
-   * `scheduleDeferredCompletionDisplay`).
-   */
-  currentTurnIsInterjection: boolean;
   activeSelfModRunId?: string;
   terminalEventEmitted: boolean;
   pendingStartStatusText?: string;
@@ -301,14 +289,17 @@ export type AgentLifecycleEvent = {
    */
   isFollowUp?: boolean;
   /**
-   * Delivery scope for the event. Terminal completions of interjection
-   * turns are split in two: an immediate `orchestrator-only` event (the
-   * hidden `[Agent completed]` follow-up so the orchestrator can reply
-   * and resume) and a deferred `display-only` event (persisted activity
-   * row, renderer stream event, OS notification) that fires when the
-   * grace window expires — or immediately on revival, so the persisted
-   * completion row (and thus the chat completion card) is never lost.
-   * Absent = both.
+   * Delivery scope for the event. `orchestrator-only` skips every display
+   * surface (persisted chat row / completion card, renderer stream event,
+   * OS notification); `display-only` skips the hidden orchestrator
+   * follow-up. Absent = both.
+   *
+   * No current emit site sets this: completions follow the state-based
+   * rule (a real finish — the thread going idle with no pending follow-up
+   * — always emits the full event immediately; internal turn boundaries
+   * superseded by a pending follow-up emit nothing). The field is kept for
+   * protocol compatibility and for future internal-boundary events that
+   * should reach only the orchestrator.
    */
   audience?: "orchestrator-only" | "display-only";
   /**
@@ -566,15 +557,6 @@ const isSpawnAgentTool = (toolName: string): boolean =>
 
 const AGENT_INPUT_INTERRUPT_ERROR = "Interrupted by agent input";
 
-/**
- * How long a completed interjection turn (a `send_input` hard-cut that
- * answered the user mid-task) waits for the orchestrator to resume the
- * thread before its terminal `agent-completed` is surfaced to the UI.
- * Sized to cover the orchestrator's LLM round-trip plus the follow-up
- * `send_input`; if nothing revives the thread by then, the completion
- * was real and the task displays as Done.
- */
-const INTERJECTION_COMPLETION_DISPLAY_GRACE_MS = 45_000;
 export const AGENT_SHUTDOWN_CANCEL_REASON =
   "Canceled because Stella closed or restarted.";
 export const AGENT_ORPHANED_RESTART_CANCEL_REASON =
@@ -606,17 +588,6 @@ export class LocalAgentManager implements AgentToolApi {
    * task reaches a terminal status. Paused tasks keep their session.
    */
   private readonly subagentSessions = new Map<string, SubagentSession>();
-  /**
-   * Pending `display-only` agent-completed emits keyed by threadId. See
-   * `RuntimeAgentRecord.currentTurnIsInterjection` — flushed synchronously
-   * whenever the thread is revived (completed→started land in one batch,
-   * no lingering Done flash) so the chat completion card never loses a
-   * completion.
-   */
-  private readonly deferredCompletionDisplays = new Map<
-    string,
-    { timer: ReturnType<typeof setTimeout>; emit: () => void }
-  >();
   private static readonly MAX_QUEUE_MESSAGES = 32;
   private static readonly MAX_LOG_MESSAGES = 80;
   private nextId = 0;
@@ -760,21 +731,11 @@ export class LocalAgentManager implements AgentToolApi {
     task.toOrchestratorQueue.length = 0;
     task.controller = new AbortController();
     task.interruptedForFollowUp = false;
-    task.currentTurnIsInterjection = false;
     task.terminalEventEmitted = false;
     task.pendingStartStatusText = undefined;
     // Cleared here so a bare reset reads as a spawn; the follow-up callers
     // (`sendAgentMessage` / `deliverFollowUpAsNextTurn`) re-set it right after.
     task.pendingStartIsFollowUp = undefined;
-    // The thread is live again. A deferred Done display from the previous
-    // interjection turn is flushed NOW rather than dropped: the completion
-    // really happened, and the chat completion card (which renders on every
-    // completion) is chronological history — erasing the event left resumed
-    // threads with no finish card at all. Emitting synchronously right
-    // before this turn's start/progress events means the activity fold
-    // processes completed→started in one batch, so the task never lingers
-    // on a "Done" flash mid-resume.
-    this.flushDeferredCompletionDisplay(task.threadId);
   }
 
   private hydrateTaskFromRecord(
@@ -807,7 +768,6 @@ export class LocalAgentManager implements AgentToolApi {
       messageLog: [],
       turnCount: 0,
       interruptedForFollowUp: false,
-      currentTurnIsInterjection: false,
       terminalEventEmitted: false,
       pendingStartStatusText: formatTaskUpdateStatusText(statusText),
       // Resuming an evicted/persisted thread is always a `send_input`
@@ -844,10 +804,10 @@ export class LocalAgentManager implements AgentToolApi {
     const pendingStartStatusText = task.pendingStartStatusText;
     const prompt = this.buildTaskPrompt(task);
     this.resetTaskForNextAttempt(task, prompt);
-    // This next turn carries an orchestrator update interjected into
-    // in-flight work, so its completion is a turn boundary the
-    // orchestrator usually continues from — defer its Done display.
-    task.currentTurnIsInterjection = true;
+    // The superseded turn's boundary emitted no completion event (the
+    // dispatch short-circuits into this delivery before the lifecycle
+    // emit) — an interjection extends ongoing work, so only the continued
+    // turn's eventual real finish surfaces a completion card.
     task.pendingStartStatusText = pendingStartStatusText;
     // Interjected in-flight work is a `send_input` follow-up, not a spawn.
     task.pendingStartIsFollowUp = true;
@@ -856,56 +816,6 @@ export class LocalAgentManager implements AgentToolApi {
     ];
     this.pendingQueue.unshift(task.threadId);
     this.persistTask(task);
-  }
-
-  private clearDeferredCompletionDisplay(threadId: string): void {
-    const pending = this.deferredCompletionDisplays.get(threadId);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    this.deferredCompletionDisplays.delete(threadId);
-  }
-
-  /**
-   * Emit a pending deferred Done display immediately (thread revival).
-   * The completion is real history — the persisted `agent-completed` row
-   * must land (it anchors the chat completion card) even though the
-   * thread is about to run again.
-   */
-  private flushDeferredCompletionDisplay(threadId: string): void {
-    const pending = this.deferredCompletionDisplays.get(threadId);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    pending.emit();
-  }
-
-  /**
-   * Hold the `display-only` half of an interjection turn's completion
-   * for a grace window. Revival (any path through
-   * `resetTaskForNextAttempt`) flushes it synchronously so the chat's
-   * per-completion card is never lost; expiry means the orchestrator
-   * left the thread alone, so the completion was real and the Done
-   * display (persisted activity row + renderer event + notification)
-   * goes out late rather than never.
-   */
-  private scheduleDeferredCompletionDisplay(
-    threadId: string,
-    event: AgentLifecycleEvent,
-  ): void {
-    this.clearDeferredCompletionDisplay(threadId);
-    const emit = () => {
-      this.deferredCompletionDisplays.delete(threadId);
-      this.opts.onAgentEvent?.({ ...event, audience: "display-only" });
-    };
-    const timer = setTimeout(emit, INTERJECTION_COMPLETION_DISPLAY_GRACE_MS);
-    this.deferredCompletionDisplays.set(threadId, { timer, emit });
-  }
-
-  /** Emit all pending deferred completion displays immediately (shutdown). */
-  private flushDeferredCompletionDisplays(): void {
-    for (const [, pending] of [...this.deferredCompletionDisplays]) {
-      clearTimeout(pending.timer);
-      pending.emit();
-    }
   }
 
   private tryStartNext(): void {
@@ -1268,24 +1178,23 @@ export class LocalAgentManager implements AgentToolApi {
         // send_input re-run's later completion only reveals new files.
         task.bankedFileChanges = undefined;
         task.bankedProducedFiles = undefined;
-        if (task.currentTurnIsInterjection) {
-          // Interjection turn: tell the orchestrator immediately (it
-          // needs the result to reply and decide whether to resume),
-          // but hold the Done display. If the orchestrator resumes via
-          // send_input, the deferred display is dropped and the task UI
-          // stays "in progress" across the whole round-trip instead of
-          // flashing Done → running.
-          this.opts.onAgentEvent?.({
-            ...completedEvent,
-            audience: "orchestrator-only",
-          });
-          this.scheduleDeferredCompletionDisplay(
-            task.threadId,
-            completedEvent,
-          );
-        } else {
-          this.opts.onAgentEvent?.(completedEvent);
-        }
+        // State-based completion rule: reaching this emit means the thread
+        // is going idle with no pending follow-up (a pending follow-up
+        // short-circuited into `deliverFollowUpAsNextTurn` above, before
+        // this block) — that IS the real finish, so the full event emits
+        // immediately. No deferral: if the orchestrator resumes the thread
+        // afterwards, that's a new run with its own completion card —
+        // Done → running-again is honest history, not a glitch.
+        //
+        // Busy-vs-idle classification is atomic with turn state: there is
+        // no `await` between `runSubagent` resolving and this emit, so a
+        // `send_input` either ran before dispatch (task still "running" →
+        // queued as a follow-up → the short-circuit above wins and no
+        // completion emits for this boundary) or runs after it (task
+        // terminal → the terminal-resume path in `sendAgentMessage`, with
+        // this completion already emitted). A completion can never be
+        // misclassified as interjected.
+        this.opts.onAgentEvent?.(completedEvent);
       } else if (task.status === "error") {
         this.opts.onAgentEvent?.({
           type: "agent-failed",
@@ -1390,7 +1299,6 @@ export class LocalAgentManager implements AgentToolApi {
       messageLog: [],
       turnCount: 0,
       interruptedForFollowUp: false,
-      currentTurnIsInterjection: false,
       terminalEventEmitted: false,
     };
     logWorkingIndicatorTrace("[stella:working-indicator:create-agent]", {
@@ -1577,13 +1485,6 @@ export class LocalAgentManager implements AgentToolApi {
         task.status === "error" ||
         task.status === "canceled"
       ) {
-        // A completed interjection turn whose Done display is still
-        // deferred counts as active: the UI shows it as in progress and
-        // the worker must stay alive long enough to either drop the
-        // display on revival or flush it when the grace window ends.
-        if (this.deferredCompletionDisplays.has(task.threadId)) {
-          count++;
-        }
         continue;
       }
       count++;
@@ -1612,10 +1513,6 @@ export class LocalAgentManager implements AgentToolApi {
   }
 
   shutdown(reason = AGENT_SHUTDOWN_CANCEL_REASON): void {
-    // Don't lose deferred Done displays across worker shutdown — the
-    // persisted `agent-completed` row must land before the store closes
-    // or the activity fold reconstructs these tasks as still running.
-    this.flushDeferredCompletionDisplays();
     for (const task of this.tasks.values()) {
       if (task.status !== "pending" && task.status !== "running") {
         continue;
