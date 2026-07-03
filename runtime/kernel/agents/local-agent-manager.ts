@@ -305,8 +305,10 @@ export type AgentLifecycleEvent = {
    * turns are split in two: an immediate `orchestrator-only` event (the
    * hidden `[Agent completed]` follow-up so the orchestrator can reply
    * and resume) and a deferred `display-only` event (persisted activity
-   * row, renderer stream event, OS notification) that only fires if
-   * nothing revives the thread within the grace window. Absent = both.
+   * row, renderer stream event, OS notification) that fires when the
+   * grace window expires — or immediately on revival, so the persisted
+   * completion row (and thus the chat completion card) is never lost.
+   * Absent = both.
    */
   audience?: "orchestrator-only" | "display-only";
   /**
@@ -606,8 +608,10 @@ export class LocalAgentManager implements AgentToolApi {
   private readonly subagentSessions = new Map<string, SubagentSession>();
   /**
    * Pending `display-only` agent-completed emits keyed by threadId. See
-   * `RuntimeAgentRecord.currentTurnIsInterjection` — cleared whenever the
-   * thread is revived so the task UI never flashes Done mid-task.
+   * `RuntimeAgentRecord.currentTurnIsInterjection` — flushed synchronously
+   * whenever the thread is revived (completed→started land in one batch,
+   * no lingering Done flash) so the chat completion card never loses a
+   * completion.
    */
   private readonly deferredCompletionDisplays = new Map<
     string,
@@ -762,9 +766,15 @@ export class LocalAgentManager implements AgentToolApi {
     // Cleared here so a bare reset reads as a spawn; the follow-up callers
     // (`sendAgentMessage` / `deliverFollowUpAsNextTurn`) re-set it right after.
     task.pendingStartIsFollowUp = undefined;
-    // The thread is live again — a deferred Done display from the previous
-    // interjection turn must never fire on top of it.
-    this.clearDeferredCompletionDisplay(task.threadId);
+    // The thread is live again. A deferred Done display from the previous
+    // interjection turn is flushed NOW rather than dropped: the completion
+    // really happened, and the chat completion card (which renders on every
+    // completion) is chronological history — erasing the event left resumed
+    // threads with no finish card at all. Emitting synchronously right
+    // before this turn's start/progress events means the activity fold
+    // processes completed→started in one batch, so the task never lingers
+    // on a "Done" flash mid-resume.
+    this.flushDeferredCompletionDisplay(task.threadId);
   }
 
   private hydrateTaskFromRecord(
@@ -856,9 +866,23 @@ export class LocalAgentManager implements AgentToolApi {
   }
 
   /**
+   * Emit a pending deferred Done display immediately (thread revival).
+   * The completion is real history — the persisted `agent-completed` row
+   * must land (it anchors the chat completion card) even though the
+   * thread is about to run again.
+   */
+  private flushDeferredCompletionDisplay(threadId: string): void {
+    const pending = this.deferredCompletionDisplays.get(threadId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pending.emit();
+  }
+
+  /**
    * Hold the `display-only` half of an interjection turn's completion
    * for a grace window. Revival (any path through
-   * `resetTaskForNextAttempt`) cancels it; expiry means the orchestrator
+   * `resetTaskForNextAttempt`) flushes it synchronously so the chat's
+   * per-completion card is never lost; expiry means the orchestrator
    * left the thread alone, so the completion was real and the Done
    * display (persisted activity row + renderer event + notification)
    * goes out late rather than never.
