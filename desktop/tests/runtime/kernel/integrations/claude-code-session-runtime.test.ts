@@ -913,6 +913,227 @@ describe("claude-code-session-runtime", () => {
     }
   });
 
+  it("recovers a step when the Claude Code process exits cleanly before its result", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-early-exit-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "spawns.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "fs.appendFileSync(logPath, JSON.stringify({ argv: process.argv.slice(2) }) + '\\n');",
+        "const spawnCount = fs.readFileSync(logPath, 'utf8').trim().split('\\n').length;",
+        "let buffer = '';",
+        "function handle() {",
+        "  if (spawnCount === 1) {",
+        "    // Report a session id, then die cleanly without ever emitting a result.",
+        "    process.stdout.write(JSON.stringify({",
+        "      type: 'system',",
+        "      subtype: 'init',",
+        "      session_id: 'fake-session',",
+        "    }) + '\\n');",
+        "    process.exit(0);",
+        "  }",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    session_id: 'fake-session',",
+        "    is_error: false,",
+        "    usage: { input_tokens: 1, output_tokens: 1 },",
+        "    structured_output: { type: 'final', message: 'Recovered fine.' },",
+        "  }) + '\\n');",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle();",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-early-exit",
+        sessionKey: `test-early-exit:${Date.now()}`,
+        prompt: "Do the task.",
+        modelId: "claude-code/default",
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      expect(result.text).toBe("Recovered fine.");
+      const spawns = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { argv: string[] });
+      expect(spawns).toHaveLength(2);
+      // The respawn resumes the transcript the first process reported.
+      expect(spawns[1]?.argv).toContain("--resume");
+      expect(spawns[1]?.argv).toContain("fake-session");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("nudges the live session when Claude Code returns an invalid decision payload", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-bad-decision-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "prompts.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "let buffer = '';",
+        "let count = 0;",
+        "function handle(line) {",
+        "  count += 1;",
+        "  const parsed = JSON.parse(line);",
+        "  fs.appendFileSync(logPath, JSON.stringify({ count, content: parsed.message.content }) + '\\n');",
+        "  if (count === 1) {",
+        "    // Truncated decision, as observed in the wild: no toolName/args.",
+        "    process.stdout.write(JSON.stringify({",
+        "      type: 'result',",
+        "      session_id: 'fake-session',",
+        "      is_error: false,",
+        "      structured_output: { type: 'tool_request' },",
+        "    }) + '\\n');",
+        "    return;",
+        "  }",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    session_id: 'fake-session',",
+        "    is_error: false,",
+        "    structured_output: { type: 'final', message: 'Recovered decision.' },",
+        "  }) + '\\n');",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle(line);",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-bad-decision",
+        sessionKey: `test-bad-decision:${Date.now()}`,
+        prompt: "Do the task.",
+        modelId: "claude-code/default",
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      expect(result.text).toBe("Recovered decision.");
+      const prompts = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as { count: number; content: string });
+      expect(prompts).toHaveLength(2);
+      expect(prompts[1]?.content).toContain(
+        "did not contain a valid Stella decision payload",
+      );
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails with an actionable message once the step recovery budget is exhausted", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-exhausted-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "spawns.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "fs.appendFileSync(process.env.STELLA_FAKE_CLAUDE_LOG, 'spawn\\n');",
+        "let buffer = '';",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  if (buffer.includes('\\n')) process.exit(0);",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      await expect(
+        runClaudeCodeTurn({
+          runId: "run-exhausted",
+          sessionKey: `test-exhausted:${Date.now()}`,
+          prompt: "Do the task.",
+          modelId: "claude-code/default",
+          tools: [],
+          executeTool: async () => ({ result: "unused" }),
+        }),
+      ).rejects.toThrow(/exited with code 0 before returning a result.*retried 2 time/s);
+      const spawns = fs.readFileSync(logPath, "utf8").trim().split("\n");
+      expect(spawns).toHaveLength(3);
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("resumes after an aborted Claude Code turn once a session id was observed", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-abort-"));
     const binDir = path.join(dir, "bin");
