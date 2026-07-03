@@ -49,7 +49,10 @@
  *                    capped at `CATCHUP_MAX_CPS` so even a giant mid-message
  *                    burst catches up as a bounded fast pour instead of
  *                    dumping (pathological mid-message dumps only; normal
- *                    operation never touches it).
+ *                    operation never touches it). Both the valve and the
+ *                    finish boost RAMP from the current velocity
+ *                    (`CATCHUP_RAMP_PER_SEC`) instead of jumping — a
+ *                    post-stall burst reads as the pour speeding up.
  *
  * Velocity is chars/sec integrated with the real frame `dt` (frame-rate
  * independent; `dt` clamped so a tab stall can't dump the buffer). Kept pure
@@ -100,6 +103,13 @@ export const START_HOLD_MS = 300;
 export const START_MAX_HOLD_MS = 1200;
 /** Start immediately once this much text is already buffered. */
 export const START_MAX_HOLD_CHARS = 150;
+/** Keep holding an unknown-rate head smaller than this (chars). A tiny first
+ *  fragment ("de…") followed by a multi-second model think-gap used to start
+ *  the reveal, paint two letters, starve, and leave the eventual burst to
+ *  catch up — the "first word, then everything" dump. A couple of words on
+ *  screen carry no information; holding (working indicator stays up) until
+ *  real content flows reads far better. Finishing bypasses this. */
+export const START_MIN_CHARS = 24;
 /** Starting velocity as a fraction of the measured arrival rate. */
 export const START_SEED_RATIO = 0.9;
 /** Smallest steady-state playout delay the buffer aims to hold (ms). */
@@ -141,6 +151,15 @@ export const EMERGENCY_LAG_MS = 6000;
  *  in one burst) revealed thousands of chars per second — "first word, then
  *  everything". Capped, a giant burst catches up as a bounded fast pour. */
 export const CATCHUP_MAX_CPS = 450;
+/** Exponential ramp rate (fractional/sec) for the catch-up/finish boost.
+ *  Even a bounded catch-up rate reads as a dump if the velocity JUMPS to it
+ *  from a crawl in one frame (the post-stall burst case: cps has decayed to
+ *  ~MIN while the model thought, then a whole answer lands). The boost now
+ *  accelerates from the current velocity toward the required rate at
+ *  e^CATCHUP_RAMP_PER_SEC per second — from 6 cps to the 450/700 ceilings in
+ *  roughly a second — so catch-up looks like a pour speeding up, never a
+ *  teleport. */
+export const CATCHUP_RAMP_PER_SEC = 4;
 /** Latency cap (ms) once the stream has ended — a fast glide, not a dump. */
 export const FINISH_LATENCY_MS = 280;
 /** Floor velocity (chars/sec) while finishing. The latency cap alone decays
@@ -157,6 +176,10 @@ export const FINISH_MAX_CPS = 700;
 export type PaceState = {
   /** Smoothed display velocity, in code points per second. */
   cps: number;
+  /** Ramped catch-up/finish boost velocity (code points/sec); 0 = inactive.
+   *  Kept separate from `cps` so the smooth rate resumes cleanly when the
+   *  backlog no longer demands a boost. */
+  boostCps: number;
   /** Fractional carry so sub-integer per-frame counts produce an even cadence. */
   carry: number;
   /** Bias-corrected arrival-rate estimate (code points/sec); 0 = no data. */
@@ -177,6 +200,7 @@ export type PaceState = {
 
 export const createPaceState = (): PaceState => ({
   cps: INITIAL_CPS,
+  boostCps: 0,
   carry: 0,
   arrivalCps: 0,
   arrivalWeight: 0,
@@ -265,6 +289,11 @@ export function stepPaceCount(
         ? state.heldMs >= START_HOLD_MS
         : state.heldMs >= START_MAX_HOLD_MS;
       if (!heldLongEnough && backlog < START_MAX_HOLD_CHARS) return 0;
+      // A tiny unknown-rate head (a couple of characters, then a model
+      // think-gap) stays held past the time cap: revealing it just paints
+      // two letters, starves, and turns the eventual answer into a
+      // catch-up burst. Stream end (`finishing`) still releases it.
+      if (!rateKnown && backlog < START_MIN_CHARS) return 0;
     }
     state.started = true;
     // Seed the velocity from the measured rate (slightly under it so the
@@ -324,24 +353,40 @@ export function stepPaceCount(
   );
 
   // ── Release ─────────────────────────────────────────────────────────────
-  // Finishing and the emergency valve act on the frame's effective velocity
-  // WITHOUT writing back into `state.cps`, so the smooth rate resumes cleanly
-  // if more text arrives.
-  let cps = state.cps;
+  // Finishing and the emergency valve act through a separate ramped boost
+  // velocity, never writing into `state.cps`, so the smooth rate resumes
+  // cleanly once the backlog no longer demands a boost. The boost itself is
+  // slew-limited (CATCHUP_RAMP_PER_SEC): after a starved stall (cps decayed
+  // to a crawl, then a whole answer lands) the reveal accelerates from the
+  // current speed to the bounded catch-up rate over ~a second instead of
+  // jumping to it in one frame — a pour speeding up, not a dump.
+  let requiredCps = 0;
   if (finishing) {
     // Time-bounded drain (~FINISH_LATENCY_MS) for small tails, rate-bounded
     // (FINISH_MAX_CPS) for large ones — accelerate, never teleport.
-    const finishCps = Math.min(
-      (backlog * 1000) / FINISH_LATENCY_MS,
-      FINISH_MAX_CPS,
+    requiredCps = Math.max(
+      Math.min((backlog * 1000) / FINISH_LATENCY_MS, FINISH_MAX_CPS),
+      FINISH_MIN_CPS,
     );
-    cps = Math.max(cps, finishCps, FINISH_MIN_CPS);
   } else {
-    const emergencyCps = Math.min(
+    requiredCps = Math.min(
       (backlog * 1000) / EMERGENCY_LAG_MS,
       CATCHUP_MAX_CPS,
     );
-    if (emergencyCps > cps) cps = emergencyCps;
+  }
+  let cps = state.cps;
+  if (requiredCps > cps) {
+    // Finishing may start the ramp from the linear-landing floor: the
+    // stream is over, so promptness beats the gentlest possible spool-up —
+    // still a glide (never above FINISH_MAX_CPS), just one that engages
+    // at a readable clip.
+    const floor = finishing ? FINISH_MIN_CPS : 0;
+    const base = Math.max(state.boostCps, cps, floor);
+    const ramp = Math.exp(CATCHUP_RAMP_PER_SEC * dt);
+    state.boostCps = Math.min(base * ramp, requiredCps);
+    cps = state.boostCps;
+  } else {
+    state.boostCps = 0;
   }
 
   state.carry += cps * dt;
