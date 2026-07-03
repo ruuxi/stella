@@ -12,12 +12,25 @@ Stella Connect has two paths:
 
 Connector action schemas are never preloaded into the model context. Inspect them on demand with `stella-connect tools` and invoke them with `stella-connect call`.
 
+## Discovering and connecting from chat
+
+When a user request implies an external service that has no skill yet (it isn't enabled), search the whole catalog and, if needed, offer to connect it inline:
+
+```bash
+stella-connect discover "gmail purchases"
+stella-connect request-connection gmail --reason "To check your recent purchase emails"
+```
+
+`discover` returns the best matches with `enabled`/`connected`/`declined` state and an explicit next step. `request-connection` shows the user an inline connect card in the chat and **blocks** until they respond: on `{ ok: true }` the integration is enabled + authorized (Composio/OAuth in the browser) — continue the original task immediately, do not re-ask what the user wanted. On exit 2 with `error: "declined"` or `"previously_declined"`, acknowledge once, mention the Store, and continue by other means without offering again. Declines are persisted; only rerun with `--requested-by-user` if the user explicitly asks to connect.
+
 ## Source layout
 
 - CLI entrypoint: `runtime/kernel/cli/stella-connect.ts`
 - MCP bridge (stdio/streamable_http): `runtime/kernel/connectors/connector-bridge.ts`
 - REST connector client: `runtime/kernel/connectors/api-client.ts`
 - Native Store integration catalog/state: `runtime/kernel/connectors/native-integrations.ts`
+- Catalog discovery (`discover`): `runtime/kernel/connectors/discovery.ts`
+- In-chat decline persistence: `runtime/kernel/connectors/connect-preferences.ts`
 - OAuth + token storage: `runtime/kernel/connectors/oauth.ts`
 - Configured-connector state: `runtime/kernel/connectors/state.ts`
 - Types: `runtime/kernel/connectors/types.ts`
