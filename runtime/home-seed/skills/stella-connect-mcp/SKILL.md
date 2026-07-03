@@ -12,18 +12,14 @@ Stella Connect has two paths:
 
 Connector action schemas are never preloaded into the model context. Inspect them on demand with `stella-connect tools` and invoke them with `stella-connect call`.
 
-## Discovering and connecting from chat
+## Discovery and connect offers are orchestrator-driven
 
-When a user request implies an external service that has no skill yet (it isn't enabled), search the whole catalog and, if needed, offer to connect it inline:
+Do NOT proactively offer to connect integrations from an agent. The orchestrator owns that flow: a deterministic keyword check on each user message surfaces connector status to it, and its `connector_status` tool shows the inline connect card. Your job as an agent is simpler:
 
-```bash
-stella-connect discover "gmail purchases"
-stella-connect request-connection gmail --reason "To check your recent purchase emails"
-```
-
-`discover` returns the best matches with `enabled`/`connected`/`declined` state and an explicit next step. `request-connection` shows the user an inline connect card in the chat and **blocks** until they respond: on `{ ok: true }` the integration is enabled + authorized (Composio/OAuth in the browser) — continue the original task immediately, do not re-ask what the user wanted. On exit 2 with `error: "declined"` or `"previously_declined"`, acknowledge once, mention the Store, and continue by other means without offering again. Declines are persisted; only rerun with `--requested-by-user` if the user explicitly asks to connect.
-
-Don't idle while the card is open: connecting is an optimization, not a gate. Run `request-connection` through `exec_command` with a short `yield_time_ms` so the blocking call becomes a background session, keep working on the task via the browser/computer fallback in the meantime, and poll the session with `write_stdin`. If it resolves connected, switch to the connector for the rest of the work; if it resolves declined, stay on the fallback.
+- If an integration is enabled, its skill appears in your `<skills>` block — use it via `stella-connect tools` / `stella-connect call`.
+- `stella-connect discover "<keywords>"` remains available as a read-only catalog lookup (ids, enabled/connected/declined state) when you need to check what exists.
+- If a service you'd want isn't connected, proceed by other means (the user's browser via stella-browser, or stella-computer) and note the limitation in your report. Don't dead-end and don't offer to connect it.
+- `stella-connect request-connection <id>` exists as plumbing for the card, but only run it when the user explicitly asked *this turn* to connect that service. On exit 2 with `error: "declined"`/`"previously_declined"`, never re-offer; the user can enable it in the Store.
 
 ## Source layout
 
