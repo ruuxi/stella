@@ -311,6 +311,16 @@ html[data-stella-window="mini"] .right-sidebar__resize-handle {
   min-height: 0;
 }
 
+/* Keep-alive host: while the panel is closed, the just-viewed canvas stays
+   mounted here so its iframe's browsing context (scripts, scroll,
+   interaction state) survives and reopening is instant. `display: none`
+   keeps an iframe alive as long as the element remains in the DOM, removes
+   the subtree from layout/paint/hit-testing entirely (zero cost during the
+   panel slide), and Chromium throttles rAF loops inside hidden iframes. */
+.right-sidebar__active--kept {
+  display: none;
+}
+
 /* Wrapper for non-HTML payloads (office preview, PDF viewer). Fills the
    sidebar so the inner card can size against it. */
 .right-sidebar__rich {

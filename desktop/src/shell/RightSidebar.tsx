@@ -23,6 +23,7 @@ import {
   useDisplayPanelExpanded,
   useDisplayPanelOpen,
 } from "@/features/workspace-display/tab-store";
+import { resolveDisplayTabKeepAlive } from "@/features/workspace-display/display-tab-keep-alive";
 import { payloadToTabSpec } from "./display/payload-to-tab-spec";
 import {
   dispatchClosePanel,
@@ -438,6 +439,20 @@ export const RightSidebar = forwardRef<
   const resolvedPortalTarget =
     portalTarget ?? document.querySelector(".full-body") ?? document.body;
 
+  // Canvas keep-alive: closing the panel used to unmount the active tab,
+  // which destroys a canvas iframe's browsing context — reopening re-parsed
+  // the document, re-ran scripts, refetched CDN assets, and lost all state.
+  // Keep the just-viewed canvas mounted in a hidden host instead (policy in
+  // resolveDisplayTabKeepAlive); every other tab kind unmounts on close
+  // exactly as before.
+  const lastRenderedTabIdRef = useRef<string | null>(null);
+  const { renderedTab, lastRenderedTabId } = resolveDisplayTabKeepAlive({
+    panelOpen,
+    activeTab,
+    lastRenderedTabId: lastRenderedTabIdRef.current,
+  });
+  lastRenderedTabIdRef.current = lastRenderedTabId;
+
   return createPortal(
     <aside
       ref={asideRef}
@@ -475,11 +490,15 @@ export const RightSidebar = forwardRef<
           </div>
         ) : null}
         <div className="right-sidebar-panel__body">
-          {panelOpen && activeTab ? (
-            <div className="right-sidebar__active">
+          {renderedTab ? (
+            <div
+              className={`right-sidebar__active${
+                panelOpen ? "" : " right-sidebar__active--kept"
+              }`}
+            >
               <DeferredDisplayContent
-                key={activeTab.id}
-                render={activeTab.render}
+                key={renderedTab.id}
+                render={renderedTab.render}
               />
             </div>
           ) : null}
