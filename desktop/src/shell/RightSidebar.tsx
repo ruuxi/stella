@@ -102,28 +102,30 @@ const resolveDisplayPanelWidth = (preferredWidth: number | null): number => {
 const DISPLAY_PANEL_EXPAND_SNAP_THRESHOLD = 260;
 const DISPLAY_PANEL_WIDTH_CSS_VAR = "--display-panel-width";
 
-// Last rounded px written to `:root`, shared by every writer (RO sync,
+// Last rounded px written per `:root`, shared by every writer (RO sync,
 // pointer drags) so redundant writes can be skipped — re-setting an inline
 // custom property on the root invalidates style for every `var()` consumer,
 // and during the left sidebar's 460ms width slide the ResizeObserver below
-// fires on every animation frame.
-let lastAppliedDisplayPanelWidthPx: number | null = null;
+// fires on every animation frame. Keyed by the document element (not module
+// state) so multiple documents in one JS context — e.g. a detached panel
+// window — each track their own last-written value instead of suppressing
+// each other's writes.
+const lastAppliedDisplayPanelWidthPx = new WeakMap<HTMLElement, number>();
 
 // Set on `:root` (not on `.right-sidebar`) so siblings outside the panel
 // (e.g. the topbar tab strip width calc) can inherit the same value.
 const applyDisplayPanelWidthCssVar = (width: number | null): void => {
+  const root = document.documentElement;
   const nextWidth = Math.round(resolveDisplayPanelWidth(width));
-  if (nextWidth === lastAppliedDisplayPanelWidthPx) return;
-  lastAppliedDisplayPanelWidthPx = nextWidth;
-  document.documentElement.style.setProperty(
-    DISPLAY_PANEL_WIDTH_CSS_VAR,
-    `${nextWidth}px`,
-  );
+  if (lastAppliedDisplayPanelWidthPx.get(root) === nextWidth) return;
+  lastAppliedDisplayPanelWidthPx.set(root, nextWidth);
+  root.style.setProperty(DISPLAY_PANEL_WIDTH_CSS_VAR, `${nextWidth}px`);
 };
 
 const clearDisplayPanelWidthCssVar = (): void => {
-  lastAppliedDisplayPanelWidthPx = null;
-  document.documentElement.style.removeProperty(DISPLAY_PANEL_WIDTH_CSS_VAR);
+  const root = document.documentElement;
+  lastAppliedDisplayPanelWidthPx.delete(root);
+  root.style.removeProperty(DISPLAY_PANEL_WIDTH_CSS_VAR);
 };
 
 const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
