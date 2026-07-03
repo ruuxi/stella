@@ -46,6 +46,21 @@ describe("fallbackTaskDescription", () => {
     expect(fallbackTaskDescription(undefined)).toBe("Task");
     expect(fallbackTaskDescription("1234-5678")).toBe("Task");
     expect(fallbackTaskDescription("a1")).toBe("Task");
+  });
+
+  it("only de-slugs ids in the spawn-slug format", () => {
+    // Underscores, uppercase, and other alphabets never come out of the
+    // runtime's slugify(); such ids are opaque, not withheld descriptions.
+    expect(fallbackTaskDescription("fix_the_bug")).toBe("Task");
+    expect(fallbackTaskDescription("Fix-The-Bug")).toBe("Task");
+    expect(fallbackTaskDescription("fix the bug")).toBe("Task");
+    expect(fallbackTaskDescription("-fix-the-bug")).toBe("Task");
+    // Longer than slugify's 48-char cap.
+    expect(
+      fallbackTaskDescription(
+        "compare-flight-prices-for-the-family-trip-to-portugal-in-june",
+      ),
+    ).toBe("Task");
     expect(fallbackTaskDescription("x7f")).toBe("Task");
   });
 
@@ -506,6 +521,37 @@ describe("mergeFooterTasks", () => {
     expect(task?.description).toBe("Build Tic Tac Toe app in Stella");
     expect(task?.statusText).toBe("Build Tic Tac Toe app in Stella");
     expect(getTaskDisplayText(task!)).toBe("Build Tic Tac Toe app in Stella");
+  });
+
+  it("keeps a richer persisted description over a live id-derived fallback", () => {
+    const [task] = mergeFooterTasks(
+      [
+        {
+          id: "fix-the-bug",
+          description: "Fix the flaky teardown race in the fixture suite",
+          agentType: "general",
+          status: "running",
+          startedAtMs: 100,
+          lastUpdatedAtMs: 200,
+        },
+      ],
+      [
+        {
+          id: "fix-the-bug",
+          // Merely the de-slugged id — not a real spawn description; it
+          // must not clobber the persisted one.
+          description: "Fix the bug",
+          agentType: "general",
+          status: "running",
+          startedAtMs: 100,
+          lastUpdatedAtMs: 250,
+        },
+      ],
+    );
+
+    expect(task?.description).toBe(
+      "Fix the flaky teardown race in the fixture suite",
+    );
   });
 });
 

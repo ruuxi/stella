@@ -237,6 +237,51 @@ describe("buildAgentCompletionSections", () => {
     expect(summary.endsWith("…")).toBe(true);
   });
 
+  it("a later completion without a result clears the older summary", () => {
+    const sections = buildAgentCompletionSections(
+      [
+        ev({
+          _id: "completed:a1:42",
+          timestamp: 42,
+          type: "agent-completed",
+          payload: { agentId: "a1", result: "First pass result." },
+        }),
+        ev({
+          _id: "completed:a1:50",
+          timestamp: 50,
+          type: "agent-completed",
+          payload: { agentId: "a1" },
+        }),
+      ],
+      new Map(),
+    );
+    expect(sections).toHaveLength(1);
+    expect(sections[0]!.completedAtMs).toBe(50);
+    // The summary mirrors the latest completion; no stale excerpt from the
+    // earlier run may be attributed to the newer, resultless completion.
+    expect(sections[0]!.summary).toBeUndefined();
+  });
+
+  it("never splits a surrogate pair at the excerpt cap", () => {
+    const sections = buildAgentCompletionSections(
+      [
+        ev({
+          _id: "completed:a1:42",
+          timestamp: 42,
+          type: "agent-completed",
+          // Leading "x" shifts the 200-unit cap into the middle of an
+          // emoji's surrogate pair.
+          payload: { agentId: "a1", result: `x${"🎉".repeat(400)}` },
+        }),
+      ],
+      new Map(),
+    );
+    const summary = sections[0]!.summary!;
+    expect(summary.endsWith("…")).toBe(true);
+    // No lone high surrogate immediately before the ellipsis.
+    expect(/[\uD800-\uDBFF]…$/.test(summary)).toBe(false);
+  });
+
   it("a noise-only producedFiles rollup still yields a (fileless) section", () => {
     const sections = buildAgentCompletionSections(
       [
