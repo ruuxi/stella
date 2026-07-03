@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   buildToolResultPrompt,
   buildClaudeCodeToolRuntimePrompt,
+  claudeCodeSessionHasActiveProcess,
   collectClaudeCodeNativeFileChanges,
   createClaudeCodeStreamEmitter,
   getClaudeCodeStatusChangeFromStreamEvent,
@@ -1432,6 +1433,307 @@ describe("claude-code-session-runtime", () => {
       expect(result.fileChanges).toEqual([
         { path: "/tmp/report.md", kind: { type: "add" } },
       ]);
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reseeds a mutated step through the reconciliation prompt when the resume session is missing", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-mutated-resume-loss-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "spawns.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "const spawnCount = (fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8').trim().split('\\n').filter(Boolean).length : 0) + 1;",
+        "let buffer = '';",
+        "function handle(line) {",
+        "  const parsed = JSON.parse(line);",
+        "  fs.appendFileSync(logPath, JSON.stringify({ spawnCount, argv: process.argv.slice(2), content: parsed.message.content }) + '\\n');",
+        "  if (spawnCount === 1) {",
+        "    // Apply a native Edit, then die cleanly before the result line.",
+        "    process.stdout.write(JSON.stringify({",
+        "      type: 'system', subtype: 'init', session_id: 'mut-session',",
+        "    }) + '\\n');",
+        "    process.stdout.write(JSON.stringify({",
+        "      type: 'assistant',",
+        "      session_id: 'mut-session',",
+        "      message: { content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/tmp/guarded.md' } }] },",
+        "    }) + '\\n');",
+        "    setTimeout(() => process.exit(0), 20);",
+        "    return;",
+        "  }",
+        "  if (spawnCount === 2) {",
+        "    // The on-disk transcript is gone: the --resume respawn fails.",
+        "    process.stderr.write('No conversation found with session ID: mut-session\\n');",
+        "    setTimeout(() => process.exit(1), 20);",
+        "    return;",
+        "  }",
+        "  process.stdout.write(JSON.stringify({",
+        "    type: 'result',",
+        "    session_id: 'fresh-after-loss',",
+        "    is_error: false,",
+        "    result: 'Reconciled after resume loss.',",
+        "  }) + '\\n');",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle(line);",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-mutated-resume-loss",
+        sessionKey: `test-mutated-resume-loss:${Date.now()}`,
+        prompt: "Apply the guarded edit.",
+        resumeFallbackPrompt:
+          "<stella_thread_history>HISTORY SEED</stella_thread_history>\n\nApply the guarded edit.",
+        modelId: "claude-code/default",
+        vanilla: true,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      expect(result.text).toBe("Reconciled after resume loss.");
+      expect(result.fileChanges).toEqual([
+        { path: "/tmp/guarded.md", kind: { type: "update" } },
+      ]);
+      const records = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map(
+          (line) =>
+            JSON.parse(line) as {
+              spawnCount: number;
+              argv: string[];
+              content: string;
+            },
+        );
+      expect(records).toHaveLength(3);
+      expect(records[1]?.argv).toContain("--resume");
+      expect(records[2]?.argv).not.toContain("--resume");
+      // The reseed must reconcile, never replay the fallback wholesale.
+      expect(
+        records[2]?.content.startsWith(
+          "The previous step was interrupted",
+        ),
+      ).toBe(true);
+      expect(records[2]?.content).toContain(
+        "Do NOT redo, repeat, or revert any file operations",
+      );
+      expect(records[2]?.content).toContain("/tmp/guarded.md");
+      // Task context survives as reference-only material.
+      expect(records[2]?.content).toContain("for reference only");
+      expect(records[2]?.content).toContain("HISTORY SEED");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reseeds a mutated step through the reconciliation prompt after a compaction loop", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-mutated-loop-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "spawns.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "const logPath = process.env.STELLA_FAKE_CLAUDE_LOG;",
+        "const spawnCount = (fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8').trim().split('\\n').filter(Boolean).length : 0) + 1;",
+        "let buffer = '';",
+        "function emit(payload) {",
+        "  process.stdout.write(JSON.stringify(payload) + '\\n');",
+        "}",
+        "function handle(line) {",
+        "  const parsed = JSON.parse(line);",
+        "  fs.appendFileSync(logPath, JSON.stringify({ spawnCount, argv: process.argv.slice(2), content: parsed.message.content }) + '\\n');",
+        "  if (spawnCount === 1) {",
+        "    // A native Edit lands, then the session compacts forever.",
+        "    emit({",
+        "      type: 'assistant',",
+        "      session_id: 'loop-mut-session',",
+        "      message: { content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: '/tmp/looped.md' } }] },",
+        "    });",
+        "    for (let i = 0; i < 4; i += 1) {",
+        "      emit({ type: 'system', subtype: 'status', status: 'compacting' });",
+        "      emit({ type: 'system', subtype: 'hook_response', hook_event: 'PostCompact' });",
+        "    }",
+        "    setInterval(() => {}, 1000);",
+        "    return;",
+        "  }",
+        "  emit({",
+        "    type: 'result',",
+        "    session_id: 'fresh-after-mut-loop',",
+        "    is_error: false,",
+        "    result: 'Recovered after loop.',",
+        "  });",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (line) handle(line);",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-mutated-loop",
+        sessionKey: `test-mutated-loop:${Date.now()}`,
+        prompt: "Do the loop task.",
+        resumeFallbackPrompt:
+          "<stella_thread_history>LOOP SEED</stella_thread_history>\n\nDo the loop task.",
+        modelId: "claude-code/default",
+        vanilla: true,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+
+      expect(result.text).toBe("Recovered after loop.");
+      // The interrupted attempt's write survives onto the turn result.
+      expect(result.fileChanges).toEqual([
+        { path: "/tmp/looped.md", kind: { type: "update" } },
+      ]);
+      const records = fs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map(
+          (line) =>
+            JSON.parse(line) as {
+              spawnCount: number;
+              argv: string[];
+              content: string;
+            },
+        );
+      expect(records).toHaveLength(2);
+      expect(records[1]?.argv).not.toContain("--resume");
+      // The reseed reconciles instead of replaying resumeFallbackPrompt.
+      expect(
+        records[1]?.content.startsWith(
+          "The previous step was interrupted",
+        ),
+      ).toBe(true);
+      expect(records[1]?.content).toContain(
+        "Do NOT redo, repeat, or revert any file operations",
+      );
+      expect(records[1]?.content).toContain("/tmp/looped.md");
+      expect(records[1]?.content).toContain("for reference only");
+      expect(records[1]?.content).toContain("LOOP SEED");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps tracking the replacement process when a restart races the old close event", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-restart-race-"),
+    );
+    const binDir = path.join(dir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "let buffer = '';",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    buffer = buffer.slice(idx + 1);",
+        "    process.stdout.write(JSON.stringify({",
+        "      type: 'result',",
+        "      session_id: 'restart-session',",
+        "      is_error: false,",
+        "      structured_output: { type: 'final', message: 'ok' },",
+        "    }) + '\\n');",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    const sessionKey = `test-restart-race:${Date.now()}`;
+    try {
+      const baseRequest = {
+        runId: "run-restart-race",
+        sessionKey,
+        prompt: "Say ok.",
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      };
+      // Turn 1 leaves an idle process behind…
+      await runClaudeCodeTurn({ ...baseRequest, modelId: "claude-code/sonnet" });
+      // …turn 2's model change restarts it, registering a replacement child
+      // under the same session key while the old child is still closing.
+      const second = await runClaudeCodeTurn({
+        ...baseRequest,
+        modelId: "claude-code/opus",
+      });
+      expect(second.text).toBe("ok");
+      // Let the old child's close event fire.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      // The stale close handler must not evict the NEW child from tracking.
+      expect(claudeCodeSessionHasActiveProcess(sessionKey)).toBe(true);
+      // And the replacement still serves turns.
+      const third = await runClaudeCodeTurn({
+        ...baseRequest,
+        modelId: "claude-code/opus",
+      });
+      expect(third.text).toBe("ok");
     } finally {
       shutdownClaudeCodeRuntime();
       process.env.PATH = previousPath;
