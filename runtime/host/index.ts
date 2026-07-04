@@ -1201,7 +1201,7 @@ export class StellaRuntimeHost {
     }
   }
 
-  private async sendHostHeartbeat(): Promise<void> {
+  private async sendHostHeartbeat(retryOnAuthFailure = true): Promise<void> {
     if (this.hostDeviceIdentityRecoveryPromise) {
       return;
     }
@@ -1246,6 +1246,20 @@ export class StellaRuntimeHost {
       if (isConvexDeviceKeyMismatchError(error)) {
         await this.recoverHostDeviceIdentityFromKeyMismatch(error);
         return;
+      }
+      // A heartbeat can fire mid token-refresh with a stale/absent identity and
+      // come back UNAUTHENTICATED even though the session is fine. Silently
+      // refresh auth and retry once before treating it as a real auth failure,
+      // so the transient race never surfaces or trips the failure-window
+      // escalation below.
+      if (retryOnAuthFailure && isConvexUnauthenticatedError(error)) {
+        const recovered = await this.recoverHostRemoteTurnAuth("heartbeat");
+        if (recovered) {
+          await this.sendHostHeartbeat(false);
+          return;
+        }
+        // Refresh could not restore a usable session — fall through to the
+        // normal failure accounting/escalation.
       }
       const authFailure = this.handleHostRemoteTurnAuthFailure(
         "heartbeat",
