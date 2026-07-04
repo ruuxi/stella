@@ -30,6 +30,16 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 
 const REGISTRATION_REFRESH_MS = 60_000;
 /**
+ * Debounce window for setter-driven registration syncs. The desktop learns its
+ * endpoints (device id, auth token, Convex site URL, tunnel URL) from several
+ * setters that fire in a burst ~0.5s apart during bootstrap and each refresh
+ * cycle. Coalescing them into a single register POST avoids two auth-verify +
+ * rate-limit + row-patch round-trips that otherwise collide on the rate-limit
+ * doc and trigger OCC retries. Kept above the ~0.5s inter-setter gap so the
+ * whole burst lands in one POST; the 60s refresh timer stays undebounced.
+ */
+const REGISTRATION_SYNC_DEBOUNCE_MS = 750;
+/**
  * Local cap on bridge session lifetime. Convex mints sessions with its own
  * TTL (currently 60 minutes) and `authorizeBridgeSession` takes the min of
  * both, so this mostly guards against a misconfigured backend expiry.
@@ -372,6 +382,7 @@ export class MobileBridgeService {
   private lastHealthyProbeAt = 0;
   private syncInFlight = false;
   private syncQueued = false;
+  private syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private getBootstrapPayload: (() => Promise<MobileBridgeBootstrap>) | null =
     null;
   private lastBootstrapPayload: MobileBridgeBootstrap | null = null;
@@ -402,7 +413,7 @@ export class MobileBridgeService {
 
   setDeviceId(value: string | null) {
     this.deviceId = value?.trim() || null;
-    void this.syncRegistration();
+    this.scheduleRegistrationSync();
   }
 
   setHostAuthToken(value: string | null) {
@@ -413,12 +424,12 @@ export class MobileBridgeService {
       void this.clearRegistrationWithToken(previousToken);
       return;
     }
-    void this.syncRegistration();
+    this.scheduleRegistrationSync();
   }
 
   setConvexSiteUrl(value: string | null) {
     this.convexSiteUrl = value?.trim() || null;
-    void this.syncRegistration();
+    this.scheduleRegistrationSync();
   }
 
   setTunnelUrl(url: string | null) {
@@ -430,7 +441,7 @@ export class MobileBridgeService {
       this.lastHealthyProbeAt = 0;
     }
     this.tunnelUrl = next;
-    void this.syncRegistration();
+    this.scheduleRegistrationSync();
   }
 
   getPort(): number | null {
@@ -560,6 +571,7 @@ export class MobileBridgeService {
       clearInterval(this.refreshTimer);
       this.refreshTimer = null;
     }
+    this.clearRegistrationSyncDebounce();
     this.clearRegistrationLeaseTimer();
     for (const [ws] of this.wsClients) {
       ws.close(1001, "Server shutting down");
@@ -1651,6 +1663,30 @@ export class MobileBridgeService {
   }
 
   // ── Convex registration ───────────────────────────────────────────────
+
+  /**
+   * Debounced entry point for the endpoint setters. A bootstrap/refresh cycle
+   * updates several fields ~0.5s apart; coalescing them here means the whole
+   * burst produces one register POST (with all endpoints in `baseUrls`) instead
+   * of colliding writes that force server-side OCC retries. The refresh timer
+   * and initial listen still call `syncRegistration` directly.
+   */
+  private scheduleRegistrationSync() {
+    if (this.syncDebounceTimer) {
+      clearTimeout(this.syncDebounceTimer);
+    }
+    this.syncDebounceTimer = setTimeout(() => {
+      this.syncDebounceTimer = null;
+      void this.syncRegistration();
+    }, REGISTRATION_SYNC_DEBOUNCE_MS);
+  }
+
+  private clearRegistrationSyncDebounce() {
+    if (this.syncDebounceTimer) {
+      clearTimeout(this.syncDebounceTimer);
+      this.syncDebounceTimer = null;
+    }
+  }
 
   private async syncRegistration(): Promise<void> {
     // This runs from several setters plus the refresh timer, and now performs a
