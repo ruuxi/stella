@@ -634,14 +634,18 @@ describe("store uninstall", () => {
     expect(h.service.getInstall("noisy-mode")).not.toBeNull();
   });
 
-  it("requires the agent fallback when the install commits are no longer the tip", async () => {
+  it("direct-reverts a buried install when later edits do not overlap", async () => {
     const c1 = await makeInstallCommit("i-old", "old-mode", "desktop/src/o1.tsx");
     h.service.recordInstall({
       packageId: "old-mode",
       releaseNumber: 1,
       installCommitHash: c1,
     });
-    // A later unrelated self-mod commit buries the install.
+    // A later unrelated self-mod commit buries the install. Because it touches
+    // a different file, the add-on's inverse patch still applies cleanly at
+    // HEAD, so uninstall reverts it directly without dropping to the agent
+    // fallback (the agent is only needed when a later edit overlaps the
+    // add-on's own lines).
     await h.service.beginSelfModRun({
       runId: "later",
       taskDescription: "Later work",
@@ -654,9 +658,18 @@ describe("store uninstall", () => {
     });
 
     const result = await h.service.uninstall("old-mode");
-    expect(result.fallbackRequired).toBe(true);
-    expect(result.reason).toContain("not the latest commits");
-    expect(h.service.getInstall("old-mode")).not.toBeNull();
+    expect(result.fallbackRequired).toBe(false);
+    expect(result.revertedCommits).toEqual([c1]);
+    expect(h.service.getInstall("old-mode")).toBeNull();
+    // The add-on's own file is gone; the later, unrelated edit survives and the
+    // tree is left clean.
+    await expect(
+      readFile(path.join(h.repoRoot, "desktop/src/o1.tsx"), "utf8"),
+    ).rejects.toThrow();
+    expect(
+      await readFile(path.join(h.repoRoot, "desktop/src/later.tsx"), "utf8"),
+    ).toBe("export {};\n");
+    expect(await listGitDirtyFiles(h.repoRoot)).toEqual([]);
   });
 
   it("revertGitCommits resets back to the pre-revert HEAD when a mid-stack revert fails", async () => {
