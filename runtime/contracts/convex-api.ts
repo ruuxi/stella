@@ -208,7 +208,7 @@ export type PublicApiType = {
     "getPhoneAccessState": FunctionReference<'query', 'public', { desktopDeviceId: string; }, any, string | undefined>;
     "createPairingSession": FunctionReference<'mutation', 'public', { desktopDeviceId: string; }, any, string | undefined>;
     "revokePairedMobileDevice": FunctionReference<'mutation', 'public', { desktopDeviceId: string; mobileDeviceId: string; }, any, string | undefined>;
-    "watchIncomingConnectIntent": FunctionReference<'query', 'public', { desktopDeviceId: string; nowMs: number; }, any, string | undefined>;
+    "watchIncomingConnectIntent": FunctionReference<'query', 'public', { nowMs?: number | undefined; desktopDeviceId: string; }, any, string | undefined>;
     "acknowledgeConnectIntent": FunctionReference<'mutation', 'public', { intentId: Id<'mobile_connect_intents'>; }, any, string | undefined>;
   };
   "mobile_chat": {

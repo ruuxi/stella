@@ -6,10 +6,6 @@ import { getDeviceIdOrNull } from "@/platform/electron/device";
 
 const DEVICE_ID_RETRY_LIMIT = 8;
 const DEVICE_ID_RETRY_BASE_DELAY_MS = 2_000;
-// Connect intents expire after ~90s; refreshing nowMs every 15s keeps the
-// query subscription deterministic (no Date.now inside the query handler)
-// while remaining responsive to newly-issued intents.
-const INTENT_NOW_REFRESH_MS = 15_000;
 
 type AcknowledgeIntentArgs = Parameters<
   ReturnType<
@@ -23,20 +19,7 @@ export function PhoneAccessBridge() {
     api.mobile_access.acknowledgeConnectIntent,
   );
   const [desktopDeviceId, setDesktopDeviceId] = useState<string | null>(null);
-  const [nowMs, setNowMs] = useState(() => Date.now());
   const lastHandledIntentKeyRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!hasConnectedAccount) {
-      return;
-    }
-    const intervalId = window.setInterval(() => {
-      setNowMs(Date.now());
-    }, INTENT_NOW_REFRESH_MS);
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [hasConnectedAccount]);
 
   useEffect(() => {
     if (!hasConnectedAccount) {
@@ -88,11 +71,12 @@ export function PhoneAccessBridge() {
     };
   }, [hasConnectedAccount]);
 
+  // Omit `nowMs` so this subscription stays reactively cacheable on the
+  // backend (a per-tick client clock would bust Convex's cache every poll).
+  // The query returns `expiresAt`; expiry is checked client-side below.
   const intent = useQuery(
     api.mobile_access.watchIncomingConnectIntent,
-    hasConnectedAccount && desktopDeviceId
-      ? { desktopDeviceId, nowMs }
-      : "skip",
+    hasConnectedAccount && desktopDeviceId ? { desktopDeviceId } : "skip",
   ) as
     | {
         intentId: AcknowledgeIntentArgs["intentId"];
@@ -107,6 +91,14 @@ export function PhoneAccessBridge() {
     if (
       !intent?.intentId ||
       !window.electronAPI?.system.startPhoneAccessSession
+    ) {
+      return;
+    }
+    // Gate on the backend-provided expiry instead of passing a client clock
+    // into the query: ignore intents that have already lapsed.
+    if (
+      typeof intent.expiresAt === "number" &&
+      Date.now() > intent.expiresAt
     ) {
       return;
     }
