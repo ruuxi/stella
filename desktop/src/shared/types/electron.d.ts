@@ -691,6 +691,8 @@ export type ElectronAgentApi = {
       reasoningText?: string;
       result?: string;
       error?: string;
+      startedAtMs?: number;
+      completedAtMs?: number;
     }>;
   }>;
   onStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void;

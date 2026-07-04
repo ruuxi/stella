@@ -120,6 +120,55 @@ describe("toTaskFromResumeSnapshot", () => {
     expect(task.hydratedFromResumeSnapshot).toBe(true);
     expect(task.status).toBe("running");
   });
+
+  it("carries the snapshot's real lifecycle timestamps instead of fabricating now", () => {
+    const task = toTaskFromResumeSnapshot(
+      {
+        runId: "run-1",
+        agentId: "task-1",
+        status: "completed",
+        description: "Inspect settings",
+        startedAtMs: 200,
+        completedAtMs: 450,
+      },
+      1_000,
+    );
+
+    expect(task.startedAtMs).toBe(200);
+    expect(task.completedAtMs).toBe(450);
+  });
+
+  it("falls back to now only for snapshots that predate real timestamps", () => {
+    const task = toTaskFromResumeSnapshot(
+      {
+        runId: "run-1",
+        agentId: "task-1",
+        status: "completed",
+        description: "Inspect settings",
+      },
+      1_000,
+    );
+
+    expect(task.startedAtMs).toBe(1_000);
+    expect(task.completedAtMs).toBe(1_000);
+  });
+
+  it("does not surface a completedAtMs on running snapshots", () => {
+    const task = toTaskFromResumeSnapshot(
+      {
+        runId: "run-1",
+        agentId: "task-1",
+        status: "running",
+        description: "Inspect settings",
+        startedAtMs: 200,
+        completedAtMs: 450,
+      },
+      1_000,
+    );
+
+    expect(task.startedAtMs).toBe(200);
+    expect(task.completedAtMs).toBeUndefined();
+  });
 });
 
 describe("stream resume cleanup", () => {

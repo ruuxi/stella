@@ -79,6 +79,10 @@ export type ResumeTaskSnapshot = {
   error?: string
   groupKey?: string
   groupLabel?: string
+  // Real lifecycle timestamps stamped at event receipt in the main process.
+  // Optional only for snapshots persisted before these fields existed.
+  startedAtMs?: number
+  completedAtMs?: number
 }
 
 export type StreamStoreAction =
@@ -749,12 +753,17 @@ export const toTaskFromResumeSnapshot = (
   anchorTurnId: snapshot.anchorTurnId,
   parentAgentId: snapshot.parentAgentId,
   statusText: snapshot.statusText,
-  startedAtMs: nowMs,
+  // Prefer the snapshot's real timestamps: fabricating `nowMs` here made a
+  // re-hydrated finished task look freshly started/completed, which both
+  // tripped the revive rule in mergeFooterTasks and collapsed the done-row
+  // sort into id order (every row got the same synthetic stamp). `nowMs` is
+  // only a fallback for snapshots that predate the timestamp fields.
+  startedAtMs: snapshot.startedAtMs ?? nowMs,
   completedAtMs:
     snapshot.status === 'completed' ||
     snapshot.status === 'error' ||
     snapshot.status === 'canceled'
-      ? nowMs
+      ? (snapshot.completedAtMs ?? nowMs)
       : undefined,
   lastUpdatedAtMs: nowMs,
   outputPreview: snapshot.result ?? snapshot.error,

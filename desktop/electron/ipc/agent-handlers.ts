@@ -103,6 +103,13 @@ type ConversationTaskSnapshot = {
   error?: string;
   groupKey?: string;
   groupLabel?: string;
+  // Real lifecycle timestamps, stamped here at event receipt. startedAtMs is
+  // first-seen-only and completedAtMs is sticky once terminal, so a resume
+  // snapshot re-emitted to a rehydrating renderer never carries a "fresh"
+  // timestamp that would out-rank the task's actual completion and reorder
+  // settled activity rows.
+  startedAtMs: number;
+  completedAtMs?: number;
 };
 
 const MAX_AGENT_REASONING_CHARS = 8_000;
@@ -234,6 +241,8 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       error: current?.error,
       groupKey: event.groupKey ?? current?.groupKey,
       groupLabel: event.groupLabel ?? current?.groupLabel,
+      startedAtMs: current?.startedAtMs ?? Date.now(),
+      completedAtMs: current?.completedAtMs,
     };
 
     if (
@@ -277,18 +286,21 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         base.statusText = undefined;
         base.result = event.result;
         base.error = undefined;
+        base.completedAtMs = current?.completedAtMs ?? Date.now();
         break;
       case AGENT_STREAM_EVENT_TYPES.AGENT_FAILED:
         base.status = "error";
         base.statusText = undefined;
         base.result = undefined;
         base.error = event.error;
+        base.completedAtMs = current?.completedAtMs ?? Date.now();
         break;
       case AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED:
         base.status = "canceled";
         base.statusText = undefined;
         base.result = undefined;
         base.error = event.error;
+        base.completedAtMs = current?.completedAtMs ?? Date.now();
         break;
     }
 
