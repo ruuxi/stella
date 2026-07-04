@@ -11,6 +11,8 @@ import { createRunEventRecorder } from "./run-events.js";
 import { PiSessionCore } from "./pi-session-core.js";
 import {
   QUARANTINE_CUSTOM_TYPE,
+  SAFETY_ABORT_FABLE_ATTEMPTS,
+  safetyRetryStatusMessage,
   safetySwapStatusMessage,
   serializeQuarantineRecord,
 } from "./provider-abort-containment.js";
@@ -187,8 +189,42 @@ export class SubagentSession extends PiSessionCore {
       };
       let execution = await executeRuntimeAgentPrompt(executionArgs);
 
-      // Safety model swap: a fable-5 refusal/safety abort gets one retry on
-      // opus-4.8 (same auth path, per-run only). `prepareSafetyModelSwap`
+      // Safety containment: a fable-5 refusal/safety abort first gets
+      // retried on the configured model — refusals are often transient — up
+      // to SAFETY_ABORT_FABLE_ATTEMPTS consecutive attempts total. Only when
+      // every attempt fails does the turn swap to opus-4.8 below.
+      let fableAttempts = 1;
+      while (
+        execution.errorMessage &&
+        !opts.abortSignal?.aborted &&
+        fableAttempts < SAFETY_ABORT_FABLE_ATTEMPTS
+      ) {
+        const retry = this.prepareSafetySameModelRetry(agent, {
+          errorMessage: execution.errorMessage,
+          logContext: {
+            threadId: this.threadId,
+            runId,
+            attempt: fableAttempts + 1,
+          },
+        });
+        if (!retry) break;
+        fableAttempts += 1;
+        opts.callbacks?.onStatus?.(
+          runEvents.recordStatus(
+            safetyRetryStatusMessage({
+              modelId: retry.modelId,
+              attempt: fableAttempts,
+            }),
+            "running",
+          ),
+        );
+        execution = await executeRuntimeAgentPrompt({
+          ...executionArgs,
+          resume: true,
+        });
+      }
+      // Safety model swap: after the fable attempts are exhausted, one retry
+      // on opus-4.8 (same auth path, per-run only). `prepareSafetyModelSwap`
       // returns null for anything else, and this block runs at most once per
       // turn, so there is no swap ping-pong.
       if (execution.errorMessage && !opts.abortSignal?.aborted) {
@@ -203,7 +239,7 @@ export class SubagentSession extends PiSessionCore {
           };
           const statusText = safetySwapStatusMessage(swapAttempted);
           opts.callbacks?.onStatus?.(
-            runEvents.recordStatus(statusText, "provider-retry"),
+            runEvents.recordStatus(statusText, "model-fallback"),
           );
           persistThreadCustomMessage(opts.store, {
             threadKey: this.threadKey,

@@ -138,11 +138,12 @@ export class PiSessionCore {
   }
 
   /**
-   * After a failed attempt, decide whether to auto-swap a fable-5 route to
-   * opus-4.8 and retry once (fable's safety guardrails false-positive on
-   * benign quoted content). When eligible, this pops the errored assistant
-   * tail, points the live Agent at the swapped route, and returns the swap
-   * so the caller re-runs via `resume`. Per-run only: the next turn's
+   * Last resort after `prepareSafetySameModelRetry` exhausts the fable
+   * attempt budget: auto-swap a fable-5 route to opus-4.8 and retry once
+   * (fable's safety guardrails false-positive on benign quoted content).
+   * When eligible, this pops the errored assistant tail, points the live
+   * Agent at the swapped route, and returns the swap so the caller re-runs
+   * via `resume`. Per-run only: the next turn's
    * `setResolvedLlm(opts.resolvedLlm)` restores the configured model. The
    * caller invokes this at most once per turn, which enforces the
    * one-swap-attempt cap (no ping-pong).
@@ -155,29 +156,7 @@ export class PiSessionCore {
     if (!isProviderContentAbortMessage(args.errorMessage)) return null;
     const swap = buildSafetyAbortSwapRoute(this.currentResolvedLlm);
     if (!swap) return null;
-
-    // Inspect the context tail WITHOUT mutating it: only commit to the pop
-    // once the swap is definitely happening. Bailing after a pop would
-    // corrupt the appended-messages slice that failure classification
-    // reads, silently resetting the deterministic-abort streak.
-    const messages = agent.state.messages;
-    const last = messages[messages.length - 1];
-    const popErroredTail =
-      last?.role === "assistant" &&
-      (last.stopReason === "error" || last.stopReason === "aborted");
-    const tailAfterPop = popErroredTail
-      ? messages[messages.length - 2]
-      : last;
-    if (tailAfterPop?.role === "assistant") {
-      // Unexpected shape (e.g. failure mid-tool-loop) — resuming would
-      // throw. Skip the swap and let normal failure handling run.
-      return null;
-    }
-    if (popErroredTail) {
-      // Drop the aborted stream's partial output so `continue()` resumes
-      // from the prompt instead of refusing on a trailing assistant message.
-      messages.pop();
-    }
+    if (!this.popErroredTailForResume(agent)) return null;
 
     this.setResolvedLlm(swap.route);
     agent.state.model = swap.route.model;
@@ -189,6 +168,63 @@ export class PiSessionCore {
       ...args.logContext,
     });
     return swap;
+  }
+
+  /**
+   * After a failed attempt, decide whether to retry the SAME fable-5 route
+   * before any model swap (refusals are frequently transient). When
+   * eligible, pops the errored tail so the caller re-runs via `resume` and
+   * returns the failing model id for the status note; the caller owns the
+   * attempt budget (`SAFETY_ABORT_FABLE_ATTEMPTS`). Requires the same
+   * eligibility as the swap itself so a route that could never swap doesn't
+   * burn retries on a hopeless error.
+   */
+  protected prepareSafetySameModelRetry(
+    agent: Agent,
+    args: { errorMessage: string; logContext: SessionLogContext },
+  ): { modelId: string } | null {
+    if (!this.currentResolvedLlm) return null;
+    if (!isProviderContentAbortMessage(args.errorMessage)) return null;
+    if (!buildSafetyAbortSwapRoute(this.currentResolvedLlm)) return null;
+    if (!this.popErroredTailForResume(agent)) return null;
+
+    const modelId = this.currentResolvedLlm.model.id;
+    this.logger.warn("safety-same-model-retry", {
+      threadKey: this.threadKey,
+      model: modelId,
+      providerError: args.errorMessage,
+      ...args.logContext,
+    });
+    return { modelId };
+  }
+
+  /**
+   * Pop the errored assistant tail so `continue()` resumes from the prompt
+   * instead of refusing on a trailing assistant message. Inspects the tail
+   * WITHOUT mutating it first: only commits to the pop once the retry is
+   * definitely happening — bailing after a pop would corrupt the
+   * appended-messages slice that failure classification reads, silently
+   * resetting the deterministic-abort streak. Returns false when the tail
+   * shape is unexpected (e.g. failure mid-tool-loop) and resuming would
+   * throw.
+   */
+  private popErroredTailForResume(agent: Agent): boolean {
+    const messages = agent.state.messages;
+    const last = messages[messages.length - 1];
+    const popErroredTail =
+      last?.role === "assistant" &&
+      (last.stopReason === "error" || last.stopReason === "aborted");
+    const tailAfterPop = popErroredTail
+      ? messages[messages.length - 2]
+      : last;
+    if (tailAfterPop?.role === "assistant") {
+      return false;
+    }
+    if (popErroredTail) {
+      // Drop the aborted stream's partial output.
+      messages.pop();
+    }
+    return true;
   }
 
   protected noteAbortContainmentSuccess(): void {
