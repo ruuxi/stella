@@ -10,6 +10,7 @@ import type {
   ToolUpdateCallback,
 } from "../tools/types.js";
 import { extractAttachImageBlocks } from "../agent-runtime/tool-adapters.js";
+import { SAFETY_ABORT_FABLE_ATTEMPTS } from "../agent-runtime/provider-abort-containment.js";
 import type {
   FileChangeKind,
   FileChangeRecord,
@@ -22,6 +23,23 @@ import {
 } from "./claude-code-resolved-models.js";
 
 const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
+/**
+ * Model the fable fallback policy switches a turn to after the configured
+ * fable model exhausts its attempts (matches the stella engine's
+ * safety-swap target in provider-abort-containment.ts).
+ */
+const CLAUDE_CODE_FALLBACK_MODEL = "claude-opus-4-8";
+
+/**
+ * CLI error text for a model-side refusal (safety / Usage Policy stop) or
+ * an exhausted-overload failure — the two failures where retrying the
+ * configured model, then falling back, makes sense. Wording verified
+ * against CLI 2.1.32; anything else propagates as a normal turn error.
+ */
+export const isClaudeCodeModelRefusalOrOverloadError = (
+  message: string,
+): boolean =>
+  /unable to respond to this request|usage policy|overloaded/i.test(message);
 /**
  * Model aliases the `claude` CLI accepts via `--model` — canonical list in
  * claude-code-resolved-models.ts. `default` is special: it clears any
@@ -416,13 +434,25 @@ type SessionState = {
   artifactDir?: string;
   process?: ClaudeCodeStreamingProcess;
   /**
-   * True once Claude Code's built-in `model_refusal_fallback` has been
-   * surfaced for this session. The CLI stickily downgrades the session to
-   * the fallback model after a safety-classifier refusal and re-emits the
-   * system event, so we latch here to fire the heads-up toast exactly once
-   * per session instead of on every subsequent turn.
+   * True once a model fallback has been surfaced for this session — either
+   * our own fable fallback policy engaging or the CLI announcing a switch it
+   * made on its own (e.g. a `--fallback-model` from the user's CLI
+   * settings). Latched so the heads-up toast fires at most once per session.
    */
   modelFallbackNotified?: boolean;
+  /**
+   * Model the fable fallback policy switched the CURRENT turn to after the
+   * configured model exhausted its attempts (see
+   * `applyFableFallbackPolicy`). Cleared at the start of every turn so each
+   * new user message reattempts the configured model.
+   */
+  modelOverride?: string;
+  /**
+   * Consecutive refusal/overload failures of the configured fable model in
+   * the current turn. Reset at turn start; at SAFETY_ABORT_FABLE_ATTEMPTS
+   * the turn falls back via `modelOverride`.
+   */
+  fableSafetyFailures?: number;
 };
 
 const asNumber = (value: unknown): number | undefined =>
@@ -1141,36 +1171,48 @@ export type ClaudeCodeModelFallback = {
 };
 
 /**
- * Detect Claude Code's built-in `model_refusal_fallback` system event on the
- * stream. When Fable 5's (or any configured model's) safety classifier flags
- * a message, the CLI silently and stickily downgrades the session to a
- * fallback model (e.g. Opus 4.8) and never switches back — the model actually
- * answering is no longer the configured one. We surface that switch as a
- * visible toast. From/to names are pulled from the event's `originalModel`/
- * `fallbackModel` (pretty-printed) so the copy stays correct if the models
- * change. Returns null for any other event.
+ * The CLI has no structured event for a model fallback — it announces it as
+ * a `system`/`informational` message with exactly this content (verified
+ * against the CLI bundle: `Model fallback triggered: switching from ${X} to
+ * ${Y}`). Text match is brittle across CLI versions by nature; if the
+ * wording drops the model ids we still detect the switch and fall back to
+ * generic labels.
+ */
+const CLAUDE_CODE_MODEL_FALLBACK_RE =
+  /^Model fallback triggered(?::? switching from (\S+) to (\S+))?/;
+
+/**
+ * Detect the CLI's model-fallback announcement on the stream. When the
+ * configured model errors as overloaded (529) and a `--fallback-model` is
+ * in play (e.g. from the user's own CLI settings — we don't pass one; our
+ * fable fallback policy lives in `applyFableFallbackPolicy`), the CLI
+ * stickily switches the session's main-loop model to the fallback for the
+ * rest of the session — the model actually answering is no longer the
+ * configured one. We surface that switch as a visible toast,
+ * pretty-printing the from/to ids parsed out of the message. Returns null
+ * for any other event.
  */
 export const getClaudeCodeModelFallbackFromStreamEvent = (
   event: Record<string, unknown>,
 ): ClaudeCodeModelFallback | null => {
-  const type = typeof event.type === "string" ? event.type : "";
-  const subtype = typeof event.subtype === "string" ? event.subtype : "";
-  if (type !== "system" || subtype !== "model_refusal_fallback") {
+  if (event.type !== "system" || event.subtype !== "informational") {
     return null;
   }
-  const rawFrom =
-    typeof event.originalModel === "string" ? event.originalModel.trim() : "";
-  const rawTo =
-    typeof event.fallbackModel === "string" ? event.fallbackModel.trim() : "";
-  const fromModel = rawFrom
-    ? formatClaudeCodeResolvedModel(rawFrom)
+  const content = typeof event.content === "string" ? event.content : "";
+  const match = CLAUDE_CODE_MODEL_FALLBACK_RE.exec(content);
+  if (!match) {
+    return null;
+  }
+  const fromModel = match[1]
+    ? formatClaudeCodeResolvedModel(match[1])
     : "the configured model";
-  const toModel = rawTo
-    ? formatClaudeCodeResolvedModel(rawTo)
+  const toModel = match[2]
+    ? formatClaudeCodeResolvedModel(match[2])
     : "a fallback model";
   const text =
-    `Claude Code's safety fallback switched this session from ${fromModel} ` +
-    `to ${toModel}. The rest of this session runs on ${toModel}, not ${fromModel}.`;
+    `Claude Code switched this session from ${fromModel} to ${toModel} ` +
+    `because ${fromModel} was unavailable. ` +
+    `The rest of this session runs on ${toModel}.`;
   return { fromModel, toModel, text };
 };
 
@@ -1325,6 +1367,13 @@ class ClaudeCodeSessionRuntime {
     const turnFileChangeKeys = new Set<string>();
     let nextPrompt = buildInitialPrompt(session, request);
 
+    // Every user message reattempts the configured model: a fallback from a
+    // previous turn does not stick to the session. The next
+    // ensureStreamingProcess sees the config change and restarts the CLI on
+    // the configured model with --resume.
+    session.modelOverride = undefined;
+    session.fableSafetyFailures = 0;
+
     // The compaction loop breaker counts per Stella turn, across all
     // structured steps of that turn.
     if (session.process) {
@@ -1432,6 +1481,14 @@ class ClaudeCodeSessionRuntime {
         if (request.abortSignal?.aborted) {
           throw error;
         }
+        // Fable refusal/overload policy: retry the configured model, then
+        // fall back — resending the SAME prompt either way (a refused step
+        // produced no decision to preserve). Separate cap from the shared
+        // recovery budget: capped by SAFETY_ABORT_FABLE_ATTEMPTS plus one
+        // fallback per turn, so this cannot loop.
+        if (this.applyFableFallbackPolicy(session, request, error)) {
+          continue;
+        }
         const recoverable = asRecoverableStepError(error);
         if (!recoverable) {
           throw error;
@@ -1461,6 +1518,57 @@ class ClaudeCodeSessionRuntime {
         currentPrompt = buildDecisionRetryPrompt(Boolean(request.vanilla));
       }
     }
+  }
+
+  /**
+   * Fable refusal/overload policy, mirroring the stella engine's safety
+   * swap: give the configured fable model SAFETY_ABORT_FABLE_ATTEMPTS
+   * consecutive attempts at the failing step, then switch the REST OF THIS
+   * TURN to CLAUDE_CODE_FALLBACK_MODEL via `session.modelOverride` (the
+   * next ensureStreamingProcess sees the config change and restarts on the
+   * fallback with --resume, keeping the CLI conversation). executeTurn
+   * clears the override at every turn start, so each new user message
+   * reattempts fable. Returns true when the caller should resend the same
+   * prompt; false when the policy doesn't apply (including a failure on the
+   * fallback itself) and the error should propagate.
+   */
+  private applyFableFallbackPolicy(
+    session: SessionState,
+    request: ClaudeCodeTurnRequest,
+    error: unknown,
+  ): boolean {
+    if (session.modelOverride) return false;
+    const modelName = parseClaudeCodeModel(request.modelId);
+    if (!modelName || !/\bfable\b/.test(modelName)) return false;
+    const message = error instanceof Error ? error.message : "";
+    if (!isClaudeCodeModelRefusalOrOverloadError(message)) return false;
+
+    session.fableSafetyFailures = (session.fableSafetyFailures ?? 0) + 1;
+    const prettyFrom = formatClaudeCodeResolvedModel(modelName);
+    if (session.fableSafetyFailures < SAFETY_ABORT_FABLE_ATTEMPTS) {
+      request.onStatusChange?.({
+        state: "running",
+        text:
+          `${prettyFrom} refused this request — retrying ` +
+          `(attempt ${session.fableSafetyFailures + 1} of ` +
+          `${SAFETY_ABORT_FABLE_ATTEMPTS})`,
+      });
+      return true;
+    }
+
+    session.modelOverride = CLAUDE_CODE_FALLBACK_MODEL;
+    const prettyTo = formatClaudeCodeResolvedModel(CLAUDE_CODE_FALLBACK_MODEL);
+    if (!session.modelFallbackNotified) {
+      session.modelFallbackNotified = true;
+      request.onStatusChange?.({
+        state: "model-fallback",
+        text:
+          `${prettyFrom} failed ${SAFETY_ABORT_FABLE_ATTEMPTS} attempts ` +
+          `(refusal/overload), so this turn switched to ${prettyTo}. ` +
+          `${prettyFrom} will be retried on your next message.`,
+      });
+    }
+    return true;
   }
 
   private async executeStructuredStep(
@@ -1592,7 +1700,10 @@ class ClaudeCodeSessionRuntime {
     effectiveSystemPrompt: string,
     useResume: boolean,
   ): string[] {
-    const modelName = parseClaudeCodeModel(request.modelId);
+    // A turn-scoped fallback override (fable exhausted its attempts) beats
+    // the configured model; executeTurn clears it at every turn start.
+    const modelName =
+      session.modelOverride ?? parseClaudeCodeModel(request.modelId);
     const args = [
       "-p",
       "--dangerously-skip-permissions",
@@ -1636,11 +1747,12 @@ class ClaudeCodeSessionRuntime {
   }
 
   private buildProcessLaunchConfig(
+    session: SessionState,
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
   ): string {
     return JSON.stringify([
-      parseClaudeCodeModel(request.modelId) ?? "",
+      session.modelOverride ?? parseClaudeCodeModel(request.modelId) ?? "",
       request.effortLevel?.trim() ?? "",
       Boolean(request.vanilla),
       effectiveSystemPrompt.trim(),
@@ -1656,6 +1768,7 @@ class ClaudeCodeSessionRuntime {
     useResume: boolean,
   ): ClaudeCodeStreamingProcess {
     const launchConfig = this.buildProcessLaunchConfig(
+      session,
       request,
       effectiveSystemPrompt,
     );
@@ -1779,10 +1892,10 @@ class ClaudeCodeSessionRuntime {
             processState.compacting = false;
           }
         }
-        // Claude Code's own safety-fallback: the CLI silently downgraded
-        // the session's model out from under us. Surface it once per session
-        // as a heads-up toast (the switch is sticky, so the event repeats on
-        // later turns — latch on the session so we don't spam).
+        // The CLI switched the session to the --fallback-model (configured
+        // model overloaded). The switch is sticky for the session, so
+        // surface it once as a heads-up toast (latch on the session so we
+        // don't spam).
         const modelFallback =
           getClaudeCodeModelFallbackFromStreamEvent(parsedLine);
         const current = processState.pending[0];

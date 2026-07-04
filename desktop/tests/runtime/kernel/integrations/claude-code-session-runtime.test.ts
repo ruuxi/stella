@@ -9,6 +9,7 @@ import {
   collectClaudeCodeNativeFileChanges,
   createClaudeCodeStreamEmitter,
   getClaudeCodeModelFallbackFromStreamEvent,
+  isClaudeCodeModelRefusalOrOverloadError,
   getClaudeCodeStatusChangeFromStreamEvent,
   getClaudeCodeTextDeltaFromStreamEvent,
   isClaudeCodeModel,
@@ -223,12 +224,39 @@ describe("claude-code-session-runtime", () => {
     ).toBeNull();
   });
 
-  it("detects Claude Code's model_refusal_fallback with pretty from/to names", () => {
+  it("classifies refusal/overload CLI errors for the fable fallback policy", () => {
+    // Refusal wording verified against CLI 2.1.32.
+    expect(
+      isClaudeCodeModelRefusalOrOverloadError(
+        "API Error: Claude Code is unable to respond to this request, " +
+          "which appears to violate our Usage Policy (https://...).",
+      ),
+    ).toBe(true);
+    expect(
+      isClaudeCodeModelRefusalOrOverloadError(
+        'API Error: 529 {"type":"error","error":{"type":"overloaded_error"}}',
+      ),
+    ).toBe(true);
+    expect(
+      isClaudeCodeModelRefusalOrOverloadError("Prompt is too long"),
+    ).toBe(false);
+    expect(
+      isClaudeCodeModelRefusalOrOverloadError(
+        "Claude Code process ended before delivering a result.",
+      ),
+    ).toBe(false);
+  });
+
+  it("detects the CLI's model-fallback announcement with pretty from/to names", () => {
+    // Real shape (CLI 2.1.32): the fallback is announced as a
+    // system/informational message, not a structured event.
     const fallback = getClaudeCodeModelFallbackFromStreamEvent({
       type: "system",
-      subtype: "model_refusal_fallback",
-      originalModel: "claude-fable-5",
-      fallbackModel: "claude-opus-4-8",
+      subtype: "informational",
+      content:
+        "Model fallback triggered: switching from claude-fable-5 to claude-opus-4-8",
+      level: "info",
+      isMeta: false,
     });
     expect(fallback).not.toBeNull();
     expect(fallback?.fromModel).toBe("Fable 5");
@@ -240,21 +268,30 @@ describe("claude-code-session-runtime", () => {
     expect(
       getClaudeCodeModelFallbackFromStreamEvent({
         type: "system",
-        subtype: "model_refusal_fallback",
-        originalModel: "claude-fable-5[1m]",
-        fallbackModel: "claude-opus-4-8",
+        subtype: "informational",
+        content:
+          "Model fallback triggered: switching from claude-fable-5[1m] to claude-opus-4-8",
       })?.fromModel,
     ).toBe("Fable 5 (1M context)");
 
-    // Missing model ids fall back to safe generic labels.
+    // Wording that drops the model ids still detects the switch with safe
+    // generic labels.
     const generic = getClaudeCodeModelFallbackFromStreamEvent({
       type: "system",
-      subtype: "model_refusal_fallback",
+      subtype: "informational",
+      content: "Model fallback triggered",
     });
     expect(generic?.fromModel).toBe("the configured model");
     expect(generic?.toModel).toBe("a fallback model");
 
-    // Any other system event is ignored.
+    // Unrelated informational messages and other system events are ignored.
+    expect(
+      getClaudeCodeModelFallbackFromStreamEvent({
+        type: "system",
+        subtype: "informational",
+        content: "Compacting conversation…",
+      }),
+    ).toBeNull();
     expect(
       getClaudeCodeModelFallbackFromStreamEvent({
         type: "system",
