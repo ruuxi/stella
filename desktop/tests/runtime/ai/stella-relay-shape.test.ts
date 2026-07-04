@@ -184,11 +184,11 @@ describe("Stella relay route shape", () => {
     expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 
-  it("Stella alias (light) resolves to OpenRouter relay", () => {
+  it("Stella alias (light) resolves to Fireworks relay", () => {
     const route = makeRoute("stella/light");
     const model = route!.model;
-    expect(model.api).toBe("openai-completions");
-    expect(model.provider).toBe("openrouter");
+    expect(model.api).toBe("openai-responses");
+    expect(model.provider).toBe("fireworks");
     expect(model.baseUrl).toBe(`${STELLA_SITE}/api/stella/relay`);
   });
 
