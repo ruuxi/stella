@@ -257,7 +257,7 @@ type ClaudeUsage = {
 };
 
 type ClaudeCodeStatusChange = {
-  state: "running" | "compacting";
+  state: "running" | "compacting" | "model-fallback";
   text: string;
 };
 
@@ -415,6 +415,14 @@ type SessionState = {
   queue: QueueJob[];
   artifactDir?: string;
   process?: ClaudeCodeStreamingProcess;
+  /**
+   * True once Claude Code's built-in `model_refusal_fallback` has been
+   * surfaced for this session. The CLI stickily downgrades the session to
+   * the fallback model after a safety-classifier refusal and re-emits the
+   * system event, so we latch here to fire the heads-up toast exactly once
+   * per session instead of on every subsequent turn.
+   */
+  modelFallbackNotified?: boolean;
 };
 
 const asNumber = (value: unknown): number | undefined =>
@@ -1123,6 +1131,49 @@ export const getClaudeCodeStatusChangeFromStreamEvent = (
   return null;
 };
 
+export type ClaudeCodeModelFallback = {
+  /** Configured model the CLI was running before the fallback (pretty name). */
+  fromModel: string;
+  /** Model the CLI stickily downgraded the session to (pretty name). */
+  toModel: string;
+  /** Ready-to-toast description naming what happened plus the from/to models. */
+  text: string;
+};
+
+/**
+ * Detect Claude Code's built-in `model_refusal_fallback` system event on the
+ * stream. When Fable 5's (or any configured model's) safety classifier flags
+ * a message, the CLI silently and stickily downgrades the session to a
+ * fallback model (e.g. Opus 4.8) and never switches back — the model actually
+ * answering is no longer the configured one. We surface that switch as a
+ * visible toast. From/to names are pulled from the event's `originalModel`/
+ * `fallbackModel` (pretty-printed) so the copy stays correct if the models
+ * change. Returns null for any other event.
+ */
+export const getClaudeCodeModelFallbackFromStreamEvent = (
+  event: Record<string, unknown>,
+): ClaudeCodeModelFallback | null => {
+  const type = typeof event.type === "string" ? event.type : "";
+  const subtype = typeof event.subtype === "string" ? event.subtype : "";
+  if (type !== "system" || subtype !== "model_refusal_fallback") {
+    return null;
+  }
+  const rawFrom =
+    typeof event.originalModel === "string" ? event.originalModel.trim() : "";
+  const rawTo =
+    typeof event.fallbackModel === "string" ? event.fallbackModel.trim() : "";
+  const fromModel = rawFrom
+    ? formatClaudeCodeResolvedModel(rawFrom)
+    : "the configured model";
+  const toModel = rawTo
+    ? formatClaudeCodeResolvedModel(rawTo)
+    : "a fallback model";
+  const text =
+    `Claude Code's safety fallback switched this session from ${fromModel} ` +
+    `to ${toModel}. The rest of this session runs on ${toModel}, not ${fromModel}.`;
+  return { fromModel, toModel, text };
+};
+
 const cleanupSessionArtifacts = (session: SessionState) => {
   if (!session.artifactDir) {
     return;
@@ -1728,10 +1779,23 @@ class ClaudeCodeSessionRuntime {
             processState.compacting = false;
           }
         }
+        // Claude Code's own safety-fallback: the CLI silently downgraded
+        // the session's model out from under us. Surface it once per session
+        // as a heads-up toast (the switch is sticky, so the event repeats on
+        // later turns — latch on the session so we don't spam).
+        const modelFallback =
+          getClaudeCodeModelFallbackFromStreamEvent(parsedLine);
         const current = processState.pending[0];
         if (current) {
           if (status) {
             current.request.onStatusChange?.(status);
+          }
+          if (modelFallback && !session.modelFallbackNotified) {
+            session.modelFallbackNotified = true;
+            current.request.onStatusChange?.({
+              state: "model-fallback",
+              text: modelFallback.text,
+            });
           }
           current.emitStreamDelta(parsedLine);
           const nativeFileChanges =
