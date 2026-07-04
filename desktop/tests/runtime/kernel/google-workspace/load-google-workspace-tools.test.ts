@@ -34,7 +34,6 @@ describe("loadGoogleWorkspaceTools", () => {
     const dir = await mkdtemp(path.join(tmpdir(), "stella-gw-"));
     const credentialsPath = path.join(
       dir,
-      "state",
       "connectors",
       ".credentials.json",
     );
