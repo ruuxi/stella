@@ -8,6 +8,7 @@ import {
   claudeCodeSessionHasActiveProcess,
   collectClaudeCodeNativeFileChanges,
   createClaudeCodeStreamEmitter,
+  getClaudeCodeModelFallbackFromStreamEvent,
   getClaudeCodeStatusChangeFromStreamEvent,
   getClaudeCodeTextDeltaFromStreamEvent,
   isClaudeCodeModel,
@@ -218,6 +219,47 @@ describe("claude-code-session-runtime", () => {
       getClaudeCodeStatusChangeFromStreamEvent({
         type: "assistant",
         subtype: "message",
+      }),
+    ).toBeNull();
+  });
+
+  it("detects Claude Code's model_refusal_fallback with pretty from/to names", () => {
+    const fallback = getClaudeCodeModelFallbackFromStreamEvent({
+      type: "system",
+      subtype: "model_refusal_fallback",
+      originalModel: "claude-fable-5",
+      fallbackModel: "claude-opus-4-8",
+    });
+    expect(fallback).not.toBeNull();
+    expect(fallback?.fromModel).toBe("Fable 5");
+    expect(fallback?.toModel).toBe("Opus 4.8");
+    expect(fallback?.text).toContain("Fable 5");
+    expect(fallback?.text).toContain("Opus 4.8");
+
+    // 1M-context variants pretty-print too.
+    expect(
+      getClaudeCodeModelFallbackFromStreamEvent({
+        type: "system",
+        subtype: "model_refusal_fallback",
+        originalModel: "claude-fable-5[1m]",
+        fallbackModel: "claude-opus-4-8",
+      })?.fromModel,
+    ).toBe("Fable 5 (1M context)");
+
+    // Missing model ids fall back to safe generic labels.
+    const generic = getClaudeCodeModelFallbackFromStreamEvent({
+      type: "system",
+      subtype: "model_refusal_fallback",
+    });
+    expect(generic?.fromModel).toBe("the configured model");
+    expect(generic?.toModel).toBe("a fallback model");
+
+    // Any other system event is ignored.
+    expect(
+      getClaudeCodeModelFallbackFromStreamEvent({
+        type: "system",
+        subtype: "init",
+        model: "claude-fable-5",
       }),
     ).toBeNull();
   });
