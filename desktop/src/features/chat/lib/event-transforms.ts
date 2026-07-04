@@ -107,6 +107,11 @@ export type TaskItem = {
    *  produced from streaming events (resume snapshots, task-upserts).
    *  Tasks reconstructed from local persisted events may not have it. */
   runId?: string
+  /** True when the task came from a reconnect/reload resume snapshot, not
+   *  from a freshly observed lifecycle stream event. Snapshot timestamps are
+   *  synthetic renderer receipt times, so they cannot prove that a terminal
+   *  persisted task really restarted. */
+  hydratedFromResumeSnapshot?: boolean
   anchorTurnId?: string
   parentAgentId?: string
   /** Work group this task's agent thread was spawned into. Tasks sharing
@@ -981,7 +986,8 @@ export function mergeFooterTasks(
       persistedTask &&
       isTerminalTaskLifecycleStatus(persistedTask.status) &&
       !isTerminalTaskLifecycleStatus(task.status) &&
-      (typeof persistedTask.completedAtMs !== 'number' ||
+      (task.hydratedFromResumeSnapshot ||
+        typeof persistedTask.completedAtMs !== 'number' ||
         task.startedAtMs <= persistedTask.completedAtMs)
     ) {
       continue

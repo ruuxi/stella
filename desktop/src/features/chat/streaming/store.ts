@@ -734,6 +734,7 @@ export const toTaskFromResumeSnapshot = (
 ): TaskItem => ({
   id: snapshot.agentId,
   runId: snapshot.runId,
+  hydratedFromResumeSnapshot: true,
   description:
     snapshot.description ?? fallbackTaskDescription(snapshot.agentId),
   agentType: snapshot.agentType || AGENT_IDS.GENERAL,
