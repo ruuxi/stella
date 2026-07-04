@@ -11,13 +11,14 @@ import {
   AGENT_IDS,
   AGENT_RUN_FINISH_OUTCOMES,
   AGENT_STREAM_EVENT_TYPES,
-  isTaskLifecycleEventType,
-  shouldIgnoreTerminalTaskFeedEvent,
   type AgentIdLike,
   type AgentRunFinishOutcome,
   type AgentStreamEventType,
-  type TaskLifecycleStatus,
 } from "../../../runtime/contracts/agent-runtime.js";
+import {
+  reduceTaskSnapshot,
+  type ConversationTaskSnapshot,
+} from "./task-snapshot-reducer.js";
 import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
 import { IPC_AGENT_ONE_SHOT_COMPLETION } from "../../src/shared/contracts/ipc-channels.js";
 import type {
@@ -88,31 +89,6 @@ type ActiveRunSnapshot = {
   userMessageId?: string;
   uiVisibility?: "visible" | "hidden";
 };
-
-type ConversationTaskSnapshot = {
-  runId: string;
-  agentId: string;
-  agentType?: string;
-  description?: string;
-  anchorTurnId?: string;
-  parentAgentId?: string;
-  status: TaskLifecycleStatus;
-  statusText?: string;
-  reasoningText?: string;
-  result?: string;
-  error?: string;
-  groupKey?: string;
-  groupLabel?: string;
-  // Real lifecycle timestamps, stamped here at event receipt. startedAtMs is
-  // first-seen-only and completedAtMs is sticky once terminal, so a resume
-  // snapshot re-emitted to a rehydrating renderer never carries a "fresh"
-  // timestamp that would out-rank the task's actual completion and reorder
-  // settled activity rows.
-  startedAtMs: number;
-  completedAtMs?: number;
-};
-
-const MAX_AGENT_REASONING_CHARS = 8_000;
 
 type SelfModHmrStatePayload = SelfModHmrState;
 
@@ -220,91 +196,22 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   const upsertTaskSnapshot = (event: AgentEventPayload) => {
     if (!event.agentId) return;
-    const isReasoning = event.type === AGENT_STREAM_EVENT_TYPES.AGENT_REASONING;
-    if (!isReasoning && !isTaskLifecycleEventType(event.type)) return;
 
     const runId = event.rootRunId ?? event.runId;
     const runTasks =
       tasksByRunId.get(runId) ?? new Map<string, ConversationTaskSnapshot>();
     const current = runTasks.get(event.agentId);
-    const base: ConversationTaskSnapshot = {
+
+    const next = reduceTaskSnapshot({
+      current,
+      event,
       runId,
       agentId: event.agentId,
-      agentType: event.agentType ?? current?.agentType,
-      description: event.description ?? current?.description,
-      anchorTurnId: event.userMessageId ?? current?.anchorTurnId,
-      parentAgentId: event.parentAgentId ?? current?.parentAgentId,
-      status: current?.status ?? "running",
-      statusText: current?.statusText,
-      reasoningText: current?.reasoningText,
-      result: current?.result,
-      error: current?.error,
-      groupKey: event.groupKey ?? current?.groupKey,
-      groupLabel: event.groupLabel ?? current?.groupLabel,
-      startedAtMs: current?.startedAtMs ?? Date.now(),
-      completedAtMs: current?.completedAtMs,
-    };
+      nowMs: Date.now(),
+    });
+    if (!next) return;
 
-    if (
-      shouldIgnoreTerminalTaskFeedEvent({
-        currentStatus: current?.status,
-        eventType: event.type as Parameters<
-          typeof shouldIgnoreTerminalTaskFeedEvent
-        >[0]["eventType"],
-      })
-    ) {
-      return;
-    }
-
-    switch (event.type) {
-      case AGENT_STREAM_EVENT_TYPES.AGENT_STARTED:
-        base.status = "running";
-        base.statusText = event.statusText ?? current?.statusText;
-        base.reasoningText = "";
-        base.result = undefined;
-        base.error = undefined;
-        break;
-      case AGENT_STREAM_EVENT_TYPES.AGENT_REASONING: {
-        base.status = "running";
-        base.result = undefined;
-        base.error = undefined;
-        const merged = `${current?.reasoningText ?? ""}${event.chunk ?? ""}`;
-        base.reasoningText =
-          merged.length > MAX_AGENT_REASONING_CHARS
-            ? merged.slice(-MAX_AGENT_REASONING_CHARS)
-            : merged;
-        break;
-      }
-      case AGENT_STREAM_EVENT_TYPES.AGENT_PROGRESS:
-        base.status = "running";
-        base.statusText = event.statusText ?? current?.statusText;
-        base.result = undefined;
-        base.error = undefined;
-        break;
-      case AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED:
-        base.status = "completed";
-        base.statusText = undefined;
-        base.result = event.result;
-        base.error = undefined;
-        base.completedAtMs = current?.completedAtMs ?? Date.now();
-        break;
-      case AGENT_STREAM_EVENT_TYPES.AGENT_FAILED:
-        base.status = "error";
-        base.statusText = undefined;
-        base.result = undefined;
-        base.error = event.error;
-        base.completedAtMs = current?.completedAtMs ?? Date.now();
-        break;
-      case AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED:
-        base.status = "canceled";
-        base.statusText = undefined;
-        base.result = undefined;
-        base.error = event.error;
-        base.completedAtMs = current?.completedAtMs ?? Date.now();
-        break;
-    }
-
-    runTasks.set(event.agentId, base);
+    runTasks.set(event.agentId, next);
     tasksByRunId.set(runId, runTasks);
     console.log(
       JSON.stringify({
@@ -312,9 +219,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         type: event.type,
         runId,
         agentId: event.agentId,
-        description: base.description,
-        status: base.status,
-        statusText: base.statusText,
+        description: next.description,
+        status: next.status,
+        statusText: next.statusText,
       }),
     );
   };
