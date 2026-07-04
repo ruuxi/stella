@@ -258,20 +258,31 @@ void main() {
   frost = clamp(frost, 0.0, 1.0);
 
   // ——— reveal: soft leading edge melting into the frost, crisp trail ———
-  float revealed = 1.0 - smoothstep(pos - EDGE_SOFT_TRAIL, pos + EDGE_SOFT_LEAD, axis);
+  // While the cover holds, u_reveal is exactly 0: pos sits off-screen so
+  // revealed is 0 for every visible pixel, gate is 0, and the whole
+  // reveal/chroma/band section below collapses algebraically to frost
+  // (mix and add by a 0 weight). Guarding it on the u_reveal uniform is a
+  // fully-coherent branch that skips that work during the (long) steady hold
+  // with byte-identical output — it only runs once the sweep begins.
+  float revealed = 0.0;
+  vec3 base = frost;
+  if (u_reveal > 0.0) {
+    revealed = 1.0 - smoothstep(pos - EDGE_SOFT_TRAIL, pos + EDGE_SOFT_LEAD, axis);
 
-  // Chromatic whisper only inside the band, on the incoming sharp side.
-  float chroma = CHROMA_AMOUNT * band * gate;
-  vec3 sharpNew;
-  sharpNew.r = texture2D(u_tex2, clamp(v_uv + vec2(chroma, 0.0), 0.0, 1.0)).r;
-  sharpNew.g = texture2D(u_tex2, v_uv).g;
-  sharpNew.b = texture2D(u_tex2, clamp(v_uv - vec2(chroma, 0.0), 0.0, 1.0)).b;
+    // Chromatic whisper only inside the band, on the incoming sharp side.
+    float chroma = CHROMA_AMOUNT * band * gate;
+    vec3 sharpNew;
+    sharpNew.r = texture2D(u_tex2, clamp(v_uv + vec2(chroma, 0.0), 0.0, 1.0)).r;
+    sharpNew.g = texture2D(u_tex2, v_uv).g;
+    sharpNew.b = texture2D(u_tex2, clamp(v_uv - vec2(chroma, 0.0), 0.0, 1.0)).b;
 
-  vec3 base = mix(frost, sharpNew, revealed);
+    base = mix(frost, sharpNew, revealed);
+  }
 
   // Updating label baked onto the cover: sharp text over the frosted-old side,
   // fading in with the frost (u_strength) and swept away with the reveal band
-  // (the 1.0 - revealed mask).
+  // (the 1.0 - revealed mask). Runs during the hold too, so it stays outside
+  // the reveal guard (revealed is 0 there).
   if (u_has_label > 0.5) {
     vec4 lbl = texture2D(u_label, v_uv);
     float labelFade = (1.0 - revealed) * smoothstep(0.0, 0.35, u_strength);
@@ -279,48 +290,54 @@ void main() {
   }
 
   // ——— glimm flat-band look (geometry computed above, pre-refraction) ———
-  // Synthesized surface normal from the band's analytic slope → the basis for
-  // the iridescent hue shift + specular crest (glimm's name-drop trick).
-  vec3 N = normalize(vec3(-dhDaxis * 0.18, 0.0, 1.0));
+  // Every term here is scaled by gate (0 while holding), so the block adds
+  // nothing until the sweep runs; guard it on u_reveal for the same identical
+  // output at lower cost during the hold.
+  vec3 outRGB = base;
+  if (u_reveal > 0.0) {
+    // Synthesized surface normal from the band's analytic slope → the basis for
+    // the iridescent hue shift + specular crest (glimm's name-drop trick).
+    vec3 N = normalize(vec3(-dhDaxis * 0.18, 0.0, 1.0));
 
-  float trail = clamp(0.5 - d * 1.3, 0.0, 1.0);
-  trail = pow(trail, 2.5) * 0.24;
-  // Flatten the gaussian falloff for the saturation lens so the band's sides
-  // carry more strength (the sharp specular crest still uses raw band).
-  float lensBand = pow(band, 0.7);
-  float intensity = max(lensBand * 0.55, trail);
+    float trail = clamp(0.5 - d * 1.3, 0.0, 1.0);
+    trail = pow(trail, 2.5) * 0.24;
+    // Flatten the gaussian falloff for the saturation lens so the band's sides
+    // carry more strength (the sharp specular crest still uses raw band).
+    float lensBand = pow(band, 0.7);
+    float intensity = max(lensBand * 0.55, trail);
 
-  float vfade =
-    smoothstep(0.0, 0.015, crossAxis) * smoothstep(1.0, 0.985, crossAxis);
+    float vfade =
+      smoothstep(0.0, 0.015, crossAxis) * smoothstep(1.0, 0.985, crossAxis);
 
-  vec3 V = vec3(0.0, 0.0, 1.0);
-  vec3 L = normalize(vec3(0.35, 0.55, 0.9));
-  vec3 H = normalize(L + V);
-  float NdotH = clamp(dot(N, H), 0.0, 1.0);
-  float NdotV = clamp(dot(N, V), 0.0, 1.0);
-  float fresnel = pow(1.0 - NdotV, 3.0);
-  float spec = pow(NdotH, 80.0);
+    vec3 V = vec3(0.0, 0.0, 1.0);
+    vec3 L = normalize(vec3(0.35, 0.55, 0.9));
+    vec3 H = normalize(L + V);
+    float NdotH = clamp(dot(N, H), 0.0, 1.0);
+    float NdotV = clamp(dot(N, V), 0.0, 1.0);
+    float fresnel = pow(1.0 - NdotV, 3.0);
+    float spec = pow(NdotH, 80.0);
 
-  // Soften the band's entry/exit (gate computed above with the geometry).
-  float entryFade = mix(0.2, 1.0, 4.0 * u_reveal * (1.0 - u_reveal));
+    // Soften the band's entry/exit (gate computed above with the geometry).
+    float entryFade = mix(0.2, 1.0, 4.0 * u_reveal * (1.0 - u_reveal));
 
-  // Saturation lens: the sweep pushes the content's own colors more vivid (with
-  // a slight contrast/brightness lift toward the crest) instead of painting a
-  // theme tint, so the band reads as a pulse of the user's actual UI.
-  float lensMix = clamp(intensity * vfade * entryFade * gate, 0.0, 1.0);
-  float luma = dot(base, vec3(0.299, 0.587, 0.114));
-  vec3 vivid = clamp(mix(vec3(luma), base, SAT_BOOST), 0.0, 1.0);
-  vivid = clamp((vivid - 0.5) * 1.06 + 0.5, 0.0, 1.0);
-  vivid *= (1.0 + 0.05 * intensity);
-  vec3 outRGB = mix(base, vivid, lensMix);
+    // Saturation lens: the sweep pushes the content's own colors more vivid (with
+    // a slight contrast/brightness lift toward the crest) instead of painting a
+    // theme tint, so the band reads as a pulse of the user's actual UI.
+    float lensMix = clamp(intensity * vfade * entryFade * gate, 0.0, 1.0);
+    float luma = dot(base, vec3(0.299, 0.587, 0.114));
+    vec3 vivid = clamp(mix(vec3(luma), base, SAT_BOOST), 0.0, 1.0);
+    vivid = clamp((vivid - 0.5) * 1.06 + 0.5, 0.0, 1.0);
+    vivid *= (1.0 + 0.05 * intensity);
+    outRGB = mix(base, vivid, lensMix);
 
-  // Glassy specular crest rides the band centre — a content-agnostic white
-  // sheen plus a faint fresnel of the vivid content keeps it feeling alive.
-  float highMask = band * vfade * entryFade * gate * SWELL_AMOUNT;
-  vec3 iris = 0.5 + 0.5 * cos(vec3(0.0, 2.1, 4.2) + d * 18.0 + tw * 0.8);
-  vec3 bandColor = mix(vec3(0.55, 0.82, 1.0), iris, 0.55);
-  outRGB = mix(outRGB, bandColor, clamp(lensBand * vfade * entryFade * gate * 0.16, 0.0, 0.20));
-  outRGB += (vec3(spec) * 0.85 + bandColor * fresnel * 0.30) * highMask;
+    // Glassy specular crest rides the band centre — a content-agnostic white
+    // sheen plus a faint fresnel of the vivid content keeps it feeling alive.
+    float highMask = band * vfade * entryFade * gate * SWELL_AMOUNT;
+    vec3 iris = 0.5 + 0.5 * cos(vec3(0.0, 2.1, 4.2) + d * 18.0 + tw * 0.8);
+    vec3 bandColor = mix(vec3(0.55, 0.82, 1.0), iris, 0.55);
+    outRGB = mix(outRGB, bandColor, clamp(lensBand * vfade * entryFade * gate * 0.16, 0.0, 0.20));
+    outRGB += (vec3(spec) * 0.85 + bandColor * fresnel * 0.30) * highMask;
+  }
   outRGB = clamp(outRGB, 0.0, 1.0);
 
   gl_FragColor = vec4(outRGB, u_alpha);
@@ -453,20 +470,42 @@ function uploadTexture(
   return texture;
 }
 
-function initShaderGL(
+/**
+ * Persistent GL core: the WebGL context, compiled/linked program, geometry
+ * buffer, and the sampler/blend/clear state that are IDENTICAL for every
+ * morph. Creating the context and compiling+linking the shader is the bulk of
+ * per-morph startup cost and it gates the first paint (→ overlay:morphReady),
+ * so we build it once per canvas and reuse it across morphs. Only per-morph
+ * data (textures, drawing-buffer size, variable uniforms) changes between
+ * morphs, so the rendered output is byte-for-byte identical to compiling a
+ * fresh program each time.
+ */
+type ProgramCore = {
+  gl: WebGLRenderingContext;
+  prog: WebGLProgram;
+  vs: WebGLShader;
+  fs: WebGLShader;
+  buf: WebGLBuffer;
+};
+
+function ensureProgramCore(
   canvas: HTMLCanvasElement,
-  img: ImageBitmap,
-  label?: HTMLCanvasElement | null,
-): ShaderGLContext | null {
+  coreRef: { current: ProgramCore | null },
+): ProgramCore | null {
+  const existing = coreRef.current;
+  if (
+    existing &&
+    existing.gl.canvas === canvas &&
+    !existing.gl.isContextLost()
+  ) {
+    return existing;
+  }
+
   const gl = canvas.getContext("webgl", {
     alpha: true,
     premultipliedAlpha: false,
   });
   if (!gl) return null;
-
-  canvas.width = img.width;
-  canvas.height = img.height;
-  gl.viewport(0, 0, img.width, img.height);
 
   const { prog, vs, fs } = compileProgram(gl, VERT, BLUR_FRAG);
 
@@ -481,26 +520,85 @@ function initShaderGL(
   gl.enableVertexAttribArray(pos);
   gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
 
+  // Sampler bindings, blend mode and clear color are context/program state
+  // that survive across morphs — set them once here.
+  gl.uniform1i(gl.getUniformLocation(prog, "u_tex"), 0);
+  gl.uniform1i(gl.getUniformLocation(prog, "u_tex2"), 1);
+  gl.uniform1i(gl.getUniformLocation(prog, "u_label"), 2);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.clearColor(0, 0, 0, 0);
+
+  const core: ProgramCore = { gl, prog, vs, fs, buf };
+  coreRef.current = core;
+  return core;
+}
+
+/**
+ * 1×1 transparent placeholder for TEXTURE1 (u_tex2). The incoming capture only
+ * exists at handoff, and the shader never samples u_tex2 while the cover holds
+ * (u_reveal is 0, which gates every u_tex2 read out), so there is nothing to
+ * show there during cover. This replaces re-uploading the old screenshot a
+ * second time at init; the handoff overwrites this texture in place. It keeps
+ * the same wrap/filter params loadSecondTexture relies on.
+ */
+function createPlaceholderTexture(
+  gl: WebGLRenderingContext,
+  unit: number,
+): WebGLTexture {
+  const texture = gl.createTexture()!;
+  gl.activeTexture(unit);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    1,
+    1,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    new Uint8Array([0, 0, 0, 0]),
+  );
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  return texture;
+}
+
+function initShaderGL(
+  canvas: HTMLCanvasElement,
+  img: ImageBitmap,
+  coreRef: { current: ProgramCore | null },
+  label?: HTMLCanvasElement | null,
+): ShaderGLContext | null {
+  const core = ensureProgramCore(canvas, coreRef);
+  if (!core) return null;
+  const { gl, prog, vs, fs, buf } = core;
+
+  canvas.width = img.width;
+  canvas.height = img.height;
+  gl.viewport(0, 0, img.width, img.height);
+  gl.useProgram(prog);
+
   const tex = uploadTexture(gl, gl.TEXTURE0, img);
-  const tex2 = uploadTexture(gl, gl.TEXTURE1, img);
+  // TEXTURE1 holds the incoming capture, uploaded at handoff; a tiny
+  // placeholder is all that is needed during cover (u_tex2 is gated out while
+  // u_reveal is 0).
+  const tex2 = createPlaceholderTexture(gl, gl.TEXTURE1);
 
   // Optional "Stella is changing..." label, uploaded on TEXTURE2 when present.
   let labelTex: WebGLTexture | null = null;
   if (label) {
     labelTex = uploadTexture(gl, gl.TEXTURE2, label);
-    gl.activeTexture(gl.TEXTURE0);
   }
+  gl.activeTexture(gl.TEXTURE0);
 
-  gl.uniform1i(gl.getUniformLocation(prog, "u_tex"), 0);
-  gl.uniform1i(gl.getUniformLocation(prog, "u_tex2"), 1);
-  gl.uniform1i(gl.getUniformLocation(prog, "u_label"), 2);
   gl.uniform1f(gl.getUniformLocation(prog, "u_has_label"), labelTex ? 1 : 0);
   gl.uniform1f(gl.getUniformLocation(prog, "u_alpha"), 1.0);
   gl.uniform1f(gl.getUniformLocation(prog, "u_reveal"), 0.0);
   gl.uniform1f(gl.getUniformLocation(prog, "u_aspect"), img.width / img.height);
-
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
   return {
     gl,
@@ -535,11 +633,18 @@ function loadSecondTexture(ctx: GLContext, img: ImageBitmap) {
   gl.activeTexture(gl.TEXTURE0);
 }
 
+// Per-morph teardown: delete only this morph's textures. The context,
+// compiled program and geometry buffer live in the ProgramCore and are reused
+// by the next morph (full teardown happens in destroyProgramCore on unmount).
 function cleanupGL(ctx: GLContext) {
-  const { gl, buf, prog, vs, fs } = ctx;
+  const { gl } = ctx;
   gl.deleteTexture(ctx.tex);
   gl.deleteTexture(ctx.tex2);
   if (ctx.labelTex) gl.deleteTexture(ctx.labelTex);
+}
+
+function destroyProgramCore(core: ProgramCore) {
+  const { gl, buf, prog, vs, fs } = core;
   gl.deleteBuffer(buf);
   gl.deleteProgram(prog);
   gl.deleteShader(vs);
@@ -598,7 +703,7 @@ function startCoverRenderLoop(
       skipNextFrame = false;
     }
 
-    gl.clearColor(0, 0, 0, 0);
+    // clearColor is set once on the ProgramCore and persists across frames.
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform1f(strengthLoc, strengthRef.current);
     gl.uniform1f(timeLoc, timePhaseRef.current);
@@ -692,6 +797,9 @@ export function MorphTransition() {
   const [hmrState, setHmrState] = useState<SelfModHmrState>(IDLE_HMR_STATE);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const glCtxRef = useRef<GLContext | null>(null);
+  // Persistent WebGL context + compiled program, reused across morphs so we
+  // don't recreate the context / recompile the shader on every transition.
+  const glCoreRef = useRef<ProgramCore | null>(null);
   const activeTransitionIdRef = useRef<string | null>(null);
   const strengthRef = useRef(0);
   const alphaRef = useRef(1);
@@ -812,7 +920,7 @@ export function MorphTransition() {
                   labelStyleRef.current.font,
                 )
               : null;
-          const ctx = initShaderGL(canvasRef.current, img, label);
+          const ctx = initShaderGL(canvasRef.current, img, glCoreRef, label);
           if (!ctx) return;
           glCtxRef.current = ctx;
 
@@ -893,6 +1001,12 @@ export function MorphTransition() {
                 ? ONBOARDING_MORPH_HANDOFF_FADE_MS
                 : normalizeVisualTiming(data.timing).handoffFadeMs;
             loadSecondTexture(ctx, img);
+            // Push the (multi-MB) incoming-capture upload to the driver now,
+            // while the cover still holds (u_reveal is 0, so the sweep hasn't
+            // started), instead of letting it settle lazily on the first sweep
+            // frame where it could stall the most motion-critical moment. This
+            // only affects upload scheduling, not any rendered pixel.
+            ctx.gl.flush();
             alphaRef.current = 1;
             setState((prev) => ({ ...prev, phase: "crossfading" }));
 
@@ -955,10 +1069,20 @@ export function MorphTransition() {
 
     return () => {
       unsubs.forEach((unsubscribe) => unsubscribe());
+      disposeMorph();
+      if (glCoreRef.current) {
+        destroyProgramCore(glCoreRef.current);
+        glCoreRef.current = null;
+      }
     };
   }, []);
 
-  if (state.phase === "idle") return null;
+  // The canvas stays mounted even when idle (just hidden) so its WebGL context
+  // and compiled shader program survive between morphs — that's what lets
+  // initShaderGL reuse the ProgramCore instead of recreating it each morph.
+  // React would otherwise create a fresh canvas element (and a fresh context)
+  // on every remount.
+  const idle = state.phase === "idle";
 
   return (
     <canvas
@@ -973,6 +1097,7 @@ export function MorphTransition() {
         height: state.height,
         zIndex: 99999,
         pointerEvents: "none",
+        display: idle ? "none" : undefined,
       }}
     />
   );
