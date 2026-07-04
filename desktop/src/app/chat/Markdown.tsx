@@ -1,11 +1,13 @@
 import type { CSSProperties, ImgHTMLAttributes } from "react";
 import { memo, useMemo, useRef } from "react";
-import {
-  Streamdown,
-  defaultRehypePlugins,
-  defaultRemarkPlugins,
-} from "streamdown";
+import { Streamdown, defaultRemarkPlugins } from "streamdown";
 import { cn } from "@/shared/lib/utils";
+import {
+  remarkStellaFileLinks,
+  STELLA_FILE_TAG,
+  STELLA_FILE_TAG_ATTRIBUTES,
+} from "@/features/chat/lib/stella-file-links";
+import { StellaFileLink } from "./StellaFileLink";
 import {
   hasCompleteEmojiSpritePack,
   useActiveEmojiPack,
@@ -38,19 +40,28 @@ type MarkdownImageProps = ImgHTMLAttributes<HTMLImageElement> & {
  * `defaultRemarkPlugins` is exported as a `Record<string, Pluggable>`
  * map; the prop wants an array, so unwrap with `Object.values`.
  *
- * `BASE_REMARK_PLUGINS` is the default Streamdown set. The emoji sprite
- * plugin is added only when a complete active pack is present; otherwise
- * native Unicode emoji must remain visible.
+ * `BASE_REMARK_PLUGINS` is the default Streamdown set plus the
+ * stella-file link rewriter (always on — assistant messages may reference
+ * local files anywhere). The emoji sprite plugin is added only when a
+ * complete active pack is present; otherwise native Unicode emoji must
+ * remain visible.
  */
 const DEFAULT_REMARK_PLUGINS = Object.values(defaultRemarkPlugins);
-const BASE_REMARK_PLUGINS = [...DEFAULT_REMARK_PLUGINS];
+const BASE_REMARK_PLUGINS = [...DEFAULT_REMARK_PLUGINS, remarkStellaFileLinks];
 
 /*
- * Streamdown's `rehypePlugins` prop, like `remarkPlugins`, *replaces*
- * its defaults — re-spread them so harden / sanitize / raw stay in
- * place.
+ * `stella://file/...` references are rewritten by `remarkStellaFileLinks`
+ * into custom `<stella-file>` elements (a plain `<a href="stella://…">`
+ * would be stripped by rehype-sanitize's protocol allow-list). Streamdown's
+ * `allowedTags` prop threads the tag + attributes through its sanitize
+ * schema — but ONLY when the `rehypePlugins` prop is left at Streamdown's
+ * own default array (it compares by identity), which is why no
+ * `rehypePlugins` prop is passed below; the defaults (raw / sanitize /
+ * harden) apply either way.
  */
-const DEFAULT_REHYPE_PLUGINS = Object.values(defaultRehypePlugins);
+const ALLOWED_TAGS: Record<string, string[]> = {
+  [STELLA_FILE_TAG]: [...STELLA_FILE_TAG_ATTRIBUTES],
+};
 
 /*
  * Disable Streamdown's built-in "Open external link?" confirmation modal.
@@ -122,6 +133,7 @@ const MarkdownImage = ({
 const buildComponents = (hideHorizontalRules: boolean) => ({
   ...(hideHorizontalRules ? { hr: () => null } : {}),
   img: MarkdownImage,
+  [STELLA_FILE_TAG]: StellaFileLink,
 });
 
 let nextAnonCacheKey = 0;
@@ -179,8 +191,8 @@ export const Markdown = memo(function Markdown({
         key={streamdownKey}
         className={cn("markdown", className)}
         remarkPlugins={remarkPlugins}
-        rehypePlugins={DEFAULT_REHYPE_PLUGINS}
         components={components}
+        allowedTags={ALLOWED_TAGS}
         linkSafety={LINK_SAFETY}
       >
         {text}

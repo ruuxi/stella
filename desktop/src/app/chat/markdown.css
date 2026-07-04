@@ -89,6 +89,34 @@
   border-radius: var(--radius-sm);
 }
 
+/* stella://file references — inline underlined link text that opens the
+   file in a workspace viewer (or the OS default app) on click. Reads as
+   part of the sentence, not a chip. */
+.markdown .markdown-stella-file {
+  color: var(--text-interactive-base, var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  font-weight: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.markdown .markdown-stella-file:hover {
+  text-decoration-thickness: 2px;
+}
+
+.markdown .markdown-stella-file:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+.markdown .markdown-stella-file[data-failed] {
+  color: var(--text-tertiary, var(--muted-foreground));
+  text-decoration-style: dotted;
+}
+
 /* Lists */
 .markdown ul,
 .markdown ol {
