@@ -632,6 +632,41 @@ describe("mergeFooterTasks", () => {
     expect(shouldShowTaskReasoningSummaries(merged[0]!)).toBe(true);
   });
 
+  it("does not let resume snapshots revive completed persisted tasks", () => {
+    const merged = mergeFooterTasks(
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "completed",
+          startedAtMs: 100,
+          completedAtMs: 200,
+          lastUpdatedAtMs: 200,
+          outputPreview: "Done",
+        },
+      ],
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "running",
+          runId: "run-1",
+          hydratedFromResumeSnapshot: true,
+          startedAtMs: 1_000,
+          lastUpdatedAtMs: 1_000,
+          statusText: "Running read",
+        },
+      ],
+    );
+
+    expect(merged[0]?.status).toBe("completed");
+    expect(merged[0]?.completedAtMs).toBe(200);
+    expect(merged[0]?.outputPreview).toBe("Done");
+    expect(shouldShowTaskReasoningSummaries(merged[0]!)).toBe(false);
+  });
+
   it("preserves persisted status text when live state only has a generic placeholder", () => {
     const persistedTasks = extractTasksFromEvents([
       event("1", 100, "agent-started", {

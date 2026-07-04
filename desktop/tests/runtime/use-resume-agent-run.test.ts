@@ -4,6 +4,7 @@ import {
   initialStoreState,
   reconcileTerminalTaskKeysFromResumeTasks,
   streamStoreReducer,
+  toTaskFromResumeSnapshot,
 } from "../../src/features/chat/streaming/store";
 
 describe("shouldRetainResumedStreamingState", () => {
@@ -101,6 +102,23 @@ describe("reconcileTerminalTaskKeysFromResumeTasks", () => {
       "run-1:task-1",
       "run-9:task-9",
     ]);
+  });
+});
+
+describe("toTaskFromResumeSnapshot", () => {
+  it("marks hydrated tasks so they cannot masquerade as fresh lifecycle events", () => {
+    const task = toTaskFromResumeSnapshot(
+      {
+        runId: "run-1",
+        agentId: "task-1",
+        status: "running",
+        description: "Inspect settings",
+      },
+      1_000,
+    );
+
+    expect(task.hydratedFromResumeSnapshot).toBe(true);
+    expect(task.status).toBe("running");
   });
 });
 
