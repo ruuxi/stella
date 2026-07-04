@@ -405,6 +405,22 @@ export function useAgentEventHandler({
           break
         }
         case AGENT_STREAM_EVENT_TYPES.STATUS: {
+          if (event.statusState === 'model-fallback') {
+            // Claude Code silently swapped the session's model out from under
+            // us via its built-in safety fallback. The configured model is no
+            // longer the one answering, so make the switch visible.
+            if (conversationId === activeConversationIdRef.current) {
+              showToast({
+                title: 'Claude Code switched models',
+                description:
+                  event.statusText ||
+                  "Claude Code's safety fallback switched this session to a different model.",
+                variant: 'error',
+                duration: 10000,
+              })
+            }
+            break
+          }
           if (event.statusState === 'provider-retry') {
             if (conversationId === activeConversationIdRef.current) {
               showToast({
