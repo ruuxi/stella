@@ -918,6 +918,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
           reasoningText?: string;
           result?: string;
           error?: string;
+          startedAtMs?: number;
+          completedAtMs?: number;
         }>;
       }>,
     onStream: onIpc<{

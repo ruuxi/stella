@@ -667,6 +667,78 @@ describe("mergeFooterTasks", () => {
     expect(shouldShowTaskReasoningSummaries(merged[0]!)).toBe(false);
   });
 
+  it("does not let a hydrated terminal snapshot's timestamps beat the persisted ones", () => {
+    // Regression: snapshots without real timestamps hydrate with synthetic
+    // "now" stamps; letting those overwrite the persisted row bumped every
+    // settled task to the same fresh instant and reordered the done list on
+    // each re-hydration (message send / stream reconnect).
+    const merged = mergeFooterTasks(
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "completed",
+          startedAtMs: 100,
+          completedAtMs: 200,
+          lastUpdatedAtMs: 200,
+          outputPreview: "Done",
+        },
+      ],
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "completed",
+          runId: "run-1",
+          hydratedFromResumeSnapshot: true,
+          startedAtMs: 1_000,
+          completedAtMs: 1_000,
+          lastUpdatedAtMs: 1_000,
+          outputPreview: "Done",
+        },
+      ],
+    );
+
+    expect(merged[0]?.status).toBe("completed");
+    expect(merged[0]?.startedAtMs).toBe(100);
+    expect(merged[0]?.completedAtMs).toBe(200);
+  });
+
+  it("keeps a live non-hydrated task's own timestamps when merging", () => {
+    const merged = mergeFooterTasks(
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "completed",
+          startedAtMs: 100,
+          completedAtMs: 200,
+          lastUpdatedAtMs: 200,
+          outputPreview: "Done",
+        },
+      ],
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "completed",
+          runId: "run-2",
+          startedAtMs: 300,
+          completedAtMs: 400,
+          lastUpdatedAtMs: 400,
+          outputPreview: "Done again",
+        },
+      ],
+    );
+
+    expect(merged[0]?.startedAtMs).toBe(300);
+    expect(merged[0]?.completedAtMs).toBe(400);
+  });
+
   it("preserves persisted status text when live state only has a generic placeholder", () => {
     const persistedTasks = extractTasksFromEvents([
       event("1", 100, "agent-started", {

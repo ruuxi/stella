@@ -1012,10 +1012,19 @@ export function mergeFooterTasks(
             statusText:
               normalizeTaskDisplayStatusText(task.statusText) ??
               normalizeTaskDisplayStatusText(persistedTask.statusText),
+            // A hydrated snapshot's timestamps can be synthetic (renderer
+            // receipt time, for snapshots predating real stamps) — never let
+            // them beat the persisted row's real ones, or every re-hydration
+            // bumps settled rows to "just now" and reorders the done list.
+            startedAtMs: task.hydratedFromResumeSnapshot
+              ? persistedTask.startedAtMs
+              : task.startedAtMs,
             completedAtMs:
               task.status === 'running'
                 ? undefined
-                : (task.completedAtMs ?? persistedTask.completedAtMs),
+                : task.hydratedFromResumeSnapshot
+                  ? (persistedTask.completedAtMs ?? task.completedAtMs)
+                  : (task.completedAtMs ?? persistedTask.completedAtMs),
             outputPreview:
               task.status === 'running'
                 ? undefined
