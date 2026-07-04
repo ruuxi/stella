@@ -406,15 +406,16 @@ export function useAgentEventHandler({
         }
         case AGENT_STREAM_EVENT_TYPES.STATUS: {
           if (event.statusState === 'model-fallback') {
-            // Claude Code silently swapped the session's model out from under
-            // us via its built-in safety fallback. The configured model is no
-            // longer the one answering, so make the switch visible.
+            // The engine swapped the model out from under the user — either
+            // the stella engine's Fable 5 -> Opus 4.8 safety retry or Claude
+            // Code's --fallback-model overload switch. The configured model
+            // is not the one answering, so make the switch visible.
             if (conversationId === activeConversationIdRef.current) {
               showToast({
-                title: 'Claude Code switched models',
+                title: 'Switched to a fallback model',
                 description:
                   event.statusText ||
-                  "Claude Code's safety fallback switched this session to a different model.",
+                  'The configured model was unavailable, so this session switched to a fallback model.',
                 variant: 'error',
                 duration: 10000,
               })

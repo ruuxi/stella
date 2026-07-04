@@ -9,6 +9,7 @@ import {
   ProviderAbortContainment,
   QUARANTINE_PLACEHOLDER,
   SAFETY_SWAP_STELLA_MODEL_ID,
+  safetyRetryStatusMessage,
   safetySwapStatusMessage,
   serializeQuarantineRecord,
 } from "../../../../../runtime/kernel/agent-runtime/provider-abort-containment.js";
@@ -449,7 +450,17 @@ describe("safety abort model swap (fable-5 → opus-4.8)", () => {
         toModelId: SAFETY_SWAP_STELLA_MODEL_ID,
       }),
     ).toBe(
-      `provider safety abort on stella/max — auto-retried on ${SAFETY_SWAP_STELLA_MODEL_ID}`,
+      `stella/max refused this request 3 times (safety), so this turn was ` +
+        `retried on ${SAFETY_SWAP_STELLA_MODEL_ID}. Your configured model ` +
+        `resumes next turn.`,
+    );
+  });
+
+  it("formats the same-model retry note", () => {
+    expect(
+      safetyRetryStatusMessage({ modelId: "stella/max", attempt: 2 }),
+    ).toBe(
+      "stella/max refused this request (safety) — retrying (attempt 2 of 3)",
     );
   });
 });

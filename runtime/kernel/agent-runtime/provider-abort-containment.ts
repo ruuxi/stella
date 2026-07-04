@@ -450,9 +450,33 @@ export const buildSafetyAbortSwapRoute = (
   };
 };
 
-/** Human-readable note recorded on the run when the swap fires. */
+/**
+ * Total consecutive attempts the configured fable route gets on a safety
+ * abort before the turn swaps to opus-4.8 (1 initial + 2 retries). Refusals
+ * are stochastic enough that a plain retry often clears them; the swap is
+ * the last resort, and the configured model comes back next turn. Shared by
+ * every engine that implements the fallback policy (stella sessions and the
+ * Claude Code runtime).
+ */
+export const SAFETY_ABORT_FABLE_ATTEMPTS = 3;
+
+/** Status-pill note for an intermediate same-model retry (no toast). */
+export const safetyRetryStatusMessage = (args: {
+  modelId: string;
+  attempt: number;
+}): string =>
+  `${args.modelId} refused this request (safety) — retrying ` +
+  `(attempt ${args.attempt} of ${SAFETY_ABORT_FABLE_ATTEMPTS})`;
+
+/**
+ * Human-readable note recorded on the run when the swap fires. Doubles as
+ * the body of the desktop "model-fallback" toast, so it names the switch in
+ * user terms and notes that the configured model comes back next turn.
+ */
 export const safetySwapStatusMessage = (swap: {
   fromModelId: string;
   toModelId: string;
 }): string =>
-  `provider safety abort on ${swap.fromModelId} — auto-retried on ${swap.toModelId}`;
+  `${swap.fromModelId} refused this request ${SAFETY_ABORT_FABLE_ATTEMPTS} ` +
+  `times (safety), so this turn was retried on ${swap.toModelId}. ` +
+  `Your configured model resumes next turn.`;

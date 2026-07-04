@@ -88,6 +88,13 @@ class TestSession extends PiSessionCore {
     return this.prepareSafetyModelSwap(agent, { errorMessage, logContext: {} });
   }
 
+  retrySameModel(agent: Agent, errorMessage: string) {
+    return this.prepareSafetySameModelRetry(agent, {
+      errorMessage,
+      logContext: {},
+    });
+  }
+
   fail(
     agent: Agent,
     args: { messagesBefore: number; errorMessage: string },
@@ -164,6 +171,62 @@ describe("prepareSafetyModelSwap bail path", () => {
     expect(messages).toHaveLength(1);
     expect(messages[0].role).toBe("user");
     expect(agent.state.model.id).toBe(SAFETY_SWAP_STELLA_MODEL_ID);
+  });
+});
+
+describe("prepareSafetySameModelRetry", () => {
+  it("pops the errored tail and keeps the fable route for a same-model retry", () => {
+    const route = fableStellaRoute();
+    const session = new TestSession();
+    session.setRoute(route);
+    const messages: AgentMessage[] = [
+      userMessage(1),
+      assistantMessage(2, "error", { errorMessage: SAFETY_ABORT_MESSAGE }),
+    ];
+    const agent = fakeAgent(messages, route);
+
+    const retry = session.retrySameModel(agent, SAFETY_ABORT_MESSAGE);
+
+    expect(retry).toEqual({ modelId: "stella/max" });
+    expect(messages).toHaveLength(1);
+    expect(messages[0].role).toBe("user");
+    // The route is untouched — the retry runs on the configured model.
+    expect(agent.state.model.id).toBe("stella/max");
+  });
+
+  it("declines non-safety errors and non-fable routes", () => {
+    const route = fableStellaRoute();
+    const session = new TestSession();
+    session.setRoute(route);
+    const agent = fakeAgent(
+      [
+        userMessage(1),
+        assistantMessage(2, "error", { errorMessage: "boring timeout" }),
+      ],
+      route,
+    );
+    expect(session.retrySameModel(agent, "boring timeout")).toBeNull();
+
+    // Same safety error, but the route already swapped to opus: no retry —
+    // failures on the fallback surface normally.
+    const swapped = session.swap(agent, SAFETY_ABORT_MESSAGE);
+    expect(swapped).not.toBeNull();
+    expect(session.retrySameModel(agent, SAFETY_ABORT_MESSAGE)).toBeNull();
+  });
+
+  it("bails without mutating on an unexpected assistant tail", () => {
+    const route = fableStellaRoute();
+    const session = new TestSession();
+    session.setRoute(route);
+    const messages: AgentMessage[] = [
+      userMessage(1),
+      assistantMessage(2, "stop", { text: "earlier reply" }),
+      assistantMessage(3, "error", { errorMessage: SAFETY_ABORT_MESSAGE }),
+    ];
+    const agent = fakeAgent(messages, route);
+
+    expect(session.retrySameModel(agent, SAFETY_ABORT_MESSAGE)).toBeNull();
+    expect(messages).toHaveLength(3);
   });
 });
 
