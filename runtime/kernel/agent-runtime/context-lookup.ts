@@ -1234,26 +1234,6 @@ export const runRecall = async (args: {
     scratchpad += `\nAction: ${JSON.stringify({ action: "search_memory", terms: seedTerms })}\nObservation:\n${truncate(initial, RECALL_OBSERVATION_CHAR_BUDGET)}\n`;
   }
 
-  // Transcript search runs UNCONDITIONALLY on every recall: the unified
-  // search over the lookup prompt's own tokens is pre-run and seeded into
-  // the scratchpad, so raw-message evidence reaches the model even when it
-  // never issues a search of its own — the silent summaries-only
-  // degradation observed in the field when the engine's tool path failed.
-  // Deliberately does NOT count as the model's own search (`ranSearch`), so
-  // a nothing-found answer still has to earn it with a refined query.
-  const preSearchQuery = args.lookupPrompt.trim().slice(0, 500);
-  const preSearchAction = { action: "search", query: preSearchQuery } as const;
-  recordSearchObservation(
-    "pre",
-    preSearchAction,
-    formatUnifiedSearch(
-      args.store,
-      args.conversationId,
-      preSearchQuery,
-      undefined,
-    ),
-  );
-
   const isNothingFoundBrief = (brief: string): boolean =>
     brief.trim().toLocaleLowerCase().startsWith("nothing relevant found");
   let rejectedUnsearchedNothingFound = false;
