@@ -1,6 +1,11 @@
 import path from "node:path";
 
-import type { AssistantMessage, Context, Message } from "../../ai/types.js";
+import type {
+  AssistantMessage,
+  Context,
+  Message,
+  Tool,
+} from "../../ai/types.js";
 import { completeSimple, readAssistantText } from "../../ai/stream.js";
 import { parseJsonWithRepair } from "../../ai/utils/json-parse.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
@@ -74,15 +79,15 @@ const RECALL_INDEX_DESCRIPTION_CHARS = 300;
 /** Latest live progress phrases surfaced per ACTIVE thread. */
 const MAX_LIVE_PROGRESS_SUMMARIES = 3;
 
-// Exported so replay/eval harnesses can drive the exact production prompt.
-export const RECALL_SYSTEM_PROMPT = [
-  "You are Stella's recall agent. Resolve the lookup request into a concise, useful answer for the orchestrator, drawing on the user's durable memory, past agent work, past conversation transcripts, recent activity, and live app/browser state.",
-  "",
-  "You work in up to a few steps. At each step respond with EXACTLY ONE JSON object and nothing else:",
-  '  {"action":"search_memory","terms":["...", "..."]}  — keyword-search the durable memory ledger (MEMORY.md). 2-8 concrete terms.',
-  '  {"action":"search","query":"..."}                   — keyword-search past conversation transcripts (what the user and Stella actually said, across ALL conversations) plus agent work too old for the thread index. Returns matching [agent thread] entries first, then [message] hits in chronological order (oldest → newest) — read those as a timeline.',
-  '  {"action":"answer","brief":"..."}                   — finish with a concise markdown brief.',
-  "",
+const RECALL_PROMPT_INTRO =
+  "You are Stella's recall agent. Resolve the lookup request into a concise, useful answer for the orchestrator, drawing on the user's durable memory, past agent work, past conversation transcripts, recent activity, and live app/browser state.";
+
+const RECALL_SEARCH_MEMORY_DESCRIPTION =
+  "keyword-search the durable memory ledger (MEMORY.md). 2-8 concrete terms.";
+const RECALL_SEARCH_DESCRIPTION =
+  "keyword-search past conversation transcripts (what the user and Stella actually said, across ALL conversations) plus agent work too old for the thread index. Returns matching [agent thread] entries first, then [message] hits in chronological order (oldest → newest) — read those as a timeline.";
+
+const RECALL_PROMPT_SHARED_GUIDANCE = [
   "THREAD QUESTIONS ARE ANSWERED FROM THE INDEX, NOT BY SEARCHING. The context below carries a # Thread Index — the full record of Stella's recent delegated agent threads (name, description, last-active time, final-result excerpt, error) — and a # Live Thread Status tail listing the threads executing a turn RIGHT NOW with timestamped live-progress phrases. Any indexed thread absent from that tail is paused (idle but resumable); there is no 'dead' state. For any question about past work, a task, or a thread's status ('is X still running?', 'did it crash?', 'what did the Y agent do?'): scan the ENTIRE index for candidates — match on meaning, not exact wording — and OPEN YOUR BRIEF BY QUOTING the candidate thread_id(s) you matched, then answer from the entry, the live-status tail, and the current time (e.g. 'thread X is active; as of 3:04 PM it was searching documentation for rate limits'). Quote the error excerpt when a run errored. Do not guess at status, and do not conclude a thread doesn't exist until you have scanned the whole index.",
   "",
   "Reading search results by their type labels: `[agent thread]` results are past work/tasks — they carry a resumable thread_id, live status, and summary. `[message]` results are things actually said in chat — dated snippets with their conversation context; these are what answer episodic questions (\"did I ever mention X\", \"where did we go\") that never became a task or memory note. When memory search comes up empty on something the user plausibly said before, run search before answering \"nothing found\".",
@@ -95,7 +100,83 @@ export const RECALL_SYSTEM_PROMPT = [
   "",
   "When past threads are relevant, include their thread_id(s) in the brief so the orchestrator can resume them. Keep the brief tight — only what helps answer or route the request.",
   'Answer with exactly "Nothing relevant found." ONLY when you have earned it: for thread/work questions, after scanning the entire # Thread Index; for episodic/message questions, after running search at least TWICE with DIFFERENT concrete terms (reformulate — drop status/filler words, use names, slugs, file paths, places). Never conclude nothing-found from a single noisy search.',
+];
+
+// Exported so replay/eval harnesses can drive the exact production prompt.
+export const RECALL_SYSTEM_PROMPT = [
+  RECALL_PROMPT_INTRO,
+  "",
+  "You work in up to a few steps. At each step respond with EXACTLY ONE JSON object and nothing else:",
+  `  {"action":"search_memory","terms":["...", "..."]}  — ${RECALL_SEARCH_MEMORY_DESCRIPTION}`,
+  `  {"action":"search","query":"..."}                   — ${RECALL_SEARCH_DESCRIPTION}`,
+  '  {"action":"answer","brief":"..."}                   — finish with a concise markdown brief.',
+  "",
+  ...RECALL_PROMPT_SHARED_GUIDANCE,
 ].join("\n");
+
+/**
+ * The prompt for external-engine runs (Claude Code): that runtime's decision
+ * contract DISCARDS any model reply that starts with `{` but is not a
+ * `{"type":...}` payload, so the JSON-action dialect above can never
+ * round-trip. There the search actions are hosted TOOLS instead (see
+ * `RECALL_RUNTIME_TOOLS`) and the final brief is plain text.
+ */
+export const RECALL_TOOL_RUNTIME_SYSTEM_PROMPT = [
+  RECALL_PROMPT_INTRO,
+  "",
+  "You work in up to a few steps using the hosted search tools:",
+  `  search_memory — ${RECALL_SEARCH_MEMORY_DESCRIPTION}`,
+  `  search — ${RECALL_SEARCH_DESCRIPTION}`,
+  'These are Stella-hosted tools, NOT native function-call tools: a native call to them fails with "No such tool available". Invoke them ONLY via the structured decision JSON {"type":"tool_request","toolName":"search","args":{"query":"..."}}. A failed native call does NOT mean search is unavailable — reissue it as the structured decision. Never tell the orchestrator that search is unavailable.',
+  "When you can answer, reply with the concise markdown brief itself as your final message — plain text, no JSON wrapper.",
+  "",
+  ...RECALL_PROMPT_SHARED_GUIDANCE,
+].join("\n");
+
+/**
+ * The recall search actions as hosted tools, for engines whose runtime
+ * carries a real tool protocol (Claude Code). Backed by the exact same
+ * in-process search functions the JSON-action loop uses; `runRecall` wires
+ * them in via `executeTool`.
+ */
+export const RECALL_RUNTIME_TOOLS: Tool[] = [
+  {
+    name: "search_memory",
+    description: `${RECALL_SEARCH_MEMORY_DESCRIPTION[0]?.toUpperCase()}${RECALL_SEARCH_MEMORY_DESCRIPTION.slice(1)}`,
+    parameters: {
+      type: "object",
+      properties: {
+        terms: {
+          type: "array",
+          items: { type: "string" },
+          description: "2-8 concrete search terms.",
+        },
+      },
+      required: ["terms"],
+      additionalProperties: false,
+    } as unknown as Tool["parameters"],
+  },
+  {
+    name: "search",
+    description: `${RECALL_SEARCH_DESCRIPTION[0]?.toUpperCase()}${RECALL_SEARCH_DESCRIPTION.slice(1)}`,
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "Concrete nouns: names, places, file paths, slugs, error text — not status/filler words.",
+        },
+        limit: {
+          type: "number",
+          description: "Max results (default 12, max 25).",
+        },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    } as unknown as Tool["parameters"],
+  },
+];
 
 /** The one legitimate no-result answer — everything else is an error. */
 export const RECALL_NO_MATCH_TEXT = "Nothing relevant found.";
@@ -1008,9 +1089,83 @@ export const runRecall = async (args: {
     return "Recall is unavailable because no model credential is configured.";
   }
 
+  const verbose = recallTraceVerbose();
+  let scratchpad = "";
+  let ranSearch = false;
+
+  /** Run one search action against the real backends (shared by both engines). */
+  const executeSearchAction = async (
+    action: Exclude<RecallAction, { action: "answer" }>,
+  ): Promise<string> => {
+    if (action.action === "search") ranSearch = true;
+    return action.action === "search_memory"
+      ? await readMemorySearchResults(args.stellaDataDir, action.terms)
+      : formatUnifiedSearch(
+          args.store,
+          args.conversationId,
+          action.query,
+          action.limit,
+        );
+  };
+
+  /** Trace the search and append it to the scratchpad the next step sees. */
+  const recordSearchObservation = (
+    step: number | string,
+    action: Exclude<RecallAction, { action: "answer" }>,
+    observation: string,
+  ): void => {
+    logRecallTrace("[stella:recall:step]", {
+      conversationId: args.conversationId,
+      step,
+      action: action.action,
+      observationChars: observation.length,
+      // Search terms/queries and observation content are user data — only
+      // traced when explicitly debugging.
+      ...(verbose
+        ? {
+            actionDetail:
+              action.action === "search_memory"
+                ? { terms: action.terms }
+                : { query: action.query ?? null },
+            observationPreview: previewForTrace(observation),
+          }
+        : {}),
+    });
+    scratchpad += `\nAction: ${JSON.stringify(action)}\nObservation:\n${truncate(observation, RECALL_OBSERVATION_CHAR_BUDGET)}\n`;
+  };
+
+  /**
+   * The Claude Code engine's tool bridge: the CLI runtime advertises
+   * `RECALL_RUNTIME_TOOLS` and routes each `tool_request` here, onto the
+   * same search backends the JSON-action loop uses. Without this, the run
+   * carried an EMPTY tool list and no executor, so every search attempt got
+   * "Tool search is not available in this run." and recall silently degraded
+   * to the seed context (thread index + memory summaries only).
+   */
+  let toolCallCount = 0;
+  const executeRecallToolCall = async (
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+  ): Promise<{ result?: unknown; error?: string }> => {
+    const action = parseRecallAction(
+      JSON.stringify({ ...toolArgs, action: toolName }),
+    );
+    if (!action || action.action === "answer") {
+      return {
+        error: `Unknown tool "${toolName}". Use search_memory or search, or reply with the final brief as plain text.`,
+      };
+    }
+    const observation = await executeSearchAction(action);
+    recordSearchObservation(`tool:${toolCallCount++}`, action, observation);
+    return { result: observation };
+  };
+
   const step = async (userText: string): Promise<string> => {
     const context: Context = {
-      systemPrompt: RECALL_SYSTEM_PROMPT,
+      systemPrompt: useClaudeCode
+        ? RECALL_TOOL_RUNTIME_SYSTEM_PROMPT
+        : RECALL_SYSTEM_PROMPT,
+      ...(useClaudeCode ? { tools: RECALL_RUNTIME_TOOLS } : {}),
       messages: [
         {
           role: "user",
@@ -1026,6 +1181,8 @@ export const runRecall = async (args: {
         stellaModel: args.resolvedLlm.model.id,
         context,
         abortSignal: args.signal,
+        executeTool: async (_toolCallId, toolName, toolArgs) =>
+          executeRecallToolCall(toolName, toolArgs),
       });
       return text.trim();
     }
@@ -1052,9 +1209,6 @@ export const runRecall = async (args: {
       `\n# Next\n${closer}`,
     ].join("\n");
 
-  let scratchpad = "";
-
-  const verbose = recallTraceVerbose();
   logRecallTrace("[stella:recall:start]", {
     conversationId: args.conversationId,
     promptChars: args.lookupPrompt.length,
@@ -1080,21 +1234,75 @@ export const runRecall = async (args: {
     scratchpad += `\nAction: ${JSON.stringify({ action: "search_memory", terms: seedTerms })}\nObservation:\n${truncate(initial, RECALL_OBSERVATION_CHAR_BUDGET)}\n`;
   }
 
+  // Transcript search runs UNCONDITIONALLY on every recall: the unified
+  // search over the lookup prompt's own tokens is pre-run and seeded into
+  // the scratchpad, so raw-message evidence reaches the model even when it
+  // never issues a search of its own — the silent summaries-only
+  // degradation observed in the field when the engine's tool path failed.
+  // Deliberately does NOT count as the model's own search (`ranSearch`), so
+  // a nothing-found answer still has to earn it with a refined query.
+  const preSearchQuery = args.lookupPrompt.trim().slice(0, 500);
+  const preSearchAction = { action: "search", query: preSearchQuery } as const;
+  recordSearchObservation(
+    "pre",
+    preSearchAction,
+    formatUnifiedSearch(
+      args.store,
+      args.conversationId,
+      preSearchQuery,
+      undefined,
+    ),
+  );
+
   const isNothingFoundBrief = (brief: string): boolean =>
     brief.trim().toLocaleLowerCase().startsWith("nothing relevant found");
-  let ranSearch = false;
   let rejectedUnsearchedNothingFound = false;
 
+  // A nothing-found verdict without a single search behind it is the exact
+  // failure mode observed in the field (the model glancing past the context
+  // and giving up) — reject it ONCE and demand a search. Applies to both the
+  // JSON-action form and the plain-prose form the external engine produces.
+  const rejectUnsearchedNothingFound = (
+    stepIndex: number,
+    echo: string,
+  ): boolean => {
+    if (
+      ranSearch ||
+      rejectedUnsearchedNothingFound ||
+      stepIndex >= MAX_RECALL_STEPS - 1
+    ) {
+      return false;
+    }
+    rejectedUnsearchedNothingFound = true;
+    logRecallTrace("[stella:recall:step]", {
+      conversationId: args.conversationId,
+      step: stepIndex,
+      action: "answer-rejected",
+      reason: "nothing-found-without-search",
+    });
+    const searchHint = useClaudeCode ? "the `search` tool" : '{"action":"search"}';
+    scratchpad += `\nAction: ${echo}\nObservation:\nRejected: you answered "Nothing relevant found." without running a single search. Re-scan the # Thread Index for candidates, and run ${searchHint} with concrete terms from the lookup request (names, slugs, file paths — not status words) before concluding nothing exists.\n`;
+    return true;
+  };
+
+  const stepCloser = useClaudeCode
+    ? "Call `search_memory`/`search` if you still need evidence; otherwise reply with the final concise brief as plain text."
+    : 'Respond with one JSON action ({"action":"search_memory"|"search"|"answer", ...}).';
+
   for (let i = 0; i < MAX_RECALL_STEPS; i += 1) {
-    const raw = await step(
-      buildTurn(
-        scratchpad,
-        'Respond with one JSON action ({"action":"search_memory"|"search"|"answer", ...}).',
-      ),
-    );
+    const raw = await step(buildTurn(scratchpad, stepCloser));
     const action = parseRecallAction(raw);
     if (!action) {
-      // Model returned prose instead of JSON — accept it as the answer.
+      // Model returned prose instead of JSON — that is the answer (and the
+      // only shape an external-engine final can take). A prose "nothing
+      // found" gets the same one-time unsearched rejection as the JSON form.
+      if (
+        raw &&
+        isNothingFoundBrief(raw) &&
+        rejectUnsearchedNothingFound(i, JSON.stringify(previewForTrace(raw)))
+      ) {
+        continue;
+      }
       logRecallTrace("[stella:recall:step]", {
         conversationId: args.conversationId,
         step: i,
@@ -1109,23 +1317,10 @@ export const runRecall = async (args: {
     }
     if (action.action === "answer") {
       const brief = action.brief.trim();
-      // A nothing-found verdict without a single search behind it is the
-      // exact failure mode observed in the field (the model glancing past
-      // the context and giving up) — reject it ONCE and demand a search.
       if (
         isNothingFoundBrief(brief) &&
-        !ranSearch &&
-        !rejectedUnsearchedNothingFound &&
-        i < MAX_RECALL_STEPS - 1
+        rejectUnsearchedNothingFound(i, JSON.stringify(action))
       ) {
-        rejectedUnsearchedNothingFound = true;
-        logRecallTrace("[stella:recall:step]", {
-          conversationId: args.conversationId,
-          step: i,
-          action: "answer-rejected",
-          reason: "nothing-found-without-search",
-        });
-        scratchpad += `\nAction: ${JSON.stringify(action)}\nObservation:\nRejected: you answered "Nothing relevant found." without running a single search action. Re-scan the # Thread Index for candidates, and run {"action":"search"} with concrete terms from the lookup request (names, slugs, file paths — not status words) before concluding nothing exists.\n`;
         continue;
       }
       return finish(
@@ -1133,41 +1328,17 @@ export const runRecall = async (args: {
         brief || RECALL_EMPTY_BRIEF_TEXT,
       );
     }
-    if (action.action === "search") ranSearch = true;
-    const observation =
-      action.action === "search_memory"
-        ? await readMemorySearchResults(args.stellaDataDir, action.terms)
-        : formatUnifiedSearch(
-            args.store,
-            args.conversationId,
-            action.query,
-            action.limit,
-          );
-    logRecallTrace("[stella:recall:step]", {
-      conversationId: args.conversationId,
-      step: i,
-      action: action.action,
-      observationChars: observation.length,
-      // Search terms/queries and observation content are user data — only
-      // traced when explicitly debugging.
-      ...(verbose
-        ? {
-            actionDetail:
-              action.action === "search_memory"
-                ? { terms: action.terms }
-                : { query: action.query ?? null },
-            observationPreview: previewForTrace(observation),
-          }
-        : {}),
-    });
-    scratchpad += `\nAction: ${JSON.stringify(action)}\nObservation:\n${truncate(observation, RECALL_OBSERVATION_CHAR_BUDGET)}\n`;
+    const observation = await executeSearchAction(action);
+    recordSearchObservation(i, action, observation);
   }
 
   // Step budget exhausted — force a final synthesized answer.
   const finalRaw = await step(
     buildTurn(
       scratchpad,
-      'You are out of search steps. Respond now with {"action":"answer","brief":"..."} summarizing what you found.',
+      useClaudeCode
+        ? "You are out of search steps. Reply now with the final concise brief (plain text) summarizing what you found."
+        : 'You are out of search steps. Respond now with {"action":"answer","brief":"..."} summarizing what you found.',
     ),
   );
   const finalAction = parseRecallAction(finalRaw);

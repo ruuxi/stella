@@ -10,6 +10,7 @@ import {
   RECALL_INDEX_BASE_LIMIT,
   RECALL_INDEX_CHAR_BUDGET,
   RECALL_INDEX_HIGH_VOLUME_LIMIT,
+  RECALL_TOOL_RUNTIME_SYSTEM_PROMPT,
   buildContextLookupUserPrompt,
   formatRecallThreadIndex,
   formatUnifiedSearch,
@@ -17,6 +18,10 @@ import {
   runRecall,
 } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
 import { completeSimple } from "../../../../../runtime/ai/stream.js";
+import {
+  runClaudeCodeAgentTextCompletion,
+  shouldUseClaudeCodeAgentRuntime,
+} from "../../../../../runtime/kernel/integrations/claude-code-agent-runtime.js";
 
 // runRecall drives its steps through completeSimple; the tests script its
 // responses. readAssistantText stays real (it reads the fake message text).
@@ -26,6 +31,20 @@ vi.mock("../../../../../runtime/ai/stream.js", async (importOriginal) => ({
   >()),
   completeSimple: vi.fn(),
 }));
+
+// The external-engine path: engine detection defaults to false (matching a
+// data dir with no preferences file); the Claude Code tests flip it on and
+// script the CLI turn.
+vi.mock(
+  "../../../../../runtime/kernel/integrations/claude-code-agent-runtime.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../../../runtime/kernel/integrations/claude-code-agent-runtime.js")
+    >()),
+    shouldUseClaudeCodeAgentRuntime: vi.fn(() => false),
+    runClaudeCodeAgentTextCompletion: vi.fn(),
+  }),
+);
 import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
@@ -750,5 +769,105 @@ describe("runRecall", () => {
 
     const out = await runRecall(await makeRunArgs(rootPath));
     expect(out).toBe(RECALL_BUDGET_EXHAUSTED_TEXT);
+  });
+
+  describe("on the Claude Code engine", () => {
+    type EngineTurn = Parameters<
+      typeof runClaudeCodeAgentTextCompletion
+    >[0];
+
+    const makeClaudeCodeArgs = async (rootPath: string) => {
+      const base = await makeRunArgs(rootPath);
+      const searchTranscripts = vi.fn(() => [
+        {
+          conversationId: "conv-2",
+          role: "user" as const,
+          atMs: Date.parse("2026-07-01T10:00:00Z"),
+          text: "the wifi password at the lake house is PINETREE42",
+        },
+      ]);
+      return {
+        args: {
+          ...base,
+          store: {
+            ...(base.store as Record<string, unknown>),
+            searchThreads: () => [],
+            searchTranscripts,
+            listTranscriptNeighbors: () => [],
+          } as unknown as Parameters<typeof runRecall>[0]["store"],
+        },
+        searchTranscripts,
+      };
+    };
+
+    it("exposes the search tools to the engine and routes them to real transcript search", async () => {
+      const { rootPath, db } = await createRoot();
+      db.close();
+      vi.mocked(shouldUseClaudeCodeAgentRuntime).mockReturnValue(true);
+      const engine = vi.mocked(runClaudeCodeAgentTextCompletion);
+      engine.mockReset();
+      engine.mockImplementationOnce(async (turn: EngineTurn) => {
+        // The engine run must carry the tool catalog + a live executor —
+        // this is exactly what was missing when recall silently degraded.
+        expect(turn.context.systemPrompt).toBe(
+          RECALL_TOOL_RUNTIME_SYSTEM_PROMPT,
+        );
+        expect(turn.context.tools?.map((tool) => tool.name)).toEqual([
+          "search_memory",
+          "search",
+        ]);
+        expect(turn.executeTool).toBeDefined();
+        const hit = await turn.executeTool!("call-1", "search", {
+          query: "lake house wifi password",
+        });
+        expect(String(hit.result)).toContain("[message]");
+        expect(String(hit.result)).toContain("PINETREE42");
+        const unknown = await turn.executeTool!("call-2", "nonsense", {});
+        expect(unknown.error).toContain("search_memory or search");
+        return "The lake house wifi password is PINETREE42.";
+      });
+
+      const { args, searchTranscripts } = await makeClaudeCodeArgs(rootPath);
+      const out = await runRecall(args);
+
+      expect(out).toBe("The lake house wifi password is PINETREE42.");
+      expect(searchTranscripts).toHaveBeenCalledWith({
+        query: "lake house wifi password",
+        limit: 12,
+      });
+      vi.mocked(shouldUseClaudeCodeAgentRuntime).mockReturnValue(false);
+    });
+
+    it("rejects a prose nothing-found given without any search, then accepts the searched answer", async () => {
+      const { rootPath, db } = await createRoot();
+      db.close();
+      vi.mocked(shouldUseClaudeCodeAgentRuntime).mockReturnValue(true);
+      const engine = vi.mocked(runClaudeCodeAgentTextCompletion);
+      engine.mockReset();
+      engine
+        .mockImplementationOnce(async () => "Nothing relevant found.")
+        .mockImplementationOnce(async (turn: EngineTurn) => {
+          const prompt = turn.context.messages
+            .map((message) =>
+              typeof message.content === "string"
+                ? message.content
+                : message.content
+                    .map((part) => ("text" in part ? part.text : ""))
+                    .join("\n"),
+            )
+            .join("\n");
+          expect(prompt).toContain("Rejected: you answered");
+          expect(prompt).toContain("the `search` tool");
+          await turn.executeTool!("call-1", "search", { query: "lake house" });
+          return "Found it: PINETREE42.";
+        });
+
+      const { args } = await makeClaudeCodeArgs(rootPath);
+      const out = await runRecall(args);
+
+      expect(out).toBe("Found it: PINETREE42.");
+      expect(engine).toHaveBeenCalledTimes(2);
+      vi.mocked(shouldUseClaudeCodeAgentRuntime).mockReturnValue(false);
+    });
   });
 });
