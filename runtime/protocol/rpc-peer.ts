@@ -168,10 +168,25 @@ export class JsonRpcPeer {
     );
   }
 
+  /**
+   * Send a response to an inbound request, swallowing transport-send
+   * failures. `handleMessage` is invoked as `void rpcPeer.handleMessage(...)`
+   * (see jsonl.ts), so a throw from a mid-request transport close would
+   * escape as an unhandled rejection. Route any send failure to onError
+   * instead of letting it propagate.
+   */
+  private sendResponse(message: JsonRpcSuccess | JsonRpcFailure) {
+    try {
+      this.sendMessageSafely(message);
+    } catch (error) {
+      this.options.onError?.(error);
+    }
+  }
+
   private async handleRequest(message: JsonRpcRequest) {
     const handler = this.requestHandlers.get(message.method);
     if (!handler) {
-      this.sendMessageSafely({
+      this.sendResponse({
         id: message.id,
         error: {
           code: RPC_ERROR_CODES.METHOD_NOT_FOUND,
@@ -183,7 +198,7 @@ export class JsonRpcPeer {
 
     try {
       const result = await handler(message.params);
-      this.sendMessageSafely({
+      this.sendResponse({
         id: message.id,
         result: result === undefined ? null : result,
       } satisfies JsonRpcSuccess);
@@ -195,7 +210,7 @@ export class JsonRpcPeer {
               RPC_ERROR_CODES.INTERNAL_ERROR,
               error instanceof Error ? error.message : String(error),
             );
-      this.sendMessageSafely({
+      this.sendResponse({
         id: message.id,
         error: {
           code: rpcError.code,

@@ -56,20 +56,95 @@ export const listGitRecentCommitsForImport = async (
   ).catch(() => "");
 };
 
+/**
+ * Reject clone URLs that git would interpret as anything other than a fetch
+ * from a normal remote. This runs BEFORE the clone, which happens before the
+ * untrusted-source safety review, so an LLM-supplied url must not be able to
+ * reach git's remote-helper transports. In particular:
+ *   - `ext::sh -c "…"` (and other `<helper>::…` transports) run arbitrary
+ *     commands; protocol.ext.allow defaults to `user`, i.e. enabled here.
+ *   - a leading `-` makes git parse the url as an option instead of a remote.
+ * Legitimate callers pass an http(s)/ssh/git remote, an scp-style
+ * `[user@]host:path`, or (for local-repo imports) an absolute filesystem path.
+ */
+const validateGitCloneUrl = (rawUrl: string): void => {
+  const url = rawUrl.trim();
+  if (!url) {
+    throw new Error("Refusing to clone from an empty git URL.");
+  }
+  // A leading dash is parsed by git as an option (e.g. `--upload-pack=…`).
+  if (url.startsWith("-")) {
+    throw new Error(`Refusing to clone from an option-like git URL: ${rawUrl}`);
+  }
+  // Local-repo imports clone from an already-resolved absolute path.
+  if (path.isAbsolute(url)) {
+    return;
+  }
+  // Standard remote schemes are the only network transports we allow.
+  const schemeMatch = url.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//);
+  if (schemeMatch) {
+    const scheme = (schemeMatch[1] ?? "").toLowerCase();
+    if (
+      scheme === "http" ||
+      scheme === "https" ||
+      scheme === "ssh" ||
+      scheme === "git"
+    ) {
+      return;
+    }
+    throw new Error(
+      `Refusing to clone from an unsupported git URL scheme "${scheme}": ${rawUrl}`,
+    );
+  }
+  // `<helper>::address` selects a remote-transport helper (ext, fd, …). No
+  // legitimate url contains `::`, so reject the syntax outright.
+  if (url.includes("::")) {
+    throw new Error(
+      `Refusing to clone from a transport-helper git URL: ${rawUrl}`,
+    );
+  }
+  // scp-style `[user@]host:path`: the segment before the first colon is the
+  // host and must not contain a slash (matching git's own scp detection).
+  if (/^[^/:]+:.+$/.test(url)) {
+    return;
+  }
+  throw new Error(`Refusing to clone from an unrecognized git URL: ${rawUrl}`);
+};
+
+// Disable git's remote-transport helpers (`ext::`, etc.) for the clone, and
+// pin the file protocol to `user` so the top-level local-repo clone still
+// works while submodule/recursive file fetches stay blocked. These belong
+// before the `clone` subcommand in the argv.
+const GIT_CLONE_HARDENING_FLAGS = [
+  "-c",
+  "protocol.ext.allow=never",
+  "-c",
+  "protocol.file.allow=user",
+] as const;
+
 export const cloneGitSource = async (args: {
   url: string;
   ref?: string;
   destination: string;
 }): Promise<{ repoRoot: string; commit: string }> => {
+  validateGitCloneUrl(args.url);
   await fsPromises.rm(args.destination, { recursive: true, force: true });
   await runGit(path.dirname(args.destination), [
+    ...GIT_CLONE_HARDENING_FLAGS,
     "clone",
     "--no-tags",
     "--no-checkout",
+    "--",
     args.url,
     args.destination,
   ]);
   const checkoutRef = args.ref?.trim() || "HEAD";
+  // `git checkout --detach` takes a commit-ish, not a pathspec, so it can't be
+  // guarded with a `--` separator. Reject an option-like ref instead so a
+  // leading `-` can't be parsed as a git option.
+  if (checkoutRef.startsWith("-")) {
+    throw new Error(`Refusing to check out an option-like git ref: ${args.ref}`);
+  }
   await runGit(args.destination, ["checkout", "--detach", checkoutRef]);
   const commit = await resolveGitCommit(args.destination, "HEAD");
   return { repoRoot: args.destination, commit };

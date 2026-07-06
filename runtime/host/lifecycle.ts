@@ -246,7 +246,7 @@ const acquireHostLock = async (lockFile: string): Promise<number> => {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "EEXIST") throw error;
       await delay(50);
-      // If the holder died, sweep the lock and try again.
+      // If the holder died, take over the stale lock and try again.
       try {
         const raw = await fsPromises.readFile(lockFile, "utf-8");
         const pid = Number.parseInt(raw.trim(), 10);
@@ -256,12 +256,24 @@ const acquireHostLock = async (lockFile: string): Promise<number> => {
             // Holder is alive, keep waiting.
             continue;
           } catch {
-            // Holder is dead — clear the lock and retry.
-            await fsPromises.unlink(lockFile).catch(() => undefined);
+            // Holder is dead — fall through to the atomic takeover below.
           }
-        } else {
-          await fsPromises.unlink(lockFile).catch(() => undefined);
         }
+        // Stale lock (dead holder or unparseable pid): rename it to a
+        // per-contender temp name instead of unlinking it directly. rename()
+        // is atomic, so only one racing host wins the takeover; the loser's
+        // rename fails (ENOENT) and it simply retries the acquire loop rather
+        // than blindly deleting what may already be another host's freshly
+        // created lock. This closes the TOCTOU window where two hosts could
+        // both unlink the lock and both enter the spawn critical section.
+        const stalePath = `${lockFile}.${process.pid}.stale`;
+        try {
+          await fsPromises.rename(lockFile, stalePath);
+        } catch {
+          // Lost the takeover race (or the lock was already gone); retry.
+          continue;
+        }
+        await fsPromises.unlink(stalePath).catch(() => undefined);
       } catch {
         // Lock removed by another process; try again.
       }

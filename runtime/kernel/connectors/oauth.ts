@@ -172,6 +172,35 @@ export const saveConnectorTokenPayload = async (
   }
 };
 
+// Per-tokenKey in-flight refresh dedup. Without it, concurrent near-expiry
+// loads each POST the same refresh token, which can revoke rotating grants and
+// let racing saves persist a stale token. Mirrors the updateQueues pattern in
+// shared/atomic-json-state.ts: the first caller performs the refresh, others
+// await the same promise, and the entry clears once it settles.
+const connectorRefreshQueues = new Map<
+  string,
+  Promise<ConnectorTokenPayload | null>
+>();
+
+const refreshConnectorAccessTokenDeduped = async (
+  stellaAppDir: string,
+  tokenKey: string,
+  payload: ConnectorTokenPayload,
+): Promise<ConnectorTokenPayload | null> => {
+  const inflight = connectorRefreshQueues.get(tokenKey);
+  if (inflight) return await inflight;
+  const run = refreshConnectorAccessToken(stellaAppDir, tokenKey, payload);
+  connectorRefreshQueues.set(tokenKey, run);
+  void run
+    .finally(() => {
+      if (connectorRefreshQueues.get(tokenKey) === run) {
+        connectorRefreshQueues.delete(tokenKey);
+      }
+    })
+    .catch(() => undefined);
+  return await run;
+};
+
 export const loadConnectorTokenPayload = async (
   stellaAppDir: string,
   tokenKey?: string,
@@ -183,7 +212,11 @@ export const loadConnectorTokenPayload = async (
   if (!payload.expiresAt || payload.expiresAt > Date.now() + 30_000) {
     return payload;
   }
-  return await refreshConnectorAccessToken(stellaAppDir, tokenKey, payload);
+  return await refreshConnectorAccessTokenDeduped(
+    stellaAppDir,
+    tokenKey,
+    payload,
+  );
 };
 
 const normalizeScopes = (scopes?: string[]) => {

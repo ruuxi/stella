@@ -41,17 +41,29 @@ const DEFAULT_FRAME_MS = 16.7
  *  drain dumps. */
 const FINISH_FALLBACK_MS = 1200
 
+/** Once the release cursor has passed this many consumed code points, splice
+ *  the drained prefix off the buffer and reset the cursor. Keeps the common
+ *  per-frame release allocation-free (a bounded slice) while stopping a long
+ *  stream from retaining every already-shown code point for the slot's life. */
+const BUFFER_COMPACT_THRESHOLD = 4096
+
 type PendingEntry = {
   runId: string
-  text: string
+  /** Buffered text as code points; splitting on enqueue (not per frame) keeps
+   *  a surrogate pair from ever releasing half-formed and makes each frame's
+   *  release O(released) instead of O(backlog). */
+  chars: string[]
+  /** Index of the next unreleased code point in `chars`. */
+  cursor: number
   /** Stream ended for this slot — drain fast and report when empty. */
   finishing?: boolean
   /** Invoked once the slot's buffered text has fully released. */
   onDrained?: (slotId: string) => void
   /** Safety hard-flush timer armed while `finishing`. */
   finishTimer?: number
-  /** Buffered length when `finishTimer` was (re)armed — progress check. */
-  finishTimerTextLength?: number
+  /** Remaining code-point count when `finishTimer` was (re)armed — progress
+   *  check. */
+  finishTimerRemaining?: number
 }
 
 type StreamSlotPredicate = (entry: {
@@ -104,10 +116,11 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
     const paceState = paceStateRef.current
     let scheduleNext = false
     for (const [slotId, entry] of pending) {
-      // Split on code points so a surrogate pair is never released
-      // half-formed mid-frame.
-      const chars = Array.from(entry.text)
-      if (chars.length === 0) {
+      // The buffer is already split on code points (at enqueue), so a
+      // surrogate pair is never released half-formed. `cursor` marks the
+      // boundary between released and pending; work only the pending tail.
+      const remaining = entry.chars.length - entry.cursor
+      if (remaining === 0) {
         pending.delete(slotId)
         continue
       }
@@ -118,14 +131,24 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
       }
       const count = stepPaceCount(
         state.pace,
-        chars.length,
+        remaining,
         dtMs,
         entry.finishing === true,
       )
-      const out = count > 0 ? chars.slice(0, count).join('') : ''
-      const rest = count > 0 ? chars.slice(count).join('') : entry.text
-      if (rest) {
-        entry.text = rest
+      const releaseCount = count > 0 ? Math.min(count, remaining) : 0
+      const out =
+        releaseCount > 0
+          ? entry.chars.slice(entry.cursor, entry.cursor + releaseCount).join('')
+          : ''
+      entry.cursor += releaseCount
+      const rest = entry.chars.length - entry.cursor
+      if (rest > 0) {
+        // Drop the consumed prefix once it grows large so the slot doesn't
+        // retain every already-released code point for its whole lifetime.
+        if (entry.cursor > BUFFER_COMPACT_THRESHOLD) {
+          entry.chars.splice(0, entry.cursor)
+          entry.cursor = 0
+        }
         scheduleNext = true
       } else {
         // Keep the cadence state warm: the run may stream more text into
@@ -134,7 +157,7 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         pending.delete(slotId)
       }
       if (out) releaseRef.current(slotId, out)
-      if (!rest && entry.finishing) {
+      if (rest === 0 && entry.finishing) {
         // Finishing slot fully drained: reclaim its cadence state (no more
         // text is coming for this slot) and report AFTER the final release
         // so the callback observes the complete text.
@@ -178,9 +201,15 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
       }
       const existing = pendingRef.current.get(slotId)
       if (existing) {
-        existing.text += chunk
+        // Append the chunk's code points (iterating a string yields code
+        // points) so the buffer stays surrogate-safe without re-splitting.
+        for (const ch of chunk) existing.chars.push(ch)
       } else {
-        pendingRef.current.set(slotId, { runId, text: chunk })
+        pendingRef.current.set(slotId, {
+          runId,
+          chars: Array.from(chunk),
+          cursor: 0,
+        })
       }
       // Feed the slot's arrival-rate/gap estimators so the cadence adapts
       // to slow or choppy providers (created here, ahead of the first tick,
@@ -219,7 +248,9 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
         if (entry.finishTimer !== undefined) {
           window.clearTimeout(entry.finishTimer)
         }
-        if (entry.text) releaseRef.current(slotId, entry.text)
+        if (entry.cursor < entry.chars.length) {
+          releaseRef.current(slotId, entry.chars.slice(entry.cursor).join(''))
+        }
         // A hard flush overtaking a graceful finish still owes the caller
         // its drained notification (e.g. the slot lock).
         entry.onDrained?.(slotId)
@@ -246,7 +277,7 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
       let draining = false
       for (const [slotId, entry] of pendingRef.current) {
         if (predicate && !predicate({ slotId, runId: entry.runId })) continue
-        if (!entry.text) continue
+        if (entry.cursor >= entry.chars.length) continue
         draining = true
         entry.finishing = true
         entry.onDrained = onDrained
@@ -254,23 +285,29 @@ export function useStreamTextPacer({ release }: UseStreamTextPacerOptions) {
           window.clearTimeout(entry.finishTimer)
         }
         const armFallback = () => {
-          entry.finishTimerTextLength = entry.text.length
+          entry.finishTimerRemaining = entry.chars.length - entry.cursor
           entry.finishTimer = window.setTimeout(() => {
             const current = pendingRef.current.get(slotId)
             if (current !== entry) return
+            const currentRemaining = current.chars.length - current.cursor
             // The paced drain is making progress (rAF is running): a large
             // backlog legitimately outlasts the timeout at the bounded
             // finish rate — keep gliding, re-check later.
             if (
-              current.text.length <
-              (current.finishTimerTextLength ?? Number.POSITIVE_INFINITY)
+              currentRemaining <
+              (current.finishTimerRemaining ?? Number.POSITIVE_INFINITY)
             ) {
               armFallback()
               return
             }
             pendingRef.current.delete(slotId)
             paceStateRef.current.delete(slotId)
-            if (current.text) releaseRef.current(slotId, current.text)
+            if (currentRemaining > 0) {
+              releaseRef.current(
+                slotId,
+                current.chars.slice(current.cursor).join(''),
+              )
+            }
             cancelLoopIfIdle()
             current.onDrained?.(slotId)
           }, FINISH_FALLBACK_MS)

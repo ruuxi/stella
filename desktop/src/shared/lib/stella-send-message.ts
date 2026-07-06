@@ -32,7 +32,7 @@ export function toStellaMessageMetadata(
 
   return {
     ...(uiVisibility ? { ui: { visibility: uiVisibility } } : {}),
-    ...((triggerKind || triggerSource)
+    ...((triggerKind || triggerSource || targetAgentId)
       ? {
           trigger: {
             ...(triggerKind ? { kind: triggerKind } : {}),

@@ -165,7 +165,7 @@ async function collectAppUsageMacOS(): Promise<AppUsageSummary[]> {
       WHERE ZSTREAMNAME = '/app/usage'
         AND ZVALUESTRING IS NOT NULL
         AND ZVALUESTRING != ''
-        AND ZSTARTDATE > (strftime('%s', 'now') - 604800)
+        AND ZSTARTDATE > (strftime('%s', 'now') - 978307200 - 604800)
       GROUP BY ZVALUESTRING
       ORDER BY total_seconds DESC
       LIMIT 30

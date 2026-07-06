@@ -1621,7 +1621,10 @@ function mapStopReason(reason: Anthropic.Messages.StopReason | string): StopReas
 		case "sensitive": // Content flagged by safety filters (not yet in SDK types)
 			return "error";
 		default:
-			// Handle unknown stop reasons gracefully (API may add new values)
-			throw new Error(`Unhandled stop reason: ${reason}`);
+			// Handle unknown stop reasons gracefully (API may add new values).
+			// A fully-streamed message shouldn't collapse into an error just
+			// because Anthropic introduced a new terminal stop_reason, so treat
+			// it as a normal completion.
+			return "stop";
 	}
 }

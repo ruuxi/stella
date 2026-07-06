@@ -45,6 +45,17 @@ export function createResourceStore<K extends string, T>(opts: {
   const entries = new Map<K, ResourceEntry<T>>();
   const inFlight = new Map<K, Promise<T>>();
   const listeners = new Map<K, Set<() => void>>();
+  // Per-key generation counter. Bumped by `set`, `invalidate`, and each
+  // forced fetch so that an in-flight fetch which started under an older
+  // generation drops its result instead of clobbering newer state.
+  const generations = new Map<K, number>();
+
+  const getGeneration = (key: K): number => generations.get(key) ?? 0;
+  const bumpGeneration = (key: K): number => {
+    const next = getGeneration(key) + 1;
+    generations.set(key, next);
+    return next;
+  };
 
   const getEntry = (key: K): ResourceEntry<T> =>
     entries.get(key) ?? (EMPTY_ENTRY as ResourceEntry<T>);
@@ -75,27 +86,43 @@ export function createResourceStore<K extends string, T>(opts: {
     const existing = inFlight.get(key);
     if (existing && !options?.force) return existing;
 
+    // A forced fetch supersedes any older in-flight fetch (and any value
+    // written by `set`/`invalidate`); capture the generation this fetch
+    // owns so late-settling stale fetches can be dropped below.
+    const generation = options?.force ? bumpGeneration(key) : getGeneration(key);
+
     setEntry(key, { isFetching: true });
     const promise = (async () => {
       try {
         const data = await opts.fetcher(key);
-        setEntry(key, {
-          data,
-          error: null,
-          fetchedAt: Date.now(),
-          isFetching: false,
-        });
+        if (getGeneration(key) === generation) {
+          setEntry(key, {
+            data,
+            error: null,
+            fetchedAt: Date.now(),
+            isFetching: false,
+          });
+        }
         return data;
       } catch (caught) {
         const error =
           caught instanceof Error ? caught : new Error(String(caught));
-        setEntry(key, { error, isFetching: false });
+        if (getGeneration(key) === generation) {
+          setEntry(key, { error, isFetching: false });
+        }
         throw error;
-      } finally {
-        inFlight.delete(key);
       }
     })();
     inFlight.set(key, promise);
+    // Clear only our own registration once settled — a newer forced fetch may
+    // have already replaced it. Attached after assignment so the closure can
+    // reference `promise`; the derived promise is caught so a rejected fetch
+    // cannot surface as an unhandled rejection here (callers await `promise`).
+    void promise
+      .finally(() => {
+        if (inFlight.get(key) === promise) inFlight.delete(key);
+      })
+      .catch(() => undefined);
     return promise;
   };
 
@@ -103,6 +130,9 @@ export function createResourceStore<K extends string, T>(opts: {
     get: getEntry,
     ensure,
     set(key, data) {
+      // Supersede any in-flight fetch so its late result can't clobber
+      // this just-written value.
+      bumpGeneration(key);
       setEntry(key, {
         data,
         error: null,
@@ -112,11 +142,19 @@ export function createResourceStore<K extends string, T>(opts: {
     },
     invalidate(key) {
       if (key === "*") {
-        const keys = Array.from(entries.keys());
+        const keys = new Set<K>([
+          ...entries.keys(),
+          ...inFlight.keys(),
+          ...generations.keys(),
+        ]);
         entries.clear();
-        for (const k of keys) notify(k);
+        for (const k of keys) {
+          bumpGeneration(k);
+          notify(k);
+        }
         return;
       }
+      bumpGeneration(key);
       entries.delete(key);
       notify(key);
     },

@@ -96,7 +96,10 @@ const finalizeEvict = (filePath: string, entry: CacheEntry) => {
     entry.url = null;
   }
   entry.blob = null;
-  cache.delete(filePath);
+  // Only drop the map slot if it still points at this entry — a retry may
+  // have replaced it (e.g. after a rejected/missing read) while stale
+  // consumers of the old entry were still winding down their refs.
+  if (cache.get(filePath) === entry) cache.delete(filePath);
 };
 
 const acquire = (
@@ -125,14 +128,23 @@ const acquire = (
       .then((result) => {
         // Guard against the entry having been evicted while the IPC was
         // in flight (no consumers ever subscribed).
-        const live = cache.get(cacheKey);
-        if (live === entry) {
-          entry!.resolved = result;
+        if (cache.get(cacheKey) !== entry) return;
+        if (result.missing) {
+          // A missing file may appear on disk moments later, so don't cache
+          // the negative result. Drop the entry so the next acquire()
+          // re-reads; current awaiters still observe `missing` via the
+          // settled promise they already hold.
+          cache.delete(cacheKey);
+          return;
         }
+        entry!.resolved = result;
       })
       .catch(() => {
-        // Swallow — the consumer's own promise observer will surface the
-        // error. Re-throwing here would leave an unhandled rejection.
+        // A transient IPC failure must not be cached forever. Drop the entry
+        // so the next acquire() retries. Current awaiters still surface the
+        // error via the promise they already hold; swallowing here only
+        // prevents an unhandled rejection.
+        if (cache.get(cacheKey) === entry) cache.delete(cacheKey);
       });
   }
   if (entry.evictionTimer) {

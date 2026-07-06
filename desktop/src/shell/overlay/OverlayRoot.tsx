@@ -444,6 +444,14 @@ function useOverlayDictation() {
       const session = sessionRef.current;
       if (!session || sessionIdRef.current !== sessionId) return;
 
+      // Take ownership synchronously, before the first await, so a concurrent
+      // second call (onOverlayStop + the confirm button both fire for the same
+      // sessionId) fails the guard above instead of double-completing — which
+      // would stop the session twice and send an empty transcript first,
+      // dropping the real one.
+      sessionRef.current = null;
+      sessionIdRef.current = null;
+
       try {
         await session.stop();
         window.electronAPI?.dictation?.overlayCompleted({

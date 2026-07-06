@@ -372,9 +372,18 @@ export function ChatPanelTab({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setInputText("");
+      if (event.key !== "Escape") return;
+      // Only clear the composer draft when Escape targets the composer itself.
+      // Otherwise Escape used to dismiss unrelated UI (dropdowns, previews,
+      // dialogs) would wipe an in-progress draft.
+      if (event.defaultPrevented) return;
+      if (
+        event.target !== inputRef.current &&
+        document.activeElement !== inputRef.current
+      ) {
+        return;
       }
+      setInputText("");
     };
 
     document.addEventListener("keydown", handleKeyDown);

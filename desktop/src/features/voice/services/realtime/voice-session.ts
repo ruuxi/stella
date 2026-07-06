@@ -439,6 +439,12 @@ export class RealtimeVoiceSession {
       await this.transport?.disconnect().catch(() => undefined);
       this.transport = null;
       this.sessionToken = null;
+      // A session that never reached "connected" must not retain the localChat
+      // IPC listener wired up in the constructor. tearDown()/disconnect() also
+      // clears it, but drop it here too so a leaked session (never disconnected)
+      // can't keep the subscription alive for the app's lifetime.
+      this.unsubscribeLocalChatUpdated?.();
+      this.unsubscribeLocalChatUpdated = null;
       const runtime = getVoiceRuntimeState();
       if (runtime.activeSession === this) {
         runtime.activeSession = null;
@@ -1085,6 +1091,9 @@ export class RealtimeVoiceSession {
     this.assistantOutputActive = false;
     this.recentOutputActiveUntil = 0;
     this.softInputMuted = false;
+
+    this.unsubscribeLocalChatUpdated?.();
+    this.unsubscribeLocalChatUpdated = null;
 
     if (this.transport) {
       void this.transport.disconnect().catch(() => undefined);

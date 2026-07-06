@@ -58,6 +58,13 @@ const MAX_ENTRIES = 2000;
 let entries: TraceEntry[] = [];
 let nextId = 1;
 const toolStartTimes = new Map<string, number>();
+// Track the toolStartTimes keys opened under each runId. A run that finishes
+// mid-tool (canceled/errored without a matching TOOL_END) never deletes its
+// entries, so on RUN_FINISHED we sweep them via this index instead of leaking
+// them for the renderer's lifetime. Mirrors the runIdToAgent RUN_FINISHED
+// eviction below. Keys are the same `toolCallId ?? runId:toolName` used below,
+// which don't all embed the runId — hence this explicit per-run index.
+const runIdToToolKeys = new Map<string, Set<string>>();
 
 // Track which runId belongs to which agent type. Bounded so a long-lived
 // renderer that registers many runs cannot grow this map without limit
@@ -146,6 +153,14 @@ export function traceToolStart(
 ) {
   const key = toolCallId ?? `${runId}:${toolName}`;
   toolStartTimes.set(key, Date.now());
+  if (runId) {
+    let keys = runIdToToolKeys.get(runId);
+    if (!keys) {
+      keys = new Set();
+      runIdToToolKeys.set(runId, keys);
+    }
+    keys.add(key);
+  }
 
   const agent = runId ? runIdToAgent.get(runId) : undefined;
   const argsSummary = summarizeArgs(args);
@@ -174,6 +189,13 @@ export function traceToolEnd(
   const startTime = toolStartTimes.get(key);
   const duration = startTime ? Date.now() - startTime : undefined;
   toolStartTimes.delete(key);
+  if (runId) {
+    const keys = runIdToToolKeys.get(runId);
+    if (keys) {
+      keys.delete(key);
+      if (keys.size === 0) runIdToToolKeys.delete(runId);
+    }
+  }
 
   const agent = runId ? runIdToAgent.get(runId) : undefined;
   const preview = resultPreview != null ? formatTraceSnippet(resultPreview, 200) : "";
@@ -289,4 +311,19 @@ export function registerRunAgent(runId: string, agentType: AgentIdLike) {
  */
 export function unregisterRunAgent(runId: string) {
   runIdToAgent.delete(runId);
+}
+
+/**
+ * Sweep any tool-start timings still open for a finished run. Called from the
+ * trace IPC listener on RUN_FINISHED alongside `unregisterRunAgent` so runs
+ * that end mid-tool (canceled or errored without a matching TOOL_END) don't
+ * leak entries in `toolStartTimes`.
+ */
+export function clearRunToolStarts(runId: string) {
+  const keys = runIdToToolKeys.get(runId);
+  if (!keys) return;
+  for (const key of keys) {
+    toolStartTimes.delete(key);
+  }
+  runIdToToolKeys.delete(runId);
 }
