@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { configurePiRuntime } from "@/platform/electron/device";
 
 type AuthSessionResult = {
@@ -129,18 +129,33 @@ export function getAuthSessionSnapshot(): AuthSessionResult {
   return currentSession;
 }
 
-export function useDesktopAuthSession() {
-  const [snapshot, setSnapshot] = useState(currentSession);
+// Stable subscribe for `useSyncExternalStore`: registers the store listener
+// and returns its unsubscribe. Defined at module scope so its identity never
+// changes across renders.
+function subscribeAuthSession(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
+export function useDesktopAuthSession() {
+  // useSyncExternalStore subscribes and reads the snapshot in one atomic step,
+  // so an emit that lands between render and the mount effect can't be missed
+  // (React re-reads getSnapshot after subscribing) — the stale-snapshot /
+  // stuck-isPending gap of the old useState+useEffect pair is gone.
+  const snapshot = useSyncExternalStore(
+    subscribeAuthSession,
+    getAuthSessionSnapshot,
+  );
+
+  // Kick off a cold-start refresh when we mount still pending. The guard keeps
+  // this from stacking on an in-flight refresh; behavior matches the old
+  // mount-effect fallback.
   useEffect(() => {
-    const listener = () => setSnapshot(currentSession);
-    listeners.add(listener);
     if (currentSession.isPending && !inFlightRefresh) {
       void refreshAuthSession({ allowCached: true });
     }
-    return () => {
-      listeners.delete(listener);
-    };
   }, []);
 
   return snapshot;

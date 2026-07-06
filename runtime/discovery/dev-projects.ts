@@ -1211,10 +1211,22 @@ export const collectDevProjects = async (): Promise<DevProject[]> => {
     log(`Git identity: ${identity.name || "?"} <${identity.email || "?"}>`);
   }
 
-  const candidatePaths = Array.from(candidates.values()).slice(
-    0,
-    MAX_CANDIDATE_PATHS,
-  );
+  // Cap by confidence, not Map insertion order: high-weight sources
+  // (spotlight/github-desktop/jetbrains) are added after the unbounded
+  // shell-history/editor sources, so slicing raw insertion order would drop
+  // the most trustworthy candidates first. Sum each candidate's source
+  // weights (the same signal the scorer folds in) and keep the heaviest.
+  const candidateWeight = (candidate: ProjectCandidate): number => {
+    let total = 0;
+    for (const weight of candidate.sources.values()) total += weight;
+    return total;
+  };
+  const candidatePaths = Array.from(candidates.values())
+    .sort(
+      (a, b) =>
+        candidateWeight(b) - candidateWeight(a) || a.path.localeCompare(b.path),
+    )
+    .slice(0, MAX_CANDIDATE_PATHS);
   log(`${candidatePaths.length} unique candidate paths`);
 
   const resolved = await resolveCandidates(candidatePaths);

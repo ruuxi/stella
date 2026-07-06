@@ -61,7 +61,7 @@ async function collectIMessageMetadata(): Promise<{
         JOIN handle h ON m.handle_id = h.ROWID
         WHERE m.handle_id IS NOT NULL
           AND m.date > (
-            (strftime('%s', '2001-01-01') + strftime('%s', 'now') - 2592000)
+            ((strftime('%s', 'now') - strftime('%s', '2001-01-01')) - 2592000)
             * 1000000000
           )
         GROUP BY h.id, h.uncanonicalized_id

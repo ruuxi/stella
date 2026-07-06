@@ -37,6 +37,7 @@ import {
   traceAssistantMessage,
   registerRunAgent,
   unregisterRunAgent,
+  clearRunToolStarts,
   addTrace,
   formatTraceSnippet,
 } from "@/platform/diagnostics/trace-store";
@@ -88,8 +89,11 @@ export function useTraceIpcListener(enabled: boolean) {
           // Run is terminal — drop its runId→agent mapping so completed
           // runs don't accumulate in the trace store (memory). The trace
           // entries above already captured the agent, so lookup loss after
-          // this point is fine.
+          // this point is fine. Also sweep any tool-start timings still open
+          // for this run: a run that ends mid-tool (canceled/errored) emits no
+          // matching TOOL_END, so those entries would otherwise leak.
           unregisterRunAgent(event.runId);
+          clearRunToolStarts(event.runId);
           break;
         case AGENT_STREAM_EVENT_TYPES.AGENT_STARTED:
           traceTaskStarted(

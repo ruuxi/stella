@@ -21,7 +21,7 @@ import type {
   ShellRecord,
   ToolUpdateCallback,
 } from "./types.js";
-import { truncate } from "./utils.js";
+import { MAX_OUTPUT, truncate } from "./utils.js";
 import { resolveBundledRuntimeFile } from "../shared/runtime-paths.js";
 import { isDangerousCommand } from "./command-safety.js";
 import { getInstallUpdateCommandDenialReason } from "./install-update-allowlist.js";
@@ -468,13 +468,23 @@ const takeCompletedProducedFiles = async (
 ): Promise<ProducedFileRecord[] | undefined> => {
   if (record.running || record.producedFilesReported) return undefined;
   record.producedFilesReported = true;
-  return mergeProducedFiles(
+  const produced = mergeProducedFiles(
     diffFileSnapshots(
       record.startSnapshot ?? null,
       await snapshotFiles(record.startSnapshot?.root ?? record.cwd),
     ),
     await diffExternalCandidateSnapshots(record.externalCandidateSnapshots),
   );
+  // The shell is terminated and its produced files are now reported, so the
+  // snapshot data (a FileSnapshot Map of up to MAX_SNAPSHOT_FILES entries plus
+  // the external-candidate snapshots) and the child-process handle are fully
+  // consumed. Release them so completed records stop pinning that memory for
+  // the rest of the session. The record itself stays in state.shells so
+  // status/read paths keep working off the (capped) output buffers.
+  record.startSnapshot = null;
+  record.externalCandidateSnapshots = undefined;
+  record.child = undefined;
+  return produced;
 };
 
 export const extractOfficePreviewRef = (
@@ -966,8 +976,16 @@ const outputCharBudgetFromTokens = (value: unknown): number => {
   return Math.max(1_024, Math.min(tokens * 4, 200_000));
 };
 
+// Live shell buffers (`output`, `unreadOutput`) and "recent" drains keep the
+// TAIL: newest output matters most, and once a buffer hits its cap between
+// drains, dropping the head lets a poller keep seeing fresh activity.
+const truncateTail = (value: string, max: number): string =>
+  value.length > max
+    ? `... (truncated) ...\n${value.slice(value.length - max)}`
+    : value;
+
 const truncateRecent = (value: string, max: number): string =>
-  value.length > max ? `${value.slice(0, max)}\n\n... (truncated)` : value;
+  truncateTail(value, max);
 
 type DrainedOutput = {
   text: string;
@@ -1219,8 +1237,8 @@ export const startShell = (
   const append = (data: Buffer) => {
     const chunk = data.toString();
     const safeChunk = sanitizeToolVisibleText(chunk);
-    record.output = truncate(`${record.output}${safeChunk}`);
-    record.unreadOutput = truncate(
+    record.output = truncateTail(`${record.output}${safeChunk}`, MAX_OUTPUT);
+    record.unreadOutput = truncateTail(
       `${record.unreadOutput}${safeChunk}`,
       200_000,
     );
@@ -1236,8 +1254,8 @@ export const startShell = (
   });
   child.on("error", (error) => {
     const safeMessage = sanitizeToolVisibleText(error.message);
-    record.output = truncate(`${record.output}${safeMessage}`);
-    record.unreadOutput = truncate(
+    record.output = truncateTail(`${record.output}${safeMessage}`, MAX_OUTPUT);
+    record.unreadOutput = truncateTail(
       `${record.unreadOutput}${safeMessage}`,
       200_000,
     );

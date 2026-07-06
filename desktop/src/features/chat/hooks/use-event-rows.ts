@@ -901,6 +901,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           developerResourcesEnabled: developerResourcePreviewsEnabled,
         });
         const selfModApplied = payload?.selfModApplied;
+        const scheduleReceipt = getScheduleReceipt(toolEvents);
         const officePreviewRef = getOfficePreviewRef(toolEvents);
         const voiceSession = payload?.metadata?.voiceSession;
         const backgroundWork = buildBackgroundWork(toolEvents);
@@ -957,9 +958,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             ? { sourceDiffPayloads }
             : {}),
           ...(selfModApplied ? { selfModApplied } : {}),
-          ...(getScheduleReceipt(toolEvents)
-            ? { scheduleReceipt: getScheduleReceipt(toolEvents) }
-            : {}),
+          ...(scheduleReceipt ? { scheduleReceipt } : {}),
           ...(voiceSession ? { voiceSession } : {}),
           ...(backgroundWork ? { backgroundWork } : {}),
           ...(agentCompletionSections.length > 0

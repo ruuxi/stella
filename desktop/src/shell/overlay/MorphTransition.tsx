@@ -771,12 +771,27 @@ function tweenRef(
   duration: number,
   activeTweensRef?: { current: number },
   ease: EaseFn = easeInOutCosine,
+  // Cancellation token: the tween captures the generation at start and bails
+  // if it ever changes (a superseding morph / disposeMorph bumped it). Without
+  // this, a tween from a previous morph keeps stepping and writing the shared
+  // refs (strength/reveal) that the new morph just reset — e.g. a stale handoff
+  // tween would drive revealRef back to 1 and render the new cover as solid
+  // black.
+  generationRef?: { current: number },
 ): Promise<void> {
   return new Promise((resolve) => {
     const from = ref.current;
     const start = performance.now();
+    const generation = generationRef?.current;
     if (activeTweensRef) activeTweensRef.current += 1;
     const step = () => {
+      // Superseded: stop writing the shared ref and stop decrementing. The
+      // generation bump already reset activeTweensRef to 0, so decrementing
+      // here would push it negative.
+      if (generationRef && generationRef.current !== generation) {
+        resolve();
+        return;
+      }
       const t = Math.min((performance.now() - start) / duration, 1);
       const eased = ease(t);
       ref.current = from + (to - from) * eased;
@@ -811,6 +826,10 @@ export function MorphTransition() {
     DEFAULT_HMR_VISUAL_TIMING,
   );
   const activeTweensRef = useRef(0);
+  // Bumped on every disposeMorph (and thus at the start of every new morph,
+  // which disposes first) to cancel any tweens still stepping from a prior
+  // morph. See tweenRef's generationRef.
+  const tweenGenerationRef = useRef(0);
   const steadyStrengthRef = useRef(MORPH_STEADY_STRENGTH);
   const timePhaseRef = useRef(0);
   // Blur-only: 0 during cover, tweened 0→1 on handoff to drive the band sweep.
@@ -851,6 +870,12 @@ export function MorphTransition() {
     }
 
     const disposeMorph = () => {
+      // Cancel any in-flight tweens before tearing down / starting fresh, and
+      // clear the counter so a superseded tween's skipped decrement can't leave
+      // it negative. onMorphForward calls this first, so this also runs before
+      // the shared refs (strength/reveal) are reset for the new morph.
+      tweenGenerationRef.current += 1;
+      activeTweensRef.current = 0;
       stopLoopRef.current?.();
       stopLoopRef.current = null;
       if (glCtxRef.current) {
@@ -947,6 +972,7 @@ export function MorphTransition() {
             activeTweensRef,
             // Frost rushes in then eases to steady (non-linear).
             easeOutCubic,
+            tweenGenerationRef,
           );
         });
       }),
@@ -1030,6 +1056,7 @@ export function MorphTransition() {
               handoffMs,
               activeTweensRef,
               bandSweepEase,
+              tweenGenerationRef,
             ).then(finalize);
           })
           .catch(() => {

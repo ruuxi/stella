@@ -112,11 +112,15 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 			reject(new Error("Request was aborted"));
 			return;
 		}
-		const timeout = setTimeout(resolve, ms);
-		signal?.addEventListener("abort", () => {
+		const onAbort = () => {
 			clearTimeout(timeout);
 			reject(new Error("Request was aborted"));
-		});
+		};
+		const timeout = setTimeout(() => {
+			signal?.removeEventListener("abort", onAbort);
+			resolve();
+		}, ms);
+		signal?.addEventListener("abort", onAbort, { once: true });
 	});
 }
 
@@ -675,12 +679,16 @@ export function closeOpenAICodexWebSocketSessions(sessionId?: string): void {
 		const entry = websocketSessionCache.get(sessionId);
 		if (entry) closeEntry(entry);
 		websocketSessionCache.delete(sessionId);
+		// Drop the session's transport stats and SSE-fallback flag so a
+		// session that ended can retry WS transport and stats don't leak.
+		resetOpenAICodexWebSocketDebugStats(sessionId);
 		return;
 	}
 	for (const entry of websocketSessionCache.values()) {
 		closeEntry(entry);
 	}
 	websocketSessionCache.clear();
+	resetOpenAICodexWebSocketDebugStats();
 }
 
 registerSessionResourceCleanup(closeOpenAICodexWebSocketSessions);

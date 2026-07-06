@@ -708,71 +708,82 @@ export const createOrchestratorController = (
     },
     resolveResult: (value: AutomationTurnResult) => void,
   ): Promise<{ runId: string }> => {
-    if (context.state.activeOrchestratorRunId) {
-      throw new Error("The orchestrator is already running.");
-    }
+    try {
+      if (context.state.activeOrchestratorRunId) {
+        throw new Error("The orchestrator is already running.");
+      }
 
-    const {
-      conversationId,
-      userPrompt,
-      agentType,
-      modelOverride,
-      toolWorkspaceRoot,
-      attachments,
-      connectorDeliveryTarget,
-    } = normalizeAutomationRunInput(payload);
-    if (!conversationId) {
-      resolveResult(createAutomationErrorResult("Missing conversationId"));
-      return { runId: "" };
-    }
-    if (!userPrompt) {
-      resolveResult(createAutomationErrorResult("Missing user prompt"));
-      return { runId: "" };
-    }
-
-    const runId = `local:auto:${crypto.randomUUID()}`;
-    const appendConnectorTerminalNotice = (event: RuntimeEndEvent) => {
-      if (!connectorDeliveryTarget) {
-        return;
-      }
-      if (event.responseTarget?.type !== "agent_terminal_notice") {
-        return;
-      }
-      const text = event.finalText.trim();
-      if (!text) {
-        return;
-      }
-      context.appendLocalChatEvent?.({
+      const {
         conversationId,
-        type: "assistant_message",
-        payload: { text },
-      });
-    };
-    await startPreparedOrchestratorRun({
-      context,
-      buildAgentContext: deps.buildAgentContext,
-      runId,
-      conversationId,
-      agentType,
-      userPrompt,
-      ...(modelOverride ? { modelOverride } : {}),
-      ...(toolWorkspaceRoot ? { toolWorkspaceRoot } : {}),
-      uiVisibility: "hidden",
-      attachments,
-      ...(connectorDeliveryTarget ? { connectorDeliveryTarget } : {}),
-      userMessageId: `automation:${crypto.randomUUID()}`,
-      createRuntimeCallbacks: ({ runId }) =>
-        createRuntimeCallbacks(
-          runId,
-          createAutomationAgentCallbacks(resolveResult, {
-            onEnd: appendConnectorTerminalNotice,
-          }),
-        ),
-      cleanupRun,
-      onFatalError: createAutomationFatalErrorHandler(resolveResult),
-    });
+        userPrompt,
+        agentType,
+        modelOverride,
+        toolWorkspaceRoot,
+        attachments,
+        connectorDeliveryTarget,
+      } = normalizeAutomationRunInput(payload);
+      if (!conversationId) {
+        resolveResult(createAutomationErrorResult("Missing conversationId"));
+        return { runId: "" };
+      }
+      if (!userPrompt) {
+        resolveResult(createAutomationErrorResult("Missing user prompt"));
+        return { runId: "" };
+      }
 
-    return { runId };
+      const runId = `local:auto:${crypto.randomUUID()}`;
+      const appendConnectorTerminalNotice = (event: RuntimeEndEvent) => {
+        if (!connectorDeliveryTarget) {
+          return;
+        }
+        if (event.responseTarget?.type !== "agent_terminal_notice") {
+          return;
+        }
+        const text = event.finalText.trim();
+        if (!text) {
+          return;
+        }
+        context.appendLocalChatEvent?.({
+          conversationId,
+          type: "assistant_message",
+          payload: { text },
+        });
+      };
+      await startPreparedOrchestratorRun({
+        context,
+        buildAgentContext: deps.buildAgentContext,
+        runId,
+        conversationId,
+        agentType,
+        userPrompt,
+        ...(modelOverride ? { modelOverride } : {}),
+        ...(toolWorkspaceRoot ? { toolWorkspaceRoot } : {}),
+        uiVisibility: "hidden",
+        attachments,
+        ...(connectorDeliveryTarget ? { connectorDeliveryTarget } : {}),
+        userMessageId: `automation:${crypto.randomUUID()}`,
+        createRuntimeCallbacks: ({ runId }) =>
+          createRuntimeCallbacks(
+            runId,
+            createAutomationAgentCallbacks(resolveResult, {
+              onEnd: appendConnectorTerminalNotice,
+            }),
+          ),
+        cleanupRun,
+        onFatalError: createAutomationFatalErrorHandler(resolveResult),
+      });
+
+      return { runId };
+    } catch (error) {
+      // Any throw before the run's callbacks take over (already-running guard,
+      // prepareOrchestratorRun rejecting on a missing model route/API key, etc.)
+      // must still settle the caller's promise. resolveResult is the Promise's
+      // own resolve, so a later callback-driven resolve is a harmless no-op.
+      resolveResult(
+        createAutomationErrorResult((error as Error)?.message ?? String(error)),
+      );
+      return { runId: "" };
+    }
   };
 
   const runAutomationTurn = async (payload: {

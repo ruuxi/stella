@@ -1,3 +1,4 @@
+import { cleanupSessionResources } from "../../ai/session-resources.js";
 import type { Agent } from "../agent-core/agent.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
@@ -337,5 +338,13 @@ export class PiSessionCore {
     this.agent = null;
     this.currentResolvedLlm = null;
     this.pendingHistoryRefresh = false;
+    // Release per-session provider resources keyed by the same id used as the
+    // AI cache session id (the thread key), e.g. Codex WebSocket connections
+    // and their transport/fallback bookkeeping.
+    try {
+      cleanupSessionResources(this.threadKey);
+    } catch {
+      // Best-effort; a failing cleanup shouldn't break session teardown.
+    }
   }
 }

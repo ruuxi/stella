@@ -325,7 +325,7 @@ const detectDefaultBrowserWindows = async (): Promise<BrowserType | null> => {
     if (progId.includes("chromehtm") || progId.includes("chromehtml")) return "chrome";
     if (progId.includes("msedge") || progId.includes("edgehtm")) return "edge";
     if (progId.includes("bravehtm") || progId.includes("bravehtml")) return "brave";
-    if (progId.includes("archtml") || progId.includes("archtml")) return "arc";
+    if (progId.includes("archtml") || progId.includes("archtm")) return "arc";
     if (progId.includes("operahtml") || progId.includes("operahtm")) return "opera";
     if (progId.includes("vivaldi")) return "vivaldi";
     // Firefox not supported (different DB format)

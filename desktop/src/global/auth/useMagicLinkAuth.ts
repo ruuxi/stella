@@ -3,7 +3,6 @@ import {
   createElement,
   useContext,
   useEffect,
-  useRef,
   useState,
   type Dispatch,
   type FormEvent,
@@ -65,7 +64,6 @@ function useMagicLinkAuthState(): UseMagicLinkAuthResult {
   const [cooldownUntil, setCooldownUntil] = useState<number>(0);
   const [now, setNow] = useState(() => Date.now());
   const [isResending, setIsResending] = useState(false);
-  const cancelledRef = useRef(false);
 
   const sendMagicLink = async (
     targetEmail: string,
@@ -155,13 +153,20 @@ function useMagicLinkAuthState(): UseMagicLinkAuthResult {
   // Poll for magic link verification.
   useEffect(() => {
     if (status !== "sent" || !requestId) return;
-    cancelledRef.current = false;
+    // Per-effect cancellation flag, captured by this run's poll closure. Each
+    // effect execution owns its own `cancelled`, so a stale loop from a prior
+    // run (e.g. after Resend re-runs this effect with a new requestId) can
+    // never be un-cancelled by the newer run and stops touching shared state
+    // the moment its cleanup fires. reset() cancels via the same path: it
+    // clears `status`/`requestId`, which re-runs this effect and runs the old
+    // run's cleanup.
+    let cancelled = false;
     const convexSiteUrl = getConvexSiteUrl();
 
     const poll = async () => {
-      while (!cancelledRef.current) {
+      while (!cancelled) {
         await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-        if (cancelledRef.current) return;
+        if (cancelled) return;
 
         try {
           const res = await fetch(
@@ -175,7 +180,7 @@ function useMagicLinkAuthState(): UseMagicLinkAuthResult {
           };
 
           if (data.status === "completed" && data.sessionCookie) {
-            if (cancelledRef.current) return;
+            if (cancelled) return;
             setStatus("verifying");
             try {
               await window.electronAPI?.system.applyAuthSessionCookie?.(
@@ -191,7 +196,7 @@ function useMagicLinkAuthState(): UseMagicLinkAuthResult {
           }
 
           if (data.status === "completed") {
-            if (cancelledRef.current) return;
+            if (cancelled) return;
             setStatus("error");
             setError("Sign-in incomplete. Please try again.");
             setRequestId(null);
@@ -199,7 +204,7 @@ function useMagicLinkAuthState(): UseMagicLinkAuthResult {
           }
 
           if (data.status === "expired") {
-            if (cancelledRef.current) return;
+            if (cancelled) return;
             setStatus("error");
             setError("Sign-in link expired. Please try again.");
             setRequestId(null);
@@ -213,12 +218,11 @@ function useMagicLinkAuthState(): UseMagicLinkAuthResult {
 
     void poll();
     return () => {
-      cancelledRef.current = true;
+      cancelled = true;
     };
   }, [status, requestId]);
 
   const reset = () => {
-    cancelledRef.current = true;
     setEmail("");
     setStatus("idle");
     setError(null);

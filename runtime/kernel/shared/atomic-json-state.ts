@@ -70,8 +70,10 @@ export const updateJsonStateFile = async <T>(args: {
       return next;
     });
   updateQueues.set(key, run);
-  void run.finally(() => {
-    if (updateQueues.get(key) === run) updateQueues.delete(key);
-  });
+  void run
+    .finally(() => {
+      if (updateQueues.get(key) === run) updateQueues.delete(key);
+    })
+    .catch(() => undefined);
   return await run;
 };

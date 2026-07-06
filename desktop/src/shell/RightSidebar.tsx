@@ -204,6 +204,9 @@ export const RightSidebar = forwardRef<
     if (!panelOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // An Escape already handled by a menu/dialog shouldn't also collapse the
+      // panel.
+      if (e.defaultPrevented) return;
       // Esc collapses an expanded panel before fully closing it, so the
       // first press feels like "back out" and the second like "dismiss".
       if (displayTabs.getSnapshot().panelExpanded) {

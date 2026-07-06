@@ -315,12 +315,24 @@ export const getFileLogger = (): FileLogger | null => sharedLogger;
 
 /**
  * Install global crash handlers that route uncaught exceptions and
- * unhandled rejections to the error channel. The process is NOT killed —
- * existing behavior (Electron / Bun defaults) is preserved; we only add a
- * durable on-disk record before whatever the runtime decides to do next.
+ * unhandled rejections to the error channel before the runtime acts on them.
+ *
+ * For uncaught exceptions we use `uncaughtExceptionMonitor`, which observes
+ * the error and writes a durable on-disk record WITHOUT suppressing the
+ * runtime's default fatal behavior (the process still crashes/exits as
+ * Node/Bun/Electron would without this listener). A plain `uncaughtException`
+ * listener would silently swallow the crash and leave the process running in
+ * an undefined state.
+ *
+ * For unhandled rejections we register an `unhandledRejection` listener, which
+ * DOES swallow the rejection (the process keeps running with only a log line)
+ * rather than triggering the default surfacing. This is deliberate: the
+ * detached worker relies on it to stay alive across benign unhandled
+ * rejections. Callers that want strict fatal semantics here should revisit
+ * this decision.
  */
 export const installGlobalErrorLogging = (logger: FileLogger): void => {
-  process.on("uncaughtException", (error) => {
+  process.on("uncaughtExceptionMonitor", (error) => {
     logger.crash("process.uncaughtException", error);
   });
   process.on("unhandledRejection", (reason) => {

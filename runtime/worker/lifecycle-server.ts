@@ -179,6 +179,14 @@ export class WorkerLifecycleServer {
       // Time from worker process launch to bound-and-listening.
       startupMs: Math.round(process.uptime() * 1000),
     });
+
+    // Arm the idle timer at boot so a worker that never receives a client
+    // (host crashed during the readiness poll, or the poll timed out) still
+    // reaps itself instead of lingering as an orphan holding the net server
+    // open. noteClientConnected() cancels this the moment a real client
+    // attaches, and evaluateIdleShutdown() re-checks clientCount /
+    // shouldKeepAlive before actually exiting.
+    this.scheduleIdleShutdown();
   }
 
   /**

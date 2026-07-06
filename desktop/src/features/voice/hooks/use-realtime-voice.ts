@@ -420,6 +420,10 @@ export class VoiceSessionManager {
         });
       }
     } catch (err) {
+      // The failed session was never handed to sessionRef/attachLiveSession,
+      // so nothing else can reach it: disconnect it here (idempotent) to drop
+      // its localChat IPC listener before we abort or schedule a fresh retry.
+      void session.disconnect().catch(() => undefined);
       if (this.aborted) return;
       console.error(
         "[VoiceSessionManager] Failed to connect:",
