@@ -108,6 +108,7 @@ type BillingUsage = {
 type ResolvableBillingStatus = {
   plan: SubscriptionPlan;
   usage: BillingUsage;
+  authenticated?: boolean;
 };
 
 const isUsageExceeded = (usage: BillingUsage): boolean =>
@@ -135,6 +136,9 @@ export const resolveBillingAudience = (args: {
     return "anonymous";
   }
   if (!args.billingStatus) {
+    return null;
+  }
+  if (args.billingStatus.authenticated === false) {
     return null;
   }
   const { plan, usage } = args.billingStatus;

@@ -20,6 +20,7 @@ type BillingPlanId = "free" | "go" | "pro" | "plus" | "ultra";
 type BillingStatusLite = {
   plan?: BillingPlanId;
   plans?: Partial<Record<BillingPlanId, { label?: string }>>;
+  authenticated?: boolean;
 };
 
 const PAID_PLANS: ReadonlySet<BillingPlanId> = new Set([
@@ -93,6 +94,7 @@ export function SubscriptionUpgradeDialog() {
       return;
     }
     if (!accountKey) return;
+    if (billingStatus && billingStatus.authenticated === false) return;
     const plan = billingStatus?.plan;
     if (!plan) return;
 

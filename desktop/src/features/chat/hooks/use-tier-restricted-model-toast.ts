@@ -51,6 +51,7 @@ type BillingStatusLite = {
     monthlyUsedUsd: number;
     monthlyLimitUsd: number;
   };
+  authenticated?: boolean;
 };
 
 type LocalModelPreferences = {
