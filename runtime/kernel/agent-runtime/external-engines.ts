@@ -1172,6 +1172,16 @@ export const runExternalOrchestratorTurn = async (
     throw markOrchestratorErrorReported(error);
   } finally {
     liveAgent.finish();
+    // The external engine persisted this turn's user + assistant messages to
+    // the shared durable thread but ran entirely outside the held-over Pi
+    // `OrchestratorSession`, so that session's in-memory `state.messages`
+    // still reflects only its own prior turns. Flag it for a history refresh
+    // so a later default-engine turn on this conversation re-syncs from the
+    // store instead of prompting with stale context that omits these Claude
+    // Code turns. Mirrors how realtime voice — another out-of-band writer to
+    // the same thread — calls `notifyHistoryChanged()`. No-op when no live Pi
+    // agent exists yet (it seeds fresh from the store on first construction).
+    opts.orchestratorSession?.notifyHistoryChanged();
   }
 };
 
