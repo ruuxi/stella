@@ -111,6 +111,20 @@ const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1000;
  */
 const CLIENT_REQUEST_DEDUPE_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * Mobile clients (the desktop-bridge chat) abort a run after a fixed window
+ * of event silence (`BRIDGE_RUN_TIMEOUT_MS`, 45s) and, once their reconnect
+ * attempts are exhausted, surface "Stella did not reply in time." Long silent
+ * stretches are legitimate: a slow first token, a multi-minute shell/tool
+ * call, or context compaction (worst on the Claude Code / Codex engines, but
+ * possible on the default engine too) can all run well past 45s without
+ * emitting a stream event. While a user-visible run is active we broadcast a
+ * lightweight keepalive to mobile so its inactivity timer keeps resetting
+ * instead of tearing down a healthy run. The interval sits comfortably below
+ * the mobile window so a couple of keepalives land before it would fire.
+ */
+const MOBILE_KEEPALIVE_INTERVAL_MS = 15_000;
+
 export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   const runOwners = new Map<string, number>();
   const requestOwners = new Map<string, number>();
@@ -133,6 +147,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     { requestId: string; createdAt: number }
   >();
   const clientRequestKeyByRequestId = new Map<string, string>();
+  // Timestamp of the most recent frame pushed to mobile on the `agent:event`
+  // channel (real events and keepalives alike). The keepalive ticker uses it
+  // to avoid piling frames on top of an already-chatty run.
+  let lastMobileAgentBroadcastAt = 0;
 
   const pruneClientRequestIndex = () => {
     const now = Date.now();
@@ -259,7 +277,11 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     bufferConversationEvent(normalizedEvent.conversationId, normalizedEvent);
     pruneConversationEventBuffers();
 
-    options.getBroadcastToMobile?.()?.("agent:event", normalizedEvent);
+    const broadcastToMobile = options.getBroadcastToMobile?.();
+    if (broadcastToMobile) {
+      broadcastToMobile("agent:event", normalizedEvent);
+      lastMobileAgentBroadcastAt = Date.now();
+    }
     const receiverId = resolveReceiverId(normalizedEvent, targetWebContentsId);
     if (receiverId == null) {
       return;
@@ -269,6 +291,42 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       receiver.send("agent:event", normalizedEvent);
     }
   };
+
+  // While a user-visible run is active and no real `agent:event` has been
+  // pushed to mobile within the interval, broadcast a benign keepalive so the
+  // mobile bridge's inactivity timer keeps resetting across long silent
+  // stretches. Keepalives go to mobile ONLY: they are not buffered for
+  // `agent:resume`, carry no recorder seq, and are never sent to the desktop
+  // renderer, so they cannot perturb replay ordering or the local UI. Mobile
+  // ignores the unknown `keepalive` type after resetting its timer.
+  const emitMobileKeepalives = () => {
+    const broadcastToMobile = options.getBroadcastToMobile?.();
+    if (!broadcastToMobile) return;
+    if (activeRunByConversation.size === 0) return;
+    if (
+      Date.now() - lastMobileAgentBroadcastAt <
+      MOBILE_KEEPALIVE_INTERVAL_MS
+    ) {
+      return;
+    }
+    for (const activeRun of activeRunByConversation.values()) {
+      broadcastToMobile("agent:event", {
+        type: "keepalive",
+        runId: activeRun.runId,
+        conversationId: activeRun.conversationId,
+        ...(activeRun.requestId ? { requestId: activeRun.requestId } : {}),
+        ...(activeRun.userMessageId
+          ? { userMessageId: activeRun.userMessageId }
+          : {}),
+      });
+    }
+    lastMobileAgentBroadcastAt = Date.now();
+  };
+  const mobileKeepaliveTimer = setInterval(
+    emitMobileKeepalives,
+    MOBILE_KEEPALIVE_INTERVAL_MS,
+  );
+  mobileKeepaliveTimer.unref?.();
 
   const scheduleRunCleanup = (runId: string, requestId?: string) => {
     setTimeout(() => {
