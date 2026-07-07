@@ -94,7 +94,6 @@ const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
 const MAX_STDERR_CAPTURE = 4_000;
-const MAX_TOOL_STEPS = 64;
 const MAX_TOOL_RESULT_CHARS = 80_000;
 const DEFAULT_STEP_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_STEP_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -1382,7 +1381,7 @@ class ClaudeCodeSessionRuntime {
     }
 
     const recoveryBudget = { remaining: MAX_STEP_RECOVERIES_PER_TURN };
-    for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
+    for (;;) {
       const response = await this.executeStructuredStepWithRecovery(
         session,
         request,
@@ -1425,10 +1424,6 @@ class ClaudeCodeSessionRuntime {
         toolResult,
       });
     }
-
-    throw new Error(
-      `Claude Code exceeded the Stella tool-step limit of ${MAX_TOOL_STEPS}.`,
-    );
   }
 
   /**
