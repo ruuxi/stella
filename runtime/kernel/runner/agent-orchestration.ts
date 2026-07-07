@@ -595,6 +595,11 @@ export const createAgentOrchestration = (
       const subagentFileChangeKeys = new Set<string>();
       const subagentProducedFiles: ProducedFileRecord[] = [];
       const subagentProducedFileKeys = new Set<string>();
+      // Shell sessions this run interacted with. Background/long-running
+      // commands can finish after the model's last poll, so their produced
+      // files never drain inline; we sweep these sessions at finalize to pull
+      // late deliverables into the completion rollup.
+      const touchedShellSessions = new Set<string>();
       const pendingToolWriteRecords: Promise<void>[] = [];
       const guardedShellSessionLeases = new Map<string, string>();
       const guardedShellLeaseSessions = new Map<string, Set<string>>();
@@ -790,6 +795,17 @@ export const createAgentOrchestration = (
             });
           }
           const shellState = getShellExecutionState(result);
+          // Remember every shell session this run touched so finalize can
+          // sweep background/long-running commands that completed after their
+          // last poll for undrained produced files.
+          if (shellSessionId) touchedShellSessions.add(shellSessionId);
+          if (shellState?.sessionId)
+            touchedShellSessions.add(shellState.sessionId);
+          if (isParallelWithShellCommands) {
+            for (const sessionId of getParallelRunningShellSessions(result)) {
+              touchedShellSessions.add(sessionId);
+            }
+          }
           if (
             isShellCommand &&
             shellGuardActive &&
@@ -938,6 +954,37 @@ export const createAgentOrchestration = (
         subagentSucceeded =
           !result.error && !result.interrupted && !abortSignal.aborted;
         subagentInterrupted = Boolean(result.interrupted);
+        // Late/background flush: long-running shell commands (e.g. video
+        // renders) can finish after the model's last poll, so their produced
+        // files were never drained inline and would ride only individual
+        // tool_result entries — missing from the completion rollup that both
+        // desktop and mobile source exclusively. Sweep the sessions this run
+        // touched for completed-but-unreported deliverables and merge them
+        // (dedup + noise/MAX guards preserved by the shell drain) before the
+        // rollup assembles off `result.producedFiles`.
+        if (touchedShellSessions.size > 0) {
+          try {
+            const lateProducedFiles =
+              await context.toolHost.drainCompletedShellProducedFiles([
+                ...touchedShellSessions,
+              ]);
+            if (lateProducedFiles.length > 0) {
+              collectProducedFiles(
+                subagentProducedFiles,
+                subagentProducedFileKeys,
+                { producedFiles: lateProducedFiles },
+              );
+              pendingToolWriteRecords.push(
+                recordToolWrites({ producedFiles: lateProducedFiles }),
+              );
+            }
+          } catch (error) {
+            console.warn(
+              "[produced-files] late background shell drain failed (continuing):",
+              (error as Error).message,
+            );
+          }
+        }
         if (subagentFileChanges.length > 0) {
           result.fileChanges = subagentFileChanges;
         }

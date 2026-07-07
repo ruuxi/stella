@@ -487,6 +487,40 @@ const takeCompletedProducedFiles = async (
   return produced;
 };
 
+/**
+ * Drain completed-but-unreported produced files from managed shell sessions.
+ *
+ * Long-running/background commands that finish AFTER the model's last poll
+ * leave their deliverables sitting on the record with `producedFilesReported`
+ * still false — the foreground `write_stdin` / shell-status drain never runs
+ * for them, so those files (e.g. a video render written after the tool
+ * nominally completed) would only ride individual `tool_result` entries and
+ * never reach the agent-completed rollup. This lets the agent finalizer pull
+ * such late deliverables in before the rollup emits.
+ *
+ * Scope with `sessionIds` to the sessions a run actually touched (omit to
+ * sweep every session). Delegates to `takeCompletedProducedFiles`, so the
+ * one-shot `producedFilesReported` flag, `isNoiseProducedPath` guards,
+ * per-command dedup, and the `MAX_PRODUCED_FILES_PER_COMMAND` cap all still
+ * apply, and a session already drained inline yields nothing here.
+ */
+export const drainCompletedProducedFiles = async (
+  state: ShellState,
+  sessionIds?: Iterable<string>,
+): Promise<ProducedFileRecord[]> => {
+  const records = sessionIds
+    ? [...new Set(sessionIds)]
+        .map((id) => state.shells.get(id))
+        .filter((record): record is ManagedShellRecord => Boolean(record))
+    : [...state.shells.values()];
+  const drained: ProducedFileRecord[] = [];
+  for (const record of records) {
+    const produced = await takeCompletedProducedFiles(record);
+    if (produced) drained.push(...produced);
+  }
+  return drained;
+};
+
 export const extractOfficePreviewRef = (
   output: string,
 ): { cleanedOutput: string; officePreviewRef?: OfficePreviewRef } => {

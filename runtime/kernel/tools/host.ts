@@ -38,7 +38,11 @@ import type {
 } from "./types.js";
 
 import { log, logError, recoverStaleSecretFiles } from "./utils.js";
-import { createShellState, type ShellState } from "./shell.js";
+import {
+  createShellState,
+  drainCompletedProducedFiles,
+  type ShellState,
+} from "./shell.js";
 import { createStateContext, type StateContext } from "./state.js";
 import {
   createShellToolHandlers,
@@ -378,6 +382,12 @@ export const createToolHost = ({
     getToolCatalog,
     getHandlerNames: () => Object.keys(handlers),
     getShells: () => Array.from(shellState.shells.values()),
+    // Pull deliverables from background/long-running shell sessions that
+    // finished after their last poll (so their produced files were never
+    // drained inline) into the agent-completed rollup. Optionally scoped to
+    // the sessions a run touched.
+    drainCompletedShellProducedFiles: (sessionIds?: string[]) =>
+      drainCompletedProducedFiles(shellState, sessionIds),
     killAllShells,
     killShell,
     killShellsByPort,

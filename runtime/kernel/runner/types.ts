@@ -415,6 +415,16 @@ export type RunnerContext = {
     registerExtensionTools: (tools: ToolDefinition[]) => void;
     /** Sweep user-extension tools (F1 hot-reload). Built-ins are untouched. */
     unregisterExtensionTools: () => void;
+    /**
+     * Drain completed-but-unreported produced files from background/
+     * long-running shell sessions so late deliverables reach the
+     * agent-completed rollup. Optionally scoped to specific session ids.
+     */
+    drainCompletedShellProducedFiles: (
+      sessionIds?: string[],
+    ) => Promise<
+      import("../../contracts/file-changes.js").ProducedFileRecord[]
+    >;
     killAllShells: () => void;
     killShell: (sessionId: string) => Promise<void> | void;
     killShellsByPort: (port: number) => void;

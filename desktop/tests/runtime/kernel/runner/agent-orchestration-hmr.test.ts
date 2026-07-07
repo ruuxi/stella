@@ -393,6 +393,7 @@ const createTestContext = (root: string, hmrController: unknown) => {
         return Promise.resolve({ result: "ok" });
       },
       registerExtensionTools: vi.fn(),
+      drainCompletedShellProducedFiles: vi.fn(async () => []),
       killAllShells: vi.fn(),
       killShell: vi.fn(),
       killShellsByPort: vi.fn(),

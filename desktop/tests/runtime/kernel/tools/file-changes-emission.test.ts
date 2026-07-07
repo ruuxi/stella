@@ -10,6 +10,7 @@ import {
 import { handleApplyPatch } from "../../../../../runtime/kernel/tools/apply-patch.js";
 import {
   createShellState,
+  drainCompletedProducedFiles,
   handleExecCommand,
   handleWriteStdin,
 } from "../../../../../runtime/kernel/tools/shell.js";
@@ -419,6 +420,71 @@ describe("fileChanges emission", () => {
 
     expect(repeated.error).toBeUndefined();
     expect(repeated.producedFiles).toBeUndefined();
+  });
+
+  it("drainCompletedProducedFiles recovers a deliverable from a background command that finished but was never polled", async () => {
+    const root = await createTempDir();
+    const shellState = createShellState(root);
+    const context = {
+      conversationId: "c1",
+      deviceId: "d1",
+      requestId: "r1",
+      stellaAppDir: root,
+    };
+    const filePath = path.join(root, "background-render.mp4");
+
+    // Long-running command that writes the deliverable AFTER the initial
+    // yield, so exec_command returns a running session_id and never drains
+    // produced files inline.
+    const started = await handleExecCommand(
+      shellState,
+      {
+        cmd: "sleep 0.3; printf 'video-bytes' > background-render.mp4",
+        workdir: root,
+        yield_time_ms: 50,
+      },
+      context,
+    );
+    const sessionId = (started.result as { session_id: string | null })
+      .session_id;
+    expect(typeof sessionId).toBe("string");
+    // Still running: nothing produced inline yet.
+    expect(started.producedFiles).toBeUndefined();
+
+    // Wait for the command to finish (record.running flips via the child
+    // 'exit' handler) WITHOUT ever polling the session, mirroring an agent
+    // that ended its turn before the render completed. The produced files
+    // therefore stay undrained on the record.
+    const record = shellState.shells.get(sessionId as string);
+    expect(record).toBeDefined();
+    const deadline = Date.now() + 5000;
+    while (record?.running && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(record?.running).toBe(false);
+
+    // A drain scoped to an unrelated session recovers nothing.
+    expect(
+      await drainCompletedProducedFiles(shellState, ["no-such-session"]),
+    ).toEqual([]);
+
+    // The finalize sweep pulls the late deliverable in for the rollup.
+    const drained = await drainCompletedProducedFiles(shellState, [
+      sessionId as string,
+    ]);
+    expect(drained).toEqual([{ path: filePath, kind: { type: "add" } }]);
+
+    // One-shot: a second sweep (or any later poll) reveals nothing, so the
+    // completion rollup never double-reports.
+    expect(
+      await drainCompletedProducedFiles(shellState, [sessionId as string]),
+    ).toEqual([]);
+    const polled = await handleWriteStdin(
+      shellState,
+      { session_id: sessionId, chars: "", yield_time_ms: 10 },
+      context,
+    );
+    expect(polled.producedFiles).toBeUndefined();
   });
 
   const execContext = (root: string) => ({
