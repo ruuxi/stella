@@ -766,6 +766,19 @@ export function useChatScrollManagement({
           `[data-scroll-follow-key="${CSS.escape(followKey)}"]`,
         )
         if (!streamingRow || streamingRow.offsetHeight <= 0) return
+        // The follow key is intentionally kept active after a run's final
+        // assistant message settles (so a *new* turn's first chunk can hand
+        // off cleanly). But once that row has locked, `.event-row--streaming`
+        // is gone and it is no longer growing. A late layout change on the
+        // settled row — the reveal mask clearing, an inline image/card
+        // mounting once artifacts render, a code block or timestamp settling —
+        // still fires `notifyAssistantScrollFollowLayoutChange`, and following
+        // the full (now static) row bottom re-applies `FOLLOW_BREATHING_PX`,
+        // pulling the viewport forward into the empty trailing region a beat
+        // after the reply was already fully visible. The anticipatory follow
+        // is only meaningful while content is actively streaming, so bail once
+        // the row has settled and leave the view put.
+        if (!streamingRow.classList.contains('event-row--streaming')) return
         const rowRect = streamingRow.getBoundingClientRect()
         const containerRect = attached.getBoundingClientRect()
         const rowTop = rowRect.top - containerRect.top + attached.scrollTop
