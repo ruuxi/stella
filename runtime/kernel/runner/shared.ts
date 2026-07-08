@@ -126,7 +126,11 @@ export const buildAgentEventPrompt = (
     return null;
   }
   if (event.type === "agent-completed" && event.result) {
-    lines.push(`result: ${truncateAgentEventField(event.result)}`);
+    // Relay the sub-agent's full final report to the orchestrator without a
+    // length cap. Truncating here silently drops the tail of the agent's
+    // end-of-task report (the "what changed / outcome / blockers" section),
+    // which makes the orchestrator relay false "done" summaries to the user.
+    lines.push(`result: ${event.result}`);
   }
   if (event.type === "agent-completed" && event.fileChanges?.length) {
     lines.push("explicit file changes:");
