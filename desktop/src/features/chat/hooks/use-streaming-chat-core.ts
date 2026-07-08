@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getPlatform } from '@/platform/electron/platform'
 import { useChatStore } from '@/context/chat-store-context'
 import { getOrCreateDeviceId } from '@/platform/electron/device-id'
@@ -97,6 +97,21 @@ const buildOptimisticUserEvent = (args: {
   },
 })
 
+type QueuedStreamPayload = {
+  id: string
+  conversationId: string
+  userPrompt: string
+  selectedText: SendMessageArgs['selectedText']
+  chatContext: SendMessageArgs['chatContext']
+  deviceId: string
+  platform?: string
+  timezone?: string
+  locale?: string
+  messageMetadata?: SendMessageArgs['metadata']
+  attachments: ReturnType<typeof buildAllLocalAttachments>
+  optimisticEvent: EventRecord
+}
+
 export function useStreamingChatCore({
   conversationId,
   locale,
@@ -108,12 +123,20 @@ export function useStreamingChatCore({
   const [queuedUserMessages, setQueuedUserMessages] = useState<
     QueuedUserMessage[]
   >([])
+  const queuedStreamPayloadsRef = useRef<QueuedStreamPayload[]>([])
+  const drainingQueuedMessageIdRef = useRef<string | null>(null)
   const {
     isLocalStorage,
     storageMode,
   } = useChatStore()
 
   const removeQueuedUserMessage = useCallback((messageId: string) => {
+    queuedStreamPayloadsRef.current = queuedStreamPayloadsRef.current.filter(
+      (message) => message.id !== messageId,
+    )
+    if (drainingQueuedMessageIdRef.current === messageId) {
+      drainingQueuedMessageIdRef.current = null
+    }
     setQueuedUserMessages((current) =>
       removeQueuedUserMessageById(current, messageId),
     )
@@ -122,14 +145,31 @@ export function useStreamingChatCore({
   const handleRunStarted = useCallback((event: { userMessageId?: string }) => {
     const userMessageId = event.userMessageId
     if (!userMessageId) return
+    queuedStreamPayloadsRef.current = queuedStreamPayloadsRef.current.filter(
+      (message) => message.id !== userMessageId,
+    )
+    if (drainingQueuedMessageIdRef.current === userMessageId) {
+      drainingQueuedMessageIdRef.current = null
+    }
     setQueuedUserMessages((current) =>
       removeQueuedUserMessageById(current, userMessageId),
     )
   }, [])
 
   const handleRunFinished = useCallback(
-    (event: { outcome: 'completed' | 'error' | 'canceled' }) => {
+    (event: {
+      userMessageId?: string
+      outcome: 'completed' | 'error' | 'canceled'
+    }) => {
+      if (
+        event.userMessageId &&
+        drainingQueuedMessageIdRef.current === event.userMessageId
+      ) {
+        drainingQueuedMessageIdRef.current = null
+      }
       if (!shouldClearQueuedUserMessagesForRunOutcome(event.outcome)) return
+      queuedStreamPayloadsRef.current = []
+      drainingQueuedMessageIdRef.current = null
       setQueuedUserMessages([])
     },
     [],
@@ -150,7 +190,6 @@ export function useStreamingChatCore({
     pendingUserMessageId,
     setPendingUserMessageId,
     startStream,
-    queueStream,
     cancelCurrentStream,
   } = useLocalAgentStream({
     activeConversationId,
@@ -160,10 +199,69 @@ export function useStreamingChatCore({
   })
 
   useEffect(() => {
+    queuedStreamPayloadsRef.current = []
+    drainingQueuedMessageIdRef.current = null
     setOptimisticEvents([])
     setQueuedUserMessages([])
     setPendingUserMessageId(null)
   }, [activeConversationId, setPendingUserMessageId])
+
+  const clearOptimisticMessage = useCallback((messageId: string) => {
+    setOptimisticEvents((current) =>
+      current.filter((event) => event._id !== messageId),
+    )
+    setPendingUserMessageId((current) =>
+      current === messageId ? null : current,
+    )
+  }, [setPendingUserMessageId])
+
+  const drainQueuedMessageIfIdle = useCallback(() => {
+    if (isStreaming || !activeConversationId) return
+    if (drainingQueuedMessageIdRef.current) return
+    const nextQueued = queuedStreamPayloadsRef.current[0]
+    if (!nextQueued || nextQueued.conversationId !== activeConversationId) {
+      return
+    }
+
+    drainingQueuedMessageIdRef.current = nextQueued.id
+    queuedStreamPayloadsRef.current = queuedStreamPayloadsRef.current.slice(1)
+    setQueuedUserMessages((current) =>
+      removeQueuedUserMessageById(current, nextQueued.id),
+    )
+    setOptimisticEvents((current) =>
+      current.some((event) => event._id === nextQueued.id)
+        ? current
+        : [...current, nextQueued.optimisticEvent],
+    )
+    setPendingUserMessageId(nextQueued.id)
+
+    startStream({
+      userPrompt: nextQueued.userPrompt,
+      selectedText: nextQueued.selectedText,
+      chatContext: nextQueued.chatContext,
+      deviceId: nextQueued.deviceId,
+      platform: nextQueued.platform,
+      timezone: nextQueued.timezone,
+      locale: nextQueued.locale,
+      ...(nextQueued.messageMetadata
+        ? { messageMetadata: nextQueued.messageMetadata }
+        : {}),
+      attachments: nextQueued.attachments,
+      userMessageEventId: nextQueued.id,
+      onStartFailed: () => {
+        if (drainingQueuedMessageIdRef.current === nextQueued.id) {
+          drainingQueuedMessageIdRef.current = null
+        }
+        clearOptimisticMessage(nextQueued.id)
+      },
+    })
+  }, [
+    activeConversationId,
+    clearOptimisticMessage,
+    isStreaming,
+    setPendingUserMessageId,
+    startStream,
+  ])
 
   useEffect(() => {
     if (!pendingUserMessageId) return
@@ -240,22 +338,24 @@ export function useStreamingChatCore({
   }, [optimisticEvents.length, persistedMessages])
 
   useEffect(() => {
-    if (queuedUserMessages.length === 0) return
     const persistedIds = new Set(persistedMessages.map((message) => message._id))
-    setQueuedUserMessages((current) => {
-      const next = current.filter((message) => !persistedIds.has(message.id))
-      return next.length === current.length ? current : next
-    })
+    const queuedPayloads = queuedStreamPayloadsRef.current.filter(
+      (message) => !persistedIds.has(message.id),
+    )
+    if (queuedPayloads.length !== queuedStreamPayloadsRef.current.length) {
+      queuedStreamPayloadsRef.current = queuedPayloads
+    }
+    if (queuedUserMessages.length > 0) {
+      setQueuedUserMessages((current) => {
+        const next = current.filter((message) => !persistedIds.has(message.id))
+        return next.length === current.length ? current : next
+      })
+    }
   }, [persistedMessages, queuedUserMessages.length])
 
-  const clearOptimisticMessage = useCallback((messageId: string) => {
-    setOptimisticEvents((current) =>
-      current.filter((event) => event._id !== messageId),
-    )
-    setPendingUserMessageId((current) =>
-      current === messageId ? null : current,
-    )
-  }, [setPendingUserMessageId])
+  useEffect(() => {
+    drainQueuedMessageIfIdle()
+  }, [drainQueuedMessageIfIdle, queuedUserMessages.length])
 
   const sendMessage = useCallback(
     async (options: SendMessageArgs) => {
@@ -304,29 +404,21 @@ export function useStreamingChatCore({
       options.onClear()
       await nextAnimationFrame()
 
-      if (mode === 'follow_up') {
-        setQueuedUserMessages((current) => [
-          ...current,
-          {
-            id: optimisticUserMessageId,
-            text: optimisticText,
-            timestamp: messageTimestamp,
-          },
-        ])
-      } else {
+      const optimisticEvent = buildOptimisticUserEvent({
+        id: optimisticUserMessageId,
+        text: optimisticText,
+        timestamp: messageTimestamp,
+        platform,
+        timezone,
+        locale: requestLocale,
+        ...(messageMetadata ? { metadata: messageMetadata } : {}),
+        attachments: toDisplayAttachments(attachments),
+      })
+
+      if (mode !== 'follow_up') {
         setOptimisticEvents((current) => [
           ...current,
-          buildOptimisticUserEvent({
-            id: optimisticUserMessageId,
-            text: optimisticText,
-            timestamp: messageTimestamp,
-            platform,
-            timezone,
-            locale: requestLocale,
-            ...(messageMetadata ? { metadata: messageMetadata } : {}),
-            attachments: toDisplayAttachments(attachments),
-            ...(mode ? { mode } : {}),
-          }),
+          optimisticEvent,
         ])
         setPendingUserMessageId(optimisticUserMessageId)
       }
@@ -353,24 +445,32 @@ export function useStreamingChatCore({
         console.log(
           `[stella:trace] sendMessage (follow_up queued) | convId=${resolvedConversationId}`,
         )
-        queueStream({
-          userPrompt: cleanedText,
-          selectedText: options.selectedText,
-          chatContext: options.chatContext,
-          deviceId,
-          platform,
-          timezone,
-          locale: requestLocale,
-          ...(mode ? { mode } : {}),
-          ...(messageMetadata ? { messageMetadata } : {}),
-          attachments,
-          userMessageEventId: optimisticUserMessageId,
-          onStartFailed: () => {
-            setQueuedUserMessages((current) =>
-              current.filter((message) => message.id !== optimisticUserMessageId),
-            )
+        queuedStreamPayloadsRef.current = [
+          ...queuedStreamPayloadsRef.current,
+          {
+            id: optimisticUserMessageId,
+            conversationId: resolvedConversationId,
+            userPrompt: cleanedText,
+            selectedText: options.selectedText,
+            chatContext: options.chatContext,
+            deviceId,
+            platform,
+            timezone,
+            locale: requestLocale,
+            ...(messageMetadata ? { messageMetadata } : {}),
+            attachments,
+            optimisticEvent,
           },
-        })
+        ]
+        setQueuedUserMessages((current) => [
+          ...current,
+          {
+            id: optimisticUserMessageId,
+            text: optimisticText,
+            timestamp: messageTimestamp,
+          },
+        ])
+        drainQueuedMessageIfIdle()
         return
       }
 
@@ -395,12 +495,12 @@ export function useStreamingChatCore({
     },
     [
       activeConversationId,
+      drainQueuedMessageIfIdle,
       isLocalStorage,
       isStreaming,
       notifyTierRestrictedModel,
       pendingUserMessageId,
       persistedMessages,
-      queueStream,
       startStream,
       locale,
       setPendingUserMessageId,
