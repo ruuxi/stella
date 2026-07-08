@@ -15,6 +15,7 @@ import {
 import { toPastedTextDescriptor } from '../lib/paste-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 import {
+  combineQueuedSendPayloads,
   removeQueuedUserMessageById,
   shouldClearQueuedUserMessagesForRunOutcome,
   type QueuedUserMessage,
@@ -215,44 +216,71 @@ export function useStreamingChatCore({
     )
   }, [setPendingUserMessageId])
 
-  const drainQueuedMessageIfIdle = useCallback(() => {
+  const drainQueuedMessagesIfIdle = useCallback(() => {
     if (isStreaming || !activeConversationId) return
     if (drainingQueuedMessageIdRef.current) return
-    const nextQueued = queuedStreamPayloadsRef.current[0]
-    if (!nextQueued || nextQueued.conversationId !== activeConversationId) {
-      return
-    }
+    // Flush the ENTIRE queue in one drain: every message still waiting when
+    // the app goes idle is combined (in queue order) into a single turn so
+    // the assistant answers them together instead of running one full
+    // response turn per queued message. A lone queued message passes through
+    // `combineQueuedSendPayloads` untouched.
+    const drainable = queuedStreamPayloadsRef.current.filter(
+      (message) => message.conversationId === activeConversationId,
+    )
+    const combined = combineQueuedSendPayloads(drainable)
+    if (!combined) return
 
-    drainingQueuedMessageIdRef.current = nextQueued.id
-    queuedStreamPayloadsRef.current = queuedStreamPayloadsRef.current.slice(1)
+    const drainedIds = new Set(drainable.map((message) => message.id))
+    drainingQueuedMessageIdRef.current = combined.id
+    queuedStreamPayloadsRef.current = queuedStreamPayloadsRef.current.filter(
+      (message) => !drainedIds.has(message.id),
+    )
     setQueuedUserMessages((current) =>
-      removeQueuedUserMessageById(current, nextQueued.id),
+      current.filter((message) => !drainedIds.has(message.id)),
     )
+    const optimisticEvent =
+      drainable.length === 1
+        ? combined.optimisticEvent
+        : buildOptimisticUserEvent({
+            id: combined.id,
+            text:
+              combined.userPrompt
+              || combined.selectedText?.trim()
+              || 'Attached context',
+            timestamp: combined.optimisticEvent.timestamp,
+            platform: combined.platform,
+            timezone: combined.timezone,
+            locale: combined.locale,
+            ...(combined.messageMetadata
+              ? { metadata: combined.messageMetadata }
+              : {}),
+            attachments: toDisplayAttachments(combined.attachments),
+          })
     setOptimisticEvents((current) =>
-      current.some((event) => event._id === nextQueued.id)
+      current.some((event) => event._id === combined.id)
         ? current
-        : [...current, nextQueued.optimisticEvent],
+        : [...current, optimisticEvent],
     )
-    setPendingUserMessageId(nextQueued.id)
+    setPendingUserMessageId(combined.id)
 
     startStream({
-      userPrompt: nextQueued.userPrompt,
-      selectedText: nextQueued.selectedText,
-      chatContext: nextQueued.chatContext,
-      deviceId: nextQueued.deviceId,
-      platform: nextQueued.platform,
-      timezone: nextQueued.timezone,
-      locale: nextQueued.locale,
-      ...(nextQueued.messageMetadata
-        ? { messageMetadata: nextQueued.messageMetadata }
+      userPrompt: combined.userPrompt,
+      selectedText: combined.selectedText,
+      chatContext: combined.chatContext,
+      deviceId: combined.deviceId,
+      platform: combined.platform,
+      timezone: combined.timezone,
+      locale: combined.locale,
+      ...(combined.messageMetadata
+        ? { messageMetadata: combined.messageMetadata }
         : {}),
-      attachments: nextQueued.attachments,
-      userMessageEventId: nextQueued.id,
+      attachments: combined.attachments,
+      userMessageEventId: combined.id,
       onStartFailed: () => {
-        if (drainingQueuedMessageIdRef.current === nextQueued.id) {
+        if (drainingQueuedMessageIdRef.current === combined.id) {
           drainingQueuedMessageIdRef.current = null
         }
-        clearOptimisticMessage(nextQueued.id)
+        clearOptimisticMessage(combined.id)
       },
     })
   }, [
@@ -354,8 +382,8 @@ export function useStreamingChatCore({
   }, [persistedMessages, queuedUserMessages.length])
 
   useEffect(() => {
-    drainQueuedMessageIfIdle()
-  }, [drainQueuedMessageIfIdle, queuedUserMessages.length])
+    drainQueuedMessagesIfIdle()
+  }, [drainQueuedMessagesIfIdle, queuedUserMessages.length])
 
   const sendMessage = useCallback(
     async (options: SendMessageArgs) => {
@@ -384,8 +412,12 @@ export function useStreamingChatCore({
       const platform = getPlatform()
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
       const requestLocale = locale
+      // `drainingQueuedMessageIdRef` covers the gap between a drain kicking
+      // off `startStream` and `isStreaming` flipping true: a message
+      // submitted inside that window must queue for the NEXT drain, not
+      // start a competing turn mid-drain.
       const shouldQueueFollowUp =
-        isStreaming &&
+        (isStreaming || drainingQueuedMessageIdRef.current !== null) &&
         (!pendingUserMessageId ||
           !persistedMessages.some((message) => {
             if (message.type !== 'assistant_message') return false
@@ -470,7 +502,7 @@ export function useStreamingChatCore({
             timestamp: messageTimestamp,
           },
         ])
-        drainQueuedMessageIfIdle()
+        drainQueuedMessagesIfIdle()
         return
       }
 
@@ -495,7 +527,7 @@ export function useStreamingChatCore({
     },
     [
       activeConversationId,
-      drainQueuedMessageIfIdle,
+      drainQueuedMessagesIfIdle,
       isLocalStorage,
       isStreaming,
       notifyTierRestrictedModel,

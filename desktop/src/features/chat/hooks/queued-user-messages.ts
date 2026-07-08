@@ -1,7 +1,144 @@
+import type { ChatContext } from '../../../../../runtime/contracts/index.js'
+import type { MessageMetadata } from '../../../../../runtime/contracts/local-chat.js'
+
 export type QueuedUserMessage = {
   id: string
   text: string
   timestamp: number
+}
+
+/**
+ * Structural subset of a queued send payload that the drain combiner
+ * understands. Extra fields (deviceId, platform, optimistic event, …) ride
+ * along untouched via the generic parameter — the combined payload always
+ * inherits them from the FIRST queued message so the turn keeps its
+ * original identity/ordering.
+ */
+export type CombinableQueuedSendPayload = {
+  id: string
+  userPrompt: string
+  selectedText: string | null
+  chatContext: ChatContext | null
+  messageMetadata?: MessageMetadata
+  attachments: unknown[]
+}
+
+const definedEntries = (value: object) =>
+  Object.entries(value).filter(([, entry]) => entry !== undefined)
+
+/**
+ * Field-wise merge of the chat contexts captured with each queued message.
+ * Scalars (window, screenshot, selection, …) take the value from the most
+ * recent message that explicitly set them; additive user content
+ * (pastedTexts, regionScreenshots, files) is concatenated in queue order so
+ * nothing the user attached gets dropped from the combined turn.
+ */
+const mergeChatContexts = (contexts: ChatContext[]): ChatContext => {
+  const merged: Record<string, unknown> = {}
+  const pastedTexts: string[] = []
+  const regionScreenshots: NonNullable<ChatContext['regionScreenshots']> = []
+  const files: NonNullable<ChatContext['files']> = []
+  for (const context of contexts) {
+    for (const [key, value] of definedEntries(context)) {
+      merged[key] = value
+    }
+    if (context.pastedTexts?.length) pastedTexts.push(...context.pastedTexts)
+    if (context.regionScreenshots?.length) {
+      regionScreenshots.push(...context.regionScreenshots)
+    }
+    if (context.files?.length) files.push(...context.files)
+  }
+  if (pastedTexts.length > 0) merged.pastedTexts = pastedTexts
+  if (regionScreenshots.length > 0) merged.regionScreenshots = regionScreenshots
+  if (files.length > 0) merged.files = files
+  return merged as ChatContext
+}
+
+const mergeMessageMetadata = (
+  metadatas: MessageMetadata[],
+): MessageMetadata | undefined => {
+  if (metadatas.length === 0) return undefined
+  const merged: Record<string, unknown> = {}
+  const context: Record<string, unknown> = {}
+  const pastedTexts: NonNullable<
+    NonNullable<MessageMetadata['context']>['pastedTexts']
+  > = []
+  for (const metadata of metadatas) {
+    for (const [key, value] of definedEntries(metadata)) {
+      if (key === 'context') continue
+      merged[key] = value
+    }
+    if (!metadata.context) continue
+    for (const [key, value] of definedEntries(metadata.context)) {
+      if (key === 'pastedTexts') continue
+      context[key] = value
+    }
+    if (metadata.context.pastedTexts?.length) {
+      pastedTexts.push(...metadata.context.pastedTexts)
+    }
+  }
+  if (pastedTexts.length > 0) context.pastedTexts = pastedTexts
+  if (Object.keys(context).length > 0) merged.context = context
+  return merged as MessageMetadata
+}
+
+/**
+ * Collapses every unsent queued message into a single send payload so one
+ * idle drain produces ONE turn instead of a turn per queued message.
+ *
+ * - A single payload is returned as-is (reference-equal), keeping the
+ *   one-queued-message path byte-identical to a direct drain.
+ * - Prompts are joined in queue order with a blank line between them.
+ * - Attachments are concatenated in queue order.
+ * - `selectedText` takes the most recent non-empty selection.
+ * - Chat context / metadata merge field-wise (latest explicit value wins,
+ *   pasted-text collections concatenate).
+ * - Identity fields (id, conversation, device, optimistic event, …) come
+ *   from the first payload so the combined turn keeps the head message's
+ *   transcript slot and run correlation id.
+ */
+export const combineQueuedSendPayloads = <
+  T extends CombinableQueuedSendPayload,
+>(
+  payloads: readonly T[],
+): T | null => {
+  if (payloads.length === 0) return null
+  const first = payloads[0]
+  if (payloads.length === 1) return first
+
+  const prompts = payloads
+    .map((payload) => payload.userPrompt.trim())
+    .filter((prompt) => prompt.length > 0)
+  const selectedText =
+    [...payloads]
+      .reverse()
+      .find(
+        (payload) =>
+          typeof payload.selectedText === 'string'
+          && payload.selectedText.trim().length > 0,
+      )?.selectedText ?? null
+  const chatContexts = payloads
+    .map((payload) => payload.chatContext)
+    .filter((context): context is ChatContext => context != null)
+  const mergedMetadata = mergeMessageMetadata(
+    payloads
+      .map((payload) => payload.messageMetadata)
+      .filter((metadata): metadata is MessageMetadata => metadata != null),
+  )
+
+  const combined: CombinableQueuedSendPayload = {
+    ...(first as CombinableQueuedSendPayload),
+    userPrompt: prompts.join('\n\n'),
+    selectedText,
+    chatContext: chatContexts.length > 0 ? mergeChatContexts(chatContexts) : null,
+    attachments: payloads.flatMap((payload) => payload.attachments),
+  }
+  if (mergedMetadata) {
+    combined.messageMetadata = mergedMetadata
+  } else {
+    delete combined.messageMetadata
+  }
+  return combined as T
 }
 
 export type TerminalRunOutcome = 'completed' | 'error' | 'canceled'
