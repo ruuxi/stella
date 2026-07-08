@@ -20,6 +20,33 @@
      — e.g. the model picker's "More options" runtime selectors — aren't
      clipped behind the popover surface. */
   z-index: 10000;
+  /* Never grow past the viewport. Cap to the space Radix measured between
+     the trigger and the collision boundary — that value already accounts
+     for collisionPadding, so there's breathing room from the top/bottom
+     edges — then scroll the item list internally. Keeps long menus (e.g.
+     the canvas switcher with many canvases) fully on-screen. */
+  max-height: var(--radix-dropdown-menu-content-available-height, calc(100vh - 24px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Contain momentum/overscroll so a rubber-band at the list edge doesn't
+     bleed into the page behind the menu. */
+  overscroll-behavior: contain;
+  /* Thin, app-consistent scrollbar (matches the sidebar/store lists). */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-weak) transparent;
+}
+
+[data-component="dropdown-menu-content"]::-webkit-scrollbar {
+  width: 6px;
+}
+
+[data-component="dropdown-menu-content"]::-webkit-scrollbar-thumb {
+  background: var(--border-weak);
+  border-radius: 3px;
+}
+
+[data-component="dropdown-menu-content"]::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
