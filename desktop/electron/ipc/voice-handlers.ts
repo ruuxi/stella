@@ -62,7 +62,7 @@ type VoiceHandlersOptions = {
   stellaDataDirPath: string;
 };
 
-const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime";
+const DEFAULT_OPENAI_REALTIME_MODEL = "gpt-realtime-2.1";
 const DEFAULT_XAI_REALTIME_MODEL = "grok-voice-think-fast-1.0";
 
 // Inworld's STUN/TURN credentials are short-lived but stable enough across
