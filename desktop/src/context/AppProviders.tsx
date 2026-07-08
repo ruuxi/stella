@@ -6,6 +6,7 @@ import { BootstrapStateProvider } from '@/bootstrap/bootstrap-state'
 import { I18nProvider } from '@/shared/i18n'
 import { VoiceErrorToastListener } from '@/features/voice/runtime/VoiceErrorToastListener'
 import { CaptureErrorToastListener } from '@/shell/CaptureErrorToastListener'
+import { CanvasShareProvider } from '@/features/canvas-share/canvas-share-context'
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
@@ -15,7 +16,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
           <VoiceErrorToastListener />
           <CaptureErrorToastListener />
           <BootstrapStateProvider>
-            <UiStateProvider>{children}</UiStateProvider>
+            <UiStateProvider>
+              <CanvasShareProvider>{children}</CanvasShareProvider>
+            </UiStateProvider>
           </BootstrapStateProvider>
         </ToastProvider>
       </ThemeProvider>

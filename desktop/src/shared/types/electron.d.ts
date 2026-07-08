@@ -1797,6 +1797,23 @@ export type ElectronDisplayApi = {
       createdAt: number;
     }>
   >;
+  /**
+   * Fetches a shared canvas (`<CANVAS_SHARE_BASE_URL>/c/<slug>`) in the main
+   * process, materializes its HTML into the local canvas store, and returns a
+   * file-backed `canvas-html` payload the renderer can render through the
+   * usual sandboxed canvas path. Resolves `null` when the URL is not a valid
+   * share link or the fetch fails.
+   */
+  openSharedCanvas: (payload: { url: string }) => Promise<
+    | {
+        kind: "canvas-html";
+        filePath: string;
+        slug: string;
+        title: string;
+        createdAt: number;
+      }
+    | null
+  >;
   listTrash: () => Promise<{
     items: Array<{
       id: string;

@@ -4,10 +4,15 @@ import path from "node:path";
 import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import {
   IPC_DISPLAY_LIST_CANVAS_HTML,
+  IPC_DISPLAY_OPEN_SHARED_CANVAS,
   IPC_DISPLAY_READ_FILE,
   IPC_DISPLAY_TRASH_FORCE_DELETE,
   IPC_DISPLAY_TRASH_LIST,
 } from "../../src/shared/contracts/ipc-channels.js";
+import {
+  readConfiguredCanvasShareBaseUrl,
+  resolveSharedCanvasPayload,
+} from "../services/canvas-share-service.js";
 import {
   listDeferredDeletes,
   purgeAllDeferredDeletes,
@@ -295,6 +300,27 @@ export const registerDisplayHandlers = (options: DisplayHandlersOptions) => {
 
     return items.sort((a, b) => a.createdAt - b.createdAt);
   });
+
+  ipcMain.handle(
+    IPC_DISPLAY_OPEN_SHARED_CANVAS,
+    async (event, payload?: { url?: unknown }) => {
+      if (
+        !options.assertPrivilegedSender(event, IPC_DISPLAY_OPEN_SHARED_CANVAS)
+      ) {
+        throw new Error(
+          `Blocked untrusted ${IPC_DISPLAY_OPEN_SHARED_CANVAS} request.`,
+        );
+      }
+      const url =
+        typeof payload?.url === "string" ? payload.url.trim() : "";
+      if (!url) return null;
+      return await resolveSharedCanvasPayload({
+        url,
+        baseUrl: readConfiguredCanvasShareBaseUrl(),
+        stellaDataDir: requireStellaDataDir(),
+      });
+    },
+  );
 
   ipcMain.handle(IPC_DISPLAY_TRASH_LIST, async (event) => {
     if (!options.assertPrivilegedSender(event, IPC_DISPLAY_TRASH_LIST)) {

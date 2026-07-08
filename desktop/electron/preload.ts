@@ -41,6 +41,7 @@ import {
   IPC_DISCOVERY_WRITE_CORE_MEMORY,
   IPC_DISCOVERY_WRITE_KNOWLEDGE,
   IPC_DISPLAY_LIST_CANVAS_HTML,
+  IPC_DISPLAY_OPEN_SHARED_CANVAS,
   IPC_DISPLAY_TRASH_FORCE_DELETE,
   IPC_DISPLAY_TRASH_LIST,
   IPC_OFFICE_PREVIEW_LIST,
@@ -279,6 +280,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
           title: string;
           createdAt: number;
         }>
+      >,
+    openSharedCanvas: (payload: { url: string }) =>
+      ipcRenderer.invoke(IPC_DISPLAY_OPEN_SHARED_CANVAS, payload) as Promise<
+        | {
+            kind: "canvas-html";
+            filePath: string;
+            slug: string;
+            title: string;
+            createdAt: number;
+          }
+        | null
       >,
     listTrash: () => ipcRenderer.invoke(IPC_DISPLAY_TRASH_LIST),
     forceDeleteTrash: (payload: { id?: string; all?: boolean }) =>

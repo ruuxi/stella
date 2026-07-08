@@ -16,6 +16,7 @@ import {
   subscribeSelectedCanvasHtmlId,
 } from "./canvas-items";
 import { CanvasIllustration } from "../illustrations/CanvasIllustration";
+import { CanvasShareBar } from "./CanvasShareBar";
 import "./canvas-tab.css";
 
 const decoder = new TextDecoder("utf-8");
@@ -270,7 +271,10 @@ export const CanvasTabContent = ({
     <div className="canvas-tab">
       <div className="canvas-tab__hero">
         {selectedItem ? (
-          <CanvasHeroFrame item={selectedItem} />
+          <>
+            <CanvasShareBar item={selectedItem} />
+            <CanvasHeroFrame item={selectedItem} />
+          </>
         ) : (
           <div className="canvas-tab__hero-empty">
             <CanvasIllustrationSpot />

@@ -22,6 +22,25 @@ export class ExternalLinkService {
   /** Dev-only: allow privileged IPC when sender URL is missing (Electron edge cases). */
   private isDevBuild = false
 
+  /**
+   * Optional interceptor for canvas-share links. When it returns true the URL
+   * was recognized + handled (rendered as a native canvas), so it should NOT
+   * be forwarded to the system browser.
+   */
+  private canvasShareHandler: ((url: string) => boolean) | null = null
+
+  setCanvasShareHandler(handler: ((url: string) => boolean) | null) {
+    this.canvasShareHandler = handler
+  }
+
+  private tryHandleCanvasShare(url: string) {
+    try {
+      return this.canvasShareHandler?.(url) ?? false
+    } catch {
+      return false
+    }
+  }
+
   private parseUrl(value: string) {
     try {
       return new URL(value)
@@ -169,7 +188,7 @@ export class ExternalLinkService {
 
   setupExternalLinkHandlers(window: BrowserWindow) {
     window.webContents.setWindowOpenHandler(({ url }) => {
-      if (!this.isAppUrl(url)) {
+      if (!this.isAppUrl(url) && !this.tryHandleCanvasShare(url)) {
         this.openSafeExternalUrl(url)
       }
       return { action: 'deny' }
@@ -178,7 +197,9 @@ export class ExternalLinkService {
     window.webContents.on('will-navigate', (event, url) => {
       if (!this.isAppUrl(url)) {
         event.preventDefault()
-        this.openSafeExternalUrl(url)
+        if (!this.tryHandleCanvasShare(url)) {
+          this.openSafeExternalUrl(url)
+        }
       }
     })
   }

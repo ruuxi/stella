@@ -9,6 +9,11 @@ import { CredentialService } from "../services/credential-service.js";
 import { ConnectorCredentialService } from "../services/connector-credential-service.js";
 import { ConnectorConnectService } from "../services/connector-connect-service.js";
 import { ExternalLinkService } from "../services/external-link-service.js";
+import {
+  readConfiguredCanvasShareBaseUrl,
+  resolveSharedCanvasPayload,
+} from "../services/canvas-share-service.js";
+import { isCanvasShareUrl } from "../../../runtime/contracts/canvas-share.js";
 import { LocalChatHistoryService } from "../services/local-chat-history-service.js";
 import { SecurityPolicyService } from "../services/security-policy-service.js";
 import { SelectionWatcherService } from "../services/selection-watcher-service.js";
@@ -58,6 +63,30 @@ export const createBootstrapServices = (options: {
       path.resolve(config.electronDir, "../../../dist"),
     );
   }
+  // A canvas-share link (`<CANVAS_SHARE_BASE_URL>/c/<slug>`) clicked/opened
+  // inside Stella is fetched + materialized in main and pushed to the Canvas
+  // panel via the existing `display:update` path, instead of bouncing out to
+  // the system browser. Returns true so the external-link funnel skips the
+  // browser open. No-ops when the share domain has not been configured.
+  externalLinkService.setCanvasShareHandler((url) => {
+    const baseUrl = readConfiguredCanvasShareBaseUrl();
+    if (!baseUrl || !isCanvasShareUrl(url, baseUrl)) return false;
+    void resolveSharedCanvasPayload({
+      url,
+      baseUrl,
+      stellaDataDir: config.stellaDataDirPath,
+    })
+      .then((payload) => {
+        if (!payload) return;
+        for (const window of options.getAllWindows()) {
+          if (!window.isDestroyed()) {
+            window.webContents.send("display:update", payload);
+          }
+        }
+      })
+      .catch(() => {});
+    return true;
+  });
   const securityPolicyService = new SecurityPolicyService({
     windowManagerTarget: lifecycle,
   });
