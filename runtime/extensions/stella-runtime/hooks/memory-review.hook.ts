@@ -5,7 +5,7 @@ import {
 } from "../../../kernel/agent-runtime/memory-review.js";
 import type { HookDefinition } from "../../../kernel/extensions/types.js";
 import type { RuntimeStore } from "../../../kernel/storage/runtime-store.js";
-import { THREAD_COMPACTION_TRIGGER_TOKENS } from "../../../kernel/thread-runtime.js";
+import { getCompactionTriggerTokens } from "../../../kernel/thread-runtime.js";
 
 /**
  * Background memory review (stella-runtime).
@@ -58,7 +58,7 @@ export const createMemoryReviewHook = (opts: {
     const tokenEstimate = services.orchestratorTokenEstimate;
     const compactionImminent =
       typeof tokenEstimate === "number" &&
-      tokenEstimate >= THREAD_COMPACTION_TRIGGER_TOKENS;
+      tokenEstimate >= getCompactionTriggerTokens(services.resolvedLlm);
     if (!reachedTurnThreshold && !compactionImminent) return;
 
     // Read the previous watermark before spawnMemoryReview advances it, so the

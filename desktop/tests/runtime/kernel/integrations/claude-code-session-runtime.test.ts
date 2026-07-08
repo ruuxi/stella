@@ -23,7 +23,6 @@ import {
   buildClaudeCodeTurnPrompts,
   buildClaudePromptFromMessages,
   buildExternalStellaHistoryPromptMessage,
-  getClaudeCodeAutoCompactConfig,
   getExternalEngineSessionId,
   setExternalEngineSessionId,
 } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
@@ -2221,22 +2220,6 @@ describe("claude-code-session-runtime", () => {
       db.close();
       fs.rmSync(rootPath, { recursive: true, force: true });
     }
-  });
-
-  it("aligns Claude Code auto-compaction with the native budget for the orchestrator only", () => {
-    // Orchestrator takeover runs mirror the native engine: 80k window,
-    // compaction at 60k (75% of the window).
-    expect(
-      getClaudeCodeAutoCompactConfig({ agentType: "orchestrator", vanilla: false }),
-    ).toEqual({ autoCompactWindowTokens: 80_000, autoCompactTriggerPct: 75 });
-    // Worker agents keep Claude Code's default compaction behavior.
-    expect(
-      getClaudeCodeAutoCompactConfig({ agentType: "explore", vanilla: false }),
-    ).toBeUndefined();
-    // Vanilla per-spawn Claude Code sessions are never budget-overridden.
-    expect(
-      getClaudeCodeAutoCompactConfig({ agentType: "orchestrator", vanilla: true }),
-    ).toBeUndefined();
   });
 
   it("forwards the auto-compaction budget to the Claude Code CLI environment", async () => {

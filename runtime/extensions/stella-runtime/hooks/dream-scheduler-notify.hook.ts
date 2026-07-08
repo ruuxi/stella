@@ -2,7 +2,7 @@ import { agentHasCapability } from "../../../contracts/agent-runtime.js";
 import { createRuntimeLogger } from "../../../kernel/debug.js";
 import type { HookDefinition } from "../../../kernel/extensions/types.js";
 import type { RuntimeStore } from "../../../kernel/storage/runtime-store.js";
-import { THREAD_COMPACTION_TRIGGER_TOKENS } from "../../../kernel/thread-runtime.js";
+import { getCompactionTriggerTokens } from "../../../kernel/thread-runtime.js";
 
 const logger = createRuntimeLogger("stella-runtime.dream-notify");
 
@@ -53,7 +53,7 @@ export const createDreamSchedulerNotifyHook = (opts: {
     }
     const compactionImminent =
       typeof tokenEstimate === "number" &&
-      tokenEstimate >= THREAD_COMPACTION_TRIGGER_TOKENS;
+      tokenEstimate >= getCompactionTriggerTokens(services.resolvedLlm);
     const trigger = compactionImminent ? "pre_compaction" : "token_interval";
 
     try {

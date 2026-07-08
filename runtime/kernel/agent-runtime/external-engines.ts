@@ -46,9 +46,6 @@ import {
   type ExternalSubagentRunSession,
 } from "./run-session.js";
 import { now, resolveLocalCliCwd, textFromUnknown } from "./shared.js";
-import { AGENT_IDS } from "../../contracts/agent-runtime.js";
-import { STELLA_CONTEXT_WINDOW } from "../model-routing-stella.js";
-import { THREAD_COMPACTION_TRIGGER_TOKENS } from "../thread-runtime.js";
 import {
   buildHistorySource,
   buildOrchestratorPromptMessages,
@@ -408,39 +405,6 @@ export const buildClaudeCodeTurnPrompts = (args: {
   };
 };
 
-/**
- * Auto-compaction budget forwarded to Claude Code CLI sessions so the
- * ORCHESTRATOR (the user-facing chat agent) compacts on the same schedule as
- * Stella's native engine: an 80k model-facing window
- * (`STELLA_CONTEXT_WINDOW`) with compaction triggering at 60k
- * (`THREAD_COMPACTION_TRIGGER_TOKENS`), i.e. at 75% of the window.
- *
- * Applies only to takeover orchestrator runs. Worker/subagent runs and
- * vanilla per-spawn Claude Code sessions keep the CLI's default compaction
- * behavior (its model-window boundary), so returns undefined for them.
- */
-export const getClaudeCodeAutoCompactConfig = (args: {
-  agentType: string;
-  vanilla: boolean;
-}):
-  | { autoCompactWindowTokens: number; autoCompactTriggerPct: number }
-  | undefined => {
-  if (args.vanilla || args.agentType !== AGENT_IDS.ORCHESTRATOR) {
-    return undefined;
-  }
-  return {
-    autoCompactWindowTokens: STELLA_CONTEXT_WINDOW,
-    autoCompactTriggerPct: Math.min(
-      100,
-      Math.max(
-        1,
-        Math.round(
-          (THREAD_COMPACTION_TRIGGER_TOKENS / STELLA_CONTEXT_WINDOW) * 100,
-        ),
-      ),
-    ),
-  };
-};
 
 const formatQueuedClaudeMessage = (
   entry: ExternalQueuedMessage,
@@ -706,12 +670,6 @@ const runClaudeHostedTurn = async (args: {
   const claudeCodeEffortLevel = getClaudeCodeRuntimeEffortLevel(
     args.opts.stellaAppDir,
   );
-  // Orchestrator-only: align CC's own auto-compaction with the native 80k
-  // window / 60k trigger. Undefined for workers and vanilla runs.
-  const claudeCodeAutoCompact = getClaudeCodeAutoCompactConfig({
-    agentType: args.opts.agentType,
-    vanilla,
-  });
 
   // Native-tool file writes (vanilla mode) accumulated across the main turn
   // and any queued follow-up turns, deduped by path + change kind.
@@ -737,7 +695,6 @@ const runClaudeHostedTurn = async (args: {
     stellaAppDir: args.opts.stellaAppDir,
     ...(vanilla ? { vanilla } : {}),
     ...(claudeCodeEffortLevel ? { effortLevel: claudeCodeEffortLevel } : {}),
-    ...(claudeCodeAutoCompact ?? {}),
     prompt,
     ...(resumeFallbackPrompt ? { resumeFallbackPrompt } : {}),
     systemPrompt: args.systemPrompt,
@@ -788,7 +745,6 @@ const runClaudeHostedTurn = async (args: {
       stellaAppDir: args.opts.stellaAppDir,
       ...(vanilla ? { vanilla } : {}),
       ...(claudeCodeEffortLevel ? { effortLevel: claudeCodeEffortLevel } : {}),
-      ...(claudeCodeAutoCompact ?? {}),
       prompt: queuedPrompt,
       ...(queuedResumeFallbackPrompt
         ? { resumeFallbackPrompt: queuedResumeFallbackPrompt }

@@ -14,11 +14,10 @@ import { readConfiguredStellaSiteUrl } from "./convex-urls.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
 
 /**
- * Advertised context window for Stella-managed model routes. The orchestrator
- * thread-store compaction trigger (`THREAD_COMPACTION_TRIGGER_TOKENS`, 60k) is
- * deliberately below this so the model-facing window stays inside 80k; the
- * claude-code engine mirrors the same budget via
- * `getClaudeCodeAutoCompactConfig` (external-engines.ts).
+ * Fallback context window for Stella-managed relay routes, used only when the
+ * resolved upstream model isn't found in the registry. When the model *is* in
+ * the registry, `createRelayModel` carries its real (models.dev-derived)
+ * context window instead — which the orchestrator compaction trigger keys off.
  */
 export const STELLA_CONTEXT_WINDOW = 80_000;
 const STELLA_MAX_TOKENS = 16_384;
