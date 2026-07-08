@@ -7,6 +7,9 @@
  * is decoupled from when the backend regenerates the shared API type — only
  * the module paths below need to match what the backend deploys.
  *
+ * publish/revoke are Node ("use node") ACTIONS under `data/canvas_shares_actions`,
+ * and listMine is a QUERY under `data/canvas_shares`.
+ *
  * The provider is mounted once inside the main app tree (under the Convex
  * provider). It is intentionally absent from the mini window, which has no
  * Convex provider; consumers read `useCanvasShare()` and render nothing when
@@ -14,9 +17,9 @@
  * outside a provider.
  *
  * Backend contract:
- *   publish({ html, title? }) -> { url, slug, expiresAt }
- *   revoke({ slug })          -> null
- *   listMine()                -> SharedCanvasLink[]
+ *   publish({ html, title? }) -> { url, slug, expiresAt }   (action)
+ *   revoke({ slug })          -> { revoked }                (action)
+ *   listMine()                -> SharedCanvasLink[]          (query)
  */
 import {
   createContext,
@@ -26,7 +29,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useConvex, useMutation } from "convex/react";
+import { useAction, useConvex } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { canvasShareBaseUrl } from "@/shared/lib/canvas-share";
 
@@ -39,28 +42,28 @@ export type PublishedCanvasShare = {
 export type SharedCanvasLink = {
   slug: string;
   url: string;
-  title: string | null;
+  title?: string;
   createdAt: number;
   expiresAt: number;
 };
 
 const canvasSharePublishRef = makeFunctionReference<
-  "mutation",
+  "action",
   { html: string; title?: string },
   PublishedCanvasShare
->("canvas_shares:publish");
+>("data/canvas_shares_actions:publish");
 
 const canvasShareRevokeRef = makeFunctionReference<
-  "mutation",
+  "action",
   { slug: string },
-  null
->("canvas_shares:revoke");
+  { revoked: boolean }
+>("data/canvas_shares_actions:revoke");
 
 const canvasShareListMineRef = makeFunctionReference<
   "query",
   Record<string, never>,
   SharedCanvasLink[]
->("canvas_shares:listMine");
+>("data/canvas_shares:listMine");
 
 export type CanvasShareContextValue = {
   /** Public base URL for share links, or null when the domain is pending. */
@@ -79,26 +82,26 @@ const CanvasShareContext = createContext<CanvasShareContextValue | null>(null);
 
 export function CanvasShareProvider({ children }: { children: ReactNode }) {
   const convex = useConvex();
-  const publishMutation = useMutation(canvasSharePublishRef);
-  const revokeMutation = useMutation(canvasShareRevokeRef);
+  const publishAction = useAction(canvasSharePublishRef);
+  const revokeAction = useAction(canvasShareRevokeRef);
   const [version, setVersion] = useState(0);
   const baseUrl = useMemo(() => canvasShareBaseUrl(), []);
 
   const publish = useCallback(
     async (args: { html: string; title?: string }) => {
-      const result = await publishMutation(args);
+      const result = await publishAction(args);
       setVersion((current) => current + 1);
       return result;
     },
-    [publishMutation],
+    [publishAction],
   );
 
   const revoke = useCallback(
     async ({ slug }: { slug: string }) => {
-      await revokeMutation({ slug });
+      await revokeAction({ slug });
       setVersion((current) => current + 1);
     },
-    [revokeMutation],
+    [revokeAction],
   );
 
   const listMine = useCallback(
