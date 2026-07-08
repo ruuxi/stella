@@ -166,6 +166,12 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
   const { bytes, error, loading } = useDisplayFileBytes(
     item.filePath,
     "Canvas preview requires the Stella desktop app.",
+    undefined,
+    // Same-slug canvases overwrite the same file in place; folding
+    // `createdAt` into the read forces a fresh disk read (and iframe
+    // remount below) so a re-opened/re-rendered canvas never shows stale
+    // content served from the display-file cache.
+    item.createdAt,
   );
   const html = useMemo(() => (bytes ? decoder.decode(bytes) : ""), [bytes]);
   const srcDoc = useMemo(

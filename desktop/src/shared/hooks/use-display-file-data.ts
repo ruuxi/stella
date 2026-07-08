@@ -67,6 +67,19 @@ type CacheEntry = {
 const cache = new Map<string, CacheEntry>();
 const CACHE_GRACE_MS = 750;
 
+/**
+ * Cache key for a display-file read. A `version` token (e.g. the artifact's
+ * `createdAt`/mtime) is folded in so that re-reading the SAME path after it was
+ * overwritten in place — the canvas `html` tool rewrites `<slug>.html` on every
+ * iteration — misses the previously-resolved entry and re-reads fresh bytes
+ * from disk instead of serving the stale cached content.
+ */
+const displayFileCacheKey = (
+  filePath: string,
+  conversationId: string | null | undefined,
+  version?: string | number,
+): string => `${conversationId ?? ""}\0${filePath}\0${version ?? ""}`;
+
 const blobFromBytes = (entry: CacheEntry): Blob | null => {
   if (entry.blob) return entry.blob;
   const resolved = entry.resolved;
@@ -106,8 +119,9 @@ const acquire = (
   filePath: string,
   unavailableMessage: string | undefined,
   conversationId: string | null | undefined,
+  version?: string | number,
 ): CacheEntry => {
-  const cacheKey = `${conversationId ?? ""}\0${filePath}`;
+  const cacheKey = displayFileCacheKey(filePath, conversationId, version);
   let entry = cache.get(cacheKey);
   if (!entry) {
     const promise = readDisplayFileRaw(
@@ -173,6 +187,7 @@ export function useDisplayFileBytes(
   filePath: string,
   unavailableMessage?: string,
   conversationIdOverride?: string | null,
+  version?: string | number,
 ) {
   const uiState = useOptionalUiState();
   const conversationId =
@@ -191,8 +206,8 @@ export function useDisplayFileBytes(
     setMissing(false);
     setBytes(null);
 
-    const cacheKey = `${conversationId ?? ""}\0${filePath}`;
-    const entry = acquire(filePath, unavailableMessage, conversationId);
+    const cacheKey = displayFileCacheKey(filePath, conversationId, version);
+    const entry = acquire(filePath, unavailableMessage, conversationId, version);
     void entry.promise
       .then((result) => {
         if (cancelled) return;
@@ -214,7 +229,7 @@ export function useDisplayFileBytes(
       cancelled = true;
       release(cacheKey, entry);
     };
-  }, [conversationId, filePath, unavailableMessage]);
+  }, [conversationId, filePath, unavailableMessage, version]);
 
   return { bytes, error, loading, missing };
 }
@@ -248,7 +263,7 @@ export function useDisplayFileBlobs(
 
     const acquired: { cacheKey: string; entry: CacheEntry }[] = filePaths.map(
       (filePath) => ({
-        cacheKey: `${conversationId ?? ""}\0${filePath}`,
+        cacheKey: displayFileCacheKey(filePath, conversationId),
         entry: acquire(filePath, unavailableMessage, conversationId),
       }),
     );
