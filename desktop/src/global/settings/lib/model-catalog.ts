@@ -108,7 +108,11 @@ const STELLA_PRESET_FALLBACK_DEFS: ReadonlyArray<{
     name: "Stella Light",
     upstreamModel: "accounts/fireworks/models/deepseek-v4-flash",
   },
-  { mode: "standard", name: "Stella Standard", upstreamModel: "openai/gpt-5.5" },
+  {
+    mode: "standard",
+    name: "Stella Standard",
+    upstreamModel: "openrouter/x-ai/grok-4.5",
+  },
   {
     mode: "priority",
     name: "Stella Priority",

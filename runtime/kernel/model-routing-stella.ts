@@ -81,7 +81,7 @@ const fallbackResolvedModelForAlias = (modelId: string): string => {
       return "anthropic/claude-fable-5";
     case STELLA_DEFAULT_MODEL:
     case STELLA_STANDARD_MODEL:
-      return "openai/gpt-5.5";
+      return "openrouter/x-ai/grok-4.5";
     default: {
       const prefix = `${STELLA_PROVIDER}/`;
       if (modelId.startsWith(prefix)) {
