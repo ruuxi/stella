@@ -41,6 +41,18 @@ export type RunRecord = {
    * the same handoff even though they never create a streaming overlay.
    */
   isStreamingText: boolean
+  /**
+   * `true` between a preamble→tool-call boundary and the tool actually
+   * starting. In that window the just-finalized preamble's late first-paint
+   * signal (`mark-streaming-text`, fired asynchronously by the reveal rAF)
+   * must NOT re-suppress the working indicator — that paint belongs to a
+   * message that is already done, not to a fresh answer. Without this the
+   * live ordering (boundary processed before the paint rAF fires) leaves the
+   * indicator blank across the gap before `tool-start`, i.e. dead air after
+   * the streamed text ends. Cleared on `tool-start` so the post-tool answer's
+   * own paint can hand off normally.
+   */
+  pendingToolAfterPreamble: boolean
   activeToolCalls: Record<
     string,
     {
@@ -253,6 +265,7 @@ const createEmptyRunRecord = (args: {
   statusText: args.statusText ?? null,
   hasToolActivity: false,
   isStreamingText: false,
+  pendingToolAfterPreamble: false,
   activeToolCalls: {},
 })
 
@@ -306,7 +319,15 @@ export function streamStoreReducer(
     }
     case 'mark-streaming-text': {
       const current = state.runsById[action.runId]
-      if (!current || current.terminal || current.isStreamingText) {
+      if (
+        !current ||
+        current.terminal ||
+        current.isStreamingText ||
+        // A preamble→tool boundary just fired: this paint belongs to the
+        // finalized preamble, not a fresh answer, so it must not re-suppress
+        // the working indicator across the gap before the tool starts.
+        current.pendingToolAfterPreamble
+      ) {
         return state
       }
       return {
@@ -332,9 +353,15 @@ export function streamStoreReducer(
         return state
       }
       const current = state.runsById[action.runId]
-      if (!current || current.terminal || !current.isStreamingText) {
+      if (!current || current.terminal) {
         return state
       }
+      // Set the flag unconditionally (not just when `isStreamingText` is
+      // already true): live, the boundary event is often processed before
+      // the reveal's first-paint rAF fires, so guarding on the current flag
+      // would make this a no-op and let the later paint stick — reopening
+      // the dead gap. `pendingToolAfterPreamble` makes that late paint a
+      // no-op instead, closing the gap regardless of event ordering.
       return {
         ...state,
         runsById: {
@@ -342,6 +369,7 @@ export function streamStoreReducer(
           [action.runId]: {
             ...current,
             isStreamingText: false,
+            pendingToolAfterPreamble: true,
           },
         },
       }
@@ -372,6 +400,9 @@ export function streamStoreReducer(
             // into a fresh overlay slot whose `StreamingTextReveal` re-fires
             // the paint hand-off and sets `isStreamingText` back to true.
             isStreamingText: false,
+            // The tool has started: release the preamble-paint suppression so
+            // the post-tool answer's own first paint can hand off normally.
+            pendingToolAfterPreamble: false,
             statusText: action.statusText ?? current.statusText,
             activeToolCalls: {
               ...(current.activeToolCalls ?? {}),

@@ -534,6 +534,70 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(activeFor(state)).toBe(true);
   });
 
+  it("keeps the indicator up when the preamble boundary is processed before the paint (live ordering)", () => {
+    const runId = "run-preamble-race";
+    const conversationId = "conversation-1";
+    const activeFor = (current: typeof state) =>
+      getInlineWorkingIndicatorActive({
+        isStreaming: !current.runsById[runId]?.terminal,
+        isStreamingResponseText: Boolean(
+          current.runsById[runId]?.isStreamingText,
+        ),
+        isToolActive: Boolean(
+          Object.keys(current.runsById[runId]?.activeToolCalls ?? {}).length,
+        ),
+      });
+
+    let state = streamStoreReducer(initialStoreState, {
+      type: "run-started",
+      runId,
+      conversationId,
+      userMessageId: "user-1",
+    });
+
+    // Live, the preamble→tool boundary event arrives over IPC before the
+    // reveal's async first-paint rAF fires, so `isStreamingText` is still
+    // false at boundary time. The re-arm must still take effect.
+    state = streamStoreReducer(state, {
+      type: "assistant-message-boundary",
+      runId,
+      followedByToolCall: true,
+    });
+    expect(state.runsById[runId]?.isStreamingText).toBe(false);
+    expect(activeFor(state)).toBe(true);
+
+    // The finalized preamble's late first paint now fires — it must NOT
+    // re-suppress the indicator (that would reopen the dead gap before the
+    // tool starts).
+    state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
+    expect(state.runsById[runId]?.isStreamingText).toBe(false);
+    expect(activeFor(state)).toBe(true);
+
+    // Tool starts: still up, and the preamble-paint suppression is released.
+    state = streamStoreReducer(state, {
+      type: "tool-start",
+      runId,
+      conversationId,
+      toolCallId: "call-1",
+      toolName: "spawn_agent",
+    });
+    expect(activeFor(state)).toBe(true);
+
+    // Tool ends: still thinking, still up.
+    state = streamStoreReducer(state, {
+      type: "tool-end",
+      runId,
+      toolCallId: "call-1",
+      toolName: "spawn_agent",
+    });
+    expect(activeFor(state)).toBe(true);
+
+    // The post-tool answer's own paint hands off normally.
+    state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
+    expect(state.runsById[runId]?.isStreamingText).toBe(true);
+    expect(activeFor(state)).toBe(false);
+  });
+
   it("leaves the hand-off intact for a final-answer boundary (no following tool)", () => {
     const runId = "run-final-boundary";
     const conversationId = "conversation-1";
