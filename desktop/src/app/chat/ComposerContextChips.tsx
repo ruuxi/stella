@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import type { ChatContext, ChatContextFile } from "@/shared/types/electron";
 import { cn } from "@/shared/lib/utils";
 import {
@@ -9,9 +9,12 @@ import {
   FileText,
   Music,
   Video,
+  X,
 } from "@/ui/icons";
 import { ChipPreviewPortal } from "./ChipPreviewPortal";
 import { useHoverPreview } from "./use-hover-preview";
+import { ImageLightbox } from "@/ui/image-lightbox";
+import { getElectronApi } from "@/platform/electron/electron";
 import {
   describePastedText,
   PASTED_TEXT_PREVIEW_MAX_CHARS,
@@ -29,6 +32,42 @@ import {
 } from "@/features/chat/composer-context";
 
 type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
+
+/* ------------------------------------------------------------------ */
+/*  Shared chip affordances                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Small × pinned to the chip's top-right corner. Removal is deliberately
+ * separated from the chip body — the body is the preview click target —
+ * so the handlers stop propagation to keep the two from triggering each
+ * other. Subtle until the chip is hovered or focused (CSS), but always
+ * reachable via Tab.
+ */
+function ChipRemoveButton({
+  label,
+  onRemove,
+}: {
+  label: string;
+  onRemove: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="composer-chip-remove"
+      aria-label={label}
+      title={label}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onRemove();
+      }}
+    >
+      <X size={10} strokeWidth={2.25} />
+    </button>
+  );
+}
 
 type WindowContextChipProps = {
   chatWindow: NonNullable<ChatContext["window"]>;
@@ -62,11 +101,12 @@ export function WindowContextChip({
   const displayLabel = truncateChipLabel(baseLabel);
   const hasScreenshot = Boolean(chatWindowScreenshot?.dataUrl);
   const { triggerRef, open } = useHoverPreview<HTMLDivElement>();
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   return (
     <div
       ref={triggerRef}
-      className={cn(className)}
+      className={cn("composer-chip-shell", className)}
       data-included="true"
       data-capture-pending={capturePending ? "true" : undefined}
       data-with-thumb={hasScreenshot ? "true" : undefined}
@@ -75,17 +115,23 @@ export function WindowContextChip({
         type="button"
         className={cn(
           toggleClassName,
-          hasScreenshot && "chat-composer-context-window-card",
+          hasScreenshot &&
+            "chat-composer-context-window-card composer-chip-previewable",
         )}
         title={
           capturePending
-            ? `${baseLabel} — capturing window… click to remove`
-            : `${baseLabel} — click to remove`
+            ? `${baseLabel} — capturing window…`
+            : hasScreenshot
+              ? `${baseLabel} — click to enlarge`
+              : baseLabel
         }
-        onClick={(event) => {
-          clearComposerWindowContext(setChatContext);
-          event.currentTarget.blur();
-        }}
+        onClick={
+          hasScreenshot
+            ? () => {
+                setPreviewOpen(true);
+              }
+            : undefined
+        }
       >
         {hasScreenshot && (
           <img
@@ -96,10 +142,14 @@ export function WindowContextChip({
         )}
         <span className={cn(textClassName)}>{displayLabel}</span>
       </button>
+      <ChipRemoveButton
+        label={`Remove ${chatWindow.app} window context`}
+        onRemove={() => clearComposerWindowContext(setChatContext)}
+      />
       {hasScreenshot && (
         <ChipPreviewPortal
           triggerRef={triggerRef}
-          open={open}
+          open={open && !previewOpen}
           className="composer-context-preview composer-context-preview--portal"
         >
           <img
@@ -108,6 +158,14 @@ export function WindowContextChip({
             className="composer-context-preview-img"
           />
         </ChipPreviewPortal>
+      )}
+      {hasScreenshot && (
+        <ImageLightbox
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          src={chatWindowScreenshot!.dataUrl}
+          alt={`${baseLabel} window screenshot`}
+        />
       )}
     </div>
   );
@@ -130,17 +188,17 @@ export function SelectedTextChip({
 }: SelectedTextChipProps) {
   const displayText = truncateChipLabel(selectedText, 36);
   return (
-    <button
-      type="button"
-      className={cn(className)}
-      title={`"${selectedText}" — click to remove selected text`}
-      onClick={(event) => {
-        clearComposerSelectedTextContext(setSelectedText, setChatContext);
-        event.currentTarget.blur();
-      }}
-    >
-      <span className={cn(textClassName)}>&quot;{displayText}&quot;</span>
-    </button>
+    <span className="composer-chip-shell">
+      <button type="button" className={cn(className)} title={`"${selectedText}"`}>
+        <span className={cn(textClassName)}>&quot;{displayText}&quot;</span>
+      </button>
+      <ChipRemoveButton
+        label="Remove selected text"
+        onRemove={() =>
+          clearComposerSelectedTextContext(setSelectedText, setChatContext)
+        }
+      />
+    </span>
   );
 }
 
@@ -165,17 +223,19 @@ export function AppSelectionChip({
       }`
     : "";
   return (
-    <button
-      type="button"
-      className={cn(className)}
-      title={`${label}${sourceSuffix}\n\nClick to remove selected area`}
-      onClick={(event) => {
-        clearComposerAppSelectionContext(setChatContext);
-        event.currentTarget.blur();
-      }}
-    >
-      <span className={cn(textClassName)}>{truncateChipLabel(label)}</span>
-    </button>
+    <span className="composer-chip-shell">
+      <button
+        type="button"
+        className={cn(className)}
+        title={`${label}${sourceSuffix}`}
+      >
+        <span className={cn(textClassName)}>{truncateChipLabel(label)}</span>
+      </button>
+      <ChipRemoveButton
+        label="Remove selected area"
+        onRemove={() => clearComposerAppSelectionContext(setChatContext)}
+      />
+    </span>
   );
 }
 
@@ -195,17 +255,15 @@ export function ActivityContextChip({
   const label = activity.label || "Activity";
   const displayLabel = truncateChipLabel(label, 28);
   return (
-    <button
-      type="button"
-      className={cn(className)}
-      title={`${label} — click to remove activity`}
-      onClick={(event) => {
-        clearComposerActivityContext(setChatContext);
-        event.currentTarget.blur();
-      }}
-    >
-      <span className={cn(textClassName)}>{displayLabel}</span>
-    </button>
+    <span className="composer-chip-shell">
+      <button type="button" className={cn(className)} title={label}>
+        <span className={cn(textClassName)}>{displayLabel}</span>
+      </button>
+      <ChipRemoveButton
+        label="Remove activity context"
+        onRemove={() => clearComposerActivityContext(setChatContext)}
+      />
+    </span>
   );
 }
 
@@ -228,13 +286,63 @@ export function PendingCaptureChip({
 type ScreenshotContextChipsProps = {
   screenshots: NonNullable<ChatContext["regionScreenshots"]>;
   setChatContext: SetChatContext;
-  // Preview previously opened the full-size view; with the
-  // "click-to-remove" model the param is unused but retained so callers
-  // can still pass it without a type error.
+  // Legacy overlay hook — the chip now opens the shared ImageLightbox
+  // itself, but the param is retained so callers can still pass it
+  // without a type error.
   onPreviewScreenshot?: (index: number) => void;
   chipClassName?: string;
   imageClassName?: string;
 };
+
+function ScreenshotContextChip({
+  screenshot,
+  index,
+  setChatContext,
+  chipClassName,
+  imageClassName,
+}: {
+  screenshot: NonNullable<ChatContext["regionScreenshots"]>[number];
+  index: number;
+  setChatContext: SetChatContext;
+  chipClassName?: string;
+  imageClassName?: string;
+}) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  return (
+    <span className="composer-chip-shell">
+      <button
+        type="button"
+        className={cn(
+          chipClassName,
+          "chat-composer-context-window-card chat-composer-context-region-card composer-chip-previewable",
+        )}
+        data-with-thumb="true"
+        data-region-card="true"
+        title="Click to enlarge screenshot"
+        onClick={() => setPreviewOpen(true)}
+      >
+        <img
+          src={screenshot.previewUrl ?? screenshot.dataUrl}
+          className={cn(
+            imageClassName,
+            "chat-composer-context-window-thumb chat-composer-context-region-thumb",
+          )}
+          alt={`Screenshot ${index + 1}`}
+        />
+      </button>
+      <ChipRemoveButton
+        label={`Remove screenshot ${index + 1}`}
+        onRemove={() => removeComposerScreenshotContext(index, setChatContext)}
+      />
+      <ImageLightbox
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        src={screenshot.dataUrl}
+        alt={`Screenshot ${index + 1}`}
+      />
+    </span>
+  );
+}
 
 export function ScreenshotContextChips({
   screenshots,
@@ -245,30 +353,14 @@ export function ScreenshotContextChips({
   return (
     <>
       {screenshots.map((screenshot, index) => (
-        <button
-          type="button"
+        <ScreenshotContextChip
           key={index}
-          className={cn(
-            chipClassName,
-            "chat-composer-context-window-card chat-composer-context-region-card",
-          )}
-          data-with-thumb="true"
-          data-region-card="true"
-          title="Click to remove screenshot"
-          onClick={(event) => {
-            removeComposerScreenshotContext(index, setChatContext);
-            event.currentTarget.blur();
-          }}
-        >
-          <img
-            src={screenshot.previewUrl ?? screenshot.dataUrl}
-            className={cn(
-              imageClassName,
-              "chat-composer-context-window-thumb chat-composer-context-region-thumb",
-            )}
-            alt={`Screenshot ${index + 1}`}
-          />
-        </button>
+          screenshot={screenshot}
+          index={index}
+          setChatContext={setChatContext}
+          chipClassName={chipClassName}
+          imageClassName={imageClassName}
+        />
       ))}
     </>
   );
@@ -354,6 +446,55 @@ function truncateFileName(name: string, max: number = FILE_NAME_MAX_CHARS): stri
   return `${name.slice(0, max)}…`;
 }
 
+function FileContextChip({
+  file,
+  index,
+  setChatContext,
+  chipClassName,
+}: {
+  file: ChatContextFile;
+  index: number;
+  setChatContext: SetChatContext;
+  chipClassName?: string;
+}) {
+  const category = resolveFileCategory(file.mimeType, file.name);
+  // Disk-backed attachments open in their default app for preview;
+  // synthetic files (no on-disk path) have no preview target.
+  const canOpen = Boolean(file.path);
+  return (
+    <span className="composer-chip-shell">
+      <button
+        type="button"
+        className={cn(
+          "chat-composer-file-chip",
+          chipClassName,
+          canOpen && "composer-chip-previewable",
+        )}
+        title={canOpen ? `${file.name} — click to open` : file.name}
+        onClick={
+          canOpen
+            ? () => {
+                void getElectronApi()?.system?.openPath?.(file.path!);
+              }
+            : undefined
+        }
+      >
+        <div className="chat-composer-file-icon">
+          <FileIcon category={category} />
+        </div>
+        <div className="chat-composer-file-info">
+          <span className="chat-composer-file-name">{truncateFileName(file.name)}</span>
+          <span className="chat-composer-file-size">{formatFileSize(file.size)}</span>
+        </div>
+      </button>
+      <ChipRemoveButton
+        label={`Remove ${file.name}`}
+        onRemove={() => removeComposerFileContext(index, setChatContext)}
+      />
+    </span>
+  );
+}
+
 type FileContextChipsProps = {
   files: ChatContextFile[];
   setChatContext: SetChatContext;
@@ -367,29 +508,15 @@ export function FileContextChips({
 }: FileContextChipsProps) {
   return (
     <>
-      {files.map((file, index) => {
-        const category = resolveFileCategory(file.mimeType, file.name);
-        return (
-          <button
-            type="button"
-            key={index}
-            className={cn("chat-composer-file-chip", chipClassName)}
-            title={`Click to remove ${file.name}`}
-            onClick={(event) => {
-              removeComposerFileContext(index, setChatContext);
-              event.currentTarget.blur();
-            }}
-          >
-            <div className="chat-composer-file-icon">
-              <FileIcon category={category} />
-            </div>
-            <div className="chat-composer-file-info">
-              <span className="chat-composer-file-name">{truncateFileName(file.name)}</span>
-              <span className="chat-composer-file-size">{formatFileSize(file.size)}</span>
-            </div>
-          </button>
-        );
-      })}
+      {files.map((file, index) => (
+        <FileContextChip
+          key={index}
+          file={file}
+          index={index}
+          setChatContext={setChatContext}
+          chipClassName={chipClassName}
+        />
+      ))}
     </>
   );
 }
@@ -418,19 +545,19 @@ function PastedTextChip({
       ? `${text.slice(0, PASTED_TEXT_PREVIEW_MAX_CHARS)}…`
       : text;
   return (
-    <>
+    <span className="composer-chip-shell">
       <button
         ref={triggerRef}
         type="button"
         className={cn(className)}
-        title={`Pasted text — ${stats} — click to remove`}
-        onClick={(event) => {
-          removeComposerPastedTextContext(index, setChatContext);
-          event.currentTarget.blur();
-        }}
+        title={`Pasted text — ${stats}`}
       >
         <span className={cn(textClassName)}>{`Pasted text · ${stats}`}</span>
       </button>
+      <ChipRemoveButton
+        label="Remove pasted text"
+        onRemove={() => removeComposerPastedTextContext(index, setChatContext)}
+      />
       <ChipPreviewPortal
         triggerRef={triggerRef}
         open={open}
@@ -439,7 +566,7 @@ function PastedTextChip({
       >
         <div className="composer-context-preview-text">{preview}</div>
       </ChipPreviewPortal>
-    </>
+    </span>
   );
 }
 

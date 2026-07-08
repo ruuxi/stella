@@ -164,11 +164,15 @@ async function processInputFiles(
   const fileResults = await Promise.allSettled(
     otherFiles.map(async (file): Promise<AttachedFile> => {
       const dataUrl = await readFileAsDataUrl(file);
+      // Keep the on-disk path (when the File is disk-backed) so the chip
+      // can open the original in its default app for preview.
+      const path = window.electronAPI?.files?.getPathForFile?.(file) || undefined;
       return {
         name: file.name,
         size: file.size,
         mimeType: file.type || "application/octet-stream",
         dataUrl,
+        ...(path ? { path } : {}),
       };
     }),
   );

@@ -18,6 +18,12 @@ export type ChatContextFile = {
   size: number;
   mimeType: string;
   dataUrl: string;
+  /**
+   * On-disk source path when the attachment came from a disk-backed File
+   * (picker / drag-drop). The composer chip uses it to open the original
+   * in its default app for preview; absent for synthetic files.
+   */
+  path?: string;
 };
 
 export type ChatContext = {
