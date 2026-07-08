@@ -632,6 +632,74 @@ describe("mergeFooterTasks", () => {
     expect(shouldShowTaskReasoningSummaries(merged[0]!)).toBe(true);
   });
 
+  it("keeps a run-scoped live task visible even when its preserved start predates the terminal row", () => {
+    const merged = mergeFooterTasks(
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "completed",
+          startedAtMs: 100,
+          completedAtMs: 500,
+          lastUpdatedAtMs: 500,
+          outputPreview: "Done",
+        },
+      ],
+      [
+        {
+          id: "task-1",
+          description: "Summarize PR",
+          agentType: "general",
+          status: "running",
+          runId: "run-follow-up",
+          startedAtMs: 100,
+          lastUpdatedAtMs: 600,
+          statusText: "Running read",
+        },
+      ],
+    );
+
+    expect(merged[0]?.status).toBe("running");
+    expect(merged[0]?.completedAtMs).toBeUndefined();
+    expect(merged[0]?.outputPreview).toBeUndefined();
+    expect(getTaskDisplayText(merged[0]!)).toBe("Reading");
+  });
+
+  it("clears a persisted error state when the same thread is live again", () => {
+    const merged = mergeFooterTasks(
+      [
+        {
+          id: "task-1",
+          description: "Debug payment form",
+          agentType: "general",
+          status: "error",
+          startedAtMs: 100,
+          completedAtMs: 400,
+          lastUpdatedAtMs: 400,
+          outputPreview: "Tool failed",
+        },
+      ],
+      [
+        {
+          id: "task-1",
+          description: "Debug payment form",
+          agentType: "general",
+          status: "running",
+          runId: "run-retry",
+          startedAtMs: 100,
+          lastUpdatedAtMs: 450,
+          statusText: "Running write",
+        },
+      ],
+    );
+
+    expect(merged[0]?.status).toBe("running");
+    expect(merged[0]?.completedAtMs).toBeUndefined();
+    expect(merged[0]?.outputPreview).toBeUndefined();
+    expect(shouldShowTaskReasoningSummaries(merged[0]!)).toBe(true);
+  });
+
   it("does not let resume snapshots revive completed persisted tasks", () => {
     const merged = mergeFooterTasks(
       [

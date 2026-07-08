@@ -982,13 +982,18 @@ export function mergeFooterTasks(
 
   for (const task of liveTasks) {
     const persistedTask = mergedById.get(task.id)
+    // Replay-hydrated snapshots and anonymous live copies may be stale, so
+    // keep terminal persisted state in those cases. A run-scoped live task is
+    // a fresh stream observation and must re-open the row even if the task's
+    // original thread start timestamp predates the old terminal event.
     if (
       persistedTask &&
       isTerminalTaskLifecycleStatus(persistedTask.status) &&
       !isTerminalTaskLifecycleStatus(task.status) &&
       (task.hydratedFromResumeSnapshot ||
-        typeof persistedTask.completedAtMs !== 'number' ||
-        task.startedAtMs <= persistedTask.completedAtMs)
+        (!task.runId &&
+          (typeof persistedTask.completedAtMs !== 'number' ||
+            task.startedAtMs <= persistedTask.completedAtMs)))
     ) {
       continue
     }
