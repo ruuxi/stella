@@ -772,8 +772,16 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     const visible = query
       ? ordered.filter((row) => matchesQuery(activityRowText(row), query))
       : ordered;
-    return visible.slice(0, caps.activity);
-  }, [groupedRows, query, caps.activity]);
+    // Never cap the running list — every active/running thread stays visible
+    // regardless of the orchestrator's busy/idle state. While the orchestrator
+    // is busy its in-flight run streams extra live running rows on top of the
+    // persisted ones; slicing to `caps.activity` here silently dropped the
+    // overflow active thread (running rows have no "View all" escape hatch),
+    // and it reappeared only once the run finished and the live rows cleared.
+    // Only the done rows are capped: `visibleDoneRows` takes whatever budget
+    // the running rows leave, and they carry the "View all activity" affordance.
+    return visible;
+  }, [groupedRows, query]);
 
   const doneRows = useMemo(
     () =>
