@@ -59,6 +59,8 @@ import { DreamInboxStore } from "../memory/dream-inbox-store.js";
  * millions of historical events.
  */
 const CUTOFF_SCAN_CEILING = 4000;
+const CUTOFF_SCAN_BATCH_MIN = 128;
+const CUTOFF_SCAN_BATCH_MAX = 512;
 
 type VisibleScanRow = {
   timestamp: number | null;
@@ -72,27 +74,6 @@ const compareTimelineCursor = (
 ): number => {
   if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
   return a.id.localeCompare(b.id);
-};
-
-const cursorFromVisibleScan = (
-  rows: VisibleScanRow[],
-  maxVisibleMessages: number,
-): TimelineCursor => {
-  let visible = 0;
-  let oldestScanned: TimelineCursor = null;
-  for (const row of rows) {
-    if (typeof row.timestamp !== "number" || typeof row.id !== "string") {
-      continue;
-    }
-    oldestScanned = { timestamp: row.timestamp, id: row.id };
-    const payload = parseJsonRecord(row.payloadJson) ?? null;
-    if (isUiHiddenChatMessagePayload(payload)) continue;
-    visible += 1;
-    if (visible === maxVisibleMessages) {
-      return { timestamp: row.timestamp, id: row.id };
-    }
-  }
-  return rows.length >= CUTOFF_SCAN_CEILING ? oldestScanned : null;
 };
 
 type SessionRow = {
@@ -1740,6 +1721,133 @@ export class SessionStore {
     };
   }
 
+  hasMobileSyncEventsAfter(
+    conversationIdInput: string,
+    afterTimestampMs: number,
+    afterId: string,
+  ): boolean {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const row = this.db
+      .prepare(
+        `
+      SELECT 1 AS found
+      FROM message
+      WHERE session_id = ?
+        AND (
+          created_at, id
+        ) > (?, ?)
+      ORDER BY created_at ASC, id ASC
+      LIMIT 1
+    `,
+      )
+      .get(conversationId, Math.floor(afterTimestampMs), afterId) as
+      | { found?: unknown }
+      | undefined;
+    return row?.found === 1;
+  }
+
+  /**
+   * Resolve lifecycle state only for task ids a cursor delta touched. This is
+   * deliberately separate from `listMessages`: incremental mobile sync must
+   * not scan/project the latest 100 transcript rows merely to recover an old
+   * task's spawning anchor. Each matching start event loads only its own turn,
+   * then later lifecycle events for that agent are folded onto that anchor.
+   */
+  listMobileTaskContext(
+    conversationIdInput: string,
+    agentIdsInput: readonly string[],
+  ): LocalChatMessageWindow {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const agentIds = [
+      ...new Set(agentIdsInput.map(asTrimmedString).filter(Boolean)),
+    ].slice(0, 100) as string[];
+    if (agentIds.length === 0) {
+      return { messages: [], visibleMessageCount: 0 };
+    }
+
+    const placeholders = agentIds.map(() => "?").join(", ");
+    const rows = this.db
+      .prepare(
+        `
+      SELECT
+        message.id AS _id,
+        message.created_at AS timestamp,
+        message.type AS type,
+        message.device_id AS deviceId,
+        message.request_id AS requestId,
+        message.target_device_id AS targetDeviceId,
+        part.data_json AS payloadJson,
+        message.data_json AS channelEnvelopeJson
+      FROM message
+      LEFT JOIN part
+        ON part.message_id = message.id
+       AND part.ord = 0
+      WHERE message.session_id = ?
+        AND message.type IN ('agent-started', 'agent-progress', 'agent-completed', 'agent-failed', 'agent-canceled')
+        AND json_extract(part.data_json, '$.agentId') IN (${placeholders})
+      ORDER BY message.created_at ASC, message.id ASC
+    `,
+      )
+      .all(conversationId, ...agentIds) as LocalChatEventRow[];
+    const lifecycleEvents = rows.map((row) => this.deserializeEventRow(row));
+    const eventsByAgent = new Map<string, LocalChatEventRecord[]>();
+    for (const event of lifecycleEvents) {
+      const agentId = asTrimmedString(event.payload?.agentId);
+      if (!agentId) continue;
+      const bucket = eventsByAgent.get(agentId);
+      if (bucket) bucket.push(event);
+      else eventsByAgent.set(agentId, [event]);
+    }
+
+    const anchorsById = new Map<string, LocalChatMessageRecord>();
+    for (const start of lifecycleEvents) {
+      if (start.type !== "agent-started") continue;
+      const agentId = asTrimmedString(start.payload?.agentId);
+      if (!agentId) continue;
+      const turnStart = this.findTurnFetchCutoff(conversationId, {
+        timestamp: start.timestamp,
+        id: start._id,
+      });
+      const nextTurn = this.findNextUserMessageAfter(conversationId, turnStart);
+      const turn = this.assembleMessageWindow(
+        this.fetchTimelineRows(conversationId, turnStart, nextTurn),
+      );
+      const anchor =
+        turn.messages.find((message) =>
+          message.toolEvents.some((event) => event._id === start._id),
+        ) ?? turn.messages.find((message) => message.type === "user_message");
+      if (!anchor) continue;
+
+      const existing = anchorsById.get(anchor._id);
+      const lifecycle = eventsByAgent.get(agentId) ?? [];
+      const combined = [
+        ...(existing?.toolEvents ?? anchor.toolEvents),
+        ...lifecycle,
+      ];
+      const seen = new Set<string>();
+      const toolEvents = combined
+        .filter((event) => {
+          if (seen.has(event._id)) return false;
+          seen.add(event._id);
+          return true;
+        })
+        .sort(
+          (a, b) => a.timestamp - b.timestamp || a._id.localeCompare(b._id),
+        );
+      anchorsById.set(anchor._id, { ...anchor, toolEvents });
+    }
+
+    const messages = [...anchorsById.values()].sort(
+      (a, b) => a.timestamp - b.timestamp || a._id.localeCompare(b._id),
+    );
+    return {
+      messages,
+      visibleMessageCount: messages.filter(
+        (message) => !isUiHiddenChatMessagePayload(message.payload ?? null),
+      ).length,
+    };
+  }
+
   /**
    * Walks user/assistant rows DESC pulling the payload JSON so we can
    * skip UI-hidden messages (system reminders, workspace-creation
@@ -1758,22 +1866,11 @@ export class SessionStore {
     conversationId: string,
     maxVisibleMessages: number,
   ): TimelineCursor {
-    const rows = this.db
-      .prepare(
-        `
-      SELECT message.created_at AS timestamp, message.id AS id, part.data_json AS payloadJson
-      FROM message
-      LEFT JOIN part
-        ON part.message_id = message.id
-       AND part.ord = 0
-      WHERE message.session_id = ?
-        AND message.type IN ('user_message', 'assistant_message')
-      ORDER BY message.created_at DESC, message.id DESC
-      LIMIT ?
-    `,
-      )
-      .all(conversationId, CUTOFF_SCAN_CEILING) as VisibleScanRow[];
-    return cursorFromVisibleScan(rows, maxVisibleMessages);
+    return this.findVisibleMessageCutoffPaged(
+      conversationId,
+      maxVisibleMessages,
+      null,
+    );
   }
 
   private findVisibleMessageCutoffBefore(
@@ -1781,32 +1878,71 @@ export class SessionStore {
     maxVisibleMessages: number,
     before: TimelineCursor & {},
   ): TimelineCursor {
-    const rows = this.db
-      .prepare(
-        `
-      SELECT message.created_at AS timestamp, message.id AS id, part.data_json AS payloadJson
-      FROM message
-      LEFT JOIN part
-        ON part.message_id = message.id
-       AND part.ord = 0
-      WHERE message.session_id = ?
-        AND message.type IN ('user_message', 'assistant_message')
-        AND (
-          message.created_at < ?
-          OR (message.created_at = ? AND message.id < ?)
+    return this.findVisibleMessageCutoffPaged(
+      conversationId,
+      maxVisibleMessages,
+      before,
+    );
+  }
+
+  private findVisibleMessageCutoffPaged(
+    conversationId: string,
+    maxVisibleMessages: number,
+    initialBefore: TimelineCursor,
+  ): TimelineCursor {
+    const batchSize = Math.min(
+      CUTOFF_SCAN_BATCH_MAX,
+      Math.max(CUTOFF_SCAN_BATCH_MIN, maxVisibleMessages * 2),
+    );
+    let before = initialBefore;
+    let scanned = 0;
+    let visible = 0;
+    let oldestScanned: TimelineCursor = null;
+
+    while (scanned < CUTOFF_SCAN_CEILING) {
+      const limit = Math.min(batchSize, CUTOFF_SCAN_CEILING - scanned);
+      const beforeClause = before
+        ? "AND (message.created_at, message.id) < (?, ?)"
+        : "";
+      const params: Array<string | number> = [conversationId];
+      if (before) {
+        params.push(before.timestamp, before.id);
+      }
+      params.push(limit);
+      const rows = this.db
+        .prepare(
+          `
+        SELECT message.created_at AS timestamp, message.id AS id, part.data_json AS payloadJson
+        FROM message
+        LEFT JOIN part
+          ON part.message_id = message.id
+         AND part.ord = 0
+        WHERE message.session_id = ?
+          AND message.type IN ('user_message', 'assistant_message')
+          ${beforeClause}
+        ORDER BY message.created_at DESC, message.id DESC
+        LIMIT ?
+      `,
         )
-      ORDER BY message.created_at DESC, message.id DESC
-      LIMIT ?
-    `,
-      )
-      .all(
-        conversationId,
-        before.timestamp,
-        before.timestamp,
-        before.id,
-        CUTOFF_SCAN_CEILING,
-      ) as VisibleScanRow[];
-    return cursorFromVisibleScan(rows, maxVisibleMessages);
+        .all(...params) as VisibleScanRow[];
+      if (rows.length === 0) return null;
+
+      for (const row of rows) {
+        if (typeof row.timestamp !== "number" || typeof row.id !== "string") {
+          continue;
+        }
+        oldestScanned = { timestamp: row.timestamp, id: row.id };
+        const payload = parseJsonRecord(row.payloadJson) ?? null;
+        if (isUiHiddenChatMessagePayload(payload)) continue;
+        visible += 1;
+        if (visible === maxVisibleMessages) return oldestScanned;
+      }
+      scanned += rows.length;
+      if (rows.length < limit) return null;
+      before = oldestScanned;
+      if (!before) return null;
+    }
+    return oldestScanned;
   }
 
   private fetchTimelineRows(
@@ -1822,22 +1958,16 @@ export class SessionStore {
     ];
     const params: Array<string | number> = [conversationId];
     if (cutoff) {
-      clauses.push(
-        "(message.created_at > ? OR (message.created_at = ? AND message.id >= ?))",
-      );
-      params.push(cutoff.timestamp, cutoff.timestamp, cutoff.id);
+      clauses.push("(message.created_at, message.id) >= (?, ?)");
+      params.push(cutoff.timestamp, cutoff.id);
     }
     if (before) {
-      clauses.push(
-        "(message.created_at < ? OR (message.created_at = ? AND message.id < ?))",
-      );
-      params.push(before.timestamp, before.timestamp, before.id);
+      clauses.push("(message.created_at, message.id) < (?, ?)");
+      params.push(before.timestamp, before.id);
     }
     if (after) {
-      clauses.push(
-        "(message.created_at > ? OR (message.created_at = ? AND message.id > ?))",
-      );
-      params.push(after.timestamp, after.timestamp, after.id);
+      clauses.push("(message.created_at, message.id) > (?, ?)");
+      params.push(after.timestamp, after.id);
     }
     const normalizedLimit =
       typeof limit === "number" && Number.isFinite(limit)
@@ -1881,20 +2011,46 @@ export class SessionStore {
       WHERE message.session_id = ?
         AND message.type = 'user_message'
         AND (
-          message.created_at < ?
-          OR (message.created_at = ? AND message.id <= ?)
-        )
+          message.created_at, message.id
+        ) <= (?, ?)
       ORDER BY message.created_at DESC, message.id DESC
       LIMIT 1
     `,
       )
-      .get(conversationId, cutoff.timestamp, cutoff.timestamp, cutoff.id) as
+      .get(conversationId, cutoff.timestamp, cutoff.id) as
       | { timestamp?: unknown; id?: unknown }
       | undefined;
     if (typeof row?.timestamp !== "number" || typeof row.id !== "string") {
       return cutoff;
     }
     return { timestamp: row.timestamp, id: row.id };
+  }
+
+  private findNextUserMessageAfter(
+    conversationId: string,
+    cursor: TimelineCursor,
+  ): TimelineCursor {
+    if (!cursor) return null;
+    const row = this.db
+      .prepare(
+        `
+      SELECT message.created_at AS timestamp, message.id AS id
+      FROM message
+      WHERE message.session_id = ?
+        AND message.type = 'user_message'
+        AND (
+          message.created_at, message.id
+        ) > (?, ?)
+      ORDER BY message.created_at ASC, message.id ASC
+      LIMIT 1
+    `,
+      )
+      .get(conversationId, cursor.timestamp, cursor.id) as
+      | { timestamp?: unknown; id?: unknown }
+      | undefined;
+    return typeof row?.timestamp === "number" && typeof row.id === "string"
+      ? { timestamp: row.timestamp, id: row.id }
+      : null;
   }
 
   private trimMessageWindow(

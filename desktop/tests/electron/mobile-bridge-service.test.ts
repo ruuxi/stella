@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { MobileBridgeService } from "../../electron/services/mobile-bridge/service.js";
+import {
+  BRIDGE_FEATURE_DEFLATE,
+  decryptBridgePayload,
+  type BridgeCryptoSession,
+} from "../../electron/services/mobile-bridge/crypto.js";
+import { randomBytes } from "crypto";
 
 const createService = () =>
   new MobileBridgeService({
@@ -44,14 +50,12 @@ describe("MobileBridgeService registration lease", () => {
     const service = createService();
     const anyService = configureReadyService(service);
     const leaseExpiresAt = Date.now() + 120_000;
-    anyService.postBridgeJson = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ ok: true, leaseExpiresAt }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+    anyService.postBridgeJson = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, leaseExpiresAt }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
 
     await anyService.syncRegistration();
 
@@ -269,5 +273,67 @@ describe("MobileBridgeService registration lease", () => {
       filePath: "/repo/src/app.tsx",
     });
     expect(ws.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("compresses WebSocket responses only for peers that negotiated deflate", () => {
+    const service = createService();
+    const anyService = configureReadyService(service);
+    const key = new Uint8Array(randomBytes(32));
+    const makeClient = (features: Set<string>) => ({
+      encrypted: true,
+      session: {
+        peerFeatures: features,
+        crypto: {
+          sessionId: "ws-session",
+          key,
+          txSeq: 0,
+        } satisfies BridgeCryptoSession,
+      },
+    });
+    const payload = {
+      type: "response",
+      id: "resume",
+      result: {
+        events: Array.from({ length: 100 }, () => ({ chunk: "x".repeat(200) })),
+      },
+    };
+
+    const legacy = JSON.parse(
+      anyService.serializeWsMessage(makeClient(new Set()), payload),
+    );
+    expect(legacy.envelope.z).toBeUndefined();
+
+    const modern = JSON.parse(
+      anyService.serializeWsMessage(
+        makeClient(new Set([BRIDGE_FEATURE_DEFLATE])),
+        payload,
+      ),
+    );
+    expect(modern.envelope.z).toBe(1);
+    expect(modern.envelope.ct.length).toBeLessThan(legacy.envelope.ct.length);
+    expect(
+      decryptBridgePayload(
+        { sessionId: "ws-session", key, txSeq: 0 },
+        "d2m",
+        modern.envelope,
+      ),
+    ).toEqual(payload);
+  });
+
+  it("does not schedule registration when auth endpoints are unchanged", () => {
+    const service = createService();
+    const anyService = configureReadyService(service);
+    const schedule = vi
+      .spyOn(anyService, "scheduleRegistrationSync")
+      .mockImplementation(() => undefined);
+
+    service.setDeviceId("desktop-device");
+    service.setHostAuthToken("desktop-token");
+    service.setConvexSiteUrl("https://example.convex.site");
+    service.setTunnelUrl("https://desktop.example.com");
+    expect(schedule).not.toHaveBeenCalled();
+
+    service.setDeviceId("desktop-device-2");
+    expect(schedule).toHaveBeenCalledTimes(1);
   });
 });

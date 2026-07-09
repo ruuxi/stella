@@ -20,6 +20,14 @@ export const BRIDGE_FEATURE_BINARY_FILE = "binary-file-lane";
 export const BRIDGE_FEATURE_BINARY_UPLOAD = "binary-upload";
 export const BRIDGE_FEATURE_LOCAL_CHAT_PUSH = "localchat-push";
 
+/**
+ * JSON envelopes are control-plane/chat data, never file bodies. Keep
+ * decompression bounded so an authenticated-but-corrupt peer cannot turn a
+ * small deflate frame into an unbounded main-process allocation. Binary files
+ * continue to use the separately bounded binary lane.
+ */
+export const MAX_BRIDGE_ENVELOPE_PLAINTEXT_BYTES = 16 * 1024 * 1024;
+
 export type BridgeCryptoDirection = "m2d" | "d2m";
 
 export type BridgeEncryptedEnvelope = {
@@ -247,7 +255,13 @@ export const decryptBridgePayload = (
   // Only trust the compression flag after authenticated decryption succeeded.
   replayGuard?.check(envelope.seq);
   const json =
-    envelope.z === 1 ? new Uint8Array(inflateRawSync(plaintext)) : plaintext;
+    envelope.z === 1
+      ? new Uint8Array(
+          inflateRawSync(plaintext, {
+            maxOutputLength: MAX_BRIDGE_ENVELOPE_PLAINTEXT_BYTES,
+          }),
+        )
+      : plaintext;
   return JSON.parse(new TextDecoder().decode(json)) as unknown;
 };
 

@@ -13,6 +13,7 @@ import type {
   LocalChatAppendEventArgs,
   LocalChatEventRecord,
   LocalChatFilesWindow,
+  LocalChatMessageRecord,
   LocalChatMessageWindow,
   SqliteDatabase,
 } from "../../../runtime/kernel/storage/shared.js";
@@ -62,6 +63,64 @@ const normalizeFirstReport = (value: unknown): FirstReportPayload | null => {
 
 const openNodeSqliteDatabase = (dbPath: string): SqliteDatabase =>
   new DatabaseSync(dbPath) as unknown as SqliteDatabase;
+
+const MOBILE_TASK_EVENT_TYPES = new Set([
+  "agent-started",
+  "agent-progress",
+  "agent-completed",
+  "agent-failed",
+  "agent-canceled",
+]);
+
+const taskAgentIdsInMessages = (
+  messages: readonly LocalChatMessageRecord[],
+) => {
+  const touched = new Set<string>();
+  const anchored = new Set<string>();
+  for (const message of messages) {
+    for (const event of message.toolEvents) {
+      if (!MOBILE_TASK_EVENT_TYPES.has(event.type)) continue;
+      const agentId =
+        typeof event.payload?.agentId === "string"
+          ? event.payload.agentId.trim()
+          : "";
+      if (!agentId) continue;
+      touched.add(agentId);
+      if (event.type === "agent-started") anchored.add(agentId);
+    }
+  }
+  return { touched, anchored };
+};
+
+const mergeTaskContextMessages = (
+  messages: readonly LocalChatMessageRecord[],
+  extra: readonly LocalChatMessageRecord[],
+): LocalChatMessageRecord[] => {
+  const byId = new Map<string, LocalChatMessageRecord>();
+  for (const message of [...extra, ...messages]) {
+    const existing = byId.get(message._id);
+    if (!existing) {
+      byId.set(message._id, message);
+      continue;
+    }
+    const events = new Map(
+      [...existing.toolEvents, ...message.toolEvents].map((event) => [
+        event._id,
+        event,
+      ]),
+    );
+    byId.set(message._id, {
+      ...existing,
+      ...message,
+      toolEvents: [...events.values()].sort(
+        (a, b) => a.timestamp - b.timestamp || a._id.localeCompare(b._id),
+      ),
+    });
+  }
+  return [...byId.values()].sort(
+    (a, b) => a.timestamp - b.timestamp || a._id.localeCompare(b._id),
+  );
+};
 
 export class LocalChatHistoryService {
   private db: SqliteDatabase | null = null;
@@ -399,6 +458,15 @@ export class LocalChatHistoryService {
     };
     const cursor = decodeMobileSyncCursor(args.sinceCursor);
     if (cursor) {
+      if (
+        !this.getStore().hasMobileSyncEventsAfter(
+          args.conversationId,
+          cursor.timestamp,
+          cursor.id,
+        )
+      ) {
+        return { messages: [], cursor: args.sinceCursor?.trim() || null };
+      }
       const { messages, sourceEvents } = this.getStore().listMessagesAfter(
         args.conversationId,
         {
@@ -407,11 +475,20 @@ export class LocalChatHistoryService {
           maxVisibleMessages: maxMessages,
         },
       );
-      const { messages: taskContextMessages } = this.getStore().listMessages(
-        args.conversationId,
-        {
-          maxVisibleMessages: maxMessages,
-        },
+      const { touched, anchored } = taskAgentIdsInMessages(messages);
+      const missingAnchors = [...touched].filter(
+        (agentId) => !anchored.has(agentId),
+      );
+      const targetedTaskContext =
+        missingAnchors.length > 0
+          ? this.getStore().listMobileTaskContext(
+              args.conversationId,
+              missingAnchors,
+            ).messages
+          : [];
+      const taskContextMessages = mergeTaskContextMessages(
+        messages,
+        targetedTaskContext,
       );
       return buildMobileSyncMessagesPage(
         messages,

@@ -6,6 +6,7 @@ import {
   decryptBridgePayload,
   encryptBridgeBytes,
   encryptBridgePayload,
+  MAX_BRIDGE_ENVELOPE_PLAINTEXT_BYTES,
   type BridgeCryptoSession,
 } from "../../electron/services/mobile-bridge/crypto.js";
 import { randomBytes } from "crypto";
@@ -62,6 +63,20 @@ describe("bridge envelope compression", () => {
     expect(decryptBridgePayload(receiver, "m2d", envelope)).toEqual({
       legacy: true,
     });
+  });
+
+  it("rejects compressed envelopes beyond the bounded plaintext limit", () => {
+    const { sender, receiver } = makeSessionPair();
+    const envelope = encryptBridgePayload(
+      sender,
+      "d2m",
+      { text: "x".repeat(MAX_BRIDGE_ENVELOPE_PLAINTEXT_BYTES) },
+      { compress: true },
+    );
+    expect(envelope.z).toBe(1);
+    expect(() => decryptBridgePayload(receiver, "d2m", envelope)).toThrow(
+      /larger than|output length/i,
+    );
   });
 });
 

@@ -130,6 +130,22 @@ const requestIdForClientSend = (clientRequestId: string): string =>
  */
 const MOBILE_KEEPALIVE_INTERVAL_MS = 15_000;
 
+export const pageMobileAgentReplayEvents = <T>(
+  events: readonly T[],
+  requestedMaxEvents?: number,
+): { events: T[]; hasMore: boolean } => {
+  const maxEvents =
+    typeof requestedMaxEvents === "number" &&
+    Number.isFinite(requestedMaxEvents)
+      ? Math.max(1, Math.min(250, Math.floor(requestedMaxEvents)))
+      : null;
+  if (maxEvents === null) return { events: [...events], hasMore: false };
+  return {
+    events: events.slice(0, maxEvents),
+    hasMore: events.length > maxEvents,
+  };
+};
+
 export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   const runOwners = new Map<string, number>();
   const requestOwners = new Map<string, number>();
@@ -422,7 +438,15 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   ipcMain.handle(
     "agent:resume",
-    async (event, payload: { conversationId: string; lastSeq: number }) => {
+    async (
+      event,
+      payload: {
+        conversationId: string;
+        lastSeq: number;
+        /** Additive mobile replay paging; older callers receive the full window. */
+        maxEvents?: number;
+      },
+    ) => {
       pruneConversationEventBuffers();
       const conversationId =
         typeof payload.conversationId === "string"
@@ -486,6 +510,8 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           }
         }
       }
+      const page = pageMobileAgentReplayEvents(events, payload.maxEvents);
+      events = page.events;
       const resumedRequestId =
         activeRun?.requestId ??
         events.find((agentEvent) => typeof agentEvent.requestId === "string")
@@ -681,6 +707,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       return {
         activeRun,
         events,
+        hasMore: page.hasMore,
         tasks,
       };
     },

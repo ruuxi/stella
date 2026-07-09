@@ -412,13 +412,17 @@ export class MobileBridgeService {
   // ── External setters (called from bootstrap) ──────────────────────────
 
   setDeviceId(value: string | null) {
-    this.deviceId = value?.trim() || null;
+    const next = value?.trim() || null;
+    if (next === this.deviceId) return;
+    this.deviceId = next;
     this.scheduleRegistrationSync();
   }
 
   setHostAuthToken(value: string | null) {
     const previousToken = this.hostAuthToken;
-    this.hostAuthToken = value?.trim() || null;
+    const nextToken = value?.trim() || null;
+    if (nextToken === previousToken) return;
+    this.hostAuthToken = nextToken;
     if (!this.hostAuthToken && previousToken) {
       this.invalidateBridgeAccess("Desktop signed out");
       void this.clearRegistrationWithToken(previousToken);
@@ -428,12 +432,15 @@ export class MobileBridgeService {
   }
 
   setConvexSiteUrl(value: string | null) {
-    this.convexSiteUrl = value?.trim() || null;
+    const next = value?.trim() || null;
+    if (next === this.convexSiteUrl) return;
+    this.convexSiteUrl = next;
     this.scheduleRegistrationSync();
   }
 
   setTunnelUrl(url: string | null) {
     const next = url?.trim() || null;
+    if (next === this.tunnelUrl) return;
     if (next && next !== this.tunnelUrl) {
       // A freshly advertised URL starts with a clean health streak and must be
       // probed fresh (don't reuse a prior URL's cached result).
@@ -1315,7 +1322,12 @@ export class MobileBridgeService {
       throw new Error("Encrypted bridge session required");
     }
     client.encrypted = true;
-    return decryptBridgePayload(client.session.crypto, "m2d", envelope);
+    return decryptBridgePayload(
+      client.session.crypto,
+      "m2d",
+      envelope,
+      this.getSessionReplayGuard(client.session),
+    );
   }
 
   private serializeWsMessage(
@@ -1332,7 +1344,9 @@ export class MobileBridgeService {
       throw new Error("Encrypted bridge session required");
     }
     return JSON.stringify({
-      envelope: encryptBridgePayload(client.session.crypto, "d2m", payload),
+      envelope: encryptBridgePayload(client.session.crypto, "d2m", payload, {
+        compress: this.sessionSupportsDeflate(client.session),
+      }),
     });
   }
 

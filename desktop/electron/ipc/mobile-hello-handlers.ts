@@ -19,6 +19,51 @@ type MobileHelloHandlersOptions = {
   ) => boolean;
 };
 
+export type MobileHelloPayload = {
+  expectedConversationId?: string | null;
+  sinceCursor?: string | null;
+  maxMessages?: number;
+  negotiateOnly?: boolean;
+};
+
+export const runMobileHello = async (
+  options: Pick<
+    MobileHelloHandlersOptions,
+    "localChatHistoryService" | "getActiveConversationId" | "getUiStateSnapshot"
+  >,
+  payload?: MobileHelloPayload,
+) => {
+  const activeConversationId = (options.getActiveConversationId() ?? "").trim();
+  const conversationId =
+    activeConversationId ||
+    (await options.localChatHistoryService.getOrCreateDefaultConversationId());
+
+  const developerArtifactsEnabled =
+    options.getUiStateSnapshot()[DEVELOPER_RESOURCE_PREVIEWS_KEY] === "true";
+  const expected = payload?.expectedConversationId?.trim() || null;
+  const conversationChanged = Boolean(expected && expected !== conversationId);
+  const sinceCursor = conversationChanged
+    ? null
+    : (payload?.sinceCursor ?? null);
+  const sync =
+    payload?.negotiateOnly === true
+      ? { messages: [], cursor: sinceCursor }
+      : options.localChatHistoryService.syncMessages({
+          conversationId,
+          sinceCursor,
+          maxMessages: payload?.maxMessages,
+          includeDeveloperArtifacts: developerArtifactsEnabled,
+        });
+
+  return {
+    conversationId,
+    conversationChanged,
+    developerArtifactsEnabled,
+    features: [...MOBILE_BRIDGE_FEATURES],
+    ...sync,
+  };
+};
+
 /**
  * One-RTT connect endpoint for the mobile bridge. Folds what used to take
  * four serialized round-trips from the phone — `/bridge/bootstrap` (developer
@@ -37,51 +82,9 @@ export const registerMobileHelloHandlers = (
 ) => {
   ipcMain.handle(
     IPC_MOBILE_HELLO,
-    async (
-      event,
-      payload?: {
-        expectedConversationId?: string | null;
-        sinceCursor?: string | null;
-        maxMessages?: number;
-      },
-    ) => {
+    async (event, payload?: MobileHelloPayload) => {
       assertPrivilegedRequest(options, event, IPC_MOBILE_HELLO);
-
-      const activeConversationId = (
-        options.getActiveConversationId() ?? ""
-      ).trim();
-      const conversationId =
-        activeConversationId ||
-        (await options.localChatHistoryService.getOrCreateDefaultConversationId());
-
-      const developerArtifactsEnabled =
-        options.getUiStateSnapshot()[DEVELOPER_RESOURCE_PREVIEWS_KEY] ===
-        "true";
-
-      // Mirror the phone's legacy conversation-switch handling server-side: a
-      // cursor from a different conversation must not scope this pull.
-      const expected = payload?.expectedConversationId?.trim() || null;
-      const conversationChanged = Boolean(
-        expected && expected !== conversationId,
-      );
-      const sinceCursor = conversationChanged
-        ? null
-        : (payload?.sinceCursor ?? null);
-
-      const sync = options.localChatHistoryService.syncMessages({
-        conversationId,
-        sinceCursor,
-        maxMessages: payload?.maxMessages,
-        includeDeveloperArtifacts: developerArtifactsEnabled,
-      });
-
-      return {
-        conversationId,
-        conversationChanged,
-        developerArtifactsEnabled,
-        features: [...MOBILE_BRIDGE_FEATURES],
-        ...sync,
-      };
+      return runMobileHello(options, payload);
     },
   );
 };
