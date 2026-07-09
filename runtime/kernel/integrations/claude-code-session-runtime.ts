@@ -641,7 +641,9 @@ export const buildToolResultPrompt = async (args: {
 }): Promise<string> => {
   const rawResultText = stringifyUnknown(args.toolResult.result);
   const { text: forwardedResultText, images } =
-    await extractAttachImageBlocks(rawResultText);
+    // The Claude Code engine runs on Anthropic; resize tool-result
+    // screenshots to Anthropic's high-resolution-tier caps (2576px).
+    await extractAttachImageBlocks(rawResultText, { provider: "anthropic" });
   const serializedResult = trimForPrompt(
     stringifyUnknown({
       result: forwardedResultText || args.toolResult.result,

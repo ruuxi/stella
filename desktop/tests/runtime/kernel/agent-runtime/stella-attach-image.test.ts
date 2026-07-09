@@ -64,6 +64,36 @@ App=com.apple.finder (pid 504)
     expect(result.text).toContain("App=com.apple.finder");
   });
 
+  it("extracts an image from a detail=original marker and strips it", async () => {
+    const tempDir = createTempDir();
+    const imgPath = writePng(tempDir);
+
+    const text = `[stella-attach-image] inline=image/png detail=original ${imgPath}\n`;
+    const result = await extractAttachImageBlocks(text, {
+      provider: "anthropic",
+      modelId: "claude-opus-4-8",
+    });
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0]).toMatchObject({
+      type: "image",
+      mimeType: "image/png",
+    });
+    expect(result.images[0].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
+    // The detail token and marker are both stripped from forwarded text.
+    expect(result.text).not.toContain("[stella-attach-image]");
+    expect(result.text).not.toContain("detail=original");
+  });
+
+  it("accepts a provider target without altering a small pass-through image", async () => {
+    const tempDir = createTempDir();
+    const imgPath = writePng(tempDir);
+
+    const text = `[stella-attach-image] inline=image/png ${imgPath}\n`;
+    const result = await extractAttachImageBlocks(text, { provider: "openai" });
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
+  });
+
   it("uses image bytes over marker and extension when MIME types disagree", async () => {
     const tempDir = createTempDir();
     const imgPath = path.join(tempDir, "term-shot.png");
@@ -181,11 +211,12 @@ App=com.apple.finder (pid 504)
 
   it("gates the raw-attach fallback on the shared Anthropic per-image ceiling", () => {
     // The attach gate and the Anthropic send boundary must enforce the SAME
-    // base64 ceiling (a single shared constant): otherwise a 5-10MB image can
-    // pass the gate here and then be silently dropped to "[Image omitted]" at
-    // the wire. tool-adapters imports MAX_IMAGE_BASE64_BYTES from image-payload
-    // exactly so the two can't drift apart.
-    expect(MAX_IMAGE_BASE64_BYTES).toBe(5 * 1024 * 1024);
+    // base64 ceiling (a single shared constant): otherwise an oversized image
+    // can pass the gate here and then be silently dropped to "[Image omitted]"
+    // at the wire. tool-adapters imports MAX_IMAGE_BASE64_BYTES from
+    // image-payload, which sources the value from image-caps (the direct-API
+    // 10MB cap), so the two can't drift apart.
+    expect(MAX_IMAGE_BASE64_BYTES).toBe(10 * 1024 * 1024);
   });
 
   it("passes small images through byte-identical (no resize, no note)", async () => {

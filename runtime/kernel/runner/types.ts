@@ -1,5 +1,6 @@
 import type { ConvexClient } from "convex/browser";
 import type { Api, Model } from "../../ai/types.js";
+import type { ImageCapTarget } from "../../ai/utils/image-caps.js";
 import type { AgentMessage } from "../agent-core/types.js";
 import type { OrchestratorSession } from "../agent-runtime/orchestrator-session.js";
 import type { BackgroundCompactionScheduler } from "../agent-runtime/compaction-scheduler.js";
@@ -486,6 +487,14 @@ export type RunnerPublicApi = {
   ) => Promise<ToolResult>;
   agentHealthCheck: () => AgentHealth;
   warmModelCatalog: () => Promise<void>;
+  /**
+   * Resolve the provider/model an agent's turn would run on, for sizing
+   * composer image attachments to that provider's limits. Returns null when
+   * no route resolves (signed out, misconfigured pick).
+   */
+  resolveImageTarget: (
+    agentType?: string,
+  ) => Promise<Pick<ImageCapTarget, "provider" | "api" | "modelId"> | null>;
   webSearch: (
     query: string,
     options?: { category?: string },

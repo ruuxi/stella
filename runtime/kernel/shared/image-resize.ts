@@ -6,8 +6,12 @@
  *
  * 1. Resize to maxWidth/maxHeight (Lanczos3)
  * 2. Try both PNG and JPEG encodings, pick the first under maxBytes
- * 3. If still too large, walk JPEG quality down (80 → 40)
+ *    (PNG is lossless and tried first, so text stays crisp whenever it fits)
+ * 3. If still too large, walk JPEG quality down (90 → 40)
  * 4. If still too large, progressively shrink dimensions toward 1x1
+ *
+ * When the input already fits the target's dimension AND byte caps it is
+ * passed through untouched — no needless lossy re-encode.
  *
  * Runs in-process: Stella's runtime worker is already a separate process
  * from the UI, so a brief WASM decode doesn't block anything user-facing.
@@ -15,14 +19,19 @@
  * or shrunk under the cap — callers decide the fallback.
  */
 
+import {
+  DEFAULT_JPEG_QUALITY,
+  SAFE_FALLBACK_MAX_BYTES,
+  SAFE_FALLBACK_MAX_EDGE,
+} from "../../ai/utils/image-caps.js";
 import { applyExifOrientation } from "./exif-orientation.js";
 import { loadPhoton } from "./photon.js";
 
 export interface ImageResizeOptions {
-  maxWidth?: number; // Default: 2000
-  maxHeight?: number; // Default: 2000
-  maxBytes?: number; // Default: 4.5MB of base64 payload
-  jpegQuality?: number; // Default: 80
+  maxWidth?: number; // Default: safe-fallback long edge (2048)
+  maxHeight?: number; // Default: safe-fallback long edge (2048)
+  maxBytes?: number; // Default: safe-fallback base64 budget (~4.5MB)
+  jpegQuality?: number; // Default: 90
 }
 
 export interface ResizedImage {
@@ -35,15 +44,16 @@ export interface ResizedImage {
   wasResized: boolean;
 }
 
-// 4.5MB of base64 payload. Comfortable headroom under every mainstream
-// provider's per-image cap (Anthropic rejects at 10MiB base64).
-const DEFAULT_MAX_BYTES = 4.5 * 1024 * 1024;
-
+// Safe conservative defaults, used only when a caller does not pass
+// provider-aware caps. Callers should resolve caps via `resolveImageCaps`
+// (ai/utils/image-caps) so images reach each provider at the best quality it
+// supports; these defaults stay under every mainstream provider's per-image
+// cap for the unknown-route case.
 const DEFAULT_OPTIONS: Required<ImageResizeOptions> = {
-  maxWidth: 2000,
-  maxHeight: 2000,
-  maxBytes: DEFAULT_MAX_BYTES,
-  jpegQuality: 80,
+  maxWidth: SAFE_FALLBACK_MAX_EDGE,
+  maxHeight: SAFE_FALLBACK_MAX_EDGE,
+  maxBytes: SAFE_FALLBACK_MAX_BYTES,
+  jpegQuality: DEFAULT_JPEG_QUALITY,
 };
 
 interface EncodedCandidate {
@@ -146,8 +156,11 @@ export const resizeImage = async (
       }
     };
 
+    // Try the caller's quality first (default q90), then step down only as
+    // needed to fit the byte cap; heavy JPEG compression is the classic cause
+    // of illegible text, so we start high rather than at the old q80.
     const qualitySteps = Array.from(
-      new Set([opts.jpegQuality, 85, 70, 55, 40]),
+      new Set([opts.jpegQuality, 90, 80, 70, 55, 40]),
     );
     let currentWidth = targetWidth;
     let currentHeight = targetHeight;

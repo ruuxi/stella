@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import { ANTHROPIC_DIRECT_MAX_IMAGE_BASE64_BYTES } from "../ai/utils/image-caps.js";
 import type { RuntimeAttachmentRef } from "../protocol/index.js";
 
 /**
@@ -47,11 +48,13 @@ export const approximateDataUrlBytes = (url: string): number => {
 
 /**
  * Per-image cap, measured on the base64 payload — Anthropic rejects any
- * single image whose base64 exceeds 10MiB with a fatal 400. A turn whose
- * total is under the spill budget can still carry one such image, so the
- * spill decision checks both.
+ * single image whose base64 exceeds its direct-API limit with a fatal 400. A
+ * turn whose total is under the spill budget can still carry one such image,
+ * so the spill decision checks both. Sourced from the shared `image-caps`
+ * definition so this can't drift from the resize target and send boundary.
  */
-export const MAX_INLINE_IMAGE_BASE64_BYTES = 10 * 1024 * 1024;
+export const MAX_INLINE_IMAGE_BASE64_BYTES =
+  ANTHROPIC_DIRECT_MAX_IMAGE_BASE64_BYTES;
 
 export const dataUrlBase64Length = (url: string): number =>
   DATA_URL_RE.exec(url)?.[2]?.length ?? 0;

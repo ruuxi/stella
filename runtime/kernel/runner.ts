@@ -253,6 +253,21 @@ export const createStellaHostRunner = (
       ),
     agentHealthCheck: orchestratorController.agentHealthCheck,
     warmModelCatalog,
+    resolveImageTarget: async (agentType = AGENT_IDS.ORCHESTRATOR) => {
+      try {
+        const { resolvedLlm } = await resolveAgentModelRoute(
+          context,
+          agentType,
+        );
+        return {
+          provider: resolvedLlm.model.provider,
+          api: resolvedLlm.model.api,
+          modelId: resolvedLlm.model.id,
+        };
+      } catch {
+        return null;
+      }
+    },
     webSearch: convexSession.webSearch,
     listStorePackages: storeOperations.listStorePackages,
     getStorePackage: storeOperations.getStorePackage,

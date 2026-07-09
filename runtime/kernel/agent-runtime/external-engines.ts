@@ -35,6 +35,7 @@ import {
   getRuntimeToolMetadata,
   truncateModelVisibleToolText,
 } from "./tool-adapters.js";
+import type { ImageCapTarget } from "../../ai/utils/image-caps.js";
 import {
   markOrchestratorErrorReported,
   resolveInterruptionReason,
@@ -146,12 +147,18 @@ const buildToolResultText = (toolResult: {
     ? `Error: ${toolResult.error}`
     : textFromUnknown(toolResult.result);
 
-const buildToolResultContent = async (toolResult: {
-  result?: unknown;
-  error?: string;
-}): Promise<(TextContent | ImageContent)[]> => {
+const buildToolResultContent = async (
+  toolResult: {
+    result?: unknown;
+    error?: string;
+  },
+  imageCapTarget: ImageCapTarget = {},
+): Promise<(TextContent | ImageContent)[]> => {
   const rawText = buildToolResultText(toolResult);
-  const { text, images } = await extractAttachImageBlocks(rawText);
+  const { text, images } = await extractAttachImageBlocks(
+    rawText,
+    imageCapTarget,
+  );
   const truncatedText = truncateModelVisibleToolText(text);
   const content: (TextContent | ImageContent)[] = [];
   if (truncatedText.text || images.length === 0) {
@@ -596,6 +603,9 @@ const runClaudeHostedTurn = async (args: {
     signal?: AbortSignal,
     onUpdate?: ToolUpdateCallback,
   ) => {
+    // The Claude Code engine runs on Anthropic; tool-result screenshots get
+    // Anthropic's high-resolution-tier caps (2576px long edge).
+    const imageCapTarget: ImageCapTarget = { provider: "anthropic" };
     flushPreambleBeforeTool({ toolCallId, toolName, toolArgs });
     responseTargetTracker?.noteToolStart(toolName, toolArgs);
     args.callbacks?.onToolStart?.(
@@ -650,7 +660,7 @@ const runClaudeHostedTurn = async (args: {
         role: "toolResult",
         toolCallId,
         toolName,
-        content: await buildToolResultContent(toolResult),
+        content: await buildToolResultContent(toolResult, imageCapTarget),
         isError: Boolean(toolResult.error),
         timestamp: now(),
       },
@@ -888,6 +898,9 @@ const runCodexHostedTurn = async (args: {
     signal?: AbortSignal,
     onUpdate?: ToolUpdateCallback,
   ) => {
+    // The Codex engine runs on OpenAI; tool-result screenshots get OpenAI's
+    // image caps (2048px long edge for high detail).
+    const imageCapTarget: ImageCapTarget = { provider: "openai" };
     flushPreambleBeforeTool({ toolCallId, toolName, toolArgs });
     responseTargetTracker?.noteToolStart(toolName, toolArgs);
     args.callbacks?.onToolStart?.(
@@ -942,7 +955,7 @@ const runCodexHostedTurn = async (args: {
         role: "toolResult",
         toolCallId,
         toolName,
-        content: await buildToolResultContent(toolResult),
+        content: await buildToolResultContent(toolResult, imageCapTarget),
         isError: Boolean(toolResult.error),
         timestamp: now(),
       },

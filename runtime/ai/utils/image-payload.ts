@@ -22,6 +22,8 @@
  * untouched, so the working user-attached path does not regress.
  */
 
+import { ANTHROPIC_DIRECT_MAX_IMAGE_BASE64_BYTES } from "./image-caps.js";
+
 /** Media types Anthropic (and the other vision providers) accept as base64. */
 export type SupportedImageMediaType =
 	| "image/png"
@@ -38,21 +40,23 @@ const SUPPORTED_MEDIA_TYPES: readonly SupportedImageMediaType[] = [
 
 /**
  * Single shared ceiling on the base64 payload of an inline image, matched to
- * Anthropic's documented per-image limit (5MB) — users hit real 400s at that
- * size. It is enforced against the base64 *string* length (what the API
- * actually counts), NOT the decoded byte length.
+ * Anthropic's documented per-image limit on the direct API (10MB) — users hit
+ * real 400s above that size. It is enforced against the base64 *string*
+ * length (what the API actually counts), NOT the decoded byte length.
  *
- * This is the one source of truth for both boundaries that guard inline
+ * This is the last-resort guard for both boundaries that protect inline
  * images, so an image can never pass one and then be silently dropped by the
  * other:
  *   - the tool-attach gate in kernel/agent-runtime/tool-adapters.ts, and
  *   - the Anthropic send boundary in providers/anthropic.ts (via
  *     `sanitizeInlineImagePayload`).
  *
- * Well-behaved callers resize below this at attach time; this stays a
- * last-resort guard for payloads that slipped through.
+ * The canonical value lives in `./image-caps.ts` alongside the other
+ * provider/route limits (previously three files disagreed: 4.5MB, 5MB, 10MB).
+ * Well-behaved callers resize below the provider-specific target at attach
+ * time; this stays the ceiling for payloads that slipped through.
  */
-export const MAX_IMAGE_BASE64_BYTES = 5 * 1024 * 1024;
+export const MAX_IMAGE_BASE64_BYTES = ANTHROPIC_DIRECT_MAX_IMAGE_BASE64_BYTES;
 
 const DATA_URL_PREFIX_RE = /^data:([^;,]+)(;base64)?,/i;
 

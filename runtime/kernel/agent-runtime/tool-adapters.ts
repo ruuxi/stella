@@ -27,6 +27,10 @@ import {
   isCompleteImage,
   MAX_IMAGE_BASE64_BYTES,
 } from "../../ai/utils/image-payload.js";
+import {
+  resolveImageCaps,
+  type ImageCapTarget,
+} from "../../ai/utils/image-caps.js";
 
 export const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -244,14 +248,22 @@ const scoreDeferredTool = (tool: ToolMetadata, queryTokens: string[]) => {
 // Exported for tests. See `desktop/tests/runtime/kernel/agent-runtime/stella-attach-image.test.ts`.
 export const extractAttachImageBlocks = async (
   text: string,
+  target: ImageCapTarget = {},
 ): Promise<{ text: string; images: ImageBlock[] }> => {
   if (!text || !text.includes("[stella-attach-image]")) {
     return { text, images: [] };
   }
-  const matches: Array<{ full: string; path: string }> = [];
+  const matches: Array<{ full: string; path: string; detailOriginal: boolean }> =
+    [];
   for (const m of text.matchAll(STELLA_ATTACH_IMAGE_RE)) {
     if (m[1])
-      matches.push({ full: m[0], path: normalizeAttachImagePath(m[1]) });
+      matches.push({
+        full: m[0],
+        path: normalizeAttachImagePath(m[1]),
+        // `view_image detail: "original"` marks the marker so we keep native
+        // resolution (bounded by the provider ceiling) instead of downscaling.
+        detailOriginal: /\bdetail=original\b/.test(m[0]),
+      });
   }
   if (matches.length === 0) return { text, images: [] };
 
@@ -259,7 +271,7 @@ export const extractAttachImageBlocks = async (
   const markerReplacements: Array<{ full: string; replacement: string }> = [];
   // Read sequentially to keep failure messages deterministic; screenshots are
   // small and there's typically 1-2 per call.
-  for (const { full, path: imgPath } of matches) {
+  for (const { full, path: imgPath, detailOriginal } of matches) {
     try {
       // Settle the read against the capture -> read race: a screenshot the
       // agent just captured can still be mid-flush when its path reaches us,
@@ -272,13 +284,20 @@ export const extractAttachImageBlocks = async (
       if (!mimeType) {
         return { text, images: [] };
       }
-      // Pi-style auto-resize: pass-through when already small (≤2000px
-      // and under the byte cap — e.g. every stella-computer screenshot,
-      // which the native helper pre-caps at 1024px, so screenshot-pixel
-      // coordinates stay 1:1), otherwise shrink to fit. The dimension
-      // note tells the model how to map coordinates back when a resize
-      // did happen.
-      const resized = await resizeImage(buf, mimeType);
+      // Provider-aware auto-resize: pass-through when the image already fits
+      // the resolved target's dimension + byte caps (e.g. every
+      // stella-computer screenshot, which the native helper pre-caps at
+      // 1024px, so screenshot-pixel coordinates stay 1:1), otherwise shrink to
+      // fit that target. `detail=original` lifts the caps to the provider's
+      // hard ceiling so a deliberate full-res read isn't downscaled. The
+      // dimension note tells the model how to map coordinates back when a
+      // resize did happen.
+      const caps = resolveImageCaps({
+        ...target,
+        imageCount: matches.length,
+        detailOriginal,
+      });
+      const resized = await resizeImage(buf, mimeType, caps);
       if (resized) {
         const note = formatDimensionNote(resized);
         markerReplacements.push({ full, replacement: note ?? "" });
@@ -501,6 +520,12 @@ export const createPiTools = (opts: {
     onUpdate?: ToolUpdateCallback,
   ) => Promise<ToolResult>;
   hookEmitter?: HookEmitter;
+  /**
+   * Resolved target provider/model for this run, so `[stella-attach-image]`
+   * screenshots are resized to the best quality that provider supports
+   * (e.g. Anthropic's 2576px high-res tier) instead of a blunt global cap.
+   */
+  imageCapTarget?: ImageCapTarget;
 }): AgentTool[] => {
   const requested = getRequestedRuntimeToolNames(opts.toolsAllowlist);
   const catalog = new Map<string, ToolMetadata>(
@@ -638,7 +663,7 @@ export const createPiTools = (opts: {
         // `stella-computer snapshot` "auto-read" its screenshot — the model
         // sees the image on the very next turn with no extra Read step.
         const { text: forwardedText, images: legacyImages } =
-          await extractAttachImageBlocks(formatted.text);
+          await extractAttachImageBlocks(formatted.text, opts.imageCapTarget);
         const truncatedText = truncateModelVisibleToolText(forwardedText);
         const content: Array<TextContent | ImageBlock> = [];
         const screenshotNote =

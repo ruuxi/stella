@@ -55,7 +55,11 @@ export const handleViewImage = async (
     return { error: `Unsupported image data: ${filePath}` };
   }
 
-  const marker = `[stella-attach-image] inline=${mimeType} ${filePath}`;
+  // Carry `detail=original` in the marker so the attach reader keeps the
+  // image at native resolution (bounded by the provider's hard ceiling)
+  // rather than downscaling it to the default per-provider target.
+  const detailToken = detail === "original" ? " detail=original" : "";
+  const marker = `[stella-attach-image] inline=${mimeType}${detailToken} ${filePath}`;
   return {
     result: marker,
     details: {

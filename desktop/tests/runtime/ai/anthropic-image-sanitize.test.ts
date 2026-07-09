@@ -257,7 +257,8 @@ describe("sanitizeInlineImagePayload (unit)", () => {
 	it("rejects empty, non-image, and oversized payloads", () => {
 		expect(sanitizeInlineImagePayload("", "image/png")).toBeNull();
 		expect(sanitizeInlineImagePayload(Buffer.from("not an image").toString("base64"), "image/png")).toBeNull();
-		const oversized = Buffer.alloc(6 * 1024 * 1024, 0x00);
+		// ~9MB decoded => ~12MB base64, comfortably over the 10MB direct-API cap.
+		const oversized = Buffer.alloc(9 * 1024 * 1024, 0x00);
 		// Give it a valid PNG header + IEND so only the size gate can reject it.
 		const png = Buffer.from(VALID_PNG_BASE64, "base64");
 		png.copy(oversized, 0);
@@ -277,8 +278,8 @@ describe("sanitizeInlineImagePayload (unit)", () => {
 		});
 	});
 
-	it("enforces the shared 5MB base64 ceiling at its exact boundary", () => {
-		expect(MAX_IMAGE_BASE64_BYTES).toBe(5 * 1024 * 1024);
+	it("enforces the shared 10MB base64 ceiling at its exact boundary", () => {
+		expect(MAX_IMAGE_BASE64_BYTES).toBe(10 * 1024 * 1024);
 
 		// Exactly at the ceiling passes (`>` comparison, not `>=`).
 		const atLimit = pngOfBase64Length(MAX_IMAGE_BASE64_BYTES);

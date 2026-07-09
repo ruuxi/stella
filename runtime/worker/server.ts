@@ -7,6 +7,11 @@ import { resolveBundledRuntimeFile } from "../kernel/shared/runtime-paths.js";
 // WASM parse cost to the worker-ready path.
 import { resizeImage } from "../kernel/shared/image-resize.js";
 import {
+  resolveImageCaps,
+  type ImageCapTarget,
+  type ImageCaps,
+} from "../ai/utils/image-caps.js";
+import {
   detectImageMimeTypeFromBytes,
   imageMimeTypeFromPath,
 } from "../kernel/shared/image-mime.js";
@@ -422,6 +427,7 @@ const encodeImageDataUrl = (mimeType: string, data: ArrayBuffer): string =>
 const resizeImageDataUrl = async (
   dataUrl: string,
   mimeType: string,
+  caps?: ImageCaps,
 ): Promise<string> => {
   const match = DATA_URL_RE.exec(dataUrl);
   if (!match) return dataUrl;
@@ -429,6 +435,7 @@ const resizeImageDataUrl = async (
     const resized = await resizeImage(
       Buffer.from(match[2] ?? "", "base64"),
       mimeType,
+      caps,
     );
     if (!resized?.wasResized) return dataUrl;
     return `data:${resized.mimeType};base64,${resized.data}`;
@@ -444,6 +451,7 @@ const isLocalFileAttachmentUrl = (url: string): boolean =>
 
 const materializeLocalFileImage = async (
   url: string,
+  caps?: ImageCaps,
 ): Promise<RuntimeAttachmentRef | null> => {
   const filePath = FILE_URL_RE.test(url) ? fileURLToPath(url) : url;
   const data = await fsPromises.readFile(filePath);
@@ -452,7 +460,7 @@ const materializeLocalFileImage = async (
   if (!mimeType) {
     return null;
   }
-  const resized = await resizeImage(data, mimeType);
+  const resized = await resizeImage(data, mimeType, caps);
   if (resized) {
     return {
       url: `data:${resized.mimeType};base64,${resized.data}`,
@@ -467,8 +475,16 @@ const materializeLocalFileImage = async (
 
 const materializeImageAttachments = async (
   attachments: RuntimeAttachmentRef[] | undefined,
+  target?: ImageCapTarget,
 ): Promise<MaterializedImageAttachment[]> => {
   const materialized: MaterializedImageAttachment[] = [];
+  // Resize composer attachments to the resolved target provider's limits
+  // (e.g. Anthropic's 2576px high-res tier) rather than a blunt global cap.
+  // Falls back to the safe conservative profile when the target is unknown.
+  const caps = resolveImageCaps({
+    ...(target ?? {}),
+    imageCount: (attachments ?? []).length,
+  });
 
   for (const [index, attachment] of (attachments ?? []).entries()) {
     const url = asTrimmedString(attachment.url);
@@ -480,7 +496,7 @@ const materializeImageAttachments = async (
     // path + preview; the original bytes are read and resized here.
     if (isLocalFileAttachmentUrl(url)) {
       try {
-        const localImage = await materializeLocalFileImage(url);
+        const localImage = await materializeLocalFileImage(url, caps);
         if (localImage) {
           materialized.push({ index, attachment: localImage });
         }
@@ -501,7 +517,7 @@ const materializeImageAttachments = async (
       if (!isImageMimeType(mimeType)) {
         continue;
       }
-      const resizedUrl = await resizeImageDataUrl(url, mimeType);
+      const resizedUrl = await resizeImageDataUrl(url, mimeType, caps);
       materialized.push({
         index,
         attachment: {
@@ -543,7 +559,7 @@ const materializeImageAttachments = async (
         mimeType,
         await response.arrayBuffer(),
       );
-      const resizedUrl = await resizeImageDataUrl(fetchedUrl, mimeType);
+      const resizedUrl = await resizeImageDataUrl(fetchedUrl, mimeType, caps);
       materialized.push({
         index,
         attachment: {
@@ -1592,8 +1608,21 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         asTrimmedString(
           (payload as RuntimeChatPayload & { requestId?: string }).requestId,
         ) || undefined;
+      // Resolve the provider/model this turn will run on so composer images are
+      // sized to that provider's real limits (best-effort; falls back to the
+      // safe conservative profile when no route resolves).
+      let composerImageTarget: ImageCapTarget | undefined;
+      try {
+        composerImageTarget =
+          (await (await ensureRunnerInitialized()).resolveImageTarget(
+            payload.agentType,
+          )) ?? undefined;
+      } catch {
+        composerImageTarget = undefined;
+      }
       const materializedImageAttachments = await materializeImageAttachments(
         payload.attachments,
+        composerImageTarget,
       );
       let modelImageAttachments = materializedImageAttachments.map(
         ({ attachment }) => attachment,
@@ -2514,8 +2543,18 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           externalMessageId?: string;
         };
       };
+      let automationImageTarget: ImageCapTarget | undefined;
+      try {
+        automationImageTarget =
+          (await (await ensureRunnerInitialized()).resolveImageTarget(
+            payload.agentType,
+          )) ?? undefined;
+      } catch {
+        automationImageTarget = undefined;
+      }
       const materializedImageAttachments = await materializeImageAttachments(
         payload.attachments,
+        automationImageTarget,
       );
       return await (
         await ensureRunnerInitialized()
