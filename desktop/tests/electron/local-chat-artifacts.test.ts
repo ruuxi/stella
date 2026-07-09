@@ -263,7 +263,9 @@ describe("local chat mobile artifacts", () => {
     );
 
     expect(rows[0]?.artifacts?.[0]).toMatchObject({
-      id: "agent-work:t1,t2",
+      // The first spawned agent is the aggregate card's stable insertion id;
+      // adding t2 updates the visible card instead of replacing/remounting it.
+      id: "agent-work:t1",
       payload: {
         kind: "agent-work",
         state: "running",
@@ -272,6 +274,71 @@ describe("local chat mobile artifacts", () => {
         title: "Working on 2 tasks",
         subtitle: "0 of 2 done",
       },
+    });
+  });
+
+  it("keeps card identity and insertion time across sibling starts and completion", () => {
+    const firstStart = {
+      _id: "as1",
+      timestamp: 1_100,
+      type: "agent-started",
+      payload: { agentId: "t1", description: "Book flights" },
+    };
+    const secondStart = {
+      _id: "as2",
+      timestamp: 1_200,
+      type: "agent-started",
+      payload: { agentId: "t2", description: "Find hotels" },
+    };
+    const project = (toolEvents: MessageRecord["toolEvents"]) =>
+      buildMobileSyncMessages(
+        [
+          baseMessage({
+            _id: "a1",
+            timestamp: 1_000,
+            payload: { text: "On it" },
+            toolEvents,
+          }),
+          baseMessage({
+            _id: "u2",
+            type: "user_message",
+            timestamp: 2_000,
+            payload: { text: "Next message" },
+          }),
+        ],
+        20,
+      );
+
+    const first = project([firstStart]);
+    const expanded = project([firstStart, secondStart]);
+    const completed = project([
+      firstStart,
+      secondStart,
+      {
+        _id: "ac1",
+        timestamp: 1_300,
+        type: "agent-completed",
+        payload: { agentId: "t1" },
+      },
+      {
+        _id: "ac2",
+        timestamp: 1_400,
+        type: "agent-completed",
+        payload: { agentId: "t2" },
+      },
+    ]);
+
+    expect(first.map((row) => row.localMessageId)).toEqual(["a1", "u2"]);
+    expect(expanded.map((row) => row.localMessageId)).toEqual(["a1", "u2"]);
+    expect(completed.map((row) => row.localMessageId)).toEqual(["a1", "u2"]);
+    for (const rows of [first, expanded, completed]) {
+      expect(rows[0]?.artifacts?.[0]).toMatchObject({
+        id: "agent-work:t1",
+        payload: { agentIds: expect.any(Array), createdAt: 1_100 },
+      });
+    }
+    expect(completed[0]?.artifacts?.[0]).toMatchObject({
+      payload: { state: "done", completed: 2, total: 2 },
     });
   });
 
@@ -441,13 +508,20 @@ describe("local chat mobile artifacts", () => {
     expect(page.messages.map((message) => message.localMessageId)).toContain(
       "a1",
     );
-    const task = page.messages.find(
+    const anchor = page.messages.find(
       (message) => message.localMessageId === "a1",
-    )?.tasks?.[0];
+    );
+    const task = anchor?.tasks?.[0];
     expect(task).toMatchObject({
       id: "t1",
       title: "Book flights",
       status: "error",
+    });
+    // Delta catch-up replays the original anchor row, but the card keeps the
+    // same id and first-start timestamp used by the earlier running snapshot.
+    expect(anchor?.artifacts?.[0]).toMatchObject({
+      id: "agent-work:t1",
+      payload: { state: "done", createdAt: now - 10_000 },
     });
   });
 

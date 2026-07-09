@@ -22,6 +22,9 @@ import {
 export type MobileAgentWorkPayload = {
   kind: "agent-work";
   state: "running" | "done";
+  /** Spawn-order membership, used to reconcile aggregate identity as siblings
+   * are discovered. Older mobile clients safely ignore this additive field. */
+  agentIds: string[];
   /** Number of background threads this card covers. */
   total: number;
   completed: number;
@@ -664,16 +667,23 @@ const buildAgentFilesById = (
 };
 
 /**
+ * Stable identity for a turn's agent-work card. Agent ids are discovered over
+ * time, so keying by the whole set (`agent-work:a,b`) replaced the already
+ * visible `agent-work:a` card when a sibling started. The first spawned agent
+ * is the insertion identity for the aggregate; later starts and terminal
+ * events only update that card's payload.
+ */
+const agentWorkArtifactId = (agentIds: readonly string[]): string => {
+  const first = agentIds.map((id) => id.trim()).find(Boolean);
+  return first ? `agent-work:${first}` : "agent-work";
+};
+
+/**
  * Background-work card for a turn, from its `agent-started` events. Completion
  * is scoped per run (an `agent-completed` at/after the thread's spawn on this
  * turn) so a thread reused via `send_input` doesn't inherit a prior run's
  * completion. Returns null for turns that started no background work.
  */
-const agentWorkArtifactId = (agentIds: readonly string[]): string => {
-  const key = agentIds.map((id) => id.trim()).filter(Boolean).sort().join(",");
-  return key ? `agent-work:${key}` : "agent-work";
-};
-
 const deriveAgentWorkPayload = (
   message: Pick<ArtifactMessageRecord, "toolEvents">,
   settledAtMsById: ReadonlyMap<string, number>,
@@ -700,7 +710,11 @@ const deriveAgentWorkPayload = (
       spawnedAtMs[agentId] = event.timestamp;
     }
     if (!groupLabel) groupLabel = trimmedString(payload.groupLabel);
-    if (event.timestamp > createdAt) createdAt = event.timestamp;
+    // Card ordering is anchored when the aggregate first becomes visible.
+    // Later sibling starts must not rewrite its insertion timestamp.
+    if (createdAt === 0 || event.timestamp < createdAt) {
+      createdAt = event.timestamp;
+    }
   }
   if (threadIds.length === 0) return null;
 
@@ -755,6 +769,7 @@ const deriveAgentWorkPayload = (
     payload: {
       kind: "agent-work",
       state,
+      agentIds: [...threadIds],
       total,
       completed,
       title,

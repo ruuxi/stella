@@ -85,6 +85,7 @@ import type { DisplayPayload } from "../contracts/display-payload";
 type MobileAgentWorkPayloadForSync = {
   kind: "agent-work";
   state: "running" | "done";
+  agentIds: string[];
   total: number;
   completed: number;
   title: string;
