@@ -432,6 +432,16 @@ export class StellaRuntimeHost {
   // the controller's stop/start promises keep concurrent calls safe.
   private restartInProgress = false;
   private restartRequestedDuringRestart = false;
+  // Number of self-mod morph transitions the renderer is currently covering
+  // (bracketed around every HOST_HMR_RUN_TRANSITION handler run). A runtime
+  // worker restart that fires WHILE a morph is on screen kills the worker mid
+  // `finishExternalSelfMod`, closing the RPC transport under the in-flight
+  // desktop-update finish. The update handler's transport-closed recovery then
+  // replays a fresh begin/finish cycle over the same paths, which raises a
+  // SECOND morph cover on its own after the update already applied. Gating the
+  // deferred restart on this counter keeps the worker alive until the morph
+  // fully lifts, so the update's morph plays exactly once.
+  private morphTransitionsInFlight = 0;
   /**
    * Set when the connected worker is known to be running stale runtime code
    * (build-stamp mismatch detected on reattach, or a runtime-relevant
@@ -687,8 +697,48 @@ export class StellaRuntimeHost {
     }
   }
 
+  /**
+   * Bracket a self-mod morph transition so runtime restarts can't fire while
+   * the cover is on screen. Runs the transition, then flushes any restart that
+   * was deferred to avoid killing the worker mid-morph.
+   */
+  private async withMorphTransitionInFlight(
+    run: () => void | Promise<void>,
+  ): Promise<void> {
+    this.morphTransitionsInFlight += 1;
+    try {
+      await run();
+    } finally {
+      this.onMorphTransitionSettled();
+    }
+  }
+
+  private onMorphTransitionSettled() {
+    this.morphTransitionsInFlight = Math.max(
+      0,
+      this.morphTransitionsInFlight - 1,
+    );
+    if (this.morphTransitionsInFlight > 0) return;
+    // The morph cover has fully lifted. A runtime reload or stale-worker
+    // restart deferred so it wouldn't kill the worker mid-morph can now run.
+    if (this.deferredRuntimeReload) {
+      setTimeout(() => {
+        void this.scheduleRuntimeReload();
+      }, 0);
+    } else if (this.pendingStaleWorkerRestart) {
+      setTimeout(() => {
+        void this.maybeRestartStaleWorkerWhenQuiescent();
+      }, 0);
+    }
+  }
+
   private async scheduleRuntimeReload() {
-    if (this.pausedRuntimeReloadRuns.size > 0) {
+    if (this.pausedRuntimeReloadRuns.size > 0 || this.morphTransitionsInFlight > 0) {
+      // Hold the restart until the last self-mod pause releases AND any morph
+      // cover fully lifts. Restarting mid-morph closes the RPC transport under
+      // the in-flight desktop-update finish and forces a redundant second
+      // morph via the transport-closed reload-replay. `onMorphTransitionSettled`
+      // re-runs this once the cover is gone.
       this.deferredRuntimeReload = true;
       return;
     }
@@ -701,6 +751,13 @@ export class StellaRuntimeHost {
       this.reloadTimer = null;
       this.scheduledRuntimeReload = false;
       if (!shouldReload) {
+        return;
+      }
+      if (this.morphTransitionsInFlight > 0) {
+        // A morph cover raised after this timer was armed. Re-defer so the
+        // restart doesn't kill the worker mid-morph; the morph-settled hook
+        // reschedules it.
+        this.deferredRuntimeReload = true;
         return;
       }
       // If a restart is already queued or running, don't stack another — mark
@@ -920,6 +977,13 @@ export class StellaRuntimeHost {
    */
   private requestStaleWorkerRestart() {
     if (this.pausedRuntimeReloadRuns.size > 0) return;
+    if (this.morphTransitionsInFlight > 0) {
+      // Don't kill the worker mid-morph — that closes the RPC transport under
+      // an in-flight desktop-update finish and forces a redundant second
+      // morph. The pending flag stays set; `onMorphTransitionSettled` (and the
+      // quiescence poll) retry once the cover lifts.
+      return;
+    }
     if (this.restartInProgress) {
       this.restartRequestedDuringRestart = true;
       return;
@@ -3408,7 +3472,8 @@ export class StellaRuntimeHost {
         if (!runHmrTransition) {
           throw new Error("HOST_HMR_RUN_TRANSITION handler is not registered.");
         }
-        await runHmrTransition({
+        await this.withMorphTransitionInFlight(() =>
+          runHmrTransition({
           runIds,
           stateRunIds: Array.isArray(payload.stateRunIds)
             ? payload.stateRunIds.filter((runId) => typeof runId === "string")
@@ -3452,7 +3517,8 @@ export class StellaRuntimeHost {
               });
             }
           },
-        });
+          }),
+        );
         // Runtime-relevant apply with no dev watcher running (packaged /
         // prod): nothing else will restart the worker for this change, so
         // route it through the stale-worker policy — restart now when idle,

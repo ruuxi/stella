@@ -68,6 +68,40 @@ describe("runtime reload deferral", () => {
     expect(restartWorker).toHaveBeenCalledTimes(1);
   });
 
+  it("defers a worker restart until an in-flight morph transition settles", async () => {
+    vi.useFakeTimers();
+    const host = createHost();
+    const anyHost = host as any;
+    const restartWorker = vi.fn().mockResolvedValue({ ok: true });
+
+    anyHost.restartWorker = restartWorker;
+
+    // Bracket a self-mod morph transition (as HOST_HMR_RUN_TRANSITION does).
+    let releaseMorph: () => void = () => {};
+    const morphDone = new Promise<void>((resolve) => {
+      releaseMorph = resolve;
+    });
+    const transition = anyHost.withMorphTransitionInFlight(() => morphDone);
+
+    // A dev-watcher runtime reload lands while the morph cover is on screen.
+    // Restarting now would kill the worker mid `finishExternalSelfMod`, close
+    // the RPC transport, and force a redundant SECOND morph via the update
+    // handler's transport-closed reload-replay. It must be held.
+    await anyHost.scheduleRuntimeReload("worker");
+    await vi.runAllTimersAsync();
+    expect(restartWorker).not.toHaveBeenCalled();
+    expect(anyHost.deferredRuntimeReload).toBe(true);
+
+    // Once the cover lifts, the held restart flushes exactly once.
+    releaseMorph();
+    await transition;
+    await vi.runAllTimersAsync();
+    await anyHost.reloadQueue;
+
+    expect(restartWorker).toHaveBeenCalledTimes(1);
+    expect(anyHost.morphTransitionsInFlight).toBe(0);
+  });
+
   it("clears leaked runtime reload pauses when the worker initializes again", async () => {
     vi.useFakeTimers();
     const host = createHost();
