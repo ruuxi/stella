@@ -126,6 +126,7 @@ import {
   IPC_PREFERENCES_SET_SYNC_MODE,
   IPC_PREFERENCES_SET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_GET_READ_ALOUD,
+  IPC_PREFERENCES_READ_ALOUD_CHANGED,
   IPC_PREFERENCES_SET_READ_ALOUD,
   IPC_SOCIAL_SESSIONS_QUEUE_TURN,
   IPC_SOCIAL_SESSIONS_UPDATE_STATUS,
@@ -1989,6 +1990,14 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     const stellaAppDir = options.getStellaAppDir();
     if (stellaAppDir) {
       setReadAloudEnabled(stellaAppDir, nextEnabled);
+    }
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send(
+          IPC_PREFERENCES_READ_ALOUD_CHANGED,
+          nextEnabled,
+        );
+      }
     }
     return { enabled: nextEnabled };
   });

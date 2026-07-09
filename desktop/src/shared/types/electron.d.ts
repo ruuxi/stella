@@ -856,6 +856,9 @@ export type ElectronSystemApi = {
   ) => Promise<{ enabled: boolean }>;
   getReadAloudEnabled: () => Promise<boolean>;
   setReadAloudEnabled: (enabled: boolean) => Promise<{ enabled: boolean }>;
+  onReadAloudEnabledChanged: (
+    callback: (enabled: boolean) => void,
+  ) => () => void;
   getOnboardingCompleted: () => Promise<boolean>;
   setOnboardingCompleted: (
     completed: boolean,

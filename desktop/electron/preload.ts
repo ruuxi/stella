@@ -91,6 +91,7 @@ import {
   IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
   IPC_PREFERENCES_GET_RADIAL_TRIGGER,
   IPC_PREFERENCES_GET_READ_ALOUD,
+  IPC_PREFERENCES_READ_ALOUD_CHANGED,
   IPC_PREFERENCES_GET_SOUND_NOTIFICATIONS,
   IPC_PREFERENCES_GET_SYNC_MODE,
   IPC_PREFERENCES_SET_MODELS,
@@ -1211,6 +1212,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke(IPC_PREFERENCES_SET_READ_ALOUD, enabled) as Promise<{
         enabled: boolean;
       }>,
+    onReadAloudEnabledChanged: onIpc<boolean>(
+      IPC_PREFERENCES_READ_ALOUD_CHANGED,
+    ),
     getOnboardingCompleted: () =>
       ipcRenderer.invoke(
         IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
