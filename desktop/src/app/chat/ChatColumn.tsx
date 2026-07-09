@@ -28,7 +28,6 @@ import { ChevronDown } from "@/ui/icons";
 import { ConnectorConnectCard } from "./ConnectorConnectCard";
 import { ConversationEvents } from "./ConversationEvents";
 import { useChatMessages } from "@/context/use-chat-messages";
-import { AssistantTextPaintContext } from "./assistant-text-paint-context";
 import { Composer } from "./Composer";
 import { HomeContent } from "@/app/home/HomeContent";
 import { buildInlineWorkingIndicatorProps } from "@/features/chat/working-indicator-state";
@@ -42,9 +41,6 @@ import {
   type QueuedUserMessage,
 } from "@/features/chat/hooks/queued-user-messages";
 import "./full-shell.chat.css";
-
-/** Stable no-op so the paint-signal context value doesn't churn per render. */
-const noopPaint = () => {};
 
 /**
  * Inline content-container style for Legend List.
@@ -195,14 +191,14 @@ export const ChatColumn = memo(function ChatColumn({
   }, []);
   // The indicator stays up through the whole turn — thinking, tool calls,
   // spawned agents — and only hands off once the assistant's first
-  // character is actually painted (`isStreamingResponseText`, now driven by
-  // the reveal frontier). Background/spawned work no longer suppresses it.
+  // visible provider delta arrives (`isStreamingResponseText`).
+  // Background/spawned work no longer suppresses it.
   // Memoize over the primitive streaming inputs so the indicator mount
-  // props keep a stable object identity across the per-frame re-renders
+  // props keep a stable object identity across streaming re-renders
   // driven by streaming text growth. Without this, a fresh object every
   // render invalidates `ChatTimeline`'s `ListFooter` useMemo and forces the
   // whole working-indicator subtree (WorkingIndicator -> SwapText ->
-  // StellaAnimation wrapper) to reconcile on every streamed frame.
+  // StellaAnimation wrapper) to reconcile on every provider chunk.
   const indicatorProps = useMemo(
     () =>
       buildInlineWorkingIndicatorProps({
@@ -324,28 +320,22 @@ export const ChatColumn = memo(function ChatColumn({
             strip — instead of sitting at the inside edge of the
             centered chat column. */}
           <div className="chat-viewport-region">
-            <AssistantTextPaintContext.Provider
-              value={conversation.onAssistantTextPainted ?? noopPaint}
-            >
-              <ConversationEvents
-                messages={messages}
-                pendingUserMessageId={
-                  conversation.streaming.pendingUserMessageId
-                }
-                queuedUserMessages={conversation.streaming.queuedUserMessages}
-                onCancelQueued={handleCancelQueued}
-                indicator={indicatorProps}
-                hasOlderMessages={conversation.history.hasOlderMessages}
-                isLoadingOlder={conversation.history.isLoadingOlder}
-                isLoadingHistory={conversation.history.isInitialLoading}
-                listRef={listRef}
-                onListScroll={onListScroll}
-                onStartReached={scroll.onStartReached}
-                className="session-content"
-                contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
-                estimatedItemSize={140}
-              />
-            </AssistantTextPaintContext.Provider>
+            <ConversationEvents
+              messages={messages}
+              pendingUserMessageId={conversation.streaming.pendingUserMessageId}
+              queuedUserMessages={conversation.streaming.queuedUserMessages}
+              onCancelQueued={handleCancelQueued}
+              indicator={indicatorProps}
+              hasOlderMessages={conversation.history.hasOlderMessages}
+              isLoadingOlder={conversation.history.isLoadingOlder}
+              isLoadingHistory={conversation.history.isInitialLoading}
+              listRef={listRef}
+              onListScroll={onListScroll}
+              onStartReached={scroll.onStartReached}
+              className="session-content"
+              contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
+              estimatedItemSize={140}
+            />
 
             {showScrollButton && !assistantReplyPeek.visible && (
               <button

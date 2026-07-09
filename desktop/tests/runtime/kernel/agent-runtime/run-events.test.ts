@@ -85,7 +85,9 @@ const createTextMessage = (text: string): AssistantMessage => ({
   timestamp: 2,
 });
 
-const streamMessage = (message: AssistantMessage): AssistantMessageEventStream => {
+const streamMessage = (
+  message: AssistantMessage,
+): AssistantMessageEventStream => {
   const stream = new AssistantMessageEventStream();
   queueMicrotask(() => {
     stream.push({
@@ -384,8 +386,8 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(activeFor(state)).toBe(true);
 
     // A spawned sub-agent starts working. The orchestrator's own indicator
-    // must STAY up — it only hands off once the assistant's first character
-    // is painted, regardless of background/spawned work.
+    // must STAY up — it only hands off on the assistant's first visible
+    // provider delta, regardless of background/spawned work.
     state = streamStoreReducer(state, {
       type: "task-upsert",
       runId,
@@ -420,7 +422,7 @@ describe("subscribeRuntimeAgentEvents", () => {
     });
     expect(activeFor(state)).toBe(true);
 
-    // Only the painted first character hands off.
+    // Only the first visible provider delta hands off.
     state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
     expect(activeFor(state)).toBe(false);
   });
@@ -505,13 +507,13 @@ describe("subscribeRuntimeAgentEvents", () => {
     });
 
     // Model streams a preamble ("Let me check…") — indicator steps aside as
-    // the painted text takes over.
+    // the visible streamed text takes over.
     state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
     expect(state.runsById[runId]?.isStreamingText).toBe(true);
     expect(activeFor(state)).toBe(false);
 
     // The preamble message finalizes and it ends with a tool call. Without
-    // the re-arm the indicator would stay dismissed over the painted
+    // the re-arm the indicator would stay dismissed over the visible
     // preamble until `tool-start` lands (a visible gap where nothing shows).
     // The boundary clears the streaming-text flag so the indicator returns
     // immediately.
@@ -534,7 +536,7 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(activeFor(state)).toBe(true);
   });
 
-  it("keeps the indicator up when the preamble boundary is processed before the paint (live ordering)", () => {
+  it("rejects a stale response marker after the preamble boundary", () => {
     const runId = "run-preamble-race";
     const conversationId = "conversation-1";
     const activeFor = (current: typeof state) =>
@@ -555,9 +557,7 @@ describe("subscribeRuntimeAgentEvents", () => {
       userMessageId: "user-1",
     });
 
-    // Live, the preamble→tool boundary event arrives over IPC before the
-    // reveal's async first-paint rAF fires, so `isStreamingText` is still
-    // false at boundary time. The re-arm must still take effect.
+    // The preamble-to-tool boundary re-arms the indicator.
     state = streamStoreReducer(state, {
       type: "assistant-message-boundary",
       runId,
@@ -566,15 +566,14 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(state.runsById[runId]?.isStreamingText).toBe(false);
     expect(activeFor(state)).toBe(true);
 
-    // The finalized preamble's late first paint now fires — it must NOT
+    // A stale marker for the finalized preamble must NOT
     // re-suppress the indicator (that would reopen the dead gap before the
     // tool starts).
     state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
     expect(state.runsById[runId]?.isStreamingText).toBe(false);
     expect(activeFor(state)).toBe(true);
 
-    // Tool starts: still up. The preamble-paint suppression is held (not
-    // released here) so a late paint delivered after tool-start can't stick.
+    // Tool starts: still up. The stale-marker suppression is held.
     state = streamStoreReducer(state, {
       type: "tool-start",
       runId,
@@ -594,14 +593,14 @@ describe("subscribeRuntimeAgentEvents", () => {
     });
     expect(activeFor(state)).toBe(true);
 
-    // The post-tool answer's own paint hands off normally.
+    // The post-tool answer's first visible delta hands off normally.
     state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
     expect(state.runsById[runId]?.isStreamingText).toBe(true);
     expect(activeFor(state)).toBe(false);
   });
 
-  it("keeps the indicator up when the preamble paint is delivered after tool-start (spawn_agent post-tool gap)", () => {
-    const runId = "run-preamble-paint-after-tool-start";
+  it("keeps the indicator up when a stale preamble marker arrives after tool-start", () => {
+    const runId = "run-preamble-marker-after-tool-start";
     const conversationId = "conversation-1";
     const activeFor = (current: typeof state) =>
       getInlineWorkingIndicatorActive({
@@ -621,9 +620,7 @@ describe("subscribeRuntimeAgentEvents", () => {
       userMessageId: "user-1",
     });
 
-    // Boundary and tool-start both drain from the same IPC batch before the
-    // reveal's first-paint rAF fires — so the preamble's paint is still
-    // pending when the tool has already started.
+    // Boundary and tool-start complete before the stale marker arrives.
     state = streamStoreReducer(state, {
       type: "assistant-message-boundary",
       runId,
@@ -638,7 +635,7 @@ describe("subscribeRuntimeAgentEvents", () => {
     });
     expect(activeFor(state)).toBe(true);
 
-    // The finalized preamble's late first paint now lands — AFTER tool-start.
+    // The finalized preamble's stale marker lands after tool-start.
     // It must NOT set `isStreamingText`, or the flag sticks true through the
     // whole tool and blanks the indicator once the tool ends (dead air).
     state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
@@ -656,13 +653,13 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(state.runsById[runId]?.isStreamingText).toBe(false);
     expect(activeFor(state)).toBe(true);
 
-    // Only the post-tool answer's own fresh paint hands off.
+    // Only the post-tool answer's own visible delta hands off.
     state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
     expect(state.runsById[runId]?.isStreamingText).toBe(true);
     expect(activeFor(state)).toBe(false);
   });
 
-  it("holds the preamble-paint suppression across parallel tools until the last ends", () => {
+  it("holds stale preamble-marker suppression across parallel tools", () => {
     const runId = "run-preamble-parallel-tools";
     const conversationId = "conversation-1";
     const activeFor = (current: typeof state) =>
@@ -703,7 +700,7 @@ describe("subscribeRuntimeAgentEvents", () => {
     });
 
     // First tool ends while the second is still in flight — the suppression
-    // must survive, so a late preamble paint arriving now is still swallowed.
+    // must survive, so a stale preamble marker is still swallowed.
     state = streamStoreReducer(state, {
       type: "tool-end",
       runId,

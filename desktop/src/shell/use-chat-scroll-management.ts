@@ -770,8 +770,8 @@ export function useChatScrollManagement({
         // assistant message settles (so a *new* turn's first chunk can hand
         // off cleanly). But once that row has locked, `.event-row--streaming`
         // is gone and it is no longer growing. A late layout change on the
-        // settled row — the reveal mask clearing, an inline image/card
-        // mounting once artifacts render, a code block or timestamp settling —
+        // settled row — an inline image/card mounting once artifacts render,
+        // a code block, or a timestamp settling —
         // still fires `notifyAssistantScrollFollowLayoutChange`, and following
         // the full (now static) row bottom re-applies `FOLLOW_BREATHING_PX`,
         // pulling the viewport forward into the empty trailing region a beat
@@ -782,31 +782,7 @@ export function useChatScrollManagement({
         const rowRect = streamingRow.getBoundingClientRect()
         const containerRect = attached.getBoundingClientRect()
         const rowTop = rowRect.top - containerRect.top + attached.scrollTop
-        let rowBottom = rowRect.bottom - containerRect.top + attached.scrollTop
-        // Follow the REVEALED frontier, not the raw row bottom. While the
-        // text pacer + reveal mask are active, the row's DOM holds buffered
-        // text the user can't see yet; following its full height scrolls the
-        // page for invisible content. `StreamingTextReveal` publishes the
-        // mask's visible edge (wrapper-relative px) on this attribute, and
-        // its rAF loop re-notifies as the frontier sweeps, so the target
-        // advances exactly as text becomes visible. Attribute absent = no
-        // active mask (caught up / reduced motion) = real row bottom.
-        const revealEl = streamingRow.querySelector<HTMLElement>(
-          '[data-reveal-visible-bottom]',
-        )
-        if (revealEl) {
-          const frontier = Number(
-            revealEl.getAttribute('data-reveal-visible-bottom'),
-          )
-          if (Number.isFinite(frontier)) {
-            const revealBottom =
-              revealEl.getBoundingClientRect().top -
-              containerRect.top +
-              attached.scrollTop +
-              frontier
-            rowBottom = Math.min(rowBottom, revealBottom)
-          }
-        }
+        const rowBottom = rowRect.bottom - containerRect.top + attached.scrollTop
         const desiredScrollTop = Math.max(
           0,
           rowBottom - attached.clientHeight + FOLLOW_BREATHING_PX,

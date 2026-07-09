@@ -8,7 +8,6 @@ import {
   streamStoreReducer,
 } from './store'
 import { useReasoningBatcher } from './use-reasoning-batcher'
-import { useStreamTextPacer } from './use-stream-text-pacer'
 import { useTaskRemovalTimers } from './use-task-removal-timers'
 import { useAgentEventHandler } from './use-agent-event-handler'
 import { useApplyResumeSnapshot } from './use-resume-snapshot'
@@ -136,53 +135,19 @@ export function useLocalAgentStream({
   const reasoningText = ''
 
   /**
-   * Grow an existing overlay slot's visible text by `text`. Invoked by
-   * the stream-text pacer as it meters buffered chunks out frame by
-   * frame. No-op if the slot has since been dropped (conversation
-   * switch, cancel) so late releases never resurrect a stale row.
+   * Lock the run's current overlay slot (trim + mark no-longer-streaming).
    */
-  const appendPacedText = useCallback((slotId: string, text: string) => {
-    if (!text) return
+  const lockRunSlot = useCallback((runId: string) => {
     setStreamingAssistants((current) => {
-      const index = current.findIndex((slot) => slot._id === slotId)
-      if (index < 0) return current
-      const existing = current[index]
-      if (!existing) return current
+      let index = current.length - 1
+      while (index >= 0 && current[index]?.runId !== runId) index -= 1
+      const slot = index >= 0 ? current[index] : undefined
+      if (!slot || slot.locked) return current
       const next = current.slice()
-      next[index] = { ...existing, text: `${existing.text}${text}` }
+      next[index] = { ...slot, text: slot.text.trim(), locked: true }
       return next
     })
-    notifyAssistantScrollFollowLayoutChange()
   }, [])
-
-  const {
-    enqueue: enqueueStreamText,
-    finish: finishStreamText,
-    discard: discardStreamText,
-  } = useStreamTextPacer({ release: appendPacedText })
-
-  /**
-   * Lock an overlay slot (trim + mark no-longer-streaming). With a `slotId`
-   * it targets that exact slot — used by the paced stream-end drain, whose
-   * callback can fire after a newer slot has already been appended for the
-   * same run. Without one it locks the run's last slot (the synchronous
-   * no-backlog path, matching the pre-drain behavior).
-   */
-  const lockRunSlot = useCallback(
-    (runId: string, slotId: string | null) => {
-      setStreamingAssistants((current) => {
-        const index = slotId
-          ? current.findIndex((slot) => slot._id === slotId)
-          : current.length - 1
-        const slot = index >= 0 ? current[index] : undefined
-        if (!slot || slot.runId !== runId || slot.locked) return current
-        const next = current.slice()
-        next[index] = { ...slot, text: slot.text.trim(), locked: true }
-        return next
-      })
-    },
-    [],
-  )
 
   /**
    * RUN_STARTED for a visible run: clear any leftover overlays scoped
@@ -192,7 +157,6 @@ export function useLocalAgentStream({
   const beginStreamingRun = useCallback(
     (args: { runId: string; userMessageId: string | null }) => {
       clearAssistantScrollFollow()
-      discardStreamText((entry) => entry.runId !== args.runId)
       setStreamingAssistants((current) =>
         current.filter((slot) => slot.runId === args.runId),
       )
@@ -200,16 +164,15 @@ export function useLocalAgentStream({
         nextSlotIndexByUserMessageIdRef.current.set(args.userMessageId, 1)
       }
     },
-    [discardStreamText],
+    [],
   )
 
   /**
    * STREAM chunk: ensure the current overlay slot for
    * `(userMessageId, currentIndex)` exists, then hand the chunk to the
-   * pacer, which meters it into the slot's visible text frame by frame
-   * so bursty provider deltas reveal at a smooth, near-constant rate.
-   * Hidden runs and runs without a `userMessageId` never produce
-   * overlays.
+   * overlay immediately. Provider chunk boundaries and timing are preserved;
+   * there is no client-side buffering or reveal cadence. Hidden runs and runs
+   * without a `userMessageId` never produce overlays.
    */
   const acceptStreamChunk = useCallback(
     (args: {
@@ -228,15 +191,22 @@ export function useLocalAgentStream({
       nextSlotIndexByUserMessageIdRef.current.set(userMessageId, expectedIndex)
       const slotId = streamingAssistantOverlayId(userMessageId, expectedIndex)
       setStreamingAssistants((current) => {
-        if (current.some((slot) => slot._id === slotId)) return current
-        // Create the slot empty up front so the streaming placeholder
-        // and scroll-follow target exist before the first paced
-        // characters land.
+        const existingIndex = current.findIndex((slot) => slot._id === slotId)
+        if (existingIndex >= 0) {
+          const existing = current[existingIndex]
+          if (!existing) return current
+          const next = current.slice()
+          next[existingIndex] = {
+            ...existing,
+            text: `${existing.text}${args.chunk}`,
+          }
+          return next
+        }
         const newSlot: StreamingAssistantOverlay = {
           _id: slotId,
           userMessageId,
           indexInTurn: expectedIndex,
-          text: '',
+          text: args.chunk,
           ...(args.responseTarget ? { responseTarget: args.responseTarget } : {}),
           timestamp: Date.now(),
           runId: args.runId,
@@ -247,9 +217,8 @@ export function useLocalAgentStream({
         return [...current, newSlot]
       })
       notifyAssistantScrollFollowLayoutChange()
-      enqueueStreamText(slotId, args.runId, args.chunk)
     },
-    [enqueueStreamText],
+    [],
   )
 
   /**
@@ -258,15 +227,7 @@ export function useLocalAgentStream({
    */
   const finalizeMessageBoundary = useCallback(
     (args: { runId: string; userMessageId: string | null }) => {
-      // Drain any buffered text into the slot before locking it so the
-      // locked/persisted text is never short of what the model sent. The
-      // drain is paced (fast finish cadence) so the buffered tail glides out
-      // instead of popping in as one chunk; the lock follows once the slot's
-      // text is complete.
-      const draining = finishStreamText(
-        (entry) => entry.runId === args.runId,
-        (slotId) => lockRunSlot(args.runId, slotId),
-      )
+      lockRunSlot(args.runId)
       if (args.userMessageId) {
         const current =
           nextSlotIndexByUserMessageIdRef.current.get(args.userMessageId) ?? 1
@@ -279,9 +240,8 @@ export function useLocalAgentStream({
           current + 1,
         )
       }
-      if (!draining) lockRunSlot(args.runId, null)
     },
-    [finishStreamText, lockRunSlot],
+    [lockRunSlot],
   )
 
   /**
@@ -292,17 +252,9 @@ export function useLocalAgentStream({
    */
   const finalizeRunOnFinish = useCallback(
     (args: { runId: string }) => {
-      // Release the remaining buffer before locking so the final text isn't
-      // truncated to whatever the pacer had revealed so far. Paced (fast
-      // finish cadence) rather than dumped, so a run that ends with text
-      // still buffered finishes its reveal in a quick glide.
-      const draining = finishStreamText(
-        (entry) => entry.runId === args.runId,
-        (slotId) => lockRunSlot(args.runId, slotId),
-      )
-      if (!draining) lockRunSlot(args.runId, null)
+      lockRunSlot(args.runId)
     },
-    [finishStreamText, lockRunSlot],
+    [lockRunSlot],
   )
 
   /**
@@ -312,36 +264,23 @@ export function useLocalAgentStream({
   const dropOverlaysForRun = useCallback(
     (runId: string | null) => {
       if (runId === null) {
-        discardStreamText()
         clearAssistantScrollFollow()
         setStreamingAssistants([])
         return
       }
-      discardStreamText((entry) => entry.runId === runId)
       setStreamingAssistants((current) =>
         current.filter((slot) => slot.runId !== runId),
       )
     },
-    [discardStreamText],
+    [],
   )
 
   /**
-   * Fired by `StreamingTextReveal` the moment the active streaming row
-   * first paints visible characters. Marks the in-flight run as streaming
-   * answer text so the inline working indicator hands off to the text only
-   * once it's actually on screen — not when the first delta arrived. Stable
-   * (reads the live run via refs) so the reveal can hold it across renders.
-   *
-   * Known limitation (low risk, not hardened): the paint is attributed to
-   * whatever run is currently active, with no run-identity check. A stray
-   * late rAF from a prior run's reveal could in theory mark the *next* run
-   * as streaming-text early. In practice the window is tiny — when a new run
-   * starts the prior reveal's `active` drops, which cancels its rAF and the
-   * already-latched `paintedRef` blocks a re-fire — so passing the painting
-   * run's id down through the row/overlay/paint-context chain to reject
-   * mismatches was judged more invasive than the residual risk warrants.
+   * Marks persisted text restored for a resumed run as visible response text.
+   * Live runs are marked directly from their first non-whitespace stream
+   * event, without waiting for a client-side animation or paint callback.
    */
-  const notifyAssistantTextPainted = useCallback(() => {
+  const markAssistantResponseTextStarted = useCallback(() => {
     const conversationId = activeConversationIdRef.current
     const runId = conversationId
       ? (activeRunIdByConversationRef.current[conversationId] ?? null)
@@ -381,7 +320,6 @@ export function useLocalAgentStream({
 
   const resetStreamingState = useCallback(() => {
     clearAssistantScrollFollow()
-    discardStreamText()
     setPendingUserMessageId(null)
     setStreamingAssistants([])
     nextSlotIndexByUserMessageIdRef.current.clear()
@@ -396,11 +334,7 @@ export function useLocalAgentStream({
         runId: activeRunId,
       })
     }
-  }, [
-    activeConversationId,
-    activeRunId,
-    discardStreamText,
-  ])
+  }, [activeConversationId, activeRunId])
 
   const handleAgentEvent = useAgentEventHandler({
     dispatch,
@@ -464,14 +398,13 @@ export function useLocalAgentStream({
 
   useEffect(() => {
     clearAssistantScrollFollow()
-    discardStreamText()
     setStreamingAssistants([])
     nextSlotIndexByUserMessageIdRef.current.clear()
     const timeoutId = window.setTimeout(() => {
       setPendingUserMessageId(null)
     }, 0)
     return () => window.clearTimeout(timeoutId)
-  }, [activeConversationId, discardStreamText])
+  }, [activeConversationId])
 
   const startStream = useCallback(
     (args: StartStreamArgs) => {
@@ -616,7 +549,7 @@ export function useLocalAgentStream({
   return {
     liveTasks,
     runtimeStatusText,
-    notifyAssistantTextPainted,
+    markAssistantResponseTextStarted,
     activeToolCallId,
     activeToolName,
     hasToolActivity,

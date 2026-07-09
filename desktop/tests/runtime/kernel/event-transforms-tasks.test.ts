@@ -23,7 +23,7 @@ import {
   getInlineWorkingIndicatorExitDelayMs,
   getRunningTaskIndicatorText,
   getWorkingIndicatorDisplayStatus,
-  shouldTreatResumedAnswerAsPainted,
+  shouldTreatResumedAnswerAsStarted,
 } from "@/features/chat/working-indicator-state";
 
 const event = (
@@ -477,7 +477,8 @@ describe("work-group folding", () => {
       task({ id: "task-3", groupKey: "grp-1", lastUpdatedAtMs: 250 }),
     ]);
     expect(running[0]!.kind).toBe("group");
-    const runningGroup = running[0]!.kind === "group" ? running[0].group : undefined;
+    const runningGroup =
+      running[0]!.kind === "group" ? running[0].group : undefined;
     expect(runningGroup?.status).toBe("running");
     // Never surface an individual member's narration on the group row —
     // that made the header flicker between siblings. Show a stable count.
@@ -519,7 +520,8 @@ describe("work-group folding", () => {
         lastUpdatedAtMs: 300,
       }),
     ]);
-    const failedGroup = failed[0]!.kind === "group" ? failed[0].group : undefined;
+    const failedGroup =
+      failed[0]!.kind === "group" ? failed[0].group : undefined;
     expect(failedGroup?.status).toBe("error");
     expect(getTaskGroupStatusText(failedGroup!)).toBe("2 tasks");
   });
@@ -1000,7 +1002,7 @@ describe("pruneGroupExpandOverrides", () => {
 });
 
 describe("getInlineWorkingIndicatorActive", () => {
-  it("stays visible through thinking, tools and spawned agents until text is painted", () => {
+  it("stays visible through thinking, tools and spawned agents until text starts", () => {
     // Pre-tool thinking.
     expect(
       getInlineWorkingIndicatorActive({
@@ -1029,7 +1031,7 @@ describe("getInlineWorkingIndicatorActive", () => {
       }),
     ).toBe(true);
 
-    // First character actually painted (reveal frontier): hand off.
+    // First visible provider delta: hand off.
     expect(
       getInlineWorkingIndicatorActive({
         isStreaming: true,
@@ -1074,10 +1076,7 @@ describe("buildInlineWorkingIndicatorProps", () => {
     expect(props.active).toBe(true);
   });
 
-  it("stays visible after a delta arrives but before the text is painted", () => {
-    // `isStreamingResponseText` is now driven by the reveal frontier
-    // painting the first character — not by raw delta arrival — so until it
-    // flips the indicator must remain up (no dead gap).
+  it("stays visible before the first visible delta arrives", () => {
     const props = buildInlineWorkingIndicatorProps({
       isStreaming: true,
       isStreamingResponseText: false,
@@ -1087,7 +1086,7 @@ describe("buildInlineWorkingIndicatorProps", () => {
     expect(props.active).toBe(true);
   });
 
-  it("hands off once the first character is painted", () => {
+  it("hands off on the first visible provider delta", () => {
     const props = buildInlineWorkingIndicatorProps({
       isStreaming: true,
       isStreamingResponseText: true,
@@ -1098,10 +1097,10 @@ describe("buildInlineWorkingIndicatorProps", () => {
   });
 });
 
-describe("shouldTreatResumedAnswerAsPainted", () => {
-  it("treats a resumed, already-visible answer with no live overlay as painted", () => {
+describe("shouldTreatResumedAnswerAsStarted", () => {
+  it("treats a resumed, already-visible answer with no live overlay as started", () => {
     expect(
-      shouldTreatResumedAnswerAsPainted({
+      shouldTreatResumedAnswerAsStarted({
         isStreaming: true,
         isStreamingResponseText: false,
         hasLiveStreamingOverlay: false,
@@ -1112,7 +1111,7 @@ describe("shouldTreatResumedAnswerAsPainted", () => {
 
   it("is a no-op while a live overlay is streaming the answer", () => {
     expect(
-      shouldTreatResumedAnswerAsPainted({
+      shouldTreatResumedAnswerAsStarted({
         isStreaming: true,
         isStreamingResponseText: false,
         hasLiveStreamingOverlay: true,
@@ -1123,7 +1122,7 @@ describe("shouldTreatResumedAnswerAsPainted", () => {
 
   it("does not fire when the resumed run has no visible answer yet (still thinking)", () => {
     expect(
-      shouldTreatResumedAnswerAsPainted({
+      shouldTreatResumedAnswerAsStarted({
         isStreaming: true,
         isStreamingResponseText: false,
         hasLiveStreamingOverlay: false,
@@ -1134,7 +1133,7 @@ describe("shouldTreatResumedAnswerAsPainted", () => {
 
   it("is a no-op once the indicator already handed off, or when no run is active", () => {
     expect(
-      shouldTreatResumedAnswerAsPainted({
+      shouldTreatResumedAnswerAsStarted({
         isStreaming: true,
         isStreamingResponseText: true,
         hasLiveStreamingOverlay: false,
@@ -1142,7 +1141,7 @@ describe("shouldTreatResumedAnswerAsPainted", () => {
       }),
     ).toBe(false);
     expect(
-      shouldTreatResumedAnswerAsPainted({
+      shouldTreatResumedAnswerAsStarted({
         isStreaming: false,
         isStreamingResponseText: false,
         hasLiveStreamingOverlay: false,

@@ -49,7 +49,6 @@ import type {
   ChannelEnvelope,
 } from "@/features/chat/lib/event-transforms";
 import { Markdown } from "@/app/chat/Markdown";
-import { StreamingTextReveal } from "@/app/chat/StreamingTextReveal";
 import {
   EndResourceCard,
   SourceDiffEndResource,
@@ -593,13 +592,7 @@ export const AssistantMessageRow = memo(
             <VoiceSessionCard durationMs={row.voiceSession.durationMs} />
           )}
           {hasText && (
-            <StreamingTextReveal active={Boolean(row.isStreaming)}>
-              <Markdown
-                text={text}
-                cacheKey={row.cacheKey}
-                hideHorizontalRules
-              />
-            </StreamingTextReveal>
+            <Markdown text={text} cacheKey={row.cacheKey} hideHorizontalRules />
           )}
           {hasToolActivity && row.toolActivity && (
             <ToolActivityTrace group={row.toolActivity} traceKey={row.id} />

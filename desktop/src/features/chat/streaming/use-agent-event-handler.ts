@@ -359,15 +359,9 @@ export function useAgentEventHandler({
                 : {}),
               chunk: event.chunk,
             })
-            // Anchorless runs (proactive / non-`user_turn` responses that
-            // never create an overlay row, and therefore never paint via
-            // `StreamingTextReveal`) have no paint signal to hand off to, so
-            // they still flip the indicator on first delta. Anchored runs
-            // instead wait for the reveal frontier to actually paint the
-            // first character (`notifyAssistantTextPainted` →
-            // `mark-streaming-text`), so the indicator never disappears into
-            // a dead gap before any text is visible.
-            if (/\S/.test(event.chunk) && !event.userMessageId) {
+            // The renderer appends every chunk immediately, so the first
+            // visible delta is also the working-indicator handoff point.
+            if (/\S/.test(event.chunk)) {
               dispatch({ type: 'mark-streaming-text', runId: event.runId })
             }
           }
@@ -393,7 +387,7 @@ export function useAgentEventHandler({
             // with a tool call, clear the streaming-text flag now so the
             // working indicator re-appears at the boundary and stays up
             // across the gap until `tool-start` arrives, instead of
-            // lingering dismissed over the painted preamble text.
+            // lingering dismissed over the visible preamble text.
             if (event.followedByToolCall) {
               dispatch({
                 type: 'assistant-message-boundary',

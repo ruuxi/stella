@@ -41,21 +41,7 @@ export type RunRecord = {
    * the same handoff even though they never create a streaming overlay.
    */
   isStreamingText: boolean
-  /**
-   * `true` between a preamble→tool-call boundary and the tool actually
-   * starting. In that window the just-finalized preamble's late first-paint
-   * signal (`mark-streaming-text`, fired asynchronously by the reveal rAF)
-   * must NOT re-suppress the working indicator — that paint belongs to a
-   * message that is already done, not to a fresh answer. Without this the
-   * live ordering (boundary processed before the paint rAF fires) leaves the
-   * indicator blank across the gap before `tool-start`, i.e. dead air after
-   * the streamed text ends. Held across `tool-start` (the late paint can be
-   * delivered after the tool has already started when boundary + tool-start
-   * drain in one batch before the next frame) and cleared on `tool-end` once
-   * the tool phase is fully over, so the post-tool answer's own paint can
-   * hand off normally without a stale preamble paint blanking the indicator
-   * across the post-tool reasoning gap.
-   */
+  /** Rejects any out-of-order response marker for a finalized preamble. */
   pendingToolAfterPreamble: boolean
   activeToolCalls: Record<
     string,
@@ -127,7 +113,7 @@ export type StreamStoreAction =
        * (an interim preamble, not the run's final answer). Re-arms the
        * working indicator by clearing `isStreamingText` at the boundary so
        * it stays up across the gap until the tool starts — rather than
-       * lingering dismissed over the painted preamble text.
+       * lingering dismissed over the visible preamble text.
        */
       followedByToolCall?: boolean
     }
@@ -327,7 +313,7 @@ export function streamStoreReducer(
         !current ||
         current.terminal ||
         current.isStreamingText ||
-        // A preamble→tool boundary just fired: this paint belongs to the
+        // A preamble→tool boundary just fired: this marker belongs to the
         // finalized preamble, not a fresh answer, so it must not re-suppress
         // the working indicator across the gap before the tool starts.
         current.pendingToolAfterPreamble
@@ -350,9 +336,8 @@ export function streamStoreReducer(
       // final answer. Clear `isStreamingText` here so the working indicator
       // re-appears immediately at the boundary and stays up across the gap
       // before `tool-start` arrives — otherwise it lingers dismissed over
-      // the painted preamble text, making it look like nothing is happening.
-      // No-op for a plain boundary (final answer): the reveal keeps the
-      // hand-off it already made.
+      // the visible preamble text, making it look like nothing is happening.
+      // No-op for a plain boundary (final answer): keep its existing hand-off.
       if (!action.followedByToolCall) {
         return state
       }
@@ -360,12 +345,8 @@ export function streamStoreReducer(
       if (!current || current.terminal) {
         return state
       }
-      // Set the flag unconditionally (not just when `isStreamingText` is
-      // already true): live, the boundary event is often processed before
-      // the reveal's first-paint rAF fires, so guarding on the current flag
-      // would make this a no-op and let the later paint stick — reopening
-      // the dead gap. `pendingToolAfterPreamble` makes that late paint a
-      // no-op instead, closing the gap regardless of event ordering.
+      // Set the suppression flag unconditionally so a stale marker cannot
+      // reopen the gap regardless of event ordering.
       return {
         ...state,
         runsById: {
@@ -401,15 +382,12 @@ export function streamStoreReducer(
             // working indicator again. Re-arming is safe: the post-tool
             // answer is a new assistant message (the agent loop emits the
             // `message_end` boundary before this tool start), so it streams
-            // into a fresh overlay slot whose `StreamingTextReveal` re-fires
-            // the paint hand-off and sets `isStreamingText` back to true.
+            // into a fresh overlay slot and its first visible provider delta
+            // sets `isStreamingText` back to true.
             isStreamingText: false,
             // Deliberately DO NOT release `pendingToolAfterPreamble` here.
-            // The preamble's first-paint rAF can be delivered *after* this
-            // `tool-start` — live, the boundary and the tool-start often
-            // drain from the same IPC batch before the next animation frame,
-            // so the late paint lands once the tool is already running.
-            // Clearing the flag here would let that stale paint set
+            // An out-of-order preamble marker could arrive after this
+            // `tool-start`. Clearing the flag here would let that marker set
             // `isStreamingText: true`; it stays masked by `isToolActive`
             // while the tool runs, but sticks true after `tool-end`, blanking
             // the indicator across the post-tool reasoning gap (dead air,
@@ -446,13 +424,12 @@ export function streamStoreReducer(
           [action.runId]: {
             ...current,
             hasToolActivity: true,
-            // Release the preamble-paint suppression only once the whole tool
-            // phase is over (no tool still in flight). Held across `tool-start`
-            // so a preamble first-paint rAF delivered *after* the tool started
-            // can't set `isStreamingText: true` and blank the indicator in the
+            // Release stale-marker suppression only once the whole tool phase
+            // is over (no tool still in flight), so an out-of-order preamble
+            // marker cannot set `isStreamingText: true` and blank the indicator in the
             // post-tool reasoning gap. Keeping it set until the last tool ends
-            // also covers parallel tool calls. The post-tool answer's own
-            // reveal fires a fresh paint after this, handing off normally.
+            // also covers parallel tool calls. The post-tool answer's first
+            // visible delta then hands off normally.
             ...(toolPhaseOver ? { pendingToolAfterPreamble: false } : {}),
             statusText: nextActiveTool?.statusText ?? null,
             activeToolCalls: nextActiveToolCalls,

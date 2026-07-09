@@ -28,7 +28,7 @@ export type InlineWorkingIndicatorMountProps = InlineWorkingIndicatorProps & {
   /**
    * Escape hatch to skip the `MIN_VISIBLE_MS` floor on deactivation.
    * No longer set by `buildInlineWorkingIndicatorProps`: because `active`
-   * now stays true until the first character is painted, the floor is
+   * now stays true until the first visible provider delta, the floor is
    * purely anti-flicker and must never cause an early dismiss. Kept
    * optional for the component's own fallback handling.
    */
@@ -51,14 +51,7 @@ export function buildInlineWorkingIndicatorProps({
   runtimeStatusText,
 }: {
   isStreaming: boolean;
-  /**
-   * True once the assistant's first character is actually *painted* on
-   * screen for the in-flight run (driven by the `StreamingTextReveal`
-   * reveal frontier via `mark-streaming-text`), not merely once the first
-   * delta arrived in the data stream. This is the indicator's hand-off
-   * trigger, so the indicator never disappears into a gap before any text
-   * is visible.
-   */
+  /** True once the in-flight run emits its first visible provider delta. */
   isStreamingResponseText: boolean;
   isToolActive: boolean;
   hasToolActivity: boolean;
@@ -81,9 +74,9 @@ export function buildInlineWorkingIndicatorProps({
     active,
     // No early dismiss: deactivation always runs through the min-visible
     // floor (`getInlineWorkingIndicatorExitDelayMs`). Because `active` now
-    // stays true until the first character is painted, the floor only ever
+    // stays true until the first visible delta, the floor only ever
     // *delays* a too-fast hide (anti-flicker) — it never causes one. The
-    // effective hide time is max(min-duration elapsed, first-painted-text).
+    // effective hide time is max(min-duration elapsed, first-visible-delta).
     runningTool: isToolActive ? (activeToolName ?? undefined) : undefined,
     runningToolId: isToolActive ? (activeToolCallId ?? undefined) : undefined,
     status:
@@ -93,10 +86,9 @@ export function buildInlineWorkingIndicatorProps({
 
 /**
  * On run resume/reactivation the assistant's already-streamed answer is
- * rehydrated from persistence (a real `assistant_message` row) with no
- * live overlay, so `StreamingTextReveal` never mounts and never fires the
- * first-paint hand-off (`notifyAssistantTextPainted` → `mark-streaming-
- * text`). Because the resume snapshot seeds the active run with
+ * rehydrated from persistence (a real `assistant_message` row) with no live
+ * stream event to mark response text. Because the resume snapshot seeds the
+ * active run with
  * `isStreamingText: false`, the inline working indicator would otherwise
  * hang "Thinking" *under* the fully-visible resumed answer until the run
  * finally goes terminal.
@@ -104,11 +96,11 @@ export function buildInlineWorkingIndicatorProps({
  * Detect exactly that shape — the run is still active, the indicator has
  * not handed off yet, there is no live streaming overlay (a live turn
  * always has at least a placeholder overlay), and the active turn's answer
- * is already on screen — so the caller can treat the resumed text as
- * painted. It is a no-op for live streaming, where `hasLiveStreamingOverlay`
- * is true (or `isStreamingResponseText` already flipped via the reveal).
+ * is already on screen — so the caller can treat the resumed text as started.
+ * It is a no-op for live streaming, where `hasLiveStreamingOverlay` is true
+ * (or `isStreamingResponseText` already flipped by a provider delta).
  */
-export function shouldTreatResumedAnswerAsPainted({
+export function shouldTreatResumedAnswerAsStarted({
   isStreaming,
   isStreamingResponseText,
   hasLiveStreamingOverlay,
@@ -141,18 +133,14 @@ export function getInlineWorkingIndicatorActive({
   isToolActive,
 }: {
   isStreaming: boolean;
-  /**
-   * True once the assistant's first character is actually painted (reveal
-   * frontier), the hand-off point. Until then the indicator stays up no
-   * matter how long the model thinks.
-   */
+  /** True once the assistant emits its first visible provider delta. */
   isStreamingResponseText: boolean;
   isToolActive: boolean;
 }): boolean {
   if (isToolActive) return true;
   // Stay visible continuously from send through the whole turn — pre-tool
   // thinking, gaps between tools, and while a spawned agent works — until
-  // the assistant's first character is actually painted. A background or
+  // the assistant's first visible delta arrives. A background or
   // spawned agent no longer suppresses the orchestrator's own indicator.
   return isStreaming && !isStreamingResponseText;
 }

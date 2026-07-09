@@ -7,7 +7,7 @@ import type { MessageMetadata } from '@/features/chat/lib/event-transforms'
 import type { EventRecord } from '@/features/chat/lib/event-transforms'
 import type { MessageRecord } from '../../../../../runtime/contracts/local-chat.js'
 import { resolveComposerContextState } from '../composer-context'
-import { shouldTreatResumedAnswerAsPainted } from '@/features/chat/working-indicator-state'
+import { shouldTreatResumedAnswerAsStarted } from '@/features/chat/working-indicator-state'
 import {
   buildAllLocalAttachments,
   toDisplayAttachments,
@@ -179,7 +179,7 @@ export function useStreamingChatCore({
   const {
     liveTasks,
     runtimeStatusText,
-    notifyAssistantTextPainted,
+    markAssistantResponseTextStarted,
     activeToolCallId,
     activeToolName,
     hasToolActivity,
@@ -321,13 +321,9 @@ export function useStreamingChatCore({
     setPendingUserMessageId,
   ])
 
-  // Resume hand-off: when a run is resumed/reactivated, its already-
-  // streamed answer comes back from persistence with no live overlay, so
-  // `StreamingTextReveal` never mounts to fire the first-paint signal. Mark
-  // the resumed text as painted so the inline working indicator hands off
-  // instead of hanging "Thinking" under the visible answer until the run
-  // goes terminal. No-op during live streaming (overlay present / already
-  // handed off).
+  // Resume hand-off: an already-streamed answer can come back from persistence
+  // with no live overlay. Mark it as response text so the inline working
+  // indicator does not hang under the visible answer until the run terminates.
   useEffect(() => {
     if (!pendingUserMessageId) return
     const activeTurnAnswerVisible = persistedMessages.some((message) => {
@@ -338,14 +334,14 @@ export function useStreamingChatCore({
       return typeof payload.text === 'string' && payload.text.trim().length > 0
     })
     if (
-      shouldTreatResumedAnswerAsPainted({
+      shouldTreatResumedAnswerAsStarted({
         isStreaming,
         isStreamingResponseText,
         hasLiveStreamingOverlay: streamingAssistants.length > 0,
         activeTurnAnswerVisible,
       })
     ) {
-      notifyAssistantTextPainted()
+      markAssistantResponseTextStarted()
     }
   }, [
     isStreaming,
@@ -353,7 +349,7 @@ export function useStreamingChatCore({
     streamingAssistants,
     pendingUserMessageId,
     persistedMessages,
-    notifyAssistantTextPainted,
+    markAssistantResponseTextStarted,
   ])
 
   useEffect(() => {
@@ -545,7 +541,6 @@ export function useStreamingChatCore({
     optimisticEvents,
     queuedUserMessages,
     runtimeStatusText,
-    notifyAssistantTextPainted,
     activeToolCallId,
     activeToolName,
     hasToolActivity,

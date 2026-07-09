@@ -105,7 +105,6 @@ export function useFullShellChat({
     liveTasks,
     optimisticEvents,
     runtimeStatusText,
-    notifyAssistantTextPainted,
     activeToolCallId,
     activeToolName,
     hasToolActivity,
@@ -427,7 +426,6 @@ export function useFullShellChat({
         isLoadingOlder: isLoadingOlderMessages,
         isInitialLoading: isInitialLoadingMessages,
       },
-      onAssistantTextPainted: notifyAssistantTextPainted,
     }),
     [
       activities,
@@ -445,7 +443,6 @@ export function useFullShellChat({
       liveTasks,
       loadOlderActivity,
       loadOlderFiles,
-      notifyAssistantTextPainted,
       pendingUserMessageId,
       persistedFiles,
       queuedUserMessages,
@@ -517,12 +514,12 @@ export function useFullShellChat({
   );
 
   // The visible message timeline (`displayMessages`) is the only field
-  // that changes every paced animation frame while a reply streams. It is
+  // that changes whenever a provider chunk arrives while a reply streams. It is
   // returned separately and published through `ChatMessagesContext` rather
   // than folded into `runtime`, so the `runtime` value below keeps a stable
-  // identity across streamed frames. That stops every `useChatRuntime()`
+  // identity across streamed chunks. That stops every `useChatRuntime()`
   // consumer (shell chrome, left sidebar, mobile bridge) from re-rendering
-  // ~60x/s — only the timeline renderers subscribe to the message channel.
+  // per chunk — only the timeline renderers subscribe to the message channel.
   const conversation = useMemo(
     () => ({
       ...chatColumnConversation,
