@@ -307,7 +307,15 @@ async function streamAssistantResponse(
 	};
 
 	const normalizeFinalMessage = (message: AssistantMessage): AssistantMessage => {
-		if (!isContextOverflow(message, config.model.contextWindow)) {
+		const detectsSilentOverflow = [config.model.provider, message.provider].some(
+			(provider) => provider.toLowerCase().replace(/[^a-z0-9]/g, "") === "zai",
+		);
+		if (
+			!isContextOverflow(
+				message,
+				detectsSilentOverflow ? config.model.contextWindow : undefined,
+			)
+		) {
 			return message;
 		}
 		return {
