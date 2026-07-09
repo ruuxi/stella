@@ -517,6 +517,7 @@ export const UserMessageRow = memo(
     return (
       <div
         className={`event-row event-row--user${row.justSent ? " event-row--user--just-sent" : ""}`}
+        data-chat-row-id={row.id}
       >
         {chips.length > 0 && <UserContextChips chips={chips} />}
         {text.trim() && (
@@ -572,6 +573,7 @@ export const AssistantMessageRow = memo(
         return (
           <div
             className="event-row event-row--assistant event-row--streaming"
+            data-chat-row-id={row.id}
             data-scroll-follow-key={row.id}
             aria-hidden
           >
@@ -585,6 +587,7 @@ export const AssistantMessageRow = memo(
     return (
       <div
         className={`event-row event-row--assistant${row.isStreaming ? " event-row--streaming" : ""}`}
+        data-chat-row-id={row.id}
         data-scroll-follow-key={row.id}
       >
         <div className="event-item assistant">

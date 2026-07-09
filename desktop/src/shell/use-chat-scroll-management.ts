@@ -13,7 +13,7 @@
  *     straight to the node keeps every steady-state scroll frame
  *     setState-free, so the pan stays smooth.
  *   - `scrollToBottom` via the list ref,
- *   - `onStartReached` → load older history,
+ *   - intent-gated older-history pagination from the passive native listener,
  *   - **auto-follow** during streaming, driven by a continuous rAF lerp
  *     loop that smoothly chases a moving target (the bottom of the
  *     growing streaming row). Legend's built-in `maintainScrollAtEnd`
@@ -35,6 +35,15 @@ import {
   subscribeAssistantScrollFollow,
 } from '@/shell/chat-scroll-follow'
 import { registerChatAtRestProbe } from '@/features/chat/hooks/use-conversation-messages'
+import {
+  captureChatPrependAnchor,
+  ChatHistoryPaginationGate,
+  emitChatHistoryPaginationDebug,
+  restoreChatPrependAnchor,
+  type ChatPrependAnchor,
+  type HistoryPaginationMetrics,
+  type HistoryScrollDirection,
+} from '@/shell/chat-history-pagination'
 
 const SCROLL_BUTTON_THRESHOLD = 180
 const THUMB_MIN_HEIGHT = 24
@@ -168,7 +177,7 @@ type ChatScrollSurface = keyof typeof TRAILING_REGION_MIN_PX
 type ChatScrollManagementOptions = {
   hasOlderEvents?: boolean
   isLoadingOlder?: boolean
-  onLoadOlder?: () => void
+  onLoadOlder?: () => boolean | void
   /** Sidebar/mini use the compact trailing-region min-height. */
   surface?: ChatScrollSurface
 }
@@ -206,6 +215,25 @@ export function useChatScrollManagement({
   const trailingRegionMinPx = TRAILING_REGION_MIN_PX[surface]
   const followRearmThreshold = followRearmThresholdPx(trailingRegionMinPx)
   const listRef = useRef<LegendListRef | null>(null)
+  const attachedScrollNodeRef = useRef<HTMLElement | null>(null)
+  const paginationGateRef = useRef(new ChatHistoryPaginationGate())
+  const paginationActionIdRef = useRef(0)
+  const prependAnchorRef = useRef<{
+    node: HTMLElement
+    anchor: ChatPrependAnchor
+    cancelledByUser: boolean
+  } | null>(null)
+  const prependRestoreRafRef = useRef<number | null>(null)
+  const historyOptionsRef = useRef({
+    hasOlderEvents,
+    isLoadingOlder,
+    onLoadOlder,
+  })
+  historyOptionsRef.current = {
+    hasOlderEvents,
+    isLoadingOlder,
+    onLoadOlder,
+  }
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [isFollowingLatest, setIsFollowingLatest] = useState(true)
   const [showScrollButton, setShowScrollButton] = useState(false)
@@ -346,12 +374,6 @@ export function useChatScrollManagement({
     [followRearmThreshold, setFollow, updateThumb],
   )
 
-  /** `onStartReached` from Legend List — fires when the user nears the top. */
-  const onStartReached = useCallback(() => {
-    if (!hasOlderEvents || isLoadingOlder || !onLoadOlder) return
-    onLoadOlder()
-  }, [hasOlderEvents, isLoadingOlder, onLoadOlder])
-
   const scrollToBottom = useCallback(
     (behavior: 'instant' | 'smooth' = 'smooth') => {
       setFollow(true)
@@ -386,8 +408,89 @@ export function useChatScrollManagement({
         cancelAnimationFrame(scrollStateRafRef.current)
         scrollStateRafRef.current = null
       }
+      if (prependRestoreRafRef.current !== null) {
+        cancelAnimationFrame(prependRestoreRafRef.current)
+        prependRestoreRafRef.current = null
+      }
     }
   }, [])
+
+  // Track the request lifecycle independently of list data identity. A
+  // completed prepend gets one post-layout anchor verification; a failed load
+  // settles the same gate so the next deliberate upward action can retry.
+  useEffect(() => {
+    const transition = paginationGateRef.current.syncGuards({
+      hasMore: hasOlderEvents,
+      isLoading: isLoadingOlder,
+    })
+    emitChatHistoryPaginationDebug({
+      type: 'guards',
+      surface,
+      detail: {
+        hasMore: hasOlderEvents,
+        isLoading: isLoadingOlder,
+        ...transition,
+        gate: paginationGateRef.current.snapshot(),
+      },
+    })
+
+    if (!transition.requestSettled) return
+    const pending = prependAnchorRef.current
+    if (!pending) return
+    if (
+      pending.cancelledByUser ||
+      pending.node !== attachedScrollNodeRef.current
+    ) {
+      emitChatHistoryPaginationDebug({
+        type: 'anchor-skip',
+        surface,
+        detail: {
+          reason: pending.cancelledByUser
+            ? 'user-scrolled'
+            : 'scroll-node-replaced',
+          rowId: pending.anchor.rowId,
+        },
+      })
+      prependAnchorRef.current = null
+      return
+    }
+
+    let attempts = 0
+    const restore = () => {
+      prependRestoreRafRef.current = null
+      const current = prependAnchorRef.current
+      if (!current || current.cancelledByUser) return
+      if (current.node !== attachedScrollNodeRef.current) {
+        prependAnchorRef.current = null
+        return
+      }
+      attempts += 1
+      const result = restoreChatPrependAnchor(current.node, current.anchor)
+      if (!result.found && attempts < 8) {
+        prependRestoreRafRef.current = requestAnimationFrame(restore)
+        return
+      }
+      emitChatHistoryPaginationDebug({
+        type: 'anchor-restored',
+        surface,
+        detail: {
+          rowId: current.anchor.rowId,
+          before: current.anchor,
+          after: result,
+          thresholdVisible:
+            result.scrollTopAfter <= current.anchor.viewportHeight * 2,
+          attempts,
+        },
+      })
+      prependAnchorRef.current = null
+    }
+
+    // Let Legend's MVCP/data pass and row ResizeObservers settle first. In the
+    // normal case it lands exactly and `restore` performs no scroll write.
+    prependRestoreRafRef.current = requestAnimationFrame(() => {
+      prependRestoreRafRef.current = requestAnimationFrame(restore)
+    })
+  }, [hasOlderEvents, isLoadingOlder, surface])
 
   /**
    * Explicitly release the auto-follow latch. Surfaces call this from
@@ -417,7 +520,7 @@ export function useChatScrollManagement({
    * The two-rAF wait lets the optimistic user-message row lay out
    * and grow `scrollHeight` before we bump, so the target lands at
    * a real position rather than getting clamped to the old maxScroll.
-   */
+  */
   const nudgeBy = useCallback((delta: number) => {
     setFollow(true)
     requestAnimationFrame(() => {
@@ -487,8 +590,123 @@ export function useChatScrollManagement({
         | undefined
         | null
       if (!node || node === attached) return Boolean(attached)
+      const previousNode = attached
       cleanup()
       attached = node
+      attachedScrollNodeRef.current = node
+
+      emitChatHistoryPaginationDebug({
+        type: 'scroll-node-attached',
+        surface,
+        detail: {
+          replaced: Boolean(previousNode && previousNode !== node),
+        },
+      })
+
+      const WHEEL_ACTION_IDLE_MS = 160
+      const INTENT_ACTIVE_MS = 240
+      let lastObservedScrollTop = node.scrollTop
+      let wheelActionId: number | null = null
+      let lastWheelAt = -Infinity
+      let lastWheelDirection: HistoryScrollDirection = 'none'
+      let pointerActionId: number | null = null
+      let keyActionId: number | null = null
+      let touchActionId: number | null = null
+      let touchStartY: number | null = null
+      let activeIntent: {
+        id: number
+        direction: HistoryScrollDirection
+        expiresAt: number
+      } | null = null
+
+      const nextActionId = () => ++paginationActionIdRef.current
+      const markActiveIntent = (
+        id: number,
+        direction: HistoryScrollDirection,
+      ) => {
+        activeIntent = {
+          id,
+          direction,
+          expiresAt: performance.now() + INTENT_ACTIVE_MS,
+        }
+      }
+      const cancelPendingAnchorForUserScroll = () => {
+        if (prependAnchorRef.current) {
+          prependAnchorRef.current.cancelledByUser = true
+        }
+      }
+      const readPaginationMetrics = (): HistoryPaginationMetrics | null => {
+        const list = listRef.current
+        if (!list) return null
+        const state = list.getState()
+        return {
+          scrollTop: state.scroll,
+          viewportHeight: state.scrollLength,
+          contentHeight: state.contentLength,
+        }
+      }
+      const attemptHistoryLoad = (
+        actionId: number | null,
+        direction: HistoryScrollDirection,
+        source: string,
+      ) => {
+        const metrics = readPaginationMetrics()
+        if (!metrics) return
+        const options = historyOptionsRef.current
+        const decision = paginationGateRef.current.consider(
+          actionId,
+          direction,
+          metrics,
+          {
+            hasMore: options.hasOlderEvents && Boolean(options.onLoadOlder),
+            isLoading: options.isLoadingOlder,
+          },
+        )
+        emitChatHistoryPaginationDebug({
+          type: 'threshold-check',
+          surface,
+          detail: {
+            source,
+            actionId,
+            direction,
+            ...metrics,
+            ...decision,
+            gate: paginationGateRef.current.snapshot(),
+          },
+        })
+        if (!decision.request || !options.onLoadOlder) return
+
+        const anchor = captureChatPrependAnchor(node)
+        if (anchor) {
+          prependAnchorRef.current = {
+            node,
+            anchor,
+            cancelledByUser: false,
+          }
+        }
+        emitChatHistoryPaginationDebug({
+          type: 'request',
+          surface,
+          detail: { source, actionId, metrics, anchor },
+        })
+        try {
+          const accepted = options.onLoadOlder()
+          if (accepted === false) {
+            paginationGateRef.current.rejectRequest()
+            prependAnchorRef.current = null
+          }
+        } catch (error) {
+          paginationGateRef.current.rejectRequest()
+          prependAnchorRef.current = null
+          emitChatHistoryPaginationDebug({
+            type: 'request-error',
+            surface,
+            detail: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          })
+        }
+      }
 
       // ---- continuous spring follow loop ---------------------------
       // `followTarget` is the absolute scrollTop the loop is chasing
@@ -806,7 +1024,7 @@ export function useChatScrollManagement({
                 0,
                 queuedStackBottom -
                   attached.clientHeight +
-                POST_SEND_USER_MESSAGE_BREATHING_PX,
+                  POST_SEND_USER_MESSAGE_BREATHING_PX,
               )
         const bottomFollow = Math.max(desiredScrollTop, queuedScrollTop)
         // Cap at "streaming row pinned near the viewport top" so a reply
@@ -833,11 +1051,43 @@ export function useChatScrollManagement({
         stopLoop()
       }
       const handleWheel = (event: WheelEvent) => {
-        if (event.deltaY < 0) releaseLocalFollow()
-        else stopLoop()
+        const now = performance.now()
+        const direction: HistoryScrollDirection =
+          event.deltaY < 0 ? 'up' : event.deltaY > 0 ? 'down' : 'none'
+        if (
+          wheelActionId === null ||
+          now - lastWheelAt > WHEEL_ACTION_IDLE_MS ||
+          direction !== lastWheelDirection
+        ) {
+          wheelActionId = nextActionId()
+        }
+        lastWheelAt = now
+        lastWheelDirection = direction
+        markActiveIntent(wheelActionId, direction)
+        cancelPendingAnchorForUserScroll()
+        if (direction === 'up') {
+          releaseLocalFollow()
+          attemptHistoryLoad(wheelActionId, direction, 'wheel')
+        } else {
+          stopLoop()
+        }
       }
-      const handleTouchStart = () => {
+      const handleTouchStart = (event: TouchEvent) => {
         releaseLocalFollow()
+        cancelPendingAnchorForUserScroll()
+        touchActionId = nextActionId()
+        touchStartY = event.touches[0]?.clientY ?? null
+      }
+      const handleTouchMove = (event: TouchEvent) => {
+        if (touchActionId === null || touchStartY === null) return
+        const y = event.touches[0]?.clientY
+        if (y === undefined) return
+        const direction: HistoryScrollDirection =
+          y > touchStartY ? 'up' : 'down'
+        markActiveIntent(touchActionId, direction)
+        if (direction === 'up') {
+          attemptHistoryLoad(touchActionId, direction, 'touch')
+        }
       }
       const handleKeyDown = (event: KeyboardEvent) => {
         if (
@@ -846,14 +1096,65 @@ export function useChatScrollManagement({
           event.key === 'Home'
         ) {
           releaseLocalFollow()
+          cancelPendingAnchorForUserScroll()
+          if (!event.repeat || keyActionId === null)
+            keyActionId = nextActionId()
+          markActiveIntent(keyActionId, 'up')
+          attemptHistoryLoad(keyActionId, 'up', `key:${event.key}`)
         } else {
           stopLoop()
         }
       }
+      const handleKeyUp = () => {
+        keyActionId = null
+      }
+      const handlePointerDown = () => {
+        pointerActionId = nextActionId()
+        cancelPendingAnchorForUserScroll()
+      }
+      const handlePointerUp = () => {
+        pointerActionId = null
+      }
+      const handleDocumentPointerDown = (event: PointerEvent) => {
+        const target = event.target
+        if (
+          target instanceof Element &&
+          target.closest('.chat-scrollbar__thumb')
+        ) {
+          handlePointerDown()
+        }
+      }
+      const handlePaginationScroll = () => {
+        const metrics = readPaginationMetrics()
+        if (!metrics) return
+        const delta = metrics.scrollTop - lastObservedScrollTop
+        const direction: HistoryScrollDirection =
+          delta < -0.5 ? 'up' : delta > 0.5 ? 'down' : 'none'
+        lastObservedScrollTop = metrics.scrollTop
+
+        const now = performance.now()
+        let intent =
+          activeIntent && activeIntent.expiresAt >= now ? activeIntent : null
+        if (direction === 'up' && pointerActionId !== null) {
+          markActiveIntent(pointerActionId, 'up')
+          intent = activeIntent
+        }
+        if (direction === 'up' && intent?.direction === 'up') {
+          attemptHistoryLoad(intent.id, direction, 'native-scroll')
+        }
+      }
       node.addEventListener('wheel', handleWheel, { passive: true })
       node.addEventListener('touchstart', handleTouchStart, { passive: true })
+      node.addEventListener('touchmove', handleTouchMove, { passive: true })
       node.addEventListener('keydown', handleKeyDown)
+      node.addEventListener('keyup', handleKeyUp)
+      node.addEventListener('pointerdown', handlePointerDown)
+      window.addEventListener('pointerup', handlePointerUp)
+      document.addEventListener('pointerdown', handleDocumentPointerDown, true)
       node.addEventListener('scroll', scheduleScrollStateUpdate, {
+        passive: true,
+      })
+      node.addEventListener('scroll', handlePaginationScroll, {
         passive: true,
       })
 
@@ -882,14 +1183,27 @@ export function useChatScrollManagement({
         unsubscribeFollow()
         attached.removeEventListener('wheel', handleWheel)
         attached.removeEventListener('touchstart', handleTouchStart)
+        attached.removeEventListener('touchmove', handleTouchMove)
         attached.removeEventListener('keydown', handleKeyDown)
+        attached.removeEventListener('keyup', handleKeyUp)
+        attached.removeEventListener('pointerdown', handlePointerDown)
+        window.removeEventListener('pointerup', handlePointerUp)
+        document.removeEventListener(
+          'pointerdown',
+          handleDocumentPointerDown,
+          true,
+        )
         attached.removeEventListener('scroll', scheduleScrollStateUpdate)
+        attached.removeEventListener('scroll', handlePaginationScroll)
         if (followAssistantRowRaf) {
           cancelAnimationFrame(followAssistantRowRaf)
           followAssistantRowRaf = 0
         }
         stopLoop()
         followApi.current = null
+        if (attachedScrollNodeRef.current === attached) {
+          attachedScrollNodeRef.current = null
+        }
         attached = null
       }
       return true
@@ -921,11 +1235,10 @@ export function useChatScrollManagement({
       cancelAnimationFrame(frame)
       cleanup()
     }
-  }, [scheduleScrollStateUpdate, setFollow, trailingRegionMinPx])
+  }, [scheduleScrollStateUpdate, setFollow, surface, trailingRegionMinPx])
 
   return {
     listRef,
-    onStartReached,
     isAtBottom,
     isFollowingLatest,
     showScrollButton,

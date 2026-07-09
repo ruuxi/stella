@@ -232,10 +232,8 @@ export function SocialChatPane({
     return groups;
   }, [timelineRows]);
 
-  // Pagination wiring — auto-fetch older history. The room timeline
-  // merges chat messages with Stella turns, so a single `onStartReached`
-  // signal from the virtualized list drives both `loadOlderMessages`
-  // and `loadOlderTurns` whenever the user scrolls near the top.
+  // Pagination wiring. The room timeline merges chat messages with Stella
+  // turns, so the shared native-scroll intent gate drives both older feeds.
   //
   // Scroll-position preservation across prepends is handled by Legend
   // List's `maintainVisibleContentPosition` (replaces the previous
@@ -610,10 +608,6 @@ export function SocialChatPane({
             maintainScrollAtEnd={{ animated: false }}
             maintainScrollAtEndThreshold={0.02}
             initialScrollAtEnd
-            onStartReached={socialScroll.onStartReached}
-            // Prefetch older history ~2 viewports before the top, matching
-            // the main/sidebar/mini chat surfaces.
-            onStartReachedThreshold={2}
             ListHeaderComponent={
               isLoadingOlder ? (
                 <div

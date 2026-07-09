@@ -98,7 +98,7 @@ export type ConversationMessagesFeed = {
   hasOlderMessages: boolean;
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
-  loadOlder: () => void;
+  loadOlder: () => boolean;
 };
 
 export const useConversationMessages = (
@@ -115,11 +115,16 @@ export const useConversationMessages = (
   );
   const [pendingMaxVisibleMessages, setPendingMaxVisibleMessages] =
     useState<number | null>(null);
+  // Synchronous request lock shared by every mounted chat surface. React
+  // state does not update until the next render, so full chat + sidebar could
+  // otherwise both accept the same cursor/window bump in one event turn.
+  const pendingMaxVisibleMessagesRef = useRef<number | null>(null);
 
   // Reset window size on conversation/storage-mode change.
   useEffect(() => {
     setMaxVisibleMessages(MESSAGE_PAGE_SIZE);
     setPendingMaxVisibleMessages(null);
+    pendingMaxVisibleMessagesRef.current = null;
   }, [visitToken]);
 
   const [snapshotState, setSnapshotState] = useState<{
@@ -225,7 +230,9 @@ export const useConversationMessages = (
   // misreport "older history available" forever. Latches off after a
   // `loadOlder` that returned fewer visible messages than the new cap.
   const hasOlderMessages =
-    activeSnapshot.hasLoaded && visibleMessageCount >= maxVisibleMessages;
+    activeSnapshot.hasLoaded &&
+    visibleMessageCount >= maxVisibleMessages &&
+    maxVisibleMessages < MAX_VISIBLE_MESSAGES;
 
   const isLoadingOlder =
     pendingMaxVisibleMessages !== null &&
@@ -236,11 +243,13 @@ export const useConversationMessages = (
   useEffect(() => {
     if (pendingMaxVisibleMessages === null) return;
     if (visibleMessageCount >= pendingMaxVisibleMessages) {
+      pendingMaxVisibleMessagesRef.current = null;
       setPendingMaxVisibleMessages(null);
       return;
     }
     if (activeSnapshot.hasLoaded && !hasOlderMessages) {
       // Fetched fewer than requested — there are no more messages.
+      pendingMaxVisibleMessagesRef.current = null;
       setPendingMaxVisibleMessages(null);
     }
   }, [
@@ -251,25 +260,21 @@ export const useConversationMessages = (
   ]);
 
   const loadOlder = useCallback(() => {
-    if (!conversationId || !isLocalMode) return;
-    if (!hasOlderMessages) return;
-    if (pendingMaxVisibleMessages !== null) return;
-    if (maxVisibleMessages >= MAX_VISIBLE_MESSAGES) return;
+    if (!conversationId || !isLocalMode) return false;
+    if (!hasOlderMessages) return false;
+    if (pendingMaxVisibleMessagesRef.current !== null) return false;
+    if (maxVisibleMessages >= MAX_VISIBLE_MESSAGES) return false;
     const next = Math.min(
       maxVisibleMessages + MESSAGE_PAGE_SIZE,
       MAX_VISIBLE_MESSAGES,
     );
+    pendingMaxVisibleMessagesRef.current = next;
     setPendingMaxVisibleMessages(next);
     startTransition(() => {
       setMaxVisibleMessages(next);
     });
-  }, [
-    conversationId,
-    hasOlderMessages,
-    isLocalMode,
-    maxVisibleMessages,
-    pendingMaxVisibleMessages,
-  ]);
+    return true;
+  }, [conversationId, hasOlderMessages, isLocalMode, maxVisibleMessages]);
 
   // Decay the grown window back to one page once every chat surface has
   // been at the bottom continuously for the rest interval. At the bottom

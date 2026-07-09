@@ -31,7 +31,8 @@
  *    the post-send nudge animated back down. The fixed bottom-floor
  *    `min-height` and queued-messages slot live on the `ListFooterComponent`
  *    instead.
- *  - `onStartReached` triggers older-history pagination.
+ *  - Older-history pagination is driven by the scroll hook's native input
+ *    listener, not Legend's data-sensitive `onStartReached` callback.
  *
  * Empty / loading-history states render outside the list, matching the
  * previous flat-`.event-list` behavior (the list isn't useful when
@@ -98,7 +99,6 @@ type ChatTimelineProps = {
    * here so the hook can call `scrollToEnd`/`getState` etc.
    */
   listRef?: RefObject<LegendListRef | null>;
-  onStartReached?: () => void;
   /**
    * Per-surface row recycling toggle. Defaults to `true` — recycling
    * reuses outer item containers as rows scroll out of the
@@ -252,7 +252,6 @@ export const ChatTimeline = memo(function ChatTimeline({
   onCancelQueued,
   indicator,
   listRef,
-  onStartReached,
   recycleItems = true,
   alignItemsAtEnd = false,
   estimatedItemSize = 120,
@@ -370,10 +369,10 @@ export const ChatTimeline = memo(function ChatTimeline({
       // Scroll UI state is driven by useChatScrollManagement's passive native
       // listener. Legend's web `onScroll` adapter synchronously reads full
       // content geometry on every frame, forcing layout for no useful data.
-      onStartReached={onStartReached}
-      // Prefetch older history ~2 viewports before the user hits the very
-      // top so it loads ahead of the scroll rather than at the edge.
-      onStartReachedThreshold={2}
+      // Do not use Legend's `onStartReached`: it deliberately re-enters on a
+      // data change while the threshold is visible, so each prepend can load
+      // the next page without another user action. The same passive native
+      // listener owns the intent-gated two-viewport threshold instead.
       ListHeaderComponent={ListHeader ?? undefined}
       ListFooterComponent={ListFooter}
       ItemSeparatorComponent={ItemSeparator}

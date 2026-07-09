@@ -105,8 +105,6 @@ export type ChatColumnComposer = {
  */
 export type ChatColumnScroll = {
   listRef: RefObject<LegendListRef | null>;
-  /** Forwarded to Legend List's `onStartReached` for older-history pagination. */
-  onStartReached: () => void;
   showScrollButton: boolean;
   /** True when the user is at (or within ~1px of) the newest-content edge. */
   isAtBottom: boolean;

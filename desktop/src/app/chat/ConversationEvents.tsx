@@ -44,7 +44,6 @@ type Props = {
   isLoadingHistory?: boolean;
   /** Threaded through to `<ChatTimeline>` → `<LegendList>`. */
   listRef?: RefObject<LegendListRef | null>;
-  onStartReached?: () => void;
   className?: string;
   contentContainerStyle?: CSSProperties;
   estimatedItemSize?: number;
@@ -109,7 +108,6 @@ export const ConversationEvents = memo(function ConversationEvents({
   isLoadingOlder,
   isLoadingHistory,
   listRef,
-  onStartReached,
   className,
   contentContainerStyle,
   estimatedItemSize,
@@ -148,7 +146,6 @@ export const ConversationEvents = memo(function ConversationEvents({
       onCancelQueued={onCancelQueued}
       indicator={indicator}
       listRef={listRef}
-      onStartReached={onStartReached}
       className={className}
       contentContainerStyle={contentContainerStyle}
       estimatedItemSize={estimatedItemSize}

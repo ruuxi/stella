@@ -102,7 +102,6 @@ export function CompactConversationSurface({
             isLoadingOlder={isLoadingOlder}
             isLoadingHistory={isLoadingHistory}
             listRef={scroll.listRef}
-            onStartReached={scroll.onStartReached}
             className={className}
             contentContainerStyle={contentContainerStyle}
             estimatedItemSize={estimatedItemSize}

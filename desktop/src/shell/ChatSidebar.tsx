@@ -244,7 +244,6 @@ export function ChatPanelTab({
   const sidebarScrollApi = useMemo<ChatColumnScroll>(
     () => ({
       listRef: sidebarScroll.listRef,
-      onStartReached: sidebarScroll.onStartReached,
       showScrollButton: sidebarScroll.showScrollButton,
       isAtBottom: sidebarScroll.isAtBottom,
       isFollowingLatest: sidebarScroll.isFollowingLatest,
@@ -254,7 +253,6 @@ export function ChatPanelTab({
     }),
     [
       sidebarScroll.listRef,
-      sidebarScroll.onStartReached,
       sidebarScroll.showScrollButton,
       sidebarScroll.isAtBottom,
       sidebarScroll.isFollowingLatest,

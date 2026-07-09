@@ -328,7 +328,6 @@ export const ChatColumn = memo(function ChatColumn({
               isLoadingOlder={conversation.history.isLoadingOlder}
               isLoadingHistory={conversation.history.isInitialLoading}
               listRef={listRef}
-              onStartReached={scroll.onStartReached}
               className="session-content"
               contentContainerStyle={FULL_CHAT_CONTENT_STYLE}
               estimatedItemSize={140}
