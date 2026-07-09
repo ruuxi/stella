@@ -7,7 +7,10 @@ import {
 } from "./run-completion.js";
 import { executeRuntimeAgentPrompt } from "./run-execution.js";
 import { buildSubagentSystemPrompt } from "./run-preparation.js";
-import { createRunEventRecorder } from "./run-events.js";
+import {
+  createRunEventRecorder,
+  type RuntimeRunEventRecorder,
+} from "./run-events.js";
 import { PiSessionCore } from "./pi-session-core.js";
 import {
   QUARANTINE_CUSTOM_TYPE,
@@ -22,9 +25,38 @@ import {
   persistThreadCustomMessage,
 } from "./thread-memory.js";
 import { createPiTools } from "./tool-adapters.js";
-import type { SubagentRunOptions, SubagentRunResult } from "./types.js";
+import type {
+  RuntimeRunCallbacks,
+  SubagentRunOptions,
+  SubagentRunResult,
+} from "./types.js";
 
 export class SubagentSession extends PiSessionCore {
+  private currentRetryStatusContext: {
+    recorder: RuntimeRunEventRecorder;
+    callbacks?: Partial<RuntimeRunCallbacks>;
+  } | null = null;
+
+  private handleProviderRetry = (info: {
+    attempt: number;
+    delayMs: number;
+    reason?: string;
+  }): void => {
+    if (info.attempt < 2) return;
+    const context = this.currentRetryStatusContext;
+    if (!context) return;
+    const seconds = Math.max(1, Math.round(info.delayMs / 1_000));
+    try {
+      const event = context.recorder.recordStatus(
+        `Task connection interrupted — reconnecting in ${seconds}s`,
+        "provider-retry",
+      );
+      context.callbacks?.onStatus?.(event);
+    } catch {
+      // Recovery must not fail because a status listener did.
+    }
+  };
+
   constructor(
     public readonly threadId: string,
     public readonly conversationId: string,
@@ -109,6 +141,7 @@ export class SubagentSession extends PiSessionCore {
       agentContext: opts.agentContext,
       ...(opts.hookEmitter ? { hookEmitter: opts.hookEmitter } : {}),
       tools,
+      onProviderRetry: this.handleProviderRetry,
       logContext: {
         threadId: this.threadId,
         runId,
@@ -155,6 +188,10 @@ export class SubagentSession extends PiSessionCore {
       });
     }
 
+    this.currentRetryStatusContext = {
+      recorder: runEvents,
+      ...(opts.callbacks ? { callbacks: opts.callbacks } : {}),
+    };
     try {
       const promptMessages = await buildSubagentPromptMessages({
         context: opts.agentContext,
@@ -319,11 +356,14 @@ export class SubagentSession extends PiSessionCore {
         error: surfacedError,
         threadKey: this.threadKey,
       });
+    } finally {
+      this.currentRetryStatusContext = null;
     }
   }
 
   dispose(): void {
     super.dispose();
+    this.currentRetryStatusContext = null;
   }
 }
 

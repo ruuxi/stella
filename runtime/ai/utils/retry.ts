@@ -155,3 +155,46 @@ export function isRetryableConnectionError(error: unknown): boolean {
 		error.message,
 	) || /rate limit|too many requests|resource.?exhausted|temporarily unavailable|overloaded/i.test(error.message);
 }
+
+/**
+ * Narrow transport-only classifier for reconnecting an in-flight stream.
+ * Provider HTTP/status errors are intentionally excluded: auth, quota,
+ * policy, payment, validation and explicit provider failures must surface
+ * immediately rather than being mistaken for a broken socket.
+ */
+export function isTransientTransportError(error: unknown): boolean {
+	if (!(error instanceof Error)) return false;
+	if (error.name === "AbortError" || error.message === "Request was aborted") {
+		return false;
+	}
+	const status = (error as { status?: unknown }).status ?? (error as { statusCode?: unknown }).statusCode;
+	if (typeof status === "number") return false;
+
+	const codes = new Set([
+		"ECONNABORTED",
+		"ECONNREFUSED",
+		"ECONNRESET",
+		"EHOSTUNREACH",
+		"EPIPE",
+		"ETIMEDOUT",
+		"EAI_AGAIN",
+		"ENETDOWN",
+		"ENETUNREACH",
+		"ENOTFOUND",
+		"UND_ERR_SOCKET",
+	]);
+	const code = (error as { code?: unknown }).code;
+	if (typeof code === "string" && codes.has(code.toUpperCase())) return true;
+
+	const message = error.message;
+	if (
+		/(?:socket|connection).*(?:closed|closure|reset|refused|terminated|timed?\s*out|unexpected)|(?:closed|reset).*(?:socket|connection)|unexpected\s+eof|premature\s+close|fetch\s+failed|failed\s+to\s+fetch|network\s+(?:error|offline)|internet\s+connection\s+appears\s+to\s+be\s+offline|load\s+failed/i.test(
+			message,
+		)
+	) {
+		return true;
+	}
+
+	const cause = (error as { cause?: unknown }).cause;
+	return cause !== undefined && cause !== error ? isTransientTransportError(cause) : false;
+}

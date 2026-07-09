@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
+import type { ResponseCreateParamsStreaming, ResponseStreamEvent } from "openai/resources/responses/responses.js";
 import { getEnvApiKey } from "../env-api-keys.js";
 import { clampThinkingLevel } from "../models.js";
 import type {
@@ -17,6 +17,7 @@ import type {
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { anomalousStreamStopError } from "../utils/provider-stop.js";
+import { resilientEventStream } from "../utils/resilient-event-stream.js";
 import { isCloudflareProvider, resolveCloudflareBaseUrl } from "./cloudflare.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.js";
@@ -100,13 +101,54 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 			if (nextParams !== undefined) {
 				params = nextParams as ResponseCreateParamsStreaming;
 			}
-			const requestOptions = {
-				...(options?.signal ? { signal: options.signal } : {}),
+			// Keep SDK retries out of this path: they do not cover body-stream
+			// closures and their independent deadline can exceed Stella's bounded
+			// reconnect window. The resilience wrapper below owns both phases.
+			const idempotencyKey = `stella-response-${
+				globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+			}`;
+			const requestOptions = (signal?: AbortSignal) => ({
+				...(signal ? { signal } : {}),
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
-				...(options?.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+				maxRetries: 0,
+				headers: { "Idempotency-Key": idempotencyKey },
+			});
+			const connect = async (signal?: AbortSignal): Promise<AsyncIterable<ResponseStreamEvent>> => {
+				const { data, response } = await client.responses.create(params, requestOptions(signal)).withResponse();
+				await options?.onResponse?.(
+					{
+						status: response.status,
+						headers: headersToRecord(response.headers),
+					},
+					model,
+				);
+				return data;
 			};
-			const { data: openaiStream, response } = await client.responses.create(params, requestOptions).withResponse();
-			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
+			const durableResumeEnabled = params.background === true && params.store !== false;
+			const resume = durableResumeEnabled
+				? async ({ runId, cursor, signal }: { runId: string; cursor: number; signal?: AbortSignal }) => {
+						const { data, response } = await client.responses
+							.retrieve(runId, { stream: true, starting_after: cursor }, requestOptions(signal))
+							.withResponse();
+						await options?.onResponse?.(
+							{
+								status: response.status,
+								headers: headersToRecord(response.headers),
+							},
+							model,
+						);
+						return data;
+					}
+				: undefined;
+			const openaiStream = resilientEventStream<ResponseStreamEvent>({
+				connect,
+				...(resume ? { resume } : {}),
+				getRunId: (event) => ("response" in event && event.response?.id ? event.response.id : undefined),
+				getSequence: (event) => (typeof event.sequence_number === "number" ? event.sequence_number : undefined),
+				isTerminal: (event) => event.type === "response.completed" || event.type === "response.failed" || event.type === "error",
+				...(options?.signal ? { signal: options.signal } : {}),
+				onReconnect: ({ attempt, delayMs, reason }) => options?.onProviderRetry?.({ attempt, delayMs, reason }),
+			});
 			stream.push({ type: "start", partial: output });
 
 			await processResponsesStream(openaiStream, output, stream, model, {
