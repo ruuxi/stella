@@ -700,6 +700,88 @@ describe("mergeFooterTasks", () => {
     expect(shouldShowTaskReasoningSummaries(merged[0]!)).toBe(true);
   });
 
+  it("keeps a still-running thread visible when a stale live terminal overlay races the busy orchestrator", () => {
+    // Repro of the sidebar bug: while the orchestrator is busy/streaming, a
+    // stale live overlay reported the in-flight thread as terminal
+    // (completed) even though the reload-safe persisted lifecycle still had
+    // it running. `{ ...persisted, ...live }` let the live terminal status
+    // win, so the row dropped out of the running list until the run went
+    // idle and the overlay cleared. The persisted running truth must win.
+    const persisted: TaskItem[] = [
+      {
+        id: "task-1",
+        description: "Long background task",
+        agentType: "general",
+        status: "running",
+        startedAtMs: 100,
+        lastUpdatedAtMs: 900,
+        statusText: "Working",
+      },
+    ];
+    const staleLiveTerminal: TaskItem[] = [
+      {
+        id: "task-1",
+        description: "Long background task",
+        agentType: "general",
+        status: "completed",
+        runId: "run-prev",
+        startedAtMs: 100,
+        completedAtMs: 500,
+        lastUpdatedAtMs: 500,
+        outputPreview: "Stale done",
+      },
+    ];
+
+    const merged = mergeFooterTasks(persisted, staleLiveTerminal);
+    expect(merged[0]?.status).toBe("running");
+    expect(merged[0]?.completedAtMs).toBeUndefined();
+    expect(merged[0]?.outputPreview).toBeUndefined();
+
+    // Mirror the sidebar's running/done split: the thread must land in the
+    // running list (always visible), not the capped done list.
+    const rows = groupActivityTasks(merged);
+    const rowStatus = (row: (typeof rows)[number]) =>
+      row.kind === "task" ? row.task.status : row.group.status;
+    const running = rows.filter((row) => rowStatus(row) === "running");
+    const done = rows.filter((row) => rowStatus(row) !== "running");
+    expect(running).toHaveLength(1);
+    expect(done).toHaveLength(0);
+  });
+
+  it("still lets a genuine completion terminalize once the persisted feed agrees", () => {
+    // Guard against over-correcting: when the persisted lifecycle has also
+    // recorded the terminal event, the row settles to done as before.
+    const merged = mergeFooterTasks(
+      [
+        {
+          id: "task-1",
+          description: "Long background task",
+          agentType: "general",
+          status: "completed",
+          startedAtMs: 100,
+          completedAtMs: 900,
+          lastUpdatedAtMs: 900,
+          outputPreview: "Done",
+        },
+      ],
+      [
+        {
+          id: "task-1",
+          description: "Long background task",
+          agentType: "general",
+          status: "completed",
+          runId: "run-1",
+          startedAtMs: 100,
+          completedAtMs: 900,
+          lastUpdatedAtMs: 900,
+          outputPreview: "Done",
+        },
+      ],
+    );
+    expect(merged[0]?.status).toBe("completed");
+    expect(merged[0]?.completedAtMs).toBe(900);
+  });
+
   it("does not let resume snapshots revive completed persisted tasks", () => {
     const merged = mergeFooterTasks(
       [

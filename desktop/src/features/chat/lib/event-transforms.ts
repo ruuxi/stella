@@ -997,11 +997,31 @@ export function mergeFooterTasks(
     ) {
       continue
     }
+    // A still-running persisted thread must not be demoted to a terminal
+    // row by a live overlay. The persisted lifecycle is the reload-safe
+    // truth: if the runtime had really ended this thread it would have
+    // persisted an `agent-completed`/`-failed`/`-canceled` event and the
+    // persisted status would be terminal too. So while the persisted row
+    // still reads `running`, a terminal live copy is a stale overlay — e.g.
+    // a lingering completed/replayed entry that races the in-flight run
+    // WHILE THE ORCHESTRATOR IS BUSY — and letting `...task` overwrite the
+    // status silently dropped the active thread out of the running list
+    // until the run went idle and the stale overlay cleared. Keep the row
+    // running (and terminal-only fields empty) so it stays visible; a
+    // genuine completion terminalizes it the moment the persisted feed
+    // catches up and both sources agree. The inverse — a live *running*
+    // copy reopening a terminal persisted row — is handled by the
+    // revival guard above.
+    const keepPersistedRunning =
+      persistedTask !== undefined &&
+      persistedTask.status === 'running' &&
+      isTerminalTaskLifecycleStatus(task.status)
     const nextTask =
       persistedTask
         ? {
             ...persistedTask,
             ...task,
+            status: keepPersistedRunning ? 'running' : task.status,
             // A live task can carry a fallback label that is merely the
             // de-slugged id ("Fix the bug" from `fix-the-bug`) — that must
             // not overwrite a richer persisted spawn description, so compare
@@ -1025,13 +1045,13 @@ export function mergeFooterTasks(
               ? persistedTask.startedAtMs
               : task.startedAtMs,
             completedAtMs:
-              task.status === 'running'
+              task.status === 'running' || keepPersistedRunning
                 ? undefined
                 : task.hydratedFromResumeSnapshot
                   ? (persistedTask.completedAtMs ?? task.completedAtMs)
                   : (task.completedAtMs ?? persistedTask.completedAtMs),
             outputPreview:
-              task.status === 'running'
+              task.status === 'running' || keepPersistedRunning
                 ? undefined
                 : (task.outputPreview ?? persistedTask.outputPreview),
             // Live tasks hydrated from resume snapshots don't carry group
