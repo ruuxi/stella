@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EMPTY_FIRST_SEEN_ORDER,
+  activityRowKey,
   orderByFirstSeen,
   type ActivityRow,
   type TaskItem,
@@ -21,9 +22,6 @@ const task = (id: string, startedAtMs: number): ActivityRow => ({
     lastUpdatedAtMs: startedAtMs,
   } as TaskItem,
 });
-
-const activityRowId = (row: ActivityRow): string =>
-  row.kind === "task" ? row.task.id : row.group.groupKey;
 
 describe("orderByFirstSeen (newest-at-top)", () => {
   it("renders newest-first and ignores a live-updating sort field", () => {
@@ -101,23 +99,24 @@ describe("orderByFirstSeen (newest-at-top)", () => {
     const initial = [task("agent-1", 100), task("agent-2", 200)];
     const first = orderByFirstSeen(
       initial,
-      activityRowId,
+      activityRowKey,
       EMPTY_FIRST_SEEN_ORDER,
       true,
     );
     // agent-2 started later → top; agent-1 stays below.
-    expect(first.ordered.map(activityRowId)).toEqual(["agent-2", "agent-1"]);
+    expect(first.ordered.map(activityRowKey)).toEqual([
+      "task:agent-2",
+      "task:agent-1",
+    ]);
 
     // agent-1's started event ages out; its startedAtMs is recomputed higher
     // than agent-2's and the feed order flips, but the pinned order does not.
     const drifted = [task("agent-2", 200), task("agent-1", 300)];
-    const second = orderByFirstSeen(
-      drifted,
-      activityRowId,
-      first.state,
-      true,
-    );
-    expect(second.ordered.map(activityRowId)).toEqual(["agent-2", "agent-1"]);
+    const second = orderByFirstSeen(drifted, activityRowKey, first.state, true);
+    expect(second.ordered.map(activityRowKey)).toEqual([
+      "task:agent-2",
+      "task:agent-1",
+    ]);
   });
 
   it("keeps running-row order stable across type-a-query-then-clear", () => {
@@ -131,25 +130,25 @@ describe("orderByFirstSeen (newest-at-top)", () => {
     const step = (query: string | null) => {
       const { ordered, state: next } = orderByFirstSeen(
         running,
-        activityRowId,
+        activityRowKey,
         state,
         true,
       );
       state = next;
       const visible = query
-        ? ordered.filter((row) => activityRowId(row).includes(query))
+        ? ordered.filter((row) => activityRowKey(row).includes(query))
         : ordered;
-      return visible.map(activityRowId);
+      return visible.map(activityRowKey);
     };
 
     // No query: newest (agent-b) at the top.
-    expect(step(null)).toEqual(["agent-b", "agent-a"]);
+    expect(step(null)).toEqual(["task:agent-b", "task:agent-a"]);
     // Type a query that only matches agent-a: agent-b is filtered from view
     // but must NOT be pruned from the frozen order map.
-    expect(step("agent-a")).toEqual(["agent-a"]);
-    expect(state.order.has("agent-b")).toBe(true);
+    expect(step("agent-a")).toEqual(["task:agent-a"]);
+    expect(state.order.has("task:agent-b")).toBe(true);
     // Clear the query: order is identical to before the search — agent-b did
     // not re-enter as newly-seen and jump to the top.
-    expect(step(null)).toEqual(["agent-b", "agent-a"]);
+    expect(step(null)).toEqual(["task:agent-b", "task:agent-a"]);
   });
 });

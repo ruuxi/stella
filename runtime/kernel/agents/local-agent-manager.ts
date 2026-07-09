@@ -603,12 +603,29 @@ export class LocalAgentManager implements AgentToolApi {
     const runningRecords =
       this.opts.listAgentRecordsByStatus?.("running") ?? [];
     for (const record of runningRecords) {
+      const error = AGENT_ORPHANED_RESTART_CANCEL_REASON;
       this.opts.saveAgentRecord?.({
         ...record,
         status: "canceled",
         completedAt: now,
-        error: AGENT_ORPHANED_RESTART_CANCEL_REASON,
+        error,
         updatedAt: now,
+      });
+      // The runtime worker, not Electron's renderer/main process, owns agent
+      // execution. Persist the matching lifecycle transition here so every
+      // Activity consumer observes the real worker restart. Renderer code
+      // must not guess that an old `agent-started` event stopped merely
+      // because the desktop window restarted: the detached worker may still
+      // be running it.
+      this.opts.onAgentEvent?.({
+        type: "agent-canceled",
+        conversationId: record.conversationId,
+        agentId: record.threadId,
+        agentType: record.agentType,
+        description: record.description,
+        parentAgentId: record.parentAgentId,
+        error,
+        audience: "display-only",
       });
     }
   }

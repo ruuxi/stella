@@ -29,7 +29,6 @@ import { AlertCircle, Check, Search } from "@/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import { useChatRuntime } from "@/context/use-chat-runtime";
-import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import { useMergedBackgroundTasks } from "@/features/chat/hooks/use-merged-background-tasks";
 import {
   isActivityFeedTask,
@@ -272,13 +271,11 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
   const sidebarDocked = useLeftSidebarDocked();
   const reduceMotion = useReducedMotion();
   const chat = useChatRuntime();
-  const appSessionStartedAtMs = useAgentSessionStartedAt();
   const tasks = useMergedBackgroundTasks({
     activities: chat.conversation.activity.activities,
     liveTasks: chat.conversation.streaming.liveTasks,
     latestMessageTimestampMs:
       chat.conversation.activity.latestMessageTimestampMs,
-    appSessionStartedAtMs,
   });
 
   const { state, runningCount } = useActivityPillState(tasks);

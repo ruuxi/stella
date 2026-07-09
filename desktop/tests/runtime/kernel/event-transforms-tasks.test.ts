@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  EMPTY_FIRST_SEEN_ORDER,
+  activityRowKey,
   fallbackTaskDescription,
   isActivityFeedTask,
   isFallbackTaskDescription,
   extractStepsFromEvents,
+  extractTasksFromActivities,
   extractTasksFromEvents,
   getTaskDisplayText,
   getTaskGroupStatusText,
   getFooterTasksFromEvents,
   groupActivityTasks,
   mergeFooterTasks,
+  orderByFirstSeen,
   pruneGroupExpandOverrides,
   shouldShowTaskReasoningSummaries,
   updateSeenRunningGroupKeys,
@@ -336,7 +340,7 @@ describe("extractTasksFromEvents", () => {
     expect(task.outputPreview).toBe("Done");
   });
 
-  it("marks running tasks from a previous app session as stopped", () => {
+  it("does not infer task cancellation from the desktop app session", () => {
     const events = [
       event("1", 100, "agent-started", {
         agentId: "task-1",
@@ -349,12 +353,263 @@ describe("extractTasksFromEvents", () => {
       }),
     ];
 
-    const [task] = extractTasksFromEvents(events, {
+    // Regression: the Electron app can restart/reconnect while its detached
+    // runtime worker and task keep running. The removed selector option used
+    // to turn both rows into `canceled` solely because their last event was
+    // older than the desktop process. Cast the old call shape deliberately so
+    // this test fails against the pre-fix implementation.
+    const legacySelector = extractTasksFromEvents as (
+      records: EventRecord[],
+      options: { appSessionStartedAtMs: number },
+    ) => TaskItem[];
+    const [task] = legacySelector(events, { appSessionStartedAtMs: 1_000 });
+
+    expect(task.status).toBe("running");
+    expect(task.outputPreview).toBeUndefined();
+  });
+
+  it("keeps two authoritative rows running across foreground busy toggles, reorder, and reconnect", () => {
+    const rawActivity = [
+      event("alpha-start", 100, "agent-started", {
+        agentId: "alpha",
+        agentType: "general",
+        description: "Alpha task",
+        rootRunId: "run-background-alpha",
+      }),
+      event("beta-start", 200, "agent-started", {
+        agentId: "beta",
+        agentType: "general",
+        description: "Beta task",
+        rootRunId: "run-background-beta",
+      }),
+    ];
+    const legacySelector = extractTasksFromActivities as (
+      records: EventRecord[],
+      options: { appSessionStartedAtMs: number },
+    ) => TaskItem[];
+    const persisted = legacySelector(rawActivity, {
       appSessionStartedAtMs: 1_000,
     });
+    const statuses = (tasks: TaskItem[]) =>
+      Object.fromEntries(tasks.map((item) => [item.id, item.status]));
 
-    expect(task.status).toBe("canceled");
-    expect(task.outputPreview).toBe("Stopped when Stella restarted.");
+    // Idle: fresh live observations exist for both background task runs.
+    const idle = mergeFooterTasks(
+      persisted,
+      persisted.map((item) => ({
+        ...item,
+        hydratedFromResumeSnapshot: false,
+      })),
+    );
+    // Foreground busy/reconnect: the same tasks are replay-hydrated while a
+    // different orchestrator run is active. Their own lifecycle did not move.
+    const busy = mergeFooterTasks(
+      persisted,
+      persisted.map((item) => ({
+        ...item,
+        hydratedFromResumeSnapshot: true,
+      })),
+    );
+    const idleAgain = mergeFooterTasks(persisted, []);
+
+    expect(statuses(idle)).toEqual({ alpha: "running", beta: "running" });
+    expect(statuses(busy)).toEqual({ alpha: "running", beta: "running" });
+    expect(statuses(idleAgain)).toEqual({
+      alpha: "running",
+      beta: "running",
+    });
+    expect(persisted.map((item) => item.runId)).toEqual([
+      "run-background-alpha",
+      "run-background-beta",
+    ]);
+
+    const firstRows = groupActivityTasks(busy);
+    const firstOrder = orderByFirstSeen(
+      firstRows,
+      activityRowKey,
+      EMPTY_FIRST_SEEN_ORDER,
+      true,
+    );
+    expect(firstOrder.ordered.map(activityRowKey)).toEqual([
+      "task:beta",
+      "task:alpha",
+    ]);
+
+    const reorderedActivity = [
+      ...rawActivity,
+      event("gamma-start", 300, "agent-started", {
+        agentId: "gamma",
+        agentType: "general",
+        description: "Gamma task",
+        rootRunId: "run-foreground",
+      }),
+    ];
+    const reorderedRows = groupActivityTasks(
+      extractTasksFromActivities(reorderedActivity),
+    );
+    const afterPrepend = orderByFirstSeen(
+      reorderedRows,
+      activityRowKey,
+      firstOrder.state,
+      true,
+    );
+    expect(afterPrepend.ordered.map(activityRowKey)).toEqual([
+      "task:gamma",
+      "task:beta",
+      "task:alpha",
+    ]);
+    expect(statuses(busy)).toEqual({ alpha: "running", beta: "running" });
+
+    // A reconnect gives the renderer new event/object identities, but row
+    // keys, task run ownership, and statuses remain identical.
+    const reconnected = extractTasksFromActivities(
+      structuredClone(rawActivity),
+    );
+    expect(
+      reconnected.map((item) => ({
+        id: item.id,
+        runId: item.runId,
+        status: item.status,
+      })),
+    ).toEqual([
+      {
+        id: "alpha",
+        runId: "run-background-alpha",
+        status: "running",
+      },
+      {
+        id: "beta",
+        runId: "run-background-beta",
+        status: "running",
+      },
+    ]);
+  });
+
+  it("reconciles restart outcomes monotonically without blanket-pausing rows", () => {
+    const restartedActivity = [
+      event("running-start", 100, "agent-started", {
+        agentId: "still-running",
+        agentType: "general",
+        description: "Still running",
+        rootRunId: "run-running",
+        groupKey: "grp-restart",
+        groupLabel: "Restart checks",
+      }),
+      event("completed-start", 110, "agent-started", {
+        agentId: "completed-while-away",
+        agentType: "general",
+        description: "Completed while away",
+        rootRunId: "run-completed",
+        groupKey: "grp-restart",
+        groupLabel: "Restart checks",
+      }),
+      event("completed-end", 210, "agent-completed", {
+        agentId: "completed-while-away",
+        rootRunId: "run-completed",
+        result: "Finished while the desktop was down",
+        groupKey: "grp-restart",
+        groupLabel: "Restart checks",
+      }),
+      event("paused-start", 120, "agent-started", {
+        agentId: "paused-while-away",
+        agentType: "general",
+        description: "Paused while away",
+        rootRunId: "run-paused",
+      }),
+      event("paused-end", 220, "agent-canceled", {
+        agentId: "paused-while-away",
+        rootRunId: "run-paused",
+        error: "Paused by orchestrator.",
+      }),
+      event("failed-start", 130, "agent-started", {
+        agentId: "failed-while-away",
+        agentType: "general",
+        description: "Failed while away",
+        rootRunId: "run-failed",
+      }),
+      event("failed-end", 230, "agent-failed", {
+        agentId: "failed-while-away",
+        rootRunId: "run-failed",
+        error: "Provider failed",
+      }),
+    ].sort((a, b) => a.timestamp - b.timestamp);
+
+    // This is the delayed/unavailable-runtime case: only durable activity is
+    // available provisionally. It must preserve the one genuinely-running
+    // row rather than blanket-reset every pre-restart task to paused.
+    const tasks = extractTasksFromActivities(restartedActivity);
+    expect(
+      Object.fromEntries(tasks.map((item) => [item.id, item.status])),
+    ).toEqual({
+      "still-running": "running",
+      "completed-while-away": "completed",
+      "paused-while-away": "canceled",
+      "failed-while-away": "error",
+    });
+    expect(groupActivityTasks(tasks)[0]).toMatchObject({
+      kind: "group",
+      group: {
+        groupKey: "grp-restart",
+        status: "running",
+        totalCount: 2,
+      },
+    });
+
+    // A true runtime-worker restart emits an authoritative canceled event for
+    // orphaned work. Appending that event settles only the affected row.
+    const afterWorkerRestart = extractTasksFromActivities([
+      ...restartedActivity,
+      event("running-orphaned", 300, "agent-canceled", {
+        agentId: "still-running",
+        error: "Canceled because Stella restarted before the agent finished.",
+        groupKey: "grp-restart",
+        groupLabel: "Restart checks",
+      }),
+    ]);
+    expect(
+      afterWorkerRestart.find((item) => item.id === "still-running")?.status,
+    ).toBe("canceled");
+    expect(
+      afterWorkerRestart.find((item) => item.id === "completed-while-away")
+        ?.status,
+    ).toBe("completed");
+  });
+
+  it("ignores duplicate old-run terminal replay after a newer run starts", () => {
+    const tasks = extractTasksFromActivities([
+      event("old-start", 100, "agent-started", {
+        agentId: "thread-1",
+        agentType: "general",
+        description: "Thread 1",
+        rootRunId: "run-old",
+      }),
+      event("old-complete", 200, "agent-completed", {
+        agentId: "thread-1",
+        rootRunId: "run-old",
+        result: "Old result",
+      }),
+      event("new-start", 300, "agent-started", {
+        agentId: "thread-1",
+        agentType: "general",
+        description: "Thread 1",
+        rootRunId: "run-new",
+        isFollowUp: true,
+      }),
+      // Duplicate/out-of-order replay from the prior execution. Root-run
+      // identity prevents it from terminalizing the newer live execution.
+      event("old-complete-replay", 400, "agent-completed", {
+        agentId: "thread-1",
+        rootRunId: "run-old",
+        result: "Old result",
+      }),
+    ]);
+
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({
+      id: "thread-1",
+      runId: "run-new",
+      status: "running",
+    });
   });
 
   it("preserves progress text when a later started event has no status", () => {

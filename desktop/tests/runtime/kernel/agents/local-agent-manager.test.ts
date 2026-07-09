@@ -31,6 +31,7 @@ describe("LocalAgentManager Exec fs locking", () => {
         ConstructorParameters<typeof LocalAgentManager>[0]["saveAgentRecord"]
       >
     >[0][] = [];
+    const lifecycleEvents: AgentLifecycleEvent[] = [];
 
     new LocalAgentManager({
       maxConcurrent: 1,
@@ -62,20 +63,60 @@ describe("LocalAgentManager Exec fs locking", () => {
                 completedAt: null,
                 updatedAt: 456,
               },
+              {
+                threadId: "task-9",
+                conversationId: "conv-1",
+                agentType: "general",
+                description: "second stale agent task",
+                agentDepth: 0,
+                status: "running",
+                startedAt: 234,
+                completedAt: null,
+                updatedAt: 567,
+              },
             ]
           : [],
       saveAgentRecord: (record) => {
         savedRecords.push(record);
       },
+      onAgentEvent: (event) => {
+        lifecycleEvents.push(event);
+      },
     });
 
-    expect(savedRecords).toHaveLength(1);
-    expect(savedRecords[0]).toMatchObject({
-      threadId: "task-8",
-      status: "canceled",
-      completedAt: expect.any(Number),
-      error: AGENT_ORPHANED_RESTART_CANCEL_REASON,
-    });
+    expect(savedRecords).toHaveLength(2);
+    expect(savedRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          threadId: "task-8",
+          status: "canceled",
+          completedAt: expect.any(Number),
+          error: AGENT_ORPHANED_RESTART_CANCEL_REASON,
+        }),
+        expect.objectContaining({
+          threadId: "task-9",
+          status: "canceled",
+          completedAt: expect.any(Number),
+          error: AGENT_ORPHANED_RESTART_CANCEL_REASON,
+        }),
+      ]),
+    );
+    expect(lifecycleEvents).toEqual([
+      expect.objectContaining({
+        type: "agent-canceled",
+        conversationId: "conv-1",
+        agentId: "task-8",
+        error: AGENT_ORPHANED_RESTART_CANCEL_REASON,
+        audience: "display-only",
+      }),
+      expect.objectContaining({
+        type: "agent-canceled",
+        conversationId: "conv-1",
+        agentId: "task-9",
+        error: AGENT_ORPHANED_RESTART_CANCEL_REASON,
+        audience: "display-only",
+      }),
+    ]);
   });
 
   it("emits completed terminal events with the agent result and file changes", async () => {
@@ -362,8 +403,9 @@ describe("LocalAgentManager Exec fs locking", () => {
         }),
       ]),
     );
-    expect(resumedEvents.every((event) => event.rootRunId === "root-current"))
-      .toBe(true);
+    expect(
+      resumedEvents.every((event) => event.rootRunId === "root-current"),
+    ).toBe(true);
 
     let state = streamStoreReducer(initialStoreState, {
       type: "run-started",
@@ -596,9 +638,9 @@ describe("LocalAgentManager Exec fs locking", () => {
     expect(completions()).toHaveLength(1);
     expect(completions()[0]).toMatchObject({ result: "done-2" });
     expect(completions()[0]?.audience).toBeUndefined();
-    expect(
-      completions().every((event) => event.result !== "done-1"),
-    ).toBe(true);
+    expect(completions().every((event) => event.result !== "done-1")).toBe(
+      true,
+    );
     expect(manager.getActiveAgentCount()).toBe(0);
   });
 

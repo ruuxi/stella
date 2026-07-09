@@ -56,6 +56,9 @@ export const getEventText = (event: EventRecord): string => {
  *  on lifecycle events whose thread was spawned into a group; absent on
  *  ungrouped agents and on legacy persisted events. */
 type AgentLifecycleGroupFields = {
+  /** Root orchestrator run that observed this task transition. Persisted for
+   * diagnostics/reconciliation; the stable row identity remains agentId. */
+  rootRunId?: string
   groupKey?: string
   groupLabel?: string
 }
@@ -103,9 +106,8 @@ export type TaskItem = {
   description: string
   agentType: string
   status: TaskLifecycleStatus
-  /** Identifier of the agent run that owns this task. Set when a task is
-   *  produced from streaming events (resume snapshots, task-upserts).
-   *  Tasks reconstructed from local persisted events may not have it. */
+  /** Root run that owns the latest task lifecycle. New persisted lifecycle
+   *  events carry it; legacy persisted events may not. */
   runId?: string
   /** True when the task came from a reconnect/reload resume snapshot, not
    *  from a freshly observed lifecycle stream event. Snapshot timestamps are
@@ -418,10 +420,7 @@ export function getCurrentRunningTool(
 }
 
 // Extract tasks from events
-export function extractTasksFromEvents(
-  events: EventRecord[],
-  options?: { appSessionStartedAtMs?: number | null },
-): TaskItem[] {
+export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
   let latestMessageTimestampMs: number | null = null
   for (const event of events) {
     if (!isUserMessage(event) && !isAssistantMessage(event)) continue
@@ -433,7 +432,6 @@ export function extractTasksFromEvents(
     }
   }
   return extractTasksFromActivities(events, {
-    appSessionStartedAtMs: options?.appSessionStartedAtMs ?? null,
     latestMessageTimestampMs,
   })
 }
@@ -454,12 +452,10 @@ export function extractTasksFromEvents(
  */
 export function extractTasksFromActivities(
   activities: EventRecord[],
-  options?: {
-    appSessionStartedAtMs?: number | null
+  _options?: {
     latestMessageTimestampMs?: number | null
   },
 ): TaskItem[] {
-  const appSessionStartedAtMs = options?.appSessionStartedAtMs ?? null
   const tasksById = new Map<string, TaskItem>()
 
   const ensureTask = (
@@ -473,6 +469,7 @@ export function extractTasksFromActivities(
       description: previous?.description ?? fallbackTaskDescription(agentId),
       agentType: previous?.agentType ?? 'general',
       status: previous?.status ?? 'running',
+      runId: previous?.runId,
       parentAgentId: previous?.parentAgentId,
       groupKey: previous?.groupKey,
       groupLabel: previous?.groupLabel,
@@ -498,6 +495,21 @@ export function extractTasksFromActivities(
         }
       : {}
 
+  const runOverrides = (
+    payload: AgentLifecycleGroupFields,
+  ): Partial<TaskItem> =>
+    payload.rootRunId ? { runId: payload.rootRunId } : {}
+
+  const isDifferentKnownRun = (
+    previous: TaskItem | undefined,
+    payload: AgentLifecycleGroupFields,
+  ): boolean =>
+    Boolean(
+      previous?.runId &&
+        payload.rootRunId &&
+        previous.runId !== payload.rootRunId,
+    )
+
   // Once a task reaches a terminal state, only a fresh `agent-started`
   // (send_input re-activation) may revive it. This guards against in-flight
   // `agent-progress` events that race with `agent-canceled` and would
@@ -514,6 +526,7 @@ export function extractTasksFromActivities(
         description: event.payload.description,
         agentType: event.payload.agentType,
         status: 'running',
+        runId: event.payload.rootRunId ?? previous?.runId,
         parentAgentId: event.payload.parentAgentId,
         groupKey: event.payload.groupKey ?? previous?.groupKey,
         groupLabel: event.payload.groupLabel ?? previous?.groupLabel,
@@ -547,6 +560,7 @@ export function extractTasksFromActivities(
           completedAtMs: undefined,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: undefined,
+          ...runOverrides(event.payload),
           ...groupOverrides(event.payload),
         }),
       )
@@ -554,6 +568,10 @@ export function extractTasksFromActivities(
     }
 
     if (isAgentCompletedEvent(event)) {
+      const previous = tasksById.get(event.payload.agentId)
+      if (isDifferentKnownRun(previous, event.payload)) {
+        continue
+      }
       tasksById.set(
         event.payload.agentId,
         ensureTask(event.payload.agentId, event.timestamp, {
@@ -562,6 +580,7 @@ export function extractTasksFromActivities(
           completedAtMs: event.timestamp,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: event.payload.result,
+          ...runOverrides(event.payload),
           ...groupOverrides(event.payload),
         }),
       )
@@ -570,6 +589,10 @@ export function extractTasksFromActivities(
     }
 
     if (isAgentFailedEvent(event)) {
+      const previous = tasksById.get(event.payload.agentId)
+      if (isDifferentKnownRun(previous, event.payload)) {
+        continue
+      }
       tasksById.set(
         event.payload.agentId,
         ensureTask(event.payload.agentId, event.timestamp, {
@@ -578,6 +601,7 @@ export function extractTasksFromActivities(
           completedAtMs: event.timestamp,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: event.payload.error,
+          ...runOverrides(event.payload),
           ...groupOverrides(event.payload),
         }),
       )
@@ -586,6 +610,10 @@ export function extractTasksFromActivities(
     }
 
     if (isAgentCanceledEvent(event)) {
+      const previous = tasksById.get(event.payload.agentId)
+      if (isDifferentKnownRun(previous, event.payload)) {
+        continue
+      }
       tasksById.set(
         event.payload.agentId,
         ensureTask(event.payload.agentId, event.timestamp, {
@@ -594,6 +622,7 @@ export function extractTasksFromActivities(
           completedAtMs: event.timestamp,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: event.payload.error ?? 'Canceled',
+          ...runOverrides(event.payload),
           ...groupOverrides(event.payload),
         }),
       )
@@ -605,25 +634,6 @@ export function extractTasksFromActivities(
     // Internal helper agents (schedule specialists, etc.) are not user
     // work — keep them out of every activity-derived task list.
     .filter(isActivityFeedTask)
-    .map((task) => {
-      let nextTask = task
-
-      if (
-        nextTask.status === 'running' &&
-        appSessionStartedAtMs !== null &&
-        nextTask.lastUpdatedAtMs < appSessionStartedAtMs
-      ) {
-        nextTask = {
-          ...nextTask,
-          status: 'canceled',
-          completedAtMs: nextTask.completedAtMs ?? nextTask.lastUpdatedAtMs,
-          outputPreview:
-            nextTask.outputPreview ?? 'Stopped when Stella restarted.',
-        }
-      }
-
-      return nextTask
-    })
     .sort((a, b) => a.startedAtMs - b.startedAtMs)
 }
 
@@ -642,14 +652,11 @@ const sortFooterTasks = (tasks: TaskItem[]): TaskItem[] =>
 export function getFooterTasksFromEvents(
   events: EventRecord[],
   options?: {
-    appSessionStartedAtMs?: number | null
     nowMs?: number
     completionIndicatorMs?: number
   },
 ): TaskItem[] {
-  const tasks = extractTasksFromEvents(events, {
-    appSessionStartedAtMs: options?.appSessionStartedAtMs,
-  })
+  const tasks = extractTasksFromEvents(events)
   return getFooterTasksFromTasks(tasks, options)
 }
 
@@ -702,6 +709,10 @@ export type TaskGroup = {
 export type ActivityRow =
   | { kind: 'task'; task: TaskItem }
   | { kind: 'group'; group: TaskGroup }
+
+/** Stable, namespaced identity shared by sorting state and React keys. */
+export const activityRowKey = (row: ActivityRow): string =>
+  row.kind === 'task' ? `task:${row.task.id}` : `group:${row.group.groupKey}`
 
 const buildTaskGroup = (groupKey: string, members: TaskItem[]): TaskGroup => {
   const ordered = [...members].sort(

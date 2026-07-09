@@ -34,6 +34,7 @@ import {
 } from "@/shell/section-collapse-store";
 import {
   EMPTY_FIRST_SEEN_ORDER,
+  activityRowKey,
   extractTasksFromActivities,
   getTaskDisplayText,
   getTaskGroupStatusText,
@@ -67,7 +68,6 @@ import {
 } from "@/shell/display/ActivityHistoryDialog";
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/scheduling";
-import { useAgentSessionStartedAt } from "@/features/chat/hooks/use-agent-session-started-at";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import { AgentProgressSummaries } from "@/shell/AgentProgressSummaries";
 import { useAgentProgressSummaries } from "@/features/chat/agent-progress-summary-store";
@@ -498,7 +498,7 @@ const TasksList = memo(function TasksList({
         {rows.map((row, index) =>
           row.kind === "task" ? (
             <TaskRow
-              key={row.task.id}
+              key={activityRowKey(row)}
               task={row.task}
               expanded={isTaskExpanded(row.task)}
               onToggle={onToggleTask}
@@ -508,7 +508,7 @@ const TasksList = memo(function TasksList({
             />
           ) : (
             <GroupRow
-              key={`group:${row.group.groupKey}`}
+              key={activityRowKey(row)}
               group={row.group}
               expanded={isGroupExpanded(row.group)}
               onToggle={onToggleGroup}
@@ -527,9 +527,6 @@ const TasksList = memo(function TasksList({
 
 const activityRowStatus = (row: ActivityRow): TaskItem["status"] =>
   row.kind === "task" ? row.task.status : row.group.status;
-
-const activityRowId = (row: ActivityRow): string =>
-  row.kind === "task" ? row.task.id : row.group.groupKey;
 
 const activityRowCompletedAtMs = (row: ActivityRow): number => {
   const entry = row.kind === "task" ? row.task : row.group;
@@ -574,7 +571,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
 
   const conversationId = state.conversationId;
   const activity = chat.conversation.activity;
-  const appSessionStartedAtMs = useAgentSessionStartedAt();
   const liveTasks = chat.conversation.streaming.liveTasks ?? EMPTY_TASKS;
   const filesFeed = chat.conversation.files;
   const schedules = useConversationSchedules(conversationId);
@@ -692,16 +688,10 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
 
   const allTasks = useMemo(() => {
     const persisted = extractTasksFromActivities(activity.activities, {
-      appSessionStartedAtMs,
       latestMessageTimestampMs: activity.latestMessageTimestampMs,
     });
     return mergeFooterTasks(persisted, liveTasks);
-  }, [
-    activity.activities,
-    activity.latestMessageTimestampMs,
-    appSessionStartedAtMs,
-    liveTasks,
-  ]);
+  }, [activity.activities, activity.latestMessageTimestampMs, liveTasks]);
 
   // Roll the seen-running sets forward in a memo (same idempotent-mutation
   // pattern as `runningOrderRef`) so they're current before any row computes
@@ -761,7 +751,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     );
     const { ordered, state } = orderByFirstSeen(
       running,
-      activityRowId,
+      activityRowKey,
       runningOrderRef.current,
       true,
     );
@@ -790,7 +780,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
         .sort(
           (a, b) =>
             activityRowCompletedAtMs(b) - activityRowCompletedAtMs(a) ||
-            activityRowId(a).localeCompare(activityRowId(b)),
+            activityRowKey(a).localeCompare(activityRowKey(b)),
         ),
     [activityRows],
   );

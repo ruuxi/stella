@@ -20,22 +20,19 @@ export function useMergedBackgroundTasks({
   activities,
   liveTasks,
   latestMessageTimestampMs = null,
-  appSessionStartedAtMs = null,
 }: {
   activities: EventRecord[] | undefined;
   liveTasks: TaskItem[] | undefined;
   latestMessageTimestampMs?: number | null;
-  appSessionStartedAtMs?: number | null;
 }): TaskItem[] {
   return useMemo(
     () =>
       mergeFooterTasks(
         extractTasksFromActivities(activities ?? [], {
-          appSessionStartedAtMs,
           latestMessageTimestampMs,
         }),
         liveTasks,
       ),
-    [activities, liveTasks, latestMessageTimestampMs, appSessionStartedAtMs],
+    [activities, liveTasks, latestMessageTimestampMs],
   );
 }

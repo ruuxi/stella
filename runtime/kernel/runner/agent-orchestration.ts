@@ -282,6 +282,7 @@ const resolveSelfModMetadata = (args: {
 const buildLifecycleEventPayload = (
   event: AgentLifecycleEvent,
 ): Record<string, unknown> => {
+  const runFields = event.rootRunId ? { rootRunId: event.rootRunId } : {};
   const groupFields = event.groupKey
     ? {
         groupKey: event.groupKey,
@@ -292,6 +293,7 @@ const buildLifecycleEventPayload = (
     case "agent-started":
       return {
         agentId: event.agentId,
+        ...runFields,
         description: event.description,
         agentType: event.agentType,
         ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
@@ -309,6 +311,7 @@ const buildLifecycleEventPayload = (
       // this guard catches any other emitter that forgets.
       return {
         agentId: event.agentId,
+        ...runFields,
         result: event.result ?? "",
         ...(event.fileChanges?.length
           ? { fileChanges: event.fileChanges }
@@ -322,12 +325,14 @@ const buildLifecycleEventPayload = (
     case "agent-canceled":
       return {
         agentId: event.agentId,
+        ...runFields,
         ...(event.error ? { error: event.error } : {}),
         ...groupFields,
       };
     case "agent-progress":
       return {
         agentId: event.agentId,
+        ...runFields,
         statusText: event.statusText,
         ...(event.description ? { description: event.description } : {}),
         ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
