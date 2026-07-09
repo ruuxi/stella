@@ -610,7 +610,6 @@ export function SocialChatPane({
             maintainScrollAtEnd={{ animated: false }}
             maintainScrollAtEndThreshold={0.02}
             initialScrollAtEnd
-            onScroll={socialScroll.onListScroll}
             onStartReached={socialScroll.onStartReached}
             // Prefetch older history ~2 viewports before the top, matching
             // the main/sidebar/mini chat surfaces.

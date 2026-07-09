@@ -1,9 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import type {
-  LegendListRef,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-} from "@legendapp/list/react";
+import type { LegendListRef } from "@legendapp/list/react";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import type {
   EventRecord,
@@ -103,14 +99,12 @@ export type ChatColumnComposer = {
  * Scroll API for chat surfaces.
  *
  * Backed by `@legendapp/list/react` (Legend List v3 web entry):
- * the surface attaches `listRef` to the `<LegendList>` and forwards
- * `onListScroll` to its `onScroll` prop. The hook drives custom
- * scrollbar thumb state, "at bottom" tracking, and `scrollToBottom`
- * via the list's imperative API.
+ * the surface attaches `listRef` to the `<LegendList>`. The hook listens to
+ * the native scroll node and drives custom scrollbar thumb state, "at bottom"
+ * tracking, and `scrollToBottom` via the list's imperative API.
  */
 export type ChatColumnScroll = {
   listRef: RefObject<LegendListRef | null>;
-  onListScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   /** Forwarded to Legend List's `onStartReached` for older-history pagination. */
   onStartReached: () => void;
   showScrollButton: boolean;

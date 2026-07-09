@@ -261,7 +261,6 @@ export function useFullShellChat({
    */
   const {
     listRef,
-    onListScroll,
     onStartReached,
     isAtBottom,
     isFollowingLatest,
@@ -491,7 +490,6 @@ export function useFullShellChat({
   const chatColumnScroll = useMemo<ChatColumnScroll>(
     () => ({
       listRef,
-      onListScroll,
       onStartReached,
       showScrollButton,
       isAtBottom,
@@ -502,7 +500,6 @@ export function useFullShellChat({
     }),
     [
       listRef,
-      onListScroll,
       onStartReached,
       showScrollButton,
       isAtBottom,

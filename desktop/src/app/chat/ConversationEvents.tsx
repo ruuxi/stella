@@ -12,7 +12,7 @@ import {
   type CSSProperties,
   type RefObject,
 } from "react";
-import type { LegendListRef, NativeScrollEvent, NativeSyntheticEvent } from "@legendapp/list/react";
+import type { LegendListRef } from "@legendapp/list/react";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import { useEventRows } from "@/features/chat/hooks/use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
@@ -44,7 +44,6 @@ type Props = {
   isLoadingHistory?: boolean;
   /** Threaded through to `<ChatTimeline>` → `<LegendList>`. */
   listRef?: RefObject<LegendListRef | null>;
-  onListScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onStartReached?: () => void;
   className?: string;
   contentContainerStyle?: CSSProperties;
@@ -110,7 +109,6 @@ export const ConversationEvents = memo(function ConversationEvents({
   isLoadingOlder,
   isLoadingHistory,
   listRef,
-  onListScroll,
   onStartReached,
   className,
   contentContainerStyle,
@@ -150,7 +148,6 @@ export const ConversationEvents = memo(function ConversationEvents({
       onCancelQueued={onCancelQueued}
       indicator={indicator}
       listRef={listRef}
-      onListScroll={onListScroll}
       onStartReached={onStartReached}
       className={className}
       contentContainerStyle={contentContainerStyle}

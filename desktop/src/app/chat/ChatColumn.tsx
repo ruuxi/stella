@@ -11,9 +11,8 @@
  *
  * The list element itself is the scroll container — there is no
  * column-reverse wrapper anymore. `useChatScrollManagement` drives the
- * thumb / at-bottom state from Legend's `onScroll` synthetic event and
- * `getState()` snapshot rather than reading `scrollTop` from a manual
- * div.
+ * thumb / at-bottom state from the list's native scroll node and `getState()`
+ * snapshot rather than reading `scrollTop` from a manual div.
  */
 import {
   memo,
@@ -121,7 +120,6 @@ export const ChatColumn = memo(function ChatColumn({
   }, []);
 
   const {
-    onListScroll,
     showScrollButton,
     scrollToBottom,
     thumbRef,
@@ -330,7 +328,6 @@ export const ChatColumn = memo(function ChatColumn({
               isLoadingOlder={conversation.history.isLoadingOlder}
               isLoadingHistory={conversation.history.isInitialLoading}
               listRef={listRef}
-              onListScroll={onListScroll}
               onStartReached={scroll.onStartReached}
               className="session-content"
               contentContainerStyle={FULL_CHAT_CONTENT_STYLE}

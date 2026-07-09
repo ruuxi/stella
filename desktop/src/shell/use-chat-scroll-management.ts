@@ -28,11 +28,7 @@
  *     motion rather than fighting it.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type {
-  LegendListRef,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-} from '@legendapp/list/react'
+import type { LegendListRef } from '@legendapp/list/react'
 import {
   clearAssistantScrollFollow,
   getAssistantScrollFollowKey,
@@ -309,8 +305,16 @@ export function useChatScrollManagement({
     [hideThumb],
   )
 
-  const onListScroll = useCallback(
-    (_event: NativeSyntheticEvent<NativeScrollEvent>) => {
+  /**
+   * Coalesce native scroll events without wiring Legend's public `onScroll`
+   * prop. On web that prop builds a React Native-shaped event by reading the
+   * content element's `scrollHeight`/`scrollWidth` every frame; those reads
+   * force layout while virtualized markdown rows are mounting. We only need
+   * Legend's already-maintained state snapshot, so listening passively on the
+   * actual scroll node avoids that duplicate geometry pass.
+   */
+  const scheduleScrollStateUpdate = useCallback(
+    () => {
       if (scrollStateRafRef.current !== null) return
       scrollStateRafRef.current = requestAnimationFrame(() => {
         scrollStateRafRef.current = null
@@ -849,6 +853,9 @@ export function useChatScrollManagement({
       node.addEventListener('wheel', handleWheel, { passive: true })
       node.addEventListener('touchstart', handleTouchStart, { passive: true })
       node.addEventListener('keydown', handleKeyDown)
+      node.addEventListener('scroll', scheduleScrollStateUpdate, {
+        passive: true,
+      })
 
       const unsubscribeFollow = subscribeAssistantScrollFollow(() => {
         if (!followRef.current) return
@@ -876,6 +883,7 @@ export function useChatScrollManagement({
         attached.removeEventListener('wheel', handleWheel)
         attached.removeEventListener('touchstart', handleTouchStart)
         attached.removeEventListener('keydown', handleKeyDown)
+        attached.removeEventListener('scroll', scheduleScrollStateUpdate)
         if (followAssistantRowRaf) {
           cancelAnimationFrame(followAssistantRowRaf)
           followAssistantRowRaf = 0
@@ -913,11 +921,10 @@ export function useChatScrollManagement({
       cancelAnimationFrame(frame)
       cleanup()
     }
-  }, [setFollow, trailingRegionMinPx])
+  }, [scheduleScrollStateUpdate, setFollow, trailingRegionMinPx])
 
   return {
     listRef,
-    onListScroll,
     onStartReached,
     isAtBottom,
     isFollowingLatest,

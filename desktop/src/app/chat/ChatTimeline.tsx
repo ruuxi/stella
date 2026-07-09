@@ -49,8 +49,6 @@ import {
   LegendList,
   type LegendListRef,
   type LegendListRenderItemProps,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from "@legendapp/list/react";
 import {
   AssistantMessageRow,
@@ -100,7 +98,6 @@ type ChatTimelineProps = {
    * here so the hook can call `scrollToEnd`/`getState` etc.
    */
   listRef?: RefObject<LegendListRef | null>;
-  onListScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onStartReached?: () => void;
   /**
    * Per-surface row recycling toggle. Defaults to `true` — recycling
@@ -255,7 +252,6 @@ export const ChatTimeline = memo(function ChatTimeline({
   onCancelQueued,
   indicator,
   listRef,
-  onListScroll,
   onStartReached,
   recycleItems = true,
   alignItemsAtEnd = false,
@@ -371,7 +367,9 @@ export const ChatTimeline = memo(function ChatTimeline({
       alignItemsAtEnd={alignItemsAtEnd}
       maintainVisibleContentPosition
       initialScrollAtEnd
-      onScroll={onListScroll}
+      // Scroll UI state is driven by useChatScrollManagement's passive native
+      // listener. Legend's web `onScroll` adapter synchronously reads full
+      // content geometry on every frame, forcing layout for no useful data.
       onStartReached={onStartReached}
       // Prefetch older history ~2 viewports before the user hits the very
       // top so it loads ahead of the scroll rather than at the edge.
