@@ -38,6 +38,9 @@ vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
 const { payloadToTabSpec } = await import(
   "../../../src/shell/display/payload-to-tab-spec"
 );
+const { getSelectedCanvasHtmlId } = await import(
+  "../../../src/shell/display/canvas-tab/canvas-items"
+);
 
 describe("payloadToTabSpec", () => {
   it("keeps docx office previews as office-document tabs", () => {
@@ -182,6 +185,7 @@ describe("payloadToTabSpec", () => {
     const element = spec.render() as { props: { selectedItemId?: string } };
     expect(spec.id).toBe("canvas:html");
     expect(element.props.selectedItemId).toBe("/tmp/flow.html");
+    expect(getSelectedCanvasHtmlId()).toBe("/tmp/flow.html");
   });
 
   it("passes the clicked media id to the singleton Media tab", () => {

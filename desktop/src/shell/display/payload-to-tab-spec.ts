@@ -28,7 +28,10 @@ import {
   TrashTabContent,
 } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
-import { addCanvasHtmlItem } from "./canvas-tab/canvas-items";
+import {
+  addCanvasHtmlItem,
+  setSelectedCanvasHtmlId,
+} from "./canvas-tab/canvas-items";
 import type { DisplayTabSpec } from "@/features/workspace-display/types";
 import { kindForPath } from "@/features/workspace-display/path-to-viewer";
 import { SOURCE_DIFF_TAB_ID } from "@/features/workspace-display/source-diff-batches";
@@ -215,6 +218,11 @@ export const payloadToTabSpec = (
   switch (payload.kind) {
     case "canvas-html": {
       const items = addCanvasHtmlItem(payload);
+      // Select during the click transaction rather than waiting for the
+      // mounted Canvas tab's effect. A kept-alive canvas may still be hidden
+      // here; synchronously switching it to the keyed loading boundary keeps
+      // the old iframe from being rebuilt before the panel shell can paint.
+      setSelectedCanvasHtmlId(payload.filePath);
       return {
         id: CANVAS_HTML_TAB_ID,
         kind: "canvas",

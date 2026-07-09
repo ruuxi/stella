@@ -4,7 +4,14 @@
  * over a sandboxed iframe rendering the selected file as `srcdoc`.
  */
 
-import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
+import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
 import {
   type CanvasHtmlItem,
@@ -163,7 +170,7 @@ const CanvasIllustrationSpot = ({
   </div>
 );
 
-const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
+const CanvasHeroFrameContent = ({ item }: { item: CanvasHtmlItem }) => {
   const { bytes, error, loading } = useDisplayFileBytes(
     item.filePath,
     "Canvas preview requires the Stella desktop app.",
@@ -214,6 +221,46 @@ const CanvasHeroFrame = ({ item }: { item: CanvasHtmlItem }) => {
   );
 };
 
+const CanvasHeroFrame = ({
+  item,
+  panelOpen,
+}: {
+  item: CanvasHtmlItem;
+  panelOpen: boolean;
+}) => {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!panelOpen || ready) return;
+
+    // A canvas can already be mounted in the hidden keep-alive host when a
+    // sidebar artifact is clicked. Starting its file read (or replacing its
+    // srcdoc iframe) during that click blocks Chromium's renderer before the
+    // panel gets a chance to paint. Wait for a frame of the open shell first;
+    // the keyed boundary below also makes a same-path overwrite start from
+    // this lightweight loading state instead of remounting with stale bytes.
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setReady(true));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [panelOpen, ready]);
+
+  if (!ready) {
+    return (
+      <CanvasIllustrationSpot
+        label={
+          <div className="canvas-tab__loading-label">
+            Loading
+            <CanvasLoadingDots />
+          </div>
+        }
+      />
+    );
+  }
+
+  return <CanvasHeroFrameContent item={item} />;
+};
+
 const useCanvasItems = (
   initial: ReadonlyArray<CanvasHtmlItem>,
 ): ReadonlyArray<CanvasHtmlItem> =>
@@ -239,6 +286,7 @@ export const CanvasTabContent = ({
   items: ReadonlyArray<CanvasHtmlItem>;
   selectedItemId?: string;
 }) => {
+  const panelOpen = useDisplayPanelOpen();
   const items = useCanvasItems(initialItems);
   const selectedId = useSelectedCanvasId(
     selectedItemId ?? items.at(-1)?.id ?? null,
@@ -273,7 +321,11 @@ export const CanvasTabContent = ({
         {selectedItem ? (
           <>
             <CanvasShareBar item={selectedItem} />
-            <CanvasHeroFrame item={selectedItem} />
+            <CanvasHeroFrame
+              key={`${selectedItem.id}:${selectedItem.createdAt}`}
+              item={selectedItem}
+              panelOpen={panelOpen}
+            />
           </>
         ) : (
           <div className="canvas-tab__hero-empty">
