@@ -49,8 +49,12 @@ export type RunRecord = {
    * message that is already done, not to a fresh answer. Without this the
    * live ordering (boundary processed before the paint rAF fires) leaves the
    * indicator blank across the gap before `tool-start`, i.e. dead air after
-   * the streamed text ends. Cleared on `tool-start` so the post-tool answer's
-   * own paint can hand off normally.
+   * the streamed text ends. Held across `tool-start` (the late paint can be
+   * delivered after the tool has already started when boundary + tool-start
+   * drain in one batch before the next frame) and cleared on `tool-end` once
+   * the tool phase is fully over, so the post-tool answer's own paint can
+   * hand off normally without a stale preamble paint blanking the indicator
+   * across the post-tool reasoning gap.
    */
   pendingToolAfterPreamble: boolean
   activeToolCalls: Record<
@@ -400,9 +404,17 @@ export function streamStoreReducer(
             // into a fresh overlay slot whose `StreamingTextReveal` re-fires
             // the paint hand-off and sets `isStreamingText` back to true.
             isStreamingText: false,
-            // The tool has started: release the preamble-paint suppression so
-            // the post-tool answer's own first paint can hand off normally.
-            pendingToolAfterPreamble: false,
+            // Deliberately DO NOT release `pendingToolAfterPreamble` here.
+            // The preamble's first-paint rAF can be delivered *after* this
+            // `tool-start` — live, the boundary and the tool-start often
+            // drain from the same IPC batch before the next animation frame,
+            // so the late paint lands once the tool is already running.
+            // Clearing the flag here would let that stale paint set
+            // `isStreamingText: true`; it stays masked by `isToolActive`
+            // while the tool runs, but sticks true after `tool-end`, blanking
+            // the indicator across the post-tool reasoning gap (dead air,
+            // most visible after `spawn_agent`). The suppression is released
+            // in `tool-end` instead, once the tool phase is fully over.
             statusText: action.statusText ?? current.statusText,
             activeToolCalls: {
               ...(current.activeToolCalls ?? {}),
@@ -426,6 +438,7 @@ export function streamStoreReducer(
         delete nextActiveToolCalls[toolCallKey]
       }
       const nextActiveTool = Object.values(nextActiveToolCalls).at(-1)
+      const toolPhaseOver = Object.keys(nextActiveToolCalls).length === 0
       return {
         ...state,
         runsById: {
@@ -433,6 +446,14 @@ export function streamStoreReducer(
           [action.runId]: {
             ...current,
             hasToolActivity: true,
+            // Release the preamble-paint suppression only once the whole tool
+            // phase is over (no tool still in flight). Held across `tool-start`
+            // so a preamble first-paint rAF delivered *after* the tool started
+            // can't set `isStreamingText: true` and blank the indicator in the
+            // post-tool reasoning gap. Keeping it set until the last tool ends
+            // also covers parallel tool calls. The post-tool answer's own
+            // reveal fires a fresh paint after this, handing off normally.
+            ...(toolPhaseOver ? { pendingToolAfterPreamble: false } : {}),
             statusText: nextActiveTool?.statusText ?? null,
             activeToolCalls: nextActiveToolCalls,
           },

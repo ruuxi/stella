@@ -573,7 +573,8 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(state.runsById[runId]?.isStreamingText).toBe(false);
     expect(activeFor(state)).toBe(true);
 
-    // Tool starts: still up, and the preamble-paint suppression is released.
+    // Tool starts: still up. The preamble-paint suppression is held (not
+    // released here) so a late paint delivered after tool-start can't stick.
     state = streamStoreReducer(state, {
       type: "tool-start",
       runId,
@@ -583,7 +584,8 @@ describe("subscribeRuntimeAgentEvents", () => {
     });
     expect(activeFor(state)).toBe(true);
 
-    // Tool ends: still thinking, still up.
+    // Tool ends: still thinking, still up. The suppression is released now
+    // that the tool phase is over.
     state = streamStoreReducer(state, {
       type: "tool-end",
       runId,
@@ -596,6 +598,131 @@ describe("subscribeRuntimeAgentEvents", () => {
     state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
     expect(state.runsById[runId]?.isStreamingText).toBe(true);
     expect(activeFor(state)).toBe(false);
+  });
+
+  it("keeps the indicator up when the preamble paint is delivered after tool-start (spawn_agent post-tool gap)", () => {
+    const runId = "run-preamble-paint-after-tool-start";
+    const conversationId = "conversation-1";
+    const activeFor = (current: typeof state) =>
+      getInlineWorkingIndicatorActive({
+        isStreaming: !current.runsById[runId]?.terminal,
+        isStreamingResponseText: Boolean(
+          current.runsById[runId]?.isStreamingText,
+        ),
+        isToolActive: Boolean(
+          Object.keys(current.runsById[runId]?.activeToolCalls ?? {}).length,
+        ),
+      });
+
+    let state = streamStoreReducer(initialStoreState, {
+      type: "run-started",
+      runId,
+      conversationId,
+      userMessageId: "user-1",
+    });
+
+    // Boundary and tool-start both drain from the same IPC batch before the
+    // reveal's first-paint rAF fires — so the preamble's paint is still
+    // pending when the tool has already started.
+    state = streamStoreReducer(state, {
+      type: "assistant-message-boundary",
+      runId,
+      followedByToolCall: true,
+    });
+    state = streamStoreReducer(state, {
+      type: "tool-start",
+      runId,
+      conversationId,
+      toolCallId: "call-1",
+      toolName: "spawn_agent",
+    });
+    expect(activeFor(state)).toBe(true);
+
+    // The finalized preamble's late first paint now lands — AFTER tool-start.
+    // It must NOT set `isStreamingText`, or the flag sticks true through the
+    // whole tool and blanks the indicator once the tool ends (dead air).
+    state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
+    expect(state.runsById[runId]?.isStreamingText).toBe(false);
+    expect(activeFor(state)).toBe(true);
+
+    // Tool ends: the post-tool reasoning gap must still show the indicator —
+    // this is the exact window that was going dead after spawn_agent.
+    state = streamStoreReducer(state, {
+      type: "tool-end",
+      runId,
+      toolCallId: "call-1",
+      toolName: "spawn_agent",
+    });
+    expect(state.runsById[runId]?.isStreamingText).toBe(false);
+    expect(activeFor(state)).toBe(true);
+
+    // Only the post-tool answer's own fresh paint hands off.
+    state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
+    expect(state.runsById[runId]?.isStreamingText).toBe(true);
+    expect(activeFor(state)).toBe(false);
+  });
+
+  it("holds the preamble-paint suppression across parallel tools until the last ends", () => {
+    const runId = "run-preamble-parallel-tools";
+    const conversationId = "conversation-1";
+    const activeFor = (current: typeof state) =>
+      getInlineWorkingIndicatorActive({
+        isStreaming: !current.runsById[runId]?.terminal,
+        isStreamingResponseText: Boolean(
+          current.runsById[runId]?.isStreamingText,
+        ),
+        isToolActive: Boolean(
+          Object.keys(current.runsById[runId]?.activeToolCalls ?? {}).length,
+        ),
+      });
+
+    let state = streamStoreReducer(initialStoreState, {
+      type: "run-started",
+      runId,
+      conversationId,
+      userMessageId: "user-1",
+    });
+    state = streamStoreReducer(state, {
+      type: "assistant-message-boundary",
+      runId,
+      followedByToolCall: true,
+    });
+    state = streamStoreReducer(state, {
+      type: "tool-start",
+      runId,
+      conversationId,
+      toolCallId: "call-a",
+      toolName: "web",
+    });
+    state = streamStoreReducer(state, {
+      type: "tool-start",
+      runId,
+      conversationId,
+      toolCallId: "call-b",
+      toolName: "web",
+    });
+
+    // First tool ends while the second is still in flight — the suppression
+    // must survive, so a late preamble paint arriving now is still swallowed.
+    state = streamStoreReducer(state, {
+      type: "tool-end",
+      runId,
+      toolCallId: "call-a",
+      toolName: "web",
+    });
+    expect(state.runsById[runId]?.pendingToolAfterPreamble).toBe(true);
+    state = streamStoreReducer(state, { type: "mark-streaming-text", runId });
+    expect(state.runsById[runId]?.isStreamingText).toBe(false);
+
+    // Last tool ends: suppression released, post-tool gap still shows up.
+    state = streamStoreReducer(state, {
+      type: "tool-end",
+      runId,
+      toolCallId: "call-b",
+      toolName: "web",
+    });
+    expect(state.runsById[runId]?.pendingToolAfterPreamble).toBe(false);
+    expect(activeFor(state)).toBe(true);
   });
 
   it("leaves the hand-off intact for a final-answer boundary (no following tool)", () => {
