@@ -35,6 +35,7 @@ import { useFileDrop } from "@/features/chat/hooks/use-file-drop";
 import { useReadAloud } from "@/features/voice/services/read-aloud/use-read-aloud";
 import type { ChatColumnProps } from "@/features/chat/chat-column-types";
 import { useAssistantReplyPeek } from "@/features/chat/hooks/use-assistant-reply-peek";
+import { useDeferredChatMessages } from "@/features/chat/hooks/use-deferred-chat-messages";
 import {
   restoreQueuedTextToComposer,
   type QueuedUserMessage,
@@ -71,6 +72,7 @@ export const ChatColumn = memo(function ChatColumn({
 }: ChatColumnProps) {
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ y: number; scrollTop: number } | null>(null);
+  const { noteManualScroll } = scroll;
 
   /**
    * The Legend List exposes its scroll element via `getScrollableNode()`.
@@ -89,11 +91,12 @@ export const ChatColumn = memo(function ChatColumn({
       e.stopPropagation();
       const el = getScrollNode();
       if (!el) return;
+      noteManualScroll();
       isDraggingRef.current = true;
       dragStartRef.current = { y: e.clientY, scrollTop: el.scrollTop };
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [getScrollNode],
+    [getScrollNode, noteManualScroll],
   );
 
   const handleThumbMove = useCallback(
@@ -101,6 +104,7 @@ export const ChatColumn = memo(function ChatColumn({
       if (!isDraggingRef.current || !dragStartRef.current) return;
       const el = getScrollNode();
       if (!el) return;
+      noteManualScroll();
       const trackHeight = el.clientHeight;
       const scrollRange = Math.max(1, el.scrollHeight - el.clientHeight);
       const dy = e.clientY - dragStartRef.current.y;
@@ -111,7 +115,7 @@ export const ChatColumn = memo(function ChatColumn({
       );
       el.scrollTop = next;
     },
-    [getScrollNode],
+    [getScrollNode, noteManualScroll],
   );
 
   const handleThumbUp = useCallback(() => {
@@ -125,14 +129,19 @@ export const ChatColumn = memo(function ChatColumn({
     thumbRef,
     listRef,
     isFollowingLatest,
+    isUserScrolling,
   } = scroll;
 
-  // Live timeline. Subscribing here is what intentionally re-renders
-  // ChatColumn each streamed frame — kept narrow: the message list
-  // (ConversationEvents) must repaint, while the memoized Composer and the
-  // imperative scrollbar stay put. The shell chrome above ChatColumn reads
-  // only the stable `runtime` value and does not re-render per frame.
-  const messages = useChatMessages();
+  // Live timeline. At rest it paints every streamed update. During direct
+  // user scrolling, keep the last painted array stable and flush the newest
+  // one after the short scroll settle; this keeps provider cadence from
+  // reconciling the virtual list inside the scroll frame budget.
+  const liveMessages = useChatMessages();
+  const messages = useDeferredChatMessages(
+    liveMessages,
+    isUserScrolling,
+    conversationId,
+  );
 
   const assistantReplyPeek = useAssistantReplyPeek({
     messages,

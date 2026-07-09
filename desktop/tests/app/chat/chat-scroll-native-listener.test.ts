@@ -33,4 +33,21 @@ describe("chat scroll performance contract", () => {
       "attached.removeEventListener('scroll', scheduleScrollStateUpdate)",
     );
   });
+
+  it("defers live timeline updates only during direct user scrolling", () => {
+    const hook = readSource("src/shell/use-chat-scroll-management.ts");
+    const fullChat = readSource("src/app/chat/ChatColumn.tsx");
+    const compactChat = readSource(
+      "src/features/chat/CompactConversationSurface.tsx",
+    );
+
+    expect(hook).toContain("const noteManualScroll = useCallback");
+    expect(hook).toMatch(
+      /const handleWheel = \(event: WheelEvent\) => \{\s*noteManualScroll\(\)/,
+    );
+    expect(fullChat).toContain("useDeferredChatMessages(");
+    expect(fullChat).toContain("isUserScrolling,");
+    expect(compactChat).toContain("useDeferredChatMessages(");
+    expect(compactChat).toContain("scroll.isUserScrolling,");
+  });
 });

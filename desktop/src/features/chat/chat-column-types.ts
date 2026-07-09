@@ -110,6 +110,10 @@ export type ChatColumnScroll = {
   isAtBottom: boolean;
   /** True while stream/send auto-follow is armed (intent latch, not raw scrollTop). */
   isFollowingLatest: boolean;
+  /** True during direct wheel/touch/keyboard/thumb scrolling and its short settle. */
+  isUserScrolling: boolean;
+  /** Marks imperative scrollbar-thumb movement as direct user scrolling. */
+  noteManualScroll: () => void;
   getIsFollowing: () => boolean;
   scrollToBottom: (behavior?: "instant" | "smooth") => void;
   /**

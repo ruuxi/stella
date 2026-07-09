@@ -257,4 +257,20 @@ describe("chat timeline pagination wiring", () => {
       /addEventListener\('scroll', handlePaginationScroll, \{\s*passive: true,?\s*\}\)/,
     );
   });
+
+  it("combines manual-scroll deferral with the deliberate upward pagination action", () => {
+    const desktopRoot = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../..",
+    );
+    const hook = fs.readFileSync(
+      path.join(desktopRoot, "src/shell/use-chat-scroll-management.ts"),
+      "utf8",
+    );
+
+    expect(hook).toMatch(
+      /const handleWheel = \(event: WheelEvent\) => \{\s*noteManualScroll\(\)[\s\S]*?attemptHistoryLoad\(wheelActionId, direction, 'wheel'\)/,
+    );
+    expect(hook).toContain("cancelPendingAnchorForUserScroll()");
+  });
 });

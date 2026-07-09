@@ -48,6 +48,7 @@ import {
 const SCROLL_BUTTON_THRESHOLD = 180
 const THUMB_MIN_HEIGHT = 24
 const THUMB_FADE_MS = 1200
+const MANUAL_SCROLL_SETTLE_MS = 140
 /**
  * Suppress thumb-state setState calls when nothing visible has moved.
  * Sub-pixel jitter from Legend's continuous content-length measurements
@@ -236,6 +237,7 @@ export function useChatScrollManagement({
   }
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [isFollowingLatest, setIsFollowingLatest] = useState(true)
+  const [isUserScrolling, setIsUserScrolling] = useState(false)
   const [showScrollButton, setShowScrollButton] = useState(false)
   /**
    * Imperative scrollbar-thumb plumbing. The thumb is positioned by
@@ -256,6 +258,24 @@ export function useChatScrollManagement({
   const scrollStateRafRef = useRef<number | null>(null)
   const isAtBottomRef = useRef(true)
   const showScrollButtonRef = useRef(false)
+  const isUserScrollingRef = useRef(false)
+  const manualScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const noteManualScroll = useCallback(() => {
+    if (!isUserScrollingRef.current) {
+      isUserScrollingRef.current = true
+      setIsUserScrolling(true)
+    }
+    if (manualScrollTimerRef.current) {
+      clearTimeout(manualScrollTimerRef.current)
+    }
+    manualScrollTimerRef.current = setTimeout(() => {
+      manualScrollTimerRef.current = null
+      if (!isUserScrollingRef.current) return
+      isUserScrollingRef.current = false
+      setIsUserScrolling(false)
+    }, MANUAL_SCROLL_SETTLE_MS)
+  }, [])
 
   /**
    * The follow latch. `true` means content growth should pull the
@@ -404,6 +424,10 @@ export function useChatScrollManagement({
   useEffect(() => {
     return () => {
       if (thumbFadeRef.current) clearTimeout(thumbFadeRef.current)
+      if (manualScrollTimerRef.current) {
+        clearTimeout(manualScrollTimerRef.current)
+        manualScrollTimerRef.current = null
+      }
       if (scrollStateRafRef.current !== null) {
         cancelAnimationFrame(scrollStateRafRef.current)
         scrollStateRafRef.current = null
@@ -1051,6 +1075,7 @@ export function useChatScrollManagement({
         stopLoop()
       }
       const handleWheel = (event: WheelEvent) => {
+        noteManualScroll()
         const now = performance.now()
         const direction: HistoryScrollDirection =
           event.deltaY < 0 ? 'up' : event.deltaY > 0 ? 'down' : 'none'
@@ -1073,12 +1098,14 @@ export function useChatScrollManagement({
         }
       }
       const handleTouchStart = (event: TouchEvent) => {
+        noteManualScroll()
         releaseLocalFollow()
         cancelPendingAnchorForUserScroll()
         touchActionId = nextActionId()
         touchStartY = event.touches[0]?.clientY ?? null
       }
       const handleTouchMove = (event: TouchEvent) => {
+        noteManualScroll()
         if (touchActionId === null || touchStartY === null) return
         const y = event.touches[0]?.clientY
         if (y === undefined) return
@@ -1090,6 +1117,17 @@ export function useChatScrollManagement({
         }
       }
       const handleKeyDown = (event: KeyboardEvent) => {
+        if (
+          event.key === 'ArrowUp' ||
+          event.key === 'ArrowDown' ||
+          event.key === 'PageUp' ||
+          event.key === 'PageDown' ||
+          event.key === 'Home' ||
+          event.key === 'End' ||
+          event.key === ' '
+        ) {
+          noteManualScroll()
+        }
         if (
           event.key === 'ArrowUp' ||
           event.key === 'PageUp' ||
@@ -1235,12 +1273,20 @@ export function useChatScrollManagement({
       cancelAnimationFrame(frame)
       cleanup()
     }
-  }, [scheduleScrollStateUpdate, setFollow, surface, trailingRegionMinPx])
+  }, [
+    noteManualScroll,
+    scheduleScrollStateUpdate,
+    setFollow,
+    surface,
+    trailingRegionMinPx,
+  ])
 
   return {
     listRef,
     isAtBottom,
     isFollowingLatest,
+    isUserScrolling,
+    noteManualScroll,
     showScrollButton,
     scrollToBottom,
     releaseFollow,

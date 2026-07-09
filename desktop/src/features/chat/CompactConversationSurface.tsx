@@ -1,4 +1,5 @@
 import { cn } from "@/shared/lib/utils";
+import { useDeferredChatMessages } from "@/features/chat/hooks/use-deferred-chat-messages";
 import type {
   EventRecord,
   TaskItem,
@@ -75,6 +76,11 @@ export function CompactConversationSurface({
   showConversation = true,
   estimatedItemSize = 96,
 }: CompactConversationSurfaceProps) {
+  const paintedMessages = useDeferredChatMessages(
+    messages,
+    scroll.isUserScrolling,
+    conversationId,
+  );
   return (
     <div
       className={cn(
@@ -91,7 +97,7 @@ export function CompactConversationSurface({
           )}
         >
           <ConversationEvents
-            messages={messages}
+            messages={paintedMessages}
             conversationId={conversationId}
             maxItems={maxItems}
             pendingUserMessageId={pendingUserMessageId}
