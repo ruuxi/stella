@@ -393,6 +393,7 @@ export const registerBootstrapIpcHandlers = (
     isHostAuthAuthenticated: () =>
       services.authService.getHostAuthAuthenticated(),
     stellaAppDir: config.stellaAppDir,
+    localChatHistoryService: services.localChatHistoryService,
     assertPrivilegedSender: (event, channel) =>
       services.externalLinkService.assertPrivilegedSender(event, channel),
     getBroadcastToMobile: lazyMobileBroadcast,

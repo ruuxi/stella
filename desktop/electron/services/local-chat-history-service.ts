@@ -228,6 +228,18 @@ export class LocalChatHistoryService {
     return event;
   }
 
+  hasEvent(args: {
+    conversationId: string;
+    eventId: string;
+    type?: string;
+  }): boolean {
+    return this.getStore().hasEvent(args.conversationId, args.eventId, args.type);
+  }
+
+  hasEventId(args: { eventId: string; type?: string }): boolean {
+    return this.getStore().hasEventId(args.eventId, args.type);
+  }
+
   persistDiscoveryWelcome(args: {
     conversationId: string;
     message: string;

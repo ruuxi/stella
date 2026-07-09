@@ -26,6 +26,7 @@ import type {
   RuntimeOneShotCompletionResult,
 } from "../../../runtime/protocol/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
+import type { LocalChatHistoryService } from "../services/local-chat-history-service.js";
 import { createMonotonicSeqGenerator } from "./monotonic-seq.js";
 import { getFileLogger } from "../../../runtime/observability/file-logger.js";
 
@@ -34,6 +35,7 @@ type AgentHandlersOptions = {
   getAppSessionStartedAt: () => number;
   isHostAuthAuthenticated: () => boolean;
   stellaAppDir: string;
+  localChatHistoryService: LocalChatHistoryService;
   assertPrivilegedSender: (
     event: IpcMainEvent | IpcMainInvokeEvent,
     channel: string,
@@ -110,6 +112,9 @@ const AGENT_EVENT_BUFFER_TTL_MS = 10 * 60 * 1000;
  * duplicate run; we just hand back the original `requestId`.
  */
 const CLIENT_REQUEST_DEDUPE_TTL_MS = 5 * 60 * 1000;
+
+const requestIdForClientSend = (clientRequestId: string): string =>
+  `req:client:${crypto.createHash("sha256").update(clientRequestId).digest("hex").slice(0, 32)}`;
 
 /**
  * Mobile clients (the desktop-bridge chat) abort a run after a fixed window
@@ -737,16 +742,52 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         typeof payload.clientRequestId === "string"
           ? payload.clientRequestId.trim()
           : "";
+      const stableUserMessageId =
+        typeof payload.userMessageEventId === "string"
+          ? payload.userMessageEventId.trim()
+          : "";
+      const stableRequestId = clientRequestId
+        ? requestIdForClientSend(clientRequestId)
+        : "";
       if (clientRequestId) {
         pruneClientRequestIndex();
+        // The canonical user row is the durable acceptance receipt. Mobile
+        // supplies its outbox identity as `userMessageEventId`; the worker
+        // persists that exact primary key before startChat returns. Checking it
+        // here makes replay idempotent across main-process/desktop restarts,
+        // long delays, and expiration of the in-memory fast-path index.
+        if (
+          stableUserMessageId &&
+          options.localChatHistoryService.hasEventId({
+            eventId: stableUserMessageId,
+            type: "user_message",
+          })
+        ) {
+          return {
+            requestId: stableRequestId,
+            userMessageId: stableUserMessageId,
+            accepted: true,
+            deduplicated: true,
+          };
+        }
         const existing = clientRequestIndex.get(clientRequestId);
         if (existing) {
-          return { requestId: existing.requestId };
+          // A concurrent retry may arrive while the first call is still
+          // waiting for the worker to persist. It shares the request identity,
+          // but is not an acknowledgment yet; mobile keeps its outbox record
+          // until the run event or a later persisted replay proves acceptance.
+          return {
+            requestId: existing.requestId,
+            ...(stableUserMessageId
+              ? { userMessageId: stableUserMessageId, accepted: false }
+              : {}),
+            deduplicated: true,
+          };
         }
       }
 
       const senderWebContentsId = event.sender.id;
-      const requestId = `req:${crypto.randomUUID()}`;
+      const requestId = stableRequestId || `req:${crypto.randomUUID()}`;
       requestOwners.set(requestId, senderWebContentsId);
       if (clientRequestId) {
         clientRequestIndex.set(clientRequestId, {
@@ -1044,7 +1085,12 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           throw error;
         });
 
-      return { requestId };
+      return {
+        requestId,
+        ...(stableUserMessageId
+          ? { userMessageId: stableUserMessageId, accepted: true }
+          : {}),
+      };
     },
   );
 

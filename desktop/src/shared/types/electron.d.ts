@@ -660,7 +660,12 @@ export type ElectronAgentApi = {
       mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
       expectedChangedFiles?: string[];
     };
-  }) => Promise<{ requestId: string }>;
+  }) => Promise<{
+    requestId: string;
+    userMessageId?: string;
+    accepted?: boolean;
+    deduplicated?: boolean;
+  }>;
   sendInput: (payload: {
     conversationId: string;
     threadId: string;

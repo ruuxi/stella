@@ -1279,6 +1279,39 @@ export class SessionStore {
     };
   }
 
+  hasEvent(
+    conversationIdInput: string,
+    eventIdInput: string,
+    typeInput?: string,
+  ): boolean {
+    const conversationId = this.sanitizeConversationId(conversationIdInput);
+    const eventId = asTrimmedString(eventIdInput);
+    if (!eventId) return false;
+    const type = asTrimmedString(typeInput);
+    const row = this.db
+      .prepare(
+        type
+          ? `SELECT 1 AS present FROM message
+             WHERE session_id = ? AND id = ? AND type = ? LIMIT 1`
+          : `SELECT 1 AS present FROM message
+             WHERE session_id = ? AND id = ? LIMIT 1`,
+      )
+      .get(...(type ? [conversationId, eventId, type] : [conversationId, eventId]));
+    return Boolean(row);
+  }
+
+  hasEventId(eventIdInput: string, typeInput?: string): boolean {
+    const eventId = asTrimmedString(eventIdInput);
+    if (!eventId) return false;
+    const type = asTrimmedString(typeInput);
+    const statement = this.db.prepare(
+      type
+        ? `SELECT 1 AS present FROM message WHERE id = ? AND type = ? LIMIT 1`
+        : `SELECT 1 AS present FROM message WHERE id = ? LIMIT 1`,
+    );
+    return Boolean(type ? statement.get(eventId, type) : statement.get(eventId));
+  }
+
   /**
    * Shallow-merge a partial payload into an existing local-chat event's
    * stored payload. Returns the updated record (so callers can fire
