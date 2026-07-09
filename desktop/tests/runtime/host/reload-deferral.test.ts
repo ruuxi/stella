@@ -36,6 +36,8 @@ describe("runtime reload deferral", () => {
     const restartWorker = vi.fn().mockResolvedValue({ ok: true });
 
     anyHost.restartWorker = restartWorker;
+    // The unified restart gate only runs on a started host.
+    anyHost.started = true;
 
     await anyHost.pauseRuntimeReloads("run-1");
     await anyHost.scheduleRuntimeReload("worker");
@@ -56,6 +58,8 @@ describe("runtime reload deferral", () => {
     const restartWorker = vi.fn().mockResolvedValue({ ok: true });
 
     anyHost.restartWorker = restartWorker;
+    // The unified restart gate only runs on a started host.
+    anyHost.started = true;
 
     await anyHost.pauseRuntimeReloads("run-2");
     await anyHost.scheduleRuntimeReload("worker");
@@ -75,6 +79,8 @@ describe("runtime reload deferral", () => {
     const restartWorker = vi.fn().mockResolvedValue({ ok: true });
 
     anyHost.restartWorker = restartWorker;
+    // The unified restart gate only runs on a started host.
+    anyHost.started = true;
 
     // Bracket a self-mod morph transition (as HOST_HMR_RUN_TRANSITION does).
     let releaseMorph: () => void = () => {};
@@ -102,6 +108,51 @@ describe("runtime reload deferral", () => {
     expect(anyHost.morphTransitionsInFlight).toBe(0);
   });
 
+  it("defers a dev-watcher runtime reload while the worker is busy", async () => {
+    vi.useFakeTimers();
+    const host = createHost();
+    const anyHost = host as any;
+    const restartWorker = vi.fn().mockResolvedValue({ ok: true });
+
+    anyHost.restartWorker = restartWorker;
+    anyHost.started = true;
+
+    // The unified gate now applies the worker-busy deferral to the dev
+    // dist-electron watcher path too (not just the stale-worker path), matching
+    // the intended model: worker restart for runtime changes only when idle.
+    let busy = true;
+    anyHost.getWorkerHealth = vi.fn(async () =>
+      busy
+        ? {
+            activeRun: { runId: "run-x" },
+            activeAgentCount: 1,
+            voiceBusy: false,
+            pendingVoiceRequestCount: 0,
+          }
+        : {
+            activeRun: null,
+            activeAgentCount: 0,
+            voiceBusy: false,
+            pendingVoiceRequestCount: 0,
+          },
+    );
+
+    // A runtime/ change lands while the worker is busy — held, not restarted.
+    anyHost.scheduleRuntimeReload("worker");
+    await vi.runAllTimersAsync();
+    await anyHost.reloadQueue;
+    expect(restartWorker).not.toHaveBeenCalled();
+    expect(anyHost.deferredRuntimeReload).toBe(true);
+
+    // Worker goes idle; the next flush (as a RUN_FINISHED / poll tick would
+    // trigger) restarts exactly once.
+    busy = false;
+    await anyHost.flushWorkerRestart();
+    await vi.runAllTimersAsync();
+    await anyHost.reloadQueue;
+    expect(restartWorker).toHaveBeenCalledTimes(1);
+  });
+
   it("clears leaked runtime reload pauses when the worker initializes again", async () => {
     vi.useFakeTimers();
     const host = createHost();
@@ -109,6 +160,8 @@ describe("runtime reload deferral", () => {
     const restartWorker = vi.fn().mockResolvedValue({ ok: true });
 
     anyHost.restartWorker = restartWorker;
+    // The unified restart gate only runs on a started host.
+    anyHost.started = true;
 
     await anyHost.pauseRuntimeReloads("lost-run");
     await anyHost.scheduleRuntimeReload("worker");

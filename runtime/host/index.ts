@@ -422,7 +422,6 @@ export class StellaRuntimeHost {
   private schedulerSubscription: (() => void) | null = null;
   private watcher: FSWatcher | null = null;
   private reloadTimer: NodeJS.Timeout | null = null;
-  private scheduledRuntimeReload = false;
   private deferredRuntimeReload = false;
   // Coalescing for the dev-watcher / self-mod reload path only: while a
   // scheduled reload's restart is queued or running, further reload requests
@@ -457,7 +456,9 @@ export class StellaRuntimeHost {
   private staleWorkerQuiescencePollTimer: ReturnType<
     typeof setInterval
   > | null = null;
-  private staleWorkerQuiescenceCheckInFlight = false;
+  // Serializes the single gated flush (`flushWorkerRestart`) so concurrent
+  // triggers/hooks don't stack overlapping health probes or restarts.
+  private workerRestartCheckInFlight = false;
   private readonly pausedRuntimeReloadRuns = new Set<string>();
   private reloadQueue = Promise.resolve();
   private configCache: RuntimeConfigureParams = {};
@@ -666,35 +667,22 @@ export class StellaRuntimeHost {
     if (this.pausedRuntimeReloadRuns.size > 0) {
       return;
     }
-    if (this.pendingStaleWorkerRestart) {
-      // A stale-worker restart was blocked on the self-mod pause; re-check
-      // quiescence now that the last pause released.
-      const timer = setTimeout(() => {
-        void this.maybeRestartStaleWorkerWhenQuiescent();
-      }, 1_000);
-      timer.unref?.();
+    // The last self-mod pause released. A process-restart apply opts out of an
+    // immediate worker reload for this release (`allowDeferredReload: false`) —
+    // drop that intent, but still let a persisted stale restart proceed.
+    if (options?.allowDeferredReload === false) {
+      this.deferredRuntimeReload = false;
     }
-    const hadDeferredReload = this.deferredRuntimeReload;
-    this.deferredRuntimeReload = false;
-    if (!hadDeferredReload || options?.allowDeferredReload === false) {
-      return;
-    }
-    setTimeout(() => {
-      void this.scheduleRuntimeReload();
-    }, 0);
+    void this.flushWorkerRestart();
   }
 
   private async resetRuntimeReloadPauses() {
-    const hadPausedRuns = this.pausedRuntimeReloadRuns.size > 0;
-    const hadDeferredReload = this.deferredRuntimeReload;
     this.pausedRuntimeReloadRuns.clear();
-    this.deferredRuntimeReload = false;
     await this.persistRuntimeReloadPauseState();
-    if (hadPausedRuns && hadDeferredReload) {
-      setTimeout(() => {
-        void this.scheduleRuntimeReload();
-      }, 0);
-    }
+    // Pauses were force-cleared (the worker reinitialized underneath held
+    // runs). Any deferred reload / pending stale restart intent survives and
+    // can now be re-evaluated through the unified gate.
+    void this.flushWorkerRestart();
   }
 
   /**
@@ -719,69 +707,37 @@ export class StellaRuntimeHost {
       this.morphTransitionsInFlight - 1,
     );
     if (this.morphTransitionsInFlight > 0) return;
-    // The morph cover has fully lifted. A runtime reload or stale-worker
-    // restart deferred so it wouldn't kill the worker mid-morph can now run.
-    if (this.deferredRuntimeReload) {
-      setTimeout(() => {
-        void this.scheduleRuntimeReload();
-      }, 0);
-    } else if (this.pendingStaleWorkerRestart) {
-      setTimeout(() => {
-        void this.maybeRestartStaleWorkerWhenQuiescent();
-      }, 0);
-    }
+    // The morph cover has fully lifted; re-evaluate any deferred worker
+    // restart through the unified gate.
+    void this.flushWorkerRestart();
   }
 
-  private async scheduleRuntimeReload() {
-    if (this.pausedRuntimeReloadRuns.size > 0 || this.morphTransitionsInFlight > 0) {
-      // Hold the restart until the last self-mod pause releases AND any morph
-      // cover fully lifts. Restarting mid-morph closes the RPC transport under
-      // the in-flight desktop-update finish and forces a redundant second
-      // morph via the transport-closed reload-replay. `onMorphTransitionSettled`
-      // re-runs this once the cover is gone.
-      this.deferredRuntimeReload = true;
+  /**
+   * Dev dist-electron watcher trigger: `runtime/` worker code changed on disk.
+   * Records the reload intent and debounces a gated flush. The actual restart
+   * only proceeds when {@link canRestartWorkerNow} holds (no self-mod pause, no
+   * morph cover, worker not busy) — evaluated authoritatively in
+   * `flushWorkerRestart`.
+   */
+  private scheduleRuntimeReload() {
+    this.deferredRuntimeReload = true;
+    // Only arm the debounce timer when no LOCAL blocker (self-mod pause / morph
+    // cover) is active: a blocked call leaves the intent for an unblock hook
+    // (pause release, morph settle, worker idle) to flush, and never leaves a
+    // stray timer that could fire mid-block. Worker-busy is evaluated with
+    // fresh health inside `flushWorkerRestart`.
+    if (
+      this.pausedRuntimeReloadRuns.size > 0 ||
+      this.morphTransitionsInFlight > 0
+    ) {
       return;
     }
-    this.scheduledRuntimeReload = true;
     if (this.reloadTimer) {
       clearTimeout(this.reloadTimer);
     }
     this.reloadTimer = setTimeout(() => {
-      const shouldReload = this.scheduledRuntimeReload;
       this.reloadTimer = null;
-      this.scheduledRuntimeReload = false;
-      if (!shouldReload) {
-        return;
-      }
-      if (this.morphTransitionsInFlight > 0) {
-        // A morph cover raised after this timer was armed. Re-defer so the
-        // restart doesn't kill the worker mid-morph; the morph-settled hook
-        // reschedules it.
-        this.deferredRuntimeReload = true;
-        return;
-      }
-      // If a restart is already queued or running, don't stack another — mark
-      // a single trailing re-run that fires (debounced) once it completes.
-      if (this.restartInProgress) {
-        this.restartRequestedDuringRestart = true;
-        return;
-      }
-      this.restartInProgress = true;
-      this.reloadQueue = this.reloadQueue
-        .catch(() => undefined)
-        .then(async () => {
-          try {
-            await this.restartWorker();
-          } finally {
-            this.restartInProgress = false;
-            if (this.restartRequestedDuringRestart) {
-              this.restartRequestedDuringRestart = false;
-              setTimeout(() => {
-                void this.scheduleRuntimeReload();
-              }, 0);
-            }
-          }
-        });
+      void this.flushWorkerRestart();
     }, 150);
   }
 
@@ -849,6 +805,14 @@ export class StellaRuntimeHost {
       );
     }
     this.startStaleWorkerQuiescencePoll();
+    // Nudge the unified gate soon: restart now if already quiescent, otherwise
+    // an unblock hook (pause release, morph settle, worker idle) or the poll
+    // retries. Off this call stack so a caller still inside the startup /
+    // apply sequence isn't restarted from under itself.
+    const nudge = setTimeout(() => {
+      void this.flushWorkerRestart();
+    }, 1_000);
+    nudge.unref?.();
     if (this.started) {
       this.events.emit("runtime-ready", await this.health());
     }
@@ -867,7 +831,7 @@ export class StellaRuntimeHost {
     // Safety net for busy signals that don't end in a RUN_FINISHED event
     // (e.g. voice-only activity) or a missed event during churn.
     this.staleWorkerQuiescencePollTimer = setInterval(() => {
-      void this.maybeRestartStaleWorkerWhenQuiescent();
+      void this.flushWorkerRestart();
     }, 30_000);
     this.staleWorkerQuiescencePollTimer.unref?.();
   }
@@ -921,16 +885,10 @@ export class StellaRuntimeHost {
     console.warn(
       `[runtime-host] Reconnected to a stale runtime worker (pid=${connection.pid}, ${reason}).`,
     );
+    // `markPendingWorkerRestart` starts the quiescence poll and nudges the
+    // unified gate; a run that starts in the meantime re-defers instead of
+    // being killed.
     await this.markPendingWorkerRestart(reason);
-    if (!isWorkerBusyForRestart(this.workerHealthCache)) {
-      // Idle: restart right away — but off this callback (we're still inside
-      // the controller's startup sequence) and through the quiescence path so
-      // a run that starts in the meantime re-defers instead of being killed.
-      const timer = setTimeout(() => {
-        void this.maybeRestartStaleWorkerWhenQuiescent();
-      }, 1_000);
-      timer.unref?.();
-    }
   }
 
   /**
@@ -941,49 +899,83 @@ export class StellaRuntimeHost {
    * process-restart-classified apply triggers.
    */
   private async noteRuntimeCodeChangedByApply(reason: string) {
-    const health = await this.getWorkerHealth({ ensureWorker: false }).catch(
-      () => null,
-    );
+    // `markPendingWorkerRestart` persists the flag, starts the quiescence
+    // poll, and nudges the unified gate (which does its own fresh-health
+    // busy check before restarting).
     await this.markPendingWorkerRestart(reason);
-    if (!isWorkerBusyForRestart(health)) {
-      const timer = setTimeout(() => {
-        void this.maybeRestartStaleWorkerWhenQuiescent();
-      }, 1_000);
-      timer.unref?.();
-    }
   }
 
-  private async maybeRestartStaleWorkerWhenQuiescent() {
-    if (!this.started || !this.pendingStaleWorkerRestart) return;
-    if (this.staleWorkerQuiescenceCheckInFlight) return;
-    this.staleWorkerQuiescenceCheckInFlight = true;
+  /**
+   * Unified gate for restarting the runtime worker. A restart may only proceed
+   * when NONE of the blockers hold:
+   *   - a per-run self-mod reload PAUSE is active (a self-mod / desktop update
+   *     is mid-apply);
+   *   - a morph cover is on screen (restarting mid-morph closes the RPC
+   *     transport under an in-flight desktop-update finish and forces a
+   *     redundant second morph via the transport-closed reload-replay);
+   *   - the worker is busy (an agent run / voice request is in flight).
+   * Both restart triggers (dev dist-electron watcher, stale-worker detection)
+   * and every unblock hook route through this, so the dev-watcher path honors
+   * the worker-busy deferral exactly like the stale-worker path.
+   */
+  private canRestartWorkerNow(
+    health: WorkerHealthSnapshot | null = this.workerHealthCache,
+  ): boolean {
+    return (
+      this.pausedRuntimeReloadRuns.size === 0 &&
+      this.morphTransitionsInFlight === 0 &&
+      !isWorkerBusyForRestart(health)
+    );
+  }
+
+  /**
+   * Whether some trigger wants the worker restarted: a dev-watcher runtime
+   * reload (`deferredRuntimeReload`) or a persisted stale-worker restart
+   * (`pendingStaleWorkerRestart`).
+   */
+  private hasPendingWorkerRestartIntent(): boolean {
+    return this.deferredRuntimeReload || this.pendingStaleWorkerRestart != null;
+  }
+
+  /**
+   * The single flush path for BOTH restart triggers and every unblock hook
+   * (self-mod pause release, morph settle, worker idle / RUN_FINISHED,
+   * quiescence poll). Re-evaluates {@link canRestartWorkerNow} against fresh
+   * worker health and restarts once every blocker has cleared. A single
+   * restart satisfies both intents: `restartWorker()` clears the
+   * deferred-reload flag and a freshly spawned worker clears the pending flag
+   * on reconnect.
+   */
+  private async flushWorkerRestart() {
+    if (!this.started || !this.hasPendingWorkerRestartIntent()) return;
+    if (this.workerRestartCheckInFlight) return;
+    this.workerRestartCheckInFlight = true;
     try {
+      // Cheap synchronous blockers first — never probe worker health while a
+      // self-mod pause is held or a morph cover is on screen.
+      if (
+        this.pausedRuntimeReloadRuns.size > 0 ||
+        this.morphTransitionsInFlight > 0
+      ) {
+        return;
+      }
       const health = await this.getWorkerHealth({ ensureWorker: false }).catch(
         () => null,
       );
-      if (isWorkerBusyForRestart(health)) return;
-      this.requestStaleWorkerRestart();
+      if (!this.canRestartWorkerNow(health)) return;
+      this.executeWorkerRestart();
     } finally {
-      this.staleWorkerQuiescenceCheckInFlight = false;
+      this.workerRestartCheckInFlight = false;
     }
   }
 
   /**
-   * Queue the actual stale-worker restart. Re-checks busy-ness immediately
-   * before the kill so a run that started after the quiescence check is
-   * never cut down — the pending flag stays set and the next RUN_FINISHED /
-   * poll tick tries again. Reuses the same in-progress coalescing as the
-   * dev-watcher reload path.
+   * Perform the gated restart through the shared reload queue / in-progress
+   * coalescing. Re-checks {@link canRestartWorkerNow} against fresh health
+   * immediately before the kill so a run that started while queued is never
+   * cut down — the pending intent stays set and a later flush retries.
    */
-  private requestStaleWorkerRestart() {
-    if (this.pausedRuntimeReloadRuns.size > 0) return;
-    if (this.morphTransitionsInFlight > 0) {
-      // Don't kill the worker mid-morph — that closes the RPC transport under
-      // an in-flight desktop-update finish and forces a redundant second
-      // morph. The pending flag stays set; `onMorphTransitionSettled` (and the
-      // quiescence poll) retry once the cover lifts.
-      return;
-    }
+  private executeWorkerRestart() {
     if (this.restartInProgress) {
       this.restartRequestedDuringRestart = true;
       return;
@@ -993,24 +985,28 @@ export class StellaRuntimeHost {
       .catch(() => undefined)
       .then(async () => {
         try {
-          if (!this.started || !this.pendingStaleWorkerRestart) return;
+          if (!this.started || !this.hasPendingWorkerRestartIntent()) return;
+          if (
+            this.pausedRuntimeReloadRuns.size > 0 ||
+            this.morphTransitionsInFlight > 0
+          ) {
+            return;
+          }
           const health = await this.getWorkerHealth({
             ensureWorker: false,
           }).catch(() => null);
-          if (isWorkerBusyForRestart(health)) return;
-          getFileLogger()?.process("host.worker-stale-restart", {
-            reason: this.pendingStaleWorkerRestart.reason,
-          });
-          console.warn(
-            `[runtime-host] Restarting stale runtime worker (${this.pendingStaleWorkerRestart.reason}).`,
-          );
+          if (!this.canRestartWorkerNow(health)) return;
+          const reason =
+            this.pendingStaleWorkerRestart?.reason ?? "runtime-reload";
+          getFileLogger()?.process("host.worker-restart", { reason });
+          console.warn(`[runtime-host] Restarting runtime worker (${reason}).`);
           await this.restartWorker();
         } finally {
           this.restartInProgress = false;
           if (this.restartRequestedDuringRestart) {
             this.restartRequestedDuringRestart = false;
             setTimeout(() => {
-              void this.scheduleRuntimeReload();
+              void this.flushWorkerRestart();
             }, 0);
           }
         }
@@ -2110,7 +2106,6 @@ export class StellaRuntimeHost {
     this.runEventAckTimer = null;
     this.pausedRuntimeReloadRuns.clear();
     this.deferredRuntimeReload = false;
-    this.scheduledRuntimeReload = false;
     this.restartInProgress = false;
     this.restartRequestedDuringRestart = false;
     // The on-disk pending-restart flag intentionally survives host stop so
@@ -3635,13 +3630,14 @@ export class StellaRuntimeHost {
         this.scheduleRunEventAck(payload.runId, payload.seq);
       }
       if (
-        this.pendingStaleWorkerRestart &&
+        this.hasPendingWorkerRestartIntent() &&
         payload.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED
       ) {
-        // A deferred stale-worker restart is waiting for quiescence; give
-        // immediate follow-up runs a moment to register before checking.
+        // A deferred worker restart is waiting for the worker to go idle; give
+        // immediate follow-up runs a moment to register before the unified
+        // gate re-checks.
         const timer = setTimeout(() => {
-          void this.maybeRestartStaleWorkerWhenQuiescent();
+          void this.flushWorkerRestart();
         }, 500);
         timer.unref?.();
       }
