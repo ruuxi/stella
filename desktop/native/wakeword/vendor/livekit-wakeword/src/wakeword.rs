@@ -242,3 +242,145 @@ fn fingerprint_hash(values: &[u32]) -> u64 {
     }
     hash
 }
+
+// ---------------------------------------------------------------------------
+// Streaming (incremental) prediction
+//
+// Profiling the active path showed the speech-embedding model dominates cost
+// (~16 window evaluations per prediction), while the mel front-end and the
+// classifier are comparatively cheap. When the rolling window advances by one
+// embedding stride between predictions, 15 of the 16 embedding windows are
+// unchanged, yet the stock `predict` recomputes all of them every call and the
+// content-fingerprint cache misses because tiny mel boundary drift perturbs the
+// exact bytes. `predict_stream` keeps the mel identical to `predict` but caches
+// embeddings by their absolute start-sample, so steady-state work drops to about
+// one embedding evaluation per call.
+// ---------------------------------------------------------------------------
+
+/// Rolling window length fed to the mel front-end (2 s @ 16 kHz).
+const STREAM_WINDOW_SAMPLES: usize = 32_000;
+/// Mel hop in samples (10 ms): frame `i` covers raw `[i*HOP, i*HOP + 512)`.
+const STREAM_MEL_HOP: i64 = 160;
+/// One embedding window advances `EMBEDDING_STRIDE` mel frames of raw audio.
+const STREAM_WINDOW_ADVANCE: i64 = EMBEDDING_STRIDE as i64 * STREAM_MEL_HOP; // 1280
+
+/// Rolling state for [`WakeWordModel::predict_stream`]. One per audio stream.
+pub struct StreamState {
+    ring: Vec<i16>,
+    total_samples: i64,
+    /// (absolute start-sample of the 76-frame window, embedding).
+    emb_cache: VecDeque<(i64, Array1<f32>)>,
+    reuse_hits: u64,
+    compute_misses: u64,
+}
+
+impl Default for StreamState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StreamState {
+    pub fn new() -> Self {
+        Self {
+            ring: Vec::with_capacity(STREAM_WINDOW_SAMPLES + 4096),
+            total_samples: 0,
+            emb_cache: VecDeque::with_capacity(MIN_EMBEDDINGS * 3),
+            reuse_hits: 0,
+            compute_misses: 0,
+        }
+    }
+
+    /// Drop all buffered audio and cached embeddings (e.g. after a detection).
+    pub fn reset(&mut self) {
+        self.ring.clear();
+        self.total_samples = 0;
+        self.emb_cache.clear();
+    }
+
+    /// Embeddings reused from cache vs recomputed, since construction.
+    pub fn cache_stats(&self) -> (u64, u64) {
+        (self.reuse_hits, self.compute_misses)
+    }
+}
+
+impl WakeWordModel {
+    /// Streaming counterpart to [`predict`](Self::predict).
+    ///
+    /// Feed the 16 kHz mono i16 samples captured since the previous call. The
+    /// returned scores are computed over the most recent ~2 s, identical in
+    /// meaning to `predict`, but embeddings whose absolute audio window has not
+    /// changed are reused instead of recomputed.
+    pub fn predict_stream(
+        &mut self,
+        state: &mut StreamState,
+        new_audio: &[i16],
+    ) -> Result<HashMap<String, f32>, WakeWordError> {
+        if self.classifiers.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        state.ring.extend_from_slice(new_audio);
+        state.total_samples += new_audio.len() as i64;
+        if state.ring.len() > STREAM_WINDOW_SAMPLES {
+            let drop = state.ring.len() - STREAM_WINDOW_SAMPLES;
+            state.ring.drain(..drop);
+        }
+        let base_sample = state.total_samples - state.ring.len() as i64;
+
+        let samples_f32: Vec<f32> = state.ring.iter().map(|&x| x as f32 / 32768.0).collect();
+        let mel = self.mel_model.detect(&samples_f32)?;
+        let num_frames = mel.shape()[0];
+        if num_frames < EMBEDDING_WINDOW {
+            return Ok(self.zero_scores());
+        }
+        let n_windows = (num_frames - EMBEDDING_WINDOW) / EMBEDDING_STRIDE + 1;
+        if n_windows < MIN_EMBEDDINGS {
+            return Ok(self.zero_scores());
+        }
+
+        let first = n_windows - MIN_EMBEDDINGS;
+        let oldest_key = base_sample + first as i64 * STREAM_WINDOW_ADVANCE;
+        while let Some(&(k, _)) = state.emb_cache.front() {
+            if k < oldest_key {
+                state.emb_cache.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        let mut seq: Vec<Array1<f32>> = Vec::with_capacity(MIN_EMBEDDINGS);
+        for w in first..n_windows {
+            let key = base_sample + w as i64 * STREAM_WINDOW_ADVANCE;
+            if let Some((_, e)) = state.emb_cache.iter().find(|(k, _)| *k == key) {
+                state.reuse_hits += 1;
+                seq.push(e.clone());
+                continue;
+            }
+            let start = w * EMBEDDING_STRIDE;
+            let window = mel.slice(ndarray::s![start..start + EMBEDDING_WINDOW, ..]);
+            let window_slice = window.as_standard_layout();
+            let emb = self.emb_model.detect(window_slice.as_slice().unwrap())?;
+            state.compute_misses += 1;
+            state.emb_cache.push_back((key, emb.clone()));
+            seq.push(emb);
+        }
+        while state.emb_cache.len() > MIN_EMBEDDINGS * 3 {
+            state.emb_cache.pop_front();
+        }
+
+        let views: Vec<_> = seq.iter().map(|e| e.view()).collect();
+        let emb_sequence = ndarray::stack(Axis(0), &views)?;
+        let emb_input = emb_sequence.insert_axis(Axis(0));
+
+        let mut predictions = HashMap::new();
+        for (name, session) in &mut self.classifiers {
+            let tensor = Tensor::from_array(emb_input.clone())?;
+            let outputs = session.run(ort::inputs!["embeddings" => tensor])?;
+            let raw = outputs["score"].try_extract_array::<f32>()?;
+            let score = raw.iter().copied().next().unwrap_or(0.0);
+            predictions.insert(name.clone(), score);
+        }
+        Ok(predictions)
+    }
+}

@@ -27,6 +27,7 @@ use clap::{Parser, Subcommand};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, SampleFormat, StreamConfig};
 use livekit_wakeword::wakeword::WakeWordModel;
+use livekit_wakeword::wakeword::StreamState;
 use serde::Serialize;
 use silero::{SampleRate as VadSampleRate, Session as VadSession, StreamState as VadStreamState};
 
@@ -43,7 +44,7 @@ const PREDICT_WINDOW_SECS: f32 = 2.0;
 /// How often we run inference once active. LiveKit's Python listener reads
 /// 1280-sample frames at 16 kHz, which is 80 ms between rolling-window
 /// predictions.
-const PREDICT_STRIDE_MS: u64 = 80;
+const PREDICT_STRIDE_MS: u64 = 120;
 
 /// Cheap energy gate: skip Silero when input is clearly silent, but never stop
 /// buffering audio. On a silence -> active edge we replay this tail into Silero
@@ -240,21 +241,62 @@ fn run_probe(model: PathBuf) -> Result<()> {
     Ok(())
 }
 
+fn top_score(scores: &std::collections::HashMap<String, f32>) -> f32 {
+    scores.values().copied().fold(f32::NEG_INFINITY, f32::max).max(0.0)
+}
+
 fn run_bench(model: PathBuf, iterations: usize) -> Result<()> {
     let mut model_instance = load_model(&model)?;
-    let audio = vec![0_i16; (MODEL_SAMPLE_RATE as f32 * PREDICT_WINDOW_SECS) as usize];
-    let start = Instant::now();
-    for _ in 0..iterations {
-        let _ = model_instance.predict(&audio)?;
+    let window = (MODEL_SAMPLE_RATE as f32 * PREDICT_WINDOW_SECS) as usize;
+    let hop = 1280usize;
+    let total = window + iterations * hop + 4096;
+    let mut signal = vec![0i16; total];
+    for i in 0..total {
+        let t = i as f32 / MODEL_SAMPLE_RATE as f32;
+        let f = 200.0 + 120.0 * (0.7 * t).sin();
+        let a = 0.2 + 0.15 * (0.3 * t).sin();
+        signal[i] = ((a * (2.0 * std::f32::consts::PI * f * t).sin()) * i16::MAX as f32) as i16;
     }
-    let elapsed = start.elapsed();
-    let per_predict_ms = elapsed.as_secs_f64() * 1000.0 / iterations.max(1) as f64;
-    eprintln!(
-        "bench: iterations={} total_ms={:.1} per_predict_ms={:.1}",
-        iterations,
-        elapsed.as_secs_f64() * 1000.0,
-        per_predict_ms,
-    );
+    let mean = |v: &[f64]| -> f64 { if v.is_empty() { 0.0 } else { v.iter().sum::<f64>() / v.len() as f64 } };
+    let pct = |v: &[f64], p: f64| -> f64 {
+        if v.is_empty() { return 0.0; }
+        let mut s = v.to_vec();
+        s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        s[(((s.len() - 1) as f64) * p) as usize]
+    };
+    let mut ring: Vec<i16> = signal[..window].to_vec();
+    for _ in 0..5 { let _ = model_instance.predict(&ring)?; }
+    let mut legacy_ms: Vec<f64> = Vec::new();
+    let mut legacy_scores: Vec<f32> = Vec::new();
+    let mut pos = window;
+    for _ in 0..iterations {
+        ring.extend_from_slice(&signal[pos..pos + hop]);
+        pos += hop;
+        if ring.len() > window { let d = ring.len() - window; ring.drain(..d); }
+        let t0 = Instant::now();
+        let sc = model_instance.predict(&ring)?;
+        legacy_ms.push(t0.elapsed().as_secs_f64() * 1000.0);
+        legacy_scores.push(top_score(&sc));
+    }
+    let mut state = StreamState::new();
+    let _ = model_instance.predict_stream(&mut state, &signal[..window])?;
+    let mut stream_ms: Vec<f64> = Vec::new();
+    let mut stream_scores: Vec<f32> = Vec::new();
+    let mut pos = window;
+    for _ in 0..iterations {
+        let t0 = Instant::now();
+        let sc = model_instance.predict_stream(&mut state, &signal[pos..pos + hop])?;
+        pos += hop;
+        stream_ms.push(t0.elapsed().as_secs_f64() * 1000.0);
+        stream_scores.push(top_score(&sc));
+    }
+    let (reused, computed) = state.cache_stats();
+    let mut max_abs = 0f32;
+    for i in 0..iterations { max_abs = max_abs.max((legacy_scores[i] - stream_scores[i]).abs()); }
+    let lmean = mean(&legacy_ms);
+    let smean = mean(&stream_ms);
+    eprintln!("bench: iterations={} total_ms={:.1} per_predict_ms={:.1}", iterations, lmean * iterations as f64, lmean);
+    eprintln!("bench_stream iterations={} legacy_mean_ms={:.4} legacy_p50_ms={:.4} legacy_p95_ms={:.4} stream_mean_ms={:.4} stream_p50_ms={:.4} stream_p95_ms={:.4} speedup={:.3} max_abs_score_diff={:.3e} emb_reused={} emb_computed={}", iterations, lmean, pct(&legacy_ms, 0.5), pct(&legacy_ms, 0.95), smean, pct(&stream_ms, 0.5), pct(&stream_ms, 0.95), lmean / smean.max(1e-9), max_abs, reused, computed);
     Ok(())
 }
 
@@ -435,6 +477,18 @@ fn run_inference_loop(
     let mut last_fire = Instant::now() - Duration::from_secs(60);
     let debounce = Duration::from_millis(options.debounce_ms);
     let mut resampler = LinearResampler::new(sample_rate, MODEL_SAMPLE_RATE);
+    let mut stream = StreamState::new();
+    let mut pending: Vec<i16> = Vec::new();
+    // Optional score smoothing: mean over the last N predictions. Default 1 is a
+    // no-op; raise via WAKEWORD_SMOOTHING to trade a little latency for fewer
+    // single-frame spikes when running at a larger predict stride.
+    let smoothing = std::env::var("WAKEWORD_SMOOTHING")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(1)
+        .max(1);
+    let mut score_hist: std::collections::VecDeque<f32> =
+        std::collections::VecDeque::with_capacity(smoothing);
     let mut energy_gate =
         EnergyGate::new(options.energy_rms_threshold, options.energy_peak_threshold);
     let mut vad = if options.disable_vad {
@@ -466,6 +520,11 @@ fn run_inference_loop(
         }
 
         ring.extend_from_slice(&chunk);
+        pending.extend_from_slice(&chunk);
+        if pending.len() > window_samples {
+            let drop = pending.len() - window_samples;
+            pending.drain(..drop);
+        }
         samples_since_predict += chunk.len();
 
         // Cap ring at one window — older audio can't influence the next
@@ -493,7 +552,7 @@ fn run_inference_loop(
             continue;
         }
 
-        let scores = match model.predict(&ring) {
+        let scores = match model.predict_stream(&mut stream, &pending) {
             Ok(s) => s,
             Err(e) => {
                 let msg = format!("predict failed: {}", e);
@@ -501,11 +560,17 @@ fn run_inference_loop(
                 continue;
             }
         };
+        pending.clear();
 
-        let score = scores
+        let raw_score = scores
             .get(model_name)
             .copied()
             .unwrap_or_else(|| scores.values().copied().fold(f32::NEG_INFINITY, f32::max));
+        if score_hist.len() == smoothing {
+            score_hist.pop_front();
+        }
+        score_hist.push_back(raw_score);
+        let score = score_hist.iter().copied().sum::<f32>() / score_hist.len() as f32;
         if score >= options.threshold && last_fire.elapsed() >= debounce {
             last_fire = Instant::now();
             let timestamp_ms = SystemTime::now()
@@ -523,6 +588,9 @@ fn run_inference_loop(
             // decision. The CLI has no wait_for_detection() consumer to pause
             // on, so it immediately starts filling a fresh window.
             ring.clear();
+            pending.clear();
+            stream.reset();
+            score_hist.clear();
             samples_since_predict = 0;
         }
     }

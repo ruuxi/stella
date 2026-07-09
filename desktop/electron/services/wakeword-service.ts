@@ -33,6 +33,18 @@ type WakewordEvent =
 type WakewordOptions = {
   threshold: number;
   modelPath?: string;
+  /** Milliseconds between rolling-window predictions (native default 120). */
+  predictStrideMs?: number;
+  /** Silero VAD hangover in ms. */
+  vadHangoverMs?: number;
+  /** Energy-gate RMS / peak thresholds. */
+  energyRmsThreshold?: number;
+  energyPeakThreshold?: number;
+  /** Disable the Silero VAD gate / cheap energy gate. */
+  disableVad?: boolean;
+  disableEnergyGate?: boolean;
+  /** Score-smoothing window: mean over N predictions (1 = off). */
+  scoreSmoothing?: number;
   onWake: (event: Extract<WakewordEvent, { event: "wake" }>) => void;
   onReady?: (event: Extract<WakewordEvent, { event: "ready" }>) => void;
 };
@@ -125,12 +137,23 @@ export class WakewordService {
       "--threshold",
       this.options.threshold.toString(),
     ];
+    const o = this.options;
+    if (o.predictStrideMs != null) args.push("--predict-stride-ms", String(o.predictStrideMs));
+    if (o.vadHangoverMs != null) args.push("--vad-hangover-ms", String(o.vadHangoverMs));
+    if (o.energyRmsThreshold != null) args.push("--energy-rms-threshold", String(o.energyRmsThreshold));
+    if (o.energyPeakThreshold != null) args.push("--energy-peak-threshold", String(o.energyPeakThreshold));
+    if (o.disableVad) args.push("--disable-vad");
+    if (o.disableEnergyGate) args.push("--disable-energy-gate");
 
     let child: ChildProcess;
     try {
       child = spawn(binaryPath, args, {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
+        env:
+          o.scoreSmoothing != null
+            ? { ...process.env, WAKEWORD_SMOOTHING: String(o.scoreSmoothing) }
+            : process.env,
       });
     } catch (error) {
       console.warn("[wakeword] failed to spawn listener:", error);
