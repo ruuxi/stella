@@ -26,6 +26,29 @@ function Harness({
   return <div data-testid="painted">{painted.at(-1)?._id}</div>;
 }
 
+function StreamingHarness({
+  messages,
+  deferUpdates,
+}: {
+  messages: MessageRecord[];
+  deferUpdates: boolean;
+}) {
+  const painted = useDeferredChatMessages(
+    messages,
+    deferUpdates,
+    "conversation-a",
+  );
+  const latest = painted.at(-1);
+  const payload = latest?.payload as
+    | { text?: string; metadata?: { runtime?: { isStreaming?: boolean } } }
+    | undefined;
+  return (
+    <div data-testid="streamed-text">
+      {payload?.text}:{String(payload?.metadata?.runtime?.isStreaming)}
+    </div>
+  );
+}
+
 describe("useDeferredChatMessages", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -86,5 +109,47 @@ describe("useDeferredChatMessages", () => {
     expect(await render([message("other")], true, "conversation-b")).toBe(
       "other",
     );
+  });
+
+  it("holds only painted rows while the stream controller continues to completion", async () => {
+    const streamed = (
+      text: string,
+      isStreaming: boolean,
+    ): MessageRecord => ({
+      _id: "stream-overlay:user-1:1",
+      timestamp: 1,
+      type: "assistant_message",
+      payload: {
+        text,
+        userMessageId: "user-1",
+        metadata: { runtime: { isStreaming } },
+      },
+      toolEvents: [],
+    });
+    const renderStream = async (
+      messages: MessageRecord[],
+      deferUpdates: boolean,
+    ) => {
+      await act(async () => {
+        root.render(
+          <StreamingHarness
+            messages={messages}
+            deferUpdates={deferUpdates}
+          />,
+        );
+      });
+      return container.querySelector('[data-testid="streamed-text"]')
+        ?.textContent;
+    };
+
+    expect(await renderStream([streamed("First", true)], false)).toBe(
+      "First:true",
+    );
+    expect(
+      await renderStream([streamed("First complete response", false)], true),
+    ).toBe("First:true");
+    expect(
+      await renderStream([streamed("First complete response", false)], false),
+    ).toBe("First complete response:false");
   });
 });

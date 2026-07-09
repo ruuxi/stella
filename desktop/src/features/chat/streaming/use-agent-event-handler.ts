@@ -9,7 +9,7 @@
  * `useLocalAgentStream` without duplicating the reducer's source of
  * truth. The slot-management callbacks (`beginStreamingRun`,
  * `acceptStreamChunk`, `finalizeMessageBoundary`,
- * `finalizeRunOnFinish`, `dropOverlaysForRun`) own the in-memory
+ * `finalizeRunOnFinish`) own the in-memory
  * `streamingAssistants` overlay array — see `useLocalAgentStream` for
  * the lifecycle, and `useConversationDisplayMessages` for the merge
  * with persisted SQLite-backed messages.
@@ -69,8 +69,7 @@ type UseAgentEventHandlerOptions = {
      *   - RUN_STARTED  → beginStreamingRun
      *   - STREAM       → acceptStreamChunk
      *   - ASSISTANT_MESSAGE boundary → finalizeMessageBoundary
-     *   - RUN_FINISHED → finalizeRunOnFinish (+ dropOverlaysForRun
-     *                    on hard-cancel paths)
+     *   - RUN_FINISHED → finalizeRunOnFinish
      */
     beginStreamingRun: (args: {
       runId: string
@@ -87,7 +86,6 @@ type UseAgentEventHandlerOptions = {
       userMessageId: string | null
     }) => void
     finalizeRunOnFinish: (args: { runId: string }) => void
-    dropOverlaysForRun: (runId: string | null) => void
   }
   timers: {
     scheduleTaskRemoval: (
@@ -142,7 +140,6 @@ export function useAgentEventHandler({
     acceptStreamChunk,
     finalizeMessageBoundary,
     finalizeRunOnFinish,
-    dropOverlaysForRun,
   } = streaming
   const { scheduleTaskRemoval, clearScheduledTaskRemoval } = timers
   const {
@@ -261,22 +258,13 @@ export function useAgentEventHandler({
             args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR ||
             args.outcome === AGENT_RUN_FINISH_OUTCOMES.CANCELED)
         ) {
-          if (
-            args.outcome === AGENT_RUN_FINISH_OUTCOMES.CANCELED ||
-            args.outcome === AGENT_RUN_FINISH_OUTCOMES.ERROR
-          ) {
-            // Hard cancel/error: the runtime may not persist an
-            // assistant_message for the in-flight slot. Drop the live
-            // overlay so a failed turn does not leave a partial assistant
-            // message in chat.
-            dropOverlaysForRun(event.runId)
-          } else {
-            // Finalize the current overlay slot. Overlay entries stay
-            // in the array until their persisted counterparts land via
-            // `chat:localUpdated` (see the dedupe in
-            // `useConversationDisplayMessages`).
-            finalizeRunOnFinish({ runId: event.runId })
-          }
+          // Drain every received character before locking the current slot.
+          // This applies to completion, error, and cancel alike: terminal
+          // transport state must never silently discard text the provider
+          // already delivered. If no persisted twin is written for a failed
+          // run, the partial live row remains available until conversation
+          // cleanup.
+          finalizeRunOnFinish({ runId: event.runId })
           setPendingUserMessageId(null)
         }
         // `selfModApplied` is patched onto the persisted assistant
@@ -359,8 +347,8 @@ export function useAgentEventHandler({
                 : {}),
               chunk: event.chunk,
             })
-            // The renderer appends every chunk immediately, so the first
-            // visible delta is also the working-indicator handoff point.
+            // The first accepted text delta starts the visual stream; its
+            // first animation frame follows immediately after this handoff.
             if (/\S/.test(event.chunk)) {
               dispatch({ type: 'mark-streaming-text', runId: event.runId })
             }
@@ -596,7 +584,6 @@ export function useAgentEventHandler({
       clearScheduledTaskRemoval,
       discardPendingReasoningChunks,
       dispatch,
-      dropOverlaysForRun,
       finalizeMessageBoundary,
       finalizeRunOnFinish,
       flushPendingReasoningChunks,
