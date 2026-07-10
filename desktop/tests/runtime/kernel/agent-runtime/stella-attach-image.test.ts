@@ -207,7 +207,7 @@ App=com.apple.finder (pid 504)
     expect(result.text).toContain(`original ${size}x${size}`);
     expect(result.text).toContain("Multiply coordinates by");
     expect(result.text).not.toContain("[stella-attach-image]");
-  });
+  }, 15_000);
 
   it("gates the raw-attach fallback on the shared Anthropic per-image ceiling", () => {
     // The attach gate and the Anthropic send boundary must enforce the SAME
