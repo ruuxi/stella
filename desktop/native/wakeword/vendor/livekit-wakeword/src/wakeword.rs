@@ -244,32 +244,32 @@ fn fingerprint_hash(values: &[u32]) -> u64 {
 }
 
 // ---------------------------------------------------------------------------
-// Streaming (incremental) prediction
+// Fixed-lattice streaming prediction
 //
-// Profiling the active path showed the speech-embedding model dominates cost
-// (~16 window evaluations per prediction), while the mel front-end and the
-// classifier are comparatively cheap. When the rolling window advances by one
-// embedding stride between predictions, 15 of the 16 embedding windows are
-// unchanged, yet the stock `predict` recomputes all of them every call and the
-// content-fingerprint cache misses because tiny mel boundary drift perturbs the
-// exact bytes. `predict_stream` keeps the mel identical to `predict` but caches
-// embeddings by their absolute start-sample, so steady-state work drops to about
-// one embedding evaluation per call.
+// Audio callbacks and classifier predictions have unrelated cadences. Tying
+// embedding keys to the start of each rolling prediction window therefore loses
+// all reuse whenever that window advances by a non-1280-sample amount (120 ms is
+// 1920 samples). Instead, incoming audio advances a fixed 160-sample mel-frame
+// lattice. Every eight new frames produce exactly one embedding on a fixed
+// 1280-sample lattice, and prediction only reads the latest 16 embeddings.
 // ---------------------------------------------------------------------------
 
-/// Rolling window length fed to the mel front-end (2 s @ 16 kHz).
-const STREAM_WINDOW_SAMPLES: usize = 32_000;
 /// Mel hop in samples (10 ms): frame `i` covers raw `[i*HOP, i*HOP + 512)`.
-const STREAM_MEL_HOP: i64 = 160;
-/// One embedding window advances `EMBEDDING_STRIDE` mel frames of raw audio.
-const STREAM_WINDOW_ADVANCE: i64 = EMBEDDING_STRIDE as i64 * STREAM_MEL_HOP; // 1280
+const STREAM_MEL_HOP: u64 = 160;
+/// Rolling model window (2 s at 16 kHz), always aligned to the lattice.
+const STREAM_WINDOW_SAMPLES: usize = 32_000;
+/// One embedding advances eight mel frames (80 ms at 16 kHz).
+const STREAM_EMBEDDING_ADVANCE: u64 = EMBEDDING_STRIDE as u64 * STREAM_MEL_HOP;
 
-/// Rolling state for [`WakeWordModel::predict_stream`]. One per audio stream.
+/// Fixed-lattice state for one 16 kHz mono audio stream.
 pub struct StreamState {
-    ring: Vec<i16>,
-    total_samples: i64,
-    /// (absolute start-sample of the 76-frame window, embedding).
-    emb_cache: VecDeque<(i64, Array1<f32>)>,
+    audio: Vec<i16>,
+    audio_start_sample: u64,
+    total_samples: u64,
+    next_window_start_sample: u64,
+    /// (absolute start sample, embedding), always on the 1280-sample lattice.
+    embeddings: VecDeque<(u64, Array1<f32>)>,
+    embeddings_since_predict: usize,
     reuse_hits: u64,
     compute_misses: u64,
 }
@@ -283,9 +283,12 @@ impl Default for StreamState {
 impl StreamState {
     pub fn new() -> Self {
         Self {
-            ring: Vec::with_capacity(STREAM_WINDOW_SAMPLES + 4096),
+            audio: Vec::with_capacity(STREAM_WINDOW_SAMPLES + 4096),
+            audio_start_sample: 0,
             total_samples: 0,
-            emb_cache: VecDeque::with_capacity(MIN_EMBEDDINGS * 3),
+            next_window_start_sample: 0,
+            embeddings: VecDeque::with_capacity(MIN_EMBEDDINGS + 1),
+            embeddings_since_predict: 0,
             reuse_hits: 0,
             compute_misses: 0,
         }
@@ -293,83 +296,104 @@ impl StreamState {
 
     /// Drop all buffered audio and cached embeddings (e.g. after a detection).
     pub fn reset(&mut self) {
-        self.ring.clear();
+        self.audio.clear();
+        self.audio_start_sample = 0;
         self.total_samples = 0;
-        self.emb_cache.clear();
+        self.next_window_start_sample = 0;
+        self.embeddings.clear();
+        self.embeddings_since_predict = 0;
     }
 
-    /// Embeddings reused from cache vs recomputed, since construction.
+    /// Classifier embedding slots reused vs embeddings computed, since construction.
     pub fn cache_stats(&self) -> (u64, u64) {
         (self.reuse_hits, self.compute_misses)
     }
 }
 
 impl WakeWordModel {
-    /// Streaming counterpart to [`predict`](Self::predict).
+    /// Advance mel and embedding state with newly captured 16 kHz mono audio.
     ///
-    /// Feed the 16 kHz mono i16 samples captured since the previous call. The
-    /// returned scores are computed over the most recent ~2 s, identical in
-    /// meaning to `predict`, but embeddings whose absolute audio window has not
-    /// changed are reused instead of recomputed.
-    pub fn predict_stream(
+    /// This is intentionally separate from [`predict_stream`](Self::predict_stream):
+    /// callback sizes and prediction cadence cannot change the 160/1280-sample
+    /// lattice. Mel calls stay on aligned 2-second windows for tensor parity,
+    /// while each speech embedding is computed exactly once.
+    pub fn advance_stream(
         &mut self,
         state: &mut StreamState,
         new_audio: &[i16],
+    ) -> Result<(), WakeWordError> {
+        if self.classifiers.is_empty() {
+            return Ok(());
+        }
+
+        state.audio.extend_from_slice(new_audio);
+        state.total_samples += new_audio.len() as u64;
+
+        while state.total_samples
+            >= state.next_window_start_sample + STREAM_WINDOW_SAMPLES as u64
+        {
+            let offset =
+                (state.next_window_start_sample - state.audio_start_sample) as usize;
+            let samples_f32: Vec<f32> = state.audio[offset..offset + STREAM_WINDOW_SAMPLES]
+                .iter()
+                .map(|&sample| sample as f32 / 32768.0)
+                .collect();
+            let mel = self.mel_model.detect(&samples_f32)?;
+            let num_frames = mel.shape()[0];
+            let num_windows = (num_frames - EMBEDDING_WINDOW) / EMBEDDING_STRIDE + 1;
+            let first_window = if state.embeddings.is_empty() {
+                num_windows - MIN_EMBEDDINGS
+            } else {
+                num_windows - 1
+            };
+            for window_index in first_window..num_windows {
+                let start_frame = window_index * EMBEDDING_STRIDE;
+                let window = mel.slice(ndarray::s![
+                    start_frame..start_frame + EMBEDDING_WINDOW,
+                    ..
+                ]);
+                let window = window.as_standard_layout();
+                let embedding = self.emb_model.detect(window.as_slice().unwrap())?;
+                let start_sample = state.next_window_start_sample
+                    + window_index as u64 * STREAM_EMBEDDING_ADVANCE;
+                state.embeddings.push_back((start_sample, embedding));
+                if state.embeddings.len() > MIN_EMBEDDINGS {
+                    state.embeddings.pop_front();
+                }
+                state.embeddings_since_predict += 1;
+                state.compute_misses += 1;
+            }
+
+            state.next_window_start_sample += STREAM_EMBEDDING_ADVANCE;
+            let drop_samples =
+                (state.next_window_start_sample - state.audio_start_sample) as usize;
+            state.audio.drain(..drop_samples);
+            state.audio_start_sample = state.next_window_start_sample;
+        }
+        Ok(())
+    }
+
+    /// Classify the latest 16 fixed-lattice embeddings without advancing audio.
+    pub fn predict_stream(
+        &mut self,
+        state: &mut StreamState,
     ) -> Result<HashMap<String, f32>, WakeWordError> {
         if self.classifiers.is_empty() {
             return Ok(HashMap::new());
         }
-
-        state.ring.extend_from_slice(new_audio);
-        state.total_samples += new_audio.len() as i64;
-        if state.ring.len() > STREAM_WINDOW_SAMPLES {
-            let drop = state.ring.len() - STREAM_WINDOW_SAMPLES;
-            state.ring.drain(..drop);
-        }
-        let base_sample = state.total_samples - state.ring.len() as i64;
-
-        let samples_f32: Vec<f32> = state.ring.iter().map(|&x| x as f32 / 32768.0).collect();
-        let mel = self.mel_model.detect(&samples_f32)?;
-        let num_frames = mel.shape()[0];
-        if num_frames < EMBEDDING_WINDOW {
-            return Ok(self.zero_scores());
-        }
-        let n_windows = (num_frames - EMBEDDING_WINDOW) / EMBEDDING_STRIDE + 1;
-        if n_windows < MIN_EMBEDDINGS {
+        if state.embeddings.len() < MIN_EMBEDDINGS {
             return Ok(self.zero_scores());
         }
 
-        let first = n_windows - MIN_EMBEDDINGS;
-        let oldest_key = base_sample + first as i64 * STREAM_WINDOW_ADVANCE;
-        while let Some(&(k, _)) = state.emb_cache.front() {
-            if k < oldest_key {
-                state.emb_cache.pop_front();
-            } else {
-                break;
-            }
-        }
+        let newly_computed = state.embeddings_since_predict.min(MIN_EMBEDDINGS);
+        state.reuse_hits += (MIN_EMBEDDINGS - newly_computed) as u64;
+        state.embeddings_since_predict = 0;
 
-        let mut seq: Vec<Array1<f32>> = Vec::with_capacity(MIN_EMBEDDINGS);
-        for w in first..n_windows {
-            let key = base_sample + w as i64 * STREAM_WINDOW_ADVANCE;
-            if let Some((_, e)) = state.emb_cache.iter().find(|(k, _)| *k == key) {
-                state.reuse_hits += 1;
-                seq.push(e.clone());
-                continue;
-            }
-            let start = w * EMBEDDING_STRIDE;
-            let window = mel.slice(ndarray::s![start..start + EMBEDDING_WINDOW, ..]);
-            let window_slice = window.as_standard_layout();
-            let emb = self.emb_model.detect(window_slice.as_slice().unwrap())?;
-            state.compute_misses += 1;
-            state.emb_cache.push_back((key, emb.clone()));
-            seq.push(emb);
-        }
-        while state.emb_cache.len() > MIN_EMBEDDINGS * 3 {
-            state.emb_cache.pop_front();
-        }
-
-        let views: Vec<_> = seq.iter().map(|e| e.view()).collect();
+        let views: Vec<_> = state
+            .embeddings
+            .iter()
+            .map(|(_, embedding)| embedding.view())
+            .collect();
         let emb_sequence = ndarray::stack(Axis(0), &views)?;
         let emb_input = emb_sequence.insert_axis(Axis(0));
 
@@ -382,5 +406,160 @@ impl WakeWordModel {
             predictions.insert(name.clone(), score);
         }
         Ok(predictions)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn classifier_path() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("hey_livekit.onnx")
+    }
+
+    fn signal(samples: usize) -> Vec<i16> {
+        (0..samples)
+            .map(|i| {
+                let t = i as f32 / crate::SAMPLE_RATE as f32;
+                let frequency = 190.0 + 140.0 * (0.61 * t).sin();
+                let amplitude = 0.18 + 0.12 * (0.27 * t).sin();
+                ((amplitude * (2.0 * std::f32::consts::PI * frequency * t).sin())
+                    * i16::MAX as f32) as i16
+            })
+            .collect()
+    }
+
+    #[test]
+    fn fixed_lattice_matches_per_callback_embeddings_and_scores() {
+        let audio = signal(96_000);
+        let callback_sizes = [512usize, 480, 640, 384, 704, 512];
+        let prediction_stride = 1_920usize;
+        let mut stream_model = WakeWordModel::new(&[classifier_path()], 16_000).unwrap();
+        let mut reference_model = WakeWordModel::new(&[classifier_path()], 16_000).unwrap();
+        let mut legacy_model = WakeWordModel::new(&[classifier_path()], 16_000).unwrap();
+        let mut state = StreamState::new();
+        let mut reference_state = StreamState::new();
+        let mut reference_embeddings = VecDeque::with_capacity(MIN_EMBEDDINGS + 1);
+        let mut next_reference_window_start = 0u64;
+        let mut position = 0usize;
+        let mut callback = 0usize;
+        let mut since_predict = 0usize;
+        let mut comparisons = 0usize;
+        let mut max_embedding_diff = 0.0f32;
+        let mut max_score_diff = 0.0f32;
+        let mut max_legacy_score_diff = 0.0f32;
+
+        while position < audio.len() {
+            let count = callback_sizes[callback % callback_sizes.len()]
+                .min(audio.len() - position);
+            callback += 1;
+            stream_model
+                .advance_stream(&mut state, &audio[position..position + count])
+                .unwrap();
+            position += count;
+            since_predict += count;
+
+            // Reference path: at every fixed lattice point, run the original
+            // full-window mel + all-embedding computation with no reuse. Keep
+            // only the newest embedding after the initial 16, exactly as the
+            // reorganized lattice should do incrementally.
+            while position as u64
+                >= next_reference_window_start + STREAM_WINDOW_SAMPLES as u64
+            {
+                let start = next_reference_window_start as usize;
+                let normalized: Vec<f32> = audio[start..start + STREAM_WINDOW_SAMPLES]
+                    .iter()
+                    .map(|&sample| sample as f32 / 32768.0)
+                    .collect();
+                let mel = reference_model.mel_model.detect(&normalized).unwrap();
+                let num_windows =
+                    (mel.shape()[0] - EMBEDDING_WINDOW) / EMBEDDING_STRIDE + 1;
+                let mut callback_embeddings = Vec::with_capacity(num_windows);
+                for index in 0..num_windows {
+                    let frame = index * EMBEDDING_STRIDE;
+                    let window =
+                        mel.slice(ndarray::s![frame..frame + EMBEDDING_WINDOW, ..]);
+                    let window = window.as_standard_layout();
+                    callback_embeddings.push(
+                        reference_model
+                            .emb_model
+                            .detect(window.as_slice().unwrap())
+                            .unwrap(),
+                    );
+                }
+                if reference_embeddings.is_empty() {
+                    for (index, embedding) in callback_embeddings.into_iter().enumerate() {
+                        reference_embeddings.push_back((
+                            next_reference_window_start
+                                + index as u64 * STREAM_EMBEDDING_ADVANCE,
+                            embedding,
+                        ));
+                    }
+                } else {
+                    reference_embeddings.push_back((
+                        next_reference_window_start
+                            + (num_windows - 1) as u64 * STREAM_EMBEDDING_ADVANCE,
+                        callback_embeddings.pop().unwrap(),
+                    ));
+                    reference_embeddings.pop_front();
+                }
+                next_reference_window_start += STREAM_EMBEDDING_ADVANCE;
+            }
+
+            if since_predict < prediction_stride || state.embeddings.len() < MIN_EMBEDDINGS {
+                continue;
+            }
+            since_predict = 0;
+
+            for (index, ((actual_start, actual), (expected_start, expected))) in state
+                .embeddings
+                .iter()
+                .zip(reference_embeddings.iter())
+                .enumerate()
+            {
+                assert_eq!(actual_start, expected_start, "embedding {index} lattice key");
+                for (&actual, &expected) in actual.iter().zip(expected.iter()) {
+                    let diff = (actual - expected).abs();
+                    max_embedding_diff = max_embedding_diff.max(diff);
+                }
+            }
+
+            reference_state.embeddings = reference_embeddings.clone();
+            reference_state.embeddings_since_predict = MIN_EMBEDDINGS;
+            let expected_scores = reference_model
+                .predict_stream(&mut reference_state)
+                .unwrap();
+            let legacy_scores = legacy_model
+                .predict(&audio[position - STREAM_WINDOW_SAMPLES..position])
+                .unwrap();
+            let actual_scores = stream_model.predict_stream(&mut state).unwrap();
+            for (name, expected) in expected_scores {
+                let actual = actual_scores[&name];
+                max_score_diff = max_score_diff.max((actual - expected).abs());
+                max_legacy_score_diff =
+                    max_legacy_score_diff.max((actual - legacy_scores[&name]).abs());
+            }
+            comparisons += 1;
+        }
+
+        eprintln!(
+            "lattice parity: comparisons={comparisons} max_embedding_diff={max_embedding_diff:.3e} max_score_diff={max_score_diff:.3e} max_legacy_score_diff={max_legacy_score_diff:.3e}"
+        );
+        assert!(comparisons >= 20);
+        assert!(
+            max_embedding_diff <= 1e-6,
+            "embedding max abs diff {max_embedding_diff} exceeded tolerance"
+        );
+        assert!(
+            max_score_diff <= 1e-6,
+            "score max abs diff {max_score_diff} exceeded tolerance"
+        );
+        assert!(
+            max_legacy_score_diff <= 2e-5,
+            "legacy score max abs diff {max_legacy_score_diff} exceeded tolerance"
+        );
     }
 }
