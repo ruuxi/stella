@@ -333,7 +333,12 @@ describe("recoverInterruptedDesktopUpdate", () => {
   it("does not fall back to Git when source-pack download fails", async () => {
     const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
     vi.useFakeTimers();
+    let markFirstFetchStarted!: () => void;
+    const firstFetchStarted = new Promise<void>((resolve) => {
+      markFirstFetchStarted = resolve;
+    });
     const fetchMock = vi.fn(async () => {
+      markFirstFetchStarted();
       throw new TypeError("fetch failed");
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -350,6 +355,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
       },
     });
     const rejection = expect(update).rejects.toThrow("fetch failed");
+    await firstFetchStarted;
     await vi.advanceTimersByTimeAsync(0);
     await vi.runAllTimersAsync();
     await rejection;
