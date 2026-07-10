@@ -182,8 +182,8 @@ export const truncateModelVisibleToolText = (
   };
 };
 
-// Inline-image attach contract used by stella-computer (and any other CLI we
-// wire up the same way): when tool output contains a substring of the form
+// Inline-image attach contract used by diagnostic tool output and other
+// runtime emitters: when tool output contains a substring of the form
 //
 //     [stella-attach-image][ <WxH>][ <N>KB][ inline=image/png] <PATH>
 //     [stella-attach-image] ... path="<JSON-escaped absolute path>"
@@ -366,10 +366,10 @@ export const extractAttachImageBlocks = async (
         continue;
       }
       // Provider-aware auto-resize: pass-through when the image already fits
-      // the resolved target's dimension + byte caps (e.g. every
-      // stella-computer screenshot, which the native helper pre-caps at
-      // 1024px, so screenshot-pixel coordinates stay 1:1), otherwise shrink to
-      // fit that target. `detail=original` lifts the caps to the provider's
+      // the resolved target's dimension + byte caps (e.g. computer-use
+      // screenshots that the native service pre-caps at 1024px, so screenshot
+      // coordinates stay 1:1), otherwise shrink to fit that target.
+      // `detail=original` lifts the caps to the provider's
       // hard ceiling so a deliberate full-res read isn't downscaled. The
       // dimension note tells the model how to map coordinates back when a
       // resize did happen.
@@ -776,10 +776,9 @@ export const createPiTools = (opts: {
             : undefined,
         });
         const formatted = formatToolResult(toolResult);
-        // Detect [stella-attach-image] markers in the text and read the
-        // referenced PNG(s) into image content blocks. This is what makes
-        // `stella-computer snapshot` "auto-read" its screenshot — the model
-        // sees the image on the very next turn with no extra Read step.
+        // Detect [stella-attach-image] markers in diagnostic tool output and
+        // read the referenced PNG(s) into image content blocks. The model sees
+        // the screenshot on the very next turn with no extra Read step.
         const { text: forwardedText, images: legacyImages } =
           await extractAttachImageBlocks(formatted.text, opts.imageCapTarget);
         const truncatedText = truncateModelVisibleToolText(forwardedText);

@@ -1,6 +1,8 @@
 import type { MessagePort } from "node:worker_threads";
 
+import { installBrowserWorkerApi } from "../browser-use/worker-api.js";
 import type {
+  BrowserMethod,
   NodeReplWorkerData,
   ParentToNodeReplWorkerMessage,
   SerializedError,
@@ -10,10 +12,12 @@ import type {
 
 /**
  * Kept self-contained because the function body is stringified and started as
- * a data URL worker. That makes the same entry work from Vitest source, compiled
+ * an eval worker. That makes the same entry work from Vitest source, compiled
  * Electron output, and bundled runtime chunks without a separate worker asset.
  */
-const nodeReplWorkerMain = async () => {
+const nodeReplWorkerMain = async (
+  installBrowserApi: typeof installBrowserWorkerApi,
+) => {
   const dynamicImport = new Function(
     "specifier",
     "return import(specifier)",
@@ -26,7 +30,13 @@ const nodeReplWorkerMain = async () => {
   };
   const os = (await dynamicImport("node:os")) as typeof import("node:os");
   const path = (await dynamicImport("node:path")) as typeof import("node:path");
-  const repl = (await dynamicImport("node:repl")) as typeof import("node:repl");
+  const replModule = (await dynamicImport(
+    "node:repl",
+  )) as typeof import("node:repl") & {
+    default?: typeof import("node:repl");
+  };
+  const repl: typeof import("node:repl") =
+    typeof replModule.start === "function" ? replModule : replModule.default!;
   const { createRequire, syncBuiltinESMExports } = (await dynamicImport(
     "node:module",
   )) as typeof import("node:module");
@@ -181,7 +191,12 @@ const nodeReplWorkerMain = async () => {
   let outputBuffer = "";
   let outputErrorReject: ((error: Error) => void) | undefined;
   let nextSkyCallId = 1;
+  let nextBrowserCallId = 1;
   const pendingSkyCalls = new Map<
+    number,
+    { resolve: (value: unknown) => void; reject: (error: Error) => void }
+  >();
+  const pendingBrowserCalls = new Map<
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
   >();
@@ -226,6 +241,48 @@ const nodeReplWorkerMain = async () => {
     (...args: unknown[]) => callSky(method, args),
   ]);
   const sky = Object.freeze(Object.fromEntries(skyEntries));
+
+  const callBrowser = (
+    method: BrowserMethod,
+    args: readonly unknown[],
+  ): Promise<unknown> => {
+    if (activeEvaluationId === null) {
+      return Promise.reject(
+        new Error(
+          "browser methods may only be called during node_repl evaluation.",
+        ),
+      );
+    }
+    if (pendingBrowserCalls.size >= workerData.maxPendingBrowserCalls) {
+      return Promise.reject(new Error("Too many pending browser calls."));
+    }
+    if (method !== "command" && method !== "chain") {
+      return Promise.reject(new Error("Invalid browser method."));
+    }
+    if (serializedSize(args) > workerData.maxProtocolMessageBytes) {
+      return Promise.reject(
+        new Error("browser call arguments exceed the protocol limit."),
+      );
+    }
+
+    const callId = nextBrowserCallId++;
+    return new Promise((resolve, reject) => {
+      pendingBrowserCalls.set(callId, { resolve, reject });
+      try {
+        post({
+          type: "browser-call",
+          evaluationId: activeEvaluationId!,
+          callId,
+          method,
+          args: [...args],
+        });
+      } catch (error) {
+        pendingBrowserCalls.delete(callId);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  };
+  const browser = installBrowserApi(callBrowser);
 
   const write = (...values: unknown[]) => {
     if (!writes) {
@@ -325,6 +382,12 @@ const nodeReplWorkerMain = async () => {
       writable: false,
       configurable: false,
     },
+    browser: {
+      value: browser,
+      enumerable: true,
+      writable: false,
+      configurable: false,
+    },
     process: {
       value: undefined,
       enumerable: false,
@@ -342,6 +405,7 @@ const nodeReplWorkerMain = async () => {
   const finishEvaluation = () => {
     activeEvaluationId = null;
     pendingSkyCalls.clear();
+    pendingBrowserCalls.clear();
     writes = null;
     writeBytes = 0;
     outputBuffer = "";
@@ -434,6 +498,19 @@ const nodeReplWorkerMain = async () => {
         if (message.error.stack) error.stack = message.error.stack;
         pending.reject(error);
       }
+      return;
+    }
+    if (message.type === "browser-result") {
+      const pending = pendingBrowserCalls.get(message.callId);
+      if (!pending) return;
+      pendingBrowserCalls.delete(message.callId);
+      if (message.ok) pending.resolve(message.value);
+      else {
+        const error = new Error(message.error.message);
+        error.name = message.error.name;
+        if (message.error.stack) error.stack = message.error.stack;
+        pending.reject(error);
+      }
     }
   });
 
@@ -441,4 +518,4 @@ const nodeReplWorkerMain = async () => {
 };
 
 export const createNodeReplWorkerSource = (): string =>
-  `(${nodeReplWorkerMain.toString()})().catch((error) => setImmediate(() => { throw error; }))`;
+  `const __name = (target, value) => Object.defineProperty(target, "name", { value, configurable: true });\n(${nodeReplWorkerMain.toString()})((${installBrowserWorkerApi.toString()})).catch((error) => setImmediate(() => { throw error; }))`;

@@ -1,8 +1,24 @@
 import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { Worker } from "node:worker_threads";
 
 import type { ToolContext } from "../tools/types.js";
 import { getStellaComputerSessionId } from "../tools/stella-computer-session.js";
+import {
+  maybeRequestBrowserExtensionConnect,
+  type BrowserExtensionConnectRequester,
+} from "../tools/browser-extension-offer.js";
+import {
+  createBrowserSession,
+  type BrowserChainOptions,
+  type BrowserChainStep,
+  type BrowserCommandParams,
+  type BrowserProtocolAction,
+  type BrowserSessionClient,
+  type BrowserSessionOptions,
+} from "../browser-use/client.js";
 import {
   createSkyClient,
   type AuthorizeApp,
@@ -13,6 +29,7 @@ import type { ComputerUseSession } from "./session.js";
 import {
   MAX_NODE_REPL_CODE_BYTES,
   MAX_NODE_REPL_OUTPUT_BYTES,
+  MAX_NODE_REPL_PENDING_BROWSER_CALLS,
   MAX_NODE_REPL_PENDING_SKY_CALLS,
   MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES,
   type NodeReplWorkerData,
@@ -37,8 +54,13 @@ export type NodeReplMetadata = Readonly<{
 }>;
 
 export type NodeReplKernelManagerOptions = {
+  browserBinPath?: string;
   sessionFactory?: ComputerUseSessionFactory;
   authorizeApp?: AuthorizeApp;
+  browserSessionFactory?: (
+    options: BrowserSessionOptions,
+  ) => BrowserSessionClient;
+  requestBrowserExtensionConnect?: BrowserExtensionConnectRequester;
   disposeSession?: (sessionId: string) => void | Promise<void>;
   evalTimeoutMs?: number;
   commandTimeoutMs?: number;
@@ -126,19 +148,76 @@ type ActiveEvaluation = {
   onAbort?: () => void;
   resolve: (output: string) => void;
   reject: (error: Error) => void;
+  context: ToolContext;
+  browserActivity: {
+    callCount: number;
+    mutated: boolean;
+    visualMutated: boolean;
+    screenshotObserved: boolean;
+    terminalLifecycle: boolean;
+    lastAction?: string;
+  };
 };
+
+const BROWSER_METHODS = new Set(["command", "chain"]);
+const READ_ONLY_BROWSER_ACTIONS = new Set([
+  "healthcheck",
+  "url",
+  "title",
+  "screenshot",
+  "snapshot",
+  "content",
+  "gettext",
+  "getattribute",
+  "innertext",
+  "innerhtml",
+  "inputvalue",
+  "boundingbox",
+  "isvisible",
+  "isenabled",
+  "ischecked",
+  "count",
+  "styles",
+  "requests",
+  "responsebody",
+  "cookies_get",
+  "site_mod_list",
+  "tab_list",
+  "wait",
+  "waitforurl",
+]);
+const NON_VISUAL_BROWSER_MUTATIONS = new Set([
+  "cookies_set",
+  "cookies_clear",
+  "site_mod_set",
+  "site_mod_remove",
+  "site_mod_toggle",
+  "route",
+  "unroute",
+  "har_start",
+  "har_stop",
+  "clipboard",
+  "finalize_tabs",
+  "close_owner",
+]);
+const MAX_BROWSER_SCREENSHOT_FILES_PER_KERNEL = 100;
 
 class NodeReplKernel {
   private readonly worker: Worker;
   private readonly sky: SkyClient;
+  private readonly browser: BrowserSessionClient;
+  private readonly requestBrowserExtensionConnect?: BrowserExtensionConnectRequester;
   private readonly onTerminated: (kernel: NodeReplKernel) => void;
   private tail: Promise<void> = Promise.resolve();
   private idleTimer: NodeJS.Timeout | null = null;
   private pending = 0;
   private skyTail: Promise<void> = Promise.resolve();
+  private browserTail: Promise<void> = Promise.resolve();
   private nextEvaluationId = 1;
   private active: ActiveEvaluation | null = null;
   private closed = false;
+  private closePromise?: Promise<void>;
+  private readonly browserScreenshotPaths = new Set<string>();
 
   constructor(
     readonly id: string,
@@ -153,10 +232,17 @@ class NodeReplKernel {
       >
     > & {
       authorizeApp?: AuthorizeApp;
+      browserBinPath?: string;
+      browserSessionFactory: (
+        options: BrowserSessionOptions,
+      ) => BrowserSessionClient;
+      requestBrowserExtensionConnect?: BrowserExtensionConnectRequester;
       onIdle: (kernel: NodeReplKernel) => void;
     },
   ) {
     this.onTerminated = options.onIdle;
+    this.requestBrowserExtensionConnect =
+      options.requestBrowserExtensionConnect;
     const getSignal = () => this.active?.controller.signal;
     const session = options.sessionFactory({
       sessionId: id,
@@ -170,6 +256,13 @@ class NodeReplKernel {
       getSignal,
       authorizeApp: options.authorizeApp,
     });
+    this.browser = options.browserSessionFactory({
+      ...(options.browserBinPath ? { binaryPath: options.browserBinPath } : {}),
+      sessionId: id,
+      cwd,
+      commandTimeoutMs: options.commandTimeoutMs,
+      disposeCleanup: { action: "close_owner" },
+    });
     const workerData: NodeReplWorkerData = {
       cwd,
       moduleUrl: import.meta.url,
@@ -177,11 +270,10 @@ class NodeReplKernel {
       maxEvalOutputBytes: MAX_NODE_REPL_OUTPUT_BYTES,
       maxProtocolMessageBytes: MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES,
       maxPendingSkyCalls: MAX_NODE_REPL_PENDING_SKY_CALLS,
+      maxPendingBrowserCalls: MAX_NODE_REPL_PENDING_BROWSER_CALLS,
     };
-    const workerUrl = new URL(
-      `data:text/javascript;base64,${Buffer.from(createNodeReplWorkerSource()).toString("base64")}`,
-    );
-    this.worker = new Worker(workerUrl, {
+    this.worker = new Worker(createNodeReplWorkerSource(), {
+      eval: true,
       workerData,
       name: `stella-node-repl-${id.slice(0, 48)}`,
     });
@@ -204,8 +296,8 @@ class NodeReplKernel {
     this.scheduleIdle(options.idleTimeoutMs, options.onIdle);
   }
 
-  close() {
-    if (this.closed) return;
+  close(): Promise<void> {
+    if (this.closePromise) return this.closePromise;
     this.closed = true;
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
@@ -217,11 +309,17 @@ class NodeReplKernel {
         new KernelTerminatedError("Node REPL kernel closed."),
       );
     }
-    void this.worker.terminate().catch(() => undefined);
+    this.closePromise = Promise.allSettled([
+      this.worker.terminate(),
+      this.browser.dispose(),
+      this.cleanupBrowserScreenshots(),
+    ]).then(() => undefined);
+    return this.closePromise;
   }
 
   enqueue(
     code: string,
+    context: ToolContext,
     options: EvaluateOptions,
     defaults: { evalTimeoutMs: number; idleTimeoutMs: number },
     onIdle: (kernel: NodeReplKernel) => void,
@@ -244,6 +342,7 @@ class NodeReplKernel {
       if (this.closed) throw new KernelTerminatedError("Kernel closed.");
       return await this.evaluate(
         code,
+        context,
         options.timeoutMs ?? defaults.evalTimeoutMs,
         options.signal,
       );
@@ -274,6 +373,7 @@ class NodeReplKernel {
 
   private evaluate(
     code: string,
+    context: ToolContext,
     timeoutMs: number,
     signal?: AbortSignal,
   ): Promise<string> {
@@ -307,6 +407,14 @@ class NodeReplKernel {
         signal,
         resolve,
         reject,
+        context,
+        browserActivity: {
+          callCount: 0,
+          mutated: false,
+          visualMutated: false,
+          screenshotObserved: false,
+          terminalLifecycle: false,
+        },
       };
       this.active = active;
       if (signal) {
@@ -350,6 +458,15 @@ class NodeReplKernel {
       );
       return;
     }
+    if (typed.type === "browser-call") {
+      const run = () => this.handleBrowserCall(typed);
+      const task = this.browserTail.then(run, run);
+      this.browserTail = task.then(
+        () => undefined,
+        () => undefined,
+      );
+      return;
+    }
 
     const active = this.active;
     if (!active || typed.evaluationId !== active.id) return;
@@ -365,7 +482,7 @@ class NodeReplKernel {
         );
         return;
       }
-      this.settleActive(active, null, typed.output);
+      void this.completeEvaluation(active, typed.output);
       return;
     }
     if (typed.type === "evaluation-error") {
@@ -430,12 +547,277 @@ class NodeReplKernel {
     }
   }
 
+  private async handleBrowserCall(
+    message: Extract<WorkerToNodeReplParentMessage, { type: "browser-call" }>,
+  ) {
+    const active = this.active;
+    if (
+      !active ||
+      message.evaluationId !== active.id ||
+      !BROWSER_METHODS.has(message.method) ||
+      !Array.isArray(message.args) ||
+      serializedSize(message.args) > MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES
+    ) {
+      this.postBrowserError(
+        message.callId,
+        new Error("Invalid browser protocol request."),
+      );
+      return;
+    }
+
+    try {
+      let value: unknown;
+      try {
+        value = await this.executeBrowserMessage(active, message);
+      } catch (error) {
+        const outcome = await maybeRequestBrowserExtensionConnect({
+          output: error instanceof Error ? error.message : String(error),
+          command: "stella-browser node_repl",
+          requestConnect: this.requestBrowserExtensionConnect,
+          conversationId: active.context.conversationId,
+          agentId: active.context.agentId,
+          signal: active.controller.signal,
+        });
+        if (!outcome?.ok) throw error;
+        value = await this.executeBrowserMessage(active, message);
+      }
+      if (serializedSize(value) > MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES) {
+        throw new Error("browser result exceeds the protocol limit.");
+      }
+      this.recordBrowserActivity(active, message);
+      if (!this.closed && this.active === active) {
+        this.post({
+          type: "browser-result",
+          callId: message.callId,
+          ok: true,
+          value,
+        });
+      }
+    } catch (error) {
+      if (!this.closed && this.active === active) {
+        this.postBrowserError(message.callId, error);
+      }
+    }
+  }
+
+  private async executeBrowserMessage(
+    active: ActiveEvaluation,
+    message: Extract<WorkerToNodeReplParentMessage, { type: "browser-call" }>,
+  ): Promise<unknown> {
+    if (message.method === "command") {
+      if (message.args.length < 1 || message.args.length > 2) {
+        throw new Error("Invalid browser command arguments.");
+      }
+      return await this.browser.command(
+        message.args[0] as BrowserProtocolAction,
+        message.args[1] as BrowserCommandParams | undefined,
+        { signal: active.controller.signal },
+      );
+    }
+    if (message.args.length < 1 || message.args.length > 2) {
+      throw new Error("Invalid browser chain arguments.");
+    }
+    const wireOptions =
+      message.args[1] && typeof message.args[1] === "object"
+        ? (message.args[1] as Record<string, unknown>)
+        : {};
+    const wireDelay =
+      wireOptions.delay && typeof wireOptions.delay === "object"
+        ? (wireOptions.delay as Record<string, unknown>)
+        : undefined;
+    const chainOptions: BrowserChainOptions = {
+      signal: active.controller.signal,
+      ...(wireOptions.abortOnError === undefined
+        ? {}
+        : { abortOnError: wireOptions.abortOnError as boolean }),
+      ...(wireDelay
+        ? {
+            delay: {
+              minMs: wireDelay.min as number | undefined,
+              maxMs: wireDelay.max as number | undefined,
+            },
+          }
+        : {}),
+      ...(wireOptions.waitForSelector === undefined
+        ? {}
+        : { waitForSelector: wireOptions.waitForSelector as boolean }),
+      ...(wireOptions.waitTimeout === undefined
+        ? {}
+        : { waitTimeoutMs: wireOptions.waitTimeout as number }),
+      ...(wireOptions.returnSnapshot === undefined
+        ? {}
+        : { returnSnapshot: wireOptions.returnSnapshot as boolean }),
+      ...(wireOptions.returnScreenshot === undefined
+        ? {}
+        : { returnScreenshot: wireOptions.returnScreenshot as boolean }),
+    };
+    return await this.browser.chain(
+      message.args[0] as readonly BrowserChainStep[],
+      chainOptions,
+    );
+  }
+
+  private postBrowserError(callId: number, error: unknown) {
+    if (this.closed) return;
+    try {
+      this.post({
+        type: "browser-result",
+        callId,
+        ok: false,
+        error: serializeError(error),
+      });
+    } catch (postError) {
+      this.handleWorkerFailure(
+        postError instanceof Error ? postError : new Error(String(postError)),
+      );
+    }
+  }
+
+  private recordBrowserActivity(
+    active: ActiveEvaluation,
+    message: Extract<WorkerToNodeReplParentMessage, { type: "browser-call" }>,
+  ) {
+    const actions: string[] = [];
+    if (message.method === "command") {
+      if (typeof message.args[0] === "string") actions.push(message.args[0]);
+    } else if (Array.isArray(message.args[0])) {
+      for (const step of message.args[0]) {
+        if (
+          step &&
+          typeof step === "object" &&
+          typeof (step as { action?: unknown }).action === "string"
+        ) {
+          actions.push((step as { action: string }).action);
+        }
+      }
+    }
+    active.browserActivity.callCount += 1;
+    for (const action of actions) {
+      active.browserActivity.lastAction = action;
+      if (action === "screenshot") {
+        active.browserActivity.screenshotObserved = true;
+      }
+      if (action === "finalize_tabs" || action === "close_owner") {
+        active.browserActivity.terminalLifecycle = true;
+      }
+      if (!READ_ONLY_BROWSER_ACTIONS.has(action)) {
+        active.browserActivity.mutated = true;
+        if (!NON_VISUAL_BROWSER_MUTATIONS.has(action)) {
+          active.browserActivity.visualMutated = true;
+        }
+      }
+    }
+    if (
+      message.method === "chain" &&
+      message.args[1] &&
+      typeof message.args[1] === "object" &&
+      (message.args[1] as { returnScreenshot?: unknown }).returnScreenshot ===
+        true
+    ) {
+      active.browserActivity.screenshotObserved = true;
+    }
+  }
+
+  private async completeEvaluation(active: ActiveEvaluation, output: string) {
+    if (this.active !== active) return;
+    let finalOutput = output;
+    const activity = active.browserActivity;
+    if (activity.callCount > 0) {
+      if (!activity.mutated || activity.terminalLifecycle) {
+        const receipt = `[browser-receipt] calls=${activity.callCount} mutated=${activity.mutated}${
+          activity.lastAction ? ` last=${activity.lastAction}` : ""
+        }`;
+        finalOutput = finalOutput ? `${finalOutput}\n${receipt}` : receipt;
+        if (this.active === active) {
+          this.settleActive(active, null, finalOutput);
+        }
+        return;
+      }
+      try {
+        const tabsReceipt = await this.browser.command<Record<string, unknown>>(
+          "tab_list",
+          {},
+          { signal: active.controller.signal },
+        );
+        const tabsData = tabsReceipt.result.data ?? {};
+        const tabs = Array.isArray(tabsData.tabs) ? tabsData.tabs : [];
+        const activeTabId =
+          typeof tabsData.activeTabId === "number"
+            ? tabsData.activeTabId
+            : undefined;
+        const receipt = `[browser-receipt] calls=${activity.callCount} mutated=${activity.mutated} tabs=${tabs.length}${
+          activeTabId === undefined ? "" : ` activeTabId=${activeTabId}`
+        }${activity.lastAction ? ` last=${activity.lastAction}` : ""}`;
+        finalOutput = finalOutput ? `${finalOutput}\n${receipt}` : receipt;
+
+        if (
+          activity.visualMutated &&
+          !activity.screenshotObserved &&
+          activeTabId !== undefined
+        ) {
+          try {
+            const screenshotReceipt = await this.browser.command<{
+              base64?: string;
+              format?: string;
+            }>(
+              "screenshot",
+              { tabId: activeTabId, format: "jpeg", quality: 55 },
+              { signal: active.controller.signal },
+            );
+            const screenshot = screenshotReceipt.result.data;
+            if (typeof screenshot?.base64 === "string" && screenshot.base64) {
+              const directory = path.join(os.tmpdir(), "stella-browser-repl");
+              await mkdir(directory, { recursive: true });
+              const screenshotPath = path.join(
+                directory,
+                `${randomUUID()}.jpeg`,
+              );
+              await writeFile(
+                screenshotPath,
+                Buffer.from(screenshot.base64, "base64"),
+              );
+              this.browserScreenshotPaths.add(screenshotPath);
+              while (
+                this.browserScreenshotPaths.size >
+                MAX_BROWSER_SCREENSHOT_FILES_PER_KERNEL
+              ) {
+                const oldest = this.browserScreenshotPaths
+                  .values()
+                  .next().value;
+                if (typeof oldest !== "string") break;
+                this.browserScreenshotPaths.delete(oldest);
+                await rm(oldest, { force: true }).catch(() => undefined);
+              }
+              finalOutput += `\n[stella-attach-image] inline=image/jpeg path=${JSON.stringify(screenshotPath)}`;
+            }
+          } catch {
+            finalOutput += "\n[browser-visual] screenshot=unavailable";
+          }
+        }
+      } catch {
+        const receipt = `[browser-receipt] calls=${activity.callCount} mutated=${activity.mutated}${
+          activity.lastAction ? ` last=${activity.lastAction}` : ""
+        } settled_state=unavailable`;
+        finalOutput = finalOutput ? `${finalOutput}\n${receipt}` : receipt;
+      }
+    }
+    if (this.active === active) this.settleActive(active, null, finalOutput);
+  }
+
+  private async cleanupBrowserScreenshots(): Promise<void> {
+    const paths = [...this.browserScreenshotPaths];
+    this.browserScreenshotPaths.clear();
+    await Promise.allSettled(
+      paths.map((filePath) => rm(filePath, { force: true })),
+    );
+  }
+
   private terminateActive(error: KernelTerminatedError) {
     const active = this.active;
     if (!active) return;
     active.controller.abort(error);
     this.settleActive(active, error);
-    this.close();
+    void this.close();
   }
 
   private settleActive(
@@ -468,7 +850,7 @@ class NodeReplKernel {
       active.controller.abort(terminated);
       this.settleActive(active, terminated);
     }
-    this.close();
+    void this.close();
     this.onTerminated(this);
   }
 }
@@ -479,12 +861,17 @@ export class NodeReplKernelRegistry {
   private readonly evalTimeoutMs: number;
   private readonly commandTimeoutMs: number;
   private readonly idleTimeoutMs: number;
+  private readonly browserSessionFactory: (
+    options: BrowserSessionOptions,
+  ) => BrowserSessionClient;
 
   constructor(private readonly options: NodeReplKernelManagerOptions = {}) {
     this.evalTimeoutMs = options.evalTimeoutMs ?? DEFAULT_EVAL_TIMEOUT_MS;
     this.commandTimeoutMs =
       options.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.browserSessionFactory =
+      options.browserSessionFactory ?? createBrowserSession;
   }
 
   async evaluate(
@@ -512,10 +899,14 @@ export class NodeReplKernelRegistry {
       kernel = new NodeReplKernel(id, cwd, {
         sessionFactory,
         authorizeApp: this.options.authorizeApp,
+        browserBinPath: this.options.browserBinPath,
+        browserSessionFactory: this.browserSessionFactory,
+        requestBrowserExtensionConnect:
+          this.options.requestBrowserExtensionConnect,
         evalTimeoutMs: this.evalTimeoutMs,
         commandTimeoutMs: this.commandTimeoutMs,
         idleTimeoutMs: this.idleTimeoutMs,
-        onIdle: (candidate) => this.disposeKernel(id, candidate),
+        onIdle: (candidate) => void this.disposeKernel(id, candidate),
       });
       this.kernels.set(id, kernel);
     }
@@ -523,33 +914,40 @@ export class NodeReplKernelRegistry {
     try {
       return await kernel.enqueue(
         code,
+        context,
         options,
         {
           evalTimeoutMs: this.evalTimeoutMs,
           idleTimeoutMs: this.idleTimeoutMs,
         },
-        (candidate) => this.disposeKernel(id, candidate),
+        (candidate) => void this.disposeKernel(id, candidate),
       );
     } catch (error) {
       if (error instanceof KernelTerminatedError) {
-        this.disposeKernel(id, kernel);
+        await this.disposeKernel(id, kernel);
       }
       throw error;
     }
   }
 
-  dispose() {
+  async dispose(): Promise<void> {
+    const pending: Promise<void>[] = [];
     for (const [id, kernel] of [...this.kernels]) {
-      this.disposeKernel(id, kernel);
+      pending.push(this.disposeKernel(id, kernel));
     }
+    await Promise.all(pending);
   }
 
-  private disposeKernel(id: string, kernel: NodeReplKernel) {
-    kernel.close();
+  private disposeKernel(id: string, kernel: NodeReplKernel): Promise<void> {
+    const kernelClose = kernel.close();
+    let sessionCleanup = Promise.resolve();
     if (!this.disposedKernels.has(kernel)) {
       this.disposedKernels.add(kernel);
       try {
-        void Promise.resolve(this.options.disposeSession?.(id)).catch(
+        sessionCleanup = Promise.resolve(
+          this.options.disposeSession?.(id),
+        ).then(
+          () => undefined,
           () => undefined,
         );
       } catch {
@@ -557,6 +955,9 @@ export class NodeReplKernelRegistry {
       }
     }
     if (this.kernels.get(id) === kernel) this.kernels.delete(id);
+    return Promise.allSettled([kernelClose, sessionCleanup]).then(
+      () => undefined,
+    );
   }
 }
 

@@ -44,9 +44,19 @@ await sky.scroll({
   direction: "down",
   pages: 1,
 });
+await sky.drag({
+  app: "Spotify",
+  from_x: 420,
+  from_y: 310,
+  to_x: 720,
+  to_y: 310,
+});
 await sky.press_key({ app: "Spotify", key: "Return" });
 await sky.type_text({ app: "Spotify", text: "hello" });
 ```
+
+`drag` also accepts `path: [{ x, y }, ...]` with at least two points. Drag
+coordinates must come from the latest screenshot; observe again after the drag.
 
 Perform several actions before observing only when no intermediate result is needed. Then call `get_app_state` once and re-derive fresh indices. `sky.batch([...])` executes ordered actions and stops on the first failure; do not batch across decision points, permission prompts, or navigation-policy boundaries.
 

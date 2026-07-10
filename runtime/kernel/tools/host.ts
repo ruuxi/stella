@@ -77,6 +77,7 @@ export const createToolHost = ({
   stellaXApiCliPath,
   cliBridgeSocketPath,
   requestCredential,
+  requestBrowserExtensionConnect,
   requestComputerUseAppApproval,
   agentApi,
   sourceImportApi,
@@ -110,6 +111,10 @@ export const createToolHost = ({
     validateSpawnModel,
   );
   const nodeReplRegistry = new NodeReplKernelRegistry({
+    browserBinPath: _stellaBrowserBinPath,
+    ...(requestBrowserExtensionConnect
+      ? { requestBrowserExtensionConnect }
+      : {}),
     sessionFactory: ({ sessionId, getSignal, timeoutMs }) => {
       if (process.platform === "win32") {
         return createWindowsComputerUseSession();
@@ -187,6 +192,9 @@ export const createToolHost = ({
     stellaMediaCliPath,
     stellaXApiCliPath,
     requestCredential,
+    ...(requestBrowserExtensionConnect
+      ? { requestBrowserExtensionConnect }
+      : {}),
     agentApi,
     sourceImportApi,
     scheduleApi,
@@ -379,7 +387,7 @@ export const createToolHost = ({
 
   const shutdown = async () => {
     killAllShells();
-    nodeReplRegistry.dispose();
+    await nodeReplRegistry.dispose();
   };
 
   const getToolCatalog = (

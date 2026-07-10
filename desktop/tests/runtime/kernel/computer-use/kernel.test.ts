@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFile, rm } from "node:fs/promises";
+
 import {
   NodeReplKernelRegistry,
   type ComputerUseSessionFactory,
   type ComputerUseSessionFactoryOptions,
 } from "../../../../../runtime/kernel/computer-use/kernel.js";
+import type {
+  BrowserSessionClient,
+  BrowserSessionOptions,
+} from "../../../../../runtime/kernel/browser-use/client.js";
 import type {
   ComputerUseRequest,
   ComputerUseResponse,
@@ -213,6 +219,227 @@ describe("persistent Node REPL kernels", () => {
     } finally {
       releaseFirst();
       registry.dispose();
+    }
+  });
+
+  it("exposes one persistent browser client with reusable tabs and locators", async () => {
+    const command = vi.fn(
+      async (action: string, params: Record<string, unknown> = {}) => {
+        const data =
+          action === "tab_new"
+            ? { tabId: 101, index: 0, total: 1 }
+            : action === "title"
+              ? { title: "Saved profile" }
+              : { action, params };
+        return {
+          sessionId: "agent-browser",
+          bridgeSessionId: "stella-app-bridge",
+          requestId: `request-${command.mock.calls.length}`,
+          action,
+          params,
+          result: { id: "response", success: true as const, data },
+          attempts: 1,
+          durationMs: 1,
+        };
+      },
+    );
+    const dispose = vi.fn(async () => undefined);
+    const browserClient = {
+      command,
+      chain: vi.fn(),
+      dispose,
+    } as unknown as BrowserSessionClient;
+    const browserOptions: BrowserSessionOptions[] = [];
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: defaultSessionFactory,
+      browserBinPath: "/runtime/stella-browser.js",
+      idleTimeoutMs: 60_000,
+      browserSessionFactory: (options) => {
+        browserOptions.push(options);
+        return browserClient;
+      },
+    });
+
+    try {
+      await expect(
+        registry.evaluate(
+          [
+            "const tab = await browser.tabs.new('https://example.com/profile')",
+            "const nameInput = tab.playwright.getByLabel('Name')",
+            "await nameInput.fill('Rahul')",
+            "await tab.playwright.getByRole('button', { name: 'Save' }).click()",
+            "tab.id",
+          ].join("; "),
+          context("agent-browser"),
+        ),
+      ).resolves.toContain("101\n[browser-receipt] calls=3 mutated=true");
+      await expect(
+        registry.evaluate("await tab.title()", context("agent-browser")),
+      ).resolves.toContain(
+        "'Saved profile'\n[browser-receipt] calls=1 mutated=false last=title",
+      );
+
+      expect(browserOptions).toHaveLength(1);
+      expect(browserOptions[0]).toMatchObject({
+        binaryPath: "/runtime/stella-browser.js",
+        cwd: "/workspace/project",
+        disposeCleanup: { action: "close_owner" },
+      });
+      expect(command.mock.calls.map(([action]) => action)).toEqual([
+        "tab_new",
+        "fill",
+        "click",
+        "tab_list",
+        "title",
+      ]);
+      expect(command.mock.calls[1]?.[1]).toMatchObject({
+        tabId: 101,
+        selector: expect.stringContaining("aria="),
+        value: "Rahul",
+      });
+      expect(command.mock.calls[2]?.[1]).toMatchObject({
+        tabId: 101,
+        selector: expect.stringContaining("aria="),
+      });
+    } finally {
+      await registry.dispose();
+    }
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers extension connection once and retries the direct browser call", async () => {
+    const command = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error(
+          "Extension not connected. Install the Stella Browser Bridge extension and connect it.",
+        ),
+      )
+      .mockResolvedValueOnce({
+        sessionId: "agent-connect",
+        bridgeSessionId: "stella-app-bridge",
+        requestId: "request-2",
+        action: "tab_list",
+        params: {},
+        result: {
+          id: "response-2",
+          success: true,
+          data: { tabs: [], activeTabId: null },
+        },
+        attempts: 1,
+        durationMs: 1,
+      });
+    const requestBrowserExtensionConnect = vi.fn(async () => ({
+      ok: true as const,
+      status: "connected" as const,
+    }));
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: defaultSessionFactory,
+      idleTimeoutMs: 60_000,
+      requestBrowserExtensionConnect,
+      browserSessionFactory: () =>
+        ({
+          command,
+          chain: vi.fn(),
+          dispose: vi.fn(async () => undefined),
+        }) as unknown as BrowserSessionClient,
+    });
+
+    try {
+      await expect(
+        registry.evaluate(
+          "await browser.tabs.list()",
+          context("agent-connect"),
+        ),
+      ).resolves.toContain("[browser-receipt]");
+      expect(command).toHaveBeenCalledTimes(2);
+      expect(requestBrowserExtensionConnect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: "conversation-1",
+          agentId: "agent-connect",
+          command: "stella-browser node_repl",
+        }),
+        expect.any(AbortSignal),
+      );
+    } finally {
+      await registry.dispose();
+    }
+  });
+
+  it("captures one settled receipt and one screenshot after a mutating cell", async () => {
+    const jpeg = Buffer.from("real-browser-image-bytes");
+    const command = vi.fn(async (action: string) => {
+      const data =
+        action === "tab_list"
+          ? {
+              tabs: [
+                {
+                  tabId: 44,
+                  title: "Receipt",
+                  url: "https://example.test",
+                  active: true,
+                },
+              ],
+              activeTabId: 44,
+            }
+          : action === "screenshot"
+            ? { base64: jpeg.toString("base64"), format: "jpeg" }
+            : { ok: true };
+      return {
+        sessionId: "agent-receipt",
+        bridgeSessionId: "stella-app-bridge",
+        requestId: `request-${command.mock.calls.length}`,
+        action,
+        params: {},
+        result: { id: "response", success: true as const, data },
+        attempts: 1,
+        durationMs: 1,
+      };
+    });
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: defaultSessionFactory,
+      idleTimeoutMs: 60_000,
+      browserSessionFactory: () =>
+        ({
+          command,
+          chain: vi.fn(),
+          dispose: vi.fn(async () => undefined),
+        }) as unknown as BrowserSessionClient,
+    });
+    let screenshotPath: string | undefined;
+
+    try {
+      const output = await registry.evaluate(
+        [
+          "const receiptTab = browser.tabs.get(44)",
+          "await receiptTab.playwright.getByRole('button', { name: 'Save' }).click()",
+          "await receiptTab.playwright.getByLabel('Name').fill('Rahul')",
+          "'done'",
+        ].join("; "),
+        context("agent-receipt"),
+      );
+      expect(output).toContain(
+        "[browser-receipt] calls=2 mutated=true tabs=1 activeTabId=44 last=fill",
+      );
+      expect(output.match(/\[stella-attach-image\][^\n]+/g)).toHaveLength(1);
+      const pathMatch = output.match(/path=("[^"\n]+")/);
+      expect(pathMatch?.[1]).toBeTruthy();
+      screenshotPath = JSON.parse(pathMatch![1]!);
+      await expect(readFile(screenshotPath!)).resolves.toEqual(jpeg);
+      expect(command.mock.calls.map(([action]) => action)).toEqual([
+        "click",
+        "fill",
+        "tab_list",
+        "screenshot",
+      ]);
+    } finally {
+      await registry.dispose();
+      if (screenshotPath) {
+        await expect(readFile(screenshotPath)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+        await rm(screenshotPath, { force: true });
+      }
     }
   });
 

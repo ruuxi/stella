@@ -421,7 +421,7 @@ const rowSizeTextEncoder = new TextEncoder();
 // Tool results that include a screenshot (vision content block) routinely
 // run 1–2 MB once the PNG is base64-encoded — that's a normal payload, not
 // pathological. The previous 1.8 MB cap was below that threshold, so every
-// `stella-computer snapshot` result with an inline screenshot got dropped
+// computer-use snapshot result with an inline screenshot got dropped
 // to a "too large to persist" placeholder, breaking the agent's context for
 // the very next turn. SQLite handles multi-MB rows fine; bump high enough
 // to fit a screenshot + element tree comfortably.
@@ -1277,7 +1277,9 @@ export class SessionStore {
           : `SELECT 1 AS present FROM message
              WHERE session_id = ? AND id = ? LIMIT 1`,
       )
-      .get(...(type ? [conversationId, eventId, type] : [conversationId, eventId]));
+      .get(
+        ...(type ? [conversationId, eventId, type] : [conversationId, eventId]),
+      );
     return Boolean(row);
   }
 
@@ -1290,7 +1292,9 @@ export class SessionStore {
         ? `SELECT 1 AS present FROM message WHERE id = ? AND type = ? LIMIT 1`
         : `SELECT 1 AS present FROM message WHERE id = ? LIMIT 1`,
     );
-    return Boolean(type ? statement.get(eventId, type) : statement.get(eventId));
+    return Boolean(
+      type ? statement.get(eventId, type) : statement.get(eventId),
+    );
   }
 
   /**
@@ -3080,9 +3084,7 @@ export class SessionStore {
    * whichever column supplied that max. No full-table scan or whole-table
    * temp sort as history grows.
    */
-  listThreadsForRecallIndex(args: {
-    limit: number;
-  }): RecallIndexThreadRow[] {
+  listThreadsForRecallIndex(args: { limit: number }): RecallIndexThreadRow[] {
     const limit = Math.max(1, Math.min(2_000, Math.floor(args.limit)));
     const rows = this.db
       .prepare(
@@ -3245,7 +3247,10 @@ export class SessionStore {
       return [
         {
           conversationId: row.conversationId,
-          role: row.role === "assistant" ? ("assistant" as const) : ("user" as const),
+          role:
+            row.role === "assistant"
+              ? ("assistant" as const)
+              : ("user" as const),
           atMs: row.atMs,
           text,
         },

@@ -138,9 +138,10 @@ export type StellaHostRunnerOptions = {
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
   /**
-   * Desktop hop for the inline "connect the Stella browser extension" chat
-   * card. Blocks until the user connects, declines, or the card times out;
-   * `exec_command` re-runs the failed stella-browser command on success.
+   * Legacy exec compatibility hop for the inline "connect the Stella browser
+   * extension" chat card. Production browser actions use the persistent
+   * browser service API. This hook blocks until the user connects, declines,
+   * or the card times out, then retries the intercepted operation on success.
    */
   requestBrowserExtensionConnect?: (
     payload: {

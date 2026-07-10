@@ -1,18 +1,15 @@
 /**
- * Inline "connect the Stella browser extension" offer for `exec_command`.
+ * Legacy exec compatibility path for the inline "connect the Stella browser
+ * extension" offer. Production browser actions use the persistent browser API
+ * service from `node_repl`.
  *
- * `stella-browser` needs the Chrome extension bridge. When a command fails
- * because the extension isn't installed/connected, the daemon prints a
- * well-known error ("Extension not connected. Install the Stella Browser
- * Bridge extension and connect it."). Instead of dead-ending the agent on
- * that string, the exec tool asks the desktop to render an inline connect
- * card in the chat (mirroring the connector connect card), waits for the
- * user to install/connect or decline, and re-runs the original command once
- * on success — so the agent that hit the failure just sees the retried
- * result and proceeds with its task.
+ * When legacy command output reports that the extension is not connected, the
+ * exec tool asks the desktop to render an inline connect card, waits for the
+ * user to connect or decline, and retries the intercepted operation once on
+ * success.
  *
  * The whole path is best-effort and conservative:
- * - only completed (non-running) `stella-browser` commands are considered;
+ * - only completed (non-running) legacy browser commands are considered;
  *   the failure means the command never reached a browser, so a single
  *   re-run is safe;
  * - one offer at a time, with a decline cool-down so a burst of failing
@@ -44,9 +41,9 @@ export type BrowserExtensionConnectRequester = (
 ) => Promise<BrowserExtensionConnectOutcome>;
 
 /**
- * Error strings printed by the stella-browser CLI/daemon when the Chrome
- * extension bridge has no extension client. See
- * `desktop/stella-browser/cli/src/native/extension_bridge.rs`.
+ * Legacy extension-bridge failure strings retained for this compatibility
+ * path. Production browser-service connection handling lives outside this
+ * exec-command adapter.
  */
 const EXTENSION_FAILURE_PATTERN =
   /Extension not connected|Install the Stella Browser Bridge extension/i;
@@ -200,9 +197,9 @@ export const maybeRequestBrowserExtensionConnect = async (options: {
 };
 
 /**
- * Wrap a completed `exec_command` result: when it is a stella-browser
- * extension-bridge failure, offer the inline connect card and re-run the
- * command once after the user connects. Returns either the (annotated)
+ * Wrap a completed legacy `exec_command` browser result: on an extension-
+ * bridge failure, offer the inline connect card and retry the intercepted
+ * operation once after the user connects. Returns either the annotated
  * original result or the retried result.
  */
 export const maybeOfferBrowserExtensionConnect = async (options: {
@@ -234,7 +231,7 @@ export const maybeOfferBrowserExtensionConnect = async (options: {
   if (gate.inFlight) {
     return annotate(
       result,
-      "The Stella browser extension is not connected and a connect card is already open in the chat. Wait for the user's response before retrying stella-browser, or use a fallback (stella-computer GUI automation).",
+      "The Stella browser extension is not connected and a connect card is already open in the chat. Wait for the user's response before retrying the browser operation. If the browser service remains unavailable, use the persistent `node_repl` `sky` API for visible browser control.",
     );
   }
   if (
@@ -243,7 +240,7 @@ export const maybeOfferBrowserExtensionConnect = async (options: {
   ) {
     return annotate(
       result,
-      "The Stella browser extension is not connected and the user recently declined (or ignored) the connect offer. Do not re-offer; continue with a fallback — stella-computer GUI automation on a visible browser window, or ask the user only if the task is impossible otherwise.",
+      "The Stella browser extension is not connected and the user recently declined (or ignored) the connect offer. Do not re-offer; continue through the persistent `node_repl` `sky` API on a visible browser window, or ask the user only if the task is impossible otherwise.",
     );
   }
 
@@ -275,8 +272,8 @@ export const maybeOfferBrowserExtensionConnect = async (options: {
       return annotate(
         result,
         outcome.reason === "declined"
-          ? "A connect card for the Stella browser extension was shown in the chat and the user declined. Acknowledge once at most (it stays available in the Store/settings), do not re-offer, and continue via a fallback — stella-computer GUI automation on a visible browser window."
-          : "A connect card for the Stella browser extension was shown in the chat but the user did not respond in time. Do not re-offer; continue via a fallback (stella-computer GUI automation), or park the browser-dependent step.",
+          ? "A connect card for the Stella browser extension was shown in the chat and the user declined. Acknowledge once at most (it stays available in the Store/settings), do not re-offer, and continue through the persistent `node_repl` `sky` API on a visible browser window."
+          : "A connect card for the Stella browser extension was shown in the chat but the user did not respond in time. Do not re-offer; continue through the persistent `node_repl` `sky` API on a visible browser window, or park the browser-dependent step.",
       );
     }
     // unsupported / bridge error: stay quiet, just return the raw failure.
@@ -290,11 +287,11 @@ export const maybeOfferBrowserExtensionConnect = async (options: {
     gate.lastRefusedAt = now();
     return annotate(
       retried,
-      "The user accepted the browser-extension connect card, but the extension bridge still is not reachable (the browser may be closed or the extension disabled). Do not re-offer; continue via a fallback — stella-computer GUI automation — or briefly tell the user what is still missing.",
+      "The user accepted the browser-extension connect card, but the browser service still cannot reach the extension (the browser may be closed or the extension disabled). Do not re-offer; continue through the persistent `node_repl` `sky` API for visible browser control, or briefly tell the user what is still missing.",
     );
   }
   return annotate(
     retried,
-    "The user connected the Stella browser extension via the inline card and the failed command was re-run automatically above. Continue the original task.",
+    "The user connected the Stella browser extension via the inline card and the intercepted browser operation was re-run automatically above. Continue the original task.",
   );
 };
