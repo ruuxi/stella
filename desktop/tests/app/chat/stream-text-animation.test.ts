@@ -4,8 +4,10 @@ import {
   STREAM_FINISH_FALLBACK_MS,
   STREAM_FINISH_MAX_CPS,
   STREAM_MAX_FRAME_MS,
+  STREAM_MIN_RENDER_INTERVAL_MS,
   STREAM_REVEAL_CPS,
   StreamTextAnimationController,
+  streamRevealRate,
   type StreamTextAnimationScheduler,
 } from '@/features/chat/streaming/use-stream-text-animation'
 import { CLAUDE_CODE_CAPTURED_TRACE } from '../../fixtures/stream-cadence-traces'
@@ -86,24 +88,36 @@ const createScene = () => {
 }
 
 describe('StreamTextAnimationController', () => {
-  it('turns one burst into a steady 30-45 cps visual stream', () => {
+  it('turns one burst into a steady readable visual stream', () => {
     const { controller, scheduler, updates } = createScene()
-    const text = 'x'.repeat(30)
+    const text = 'x'.repeat(90)
     controller.enqueue('slot-1', 'run-1', text)
 
     scheduler.runFrames(30)
 
     const visible = updates.at(-1)?.text ?? ''
-    expect(visible.length).toBeGreaterThanOrEqual(18)
-    expect(visible.length).toBeLessThanOrEqual(21)
-    expect(STREAM_REVEAL_CPS).toBeGreaterThanOrEqual(30)
-    expect(STREAM_REVEAL_CPS).toBeLessThanOrEqual(45)
+    expect(visible.length).toBeGreaterThanOrEqual(32)
+    expect(visible.length).toBeLessThanOrEqual(42)
+    expect(STREAM_REVEAL_CPS).toBeGreaterThanOrEqual(60)
+    expect(STREAM_REVEAL_CPS).toBeLessThanOrEqual(90)
     expect(scheduler.frames.size).toBe(1)
 
     const updateGaps = updates
       .slice(1)
       .map((update, index) => update.atMs - updates[index]!.atMs)
     expect(Math.max(...updateGaps)).toBeLessThan(50)
+    expect(Math.min(...updateGaps)).toBeGreaterThanOrEqual(
+      STREAM_MIN_RENDER_INTERVAL_MS,
+    )
+  })
+
+  it('coasts through an arrival gap instead of draining the reserve', () => {
+    const fullRate = streamRevealRate(300, 0)
+    const coastingRate = streamRevealRate(120, 3_000)
+
+    expect(fullRate).toBeGreaterThan(100)
+    expect(coastingRate).toBeGreaterThanOrEqual(48)
+    expect(coastingRate).toBeLessThan(fullRate)
   })
 
   it('preserves exact ordering and markdown across irregular arrivals', () => {
@@ -201,7 +215,7 @@ describe('StreamTextAnimationController', () => {
     expect(totalChars).toBe(1_169)
     expect(updates.at(-1)?.text).toBe('c'.repeat(totalChars))
     expect(maxStep).toBeLessThanOrEqual(
-      Math.ceil((STREAM_FINISH_MAX_CPS * frameMs) / 1000),
+      Math.ceil((STREAM_FINISH_MAX_CPS * STREAM_MAX_FRAME_MS) / 1000),
     )
     expect(scheduler.time).toBeLessThan(
       CLAUDE_CODE_CAPTURED_TRACE.completeAtMs +

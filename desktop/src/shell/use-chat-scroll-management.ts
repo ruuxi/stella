@@ -1016,8 +1016,8 @@ export function useChatScrollManagement({
         // assistant message settles (so a *new* turn's first chunk can hand
         // off cleanly). But once that row has locked, `.event-row--streaming`
         // is gone and it is no longer growing. A late layout change on the
-        // settled row — an inline image/card mounting once artifacts render,
-        // a code block, or a timestamp settling —
+        // settled row — the reveal mask clearing, an inline image/card
+        // mounting once artifacts render, a code block, or a timestamp settling —
         // still fires `notifyAssistantScrollFollowLayoutChange`, and following
         // the full (now static) row bottom re-applies `FOLLOW_BREATHING_PX`,
         // pulling the viewport forward into the empty trailing region a beat
@@ -1028,7 +1028,26 @@ export function useChatScrollManagement({
         const rowRect = streamingRow.getBoundingClientRect()
         const containerRect = attached.getBoundingClientRect()
         const rowTop = rowRect.top - containerRect.top + attached.scrollTop
-        const rowBottom = rowRect.bottom - containerRect.top + attached.scrollTop
+        let rowBottom = rowRect.bottom - containerRect.top + attached.scrollTop
+        // The wrapper's DOM can extend below the soft mask frontier. Follow
+        // what is actually revealed so the viewport never scrolls ahead of
+        // the text the user can see.
+        const revealElement = streamingRow.querySelector<HTMLElement>(
+          '[data-reveal-visible-bottom]',
+        )
+        if (revealElement) {
+          const frontier = Number(
+            revealElement.getAttribute('data-reveal-visible-bottom'),
+          )
+          if (Number.isFinite(frontier)) {
+            const revealBottom =
+              revealElement.getBoundingClientRect().top -
+              containerRect.top +
+              attached.scrollTop +
+              frontier
+            rowBottom = Math.min(rowBottom, revealBottom)
+          }
+        }
         const desiredScrollTop = Math.max(
           0,
           rowBottom - attached.clientHeight + FOLLOW_BREATHING_PX,

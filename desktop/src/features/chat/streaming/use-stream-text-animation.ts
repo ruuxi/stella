@@ -8,16 +8,18 @@
  */
 import { useCallback, useEffect, useRef } from 'react'
 
-export const STREAM_REVEAL_CPS = 38
-export const STREAM_CATCH_UP_THRESHOLD = 120
-export const STREAM_CATCH_UP_MAX_CPS = 180
-export const STREAM_CATCH_UP_AGE_MS = 400
-export const STREAM_CATCH_UP_RAMP_MS = 800
-export const STREAM_FINISH_MIN_CPS = 180
-export const STREAM_FINISH_MAX_CPS = 2400
-export const STREAM_FINISH_TARGET_MS = 160
-export const STREAM_FINISH_FALLBACK_MS = 1200
+export const STREAM_REVEAL_CPS = 72
+export const STREAM_CATCH_UP_THRESHOLD = 48
+export const STREAM_CATCH_UP_MAX_CPS = 132
+export const STREAM_COAST_AFTER_MS = 320
+export const STREAM_COAST_RESERVE_MS = 2600
+export const STREAM_COAST_MIN_CPS = 48
+export const STREAM_FINISH_MIN_CPS = 110
+export const STREAM_FINISH_MAX_CPS = 180
+export const STREAM_FINISH_TARGET_MS = 2400
+export const STREAM_FINISH_FALLBACK_MS = 30000
 export const STREAM_MAX_FRAME_MS = 50
+export const STREAM_MIN_RENDER_INTERVAL_MS = 30
 
 const DEFAULT_FRAME_MS = 1000 / 60
 const BUFFER_COMPACT_THRESHOLD = 4096
@@ -48,7 +50,8 @@ type AnimationEntry = {
   finishing: boolean
   finishTimer: number | null
   onDrained: Set<(slotId: string) => void>
-  bufferedSinceMs: number | null
+  lastArrivalAtMs: number | null
+  lastRevealAtMs: number | null
 }
 
 export type StreamTextAnimationControllerOptions = {
@@ -60,31 +63,32 @@ const isHighSurrogate = (codeUnit: number): boolean =>
   codeUnit >= 0xd800 && codeUnit <= 0xdbff
 
 /**
- * Return a bounded display velocity. Ordinary streams stay at a readable
- * 38 cps; only a meaningful backlog ramps toward the 180 cps ceiling.
+ * Return a bounded display velocity. A growing backlog ramps toward the
+ * catch-up ceiling, while a provider gap gradually spends the remaining
+ * buffer over a reserve window instead of racing to empty and visibly
+ * stalling. The coast floor prevents a dramatic slow-motion tail.
  */
 export function streamRevealRate(
   backlog: number,
-  backlogAgeMs = 0,
+  timeSinceArrivalMs = 0,
 ): number {
   const depthRamp = Math.min(
     1,
     Math.max(0, backlog - STREAM_CATCH_UP_THRESHOLD) /
-      (STREAM_CATCH_UP_THRESHOLD * 4),
+      (STREAM_CATCH_UP_THRESHOLD * 6),
   )
-  const depthRate =
+  const rate =
     STREAM_REVEAL_CPS +
     (STREAM_CATCH_UP_MAX_CPS - STREAM_REVEAL_CPS) * depthRamp
-  if (backlog < 8) return depthRate
-  const ageRamp = Math.min(
-    1,
-    Math.max(0, backlogAgeMs - STREAM_CATCH_UP_AGE_MS) /
-      STREAM_CATCH_UP_RAMP_MS,
+  if (timeSinceArrivalMs <= STREAM_COAST_AFTER_MS) return rate
+  const coastRate = Math.min(
+    STREAM_CATCH_UP_MAX_CPS,
+    Math.max(
+      STREAM_COAST_MIN_CPS,
+      (backlog * 1000) / STREAM_COAST_RESERVE_MS,
+    ),
   )
-  const ageRate =
-    STREAM_REVEAL_CPS +
-    (STREAM_CATCH_UP_MAX_CPS - STREAM_REVEAL_CPS) * ageRamp
-  return Math.max(depthRate, ageRate)
+  return Math.min(rate, coastRate)
 }
 
 /** Pure cadence step, exported so timing guarantees can be tested directly. */
@@ -93,12 +97,12 @@ export function stepStreamReveal(args: {
   carry: number
   elapsedMs: number
   finishing: boolean
-  backlogAgeMs?: number
+  timeSinceArrivalMs?: number
 }): { count: number; carry: number } {
   if (args.backlog <= 0) return { count: 0, carry: args.carry }
 
   const elapsedMs = Math.min(Math.max(args.elapsedMs, 1), STREAM_MAX_FRAME_MS)
-  const normalCps = streamRevealRate(args.backlog, args.backlogAgeMs)
+  const normalCps = streamRevealRate(args.backlog, args.timeSinceArrivalMs)
   const finishCps = Math.min(
     STREAM_FINISH_MAX_CPS,
     Math.max(
@@ -123,7 +127,6 @@ export class StreamTextAnimationController {
   private onReveal: (slotId: string, visibleText: string) => void
   private readonly entries = new Map<string, AnimationEntry>()
   private frameId: number | null = null
-  private lastFrameAtMs: number | null = null
   private disposed = false
 
   constructor(options: StreamTextAnimationControllerOptions) {
@@ -149,7 +152,8 @@ export class StreamTextAnimationController {
         finishing: false,
         finishTimer: null,
         onDrained: new Set(),
-        bufferedSinceMs: null,
+        lastArrivalAtMs: null,
+        lastRevealAtMs: null,
       }
       this.entries.set(slotId, entry)
     }
@@ -159,6 +163,7 @@ export class StreamTextAnimationController {
       entry.finishing = false
     }
 
+    const nowMs = this.scheduler.now()
     const wasEmpty = this.remaining(entry) === 0 && !entry.trailingHighSurrogate
     const combined = `${entry.trailingHighSurrogate}${chunk}`
     entry.trailingHighSurrogate = ''
@@ -172,8 +177,9 @@ export class StreamTextAnimationController {
     }
     for (const char of safeText) entry.chars.push(char)
     if (wasEmpty && (safeText || entry.trailingHighSurrogate)) {
-      entry.bufferedSinceMs = this.scheduler.now()
+      entry.lastRevealAtMs = null
     }
+    entry.lastArrivalAtMs = nowMs
     this.ensureFrame()
   }
 
@@ -233,7 +239,6 @@ export class StreamTextAnimationController {
     this.disposed = true
     if (this.frameId !== null) this.scheduler.cancelFrame(this.frameId)
     this.frameId = null
-    this.lastFrameAtMs = null
     for (const entry of this.entries.values()) this.clearFinishTimer(entry)
     this.entries.clear()
   }
@@ -241,22 +246,32 @@ export class StreamTextAnimationController {
   private readonly tick = (nowMs: number): void => {
     this.frameId = null
     if (this.disposed) return
-    const elapsedMs =
-      this.lastFrameAtMs === null
-        ? DEFAULT_FRAME_MS
-        : nowMs - this.lastFrameAtMs
-    this.lastFrameAtMs = nowMs
     let hasBufferedText = false
 
     for (const [slotId, entry] of [...this.entries]) {
       const backlog = this.remaining(entry)
       if (backlog <= 0) continue
+      const elapsedSinceReveal =
+        entry.lastRevealAtMs === null
+          ? DEFAULT_FRAME_MS
+          : nowMs - entry.lastRevealAtMs
+      if (
+        entry.lastRevealAtMs !== null &&
+        elapsedSinceReveal < STREAM_MIN_RENDER_INTERVAL_MS
+      ) {
+        hasBufferedText = true
+        continue
+      }
+      entry.lastRevealAtMs = nowMs
       const step = stepStreamReveal({
         backlog,
         carry: entry.carry,
-        elapsedMs,
+        elapsedMs: elapsedSinceReveal,
         finishing: entry.finishing,
-        backlogAgeMs: Math.max(0, nowMs - (entry.bufferedSinceMs ?? nowMs)),
+        timeSinceArrivalMs: Math.max(
+          0,
+          nowMs - (entry.lastArrivalAtMs ?? nowMs),
+        ),
       })
       entry.carry = step.carry
       if (step.count > 0) {
@@ -274,16 +289,12 @@ export class StreamTextAnimationController {
       } else if (entry.finishing) {
         this.completeEntry(slotId, entry)
       } else {
-        entry.bufferedSinceMs = null
+        entry.lastRevealAtMs = null
       }
     }
 
     if (hasBufferedText) {
       this.frameId = this.scheduler.requestFrame(this.tick)
-    } else {
-      // Never integrate time spent idle (or time spent with rAF suspended)
-      // into the next burst. That is what prevents post-pause burst dumps.
-      this.lastFrameAtMs = null
     }
   }
 
@@ -303,7 +314,6 @@ export class StreamTextAnimationController {
     if (hasBufferedText || this.frameId === null) return
     this.scheduler.cancelFrame(this.frameId)
     this.frameId = null
-    this.lastFrameAtMs = null
   }
 
   private remaining(entry: AnimationEntry): number {
@@ -321,7 +331,7 @@ export class StreamTextAnimationController {
     entry.cursor = entry.chars.length
     entry.visibleText += `${tail}${entry.trailingHighSurrogate}`
     entry.trailingHighSurrogate = ''
-    entry.bufferedSinceMs = null
+    entry.lastRevealAtMs = null
     this.onReveal(slotId, entry.visibleText)
     if (entry.finishing) this.completeEntry(slotId, entry)
   }
@@ -334,7 +344,8 @@ export class StreamTextAnimationController {
     entry.cursor = 0
     entry.carry = 0
     entry.finishing = false
-    entry.bufferedSinceMs = null
+    entry.lastArrivalAtMs = null
+    entry.lastRevealAtMs = null
   }
 
   private clearFinishTimer(entry: AnimationEntry): void {
