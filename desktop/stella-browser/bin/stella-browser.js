@@ -57,20 +57,7 @@ function resolveBinaryPath(binaryName) {
     return forcedBinaryPath;
   }
 
-  const packagedBinaryPath = join(__dirname, binaryName);
-  const sourceBinaryName = platform() === 'win32' ? 'stella-browser.exe' : 'stella-browser';
-  const debugBinaryPath = join(__dirname, '..', 'cli', 'target', 'debug', sourceBinaryName);
-  const cargoManifestPath = join(__dirname, '..', 'cli', 'Cargo.toml');
-  const preferPackagedBinary = process.env.STELLA_BROWSER_PREFER_PACKAGED_BINARY === '1';
-
-  // In a local repo checkout, prefer the debug build when available. The release
-  // build currently hangs under the captured shell environment used by Stella's
-  // task runtime, while the debug binary returns output correctly.
-  if (!preferPackagedBinary && existsSync(cargoManifestPath) && existsSync(debugBinaryPath)) {
-    return debugBinaryPath;
-  }
-
-  return packagedBinaryPath;
+  return join(__dirname, binaryName);
 }
 
 function main() {
