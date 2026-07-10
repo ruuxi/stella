@@ -7,12 +7,14 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { useDisplayPanelOpen } from "@/features/workspace-display/tab-store";
 import { useDisplayFileBytes } from "@/shared/hooks/use-display-file-data";
+import { openExternalUrl } from "@/platform/electron/open-external";
 import {
   type CanvasHtmlItem,
   getCanvasHtmlItems,
@@ -24,12 +26,56 @@ import {
 } from "./canvas-items";
 import { CanvasIllustration } from "../illustrations/CanvasIllustration";
 import { CanvasShareBar } from "./CanvasShareBar";
+import { classifyCanvasNavigation } from "./canvas-navigation";
 import "./canvas-tab.css";
 
 const decoder = new TextDecoder("utf-8");
 
 const CANVAS_SELECTION_BRIDGE_SCRIPT = String.raw`
 (() => {
+  const navigate = (rawHref) => {
+    const href = rawHref.trim();
+    if (href.startsWith("#")) {
+      const fragment = decodeURIComponent(href.slice(1));
+      if (!fragment) {
+        window.scrollTo({ top: 0, behavior: "auto" });
+        return;
+      }
+      const target = document.getElementById(fragment) ||
+        document.querySelector('[name="' + CSS.escape(fragment) + '"]');
+      target?.scrollIntoView();
+      return;
+    }
+    try {
+      const url = new URL(href);
+      if (url.protocol === "http:" || url.protocol === "https:") {
+        parent.postMessage({ type: "stella:canvas-open-external", url: url.href }, "*");
+      }
+    } catch {
+      // A relative destination cannot exist outside this single srcdoc file.
+    }
+  };
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+    const anchor = target && typeof target.closest === "function"
+      ? target.closest("a[href]")
+      : null;
+    if (!anchor) return;
+    event.preventDefault();
+    event.stopPropagation();
+    navigate(anchor.getAttribute("href") || "");
+  }, true);
+
+  document.addEventListener("submit", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const form = event.target;
+    if (form && typeof form.getAttribute === "function") {
+      navigate(form.getAttribute("action") || "");
+    }
+  }, true);
+
   const composeButton = document.createElement("button");
   composeButton.type = "button";
   composeButton.textContent = "Ask Stella";
@@ -157,20 +203,21 @@ const CanvasLoadingDots = () => (
   </span>
 );
 
-const CanvasIllustrationSpot = ({
-  label,
-}: {
-  label?: ReactNode;
-}) => (
+const CanvasIllustrationSpot = ({ label }: { label?: ReactNode }) => (
   <div className="canvas-tab__illustration-spot">
     <div className="canvas-tab__illustration-art">
       <CanvasIllustration />
     </div>
-    {label ? <div className="canvas-tab__illustration-label">{label}</div> : null}
+    {label ? (
+      <div className="canvas-tab__illustration-label">{label}</div>
+    ) : null}
   </div>
 );
 
 const CanvasHeroFrameContent = ({ item }: { item: CanvasHtmlItem }) => {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const loadCountRef = useRef(0);
+  const [navigationReset, setNavigationReset] = useState(0);
   const { bytes, error, loading } = useDisplayFileBytes(
     item.filePath,
     "Canvas preview requires the Stella desktop app.",
@@ -186,6 +233,24 @@ const CanvasHeroFrameContent = ({ item }: { item: CanvasHtmlItem }) => {
     () => (html ? injectCanvasSelectionBridge(html) : ""),
     [html],
   );
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const data = event.data as { type?: unknown; url?: unknown } | null;
+      if (
+        data?.type === "stella:canvas-open-external" &&
+        typeof data.url === "string"
+      ) {
+        const navigation = classifyCanvasNavigation(data.url);
+        if (navigation.kind === "external") {
+          openExternalUrl(navigation.url);
+        }
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
 
   if (error) {
     return (
@@ -210,12 +275,23 @@ const CanvasHeroFrameContent = ({ item }: { item: CanvasHtmlItem }) => {
   return (
     <div className="canvas-tab__frame-wrap">
       <iframe
-        key={`${item.id}:${item.createdAt}`}
+        key={`${item.id}:${item.createdAt}:${navigationReset}`}
+        ref={iframeRef}
         title={item.title}
         className="canvas-tab__iframe"
         srcDoc={srcDoc}
         sandbox="allow-scripts allow-popups allow-modals allow-forms"
         referrerPolicy="no-referrer"
+        onLoad={() => {
+          // The first load is srcdoc. Any later load means script-driven or
+          // otherwise uncaught navigation escaped the click/form bridge;
+          // remount the original document instead of leaving a broken frame.
+          loadCountRef.current += 1;
+          if (loadCountRef.current > 1) {
+            loadCountRef.current = 0;
+            setNavigationReset((value) => value + 1);
+          }
+        }}
       />
     </div>
   );
@@ -270,9 +346,7 @@ const useCanvasItems = (
     () => initial,
   );
 
-const useSelectedCanvasId = (
-  fallback: string | null,
-): string | null =>
+const useSelectedCanvasId = (fallback: string | null): string | null =>
   useSyncExternalStore(
     subscribeSelectedCanvasHtmlId,
     getSelectedCanvasHtmlId,
@@ -330,7 +404,9 @@ export const CanvasTabContent = ({
         ) : (
           <div className="canvas-tab__hero-empty">
             <CanvasIllustrationSpot />
-            <div className="canvas-tab__hero-empty-title">Canvases land here</div>
+            <div className="canvas-tab__hero-empty-title">
+              Canvases land here
+            </div>
             <div className="canvas-tab__hero-empty-hint">
               Charts, plans, comparisons, and other HTML views Stella renders
               are saved here.
