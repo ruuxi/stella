@@ -24,6 +24,10 @@ import {
   DEFAULT_CODEX_MODEL,
   loadLocalPreferences,
 } from "../preferences/local-preferences.js";
+import {
+  buildExternalCliChildEnv,
+  resolveExternalCliPath,
+} from "./external-cli-resolution.js";
 const MAX_STDERR_CAPTURE = 8_000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
@@ -503,11 +507,6 @@ const diffWorktreeSnapshots = (
   return changes;
 };
 
-const codexExecutablePath = (): string =>
-  process.env.STELLA_CODEX_CLI_PATH?.trim() ||
-  process.env.CODEX_CLI_PATH?.trim() ||
-  "codex";
-
 const normalizeCodexRuntimeReasoningEffort = (
   value: unknown,
 ): CodexReasoningEffort | undefined => {
@@ -837,11 +836,11 @@ class CodexAppServerClient {
   private readonly closeHandlers = new Set<(error: Error) => void>();
 
   constructor() {
-    this.child = spawn(
-      codexExecutablePath(),
-      ["app-server", "--listen", "stdio://"],
-      { stdio: "pipe" },
-    );
+    const executablePath = resolveExternalCliPath("codex");
+    this.child = spawn(executablePath, ["app-server", "--listen", "stdio://"], {
+      stdio: "pipe",
+      env: buildExternalCliChildEnv(executablePath),
+    });
     const lines = readline.createInterface({ input: this.child.stdout });
     lines.on("line", (line) => this.handleLine(line));
     this.child.stderr.on("data", (chunk: Buffer) => {

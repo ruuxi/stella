@@ -21,6 +21,10 @@ import {
   readClaudeCodeResolvedModels,
   recordClaudeCodeResolvedModel,
 } from "./claude-code-resolved-models.js";
+import {
+  buildExternalCliChildEnv,
+  resolveExternalCliPath,
+} from "./external-cli-resolution.js";
 
 const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
 /**
@@ -1839,8 +1843,9 @@ class ClaudeCodeSessionRuntime {
       this.resetStreamingProcess(request.sessionKey, session);
     }
 
+    const executablePath = resolveExternalCliPath("claude");
     const effortLevel = request.effortLevel?.trim();
-    const childEnv: NodeJS.ProcessEnv = { ...process.env };
+    const childEnv = buildExternalCliChildEnv(executablePath);
     if (effortLevel) {
       childEnv.CLAUDE_CODE_EFFORT_LEVEL = effortLevel;
     }
@@ -1861,7 +1866,7 @@ class ClaudeCodeSessionRuntime {
       );
     }
     const child = spawn(
-      "claude",
+      executablePath,
       this.buildClaudeCodeArgs(
         session,
         request,
