@@ -96,7 +96,9 @@ export const isBrowserExtensionFailure = (
 
 const execPayloadOf = (
   result: ToolResult,
-): (Record<string, unknown> & { running?: unknown; output?: unknown }) | null => {
+):
+  | (Record<string, unknown> & { running?: unknown; output?: unknown })
+  | null => {
   const payload = result.result;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return null;
@@ -120,12 +122,81 @@ const withTimeout = async (
     return await Promise.race([
       promise,
       new Promise<BrowserExtensionConnectOutcome>((resolve) => {
-        timer = setTimeout(() => resolve({ ok: false, reason: "timeout" }), timeoutMs);
+        timer = setTimeout(
+          () => resolve({ ok: false, reason: "timeout" }),
+          timeoutMs,
+        );
       }),
     ]);
   } finally {
     clearTimeout(timer);
   }
+};
+
+/**
+ * Shared low-level offer path for direct browser transports that do not return
+ * an exec_command-shaped ToolResult. Returns null when the failure is unrelated
+ * to a missing extension and otherwise returns the connect-card outcome.
+ */
+export const maybeRequestBrowserExtensionConnect = async (options: {
+  output: string;
+  command?: string;
+  requestConnect?: BrowserExtensionConnectRequester;
+  conversationId?: string;
+  agentId?: string;
+  signal?: AbortSignal;
+  now?: () => number;
+}): Promise<BrowserExtensionConnectOutcome | null> => {
+  const command = options.command ?? "stella-browser";
+  const now = options.now ?? Date.now;
+  if (!options.requestConnect || options.signal?.aborted) return null;
+  if (
+    !isBrowserExtensionFailure(command, {
+      running: false,
+      output: options.output,
+    })
+  ) {
+    return null;
+  }
+  if (gate.inFlight) return { ok: false, reason: "already_in_flight" };
+  if (
+    gate.lastRefusedAt !== null &&
+    now() - gate.lastRefusedAt < DECLINE_COOLDOWN_MS
+  ) {
+    return { ok: false, reason: "cooldown" };
+  }
+
+  gate.inFlight = true;
+  let outcome: BrowserExtensionConnectOutcome;
+  try {
+    outcome = await withTimeout(
+      options.requestConnect(
+        {
+          ...(options.conversationId
+            ? { conversationId: options.conversationId }
+            : {}),
+          ...(options.agentId ? { agentId: options.agentId } : {}),
+          command,
+        },
+        options.signal,
+      ),
+      OFFER_WAIT_TIMEOUT_MS,
+    );
+  } catch (error) {
+    outcome = {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    gate.inFlight = false;
+  }
+  if (
+    !outcome.ok &&
+    (outcome.reason === "declined" || outcome.reason === "timeout")
+  ) {
+    gate.lastRefusedAt = now();
+  }
+  return outcome;
 };
 
 /**

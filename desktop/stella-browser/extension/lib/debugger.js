@@ -22,9 +22,48 @@ export async function ensureDebugger(tabId) {
 }
 
 /**
+ * Evaluate an expression in the page and await promise results.
+ * @param {number} tabId
+ * @param {string} expression
+ * @param {{userGesture?: boolean, timeoutMs?: number}} [options]
+ * @returns {Promise<unknown>}
+ */
+export async function evaluateRuntime(tabId, expression, options = {}) {
+  await ensureDebugger(tabId);
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 30_000) {
+    throw new TypeError('Runtime evaluation timeout must be between 1 and 30000ms');
+  }
+  const params = {
+    expression,
+    returnByValue: true,
+    awaitPromise: true,
+    timeout: timeoutMs,
+  };
+  if (options.userGesture === true) params.userGesture = true;
+  const result = await chrome.debugger.sendCommand(
+    { tabId },
+    'Runtime.evaluate',
+    params,
+  );
+
+  if (result.exceptionDetails) {
+    const message =
+      result.exceptionDetails.exception?.description ||
+      result.exceptionDetails.text ||
+      'Runtime evaluation failed';
+    throw new Error(message);
+  }
+
+  return result.result?.value;
+}
+
+/**
  * Detach debugger from all tabs.
  */
 export async function detachAllDebuggers() {
+  clearTimeout(detachTimer);
+  detachTimer = null;
   for (const [tabId] of debuggerAttachments) {
     try {
       await chrome.debugger.detach({ tabId });

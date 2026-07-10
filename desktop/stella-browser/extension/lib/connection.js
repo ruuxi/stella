@@ -18,9 +18,11 @@ const PROBE_TIMEOUT = 1500;
 
 let nativePort = null;
 let probeTimer = null;
-let probeInFlight = false;
+const probesInFlight = new Set();
 let commandHandler = null;
 let statusCallback = null;
+let shouldConnect = false;
+let connectionGeneration = 0;
 
 /**
  * Set the handler for incoming commands from the daemon.
@@ -43,23 +45,30 @@ export function onStatus(callback) {
  * messaging once it's up (no port/token setup).
  */
 export function connect() {
-  if (isConnected()) return;
-  probeThenConnect();
+  if (shouldConnect && (isConnected() || probesInFlight.has(connectionGeneration))) {
+    return;
+  }
+  shouldConnect = true;
+  const generation = ++connectionGeneration;
+  probeThenConnect(generation);
 }
 
 /**
  * Disconnect from the bridge.
  */
 export function disconnect() {
+  shouldConnect = false;
+  connectionGeneration += 1;
   clearTimeout(probeTimer);
   probeTimer = null;
-  if (nativePort) {
+  const port = nativePort;
+  nativePort = null;
+  if (port) {
     try {
-      nativePort.disconnect();
+      port.disconnect();
     } catch {
       // ignore
     }
-    nativePort = null;
   }
   setStatus(false);
 }
@@ -109,57 +118,68 @@ async function isDaemonUp() {
  * Probe for the daemon; attach via native messaging when it's up, otherwise
  * keep polling. fetch() is process-free, so Stella being closed costs nothing.
  */
-async function probeThenConnect() {
-  if (probeInFlight || isConnected()) return;
+async function probeThenConnect(generation = connectionGeneration) {
+  if (
+    !shouldConnect ||
+    generation !== connectionGeneration ||
+    probesInFlight.has(generation) ||
+    isConnected()
+  ) {
+    return;
+  }
   clearTimeout(probeTimer);
   probeTimer = null;
 
-  probeInFlight = true;
+  probesInFlight.add(generation);
   let up = false;
   try {
     up = await isDaemonUp();
   } finally {
-    probeInFlight = false;
+    probesInFlight.delete(generation);
   }
 
-  if (isConnected()) return;
+  if (!shouldConnect || generation !== connectionGeneration || isConnected()) return;
   if (up) {
-    doConnect();
+    doConnect(generation);
     return;
   }
-  scheduleProbe();
+  scheduleProbe(generation);
 }
 
-function scheduleProbe() {
+function scheduleProbe(generation = connectionGeneration) {
+  if (!shouldConnect || generation !== connectionGeneration) return;
   clearTimeout(probeTimer);
   probeTimer = setTimeout(() => {
     probeTimer = null;
-    probeThenConnect();
+    probeThenConnect(generation);
   }, PROBE_INTERVAL);
 }
 
-function doConnect() {
-  if (nativePort) {
-    try {
-      nativePort.disconnect();
-    } catch {
-      // ignore
-    }
-    nativePort = null;
-  }
+function doConnect(generation) {
+  if (!shouldConnect || generation !== connectionGeneration || nativePort) return;
 
   let port;
   try {
     port = chrome.runtime.connectNative(STELLA_NATIVE_HOST_NAME);
   } catch (err) {
     console.error('[connection] connectNative failed:', err);
-    scheduleProbe();
+    scheduleProbe(generation);
     return;
   }
 
+  if (!shouldConnect || generation !== connectionGeneration) {
+    try {
+      port.disconnect();
+    } catch {
+      // ignore
+    }
+    return;
+  }
   nativePort = port;
 
   port.onMessage.addListener(async (msg) => {
+    if (generation !== connectionGeneration || nativePort !== port) return;
+
     if (msg.type === 'welcome') {
       console.log('[connection] Authenticated, session:', msg.session);
       setStatus(true);
@@ -179,14 +199,18 @@ function doConnect() {
     if (msg.type === 'command' && commandHandler) {
       try {
         const response = await commandHandler(msg);
-        send(response);
+        if (generation === connectionGeneration && nativePort === port) {
+          port.postMessage(response);
+        }
       } catch (err) {
-        send({
-          type: 'response',
-          id: msg.id,
-          success: false,
-          error: err.message || String(err),
-        });
+        if (generation === connectionGeneration && nativePort === port) {
+          port.postMessage({
+            type: 'response',
+            id: msg.id,
+            success: false,
+            error: err.message || String(err),
+          });
+        }
       }
     }
   });
@@ -196,14 +220,14 @@ function doConnect() {
     if (err?.message) {
       console.error('[connection] Native port disconnected:', err.message);
     }
-    const wasActive = nativePort === port;
+    const wasActive = generation === connectionGeneration && nativePort === port;
+    if (!wasActive) return;
+
     nativePort = null;
-    if (wasActive) {
-      setStatus(false);
-      // Host exited (Stella closed, or the daemon restarted). Go back to
-      // process-free polling; we reattach as soon as the daemon answers.
-      probeThenConnect();
-    }
+    setStatus(false);
+    // Host exited (Stella closed, or the daemon restarted). Go back to
+    // process-free polling; we reattach as soon as the daemon answers.
+    probeThenConnect(generation);
   });
 
   port.postMessage({
@@ -230,7 +254,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     } else {
       // The alarm revives a suspended service worker (which loses its probe
       // timer); probeThenConnect dedupes against any pending timer/probe.
-      probeThenConnect();
+      if (shouldConnect) probeThenConnect(connectionGeneration);
     }
   }
 });

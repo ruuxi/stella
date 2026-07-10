@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
 use std::io::{self, BufRead};
+use uuid::Uuid;
 
 use crate::color;
 use crate::flags::Flags;
@@ -61,14 +62,233 @@ impl ParseError {
 }
 
 pub fn gen_id() -> String {
-    format!(
-        "r{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_micros()
-            % 1000000
-    )
+    format!("r{}", Uuid::new_v4().simple())
+}
+
+const MAX_CHAIN_STEPS: usize = 100;
+const CHAIN_USAGE: &str = "chain <JSON array or object>";
+
+fn validate_chain_steps(steps: &[Value]) -> Result<(), ParseError> {
+    if steps.len() > MAX_CHAIN_STEPS {
+        return Err(ParseError::InvalidValue {
+            message: format!(
+                "Chain has {} steps; the maximum is {}",
+                steps.len(),
+                MAX_CHAIN_STEPS
+            ),
+            usage: CHAIN_USAGE,
+        });
+    }
+
+    for (index, step) in steps.iter().enumerate() {
+        let step = step.as_object().ok_or_else(|| ParseError::InvalidValue {
+            message: format!("Chain step {} must be a JSON object", index),
+            usage: CHAIN_USAGE,
+        })?;
+        let action = step
+            .get("action")
+            .and_then(Value::as_str)
+            .filter(|action| !action.trim().is_empty())
+            .ok_or_else(|| ParseError::InvalidValue {
+                message: format!("Chain step {} must have a non-empty string action", index),
+                usage: CHAIN_USAGE,
+            })?;
+        if action == "chain" {
+            return Err(ParseError::InvalidValue {
+                message: format!("Chain step {} cannot contain a nested chain", index),
+                usage: CHAIN_USAGE,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_chain_options(options: &serde_json::Map<String, Value>) -> Result<(), ParseError> {
+    const ALLOWED_KEYS: &[&str] = &[
+        "steps",
+        "delay",
+        "waitForSelector",
+        "waitTimeout",
+        "abortOnError",
+        "returnSnapshot",
+        "returnScreenshot",
+    ];
+
+    for key in options.keys() {
+        if !ALLOWED_KEYS.contains(&key.as_str()) {
+            return Err(ParseError::InvalidValue {
+                message: format!("Unknown or unsafe chain option: {}", key),
+                usage: CHAIN_USAGE,
+            });
+        }
+    }
+
+    for key in [
+        "waitForSelector",
+        "abortOnError",
+        "returnSnapshot",
+        "returnScreenshot",
+    ] {
+        if options.get(key).is_some_and(|value| !value.is_boolean()) {
+            return Err(ParseError::InvalidValue {
+                message: format!("Chain option {} must be a boolean", key),
+                usage: CHAIN_USAGE,
+            });
+        }
+    }
+
+    if options
+        .get("waitTimeout")
+        .is_some_and(|value| value.as_f64().is_none_or(|timeout| timeout < 0.0))
+    {
+        return Err(ParseError::InvalidValue {
+            message: "Chain option waitTimeout must be a non-negative number".to_string(),
+            usage: CHAIN_USAGE,
+        });
+    }
+
+    if let Some(delay) = options.get("delay") {
+        let delay = delay.as_object().ok_or_else(|| ParseError::InvalidValue {
+            message: "Chain option delay must be an object with min/max milliseconds".to_string(),
+            usage: CHAIN_USAGE,
+        })?;
+        if delay.keys().any(|key| key != "min" && key != "max") {
+            return Err(ParseError::InvalidValue {
+                message: "Chain option delay only accepts min and max".to_string(),
+                usage: CHAIN_USAGE,
+            });
+        }
+        let min = delay.get("min").and_then(Value::as_f64).unwrap_or(300.0);
+        let max = delay.get("max").and_then(Value::as_f64).unwrap_or(1200.0);
+        if min < 0.0
+            || max < 0.0
+            || delay.get("min").is_some_and(|value| !value.is_number())
+            || delay.get("max").is_some_and(|value| !value.is_number())
+            || min > max
+        {
+            return Err(ParseError::InvalidValue {
+                message: "Chain delay min/max must be non-negative numbers with min <= max"
+                    .to_string(),
+                usage: CHAIN_USAGE,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn parse_chain(rest: &[&str], id: &str) -> Result<Value, ParseError> {
+    if rest.is_empty() {
+        return Err(ParseError::MissingArguments {
+            context: "chain".to_string(),
+            usage: CHAIN_USAGE,
+        });
+    }
+
+    let input = rest.join(" ");
+    let parsed: Value = serde_json::from_str(&input).map_err(|error| ParseError::InvalidValue {
+        message: format!("Invalid chain JSON: {}", error),
+        usage: CHAIN_USAGE,
+    })?;
+
+    let mut command = serde_json::Map::new();
+    match parsed {
+        Value::Array(steps) => {
+            validate_chain_steps(&steps)?;
+            command.insert("steps".to_string(), Value::Array(steps));
+        }
+        Value::Object(options) if options.contains_key("steps") => {
+            validate_chain_options(&options)?;
+            let steps = options
+                .get("steps")
+                .and_then(Value::as_array)
+                .ok_or_else(|| ParseError::InvalidValue {
+                    message: "Chain option steps must be an array".to_string(),
+                    usage: CHAIN_USAGE,
+                })?;
+            validate_chain_steps(steps)?;
+            command.extend(options);
+        }
+        Value::Object(step) if step.contains_key("action") => {
+            let steps = vec![Value::Object(step)];
+            validate_chain_steps(&steps)?;
+            command.insert("steps".to_string(), Value::Array(steps));
+        }
+        _ => {
+            return Err(ParseError::InvalidValue {
+                message:
+                    "Chain JSON must be an array of steps, a step object, or an object with steps"
+                        .to_string(),
+                usage: CHAIN_USAGE,
+            });
+        }
+    }
+
+    command.insert("id".to_string(), json!(id));
+    command.insert("action".to_string(), json!("chain"));
+    Ok(Value::Object(command))
+}
+
+fn parse_finalize_tabs(rest: &[&str], id: &str) -> Result<Value, ParseError> {
+    const USAGE: &str = "finalize-tabs <JSON keep array>";
+    if rest.is_empty() {
+        return Err(ParseError::MissingArguments {
+            context: "finalize-tabs".to_string(),
+            usage: USAGE,
+        });
+    }
+
+    let keep: Value =
+        serde_json::from_str(&rest.join(" ")).map_err(|error| ParseError::InvalidValue {
+            message: format!("Invalid finalize-tabs JSON: {}", error),
+            usage: USAGE,
+        })?;
+    let entries = keep.as_array().ok_or_else(|| ParseError::InvalidValue {
+        message: "finalize-tabs keep value must be an array".to_string(),
+        usage: USAGE,
+    })?;
+    let mut seen = std::collections::HashSet::new();
+    for (index, entry) in entries.iter().enumerate() {
+        let entry = entry.as_object().ok_or_else(|| ParseError::InvalidValue {
+            message: format!("finalize-tabs keep entry {} must be an object", index),
+            usage: USAGE,
+        })?;
+        if entry.keys().any(|key| key != "tabId" && key != "status") {
+            return Err(ParseError::InvalidValue {
+                message: format!("finalize-tabs keep entry {} has unknown fields", index),
+                usage: USAGE,
+            });
+        }
+        let tab_id = entry
+            .get("tabId")
+            .and_then(Value::as_u64)
+            .filter(|tab_id| *tab_id > 0 && *tab_id <= u32::MAX as u64)
+            .ok_or_else(|| ParseError::InvalidValue {
+                message: format!(
+                    "finalize-tabs keep entry {} tabId must be a positive integer",
+                    index
+                ),
+                usage: USAGE,
+            })?;
+        if !seen.insert(tab_id) {
+            return Err(ParseError::InvalidValue {
+                message: format!("finalize-tabs keep contains duplicate tabId {}", tab_id),
+                usage: USAGE,
+            });
+        }
+        if !matches!(
+            entry.get("status").and_then(Value::as_str),
+            Some("handoff" | "deliverable")
+        ) {
+            return Err(ParseError::InvalidValue {
+                message: format!("finalize-tabs keep entry {} has invalid status", index),
+                usage: USAGE,
+            });
+        }
+    }
+
+    Ok(json!({ "id": id, "action": "finalize_tabs", "keep": keep }))
 }
 
 pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError> {
@@ -76,6 +296,13 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
         return Err(ParseError::MissingArguments {
             context: "".to_string(),
             usage: "<command> [args...]",
+        });
+    }
+
+    if let Some(message) = &flags.tab_id_error {
+        return Err(ParseError::InvalidValue {
+            message: message.clone(),
+            usage: "--tab-id <positive integer> <command> [args...]",
         });
     }
 
@@ -90,7 +317,7 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
         );
     }
 
-    match cmd {
+    let mut command = match cmd {
         // === Navigation ===
         // Maps to "navigate" action in protocol; reflected in ACTION_CATEGORIES in action-policy.ts
         "open" | "goto" | "navigate" => {
@@ -588,6 +815,8 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
 
         // === Close ===
         "close" | "quit" | "exit" => Ok(json!({ "id": id, "action": "close" })),
+        "close-owner" | "close_owner" => Ok(json!({ "id": id, "action": "close_owner" })),
+        "finalize-tabs" | "finalize_tabs" => parse_finalize_tabs(&rest, &id),
 
         // === Inspect ===
         "inspect" => Ok(json!({ "id": id, "action": "inspect" })),
@@ -957,9 +1186,29 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
                 Ok(cmd)
             }
             Some("list") => Ok(json!({ "id": id, "action": "tab_list" })),
+            Some("switch") => {
+                let mut cmd = json!({ "id": id, "action": "tab_switch" });
+                if let Some(value) = rest.get(1) {
+                    let index = value.parse::<i32>().map_err(|_| ParseError::InvalidValue {
+                        message: format!("Tab index must be an integer, got '{}'", value),
+                        usage: "tab switch [index] [--tab-id <id>]",
+                    })?;
+                    cmd["index"] = json!(index);
+                } else if flags.tab_id.is_none() {
+                    return Err(ParseError::MissingArguments {
+                        context: "tab switch".to_string(),
+                        usage: "tab switch <index> | --tab-id <id> tab switch",
+                    });
+                }
+                Ok(cmd)
+            }
             Some("close") => {
                 let mut cmd = json!({ "id": id, "action": "tab_close" });
-                if let Some(index) = rest.get(1).and_then(|s| s.parse::<i32>().ok()) {
+                if let Some(value) = rest.get(1) {
+                    let index = value.parse::<i32>().map_err(|_| ParseError::InvalidValue {
+                        message: format!("Tab index must be an integer, got '{}'", value),
+                        usage: "tab close [index] [--tab-id <id>]",
+                    })?;
                     cmd["index"] = json!(index);
                 }
                 Ok(cmd)
@@ -1345,6 +1594,9 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
 
         "diff" => parse_diff(&rest, &id, flags),
 
+        // === Extension-side Chain ===
+        "chain" => parse_chain(&rest, &id),
+
         // === Batch ===
         "batch" => {
             let bail = rest.contains(&"--bail");
@@ -1354,7 +1606,19 @@ pub fn parse_command(args: &[String], flags: &Flags) -> Result<Value, ParseError
         _ => Err(ParseError::UnknownCommand {
             command: cmd.to_string(),
         }),
+    }?;
+
+    if let Some(tab_id) = flags.tab_id {
+        if flags.provider.as_deref() != Some("extension") {
+            return Err(ParseError::InvalidValue {
+                message: "--tab-id is only supported by the extension provider".to_string(),
+                usage: "--provider extension --tab-id <id> <command>",
+            });
+        }
+        command["tabId"] = json!(tab_id);
     }
+
+    Ok(command)
 }
 
 fn parse_diff(rest: &[&str], id: &str, flags: &Flags) -> Result<Value, ParseError> {
@@ -2216,11 +2480,23 @@ mod tests {
             screenshot_quality: None,
             screenshot_format: None,
             idle_timeout: None,
+            tab_id: None,
+            tab_id_error: None,
         }
     }
 
     fn args(s: &str) -> Vec<String> {
         s.split_whitespace().map(String::from).collect()
+    }
+
+    #[test]
+    fn test_gen_id_uses_unique_uuid_values() {
+        let first = gen_id();
+        let second = gen_id();
+        assert_ne!(first, second);
+        assert!(first.starts_with('r'));
+        assert_eq!(first.len(), 33);
+        assert!(Uuid::parse_str(&first[1..]).is_ok());
     }
 
     // === Cookies Tests ===
@@ -2693,9 +2969,140 @@ mod tests {
     }
 
     #[test]
+    fn test_tab_switch_subcommand_by_index() {
+        let cmd = parse_command(&args("tab switch 2"), &default_flags()).unwrap();
+        assert_eq!(cmd["action"], "tab_switch");
+        assert_eq!(cmd["index"], 2);
+    }
+
+    #[test]
+    fn test_global_tab_id_is_injected_into_commands() {
+        let mut flags = default_flags();
+        flags.tab_id = Some(73);
+        flags.provider = Some("extension".to_string());
+        let cmd = parse_command(&args("click #button"), &flags).unwrap();
+        assert_eq!(cmd["action"], "click");
+        assert_eq!(cmd["tabId"], 73);
+
+        let switch = parse_command(&args("tab switch"), &flags).unwrap();
+        assert_eq!(switch["action"], "tab_switch");
+        assert_eq!(switch["tabId"], 73);
+        assert!(switch.get("index").is_none());
+    }
+
+    #[test]
+    fn test_global_tab_id_rejects_unsupported_providers() {
+        let mut flags = default_flags();
+        flags.tab_id = Some(73);
+
+        let error = parse_command(&args("click #button"), &flags).unwrap_err();
+        assert!(error
+            .format()
+            .contains("only supported by the extension provider"));
+    }
+
+    #[test]
     fn test_tab_close() {
         let cmd = parse_command(&args("tab close"), &default_flags()).unwrap();
         assert_eq!(cmd["action"], "tab_close");
+    }
+
+    // === Chain ===
+
+    #[test]
+    fn test_chain_parses_array_and_options_object() {
+        let array = vec![
+            "chain".to_string(),
+            r##"[{"action":"click","selector":"#submit"}]"##.to_string(),
+        ];
+        let cmd = parse_command(&array, &default_flags()).unwrap();
+        assert_eq!(cmd["action"], "chain");
+        assert_eq!(cmd["steps"][0]["action"], "click");
+
+        let object = vec![
+            "chain".to_string(),
+            r##"{"steps":[{"action":"fill","selector":"#name","value":"A B"}],"abortOnError":false}"##.to_string(),
+        ];
+        let cmd = parse_command(&object, &default_flags()).unwrap();
+        assert_eq!(cmd["steps"][0]["value"], "A B");
+        assert_eq!(cmd["abortOnError"], false);
+    }
+
+    #[test]
+    fn test_chain_parses_single_step_object() {
+        let input = vec![
+            "chain".to_string(),
+            r#"{"action":"snapshot","interactive":true}"#.to_string(),
+        ];
+        let cmd = parse_command(&input, &default_flags()).unwrap();
+        assert_eq!(cmd["steps"][0]["action"], "snapshot");
+        assert_eq!(cmd["steps"][0]["interactive"], true);
+    }
+
+    #[test]
+    fn test_chain_rejects_nested_non_object_and_oversized_steps() {
+        let nested = vec![
+            "chain".to_string(),
+            r#"[{"action":"chain","steps":[]}]"#.to_string(),
+        ];
+        assert!(matches!(
+            parse_command(&nested, &default_flags()),
+            Err(ParseError::InvalidValue { .. })
+        ));
+
+        let non_object = vec!["chain".to_string(), r#"["click"]"#.to_string()];
+        assert!(matches!(
+            parse_command(&non_object, &default_flags()),
+            Err(ParseError::InvalidValue { .. })
+        ));
+
+        let steps = (0..=MAX_CHAIN_STEPS)
+            .map(|_| json!({ "action": "click", "selector": "#button" }))
+            .collect::<Vec<_>>();
+        let oversized = vec!["chain".to_string(), serde_json::to_string(&steps).unwrap()];
+        assert!(matches!(
+            parse_command(&oversized, &default_flags()),
+            Err(ParseError::InvalidValue { .. })
+        ));
+    }
+
+    #[test]
+    fn test_chain_rejects_unsafe_top_level_shape() {
+        let input = vec![
+            "chain".to_string(),
+            r#"{"steps":[],"ownerId":"other"}"#.to_string(),
+        ];
+        assert!(matches!(
+            parse_command(&input, &default_flags()),
+            Err(ParseError::InvalidValue { .. })
+        ));
+    }
+
+    #[test]
+    fn test_owner_finalization_commands_parse_structured_keep_entries() {
+        let close = parse_command(&args("close-owner"), &default_flags()).unwrap();
+        assert_eq!(close["action"], "close_owner");
+
+        let input = vec![
+            "finalize-tabs".to_string(),
+            r#"[{"tabId":17,"status":"handoff"},{"tabId":23,"status":"deliverable"}]"#.to_string(),
+        ];
+        let finalize = parse_command(&input, &default_flags()).unwrap();
+        assert_eq!(finalize["action"], "finalize_tabs");
+        assert_eq!(finalize["keep"][0]["tabId"], 17);
+        assert_eq!(finalize["keep"][1]["status"], "deliverable");
+    }
+
+    #[test]
+    fn test_owner_finalization_rejects_invalid_keep_entries() {
+        let input = vec![
+            "finalize-tabs".to_string(),
+            r#"[{"tabId":17,"status":"unknown"}]"#.to_string(),
+        ];
+        assert!(matches!(
+            parse_command(&input, &default_flags()),
+            Err(ParseError::InvalidValue { .. })
+        ));
     }
 
     // === Screenshot ===

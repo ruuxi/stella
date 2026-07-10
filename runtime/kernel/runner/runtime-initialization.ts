@@ -458,7 +458,7 @@ export const createRuntimeInitialization = (
     context.state.conversationCallbacks.clear();
     context.state.runCallbacksByRunId.clear();
     void context.selfModHmrController?.forceResumeAll();
-    context.toolHost.killAllShells();
+    await context.toolHost.shutdown();
     // Drain any in-flight background compactions so SQLite writes
     // complete before the worker tears down its store handle. Bounded
     // timeout ensures shutdown doesn't pin on a stalled LLM call.

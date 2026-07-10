@@ -4,8 +4,12 @@
  * ischecked, count, styles.
  */
 import { getActiveTab } from './tabs.js';
-import { resolveSelector, buildRoleMatcherScript } from '../lib/selector.js';
-import { ensureDebugger } from '../lib/debugger.js';
+import {
+  resolveSelector,
+  buildRoleMatcherAllScript,
+  buildRoleMatcherScript,
+} from '../lib/selector.js';
+import { evaluateRuntime } from '../lib/debugger.js';
 
 /**
  * Inject a script that finds an element and runs code on it.
@@ -22,19 +26,7 @@ async function queryElement(tabId, ownerId, selector, scriptBody) {
     script = `(() => { const el = document.querySelector(${JSON.stringify(resolved.css)}); if (!el) throw new Error('Element not found: ${resolved.css}'); ${scriptBody} })()`;
   }
 
-  await ensureDebugger(tabId);
-  const result = await chrome.debugger.sendCommand(
-    { tabId },
-    'Runtime.evaluate',
-    { expression: script, returnByValue: true }
-  );
-
-  if (result.exceptionDetails) {
-    const msg = result.exceptionDetails.exception?.description || result.exceptionDetails.text;
-    throw new Error(msg);
-  }
-
-  return result.result?.value;
+  return evaluateRuntime(tabId, script);
 }
 
 export async function handleInnerText(command) {
@@ -111,13 +103,9 @@ export async function handleIsVisible(command) {
     script = `(() => { const el = document.querySelector(${JSON.stringify(resolved.css)}); if (!el) return false; ${visibilityCheck} })()`;
   }
 
-  await ensureDebugger(tab.id);
-  const result = await chrome.debugger.sendCommand(
-    { tabId: tab.id }, 'Runtime.evaluate',
-    { expression: script, returnByValue: true }
-  );
+  const visible = await evaluateRuntime(tab.id, script);
 
-  return { id: command.id, success: true, data: { visible: !!result.result?.value } };
+  return { id: command.id, success: true, data: { visible: !!visible } };
 }
 
 export async function handleIsEnabled(command) {
@@ -143,10 +131,17 @@ export async function handleCount(command) {
   const selector = command.selector;
   if (!selector) throw new Error('Selector is required for count');
 
+  const resolved = resolveSelector(selector, command.ownerId, tab.id);
+  if (resolved.isSemantic) {
+    const allMatches = buildRoleMatcherAllScript(resolved.role, resolved.name);
+    const count = await evaluateRuntime(tab.id, `(${allMatches.trim()}).length`);
+    return { id: command.id, success: true, data: { count: count ?? 0 } };
+  }
+
   const [result] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: (sel) => document.querySelectorAll(sel).length,
-    args: [selector],
+    args: [resolved.css],
     world: 'MAIN',
   });
 
@@ -194,19 +189,9 @@ export async function handleStyles(command) {
       });
     })()`;
 
-    await ensureDebugger(tab.id);
-    const result = await chrome.debugger.sendCommand(
-      { tabId: tab.id },
-      'Runtime.evaluate',
-      { expression: script, returnByValue: true }
-    );
+    const elements = await evaluateRuntime(tab.id, script);
 
-    if (result.exceptionDetails) {
-      const msg = result.exceptionDetails.exception?.description || result.exceptionDetails.text;
-      throw new Error(msg);
-    }
-
-    return { id: command.id, success: true, data: { elements: result.result?.value || [] } };
+    return { id: command.id, success: true, data: { elements: elements || [] } };
   }
 
   // For refs, single element

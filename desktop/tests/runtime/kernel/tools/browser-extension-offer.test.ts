@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   isBrowserExtensionFailure,
   maybeOfferBrowserExtensionConnect,
+  maybeRequestBrowserExtensionConnect,
   resetBrowserExtensionOfferGate,
 } from "../../../../../runtime/kernel/tools/browser-extension-offer.js";
 import type { ToolResult } from "../../../../../runtime/kernel/tools/types.js";
@@ -175,5 +176,43 @@ describe("maybeOfferBrowserExtensionConnect", () => {
       },
     });
     expect(result).toBe(original);
+  });
+});
+
+describe("maybeRequestBrowserExtensionConnect", () => {
+  it("supports direct transports and shares the decline cooldown", async () => {
+    let offers = 0;
+    let now = 10_000;
+    const requestConnect = async () => {
+      offers += 1;
+      return { ok: false as const, reason: "declined" as const };
+    };
+    await expect(
+      maybeRequestBrowserExtensionConnect({
+        output: EXTENSION_ERROR,
+        command: "stella-browser node_repl",
+        requestConnect,
+        now: () => now,
+      }),
+    ).resolves.toEqual({ ok: false, reason: "declined" });
+    now += 1_000;
+    await expect(
+      maybeRequestBrowserExtensionConnect({
+        output: EXTENSION_ERROR,
+        command: "stella-browser node_repl",
+        requestConnect,
+        now: () => now,
+      }),
+    ).resolves.toEqual({ ok: false, reason: "cooldown" });
+    expect(offers).toBe(1);
+  });
+
+  it("ignores unrelated direct transport errors", async () => {
+    await expect(
+      maybeRequestBrowserExtensionConnect({
+        output: "navigation timed out",
+        requestConnect: async () => ({ ok: true, status: "connected" }),
+      }),
+    ).resolves.toBeNull();
   });
 });

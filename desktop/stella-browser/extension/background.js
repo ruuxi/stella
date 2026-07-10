@@ -6,7 +6,7 @@
  */
 
 import { connect, disconnect, isConnected, onCommand, onStatus } from './lib/connection.js';
-import { handleTabNew, handleTabList, handleTabSwitch, handleTabClose, closeAgentWindow, closeOwnerTabs, cleanupStaleGroups, cleanupStaleTabs } from './commands/tabs.js';
+import { handleTabNew, handleTabList, handleTabSwitch, handleTabClose, closeAgentWindow, closeOwnerTabs, finalizeOwnerTabs, cleanupStaleGroups, cleanupStaleTabs } from './commands/tabs.js';
 import { handleNavigate, handleBack, handleForward, handleReload, handleUrl, handleTitle } from './commands/navigation.js';
 import {
   handleClick, handleFill, handleType, handleHover, handleSelect,
@@ -117,6 +117,16 @@ const HANDLERS = {
   tab_list: handleTabList,
   tab_switch: handleTabSwitch,
   tab_close: handleTabClose,
+  finalize_tabs: async (cmd) => ({
+    id: cmd.id,
+    success: true,
+    data: await finalizeOwnerTabs(cmd),
+  }),
+  close_owner: async (cmd) => ({
+    id: cmd.id,
+    success: true,
+    data: await finalizeOwnerTabs(cmd, []),
+  }),
 
   // Cookies
   cookies_get: handleCookiesGet,

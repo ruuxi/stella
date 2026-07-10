@@ -219,6 +219,7 @@ fn extract_config_path(args: &[String]) -> Option<Option<String>> {
         "--screenshot-quality",
         "--screenshot-format",
         "--idle-timeout",
+        "--tab-id",
     ];
     let mut i = 0;
     while i < args.len() {
@@ -301,6 +302,8 @@ pub struct Flags {
     pub screenshot_quality: Option<u32>,
     pub screenshot_format: Option<String>,
     pub idle_timeout: Option<String>, // Canonical milliseconds string for STELLA_BROWSER_IDLE_TIMEOUT_MS
+    pub tab_id: Option<u32>,
+    pub tab_id_error: Option<String>,
 
     // Track which launch-time options were explicitly passed via CLI
     // (as opposed to being set only via environment variables)
@@ -423,6 +426,8 @@ pub fn parse_flags(args: &[String]) -> Flags {
             "STELLA_BROWSER_IDLE_TIMEOUT_MS",
         )
         .or(config.idle_timeout),
+        tab_id: None,
+        tab_id_error: None,
         cli_executable_path: false,
         cli_extensions: false,
         cli_profile: false,
@@ -485,6 +490,28 @@ pub fn parse_flags(args: &[String]) -> Flags {
                             e
                         ),
                     }
+                    i += 1;
+                }
+            }
+            "--tab-id" => {
+                match args.get(i + 1) {
+                    Some(value) => match value.parse::<u32>() {
+                        Ok(tab_id) if tab_id > 0 => flags.tab_id = Some(tab_id),
+                        _ => {
+                            flags.tab_id = None;
+                            flags.tab_id_error = Some(format!(
+                                "--tab-id must be a positive integer, got '{}'",
+                                value
+                            ));
+                        }
+                    },
+                    None => {
+                        flags.tab_id = None;
+                        flags.tab_id_error =
+                            Some("--tab-id requires a positive integer".to_string());
+                    }
+                }
+                if args.get(i + 1).is_some() {
                     i += 1;
                 }
             }
@@ -761,6 +788,7 @@ pub fn clean_args(args: &[String]) -> Vec<String> {
         "--screenshot-quality",
         "--screenshot-format",
         "--idle-timeout",
+        "--tab-id",
     ];
 
     let mut i = 0;
@@ -940,6 +968,30 @@ mod tests {
     fn test_parse_idle_timeout_flag_converts_to_ms() {
         let flags = parse_flags(&args("--idle-timeout 10s open example.com"));
         assert_eq!(flags.idle_timeout.as_deref(), Some("10000"));
+    }
+
+    #[test]
+    fn test_parse_positive_tab_id() {
+        let flags = parse_flags(&args("--tab-id 42 snapshot"));
+        assert_eq!(flags.tab_id, Some(42));
+        assert!(flags.tab_id_error.is_none());
+    }
+
+    #[test]
+    fn test_parse_tab_id_rejects_zero_and_non_numeric_values() {
+        let zero = parse_flags(&args("--tab-id 0 snapshot"));
+        assert!(zero.tab_id.is_none());
+        assert!(zero.tab_id_error.as_deref().unwrap().contains("positive"));
+
+        let invalid = parse_flags(&args("snapshot --tab-id nope"));
+        assert!(invalid.tab_id.is_none());
+        assert!(invalid.tab_id_error.as_deref().unwrap().contains("nope"));
+    }
+
+    #[test]
+    fn test_clean_args_removes_tab_id() {
+        let cleaned = clean_args(&args("--tab-id 42 snapshot"));
+        assert_eq!(cleaned, vec!["snapshot"]);
     }
 
     #[test]

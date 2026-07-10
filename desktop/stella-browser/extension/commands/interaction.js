@@ -5,13 +5,13 @@
  */
 import { getActiveTab } from './tabs.js';
 import { resolveSelector, buildRoleMatcherScript } from '../lib/selector.js';
-import { ensureDebugger } from '../lib/debugger.js';
+import { ensureDebugger, evaluateRuntime } from '../lib/debugger.js';
 
 /**
  * Inject a script that finds an element and runs code on it.
  * Uses CDP Runtime.evaluate to bypass CSP restrictions (no new Function/eval).
  */
-async function injectScript(tabId, resolved, actionScript) {
+async function injectScript(tabId, resolved, actionScript, options) {
   let script;
   if (resolved.isRef) {
     const finderScript = buildRoleMatcherScript(resolved.role, resolved.name, resolved.nth);
@@ -32,19 +32,57 @@ async function injectScript(tabId, resolved, actionScript) {
     `;
   }
 
-  await ensureDebugger(tabId);
-  const result = await chrome.debugger.sendCommand(
-    { tabId },
-    'Runtime.evaluate',
-    { expression: script, returnByValue: true }
-  );
+  return evaluateRuntime(tabId, script, options);
+}
 
-  if (result.exceptionDetails) {
-    const msg = result.exceptionDetails.exception?.description || result.exceptionDetails.text;
-    throw new Error(msg);
+async function getClickablePoint(tabId, resolved) {
+  const point = await injectScript(tabId, resolved, `
+    el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      throw new Error('Element has no clickable area');
+    }
+    const x = Math.max(0, Math.min(innerWidth - 1, rect.left + rect.width / 2));
+    const y = Math.max(0, Math.min(innerHeight - 1, rect.top + rect.height / 2));
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || (hit !== el && !el.contains(hit))) {
+      throw new Error('Element is not clickable at its center point');
+    }
+    return { x, y };
+  `);
+  if (
+    !point ||
+    !Number.isFinite(point.x) ||
+    !Number.isFinite(point.y)
+  ) {
+    throw new Error('Failed to resolve a clickable point');
   }
+  return point;
+}
 
-  return result.result?.value;
+async function dispatchPointerClick(tabId, point, clickCount) {
+  await ensureDebugger(tabId);
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: point.x,
+    y: point.y,
+  });
+  for (let count = 1; count <= clickCount; count += 1) {
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: point.x,
+      y: point.y,
+      button: 'left',
+      clickCount: count,
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: point.x,
+      y: point.y,
+      button: 'left',
+      clickCount: count,
+    });
+  }
 }
 
 // --- Command Handlers ---
@@ -56,10 +94,10 @@ export async function handleClick(command) {
 
   const resolved = resolveSelector(selector, command.ownerId, tab.id);
   await injectScript(tab.id, resolved, `
-    el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
     el.click();
     return true;
-  `);
+  `, { userGesture: true });
 
   return { id: command.id, success: true, data: { clicked: true } };
 }
@@ -95,21 +133,12 @@ export async function handleType(command) {
     `);
   }
 
-  // Use chrome.debugger for reliable key input
+  // CDP inserts the full string as one native text operation. Per-character
+  // key dispatch is much slower and can outlive a batched command deadline.
   await ensureDebugger(tab.id);
-  for (const char of text) {
-    await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
-      type: 'keyDown',
-      text: char,
-      key: char,
-      code: 'Key' + char.toUpperCase(),
-    });
-    await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
-      type: 'keyUp',
-      key: char,
-      code: 'Key' + char.toUpperCase(),
-    });
-  }
+  await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.insertText', {
+    text,
+  });
 
   return { id: command.id, success: true, data: { typed: true } };
 }
@@ -296,11 +325,8 @@ export async function handleDblclick(command) {
   if (!selector) throw new Error('Selector is required for dblclick');
 
   const resolved = resolveSelector(selector, command.ownerId, tab.id);
-  await injectScript(tab.id, resolved, `
-    el.scrollIntoView({ block: 'center', behavior: 'instant' });
-    el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-    return true;
-  `);
+  const point = await getClickablePoint(tab.id, resolved);
+  await dispatchPointerClick(tab.id, point, 2);
 
   return { id: command.id, success: true, data: { dblclicked: true } };
 }
@@ -326,12 +352,8 @@ export async function handleWait(command) {
     try {
       if (resolved.isRef) {
         const script = buildRoleMatcherScript(resolved.role, resolved.name, resolved.nth);
-        await ensureDebugger(tab.id);
-        const evalResult = await chrome.debugger.sendCommand(
-          { tabId: tab.id }, 'Runtime.evaluate',
-          { expression: `!!(${script.trim()})`, returnByValue: true }
-        );
-        if (evalResult.result?.value) {
+        const found = await evaluateRuntime(tab.id, `!!(${script.trim()})`);
+        if (found) {
           return { id: command.id, success: true, data: { waited: true, found: true } };
         }
       } else {

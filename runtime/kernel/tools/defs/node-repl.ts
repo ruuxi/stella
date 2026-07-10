@@ -17,9 +17,9 @@ export const createNodeReplTool = (
     name: "node_repl",
     agentTypes: [AGENT_IDS.GENERAL],
     description:
-      "Run JavaScript in a persistent Node REPL with top-level await. Setup is already done: bindings persist between calls, nodeRepl exposes write/emitImage and cwd/home/tmp, and frozen sky controls desktop apps. You may perform one or more sky actions before sky.get_app_state; use fresh element IDs from the latest state.",
+      "Run JavaScript in a persistent Node REPL with top-level await. Setup is already done: bindings persist between calls, nodeRepl exposes write/emitImage and cwd/home/tmp, frozen sky controls desktop apps, and frozen browser controls owned browser tabs with persistent Tab and Locator objects. Batch several dependent actions in one cell, then observe only when the next action needs fresh state. Use fresh element IDs from the latest sky app state.",
     promptSnippet:
-      "Run persistent JavaScript and control desktop apps through the frozen sky client",
+      "Run persistent JavaScript and control desktop apps through sky or browser tabs through the frozen browser client",
     parameters: {
       type: "object",
       properties: {

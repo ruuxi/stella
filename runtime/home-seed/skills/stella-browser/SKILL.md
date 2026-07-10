@@ -1,325 +1,186 @@
 ---
 name: stella-browser
-description: Browser automation through Stella's Chrome extension bridge. Use when the agent needs to control the user's real browser tabs, navigate sites, click and type, inspect pages, download files, or capture screenshots.
+description: Control Stella-owned browser tabs through the persistent node_repl runtime and its frozen browser API. Use for navigation, page interaction, semantic locators, state inspection, new-tab flows, and browser screenshots.
 ---
 
-# Browser Automation with stella-browser
+# Stella Browser
 
-Stella uses the user's actual Chrome browser through the extension bridge.
+Use `node_repl` for production browser automation. Its persistent JavaScript runtime exposes a deeply frozen `browser` object with top-level `await`. Bindings and `Tab` and `Locator` identities persist across calls, so create handles once and reuse them.
 
-## Capability Highlights
+Use `var` for reusable REPL bindings. Do not use `exec_command` or the `stella-browser` CLI for normal browser work.
 
-`stella-browser` includes first-class commands for:
+## Production Workflow
 
-- Rich editor input: focus/click the editor, then use `stella-browser keyboard inserttext "..."` for paste-like insertion or `stella-browser keyboard type "..."` when key events matter.
-- Robust locators: `stella-browser find role|text|label|placeholder|testid|first|last|nth ...`.
-- Page evaluation: `stella-browser eval`, `eval -b`, and `eval --stdin`.
-- Uploads, downloads, waits, dialogs, frames, browser settings, console logs, page errors, network requests, cookies, storage, screenshots, and PDF capture.
-- Post-submit verification: wait for the expected URL/text/function, then inspect page state, console/errors, and relevant network requests.
+Create a task-owned tab, keep its page and locator handles, and batch deterministic dependent actions in one cell:
 
-## Tool usage
+```js
+var tab = await browser.tabs.new("https://example.com/sign-in");
+var page = tab.playwright;
+var email = page.getByLabel("Email", { exact: true });
+var password = page.getByLabel("Password", { exact: true });
+var submit = page.getByRole("button", { name: "Sign in", exact: true });
 
-Run the CLI through `exec_command`:
-
-```json
-{ "cmd": "stella-browser open https://example.com" }
+await email.fill("user@example.com");
+await password.fill("correct-horse-battery-staple");
+await submit.click();
+await page.waitForURL("**/dashboard");
+({ url: await tab.url(), title: await tab.title() });
 ```
 
-Then snapshot:
+Do not spend one `node_repl` call per action. Keep sequential awaits together when no intermediate result changes the plan. Split at a real decision point, return the cheapest useful value, then continue with the same handles in the next cell:
 
-```json
-{ "cmd": "stella-browser snapshot -i" }
+```js
+var search = page.getByPlaceholder("Search");
+var rows = page.locator("[data-testid='result-row']");
+await search.fill("quarterly report");
+await search.press("Enter");
+await rows.first().waitFor({ state: "visible" });
+await rows.count();
 ```
 
-Stella auto-injects `stella-browser` into the shell PATH, so no setup or env wiring is required.
+After deciding which result to use, reuse `tab`, `page`, and `rows`:
 
-## Missing extension
-
-If a command fails with `Extension not connected. Install the Stella Browser Bridge extension and connect it.`, Stella handles it for you: an inline install card appears in the user's chat, and once they add the extension your failed command is re-run automatically — the tool result you see is the retried run plus a `note`. If the `note` says the user declined (or recently declined), do not retry `stella-browser` and do not re-offer; fall back to `stella-computer` GUI automation on a visible browser window, or continue without the browser. `Extension connection is dead (service worker terminated)` is different — that one self-heals; just retry the command once.
-
-## Extension Mode Workflow
-
-Every browser automation follows this pattern:
-
-1. **Navigate**: `stella-browser open <url>`
-2. **Snapshot**: `stella-browser snapshot -i` to get refs like `@e1`
-3. **Interact**: Click, fill, type, scroll, or select using refs
-4. **Re-snapshot**: After navigation or large DOM changes, refresh refs
-
-```bash
-stella-browser open https://example.com/form
-stella-browser snapshot -i
-# Output: @e1 [input type="email"], @e2 [input type="password"], @e3 [button] "Submit"
-
-stella-browser fill @e1 "user@example.com"
-stella-browser fill @e2 "password123"
-stella-browser click @e3
-stella-browser wait 2000
-stella-browser snapshot -i
+```js
+var chosenRow = rows.nth(0);
+await chosenRow.click();
+await page.waitForURL("**/reports/**");
+await tab.title();
 ```
 
-## Shared Browser Model
+Locators resolve against current page state when called; do not replace a locator merely because the DOM changed. Rebuild it only when the selector or intended element changes.
 
-- Stella reuses one shared tab group in the user's browser across tasks.
-- Each task gets its own logical tab(s) inside that group.
-- Stella works with the browser's existing logged-in state.
-- Stale task tabs are cleaned up automatically over time.
+## Observe Cheaply
 
-## Supported Commands
+Use the least expensive observation that answers the question:
 
-```bash
-# Navigation
-stella-browser open <url>
-stella-browser back
-stella-browser forward
-stella-browser reload
-stella-browser close
+- Page identity: `await tab.url()` or `await tab.title()`.
+- Element existence or state: `count()`, `isVisible()`, `isEnabled()`, or `isChecked()`.
+- Focused values: `innerText()`, `textContent()`, `inputValue()`, or `getAttribute()`.
+- Unknown structure at a branch or recovery point: `tab.snapshot()` or `page.domSnapshot()`.
+- Visual appearance, coordinates, or rendering: `tab.screenshot()`.
 
-# Snapshot
-stella-browser snapshot -i
-stella-browser snapshot -i -C
-stella-browser snapshot --compact --depth 5
-stella-browser snapshot -s "#selector"
+Do not take a snapshot after every action. Snapshot only when page structure is needed to choose the next step. Use a screenshot only when pixels matter.
 
-# Interaction
-stella-browser click @e1
-stella-browser dblclick @e1
-stella-browser focus @e1
-stella-browser fill @e2 "text"
-stella-browser type @e2 "text"
-stella-browser press Enter
-stella-browser keydown Shift
-stella-browser keyup Shift
-stella-browser hover @e1
-stella-browser check @e1
-stella-browser uncheck @e1
-stella-browser select @e1 "option"
-stella-browser scroll down 500
-stella-browser scroll down 500 --selector ".scroll-container"
-stella-browser scrollintoview @e1
-stella-browser drag @e1 @e2
-stella-browser upload @e3 ./file.pdf ./image.png
+## Synchronize on Browser State
 
-# Current-focus keyboard input
-stella-browser keyboard type "typed with key events"
-stella-browser keyboard inserttext "paste-like text for rich editors"
+Wait for the state caused by the action:
 
-# Page info
-stella-browser get text @e1
-stella-browser get html @e1
-stella-browser get value @e1
-stella-browser get attr @e1 href
-stella-browser get title
-stella-browser get url
-stella-browser get count ".item"
-stella-browser get box @e1
-stella-browser get styles @e1
-stella-browser is visible @e1
-stella-browser is enabled @e1
-stella-browser is checked @e1
-stella-browser set viewport 1440 900
-stella-browser set media dark
-stella-browser set offline on
+```js
+await submit.click();
+await page.waitForURL("**/complete", { timeout: 30000 });
 
-# Semantic locators
-stella-browser find role button click --name Submit
-stella-browser find label "Email" fill "user@example.com"
-stella-browser find placeholder "Search..." type "query"
-stella-browser find text "Continue" click --exact
-stella-browser find testid "login-form" click
-stella-browser find nth 2 ".card" hover
-
-# Wait and capture
-stella-browser wait @e1
-stella-browser wait --text "Success"
-stella-browser wait --url "**/page"
-stella-browser wait --fn "window.appReady === true"
-stella-browser wait --download ./file.pdf --timeout 30000
-stella-browser wait 2000
-stella-browser screenshot
-stella-browser screenshot --full
-stella-browser screenshot --annotate
-stella-browser screenshot @e1 ./element.png
-stella-browser pdf output.pdf
-stella-browser download @e4 ./file.pdf
-
-# Tabs, frames, dialogs, storage, network, utilities
-stella-browser tab
-stella-browser tab new https://example.com
-stella-browser window new
-stella-browser tab 2
-stella-browser tab close
-stella-browser frame "#embedded-frame"
-stella-browser frame main
-stella-browser dialog accept
-stella-browser dialog dismiss
-stella-browser cookies
-stella-browser cookies get --url https://example.com
-stella-browser cookies set session_id "abc123" --url https://example.com
-stella-browser cookies clear
-stella-browser storage local
-stella-browser storage local get authToken
-stella-browser storage local set theme "dark"
-stella-browser storage local clear
-stella-browser storage session
-stella-browser network requests --clear
-stella-browser network requests --filter "api"
-stella-browser network route "**/api/*" --abort
-stella-browser network route "**/data.json" --body '{"mock":true}'
-stella-browser network unroute
-stella-browser clipboard read
-stella-browser clipboard write "Hello"
-stella-browser clipboard copy
-stella-browser clipboard paste
-stella-browser mouse move 100 200
-stella-browser mouse wheel 100
-stella-browser eval "document.title"
-stella-browser eval --stdin
-stella-browser console
-stella-browser errors
-stella-browser highlight @e1
+var confirmation = page.getByText("Saved", { exact: true });
+await confirmation.waitFor({ state: "visible", timeout: 30000 });
 ```
 
-## Common Patterns
+`Locator.waitFor()` supports `attached`, `detached`, `visible`, and `hidden`. Prefer it, `waitForURL()`, or `expectNewTab()` over fixed delays. Although `page.waitForTimeout(ms)` exists, do not use it for routine synchronization or insert sleeps between deterministic actions.
 
-### Form Submission
+## New Tabs
 
-```bash
-stella-browser open https://example.com/signup
-stella-browser snapshot -i
-stella-browser fill @e1 "Jane Doe"
-stella-browser fill @e2 "jane@example.com"
-stella-browser select @e3 "California"
-stella-browser check @e4
-stella-browser click @e5
-stella-browser wait --url "**/thank-you"
+Wrap the action that opens a tab with `expectNewTab()`. Calling it after the click misses the before-state used to identify the new owned tab.
+
+```js
+var openReport = page.getByRole("link", { name: "Open report", exact: true });
+var reportTab = await tab.expectNewTab(async () => await openReport.click(), {
+  timeoutMs: 10000,
+});
+var reportPage = reportTab.playwright;
+await reportPage.getByRole("heading", { name: "Report" }).waitFor();
 ```
 
-### Work With Existing Login State
+`expectNewTab()` succeeds only when exactly one newly adopted owned tab appears. Its default timeout is 10 seconds and its maximum is 60 seconds. The same method is available as `page.expectNewTab()`.
 
-```bash
-# Stella uses the user's existing browser profile and cookies.
-# If the user is already signed in, navigate directly to the target page.
-stella-browser open https://app.example.com/dashboard
-stella-browser snapshot -i
+## Finalize Owned Tabs
+
+Finalize tabs when browser work ends, including recovery after a failed flow. List only tabs intentionally retained; unlisted task-owned tabs are eligible for cleanup.
+
+```js
+await browser.tabs.finalize([
+  { tab, status: "handoff" },
+  { tab: reportTab, status: "deliverable" },
+]);
 ```
 
-### Data Extraction
+Entries may be a `Tab`, tab ID, or `{ tab, status }`/`{ tabId, status }`. Status must be `"handoff"` or `"deliverable"`; a bare tab defaults to `"deliverable"`. Use `await browser.tabs.finalize([])` when no task-owned tab should remain.
 
-```bash
-stella-browser open https://example.com/products
-stella-browser snapshot -i
-stella-browser get text @e5
-stella-browser get text body > page.txt
+## Frozen Browser API
 
-# JSON output for parsing
-stella-browser snapshot -i --json
-stella-browser get text @e1 --json
+The public object graph is frozen. Do not mutate it or attach properties. Call `browser.documentation()` for the short runtime reminder.
+
+### Browser and Tabs
+
+| Object         | Supported API                                                        |
+| -------------- | -------------------------------------------------------------------- |
+| `browser`      | `documentation()`, `chain(steps, options)`, `tabs`                   |
+| `browser.tabs` | `list()`, `new(url?)`, `selected()`, `get(id)`, `finalize(entries?)` |
+
+Prefer `tabs.new(url)` for a new task. Use `tabs.selected()` only when the user's currently selected owned tab is the target, and `tabs.list()` when tab choice is itself a decision.
+
+`browser.chain()` is a low-level JSON action batch, limited to 100 steps. Prefer normal method calls with multiple awaits in one REPL cell because they preserve typed handles and are easier to branch and debug. Chains reject unknown actions, options, arbitrary values, and nested chains. Supported chain options are `delay`, `waitForSelector`, `waitTimeout`, `abortOnError`, `returnSnapshot`, and `returnScreenshot`; do not add `delay` or automatic snapshots without a concrete need.
+
+### Tab
+
+| API                                                                   | Notes                                    |
+| --------------------------------------------------------------------- | ---------------------------------------- |
+| `id`                                                                  | Positive numeric owned-tab ID.           |
+| `playwright`                                                          | Frozen page facade, cached for this tab. |
+| `goto(url, { waitUntil?, timeout? })`                                 | Navigate the tab.                        |
+| `back({ timeout? })`, `forward({ timeout? })`, `reload({ timeout? })` | History navigation.                      |
+| `close()`                                                             | Close this tab.                          |
+| `url()`, `title()`                                                    | Cheapest page identity reads.            |
+| `snapshot(options?)`                                                  | Structural observation.                  |
+| `screenshot(options?)`                                                | Pixel observation.                       |
+| `expectNewTab(action, { timeoutMs? })`                                | Capture exactly one new owned tab.       |
+
+Snapshot options are `interactive`, `cursor`, `maxDepth` (or `depth`), `compact`, and `selector`. Screenshot options are `fullPage`, `selector`, `format` (`"png"` or `"jpeg"`), `quality` (0-100), and `annotate`.
+
+### Page Facade
+
+`tab.playwright` supports only this Playwright-like subset:
+
+```text
+domSnapshot(options?)
+evaluate(pageFunction, arg?)
+locator(css)
+getByRole(role, { name?, exact? })
+getByText(text, { exact? })
+getByLabel(text, { exact? })
+getByPlaceholder(text, { exact? })
+getByTestId(testId, { exact? })
+waitForURL(url, { timeout? })
+waitForTimeout(ms)
+expectNewTab(action, { timeoutMs? })
 ```
 
-### Downloads
+This is not the full Playwright API. Locator values and URL patterns are strings; regular expressions are rejected. `evaluate()` accepts a function or source string. Pass external data through its JSON-serializable argument because page functions do not retain REPL closures.
 
-```bash
-stella-browser open https://example.com/reports
-stella-browser snapshot -i
-stella-browser download @e5 ./report.csv
+### Locator
+
+Locators support:
+
+```text
+locator(css)
+filter({ hasText?, hasNotText?, has?, hasNot? })
+nth(index), first(), last(), count()
+click(), dblclick(), fill(value), type(text), press(key)
+hover(), focus(), check(), uncheck(), setChecked(boolean)
+selectOption(valueOrValues), scrollIntoViewIfNeeded()
+innerText(), textContent(), inputValue(), getAttribute(name)
+isVisible(), isEnabled(), isChecked(), boundingBox()
+evaluate(pageFunction, arg?), waitFor(options?), allTextContents()
 ```
 
-### Rich Editors and Large Text
+`locator()` chaining is supported only from an unfiltered CSS locator. `filter({ has, hasNot })` requires same-tab CSS locators. `nth()` is zero-based. Semantic locators use the frozen API's small role mapping and string matching; they do not provide every Playwright accessibility behavior.
 
-Use the keyboard command for contenteditable editors such as Lexical, ProseMirror, CodeMirror, Monaco, Docs-style editors, and chat composers.
+Timeouts are non-negative milliseconds and are capped at 120 seconds unless a smaller `expectNewTab()` limit applies. Unknown option keys fail fast.
 
-```bash
-stella-browser snapshot -i -C
-stella-browser click "[contenteditable]"
-stella-browser keyboard inserttext "# Heading
+## CLI Diagnostic Fallback
 
-Long pasted body text..."
-stella-browser press Enter
-stella-browser keyboard type "A final line that needs key events"
-```
+Use `exec_command` with `stella-browser` only to diagnose bridge availability or a frozen-API transport failure. Do not switch to CLI navigation, snapshot refs, or interaction commands as the normal workflow, and do not mix CLI ref state with persistent `Tab` and `Locator` handles.
 
-### Semantic Locators
+Do not promise automatic extension installation, automatic retry after installation, service-worker self-healing, shared-window behavior, or stale-tab cleanup; none is part of the frozen worker API contract. If the bridge is unavailable, report the exact error and use an appropriate visible-browser computer-control fallback only when the task calls for it.
 
-Use `find` with accessible names, labels, placeholder text, or test IDs.
+CLI-only diagnostic references:
 
-```bash
-stella-browser find role button click --name Submit
-stella-browser find label "Email" fill "jane@example.com"
-stella-browser find placeholder "Search..." type "quarterly report"
-stella-browser find text "Done" click --exact
-stella-browser find first ".result-row" click
-```
-
-### JavaScript Evaluation
-
-Use `eval --stdin` or `eval -b` for multiline or quote-heavy scripts. Use `--json` when the result will be parsed.
-
-```bash
-stella-browser eval "document.title"
-stella-browser eval --json "Array.from(document.links).map(a => a.href)"
-
-stella-browser eval --stdin <<'EOF'
-const rows = [...document.querySelectorAll('[data-row]')];
-rows.map((row) => row.innerText.trim());
-EOF
-```
-
-### Uploads
-
-```bash
-stella-browser snapshot -i
-stella-browser upload @e3 ./proposal.pdf ./cover.png
-stella-browser wait --text "Upload complete"
-```
-
-### Submit and Verify
-
-Post-submit checks can combine page state and diagnostics.
-
-```bash
-stella-browser network requests --clear
-stella-browser click @e5
-stella-browser wait --url "**/thank-you"
-stella-browser wait --text "Thanks"
-stella-browser errors
-stella-browser console
-stella-browser network requests --filter "api" --json
-```
-
-## Ref Lifecycle
-
-Refs (`@e1`, `@e2`, etc.) are invalidated when the page changes. Always re-snapshot after:
-
-- Clicking links or buttons that navigate
-- Form submissions
-- Dynamic content loading such as dropdowns or modals
-
-```bash
-stella-browser click @e5
-stella-browser snapshot -i
-stella-browser click @e1
-```
-
-## Reference Docs
-
-
-| Reference                                                                  | When to Use                                        |
-| -------------------------------------------------------------------------- | -------------------------------------------------- |
-| [references/commands.md](references/commands.md)           | Supported extension-backed command surface         |
-| [references/snapshot-refs.md](references/snapshot-refs.md) | Ref lifecycle, invalidation rules, troubleshooting |
-
-
-## Ready-to-Use Templates
-
-
-| Template                                                                       | Description                         |
-| ------------------------------------------------------------------------------ | ----------------------------------- |
-| [templates/form-automation.sh](templates/form-automation.sh)   | Form filling with validation        |
-| [templates/capture-workflow.sh](templates/capture-workflow.sh) | Content extraction with screenshots |
-
-
-```bash
-./templates/form-automation.sh https://example.com/form
-./templates/capture-workflow.sh https://example.com ./output
-```
+- [Command reference](references/commands.md)
+- [Snapshot ref lifecycle](references/snapshot-refs.md)

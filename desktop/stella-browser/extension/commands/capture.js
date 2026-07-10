@@ -4,7 +4,7 @@
 import { getActiveTab } from './tabs.js';
 import { setRefMap, resolveSelector, buildRoleMatcherScript } from '../lib/selector.js';
 import { executeSnapshot } from '../lib/snapshot.js';
-import { ensureDebugger } from '../lib/debugger.js';
+import { ensureDebugger, evaluateRuntime } from '../lib/debugger.js';
 
 function buildElementExpression(selector, ownerId, tabId, onFoundSource) {
   const resolved = resolveSelector(selector, ownerId, tabId);
@@ -15,20 +15,8 @@ function buildElementExpression(selector, ownerId, tabId, onFoundSource) {
   return `(() => { const el = document.querySelector(${JSON.stringify(resolved.css)}); ${onFoundSource} })()`;
 }
 
-async function evaluateExpression(tabId, expression) {
-  await ensureDebugger(tabId);
-  const result = await chrome.debugger.sendCommand(
-    { tabId },
-    'Runtime.evaluate',
-    { expression, returnByValue: true }
-  );
-
-  if (result.exceptionDetails) {
-    const msg = result.exceptionDetails.exception?.description || result.exceptionDetails.text;
-    throw new Error(msg);
-  }
-
-  return result.result?.value;
+async function evaluateExpression(tabId, expression, options) {
+  return evaluateRuntime(tabId, expression, options);
 }
 
 async function getSelectorClip(tabId, selector, ownerId) {
@@ -178,7 +166,9 @@ export async function handleEvaluate(command) {
 
   if (!expression) throw new Error('Expression is required for evaluate');
 
-  const value = await evaluateExpression(tab.id, expression);
+  const value = await evaluateExpression(tab.id, expression, {
+    timeoutMs: Math.min(command.timeout ?? 30_000, 30_000),
+  });
   return {
     id: command.id,
     success: true,

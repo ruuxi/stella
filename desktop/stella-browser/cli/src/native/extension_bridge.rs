@@ -20,6 +20,7 @@ const DEFAULT_EXT_PORT: u16 = 39040;
 
 /// Timeout for individual commands sent to the extension (ms).
 const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 60_000;
+const CHAIN_COMMAND_TIMEOUT_MS: u64 = 5 * 60_000;
 
 /// How long to wait for the extension to connect before failing. The extension
 /// discovers a freshly-started daemon via its periodic HTTP probe of the bridge
@@ -37,11 +38,14 @@ const RECONNECT_WAIT_MS: u64 = 10_000;
 
 struct PendingCommand {
     tx: oneshot::Sender<Value>,
+    generation: u64,
 }
 
 struct BridgeInner {
     connected: bool,
     cmd_tx: Option<mpsc::Sender<String>>,
+    connection_generation: Option<u64>,
+    next_generation: u64,
     pending: HashMap<String, PendingCommand>,
     last_health_check: Instant,
 }
@@ -80,6 +84,8 @@ impl ExtensionBridge {
             inner: Arc::new(Mutex::new(BridgeInner {
                 connected: false,
                 cmd_tx: None,
+                connection_generation: None,
+                next_generation: 0,
                 pending: HashMap::new(),
                 last_health_check: Instant::now() - Duration::from_secs(60),
             })),
@@ -241,15 +247,11 @@ impl ExtensionBridge {
         };
 
         if needs_health_check {
-            let alive = self.verify_connection().await;
+            let (alive, checked_generation) = self.verify_connection().await;
             if !alive {
                 // Connection is dead — wait for reconnection
-                {
-                    let mut guard = self.inner.lock().await;
-                    guard.connected = false;
-                    guard.cmd_tx = None;
-                    guard.last_health_check = Instant::now() - Duration::from_secs(60);
-                    guard.pending.clear();
+                if let Some(generation) = checked_generation {
+                    deactivate_connection(&self.inner, generation).await;
                 }
 
                 let start = Instant::now();
@@ -259,9 +261,12 @@ impl ExtensionBridge {
                         let guard = self.inner.lock().await;
                         guard.connected && guard.cmd_tx.is_some()
                     };
-                    if is_connected && self.verify_connection().await {
-                        reconnected = true;
-                        break;
+                    if is_connected {
+                        let (alive, _) = self.verify_connection().await;
+                        if alive {
+                            reconnected = true;
+                            break;
+                        }
                     }
                     tokio::time::sleep(Duration::from_millis(500)).await;
                 }
@@ -300,50 +305,63 @@ impl ExtensionBridge {
             .map_err(|e| format!("Failed to serialize command: {}", e))?;
 
         let (tx, rx) = oneshot::channel();
+        let generation;
 
         {
             let mut guard = self.inner.lock().await;
-            guard.pending.insert(id.clone(), PendingCommand { tx });
+            generation = match guard.connection_generation {
+                Some(generation) if guard.connected && guard.cmd_tx.is_some() => generation,
+                _ => return Err("Extension not connected".to_string()),
+            };
+            guard
+                .pending
+                .insert(id.clone(), PendingCommand { tx, generation });
 
             if let Some(ref cmd_tx) = guard.cmd_tx {
-                cmd_tx
-                    .send(msg_str)
-                    .await
-                    .map_err(|_| "Extension connection closed".to_string())?;
+                if cmd_tx.send(msg_str).await.is_err() {
+                    remove_pending_for_generation(&mut guard, &id, generation);
+                    return Err("Extension connection closed".to_string());
+                }
             } else {
-                guard.pending.remove(&id);
+                remove_pending_for_generation(&mut guard, &id, generation);
                 return Err("Extension not connected".to_string());
             }
         }
 
-        // Wait for response with timeout
-        match tokio::time::timeout(Duration::from_millis(DEFAULT_COMMAND_TIMEOUT_MS), rx).await {
+        // Chains have their own bounded extension-side runtime and may include
+        // several waits. Keep the bridge deadline above that bound so a late
+        // response cannot leave unobserved steps running after timeout.
+        let command_timeout_ms = if command.get("action").and_then(Value::as_str) == Some("chain") {
+            CHAIN_COMMAND_TIMEOUT_MS
+        } else {
+            DEFAULT_COMMAND_TIMEOUT_MS
+        };
+        match tokio::time::timeout(Duration::from_millis(command_timeout_ms), rx).await {
             Ok(Ok(response)) => {
                 // Update health check timestamp on successful response
                 {
                     let mut guard = self.inner.lock().await;
-                    guard.last_health_check = Instant::now();
+                    if guard.connection_generation == Some(generation) {
+                        guard.last_health_check = Instant::now();
+                    }
                 }
                 Ok(response)
             }
             Ok(Err(_)) => {
                 let mut guard = self.inner.lock().await;
-                guard.pending.remove(&id);
+                remove_pending_for_generation(&mut guard, &id, generation);
                 Err("Extension disconnected while waiting for response".to_string())
             }
             Err(_) => {
                 let mut guard = self.inner.lock().await;
-                guard.pending.remove(&id);
-                Err(format!(
-                    "Command timed out after {}ms",
-                    DEFAULT_COMMAND_TIMEOUT_MS
-                ))
+                remove_pending_for_generation(&mut guard, &id, generation);
+                Err(format!("Command timed out after {}ms", command_timeout_ms))
             }
         }
     }
 
     /// Health check — send a command-level ping and wait for response.
-    async fn verify_connection(&self) -> bool {
+    async fn verify_connection(&self) -> (bool, Option<u64>) {
         let hc_id = format!("_hc_{}", Instant::now().elapsed().as_micros());
         let msg = json!({
             "type": "command",
@@ -352,35 +370,41 @@ impl ExtensionBridge {
         });
         let msg_str = match serde_json::to_string(&msg) {
             Ok(s) => s,
-            Err(_) => return false,
+            Err(_) => return (false, None),
         };
 
         let (tx, rx) = oneshot::channel();
+        let generation;
 
         {
             let mut guard = self.inner.lock().await;
-            if guard.cmd_tx.is_none() {
-                return false;
-            }
-            guard.pending.insert(hc_id.clone(), PendingCommand { tx });
+            generation = match guard.connection_generation {
+                Some(generation) if guard.connected && guard.cmd_tx.is_some() => generation,
+                _ => return (false, None),
+            };
+            guard
+                .pending
+                .insert(hc_id.clone(), PendingCommand { tx, generation });
             if let Some(ref cmd_tx) = guard.cmd_tx {
                 if cmd_tx.send(msg_str).await.is_err() {
-                    guard.pending.remove(&hc_id);
-                    return false;
+                    remove_pending_for_generation(&mut guard, &hc_id, generation);
+                    return (false, Some(generation));
                 }
             }
         }
 
         match tokio::time::timeout(Duration::from_secs(3), rx).await {
-            Ok(Ok(_)) => {
+            Ok(Ok(response)) if response.get("success").and_then(Value::as_bool) == Some(true) => {
                 let mut guard = self.inner.lock().await;
-                guard.last_health_check = Instant::now();
-                true
+                if guard.connection_generation == Some(generation) {
+                    guard.last_health_check = Instant::now();
+                }
+                (true, Some(generation))
             }
             _ => {
                 let mut guard = self.inner.lock().await;
-                guard.pending.remove(&hc_id);
-                false
+                remove_pending_for_generation(&mut guard, &hc_id, generation);
+                (false, Some(generation))
             }
         }
     }
@@ -394,6 +418,7 @@ impl ExtensionBridge {
         let mut guard = self.inner.lock().await;
         guard.connected = false;
         guard.cmd_tx = None;
+        guard.connection_generation = None;
         guard.pending.clear();
     }
 
@@ -409,7 +434,85 @@ impl ExtensionBridge {
 /// Minimal HTTP reply for extension liveness probes (see `probe_daemon` in the
 /// extension's connection.js). Lets the extension detect "Stella is running"
 /// with a plain fetch() instead of spawning the native messaging host process.
-const HEALTH_PROBE_RESPONSE: &str = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
+const HEALTH_PROBE_RESPONSE: &str =
+    "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
+
+fn remove_pending_for_generation(
+    inner: &mut BridgeInner,
+    id: &str,
+    generation: u64,
+) -> Option<PendingCommand> {
+    if inner.pending.get(id).map(|pending| pending.generation) == Some(generation) {
+        inner.pending.remove(id)
+    } else {
+        None
+    }
+}
+
+fn take_pending_for_generation(inner: &mut BridgeInner, generation: u64) -> Vec<PendingCommand> {
+    let ids: Vec<String> = inner
+        .pending
+        .iter()
+        .filter(|(_, pending)| pending.generation == generation)
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    ids.into_iter()
+        .filter_map(|id| inner.pending.remove(&id))
+        .collect()
+}
+
+fn fail_pending_commands(pending: Vec<PendingCommand>) {
+    for pending in pending {
+        let _ = pending.tx.send(json!({
+            "success": false,
+            "error": "Extension disconnected",
+        }));
+    }
+}
+
+async fn activate_connection(inner: &Arc<Mutex<BridgeInner>>, cmd_tx: mpsc::Sender<String>) -> u64 {
+    let (generation, displaced_pending) = {
+        let mut guard = inner.lock().await;
+        guard.next_generation = guard
+            .next_generation
+            .checked_add(1)
+            .expect("extension connection generation overflow");
+        let generation = guard.next_generation;
+        let displaced_pending = guard.pending.drain().map(|(_, pending)| pending).collect();
+
+        guard.connected = true;
+        guard.cmd_tx = Some(cmd_tx);
+        guard.connection_generation = Some(generation);
+        (generation, displaced_pending)
+    };
+
+    fail_pending_commands(displaced_pending);
+    generation
+}
+
+async fn deactivate_connection(inner: &Arc<Mutex<BridgeInner>>, generation: u64) -> bool {
+    let pending = {
+        let mut guard = inner.lock().await;
+        if guard.connection_generation != Some(generation) {
+            return false;
+        }
+
+        guard.connected = false;
+        guard.cmd_tx = None;
+        guard.connection_generation = None;
+        guard.last_health_check = Instant::now() - Duration::from_secs(60);
+        take_pending_for_generation(&mut guard, generation)
+    };
+
+    fail_pending_commands(pending);
+    true
+}
+
+async fn should_shutdown_for_disconnect(inner: &Arc<Mutex<BridgeInner>>, generation: u64) -> bool {
+    let guard = inner.lock().await;
+    !guard.connected && guard.connection_generation.is_none() && guard.next_generation == generation
+}
 
 /// Handle a single TCP connection from the native messaging host (line-delimited JSON).
 async fn handle_extension_connection(
@@ -437,16 +540,8 @@ async fn handle_extension_connection(
         _ => return,
     }
 
-    // If there's an existing connection, drop it and let the new one take over.
-    {
-        let mut guard = inner.lock().await;
-        if guard.connected && guard.cmd_tx.is_some() {
-            guard.connected = false;
-            guard.cmd_tx = None;
-        }
-    }
-
     let mut authenticated = false;
+    let mut connection_generation = None;
     let (cmd_tx, mut cmd_rx) = mpsc::channel::<String>(256);
 
     let (read_half, mut write_half) = stream.into_split();
@@ -503,18 +598,17 @@ async fn handle_extension_connection(
 
         match msg_type {
             "hello" => {
+                if authenticated {
+                    continue;
+                }
+
                 let token = parsed.get("token").and_then(|v| v.as_str()).unwrap_or("");
                 let token_matches = token == expected_token;
 
                 // Native host injects token from disk; empty expected_token disables auth (dev only).
                 if token_matches || expected_token.is_empty() {
                     authenticated = true;
-
-                    {
-                        let mut guard = inner.lock().await;
-                        guard.connected = true;
-                        guard.cmd_tx = Some(cmd_tx.clone());
-                    }
+                    connection_generation = Some(activate_connection(&inner, cmd_tx.clone()).await);
                     connected_notify.notify_waiters();
 
                     let welcome = json!({
@@ -554,7 +648,10 @@ async fn handle_extension_connection(
                     .unwrap_or(false);
 
                 let mut guard = inner.lock().await;
-                if let Some(pending) = guard.pending.remove(&id) {
+                let Some(generation) = connection_generation else {
+                    continue;
+                };
+                if let Some(pending) = remove_pending_for_generation(&mut guard, &id, generation) {
                     guard.last_health_check = Instant::now();
 
                     let response = if success {
@@ -579,27 +676,18 @@ async fn handle_extension_connection(
     }
 
     if authenticated {
-        let mut guard = inner.lock().await;
-        guard.connected = false;
-        guard.cmd_tx = None;
-        guard.last_health_check = Instant::now() - Duration::from_secs(60);
-
-        for (_, pending) in guard.pending.drain() {
-            let _ = pending.tx.send(json!({
-                "success": false,
-                "error": "Extension disconnected",
-            }));
-        }
-
-        let inner_clone = inner.clone();
-        let disconnect_tx = disconnect_shutdown_tx.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(DISCONNECT_SHUTDOWN_MS)).await;
-            let guard = inner_clone.lock().await;
-            if !guard.connected {
-                let _ = disconnect_tx.send(()).await;
+        if let Some(generation) = connection_generation {
+            if deactivate_connection(&inner, generation).await {
+                let inner_clone = inner.clone();
+                let disconnect_tx = disconnect_shutdown_tx.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(DISCONNECT_SHUTDOWN_MS)).await;
+                    if should_shutdown_for_disconnect(&inner_clone, generation).await {
+                        let _ = disconnect_tx.send(()).await;
+                    }
+                });
             }
-        });
+        }
     }
 
     write_handle.abort();
@@ -701,5 +789,111 @@ pub fn kill_process_on_port(port: u16) {
         for pid in stdout.trim().lines().filter(|l| !l.is_empty()) {
             let _ = Command::new("kill").args(["-9", pid]).output();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_inner() -> Arc<Mutex<BridgeInner>> {
+        Arc::new(Mutex::new(BridgeInner {
+            connected: false,
+            cmd_tx: None,
+            connection_generation: None,
+            next_generation: 0,
+            pending: HashMap::new(),
+            last_health_check: Instant::now() - Duration::from_secs(60),
+        }))
+    }
+
+    #[tokio::test]
+    async fn old_disconnect_after_new_connect_preserves_new_channel_and_pending_command() {
+        let inner = test_inner();
+        let (old_tx, _old_rx) = mpsc::channel(1);
+        let old_generation = activate_connection(&inner, old_tx).await;
+        let (new_tx, mut new_rx) = mpsc::channel(1);
+        let new_generation = activate_connection(&inner, new_tx).await;
+
+        let (pending_tx, mut pending_rx) = oneshot::channel();
+        {
+            let mut guard = inner.lock().await;
+            guard.pending.insert(
+                "new-command".to_string(),
+                PendingCommand {
+                    tx: pending_tx,
+                    generation: new_generation,
+                },
+            );
+        }
+
+        assert!(!deactivate_connection(&inner, old_generation).await);
+
+        let current_tx = {
+            let guard = inner.lock().await;
+            assert!(guard.connected);
+            assert_eq!(guard.connection_generation, Some(new_generation));
+            assert!(guard.pending.contains_key("new-command"));
+            guard.cmd_tx.clone().expect("new command channel")
+        };
+        current_tx.send("still-current".to_string()).await.unwrap();
+        assert_eq!(new_rx.recv().await.as_deref(), Some("still-current"));
+        assert!(matches!(
+            pending_rx.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+    }
+
+    #[tokio::test]
+    async fn old_response_after_new_connect_cannot_complete_new_pending_command() {
+        let inner = test_inner();
+        let (old_tx, _old_rx) = mpsc::channel(1);
+        let old_generation = activate_connection(&inner, old_tx).await;
+        let (new_tx, _new_rx) = mpsc::channel(1);
+        let new_generation = activate_connection(&inner, new_tx).await;
+        let (pending_tx, mut pending_rx) = oneshot::channel();
+
+        {
+            let mut guard = inner.lock().await;
+            guard.pending.insert(
+                "shared-id".to_string(),
+                PendingCommand {
+                    tx: pending_tx,
+                    generation: new_generation,
+                },
+            );
+            assert!(
+                remove_pending_for_generation(&mut guard, "shared-id", old_generation).is_none()
+            );
+            assert!(guard.pending.contains_key("shared-id"));
+        }
+        assert!(matches!(
+            pending_rx.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+
+        let pending = {
+            let mut guard = inner.lock().await;
+            remove_pending_for_generation(&mut guard, "shared-id", new_generation)
+                .expect("new generation owns the pending command")
+        };
+        let response = json!({ "success": true });
+        pending.tx.send(response.clone()).unwrap();
+        assert_eq!(pending_rx.await.unwrap(), response);
+    }
+
+    #[tokio::test]
+    async fn old_disconnect_timer_cannot_shutdown_after_replacement_disconnects() {
+        let inner = test_inner();
+        let (old_tx, _old_rx) = mpsc::channel(1);
+        let old_generation = activate_connection(&inner, old_tx).await;
+        assert!(deactivate_connection(&inner, old_generation).await);
+
+        let (new_tx, _new_rx) = mpsc::channel(1);
+        let new_generation = activate_connection(&inner, new_tx).await;
+        assert!(deactivate_connection(&inner, new_generation).await);
+
+        assert!(!should_shutdown_for_disconnect(&inner, old_generation).await);
+        assert!(should_shutdown_for_disconnect(&inner, new_generation).await);
     }
 }

@@ -196,7 +196,140 @@ fn is_known_action(action: &str) -> bool {
             | "mousemove"
             | "mousedown"
             | "mouseup"
+            | "chain"
+            | "finalize_tabs"
+            | "close_owner"
     )
+}
+
+const MAX_CHAIN_STEPS: usize = 100;
+
+fn validate_chain_actions(cmd: &Value) -> Result<Vec<&str>, String> {
+    let steps = cmd
+        .get("steps")
+        .and_then(Value::as_array)
+        .ok_or("Chain steps must be an array")?;
+    if steps.is_empty() {
+        return Err("Chain must contain at least one step".to_string());
+    }
+    if steps.len() > MAX_CHAIN_STEPS {
+        return Err(format!(
+            "Chain has {} steps; maximum is {}",
+            steps.len(),
+            MAX_CHAIN_STEPS
+        ));
+    }
+
+    let mut actions = Vec::with_capacity(steps.len());
+    for (index, step) in steps.iter().enumerate() {
+        let step = step
+            .as_object()
+            .ok_or_else(|| format!("Chain step {} must be an object", index))?;
+        let action = step
+            .get("action")
+            .and_then(Value::as_str)
+            .filter(|action| !action.trim().is_empty())
+            .ok_or_else(|| format!("Chain step {} must have a non-empty string action", index))?;
+        if action == "chain" || action == "finalize_tabs" || action == "close_owner" {
+            return Err(format!(
+                "Chain step {} cannot contain top-level-only action {}",
+                index, action
+            ));
+        }
+        if !is_known_action(action) {
+            return Err(format!(
+                "Unknown chain action at step {}: {}",
+                index, action
+            ));
+        }
+        actions.push(action);
+    }
+    Ok(actions)
+}
+
+fn validate_owner_finalization(cmd: &Value, action: &str) -> Result<(), String> {
+    let owner_id = cmd
+        .get("ownerId")
+        .and_then(Value::as_str)
+        .filter(|owner_id| !owner_id.trim().is_empty())
+        .ok_or_else(|| format!("Action '{}' requires a non-empty ownerId", action))?;
+    if owner_id.len() > 256 {
+        return Err(format!("Action '{}' ownerId is too long", action));
+    }
+
+    if action == "finalize_tabs" {
+        let keep = cmd
+            .get("keep")
+            .and_then(Value::as_array)
+            .ok_or("finalize_tabs keep must be an array")?;
+        let mut seen = std::collections::HashSet::new();
+        for (index, entry) in keep.iter().enumerate() {
+            let entry = entry
+                .as_object()
+                .ok_or_else(|| format!("finalize_tabs keep entry {} must be an object", index))?;
+            if entry.keys().any(|key| key != "tabId" && key != "status") {
+                return Err(format!(
+                    "finalize_tabs keep entry {} has unknown fields",
+                    index
+                ));
+            }
+            let tab_id = entry
+                .get("tabId")
+                .and_then(Value::as_u64)
+                .filter(|tab_id| *tab_id > 0 && *tab_id <= u32::MAX as u64)
+                .ok_or_else(|| {
+                    format!(
+                        "finalize_tabs keep entry {} tabId must be a positive integer",
+                        index
+                    )
+                })?;
+            if !seen.insert(tab_id) {
+                return Err(format!(
+                    "finalize_tabs keep contains duplicate tabId {}",
+                    tab_id
+                ));
+            }
+            match entry.get("status").and_then(Value::as_str) {
+                Some("handoff" | "deliverable") => {}
+                _ => {
+                    return Err(format!(
+                        "finalize_tabs keep entry {} has invalid status",
+                        index
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_extension_domain_gates(cmd: &Value, state: &DaemonState) -> Result<(), String> {
+    let Some(filter) = state.domain_filter.as_ref() else {
+        return Ok(());
+    };
+
+    let mut commands = vec![cmd];
+    if cmd.get("action").and_then(Value::as_str) == Some("chain") {
+        commands.extend(
+            cmd.get("steps")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten(),
+        );
+    }
+
+    for command in commands {
+        if command.get("action").and_then(Value::as_str) != Some("navigate") {
+            continue;
+        }
+        let url = command
+            .get("url")
+            .and_then(Value::as_str)
+            .ok_or("Missing 'url' parameter")?;
+        filter.check_url(url)?;
+    }
+    Ok(())
 }
 
 pub struct HarEntry {
@@ -733,6 +866,24 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
         return error_response(&id, &format!("Not yet implemented: {}", action));
     }
 
+    let chain_actions = if action == "chain" {
+        match validate_chain_actions(cmd) {
+            Ok(actions) => actions,
+            Err(error) => return error_response(&id, &error),
+        }
+    } else {
+        Vec::new()
+    };
+    let actions_to_authorize: Vec<&str> = std::iter::once(action)
+        .chain(chain_actions.iter().copied())
+        .collect();
+
+    if action == "finalize_tabs" || action == "close_owner" {
+        if let Err(error) = validate_owner_finalization(cmd, action) {
+            return error_response(&id, &error);
+        }
+    }
+
     // Drain pending CDP events (console, errors, screencast frames, target lifecycle, fetch)
     let (pending_acks, new_targets, destroyed_targets, fetch_paused) = state.drain_cdp_events();
     if !pending_acks.is_empty() {
@@ -800,24 +951,26 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
     // Hot-reload and check action policy
     if let Some(ref mut policy) = state.policy {
         let _ = policy.reload();
-        match policy.check(action) {
-            PolicyResult::Allow => {}
-            PolicyResult::Deny(reason) => {
-                return error_response(
-                    &id,
-                    &format!("Action '{}' denied by policy: {}", action, reason),
-                );
-            }
-            PolicyResult::RequiresConfirmation => {
-                state.pending_confirmation = Some(PendingConfirmation {
-                    action: action.to_string(),
-                    cmd: cmd.clone(),
-                });
-                return json!({
-                    "id": id,
-                    "success": true,
-                    "data": { "confirmation_required": true, "action": action },
-                });
+        for policy_action in &actions_to_authorize {
+            match policy.check(policy_action) {
+                PolicyResult::Allow => {}
+                PolicyResult::Deny(reason) => {
+                    return error_response(
+                        &id,
+                        &format!("Action '{}' denied by policy: {}", policy_action, reason),
+                    );
+                }
+                PolicyResult::RequiresConfirmation => {
+                    state.pending_confirmation = Some(PendingConfirmation {
+                        action: (*policy_action).to_string(),
+                        cmd: cmd.clone(),
+                    });
+                    return json!({
+                        "id": id,
+                        "success": true,
+                        "data": { "confirmation_required": true, "action": policy_action },
+                    });
+                }
             }
         }
     }
@@ -825,20 +978,22 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
     // Check STELLA_BROWSER_CONFIRM_ACTIONS (category-based, independent of policy file)
     if action != "confirm" && action != "deny" {
         if let Some(ref ca) = state.confirm_actions {
-            if ca.requires_confirmation(action) {
-                state.pending_confirmation = Some(PendingConfirmation {
-                    action: action.to_string(),
-                    cmd: cmd.clone(),
-                });
-                return json!({
-                    "id": id,
-                    "success": true,
-                    "data": {
-                        "confirmation_required": true,
-                        "confirmation_id": id,
-                        "action": action,
-                    },
-                });
+            for confirm_action in &actions_to_authorize {
+                if ca.requires_confirmation(confirm_action) {
+                    state.pending_confirmation = Some(PendingConfirmation {
+                        action: (*confirm_action).to_string(),
+                        cmd: cmd.clone(),
+                    });
+                    return json!({
+                        "id": id,
+                        "success": true,
+                        "data": {
+                            "confirmation_required": true,
+                            "confirmation_id": id,
+                            "action": confirm_action,
+                        },
+                    });
+                }
             }
         }
     }
@@ -861,6 +1016,9 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
             | "state_clean"
             | "state_rename"
             | "device_list"
+            | "chain"
+            | "finalize_tabs"
+            | "close_owner"
     );
     if !skip_launch && !matches!(state.backend_type, BackendType::Extension) {
         // Check if existing connection is stale and needs re-launch
@@ -908,6 +1066,9 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
         && action != "launch"
         && action != "close"
     {
+        if let Err(error) = validate_extension_domain_gates(cmd, state) {
+            return error_response(&id, &error);
+        }
         if let Some(ref bridge) = state.extension_bridge {
             return forward_extension_command(cmd, bridge).await;
         }
@@ -1065,6 +1226,11 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
         "mousemove" => handle_mousemove(cmd, state).await,
         "mousedown" => handle_mousedown(cmd, state).await,
         "mouseup" => handle_mouseup(cmd, state).await,
+        "chain" => Err("Chain is only supported by the extension backend".to_string()),
+        "finalize_tabs" | "close_owner" => Err(format!(
+            "Action '{}' requires the extension backend",
+            action
+        )),
         _ => Err(format!("Not yet implemented: {}", action)),
     };
 
@@ -1082,29 +1248,31 @@ pub(crate) async fn forward_extension_command(cmd: &Value, bridge: &ExtensionBri
         .to_string();
 
     match bridge.execute_command(cmd).await {
-        Ok(response) => {
-            // Extension returns {id, success, data/error} — wrap into daemon response format.
-            let success = response
-                .get("success")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            if success {
-                let mut resp = json!({ "success": true });
-                if let Some(data) = response.get("data") {
-                    resp["data"] = data.clone();
-                }
-                resp
-            } else {
-                error_response(
-                    &id,
-                    response
-                        .get("error")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("Unknown extension error"),
-                )
-            }
-        }
+        Ok(response) => normalize_extension_response(&id, &response),
         Err(e) => error_response(&id, &e),
+    }
+}
+
+fn normalize_extension_response(id: &str, response: &Value) -> Value {
+    // Extension returns {id, success, data/error}; the daemon owns request correlation.
+    let success = response
+        .get("success")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if success {
+        let mut normalized = json!({ "id": id, "success": true });
+        if let Some(data) = response.get("data") {
+            normalized["data"] = data.clone();
+        }
+        normalized
+    } else {
+        error_response(
+            id,
+            response
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("Unknown extension error"),
+        )
     }
 }
 
@@ -6058,6 +6226,108 @@ mod tests {
         assert_eq!(resp["id"], "cmd-2");
         assert_eq!(resp["success"], false);
         assert_eq!(resp["error"], "Something went wrong");
+    }
+
+    #[test]
+    fn test_extension_success_response_preserves_request_id() {
+        let response = json!({
+            "id": "extension-id",
+            "success": true,
+            "data": { "value": 42 }
+        });
+        let normalized = normalize_extension_response("request-id", &response);
+        assert_eq!(normalized["id"], "request-id");
+        assert_eq!(normalized["success"], true);
+        assert_eq!(normalized["data"]["value"], 42);
+    }
+
+    #[test]
+    fn test_chain_validation_rejects_top_level_unknown_empty_and_oversized_actions() {
+        let nested = json!({ "steps": [{ "action": "chain", "steps": [] }] });
+        assert!(validate_chain_actions(&nested)
+            .unwrap_err()
+            .contains("top-level-only action chain"));
+
+        for action in ["finalize_tabs", "close_owner"] {
+            let lifecycle = json!({ "steps": [{ "action": action }] });
+            assert!(validate_chain_actions(&lifecycle)
+                .unwrap_err()
+                .contains(&format!("top-level-only action {}", action)));
+        }
+
+        assert!(validate_chain_actions(&json!({ "steps": [] }))
+            .unwrap_err()
+            .contains("at least one"));
+
+        let unknown = json!({ "steps": [{ "action": "not_a_real_action" }] });
+        assert!(validate_chain_actions(&unknown)
+            .unwrap_err()
+            .contains("Unknown chain action"));
+
+        let steps = (0..=MAX_CHAIN_STEPS)
+            .map(|_| json!({ "action": "click" }))
+            .collect::<Vec<_>>();
+        assert!(validate_chain_actions(&json!({ "steps": steps }))
+            .unwrap_err()
+            .contains("maximum"));
+    }
+
+    #[tokio::test]
+    async fn test_chain_policy_checks_each_nested_action() {
+        let path = std::env::temp_dir().join(format!(
+            "stella-browser-chain-policy-{}.json",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&path, r#"{"default":"allow","deny":["click"]}"#).unwrap();
+
+        let mut state = DaemonState::new();
+        state.policy = Some(ActionPolicy::load(path.to_str().unwrap()).unwrap());
+        let command = json!({
+            "id": "chain-policy",
+            "action": "chain",
+            "steps": [{ "action": "click", "selector": "#submit" }]
+        });
+        let response = execute_command(&command, &mut state).await;
+        assert_eq!(response["success"], false);
+        assert!(response["error"].as_str().unwrap().contains("click"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn test_chain_domain_gate_checks_nested_navigation() {
+        let mut state = DaemonState::new();
+        state.backend_type = BackendType::Extension;
+        state.domain_filter = Some(DomainFilter::new("example.com"));
+        let command = json!({
+            "id": "chain-domain",
+            "action": "chain",
+            "steps": [{ "action": "navigate", "url": "https://blocked.example.net" }]
+        });
+        let response = execute_command(&command, &mut state).await;
+        assert_eq!(response["success"], false);
+        assert!(response["error"]
+            .as_str()
+            .unwrap()
+            .contains("allowed domains"));
+    }
+
+    #[tokio::test]
+    async fn test_owner_finalization_requires_explicit_owner() {
+        let mut state = DaemonState::new();
+        let finalize = json!({
+            "id": "finalize",
+            "action": "finalize_tabs",
+            "keep": []
+        });
+        let response = execute_command(&finalize, &mut state).await;
+        assert_eq!(response["success"], false);
+        assert!(response["error"].as_str().unwrap().contains("ownerId"));
+
+        let close_owner = json!({ "id": "close-owner", "action": "close_owner" });
+        let response = execute_command(&close_owner, &mut state).await;
+        assert_eq!(response["success"], false);
+        assert!(response["error"].as_str().unwrap().contains("ownerId"));
     }
 
     #[test]
