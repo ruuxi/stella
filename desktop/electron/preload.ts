@@ -1693,6 +1693,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       options?: {
         mode?: "git-ancestry" | "release-pointer";
         startingHeadCommit?: string;
+        agentRunId?: string;
       },
     ) =>
       ipcRenderer.invoke(IPC_UPDATES_RECORD_APPLIED_COMMIT, {
@@ -1702,6 +1703,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         ...(options?.startingHeadCommit
           ? { startingHeadCommit: options.startingHeadCommit }
           : {}),
+        ...(options?.agentRunId ? { agentRunId: options.agentRunId } : {}),
       }) as Promise<{
         version: string;
         platform: string;

@@ -18,6 +18,7 @@ import {
 } from "../../../../runtime/kernel/self-mod/stella-source-control.js";
 import { createRuntimeUnavailableError } from "../../../../runtime/protocol/rpc-peer.js";
 import {
+  recordAppliedDesktopUpdate,
   recoverInterruptedDesktopUpdate,
   tryApplyCleanDesktopUpdate,
 } from "../../../electron/ipc/updates-handlers.js";
@@ -364,6 +365,150 @@ describe("recoverInterruptedDesktopUpdate", () => {
     expect(git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim()).toBe(
       baseCommit,
     );
+  });
+
+  it("morphs a conflict-recovered agent update before recording completion", async () => {
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    git(repoRoot, ["checkout", "-q", "-b", "upstream"]);
+    await writeFile(path.join(repoRoot, "app.txt"), "upstream target\n", "utf8");
+    git(repoRoot, ["commit", "-am", "Target desktop release"]);
+    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+
+    git(repoRoot, ["checkout", "-q", "main"]);
+    await writeFile(path.join(repoRoot, "app.txt"), "local customization\n", "utf8");
+    git(repoRoot, ["commit", "-am", "Customize desktop"]);
+    const startingHeadCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    expect(
+      git(repoRoot, ["merge", "--no-edit", targetCommit], {
+        allowFailure: true,
+      }).status,
+    ).not.toBe(0);
+    await writeFile(
+      path.join(repoRoot, "app.txt"),
+      "resolved customization plus update\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", "app.txt"]);
+    git(repoRoot, ["commit", "-q", "--no-edit"]);
+    expect(
+      git(repoRoot, ["rev-list", "--parents", "-n", "1", "HEAD"])
+        .stdout.trim()
+        .split(/\s+/),
+    ).toHaveLength(3);
+
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: {
+        status: "failed",
+        targetTag: "desktop-v9.9.10",
+        targetCommit,
+        startedAt: new Date(1).toISOString(),
+        finishedAt: new Date(2).toISOString(),
+        reason: "Stella could not confirm the update was applied.",
+        operationId: "op-agent-recovery",
+        phase: "native-refresh",
+        mode: "agent",
+        recoveryAction: "needs-agent",
+        startingHeadCommit,
+        updatedAt: new Date(2).toISOString(),
+        changedFiles: ["app.txt"],
+        ownedTempPaths: [],
+        nativeHelpersManifestUrl: null,
+      },
+    });
+
+    const runner = {
+      beginExternalSelfMod: vi.fn(async (payload: { paths: string[] }) => {
+        expect(payload.paths).toContain("app.txt");
+      }),
+      finishExternalSelfMod: vi.fn(async (payload: {
+        runId: string;
+        succeeded: boolean;
+      }) => {
+        expect(payload.succeeded).toBe(true);
+        if (payload.runId === "install-update-recovery") {
+          return { ok: true as const, transitioned: false };
+        }
+        // The recovered code must be made live before bookkeeping advances.
+        await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
+          installState: { desktopReleaseCommit: baseCommit },
+          lastUpdateAttempt: { status: "failed" },
+        });
+        return { ok: true as const, transitioned: true };
+      }),
+    } as unknown as Parameters<typeof recordAppliedDesktopUpdate>[0]["runner"];
+
+    const manifest = await recordAppliedDesktopUpdate({
+      stellaAppDir: repoRoot,
+      runner,
+      commit: targetCommit,
+      tag: "desktop-v9.9.10",
+      agentRunId: "install-update-recovery",
+    });
+
+    expect(runner?.beginExternalSelfMod).toHaveBeenCalledTimes(1);
+    expect(runner?.finishExternalSelfMod).toHaveBeenCalledTimes(2);
+    expect(manifest).toMatchObject({
+      installState: { desktopReleaseCommit: targetCommit },
+      lastUpdateAttempt: {
+        status: "complete",
+        phase: "record-complete",
+        targetCommit,
+      },
+    });
+  });
+
+  it("does not double-morph an ordinary successful agent update", async () => {
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    await writeFile(path.join(repoRoot, "app.txt"), "agent target\n", "utf8");
+    git(repoRoot, ["commit", "-am", "Target desktop release"]);
+    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: {
+        status: "updating",
+        targetTag: "desktop-v9.9.11",
+        targetCommit,
+        startedAt: new Date(1).toISOString(),
+        finishedAt: null,
+        reason: null,
+        operationId: "op-agent-normal",
+        phase: "native-refresh",
+        mode: "agent",
+        recoveryAction: "needs-agent",
+        startingHeadCommit: baseCommit,
+        updatedAt: new Date(1).toISOString(),
+        changedFiles: ["app.txt"],
+        ownedTempPaths: [],
+        nativeHelpersManifestUrl: null,
+      },
+    });
+    const runner = {
+      beginExternalSelfMod: vi.fn(async () => undefined),
+      finishExternalSelfMod: vi.fn(async () => ({
+        ok: true as const,
+        transitioned: true,
+      })),
+    } as unknown as Parameters<typeof recordAppliedDesktopUpdate>[0]["runner"];
+
+    await recordAppliedDesktopUpdate({
+      stellaAppDir: repoRoot,
+      runner,
+      commit: targetCommit,
+      tag: "desktop-v9.9.11",
+      agentRunId: "install-update-normal",
+    });
+
+    expect(runner?.beginExternalSelfMod).not.toHaveBeenCalled();
+    expect(runner?.finishExternalSelfMod).toHaveBeenCalledOnce();
+    expect(runner?.finishExternalSelfMod).toHaveBeenCalledWith({
+      runId: "install-update-normal",
+      succeeded: true,
+    });
+    await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
+      installState: { desktopReleaseCommit: targetCommit },
+      lastUpdateAttempt: { status: "complete", targetCommit },
+    });
   });
 
   it("brackets a clean Git update in the external self-mod morph lifecycle", async () => {

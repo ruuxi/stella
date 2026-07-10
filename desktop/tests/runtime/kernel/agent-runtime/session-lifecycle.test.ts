@@ -3,6 +3,7 @@ import type { AgentMessage } from "../../../../../runtime/kernel/agent-core/type
 import type { OrchestratorRunOptions } from "../../../../../runtime/kernel/agent-runtime/types.js";
 import { BackgroundCompactionScheduler } from "../../../../../runtime/kernel/agent-runtime/compaction-scheduler.js";
 import { OrchestratorSession } from "../../../../../runtime/kernel/agent-runtime/orchestrator-session.js";
+import { createExternalOrchestratorRunSession } from "../../../../../runtime/kernel/agent-runtime/run-session.js";
 
 const executeRuntimeAgentPrompt = vi.fn();
 
@@ -142,5 +143,34 @@ describe("OrchestratorSession", () => {
     expect(startMessages[0]).toContain("Initial persisted history");
     expect(startMessages[1]).toContain("Compacted checkpoint summary");
     expect(startMessages[1]).not.toContain("Initial persisted history");
+  });
+});
+
+describe("external engine session lifecycle", () => {
+  it("runs the shared beforeRunEnd finalizer for Claude Code", async () => {
+    const beforeRunEnd = vi.fn(async () => undefined);
+    const options = createOptions({
+      agentContext: {
+        systemPrompt: "System prompt",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+        reasoningEffort: "high",
+        agentEngine: "claude_code_local",
+      },
+      beforeRunEnd,
+    });
+    const session = createExternalOrchestratorRunSession(options, {
+      runId: "claude-code-install-update",
+    });
+
+    await session.finalizeSuccess("Update applied");
+
+    expect(beforeRunEnd).toHaveBeenCalledOnce();
+    expect(beforeRunEnd).toHaveBeenCalledWith({
+      runId: "claude-code-install-update",
+      threadKey: "conversation-1",
+      finalText: "Update applied",
+      outcome: "success",
+    });
   });
 });

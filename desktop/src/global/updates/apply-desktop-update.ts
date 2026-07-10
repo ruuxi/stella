@@ -365,8 +365,9 @@ export const applyDesktopUpdate = async (
               ? {
                   mode: "release-pointer",
                   startingHeadCommit: sourcePackStartingHeadCommit,
+                  agentRunId: event.runId,
                 }
-              : undefined,
+              : { agentRunId: event.runId },
           );
           await options.onAppliedCommit?.(manifest);
         }

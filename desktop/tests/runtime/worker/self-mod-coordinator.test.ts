@@ -254,6 +254,31 @@ describe("self-mod coordinator", () => {
     expect(resumedRunIds(h)).toEqual(["run-install"]);
   });
 
+  it("reports an already-completed desktop-update transition without morphing twice", async () => {
+    await runAgentSelfMod(
+      h,
+      "run-desktop-update",
+      "desktop/src/desktop-update.tsx",
+      "export const updated = true;\n",
+      "install-update-conversation",
+      "desktop-update",
+    );
+    expect(
+      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION),
+    ).toHaveLength(1);
+
+    const result =
+      await h.coordinator.externalLifecycle.finishExternalSelfMod({
+        runId: "run-desktop-update",
+        succeeded: true,
+      });
+
+    expect(result).toEqual({ ok: true, transitioned: true });
+    expect(
+      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION),
+    ).toHaveLength(1);
+  });
+
   it("clicking Update drains pending applies through one morph transition and resumes reload pauses", async () => {
     await runAgentSelfMod(
       h,

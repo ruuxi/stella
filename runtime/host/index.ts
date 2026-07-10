@@ -2565,7 +2565,7 @@ export class StellaRuntimeHost {
   }
 
   async finishExternalSelfMod(payload: { runId: string; succeeded: boolean }) {
-    return await this.requestWorker<{ ok: true }>(
+    return await this.requestWorker<{ ok: true; transitioned: boolean }>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_EXTERNAL_FINISH,
       payload,
       { ensureWorker: true, recordActivity: true },

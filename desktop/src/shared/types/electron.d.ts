@@ -1267,6 +1267,7 @@ export type ElectronUpdatesApi = {
     options?: {
       mode?: "git-ancestry" | "release-pointer";
       startingHeadCommit?: string;
+      agentRunId?: string;
     },
   ) => Promise<InstallManifestSnapshot | null>;
   rollbackCanceledUpdate: (payload: {

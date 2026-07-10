@@ -117,7 +117,7 @@ export type ExternalSelfModLifecycle = {
   finishExternalSelfMod: (args: {
     runId: string;
     succeeded: boolean;
-  }) => Promise<{ ok: true }>;
+  }) => Promise<{ ok: true; transitioned: boolean }>;
 };
 
 export type SelfModCoordinator = {
@@ -223,6 +223,16 @@ export const createSelfModCoordinator = (
   const selfModRunRootIds = new Map<string, string>();
   const selfModRunApplyModes = new Map<string, string | undefined>();
   const externalSelfModPathsByRun = new Map<string, string[]>();
+  const transitionedRunIds = new Set<string>();
+
+  const rememberTransitionedRuns = (runIds: string[]) => {
+    for (const runId of runIds) transitionedRunIds.add(runId);
+    while (transitionedRunIds.size > 256) {
+      const oldest = transitionedRunIds.values().next().value;
+      if (typeof oldest !== "string") break;
+      transitionedRunIds.delete(oldest);
+    }
+  };
 
   const releaseRuntimeReloadFor = async (
     runIds: string[],
@@ -343,6 +353,7 @@ export const createSelfModCoordinator = (
         },
         { retryOnDisconnect: true },
       );
+      rememberTransitionedRuns(applyResult.restartRelevantRunIds);
     } catch (error) {
       console.warn(
         "[self-mod-hmr] HOST_HMR_RUN_TRANSITION failed; applying without morph cover:",
@@ -572,9 +583,10 @@ export const createSelfModCoordinator = (
         throw new Error("Self-mod HMR controller is not initialized.");
       }
       if (!controller.hasRun(runId)) {
+        const transitioned = transitionedRunIds.has(runId);
         await releaseRunCompletely(runId, "self-mod-external");
         externalSelfModPathsByRun.delete(runId);
-        return { ok: true };
+        return { ok: true, transitioned };
       }
 
       if (!succeeded) {
@@ -583,7 +595,7 @@ export const createSelfModCoordinator = (
         dropRunBookkeeping([runId]);
         externalSelfModPathsByRun.delete(runId);
         await dispatchApplyBatch(cancelResult);
-        return { ok: true };
+        return { ok: true, transitioned: false };
       }
 
       const absolutePaths = externalSelfModPathsByRun.get(runId) ?? [];
@@ -598,11 +610,11 @@ export const createSelfModCoordinator = (
         if (!controller.hasRun(runId)) {
           await releaseRunCompletely(runId, "self-mod-external");
         }
-        return { ok: true };
+        return { ok: true, transitioned: transitionedRunIds.has(runId) };
       }
 
       await dispatchApplyBatch(decision);
-      return { ok: true };
+      return { ok: true, transitioned: transitionedRunIds.has(runId) };
     },
   };
 

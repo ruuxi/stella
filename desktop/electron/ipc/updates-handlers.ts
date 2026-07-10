@@ -775,7 +775,7 @@ const finishUpdateSelfModRun = async (args: {
   reacquireRunner?: ReacquireRunner | undefined;
   runId: string;
   paths: string[];
-  logScope: "source-pack" | "git";
+  logScope: "source-pack" | "git" | "agent-recovery";
   logFields: LogFields;
 }): Promise<{ reloaded: boolean }> => {
   try {
@@ -1340,6 +1340,184 @@ const readManifestWithRecovery = async (
     );
   }
   return await recoverManifest(stellaAppDir);
+};
+
+type RecordAppliedCommitMode = "git-ancestry" | "release-pointer";
+
+const listRecoveredAgentChangedFiles = async (
+  stellaAppDir: string,
+  attempt: UpdateAttemptSnapshot,
+  fallbackStartingHeadCommit: string | null,
+): Promise<string[]> => {
+  const changedFiles = new Set(attempt.changedFiles);
+  const startingHeadCommit =
+    attempt.startingHeadCommit ?? fallbackStartingHeadCommit;
+  if (startingHeadCommit) {
+    const changedResult = await runGit(stellaAppDir, [
+      "diff",
+      "--name-only",
+      startingHeadCommit,
+      "HEAD",
+    ]);
+    if (changedResult.exitCode === 0) {
+      for (const filePath of parseGitNameList(changedResult.stdout)) {
+        changedFiles.add(filePath);
+      }
+    }
+  }
+  return [...changedFiles];
+};
+
+/**
+ * Finish the reload half of an install-update-agent attempt whose original run
+ * did not complete a host transition. The ordinary agent path owns its
+ * self-mod lifecycle; its transitioned run id prevents a second morph here.
+ */
+const finalizeRecoveredAgentDesktopUpdate = async (args: {
+  stellaAppDir: string;
+  runner: StellaHostRunner;
+  reacquireRunner?: ReacquireRunner | undefined;
+  attempt: UpdateAttemptSnapshot;
+  fallbackStartingHeadCommit: string | null;
+  targetCommit: string;
+  releaseTag: string | null;
+}): Promise<void> => {
+  const changedFiles = await listRecoveredAgentChangedFiles(
+    args.stellaAppDir,
+    args.attempt,
+    args.fallbackStartingHeadCommit,
+  );
+  if (changedFiles.length === 0) return;
+
+  const runId = `desktop-update-agent-recovery:${Date.now()}:${Math.random()
+    .toString(36)
+    .slice(2)}`;
+  let hmrRunStarted = false;
+  try {
+    await withDesktopUpdateTimeout(
+      "agent-recovery.begin-external-self-mod",
+      UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+      args.runner.beginExternalSelfMod({
+        runId,
+        paths: expandExternalSelfModPaths(changedFiles),
+      }),
+      {
+        runId,
+        releaseTag: args.releaseTag ?? undefined,
+        targetCommit: shortCommit(args.targetCommit),
+        changedFileCount: changedFiles.length,
+      },
+    );
+    hmrRunStarted = true;
+    const { reloaded } = await finishUpdateSelfModRun({
+      runner: args.runner,
+      reacquireRunner: args.reacquireRunner,
+      runId,
+      paths: changedFiles,
+      logScope: "agent-recovery",
+      logFields: {
+        runId,
+        releaseTag: args.releaseTag ?? undefined,
+        targetCommit: shortCommit(args.targetCommit),
+        changedFileCount: changedFiles.length,
+      },
+    });
+    hmrRunStarted = false;
+    if (!reloaded) {
+      throw new Error(
+        "Stella applied the recovered update on disk, but could not reload the running app onto it.",
+      );
+    }
+    logDesktopUpdateProcess("desktop-update.agent-recovery.reload-complete", {
+      runId,
+      releaseTag: args.releaseTag ?? undefined,
+      targetCommit: shortCommit(args.targetCommit),
+      changedFileCount: changedFiles.length,
+    });
+  } catch (error) {
+    if (hmrRunStarted) {
+      await args.runner
+        .finishExternalSelfMod({ runId, succeeded: false })
+        .catch(() => undefined);
+    }
+    throw error;
+  }
+};
+
+export const recordAppliedDesktopUpdate = async (args: {
+  stellaAppDir: string;
+  runner: StellaHostRunner | null;
+  reacquireRunner?: ReacquireRunner | undefined;
+  commit: string;
+  tag: string | null;
+  mode?: RecordAppliedCommitMode | undefined;
+  startingHeadCommit?: string | null | undefined;
+  agentRunId?: string | null | undefined;
+}): Promise<InstallManifestSnapshot | null> => {
+  const startingHeadCommit = args.startingHeadCommit ?? null;
+  if (args.mode === "release-pointer") {
+    if (!startingHeadCommit) {
+      throw new Error("startingHeadCommit is required.");
+    }
+    if (await hasMergeInProgress(args.stellaAppDir)) {
+      throw new Error("A merge is still in progress in the install tree.");
+    }
+    if (await hasTrackedWorkingTreeChanges(args.stellaAppDir)) {
+      throw new Error("The install tree still has tracked local changes.");
+    }
+    const currentHead = await readHeadCommit(args.stellaAppDir);
+    if (currentHead === startingHeadCommit) {
+      throw new Error(
+        "The install-update agent did not create an update commit.",
+      );
+    }
+  } else {
+    const verification = await verifyMergeApplied(
+      args.stellaAppDir,
+      args.commit,
+    );
+    if (!verification.ok) {
+      throw new Error(verification.reason);
+    }
+  }
+
+  const attempt = (await readManifestWithRecovery(args.stellaAppDir))
+    ?.lastUpdateAttempt;
+  const isAgentAttempt =
+    attempt != null &&
+    attempt.mode === "agent" &&
+    attempt.targetCommit === args.commit;
+  const needsFinalizationCheck =
+    isAgentAttempt && (Boolean(args.agentRunId) || attempt.status === "failed");
+  if (needsFinalizationCheck) {
+    const runner = args.runner ?? (await args.reacquireRunner?.());
+    if (!runner) {
+      throw new Error(
+        "Stella runtime is not available to finish the recovered update reload.",
+      );
+    }
+    const originalRunResult = args.agentRunId
+      ? await runner.finishExternalSelfMod({
+          runId: args.agentRunId,
+          succeeded: true,
+        })
+      : null;
+    if (originalRunResult?.transitioned !== true) {
+      await finalizeRecoveredAgentDesktopUpdate({
+        stellaAppDir: args.stellaAppDir,
+        runner,
+        reacquireRunner: args.reacquireRunner,
+        attempt,
+        fallbackStartingHeadCommit: startingHeadCommit,
+        targetCommit: args.commit,
+        releaseTag: args.tag,
+      });
+    }
+  }
+
+  return args.mode === "release-pointer"
+    ? await writeAppliedReleasePointer(args.stellaAppDir, args.commit, args.tag)
+    : await writeAppliedCommit(args.stellaAppDir, args.commit, args.tag);
 };
 
 type DesktopUpdateTransaction = {
@@ -3149,6 +3327,21 @@ export const tryApplyCleanDesktopUpdate = async (
 
 export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
   const officialSourceHistory = createOfficialSourceHistoryReconciler(options);
+  const reacquireUpdateRunner: ReacquireRunner = async () => {
+    const runner = await waitForConnectedRunner(
+      () => options.getStellaHostRunner?.() ?? null,
+      {
+        timeoutMs: UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+        unavailableMessage:
+          "Stella runtime did not reconnect during the update.",
+        ...(options.onStellaHostRunnerChanged
+          ? { onRunnerChanged: options.onStellaHostRunnerChanged }
+          : {}),
+      },
+    );
+    await runner.waitUntilReady(UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS);
+    return runner;
+  };
   options.onStellaHostRunnerChanged?.((runner) => {
     if (runner) {
       officialSourceHistory.schedule("runner-ready", undefined, {
@@ -3255,21 +3448,6 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
       // own runtime/ changes, or a concurrent self-mod apply). Give the flow
       // a way to reach the reconnected worker so it can recover instead of
       // failing after the tree was already updated.
-      const reacquireRunner: ReacquireRunner = async () => {
-        const runner = await waitForConnectedRunner(
-          () => options.getStellaHostRunner?.() ?? null,
-          {
-            timeoutMs: UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
-            unavailableMessage:
-              "Stella runtime did not reconnect during the update.",
-            ...(options.onStellaHostRunnerChanged
-              ? { onRunnerChanged: options.onStellaHostRunnerChanged }
-              : {}),
-          },
-        );
-        await runner.waitUntilReady(UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS);
-        return runner;
-      };
       try {
         const result = await tryApplyCleanDesktopUpdate(
           stellaAppDir,
@@ -3286,7 +3464,7 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
               ? { artifactRefs: payload.artifactRefs }
               : {}),
             transaction,
-            reacquireRunner,
+            reacquireRunner: reacquireUpdateRunner,
           },
         );
         if (result.status === "needs-agent") {
@@ -3496,6 +3674,7 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         tag?: string;
         mode?: "git-ancestry" | "release-pointer";
         startingHeadCommit?: string;
+        agentRunId?: string;
       },
     ): Promise<InstallManifestSnapshot | null> => {
       if (
@@ -3513,6 +3692,7 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
         throw new Error("commit is required.");
       }
       const tag = asString(payload?.tag);
+      const agentRunId = asString(payload?.agentRunId);
       const stellaAppDir = options.getStellaAppDir();
       if (!stellaAppDir) {
         throw new Error("Stella install directory is unavailable.");
@@ -3523,30 +3703,30 @@ export const registerUpdatesHandlers = (options: UpdatesHandlersOptions) => {
           if (!startingHeadCommit) {
             throw new Error("startingHeadCommit is required.");
           }
-          if (await hasMergeInProgress(stellaAppDir)) {
-            throw new Error("A merge is still in progress in the install tree.");
-          }
-          if (await hasTrackedWorkingTreeChanges(stellaAppDir)) {
-            throw new Error("The install tree still has tracked local changes.");
-          }
-          const currentHead = await readHeadCommit(stellaAppDir);
-          if (currentHead === startingHeadCommit) {
-            throw new Error(
-              "The install-update agent did not create an update commit.",
-            );
-          }
-          const manifest = await writeAppliedReleasePointer(
+          const manifest = await recordAppliedDesktopUpdate({
             stellaAppDir,
+            runner: null,
+            reacquireRunner: reacquireUpdateRunner,
             commit,
             tag,
-          );
+            mode: "release-pointer",
+            startingHeadCommit,
+            agentRunId,
+          });
           officialSourceHistory.schedule("applied-commit-recorded", {
             targetCommit: commit,
             releaseTag: tag,
           });
           return manifest;
         }
-        const manifest = await writeAppliedCommit(stellaAppDir, commit, tag);
+        const manifest = await recordAppliedDesktopUpdate({
+          stellaAppDir,
+          runner: null,
+          reacquireRunner: reacquireUpdateRunner,
+          commit,
+          tag,
+          agentRunId,
+        });
         officialSourceHistory.schedule("applied-commit-recorded", {
           targetCommit: commit,
           releaseTag: tag,
