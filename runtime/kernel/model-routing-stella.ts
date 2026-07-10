@@ -78,8 +78,9 @@ const fallbackResolvedModelForAlias = (modelId: string): string => {
       return "google/gemini-3-flash-preview";
     case "stella/max":
       return "anthropic/claude-fable-5";
-    case STELLA_DEFAULT_MODEL:
     case STELLA_STANDARD_MODEL:
+      return "meta/muse-spark-1.1";
+    case STELLA_DEFAULT_MODEL:
       return "openrouter/x-ai/grok-4.5";
     default: {
       const prefix = `${STELLA_PROVIDER}/`;
