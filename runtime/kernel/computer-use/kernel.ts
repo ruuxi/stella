@@ -5,7 +5,11 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { Worker } from "node:worker_threads";
 
-import type { ToolContext } from "../tools/types.js";
+import type {
+  ToolContext,
+  ToolResult,
+  ToolUpdateCallback,
+} from "../tools/types.js";
 import { getStellaComputerSessionId } from "../tools/stella-computer-session.js";
 import {
   maybeRequestBrowserExtensionConnect,
@@ -32,6 +36,7 @@ import {
   MAX_NODE_REPL_OUTPUT_BYTES,
   MAX_NODE_REPL_PENDING_BROWSER_CALLS,
   MAX_NODE_REPL_PENDING_SKY_CALLS,
+  MAX_NODE_REPL_PENDING_TOOL_CALLS,
   MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES,
   type NodeReplWorkerData,
   type ParentToNodeReplWorkerMessage,
@@ -66,6 +71,13 @@ export type NodeReplKernelManagerOptions = {
   evalTimeoutMs?: number;
   commandTimeoutMs?: number;
   idleTimeoutMs?: number;
+  executeTool?: (
+    toolName: string,
+    args: Record<string, unknown>,
+    context: ToolContext,
+    signal?: AbortSignal,
+    onUpdate?: ToolUpdateCallback,
+  ) => Promise<ToolResult>;
 };
 
 export type ComputerUseSessionFactoryOptions = Readonly<{
@@ -82,6 +94,8 @@ export type ComputerUseSessionFactory = (
 export type EvaluateOptions = {
   timeoutMs?: number;
   signal?: AbortSignal;
+  onToolResult?: (result: ToolResult) => void;
+  onToolUpdate?: ToolUpdateCallback;
 };
 
 class KernelTerminatedError extends Error {}
@@ -157,6 +171,8 @@ type ActiveEvaluation = {
   resolve: (output: string) => void;
   reject: (error: Error) => void;
   context: ToolContext;
+  onToolResult?: (result: ToolResult) => void;
+  onToolUpdate?: ToolUpdateCallback;
   browserActivity: {
     callCount: number;
     mutated: boolean;
@@ -209,6 +225,10 @@ const NON_VISUAL_BROWSER_MUTATIONS = new Set([
   "close_owner",
 ]);
 const MAX_BROWSER_SCREENSHOT_FILES_PER_KERNEL = 100;
+const NODE_REPL_EXCLUDED_TOOL_NAMES = new Set([
+  "node_repl",
+  "multi_tool_use_parallel",
+]);
 
 type NodeReplTransport = {
   on(event: "message", listener: (message: unknown) => void): unknown;
@@ -278,6 +298,7 @@ class NodeReplKernel {
   private readonly sky: SkyClient;
   private readonly browser: BrowserSessionClient;
   private readonly requestBrowserExtensionConnect?: BrowserExtensionConnectRequester;
+  private readonly executeTool?: NodeReplKernelManagerOptions["executeTool"];
   private readonly onTerminated: (kernel: NodeReplKernel) => void;
   private tail: Promise<void> = Promise.resolve();
   private idleTimer: NodeJS.Timeout | null = null;
@@ -308,12 +329,15 @@ class NodeReplKernel {
         options: BrowserSessionOptions,
       ) => BrowserSessionClient;
       requestBrowserExtensionConnect?: BrowserExtensionConnectRequester;
+      executeTool?: NodeReplKernelManagerOptions["executeTool"];
+      toolNames: string[];
       onIdle: (kernel: NodeReplKernel) => void;
     },
   ) {
     this.onTerminated = options.onIdle;
     this.requestBrowserExtensionConnect =
       options.requestBrowserExtensionConnect;
+    this.executeTool = options.executeTool;
     const getSignal = () => this.active?.controller.signal;
     const session = options.sessionFactory({
       sessionId: id,
@@ -342,6 +366,8 @@ class NodeReplKernel {
       maxProtocolMessageBytes: MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES,
       maxPendingSkyCalls: MAX_NODE_REPL_PENDING_SKY_CALLS,
       maxPendingBrowserCalls: MAX_NODE_REPL_PENDING_BROWSER_CALLS,
+      maxPendingToolCalls: MAX_NODE_REPL_PENDING_TOOL_CALLS,
+      toolNames: options.toolNames,
     };
     this.worker = createNodeReplTransport(
       createNodeReplWorkerSource(),
@@ -416,6 +442,8 @@ class NodeReplKernel {
         context,
         options.timeoutMs ?? defaults.evalTimeoutMs,
         options.signal,
+        options.onToolResult,
+        options.onToolUpdate,
       );
     };
     const task = this.tail.then(run, run);
@@ -447,6 +475,8 @@ class NodeReplKernel {
     context: ToolContext,
     timeoutMs: number,
     signal?: AbortSignal,
+    onToolResult?: (result: ToolResult) => void,
+    onToolUpdate?: ToolUpdateCallback,
   ): Promise<string> {
     if (signal?.aborted) {
       return Promise.reject(
@@ -479,6 +509,8 @@ class NodeReplKernel {
         resolve,
         reject,
         context,
+        onToolResult,
+        onToolUpdate,
         browserActivity: {
           callCount: 0,
           mutated: false,
@@ -536,6 +568,10 @@ class NodeReplKernel {
         () => undefined,
         () => undefined,
       );
+      return;
+    }
+    if (typed.type === "tool-call") {
+      void this.handleToolCall(typed);
       return;
     }
 
@@ -742,6 +778,79 @@ class NodeReplKernel {
     try {
       this.post({
         type: "browser-result",
+        callId,
+        ok: false,
+        error: serializeError(error),
+      });
+    } catch (postError) {
+      this.handleWorkerFailure(
+        postError instanceof Error ? postError : new Error(String(postError)),
+      );
+    }
+  }
+
+  private async handleToolCall(
+    message: Extract<WorkerToNodeReplParentMessage, { type: "tool-call" }>,
+  ) {
+    const active = this.active;
+    const allowedToolNames = new Set(active?.context.allowedToolNames ?? []);
+    if (
+      !active ||
+      message.evaluationId !== active.id ||
+      !this.executeTool ||
+      NODE_REPL_EXCLUDED_TOOL_NAMES.has(message.toolName) ||
+      !allowedToolNames.has(message.toolName) ||
+      !message.args ||
+      typeof message.args !== "object" ||
+      Array.isArray(message.args) ||
+      serializedSize(message.args) > MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES
+    ) {
+      this.postToolError(
+        message.callId,
+        new Error("Invalid or unauthorized tool protocol request."),
+      );
+      return;
+    }
+
+    try {
+      const result = await this.executeTool(
+        message.toolName,
+        message.args,
+        active.context,
+        active.controller.signal,
+        (update) => {
+          if (!this.closed && this.active === active) {
+            active.onToolUpdate?.(update);
+          }
+        },
+      );
+      if (!this.closed && this.active === active) {
+        active.onToolResult?.(result);
+      }
+      if (result.error) throw new Error(result.error);
+      if (serializedSize(result.result) > MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES) {
+        throw new Error("Tool result exceeds the Node REPL protocol limit.");
+      }
+      if (!this.closed && this.active === active) {
+        this.post({
+          type: "tool-result",
+          callId: message.callId,
+          ok: true,
+          value: result.result,
+        });
+      }
+    } catch (error) {
+      if (!this.closed && this.active === active) {
+        this.postToolError(message.callId, error);
+      }
+    }
+  }
+
+  private postToolError(callId: number, error: unknown) {
+    if (this.closed) return;
+    try {
+      this.post({
+        type: "tool-result",
         callId,
         ok: false,
         error: serializeError(error),
@@ -983,6 +1092,10 @@ export class NodeReplKernelRegistry {
         browserSessionFactory: this.browserSessionFactory,
         requestBrowserExtensionConnect:
           this.options.requestBrowserExtensionConnect,
+        executeTool: this.options.executeTool,
+        toolNames: [...new Set(context.allowedToolNames ?? [])].filter(
+          (name) => !NODE_REPL_EXCLUDED_TOOL_NAMES.has(name),
+        ),
         evalTimeoutMs: this.evalTimeoutMs,
         commandTimeoutMs: this.commandTimeoutMs,
         idleTimeoutMs: this.idleTimeoutMs,

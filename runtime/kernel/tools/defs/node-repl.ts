@@ -2,6 +2,10 @@ import {
   NodeReplKernelRegistry,
   type NodeReplKernelManagerOptions,
 } from "../../computer-use/kernel.js";
+import type {
+  FileChangeRecord,
+  ProducedFileRecord,
+} from "../../../contracts/file-changes.js";
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import type { ToolDefinition } from "../types.js";
 
@@ -17,9 +21,9 @@ export const createNodeReplTool = (
     name: "node_repl",
     agentTypes: [AGENT_IDS.GENERAL],
     description:
-      "Run JavaScript in a persistent Node REPL with top-level await. Setup is already done: bindings persist between calls, nodeRepl exposes write/emitImage and cwd/home/tmp, frozen sky controls desktop apps, and frozen browser controls owned browser tabs with persistent Tab and Locator objects. Batch several dependent actions in one cell, then observe only when the next action needs fresh state. Use fresh element IDs from the latest sky app state.",
+      "Run JavaScript in a persistent Node REPL with top-level await. Setup is already done: bindings persist between calls; nodeRepl exposes write/emitImage and cwd/home/tmp; frozen sky controls desktop apps; frozen browser controls owned browser tabs; and frozen tools exposes this agent's allowed Stella tools. Use Promise.all with tools methods for independent calls. Nested tools preserve normal permissions, cancellation, file tracking, produced-file tracking, and self-mod behavior. Batch dependent browser/computer actions in one cell, then observe only when the next action needs fresh state. Use fresh element IDs from the latest sky app state.",
     promptSnippet:
-      "Run persistent JavaScript and control desktop apps through sky or browser tabs through the frozen browser client",
+      "Run persistent JavaScript, orchestrate allowed Stella tools, and control apps through frozen sky/browser clients",
     parameters: {
       type: "object",
       properties: {
@@ -45,11 +49,22 @@ export const createNodeReplTool = (
           ? Math.floor(args.timeout_ms)
           : undefined;
       try {
+        const fileChanges: FileChangeRecord[] = [];
+        const producedFiles: ProducedFileRecord[] = [];
         const result = await registry.evaluate(args.code, context, {
           ...(timeoutMs !== undefined ? { timeoutMs } : {}),
           ...(extras?.signal ? { signal: extras.signal } : {}),
+          ...(extras?.onUpdate ? { onToolUpdate: extras.onUpdate } : {}),
+          onToolResult: (nested) => {
+            if (nested.fileChanges) fileChanges.push(...nested.fileChanges);
+            if (nested.producedFiles) producedFiles.push(...nested.producedFiles);
+          },
         });
-        return { result };
+        return {
+          result,
+          ...(fileChanges.length > 0 ? { fileChanges } : {}),
+          ...(producedFiles.length > 0 ? { producedFiles } : {}),
+        };
       } catch (error) {
         return {
           error: error instanceof Error ? error.message : String(error),

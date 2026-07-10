@@ -110,6 +110,13 @@ export const createToolHost = ({
     agentApi,
     validateSpawnModel,
   );
+  let executeTool: (
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    context: ToolContext,
+    signal?: AbortSignal,
+    onUpdate?: ToolHandlerExtras["onUpdate"],
+  ) => Promise<ToolResult>;
   const nodeReplRegistry = new NodeReplKernelRegistry({
     browserBinPath: _stellaBrowserBinPath,
     ...(requestBrowserExtensionConnect
@@ -152,6 +159,8 @@ export const createToolHost = ({
         shutdownMacStellaComputerSession(sessionId);
       }
     },
+    executeTool: (toolName, args, context, signal, onUpdate) =>
+      executeTool(toolName, args, context, signal, onUpdate),
   });
 
   void recoverStaleSecretFiles(stateRoot)
@@ -170,14 +179,6 @@ export const createToolHost = ({
   const handlers: Record<string, ToolHandler> = mergeToolHandlers(
     createShellToolHandlers(shellState),
   );
-
-  let executeTool: (
-    toolName: string,
-    toolArgs: Record<string, unknown>,
-    context: ToolContext,
-    signal?: AbortSignal,
-    onUpdate?: ToolHandlerExtras["onUpdate"],
-  ) => Promise<ToolResult>;
 
   // Built-in def-driven tools. Each `defs/<name>.ts` owns its own schema +
   // description + handler; they're the single source of truth for everything

@@ -211,11 +211,16 @@ const nodeReplWorkerMain = async (
   let outputErrorReject: ((error: Error) => void) | undefined;
   let nextSkyCallId = 1;
   let nextBrowserCallId = 1;
+  let nextToolCallId = 1;
   const pendingSkyCalls = new Map<
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
   >();
   const pendingBrowserCalls = new Map<
+    number,
+    { resolve: (value: unknown) => void; reject: (error: Error) => void }
+  >();
+  const pendingToolCalls = new Map<
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
   >();
@@ -302,6 +307,51 @@ const nodeReplWorkerMain = async (
     });
   };
   const browser = installBrowserApi(callBrowser);
+
+  const callTool = (
+    toolName: string,
+    args: Record<string, unknown> = {},
+  ): Promise<unknown> => {
+    if (activeEvaluationId === null) {
+      return Promise.reject(
+        new Error("tools may only be called during node_repl evaluation."),
+      );
+    }
+    if (
+      !args ||
+      typeof args !== "object" ||
+      Array.isArray(args) ||
+      serializedSize(args) > workerData.maxProtocolMessageBytes
+    ) {
+      return Promise.reject(new Error(`Invalid arguments for tools.${toolName}.`));
+    }
+    if (pendingToolCalls.size >= workerData.maxPendingToolCalls) {
+      return Promise.reject(new Error("Too many pending tool calls."));
+    }
+    const callId = nextToolCallId++;
+    return new Promise((resolve, reject) => {
+      pendingToolCalls.set(callId, { resolve, reject });
+      try {
+        post({
+          type: "tool-call",
+          evaluationId: activeEvaluationId!,
+          callId,
+          toolName,
+          args,
+        });
+      } catch (error) {
+        pendingToolCalls.delete(callId);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  };
+  const toolEntries = workerData.toolNames.map((toolName) => [
+    toolName,
+    Object.freeze((args: Record<string, unknown> = {}) =>
+      callTool(toolName, args),
+    ),
+  ]);
+  const tools = Object.freeze(Object.fromEntries(toolEntries));
 
   const write = (...values: unknown[]) => {
     if (!writes) {
@@ -416,6 +466,12 @@ const nodeReplWorkerMain = async (
       writable: false,
       configurable: false,
     },
+    tools: {
+      value: tools,
+      enumerable: true,
+      writable: false,
+      configurable: false,
+    },
     process: {
       value: undefined,
       enumerable: false,
@@ -434,6 +490,7 @@ const nodeReplWorkerMain = async (
     activeEvaluationId = null;
     pendingSkyCalls.clear();
     pendingBrowserCalls.clear();
+    pendingToolCalls.clear();
     writes = null;
     writeBytes = 0;
     outputBuffer = "";
@@ -532,6 +589,19 @@ const nodeReplWorkerMain = async (
       const pending = pendingBrowserCalls.get(message.callId);
       if (!pending) return;
       pendingBrowserCalls.delete(message.callId);
+      if (message.ok) pending.resolve(message.value);
+      else {
+        const error = new Error(message.error.message);
+        error.name = message.error.name;
+        if (message.error.stack) error.stack = message.error.stack;
+        pending.reject(error);
+      }
+      return;
+    }
+    if (message.type === "tool-result") {
+      const pending = pendingToolCalls.get(message.callId);
+      if (!pending) return;
+      pendingToolCalls.delete(message.callId);
       if (message.ok) pending.resolve(message.value);
       else {
         const error = new Error(message.error.message);

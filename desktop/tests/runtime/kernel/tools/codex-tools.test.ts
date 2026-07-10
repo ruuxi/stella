@@ -734,6 +734,42 @@ EOF`,
     }
   });
 
+  it("node_repl preserves file tracking from nested tool calls", async () => {
+    const root = await createTempDir();
+    const target = path.join(root, "nested-edit.txt");
+    const host = createToolHost({ stellaAppDir: root });
+    const patch = `*** Begin Patch\n*** Add File: ${target}\n+tracked through node repl\n*** End Patch`;
+
+    try {
+      const result = await host.executeTool(
+        "node_repl",
+        {
+          code: `await tools.apply_patch({input: ${JSON.stringify(patch)}})`,
+        },
+        {
+          conversationId: "c-node-tools",
+          deviceId: "d-node-tools",
+          requestId: "r-node-tools",
+          agentId: "a-node-tools",
+          agentType: "general",
+          stellaAppDir: root,
+          toolWorkspaceRoot: root,
+          allowedToolNames: ["node_repl", "apply_patch"],
+        },
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.fileChanges).toEqual([
+        { path: target, kind: { type: "add" } },
+      ]);
+      await expect(readFile(target, "utf8")).resolves.toBe(
+        "tracked through node repl\n",
+      );
+    } finally {
+      await host.shutdown();
+    }
+  });
+
   it("web uses the configured search backend", async () => {
     const root = await createTempDir();
     const host = createToolHost({
