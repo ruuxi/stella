@@ -719,6 +719,23 @@ export const stageStellaBrowserUpdate = async (
     throw new Error("Stella Browser artifact size is invalid.");
   }
 
+  const relativePath = path.posix.join(
+    "desktop",
+    "stella-browser",
+    "bin",
+    binaryName,
+  );
+  const binaryPath = path.join(stellaAppDir, ...relativePath.split("/"));
+  const stagedPath = `${binaryPath}.update`;
+  const installedBytes = await fs.readFile(binaryPath).catch(() => null);
+  if (
+    installedBytes &&
+    hashBytes(installedBytes).toLowerCase() === asset.sha256.toLowerCase()
+  ) {
+    await fs.rm(stagedPath, { force: true }).catch(() => undefined);
+    return null;
+  }
+
   const bytes = await withDownloadRetries(
     "Stella Browser artifact",
     asset.url,
@@ -744,22 +761,6 @@ export const stageStellaBrowserUpdate = async (
     throw new Error("Stella Browser artifact hash did not match the release.");
   }
 
-  const relativePath = path.posix.join(
-    "desktop",
-    "stella-browser",
-    "bin",
-    binaryName,
-  );
-  const binaryPath = path.join(stellaAppDir, ...relativePath.split("/"));
-  const stagedPath = `${binaryPath}.update`;
-  const installedBytes = await fs.readFile(binaryPath).catch(() => null);
-  if (
-    installedBytes &&
-    hashBytes(installedBytes).toLowerCase() === asset.sha256.toLowerCase()
-  ) {
-    await fs.rm(stagedPath, { force: true }).catch(() => undefined);
-    return null;
-  }
   const tempPath = `${stagedPath}.${process.pid}.${randomUUID()}.tmp`;
   await fs.mkdir(path.dirname(binaryPath), { recursive: true });
   try {

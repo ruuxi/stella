@@ -159,6 +159,48 @@ describe("stageStellaBrowserUpdate", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("does not download an artifact that is already installed", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "stella-browser-current-"));
+    const binaryName =
+      platformKey === "win-x64"
+        ? "stella-browser-win32-x64.exe"
+        : `stella-browser-${platformKey}`;
+    const binaryPath = path.join(
+      root,
+      "desktop",
+      "stella-browser",
+      "bin",
+      binaryName,
+    );
+    const bytes = Buffer.from("current-browser-binary");
+    await mkdir(path.dirname(binaryPath), { recursive: true });
+    await writeFile(binaryPath, bytes);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    try {
+      await expect(
+        stageStellaBrowserUpdate(root, [
+          {
+            kind: "stella-browser",
+            platform: platformKey,
+            asset: {
+              url: "https://releases.test/stella-browser",
+              sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+              sizeBytes: bytes.byteLength,
+            },
+          },
+        ]),
+      ).resolves.toBeNull();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(readFile(`${binaryPath}.update`)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      fetchSpy.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("recoverInterruptedDesktopUpdate", () => {
