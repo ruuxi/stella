@@ -2,12 +2,19 @@
 
 /**
  * Cross-platform launcher for the Stella browser service.
- * 
+ *
  * This wrapper enables consistent invocation across install modes and platforms.
  */
 
 import { spawn } from 'child_process';
-import { existsSync, accessSync, chmodSync, constants, renameSync, rmSync } from 'fs';
+import {
+  existsSync,
+  accessSync,
+  chmodSync,
+  constants,
+  renameSync,
+  rmSync,
+} from 'fs';
 import { join } from 'path';
 import { platform, arch } from 'os';
 
@@ -51,34 +58,67 @@ function getBinaryName() {
   return `stella-browser-${osKey}-${archKey}${ext}`;
 }
 
+function getPlatformKey() {
+  const os = platform();
+  const cpuArch = arch();
+  const osKey = os === 'win32' ? 'win' : os;
+  const archKey =
+    cpuArch === 'x86_64' ? 'x64' : cpuArch === 'aarch64' ? 'arm64' : cpuArch;
+  if (
+    !['darwin', 'linux', 'win'].includes(osKey) ||
+    !['x64', 'arm64'].includes(archKey)
+  ) {
+    return null;
+  }
+  return `${osKey}-${archKey}`;
+}
+
+function promoteStagedBinary(binaryPath) {
+  const stagedPath = `${binaryPath}.update`;
+  if (!existsSync(stagedPath)) return;
+  const previousPath = `${binaryPath}.previous`;
+  try {
+    rmSync(previousPath, { force: true });
+    if (existsSync(binaryPath)) renameSync(binaryPath, previousPath);
+    renameSync(stagedPath, binaryPath);
+    rmSync(previousPath, { force: true });
+  } catch (error) {
+    if (!existsSync(binaryPath) && existsSync(previousPath)) {
+      try {
+        renameSync(previousPath, binaryPath);
+      } catch {
+        // Keep the original error; startup cannot proceed without a binary.
+      }
+    }
+    console.error(
+      `Error: Cannot activate browser service update: ${error.message}`,
+    );
+    process.exit(1);
+  }
+}
+
 function resolveBinaryPath(binaryName) {
   const forcedBinaryPath = process.env.STELLA_BROWSER_BINARY_PATH;
   if (forcedBinaryPath) {
     return forcedBinaryPath;
   }
 
-  const binaryPath = join(__dirname, binaryName);
-  const stagedPath = `${binaryPath}.update`;
-  if (existsSync(stagedPath)) {
-    const previousPath = `${binaryPath}.previous`;
-    try {
-      rmSync(previousPath, { force: true });
-      if (existsSync(binaryPath)) renameSync(binaryPath, previousPath);
-      renameSync(stagedPath, binaryPath);
-      rmSync(previousPath, { force: true });
-    } catch (error) {
-      if (!existsSync(binaryPath) && existsSync(previousPath)) {
-        try {
-          renameSync(previousPath, binaryPath);
-        } catch {
-          // Keep the original error; startup cannot proceed without a binary.
-        }
-      }
-      console.error(`Error: Cannot activate browser service update: ${error.message}`);
-      process.exit(1);
-    }
+  const platformKey = getPlatformKey();
+  const hydratedName =
+    platform() === 'win32' ? 'stella-browser.exe' : 'stella-browser';
+  const hydratedPath = platformKey
+    ? join(__dirname, '..', 'out', platformKey, hydratedName)
+    : null;
+  if (hydratedPath) {
+    promoteStagedBinary(hydratedPath);
+    if (existsSync(hydratedPath)) return hydratedPath;
   }
-  return binaryPath;
+
+  // Temporary migration fallback for installs made before browser artifacts
+  // moved out of the tracked bin/ directory.
+  const legacyPath = join(__dirname, binaryName);
+  promoteStagedBinary(legacyPath);
+  return legacyPath;
 }
 
 function main() {
@@ -96,7 +136,9 @@ function main() {
     console.error(`Expected: ${binaryPath}`);
     console.error('');
     console.error('Run "npm run build:native" to build for your platform,');
-    console.error('or reinstall the package to trigger the postinstall download.');
+    console.error(
+      'or reinstall the package to trigger the postinstall download.',
+    );
     process.exit(1);
   }
 
@@ -110,7 +152,9 @@ function main() {
       try {
         chmodSync(binaryPath, 0o755);
       } catch (chmodErr) {
-        console.error(`Error: Cannot make binary executable: ${chmodErr.message}`);
+        console.error(
+          `Error: Cannot make binary executable: ${chmodErr.message}`,
+        );
         console.error('Try running: chmod +x ' + binaryPath);
         process.exit(1);
       }

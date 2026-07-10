@@ -22,6 +22,7 @@
     "reset:sql": "cd desktop && node scripts/reset-sql.mjs",
     "native:build": "cd desktop/native && npm install && npm run build",
     "native:download": "node desktop/scripts/download-native-helpers.mjs",
+    "stella-browser:download": "node desktop/scripts/download-stella-browser.mjs",
     "workspace:create-app": "cd desktop && node scripts/create-workspace-app.mjs",
     "electron:install": "bun ./node_modules/electron/install.js",
     "deps:prewarm": "node desktop/scripts/prewarm-vite-deps.mjs",
@@ -181,7 +182,8 @@
         "to": "stella-browser",
         "filter": [
           "package.json",
-          "bin/**",
+          "bin/stella-browser.js",
+          "out/**",
           "extension/**"
         ]
       }

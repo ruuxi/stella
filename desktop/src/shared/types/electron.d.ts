@@ -1178,6 +1178,7 @@ export type InstallManifestSnapshot = {
       | "source-pack-preflight"
       | "source-pack-write"
       | "source-pack-commit"
+      | "content-landing"
       | "git-fetch"
       | "git-merge"
       | "dependency-install"

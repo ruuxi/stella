@@ -1,0 +1,171 @@
+name: Build Stella Browser
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "desktop/stella-browser/cli/**"
+      - "desktop/stella-browser/package.json"
+      - "desktop/stella-browser/scripts/**"
+      - ".github/workflows/build-stella-browser.yml"
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Optional source SHA key (defaults to commit SHA)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin-arm64
+            target: aarch64-apple-darwin
+            builtFile: stella-browser
+            installedFile: stella-browser
+          - os: macos-latest
+            platform: darwin-x64
+            target: x86_64-apple-darwin
+            builtFile: stella-browser
+            installedFile: stella-browser
+          - os: windows-latest
+            platform: win-x64
+            target: x86_64-pc-windows-msvc
+            builtFile: stella-browser.exe
+            installedFile: stella-browser.exe
+          - os: ubuntu-latest
+            platform: linux-x64
+            target: x86_64-unknown-linux-gnu.2.28
+            builtFile: stella-browser
+            installedFile: stella-browser
+          - os: ubuntu-latest
+            platform: linux-arm64
+            target: aarch64-unknown-linux-gnu.2.28
+            builtFile: stella-browser
+            installedFile: stella-browser
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: desktop/stella-browser
+          fetch-depth: 1
+
+      - uses: mlugg/setup-zig@v2
+        if: runner.os == 'Linux'
+
+      - name: Install target toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cargo install cargo-zigbuild --locked
+          else
+            rustup target add "${{ matrix.target }}"
+          fi
+
+      - name: Build browser service
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cargo zigbuild --release \
+              --manifest-path desktop/stella-browser/cli/Cargo.toml \
+              --target "${{ matrix.target }}"
+          else
+            cargo build --release \
+              --manifest-path desktop/stella-browser/cli/Cargo.toml \
+              --target "${{ matrix.target }}"
+          fi
+          mkdir -p "browser-artifact/${{ matrix.platform }}"
+          cp \
+            "desktop/stella-browser/cli/target/${{ matrix.target }}/release/${{ matrix.builtFile }}" \
+            "browser-artifact/${{ matrix.platform }}/${{ matrix.installedFile }}"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            chmod +x "browser-artifact/${{ matrix.platform }}/${{ matrix.installedFile }}"
+            codesign --force --sign - "browser-artifact/${{ matrix.platform }}/${{ matrix.installedFile }}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stella-browser-${{ matrix.platform }}
+          path: browser-artifact/${{ matrix.platform }}
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: browser-assets
+          pattern: stella-browser-*
+
+      - name: Publish hash-addressed browser artifacts
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_PUBLIC_BASE_URL: https://pub-a319aaada8144dc9be5a83625033769c.r2.dev
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest_path="$(mktemp)"
+          node - "$manifest_path" "$SOURCE_SHA" "$R2_PUBLIC_BASE_URL" browser-assets <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readdirSync, readFileSync, statSync, writeFileSync } = require("node:fs");
+          const { join } = require("node:path");
+          const [manifestPath, sourceSha, publicBaseUrl, assetsRoot] = process.argv.slice(2);
+          const platforms = ["darwin-arm64", "darwin-x64", "win-x64", "linux-arm64", "linux-x64"];
+          const assets = {};
+          for (const platform of platforms) {
+            const artifactDir = join(assetsRoot, `stella-browser-${platform}`);
+            const files = readdirSync(artifactDir);
+            const fileName = platform === "win-x64" ? "stella-browser.exe" : "stella-browser";
+            if (!files.includes(fileName)) throw new Error(`Missing ${platform}/${fileName}`);
+            const filePath = join(artifactDir, fileName);
+            const bytes = readFileSync(filePath);
+            assets[platform] = {
+              url: `${publicBaseUrl.replace(/\/$/, "")}/stella-browser/${sourceSha}/${platform}/stella-browser`,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              size: statSync(filePath).size,
+            };
+          }
+          writeFileSync(manifestPath, `${JSON.stringify({
+            schemaVersion: 1,
+            sourceSha,
+            builtAt: new Date().toISOString(),
+            assets,
+          }, null, 2)}\n`);
+          NODE
+
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export AWS_DEFAULT_REGION=auto
+          for platform in darwin-arm64 darwin-x64 win-x64 linux-arm64 linux-x64; do
+            file_name="stella-browser"
+            if [ "$platform" = "win-x64" ]; then file_name="stella-browser.exe"; fi
+            aws s3 cp \
+              "browser-assets/stella-browser-${platform}/${file_name}" \
+              "s3://${R2_BUCKET}/stella-browser/${SOURCE_SHA}/${platform}/stella-browser" \
+              --cache-control "public, max-age=31536000, immutable" \
+              --endpoint-url "$R2_ENDPOINT"
+          done
+          aws s3 cp "$manifest_path" \
+            "s3://${R2_BUCKET}/stella-browser/${SOURCE_SHA}/manifest.json" \
+            --content-type application/json \
+            --cache-control "public, max-age=31536000, immutable" \
+            --endpoint-url "$R2_ENDPOINT"
+          aws s3 cp "$manifest_path" \
+            "s3://${R2_BUCKET}/stella-browser/current.json" \
+            --content-type application/json \
+            --cache-control no-cache \
+            --endpoint-url "$R2_ENDPOINT"

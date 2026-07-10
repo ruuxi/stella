@@ -67,20 +67,23 @@ jobs:
           node desktop/scripts/download-native-helpers.mjs --platform "${{ matrix.platform }}" --force
           test -f "desktop/native/out/${STELLA_NATIVE_HELPER_PLATFORM_DIR}/.stella-native-helpers.json"
 
+      - name: Download published Stella Browser service
+        shell: bash
+        run: |
+          set -euo pipefail
+          node desktop/scripts/download-stella-browser.mjs --platform "${{ matrix.platform }}" --force
+          test -f "desktop/stella-browser/out/${{ matrix.platform }}/.stella-browser.json"
+
       - name: Package release tarball
         shell: bash
         run: |
           rm -rf release-root
           mkdir release-root
 
-          # Stream every git-tracked file at HEAD into release-root so the
-          # working tree matches upstream's commit byte-for-byte. The
-          # launcher then attaches real upstream history with `git fetch
-          # --filter=blob:none origin <commit>` + `git reset --mixed
-          # <commit>` and gets a clean working state with no synthetic
-          # "deleted" entries. Hydrated dependencies and native helpers are
-          # copied in after this source snapshot so first-run install does not
-          # rebuild them on the user's machine.
+          # Stream source-controlled files at HEAD into release-root. Hydrated
+          # dependencies and platform artifacts are copied in afterward so
+          # native executables stay out of Git while fresh installs still ship
+          # ready to run.
           git archive HEAD | tar -x -C release-root/
 
           tar -cf - node_modules | tar -xf - -C release-root
@@ -95,6 +98,11 @@ jobs:
           mkdir -p "$helper_dir"
           tar -cf - -C "$helper_source_dir" . | tar -xf - -C "$helper_dir"
 
+          browser_source_dir="desktop/stella-browser/out/${{ matrix.platform }}"
+          browser_dir="release-root/desktop/stella-browser/out/${{ matrix.platform }}"
+          mkdir -p "$browser_dir"
+          tar -cf - -C "$browser_source_dir" . | tar -xf - -C "$browser_dir"
+
           node <<'NODE'
           const { createHash } = require("node:crypto");
           const { readdirSync, statSync, readFileSync, writeFileSync } = require("node:fs");
@@ -102,7 +110,11 @@ jobs:
 
           const root = "release-root";
           const files = {};
-          const excludedManifestPrefixes = ["node_modules/", "desktop/native/out/"];
+          const excludedManifestPrefixes = [
+            "node_modules/",
+            "desktop/native/out/",
+            "desktop/stella-browser/out/",
+          ];
 
           function walk(dir) {
             for (const entry of readdirSync(dir)) {
@@ -184,14 +196,6 @@ jobs:
             --output release-assets/stella-desktop-source-pack.json \
             --history-output release-assets/stella-desktop-source-history.json
 
-      - name: Stage Stella Browser service artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp desktop/stella-browser/bin/stella-browser-darwin-arm64 release-assets/stella-browser-darwin-arm64
-          cp desktop/stella-browser/bin/stella-browser-darwin-x64 release-assets/stella-browser-darwin-x64
-          cp desktop/stella-browser/bin/stella-browser-win32-x64.exe release-assets/stella-browser-win-x64.exe
-
       - name: Publish desktop payloads to R2
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -207,17 +211,22 @@ jobs:
           release_dir="desktop/releases/${tag}"
           manifest_path="$(mktemp)"
           native_helpers_manifest_path="$(mktemp)"
+          stella_browser_manifest_path="$(mktemp)"
           curl --fail --show-error --silent \
             "${R2_PUBLIC_BASE_URL%/}/native-helpers/current.json" \
             --output "$native_helpers_manifest_path"
+          curl --fail --show-error --silent \
+            "${R2_PUBLIC_BASE_URL%/}/stella-browser/current.json" \
+            --output "$stella_browser_manifest_path"
 
-          node - "$manifest_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" "$native_helpers_manifest_path" release-assets/stella-desktop-source-pack.json release-assets/stella-desktop-source-history.json release-assets/stella-desktop-*.tar.zst <<'NODE'
+          node - "$manifest_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" "$native_helpers_manifest_path" "$stella_browser_manifest_path" release-assets/stella-desktop-source-pack.json release-assets/stella-desktop-source-history.json release-assets/stella-desktop-*.tar.zst <<'NODE'
           const { createHash } = require("node:crypto");
           const { existsSync, readFileSync, statSync, writeFileSync } = require("node:fs");
           const { basename } = require("node:path");
 
-          const [manifestPath, tag, commit, publicBaseUrl, nativeHelpersManifestPath, sourcePackPath, sourceHistoryPath, ...archivePaths] = process.argv.slice(2);
+          const [manifestPath, tag, commit, publicBaseUrl, nativeHelpersManifestPath, stellaBrowserManifestPath, sourcePackPath, sourceHistoryPath, ...archivePaths] = process.argv.slice(2);
           const nativeHelpersManifest = JSON.parse(readFileSync(nativeHelpersManifestPath, "utf8"));
+          const stellaBrowserManifest = JSON.parse(readFileSync(stellaBrowserManifestPath, "utf8"));
           const releaseFileRef = (filePath) =>
             existsSync(filePath)
               ? {
@@ -247,19 +256,17 @@ jobs:
             };
           };
           const browserArtifactForPlatform = (platform) => {
-            const suffix = platform === "win-x64" ? ".exe" : "";
-            const filePath = `release-assets/stella-browser-${platform}${suffix}`;
-            if (!existsSync(filePath)) {
+            const asset = stellaBrowserManifest.assets?.[platform];
+            if (!asset) {
               throw new Error(`Missing Stella Browser artifact for ${platform}`);
             }
-            const bytes = readFileSync(filePath);
             return {
               kind: "stella-browser",
               platform,
               asset: {
-                url: `${publicBaseUrl.replace(/\/$/, "")}/desktop/releases/${tag}/${basename(filePath)}`,
-                sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
-                sizeBytes: statSync(filePath).size,
+                url: asset.url,
+                sha256: `sha256:${String(asset.sha256).replace(/^sha256:/, "")}`,
+                sizeBytes: asset.size,
               },
             };
           };
@@ -301,7 +308,6 @@ jobs:
             --recursive \
             --exclude "*" \
             --include "stella-desktop-*.tar.zst" \
-            --include "stella-browser-*" \
             --include "stella-desktop-source-pack.json" \
             --include "stella-desktop-source-history.json" \
             --endpoint-url "$R2_ENDPOINT"
@@ -356,17 +362,22 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           payload_path="$(mktemp)"
           native_helpers_manifest_path="$(mktemp)"
+          stella_browser_manifest_path="$(mktemp)"
           curl --fail --show-error --silent \
             "${R2_PUBLIC_BASE_URL%/}/native-helpers/current.json" \
             --output "$native_helpers_manifest_path"
+          curl --fail --show-error --silent \
+            "${R2_PUBLIC_BASE_URL%/}/stella-browser/current.json" \
+            --output "$stella_browser_manifest_path"
 
-          node - "$payload_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" "$native_helpers_manifest_path" release-assets/stella-desktop-source-pack.json release-assets/stella-desktop-source-history.json release-assets/stella-desktop-*.tar.zst <<'NODE'
+          node - "$payload_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" "$native_helpers_manifest_path" "$stella_browser_manifest_path" release-assets/stella-desktop-source-pack.json release-assets/stella-desktop-source-history.json release-assets/stella-desktop-*.tar.zst <<'NODE'
           const { createHash } = require("node:crypto");
           const { existsSync, readFileSync, statSync, writeFileSync } = require("node:fs");
           const { basename } = require("node:path");
 
-          const [payloadPath, tag, commit, publicBaseUrl, nativeHelpersManifestPath, sourcePackPath, sourceHistoryPath, ...archivePaths] = process.argv.slice(2);
+          const [payloadPath, tag, commit, publicBaseUrl, nativeHelpersManifestPath, stellaBrowserManifestPath, sourcePackPath, sourceHistoryPath, ...archivePaths] = process.argv.slice(2);
           const nativeHelpersManifest = JSON.parse(readFileSync(nativeHelpersManifestPath, "utf8"));
+          const stellaBrowserManifest = JSON.parse(readFileSync(stellaBrowserManifestPath, "utf8"));
           const releaseFileRef = (filePath) =>
             existsSync(filePath)
               ? {
@@ -396,19 +407,17 @@ jobs:
             };
           };
           const browserArtifactForPlatform = (platform) => {
-            const suffix = platform === "win-x64" ? ".exe" : "";
-            const filePath = `release-assets/stella-browser-${platform}${suffix}`;
-            if (!existsSync(filePath)) {
+            const asset = stellaBrowserManifest.assets?.[platform];
+            if (!asset) {
               throw new Error(`Missing Stella Browser artifact for ${platform}`);
             }
-            const bytes = readFileSync(filePath);
             return {
               kind: "stella-browser",
               platform,
               asset: {
-                url: `${publicBaseUrl.replace(/\/$/, "")}/desktop/releases/${tag}/${basename(filePath)}`,
-                sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
-                sizeBytes: statSync(filePath).size,
+                url: asset.url,
+                sha256: `sha256:${String(asset.sha256).replace(/^sha256:/, "")}`,
+                sizeBytes: asset.size,
               },
             };
           };

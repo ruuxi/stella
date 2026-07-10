@@ -50,34 +50,71 @@ export const resolveStellaBrowserRoot = (): string => {
   return path.join(compiledDesktopRootCandidates[0], "stella-browser");
 };
 
-const currentStellaBrowserBinaryName = (): string | null => {
+export const currentStellaBrowserPlatformKey = (): string | null => {
   const platform = os.platform();
   const arch = os.arch();
   if (platform === "darwin" && arch === "arm64") {
-    return "stella-browser-darwin-arm64";
+    return "darwin-arm64";
   }
   if (platform === "darwin" && arch === "x64") {
-    return "stella-browser-darwin-x64";
+    return "darwin-x64";
   }
   if (platform === "win32" && arch === "x64") {
-    return "stella-browser-win32-x64.exe";
+    return "win-x64";
   }
   if (platform === "linux" && arch === "arm64") {
-    return "stella-browser-linux-arm64";
+    return "linux-arm64";
   }
   if (platform === "linux" && arch === "x64") {
-    return "stella-browser-linux-x64";
+    return "linux-x64";
   }
   return null;
 };
 
-/** Promote a verified updater artifact before any service/native-host spawn. */
-export const activateStagedStellaBrowserBinary = (
+const legacyStellaBrowserBinaryName = (platformKey: string): string => {
+  if (platformKey === "win-x64") return "stella-browser-win32-x64.exe";
+  return `stella-browser-${platformKey}`;
+};
+
+const hydratedStellaBrowserBinaryName = (): string =>
+  process.platform === "win32" ? "stella-browser.exe" : "stella-browser";
+
+export const resolveHydratedStellaBrowserBinaryPath = (
   stellaBrowserRoot = resolveStellaBrowserRoot(),
-): boolean => {
-  const binaryName = currentStellaBrowserBinaryName();
-  if (!binaryName) return false;
-  const binaryPath = path.join(stellaBrowserRoot, "bin", binaryName);
+): string | null => {
+  const platformKey = currentStellaBrowserPlatformKey();
+  if (!platformKey) return null;
+  return path.join(
+    stellaBrowserRoot,
+    "out",
+    platformKey,
+    hydratedStellaBrowserBinaryName(),
+  );
+};
+
+export const resolveLegacyStellaBrowserBinaryPath = (
+  stellaBrowserRoot = resolveStellaBrowserRoot(),
+): string | null => {
+  const platformKey = currentStellaBrowserPlatformKey();
+  if (!platformKey) return null;
+  return path.join(
+    stellaBrowserRoot,
+    "bin",
+    legacyStellaBrowserBinaryName(platformKey),
+  );
+};
+
+/** Prefer the hydrated artifact, with a temporary tracked-bin fallback. */
+export const resolveStellaBrowserBinaryPath = (
+  stellaBrowserRoot = resolveStellaBrowserRoot(),
+): string | null => {
+  const hydrated = resolveHydratedStellaBrowserBinaryPath(stellaBrowserRoot);
+  if (hydrated && existsSync(hydrated)) return hydrated;
+  const legacy = resolveLegacyStellaBrowserBinaryPath(stellaBrowserRoot);
+  return legacy && existsSync(legacy) ? legacy : (hydrated ?? legacy);
+};
+
+const promoteStagedBinary = (binaryPath: string): boolean => {
   const stagedPath = `${binaryPath}.update`;
   if (!existsSync(stagedPath)) return false;
 
@@ -101,3 +138,31 @@ export const activateStagedStellaBrowserBinary = (
     );
   }
 };
+
+/** Promote a verified updater artifact before any service/native-host spawn. */
+export const activateStagedStellaBrowserBinary = (
+  stellaBrowserRoot = resolveStellaBrowserRoot(),
+): boolean => {
+  const hydrated = resolveHydratedStellaBrowserBinaryPath(stellaBrowserRoot);
+  const legacy = resolveLegacyStellaBrowserBinaryPath(stellaBrowserRoot);
+  if (!hydrated || !legacy) return false;
+  // New updates always stage into ignored out/<platform>. Also finish any
+  // legacy bin/<platform>.update left by an older updater during migration.
+  const hydratedActivated = promoteStagedBinary(hydrated);
+  const legacyActivated = promoteStagedBinary(legacy);
+  return hydratedActivated || legacyActivated;
+};
+
+/**
+ * Reconcile an updater-staged browser binary in a source install.
+ *
+ * The desktop updater writes `<binary>.update` inside the install tree. Keep
+ * this install-root adapter here so startup, update completion, and recovery
+ * all use the exact same atomic promotion routine.
+ */
+export const activateStagedStellaBrowserBinaryForInstall = (
+  stellaAppDir: string,
+): boolean =>
+  activateStagedStellaBrowserBinary(
+    path.join(stellaAppDir, "desktop", "stella-browser"),
+  );

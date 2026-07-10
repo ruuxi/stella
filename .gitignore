@@ -34,6 +34,7 @@ DEV-CONTEXT.md
 /.stella-desktop-download.tar.zst
 /.stella-native-helpers-download.tar.zst
 /.stella-native-helpers-extract-*/
+/claude-code-resolved-models.json
 /launch.sh
 /stella-install.json
 /stella-install.log

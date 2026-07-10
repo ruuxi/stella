@@ -15,7 +15,11 @@ import {
   getStellaBrowserSocketDir,
 } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import { registerStellaNativeMessagingHost } from "../utils/register-stella-native-messaging-host.js";
-import { resolveStellaBrowserRoot } from "../utils/stella-browser-paths.js";
+import {
+  resolveLegacyStellaBrowserBinaryPath,
+  resolveStellaBrowserBinaryPath,
+  resolveStellaBrowserRoot,
+} from "../utils/stella-browser-paths.js";
 import { stopChildProcessTree } from "../process-runtime.js";
 
 const execFileAsync = promisify(execFile);
@@ -48,10 +52,16 @@ const parseProcessRows = (output: string): ProcessRow[] =>
     );
 
 const findOrphanedBundledDaemonPids = async (): Promise<number[]> => {
-  const binDir = path.join(resolveStellaBrowserRoot(), "bin");
+  const activeBinaryPath = resolveStellaBrowserBinaryPath();
+  const legacyBinaryPath = resolveLegacyStellaBrowserBinaryPath();
+  const binaryPaths = [activeBinaryPath, legacyBinaryPath].filter(
+    (value): value is string => Boolean(value),
+  );
   if (process.platform === "win32") {
-    const binaryPath = path.join(binDir, "stella-browser-win32-x64.exe");
+    const binaryPath = activeBinaryPath ?? legacyBinaryPath;
+    if (!binaryPath) return [];
     const quotedBinaryPath = binaryPath.replace(/'/g, "''");
+    const quotedBinaryName = path.basename(binaryPath).replace(/'/g, "''");
     try {
       // Exclude Chrome-spawned native messaging hosts: Chrome passes the
       // extension origin (chrome-extension://...) as an argument and owns
@@ -64,7 +74,7 @@ const findOrphanedBundledDaemonPids = async (): Promise<number[]> => {
           "-Command",
           [
             `$target = '${quotedBinaryPath}'`,
-            "Get-CimInstance Win32_Process -Filter \"Name = 'stella-browser-win32-x64.exe'\"",
+            `Get-CimInstance Win32_Process -Filter "Name = '${quotedBinaryName}'"`,
             "| Where-Object { $_.ExecutablePath -eq $target -and $_.ProcessId -ne $PID -and $_.CommandLine -notlike '*chrome-extension://*' }",
             "| Select-Object -ExpandProperty ProcessId -Unique",
           ].join("; "),
@@ -83,12 +93,6 @@ const findOrphanedBundledDaemonPids = async (): Promise<number[]> => {
       return [];
     }
   }
-
-  const binaryNames = [
-    "stella-browser-darwin-arm64",
-    "stella-browser-darwin-x64",
-  ];
-  const binaryPaths = binaryNames.map((name) => path.join(binDir, name));
 
   try {
     const { stdout } = await execFileAsync(

@@ -55,8 +55,14 @@ native/src/parakeet-helper/.build/
 # Agent Browser
 stella-browser/node_modules/
 stella-browser/dist/
+stella-browser/out/
 stella-browser/cli/target/
 stella-browser/cli/*.o
+# Platform browser-service executables are built by desktop release CI and
+# delivered through per-platform release artifacts, like native/out helpers.
+stella-browser/bin/stella-browser-darwin-*
+stella-browser/bin/stella-browser-linux-*
+stella-browser/bin/stella-browser-win32-*.exe
 stella-browser/*.png
 stella-browser/*.jpeg
 stella-browser/*.jpg

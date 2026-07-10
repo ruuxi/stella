@@ -22,7 +22,7 @@ import {
 } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import {
   activateStagedStellaBrowserBinary,
-  resolveStellaBrowserRoot,
+  resolveStellaBrowserBinaryPath,
 } from "./stella-browser-paths.js";
 
 const execFileAsync = promisify(execFile);
@@ -208,8 +208,7 @@ export async function registerStellaNativeMessagingHost(): Promise<{
 }> {
   try {
     activateStagedStellaBrowserBinary();
-    const binaryName = getStellaBrowserBinaryName();
-    if (!binaryName) {
+    if (!getStellaBrowserBinaryName()) {
       return {
         ok: false,
         error:
@@ -217,8 +216,8 @@ export async function registerStellaNativeMessagingHost(): Promise<{
       };
     }
 
-    const binaryPath = path.join(resolveStellaBrowserRoot(), "bin", binaryName);
-    if (!existsSync(binaryPath)) {
+    const binaryPath = resolveStellaBrowserBinaryPath();
+    if (!binaryPath || !existsSync(binaryPath)) {
       return {
         ok: false,
         error:
