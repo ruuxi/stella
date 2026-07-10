@@ -442,21 +442,31 @@ export type DesktopReleaseSourceHistoryRef = {
   sizeBytes: number;
 };
 
-export type StellaReleaseArtifactRef = {
-  kind: "native-helpers";
-  platform: string;
-  /** Pinned manifest for this helper build; avoids drifting to latest. */
-  manifestUrl: string;
-  manifestSha?: string;
-  commit?: string;
-  builtAt?: string;
-  sourceRevisionId?: string;
-  asset: {
-    url: string;
-    sha256: string;
-    sizeBytes: number;
-  };
-};
+export type StellaReleaseArtifactRef =
+  | {
+      kind: "native-helpers";
+      platform: string;
+      /** Pinned manifest for this helper build; avoids drifting to latest. */
+      manifestUrl: string;
+      manifestSha?: string;
+      commit?: string;
+      builtAt?: string;
+      sourceRevisionId?: string;
+      asset: {
+        url: string;
+        sha256: string;
+        sizeBytes: number;
+      };
+    }
+  | {
+      kind: "stella-browser";
+      platform: string;
+      asset: {
+        url: string;
+        sha256: string;
+        sizeBytes: number;
+      };
+    };
 
 /**
  * A published Store release carries a canonical git-object feature commit plus

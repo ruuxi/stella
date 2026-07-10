@@ -7,7 +7,7 @@
  */
 
 import { spawn } from 'child_process';
-import { existsSync, accessSync, chmodSync, constants } from 'fs';
+import { existsSync, accessSync, chmodSync, constants, renameSync, rmSync } from 'fs';
 import { join } from 'path';
 import { platform, arch } from 'os';
 
@@ -57,7 +57,28 @@ function resolveBinaryPath(binaryName) {
     return forcedBinaryPath;
   }
 
-  return join(__dirname, binaryName);
+  const binaryPath = join(__dirname, binaryName);
+  const stagedPath = `${binaryPath}.update`;
+  if (existsSync(stagedPath)) {
+    const previousPath = `${binaryPath}.previous`;
+    try {
+      rmSync(previousPath, { force: true });
+      if (existsSync(binaryPath)) renameSync(binaryPath, previousPath);
+      renameSync(stagedPath, binaryPath);
+      rmSync(previousPath, { force: true });
+    } catch (error) {
+      if (!existsSync(binaryPath) && existsSync(previousPath)) {
+        try {
+          renameSync(previousPath, binaryPath);
+        } catch {
+          // Keep the original error; startup cannot proceed without a binary.
+        }
+      }
+      console.error(`Error: Cannot activate browser service update: ${error.message}`);
+      process.exit(1);
+    }
+  }
+  return binaryPath;
 }
 
 function main() {

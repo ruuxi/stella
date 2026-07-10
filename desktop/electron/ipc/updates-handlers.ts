@@ -77,6 +77,7 @@ const RELEASE_MANIFEST_BASENAME = "stella-release.json";
 const DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL =
   "https://pub-a319aaada8144dc9be5a83625033769c.r2.dev/native-helpers";
 const DEFAULT_NATIVE_HELPERS_MANIFEST_URL = `${DEFAULT_NATIVE_HELPERS_PUBLIC_BASE_URL}/current.json`;
+const MAX_STELLA_BROWSER_ARTIFACT_BYTES = 100 * 1024 * 1024;
 const UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS = 120_000;
 // Recording source history is best-effort and may run after launch or after an
 // update. Keep it out of renderer startup and wait for real runtime readiness
@@ -589,7 +590,10 @@ const resolveNativeHelpersManifestUrl = (
   artifactRefs?: StellaReleaseArtifactRef[],
 ): string => {
   const releaseNativeRef = artifactRefs?.find(
-    (ref) => ref.kind === "native-helpers" && ref.platform === platformKey,
+    (
+      ref,
+    ): ref is Extract<StellaReleaseArtifactRef, { kind: "native-helpers" }> =>
+      ref.kind === "native-helpers" && ref.platform === platformKey,
   );
   return releaseNativeRef?.manifestUrl ?? getNativeHelpersManifestUrl();
 };
@@ -665,6 +669,145 @@ const refreshNativeHelpers = async (
       ? "Native helper refresh failed because Bun is not available."
       : "Native helper refresh failed because no Bun command was configured.",
   );
+};
+
+const stellaBrowserBinaryName = (platformKey: string): string | null => {
+  switch (platformKey) {
+    case "darwin-arm64":
+      return "stella-browser-darwin-arm64";
+    case "darwin-x64":
+      return "stella-browser-darwin-x64";
+    case "win-x64":
+      return "stella-browser-win32-x64.exe";
+    case "linux-arm64":
+      return "stella-browser-linux-arm64";
+    case "linux-x64":
+      return "stella-browser-linux-x64";
+    default:
+      return null;
+  }
+};
+
+export const stageStellaBrowserUpdate = async (
+  stellaAppDir: string,
+  artifactRefs?: StellaReleaseArtifactRef[],
+): Promise<string | null> => {
+  const platformKey = nativeHelperPlatformKey();
+  const ref = artifactRefs?.find(
+    (candidate) =>
+      candidate.kind === "stella-browser" &&
+      candidate.platform === platformKey,
+  );
+  if (!ref) return null;
+
+  const binaryName = stellaBrowserBinaryName(platformKey);
+  if (!binaryName) {
+    throw new Error(`Unsupported Stella Browser update platform: ${platformKey}.`);
+  }
+  const { asset } = ref;
+  if (!/^https:\/\//i.test(asset.url)) {
+    throw new Error("Stella Browser artifact URL is invalid.");
+  }
+  if (!/^sha256:[0-9a-f]{64}$/i.test(asset.sha256)) {
+    throw new Error("Stella Browser artifact hash is invalid.");
+  }
+  if (
+    !Number.isInteger(asset.sizeBytes) ||
+    asset.sizeBytes <= 0 ||
+    asset.sizeBytes > MAX_STELLA_BROWSER_ARTIFACT_BYTES
+  ) {
+    throw new Error("Stella Browser artifact size is invalid.");
+  }
+
+  const bytes = await withDownloadRetries(
+    "Stella Browser artifact",
+    asset.url,
+    async () => {
+      const response = await fetch(asset.url);
+      if (!response.ok) {
+        const message = `Stella Browser artifact download failed (${response.status}).`;
+        if (isRetryableHttpStatus(response.status)) {
+          throw new RetryableDownloadError(message, response.status);
+        }
+        throw new Error(message);
+      }
+      const downloaded = new Uint8Array(await response.arrayBuffer());
+      if (downloaded.byteLength !== asset.sizeBytes) {
+        throw new RetryableDownloadError(
+          "Stella Browser artifact size did not match the release.",
+        );
+      }
+      return downloaded;
+    },
+  );
+  if (hashBytes(bytes).toLowerCase() !== asset.sha256.toLowerCase()) {
+    throw new Error("Stella Browser artifact hash did not match the release.");
+  }
+
+  const relativePath = path.posix.join(
+    "desktop",
+    "stella-browser",
+    "bin",
+    binaryName,
+  );
+  const binaryPath = path.join(stellaAppDir, ...relativePath.split("/"));
+  const stagedPath = `${binaryPath}.update`;
+  const installedBytes = await fs.readFile(binaryPath).catch(() => null);
+  if (
+    installedBytes &&
+    hashBytes(installedBytes).toLowerCase() === asset.sha256.toLowerCase()
+  ) {
+    await fs.rm(stagedPath, { force: true }).catch(() => undefined);
+    return null;
+  }
+  const tempPath = `${stagedPath}.${process.pid}.${randomUUID()}.tmp`;
+  await fs.mkdir(path.dirname(binaryPath), { recursive: true });
+  try {
+    await fs.writeFile(tempPath, bytes, { mode: 0o755 });
+    if (process.platform !== "win32") await fs.chmod(tempPath, 0o755);
+    await fs.rename(tempPath, stagedPath);
+  } finally {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+  }
+  return relativePath;
+};
+
+const stageStellaBrowserGitBlob = async (
+  stellaAppDir: string,
+  relativePath: string,
+): Promise<void> => {
+  const stagedPath = path.join(
+    stellaAppDir,
+    ...`${relativePath}.update`.split("/"),
+  );
+  const hashResult = await runGit(stellaAppDir, [
+    "hash-object",
+    "-w",
+    stagedPath,
+  ]);
+  const objectId = hashResult.stdout.trim();
+  if (hashResult.exitCode !== 0 || !/^[0-9a-f]{40,64}$/i.test(objectId)) {
+    throw new Error(
+      gitFailureDetail(
+        hashResult,
+        "Could not store the Stella Browser update in Git.",
+      ),
+    );
+  }
+  const updateIndex = await runGit(stellaAppDir, [
+    "update-index",
+    "--add",
+    "--cacheinfo",
+    `100755,${objectId},${relativePath}`,
+  ]);
+  if (updateIndex.exitCode !== 0) {
+    throw new Error(
+      gitFailureDetail(
+        updateIndex,
+        "Could not stage the Stella Browser update in Git.",
+      ),
+    );
+  }
 };
 
 const readGitFile = async (
@@ -2590,12 +2733,24 @@ const tryApplySourcePackDesktopUpdate = async (
     };
   }
 
+  const stagedBrowserPath = await stageStellaBrowserUpdate(
+    stellaAppDir,
+    args.artifactRefs,
+  );
+  const sourceUpdatePaths = stagedBrowserPath
+    ? [...new Set([...preflight.sourcePaths, stagedBrowserPath])]
+    : preflight.sourcePaths;
+  const appliedUpdatePaths = stagedBrowserPath
+    ? [...new Set([...preflight.sourceApply.appliedPaths, stagedBrowserPath])]
+    : preflight.sourceApply.appliedPaths;
+
   if (preflight.sourceApply.appliedPaths.length === 0) {
     const manifestBefore = await readManifestWithRecovery(stellaAppDir).catch(
       () => null,
     );
     const alreadyLive =
-      manifestBefore?.installState?.desktopReleaseCommit === args.targetCommit;
+      manifestBefore?.installState?.desktopReleaseCommit === args.targetCommit &&
+      !stagedBrowserPath;
     logDesktopUpdateProcess("desktop-update.source-pack.noop", {
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
@@ -2608,7 +2763,7 @@ const tryApplySourcePackDesktopUpdate = async (
     // the running app is stale. Replay the self-mod reload cycle over the
     // pack's paths instead of fake-reporting success.
     let reloaded = alreadyLive;
-    if (!alreadyLive && runner && preflight.sourcePaths.length > 0) {
+    if (!alreadyLive && runner && sourceUpdatePaths.length > 0) {
       const resumeRunId = `desktop-update-source-pack-resume:${Date.now()}:${Math.random()
         .toString(36)
         .slice(2)}`;
@@ -2618,20 +2773,20 @@ const tryApplySourcePackDesktopUpdate = async (
           UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
           runner.beginExternalSelfMod({
             runId: resumeRunId,
-            paths: expandExternalSelfModPaths(preflight.sourcePaths),
+            paths: expandExternalSelfModPaths(sourceUpdatePaths),
           }),
           {
             runId: resumeRunId,
             releaseTag: args.releaseTag,
             targetCommit: shortCommit(args.targetCommit),
-            changedFileCount: preflight.sourcePaths.length,
+            changedFileCount: sourceUpdatePaths.length,
           },
         );
         ({ reloaded } = await finishUpdateSelfModRun({
           runner,
           reacquireRunner: args.reacquireRunner,
           runId: resumeRunId,
-          paths: preflight.sourcePaths,
+          paths: sourceUpdatePaths,
           logScope: "source-pack",
           logFields: {
             runId: resumeRunId,
@@ -2706,7 +2861,7 @@ const tryApplySourcePackDesktopUpdate = async (
       status: "needs-agent",
       reason: "Stella runtime is not available for the update morph.",
       headCommit: await readHeadCommit(stellaAppDir),
-      changedFiles: preflight.sourceApply.appliedPaths,
+      changedFiles: appliedUpdatePaths,
     };
   }
 
@@ -2721,13 +2876,13 @@ const tryApplySourcePackDesktopUpdate = async (
       UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
       runner.beginExternalSelfMod({
         runId,
-        paths: expandExternalSelfModPaths(preflight.sourceApply.appliedPaths),
+        paths: expandExternalSelfModPaths(appliedUpdatePaths),
       }),
       {
         runId,
         releaseTag: args.releaseTag,
         targetCommit: shortCommit(args.targetCommit),
-        changedFileCount: preflight.sourceApply.appliedPaths.length,
+        changedFileCount: appliedUpdatePaths.length,
       },
     );
     hmrRunStarted = true;
@@ -2749,7 +2904,7 @@ const tryApplySourcePackDesktopUpdate = async (
       phase: "source-pack-write",
       mode: "source-pack",
       recoveryAction: "discard",
-      changedFiles: preflight.sourceApply.appliedPaths,
+      changedFiles: appliedUpdatePaths,
     });
     const { dependencyInstallRan } = await applyCleanSourceImportToWorkingTree({
       repoRoot: stellaAppDir,
@@ -2772,7 +2927,7 @@ const tryApplySourcePackDesktopUpdate = async (
       phase: "source-pack-commit",
       mode: "source-pack",
       recoveryAction: "resume",
-      changedFiles: preflight.sourceApply.appliedPaths,
+      changedFiles: appliedUpdatePaths,
     });
     const addResult = await runGit(stellaAppDir, [
       "add",
@@ -2784,6 +2939,9 @@ const tryApplySourcePackDesktopUpdate = async (
       throw new Error(
         gitFailureDetail(addResult, "Could not stage source-pack update."),
       );
+    }
+    if (stagedBrowserPath) {
+      await stageStellaBrowserGitBlob(stellaAppDir, stagedBrowserPath);
     }
     const commitResult = await runGit(stellaAppDir, [
       "commit",
@@ -2813,7 +2971,7 @@ const tryApplySourcePackDesktopUpdate = async (
       runner,
       reacquireRunner: args.reacquireRunner,
       runId,
-      paths: preflight.sourceApply.appliedPaths,
+      paths: appliedUpdatePaths,
       logScope: "source-pack",
       logFields: {
         runId,
@@ -2825,7 +2983,7 @@ const tryApplySourcePackDesktopUpdate = async (
     await refreshNativeHelpers(stellaAppDir, args.releaseTag, args.artifactRefs, {
       transaction: args.transaction,
       mode: "source-pack",
-      changedFiles: preflight.sourceApply.appliedPaths,
+      changedFiles: appliedUpdatePaths,
     });
     if (!reloaded) {
       logDesktopUpdateWarn("desktop-update.source-pack.applied-without-reload", {
@@ -2837,7 +2995,7 @@ const tryApplySourcePackDesktopUpdate = async (
         status: "applied",
         manifest: null,
         headCommit: await readHeadCommit(stellaAppDir),
-        changedFiles: preflight.sourceApply.appliedPaths,
+        changedFiles: appliedUpdatePaths,
         dependencyInstallRan,
         nativeHelpersRefreshed: true,
         reloaded: false,
@@ -2847,7 +3005,7 @@ const tryApplySourcePackDesktopUpdate = async (
       phase: "record-complete",
       mode: "source-pack",
       recoveryAction: "resume",
-      changedFiles: preflight.sourceApply.appliedPaths,
+      changedFiles: appliedUpdatePaths,
     });
     const manifest = await writeAppliedReleasePointer(
       stellaAppDir,
@@ -2858,7 +3016,7 @@ const tryApplySourcePackDesktopUpdate = async (
       status: "applied",
       manifest,
       headCommit: await readHeadCommit(stellaAppDir),
-      changedFiles: preflight.sourceApply.appliedPaths,
+      changedFiles: appliedUpdatePaths,
       dependencyInstallRan,
       nativeHelpersRefreshed: true,
       reloaded: true,

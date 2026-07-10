@@ -235,6 +235,11 @@ describe("isRestartRequiredNonHmrPath", () => {
     ).toBe(true);
     expect(isRestartRequiredNonHmrPath("desktop/vite.config.ts")).toBe(true);
     expect(isRestartRequiredNonHmrPath("desktop/electron/main.ts")).toBe(true);
+    expect(
+      isRestartRequiredNonHmrPath(
+        "desktop/stella-browser/bin/stella-browser-darwin-arm64",
+      ),
+    ).toBe(true);
     expect(isRestartRequiredNonHmrPath("runtime/kernel/runner.ts")).toBe(true);
   });
 

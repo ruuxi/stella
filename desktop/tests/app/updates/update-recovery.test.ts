@@ -20,6 +20,7 @@ import { createRuntimeUnavailableError } from "../../../../runtime/protocol/rpc-
 import {
   recordAppliedDesktopUpdate,
   recoverInterruptedDesktopUpdate,
+  stageStellaBrowserUpdate,
   tryApplyCleanDesktopUpdate,
 } from "../../../electron/ipc/updates-handlers.js";
 
@@ -111,6 +112,54 @@ const sourcePackRefFor = (pack: unknown) => {
     sizeBytes: new TextEncoder().encode(raw).byteLength,
   };
 };
+
+describe("stageStellaBrowserUpdate", () => {
+  it("downloads and stages the pinned platform binary without replacing the running one", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "stella-browser-update-"));
+    const binaryName =
+      platformKey === "win-x64"
+        ? "stella-browser-win32-x64.exe"
+        : `stella-browser-${platformKey}`;
+    const binaryPath = path.join(
+      root,
+      "desktop",
+      "stella-browser",
+      "bin",
+      binaryName,
+    );
+    const oldBytes = Buffer.from("old-browser-binary");
+    const nextBytes = Buffer.from("new-browser-binary");
+    await mkdir(path.dirname(binaryPath), { recursive: true });
+    await writeFile(binaryPath, oldBytes);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(nextBytes, { status: 200 }),
+    );
+
+    try {
+      const relativePath = await stageStellaBrowserUpdate(root, [
+        {
+          kind: "stella-browser",
+          platform: platformKey,
+          asset: {
+            url: "https://releases.test/stella-browser",
+            sha256: `sha256:${createHash("sha256").update(nextBytes).digest("hex")}`,
+            sizeBytes: nextBytes.byteLength,
+          },
+        },
+      ]);
+
+      expect(relativePath).toBe(
+        `desktop/stella-browser/bin/${binaryName}`,
+      );
+      expect(await readFile(binaryPath)).toEqual(oldBytes);
+      expect(await readFile(`${binaryPath}.update`)).toEqual(nextBytes);
+      expect(fetchSpy).toHaveBeenCalledOnce();
+    } finally {
+      fetchSpy.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("recoverInterruptedDesktopUpdate", () => {
   let repoRoot = "";
@@ -563,6 +612,18 @@ describe("recoverInterruptedDesktopUpdate", () => {
   });
 
   it("brackets source-pack batch apply in the external self-mod morph lifecycle", async () => {
+    const browserBinaryName =
+      platformKey === "win-x64"
+        ? "stella-browser-win32-x64.exe"
+        : `stella-browser-${platformKey}`;
+    const browserRelativePath = `desktop/stella-browser/bin/${browserBinaryName}`;
+    const browserPath = path.join(repoRoot, ...browserRelativePath.split("/"));
+    const oldBrowserBytes = Buffer.from("old-browser-binary");
+    const nextBrowserBytes = Buffer.from("new-browser-binary");
+    await mkdir(path.dirname(browserPath), { recursive: true });
+    await writeFile(browserPath, oldBrowserBytes, { mode: 0o755 });
+    git(repoRoot, ["add", browserRelativePath]);
+    git(repoRoot, ["commit", "-m", "Add browser binary"]);
     const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
     await writeInstallManifest(repoRoot, {
       activeCommit: baseCommit,
@@ -600,6 +661,9 @@ describe("recoverInterruptedDesktopUpdate", () => {
         if (value === sourcePackRef.url) {
           return new Response(sourcePackRaw, { status: 200 });
         }
+        if (value === "https://releases.test/stella-browser") {
+          return new Response(nextBrowserBytes, { status: 200 });
+        }
         return new Response("not found", { status: 404 });
       }),
     );
@@ -609,6 +673,7 @@ describe("recoverInterruptedDesktopUpdate", () => {
       beginExternalSelfMod: vi.fn(async (payload: { paths: string[] }) => {
         events.push(`begin:${await readFile(path.join(repoRoot, "app.txt"), "utf8")}`);
         expect(payload.paths).toContain("app.txt");
+        expect(payload.paths).toContain(browserRelativePath);
       }),
       finishExternalSelfMod: vi.fn(async (payload: { succeeded: boolean }) => {
         events.push(`finish:${await readFile(path.join(repoRoot, "app.txt"), "utf8")}`);
@@ -625,6 +690,17 @@ describe("recoverInterruptedDesktopUpdate", () => {
       targetCommit,
       releaseTag: "desktop-v9.9.7",
       sourcePackRef,
+      artifactRefs: [
+        {
+          kind: "stella-browser",
+          platform: platformKey,
+          asset: {
+            url: "https://releases.test/stella-browser",
+            sha256: `sha256:${createHash("sha256").update(nextBrowserBytes).digest("hex")}`,
+            sizeBytes: nextBrowserBytes.byteLength,
+          },
+        },
+      ],
     });
 
     expect(result.status).toBe("applied");
@@ -632,6 +708,11 @@ describe("recoverInterruptedDesktopUpdate", () => {
     expect(runner?.beginExternalSelfMod).toHaveBeenCalledTimes(1);
     expect(runner?.finishExternalSelfMod).toHaveBeenCalledTimes(1);
     expect(events).toEqual(["begin:base\n", "finish:source-pack target\n"]);
+    expect(await readFile(browserPath)).toEqual(oldBrowserBytes);
+    expect(await readFile(`${browserPath}.update`)).toEqual(nextBrowserBytes);
+    expect(
+      git(repoRoot, ["show", `HEAD:${browserRelativePath}`]).stdout,
+    ).toBe(nextBrowserBytes.toString());
     await expect(readInstallManifest(repoRoot)).resolves.toMatchObject({
       installState: { desktopReleaseCommit: targetCommit },
       lastUpdateAttempt: {
