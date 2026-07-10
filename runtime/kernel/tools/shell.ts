@@ -557,7 +557,12 @@ export const extractOfficePreviewRef = (
 };
 
 const buildWindowsCliShimScript = (envVar: string): string =>
-  ["@echo off", `"%STELLA_NODE_BIN%" "%${envVar}%" %*`, ""].join("\r\n");
+  [
+    "@echo off",
+    'set "ELECTRON_RUN_AS_NODE=1"',
+    `"%STELLA_NODE_BIN%" "%${envVar}%" %*`,
+    "",
+  ].join("\r\n");
 
 const buildWindowsNodeShimScript = (): string =>
   [
@@ -719,7 +724,7 @@ const buildProtectedCommand = (
 
   const preamble = `
 __stella_dd() {
-  "$STELLA_NODE_BIN" "$STELLA_DEFERRED_DELETE_HELPER" "$@"
+  ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_DEFERRED_DELETE_HELPER" "$@"
 }
 __stella_git_exec() {
   if [ -n "$STELLA_GIT_BIN" ]; then
@@ -777,11 +782,11 @@ erase() { rm "$@"; }
 rd() { rmdir "$@"; }
 powershell() { __stella_dd powershell "$PWD" "$(type -P powershell || true)" "$@"; }
 pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
-${stellaOfficeBin ? `stella-office() { "$STELLA_NODE_BIN" "$STELLA_OFFICE_BIN" "$@"; }` : ""}
-${stellaComputerCli ? `stella-computer() { "$STELLA_NODE_BIN" "$STELLA_COMPUTER_CLI" "$@"; }` : ""}
-${stellaConnectCli ? `stella-connect() { "$STELLA_NODE_BIN" "$STELLA_CONNECT_CLI" "$@"; }` : ""}
-${stellaMediaCli ? `stella-media() { "$STELLA_NODE_BIN" "$STELLA_MEDIA_CLI" "$@"; }` : ""}
-${stellaXApiCli ? `stella-x-api() { "$STELLA_NODE_BIN" "$STELLA_X_API_CLI" "$@"; }` : ""}
+${stellaOfficeBin ? `stella-office() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_OFFICE_BIN" "$@"; }` : ""}
+${stellaComputerCli ? `stella-computer() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_COMPUTER_CLI" "$@"; }` : ""}
+${stellaConnectCli ? `stella-connect() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_CONNECT_CLI" "$@"; }` : ""}
+${stellaMediaCli ? `stella-media() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_MEDIA_CLI" "$@"; }` : ""}
+${stellaXApiCli ? `stella-x-api() { ELECTRON_RUN_AS_NODE=1 "$STELLA_NODE_BIN" "$STELLA_X_API_CLI" "$@"; }` : ""}
 ${pythonFuncs}
 export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${stellaConnectCli ? " stella-connect" : ""}${stellaMediaCli ? " stella-media" : ""}${stellaXApiCli ? " stella-x-api" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
@@ -796,7 +801,9 @@ const buildShellCommand = (command: string, state: ShellState): string => {
   return buildProtectedCommand(command, state);
 };
 
-const resolveStellaDataDirFromState = (state: ShellState): string | undefined => {
+const resolveStellaDataDirFromState = (
+  state: ShellState,
+): string | undefined => {
   const stateRoot = path.resolve(state.secretStateRoot);
   if (path.basename(stateRoot) === "state") {
     return path.dirname(stateRoot);

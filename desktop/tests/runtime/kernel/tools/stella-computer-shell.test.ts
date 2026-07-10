@@ -40,6 +40,7 @@ describe("stella-computer shell bootstrap", () => {
       fakeComputerCliPath,
       `console.log(JSON.stringify({
   cli: process.env.STELLA_COMPUTER_CLI ?? null,
+  electronRunAsNode: process.env.ELECTRON_RUN_AS_NODE ?? null,
   args: process.argv.slice(2),
 }));`,
       "utf-8",
@@ -58,6 +59,7 @@ describe("stella-computer shell bootstrap", () => {
     expect(output).not.toContain("Command exited with code");
     expect(JSON.parse(output)).toEqual({
       cli: fakeComputerCliPath,
+      electronRunAsNode: "1",
       args: ["snapshot", "--json"],
     });
   });
@@ -120,7 +122,36 @@ describe("stella-computer shell bootstrap", () => {
       path.join(String(state.windowsCliShimDir), "stella-computer.cmd"),
       "utf-8",
     );
+    expect(shim).toContain('set "ELECTRON_RUN_AS_NODE=1"');
     expect(shim).toContain('"%STELLA_NODE_BIN%" "%STELLA_COMPUTER_CLI%" %*');
+  });
+
+  it("runs stella-connect through Electron's Node mode", async () => {
+    const tempDir = createTempDir();
+    const fakeConnectCliPath = path.join(tempDir, "fake-stella-connect.js");
+    writeFileSync(
+      fakeConnectCliPath,
+      `console.log(JSON.stringify({
+  electronRunAsNode: process.env.ELECTRON_RUN_AS_NODE ?? null,
+  args: process.argv.slice(2),
+}));`,
+      "utf-8",
+    );
+
+    const state = createShellState(tempDir, {
+      stellaConnectCliPath: fakeConnectCliPath,
+    });
+    const output = await runShell(
+      state,
+      "stella-connect tools outlook",
+      tempDir,
+      10_000,
+    );
+
+    expect(JSON.parse(output)).toEqual({
+      electronRunAsNode: "1",
+      args: ["tools", "outlook"],
+    });
   });
 
   it("always creates a Windows cmd shim for Node.js", () => {
