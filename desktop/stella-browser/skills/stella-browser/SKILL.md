@@ -7,7 +7,7 @@ description: Control Stella-owned browser tabs through the persistent node_repl 
 
 Use `node_repl` for production browser automation. Its persistent JavaScript runtime exposes a deeply frozen `browser` object with top-level `await`. Bindings and `Tab` and `Locator` identities persist across calls, so create handles once and reuse them.
 
-Use `var` for reusable REPL bindings. Do not use `exec_command` or the `stella-browser` CLI for normal browser work.
+Use `var` for reusable REPL bindings. Browser actions are not exposed through `exec_command`; use the frozen `browser` API only.
 
 ## Production Workflow
 
@@ -174,13 +174,8 @@ evaluate(pageFunction, arg?), waitFor(options?), allTextContents()
 
 Timeouts are non-negative milliseconds and are capped at 120 seconds unless a smaller `expectNewTab()` limit applies. Unknown option keys fail fast.
 
-## CLI Diagnostic Fallback
+## Transport Failures
 
-Use `exec_command` with `stella-browser` only to diagnose bridge availability or a frozen-API transport failure. Do not switch to CLI navigation, snapshot refs, or interaction commands as the normal workflow, and do not mix CLI ref state with persistent `Tab` and `Locator` handles.
+Do not fall back to shell commands when the frozen browser API reports a bridge or transport failure. Report the exact error and use an appropriate visible-browser computer-control fallback only when the task calls for it.
 
-Do not promise automatic extension installation, automatic retry after installation, service-worker self-healing, shared-window behavior, or stale-tab cleanup; none is part of the frozen worker API contract. If the bridge is unavailable, report the exact error and use an appropriate visible-browser computer-control fallback only when the task calls for it.
-
-CLI-only diagnostic references:
-
-- [Command reference](references/commands.md)
-- [Snapshot ref lifecycle](references/snapshot-refs.md)
+Do not promise automatic extension installation, automatic retry after installation, service-worker self-healing, shared-window behavior, or stale-tab cleanup; none is part of the frozen worker API contract.

@@ -26,7 +26,6 @@ import { resolveBundledRuntimeFile } from "../shared/runtime-paths.js";
 import { isDangerousCommand } from "./command-safety.js";
 import { getInstallUpdateCommandDenialReason } from "./install-update-allowlist.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
-import { getStellaBrowserBridgeEnv } from "./stella-browser-bridge-config.js";
 import { getStellaComputerSessionId } from "./stella-computer-session.js";
 import { inferShellMentionedPaths } from "./path-inference.js";
 import { isKnownSafeCommand } from "./safe-commands.js";
@@ -71,11 +70,6 @@ type ShellStateOptions = {
 };
 
 const WINDOWS_CLI_SHIMS = [
-  {
-    command: "stella-browser",
-    optionKey: "stellaBrowserBinPath",
-    envVar: "STELLA_BROWSER_BIN",
-  },
   {
     command: "stella-office",
     optionKey: "stellaOfficeBinPath",
@@ -647,10 +641,6 @@ const buildProtectedCommand = (
   if (!deferredDeleteHelperPath) {
     return command;
   }
-  const stellaBrowserBin =
-    options?.stellaBrowserBinPath && existsSync(options.stellaBrowserBinPath)
-      ? options.stellaBrowserBinPath
-      : "";
   const stellaOfficeBin =
     options?.stellaOfficeBinPath && existsSync(options.stellaOfficeBinPath)
       ? options.stellaOfficeBinPath
@@ -749,14 +739,13 @@ erase() { rm "$@"; }
 rd() { rmdir "$@"; }
 powershell() { __stella_dd powershell "$PWD" "$(type -P powershell || true)" "$@"; }
 pwsh() { __stella_dd powershell "$PWD" "$(type -P pwsh || true)" "$@"; }
-${stellaBrowserBin ? `stella-browser() { "$STELLA_NODE_BIN" "$STELLA_BROWSER_BIN" "$@"; }` : ""}
 ${stellaOfficeBin ? `stella-office() { "$STELLA_NODE_BIN" "$STELLA_OFFICE_BIN" "$@"; }` : ""}
 ${stellaComputerCli ? `stella-computer() { "$STELLA_NODE_BIN" "$STELLA_COMPUTER_CLI" "$@"; }` : ""}
 ${stellaConnectCli ? `stella-connect() { "$STELLA_NODE_BIN" "$STELLA_CONNECT_CLI" "$@"; }` : ""}
 ${stellaMediaCli ? `stella-media() { "$STELLA_NODE_BIN" "$STELLA_MEDIA_CLI" "$@"; }` : ""}
 ${stellaXApiCli ? `stella-x-api() { "$STELLA_NODE_BIN" "$STELLA_X_API_CLI" "$@"; }` : ""}
 ${pythonFuncs}
-export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaBrowserBin ? " stella-browser" : ""}${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${stellaConnectCli ? " stella-connect" : ""}${stellaMediaCli ? " stella-media" : ""}${stellaXApiCli ? " stella-x-api" : ""}${pythonExports} >/dev/null 2>&1 || true
+export -f __stella_dd __stella_git_exec __stella_git_stage_feature_dependencies git rm rmdir unlink del erase rd powershell pwsh${stellaOfficeBin ? " stella-office" : ""}${stellaComputerCli ? " stella-computer" : ""}${stellaConnectCli ? " stella-connect" : ""}${stellaMediaCli ? " stella-media" : ""}${stellaXApiCli ? " stella-x-api" : ""}${pythonExports} >/dev/null 2>&1 || true
 `;
 
   return `${preamble}\n${rewriteDeleteBypassPatterns(command)}`;
@@ -906,9 +895,6 @@ const buildShellEnv = (
     STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
     ...(options?.secretStateRoot
       ? { STELLA_DATA_DIR: options.secretStateRoot }
-      : {}),
-    ...(options?.stellaBrowserBinPath
-      ? { STELLA_BROWSER_BIN: options.stellaBrowserBinPath }
       : {}),
     ...(options?.stellaOfficeBinPath
       ? { STELLA_OFFICE_BIN: options.stellaOfficeBinPath }
@@ -1179,20 +1165,6 @@ const terminateShellProcess = (child: SpawnedShell) => {
   forceKillTimer.unref?.();
 };
 
-export const normalizeComputerAgentShellCommand = (command: string) =>
-  command
-    .replace(
-      /(?:^|&&\s*|\|\|\s*|;\s*)STELLA_BROWSER_SESSION=[^\s]+(?=\s+stella-browser\b)/g,
-      (match) => match.replace(/STELLA_BROWSER_SESSION=[^\s]+\s*/, ""),
-    )
-    .replace(/\bstella-browser\s+--session(?:=|\s+)\S+\s*/g, "stella-browser ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-
-const shouldUseStellaBrowserBridge = (command: string): boolean =>
-  /\bstella-browser\b/.test(command) ||
-  /\bSTELLA_BROWSER_SESSION=/.test(command);
-
 const shouldUseStellaComputer = (command: string): boolean =>
   /\bstella-computer\b/.test(command);
 
@@ -1400,8 +1372,6 @@ const resolveManagedShellCommand = (
       process.cwd(),
   );
   const envOverrides: Record<string, string> = {};
-  const browserOwnerId =
-    context?.agentId ?? context?.runId ?? context?.rootRunId;
   const stellaComputerSessionId = getStellaComputerSessionId(context);
   const localBinPaths = [
     ...(context?.stellaDataDir
@@ -1420,14 +1390,6 @@ const resolveManagedShellCommand = (
     envOverrides.PATH = [...localBinPaths, process.env.PATH ?? ""]
       .filter(Boolean)
       .join(path.delimiter);
-  }
-
-  if (shouldUseStellaBrowserBridge(command)) {
-    command = normalizeComputerAgentShellCommand(command);
-    Object.assign(envOverrides, getStellaBrowserBridgeEnv());
-    if (browserOwnerId) {
-      envOverrides.STELLA_BROWSER_OWNER_ID = browserOwnerId;
-    }
   }
 
   if (shouldUseStellaComputer(command) && stellaComputerSessionId) {

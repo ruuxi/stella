@@ -450,7 +450,7 @@ describe("BrowserSession direct daemon client", () => {
     }
   });
 
-  it("uses one narrow CLI fallback only when the shared endpoint is unavailable", async () => {
+  it("bootstraps the service once when the shared endpoint is unavailable", async () => {
     const daemon = createTestDaemon((request) => ({
       id: request.id,
       success: true,
@@ -476,11 +476,11 @@ describe("BrowserSession direct daemon client", () => {
           command: process.execPath,
           args: [
             "/tmp/stella-browser.js",
+            "service",
+            "ensure",
             "--session",
             daemon.sessionId,
             "--json",
-            "tab",
-            "list",
           ],
           env: expect.objectContaining({
             STELLA_BROWSER_PROVIDER: "extension",

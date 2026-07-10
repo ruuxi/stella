@@ -200,112 +200,11 @@ pub struct DaemonResult {
     pub already_running: bool,
 }
 
-/// Options forwarded to the daemon process as environment variables.
-/// Note: `confirm_interactive` is intentionally absent -- it is a CLI-side
-/// UX concern (prompting the user on stdin) and not a daemon configuration.
-/// The daemon only needs `confirm_actions` to gate action categories.
-pub struct DaemonOptions<'a> {
-    pub headed: bool,
-    pub debug: bool,
-    pub executable_path: Option<&'a str>,
-    pub extensions: &'a [String],
-    pub args: Option<&'a str>,
-    pub user_agent: Option<&'a str>,
-    pub proxy: Option<&'a str>,
-    pub proxy_bypass: Option<&'a str>,
-    pub ignore_https_errors: bool,
-    pub allow_file_access: bool,
-    pub profile: Option<&'a str>,
-    pub state: Option<&'a str>,
-    pub provider: Option<&'a str>,
-    pub device: Option<&'a str>,
-    pub session_name: Option<&'a str>,
-    pub download_path: Option<&'a str>,
-    pub allowed_domains: Option<&'a [String]>,
-    pub action_policy: Option<&'a str>,
-    pub confirm_actions: Option<&'a str>,
-    pub engine: Option<&'a str>,
-    pub auto_connect: bool,
-    pub idle_timeout: Option<&'a str>,
-    pub cdp: Option<&'a str>,
+fn configure_daemon_command(cmd: &mut Command, session: &str) {
+    cmd.args(["service", "run", "--session", session]);
 }
 
-fn apply_daemon_env(cmd: &mut Command, session: &str, opts: &DaemonOptions) {
-    cmd.env("STELLA_BROWSER_DAEMON", "1")
-        .env("STELLA_BROWSER_SESSION", session);
-
-    if opts.headed {
-        cmd.env("STELLA_BROWSER_HEADED", "1");
-    }
-    if opts.debug {
-        cmd.env("STELLA_BROWSER_DEBUG", "1");
-    }
-    if let Some(path) = opts.executable_path {
-        cmd.env("STELLA_BROWSER_EXECUTABLE_PATH", path);
-    }
-    if !opts.extensions.is_empty() {
-        cmd.env("STELLA_BROWSER_EXTENSIONS", opts.extensions.join(","));
-    }
-    if let Some(a) = opts.args {
-        cmd.env("STELLA_BROWSER_ARGS", a);
-    }
-    if let Some(ua) = opts.user_agent {
-        cmd.env("STELLA_BROWSER_USER_AGENT", ua);
-    }
-    if let Some(p) = opts.proxy {
-        cmd.env("STELLA_BROWSER_PROXY", p);
-    }
-    if let Some(pb) = opts.proxy_bypass {
-        cmd.env("STELLA_BROWSER_PROXY_BYPASS", pb);
-    }
-    if opts.ignore_https_errors {
-        cmd.env("STELLA_BROWSER_IGNORE_HTTPS_ERRORS", "1");
-    }
-    if opts.allow_file_access {
-        cmd.env("STELLA_BROWSER_ALLOW_FILE_ACCESS", "1");
-    }
-    if let Some(prof) = opts.profile {
-        cmd.env("STELLA_BROWSER_PROFILE", prof);
-    }
-    if let Some(st) = opts.state {
-        cmd.env("STELLA_BROWSER_STATE", st);
-    }
-    if let Some(p) = opts.provider {
-        cmd.env("STELLA_BROWSER_PROVIDER", p);
-    }
-    if let Some(d) = opts.device {
-        cmd.env("STELLA_BROWSER_IOS_DEVICE", d);
-    }
-    if let Some(sn) = opts.session_name {
-        cmd.env("STELLA_BROWSER_SESSION_NAME", sn);
-    }
-    if let Some(dp) = opts.download_path {
-        cmd.env("STELLA_BROWSER_DOWNLOAD_PATH", dp);
-    }
-    if let Some(ad) = opts.allowed_domains {
-        cmd.env("STELLA_BROWSER_ALLOWED_DOMAINS", ad.join(","));
-    }
-    if let Some(ap) = opts.action_policy {
-        cmd.env("STELLA_BROWSER_ACTION_POLICY", ap);
-    }
-    if let Some(ca) = opts.confirm_actions {
-        cmd.env("STELLA_BROWSER_CONFIRM_ACTIONS", ca);
-    }
-    if let Some(engine) = opts.engine {
-        cmd.env("STELLA_BROWSER_ENGINE", engine);
-    }
-    if opts.auto_connect {
-        cmd.env("STELLA_BROWSER_AUTO_CONNECT", "1");
-    }
-    if let Some(idle) = opts.idle_timeout {
-        cmd.env("STELLA_BROWSER_IDLE_TIMEOUT_MS", idle);
-    }
-    if let Some(cdp) = opts.cdp {
-        cmd.env("STELLA_BROWSER_CDP", cdp);
-    }
-}
-
-pub fn ensure_daemon(session: &str, opts: &DaemonOptions) -> Result<DaemonResult, String> {
+pub fn ensure_daemon(session: &str) -> Result<DaemonResult, String> {
     // Check if daemon is running AND responsive
     if is_daemon_running(session) && daemon_ready(session) {
         // Double-check it's actually responsive by waiting and checking again
@@ -371,8 +270,7 @@ pub fn ensure_daemon(session: &str, opts: &DaemonOptions) -> Result<DaemonResult
         use std::os::unix::process::CommandExt;
 
         let mut cmd = Command::new(&exe_path);
-        cmd.env("STELLA_BROWSER_DAEMON", "1");
-        apply_daemon_env(&mut cmd, session, opts);
+        configure_daemon_command(&mut cmd, session);
 
         unsafe {
             cmd.pre_exec(|| {
@@ -395,8 +293,7 @@ pub fn ensure_daemon(session: &str, opts: &DaemonOptions) -> Result<DaemonResult
         use std::os::windows::process::CommandExt;
 
         let mut cmd = Command::new(&exe_path);
-        cmd.env("STELLA_BROWSER_DAEMON", "1");
-        apply_daemon_env(&mut cmd, session, opts);
+        configure_daemon_command(&mut cmd, session);
 
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
         const DETACHED_PROCESS: u32 = 0x00000008;

@@ -1087,11 +1087,11 @@ export class BrowserSession implements BrowserSessionClient {
       command: shim ? process.execPath : config.binaryPath,
       args: [
         ...(shim ? [config.binaryPath] : []),
+        "service",
+        "ensure",
         "--session",
         config.bridgeSessionId,
         "--json",
-        "tab",
-        "list",
       ],
       cwd: this.cwd,
       env: config.env,

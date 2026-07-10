@@ -238,19 +238,21 @@ export class StellaBrowserBridgeService {
     const stellaBrowserRoot = resolveStellaBrowserRoot();
     const binPath = path.join(stellaBrowserRoot, "bin", "stella-browser.js");
 
-    const daemon = spawn(process.execPath, [binPath], {
-      cwd: stellaBrowserRoot,
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: "1",
-        STELLA_BROWSER_DAEMON: "1",
-        STELLA_BROWSER_SESSION: STELLA_BROWSER_BRIDGE_SESSION,
-        STELLA_BROWSER_EXT_PORT: STELLA_BROWSER_BRIDGE_PORT,
-        STELLA_BROWSER_EXT_TOKEN: STELLA_BROWSER_BRIDGE_TOKEN,
+    const daemon = spawn(
+      process.execPath,
+      [binPath, "service", "run", "--session", STELLA_BROWSER_BRIDGE_SESSION],
+      {
+        cwd: stellaBrowserRoot,
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: "1",
+          STELLA_BROWSER_EXT_PORT: STELLA_BROWSER_BRIDGE_PORT,
+          STELLA_BROWSER_EXT_TOKEN: STELLA_BROWSER_BRIDGE_TOKEN,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
       },
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
+    );
 
     daemon.stdout?.on("data", (chunk: Buffer | string) => {
       const message = String(chunk).trim();

@@ -1,7 +1,7 @@
 {
   "name": "stella-browser",
   "version": "0.9.1",
-  "description": "Fast browser automation CLI for AI agents — full Rust implementation",
+  "description": "Native browser service for Stella",
   "type": "module",
   "files": [
     "bin",
@@ -9,15 +9,12 @@
     "skills",
     "extension"
   ],
-  "bin": {
-    "stella-browser": "./bin/stella-browser.js"
-  },
   "scripts": {
     "version:sync": "node scripts/sync-version.js",
     "version": "npm run version:sync && git add cli/Cargo.toml",
     "build:native": "npm run version:sync && cargo build --release --manifest-path cli/Cargo.toml && node scripts/copy-native.js",
-    "build:macos": "npm run version:sync && (cargo build --release --manifest-path cli/Cargo.toml --target aarch64-apple-darwin & cargo build --release --manifest-path cli/Cargo.toml --target x86_64-apple-darwin & wait) && cp cli/target/aarch64-apple-darwin/release/stella-browser bin/stella-browser-darwin-arm64 && cp cli/target/x86_64-apple-darwin/release/stella-browser bin/stella-browser-darwin-x64",
-    "postinstall": "node scripts/postinstall.js",
+    "build:macos": "npm run version:sync && (cargo build --release --manifest-path cli/Cargo.toml --target aarch64-apple-darwin & cargo build --release --manifest-path cli/Cargo.toml --target x86_64-apple-darwin & wait) && cp cli/target/aarch64-apple-darwin/release/stella-browser bin/stella-browser-darwin-arm64 && cp cli/target/x86_64-apple-darwin/release/stella-browser bin/stella-browser-darwin-x64 && codesign --force --sign - bin/stella-browser-darwin-arm64 && codesign --force --sign - bin/stella-browser-darwin-x64",
+    "build:linux": "npm run version:sync && cargo zigbuild --release --manifest-path cli/Cargo.toml --target x86_64-unknown-linux-gnu.2.28 --target aarch64-unknown-linux-gnu.2.28 && cp cli/target/x86_64-unknown-linux-gnu/release/stella-browser bin/stella-browser-linux-x64 && cp cli/target/aarch64-unknown-linux-gnu/release/stella-browser bin/stella-browser-linux-arm64",
     "test": "cargo test --manifest-path cli/Cargo.toml"
   },
   "keywords": [
@@ -25,7 +22,6 @@
     "automation",
     "headless",
     "cdp",
-    "cli",
     "agent",
     "rust"
   ],

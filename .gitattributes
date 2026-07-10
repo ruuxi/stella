@@ -1,3 +1,6 @@
 * text=auto eol=lf
 desktop/stella-browser/bin/stella-browser-darwin-arm64 binary
+desktop/stella-browser/bin/stella-browser-darwin-x64 binary
+desktop/stella-browser/bin/stella-browser-linux-arm64 binary
+desktop/stella-browser/bin/stella-browser-linux-x64 binary
 desktop/stella-browser/bin/stella-browser-win32-x64.exe binary

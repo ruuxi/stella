@@ -4,14 +4,11 @@ import path from "node:path";
 const __dirname = import.meta.dirname;
 
 /**
- * Locate the stella-browser CLI/daemon/extension directory.
+ * Locate the Stella browser service and extension directory.
  *
- * stella-browser is not packaged (not listed in electron-builder `files` or
- * `extraResources`), so at runtime it only exists inside the desktop source
- * tree at `desktop/stella-browser/`. Historically this was resolved via
- * `frontendRoot` (i.e. the `desktop/` directory), but the "unify stella root"
- * refactor repointed that value at the workspace root, which doesn't contain
- * stella-browser.
+ * In development the service lives at `desktop/stella-browser/`. Packaged
+ * builds copy its launcher, native binaries, and extension into Electron's
+ * resources directory.
  *
  * Instead of re-threading yet another root through every caller, we resolve
  * the folder by walking up from this file's compiled location. Dev bundling
@@ -23,9 +20,7 @@ const __dirname = import.meta.dirname;
  *   ../../../..           = desktop/
  *   ../../../../stella-browser
  *
- * If the layout ever changes, fix it here once. If upstream ever decides to
- * bundle stella-browser as an extraResource, the existsSync fallback to
- * `<app resources>/stella-browser` will keep packaged builds working.
+ * If the layout changes, fix it here once.
  */
 const compiledDesktopRootCandidates = [
   path.resolve(__dirname, "..", "..", "..", ".."),
@@ -40,8 +35,7 @@ export const resolveStellaBrowserRoot = (): string => {
     }
   }
 
-  // Production fallback: if electron-builder ever copies stella-browser as an
-  // extraResource, it will land next to the asar at
+  // Production: electron-builder copies stella-browser next to the asar at
   // Contents/Resources/stella-browser. `process.resourcesPath` is only defined
   // inside the Electron main process, which is where this helper runs.
   const resourcesPath = process.resourcesPath;

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Cross-platform CLI wrapper for stella-browser
+ * Cross-platform launcher for the Stella browser service.
  * 
  * This wrapper enables consistent invocation across install modes and platforms.
  */
@@ -109,8 +109,8 @@ function main() {
     }
   }
 
-  // Keep stdin interactive, but pipe stdout/stderr through this wrapper so callers
-  // like ExecuteTypescript's shell.exec() can capture command output.
+  // Native-host mode needs stdin; service and diagnostic output stays visible to
+  // the parent process for lifecycle monitoring and troubleshooting.
   const child = spawn(binaryPath, process.argv.slice(2), {
     stdio: ['inherit', 'pipe', 'pipe'],
     windowsHide: true,

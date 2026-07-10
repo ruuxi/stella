@@ -5,6 +5,7 @@
  */
 
 import { chmodSync, copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { platform, arch } from 'os';
 
@@ -41,6 +42,11 @@ try {
 
   if (platform() !== 'win32') {
     chmodSync(tempPath, 0o755);
+  }
+  if (platform() === 'darwin') {
+    execFileSync('codesign', ['--force', '--sign', '-', tempPath], {
+      stdio: 'ignore',
+    });
   }
 
   try {

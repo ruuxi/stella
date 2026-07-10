@@ -2,7 +2,7 @@
  * Chain command handler - executes multiple steps sequentially
  * within the extension, with implicit selector waits and optional delays.
  *
- * This eliminates per-step round trips through daemon/CLI.
+ * This eliminates per-step round trips through the native bridge.
  */
 import { getActiveTab } from './tabs.js';
 import { resolveSelector, buildRoleMatcherScript } from '../lib/selector.js';

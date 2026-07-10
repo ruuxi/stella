@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -9,6 +9,7 @@ import {
   type IpcMainInvokeEvent,
 } from "electron";
 import { getStellaBrowserBridgeEnv } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
+import { BrowserSession } from "../../../runtime/kernel/browser-use/client.js";
 import { resolveStellaBrowserRoot } from "../utils/stella-browser-paths.js";
 import {
   normalizeUrlForPrivilegedRendererFetch,
@@ -26,12 +27,6 @@ type BrowserFetchInit = {
   method?: "GET" | "POST";
   headers?: Record<string, string>;
   body?: string;
-};
-
-type StellaBrowserResponse = {
-  success: boolean;
-  data?: unknown;
-  error?: string;
 };
 
 type BrowserCookie = {
@@ -54,67 +49,31 @@ type BrowserHandlersOptions = {
   ensureBrowserBridgeStarted?: () => void;
 };
 
-const runStellaBrowserJson = (
-  args: string[],
-  extraEnv?: Record<string, string>,
-): Promise<StellaBrowserResponse> =>
-  new Promise((resolve, reject) => {
-    const stellaBrowserRoot = resolveStellaBrowserRoot();
-    const binPath = path.join(stellaBrowserRoot, "bin", "stella-browser.js");
-
-    execFile(
-      process.execPath,
-      [binPath, ...args],
-      {
-        cwd: stellaBrowserRoot,
-        timeout: PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
-        windowsHide: true,
-        env: extraEnv ? { ...process.env, ...extraEnv } : undefined,
-      },
-      (error, stdout, stderr) => {
-        const output = stdout.trim();
-        if (!output) {
-          reject(error ?? new Error(stderr.trim() || "stella-browser failed."));
-          return;
-        }
-
-        try {
-          resolve(JSON.parse(output) as StellaBrowserResponse);
-        } catch {
-          reject(
-            new Error(
-              stderr.trim() || "Failed to parse stella-browser output.",
-            ),
-          );
-        }
-      },
-    );
-  });
-
 const getBrowserCookieHeader = async (
   targetUrl: string,
 ): Promise<string | null> => {
-  // Extension bridge (Chrome MV3), not CDP --auto-connect â€” see stella-browser `provider: extension`.
+  const stellaBrowserRoot = resolveStellaBrowserRoot();
   const extensionEnv: Record<string, string> = {
-    STELLA_BROWSER_AUTO_CONNECT: "false",
     ...getStellaBrowserBridgeEnv(),
   };
-  const response = await runStellaBrowserJson(
-    ["--json", "cookies", "get", "--url", targetUrl],
-    extensionEnv,
-  );
-
-  if (!response.success) {
-    throw new Error(response.error || "Failed to read browser cookies.");
+  const session = new BrowserSession({
+    sessionId: randomUUID(),
+    cwd: stellaBrowserRoot,
+    binaryPath: path.join(stellaBrowserRoot, "bin", "stella-browser.js"),
+    env: extensionEnv,
+    commandTimeoutMs: PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
+  });
+  try {
+    const response = await session.command<{ cookies?: BrowserCookie[] }>(
+      "cookies_get",
+      { url: targetUrl },
+    );
+    const cookies = response.result.data?.cookies ?? [];
+    if (cookies.length === 0) return null;
+    return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+  } finally {
+    await session.dispose();
   }
-
-  const data = response.data as { cookies?: BrowserCookie[] } | undefined;
-  const cookies = data?.cookies ?? [];
-  if (cookies.length === 0) {
-    return null;
-  }
-
-  return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
 };
 
 const fetchWithBrowserSession = async (payload: {
@@ -163,7 +122,7 @@ const fetchWithBrowserSession = async (payload: {
 const assertStellaInitialized = (options: BrowserHandlersOptions) => {
   // The browser bridge is gated on the app being far enough along that a
   // stellaAppDir has been resolved; the value itself isn't needed here because
-  // the stella-browser CLI lives inside the desktop tree.
+  // the browser service lives inside the desktop tree.
   const stellaAppDir = options.getStellaAppDir();
   if (!stellaAppDir?.trim()) {
     throw new Error("Stella root not available; restart the app.");

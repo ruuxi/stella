@@ -44,7 +44,8 @@ pub struct PendingConfirmation {
 fn is_known_action(action: &str) -> bool {
     matches!(
         action,
-        "" | "launch"
+        "" | "healthcheck"
+            | "launch"
             | "navigate"
             | "url"
             | "cdp_url"
@@ -1000,7 +1001,8 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
 
     let skip_launch = matches!(
         action,
-        "" | "launch"
+        "" | "healthcheck"
+            | "launch"
             | "close"
             | "credentials_set"
             | "credentials_get"
@@ -1063,6 +1065,7 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
 
     // Extension bridge: forward commands to Chrome extension
     if matches!(state.backend_type, BackendType::Extension)
+        && action != "healthcheck"
         && action != "launch"
         && action != "close"
     {
@@ -1075,6 +1078,7 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
     }
 
     let result = match action {
+        "healthcheck" => Ok(json!({ "status": "ok" })),
         "launch" => handle_launch(cmd, state).await,
         "navigate" => handle_navigate(cmd, state).await,
         "url" => handle_url(state).await,
@@ -3806,7 +3810,7 @@ async fn handle_clipboard(cmd: &Value, state: &DaemonState) -> Result<Value, Str
 
     let session_id = mgr.active_session_id()?.to_string();
 
-    // cfg! is compile-time; assumes the browser runs on the same OS as the CLI binary.
+    // cfg! is compile-time; assumes the browser runs on the same OS as the service binary.
     let modifier: i32 = if cfg!(target_os = "macos") { 4 } else { 2 };
 
     match action {
@@ -6406,6 +6410,16 @@ mod tests {
         let result = execute_command(&cmd, &mut state).await;
         assert_eq!(result["success"], true);
         assert_eq!(result["data"]["closed"], true);
+    }
+
+    #[tokio::test]
+    async fn test_healthcheck_stays_local_for_extension_backend() {
+        let mut state = DaemonState::new();
+        state.backend_type = BackendType::Extension;
+        let cmd = json!({ "action": "healthcheck", "id": "health-1" });
+        let result = execute_command(&cmd, &mut state).await;
+        assert_eq!(result["success"], true);
+        assert_eq!(result["data"]["status"], "ok");
     }
 
     #[tokio::test]

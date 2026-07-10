@@ -197,7 +197,7 @@ pub fn launch_chrome(options: &LaunchOptions) -> Result<ChromeProcess, String> {
     let chrome_path = match &options.executable_path {
         Some(p) => PathBuf::from(p),
         None => {
-            find_chrome().ok_or("Chrome not found. Run `stella-browser install` to download Chrome, or use --executable-path.")?
+            find_chrome().ok_or("Chrome executable was not found for the internal browser provider.")?
         }
     };
 
@@ -354,7 +354,7 @@ fn chrome_launch_error(message: &str, stderr_lines: &[String]) -> String {
 }
 
 pub fn find_chrome() -> Option<PathBuf> {
-    // 1. Check Chrome downloaded by `stella-browser install`
+    // 1. Check a previously provisioned Chrome for Testing binary.
     if let Some(p) = crate::install::find_installed_chrome() {
         return Some(p);
     }

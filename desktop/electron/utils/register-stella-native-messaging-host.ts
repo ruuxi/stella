@@ -4,7 +4,13 @@
  */
 
 import { execFile } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -99,12 +105,11 @@ function writeLauncherAndManifest(
     const quotedBinaryPath = quoteForSh(binaryPath);
     const quotedSocketDir = quoteForSh(socketDir);
     const body = `#!/bin/sh
-export STELLA_BROWSER_NATIVE_HOST=1
 export STELLA_BROWSER_SESSION=${STELLA_BROWSER_BRIDGE_SESSION}
 export STELLA_BROWSER_SOCKET_DIR=${quotedSocketDir}
 # Repair execute bit if stripped (e.g. Bun postinstall skips lifecycle scripts)
 test -x ${quotedBinaryPath} || chmod +x ${quotedBinaryPath} 2>/dev/null
-exec ${quotedBinaryPath} "$@"
+exec ${quotedBinaryPath} native-host "$@"
 `;
     writeFileSync(launcherPath, body, "utf8");
     chmodSync(launcherPath, 0o755);
