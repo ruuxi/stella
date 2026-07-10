@@ -20,7 +20,10 @@ import {
   STELLA_NATIVE_MESSAGING_HOST_NAME,
   getStellaBrowserSocketDir,
 } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
-import { resolveStellaBrowserRoot } from "./stella-browser-paths.js";
+import {
+  activateStagedStellaBrowserBinary,
+  resolveStellaBrowserRoot,
+} from "./stella-browser-paths.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -204,6 +207,7 @@ export async function registerStellaNativeMessagingHost(): Promise<{
   error?: string;
 }> {
   try {
+    activateStagedStellaBrowserBinary();
     const binaryName = getStellaBrowserBinaryName();
     if (!binaryName) {
       return {

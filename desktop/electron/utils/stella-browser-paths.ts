@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, renameSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const __dirname = import.meta.dirname;
@@ -47,4 +48,56 @@ export const resolveStellaBrowserRoot = (): string => {
   }
 
   return path.join(compiledDesktopRootCandidates[0], "stella-browser");
+};
+
+const currentStellaBrowserBinaryName = (): string | null => {
+  const platform = os.platform();
+  const arch = os.arch();
+  if (platform === "darwin" && arch === "arm64") {
+    return "stella-browser-darwin-arm64";
+  }
+  if (platform === "darwin" && arch === "x64") {
+    return "stella-browser-darwin-x64";
+  }
+  if (platform === "win32" && arch === "x64") {
+    return "stella-browser-win32-x64.exe";
+  }
+  if (platform === "linux" && arch === "arm64") {
+    return "stella-browser-linux-arm64";
+  }
+  if (platform === "linux" && arch === "x64") {
+    return "stella-browser-linux-x64";
+  }
+  return null;
+};
+
+/** Promote a verified updater artifact before any service/native-host spawn. */
+export const activateStagedStellaBrowserBinary = (
+  stellaBrowserRoot = resolveStellaBrowserRoot(),
+): boolean => {
+  const binaryName = currentStellaBrowserBinaryName();
+  if (!binaryName) return false;
+  const binaryPath = path.join(stellaBrowserRoot, "bin", binaryName);
+  const stagedPath = `${binaryPath}.update`;
+  if (!existsSync(stagedPath)) return false;
+
+  const previousPath = `${binaryPath}.previous`;
+  try {
+    rmSync(previousPath, { force: true });
+    if (existsSync(binaryPath)) renameSync(binaryPath, previousPath);
+    renameSync(stagedPath, binaryPath);
+    rmSync(previousPath, { force: true });
+    return true;
+  } catch (error) {
+    if (!existsSync(binaryPath) && existsSync(previousPath)) {
+      try {
+        renameSync(previousPath, binaryPath);
+      } catch {
+        // Preserve the original activation failure below.
+      }
+    }
+    throw new Error(
+      `Cannot activate Stella Browser service update: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 };
