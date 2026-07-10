@@ -115,4 +115,46 @@ describe("AgentCompletionCard fileless summary rendering", () => {
     expect(summaryBlock).toContain("--chat-text-color:");
     expect(summaryBlock).toContain("--chat-text-size:");
   });
+
+  it("exposes canonical start/completion/run/artifact identity for replay diagnostics", async () => {
+    await act(async () => {
+      root.render(
+        <AgentCompletionCard
+          cardId="agent-activity:start-1"
+          sections={[
+            {
+              agentId: "agent-1",
+              title: "Build report",
+              startEventId: "start-1",
+              completionEventId: "done-1",
+              rootRunId: "run-1",
+              completedAtMs: 42,
+              files: [
+                {
+                  path: "/tmp/report.md",
+                  timestamp: 42,
+                  payload: {
+                    kind: "markdown",
+                    filePath: "/tmp/report.md",
+                    title: "report.md",
+                    createdAt: 42,
+                  },
+                },
+              ],
+            },
+          ]}
+        />,
+      );
+    });
+    const card = container.querySelector("[data-activity-card-id]");
+    expect(card).not.toBeNull();
+    expect((card as HTMLElement).dataset).toMatchObject({
+      activityCardId: "agent-activity:start-1",
+      agentIds: "agent-1",
+      startEventIds: "start-1",
+      rootRunIds: "run-1",
+      terminalEventIds: "done-1",
+      artifactIds: "/tmp/report.md",
+    });
+  });
 });

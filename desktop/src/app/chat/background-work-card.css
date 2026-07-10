@@ -2,10 +2,8 @@
    Inline "background work" card — the friendly in-chat marker for
    work Stella kicked off in the background. Shares the artifact-card
    surface (rounded square, bordered) so it reads as part of the same
-   family. It is a "started here" breadcrumb: it never flips to a finished
-   narration, but while any thread it covers is still working the title
-   shimmers (like the sidebar Activity surface) and settles into a plain
-   title once everything wraps up.
+   family. It owns the stable spawn slot while work is running/failed/paused;
+   completion reuses that same slot with the done + files presentation.
    ============================================================ */
 
 .background-work-card {

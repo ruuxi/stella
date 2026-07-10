@@ -17,10 +17,10 @@ import {
   deriveTurnResource,
 } from "@/features/chat/lib/derive-turn-resource";
 import {
-  buildAgentCompletionSections,
-  buildAgentMetaMap,
-  type AgentMeta,
-} from "@/features/chat/lib/agent-completion";
+  buildBackgroundTaskLifecycleIndex,
+  resolveBackgroundTaskCardLifecycle,
+  type BackgroundTaskLifecycleIndex,
+} from "@/features/chat/lib/background-task-lifecycle";
 import { deriveTurnWebSearchResults } from "@/features/chat/lib/derive-turn-web-search";
 import { deriveTurnMapArtifacts } from "@/features/chat/lib/derive-turn-map-artifacts";
 import { deriveToolActivity } from "@/features/chat/lib/tool-activity";
@@ -162,6 +162,11 @@ export const getBackgroundWork = (
        *  follow-up (re-activation) rather than a fresh spawn — the explicit
        *  discriminator the card reads to pick its follow-up variant. */
       followUpThreadIds: string[];
+      /** Canonical identity/anchor for each task occurrence. Unlike agentId
+       *  and rootRunId, this changes for every `send_input` activation. */
+      startEventIdsByThread: Record<string, string>;
+      rootRunIdsByThread: Record<string, string>;
+      cardId: string;
       groupKey?: string;
       label?: string;
     }
@@ -170,6 +175,8 @@ export const getBackgroundWork = (
   const descriptions: Record<string, string> = {};
   const statusTexts: Record<string, string> = {};
   const followUpThreadIds: string[] = [];
+  const startEventIdsByThread: Record<string, string> = {};
+  const rootRunIdsByThread: Record<string, string> = {};
   // When this thread was kicked off / last advanced on this turn (ms). Lets
   // the card distinguish a fresh spawn (read as working) from one whose
   // lifecycle aged out of the loaded windows (presume settled, not pinned
@@ -188,31 +195,49 @@ export const getBackgroundWork = (
     if (!agentId) continue;
     if (!threadIds.includes(agentId)) threadIds.push(agentId);
     const description = asNonEmptyString(event.payload.description);
-    if (description && !descriptions[agentId])
-      descriptions[agentId] = description;
-    // Explicit runtime signal: a `send_input` re-activation stamps
-    // `isFollowUp` (see `LocalAgentManager` `tryStartNext`), so a follow-up
-    // whose text is identical to the spawn description still reads as a
-    // follow-up. The follow-up's own message rides on `statusText` and
-    // becomes the card title.
-    if (event.payload.isFollowUp) {
-      if (!followUpThreadIds.includes(agentId)) followUpThreadIds.push(agentId);
-      const followUp = asNonEmptyString(event.payload.statusText);
-      if (followUp && !statusTexts[agentId]) statusTexts[agentId] = followUp;
-    }
-    if (event.timestamp > (spawnedAtMs[agentId] ?? 0)) {
+    const priorTimestamp = spawnedAtMs[agentId];
+    const priorEventId = startEventIdsByThread[agentId];
+    const isLatestOccurrence =
+      priorTimestamp === undefined ||
+      event.timestamp > priorTimestamp ||
+      (event.timestamp === priorTimestamp &&
+        (!priorEventId || event._id.localeCompare(priorEventId) > 0));
+    if (isLatestOccurrence) {
       spawnedAtMs[agentId] = event.timestamp;
+      startEventIdsByThread[agentId] = event._id;
+      if (description) descriptions[agentId] = description;
+      const rootRunId = asNonEmptyString(event.payload.rootRunId);
+      if (rootRunId) rootRunIdsByThread[agentId] = rootRunId;
+      else delete rootRunIdsByThread[agentId];
+      const previousFollowUpIndex = followUpThreadIds.indexOf(agentId);
+      if (previousFollowUpIndex >= 0) {
+        followUpThreadIds.splice(previousFollowUpIndex, 1);
+      }
+      delete statusTexts[agentId];
+      // Explicit runtime signal: a `send_input` re-activation stamps
+      // `isFollowUp`; statusText is that occurrence's own title.
+      if (event.payload.isFollowUp) {
+        followUpThreadIds.push(agentId);
+        const followUp = asNonEmptyString(event.payload.statusText);
+        if (followUp) statusTexts[agentId] = followUp;
+      }
     }
     if (!groupKey) groupKey = asNonEmptyString(event.payload.groupKey);
     if (!label) label = asNonEmptyString(event.payload.groupLabel);
   }
   if (threadIds.length === 0) return undefined;
+  const startEventIds = threadIds
+    .map((threadId) => startEventIdsByThread[threadId])
+    .filter((eventId): eventId is string => Boolean(eventId));
   return {
     threadIds,
     descriptions,
     spawnedAtMs,
     statusTexts,
     followUpThreadIds,
+    startEventIdsByThread,
+    rootRunIdsByThread,
+    cardId: `agent-activity:${startEventIds.join("+")}`,
     ...(groupKey ? { groupKey } : {}),
     ...(label ? { label } : {}),
   };
@@ -468,209 +493,39 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
   );
 
   /**
-   * Latest `agent-completed` timestamp per background thread anywhere in the
-   * loaded window. Scanned over the raw (unfiltered) messages since the
-   * completion event attaches to a later turn's assistant message. This is
-   * the reload-safe "done" signal for the inline background-work card. Failed
-   * / canceled terminal states are intentionally not counted as completed here;
-   * those states come from live task state at render time.
-   *
-   * Stored as a timestamp (not a bare set) so a card can scope completion to
-   * its OWN run: a thread reused via `send_input` after a prior completion
-   * would otherwise inherit that old `agent-completed` and look done. A card
-   * only counts a completion at or after its spawn (see `buildBackgroundWork`).
+   * Canonical per-start lifecycle state across the loaded transcript. The
+   * selector deduplicates live + persisted copies by raw event id and binds a
+   * terminal packet to its exact `agent-started` occurrence. That start id is
+   * both identity and anchor, so completion can only update the existing card.
    */
-  // Incremental build. The bare `useMemo([messages])` re-scanned EVERY
-  // message's EVERY tool event on every streamed delta (the `messages` array
-  // identity changes each delta as the live overlay grows), i.e.
-  // O(messages x toolEvents) per frame — growing with conversation length on
-  // the auto-scroll critical path. Two structural facts make this avoidable:
-  //
-  //   1. `agent-completed` contributions are intrinsic to a message's
-  //      `toolEvents` array, and `stabilizeMessageList` keeps each finalized
-  //      message's `toolEvents` reference stable across deltas.
-  //   2. During pure text streaming no `toolEvents` change at all.
-  //
-  // So: cache each `toolEvents` array's contribution by reference, and when
-  // every message's `toolEvents` ref matches the previous build, return the
-  // prior Map untouched (no rebuild, no allocation). When some change, rebuild
-  // but reuse cached contributions for unchanged arrays — the heavy
-  // agent-completed scan runs only for genuinely new/changed tool-event lists.
-  const completedCacheRef = useRef<{
-    toolEventsByIndex: Array<EventRecord[] | undefined>;
-    contributionByToolEvents: WeakMap<
-      EventRecord[],
-      ReadonlyArray<readonly [string, number, "completed" | "canceled"]>
-    >;
-    result: {
-      completedAtMsById: Map<string, number>;
-      canceledAtMsById: Map<string, number>;
-    };
+  const lifecycleCacheRef = useRef<{
+    toolEventsByIndex: ReadonlyArray<readonly EventRecord[]>;
+    result: BackgroundTaskLifecycleIndex;
   } | null>(null);
-
-  const { completedAtMsById, canceledAtMsById } = useMemo(() => {
-    const cache = completedCacheRef.current;
-    if (cache && cache.toolEventsByIndex.length === messages.length) {
-      let unchanged = true;
-      for (let i = 0; i < messages.length; i += 1) {
-        if (cache.toolEventsByIndex[i] !== messages[i].toolEvents) {
-          unchanged = false;
-          break;
-        }
-      }
-      if (unchanged) return cache.result;
+  const lifecycleIndex = useMemo<BackgroundTaskLifecycleIndex>(() => {
+    const cache = lifecycleCacheRef.current;
+    if (
+      cache &&
+      cache.toolEventsByIndex.length === messages.length &&
+      messages.every((message, index) => {
+        const prior = cache.toolEventsByIndex[index];
+        return (
+          prior === message.toolEvents ||
+          (prior?.length === 0 && message.toolEvents.length === 0)
+        );
+      })
+    ) {
+      return cache.result;
     }
-
-    const contributionByToolEvents =
-      cache?.contributionByToolEvents ??
-      new WeakMap<
-        EventRecord[],
-        ReadonlyArray<readonly [string, number, "completed" | "canceled"]>
-      >();
-    const toolEventsByIndex: Array<EventRecord[] | undefined> = new Array(
-      messages.length,
-    );
-    const completedAt = new Map<string, number>();
-    // Latest `agent-canceled` per thread — the reload-safe "paused" signal.
-    // The orchestrator's pause_agent lands as an agent-canceled lifecycle
-    // event (the runtime's thread live-state calls any non-running thread
-    // paused/resumable), so the inline card can reflect Paused without any
-    // live task context.
-    const canceledAt = new Map<string, number>();
-
-    for (let i = 0; i < messages.length; i += 1) {
-      const toolEvents = messages[i].toolEvents;
-      toolEventsByIndex[i] = toolEvents;
-      if (!toolEvents || toolEvents.length === 0) continue;
-
-      let contribution = contributionByToolEvents.get(toolEvents);
-      if (!contribution) {
-        const pairs: Array<
-          readonly [string, number, "completed" | "canceled"]
-        > = [];
-        for (const toolEvent of toolEvents) {
-          if (
-            toolEvent.type !== "agent-completed" &&
-            toolEvent.type !== "agent-canceled"
-          ) {
-            continue;
-          }
-          const agentId = (
-            toolEvent.payload as { agentId?: unknown } | undefined
-          )?.agentId;
-          if (typeof agentId === "string" && agentId.length > 0) {
-            pairs.push([
-              agentId,
-              toolEvent.timestamp,
-              toolEvent.type === "agent-completed" ? "completed" : "canceled",
-            ] as const);
-          }
-        }
-        contribution = pairs;
-        contributionByToolEvents.set(toolEvents, contribution);
-      }
-
-      for (const [agentId, ts, kind] of contribution) {
-        const target = kind === "completed" ? completedAt : canceledAt;
-        if (ts > (target.get(agentId) ?? 0)) target.set(agentId, ts);
-      }
+    const events: EventRecord[] = [];
+    const toolEventsByIndex: Array<readonly EventRecord[]> = [];
+    for (const message of messages) {
+      toolEventsByIndex.push(message.toolEvents);
+      for (const event of message.toolEvents) events.push(event);
     }
-
-    const result = {
-      completedAtMsById: completedAt,
-      canceledAtMsById: canceledAt,
-    };
-    completedCacheRef.current = {
-      toolEventsByIndex,
-      contributionByToolEvents,
-      result,
-    };
+    const result = buildBackgroundTaskLifecycleIndex(events);
+    lifecycleCacheRef.current = { toolEventsByIndex, result };
     return result;
-  }, [messages]);
-
-  /**
-   * Per-agent identity/label metadata, folded from every `agent-started`
-   * lifecycle event across the loaded window. The completion card needs this
-   * to title each section and to apply the reserved-builtin denylist — the
-   * `agent-completed` payload carries neither `description` nor `agentType`,
-   * and the spawn may live on an EARLIER row than the completion, so it can't
-   * be read from the completing row's own events alone.
-   *
-   * Same incremental, reference-gated build as `completedAtMsById`: cache each
-   * `toolEvents` array's `agent-started` contribution by reference and reuse
-   * the prior map whole when no `toolEvents` array changed (the common case
-   * during pure text streaming).
-   */
-  const agentMetaCacheRef = useRef<{
-    toolEventsByIndex: Array<EventRecord[] | undefined>;
-    contributionByToolEvents: WeakMap<
-      EventRecord[],
-      ReadonlyArray<readonly [string, AgentMeta]>
-    >;
-    result: Map<string, AgentMeta>;
-  } | null>(null);
-
-  const agentMetaById = useMemo(() => {
-    const cache = agentMetaCacheRef.current;
-    if (cache && cache.toolEventsByIndex.length === messages.length) {
-      let unchanged = true;
-      for (let i = 0; i < messages.length; i += 1) {
-        if (cache.toolEventsByIndex[i] !== messages[i].toolEvents) {
-          unchanged = false;
-          break;
-        }
-      }
-      if (unchanged) return cache.result;
-    }
-
-    const contributionByToolEvents =
-      cache?.contributionByToolEvents ??
-      new WeakMap<EventRecord[], ReadonlyArray<readonly [string, AgentMeta]>>();
-    const toolEventsByIndex: Array<EventRecord[] | undefined> = new Array(
-      messages.length,
-    );
-    const metaById = new Map<string, AgentMeta>();
-
-    for (let i = 0; i < messages.length; i += 1) {
-      const toolEvents = messages[i].toolEvents;
-      toolEventsByIndex[i] = toolEvents;
-      if (!toolEvents || toolEvents.length === 0) continue;
-
-      let contribution = contributionByToolEvents.get(toolEvents);
-      if (!contribution) {
-        // Same fold as the pure derivation — one implementation, cached per
-        // toolEvents array reference.
-        contribution = [...buildAgentMetaMap(toolEvents).entries()];
-        contributionByToolEvents.set(toolEvents, contribution);
-      }
-
-      // First non-empty value per field wins (an earlier richer spawn label
-      // isn't clobbered by a later `send_input` re-activation that reuses the
-      // original description).
-      for (const [agentId, meta] of contribution) {
-        const existing = metaById.get(agentId);
-        if (!existing) {
-          metaById.set(agentId, { ...meta });
-          continue;
-        }
-        if (!existing.description && meta.description) {
-          existing.description = meta.description;
-        }
-        if (!existing.agentType && meta.agentType) {
-          existing.agentType = meta.agentType;
-        }
-        if (!existing.groupLabel && meta.groupLabel) {
-          existing.groupLabel = meta.groupLabel;
-        }
-      }
-    }
-
-    agentMetaCacheRef.current = {
-      toolEventsByIndex,
-      contributionByToolEvents,
-      result: metaById,
-    };
-    return metaById;
   }, [messages]);
 
   /**
@@ -716,33 +571,18 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
      */
     const assistantCountByUserMessageId = new Map<string, number>();
 
-    // Background-work descriptor for a turn's tool events, with the reload-
-    // safe completed subset folded in. Shared by the assistant branch and
-    // the tool-only (user-anchored) fallback below — a fire-and-forget spawn
-    // / send_input that never produced an assistant message lands its tools
-    // on the user_message, so it still needs a card.
+    // Spawn-anchored card descriptor. Terminal/progress payloads may live on a
+    // much later message, but the lifecycle selector resolves them back to the
+    // exact persisted start event represented by this card.
     const buildBackgroundWork = (toolEvents: readonly EventRecord[]) => {
       const base = getBackgroundWork(toolEvents);
       if (!base) return undefined;
       return {
         ...base,
-        // Scope completion to THIS card's run: only count an `agent-completed`
-        // at or after the thread's spawn on this turn. A later card for a
-        // thread reused via send_input then won't inherit the prior run's
-        // completion (the supersede pass freezes earlier cards separately).
-        completedThreadIds: base.threadIds.filter((id) => {
-          const completedAt = completedAtMsById.get(id);
-          return (
-            completedAt !== undefined && completedAt >= base.spawnedAtMs[id]
-          );
-        }),
-        // Paused subset, same run-scoping — drives the card's "Paused"
-        // label + stopped shimmer (see `derivePausedThreadIds`).
-        pausedThreadIds: derivePausedThreadIds(
+        ...resolveBackgroundTaskCardLifecycle(
           base.threadIds,
-          base.spawnedAtMs,
-          completedAtMsById,
-          canceledAtMsById,
+          base.startEventIdsByThread,
+          lifecycleIndex,
         ),
       };
     };
@@ -835,11 +675,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         // background work is still visible (the working indicator steps
         // aside once a task is running).
         const userBackgroundWork = buildBackgroundWork(message.toolEvents);
-        const userAgentCompletion = buildAgentCompletionSections(
-          message.toolEvents,
-          agentMetaById,
-        );
-        if (userBackgroundWork || userAgentCompletion.length > 0) {
+        if (userBackgroundWork) {
           const activityKey = `assistant-agent-activity-${message._id}`;
           produced.push({
             kind: "assistant",
@@ -847,12 +683,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             text: "",
             cacheKey: activityKey,
             replyToUserMessageId: message._id,
-            ...(userBackgroundWork
-              ? { backgroundWork: userBackgroundWork }
-              : {}),
-            ...(userAgentCompletion.length > 0
-              ? { agentCompletion: { sections: userAgentCompletion } }
-              : {}),
+            backgroundWork: userBackgroundWork,
           });
         }
       } else if (isAssistantMessage(message)) {
@@ -905,17 +736,6 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const officePreviewRef = getOfficePreviewRef(toolEvents);
         const voiceSession = payload?.metadata?.voiceSession;
         const backgroundWork = buildBackgroundWork(toolEvents);
-        // Delegated-agent completion card: the "done + pills" surface anchored
-        // to the row this turn's `agent-completed` events land on (the
-        // chronological completion point). Append-only by construction — each
-        // completion carries only its run's files on its own row. Deliberately
-        // NOT gated on `showInlineArtifacts`: an agent finishing mid-stream
-        // should reveal its files at that moment (like the other lifecycle
-        // receipts), not wait for the orchestrator's text to finalize.
-        const agentCompletionSections = buildAgentCompletionSections(
-          toolEvents,
-          agentMetaById,
-        );
         const toolActivity = deriveToolActivity(toolEvents);
         const isStreamingOverlay =
           message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX) &&
@@ -944,7 +764,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           ...(showInlineArtifacts && officePreviewRef
             ? { officePreviewRef }
             : {}),
-          ...(showInlineArtifacts && resourcePayload ? { resourcePayload } : {}),
+          ...(showInlineArtifacts && resourcePayload
+            ? { resourcePayload }
+            : {}),
           ...(showInlineArtifacts && inlineImagePayloads.length > 0
             ? { inlineImagePayloads }
             : {}),
@@ -961,25 +783,20 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           ...(scheduleReceipt ? { scheduleReceipt } : {}),
           ...(voiceSession ? { voiceSession } : {}),
           ...(backgroundWork ? { backgroundWork } : {}),
-          ...(agentCompletionSections.length > 0
-            ? { agentCompletion: { sections: agentCompletionSections } }
-            : {}),
           ...(showInlineArtifacts && toolActivity ? { toolActivity } : {}),
         };
         produced.push(row);
       }
 
       // Cache the projection for reuse on the next delta, EXCEPT rows that
-      // carry a background-work or agent-completion card: those are mutated
-      // by the dedup pass below and depend on per-frame cross-row inputs
-      // (the completion map / the agent-meta map), so they must be rebuilt
+      // carry a background-work card: those are mutated by the dedup pass
+      // below and depend on per-frame cross-row lifecycle state, so they must be rebuilt
       // each frame. Everything else is a pure function of the (stable)
       // message identity + dev flag.
       const hasAgentActivityCard = produced.some(
         (producedRow) =>
           producedRow.kind === "assistant" &&
-          (Boolean(producedRow.backgroundWork) ||
-            (producedRow.agentCompletion?.sections.length ?? 0) > 0),
+          Boolean(producedRow.backgroundWork),
       );
       if (hasAgentActivityCard) {
         cacheByMessage.delete(message);
@@ -996,9 +813,9 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     // tool events once it lands (see `showInlineArtifacts` above), so the
     // fire-and-forget stand-in is no longer projected mid-flight.
 
-    // Reconcile a thread that surfaces on more than one row. Two distinct
-    // cases, distinguished by the per-thread `spawnedAtMs` (the source
-    // `agent-started` event's timestamp):
+    // Reconcile a thread that surfaces on more than one row. Exact duplicate
+    // copies share the canonical `agent-started` event id. A different start
+    // id is a genuine later activation of the durable thread.
     //
     //  - Genuine re-activation: a LATER turn spawns or updates (send_input)
     //    the same thread, carrying a strictly newer `agent-started`. The
@@ -1018,12 +835,13 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         latestOwnerByThread.set(id, index);
       }
     });
-    const ownerSpawnedAtForThread = (id: string): number | undefined => {
+    const ownerStartEventIdForThread = (id: string): string | undefined => {
       const ownerIndex = latestOwnerByThread.get(id);
       if (ownerIndex === undefined) return undefined;
       const owner = computed[ownerIndex];
-      if (owner?.kind !== "assistant" || !owner.backgroundWork) return undefined;
-      return owner.backgroundWork.spawnedAtMs?.[id];
+      if (owner?.kind !== "assistant" || !owner.backgroundWork)
+        return undefined;
+      return owner.backgroundWork.startEventIdsByThread[id];
     };
     const droppedRowIndices = new Set<number>();
     computed.forEach((row, index) => {
@@ -1032,20 +850,15 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       const duplicated = new Set<string>();
       for (const id of row.backgroundWork.threadIds) {
         if (latestOwnerByThread.get(id) === index) continue;
-        const ownerSpawnedAt = ownerSpawnedAtForThread(id);
-        const selfSpawnedAt = row.backgroundWork.spawnedAtMs?.[id];
-        // A strictly later spawn time means a separate re-activation lives
-        // below — freeze this earlier copy. Same (or unknown) time means the
-        // same lifecycle event surfaced twice — collapse onto the canonical
-        // owner.
+        const ownerStartEventId = ownerStartEventIdForThread(id);
+        const selfStartEventId = row.backgroundWork.startEventIdsByThread[id];
         if (
-          ownerSpawnedAt !== undefined &&
-          selfSpawnedAt !== undefined &&
-          ownerSpawnedAt > selfSpawnedAt
+          ownerStartEventId !== undefined &&
+          selfStartEventId === ownerStartEventId
         ) {
-          superseded.push(id);
-        } else {
           duplicated.add(id);
+        } else {
+          superseded.push(id);
         }
       }
       if (duplicated.size === 0) {
@@ -1074,17 +887,29 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
       const descriptions = { ...row.backgroundWork.descriptions };
       const spawnedAtMs = { ...(row.backgroundWork.spawnedAtMs ?? {}) };
       const statusTexts = { ...(row.backgroundWork.statusTexts ?? {}) };
+      const progressTexts = { ...(row.backgroundWork.progressTexts ?? {}) };
+      const startEventIdsByThread = {
+        ...row.backgroundWork.startEventIdsByThread,
+      };
+      const rootRunIdsByThread = { ...row.backgroundWork.rootRunIdsByThread };
+      const terminalEventIdsByThread = {
+        ...(row.backgroundWork.terminalEventIdsByThread ?? {}),
+      };
       for (const id of duplicated) {
         delete descriptions[id];
         delete spawnedAtMs[id];
         delete statusTexts[id];
+        delete progressTexts[id];
+        delete startEventIdsByThread[id];
+        delete rootRunIdsByThread[id];
+        delete terminalEventIdsByThread[id];
       }
       const remainingSuperseded = superseded.filter((id) =>
         remainingThreadIds.includes(id),
       );
-      const followUpThreadIds = (row.backgroundWork.followUpThreadIds ?? []).filter(
-        (id) => !duplicated.has(id),
-      );
+      const followUpThreadIds = (
+        row.backgroundWork.followUpThreadIds ?? []
+      ).filter((id) => !duplicated.has(id));
       row.backgroundWork = {
         ...row.backgroundWork,
         threadIds: remainingThreadIds,
@@ -1098,9 +923,32 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
               ),
             }
           : {}),
+        ...(row.backgroundWork.failedThreadIds
+          ? {
+              failedThreadIds: row.backgroundWork.failedThreadIds.filter(
+                (id) => !duplicated.has(id),
+              ),
+            }
+          : {}),
         descriptions,
         spawnedAtMs,
         statusTexts,
+        progressTexts,
+        startEventIdsByThread,
+        rootRunIdsByThread,
+        terminalEventIdsByThread,
+        completionSections: (
+          row.backgroundWork.completionSections ?? []
+        ).filter(
+          (section) =>
+            !section.startEventId ||
+            !duplicated.has(section.agentId) ||
+            startEventIdsByThread[section.agentId] === section.startEventId,
+        ),
+        cardId: `agent-activity:${remainingThreadIds
+          .map((id) => startEventIdsByThread[id])
+          .filter(Boolean)
+          .join("+")}`,
         followUpThreadIds,
         ...(remainingSuperseded.length > 0
           ? { supersededThreadIds: remainingSuperseded }
@@ -1116,13 +964,7 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         : computed;
 
     return coalesceVoiceSessionRows(coalesceInlineImageRows(deduped));
-  }, [
-    agentMetaById,
-    canceledAtMsById,
-    completedAtMsById,
-    developerResourcePreviewsEnabled,
-    displayMessages,
-  ]);
+  }, [developerResourcePreviewsEnabled, displayMessages, lifecycleIndex]);
 
   const rowsStableRef = useRef<StableTurnRowsState<EventRowViewModel> | null>(
     null,

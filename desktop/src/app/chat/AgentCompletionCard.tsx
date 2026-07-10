@@ -1,11 +1,9 @@
 /**
- * Inline "agent completed" card — the quiet "done + files" surface anchored to
- * the transcript position where a delegated agent's work finished.
+ * Inline "agent completed" treatment for a spawn-anchored background card.
  *
- * Pairs with `BackgroundWorkCard` (the spawn/working breadcrumb that stays at
- * the spawn point): when the agent COMPLETES, this card appears at the
- * `agent-completed` event's chronological position so the user sees the
- * finished work in place, without scrolling back to the spawn.
+ * When the matching lifecycle occurrence completes, the original
+ * `BackgroundWorkCard` slot switches to this settled presentation. It never
+ * creates a second completion-time row.
  *
  * Design:
  *   - Understated done treatment — a muted checkmark glyph + calm title, no
@@ -24,7 +22,10 @@ import { Check, ChevronDown } from "@/ui/icons";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
 import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
-import { basenameOf, localFilePathForPayload } from "@/features/workspace-display/path-to-viewer";
+import {
+  basenameOf,
+  localFilePathForPayload,
+} from "@/features/workspace-display/path-to-viewer";
 import type { ConversationFileEntry } from "@/features/workspace-display/derive-conversation-files";
 import type { AgentCompletionSection } from "@/features/chat/lib/agent-completion";
 import { Markdown } from "./Markdown";
@@ -78,7 +79,10 @@ const CompletionSection = ({
     <div className="agent-completion-card__section">
       {showHeader ? (
         <div className="agent-completion-card__section-head">
-          <span className="agent-completion-card__section-glyph" aria-hidden="true">
+          <span
+            className="agent-completion-card__section-glyph"
+            aria-hidden="true"
+          >
             <Check size={13} strokeWidth={2} />
           </span>
           <span className="agent-completion-card__section-title">
@@ -147,17 +151,40 @@ const CompletionSection = ({
 
 export function AgentCompletionCard({
   sections,
+  cardId,
 }: {
   sections: AgentCompletionSection[];
+  cardId?: string;
 }) {
   // Every completion renders — a fileless agent still finished its task, so
   // the card must not depend on produced files (files only enrich it).
   const visible = sections;
   if (visible.length === 0) return null;
   const multi = visible.length > 1;
+  const startEventIds = visible
+    .map((section) => section.startEventId)
+    .filter(Boolean);
+  const completionEventIds = visible
+    .map((section) => section.completionEventId)
+    .filter(Boolean);
+  const rootRunIds = [
+    ...new Set(visible.map((section) => section.rootRunId).filter(Boolean)),
+  ];
+  const artifactIds = visible.flatMap((section) =>
+    section.files.map((entry) => entry.path),
+  );
 
   return (
-    <div className="agent-completion-card" data-multi={multi ? "true" : undefined}>
+    <div
+      className="agent-completion-card"
+      data-multi={multi ? "true" : undefined}
+      data-activity-card-id={cardId}
+      data-agent-ids={visible.map((section) => section.agentId).join(",")}
+      data-start-event-ids={startEventIds.join(",")}
+      data-root-run-ids={rootRunIds.join(",")}
+      data-terminal-event-ids={completionEventIds.join(",")}
+      data-artifact-ids={artifactIds.join(",")}
+    >
       {!multi ? (
         <div className="agent-completion-card__head">
           <span className="agent-completion-card__glyph" aria-hidden="true">
@@ -170,7 +197,7 @@ export function AgentCompletionCard({
       ) : null}
       {visible.map((section) => (
         <CompletionSection
-          key={section.agentId}
+          key={section.startEventId ?? section.agentId}
           section={section}
           showHeader={multi}
         />

@@ -1,15 +1,12 @@
 /**
- * Inline "background work" card — a spawn/update breadcrumb that shimmers
- * while its work is still running.
+ * Inline "background work" card — the live presentation of a stable,
+ * spawn-anchored task occurrence.
  *
  * Marks, in the chat flow itself, the spot where Stella kicked something
  * off in the background. The card records "this task was triggered here" at
- * spawn time and stays put as a historical anchor — it never flips to a
- * finished narration or tallies completion counts (that lives in the
- * dedicated finished surfaces). Its one live tell is the title shimmer:
- * while any thread the card covers is still working the title shimmers
- * (matching the sidebar Activity surface), and it settles into a plain
- * title once everything has completed / aged out. Several pieces of work
+ * spawn time and stays put as a historical anchor. Progress/failure update
+ * this same surface; a fully completed occurrence switches to the settled
+ * `AgentCompletionCard` presentation in the same row. Several pieces of work
  * started in the same turn collapse into this one card (it just tallies
  * them as a count) rather than stacking a card per thread.
  *
@@ -28,7 +25,7 @@
  * the props threaded through the row).
  */
 import { useEffect, useMemo, useState } from "react";
-import { MessageSquarePlus, Send } from "@/ui/icons";
+import { MessageSquarePlus, Send, X } from "@/ui/icons";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import "./background-work-card.css";
 
@@ -52,11 +49,13 @@ function computeWorking(
   threadIds: string[],
   completedThreadIds: readonly string[],
   pausedThreadIds: readonly string[],
+  failedThreadIds: readonly string[],
   supersededThreadIds: readonly string[],
   spawnedAtMs: Record<string, number>,
 ): { working: boolean; paused: boolean; nextStaleDeadlineMs?: number } {
   const completedSet = new Set(completedThreadIds);
   const pausedSet = new Set(pausedThreadIds);
+  const failedSet = new Set(failedThreadIds);
   const supersededSet = new Set(supersededThreadIds);
   const now = Date.now();
   let working = false;
@@ -69,6 +68,7 @@ function computeWorking(
     if (supersededSet.has(id)) continue;
     // Its `agent-completed` has landed in the message stream.
     if (completedSet.has(id)) continue;
+    if (failedSet.has(id)) continue;
     // Paused (its latest `agent-canceled` postdates this card's spawn):
     // not working — the shimmer stops — but flagged so the card can label
     // itself "Paused" instead of reading as settled.
@@ -119,11 +119,17 @@ export function BackgroundWorkCard({
   threadIds,
   completedThreadIds,
   pausedThreadIds,
+  failedThreadIds,
   supersededThreadIds,
   spawnedAtMs,
   descriptions,
   statusTexts,
+  progressTexts,
   followUpThreadIds,
+  cardId,
+  startEventIdsByThread,
+  rootRunIdsByThread,
+  terminalEventIdsByThread,
   label,
 }: {
   threadIds: string[];
@@ -134,6 +140,8 @@ export function BackgroundWorkCard({
    *  the shimmer stops and the subtitle reads "Paused" until a resume's
    *  fresh `agent-started` supersedes this card. */
   pausedThreadIds?: string[];
+  /** Run-scoped failures. These settle the existing card in place. */
+  failedThreadIds?: string[];
   /** Subset a later turn's card now owns; frozen as settled here. */
   supersededThreadIds?: string[];
   /** Per-thread spawn/last-advanced time (ms) for the stale-spawn fallback. */
@@ -141,8 +149,13 @@ export function BackgroundWorkCard({
   descriptions?: Record<string, string>;
   /** Per-thread follow-up text for `send_input` re-activations. */
   statusTexts?: Record<string, string>;
+  progressTexts?: Record<string, string>;
   /** Threads on this card that are `send_input` follow-ups, not fresh spawns. */
   followUpThreadIds?: string[];
+  cardId: string;
+  startEventIdsByThread: Record<string, string>;
+  rootRunIdsByThread?: Record<string, string>;
+  terminalEventIdsByThread?: Record<string, string>;
   label?: string;
 }) {
   // Bumped by the stale-deadline timer so the working check re-evaluates its
@@ -154,6 +167,7 @@ export function BackgroundWorkCard({
         threadIds,
         completedThreadIds ?? [],
         pausedThreadIds ?? [],
+        failedThreadIds ?? [],
         supersededThreadIds ?? [],
         spawnedAtMs ?? {},
       ),
@@ -162,6 +176,7 @@ export function BackgroundWorkCard({
       threadIds,
       completedThreadIds,
       pausedThreadIds,
+      failedThreadIds,
       supersededThreadIds,
       spawnedAtMs,
       tick,
@@ -204,22 +219,44 @@ export function BackgroundWorkCard({
   // "Paused" only replaces the ACTIVE presentation: while any covered thread
   // is still genuinely working the card keeps its shimmer + normal subtitle,
   // and a settled card keeps its plain historical label.
-  const showPaused = paused && !working;
-  const subtitle = showPaused
-    ? "Paused"
-    : isFollowUp
-      ? "Follow-up sent"
-      : "Started in background";
+  const failed = (failedThreadIds?.length ?? 0) > 0;
+  const showPaused = paused && !working && !failed;
+  const progressText = !multi ? progressTexts?.[threadIds[0]] : undefined;
+  const subtitle = failed
+    ? "Failed"
+    : showPaused
+      ? "Paused"
+      : working && progressText && progressText !== title
+        ? progressText
+        : isFollowUp
+          ? "Follow-up sent"
+          : "Started in background";
+  const startEventIds = threadIds
+    .map((id) => startEventIdsByThread[id])
+    .filter(Boolean);
+  const rootRunIds = [
+    ...new Set(threadIds.map((id) => rootRunIdsByThread?.[id]).filter(Boolean)),
+  ];
+  const terminalEventIds = threadIds
+    .map((id) => terminalEventIdsByThread?.[id])
+    .filter(Boolean);
 
   return (
     <div
       className="background-work-card"
-      data-state={isFollowUp ? "follow-up" : "started"}
+      data-state={failed ? "failed" : isFollowUp ? "follow-up" : "started"}
       data-working={working ? "true" : undefined}
       data-paused={showPaused ? "true" : undefined}
+      data-activity-card-id={cardId}
+      data-agent-ids={threadIds.join(",")}
+      data-start-event-ids={startEventIds.join(",")}
+      data-root-run-ids={rootRunIds.join(",")}
+      data-terminal-event-ids={terminalEventIds.join(",")}
     >
       <span className="background-work-card__glyph" aria-hidden="true">
-        {isFollowUp ? (
+        {failed ? (
+          <X size={16} strokeWidth={1.75} />
+        ) : isFollowUp ? (
           <MessageSquarePlus size={16} strokeWidth={1.75} />
         ) : (
           <Send size={16} strokeWidth={1.75} />

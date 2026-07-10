@@ -112,17 +112,15 @@ export type AssistantRowViewModel = {
    * one or more background threads (orchestrator `spawn_agent` /
    * `send_input`). Multiple in the same turn collapse onto one card —
    * `threadIds` carries every thread it covers and the card tallies them.
-   * `completedThreadIds` is the reload-safe subset whose `agent-completed`
-   * event has landed in the message stream; the inline card itself is a
-   * static "started here" receipt (see `BackgroundWorkCard`) and no longer
-   * renders live running/error/cancel narration. `supersededThreadIds` is the subset a LATER
-   * turn's card now owns — this (earlier) card freezes them as settled so it
-   * doesn't re-animate when the thread is revived. `label` is the optional
-   * friendly group label.
+   * Lifecycle state is keyed by each persisted `agent-started` event id.
+   * Progress/completion/failure update this descriptor in place; completion
+   * sections (including generated files) therefore render on this original
+   * row rather than creating a second completion-time card.
    */
   backgroundWork?: {
     threadIds: string[];
     completedThreadIds: string[];
+    failedThreadIds?: string[];
     /** Reload-safe subset whose latest `agent-canceled` postdates this card's
      *  spawn (and any completion) — the thread was paused (the orchestrator's
      *  pause_agent lands as a cancel; the runtime treats non-running threads
@@ -139,6 +137,8 @@ export type AssistantRowViewModel = {
      *  this carries the follow-up's own message/description for the card title;
      *  absent for plain spawns. See `getBackgroundWork`. */
     statusTexts?: Record<string, string>;
+    /** Latest run-scoped progress narration, keyed by thread id. */
+    progressTexts?: Record<string, string>;
     /** Threads on this card that are `send_input` follow-ups (an update to an
      *  already-spawned thread) rather than fresh spawns — drives the distinct
      *  "follow-up" card variant. */
@@ -147,21 +147,23 @@ export type AssistantRowViewModel = {
      *  long-silent thread with no live signal is settled rather than pinning
      *  it as forever-working when its lifecycle aged out of the windows. */
     spawnedAtMs?: Record<string, number>;
+    /** Canonical occurrence identity and insertion anchor. `agentId` is a
+     * durable thread and `rootRunId` can cover several send_input cycles, so
+     * neither is sufficient by itself. */
+    startEventIdsByThread: Record<string, string>;
+    rootRunIdsByThread: Record<string, string>;
+    terminalEventIdsByThread?: Record<string, string>;
+    cardId: string;
+    /** Run-scoped done payload folded back from matching completion events. */
+    completionSections?: AgentCompletionSection[];
     groupKey?: string;
     label?: string;
   };
   /**
-   * Delegated-agent completion card, anchored to the assistant row the
-   * `agent-completed` lifecycle event attaches to (the chronological
-   * completion point in the transcript). Each section is one agent — its own
-   * header + its own produced-file pills; several agents completing at the
-   * same point stay sectionalized, never flattened into one merged card. This
-   * is the "done + pills" surface; the spawn/working breadcrumb stays at the
-   * spawn position via `backgroundWork`. Populated only on the row where the
-   * completion lands, and only for delegated (non-reserved) agents that
-   * produced files — so it's append-only across `send_input` re-runs by
-   * construction (each completion carries only that run's files on its own
-   * row).
+   * Legacy loose completion attachment retained for compatibility with custom
+   * rows. The standard conversation projection never populates it: delegated
+   * completion lives in `backgroundWork.completionSections` on the matching
+   * spawn-anchored card.
    */
   agentCompletion?: {
     sections: AgentCompletionSection[];

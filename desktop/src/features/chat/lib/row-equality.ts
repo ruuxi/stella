@@ -225,6 +225,7 @@ const backgroundWorkEqual = (
 ): boolean => {
   if (a === b) return true;
   if (!a || !b) return a === b;
+  if (a.cardId !== b.cardId) return false;
   if ((a.groupKey ?? null) !== (b.groupKey ?? null)) return false;
   if ((a.label ?? null) !== (b.label ?? null)) return false;
   if (a.threadIds.length !== b.threadIds.length) return false;
@@ -240,6 +241,31 @@ const backgroundWorkEqual = (
     ) {
       return false;
     }
+    const threadId = a.threadIds[i]!;
+    if (a.spawnedAtMs?.[threadId] !== b.spawnedAtMs?.[threadId]) return false;
+    if (
+      a.startEventIdsByThread[threadId] !== b.startEventIdsByThread[threadId]
+    ) {
+      return false;
+    }
+    if (
+      (a.rootRunIdsByThread[threadId] ?? null) !==
+      (b.rootRunIdsByThread[threadId] ?? null)
+    ) {
+      return false;
+    }
+    if (
+      (a.progressTexts?.[threadId] ?? null) !==
+      (b.progressTexts?.[threadId] ?? null)
+    ) {
+      return false;
+    }
+    if (
+      (a.terminalEventIdsByThread?.[threadId] ?? null) !==
+      (b.terminalEventIdsByThread?.[threadId] ?? null)
+    ) {
+      return false;
+    }
   }
   for (let i = 0; i < a.completedThreadIds.length; i += 1) {
     if (a.completedThreadIds[i] !== b.completedThreadIds[i]) return false;
@@ -249,6 +275,12 @@ const backgroundWorkEqual = (
   if (aPaused.length !== bPaused.length) return false;
   for (let i = 0; i < aPaused.length; i += 1) {
     if (aPaused[i] !== bPaused[i]) return false;
+  }
+  const aFailed = a.failedThreadIds ?? [];
+  const bFailed = b.failedThreadIds ?? [];
+  if (aFailed.length !== bFailed.length) return false;
+  for (let i = 0; i < aFailed.length; i += 1) {
+    if (aFailed[i] !== bFailed[i]) return false;
   }
   const aSuperseded = a.supersededThreadIds ?? [];
   const bSuperseded = b.supersededThreadIds ?? [];
@@ -261,6 +293,14 @@ const backgroundWorkEqual = (
   if (aFollowUp.length !== bFollowUp.length) return false;
   for (let i = 0; i < aFollowUp.length; i += 1) {
     if (aFollowUp[i] !== bFollowUp[i]) return false;
+  }
+  if (
+    !agentCompletionEqual(
+      { sections: a.completionSections ?? [] },
+      { sections: b.completionSections ?? [] },
+    )
+  ) {
+    return false;
   }
   return true;
 };
@@ -277,6 +317,9 @@ const agentCompletionEqual = (
     const bs = b.sections[i]!;
     if (as.agentId !== bs.agentId) return false;
     if (as.title !== bs.title) return false;
+    if (as.startEventId !== bs.startEventId) return false;
+    if (as.completionEventId !== bs.completionEventId) return false;
+    if (as.rootRunId !== bs.rootRunId) return false;
     if (as.completedAtMs !== bs.completedAtMs) return false;
     if (as.summary !== bs.summary) return false;
     if (as.files.length !== bs.files.length) return false;

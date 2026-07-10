@@ -553,8 +553,17 @@ export const AssistantMessageRow = memo(
     const hasBackgroundWork = Boolean(
       row.backgroundWork && row.backgroundWork.threadIds.length > 0,
     );
+    const backgroundWorkCompleted = Boolean(
+      row.backgroundWork &&
+      row.backgroundWork.threadIds.length > 0 &&
+      row.backgroundWork.completedThreadIds.length ===
+        row.backgroundWork.threadIds.length &&
+      row.backgroundWork.completionSections?.length,
+    );
     const hasAgentCompletion = Boolean(
-      row.agentCompletion && row.agentCompletion.sections.length > 0,
+      !hasBackgroundWork &&
+      row.agentCompletion &&
+      row.agentCompletion.sections.length > 0,
     );
     // The in-flight call is owned by the footer WorkingIndicator; the trace
     // counts only settled calls (the group is undefined until the first one
@@ -590,6 +599,7 @@ export const AssistantMessageRow = memo(
         className={`event-row event-row--assistant${row.isStreaming ? " event-row--streaming" : ""}`}
         data-chat-row-id={row.id}
         data-scroll-follow-key={row.id}
+        data-react-key={row.id}
       >
         <div className="event-item assistant">
           {hasVoiceSession && row.voiceSession && (
@@ -607,19 +617,32 @@ export const AssistantMessageRow = memo(
           {hasToolActivity && row.toolActivity && (
             <ToolActivityTrace group={row.toolActivity} traceKey={row.id} />
           )}
-          {hasBackgroundWork && row.backgroundWork && (
+          {backgroundWorkCompleted && row.backgroundWork ? (
+            <AgentCompletionCard
+              sections={row.backgroundWork.completionSections ?? []}
+              cardId={row.backgroundWork.cardId}
+            />
+          ) : hasBackgroundWork && row.backgroundWork ? (
             <BackgroundWorkCard
               threadIds={row.backgroundWork.threadIds}
               completedThreadIds={row.backgroundWork.completedThreadIds}
               pausedThreadIds={row.backgroundWork.pausedThreadIds}
+              failedThreadIds={row.backgroundWork.failedThreadIds}
               supersededThreadIds={row.backgroundWork.supersededThreadIds}
               spawnedAtMs={row.backgroundWork.spawnedAtMs}
               descriptions={row.backgroundWork.descriptions}
               statusTexts={row.backgroundWork.statusTexts}
+              progressTexts={row.backgroundWork.progressTexts}
               followUpThreadIds={row.backgroundWork.followUpThreadIds}
               label={row.backgroundWork.label}
+              cardId={row.backgroundWork.cardId}
+              startEventIdsByThread={row.backgroundWork.startEventIdsByThread}
+              rootRunIdsByThread={row.backgroundWork.rootRunIdsByThread}
+              terminalEventIdsByThread={
+                row.backgroundWork.terminalEventIdsByThread
+              }
             />
-          )}
+          ) : null}
           {hasAgentCompletion && row.agentCompletion && (
             <AgentCompletionCard sections={row.agentCompletion.sections} />
           )}

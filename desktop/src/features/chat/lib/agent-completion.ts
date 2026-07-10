@@ -2,11 +2,10 @@
  * Per-agent completion card derivation.
  *
  * A delegated agent's produced files ride a single `agent-completed` event
- * (which carries `agentId`, `result`, `fileChanges[]`, `producedFiles[]`).
- * Rather than rolling those files up into the orchestrator's inline artifact
- * card (the jumpy "pop"), we surface them as clickable pills on a quiet
- * completion card anchored to the assistant row the `agent-completed` event
- * attaches to — i.e. the chronological completion point in the transcript.
+ * (which carries `agentId`, `result`, `fileChanges[]`, `producedFiles[]`). The
+ * background-task lifecycle selector folds that payload back onto the card
+ * created by the matching `agent-started` occurrence, so completion enriches
+ * the existing spawn-anchored card instead of inserting another timeline row.
  *
  * Two structural facts make this clean and append-only by construction:
  *   1. Each `agent-completed` event carries ONLY files not yet revealed by an
@@ -43,10 +42,13 @@ import { isDeclaredOutputPath } from "@/features/workspace-display/path-to-viewe
 export type AgentCompletionSection = {
   agentId: string;
   title: string;
-  /** Latest `agent-completed` timestamp backing this section. Used by the
-   *  handoff dedup in `use-event-rows` to tell an exact duplicate (same
-   *  completion projected onto two rows → collapse) from a genuine
-   *  `send_input` re-run (later completion on a later row → keep both). */
+  /** Canonical lifecycle/card diagnostics. Optional for legacy callers that
+   * derive a loose section without a matching start event. */
+  startEventId?: string;
+  completionEventId?: string;
+  rootRunId?: string;
+  /** Latest `agent-completed` timestamp backing this section. Also supports
+   *  deduplication for legacy loose completion attachments. */
   completedAtMs: number;
   /** May be empty: a completion without produced files still gets a card
    *  (files enrich the card; their absence never suppresses it). */
@@ -275,6 +277,8 @@ export function buildAgentCompletionSections(
   // timestamp and the result excerpt from that latest completion.
   const completedAgentIds: string[] = [];
   const completedAtByAgent = new Map<string, number>();
+  const completionEventIdByAgent = new Map<string, string>();
+  const rootRunIdByAgent = new Map<string, string>();
   const summaryByAgent = new Map<string, string>();
   for (const event of toolEvents) {
     if (!isAgentCompletedEvent(event)) continue;
@@ -284,6 +288,10 @@ export function buildAgentCompletionSections(
     if (prev === undefined) completedAgentIds.push(agentId);
     if (prev === undefined || event.timestamp >= prev) {
       completedAtByAgent.set(agentId, Math.max(prev ?? 0, event.timestamp));
+      completionEventIdByAgent.set(agentId, event._id);
+      const rootRunId = asNonEmptyString(event.payload.rootRunId);
+      if (rootRunId) rootRunIdByAgent.set(agentId, rootRunId);
+      else rootRunIdByAgent.delete(agentId);
       const result = asNonEmptyString(event.payload.result);
       // The summary always mirrors the LATEST completion: a re-run that
       // finishes without a result clears the older excerpt rather than
@@ -306,6 +314,12 @@ export function buildAgentCompletionSections(
       agentId,
       title,
       completedAtMs: completedAtByAgent.get(agentId) ?? 0,
+      ...(completionEventIdByAgent.get(agentId)
+        ? { completionEventId: completionEventIdByAgent.get(agentId) }
+        : {}),
+      ...(rootRunIdByAgent.get(agentId)
+        ? { rootRunId: rootRunIdByAgent.get(agentId) }
+        : {}),
       files: rankDeliverablesFirst([...entries]),
       ...(summary ? { summary } : {}),
     });

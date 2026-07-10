@@ -56,8 +56,10 @@ export const getEventText = (event: EventRecord): string => {
  *  on lifecycle events whose thread was spawned into a group; absent on
  *  ungrouped agents and on legacy persisted events. */
 type AgentLifecycleGroupFields = {
-  /** Root orchestrator run that observed this task transition. Persisted for
-   * diagnostics/reconciliation; the stable row identity remains agentId. */
+  /** Root orchestrator run that observed this task transition. This correlates
+   * lifecycle packets, but is not a card identity by itself: one root run can
+   * call `send_input` on the same thread more than once. Timeline cards use
+   * the matching persisted `agent-started` event id. */
   rootRunId?: string
   groupKey?: string
   groupLabel?: string

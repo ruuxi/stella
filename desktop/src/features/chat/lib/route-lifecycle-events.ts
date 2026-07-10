@@ -7,8 +7,10 @@
  * `groupEventsIntoMessages`) attaches a turn's pre-assistant events to
  * the FIRST assistant message once one lands. That rule is fine for
  * tool_request/tool_result (inline artifacts only render on finalized
- * assistant rows, so nothing painted ever moves), but lifecycle events
- * render live cards (background-work receipt, agent-completed card).
+ * assistant rows, so nothing painted ever moves), but `agent-started`
+ * renders a live background-work card. Later lifecycle packets are still
+ * routed/deduplicated here, then the task selector folds them back onto that
+ * start-anchored card.
  * Under the first-assistant rule a card that painted ABOVE the live
  * streaming text (anchored to the user message because no assistant
  * row was persisted yet) gets re-anchored BELOW the text the moment
