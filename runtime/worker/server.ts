@@ -1181,6 +1181,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           payload as Record<string, unknown>,
           signal,
         ),
+      requestComputerUseAppApproval: async (payload) =>
+        await peer.request(
+          METHOD_NAMES.HOST_COMPUTER_USE_APP_APPROVAL_REQUEST,
+          payload,
+          { retryOnDisconnect: true },
+        ),
       requestConnectorConnection: (payload, signal) =>
         requestConnectCardFromHost(
           peer,

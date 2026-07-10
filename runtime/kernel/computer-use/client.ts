@@ -1,14 +1,23 @@
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { randomUUID } from "node:crypto";
 
-import type {
-  ComputerCommandResult,
-  ComputerCommandRunner,
-} from "./command-runner.js";
-
-const ATTACH_IMAGE_RE = /^\[stella-attach-image\].*$/gm;
-const APP_INSTRUCTIONS_RE =
-  /<app_specific_instructions>\s*([\s\S]*?)\s*<\/app_specific_instructions>\s*/g;
+import {
+  COMPUTER_USE_PROTOCOL_VERSION,
+  COMPUTER_USE_SCHEMA_VERSION,
+  type ComputerUseAction,
+  type ComputerUseActionCommand,
+  type ComputerUseAppPolicy,
+  type ComputerUseAppSelector,
+  type ComputerUseRequest,
+  type ComputerUseTarget,
+} from "./contract.js";
+import {
+  createCliDiagnosticsComputerUseSession,
+  type CliDiagnosticsComputerUseSessionOptions,
+} from "./cli-diagnostics-session.js";
+import {
+  executeComputerUseRequest,
+  type ComputerUseSession,
+} from "./session.js";
 
 type CommonAction = {
   app?: string;
@@ -83,6 +92,16 @@ export type AppState = {
   text: string;
 };
 
+export type AuthorizeAppContext = Readonly<{
+  selector: ComputerUseAppSelector;
+  signal?: AbortSignal;
+}>;
+
+export type AuthorizeApp = (
+  policy: ComputerUseAppPolicy,
+  context: AuthorizeAppContext,
+) => boolean | Promise<boolean>;
+
 export type SkyClient = Readonly<{
   list_apps: () => Promise<string>;
   list_windows: () => Promise<string>;
@@ -98,16 +117,22 @@ export type SkyClient = Readonly<{
   batch: (actions: SkyAction[]) => Promise<unknown[]>;
 }>;
 
-export type CreateSkyClientOptions = {
-  cliPath?: string;
+type CreateSkyClientCommonOptions = Readonly<{
   sessionId: string;
-  cwd: string;
-  runner: ComputerCommandRunner;
   signal?: AbortSignal;
   getSignal?: () => AbortSignal | undefined;
-  commandTimeoutMs?: number;
-  maxOutputBytes?: number;
-};
+  authorizeApp?: AuthorizeApp;
+}>;
+
+export type CreateSkyClientWithSessionOptions = CreateSkyClientCommonOptions &
+  Readonly<{
+    session: ComputerUseSession;
+  }>;
+
+export type CreateSkyClientDiagnosticsOptions = CreateSkyClientCommonOptions &
+  Omit<CliDiagnosticsComputerUseSessionOptions, "signal" | "getSignal">;
+
+export type CreateSkyClientOptions = CreateSkyClientWithSessionOptions;
 
 const requireString = (value: unknown, name: string): string => {
   if (typeof value !== "string" || value.trim() === "") {
@@ -123,6 +148,13 @@ const requireFinite = (value: unknown, name: string): number => {
   return value;
 };
 
+const requirePositiveInteger = (value: unknown, name: string): number => {
+  if (!Number.isInteger(value) || Number(value) <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return Number(value);
+};
+
 const elementId = (value: unknown): string => {
   if (
     (typeof value !== "string" && typeof value !== "number") ||
@@ -133,23 +165,16 @@ const elementId = (value: unknown): string => {
   return String(value);
 };
 
-const parseJsonResult = (result: ComputerCommandResult): unknown => {
-  let payload: unknown;
-  try {
-    payload = result.stdout.trim() ? JSON.parse(result.stdout) : null;
-  } catch {
-    throw new Error(
-      `stella-computer returned invalid JSON: ${result.stdout.trim() || result.stderr.trim()}`,
-    );
+const targetFrom = (args: CommonAction): ComputerUseTarget => {
+  const app =
+    args.app === undefined ? undefined : requireString(args.app, "app");
+  if (args.window_id !== undefined) {
+    const windowId = String(args.window_id).trim();
+    if (!windowId) throw new Error("window_id must not be empty.");
+    return { type: "window", windowId, ...(app ? { app } : {}) };
   }
-  if (result.exitCode !== 0) {
-    const message =
-      payload && typeof payload === "object" && "error" in payload
-        ? String(payload.error)
-        : result.stderr.trim() || `stella-computer exited ${result.exitCode}.`;
-    throw new Error(message);
-  }
-  return payload;
+  if (!app) throw new Error("app or window_id is required.");
+  return { type: "app", app };
 };
 
 const directionFromScroll = (args: ScrollArgs) => {
@@ -166,215 +191,345 @@ const directionFromScroll = (args: ScrollArgs) => {
       : "right";
 };
 
+const clickAction = (args: ClickArgs): ComputerUseAction => {
+  const hasElement = args.element_index !== undefined;
+  const hasCoordinates = args.x !== undefined || args.y !== undefined;
+  if (hasElement && hasCoordinates) {
+    throw new Error("click must use either element_index or x/y, not both.");
+  }
+  const mouseButton = args.mouse_button ?? "left";
+  const clickCount = requirePositiveInteger(
+    args.click_count ?? 1,
+    "click_count",
+  );
+  if (hasElement) {
+    return {
+      type: "click_element",
+      elementId: elementId(args.element_index),
+      mouseButton,
+      clickCount,
+    };
+  }
+  return {
+    type: "click_point",
+    point: {
+      x: requireFinite(args.x, "x"),
+      y: requireFinite(args.y, "y"),
+    },
+    mouseButton,
+    clickCount,
+  };
+};
+
+const dragAction = (args: DragArgs): ComputerUseAction => {
+  if (args.path !== undefined) {
+    if (
+      args.from_x !== undefined ||
+      args.from_y !== undefined ||
+      args.to_x !== undefined ||
+      args.to_y !== undefined
+    ) {
+      throw new Error(
+        "drag must use either path or from/to coordinates, not both.",
+      );
+    }
+    if (!Array.isArray(args.path) || args.path.length < 2) {
+      throw new Error("path must contain at least two points.");
+    }
+    const first = args.path[0]!;
+    const last = args.path[args.path.length - 1]!;
+    return {
+      type: "drag",
+      from: {
+        x: requireFinite(first.x, "path[0].x"),
+        y: requireFinite(first.y, "path[0].y"),
+      },
+      to: {
+        x: requireFinite(last.x, `path[${args.path.length - 1}].x`),
+        y: requireFinite(last.y, `path[${args.path.length - 1}].y`),
+      },
+    };
+  }
+  return {
+    type: "drag",
+    from: {
+      x: requireFinite(args.from_x, "from_x"),
+      y: requireFinite(args.from_y, "from_y"),
+    },
+    to: {
+      x: requireFinite(args.to_x, "to_x"),
+      y: requireFinite(args.to_y, "to_y"),
+    },
+  };
+};
+
+const actionCommand = (entry: SkyAction): ComputerUseActionCommand => {
+  if (!entry || typeof entry !== "object") {
+    throw new Error("Each batch action must be an object.");
+  }
+  const target = targetFrom(entry);
+  switch (entry.type) {
+    case "click":
+      return { target, action: clickAction(entry) };
+    case "drag":
+      return { target, action: dragAction(entry) };
+    case "perform_secondary_action":
+      return {
+        target,
+        action: {
+          type: "perform_secondary_action",
+          elementId: elementId(entry.element_index),
+          action: requireString(entry.action, "action"),
+        },
+      };
+    case "press_key":
+      return {
+        target,
+        action: { type: "press_key", key: requireString(entry.key, "key") },
+      };
+    case "scroll":
+      return {
+        target,
+        action: {
+          type: "scroll",
+          elementId: elementId(entry.element_index),
+          direction: directionFromScroll(entry),
+          pages: requirePositiveInteger(entry.pages ?? 1, "pages"),
+        },
+      };
+    case "select_text":
+      return {
+        target,
+        action: {
+          type: "select_text",
+          elementId: elementId(entry.element_index),
+          text: requireString(entry.text, "text"),
+          ...(entry.prefix === undefined ? {} : { prefix: entry.prefix }),
+          ...(entry.suffix === undefined ? {} : { suffix: entry.suffix }),
+          ...(entry.selection_type === undefined
+            ? {}
+            : { selectionType: entry.selection_type }),
+        },
+      };
+    case "set_value":
+      return {
+        target,
+        action: {
+          type: "set_value",
+          elementId: elementId(entry.element_index),
+          value: String(entry.value ?? ""),
+        },
+      };
+    case "type_text":
+      return {
+        target,
+        action: {
+          type: "type_text",
+          text: requireString(entry.text, "text"),
+        },
+      };
+    default:
+      throw new Error(
+        `Unsupported batch action: ${String((entry as { type?: unknown }).type)}`,
+      );
+  }
+};
+
+const singleAction = <TArgs extends CommonAction>(
+  type: SkyAction["type"],
+  args: TArgs,
+) => actionCommand({ type, ...args } as SkyAction);
+
+const instructionText = (instructions: string, text: string) =>
+  [
+    "<app_specific_instructions>",
+    instructions,
+    "</app_specific_instructions>",
+    text,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
 export const createSkyClient = (options: CreateSkyClientOptions): SkyClient => {
+  const sessionId = requireString(options.sessionId, "sessionId");
+  const session = options.session;
   const deliveredInstructions = new Set<string>();
-  const resourceAnchor =
-    options.cliPath ??
-    fileURLToPath(new URL("../cli/stella-computer.js", import.meta.url));
-  const childEnv = process.versions.electron
-    ? { ...process.env, ELECTRON_RUN_AS_NODE: "1" }
-    : process.env;
-  const run = async (args: string[]) =>
-    await options.runner({
-      command: process.execPath,
-      args: [resourceAnchor, "--session", options.sessionId, ...args],
-      cwd: options.cwd,
-      env: childEnv,
-      signal: options.getSignal?.() ?? options.signal,
-      timeoutMs: options.commandTimeoutMs ?? 30_000,
-      maxOutputBytes: options.maxOutputBytes,
+  const sessionApprovedBundleIds = new Set<string>();
+  const signal = () => options.getSignal?.() ?? options.signal;
+  const envelope = () => ({
+    schemaVersion: COMPUTER_USE_SCHEMA_VERSION,
+    protocolVersion: COMPUTER_USE_PROTOCOL_VERSION,
+    requestId: randomUUID(),
+    sessionId,
+  });
+  const execute = async <TRequest extends ComputerUseRequest>(
+    request: TRequest,
+  ) =>
+    await executeComputerUseRequest(session, request, {
+      signal: signal(),
     });
-  const action = async (command: string, args: string[]) =>
-    parseJsonResult(
-      await run([command, ...args, "--defer-observation", "--json"]),
-    );
-  const withTarget = (args: CommonAction) => {
-    const target: string[] = [];
-    if (args.app !== undefined) {
-      target.push("--app", requireString(args.app, "app"));
-    }
-    if (args.window_id !== undefined) {
-      const value = String(args.window_id).trim();
-      if (!value) throw new Error("window_id must not be empty.");
-      target.push("--window-id", value);
-    }
-    if (target.length === 0) throw new Error("app or window_id is required.");
-    return target;
+
+  const resolveTarget = async (
+    selector: ComputerUseAppSelector,
+  ): Promise<ComputerUseAppPolicy> => {
+    const response = await execute({
+      ...envelope(),
+      type: "resolve_target",
+      selector,
+    });
+    return response.policy;
   };
 
-  const methods = {
+  const authorizePolicy = async (
+    policy: ComputerUseAppPolicy,
+    selector: ComputerUseAppSelector,
+  ) => {
+    const canonicalId = policy.bundleIdentifier.toLocaleLowerCase();
+    if (policy.decision === "forbidden") {
+      throw new Error(
+        `${policy.displayName} is forbidden by computer-use policy.`,
+      );
+    }
+    if (policy.decision === "denied") {
+      throw new Error(
+        `${policy.displayName} is denied by computer-use policy.`,
+      );
+    }
+    if (sessionApprovedBundleIds.has(canonicalId)) return;
+    if (!options.authorizeApp) {
+      return;
+    }
+    const approved = await options.authorizeApp(policy, {
+      selector,
+      signal: signal(),
+    });
+    if (!approved) {
+      throw new Error(
+        `Computer-use authorization denied for ${policy.displayName}.`,
+      );
+    }
+    sessionApprovedBundleIds.add(canonicalId);
+  };
+
+  const authorizeTarget = async (target: ComputerUseTarget) => {
+    const policy = await resolveTarget(target);
+    await authorizePolicy(policy, target);
+    return policy;
+  };
+
+  const runAction = async (command: ComputerUseActionCommand) => {
+    await authorizeTarget(command.target);
+    const response = await execute({
+      ...envelope(),
+      type: "action",
+      execution: "background",
+      command,
+    });
+    return response.receipt;
+  };
+
+  const methods: SkyClient = {
     list_apps: async () => {
-      const result = await run(["list-apps"]);
-      if (result.exitCode !== 0) {
-        throw new Error(
-          result.stderr.trim() || `stella-computer exited ${result.exitCode}.`,
-        );
-      }
-      return result.stdout.trim();
+      const response = await execute({ ...envelope(), type: "list_apps" });
+      return response.text;
     },
     list_windows: async () => {
-      const result = await run(["list-windows"]);
-      if (result.exitCode !== 0) {
-        throw new Error(
-          result.stderr.trim() || `stella-computer exited ${result.exitCode}.`,
-        );
-      }
-      return result.stdout.trim();
+      const response = await execute({ ...envelope(), type: "list_windows" });
+      return response.text;
     },
     get_app_state: async (args: GetAppStateArgs): Promise<AppState> => {
-      const command = ["get-state", ...withTarget(args)];
-      const app = args.app ?? `window-id:${String(args.window_id)}`;
-      command.push("--no-inline-screenshot");
-      command.push("--screenshot-policy", args.screenshot_policy ?? "auto");
-      if (args.disable_diff === true || args.disableDiff === true) {
-        command.push("--disable-diff");
-      }
-      const result = await run(command);
-      if (result.exitCode !== 0) {
-        throw new Error(
-          result.stderr.trim() || `stella-computer exited ${result.exitCode}.`,
-        );
-      }
-
-      let screenshotPath: string | null = null;
-      let text = result.stdout.replace(ATTACH_IMAGE_RE, (marker) => {
-        const assignedPath = /\bpath=("(?:\\.|[^"\\])*")/.exec(marker)?.[1];
-        let candidate = "";
-        if (assignedPath) {
-          try {
-            candidate = String(JSON.parse(assignedPath));
-          } catch {
-            candidate = "";
-          }
-        } else {
-          candidate =
-            /\s((?:\/|[A-Za-z]:[\\/]).*\.(?:png|jpg|jpeg|gif|webp))$/i
-              .exec(marker)?.[1]
-              ?.trim() ?? "";
-        }
-        if (path.isAbsolute(candidate)) screenshotPath = candidate;
-        return "";
+      const target = targetFrom(args);
+      const policy = await authorizeTarget(target);
+      const response = await execute({
+        ...envelope(),
+        type: "get_app_state",
+        target,
+        screenshotPolicy: args.screenshot_policy ?? "auto",
+        disableDiff: args.disable_diff === true || args.disableDiff === true,
       });
-      const instructionKey = app.toLocaleLowerCase();
-      text = text.replace(APP_INSTRUCTIONS_RE, (full) => {
-        if (deliveredInstructions.has(instructionKey)) return "";
+      const instructionKey = policy.bundleIdentifier.toLocaleLowerCase();
+      const instructions = response.state.instructions?.trim();
+      const shouldDeliverInstructions =
+        Boolean(instructions) && !deliveredInstructions.has(instructionKey);
+      if (shouldDeliverInstructions) {
         deliveredInstructions.add(instructionKey);
-        return full;
-      });
-
+      }
       return {
-        app,
-        screenshot: screenshotPath
-          ? { url: pathToFileURL(screenshotPath).href }
+        app: response.state.app,
+        screenshot: response.state.screenshot
+          ? { url: response.state.screenshot.url }
           : null,
-        text: text.trim(),
+        text:
+          shouldDeliverInstructions && instructions
+            ? instructionText(instructions, response.state.text)
+            : response.state.text,
       };
     },
-    click: async (args: ClickArgs) => {
-      const common = withTarget(args);
-      const clickOptions = [
-        "--mouse-button",
-        args.mouse_button ?? "left",
-        "--click-count",
-        String(args.click_count ?? 1),
-      ];
-      if (args.element_index !== undefined) {
-        return await action("click", [
-          elementId(args.element_index),
-          ...common,
-          ...clickOptions,
-        ]);
-      }
-      return await action("click-screenshot", [
-        String(requireFinite(args.x, "x")),
-        String(requireFinite(args.y, "y")),
-        ...common,
-        ...clickOptions,
-        "--raise",
-      ]);
-    },
-    drag: async (args: DragArgs) => {
-      const first = args.path?.[0];
-      const last = args.path?.[args.path.length - 1];
-      const fromX = first?.x ?? args.from_x;
-      const fromY = first?.y ?? args.from_y;
-      const toX = last?.x ?? args.to_x;
-      const toY = last?.y ?? args.to_y;
-      return await action("drag-screenshot", [
-        String(requireFinite(fromX, "from_x")),
-        String(requireFinite(fromY, "from_y")),
-        String(requireFinite(toX, "to_x")),
-        String(requireFinite(toY, "to_y")),
-        ...withTarget(args),
-        "--allow-hid",
-        "--raise",
-      ]);
-    },
-    perform_secondary_action: async (args: SecondaryActionArgs) =>
-      await action("secondary-action", [
-        elementId(args.element_index),
-        requireString(args.action, "action"),
-        ...withTarget(args),
-      ]),
-    press_key: async (args: PressKeyArgs) =>
-      await action("press", [
-        requireString(args.key, "key"),
-        ...withTarget(args),
-        "--allow-hid",
-        "--raise",
-      ]),
-    scroll: async (args: ScrollArgs) =>
-      await action("scroll", [
-        elementId(args.element_index),
-        directionFromScroll(args),
-        ...withTarget(args),
-        "--pages",
-        String(args.pages ?? 1),
-      ]),
-    select_text: async (args: SelectTextArgs) => {
-      const command = [
-        elementId(args.element_index),
-        requireString(args.text, "text"),
-        ...withTarget(args),
-      ];
-      if (args.prefix !== undefined) command.push("--prefix", args.prefix);
-      if (args.suffix !== undefined) command.push("--suffix", args.suffix);
-      if (args.selection_type !== undefined) {
-        command.push("--selection", args.selection_type);
-      }
-      return await action("select-text", command);
-    },
-    set_value: async (args: SetValueArgs) =>
-      await action("fill", [
-        elementId(args.element_index),
-        String(args.value ?? ""),
-        ...withTarget(args),
-      ]),
-    type_text: async (args: TypeTextArgs) =>
-      await action("type", [
-        requireString(args.text, "text"),
-        ...withTarget(args),
-        "--allow-hid",
-        "--raise",
-      ]),
-    batch: async (actions: SkyAction[]) => {
+    click: async (args) => await runAction(singleAction("click", args)),
+    drag: async (args) => await runAction(singleAction("drag", args)),
+    perform_secondary_action: async (args) =>
+      await runAction(singleAction("perform_secondary_action", args)),
+    press_key: async (args) => await runAction(singleAction("press_key", args)),
+    scroll: async (args) => await runAction(singleAction("scroll", args)),
+    select_text: async (args) =>
+      await runAction(singleAction("select_text", args)),
+    set_value: async (args) => await runAction(singleAction("set_value", args)),
+    type_text: async (args) => await runAction(singleAction("type_text", args)),
+    batch: async (actions) => {
       if (!Array.isArray(actions)) throw new Error("actions must be an array.");
-      const results: unknown[] = [];
-      for (const entry of actions) {
-        if (!entry || typeof entry !== "object") {
-          throw new Error("Each batch action must be an object.");
+      const commands = actions.map(actionCommand);
+      const policiesBySelector = new Map<string, ComputerUseAppPolicy>();
+      const authorizationByBundle = new Map<
+        string,
+        { policy: ComputerUseAppPolicy; selector: ComputerUseAppSelector }
+      >();
+      for (const command of commands) {
+        const selectorKey = JSON.stringify(command.target);
+        let policy = policiesBySelector.get(selectorKey);
+        if (!policy) {
+          policy = await resolveTarget(command.target);
+          policiesBySelector.set(selectorKey, policy);
         }
-        const method = methods[entry.type] as
-          | ((args: never) => Promise<unknown>)
-          | undefined;
-        if (!method) {
-          throw new Error(`Unsupported batch action: ${String(entry.type)}`);
+        const bundleKey = policy.bundleIdentifier.toLocaleLowerCase();
+        if (!authorizationByBundle.has(bundleKey)) {
+          authorizationByBundle.set(bundleKey, {
+            policy,
+            selector: command.target,
+          });
         }
-        results.push(await method(entry as never));
       }
-      return results;
+      for (const { policy, selector } of authorizationByBundle.values()) {
+        await authorizePolicy(policy, selector);
+      }
+      const response = await execute({
+        ...envelope(),
+        type: "batch",
+        execution: "background",
+        commands,
+      });
+      return [...response.receipt.receipts];
     },
-  } satisfies Record<string, (...args: never[]) => unknown>;
+  };
 
-  return Object.freeze(methods) as SkyClient;
+  return Object.freeze(methods);
 };
+
+export const createSkyClientForCliDiagnostics = (
+  options: CreateSkyClientDiagnosticsOptions,
+): SkyClient =>
+  createSkyClient({
+    sessionId: options.sessionId,
+    session: createCliDiagnosticsComputerUseSession({
+      cliPath: options.cliPath,
+      cwd: options.cwd,
+      runner: options.runner,
+      env: options.env,
+      signal: options.signal,
+      getSignal: options.getSignal,
+      commandTimeoutMs: options.commandTimeoutMs,
+      maxOutputBytes: options.maxOutputBytes,
+    }),
+    signal: options.signal,
+    getSignal: options.getSignal,
+    authorizeApp: options.authorizeApp,
+  });

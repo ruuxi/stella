@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import net from "node:net";
@@ -30,12 +31,26 @@ import {
   abortableComputerDelay,
   getComputerExecutionEnv,
   getComputerExecutionSignal,
+  getComputerExecutionTimeoutMs,
   runWithComputerExecutionContext,
   throwIfComputerExecutionAborted,
   writeComputerStderr,
   writeComputerStdout,
   type ComputerExecutionContextOptions,
 } from "./execution-context.js";
+import {
+  COMPUTER_USE_PROTOCOL_VERSION,
+  COMPUTER_USE_SCHEMA_VERSION,
+  assertComputerUseRequest,
+  type ComputerUseAction,
+  type ComputerUseActionCommand,
+  type ComputerUseAppPolicy,
+  type ComputerUseRequest,
+  type ComputerUseResponse,
+  type ComputerUseTarget,
+  type JsonObject,
+} from "./contract.js";
+import type { ComputerUseSession } from "./session.js";
 
 type Rect = {
   x: number;
@@ -216,6 +231,77 @@ type AutomationDaemonResponsePayload = {
   status: number;
   stdout: string;
   stderr: string;
+};
+
+type TypedAutomationTarget = {
+  pid?: number;
+  appName?: string;
+  bundleId?: string;
+};
+
+type TypedAutomationState = {
+  path: string;
+  sessionId: string;
+  screenshotPath?: string;
+  screenshotPolicy?: "auto" | "always" | "never";
+  inlineScreenshot?: boolean;
+};
+
+type TypedAutomationAction = {
+  kind: string;
+  ref?: string;
+  text?: string;
+  name?: string;
+  key?: string;
+  direction?: string;
+  selection?: string;
+  prefix?: string;
+  suffix?: string;
+  mouseButton?: string;
+  clickCount?: number;
+  pages?: number;
+  x?: number;
+  y?: number;
+  fromX?: number;
+  fromY?: number;
+  toX?: number;
+  toY?: number;
+  options?: {
+    allowHid?: boolean;
+    coordinateFallback?: boolean;
+    raise?: boolean;
+    showOverlay?: boolean;
+    deferObservation?: boolean;
+  };
+};
+
+type TypedAutomationOperation = {
+  type: string;
+  target?: TypedAutomationTarget;
+  state?: TypedAutomationState;
+  action?: TypedAutomationAction;
+  operations?: TypedAutomationOperation[];
+  durationMs?: number;
+};
+
+type TypedAutomationDaemonResponsePayload = {
+  schemaVersion: number;
+  protocolVersion: number;
+  seq: number;
+  ok: boolean;
+  status: number;
+  result?: unknown;
+  error?: { code: string; message: string };
+};
+
+type TypedAutomationBatchPayload = {
+  completed: number;
+  results: Array<{
+    index: number;
+    ok: boolean;
+    status: number;
+    result: unknown;
+  }>;
 };
 
 type AutomationHelperResult = {
@@ -966,6 +1052,126 @@ const runAutomationDaemonCommand = async (
             ? `desktop_automation daemon connection failed: ${error.message}`
             : "desktop_automation daemon connection failed",
       });
+    });
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
+};
+
+const runAutomationDaemonTypedOperation = async (
+  sessionPaths: SessionPaths,
+  operation: TypedAutomationOperation,
+  timeoutMs = getComputerExecutionTimeoutMs() ??
+    automationDaemonRequestTimeoutMs,
+): Promise<unknown> => {
+  const daemonReady = await ensureAutomationDaemon(sessionPaths);
+  if (!daemonReady.ok) {
+    resetAutomationDaemonFiles(sessionPaths);
+    throw new Error(
+      daemonReady.error ||
+        `desktop_automation daemon failed to start after ${automationDaemonStartupBudgetMs}ms`,
+    );
+  }
+
+  const seq = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+  const payload = JSON.stringify({
+    schemaVersion: 1,
+    protocolVersion: 1,
+    seq,
+    operation,
+  });
+
+  return await new Promise<unknown>((resolve, reject) => {
+    let settled = false;
+    const responseChunks: Buffer[] = [];
+    const socket = net.createConnection({
+      path: automationSocketPath(sessionPaths),
+    });
+    const signal = getComputerExecutionSignal();
+    const settle = (error?: Error, value?: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      socket.destroy();
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const onAbort = () => {
+      const reason = signal?.reason;
+      settle(
+        reason instanceof Error
+          ? reason
+          : new Error("Computer request aborted."),
+      );
+    };
+    const timer = setTimeout(() => {
+      const pid = readPidFile(automationPidPath(sessionPaths));
+      killDetachedProcess(pid);
+      resetAutomationDaemonFiles(sessionPaths);
+      settle(
+        new Error(`desktop_automation daemon timed out after ${timeoutMs}ms`),
+      );
+    }, timeoutMs);
+
+    socket.on("connect", () => socket.write(`${payload}\n`));
+    socket.on("data", (chunk) => {
+      responseChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    socket.on("end", () => {
+      try {
+        const response = parseJson<TypedAutomationDaemonResponsePayload>(
+          Buffer.concat(responseChunks).toString("utf8"),
+        );
+        if (
+          response.schemaVersion !== 1 ||
+          response.protocolVersion !== 1 ||
+          response.seq !== seq
+        ) {
+          const pid = readPidFile(automationPidPath(sessionPaths));
+          killDetachedProcess(pid);
+          resetAutomationDaemonFiles(sessionPaths);
+          settle(
+            new Error(
+              "desktop_automation returned a mismatched typed response",
+            ),
+          );
+          return;
+        }
+        if (!response.ok || response.status !== 0) {
+          settle(
+            new Error(
+              response.error?.message ||
+                `desktop_automation typed request failed with status ${response.status}`,
+            ),
+          );
+          return;
+        }
+        settle(undefined, response.result);
+      } catch (error) {
+        const pid = readPidFile(automationPidPath(sessionPaths));
+        killDetachedProcess(pid);
+        resetAutomationDaemonFiles(sessionPaths);
+        settle(
+          error instanceof Error
+            ? new Error(
+                `desktop_automation returned an invalid typed response: ${error.message}`,
+              )
+            : new Error(
+                "desktop_automation returned an invalid typed response",
+              ),
+        );
+      }
+    });
+    socket.on("error", (error) => {
+      const pid = readPidFile(automationPidPath(sessionPaths));
+      killDetachedProcess(pid);
+      resetAutomationDaemonFiles(sessionPaths);
+      settle(
+        new Error(
+          `desktop_automation daemon connection failed: ${error.message}`,
+        ),
+      );
     });
     signal?.addEventListener("abort", onAbort, { once: true });
     if (signal?.aborted) onAbort();
@@ -2842,6 +3048,476 @@ export type StellaComputerExecutionResult = {
 export type StellaComputerExecutionOptions = ComputerExecutionContextOptions & {
   timeoutMs?: number;
 };
+
+const macForbiddenBundleIdentifiers = new Set([
+  "com.stella.desktop",
+  "com.stella.app",
+  "com.stella.runtime",
+  "com.apple.systempreferences",
+  "com.apple.systemsettings",
+  "com.apple.keychainaccess",
+  "com.apple.security.keychain-access",
+  "com.apple.securityagent",
+  "com.apple.localauthentication.uiagent",
+  "com.1password.1password",
+  "com.1password.1password7",
+  "com.agilebits.onepassword7",
+  "com.lastpass.lastpassmacdesktop",
+  "com.bitwarden.desktop",
+  "com.dashlane.dashlane",
+]);
+
+const typedResponseEnvelope = (request: ComputerUseRequest) => ({
+  schemaVersion: COMPUTER_USE_SCHEMA_VERSION,
+  protocolVersion: COMPUTER_USE_PROTOCOL_VERSION,
+  requestId: request.requestId,
+  sessionId: request.sessionId,
+});
+
+const computerUseErrorResponse = (
+  request: ComputerUseRequest,
+  error: unknown,
+): Extract<ComputerUseResponse, { type: "error" }> => ({
+  ...typedResponseEnvelope(request),
+  type: "error",
+  error: {
+    code: "native_request_failed",
+    message: error instanceof Error ? error.message : String(error),
+    retryable: false,
+  },
+});
+
+const typedTargetKey = (target: TypedAutomationTarget) => {
+  const bundleId = normalizeLockKey(target.bundleId ?? "");
+  if (bundleId) return `bundle-${bundleId}`;
+  const appName = normalizeLockKey(target.appName ?? "");
+  if (appName) return `app-${appName}`;
+  return `pid-${target.pid}`;
+};
+
+const policyForMacTarget = (app: ListedAppPayload): ComputerUseAppPolicy => {
+  const bundleIdentifier = app.bundleId?.trim() || `pid:${app.pid}`;
+  const canonical = bundleIdentifier.toLocaleLowerCase();
+  const configuredForbidden = new Set(
+    (process.env.STELLA_COMPUTER_FORBIDDEN_BUNDLES ?? "")
+      .split(",")
+      .map((value) => value.trim().toLocaleLowerCase())
+      .filter(Boolean),
+  );
+  return {
+    bundleIdentifier,
+    displayName: app.name,
+    decision:
+      macForbiddenBundleIdentifiers.has(canonical) ||
+      configuredForbidden.has(canonical)
+        ? "forbidden"
+        : "allowed",
+    allowPersistentApproval: Boolean(app.bundleId),
+    warningSubtitle: "Stella can view and interact with this app.",
+  };
+};
+
+const targetSelectorLabel = (target: ComputerUseTarget) =>
+  target.type === "app" ? target.app : `window ${target.windowId}`;
+
+const resolveMacTypedTarget = async (
+  sessionPaths: SessionPaths,
+  target: ComputerUseTarget,
+): Promise<{
+  target: TypedAutomationTarget;
+  policy: ComputerUseAppPolicy;
+}> => {
+  const apps = (await runAutomationDaemonTypedOperation(sessionPaths, {
+    type: "list_apps",
+  })) as ListAppsPayload;
+  if (!apps?.ok || !Array.isArray(apps.apps)) {
+    throw new Error("desktop_automation returned an invalid application list.");
+  }
+
+  let visibleWindows: ListWindowsPayload | undefined;
+  const windows = async () => {
+    if (!visibleWindows) {
+      visibleWindows = (await runAutomationDaemonTypedOperation(sessionPaths, {
+        type: "list_windows",
+      })) as ListWindowsPayload;
+    }
+    return visibleWindows.windows ?? [];
+  };
+  const preferVisibleWindowOwner = async (candidates: ListedAppPayload[]) => {
+    if (candidates.length <= 1) return candidates[0];
+    const visiblePids = new Set((await windows()).map((window) => window.pid));
+    const visible = candidates.filter((app) => visiblePids.has(app.pid));
+    if (visible.length === 1) return visible[0];
+    const active = visible.filter((app) => app.isActive);
+    if (active.length === 1) return active[0];
+    return undefined;
+  };
+
+  let matched: ListedAppPayload | undefined;
+  if (target.type === "window") {
+    const windowId = Number(target.windowId);
+    const window = (await windows()).find(
+      (candidate) => candidate.windowId === windowId,
+    );
+    if (!window) {
+      throw new Error(`No running window matches id ${target.windowId}.`);
+    }
+    matched = apps.apps.find((app) => app.pid === window.pid);
+  } else {
+    const needle = target.app.trim().toLocaleLowerCase();
+    const exact = apps.apps.filter(
+      (app) =>
+        app.name.toLocaleLowerCase() === needle ||
+        app.bundleId?.toLocaleLowerCase() === needle,
+    );
+    matched = await preferVisibleWindowOwner(exact);
+    if (!matched) {
+      const fuzzy = apps.apps.filter(
+        (app) =>
+          app.name.toLocaleLowerCase().includes(needle) ||
+          app.bundleId?.toLocaleLowerCase().includes(needle),
+      );
+      matched = await preferVisibleWindowOwner(fuzzy);
+      if (!matched && fuzzy.length > 1) {
+        throw new Error(
+          `Multiple running apps match '${target.app}'. Use a bundle identifier.`,
+        );
+      }
+    }
+  }
+  if (!matched) {
+    throw new Error(`No running app matches ${targetSelectorLabel(target)}.`);
+  }
+  return {
+    target: {
+      pid: matched.pid,
+      appName: matched.name,
+      ...(matched.bundleId ? { bundleId: matched.bundleId } : {}),
+    },
+    policy: policyForMacTarget(matched),
+  };
+};
+
+const actionState = (
+  sessionPaths: SessionPaths,
+  target: TypedAutomationTarget,
+): TypedAutomationState => {
+  const statePath = targetStatePathForKey(sessionPaths, typedTargetKey(target));
+  if (!readSnapshotDocument(statePath)?.ok) {
+    throw new Error(
+      `No cached state exists for ${target.appName ?? target.bundleId ?? target.pid}. Call get_app_state first.`,
+    );
+  }
+  return {
+    path: statePath,
+    sessionId: sessionPaths.sessionId,
+    screenshotPolicy: "never",
+    inlineScreenshot: false,
+  };
+};
+
+const screenPointForAction = (statePath: string, x: number, y: number) => {
+  const { point, error } = screenshotPixelToScreenPoint(
+    readSnapshotDocument(statePath),
+    x,
+    y,
+  );
+  if (!point) throw new Error(error ?? "Failed to map screenshot coordinates.");
+  return point;
+};
+
+const typedNativeAction = (
+  action: ComputerUseAction,
+  statePath: string,
+): TypedAutomationAction => {
+  switch (action.type) {
+    case "click_element":
+      return {
+        kind: "click",
+        ref: action.elementId,
+        mouseButton: action.mouseButton,
+        clickCount: action.clickCount,
+        options: { deferObservation: true, raise: false },
+      };
+    case "click_point": {
+      const point = screenPointForAction(
+        statePath,
+        action.point.x,
+        action.point.y,
+      );
+      return {
+        kind: "click_point",
+        x: point.x,
+        y: point.y,
+        mouseButton: action.mouseButton,
+        clickCount: action.clickCount,
+        options: { allowHid: true, deferObservation: true, raise: false },
+      };
+    }
+    case "drag": {
+      const from = screenPointForAction(
+        statePath,
+        action.from.x,
+        action.from.y,
+      );
+      const to = screenPointForAction(statePath, action.to.x, action.to.y);
+      return {
+        kind: "drag",
+        fromX: from.x,
+        fromY: from.y,
+        toX: to.x,
+        toY: to.y,
+        options: { allowHid: true, deferObservation: true, raise: false },
+      };
+    }
+    case "perform_secondary_action":
+      return {
+        kind: "secondary_action",
+        ref: action.elementId,
+        name: action.action,
+        options: { deferObservation: true, raise: false },
+      };
+    case "press_key":
+      return {
+        kind: "press",
+        key: action.key,
+        options: { allowHid: true, deferObservation: true, raise: false },
+      };
+    case "scroll":
+      return {
+        kind: "scroll",
+        ref: action.elementId,
+        direction: action.direction,
+        pages: action.pages,
+        options: { deferObservation: true, raise: false },
+      };
+    case "select_text":
+      return {
+        kind: "select_text",
+        ref: action.elementId,
+        text: action.text,
+        ...(action.prefix === undefined ? {} : { prefix: action.prefix }),
+        ...(action.suffix === undefined ? {} : { suffix: action.suffix }),
+        ...(action.selectionType === undefined
+          ? {}
+          : { selection: action.selectionType }),
+        options: { deferObservation: true, raise: false },
+      };
+    case "set_value":
+      return {
+        kind: "fill",
+        ref: action.elementId,
+        text: action.value,
+        options: { deferObservation: true, raise: false },
+      };
+    case "type_text":
+      return {
+        kind: "type",
+        text: action.text,
+        options: { allowHid: true, deferObservation: true, raise: false },
+      };
+  }
+};
+
+const typedActionOperation = async (
+  sessionPaths: SessionPaths,
+  command: ComputerUseActionCommand,
+): Promise<TypedAutomationOperation> => {
+  const resolved = await resolveMacTypedTarget(sessionPaths, command.target);
+  const state = actionState(sessionPaths, resolved.target);
+  const stableTarget: TypedAutomationTarget = resolved.target.bundleId
+    ? { bundleId: resolved.target.bundleId }
+    : resolved.target.appName
+      ? { appName: resolved.target.appName }
+      : resolved.target;
+  return {
+    type: "action",
+    target: stableTarget,
+    state,
+    action: typedNativeAction(command.action, state.path),
+  };
+};
+
+const actionReceiptFromNative = (
+  command: ComputerUseActionCommand,
+  payload: ActionPayload,
+) => ({
+  type: "action" as const,
+  action: command.action.type,
+  target: command.target,
+  status:
+    payload.deferred === false ? ("completed" as const) : ("accepted" as const),
+  deferred: payload.deferred !== false,
+  details: payload as unknown as JsonObject,
+});
+
+const executeMacComputerUseRequest = async (
+  request: ComputerUseRequest,
+): Promise<ComputerUseResponse> => {
+  const sessionPaths = resolveSessionPaths(request.sessionId);
+  ensureStateDirectory(sessionPaths);
+  pruneStellaComputerSessions(sessionPaths.sessionId);
+  const envelope = typedResponseEnvelope(request);
+
+  if (request.type === "list_apps") {
+    const payload = (await runAutomationDaemonTypedOperation(sessionPaths, {
+      type: "list_apps",
+    })) as ListAppsPayload;
+    const rendered = payload.apps
+      .map(
+        (app) =>
+          `${app.name}${app.bundleId ? ` [${app.bundleId}]` : ""} (pid ${app.pid})${app.isActive ? " [active]" : ""}`,
+      )
+      .join("\n");
+    return { ...envelope, type: "list_apps", text: rendered };
+  }
+  if (request.type === "list_windows") {
+    const payload = (await runAutomationDaemonTypedOperation(sessionPaths, {
+      type: "list_windows",
+    })) as ListWindowsPayload;
+    const rendered = payload.windows
+      .map(
+        (window) =>
+          `${window.appName}${window.title ? ` - ${window.title}` : ""}${window.bundleId ? ` [${window.bundleId}]` : ""} [window-id=${window.windowId}, pid=${window.pid}]`,
+      )
+      .join("\n");
+    return { ...envelope, type: "list_windows", text: rendered };
+  }
+  if (request.type === "resolve_target") {
+    const resolved = await resolveMacTypedTarget(
+      sessionPaths,
+      request.selector,
+    );
+    return { ...envelope, type: "target_policy", policy: resolved.policy };
+  }
+  if (request.type === "get_app_state") {
+    const resolved = await resolveMacTypedTarget(sessionPaths, request.target);
+    const statePath = targetStatePathForKey(
+      sessionPaths,
+      typedTargetKey(resolved.target),
+    );
+    const previous = readSnapshotDocument(statePath);
+    const screenshotPath = deriveScreenshotPath(statePath);
+    const snapshot = (await runAutomationDaemonTypedOperation(sessionPaths, {
+      type: "get_app_state",
+      target: resolved.target,
+      state: {
+        path: statePath,
+        sessionId: sessionPaths.sessionId,
+        screenshotPath:
+          request.screenshotPolicy === "never" ? undefined : screenshotPath,
+        screenshotPolicy: request.screenshotPolicy,
+        inlineScreenshot: false,
+      },
+    })) as SnapshotDocument;
+    syncSessionTargetSnapshot(sessionPaths, statePath);
+    const diff = previous ? snapshotDiff(previous, snapshot) : null;
+    const fullText = appStateLines(snapshot).join("\n");
+    const text =
+      !request.disableDiff && diff && shouldUseDiffOnly(diff)
+        ? formatStateDiffBlock(diff).trim()
+        : fullText;
+    const imagePath = snapshot.screenshot?.path ?? snapshot.screenshotPath;
+    return {
+      ...envelope,
+      type: "app_state",
+      state: {
+        app: resolved.policy.bundleIdentifier,
+        text,
+        screenshot:
+          imagePath && path.isAbsolute(imagePath)
+            ? {
+                type: "image",
+                url: pathToFileURL(imagePath).href,
+                ...(snapshot.screenshot?.mimeType
+                  ? { mimeType: snapshot.screenshot.mimeType }
+                  : {}),
+                ...(snapshot.screenshot?.widthPx
+                  ? { width: snapshot.screenshot.widthPx }
+                  : {}),
+                ...(snapshot.screenshot?.heightPx
+                  ? { height: snapshot.screenshot.heightPx }
+                  : {}),
+              }
+            : null,
+        ...(snapshot.appInstructions
+          ? { instructions: snapshot.appInstructions }
+          : {}),
+      },
+    };
+  }
+  if (request.type === "action") {
+    const operation = await typedActionOperation(sessionPaths, request.command);
+    const payload = (await runAutomationDaemonTypedOperation(
+      sessionPaths,
+      operation,
+    )) as ActionPayload;
+    return {
+      ...envelope,
+      type: "action",
+      receipt: actionReceiptFromNative(request.command, payload),
+    };
+  }
+
+  const operations = await Promise.all(
+    request.commands.map((command) =>
+      typedActionOperation(sessionPaths, command),
+    ),
+  );
+  const batchPayload = (await runAutomationDaemonTypedOperation(sessionPaths, {
+    type: "batch",
+    operations,
+  })) as TypedAutomationBatchPayload;
+  const payloads = batchPayload?.results?.map(
+    (entry) => entry.result as ActionPayload,
+  );
+  if (
+    batchPayload?.completed !== request.commands.length ||
+    !Array.isArray(payloads) ||
+    payloads.length !== request.commands.length
+  ) {
+    throw new Error("desktop_automation returned an invalid batch result.");
+  }
+  return {
+    ...envelope,
+    type: "batch",
+    receipt: {
+      type: "batch",
+      receipts: payloads.map((payload, index) =>
+        actionReceiptFromNative(request.commands[index]!, payload),
+      ),
+    },
+  };
+};
+
+export const createMacComputerUseSession = (options: {
+  sessionId: string;
+  commandTimeoutMs?: number;
+  getSignal?: () => AbortSignal | undefined;
+}): ComputerUseSession => ({
+  request: async (request, requestOptions) => {
+    try {
+      assertComputerUseRequest(request);
+      if (request.sessionId !== options.sessionId) {
+        throw new Error(
+          "Computer-use request session does not match its native session.",
+        );
+      }
+      const signal = requestOptions?.signal ?? options.getSignal?.();
+      const result = await runWithComputerExecutionContext(
+        {
+          signal,
+          timeoutMs:
+            options.commandTimeoutMs ?? automationDaemonRequestTimeoutMs,
+        },
+        async () => await executeMacComputerUseRequest(request),
+      );
+      return result.value;
+    } catch (error) {
+      return computerUseErrorResponse(request, error);
+    }
+  },
+});
 
 export const shutdownMacStellaComputerSession = (
   sessionId: string,

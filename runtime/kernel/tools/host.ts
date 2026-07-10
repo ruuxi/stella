@@ -53,7 +53,11 @@ import { buildBuiltinTools } from "./defs/index.js";
 import type { ToolDefinition as BuiltinToolDefinition } from "./types.js";
 import { sanitizeToolError, sanitizeToolResult } from "./safety.js";
 import { NodeReplKernelRegistry } from "../computer-use/kernel.js";
-import { shutdownMacStellaComputerSession } from "../computer-use/stella-computer-executor.js";
+import {
+  createMacComputerUseSession,
+  shutdownMacStellaComputerSession,
+} from "../computer-use/stella-computer-executor.js";
+import { createWindowsComputerUseSession } from "../computer-use/windows-session.js";
 import { cleanupWindowsStellaComputerSessionDaemon } from "../cli/stella-computer-windows.js";
 
 import type { ToolDefinition } from "../extensions/types.js";
@@ -73,6 +77,7 @@ export const createToolHost = ({
   stellaXApiCliPath,
   cliBridgeSocketPath,
   requestCredential,
+  requestComputerUseAppApproval,
   agentApi,
   sourceImportApi,
   validateSpawnModel,
@@ -105,7 +110,36 @@ export const createToolHost = ({
     validateSpawnModel,
   );
   const nodeReplRegistry = new NodeReplKernelRegistry({
-    cliPath: shellState.stellaComputerCliPath,
+    sessionFactory: ({ sessionId, getSignal, timeoutMs }) => {
+      if (process.platform === "win32") {
+        return createWindowsComputerUseSession();
+      }
+      if (process.platform === "darwin") {
+        return createMacComputerUseSession({
+          sessionId,
+          getSignal,
+          commandTimeoutMs: timeoutMs,
+        });
+      }
+      throw new Error(
+        `Typed Computer Use is not available on ${process.platform}.`,
+      );
+    },
+    authorizeApp: requestComputerUseAppApproval
+      ? async (policy) => {
+          const result = await requestComputerUseAppApproval({
+            bundleIdentifier: policy.bundleIdentifier,
+            displayName: policy.displayName,
+            ...(policy.appPath ? { appPath: policy.appPath } : {}),
+            allowPersistentApproval: policy.allowPersistentApproval,
+            ...(policy.risk ? { risk: policy.risk } : {}),
+            ...(policy.warningSubtitle
+              ? { warningSubtitle: policy.warningSubtitle }
+              : {}),
+          });
+          return result.decision === "approved";
+        }
+      : undefined,
     disposeSession: async (sessionId) => {
       if (process.platform === "win32") {
         await cleanupWindowsStellaComputerSessionDaemon(sessionId);

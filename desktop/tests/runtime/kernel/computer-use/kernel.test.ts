@@ -1,16 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-
-const childProcessMocks = vi.hoisted(() => ({ spawn: vi.fn() }));
-vi.mock("node:child_process", async () => {
-  const actual =
-    await vi.importActual<typeof import("node:child_process")>(
-      "node:child_process",
-    );
-  return { ...actual, spawn: childProcessMocks.spawn };
-});
-
-import { NodeReplKernelRegistry } from "../../../../../runtime/kernel/computer-use/kernel.js";
-import type { ComputerCommandRequest } from "../../../../../runtime/kernel/computer-use/command-runner.js";
+import {
+  NodeReplKernelRegistry,
+  type ComputerUseSessionFactory,
+  type ComputerUseSessionFactoryOptions,
+} from "../../../../../runtime/kernel/computer-use/kernel.js";
+import type {
+  ComputerUseRequest,
+  ComputerUseResponse,
+} from "../../../../../runtime/kernel/computer-use/contract.js";
+import type {
+  ComputerUseSession,
+  ComputerUseSessionRequestOptions,
+} from "../../../../../runtime/kernel/computer-use/session.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
 
 const context = (agentId: string): ToolContext => ({
@@ -25,11 +26,77 @@ const context = (agentId: string): ToolContext => ({
   storageMode: "local",
 });
 
+const responseFor = (request: ComputerUseRequest): ComputerUseResponse => {
+  const envelope = {
+    schemaVersion: request.schemaVersion,
+    protocolVersion: request.protocolVersion,
+    requestId: request.requestId,
+    sessionId: request.sessionId,
+  };
+  switch (request.type) {
+    case "list_apps":
+      return { ...envelope, type: "list_apps", text: "Notes" };
+    case "list_windows":
+      return { ...envelope, type: "list_windows", text: "Notes: Main" };
+    case "resolve_target":
+      return {
+        ...envelope,
+        type: "target_policy",
+        policy: {
+          bundleIdentifier: "com.apple.Notes",
+          displayName: "Notes",
+          decision: "allowed",
+          allowPersistentApproval: true,
+        },
+      };
+    case "get_app_state":
+      return {
+        ...envelope,
+        type: "app_state",
+        state: {
+          app: "Notes",
+          text: "<app_state>fresh ids</app_state>",
+          screenshot: null,
+        },
+      };
+    case "action":
+      return {
+        ...envelope,
+        type: "action",
+        receipt: {
+          type: "action",
+          action: request.command.action.type,
+          target: request.command.target,
+          status: "completed",
+          deferred: false,
+        },
+      };
+    case "batch":
+      return {
+        ...envelope,
+        type: "batch",
+        receipt: {
+          type: "batch",
+          receipts: request.commands.map((command) => ({
+            type: "action",
+            action: command.action.type,
+            target: command.target,
+            status: "completed",
+            deferred: false,
+          })),
+        },
+      };
+  }
+};
+
+const defaultSessionFactory: ComputerUseSessionFactory = () => ({
+  request: async (request) => responseFor(request),
+});
+
 const createRegistry = (idleTimeoutMs = 60_000) =>
   new NodeReplKernelRegistry({
-    cliPath: "/runtime/stella-computer.js",
+    sessionFactory: defaultSessionFactory,
     idleTimeoutMs,
-    runner: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
   });
 
 describe("persistent Node REPL kernels", () => {
@@ -95,24 +162,23 @@ describe("persistent Node REPL kernels", () => {
     const firstGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
-    const commands: string[] = [];
-    let activeCommands = 0;
-    let maxActiveCommands = 0;
-    const runner = vi.fn(async (request: ComputerCommandRequest) => {
-      commands.push(String(request.args[3]));
-      activeCommands += 1;
-      maxActiveCommands = Math.max(maxActiveCommands, activeCommands);
+    const requests: ComputerUseRequest[] = [];
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+    const request = vi.fn(async (typedRequest: ComputerUseRequest) => {
+      requests.push(typedRequest);
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
       try {
-        if (commands.length === 1) await firstGate;
-        return { exitCode: 0, stdout: '{"ok":true}', stderr: "" };
+        if (requests.length === 1) await firstGate;
+        return responseFor(typedRequest);
       } finally {
-        activeCommands -= 1;
+        activeRequests -= 1;
       }
     });
     const registry = new NodeReplKernelRegistry({
-      cliPath: "/runtime/stella-computer.js",
+      sessionFactory: () => ({ request }),
       idleTimeoutMs: 60_000,
-      runner,
     });
     try {
       const pending = registry.evaluate(
@@ -128,12 +194,22 @@ describe("persistent Node REPL kernels", () => {
         context("agent-serialized"),
       );
 
-      await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
       releaseFirst();
       await pending;
 
-      expect(maxActiveCommands).toBe(1);
-      expect(commands).toEqual(["click", "fill", "press"]);
+      expect(maxActiveRequests).toBe(1);
+      expect(requests.map(({ type }) => type)).toEqual([
+        "resolve_target",
+        "batch",
+        "resolve_target",
+        "action",
+      ]);
+      const batches = requests.filter(
+        (candidate) => candidate.type === "batch",
+      );
+      expect(batches).toHaveLength(1);
+      expect(batches[0]?.commands).toHaveLength(2);
     } finally {
       releaseFirst();
       registry.dispose();
@@ -142,24 +218,25 @@ describe("persistent Node REPL kernels", () => {
 
   it("aborts an in-flight sky call without starting queued calls", async () => {
     const controller = new AbortController();
-    const runner = vi.fn(
-      async (request: ComputerCommandRequest): Promise<ComputerCommandResult> =>
-        await new Promise((resolve, reject) => {
+    const request = vi.fn(
+      async (
+        _request: ComputerUseRequest,
+        options?: ComputerUseSessionRequestOptions,
+      ): Promise<unknown> =>
+        await new Promise((_resolve, reject) => {
           const onAbort = () =>
             reject(
-              request.signal?.reason instanceof Error
-                ? request.signal.reason
+              options?.signal?.reason instanceof Error
+                ? options.signal.reason
                 : new Error("aborted"),
             );
-          request.signal?.addEventListener("abort", onAbort, { once: true });
-          if (request.signal?.aborted) onAbort();
-          void resolve;
+          options?.signal?.addEventListener("abort", onAbort, { once: true });
+          if (options?.signal?.aborted) onAbort();
         }),
     );
     const registry = new NodeReplKernelRegistry({
-      cliPath: "/runtime/stella-computer.js",
+      sessionFactory: () => ({ request }),
       idleTimeoutMs: 60_000,
-      runner,
     });
     try {
       const pending = registry.evaluate(
@@ -167,11 +244,11 @@ describe("persistent Node REPL kernels", () => {
         context("agent-cancelled"),
         { signal: controller.signal },
       );
-      await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
       controller.abort(new Error("cancel concurrent sky calls"));
       await expect(pending).rejects.toThrow("cancel concurrent sky calls");
       await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(runner).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledTimes(1);
     } finally {
       registry.dispose();
     }
@@ -261,30 +338,40 @@ describe("persistent Node REPL kernels", () => {
     }
   });
 
-  it("routes the worker's frozen sky client through the scoped CLI runner", async () => {
-    const requests: ComputerCommandRequest[] = [];
-    const stateOutput = [
-      "<app_specific_instructions>",
-      "Use Save.",
-      "</app_specific_instructions>",
-      "<app_state>fresh ids</app_state>",
-      `[stella-attach-image] path=${JSON.stringify("/tmp/state image.png")}`,
-    ].join("\n");
-    const runner = vi.fn(async (request: ComputerCommandRequest) => {
-      requests.push(request);
-      const command = request.args[3];
-      if (command === "list-apps") {
-        return { exitCode: 0, stdout: "Notes\n", stderr: "" };
-      }
-      if (command === "get-state") {
-        return { exitCode: 0, stdout: stateOutput, stderr: "" };
-      }
-      return { exitCode: 0, stdout: '{"ok":true}', stderr: "" };
-    });
+  it("routes the frozen sky client through one persistent typed session", async () => {
+    const requests: ComputerUseRequest[] = [];
+    const factoryOptions: ComputerUseSessionFactoryOptions[] = [];
+    const sessionFactory = vi.fn(
+      (options: ComputerUseSessionFactoryOptions): ComputerUseSession => {
+        factoryOptions.push(options);
+        return {
+          request: async (request) => {
+            requests.push(request);
+            if (request.type === "get_app_state") {
+              const response = responseFor(request);
+              if (response.type !== "app_state") return response;
+              return {
+                ...response,
+                state: {
+                  ...response.state,
+                  instructions: "Use Save.",
+                  screenshot: {
+                    type: "image" as const,
+                    url: "file:///tmp/state%20image.png",
+                  },
+                },
+              };
+            }
+            return responseFor(request);
+          },
+        };
+      },
+    );
+    const authorizeApp = vi.fn(async () => true);
     const registry = new NodeReplKernelRegistry({
-      cliPath: "/runtime/stella-computer.js",
+      sessionFactory,
+      authorizeApp,
       idleTimeoutMs: 60_000,
-      runner,
     });
     try {
       const output = await registry.evaluate(
@@ -301,71 +388,41 @@ describe("persistent Node REPL kernels", () => {
 
       expect(output).toContain("true Notes file:///tmp/state%20image.png");
       expect(output).toContain("[ true, false ]");
-      expect(requests.map((request) => request.args[3])).toEqual([
-        "list-apps",
-        "get-state",
-        "get-state",
-        "click",
+      expect(requests.map(({ type }) => type)).toEqual([
+        "list_apps",
+        "resolve_target",
+        "get_app_state",
+        "resolve_target",
+        "get_app_state",
+        "resolve_target",
+        "batch",
       ]);
-      expect(requests[0]?.args.slice(0, 3)).toEqual([
-        "/runtime/stella-computer.js",
-        "--session",
-        expect.stringContaining("agent-a"),
-      ]);
+      const batches = requests.filter((request) => request.type === "batch");
+      expect(batches).toHaveLength(1);
+      expect(batches[0]?.commands).toHaveLength(1);
+      expect(authorizeApp).toHaveBeenCalledTimes(1);
+      expect(sessionFactory).toHaveBeenCalledTimes(1);
+      expect(factoryOptions[0]).toMatchObject({
+        sessionId: expect.stringContaining("agent-a"),
+        cwd: "/workspace/project",
+        timeoutMs: 30_000,
+        getSignal: expect.any(Function),
+      });
+
+      await expect(
+        registry.evaluate("await sky.list_apps()", context("agent-a")),
+      ).resolves.toBe("'Notes'");
+      expect(sessionFactory).toHaveBeenCalledTimes(1);
     } finally {
-      registry.dispose();
+      await registry.dispose();
     }
   });
 
-  it("uses the shared executor for multiple production sky calls without spawning the CLI", async () => {
-    childProcessMocks.spawn.mockClear();
-    const executor = vi.fn(async (argv: string[]) => {
-      const command = argv[2];
-      if (command === "list-apps") {
-        return { exitCode: 0, stdout: "Notes\n", stderr: "" };
-      }
-      if (command === "get-state") {
-        return {
-          exitCode: 0,
-          stdout: "<app_state>fresh ids</app_state>\n",
-          stderr: "",
-        };
-      }
-      return { exitCode: 0, stdout: '{"ok":true}', stderr: "" };
-    });
-    const registry = new NodeReplKernelRegistry({
-      idleTimeoutMs: 60_000,
-      executor,
-    });
-    try {
-      await expect(
-        registry.evaluate(
-          [
-            "await sky.list_apps()",
-            "await sky.get_app_state({ app: 'Notes' })",
-            "await sky.click({ app: 'Notes', element_index: 2 })",
-            "await sky.press_key({ app: 'Notes', key: 'ENTER' })",
-          ].join("; "),
-          context("agent-direct"),
-        ),
-      ).resolves.toContain("ok");
-
-      expect(executor).toHaveBeenCalledTimes(4);
-      expect(executor.mock.calls.map(([argv]) => argv[2])).toEqual([
-        "list-apps",
-        "get-state",
-        "click",
-        "press",
-      ]);
-      for (const [argv] of executor.mock.calls) {
-        expect(argv[0]).toBe("--session");
-        expect(argv).not.toContain(process.execPath);
-        expect(argv).not.toContain("/runtime/stella-computer.js");
-      }
-    } finally {
-      registry.dispose();
-      expect(childProcessMocks.spawn).not.toHaveBeenCalled();
-    }
+  it("fails clearly when no typed session factory is configured", async () => {
+    const registry = new NodeReplKernelRegistry();
+    await expect(
+      registry.evaluate("1", context("agent-no-session")),
+    ).rejects.toThrow("requires a typed ComputerUseSession factory");
   });
 
   it("aborts an evaluation and drops its kernel", async () => {
@@ -443,43 +500,21 @@ describe("persistent Node REPL kernels", () => {
     }
   });
 
-  it("derives a resource anchor when no diagnostic CLI path is configured", async () => {
-    const requests: ComputerCommandRequest[] = [];
-    const registry = new NodeReplKernelRegistry({
-      idleTimeoutMs: 60_000,
-      runner: vi.fn(async (request: ComputerCommandRequest) => {
-        requests.push(request);
-        return { exitCode: 0, stdout: "Notes\n", stderr: "" };
-      }),
-    });
-    try {
-      await expect(
-        registry.evaluate("await sky.list_apps()", context("agent-anchor")),
-      ).resolves.toBe("'Notes'");
-      expect(requests).toHaveLength(1);
-      expect(requests[0]?.args[0]).toMatch(/stella-computer\.js$/);
-      expect(requests[0]?.timeoutMs).toBe(30_000);
-    } finally {
-      registry.dispose();
-    }
-  });
-
-  it("uses distinct long-lived evaluation, command, and idle defaults", async () => {
+  it("uses distinct long-lived evaluation, session, and idle defaults", async () => {
     const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    const requests: ComputerCommandRequest[] = [];
+    const factoryOptions: ComputerUseSessionFactoryOptions[] = [];
     const registry = new NodeReplKernelRegistry({
-      cliPath: "/runtime/stella-computer.js",
-      runner: vi.fn(async (request: ComputerCommandRequest) => {
-        requests.push(request);
-        return { exitCode: 0, stdout: "Notes\n", stderr: "" };
-      }),
+      sessionFactory: (options) => {
+        factoryOptions.push(options);
+        return defaultSessionFactory(options);
+      },
     });
     try {
       await registry.evaluate(
         "await sky.list_apps()",
         context("agent-default-budgets"),
       );
-      expect(requests[0]?.timeoutMs).toBe(30_000);
+      expect(factoryOptions[0]?.timeoutMs).toBe(30_000);
       expect(
         timeoutSpy.mock.calls.some(([, delay]) => delay === 5 * 60_000),
       ).toBe(true);
@@ -495,10 +530,9 @@ describe("persistent Node REPL kernels", () => {
   it("disposes each kernel session exactly once across closure paths", async () => {
     const explicitCleanup = vi.fn();
     const explicit = new NodeReplKernelRegistry({
-      cliPath: "/runtime/stella-computer.js",
+      sessionFactory: defaultSessionFactory,
       disposeSession: explicitCleanup,
       idleTimeoutMs: 60_000,
-      runner: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
     });
     await explicit.evaluate("1", context("agent-explicit"));
     explicit.dispose();
@@ -510,10 +544,9 @@ describe("persistent Node REPL kernels", () => {
 
     const idleCleanup = vi.fn();
     const idle = new NodeReplKernelRegistry({
-      cliPath: "/runtime/stella-computer.js",
+      sessionFactory: defaultSessionFactory,
       disposeSession: idleCleanup,
       idleTimeoutMs: 10,
-      runner: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
     });
     await idle.evaluate("1", context("agent-idle"));
     await vi.waitFor(() => expect(idleCleanup).toHaveBeenCalledTimes(1));
@@ -522,10 +555,9 @@ describe("persistent Node REPL kernels", () => {
 
     const timeoutCleanup = vi.fn();
     const timeout = new NodeReplKernelRegistry({
-      cliPath: "/runtime/stella-computer.js",
+      sessionFactory: defaultSessionFactory,
       disposeSession: timeoutCleanup,
       idleTimeoutMs: 60_000,
-      runner: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
     });
     await expect(
       timeout.evaluate("while (true) {}", context("agent-timeout"), {
@@ -538,10 +570,9 @@ describe("persistent Node REPL kernels", () => {
 
     const failureCleanup = vi.fn();
     const failure = new NodeReplKernelRegistry({
-      cliPath: "/runtime/stella-computer.js",
+      sessionFactory: defaultSessionFactory,
       disposeSession: failureCleanup,
       idleTimeoutMs: 60_000,
-      runner: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
     });
     await expect(
       failure.evaluate(

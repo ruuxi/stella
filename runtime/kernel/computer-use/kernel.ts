@@ -4,12 +4,12 @@ import { Worker } from "node:worker_threads";
 import type { ToolContext } from "../tools/types.js";
 import { getStellaComputerSessionId } from "../tools/stella-computer-session.js";
 import {
-  createInProcessComputerCommandRunner,
-  type ComputerCommandRunner,
-  type StellaComputerExecutor,
-} from "./command-runner.js";
-import { createSkyClient, type SkyClient } from "./client.js";
+  createSkyClient,
+  type AuthorizeApp,
+  type SkyClient,
+} from "./client.js";
 import { createNodeReplWorkerSource } from "./kernel-worker.js";
+import type { ComputerUseSession } from "./session.js";
 import {
   MAX_NODE_REPL_CODE_BYTES,
   MAX_NODE_REPL_OUTPUT_BYTES,
@@ -37,14 +37,24 @@ export type NodeReplMetadata = Readonly<{
 }>;
 
 export type NodeReplKernelManagerOptions = {
-  cliPath?: string;
-  runner?: ComputerCommandRunner;
-  executor?: StellaComputerExecutor;
+  sessionFactory?: ComputerUseSessionFactory;
+  authorizeApp?: AuthorizeApp;
   disposeSession?: (sessionId: string) => void | Promise<void>;
   evalTimeoutMs?: number;
   commandTimeoutMs?: number;
   idleTimeoutMs?: number;
 };
+
+export type ComputerUseSessionFactoryOptions = Readonly<{
+  sessionId: string;
+  cwd: string;
+  getSignal: () => AbortSignal | undefined;
+  timeoutMs: number;
+}>;
+
+export type ComputerUseSessionFactory = (
+  options: ComputerUseSessionFactoryOptions,
+) => ComputerUseSession;
 
 export type EvaluateOptions = {
   timeoutMs?: number;
@@ -136,19 +146,29 @@ class NodeReplKernel {
     options: Required<
       Pick<
         NodeReplKernelManagerOptions,
-        "runner" | "evalTimeoutMs" | "commandTimeoutMs" | "idleTimeoutMs"
+        | "sessionFactory"
+        | "evalTimeoutMs"
+        | "commandTimeoutMs"
+        | "idleTimeoutMs"
       >
-    > & { cliPath?: string; onIdle: (kernel: NodeReplKernel) => void },
+    > & {
+      authorizeApp?: AuthorizeApp;
+      onIdle: (kernel: NodeReplKernel) => void;
+    },
   ) {
     this.onTerminated = options.onIdle;
-    this.sky = createSkyClient({
-      cliPath: options.cliPath,
+    const getSignal = () => this.active?.controller.signal;
+    const session = options.sessionFactory({
       sessionId: id,
       cwd,
-      runner: options.runner,
-      commandTimeoutMs: options.commandTimeoutMs,
-      maxOutputBytes: MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES,
-      getSignal: () => this.active?.controller.signal,
+      getSignal,
+      timeoutMs: options.commandTimeoutMs,
+    });
+    this.sky = createSkyClient({
+      sessionId: id,
+      session,
+      getSignal,
+      authorizeApp: options.authorizeApp,
     });
     const workerData: NodeReplWorkerData = {
       cwd,
@@ -456,14 +476,11 @@ class NodeReplKernel {
 export class NodeReplKernelRegistry {
   private readonly kernels = new Map<string, NodeReplKernel>();
   private readonly disposedKernels = new WeakSet<NodeReplKernel>();
-  private readonly runner: ComputerCommandRunner;
   private readonly evalTimeoutMs: number;
   private readonly commandTimeoutMs: number;
   private readonly idleTimeoutMs: number;
 
   constructor(private readonly options: NodeReplKernelManagerOptions = {}) {
-    this.runner =
-      options.runner ?? createInProcessComputerCommandRunner(options.executor);
     this.evalTimeoutMs = options.evalTimeoutMs ?? DEFAULT_EVAL_TIMEOUT_MS;
     this.commandTimeoutMs =
       options.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
@@ -483,12 +500,18 @@ export class NodeReplKernelRegistry {
     }
     let kernel = this.kernels.get(id);
     if (!kernel) {
+      const sessionFactory = this.options.sessionFactory;
+      if (!sessionFactory) {
+        throw new Error(
+          "node_repl computer use requires a typed ComputerUseSession factory.",
+        );
+      }
       const cwd = path.resolve(
         context.toolWorkspaceRoot ?? context.stellaAppDir ?? process.cwd(),
       );
       kernel = new NodeReplKernel(id, cwd, {
-        cliPath: this.options.cliPath,
-        runner: this.runner,
+        sessionFactory,
+        authorizeApp: this.options.authorizeApp,
         evalTimeoutMs: this.evalTimeoutMs,
         commandTimeoutMs: this.commandTimeoutMs,
         idleTimeoutMs: this.idleTimeoutMs,

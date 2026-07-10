@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import { NodeReplKernelRegistry } from "../../../../../runtime/kernel/computer-use/kernel.js";
@@ -17,8 +17,13 @@ const context: ToolContext = {
 describe("node_repl tool", () => {
   it("is General-only and retains state across tool calls", async () => {
     const registry = new NodeReplKernelRegistry({
-      cliPath: "/runtime/stella-computer.js",
-      runner: vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" })),
+      sessionFactory: () => ({
+        request: async () => {
+          throw new Error(
+            "Unexpected Computer Use request in REPL persistence test.",
+          );
+        },
+      }),
     });
     const tool = createNodeReplTool({ registry });
     try {

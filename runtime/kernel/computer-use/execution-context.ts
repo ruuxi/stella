@@ -9,6 +9,7 @@ type ComputerExecutionContext = {
   stderr: string[];
   outputBytes: number;
   maxOutputBytes: number;
+  timeoutMs?: number;
 };
 
 export type ComputerExecutionContextOptions = {
@@ -17,6 +18,7 @@ export type ComputerExecutionContextOptions = {
   env?: NodeJS.ProcessEnv;
   signal?: AbortSignal;
   maxOutputBytes?: number;
+  timeoutMs?: number;
 };
 
 const DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -51,6 +53,7 @@ export const getComputerExecutionEnv = () => context()?.env ?? process.env;
 export const getComputerExecutionCwd = () => context()?.cwd ?? process.cwd();
 export const getComputerExecutionCliPath = () => context()?.cliPath;
 export const getComputerExecutionSignal = () => context()?.signal;
+export const getComputerExecutionTimeoutMs = () => context()?.timeoutMs;
 
 export const throwIfComputerExecutionAborted = () => {
   const signal = getComputerExecutionSignal();
@@ -90,6 +93,7 @@ export const runWithComputerExecutionContext = async <T>(
     stderr: [],
     outputBytes: 0,
     maxOutputBytes: options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
+    timeoutMs: options.timeoutMs,
   };
   return await storage.run(active, async () => {
     throwIfComputerExecutionAborted();

@@ -259,6 +259,17 @@ export type RuntimeHostHandlers = {
         reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
       }
   >;
+  requestComputerUseAppApproval?: (payload: {
+    bundleIdentifier: string;
+    displayName: string;
+    appPath?: string;
+    allowPersistentApproval: boolean;
+    risk?: string;
+    warningSubtitle?: string;
+  }) => Promise<
+    | { decision: "approved"; scope: "session" | "persistent" }
+    | { decision: "declined"; scope: "none" }
+  >;
   /**
    * Push a display update to the renderer. The payload is either a raw
    * HTML string or a structured payload object that the renderer hands
@@ -3348,6 +3359,24 @@ export class StellaRuntimeHost {
             agentId?: string;
             command?: string;
             offerId?: string;
+          },
+        );
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_COMPUTER_USE_APP_APPROVAL_REQUEST,
+      async (params) => {
+        if (!this.options.hostHandlers.requestComputerUseAppApproval) {
+          return { decision: "declined", scope: "none" };
+        }
+        return await this.options.hostHandlers.requestComputerUseAppApproval(
+          params as {
+            bundleIdentifier: string;
+            displayName: string;
+            appPath?: string;
+            allowPersistentApproval: boolean;
+            risk?: string;
+            warningSubtitle?: string;
           },
         );
       },

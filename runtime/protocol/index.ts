@@ -171,6 +171,7 @@ export const METHOD_NAMES = {
   HOST_CONNECTOR_CONNECT_CANCEL: "host.connectorConnect.cancel",
   HOST_BROWSER_EXTENSION_CONNECT_REQUEST:
     "host.browserExtensionConnect.request",
+  HOST_COMPUTER_USE_APP_APPROVAL_REQUEST: "host.computerUseAppApproval.request",
   HOST_APP_BROWSER_CONTEXT_GET: "host.appBrowserContext.get",
   HOST_DISPLAY_UPDATE: "host.display.update",
   HOST_NOTIFICATION_SHOW: "host.notification.show",

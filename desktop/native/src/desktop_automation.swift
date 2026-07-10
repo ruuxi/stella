@@ -146,6 +146,8 @@ struct SnapshotDocument: Codable {
 struct ActionReceipt: Codable {
     let id: String
     let action: String
+    let dispatch: String
+    let dispatchScope: String
     let targetPid: Int32
     let targetBundleId: String?
     let statePath: String
@@ -259,6 +261,192 @@ struct AutomationDaemonResponse: Codable {
     let stderr: String
 }
 
+let typedDaemonSchemaVersion = 1
+let typedDaemonProtocolVersion = 1
+
+enum JSONValue: Codable, Equatable {
+    case object([String: JSONValue])
+    case array([JSONValue])
+    case string(String)
+    case integer(Int64)
+    case number(Double)
+    case bool(Bool)
+    case null
+
+    init(from decoder: Decoder) throws {
+        if let container = try? decoder.container(keyedBy: DynamicCodingKey.self) {
+            var result: [String: JSONValue] = [:]
+            for key in container.allKeys {
+                result[key.stringValue] = try container.decode(JSONValue.self, forKey: key)
+            }
+            self = .object(result)
+            return
+        }
+        if var container = try? decoder.unkeyedContainer() {
+            var result: [JSONValue] = []
+            while !container.isAtEnd {
+                result.append(try container.decode(JSONValue.self))
+            }
+            self = .array(result)
+            return
+        }
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Int64.self) {
+            self = .integer(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .number(value)
+        } else {
+            self = .string(try container.decode(String.self))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        switch self {
+        case .object(let value):
+            var container = encoder.container(keyedBy: DynamicCodingKey.self)
+            for (key, child) in value {
+                try container.encode(child, forKey: DynamicCodingKey(stringValue: key))
+            }
+        case .array(let value):
+            var container = encoder.unkeyedContainer()
+            for child in value {
+                try container.encode(child)
+            }
+        case .string(let value):
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        case .integer(let value):
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        case .number(let value):
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        case .bool(let value):
+            var container = encoder.singleValueContainer()
+            try container.encode(value)
+        case .null:
+            var container = encoder.singleValueContainer()
+            try container.encodeNil()
+        }
+    }
+}
+
+struct DynamicCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init(stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init(intValue: Int) {
+        stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}
+
+struct TypedDaemonTarget: Codable, Equatable {
+    let pid: Int32?
+    let appName: String?
+    let bundleId: String?
+}
+
+struct TypedDaemonState: Codable, Equatable {
+    let path: String
+    let sessionId: String?
+    let maxDepth: Int?
+    let maxNodes: Int?
+    let screenshotPath: String?
+    let screenshotPolicy: String?
+    let inlineScreenshot: Bool?
+    let allWindows: Bool?
+    let vision: Bool?
+    let raise: Bool?
+}
+
+struct TypedDaemonActionOptions: Codable, Equatable {
+    let allowHid: Bool?
+    let coordinateFallback: Bool?
+    let raise: Bool?
+    let showOverlay: Bool?
+    let deferObservation: Bool?
+}
+
+struct TypedDaemonAction: Codable, Equatable {
+    let kind: String
+    let ref: String?
+    let text: String?
+    let name: String?
+    let key: String?
+    let direction: String?
+    let selection: String?
+    let prefix: String?
+    let suffix: String?
+    let mouseButton: String?
+    let clickCount: Int?
+    let pages: Int?
+    let x: Double?
+    let y: Double?
+    let fromX: Double?
+    let fromY: Double?
+    let toX: Double?
+    let toY: Double?
+    let toRef: String?
+    let dragType: String?
+    let dragOperation: String?
+    let options: TypedDaemonActionOptions?
+}
+
+struct TypedDaemonOperation: Codable, Equatable {
+    let type: String
+    let target: TypedDaemonTarget?
+    let state: TypedDaemonState?
+    let action: TypedDaemonAction?
+    let operations: [TypedDaemonOperation]?
+    let durationMs: Int64?
+}
+
+struct TypedAutomationDaemonRequest: Codable, Equatable {
+    let schemaVersion: Int
+    let protocolVersion: Int
+    let seq: Int
+    let operation: TypedDaemonOperation
+}
+
+struct TypedDaemonError: Codable, Equatable {
+    let code: String
+    let message: String
+}
+
+struct TypedAutomationDaemonResponse: Codable, Equatable {
+    let schemaVersion: Int
+    let protocolVersion: Int
+    let seq: Int
+    let ok: Bool
+    let status: Int32
+    let result: JSONValue?
+    let error: TypedDaemonError?
+}
+
+struct TypedDaemonProtocolFailure: LocalizedError {
+    let code: String
+    let message: String
+
+    var errorDescription: String? { message }
+}
+
+struct TypedDaemonInvocation: Equatable {
+    let argv: [String]
+    let env: [String: String]
+    let target: TypedDaemonTarget?
+    let statePath: String?
+}
+
 struct LockedUsePayload: Codable {
     let ok: Bool
     let enabled: Bool
@@ -297,6 +485,7 @@ struct SnapshotOptions {
     let screenshotPath: String?
     let inlineScreenshot: Bool
     let allWindows: Bool
+    let raise: Bool
     let screenshotPolicy: ScreenshotPolicy
     let explicitVision: Bool
 }
@@ -305,6 +494,30 @@ enum ScreenshotPolicy: String {
     case auto
     case always
     case never
+}
+
+enum ActionDispatch: String, Codable {
+    case accessibility
+    case perPid = "per-pid"
+    case systemEvents = "system-events"
+    case globalHid = "global-hid"
+    case appKit = "appkit"
+
+    var scope: String {
+        switch self {
+        case .accessibility:
+            return "targeted-ax"
+        case .perPid:
+            return "per-pid"
+        case .systemEvents, .globalHid, .appKit:
+            return "global"
+        }
+    }
+}
+
+struct InputDispatchResult {
+    let usedAction: String
+    let dispatch: ActionDispatch
 }
 
 struct ActionOptions {
@@ -1643,9 +1856,24 @@ func setBoolAttribute(_ attribute: String, on element: AXUIElement, value: Bool)
     ) == .success
 }
 
-func recoverHiddenTargetWindowIfNeeded(_ target: AppTarget) {
-    if snapshotRoots(for: target.axApp).contains(where: isUsableWindowElement) {
-        return
+func recoverHiddenTargetWindowIfNeeded(
+    _ target: AppTarget,
+    allowRaise: Bool
+) throws -> [String] {
+    let hasUsableWindow = snapshotRoots(for: target.axApp).contains(where: isUsableWindowElement)
+    if !target.app.isHidden, hasUsableWindow {
+        return []
+    }
+
+    let appName = target.app.localizedName ?? target.app.bundleIdentifier ?? "pid \(target.app.processIdentifier)"
+    let unavailableReason = target.app.isHidden
+        ? "hidden"
+        : "minimized or unavailable"
+    guard allowRaise else {
+        throw failure(
+            "Target app '\(appName)' is \(unavailableReason). Background observation will not unhide, "
+            + "restore, raise, or focus it; retry with explicit --raise if foreground recovery is acceptable."
+        )
     }
 
     var recovered = false
@@ -1672,6 +1900,12 @@ func recoverHiddenTargetWindowIfNeeded(_ target: AppTarget) {
     if recovered {
         Thread.sleep(forTimeInterval: 0.4)
     }
+
+    guard !target.app.isHidden,
+          snapshotRoots(for: target.axApp).contains(where: isUsableWindowElement) else {
+        throw failure("Failed to recover a visible window for target app '\(appName)' with explicit --raise.")
+    }
+    return ["Recovered hidden/minimized target '\(appName)' because explicit --raise was requested."]
 }
 
 func primaryLabel(
@@ -2535,6 +2769,7 @@ final class AutomationStateCache {
         snapshot: SnapshotDocument,
         target: AppTarget,
         action: String,
+        dispatch: ActionDispatch,
         deferred: Bool,
         visualContextNeeded: Bool
     ) -> ActionReceipt {
@@ -2563,6 +2798,8 @@ final class AutomationStateCache {
         return ActionReceipt(
             id: UUID().uuidString.lowercased(),
             action: action,
+            dispatch: dispatch.rawValue,
+            dispatchScope: dispatch.scope,
             targetPid: target.app.processIdentifier,
             targetBundleId: target.app.bundleIdentifier,
             statePath: canonicalPath(statePath),
@@ -5741,7 +5978,7 @@ func performClick(
     raise: Bool,
     clickCount: Int = 1,
     button: CGMouseButton = .left
-) -> (Bool, String?) {
+) -> (Bool, String?, ActionDispatch?) {
     let count = max(1, clickCount)
     let point = candidate.frame.map(frameCenter)
     if !alwaysSimulateInput() {
@@ -5754,7 +5991,7 @@ func performClick(
             allowActivationFallback: raise
         )
         if clicked, usedAction != "activation-fallback" {
-            return (true, usedAction)
+            return (true, usedAction, .accessibility)
         }
     }
 
@@ -5769,24 +6006,24 @@ func performClick(
            clickCount: count,
            button: button
        ) {
-        return (true, "targeted-coordinate-fallback")
+        return (true, "targeted-coordinate-fallback", .perPid)
     }
 
     // Only after the targeted fallback fails do we consider the legacy
     // global/HID coordinate fallback, which remains explicitly gated.
     if coordinateFallback,
        let point,
-       postLeftClick(
+       let dispatchResult = postLeftClick(
            at: point,
            target: target,
            raise: raise,
            clickCount: count,
            button: button
        ) {
-        return (true, "coordinate-fallback")
+        return (true, dispatchResult.usedAction, dispatchResult.dispatch)
     }
 
-    return (false, nil)
+    return (false, nil, nil)
 }
 
 func performPointClick(
@@ -5797,7 +6034,7 @@ func performPointClick(
     button: CGMouseButton,
     raise: Bool,
     allowGlobalFallback: Bool
-) -> (Bool, String?) {
+) -> (Bool, String?, ActionDispatch?) {
     let lookupDepth = max(snapshot?.maxDepth ?? 32, 32)
     let lookupNodes = max((snapshot?.maxNodes ?? 1500) * 2, 3000)
     let candidates = collectCandidates(target: target, maxDepth: lookupDepth, maxNodes: lookupNodes)
@@ -5814,7 +6051,7 @@ func performPointClick(
             allowActivationFallback: raise
         )
         if clicked, usedAction != "activation-fallback" {
-            return (true, usedAction)
+            return (true, usedAction, .accessibility)
         }
     }
 
@@ -5824,11 +6061,11 @@ func performPointClick(
         clickCount: clickCount,
         button: button
     ) {
-        return (true, "targeted-coordinate-fallback")
+        return (true, "targeted-coordinate-fallback", .perPid)
     }
 
-    guard allowGlobalFallback else {
-        return (false, nil)
+    guard raise, allowGlobalFallback else {
+        return (false, nil, nil)
     }
 
     if raise,
@@ -5839,15 +6076,15 @@ func performPointClick(
            target,
            bodyLines: ["click at {\(Int(point.x)), \(Int(point.y))}"],
            raise: raise
-       ) {
-        return (true, "system-events")
+    ) {
+        return (true, "system-events", .systemEvents)
     }
 
     if simulateLeftClick(at: point, clickCount: clickCount, button: button) {
-        return (true, "global-coordinate-fallback")
+        return (true, "global-coordinate-fallback", .globalHid)
     }
 
-    return (false, nil)
+    return (false, nil, nil)
 }
 
 func performSemanticAction(
@@ -5880,7 +6117,7 @@ func performScroll(
     direction: String,
     pages: Int,
     target: AppTarget? = nil
-) -> (String, [String])? {
+) -> (String, [String], ActionDispatch)? {
     guard let actionName = scrollActionName(for: direction) else {
         return nil
     }
@@ -5896,7 +6133,7 @@ func performScroll(
             }
         }
         if allOk {
-            return (actionName, warnings)
+            return (actionName, warnings, .accessibility)
         }
         warnings.append("AX action \(actionName) failed mid-sequence; fell back to scroll-wheel CGEvent.")
     } else {
@@ -5920,7 +6157,7 @@ func performScroll(
     ) else {
         return nil
     }
-    return ("scroll-wheel", warnings)
+    return ("scroll-wheel-postToPid", warnings, .perPid)
 }
 
 // Returns (succeeded, usedAction) where usedAction is "AXValue" for the
@@ -5931,7 +6168,7 @@ func setValue(
     text: String,
     target: AppTarget? = nil,
     raise: Bool = true
-) -> (Bool, String?) {
+) -> (Bool, String?, ActionDispatch?) {
     _ = setFocused(candidate.element)
 
     // Some elements (Slider, ProgressIndicator) want a CFNumber, not a string.
@@ -5945,7 +6182,7 @@ func setValue(
     if setStringResult == .success {
         let observed = normalized(axStringValue(candidate.element, kAXValueAttribute as String))
         if observed == normalized(text) {
-            return (true, "AXValue")
+            return (true, "AXValue", .accessibility)
         }
         // Set succeeded but readback differs: the app accepted the write
         // and then transformed the value (e.g. capitalized, formatted as a
@@ -5953,7 +6190,7 @@ func setValue(
         // keystroke would re-dispatch the input and risk duplicate edits
         // (Numbers cells, formatted-text fields). The caller can re-snapshot
         // to confirm whether the transformation was acceptable.
-        return (true, "AXValue(transformed)")
+        return (true, "AXValue(transformed)", .accessibility)
     }
 
     // Numeric coercion: slider, level indicator, etc.
@@ -5965,7 +6202,7 @@ func setValue(
             number
         )
         if setNumericResult == .success {
-            return (true, "AXValue(numeric)")
+            return (true, "AXValue(numeric)", .accessibility)
         }
     }
 
@@ -5973,16 +6210,19 @@ func setValue(
     // fields that reject AXValue assignment but honor synthesized typing.
     if let target {
         // Best-effort clear: select-all then delete current value before typing.
-        _ = postKeyChord("cmd+a", target: target, raise: raise)
-        _ = postKeyChord("delete", target: target, raise: raise)
-        if postUnicodeText(text, target: target, raise: raise) {
+        let selectAll = postKeyChord("cmd+a", target: target, raise: raise)
+        let delete = postKeyChord("delete", target: target, raise: raise)
+        if !raise, selectAll == nil || delete == nil {
+            return (false, nil, nil)
+        }
+        if let typing = postUnicodeText(text, target: target, raise: raise) {
             // Optional readback to make sure something landed; not authoritative
             // since the app may format the value.
-            return (true, "keystroke")
+            return (true, "keystroke:\(typing.usedAction)", typing.dispatch)
         }
     }
 
-    return (false, nil)
+    return (false, nil, nil)
 }
 
 enum TextSelectionMode: String {
@@ -6409,6 +6649,7 @@ enum SkyLightEventPost {
     }()
 
     private static let getProcessForPIDFn: GetProcessForPIDFn? = {
+        _ = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
         guard let pointer = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "GetProcessForPID") else {
             return nil
         }
@@ -6475,45 +6716,250 @@ enum SkyLightEventPost {
     }
 }
 
-enum FocusWithoutRaise {
-    static func activateWithoutRaise(targetPid: pid_t, targetWindowID: CGWindowID?) -> Bool {
-        var frontPSN = [UInt8](repeating: 0, count: 8)
-        var targetPSN = [UInt8](repeating: 0, count: 8)
-        guard frontPSN.withUnsafeMutableBytes({ SkyLightEventPost.getFrontProcess($0.baseAddress!) }),
-              targetPSN.withUnsafeMutableBytes({ SkyLightEventPost.getProcessPSN(forPid: targetPid, into: $0.baseAddress!) }) else {
+struct SyntheticAppFocusState: Equatable {
+    var applicationBelievesItIsActive = false
+    var applicationBelievesItHasFocus = false
+    var applicationIsActive = false
+
+    mutating func observedApplicationIsActive(_ active: Bool) {
+        applicationIsActive = active
+        if active {
+            applicationBelievesItIsActive = true
+            applicationBelievesItHasFocus = true
+        }
+    }
+
+    mutating func synthesizedFocus() {
+        applicationBelievesItIsActive = true
+        applicationBelievesItHasFocus = true
+    }
+
+    mutating func synthesizedDeactivation() {
+        applicationBelievesItIsActive = false
+        applicationBelievesItHasFocus = false
+    }
+}
+
+// Keeps one background target logically active/focused for a Computer Use
+// session while leaving NSWorkspace's actual frontmost application unchanged.
+// The state names mirror the current Computer Use focus enforcer so the three
+// independently meaningful conditions never collapse into one "focused" bit.
+final class SyntheticAppFocusEnforcer {
+    static let shared = SyntheticAppFocusEnforcer()
+
+    private struct Target: Equatable {
+        let pid: pid_t
+        var windowID: CGWindowID?
+        let sessionID: String
+    }
+
+    private var target: Target?
+    private(set) var state = SyntheticAppFocusState()
+    private var synthesizedActionDepth = 0
+    private var frontmostApplicationObserver: NSObjectProtocol?
+    private var applicationTerminationObserver: NSObjectProtocol?
+
+    var isMenuDismissalSuppressionEnabled: Bool {
+        synthesizedActionDepth > 0
+    }
+
+    private init() {
+        syntheticFocusEnforcerWasUsed = true
+        let center = NSWorkspace.shared.notificationCenter
+        frontmostApplicationObserver = center.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.frontmostApplicationChanged()
+        }
+        applicationTerminationObserver = center.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                    as? NSRunningApplication,
+                  app.processIdentifier == self.target?.pid else {
+                return
+            }
+            self.deactivate()
+        }
+    }
+
+    deinit {
+        let center = NSWorkspace.shared.notificationCenter
+        if let frontmostApplicationObserver {
+            center.removeObserver(frontmostApplicationObserver)
+        }
+        if let applicationTerminationObserver {
+            center.removeObserver(applicationTerminationObserver)
+        }
+    }
+
+    func beginSynthesizedAction() {
+        synthesizedActionDepth += 1
+    }
+
+    func endSynthesizedAction() {
+        synthesizedActionDepth = max(0, synthesizedActionDepth - 1)
+    }
+
+    func enforce(targetPid: pid_t, targetWindowID: CGWindowID?, sessionID: String) -> Bool {
+        let next = Target(pid: targetPid, windowID: targetWindowID, sessionID: sessionID)
+        if let current = target,
+           current.pid != next.pid || current.sessionID != next.sessionID {
+            deactivate()
+        }
+        target = next
+        return enforceCurrentTarget()
+    }
+
+    func reassert(targetPid: pid_t, targetWindowID: CGWindowID?) -> Bool {
+        guard var current = target, current.pid == targetPid else {
+            return false
+        }
+        current.windowID = targetWindowID ?? current.windowID
+        target = current
+        return enforceCurrentTarget()
+    }
+
+    func deactivate() {
+        guard let target else {
+            state = SyntheticAppFocusState()
+            return
+        }
+        let actualFrontmostPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        state.observedApplicationIsActive(actualFrontmostPid == target.pid)
+        if !state.applicationIsActive,
+           state.applicationBelievesItHasFocus {
+            _ = postFocusEvent(to: target.pid, focused: false, windowID: nil)
+        }
+        if let actualFrontmostPid,
+           actualFrontmostPid != target.pid {
+            _ = postFocusEvent(to: actualFrontmostPid, focused: true, windowID: nil)
+        }
+        state.synthesizedDeactivation()
+        self.target = nil
+        trace("focus-enforcer:deactivated pid=\(target.pid) session=\(target.sessionID)")
+    }
+
+    private func frontmostApplicationChanged() {
+        guard target != nil else { return }
+        if !enforceCurrentTarget() {
+            trace("focus-enforcer:reassert-failed")
+        }
+    }
+
+    private func enforceCurrentTarget() -> Bool {
+        guard let target,
+              NSRunningApplication(processIdentifier: target.pid) != nil else {
+            deactivate()
             return false
         }
 
-        func record(marker: UInt8, windowID: CGWindowID?) -> [UInt8] {
-            var bytes = [UInt8](repeating: 0, count: 248)
-            bytes[0x04] = 0xf8
-            bytes[0x08] = 0x0d
-            bytes[0x8a] = marker
-            if let windowID {
-                let raw = UInt32(windowID)
-                bytes[0x3c] = UInt8(raw & 0xff)
-                bytes[0x3d] = UInt8((raw >> 8) & 0xff)
-                bytes[0x3e] = UInt8((raw >> 16) & 0xff)
-                bytes[0x3f] = UInt8((raw >> 24) & 0xff)
-            }
-            return bytes
+        let actualFrontmostPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        state.observedApplicationIsActive(actualFrontmostPid == target.pid)
+        if state.applicationIsActive {
+            trace("focus-enforcer:target-is-frontmost pid=\(target.pid)")
+            return true
         }
 
-        let defocus = record(marker: 0x02, windowID: nil)
-        let focus = record(marker: 0x01, windowID: targetWindowID)
-        let didDefocus = frontPSN.withUnsafeBytes { psn in
-            defocus.withUnsafeBufferPointer { bytes in
-                SkyLightEventPost.postEventRecordTo(psn: psn.baseAddress!, bytes: bytes.baseAddress!)
+        var foregroundWasDefocused = false
+        if let actualFrontmostPid,
+           actualFrontmostPid != target.pid {
+            foregroundWasDefocused = postFocusEvent(
+                to: actualFrontmostPid,
+                focused: false,
+                windowID: nil
+            )
+        }
+
+        let targetFocused = postFocusEvent(
+            to: target.pid,
+            focused: true,
+            windowID: target.windowID
+        )
+        let foregroundRestored: Bool
+        if foregroundWasDefocused, let actualFrontmostPid {
+            foregroundRestored = postFocusEvent(
+                to: actualFrontmostPid,
+                focused: true,
+                windowID: nil
+            )
+        } else {
+            foregroundRestored = true
+        }
+
+        guard targetFocused,
+              foregroundRestored,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == actualFrontmostPid else {
+            if targetFocused {
+                _ = postFocusEvent(to: target.pid, focused: false, windowID: nil)
+            }
+            state.synthesizedDeactivation()
+            trace(
+                "focus-enforcer:failed pid=\(target.pid) "
+                + "targetFocused=\(targetFocused) foregroundRestored=\(foregroundRestored)"
+            )
+            return false
+        }
+
+        state.synthesizedFocus()
+        trace(
+            "focus-enforcer:enforced pid=\(target.pid) session=\(target.sessionID) "
+            + "frontmostPid=\(actualFrontmostPid ?? 0)"
+        )
+        return true
+    }
+
+    static func focusEventRecord(focused: Bool, windowID: CGWindowID?) -> [UInt8] {
+        var bytes = [UInt8](repeating: 0, count: 248)
+        bytes[0x04] = 0xf8
+        bytes[0x08] = 0x0d
+        bytes[0x8a] = focused ? 0x01 : 0x02
+        if let windowID {
+            let raw = UInt32(windowID)
+            bytes[0x3c] = UInt8(raw & 0xff)
+            bytes[0x3d] = UInt8((raw >> 8) & 0xff)
+            bytes[0x3e] = UInt8((raw >> 16) & 0xff)
+            bytes[0x3f] = UInt8((raw >> 24) & 0xff)
+        }
+        return bytes
+    }
+
+    private func postFocusEvent(
+        to pid: pid_t,
+        focused: Bool,
+        windowID: CGWindowID?
+    ) -> Bool {
+        var psn = [UInt8](repeating: 0, count: 8)
+        guard psn.withUnsafeMutableBytes({
+            SkyLightEventPost.getProcessPSN(forPid: pid, into: $0.baseAddress!)
+        }) else {
+            return false
+        }
+        let record = Self.focusEventRecord(focused: focused, windowID: windowID)
+        return psn.withUnsafeBytes { psnBytes in
+            record.withUnsafeBufferPointer { recordBytes in
+                SkyLightEventPost.postEventRecordTo(
+                    psn: psnBytes.baseAddress!,
+                    bytes: recordBytes.baseAddress!
+                )
             }
         }
-        let didFocus = targetPSN.withUnsafeBytes { psn in
-            focus.withUnsafeBufferPointer { bytes in
-                SkyLightEventPost.postEventRecordTo(psn: psn.baseAddress!, bytes: bytes.baseAddress!)
-            }
-        }
-        return didDefocus || didFocus
     }
 }
+
+private var syntheticFocusEnforcerWasUsed = false
+private let installSyntheticFocusExitHandler: Void = {
+    atexit {
+        if syntheticFocusEnforcerWasUsed {
+            SyntheticAppFocusEnforcer.shared.deactivate()
+        }
+    }
+}()
 
 func cocoaLocation(fromScreenPoint point: CGPoint) -> CGPoint {
     let screenHeight = NSScreen.main?.frame.height ?? NSScreen.screens.first?.frame.height ?? 0
@@ -6601,6 +7047,9 @@ func buildMouseCGEvent(
 
 @discardableResult
 func postPidMouseEvent(_ event: CGEvent, pid: pid_t, windowLocalPoint: CGPoint?) -> Bool {
+    guard NSRunningApplication(processIdentifier: pid) != nil else {
+        return false
+    }
     if let windowLocalPoint {
         _ = SkyLightEventPost.setWindowLocation(event, windowLocalPoint)
     }
@@ -6623,7 +7072,12 @@ func clickViaSignedPidPost(
     let targetLocalPoint = windowLocalPoint(point, in: window)
 
     if let windowID {
-        _ = FocusWithoutRaise.activateWithoutRaise(targetPid: pid, targetWindowID: windowID)
+        guard SyntheticAppFocusEnforcer.shared.reassert(
+            targetPid: pid,
+            targetWindowID: windowID
+        ) else {
+            return false
+        }
         Thread.sleep(forTimeInterval: 0.05)
     }
 
@@ -6637,30 +7091,40 @@ func clickViaSignedPidPost(
         return false
     }
     move.setIntegerValueField(.mouseEventClickState, value: 1)
-    postPidMouseEvent(move, pid: pid, windowLocalPoint: targetLocalPoint)
-    Thread.sleep(forTimeInterval: 0.015)
-
-    let primerPoint = CGPoint(x: -1, y: -1)
-    guard let primerDown = buildMouseCGEvent(
-        type: .leftMouseDown,
-        point: primerPoint,
-        clickCount: 1,
-        button: .left,
-        windowID: windowID
-    ),
-    let primerUp = buildMouseCGEvent(
-        type: .leftMouseUp,
-        point: primerPoint,
-        clickCount: 1,
-        button: .left,
-        windowID: windowID
-    ) else {
+    guard postPidMouseEvent(move, pid: pid, windowLocalPoint: targetLocalPoint) else {
         return false
     }
-    postPidMouseEvent(primerDown, pid: pid, windowLocalPoint: primerPoint)
-    Thread.sleep(forTimeInterval: 0.001)
-    postPidMouseEvent(primerUp, pid: pid, windowLocalPoint: primerPoint)
-    Thread.sleep(forTimeInterval: 0.10)
+    Thread.sleep(forTimeInterval: 0.015)
+
+    // The offscreen down/up pair primes some web wrappers, but it also
+    // dismisses an already-open background menu. Suppress only that synthetic
+    // primer while a Computer Use action is in flight. Physical foreground
+    // events never pass through this path and remain completely untouched.
+    if !SyntheticAppFocusEnforcer.shared.isMenuDismissalSuppressionEnabled {
+        let primerPoint = CGPoint(x: -1, y: -1)
+        guard let primerDown = buildMouseCGEvent(
+            type: .leftMouseDown,
+            point: primerPoint,
+            clickCount: 1,
+            button: .left,
+            windowID: windowID
+        ),
+        let primerUp = buildMouseCGEvent(
+            type: .leftMouseUp,
+            point: primerPoint,
+            clickCount: 1,
+            button: .left,
+            windowID: windowID
+        ),
+        postPidMouseEvent(primerDown, pid: pid, windowLocalPoint: primerPoint) else {
+            return false
+        }
+        Thread.sleep(forTimeInterval: 0.001)
+        guard postPidMouseEvent(primerUp, pid: pid, windowLocalPoint: primerPoint) else {
+            return false
+        }
+        Thread.sleep(forTimeInterval: 0.10)
+    }
 
     for clickIndex in 1...count {
         guard let down = buildMouseCGEvent(
@@ -6681,9 +7145,13 @@ func clickViaSignedPidPost(
         }
         down.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
         up.setIntegerValueField(.mouseEventClickState, value: Int64(clickIndex))
-        postPidMouseEvent(down, pid: pid, windowLocalPoint: targetLocalPoint)
+        guard postPidMouseEvent(down, pid: pid, windowLocalPoint: targetLocalPoint) else {
+            return false
+        }
         Thread.sleep(forTimeInterval: 0.001)
-        postPidMouseEvent(up, pid: pid, windowLocalPoint: targetLocalPoint)
+        guard postPidMouseEvent(up, pid: pid, windowLocalPoint: targetLocalPoint) else {
+            return false
+        }
         if clickIndex < count {
             Thread.sleep(forTimeInterval: 0.08)
         }
@@ -6741,7 +7209,9 @@ func simulateLeftClickToPid(
             return false
         }
         event.setIntegerValueField(.mouseEventClickState, value: Int64(clickState))
-        postPidMouseEvent(event, pid: pid, windowLocalPoint: localPoint)
+        guard postPidMouseEvent(event, pid: pid, windowLocalPoint: localPoint) else {
+            return false
+        }
         Thread.sleep(forTimeInterval: 0.03)
         return true
     }
@@ -7077,7 +7547,7 @@ func postLeftClick(
     raise: Bool = true,
     clickCount: Int = 1,
     button: CGMouseButton = .left
-) -> Bool {
+) -> InputDispatchResult? {
     // System Events `click at {x, y}` and HID-tap CGEvent posts both
     // route to whatever window is on top at the screen point — useless
     // when the target app is backgrounded. When raise=false (the
@@ -7098,7 +7568,7 @@ func postLeftClick(
             clickCount: clickCount,
             button: button
         ) {
-            return true
+            return InputDispatchResult(usedAction: "AX-at-position", dispatch: .accessibility)
         }
         if simulateLeftClickToPid(
             at: point,
@@ -7107,8 +7577,9 @@ func postLeftClick(
             button: button
         ) {
             trace("input:click path=cgevent-postToPid pid=\(target.app.processIdentifier)")
-            return true
+            return InputDispatchResult(usedAction: "targeted-coordinate-fallback", dispatch: .perPid)
         }
+        return nil
     }
     // System Events `click at` only supports left-click; for right /
     // middle / multi-click in the raise path we drop straight to
@@ -7123,10 +7594,13 @@ func postLeftClick(
            raise: raise
        ) {
         trace("input:click path=system-events")
-        return true
+        return InputDispatchResult(usedAction: "system-events", dispatch: .systemEvents)
     }
     trace("input:click path=cgevent")
-    return simulateLeftClick(at: point, clickCount: clickCount, button: button)
+    guard simulateLeftClick(at: point, clickCount: clickCount, button: button) else {
+        return nil
+    }
+    return InputDispatchResult(usedAction: "global-coordinate-fallback", dispatch: .globalHid)
 }
 
 // Global HID-tap drag. Last-resort fallback; the per-pid path
@@ -7176,14 +7650,23 @@ func simulateDrag(from start: CGPoint, to end: CGPoint) -> Bool {
 // Background-friendly drag dispatch. Preferred path for `drag` /
 // `drag-screenshot` from computer-use: per-pid CGEvent injection so
 // the gesture lands in the targeted app even when not frontmost.
-// Falls back to the global HID-tap variant if per-pid posting fails.
-func postDrag(from start: CGPoint, to end: CGPoint, target: AppTarget, raise: Bool = false) -> Bool {
-    if !raise,
-       simulateDragToPid(from: start, to: end, pid: target.app.processIdentifier) {
+// With raise=false, per-pid failure is terminal. Explicit raise=true is the
+// only mode allowed to enter the global HID path.
+func postDrag(
+    from start: CGPoint,
+    to end: CGPoint,
+    target: AppTarget,
+    raise: Bool = false
+) -> InputDispatchResult? {
+    if !raise {
+        guard simulateDragToPid(from: start, to: end, pid: target.app.processIdentifier) else {
+            return nil
+        }
         trace("input:drag path=cgevent-postToPid pid=\(target.app.processIdentifier)")
-        return true
+        return InputDispatchResult(usedAction: "cgevent-postToPid", dispatch: .perPid)
     }
-    return simulateDrag(from: start, to: end)
+    guard simulateDrag(from: start, to: end) else { return nil }
+    return InputDispatchResult(usedAction: "global-drag", dispatch: .globalHid)
 }
 
 // MARK: - NSDraggingSession content drag
@@ -7450,7 +7933,11 @@ func chunkText(_ text: String, size: Int) -> [String] {
     return chunks
 }
 
-func postUnicodeText(_ text: String, target: AppTarget, raise: Bool = true) -> Bool {
+func postUnicodeText(
+    _ text: String,
+    target: AppTarget,
+    raise: Bool = true
+) -> InputDispatchResult? {
     // Same reasoning as postLeftClick: System Events `keystroke` only
     // delivers reliably when the target process is frontmost. When
     // raise=false drop straight to per-pid CGEvent Unicode injection so
@@ -7458,10 +7945,10 @@ func postUnicodeText(_ text: String, target: AppTarget, raise: Bool = true) -> B
     if !raise {
         if simulateUnicodeTextToPid(text, pid: target.app.processIdentifier) {
             trace("input:type path=cgevent-postToPid pid=\(target.app.processIdentifier) length=\(text.count)")
-            return true
+            return InputDispatchResult(usedAction: "unicode-postToPid", dispatch: .perPid)
         }
-        trace("input:type path=cgevent (postToPid-failed) length=\(text.count)")
-        return simulateUnicodeText(text)
+        trace("input:type path=postToPid-failed length=\(text.count)")
+        return nil
     }
 
     if !alwaysSimulateInput() {
@@ -7475,14 +7962,16 @@ func postUnicodeText(_ text: String, target: AppTarget, raise: Bool = true) -> B
             )
             if !ok {
                 trace("input:type path=cgevent (sysevents-failed) length=\(text.count)")
-                return simulateUnicodeText(text)
+                guard simulateUnicodeText(text) else { return nil }
+                return InputDispatchResult(usedAction: "unicode-global", dispatch: .globalHid)
             }
         }
         trace("input:type path=system-events length=\(text.count) chunks=\(chunks.count)")
-        return true
+        return InputDispatchResult(usedAction: "system-events-keystroke", dispatch: .systemEvents)
     }
     trace("input:type path=cgevent length=\(text.count)")
-    return simulateUnicodeText(text)
+    guard simulateUnicodeText(text) else { return nil }
+    return InputDispatchResult(usedAction: "unicode-global", dispatch: .globalHid)
 }
 
 func modifierFlags(for tokens: [String]) -> CGEventFlags {
@@ -7525,10 +8014,14 @@ func simulateKeyChord(_ keySpec: String) -> Bool {
     return true
 }
 
-func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = true) -> Bool {
+func postKeyChord(
+    _ keySpec: String,
+    target: AppTarget,
+    raise: Bool = true
+) -> InputDispatchResult? {
     let rawParts = keySpec.split(separator: "+").map(String.init)
     guard let keyToken = rawParts.last else {
-        return false
+        return nil
     }
 
     // raise=false: drop straight to per-pid CGEvent so the chord lands
@@ -7536,10 +8029,10 @@ func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = true) -> B
     if !raise {
         if simulateKeyChordToPid(keySpec, pid: target.app.processIdentifier) {
             trace("input:key path=cgevent-postToPid pid=\(target.app.processIdentifier) key=\(keySpec)")
-            return true
+            return InputDispatchResult(usedAction: "key-postToPid:\(keySpec)", dispatch: .perPid)
         }
-        trace("input:key path=cgevent (postToPid-failed) key=\(keySpec)")
-        return simulateKeyChord(keySpec)
+        trace("input:key path=postToPid-failed key=\(keySpec)")
+        return nil
     }
 
     let modifiers = Array(rawParts.dropLast())
@@ -7552,16 +8045,17 @@ func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = true) -> B
         }
         if runSystemEventsOnTarget(target, bodyLines: [command], raise: raise) {
             trace("input:key path=system-events key=\(keySpec)")
-            return true
+            return InputDispatchResult(usedAction: "system-events-key:\(keySpec)", dispatch: .systemEvents)
         }
     } else if !alwaysSimulateInput(), rawParts.count == 1 {
-        if postUnicodeText(keySpec, target: target, raise: raise) {
-            return true
+        if let result = postUnicodeText(keySpec, target: target, raise: raise) {
+            return result
         }
     }
 
     trace("input:key path=cgevent key=\(keySpec)")
-    return simulateKeyChord(keySpec)
+    guard simulateKeyChord(keySpec) else { return nil }
+    return InputDispatchResult(usedAction: "global-key:\(keySpec)", dispatch: .globalHid)
 }
 
 func snapshotWithMetadata(
@@ -7700,7 +8194,10 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
         bundleId: options.bundleId
     )
     configureMessagingTimeout(for: target)
-    recoverHiddenTargetWindowIfNeeded(target)
+    let recoveryWarnings = try recoverHiddenTargetWindowIfNeeded(
+        target,
+        allowRaise: options.raise
+    )
     let observer = AutomationObserverManager.shared
     let cache = AutomationStateCache.shared
     let existing = cache.entry(
@@ -7738,7 +8235,7 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
                 settle: settle,
                 explicitVision: options.explicitVision
             ))
-        var warnings = compatibleCache.document.warnings
+        var warnings = recoveryWarnings + compatibleCache.document.warnings
         var screenshot: Screenshot? = nil
         let screenshotPath = capture ? options.screenshotPath : nil
         if capture, let screenshotPath {
@@ -7850,7 +8347,7 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
     let windowFrame = currentWindowFrame(for: target) ?? nodes.first?.frame
     let selectedText = selectedTextFromFocusedElement(for: target)
     let focusedElementSummary = focusedSummary(in: nodes)
-    var warnings = builder.warnings
+    var warnings = recoveryWarnings + builder.warnings
 
     let capture = options.screenshotPolicy == .always ||
         (options.screenshotPolicy == .auto && shouldCaptureAutoScreenshot(
@@ -7938,6 +8435,7 @@ func refreshSnapshotAfterAction(
     snapshot: SnapshotDocument,
     target: AppTarget,
     action: String,
+    dispatch: ActionDispatch,
     visualContextNeeded: Bool = false
 ) throws -> (SnapshotDocument?, [String], AutomationSettle?, ActionReceipt) {
     let receipt = AutomationStateCache.shared.recordAction(
@@ -7945,6 +8443,7 @@ func refreshSnapshotAfterAction(
         snapshot: snapshot,
         target: target,
         action: action,
+        dispatch: dispatch,
         deferred: options.deferObservation,
         visualContextNeeded: visualContextNeeded || options.explicitVision
     )
@@ -7966,6 +8465,7 @@ func refreshSnapshotAfterAction(
             : nil,
         inlineScreenshot: options.inlineScreenshot,
         allWindows: snapshot.allWindows ?? false,
+        raise: options.raise,
         screenshotPolicy: options.screenshotPolicy,
         explicitVision: visualContextNeeded || options.explicitVision
     )
@@ -8157,7 +8657,8 @@ func validatedCachedCandidate(
 
 func actionCandidate(
     statePath: String,
-    targetId: String
+    targetId: String,
+    raise: Bool
 ) throws -> (SnapshotDocument, AppTarget, RefEntry, ResolvedCandidate) {
     let snapshot = try loadSnapshotState(from: statePath)
     guard let entry = snapshot.refs[targetId] ?? snapshot.indices?[targetId] else {
@@ -8183,6 +8684,7 @@ func actionCandidate(
         )
     }
     configureMessagingTimeout(for: target)
+    try prepareTargetForAction(target, statePath: statePath, raise: raise)
     try ensureSafeActionContext(snapshot: snapshot, target: target)
 
     if let cached = validatedCachedCandidate(
@@ -8291,18 +8793,18 @@ func isHidAllowed(_ args: [String]) -> Bool {
 
 func screenshotPolicy(from args: [String]) throws -> ScreenshotPolicy {
     if hasFlag(args, key: "--no-screenshot") { return .never }
+    if let raw = parseNamedOption(args, key: "--screenshot-policy")?.lowercased() {
+        guard let policy = ScreenshotPolicy(rawValue: raw) else {
+            throw NSError(domain: "desktop_automation", code: 52, userInfo: [
+                NSLocalizedDescriptionKey: "--screenshot-policy must be auto, always, or never."
+            ])
+        }
+        return policy
+    }
     if parseNamedOption(args, key: "--screenshot") != nil { return .always }
-    guard let raw = parseNamedOption(args, key: "--screenshot-policy")?.lowercased() else {
-        // Preserve the historical helper contract unless the caller opts in
-        // to adaptive capture explicitly.
-        return .always
-    }
-    guard let policy = ScreenshotPolicy(rawValue: raw) else {
-        throw NSError(domain: "desktop_automation", code: 52, userInfo: [
-            NSLocalizedDescriptionKey: "--screenshot-policy must be auto, always, or never."
-        ])
-    }
-    return policy
+    // Preserve the historical helper contract unless the caller opts in
+    // to adaptive capture explicitly.
+    return .always
 }
 
 func snapshotOptions(from args: [String]) throws -> SnapshotOptions {
@@ -8341,6 +8843,7 @@ func snapshotOptions(from args: [String]) throws -> SnapshotOptions {
         screenshotPath: screenshotPath,
         inlineScreenshot: inlineScreenshot,
         allWindows: allWindows,
+        raise: hasFlag(args, key: "--raise") || envBool("STELLA_COMPUTER_RAISE"),
         screenshotPolicy: policy,
         explicitVision: hasFlag(args, key: "--vision")
     )
@@ -8417,6 +8920,33 @@ func stateContext(for statePath: String) -> (SnapshotDocument?, AppTarget?) {
     return (snapshot, target)
 }
 
+func prepareTargetForAction(
+    _ target: AppTarget,
+    statePath: String,
+    raise: Bool
+) throws {
+    _ = installSyntheticFocusExitHandler
+    _ = try recoverHiddenTargetWindowIfNeeded(target, allowRaise: raise)
+    if raise {
+        SyntheticAppFocusEnforcer.shared.deactivate()
+        return
+    }
+
+    let sessionID = ProcessInfo.processInfo.environment["STELLA_COMPUTER_SESSION"]
+        ?? URL(fileURLWithPath: statePath).standardizedFileURL.path
+    let windowID = frontmostOnScreenWindow(pid: target.app.processIdentifier)?.windowID
+    guard SyntheticAppFocusEnforcer.shared.enforce(
+        targetPid: target.app.processIdentifier,
+        targetWindowID: windowID,
+        sessionID: sessionID
+    ) else {
+        throw failure(
+            "Failed to establish targeted background focus for pid \(target.app.processIdentifier). "
+            + "No global input was sent; retry with explicit --raise only if foreground dispatch is acceptable."
+        )
+    }
+}
+
 func actionSuccessPayload(
     action: String,
     ref: String?,
@@ -8489,8 +9019,13 @@ func nativeSelfTestCommand() -> NativeSelfTestPayload {
     }
     do {
         let autoPolicy = try screenshotPolicy(from: ["--screenshot-policy", "auto"])
+        let autoWithDestination = try screenshotPolicy(from: [
+            "--screenshot", "/tmp/stella-self-test.png",
+            "--screenshot-policy", "auto",
+        ])
         let neverPolicy = try screenshotPolicy(from: ["--no-screenshot"])
         check("screenshot-policy-auto", autoPolicy == .auto)
+        check("screenshot-policy-auto-with-destination", autoWithDestination == .auto)
         check("explicit-no-screenshot", neverPolicy == .never)
         let deferred = try actionOptions(from: [
             "--state", "/tmp/stella-self-test.json",
@@ -8498,12 +9033,177 @@ func nativeSelfTestCommand() -> NativeSelfTestPayload {
             "--screenshot-policy", "auto",
         ])
         check("deferred-action-options", deferred.deferObservation && deferred.screenshotPolicy == .auto)
+        check("actions-default-to-no-raise", !deferred.raise)
+        let raisedSnapshot = try snapshotOptions(from: [
+            "--state", "/tmp/stella-self-test.json",
+            "--no-screenshot",
+            "--raise",
+        ])
+        check("snapshot-recovery-requires-explicit-raise", raisedSnapshot.raise)
         check(
             "valueless-flag-positionals",
             positionalArguments(["@d1", "--defer-observation"]) == ["@d1"]
         )
     } catch {
         warnings.append("option parser threw: \(error.localizedDescription)")
+    }
+
+    var focusState = SyntheticAppFocusState()
+    check("focus-state-initially-inactive", focusState == SyntheticAppFocusState())
+    focusState.synthesizedFocus()
+    check(
+        "focus-state-tracks-synthetic-beliefs",
+        !focusState.applicationIsActive
+            && focusState.applicationBelievesItIsActive
+            && focusState.applicationBelievesItHasFocus
+    )
+    focusState.observedApplicationIsActive(true)
+    check("focus-state-tracks-actual-active", focusState.applicationIsActive)
+    focusState.synthesizedDeactivation()
+    check(
+        "focus-state-deactivates-cleanly",
+        !focusState.applicationBelievesItIsActive && !focusState.applicationBelievesItHasFocus
+    )
+
+    let focusRecord = SyntheticAppFocusEnforcer.focusEventRecord(
+        focused: true,
+        windowID: 0x12345678
+    )
+    let blurRecord = SyntheticAppFocusEnforcer.focusEventRecord(focused: false, windowID: nil)
+    check(
+        "focus-record-encodes-window-little-endian",
+        focusRecord.count == 248
+            && focusRecord[0x8a] == 0x01
+            && Array(focusRecord[0x3c...0x3f]) == [0x78, 0x56, 0x34, 0x12]
+    )
+    check("focus-record-encodes-deactivation", blurRecord[0x8a] == 0x02)
+    check(
+        "dispatch-routes-are-distinct",
+        ActionDispatch.perPid.rawValue == "per-pid"
+            && ActionDispatch.globalHid.rawValue == "global-hid"
+            && ActionDispatch.perPid.scope == "per-pid"
+            && ActionDispatch.globalHid.scope == "global"
+    )
+
+    let focusEnforcer = SyntheticAppFocusEnforcer.shared
+    check("menu-dismissal-suppression-initially-off", !focusEnforcer.isMenuDismissalSuppressionEnabled)
+    focusEnforcer.beginSynthesizedAction()
+    check("menu-dismissal-suppression-action-scoped", focusEnforcer.isMenuDismissalSuppressionEnabled)
+    focusEnforcer.endSynthesizedAction()
+    check("menu-dismissal-suppression-restored", !focusEnforcer.isMenuDismissalSuppressionEnabled)
+
+    let typedActionJson = """
+    {
+      "schemaVersion": 1,
+      "protocolVersion": 1,
+      "seq": 42,
+      "operation": {
+        "type": "action",
+        "target": { "bundleId": "com.example.Target" },
+        "state": {
+          "path": "/tmp/stella-typed-self-test.json",
+          "sessionId": "typed-self-test"
+        },
+        "action": {
+          "kind": "click",
+          "ref": "@b1",
+          "clickCount": 2,
+          "mouseButton": "right",
+          "options": { "allowHid": true, "coordinateFallback": true }
+        }
+      }
+    }
+    """
+    do {
+        let request = try decodeTypedDaemonRequest(Data(typedActionJson.utf8))
+        check(
+            "typed-daemon-request-decodes",
+            request.seq == 42
+                && request.operation.type == "action"
+                && request.operation.action?.ref == "@b1"
+        )
+        let invocation = try typedDaemonInvocation(for: request.operation)
+        check(
+            "typed-action-maps-to-internal-command",
+            invocation.argv == [
+                "click", "@b1",
+                "--click-count", "2",
+                "--mouse-button", "right",
+                "--allow-hid", "--coordinate-fallback",
+                "--state", "/tmp/stella-typed-self-test.json",
+            ]
+                && invocation.env == ["STELLA_COMPUTER_SESSION": "typed-self-test"]
+        )
+    } catch {
+        warnings.append("typed request mapping threw: \(error.localizedDescription)")
+    }
+
+    let unsupportedVersionJson = typedActionJson.replacingOccurrences(
+        of: "\"protocolVersion\": 1",
+        with: "\"protocolVersion\": 99"
+    )
+    do {
+        _ = try decodeTypedDaemonRequest(Data(unsupportedVersionJson.utf8))
+        warnings.append("failed: typed-daemon-version-rejected")
+    } catch let failure as TypedDaemonProtocolFailure {
+        check("typed-daemon-version-rejected", failure.code == "unsupported_protocol_version")
+    } catch {
+        warnings.append("typed version rejection returned unexpected error: \(error.localizedDescription)")
+    }
+
+    let cliShapedTypedJson = typedActionJson.replacingOccurrences(
+        of: "\"seq\": 42,",
+        with: "\"seq\": 42, \"argv\": [\"click\"],"
+    )
+    do {
+        _ = try decodeTypedDaemonRequest(Data(cliShapedTypedJson.utf8))
+        warnings.append("failed: typed-daemon-rejects-argv")
+    } catch let failure as TypedDaemonProtocolFailure {
+        check("typed-daemon-rejects-argv", failure.code == "cli_shape_forbidden")
+    } catch {
+        warnings.append("typed argv rejection returned unexpected error: \(error.localizedDescription)")
+    }
+
+    let typedResponse = TypedAutomationDaemonResponse(
+        schemaVersion: typedDaemonSchemaVersion,
+        protocolVersion: typedDaemonProtocolVersion,
+        seq: 42,
+        ok: true,
+        status: 0,
+        result: .object(["dispatch": .string("per-pid")]),
+        error: nil
+    )
+    if let encoded = try? encodedJson(typedResponse),
+       let object = jsonObject(from: Data(encoded.utf8)) {
+        check(
+            "typed-daemon-response-is-structured",
+            object["result"] is [String: Any] && object["stdout"] == nil
+        )
+    } else {
+        warnings.append("failed: typed-daemon-response-is-structured")
+    }
+
+    let typedListAppsJson = """
+    {
+      "schemaVersion": 1,
+      "protocolVersion": 1,
+      "seq": 43,
+      "operation": { "type": "list_apps" }
+    }
+    """
+    do {
+        let request = try decodeTypedDaemonRequest(Data(typedListAppsJson.utf8))
+        let execution = try executeTypedDaemonOperation(request.operation)
+        if case .object(let result) = execution.result {
+            check(
+                "typed-daemon-executes-structured-result",
+                execution.status == 0 && result["apps"] != nil && result["ok"] == .bool(true)
+            )
+        } else {
+            warnings.append("failed: typed-daemon-executes-structured-result")
+        }
+    } catch {
+        warnings.append("typed list_apps execution threw: \(error.localizedDescription)")
     }
     return NativeSelfTestPayload(ok: warnings.isEmpty, tests: passed, warnings: warnings)
 }
@@ -8653,8 +9353,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                     "click --mouse-button must be left, right, or middle (got \(buttonToken))."
             ])
         }
-        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
-        let (clicked, usedAction) = withUnifiedActionOverlay(
+        let (snapshot, target, _, resolved) = try actionCandidate(
+            statePath: options.statePath,
+            targetId: ref,
+            raise: options.raise
+        )
+        let (clicked, usedAction, dispatch) = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
             snapshot: snapshot,
@@ -8681,16 +9385,20 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 captureDiagnosticScreenshot: options.captureScreenshot
             )
         }
+        guard let dispatch else {
+            throw failure("Click succeeded without a dispatch route.")
+        }
         var warnings = resolved.warnings
-        if usedAction == "coordinate-fallback" {
-            warnings.append("Coordinate-targeted click can interfere with active user input.")
+        if dispatch == .globalHid || dispatch == .systemEvents {
+            warnings.append("Explicit foreground click dispatch can interfere with active user input.")
         }
         let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
             options: options,
             snapshot: snapshot,
             target: target,
             action: "click",
-            visualContextNeeded: usedAction == "coordinate-fallback" || !resolved.warnings.isEmpty
+            dispatch: dispatch,
+            visualContextNeeded: dispatch == .globalHid || !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
         return commandResult(
@@ -8716,8 +9424,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         }
         let ref = positional[0]
         let text = positional[1]
-        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
-        let (filled, fillUsedAction) = withUnifiedActionOverlay(
+        let (snapshot, target, _, resolved) = try actionCandidate(
+            statePath: options.statePath,
+            targetId: ref,
+            raise: options.raise
+        )
+        let (filled, fillUsedAction, fillDispatch) = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
             snapshot: snapshot,
@@ -8742,8 +9454,11 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 captureDiagnosticScreenshot: options.captureScreenshot
             )
         }
+        guard let fillDispatch else {
+            throw failure("Fill succeeded without a dispatch route.")
+        }
         var warnings = resolved.warnings
-        if fillUsedAction == "keystroke" {
+        if fillUsedAction?.hasPrefix("keystroke:") == true {
             warnings.append("AXValue rejected by element; fell back to keystroke fill.")
         }
         let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
@@ -8751,6 +9466,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             snapshot: snapshot,
             target: target,
             action: "fill",
+            dispatch: fillDispatch,
             visualContextNeeded: !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
@@ -8781,7 +9497,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         }
         let (snapshot, target, _, resolved) = try actionCandidate(
             statePath: options.statePath,
-            targetId: ref
+            targetId: ref,
+            raise: options.raise
         )
         let selectedRange = try selectTextRange(
             element: resolved.candidate.element,
@@ -8796,6 +9513,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             snapshot: snapshot,
             target: target,
             action: "select-text",
+            dispatch: .accessibility,
             visualContextNeeded: !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
@@ -8820,7 +9538,11 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 NSLocalizedDescriptionKey: "focus requires a ref."
             ])
         }
-        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
+        let (snapshot, target, _, resolved) = try actionCandidate(
+            statePath: options.statePath,
+            targetId: ref,
+            raise: options.raise
+        )
         let focusOk = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
@@ -8847,6 +9569,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             snapshot: snapshot,
             target: target,
             action: "focus",
+            dispatch: .accessibility,
             visualContextNeeded: !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
@@ -8873,7 +9596,11 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         }
         let ref = positional[0]
         let actionName = positional[1]
-        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
+        let (snapshot, target, _, resolved) = try actionCandidate(
+            statePath: options.statePath,
+            targetId: ref,
+            raise: options.raise
+        )
         guard let resolvedActionName = resolveActionName(actionName, from: resolved.candidate.actions) else {
             var warnings = resolved.warnings
             if !resolved.candidate.actions.isEmpty {
@@ -8914,6 +9641,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             snapshot: snapshot,
             target: target,
             action: "secondary-action",
+            dispatch: .accessibility,
             visualContextNeeded: !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
@@ -8946,7 +9674,11 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 NSLocalizedDescriptionKey: "scroll direction must be up, down, left, or right."
             ])
         }
-        let (snapshot, target, _, resolved) = try actionCandidate(statePath: options.statePath, targetId: ref)
+        let (snapshot, target, _, resolved) = try actionCandidate(
+            statePath: options.statePath,
+            targetId: ref,
+            raise: options.raise
+        )
         let scrollResult = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
@@ -8962,7 +9694,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 target: target
             )
         }
-        guard let (usedAction, scrollWarnings) = scrollResult else {
+        guard let (usedAction, scrollWarnings, scrollDispatch) = scrollResult else {
             var warnings = resolved.warnings
             if !resolved.candidate.actions.isEmpty {
                 warnings.append("Available actions: \(resolved.candidate.actions.joined(separator: ", "))")
@@ -8983,7 +9715,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             snapshot: snapshot,
             target: target,
             action: "scroll",
-            visualContextNeeded: usedAction.contains("CGEvent") || !resolved.warnings.isEmpty
+            dispatch: scrollDispatch,
+            visualContextNeeded: scrollDispatch == .perPid || !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
         let pageSummary = pages == 1 ? "1 page" : "\(pages) pages"
@@ -9030,9 +9763,10 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let snapshot, let target else {
             throw failure("click-point requires a valid target app context.")
         }
+        try prepareTargetForAction(target, statePath: options.statePath, raise: options.raise)
         try ensureSafeActionContext(snapshot: snapshot, target: target)
         let point = CGPoint(x: x, y: y)
-        let (clicked, usedAction) = withUnifiedActionOverlay(
+        let (clicked, usedAction, dispatch) = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
             statePath: options.statePath,
             snapshot: snapshot,
@@ -9056,11 +9790,14 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 "Failed to send pointer click.",
                 statePath: options.statePath,
                 target: target,
-                warnings: options.allowHid
-                    ? ["Global click injection can interfere with active user input."]
-                    : [],
+                warnings: options.raise && options.allowHid
+                    ? ["Explicit foreground click dispatch failed."]
+                    : ["Targeted AX/per-pid click failed; global HID fallback was not attempted."],
                 captureDiagnosticScreenshot: options.captureScreenshot
             )
+        }
+        guard let dispatch else {
+            throw failure("Pointer click succeeded without a dispatch route.")
         }
         var warnings: [String] = []
         if usedAction == "global-coordinate-fallback" || usedAction == "system-events" {
@@ -9071,6 +9808,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             snapshot: snapshot,
             target: target,
             action: "click-point",
+            dispatch: dispatch,
             visualContextNeeded: true
         )
         warnings.append(contentsOf: refreshWarnings)
@@ -9109,8 +9847,9 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let snapshot, let target else {
             throw failure("drag requires a valid target app context.")
         }
+        try prepareTargetForAction(target, statePath: options.statePath, raise: options.raise)
         try ensureSafeActionContext(snapshot: snapshot, target: target)
-        guard postDrag(
+        guard let dragDispatch = postDrag(
             from: CGPoint(x: fromX, y: fromY),
             to: CGPoint(x: toX, y: toY),
             target: target,
@@ -9120,20 +9859,22 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 "Failed to send pointer drag.",
                 statePath: options.statePath,
                 target: target,
-                warnings: [
-                    "Drag currently uses global pointer injection and can interfere with active user input."
-                ],
+                warnings: options.raise
+                    ? ["Explicit foreground drag dispatch failed."]
+                    : ["Targeted per-pid drag failed; global HID fallback was not attempted."],
                 captureDiagnosticScreenshot: options.captureScreenshot
             )
         }
-        var warnings = [
-            "Drag currently uses global pointer injection and can interfere with active user input."
-        ]
+        var warnings: [String] = []
+        if dragDispatch.dispatch == .globalHid {
+            warnings.append("Global drag injection can interfere with active user input.")
+        }
         let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
             options: options,
             snapshot: snapshot,
             target: target,
             action: "drag",
+            dispatch: dragDispatch.dispatch,
             visualContextNeeded: true
         )
         warnings.append(contentsOf: refreshWarnings)
@@ -9143,7 +9884,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 ref: nil,
                 message: "Dragged pointer from (\(fromX), \(fromY)) to (\(toX), \(toY)).",
                 matchedRef: nil,
-                usedAction: "drag",
+                usedAction: dragDispatch.usedAction,
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
                 settle: settle,
@@ -9156,6 +9897,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         // app sees a real drag-and-drop with proper pasteboard types, not
         // synthesized mouse events at the destination view.
         let options = try actionOptions(from: commandArgs)
+        guard options.raise else {
+            throw failure(
+                "drag-element uses a global NSDraggingSession and requires explicit --raise. "
+                + "No-raise drag is restricted to targeted per-pid delivery."
+            )
+        }
         guard options.allowHid else {
             throw NSError(domain: "desktop_automation", code: 41, userInfo: [
                 NSLocalizedDescriptionKey:
@@ -9173,7 +9920,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
 
         let (snapshot, target, _, sourceResolved) = try actionCandidate(
             statePath: options.statePath,
-            targetId: sourceRef
+            targetId: sourceRef,
+            raise: options.raise
         )
         guard let sourceFrame = sourceResolved.candidate.frame else {
             throw failureWithScreenshot(
@@ -9200,7 +9948,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             let destRef = positional[1]
             let (_, _, _, destResolved) = try actionCandidate(
                 statePath: options.statePath,
-                targetId: destRef
+                targetId: destRef,
+                raise: options.raise
             )
             guard let destFrame = destResolved.candidate.frame else {
                 throw failureWithScreenshot(
@@ -9217,7 +9966,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         } else if let toRef = parseNamedOption(commandArgs, key: "--to-ref") {
             let (_, _, _, destResolved) = try actionCandidate(
                 statePath: options.statePath,
-                targetId: toRef
+                targetId: toRef,
+                raise: options.raise
             )
             guard let destFrame = destResolved.candidate.frame else {
                 throw failureWithScreenshot(
@@ -9281,6 +10031,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             snapshot: snapshot,
             target: target,
             action: "drag-element",
+            dispatch: .appKit,
             visualContextNeeded: true
         )
         warnings.append(contentsOf: refreshWarnings)
@@ -9315,21 +10066,30 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let snapshot, let target else {
             throw failure("type requires a valid target app context.")
         }
+        try prepareTargetForAction(target, statePath: options.statePath, raise: options.raise)
         try ensureSafeActionContext(snapshot: snapshot, target: target)
-        guard postUnicodeText(text, target: target, raise: options.raise) else {
+        guard let typeDispatch = postUnicodeText(text, target: target, raise: options.raise) else {
             throw failureWithScreenshot(
                 "Failed to type text.",
                 statePath: options.statePath,
                 target: target,
+                warnings: options.raise
+                    ? ["Explicit foreground typing dispatch failed."]
+                    : ["Targeted per-pid typing failed; global HID fallback was not attempted."],
                 captureDiagnosticScreenshot: options.captureScreenshot
             )
         }
-        var warnings = ["Typed input goes to the currently focused element."]
+        var warnings = [
+            options.raise
+                ? "Typed input used explicit foreground dispatch."
+                : "Typed input was dispatched directly to the target pid."
+        ]
         let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
             options: options,
             snapshot: snapshot,
             target: target,
             action: "type",
+            dispatch: typeDispatch.dispatch,
             visualContextNeeded: true
         )
         warnings.append(contentsOf: refreshWarnings)
@@ -9339,7 +10099,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 ref: nil,
                 message: "Typed text.",
                 matchedRef: nil,
-                usedAction: "unicode",
+                usedAction: typeDispatch.usedAction,
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
                 settle: settle,
@@ -9364,21 +10124,30 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         guard let snapshot, let target else {
             throw failure("press requires a valid target app context.")
         }
+        try prepareTargetForAction(target, statePath: options.statePath, raise: options.raise)
         try ensureSafeActionContext(snapshot: snapshot, target: target)
-        guard postKeyChord(keySpec, target: target, raise: options.raise) else {
+        guard let keyDispatch = postKeyChord(keySpec, target: target, raise: options.raise) else {
             throw failureWithScreenshot(
                 "Failed to send key press.",
                 statePath: options.statePath,
                 target: target,
+                warnings: options.raise
+                    ? ["Explicit foreground key dispatch failed."]
+                    : ["Targeted per-pid key dispatch failed; global HID fallback was not attempted."],
                 captureDiagnosticScreenshot: options.captureScreenshot
             )
         }
-        var warnings = ["Key presses go to the currently focused app."]
+        var warnings = [
+            options.raise
+                ? "Key press used explicit foreground dispatch."
+                : "Key press was dispatched directly to the target pid."
+        ]
         let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
             options: options,
             snapshot: snapshot,
             target: target,
             action: "press",
+            dispatch: keyDispatch.dispatch,
             visualContextNeeded: true
         )
         warnings.append(contentsOf: refreshWarnings)
@@ -9388,7 +10157,7 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 ref: nil,
                 message: "Sent key press \(keySpec).",
                 matchedRef: nil,
-                usedAction: keySpec,
+                usedAction: keyDispatch.usedAction,
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
                 settle: settle,
@@ -9403,6 +10172,20 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
 }
 
 func executeCommand(args: [String]) -> CommandExecutionResult {
+    let actionCommands: Set<String> = [
+        "click", "fill", "select-text", "focus", "secondary-action",
+        "perform-secondary-action", "scroll", "click-point", "drag",
+        "drag-element", "type", "press",
+    ]
+    let isSynthesizedAction = args.first.map(actionCommands.contains) == true
+    if isSynthesizedAction {
+        SyntheticAppFocusEnforcer.shared.beginSynthesizedAction()
+    }
+    defer {
+        if isSynthesizedAction {
+            SyntheticAppFocusEnforcer.shared.endSynthesizedAction()
+        }
+    }
     do {
         return try executeCommandInternal(args: args)
     } catch let failure as DesktopAutomationFailure {
@@ -9926,6 +10709,557 @@ func writeTextAtomic(_ text: String, to path: String) throws {
     try data.write(to: url, options: .atomic)
 }
 
+func typedProtocolFailure(_ code: String, _ message: String) -> TypedDaemonProtocolFailure {
+    TypedDaemonProtocolFailure(code: code, message: message)
+}
+
+func jsonObject(from data: Data) -> [String: Any]? {
+    (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+}
+
+func containsArgvField(_ value: Any) -> Bool {
+    if let object = value as? [String: Any] {
+        if object.keys.contains("argv") { return true }
+        return object.values.contains(where: containsArgvField)
+    }
+    if let array = value as? [Any] {
+        return array.contains(where: containsArgvField)
+    }
+    return false
+}
+
+func validateTypedObjectKeys(
+    _ object: [String: Any],
+    allowed: Set<String>,
+    path: String
+) throws {
+    let unexpected = Set(object.keys).subtracting(allowed).sorted()
+    guard unexpected.isEmpty else {
+        throw typedProtocolFailure(
+            "unknown_field",
+            "Unknown field(s) at \(path): \(unexpected.joined(separator: ", "))."
+        )
+    }
+}
+
+func validateTypedWireShape(_ object: [String: Any]) throws {
+    try validateTypedObjectKeys(
+        object,
+        allowed: ["schemaVersion", "protocolVersion", "seq", "operation"],
+        path: "request"
+    )
+    guard let operation = object["operation"] as? [String: Any] else {
+        throw typedProtocolFailure("invalid_request", "request.operation must be an object.")
+    }
+    try validateTypedOperationWireShape(operation, path: "operation")
+}
+
+func validateTypedOperationWireShape(
+    _ operation: [String: Any],
+    path: String
+) throws {
+    try validateTypedObjectKeys(
+        operation,
+        allowed: ["type", "target", "state", "action", "operations", "durationMs"],
+        path: path
+    )
+    if let target = operation["target"] as? [String: Any] {
+        try validateTypedObjectKeys(
+            target,
+            allowed: ["pid", "appName", "bundleId"],
+            path: "\(path).target"
+        )
+    }
+    if let state = operation["state"] as? [String: Any] {
+        try validateTypedObjectKeys(
+            state,
+            allowed: [
+                "path", "sessionId", "maxDepth", "maxNodes", "screenshotPath",
+                "screenshotPolicy", "inlineScreenshot", "allWindows", "vision", "raise",
+            ],
+            path: "\(path).state"
+        )
+    }
+    if let action = operation["action"] as? [String: Any] {
+        try validateTypedObjectKeys(
+            action,
+            allowed: [
+                "kind", "ref", "text", "name", "key", "direction", "selection",
+                "prefix", "suffix", "mouseButton", "clickCount", "pages", "x", "y",
+                "fromX", "fromY", "toX", "toY", "toRef", "dragType",
+                "dragOperation", "options",
+            ],
+            path: "\(path).action"
+        )
+        if let options = action["options"] as? [String: Any] {
+            try validateTypedObjectKeys(
+                options,
+                allowed: [
+                    "allowHid", "coordinateFallback", "raise", "showOverlay",
+                    "deferObservation",
+                ],
+                path: "\(path).action.options"
+            )
+        }
+    }
+    if let operations = operation["operations"] as? [Any] {
+        for (index, child) in operations.enumerated() {
+            guard let child = child as? [String: Any] else {
+                throw typedProtocolFailure(
+                    "invalid_batch",
+                    "\(path).operations[\(index)] must be an object."
+                )
+            }
+            try validateTypedOperationWireShape(
+                child,
+                path: "\(path).operations[\(index)]"
+            )
+        }
+    }
+}
+
+func isTypedDaemonRequest(_ data: Data) -> Bool {
+    guard let object = jsonObject(from: data) else { return false }
+    return object["operation"] != nil
+        || object["schemaVersion"] != nil
+        || object["protocolVersion"] != nil
+}
+
+func typedDaemonSequence(from data: Data) -> Int {
+    guard let raw = jsonObject(from: data)?["seq"] as? NSNumber else { return 0 }
+    return raw.intValue
+}
+
+func decodeTypedDaemonRequest(_ data: Data) throws -> TypedAutomationDaemonRequest {
+    guard let raw = try? JSONSerialization.jsonObject(with: data),
+          let object = raw as? [String: Any] else {
+        throw typedProtocolFailure("invalid_request", "Typed daemon request must be a JSON object.")
+    }
+    if containsArgvField(raw) {
+        throw typedProtocolFailure(
+            "cli_shape_forbidden",
+            "Typed daemon requests must use structured operations and cannot contain an argv field."
+        )
+    }
+    try validateTypedWireShape(object)
+
+    let request: TypedAutomationDaemonRequest
+    do {
+        request = try JSONDecoder().decode(TypedAutomationDaemonRequest.self, from: data)
+    } catch {
+        throw typedProtocolFailure("invalid_request", "Failed to decode typed daemon request: \(error.localizedDescription)")
+    }
+    try validateTypedDaemonRequest(request)
+    return request
+}
+
+func validateTypedDaemonRequest(_ request: TypedAutomationDaemonRequest) throws {
+    guard request.schemaVersion == typedDaemonSchemaVersion else {
+        throw typedProtocolFailure(
+            "unsupported_schema_version",
+            "Unsupported schemaVersion \(request.schemaVersion); expected \(typedDaemonSchemaVersion)."
+        )
+    }
+    guard request.protocolVersion == typedDaemonProtocolVersion else {
+        throw typedProtocolFailure(
+            "unsupported_protocol_version",
+            "Unsupported protocolVersion \(request.protocolVersion); expected \(typedDaemonProtocolVersion)."
+        )
+    }
+    guard request.seq >= 0 else {
+        throw typedProtocolFailure("invalid_seq", "seq must be non-negative.")
+    }
+    try validateTypedDaemonOperation(request.operation, insideBatch: false)
+}
+
+func validateTypedTarget(_ target: TypedDaemonTarget) throws {
+    let hasPid = target.pid.map { $0 > 0 } == true
+    let hasName = trimmed(target.appName) != nil
+    let hasBundle = trimmed(target.bundleId) != nil
+    guard hasPid || hasName || hasBundle else {
+        throw typedProtocolFailure(
+            "invalid_target",
+            "target must include a positive pid, non-empty appName, or non-empty bundleId."
+        )
+    }
+    if let pid = target.pid, pid <= 0 {
+        throw typedProtocolFailure("invalid_target", "target.pid must be positive.")
+    }
+}
+
+func validateTypedState(_ state: TypedDaemonState) throws {
+    guard trimmed(state.path) != nil else {
+        throw typedProtocolFailure("invalid_state", "state.path is required.")
+    }
+    if let maxDepth = state.maxDepth, maxDepth < 1 {
+        throw typedProtocolFailure("invalid_state", "state.maxDepth must be at least 1.")
+    }
+    if let maxNodes = state.maxNodes, maxNodes < 25 {
+        throw typedProtocolFailure("invalid_state", "state.maxNodes must be at least 25.")
+    }
+    if let policy = state.screenshotPolicy,
+       ScreenshotPolicy(rawValue: policy.lowercased()) == nil {
+        throw typedProtocolFailure(
+            "invalid_state",
+            "state.screenshotPolicy must be auto, always, or never."
+        )
+    }
+    if let sessionId = state.sessionId, trimmed(sessionId) == nil {
+        throw typedProtocolFailure("invalid_state", "state.sessionId cannot be empty.")
+    }
+}
+
+func validateTypedAction(_ action: TypedDaemonAction) throws {
+    let kind = normalized(action.kind).replacingOccurrences(of: "-", with: "_")
+    let options = action.options
+    if options?.coordinateFallback == true, options?.allowHid != true {
+        throw typedProtocolFailure(
+            "invalid_action",
+            "action.options.coordinateFallback requires action.options.allowHid=true."
+        )
+    }
+    if let clickCount = action.clickCount, clickCount < 1 {
+        throw typedProtocolFailure("invalid_action", "action.clickCount must be at least 1.")
+    }
+    if let pages = action.pages, pages < 1 {
+        throw typedProtocolFailure("invalid_action", "action.pages must be at least 1.")
+    }
+    if let button = action.mouseButton,
+       !["left", "right", "middle"].contains(normalized(button)) {
+        throw typedProtocolFailure("invalid_action", "action.mouseButton must be left, right, or middle.")
+    }
+
+    func requireRef() throws {
+        guard trimmed(action.ref) != nil else {
+            throw typedProtocolFailure("invalid_action", "action.ref is required for \(kind).")
+        }
+    }
+    func requireFinite(_ fields: [(String, Double?)]) throws {
+        for (name, value) in fields {
+            guard let value, value.isFinite else {
+                throw typedProtocolFailure("invalid_action", "action.\(name) must be a finite number for \(kind).")
+            }
+        }
+    }
+
+    switch kind {
+    case "click", "focus":
+        try requireRef()
+    case "fill":
+        try requireRef()
+        guard action.text != nil else {
+            throw typedProtocolFailure("invalid_action", "action.text is required for fill.")
+        }
+    case "select_text":
+        try requireRef()
+        guard trimmed(action.text) != nil else {
+            throw typedProtocolFailure("invalid_action", "action.text is required for select_text.")
+        }
+        if let selection = action.selection,
+           !["text", "cursor-before", "cursor-after"].contains(normalized(selection)) {
+            throw typedProtocolFailure("invalid_action", "action.selection is invalid.")
+        }
+    case "secondary_action":
+        try requireRef()
+        guard trimmed(action.name) != nil else {
+            throw typedProtocolFailure("invalid_action", "action.name is required for secondary_action.")
+        }
+    case "scroll":
+        try requireRef()
+        guard let direction = action.direction,
+              ["up", "down", "left", "right"].contains(normalized(direction)) else {
+            throw typedProtocolFailure("invalid_action", "action.direction is invalid for scroll.")
+        }
+    case "click_point":
+        try requireFinite([("x", action.x), ("y", action.y)])
+    case "drag":
+        try requireFinite([
+            ("fromX", action.fromX), ("fromY", action.fromY),
+            ("toX", action.toX), ("toY", action.toY),
+        ])
+        guard options?.allowHid == true else {
+            throw typedProtocolFailure("invalid_action", "drag requires action.options.allowHid=true.")
+        }
+    case "drag_element":
+        try requireRef()
+        let hasDestinationRef = trimmed(action.toRef) != nil
+        let hasDestinationPoint = action.toX?.isFinite == true && action.toY?.isFinite == true
+        guard hasDestinationRef || hasDestinationPoint else {
+            throw typedProtocolFailure("invalid_action", "drag_element requires action.toRef or finite toX/toY.")
+        }
+        guard options?.allowHid == true, options?.raise == true else {
+            throw typedProtocolFailure(
+                "invalid_action",
+                "drag_element requires action.options.allowHid=true and raise=true."
+            )
+        }
+    case "type":
+        guard action.text != nil else {
+            throw typedProtocolFailure("invalid_action", "action.text is required for type.")
+        }
+        guard options?.allowHid == true else {
+            throw typedProtocolFailure("invalid_action", "type requires action.options.allowHid=true.")
+        }
+    case "press":
+        guard trimmed(action.key) != nil else {
+            throw typedProtocolFailure("invalid_action", "action.key is required for press.")
+        }
+        guard options?.allowHid == true else {
+            throw typedProtocolFailure("invalid_action", "press requires action.options.allowHid=true.")
+        }
+    default:
+        throw typedProtocolFailure("unsupported_operation", "Unsupported action kind '\(action.kind)'.")
+    }
+}
+
+func validateTypedDaemonOperation(
+    _ operation: TypedDaemonOperation,
+    insideBatch: Bool
+) throws {
+    let type = normalized(operation.type).replacingOccurrences(of: "-", with: "_")
+    switch type {
+    case "list_apps", "list_windows":
+        guard operation.target == nil,
+              operation.state == nil,
+              operation.action == nil,
+              operation.operations == nil,
+              operation.durationMs == nil else {
+            throw typedProtocolFailure("invalid_operation", "\(type) does not accept additional fields.")
+        }
+    case "get_app_state", "snapshot":
+        guard let target = operation.target, let state = operation.state else {
+            throw typedProtocolFailure("invalid_operation", "\(type) requires target and state fields.")
+        }
+        guard operation.action == nil, operation.operations == nil, operation.durationMs == nil else {
+            throw typedProtocolFailure("invalid_operation", "\(type) contains fields that do not apply.")
+        }
+        try validateTypedTarget(target)
+        try validateTypedState(state)
+    case "action":
+        guard let target = operation.target,
+              let state = operation.state,
+              let action = operation.action else {
+            throw typedProtocolFailure("invalid_operation", "action requires target, state, and action fields.")
+        }
+        guard operation.operations == nil, operation.durationMs == nil else {
+            throw typedProtocolFailure("invalid_operation", "action contains fields that do not apply.")
+        }
+        try validateTypedTarget(target)
+        try validateTypedState(state)
+        if state.raise != nil {
+            throw typedProtocolFailure(
+                "invalid_operation",
+                "action.state.raise is not allowed; use action.options.raise."
+            )
+        }
+        try validateTypedAction(action)
+    case "batch":
+        guard !insideBatch else {
+            throw typedProtocolFailure("invalid_batch", "Nested batch operations are not supported.")
+        }
+        guard let operations = operation.operations,
+              !operations.isEmpty,
+              operations.count <= 64 else {
+            throw typedProtocolFailure("invalid_batch", "batch.operations must contain 1 through 64 operations.")
+        }
+        guard operation.target == nil,
+              operation.state == nil,
+              operation.action == nil,
+              operation.durationMs == nil else {
+            throw typedProtocolFailure("invalid_batch", "batch accepts only its operations field.")
+        }
+        for child in operations {
+            try validateTypedDaemonOperation(child, insideBatch: true)
+        }
+    case "locked_use_begin":
+        guard operation.target == nil,
+              operation.state == nil,
+              operation.action == nil,
+              operation.operations == nil else {
+            throw typedProtocolFailure("invalid_operation", "locked_use_begin accepts only durationMs.")
+        }
+        if let durationMs = operation.durationMs,
+           durationMs < 1_000 || durationMs > 86_400_000 {
+            throw typedProtocolFailure(
+                "invalid_operation",
+                "locked_use_begin.durationMs must be between 1000 and 86400000."
+            )
+        }
+    case "locked_use_end":
+        guard operation.target == nil,
+              operation.state == nil,
+              operation.action == nil,
+              operation.operations == nil,
+              operation.durationMs == nil else {
+            throw typedProtocolFailure("invalid_operation", "locked_use_end does not accept additional fields.")
+        }
+    default:
+        throw typedProtocolFailure("unsupported_operation", "Unsupported operation type '\(operation.type)'.")
+    }
+}
+
+func typedStateArguments(_ state: TypedDaemonState) -> ([String], [String: String]) {
+    var args = ["--state", state.path]
+    var env: [String: String] = [:]
+    if let sessionId = state.sessionId { env["STELLA_COMPUTER_SESSION"] = sessionId }
+    if let maxDepth = state.maxDepth { args += ["--max-depth", String(maxDepth)] }
+    if let maxNodes = state.maxNodes { args += ["--max-nodes", String(maxNodes)] }
+    if let screenshotPath = state.screenshotPath {
+        args += ["--screenshot", screenshotPath]
+    } else if let policy = state.screenshotPolicy {
+        if normalized(policy) == ScreenshotPolicy.never.rawValue {
+            args.append("--no-screenshot")
+        } else {
+            args += ["--screenshot-policy", normalized(policy)]
+        }
+    }
+    if state.inlineScreenshot == false { args.append("--no-inline-screenshot") }
+    if state.allWindows == true { args.append("--all-windows") }
+    if state.vision == true { args.append("--vision") }
+    if state.raise == true { args.append("--raise") }
+    return (args, env)
+}
+
+func typedTargetArguments(_ target: TypedDaemonTarget) -> [String] {
+    var args: [String] = []
+    if let pid = target.pid { args += ["--pid", String(pid)] }
+    if let appName = target.appName { args += ["--app", appName] }
+    if let bundleId = target.bundleId { args += ["--bundle-id", bundleId] }
+    return args
+}
+
+func typedActionArguments(_ action: TypedDaemonAction) throws -> [String] {
+    try validateTypedAction(action)
+    let kind = normalized(action.kind).replacingOccurrences(of: "-", with: "_")
+    var args: [String]
+    switch kind {
+    case "click":
+        args = ["click", action.ref!]
+    case "fill":
+        args = ["fill", action.ref!, action.text!]
+    case "select_text":
+        args = ["select-text", action.ref!, action.text!]
+        if let selection = action.selection { args += ["--selection", selection] }
+        if let prefix = action.prefix { args += ["--prefix", prefix] }
+        if let suffix = action.suffix { args += ["--suffix", suffix] }
+    case "focus":
+        args = ["focus", action.ref!]
+    case "secondary_action":
+        args = ["secondary-action", action.ref!, action.name!]
+    case "scroll":
+        args = ["scroll", action.ref!, action.direction!]
+        if let pages = action.pages { args += ["--pages", String(pages)] }
+    case "click_point":
+        args = ["click-point", String(action.x!), String(action.y!)]
+    case "drag":
+        args = [
+            "drag", String(action.fromX!), String(action.fromY!),
+            String(action.toX!), String(action.toY!),
+        ]
+    case "drag_element":
+        args = ["drag-element", action.ref!]
+        if let toRef = action.toRef {
+            args += ["--to-ref", toRef]
+        } else {
+            args += ["--to-x", String(action.toX!), "--to-y", String(action.toY!)]
+        }
+        if let dragType = action.dragType { args += ["--type", dragType] }
+        if let operation = action.dragOperation { args += ["--operation", operation] }
+    case "type":
+        args = ["type", action.text!]
+    case "press":
+        args = ["press", action.key!]
+    default:
+        throw typedProtocolFailure("unsupported_operation", "Unsupported action kind '\(action.kind)'.")
+    }
+
+    if let clickCount = action.clickCount { args += ["--click-count", String(clickCount)] }
+    if let mouseButton = action.mouseButton { args += ["--mouse-button", mouseButton] }
+    if action.options?.allowHid == true { args.append("--allow-hid") }
+    if action.options?.coordinateFallback == true { args.append("--coordinate-fallback") }
+    if action.options?.raise == true { args.append("--raise") }
+    if action.options?.showOverlay == false { args.append("--no-overlay") }
+    if action.options?.deferObservation == true { args.append("--defer-observation") }
+    return args
+}
+
+func typedDaemonInvocation(for operation: TypedDaemonOperation) throws -> TypedDaemonInvocation {
+    try validateTypedDaemonOperation(operation, insideBatch: false)
+    let type = normalized(operation.type).replacingOccurrences(of: "-", with: "_")
+    switch type {
+    case "list_apps":
+        return TypedDaemonInvocation(argv: ["list-apps"], env: [:], target: nil, statePath: nil)
+    case "list_windows":
+        return TypedDaemonInvocation(argv: ["list-windows"], env: [:], target: nil, statePath: nil)
+    case "get_app_state", "snapshot":
+        let (stateArgs, env) = typedStateArguments(operation.state!)
+        return TypedDaemonInvocation(
+            argv: ["snapshot"] + typedTargetArguments(operation.target!) + stateArgs,
+            env: env,
+            target: operation.target,
+            statePath: operation.state?.path
+        )
+    case "action":
+        let (stateArgs, env) = typedStateArguments(operation.state!)
+        return TypedDaemonInvocation(
+            argv: try typedActionArguments(operation.action!) + stateArgs,
+            env: env,
+            target: operation.target,
+            statePath: operation.state?.path
+        )
+    case "locked_use_begin":
+        var argv = ["locked-use-begin"]
+        if let durationMs = operation.durationMs {
+            argv += ["--duration-ms", String(durationMs)]
+        }
+        return TypedDaemonInvocation(argv: argv, env: [:], target: nil, statePath: nil)
+    case "locked_use_end":
+        return TypedDaemonInvocation(argv: ["locked-use-end"], env: [:], target: nil, statePath: nil)
+    default:
+        throw typedProtocolFailure("invalid_batch", "batch is executed as a sequence, not a single invocation.")
+    }
+}
+
+func validateTypedActionTarget(_ target: TypedDaemonTarget, statePath: String) throws {
+    let snapshot: SnapshotDocument
+    do {
+        snapshot = try loadSnapshotState(from: statePath)
+    } catch {
+        throw typedProtocolFailure("invalid_state", "Failed to load action state at '\(statePath)'.")
+    }
+    if let pid = target.pid, pid != snapshot.pid {
+        throw typedProtocolFailure(
+            "target_state_mismatch",
+            "target.pid \(pid) does not match state pid \(snapshot.pid)."
+        )
+    }
+    if let bundleId = target.bundleId,
+       normalized(bundleId) != normalized(snapshot.bundleId) {
+        throw typedProtocolFailure(
+            "target_state_mismatch",
+            "target.bundleId does not match the state bundleId."
+        )
+    }
+    if let appName = target.appName,
+       normalized(appName) != normalized(snapshot.appName) {
+        throw typedProtocolFailure(
+            "target_state_mismatch",
+            "target.appName does not match the state appName."
+        )
+    }
+}
+
+func jsonValue(from result: CommandExecutionResult) throws -> JSONValue {
+    guard let data = result.stdout.data(using: .utf8) else {
+        throw typedProtocolFailure("invalid_result", "Internal command returned non-UTF-8 output.")
+    }
+    do {
+        return try JSONDecoder().decode(JSONValue.self, from: data)
+    } catch {
+        throw typedProtocolFailure("invalid_result", "Internal command returned invalid JSON.")
+    }
+}
+
 func withDaemonRequestEnvironment(
     _ env: [String: String],
     body: () -> CommandExecutionResult
@@ -9954,10 +11288,86 @@ func withDaemonRequestEnvironment(
     return result
 }
 
+struct TypedOperationExecution {
+    let status: Int32
+    let result: JSONValue
+}
+
+func executeTypedDaemonOperation(_ operation: TypedDaemonOperation) throws -> TypedOperationExecution {
+    let type = normalized(operation.type).replacingOccurrences(of: "-", with: "_")
+    if type == "batch" {
+        try validateTypedDaemonOperation(operation, insideBatch: false)
+        var results: [JSONValue] = []
+        var finalStatus: Int32 = 0
+        for (index, child) in operation.operations!.enumerated() {
+            let execution = try executeTypedDaemonOperation(child)
+            results.append(.object([
+                "index": .integer(Int64(index)),
+                "ok": .bool(execution.status == 0),
+                "status": .integer(Int64(execution.status)),
+                "result": execution.result,
+            ]))
+            if execution.status != 0 {
+                finalStatus = execution.status
+                break
+            }
+        }
+        return TypedOperationExecution(
+            status: finalStatus,
+            result: .object([
+                "completed": .integer(Int64(results.count)),
+                "results": .array(results),
+            ])
+        )
+    }
+
+    let invocation = try typedDaemonInvocation(for: operation)
+    if type == "action",
+       let target = invocation.target,
+       let statePath = invocation.statePath {
+        try validateTypedActionTarget(target, statePath: statePath)
+    }
+    let command = withDaemonRequestEnvironment(invocation.env) {
+        executeCommand(args: invocation.argv)
+    }
+    return TypedOperationExecution(
+        status: command.status,
+        result: try jsonValue(from: command)
+    )
+}
+
+func typedOperationError(for execution: TypedOperationExecution) -> TypedDaemonError? {
+    guard execution.status != 0 else { return nil }
+    if case .object(let payload) = execution.result,
+       case .string(let message)? = payload["error"] {
+        return TypedDaemonError(code: "operation_failed", message: message)
+    }
+    return TypedDaemonError(
+        code: "operation_failed",
+        message: "Operation returned status \(execution.status)."
+    )
+}
+
+func typedFailureResponse(
+    seq: Int,
+    failure: TypedDaemonProtocolFailure
+) -> TypedAutomationDaemonResponse {
+    TypedAutomationDaemonResponse(
+        schemaVersion: typedDaemonSchemaVersion,
+        protocolVersion: typedDaemonProtocolVersion,
+        seq: seq,
+        ok: false,
+        status: 1,
+        result: nil,
+        error: TypedDaemonError(code: failure.code, message: failure.message)
+    )
+}
+
 final class AutomationDaemon {
     private let options: AutomationDaemonOptions
     private let serverQueue = DispatchQueue(label: "desktop_automation.daemon.server")
     private var listeningFD: Int32 = -1
+    private var terminationSignalSources: [DispatchSourceSignal] = []
 
     init(options: AutomationDaemonOptions) {
         self.options = options
@@ -9978,6 +11388,7 @@ final class AutomationDaemon {
         }
 
         signal(SIGPIPE, SIG_IGN)
+        installTerminationSignalHandlers()
         try FileManager.default.createDirectory(
             at: URL(fileURLWithPath: options.socketPath).deletingLastPathComponent(),
             withIntermediateDirectories: true,
@@ -10014,6 +11425,22 @@ final class AutomationDaemon {
         }
     }
 
+    private func installTerminationSignalHandlers() {
+        for signalNumber in [SIGTERM, SIGINT] {
+            signal(signalNumber, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(
+                signal: signalNumber,
+                queue: .main
+            )
+            source.setEventHandler {
+                SyntheticAppFocusEnforcer.shared.deactivate()
+                exit(0)
+            }
+            source.resume()
+            terminationSignalSources.append(source)
+        }
+    }
+
     private func acceptLoop() {
         while true {
             let clientFD = accept(listeningFD, nil, nil)
@@ -10037,6 +11464,30 @@ final class AutomationDaemon {
             return
         }
 
+        if isTypedDaemonRequest(requestData) {
+            let seq = typedDaemonSequence(from: requestData)
+            do {
+                let request = try decodeTypedDaemonRequest(requestData)
+                let response = executeTypedDaemonRequest(request)
+                _ = writeSocketData(encodedTypedResponseData(for: response), to: clientFD)
+            } catch let failure as TypedDaemonProtocolFailure {
+                _ = writeSocketData(
+                    encodedTypedResponseData(for: typedFailureResponse(seq: seq, failure: failure)),
+                    to: clientFD
+                )
+            } catch {
+                let failure = typedProtocolFailure(
+                    "invalid_request",
+                    "Typed daemon request failed: \(error.localizedDescription)"
+                )
+                _ = writeSocketData(
+                    encodedTypedResponseData(for: typedFailureResponse(seq: seq, failure: failure)),
+                    to: clientFD
+                )
+            }
+            return
+        }
+
         let decoder = JSONDecoder()
         guard let request = try? decoder.decode(AutomationDaemonRequest.self, from: requestData) else {
             let response = AutomationDaemonResponse(
@@ -10057,6 +11508,42 @@ final class AutomationDaemon {
             stderr: result.stderr
         )
         _ = writeSocketData(encodedResponseData(for: response), to: clientFD)
+    }
+
+    private func executeTypedDaemonRequest(
+        _ request: TypedAutomationDaemonRequest
+    ) -> TypedAutomationDaemonResponse {
+        let semaphore = DispatchSemaphore(value: 0)
+        var response = typedFailureResponse(
+            seq: request.seq,
+            failure: typedProtocolFailure("execution_failed", "Typed daemon operation did not execute.")
+        )
+
+        DispatchQueue.main.async {
+            do {
+                let execution = try executeTypedDaemonOperation(request.operation)
+                response = TypedAutomationDaemonResponse(
+                    schemaVersion: typedDaemonSchemaVersion,
+                    protocolVersion: typedDaemonProtocolVersion,
+                    seq: request.seq,
+                    ok: execution.status == 0,
+                    status: execution.status,
+                    result: execution.result,
+                    error: typedOperationError(for: execution)
+                )
+            } catch let failure as TypedDaemonProtocolFailure {
+                response = typedFailureResponse(seq: request.seq, failure: failure)
+            } catch {
+                response = typedFailureResponse(
+                    seq: request.seq,
+                    failure: typedProtocolFailure("execution_failed", error.localizedDescription)
+                )
+            }
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+        return response
     }
 
     private func executeDaemonRequest(_ request: AutomationDaemonRequest) -> CommandExecutionResult {
@@ -10102,6 +11589,15 @@ func encodedResponseData(for response: AutomationDaemonResponse) -> Data {
         return Data(text.utf8)
     }
     return Data("{\"seq\":0,\"status\":1,\"stdout\":\"\",\"stderr\":\"failed to encode daemon response\"}".utf8)
+}
+
+func encodedTypedResponseData(for response: TypedAutomationDaemonResponse) -> Data {
+    if let text = try? encodedJson(response) {
+        return Data(text.utf8)
+    }
+    return Data(
+        "{\"schemaVersion\":1,\"protocolVersion\":1,\"seq\":0,\"ok\":false,\"status\":1,\"error\":{\"code\":\"encoding_failed\",\"message\":\"failed to encode typed daemon response\"}}".utf8
+    )
 }
 
 func readSocketData(from fd: Int32) -> Data? {

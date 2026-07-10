@@ -402,6 +402,7 @@ export const createRunnerContext = ({
   selfModHmrController,
   requestCredential,
   requestBrowserExtensionConnect,
+  requestComputerUseAppApproval,
   requestConnectorConnection,
   requestRuntimeAuthRefresh,
   scheduleApi,
@@ -479,6 +480,7 @@ export const createRunnerContext = ({
     ...(requestBrowserExtensionConnect
       ? { requestBrowserExtensionConnect }
       : {}),
+    ...(requestComputerUseAppApproval ? { requestComputerUseAppApproval } : {}),
     ...(requestConnectorConnection ? { requestConnectorConnection } : {}),
     // spawn_agent's `model` parameter: throws the standard route-failure
     // message when a plain model reference can't be resolved, so the spawn

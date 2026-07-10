@@ -156,6 +156,17 @@ export type StellaHostRunnerOptions = {
         reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
       }
   >;
+  requestComputerUseAppApproval?: (payload: {
+    bundleIdentifier: string;
+    displayName: string;
+    appPath?: string;
+    allowPersistentApproval: boolean;
+    risk?: string;
+    warningSubtitle?: string;
+  }) => Promise<
+    | { decision: "approved"; scope: "session" | "persistent" }
+    | { decision: "declined"; scope: "none" }
+  >;
   /**
    * Desktop hop for the orchestrator's `connector_status` tool: render the
    * inline connector connect card (ConnectorConnectService) and resolve
@@ -387,6 +398,7 @@ export type RunnerContext = {
   selfModLifecycle?: StellaHostRunnerOptions["selfModLifecycle"];
   selfModHmrController?: StellaHostRunnerOptions["selfModHmrController"];
   requestCredential?: StellaHostRunnerOptions["requestCredential"];
+  requestComputerUseAppApproval?: StellaHostRunnerOptions["requestComputerUseAppApproval"];
   requestRuntimeAuthRefresh?: StellaHostRunnerOptions["requestRuntimeAuthRefresh"];
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;

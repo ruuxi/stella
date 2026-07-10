@@ -297,6 +297,17 @@ export type ToolHostOptions = {
    * or declines so the tool can re-run the command automatically.
    */
   requestBrowserExtensionConnect?: import("./browser-extension-offer.js").BrowserExtensionConnectRequester;
+  requestComputerUseAppApproval?: (payload: {
+    bundleIdentifier: string;
+    displayName: string;
+    appPath?: string;
+    allowPersistentApproval: boolean;
+    risk?: string;
+    warningSubtitle?: string;
+  }) => Promise<
+    | { decision: "approved"; scope: "session" | "persistent" }
+    | { decision: "declined"; scope: "none" }
+  >;
   /**
    * Optional desktop hop for the orchestrator's `connector_status` tool:
    * render the inline connector connect card and resolve with the user's

@@ -27,7 +27,7 @@ type WinFrame = {
   height: number;
 };
 
-type WinElementRecord = {
+export type WinElementRecord = {
   index: number;
   runtimeId?: number[];
   automationId?: string;
@@ -41,7 +41,7 @@ type WinElementRecord = {
   actions?: string[];
 };
 
-type WinSnapshot = {
+export type WinSnapshot = {
   app: {
     name: string;
     bundleIdentifier?: string;
@@ -85,9 +85,9 @@ type WinSnapshot = {
   };
 };
 
-type ScreenshotPolicy = "auto" | "always" | "never";
+export type ScreenshotPolicy = "auto" | "always" | "never";
 
-type WinHelperRequest = {
+export type WinHelperRequest = {
   tool: string;
   app?: string;
   element?: WinElementRecord;
@@ -118,7 +118,7 @@ type WinHelperRequest = {
   screenshot_height?: number;
 };
 
-type WinHelperResponse = {
+export type WinHelperResponse = {
   ok: boolean;
   text?: string;
   error?: string;
@@ -167,7 +167,7 @@ type WindowsTargetRegistry = {
   targets: Record<string, WindowsTargetRecord>;
 };
 
-type WinWindowRecord = {
+export type WinWindowRecord = {
   pid: number;
   windowId: number;
   app: string;
@@ -356,7 +356,7 @@ const targetStatePath = (sessionId: string, app: string) =>
   resolveTargetRecord(sessionId, app)?.statePath ??
   targetStatePathForKey(sessionId, normalizeTargetKey(app));
 
-const targetScreenshotPath = (sessionId: string, app: string) =>
+export const windowsComputerScreenshotPath = (sessionId: string, app: string) =>
   resolveTargetRecord(sessionId, app)?.screenshotPath ??
   targetScreenshotPathForKey(sessionId, normalizeTargetKey(app));
 
@@ -713,7 +713,10 @@ export const spawnWindowsDaemonProcess = async (
   return child;
 };
 
-const ensureWindowsDaemon = async (sessionId: string): Promise<boolean> => {
+const ensureWindowsDaemon = async (
+  sessionId: string,
+  signal = getComputerExecutionSignal(),
+): Promise<boolean> => {
   if (process.platform !== "win32") return false;
 
   const helperPath = resolveNativeHelperPath(windowsHelperName);
@@ -727,7 +730,7 @@ const ensureWindowsDaemon = async (sessionId: string): Promise<boolean> => {
       killProcess(existingPid);
     } else {
       try {
-        const socket = await connectWindowsPipe(pipeName, 150);
+        const socket = await connectWindowsPipe(pipeName, 150, signal);
         socket.end();
         return true;
       } catch {
@@ -738,7 +741,12 @@ const ensureWindowsDaemon = async (sessionId: string): Promise<boolean> => {
 
   fs.mkdirSync(windowsDaemonDir(sessionId), { recursive: true });
   fs.rmSync(pidPath, { force: true });
-  const child = await spawnWindowsDaemonProcess(helperPath, pipeName, pidPath);
+  const child = await spawnWindowsDaemonProcess(
+    helperPath,
+    pipeName,
+    pidPath,
+    signal,
+  );
 
   try {
     const deadline = Date.now() + windowsDaemonStartupBudgetMs;
@@ -746,15 +754,15 @@ const ensureWindowsDaemon = async (sessionId: string): Promise<boolean> => {
       const pid = readPidFile(pidPath);
       if (pid && pidIsRunning(pid)) {
         try {
-          const socket = await connectWindowsPipe(pipeName, 100);
+          const socket = await connectWindowsPipe(pipeName, 100, signal);
           socket.end();
           return true;
         } catch (error) {
-          if (getComputerExecutionSignal()?.aborted) throw error;
+          if (signal?.aborted) throw error;
           // Keep waiting until the named-pipe server accepts connections.
         }
       }
-      await delayWithSignal(50, getComputerExecutionSignal());
+      await delayWithSignal(50, signal);
     }
   } catch (error) {
     killProcess(child.pid ?? readPidFile(pidPath));
@@ -766,7 +774,10 @@ const ensureWindowsDaemon = async (sessionId: string): Promise<boolean> => {
   return false;
 };
 
-const readSnapshot = (sessionId: string, app: string): WinSnapshot | null => {
+export const readWindowsComputerSnapshot = (
+  sessionId: string,
+  app: string,
+): WinSnapshot | null => {
   try {
     return JSON.parse(
       fs.readFileSync(targetStatePath(sessionId, app), "utf8"),
@@ -784,7 +795,7 @@ const parseWindowIdValue = (value: string | null): number | null => {
   return Math.trunc(parsed);
 };
 
-const rememberSnapshot = (
+export const rememberWindowsComputerSnapshot = (
   sessionId: string,
   app: string,
   snapshot: WinSnapshot,
@@ -926,11 +937,12 @@ export const exchangeWindowsDaemonRequest = (
     }
   });
 
-const runWindowsHelper = async (
+export const requestWindowsComputerHelper = async (
   sessionId: string,
   request: WinHelperRequest,
+  signal = getComputerExecutionSignal(),
 ): Promise<WinHelperResponse> => {
-  const daemonReady = await ensureWindowsDaemon(sessionId);
+  const daemonReady = await ensureWindowsDaemon(sessionId, signal);
   if (!daemonReady) {
     throw new Error(
       `Windows stella-computer daemon failed to start after ${windowsDaemonStartupBudgetMs}ms`,
@@ -941,7 +953,6 @@ const runWindowsHelper = async (
   const seq = Date.now() * 1000 + Math.floor(Math.random() * 1000);
   const payload = encodeWindowsDaemonPayload(seq, request);
 
-  const signal = getComputerExecutionSignal();
   const socket = await connectWindowsPipeWithRetry(pipeName, 1_000, signal);
   const responseText = await exchangeWindowsDaemonRequest(socket, payload, {
     timeoutMs: windowsHelperTimeoutMs,
@@ -1183,7 +1194,10 @@ const splitWindowsArgs = (args: string[]) => {
   return positionals;
 };
 
-const lookupElement = (snapshot: WinSnapshot, elementIndex: string) => {
+export const lookupWindowsComputerElement = (
+  snapshot: WinSnapshot,
+  elementIndex: string,
+) => {
   const index = Number(elementIndex);
   if (!Number.isInteger(index)) {
     throw new Error(`unknown element_index ${JSON.stringify(elementIndex)}`);
@@ -1196,7 +1210,7 @@ const lookupElement = (snapshot: WinSnapshot, elementIndex: string) => {
 };
 
 const requiredSnapshot = (sessionId: string, app: string) => {
-  const snapshot = readSnapshot(sessionId, app);
+  const snapshot = readWindowsComputerSnapshot(sessionId, app);
   if (!snapshot) {
     throw new Error(
       `No app state is available for ${app}. Run stella-computer snapshot before action commands.`,
@@ -1217,7 +1231,7 @@ const formatScreenshotMarker = (
 ) => {
   if (!snapshot.screenshotPngBase64) return "";
   const bytes = frameImageBytes(snapshot);
-  const path = targetScreenshotPath(sessionId, app);
+  const path = windowsComputerScreenshotPath(sessionId, app);
   const dims =
     snapshot.screenshot?.widthPx && snapshot.screenshot?.heightPx
       ? ` ${Math.round(snapshot.screenshot.widthPx)}x${Math.round(snapshot.screenshot.heightPx)}`
@@ -1228,7 +1242,7 @@ const formatScreenshotMarker = (
   return `[stella-attach-image]${dims}${sizeKb} inline=image/png path=${JSON.stringify(path)}\n`;
 };
 
-const winSnapshotLines = (snapshot: WinSnapshot) => {
+export const windowsComputerSnapshotLines = (snapshot: WinSnapshot) => {
   const lines: string[] = ["<app_state>"];
   const appRef = snapshot.app.bundleIdentifier || snapshot.app.name;
   lines.push(`App=${appRef} (pid ${snapshot.app.pid})`);
@@ -1278,8 +1292,10 @@ const winSnapshotDiff = (
   previous: WinSnapshot | null,
   current: WinSnapshot,
 ): StateDiff => {
-  const previousLines = previous ? winSnapshotLines(previous) : null;
-  const currentLines = winSnapshotLines(current);
+  const previousLines = previous
+    ? windowsComputerSnapshotLines(previous)
+    : null;
+  const currentLines = windowsComputerSnapshotLines(current);
   return computeStateDiff({
     previousLines,
     currentLines,
@@ -1300,7 +1316,7 @@ const formatSnapshot = (
       `<app_specific_instructions>\n${snapshot.appInstructions.trim()}\n</app_specific_instructions>\n`,
     );
   }
-  writeComputerStdout(`${winSnapshotLines(snapshot).join("\n")}\n`);
+  writeComputerStdout(`${windowsComputerSnapshotLines(snapshot).join("\n")}\n`);
   writeComputerStdout(formatScreenshotMarker(sessionId, app, snapshot));
 };
 
@@ -1346,7 +1362,9 @@ const formatWindowRecord = (window: WinWindowRecord) => {
   )}${bounds}${foreground}${className}]`;
 };
 
-const formatWindowsText = (windows: readonly WinWindowRecord[] | undefined) => {
+export const formatWindowsWindowList = (
+  windows: readonly WinWindowRecord[] | undefined,
+) => {
   if (!windows?.length) {
     return "No visible top-level windows are available to this Windows runtime.";
   }
@@ -1361,8 +1379,8 @@ const runSnapshot = async (
   screenshotPolicy: ScreenshotPolicy = "always",
   disableDiff = false,
 ) => {
-  const previous = readSnapshot(sessionId, app);
-  const response = await runWindowsHelper(sessionId, {
+  const previous = readWindowsComputerSnapshot(sessionId, app);
+  const response = await requestWindowsComputerHelper(sessionId, {
     tool: "get_app_state",
     app,
     windowId,
@@ -1374,7 +1392,7 @@ const runSnapshot = async (
     );
   }
   const stateDiff = winSnapshotDiff(previous, response.snapshot);
-  rememberSnapshot(sessionId, app, response.snapshot);
+  rememberWindowsComputerSnapshot(sessionId, app, response.snapshot);
   if (jsonMode) {
     emitJson({ ...response.snapshot, stateDiff });
   } else {
@@ -1392,8 +1410,8 @@ const runAction = async (
   request: WinHelperRequest,
   jsonMode: boolean,
 ) => {
-  const previous = readSnapshot(sessionId, app);
-  const response = await runWindowsHelper(sessionId, request);
+  const previous = readWindowsComputerSnapshot(sessionId, app);
+  const response = await requestWindowsComputerHelper(sessionId, request);
   if (!response.ok) {
     throw new Error(
       response.error || "Windows runtime did not complete the action.",
@@ -1418,7 +1436,7 @@ const runAction = async (
     throw new Error("Windows runtime did not return an app snapshot.");
   }
   const stateDiff = winSnapshotDiff(previous, response.snapshot);
-  rememberSnapshot(sessionId, app, response.snapshot);
+  rememberWindowsComputerSnapshot(sessionId, app, response.snapshot);
   if (jsonMode) {
     emitJson({
       receipt: response.receipt ?? null,
@@ -1450,7 +1468,9 @@ const runWindowsStellaComputerForSession = async (
   const args = argv.slice(1);
 
   if (command === "list-apps") {
-    const response = await runWindowsHelper(sessionId, { tool: "list_apps" });
+    const response = await requestWindowsComputerHelper(sessionId, {
+      tool: "list_apps",
+    });
     if (!response.ok) {
       throw new Error(response.error || "Windows runtime failed to list apps.");
     }
@@ -1463,7 +1483,7 @@ const runWindowsStellaComputerForSession = async (
   }
 
   if (command === "list-windows") {
-    const response = await runWindowsHelper(sessionId, {
+    const response = await requestWindowsComputerHelper(sessionId, {
       tool: "list_windows",
     });
     if (!response.ok) {
@@ -1475,7 +1495,7 @@ const runWindowsStellaComputerForSession = async (
       emitJson({ windows: response.windows ?? [] });
     } else {
       writeComputerStdout(
-        response.text?.trimEnd() || formatWindowsText(response.windows),
+        response.text?.trimEnd() || formatWindowsWindowList(response.windows),
       );
       writeComputerStdout("\n");
     }
@@ -1499,7 +1519,7 @@ const runWindowsStellaComputerForSession = async (
     const positionals = splitWindowsArgs(args);
     const app = positionals.join(" ").trim();
     if (!app) throw new Error("launch-app requires an app name, path, or URL.");
-    const response = await runWindowsHelper(sessionId, {
+    const response = await requestWindowsComputerHelper(sessionId, {
       tool: "launch_app",
       app,
       start_minimized: args.includes("--start-minimized"),
@@ -1510,7 +1530,7 @@ const runWindowsStellaComputerForSession = async (
       );
     }
     if (response.snapshot) {
-      rememberSnapshot(sessionId, app, response.snapshot);
+      rememberWindowsComputerSnapshot(sessionId, app, response.snapshot);
     }
     if (jsonMode) {
       emitJson(response);
@@ -1518,7 +1538,7 @@ const runWindowsStellaComputerForSession = async (
       if (response.text?.trim()) {
         writeComputerStdout(`${response.text.trimEnd()}\n`);
       } else {
-        writeComputerStdout(`${formatWindowsText(response.windows)}\n`);
+        writeComputerStdout(`${formatWindowsWindowList(response.windows)}\n`);
       }
       if (response.snapshot) {
         formatSnapshot(sessionId, app, response.snapshot);
@@ -1532,7 +1552,7 @@ const runWindowsStellaComputerForSession = async (
     const element = splitWindowsArgs(target.args)[0];
     if (!element) throw new Error("click requires an element index.");
     const snapshot = requiredSnapshot(sessionId, target.app);
-    const record = lookupElement(snapshot, element);
+    const record = lookupWindowsComputerElement(snapshot, element);
     const button = getOptionValue(target.args, "--mouse-button") ?? "left";
     const countRaw = Number(
       getOptionValue(target.args, "--click-count") ?? "1",
@@ -1652,7 +1672,7 @@ const runWindowsStellaComputerForSession = async (
           tool: "set_value",
           app: target.app,
           windowId: target.windowId ?? snapshot.windowId,
-          element: lookupElement(snapshot, element),
+          element: lookupWindowsComputerElement(snapshot, element),
           value: textParts.join(" "),
           windowBounds: snapshot.windowBounds ?? null,
         },
@@ -1681,7 +1701,7 @@ const runWindowsStellaComputerForSession = async (
           tool: "select_text",
           app: target.app,
           windowId: target.windowId ?? snapshot.windowId,
-          element: lookupElement(snapshot, element),
+          element: lookupWindowsComputerElement(snapshot, element),
           text,
           prefix: selection.prefix,
           suffix: selection.suffix,
@@ -1713,7 +1733,7 @@ const runWindowsStellaComputerForSession = async (
           tool: "perform_secondary_action",
           app: target.app,
           windowId: target.windowId ?? snapshot.windowId,
-          element: lookupElement(snapshot, element),
+          element: lookupWindowsComputerElement(snapshot, element),
           action,
           windowBounds: snapshot.windowBounds ?? null,
         },
@@ -1743,7 +1763,7 @@ const runWindowsStellaComputerForSession = async (
           tool: "scroll",
           app: target.app,
           windowId: target.windowId ?? snapshot.windowId,
-          element: lookupElement(snapshot, element),
+          element: lookupWindowsComputerElement(snapshot, element),
           direction,
           pages: Number.isFinite(pages) && pages > 0 ? pages : 1,
           windowBounds: snapshot.windowBounds ?? null,
@@ -1803,7 +1823,9 @@ const runWindowsStellaComputerForSession = async (
   }
 
   if (command === "doctor") {
-    const response = await runWindowsHelper(sessionId, { tool: "doctor" });
+    const response = await requestWindowsComputerHelper(sessionId, {
+      tool: "doctor",
+    });
     if (!response.ok) {
       throw new Error(response.error || "Windows runtime doctor failed.");
     }

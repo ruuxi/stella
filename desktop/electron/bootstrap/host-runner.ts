@@ -139,6 +139,10 @@ export const createHostRunnerHandlers = (
     context.services.connectorConnectService.requestBrowserExtensionConnect(
       payload,
     ),
+  requestComputerUseAppApproval: (payload) =>
+    context.services.securityPolicyService.ensureComputerUseAppApproval(
+      payload,
+    ),
   displayUpdate: (payload) => {
     // Forward structured DisplayPayload objects to all windows. The renderer
     // validates them before routing to the workspace panel.

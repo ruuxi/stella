@@ -2694,6 +2694,63 @@ static std::string okSnapshotJson(const Snapshot& snapshot) {
 
 static std::string executeOperation(IUIAutomation* uia, const Json& operation);
 
+static std::string executeBatchOperation(IUIAutomation* uia, const Json& operation) {
+    const Json* commands = operation.get("commands");
+    if (!commands || commands->type != Json::Array) {
+        throw std::runtime_error("batch commands must be an array");
+    }
+    if (commands->arrayValue.empty() || commands->arrayValue.size() > 64) {
+        throw std::runtime_error("batch commands must contain between 1 and 64 operations");
+    }
+
+    std::ostringstream results;
+    size_t completed = 0;
+    std::string failure;
+    for (size_t index = 0; index < commands->arrayValue.size(); index++) {
+        const Json& command = commands->arrayValue[index];
+        if (command.type != Json::Object) {
+            failure = "batch command " + std::to_string(index) + " must be an object";
+        } else if (command.str("tool") == "batch") {
+            failure = "nested batch operations are not supported";
+        }
+
+        std::string result;
+        if (failure.empty()) {
+            try {
+                result = executeOperation(uia, command);
+                JsonParser parser(result);
+                Json parsed = parser.parseValue();
+                const Json* ok = parsed.get("ok");
+                if (!ok || ok->type != Json::Bool || !ok->boolValue) {
+                    const Json* error = parsed.get("error");
+                    failure = error && error->type == Json::String
+                        ? error->stringValue
+                        : "batch command " + std::to_string(index) + " failed";
+                }
+            } catch (const std::exception& error) {
+                failure = error.what();
+            }
+        }
+
+        if (index) results << ",";
+        results << "{\"index\":" << index;
+        if (failure.empty()) {
+            results << ",\"ok\":true,\"result\":" << result << "}";
+            completed += 1;
+            continue;
+        }
+        results << ",\"ok\":false,\"error\":" << jsonString(failure) << "}";
+        break;
+    }
+    std::ostringstream out;
+    out << "{\"ok\":" << (failure.empty() ? "true" : "false")
+        << ",\"completed\":" << completed
+        << ",\"results\":[" << results.str() << "]";
+    if (!failure.empty()) out << ",\"error\":" << jsonString(failure);
+    out << "}";
+    return out.str();
+}
+
 struct DaemonOptions {
     std::wstring pipeName;
     std::wstring pidFile;
@@ -2827,6 +2884,9 @@ static std::string operationScreenshotPolicy(const Json& operation) {
 
 static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
     std::string tool = operation.str("tool");
+    if (tool == "batch") {
+        return executeBatchOperation(uia, operation);
+    }
     if (tool == "list_apps") {
         return "{\"ok\":true,\"text\":" + jsonString(listAppsText(uia)) + "}";
     }
