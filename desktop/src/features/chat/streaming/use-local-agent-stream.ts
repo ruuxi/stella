@@ -344,18 +344,27 @@ export function useLocalAgentStream({
     setPendingUserMessageId(null)
     setStreamingAssistants([])
     nextSlotIndexByUserMessageIdRef.current.clear()
-    if (activeConversationId) {
+    // This callback is handed to `useResumeAgentRun`, whose effect depends on
+    // its identity. Reading the live ids from refs keeps the callback stable
+    // across RUN_FINISHED; otherwise terminal state changed `activeRunId`,
+    // restarted the resume effect, and its no-active-run cleanup discarded a
+    // still-draining text buffer so SQLite's full message appeared at once.
+    const conversationId = activeConversationIdRef.current
+    const runId = conversationId
+      ? (activeRunIdByConversationRef.current[conversationId] ?? null)
+      : null
+    if (conversationId) {
       dispatch({
         type: 'clear-conversation-tasks',
-        conversationId: activeConversationId,
+        conversationId,
       })
-    } else if (activeRunId) {
+    } else if (runId) {
       dispatch({
         type: 'clear-run-tasks',
-        runId: activeRunId,
+        runId,
       })
     }
-  }, [activeConversationId, activeRunId, discardStreamText])
+  }, [discardStreamText])
 
   const handleAgentEvent = useAgentEventHandler({
     dispatch,
