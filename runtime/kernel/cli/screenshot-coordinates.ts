@@ -42,7 +42,9 @@ const isValidRect = (value: Rect | null | undefined): value is Rect =>
   value.width > 0 &&
   value.height > 0;
 
-const readPngDimensions = (filePath: string): { widthPx: number; heightPx: number } | null => {
+const readPngDimensions = (
+  filePath: string,
+): { widthPx: number; heightPx: number } | null => {
   try {
     const data = fs.readFileSync(filePath);
     if (data.length < 24 || data.toString("ascii", 1, 4) !== "PNG") {
@@ -79,8 +81,14 @@ const resolveScreenshotGeometry = (
   let widthPx = snapshot.screenshot?.widthPx ?? null;
   let heightPx = snapshot.screenshot?.heightPx ?? null;
 
-  if (!isFiniteNumber(widthPx) || !isFiniteNumber(heightPx) || widthPx <= 0 || heightPx <= 0) {
-    const screenshotPath = snapshot.screenshot?.path ?? snapshot.screenshotPath ?? null;
+  if (
+    !isFiniteNumber(widthPx) ||
+    !isFiniteNumber(heightPx) ||
+    widthPx <= 0 ||
+    heightPx <= 0
+  ) {
+    const screenshotPath =
+      snapshot.screenshot?.path ?? snapshot.screenshotPath ?? null;
     if (screenshotPath) {
       const fileDimensions = readPngDimensions(screenshotPath);
       if (fileDimensions) {
@@ -90,7 +98,12 @@ const resolveScreenshotGeometry = (
     }
   }
 
-  if (!isFiniteNumber(widthPx) || !isFiniteNumber(heightPx) || widthPx <= 0 || heightPx <= 0) {
+  if (
+    !isFiniteNumber(widthPx) ||
+    !isFiniteNumber(heightPx) ||
+    widthPx <= 0 ||
+    heightPx <= 0
+  ) {
     return {
       error:
         "The current snapshot is missing screenshot dimensions. Take a fresh snapshot without `--no-screenshot`.",
@@ -122,7 +135,12 @@ export const screenshotPixelToScreenPoint = (
     return { error };
   }
 
-  if (xPx < 0 || xPx > geometry.widthPx || yPx < 0 || yPx > geometry.heightPx) {
+  if (
+    xPx < 0 ||
+    xPx >= geometry.widthPx ||
+    yPx < 0 ||
+    yPx >= geometry.heightPx
+  ) {
     return {
       error:
         `Screenshot point (${xPx}, ${yPx}) is outside the captured image bounds ` +
@@ -132,8 +150,12 @@ export const screenshotPixelToScreenPoint = (
 
   return {
     point: {
-      x: geometry.windowFrame.x + (xPx / geometry.widthPx) * geometry.windowFrame.width,
-      y: geometry.windowFrame.y + (yPx / geometry.heightPx) * geometry.windowFrame.height,
+      x:
+        geometry.windowFrame.x +
+        (xPx / geometry.widthPx) * geometry.windowFrame.width,
+      y:
+        geometry.windowFrame.y +
+        (yPx / geometry.heightPx) * geometry.windowFrame.height,
     },
   };
 };

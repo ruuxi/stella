@@ -76,4 +76,21 @@ describe("screenshotPixelToScreenPoint", () => {
       "Take a fresh snapshot without `--no-screenshot`",
     );
   });
+
+  it("rejects coordinates on the exclusive right and bottom image bounds", () => {
+    const snapshot = {
+      windowFrame: { x: 10, y: 20, width: 100, height: 50 },
+      screenshot: { widthPx: 400, heightPx: 200, path: null },
+    };
+
+    expect(
+      screenshotPixelToScreenPoint(snapshot, 400, 100).point,
+    ).toBeUndefined();
+    expect(
+      screenshotPixelToScreenPoint(snapshot, 200, 200).point,
+    ).toBeUndefined();
+    expect(
+      screenshotPixelToScreenPoint(snapshot, 399, 199).error,
+    ).toBeUndefined();
+  });
 });

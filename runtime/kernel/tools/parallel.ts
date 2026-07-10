@@ -2,11 +2,7 @@ import type {
   FileChangeRecord,
   ProducedFileRecord,
 } from "../../contracts/file-changes.js";
-import type {
-  ToolContext,
-  ToolHandlerExtras,
-  ToolResult,
-} from "./types.js";
+import type { ToolContext, ToolHandlerExtras, ToolResult } from "./types.js";
 
 export const MULTI_TOOL_USE_PARALLEL_TOOL_NAME = "multi_tool_use_parallel";
 
@@ -20,6 +16,7 @@ const NON_PARALLEL_TOOL_NAMES = new Set<string>([
   "Write",
   "Edit",
   "write_stdin",
+  "node_repl",
   "request_credential",
   "RequestCredential",
 ]);
@@ -122,7 +119,9 @@ export const handleMultiToolUseParallel = async (
   }
 
   if (preflightResults.length > 0) {
-    const invalidIndexes = new Set(preflightResults.map((entry) => entry.index));
+    const invalidIndexes = new Set(
+      preflightResults.map((entry) => entry.index),
+    );
     const results: ParallelEntryResult[] = normalizedEntries.map((entry) => {
       const error = preflightResults.find(
         (result) => result.index === entry.index,
@@ -165,12 +164,12 @@ export const handleMultiToolUseParallel = async (
       return {
         index,
         tool_name: toolName,
-        ...(nested.error
-          ? { error: nested.error }
-          : { result: nested.result }),
+        ...(nested.error ? { error: nested.error } : { result: nested.result }),
         ...(nested.details !== undefined ? { details: nested.details } : {}),
         ...(nested.fileChanges ? { fileChanges: nested.fileChanges } : {}),
-        ...(nested.producedFiles ? { producedFiles: nested.producedFiles } : {}),
+        ...(nested.producedFiles
+          ? { producedFiles: nested.producedFiles }
+          : {}),
       };
     }),
   );
@@ -191,7 +190,9 @@ export const handleMultiToolUseParallel = async (
       if ("error" in entry && entry.error) {
         return `### ${entry.tool_name || `tool_${entry.index + 1}`}\nError: ${entry.error}`;
       }
-      const text = stringifyResult("result" in entry ? entry.result : undefined);
+      const text = stringifyResult(
+        "result" in entry ? entry.result : undefined,
+      );
       return `### ${entry.tool_name}\n${text || "(no output)"}`;
     })
     .join("\n\n");

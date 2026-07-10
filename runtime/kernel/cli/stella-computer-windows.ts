@@ -1,12 +1,17 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 
 import { resolveNativeHelperPath } from "./native-helper.js";
-import { resolveStatePath } from "./shared.js";
 import { sanitizeStellaComputerSessionId } from "../tools/stella-computer-session.js";
+import {
+  getComputerExecutionEnv,
+  getComputerExecutionSignal,
+  writeComputerStdout,
+} from "../computer-use/execution-context.js";
 import {
   computeStateDiff,
   formatStateDiffBlock,
@@ -46,6 +51,10 @@ type WinSnapshot = {
   windowTitle?: string;
   windowBounds?: WinFrame | null;
   screenshotPngBase64?: string | null;
+  screenshot?: {
+    widthPx?: number | null;
+    heightPx?: number | null;
+  } | null;
   treeLines?: string[];
   focusedSummary?: string | null;
   selectedText?: string | null;
@@ -56,7 +65,27 @@ type WinSnapshot = {
     occluded?: boolean;
     warning?: string;
   };
+  appInstructions?: string | null;
+  revision?: number;
+  materializedRevision?: number;
+  cacheHit?: boolean;
+  cacheKey?: string;
+  pendingActionCount?: number;
+  screenshotPolicy?: ScreenshotPolicy;
+  reliability?: {
+    uiaEventsObserved?: boolean;
+    elementCacheValidated?: boolean;
+    perMonitorDpiAware?: boolean;
+    screenshotLongEdgeCapPx?: number;
+    settleWaitedMs?: number;
+    settleEventCount?: number;
+    settleTimedOut?: boolean;
+    settleBaselineRevision?: number;
+    settleFinalRevision?: number;
+  };
 };
+
+type ScreenshotPolicy = "auto" | "always" | "never";
 
 type WinHelperRequest = {
   tool: string;
@@ -76,10 +105,17 @@ type WinHelperRequest = {
   text?: string;
   key?: string;
   value?: string;
+  prefix?: string;
+  suffix?: string;
+  selection?: "text" | "cursor-before" | "cursor-after";
   windowId?: number;
   windowBounds?: WinFrame | null;
   dispatch?: "background" | "foreground" | "auto";
   start_minimized?: boolean;
+  defer_observation?: boolean;
+  screenshot_policy?: ScreenshotPolicy;
+  screenshot_width?: number;
+  screenshot_height?: number;
 };
 
 type WinHelperResponse = {
@@ -104,9 +140,31 @@ type WinHelperResponse = {
       eventCount?: number;
       timedOut?: boolean;
       reason?: string | null;
+      baselineRevision?: number;
+      finalRevision?: number;
+      pendingActionCount?: number;
     };
   };
+  revision?: number;
+  deferred?: boolean;
   windows?: WinWindowRecord[];
+};
+
+type WindowsTargetRecord = {
+  key: string;
+  appName: string;
+  bundleIdentifier?: string | null;
+  pid: number;
+  windowId?: number | null;
+  statePath: string;
+  screenshotPath: string;
+  updatedAt: string;
+};
+
+type WindowsTargetRegistry = {
+  activeTargetKey?: string | null;
+  aliases: Record<string, string>;
+  targets: Record<string, WindowsTargetRecord>;
 };
 
 type WinWindowRecord = {
@@ -126,22 +184,36 @@ type WindowsDaemonResponse = {
   stderr: string;
 };
 
-const stateDir = path.join(resolveStatePath(), "stella-computer");
 const defaultSessionId = "manual";
 const windowsHelperName = "stella-computer-helper";
 const windowsHelperTimeoutMs = 30_000;
 const windowsDaemonStartupBudgetMs = 2_000;
+const sessionPruneIntervalMs = 24 * 60 * 60 * 1000;
+const sessionRetentionMs = 24 * 60 * 60 * 1000;
+
+const windowsStateDir = () => {
+  const configured = getComputerExecutionEnv().STELLA_DATA_DIR;
+  const root = configured
+    ? path.resolve(configured)
+    : path.join(os.homedir(), ".stella");
+  return path.join(root, "stella-computer");
+};
+
+const windowsSessionsRoot = () => path.join(windowsStateDir(), "sessions");
+const windowsPruneStatePath = () =>
+  path.join(windowsStateDir(), "last-prune.json");
 
 const usage = `stella-computer - control Windows apps through UI Automation and Win32 messages
 
 Usage:
   stella-computer list-apps
   stella-computer list-windows [--json]
-  stella-computer [--session ID] snapshot (--app NAME|--bundle-id ID|--pid PID|--window-id HWND) [--json]
-  stella-computer [--session ID] get-state (--app NAME|--bundle-id ID|--pid PID|--window-id HWND) [--json]
+  stella-computer [--session ID] snapshot (--app NAME|--bundle-id ID|--pid PID|--window-id HWND) [--screenshot-policy auto|always|never] [--disable-diff] [--json]
+  stella-computer [--session ID] get-state (--app NAME|--bundle-id ID|--pid PID|--window-id HWND) [--screenshot-policy auto|always|never] [--disable-diff] [--json]
   stella-computer [--session ID] launch-app <name|path|url> [--start-minimized] [--json]
-  stella-computer [--session ID] click <element> [--app NAME|--window-id HWND] [--mouse-button left|right|middle] [--click-count N] [--dispatch background|foreground|auto]
-  stella-computer [--session ID] fill <element> <text> [--app NAME|--window-id HWND]
+  stella-computer [--session ID] click <element> [--app NAME|--window-id HWND] [--mouse-button left|right|middle] [--click-count N] [--dispatch background|foreground|auto] [--defer-observation]
+  stella-computer [--session ID] fill <element> <text> [--app NAME|--window-id HWND] [--defer-observation]
+  stella-computer [--session ID] select-text <element> <text> [--prefix TEXT] [--suffix TEXT] [--selection text|cursor-before|cursor-after] [--app NAME|--window-id HWND] [--defer-observation]
   stella-computer [--session ID] secondary-action <element> <action> [--app NAME|--window-id HWND]
   stella-computer [--session ID] scroll <element> <up|down|left|right> [--app NAME|--window-id HWND] [--pages N] [--dispatch background|foreground|auto]
   stella-computer [--session ID] click-screenshot <x_px> <y_px> [--app NAME|--window-id HWND] [--mouse-button left|right|middle] [--click-count N] [--dispatch background|foreground|auto]
@@ -151,7 +223,9 @@ Usage:
 
 Notes:
   - snapshot writes element state under ~/.stella/stella-computer/sessions/<session>/windows-targets/
-  - actions reuse the last snapshot for the target app and refresh it after each action
+  - actions reuse the last snapshot for the target app and refresh it unless --defer-observation is set
+  - deferred actions acknowledge immediately; the next get-state settles and materializes the final state
+  - --screenshot-policy auto captures only when the deferred sequence needs visual context
   - Windows uses the bundled stella-computer-helper.exe native helper
   - Windows keeps one helper daemon per Stella computer-use session when possible
   - the helper uses UI Automation patterns first and Win32 window messages as fallback
@@ -185,11 +259,16 @@ const stripOptionValue = (args: string[], flag: string) => {
 
 const getSessionId = (sessionOverride?: string | null) =>
   sanitizeStellaComputerSessionId(sessionOverride) ??
-  sanitizeStellaComputerSessionId(process.env.STELLA_COMPUTER_SESSION) ??
+  sanitizeStellaComputerSessionId(
+    getComputerExecutionEnv().STELLA_COMPUTER_SESSION,
+  ) ??
   defaultSessionId;
 
 const sessionDir = (sessionId: string) =>
-  path.join(stateDir, "sessions", sessionId, "windows-targets");
+  path.join(windowsSessionsRoot(), sessionId, "windows-targets");
+
+const targetRegistryPath = (sessionId: string) =>
+  path.join(sessionDir(sessionId), "targets.json");
 
 const normalizeTargetKey = (value: string) =>
   value
@@ -200,24 +279,16 @@ const normalizeTargetKey = (value: string) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 160) || "default";
 
-const targetStatePath = (sessionId: string, app: string) =>
-  path.join(
-    sessionDir(sessionId),
-    normalizeTargetKey(app),
-    "last-snapshot.json",
-  );
+const targetStatePathForKey = (sessionId: string, key: string) =>
+  path.join(sessionDir(sessionId), key, "last-snapshot.json");
 
-const targetScreenshotPath = (sessionId: string, app: string) =>
-  path.join(
-    sessionDir(sessionId),
-    normalizeTargetKey(app),
-    "last-screenshot.png",
-  );
+const targetScreenshotPathForKey = (sessionId: string, key: string) =>
+  path.join(sessionDir(sessionId), key, "last-screenshot.png");
 
 const windowAlias = (windowId: number) => `hwnd:${Math.trunc(windowId)}`;
 
 const windowsDaemonDir = (sessionId: string) =>
-  path.join(stateDir, "sessions", sessionId, "windows-daemon");
+  path.join(windowsSessionsRoot(), sessionId, "windows-daemon");
 
 const windowsDaemonPidPath = (sessionId: string) =>
   path.join(windowsDaemonDir(sessionId), "helper.pid");
@@ -227,6 +298,67 @@ const windowsDaemonPipeName = (sessionId: string) =>
     .update(sessionId)
     .digest("hex")
     .slice(0, 24)}`;
+
+const emptyTargetRegistry = (): WindowsTargetRegistry => ({
+  activeTargetKey: null,
+  aliases: {},
+  targets: {},
+});
+
+const readTargetRegistry = (sessionId: string): WindowsTargetRegistry => {
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(targetRegistryPath(sessionId), "utf8"),
+    ) as Partial<WindowsTargetRegistry>;
+    return {
+      activeTargetKey: parsed.activeTargetKey ?? null,
+      aliases: parsed.aliases ?? {},
+      targets: parsed.targets ?? {},
+    };
+  } catch {
+    return emptyTargetRegistry();
+  }
+};
+
+const writeJsonAtomic = (filePath: string, value: unknown) => {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(value, null, 2));
+  fs.renameSync(tempPath, filePath);
+};
+
+const writeTargetRegistry = (
+  sessionId: string,
+  registry: WindowsTargetRegistry,
+) => writeJsonAtomic(targetRegistryPath(sessionId), registry);
+
+const normalizedAlias = (value: string) => normalizeTargetKey(value);
+
+export const canonicalWindowsTargetKey = (
+  snapshot: Pick<WinSnapshot, "windowId" | "app">,
+) =>
+  snapshot.windowId
+    ? `window-${Math.trunc(snapshot.windowId)}`
+    : `pid-${Math.trunc(snapshot.app.pid)}`;
+
+const resolveTargetRecord = (
+  sessionId: string,
+  app?: string | null,
+): WindowsTargetRecord | null => {
+  const registry = readTargetRegistry(sessionId);
+  const key = app
+    ? registry.aliases[normalizedAlias(app)]
+    : registry.activeTargetKey;
+  return key ? (registry.targets[key] ?? null) : null;
+};
+
+const targetStatePath = (sessionId: string, app: string) =>
+  resolveTargetRecord(sessionId, app)?.statePath ??
+  targetStatePathForKey(sessionId, normalizeTargetKey(app));
+
+const targetScreenshotPath = (sessionId: string, app: string) =>
+  resolveTargetRecord(sessionId, app)?.screenshotPath ??
+  targetScreenshotPathForKey(sessionId, normalizeTargetKey(app));
 
 const readPidFile = (filePath: string): number | null => {
   try {
@@ -257,6 +389,170 @@ const killProcess = (pid: number | null) => {
   }
 };
 
+const stopWindowsDaemonUnlocked = (sessionId: string) => {
+  const pidPath = windowsDaemonPidPath(sessionId);
+  const pid = readPidFile(pidPath);
+  killProcess(pid);
+  fs.rmSync(pidPath, { force: true });
+  return pid !== null;
+};
+
+const windowsSessionTails = new Map<string, Promise<void>>();
+
+const windowsCancellationError = (signal?: AbortSignal) => {
+  const reason =
+    signal?.reason instanceof Error
+      ? `: ${signal.reason.message}`
+      : signal?.reason
+        ? `: ${String(signal.reason)}`
+        : "";
+  const error = new Error(`Windows stella-computer request cancelled${reason}`);
+  error.name = "AbortError";
+  return error;
+};
+
+const waitWithSignal = async <T>(promise: Promise<T>, signal?: AbortSignal) => {
+  if (!signal) return await promise;
+  if (signal.aborted) throw windowsCancellationError(signal);
+  return await new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener("abort", onAbort);
+      reject(windowsCancellationError(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+};
+
+const delayWithSignal = (ms: number, signal?: AbortSignal) => {
+  if (signal?.aborted) return Promise.reject(windowsCancellationError(signal));
+  return new Promise<void>((resolve, reject) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      finish();
+      reject(windowsCancellationError(signal));
+    };
+    const timer = setTimeout(() => {
+      finish();
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+};
+
+export const withWindowsComputerSessionLock = async <T>(
+  sessionId: string,
+  operation: () => Promise<T>,
+  signal: AbortSignal | null | undefined = getComputerExecutionSignal(),
+): Promise<T> => {
+  const activeSignal = signal ?? undefined;
+  const previous = windowsSessionTails.get(sessionId) ?? Promise.resolve();
+  const turn = previous.catch(() => undefined);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = turn.then(() => gate);
+  windowsSessionTails.set(sessionId, tail);
+
+  try {
+    await waitWithSignal(turn, activeSignal);
+    if (activeSignal?.aborted) throw windowsCancellationError(activeSignal);
+    return await operation();
+  } finally {
+    release();
+    if (windowsSessionTails.get(sessionId) === tail) {
+      void tail.finally(() => {
+        if (windowsSessionTails.get(sessionId) === tail) {
+          windowsSessionTails.delete(sessionId);
+        }
+      });
+    }
+  }
+};
+
+export const cleanupWindowsStellaComputerSessionDaemon = async (
+  sessionOverride?: string | null,
+) => {
+  const sessionId = getSessionId(sessionOverride);
+  return await withWindowsComputerSessionLock(
+    sessionId,
+    async () => stopWindowsDaemonUnlocked(sessionId),
+    null,
+  );
+};
+
+const safeDirectoryEntries = (directory: string) => {
+  try {
+    return fs.readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+};
+
+const latestMtimeMs = (targetPath: string): number => {
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(targetPath);
+  } catch {
+    return 0;
+  }
+  let newest = stats.mtimeMs;
+  if (stats.isDirectory()) {
+    for (const entry of safeDirectoryEntries(targetPath)) {
+      newest = Math.max(
+        newest,
+        latestMtimeMs(path.join(targetPath, entry.name)),
+      );
+    }
+  }
+  return newest;
+};
+
+const pruneWindowsSessions = (activeSessionId: string) => {
+  const now = Date.now();
+  const pruneStatePath = windowsPruneStatePath();
+  const sessionsRoot = windowsSessionsRoot();
+  try {
+    const previous = JSON.parse(fs.readFileSync(pruneStatePath, "utf8")) as {
+      prunedAtMs?: number;
+    };
+    if (now - (previous.prunedAtMs ?? 0) < sessionPruneIntervalMs) return;
+  } catch {
+    // Missing maintenance state means pruning is due.
+  }
+  try {
+    writeJsonAtomic(pruneStatePath, { prunedAtMs: now });
+  } catch {
+    return;
+  }
+  for (const entry of safeDirectoryEntries(sessionsRoot)) {
+    if (!entry.isDirectory() || entry.name === activeSessionId) continue;
+    const sessionPath = path.join(sessionsRoot, entry.name);
+    const daemonPid = readPidFile(
+      path.join(sessionPath, "windows-daemon", "helper.pid"),
+    );
+    const automationPid = readPidFile(path.join(sessionPath, "automation.pid"));
+    if (pidIsRunning(daemonPid) || pidIsRunning(automationPid)) continue;
+    const newest = latestMtimeMs(sessionPath);
+    if (newest > 0 && now - newest > sessionRetentionMs) {
+      fs.rmSync(sessionPath, { recursive: true, force: true });
+    }
+  }
+};
+
 const helperNewerThanDaemon = (helperPath: string, pidPath: string) => {
   try {
     return fs.statSync(helperPath).mtimeMs > fs.statSync(pidPath).mtimeMs + 500;
@@ -265,47 +561,156 @@ const helperNewerThanDaemon = (helperPath: string, pidPath: string) => {
   }
 };
 
-const connectWindowsPipe = (
+const ignoreWindowsPipeError = () => undefined;
+
+export const connectWindowsPipe = (
   pipeName: string,
   timeoutMs: number,
+  signal = getComputerExecutionSignal(),
 ): Promise<net.Socket> =>
   new Promise((resolve, reject) => {
-    const socket = net.createConnection(pipeName);
+    if (signal?.aborted) {
+      reject(windowsCancellationError(signal));
+      return;
+    }
+
+    let socket: net.Socket;
+    try {
+      socket = net.createConnection(pipeName);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    let settled = false;
+    const cleanup = (removeErrorListener: boolean) => {
+      clearTimeout(timer);
+      socket.removeListener("connect", onConnect);
+      if (removeErrorListener) socket.removeListener("error", onError);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup(true);
+      if (error) {
+        socket.destroy();
+        reject(error);
+      } else {
+        // Guard the handoff between connection and request handler installation.
+        socket.on("error", ignoreWindowsPipeError);
+        resolve(socket);
+      }
+    };
     const timer = setTimeout(() => {
-      socket.destroy();
-      reject(
+      finish(
         new Error(
           `Windows stella-computer daemon connection timed out after ${timeoutMs}ms`,
         ),
       );
     }, timeoutMs);
-    socket.once("connect", () => {
-      clearTimeout(timer);
-      resolve(socket);
-    });
-    socket.once("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
+    const onConnect = () => finish();
+    const onError = (error: Error) => finish(error);
+    const onAbort = () => finish(windowsCancellationError(signal));
+    socket.once("connect", onConnect);
+    socket.on("error", onError);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 
 const connectWindowsPipeWithRetry = async (
   pipeName: string,
   budgetMs: number,
+  signal = getComputerExecutionSignal(),
 ): Promise<net.Socket> => {
   const deadline = Date.now() + budgetMs;
   let lastError: unknown = null;
   while (Date.now() < deadline) {
     try {
-      return await connectWindowsPipe(pipeName, Math.min(150, budgetMs));
+      const remainingMs = Math.max(1, deadline - Date.now());
+      return await connectWindowsPipe(
+        pipeName,
+        Math.min(150, remainingMs),
+        signal,
+      );
     } catch (error) {
+      if (signal?.aborted) throw windowsCancellationError(signal);
       lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await delayWithSignal(25, signal);
     }
   }
   throw lastError instanceof Error
     ? lastError
     : new Error("Windows stella-computer daemon connection failed");
+};
+
+type WindowsDaemonSpawn = typeof spawn;
+
+export const spawnWindowsDaemonProcess = async (
+  helperPath: string,
+  pipeName: string,
+  pidPath: string,
+  signal = getComputerExecutionSignal(),
+  spawnProcess: WindowsDaemonSpawn = spawn,
+): Promise<ChildProcess> => {
+  if (signal?.aborted) throw windowsCancellationError(signal);
+
+  let child: ChildProcess;
+  try {
+    child = spawnProcess(
+      helperPath,
+      ["daemon", "--pipe-name", pipeName, "--pid-file", pidPath],
+      {
+        detached: false,
+        stdio: "ignore",
+        windowsHide: true,
+        env: getComputerExecutionEnv(),
+      },
+    );
+  } catch (error) {
+    throw new Error(
+      `Windows stella-computer daemon failed to spawn: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      child.removeListener("spawn", onSpawn);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onSpawn = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const onError = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(
+        new Error(
+          `Windows stella-computer daemon failed to spawn: ${error.message}`,
+        ),
+      );
+    };
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      killProcess(child.pid ?? null);
+      reject(windowsCancellationError(signal));
+    };
+
+    child.once("spawn", onSpawn);
+    // Deliberately retained after startup so a later ChildProcess error can never
+    // become an unhandled EventEmitter error in the long-lived host.
+    child.on("error", onError);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+  child.unref();
+  return child;
 };
 
 const ensureWindowsDaemon = async (sessionId: string): Promise<boolean> => {
@@ -333,32 +738,31 @@ const ensureWindowsDaemon = async (sessionId: string): Promise<boolean> => {
 
   fs.mkdirSync(windowsDaemonDir(sessionId), { recursive: true });
   fs.rmSync(pidPath, { force: true });
-  const child = spawn(
-    helperPath,
-    ["daemon", "--pipe-name", pipeName, "--pid-file", pidPath],
-    {
-      detached: false,
-      stdio: "ignore",
-      windowsHide: true,
-      env: process.env,
-    },
-  );
-  child.unref();
+  const child = await spawnWindowsDaemonProcess(helperPath, pipeName, pidPath);
 
-  const deadline = Date.now() + windowsDaemonStartupBudgetMs;
-  while (Date.now() < deadline) {
-    const pid = readPidFile(pidPath);
-    if (pid && pidIsRunning(pid)) {
-      try {
-        const socket = await connectWindowsPipe(pipeName, 100);
-        socket.end();
-        return true;
-      } catch {
-        // Keep waiting until the named-pipe server accepts connections.
+  try {
+    const deadline = Date.now() + windowsDaemonStartupBudgetMs;
+    while (Date.now() < deadline) {
+      const pid = readPidFile(pidPath);
+      if (pid && pidIsRunning(pid)) {
+        try {
+          const socket = await connectWindowsPipe(pipeName, 100);
+          socket.end();
+          return true;
+        } catch (error) {
+          if (getComputerExecutionSignal()?.aborted) throw error;
+          // Keep waiting until the named-pipe server accepts connections.
+        }
       }
+      await delayWithSignal(50, getComputerExecutionSignal());
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+  } catch (error) {
+    killProcess(child.pid ?? readPidFile(pidPath));
+    fs.rmSync(pidPath, { force: true });
+    throw error;
   }
+  killProcess(child.pid ?? readPidFile(pidPath));
+  fs.rmSync(pidPath, { force: true });
   return false;
 };
 
@@ -396,19 +800,131 @@ const rememberSnapshot = (
     ].filter((value): value is string => Boolean(value)),
   );
 
+  const key = canonicalWindowsTargetKey(snapshot);
+  const statePath = targetStatePathForKey(sessionId, key);
+  const screenshotPath = targetScreenshotPathForKey(sessionId, key);
   const png = snapshot.screenshotPngBase64
     ? Buffer.from(snapshot.screenshotPngBase64, "base64")
     : null;
 
+  writeJsonAtomic(statePath, snapshot);
+  if (png) {
+    fs.writeFileSync(screenshotPath, png);
+  }
+
+  const registry = readTargetRegistry(sessionId);
+  registry.activeTargetKey = key;
+  registry.targets[key] = {
+    key,
+    appName: snapshot.app.name,
+    bundleIdentifier: snapshot.app.bundleIdentifier ?? null,
+    pid: snapshot.app.pid,
+    windowId: snapshot.windowId ?? null,
+    statePath,
+    screenshotPath,
+    updatedAt: new Date().toISOString(),
+  };
   for (const alias of aliases) {
-    const statePath = targetStatePath(sessionId, alias);
-    fs.mkdirSync(path.dirname(statePath), { recursive: true });
-    fs.writeFileSync(statePath, JSON.stringify(snapshot, null, 2));
-    if (png) {
-      fs.writeFileSync(targetScreenshotPath(sessionId, alias), png);
+    registry.aliases[normalizedAlias(alias)] = key;
+    const legacyDirectory = path.dirname(
+      targetStatePathForKey(sessionId, normalizedAlias(alias)),
+    );
+    if (legacyDirectory !== path.dirname(statePath)) {
+      fs.rmSync(legacyDirectory, { recursive: true, force: true });
     }
   }
+  writeTargetRegistry(sessionId, registry);
 };
+
+export const exchangeWindowsDaemonRequest = (
+  socket: net.Socket,
+  payload: string,
+  options: {
+    timeoutMs: number;
+    signal?: AbortSignal;
+    onTimeoutOrAbort?: () => void;
+  },
+): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const { signal } = options;
+    socket.removeListener("error", ignoreWindowsPipeError);
+    if (signal?.aborted) {
+      options.onTimeoutOrAbort?.();
+      socket.destroy();
+      reject(windowsCancellationError(signal));
+      return;
+    }
+
+    let settled = false;
+    const chunks: Buffer[] = [];
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.removeListener("data", onData);
+      socket.removeListener("end", onEnd);
+      socket.removeListener("error", onError);
+      socket.removeListener("close", onClose);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const settle = (error: Error | null, value = "") => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      socket.destroy();
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const onData = (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    };
+    const onEnd = () => {
+      settle(null, Buffer.concat(chunks).toString("utf8"));
+    };
+    const onError = (error: Error) => {
+      settle(
+        new Error(
+          `Windows stella-computer daemon connection failed: ${error.message}`,
+        ),
+      );
+    };
+    const onClose = () => {
+      if (!settled) {
+        settle(
+          new Error(
+            "Windows stella-computer daemon closed the request before returning a response.",
+          ),
+        );
+      }
+    };
+    const onAbort = () => {
+      options.onTimeoutOrAbort?.();
+      settle(windowsCancellationError(signal));
+    };
+    const timer = setTimeout(() => {
+      options.onTimeoutOrAbort?.();
+      settle(
+        new Error(
+          `Windows stella-computer daemon timed out after ${options.timeoutMs}ms`,
+        ),
+      );
+    }, options.timeoutMs);
+
+    socket.on("data", onData);
+    socket.once("end", onEnd);
+    socket.on("error", onError);
+    socket.once("close", onClose);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      socket.write(payload);
+    } catch (error) {
+      settle(
+        error instanceof Error
+          ? new Error(
+              `Windows stella-computer daemon connection failed: ${error.message}`,
+            )
+          : new Error("Windows stella-computer daemon connection failed"),
+      );
+    }
+  });
 
 const runWindowsHelper = async (
   sessionId: string,
@@ -423,45 +939,14 @@ const runWindowsHelper = async (
 
   const pipeName = windowsDaemonPipeName(sessionId);
   const seq = Date.now() * 1000 + Math.floor(Math.random() * 1000);
-  const payload = `${JSON.stringify({ seq, operation: request })}\n`;
+  const payload = encodeWindowsDaemonPayload(seq, request);
 
-  const socket = await connectWindowsPipeWithRetry(pipeName, 1_000);
-  const responseText = await new Promise<string>((resolve, reject) => {
-    let settled = false;
-    const chunks: Buffer[] = [];
-    const settle = (error: Error | null, value = "") => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      socket.destroy();
-      if (error) reject(error);
-      else resolve(value);
-    };
-    const timer = setTimeout(() => {
-      killProcess(readPidFile(windowsDaemonPidPath(sessionId)));
-      settle(
-        new Error(
-          `Windows stella-computer daemon timed out after ${windowsHelperTimeoutMs}ms`,
-        ),
-      );
-    }, windowsHelperTimeoutMs);
-
-    socket.write(payload);
-    socket.on("data", (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-    socket.on("end", () => {
-      settle(null, Buffer.concat(chunks).toString("utf8"));
-    });
-    socket.on("error", (error) => {
-      settle(
-        error instanceof Error
-          ? new Error(
-              `Windows stella-computer daemon connection failed: ${error.message}`,
-            )
-          : new Error("Windows stella-computer daemon connection failed"),
-      );
-    });
+  const signal = getComputerExecutionSignal();
+  const socket = await connectWindowsPipeWithRetry(pipeName, 1_000, signal);
+  const responseText = await exchangeWindowsDaemonRequest(socket, payload, {
+    timeoutMs: windowsHelperTimeoutMs,
+    signal,
+    onTimeoutOrAbort: () => stopWindowsDaemonUnlocked(sessionId),
   });
 
   let envelope: WindowsDaemonResponse;
@@ -568,21 +1053,13 @@ const appFromActionArgs = (sessionId: string, args: string[]) => {
     return { app: target, windowId: windowId ?? undefined, args: nextArgs };
   }
 
-  const candidates: string[] = [];
-  const root = sessionDir(sessionId);
-  try {
-    for (const entry of fs.readdirSync(root)) {
-      const statePath = path.join(root, entry, "last-snapshot.json");
-      if (fs.existsSync(statePath)) {
-        candidates.push(statePath);
-      }
-    }
-  } catch {
-    // no cached snapshots
-  }
+  const registry = readTargetRegistry(sessionId);
+  const candidates = Object.values(registry.targets).filter((candidate) =>
+    fs.existsSync(candidate.statePath),
+  );
   if (candidates.length === 1) {
     const snapshot = JSON.parse(
-      fs.readFileSync(candidates[0]!, "utf8"),
+      fs.readFileSync(candidates[0]!.statePath, "utf8"),
     ) as WinSnapshot;
     return {
       app: snapshot.app.bundleIdentifier ?? snapshot.app.name,
@@ -612,6 +1089,57 @@ const getDispatchOption = (
   throw new Error(`Invalid --dispatch value: ${value}`);
 };
 
+export const getWindowsScreenshotPolicy = (
+  args: string[],
+): ScreenshotPolicy => {
+  if (args.includes("--no-screenshot")) return "never";
+  const configured = args.includes("--screenshot-policy");
+  const value = getOptionValue(args, "--screenshot-policy") ?? "always";
+  if (configured && !getOptionValue(args, "--screenshot-policy")) {
+    throw new Error("--screenshot-policy requires a value.");
+  }
+  if (value === "auto" || value === "always" || value === "never") {
+    return value;
+  }
+  throw new Error(`Invalid --screenshot-policy value: ${value}`);
+};
+
+export const getWindowsSelectionOptions = (args: string[]) => {
+  const rawSelection = getOptionValue(args, "--selection") ?? "text";
+  if (
+    rawSelection !== "text" &&
+    rawSelection !== "cursor-before" &&
+    rawSelection !== "cursor-after"
+  ) {
+    throw new Error(`Invalid --selection value: ${rawSelection}`);
+  }
+  const selection: "text" | "cursor-before" | "cursor-after" = rawSelection;
+  for (const flag of ["--prefix", "--suffix", "--selection"]) {
+    if (args.includes(flag) && getOptionValue(args, flag) == null) {
+      throw new Error(`${flag} requires a value.`);
+    }
+  }
+  return {
+    prefix: getOptionValue(args, "--prefix") ?? undefined,
+    suffix: getOptionValue(args, "--suffix") ?? undefined,
+    selection,
+  };
+};
+
+const withObservationOptions = (
+  request: WinHelperRequest,
+  args: string[],
+): WinHelperRequest => ({
+  ...request,
+  defer_observation: args.includes("--defer-observation"),
+  screenshot_policy: "always",
+});
+
+export const encodeWindowsDaemonPayload = (
+  seq: number,
+  request: WinHelperRequest,
+) => `${JSON.stringify({ seq, operation: request })}\n`;
+
 const splitWindowsArgs = (args: string[]) => {
   const positionals: string[] = [];
   const valueOptions = new Set([
@@ -624,6 +1152,10 @@ const splitWindowsArgs = (args: string[]) => {
     "--pages",
     "--state",
     "--dispatch",
+    "--screenshot-policy",
+    "--prefix",
+    "--suffix",
+    "--selection",
   ]);
   const booleanOptions = new Set([
     "--allow-hid",
@@ -634,6 +1166,8 @@ const splitWindowsArgs = (args: string[]) => {
     "--no-overlay",
     "--json",
     "--start-minimized",
+    "--defer-observation",
+    "--disable-diff",
   ]);
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
@@ -684,11 +1218,14 @@ const formatScreenshotMarker = (
   if (!snapshot.screenshotPngBase64) return "";
   const bytes = frameImageBytes(snapshot);
   const path = targetScreenshotPath(sessionId, app);
-  const dims = snapshot.windowBounds
-    ? ` ${Math.round(snapshot.windowBounds.width)}x${Math.round(snapshot.windowBounds.height)}`
-    : "";
+  const dims =
+    snapshot.screenshot?.widthPx && snapshot.screenshot?.heightPx
+      ? ` ${Math.round(snapshot.screenshot.widthPx)}x${Math.round(snapshot.screenshot.heightPx)}`
+      : snapshot.windowBounds
+        ? ` ${Math.round(snapshot.windowBounds.width)}x${Math.round(snapshot.windowBounds.height)}`
+        : "";
   const sizeKb = bytes ? ` ${(bytes.byteLength / 1024).toFixed(0)}KB` : "";
-  return `[stella-attach-image]${dims}${sizeKb} inline=image/png ${path}\n`;
+  return `[stella-attach-image]${dims}${sizeKb} inline=image/png path=${JSON.stringify(path)}\n`;
 };
 
 const winSnapshotLines = (snapshot: WinSnapshot) => {
@@ -702,6 +1239,11 @@ const winSnapshotLines = (snapshot: WinSnapshot) => {
       ? ` (${snapshot.capture.warning})`
       : "";
     lines.push(`Screenshot capture: ${snapshot.capture.method}${warning}`);
+  }
+  if (snapshot.revision != null) {
+    lines.push(
+      `State revision: ${snapshot.revision} (materialized ${snapshot.materializedRevision ?? snapshot.revision}, cache_hit=${snapshot.cacheHit === true ? "true" : "false"}, pending_actions=${snapshot.pendingActionCount ?? 0})`,
+    );
   }
   for (const warning of snapshot.warnings ?? []) {
     lines.push(`Warning: ${warning}`);
@@ -753,8 +1295,13 @@ const formatSnapshot = (
   app: string,
   snapshot: WinSnapshot,
 ) => {
-  process.stdout.write(`${winSnapshotLines(snapshot).join("\n")}\n`);
-  process.stdout.write(formatScreenshotMarker(sessionId, app, snapshot));
+  if (snapshot.appInstructions?.trim()) {
+    writeComputerStdout(
+      `<app_specific_instructions>\n${snapshot.appInstructions.trim()}\n</app_specific_instructions>\n`,
+    );
+  }
+  writeComputerStdout(`${winSnapshotLines(snapshot).join("\n")}\n`);
+  writeComputerStdout(formatScreenshotMarker(sessionId, app, snapshot));
 };
 
 const formatActionReceipt = (
@@ -762,7 +1309,7 @@ const formatActionReceipt = (
   fallbackDispatch: string | undefined,
 ) => {
   if (!receipt) return;
-  process.stdout.write(
+  writeComputerStdout(
     `Action receipt: route=${receipt.route ?? "unknown"} dispatch=${
       receipt.dispatch ?? fallbackDispatch ?? "background"
     } background_safe=${
@@ -775,14 +1322,14 @@ const formatActionReceipt = (
     const settle = receipt.settle;
     const source = settle.observed ? "UIA quiet" : "fixed post-action wait";
     const reason = settle.reason ? ` reason=${settle.reason}` : "";
-    process.stdout.write(
+    writeComputerStdout(
       `Action settle: ${source}; waited=${settle.waitedMs ?? 0}ms quiet=${settle.quietMs ?? 0}ms events=${settle.eventCount ?? 0} timed_out=${settle.timedOut === true ? "true" : "false"}${reason}\n`,
     );
   }
 };
 
 const emitJson = (value: unknown) => {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+  writeComputerStdout(`${JSON.stringify(value, null, 2)}\n`);
 };
 
 const formatWindowRecord = (window: WinWindowRecord) => {
@@ -811,12 +1358,15 @@ const runSnapshot = async (
   app: string,
   jsonMode: boolean,
   windowId?: number,
+  screenshotPolicy: ScreenshotPolicy = "always",
+  disableDiff = false,
 ) => {
   const previous = readSnapshot(sessionId, app);
   const response = await runWindowsHelper(sessionId, {
     tool: "get_app_state",
     app,
     windowId,
+    screenshot_policy: screenshotPolicy,
   });
   if (!response.ok || !response.snapshot) {
     throw new Error(
@@ -828,6 +1378,10 @@ const runSnapshot = async (
   if (jsonMode) {
     emitJson({ ...response.snapshot, stateDiff });
   } else {
+    if (disableDiff) {
+      formatSnapshot(sessionId, app, response.snapshot);
+      return;
+    }
     formatSnapshot(sessionId, app, response.snapshot);
   }
 };
@@ -840,10 +1394,28 @@ const runAction = async (
 ) => {
   const previous = readSnapshot(sessionId, app);
   const response = await runWindowsHelper(sessionId, request);
-  if (!response.ok || !response.snapshot) {
+  if (!response.ok) {
     throw new Error(
-      response.error || "Windows runtime did not return an app snapshot.",
+      response.error || "Windows runtime did not complete the action.",
     );
+  }
+  if (request.defer_observation) {
+    if (jsonMode) {
+      emitJson({
+        receipt: response.receipt ?? null,
+        revision: response.revision ?? null,
+        deferred: true,
+      });
+    } else {
+      formatActionReceipt(response.receipt, request.dispatch);
+      writeComputerStdout(
+        `${request.tool} acknowledged; observation deferred to the next get-state.\n`,
+      );
+    }
+    return;
+  }
+  if (!response.snapshot) {
+    throw new Error("Windows runtime did not return an app snapshot.");
   }
   const stateDiff = winSnapshotDiff(previous, response.snapshot);
   rememberSnapshot(sessionId, app, response.snapshot);
@@ -855,27 +1427,25 @@ const runAction = async (
     });
   } else {
     formatActionReceipt(response.receipt, request.dispatch);
-    process.stdout.write(`${request.tool} completed.\n`);
+    writeComputerStdout(`${request.tool} completed.\n`);
     if (shouldUseDiffOnly(stateDiff)) {
-      process.stdout.write(formatStateDiffBlock(stateDiff));
-      process.stdout.write(formatScreenshotMarker(sessionId, app, response.snapshot));
+      writeComputerStdout(formatStateDiffBlock(stateDiff));
+      writeComputerStdout(
+        formatScreenshotMarker(sessionId, app, response.snapshot),
+      );
     } else {
-      process.stdout.write(formatStateDiffBlock(stateDiff));
+      writeComputerStdout(formatStateDiffBlock(stateDiff));
       formatSnapshot(sessionId, app, response.snapshot);
     }
   }
 };
 
-export const runWindowsStellaComputer = async (
+const runWindowsStellaComputerForSession = async (
   argv: string[],
   jsonMode: boolean,
-  sessionOverride?: string | null,
+  sessionId: string,
 ) => {
-  if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
-    process.stdout.write(usage);
-    return 0;
-  }
-  const sessionId = getSessionId(sessionOverride);
+  pruneWindowsSessions(sessionId);
   const command = argv[0]!;
   const args = argv.slice(1);
 
@@ -884,11 +1454,11 @@ export const runWindowsStellaComputer = async (
     if (!response.ok) {
       throw new Error(response.error || "Windows runtime failed to list apps.");
     }
-    process.stdout.write(
+    writeComputerStdout(
       response.text?.trimEnd() ||
         "No running top-level apps are visible to this Windows runtime.",
     );
-    process.stdout.write("\n");
+    writeComputerStdout("\n");
     return 0;
   }
 
@@ -904,17 +1474,24 @@ export const runWindowsStellaComputer = async (
     if (jsonMode) {
       emitJson({ windows: response.windows ?? [] });
     } else {
-      process.stdout.write(
+      writeComputerStdout(
         response.text?.trimEnd() || formatWindowsText(response.windows),
       );
-      process.stdout.write("\n");
+      writeComputerStdout("\n");
     }
     return 0;
   }
 
   if (command === "snapshot" || command === "get-state") {
     const target = appFromSnapshotArgs(args);
-    await runSnapshot(sessionId, target.app, jsonMode, target.windowId);
+    await runSnapshot(
+      sessionId,
+      target.app,
+      jsonMode,
+      target.windowId,
+      getWindowsScreenshotPolicy(target.args),
+      target.args.includes("--disable-diff"),
+    );
     return 0;
   }
 
@@ -939,9 +1516,9 @@ export const runWindowsStellaComputer = async (
       emitJson(response);
     } else {
       if (response.text?.trim()) {
-        process.stdout.write(`${response.text.trimEnd()}\n`);
+        writeComputerStdout(`${response.text.trimEnd()}\n`);
       } else {
-        process.stdout.write(`${formatWindowsText(response.windows)}\n`);
+        writeComputerStdout(`${formatWindowsText(response.windows)}\n`);
       }
       if (response.snapshot) {
         formatSnapshot(sessionId, app, response.snapshot);
@@ -963,18 +1540,21 @@ export const runWindowsStellaComputer = async (
     await runAction(
       sessionId,
       target.app,
-      {
-        tool: "click",
-        app: target.app,
-        windowId: target.windowId ?? snapshot.windowId,
-        element: record,
-        mouse_button: button,
-        click_count: Number.isFinite(countRaw)
-          ? Math.max(1, Math.trunc(countRaw))
-          : 1,
-        windowBounds: snapshot.windowBounds ?? null,
-        dispatch: getDispatchOption(target.args),
-      },
+      withObservationOptions(
+        {
+          tool: "click",
+          app: target.app,
+          windowId: target.windowId ?? snapshot.windowId,
+          element: record,
+          mouse_button: button,
+          click_count: Number.isFinite(countRaw)
+            ? Math.max(1, Math.trunc(countRaw))
+            : 1,
+          windowBounds: snapshot.windowBounds ?? null,
+          dispatch: getDispatchOption(target.args),
+        },
+        target.args,
+      ),
       jsonMode,
     );
     return 0;
@@ -998,19 +1578,24 @@ export const runWindowsStellaComputer = async (
     await runAction(
       sessionId,
       target.app,
-      {
-        tool: "click",
-        app: target.app,
-        windowId: target.windowId ?? snapshot.windowId,
-        x,
-        y,
-        mouse_button: button,
-        click_count: Number.isFinite(countRaw)
-          ? Math.max(1, Math.trunc(countRaw))
-          : 1,
-        windowBounds: snapshot.windowBounds ?? null,
-        dispatch: getDispatchOption(target.args),
-      },
+      withObservationOptions(
+        {
+          tool: "click",
+          app: target.app,
+          windowId: target.windowId ?? snapshot.windowId,
+          x,
+          y,
+          mouse_button: button,
+          click_count: Number.isFinite(countRaw)
+            ? Math.max(1, Math.trunc(countRaw))
+            : 1,
+          windowBounds: snapshot.windowBounds ?? null,
+          dispatch: getDispatchOption(target.args),
+          screenshot_width: snapshot.screenshot?.widthPx ?? undefined,
+          screenshot_height: snapshot.screenshot?.heightPx ?? undefined,
+        },
+        target.args,
+      ),
       jsonMode,
     );
     return 0;
@@ -1032,17 +1617,22 @@ export const runWindowsStellaComputer = async (
     await runAction(
       sessionId,
       target.app,
-      {
-        tool: "drag",
-        app: target.app,
-        windowId: target.windowId ?? snapshot.windowId,
-        from_x: fromX,
-        from_y: fromY,
-        to_x: toX,
-        to_y: toY,
-        windowBounds: snapshot.windowBounds ?? null,
-        dispatch: getDispatchOption(target.args),
-      },
+      withObservationOptions(
+        {
+          tool: "drag",
+          app: target.app,
+          windowId: target.windowId ?? snapshot.windowId,
+          from_x: fromX,
+          from_y: fromY,
+          to_x: toX,
+          to_y: toY,
+          windowBounds: snapshot.windowBounds ?? null,
+          dispatch: getDispatchOption(target.args),
+          screenshot_width: snapshot.screenshot?.widthPx ?? undefined,
+          screenshot_height: snapshot.screenshot?.heightPx ?? undefined,
+        },
+        target.args,
+      ),
       jsonMode,
     );
     return 0;
@@ -1057,14 +1647,49 @@ export const runWindowsStellaComputer = async (
     await runAction(
       sessionId,
       target.app,
-      {
-        tool: "set_value",
-        app: target.app,
-        windowId: target.windowId ?? snapshot.windowId,
-        element: lookupElement(snapshot, element),
-        value: textParts.join(" "),
-        windowBounds: snapshot.windowBounds ?? null,
-      },
+      withObservationOptions(
+        {
+          tool: "set_value",
+          app: target.app,
+          windowId: target.windowId ?? snapshot.windowId,
+          element: lookupElement(snapshot, element),
+          value: textParts.join(" "),
+          windowBounds: snapshot.windowBounds ?? null,
+        },
+        target.args,
+      ),
+      jsonMode,
+    );
+    return 0;
+  }
+
+  if (command === "select-text") {
+    const target = appFromActionArgs(sessionId, args);
+    const positionals = splitWindowsArgs(target.args);
+    const [element, ...textParts] = positionals;
+    const text = textParts.join(" ");
+    if (!element || !text) {
+      throw new Error("select-text requires an element index and exact text.");
+    }
+    const snapshot = requiredSnapshot(sessionId, target.app);
+    const selection = getWindowsSelectionOptions(target.args);
+    await runAction(
+      sessionId,
+      target.app,
+      withObservationOptions(
+        {
+          tool: "select_text",
+          app: target.app,
+          windowId: target.windowId ?? snapshot.windowId,
+          element: lookupElement(snapshot, element),
+          text,
+          prefix: selection.prefix,
+          suffix: selection.suffix,
+          selection: selection.selection,
+          windowBounds: snapshot.windowBounds ?? null,
+        },
+        target.args,
+      ),
       jsonMode,
     );
     return 0;
@@ -1083,14 +1708,17 @@ export const runWindowsStellaComputer = async (
     await runAction(
       sessionId,
       target.app,
-      {
-        tool: "perform_secondary_action",
-        app: target.app,
-        windowId: target.windowId ?? snapshot.windowId,
-        element: lookupElement(snapshot, element),
-        action,
-        windowBounds: snapshot.windowBounds ?? null,
-      },
+      withObservationOptions(
+        {
+          tool: "perform_secondary_action",
+          app: target.app,
+          windowId: target.windowId ?? snapshot.windowId,
+          element: lookupElement(snapshot, element),
+          action,
+          windowBounds: snapshot.windowBounds ?? null,
+        },
+        target.args,
+      ),
       jsonMode,
     );
     return 0;
@@ -1110,16 +1738,19 @@ export const runWindowsStellaComputer = async (
     await runAction(
       sessionId,
       target.app,
-      {
-        tool: "scroll",
-        app: target.app,
-        windowId: target.windowId ?? snapshot.windowId,
-        element: lookupElement(snapshot, element),
-        direction,
-        pages: Number.isFinite(pages) && pages > 0 ? pages : 1,
-        windowBounds: snapshot.windowBounds ?? null,
-        dispatch: getDispatchOption(target.args),
-      },
+      withObservationOptions(
+        {
+          tool: "scroll",
+          app: target.app,
+          windowId: target.windowId ?? snapshot.windowId,
+          element: lookupElement(snapshot, element),
+          direction,
+          pages: Number.isFinite(pages) && pages > 0 ? pages : 1,
+          windowBounds: snapshot.windowBounds ?? null,
+          dispatch: getDispatchOption(target.args),
+        },
+        target.args,
+      ),
       jsonMode,
     );
     return 0;
@@ -1133,13 +1764,16 @@ export const runWindowsStellaComputer = async (
     await runAction(
       sessionId,
       target.app,
-      {
-        tool: "type_text",
-        app: target.app,
-        windowId: target.windowId ?? snapshot.windowId,
-        text,
-        dispatch: getDispatchOption(target.args),
-      },
+      withObservationOptions(
+        {
+          tool: "type_text",
+          app: target.app,
+          windowId: target.windowId ?? snapshot.windowId,
+          text,
+          dispatch: getDispatchOption(target.args),
+        },
+        target.args,
+      ),
       jsonMode,
     );
     return 0;
@@ -1153,13 +1787,16 @@ export const runWindowsStellaComputer = async (
     await runAction(
       sessionId,
       target.app,
-      {
-        tool: "press_key",
-        app: target.app,
-        windowId: target.windowId ?? snapshot.windowId,
-        key,
-        dispatch: getDispatchOption(target.args),
-      },
+      withObservationOptions(
+        {
+          tool: "press_key",
+          app: target.app,
+          windowId: target.windowId ?? snapshot.windowId,
+          key,
+          dispatch: getDispatchOption(target.args),
+        },
+        target.args,
+      ),
       jsonMode,
     );
     return 0;
@@ -1170,14 +1807,14 @@ export const runWindowsStellaComputer = async (
     if (!response.ok) {
       throw new Error(response.error || "Windows runtime doctor failed.");
     }
-    process.stdout.write(
+    writeComputerStdout(
       [
         response.text?.trimEnd() ||
           "Windows runtime: stella-computer-helper.exe",
         "Action routes: UI Automation patterns first, then Win32 window messages for background-safe fallback.",
-        `App launch opt-in: ${isTruthyEnv(process.env.STELLA_COMPUTER_WINDOWS_ALLOW_APP_LAUNCH) ? "enabled" : "disabled"}`,
-        `Focus actions opt-in: ${isTruthyEnv(process.env.STELLA_COMPUTER_WINDOWS_ALLOW_FOCUS_ACTIONS) ? "enabled" : "disabled"}`,
-        `UIA text fallback opt-in: ${isTruthyEnv(process.env.STELLA_COMPUTER_WINDOWS_ALLOW_UIA_TEXT_FALLBACK) ? "enabled" : "disabled"}`,
+        `App launch opt-in: ${isTruthyEnv(getComputerExecutionEnv().STELLA_COMPUTER_WINDOWS_ALLOW_APP_LAUNCH) ? "enabled" : "disabled"}`,
+        `Focus actions opt-in: ${isTruthyEnv(getComputerExecutionEnv().STELLA_COMPUTER_WINDOWS_ALLOW_FOCUS_ACTIONS) ? "enabled" : "disabled"}`,
+        `UIA text fallback opt-in: ${isTruthyEnv(getComputerExecutionEnv().STELLA_COMPUTER_WINDOWS_ALLOW_UIA_TEXT_FALLBACK) ? "enabled" : "disabled"}`,
         "",
       ].join("\n"),
     );
@@ -1185,4 +1822,19 @@ export const runWindowsStellaComputer = async (
   }
 
   throw new Error(`Unknown command: ${command}\n\n${usage}`);
+};
+
+export const runWindowsStellaComputer = async (
+  argv: string[],
+  jsonMode: boolean,
+  sessionOverride?: string | null,
+) => {
+  if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
+    writeComputerStdout(usage);
+    return 0;
+  }
+  const sessionId = getSessionId(sessionOverride);
+  return await withWindowsComputerSessionLock(sessionId, () =>
+    runWindowsStellaComputerForSession(argv, jsonMode, sessionId),
+  );
 };

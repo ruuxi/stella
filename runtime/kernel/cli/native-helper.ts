@@ -1,7 +1,19 @@
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
+
+import {
+  getComputerExecutionCliPath,
+  getComputerExecutionSignal,
+} from "../computer-use/execution-context.js";
 
 const __dirname = import.meta.dirname;
 
@@ -17,11 +29,30 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 export const resolveNativeHelperPath = (baseName: string): string | null => {
   const ext = process.platform === "win32" ? ".exe" : "";
   const fileName = `${baseName}${ext}`;
+  const cliPath = getComputerExecutionCliPath();
+  const cliDir = cliPath ? path.dirname(path.resolve(cliPath)) : null;
   const candidates = [
     typeof process.resourcesPath === "string"
       ? path.join(process.resourcesPath, "native", "out", platformDir, fileName)
       : null,
-    path.resolve(__dirname, "../../../desktop/native/out", platformDir, fileName),
+    cliDir
+      ? path.resolve(
+          cliDir,
+          "../../../desktop/native/out",
+          platformDir,
+          fileName,
+        )
+      : null,
+    cliDir
+      ? path.resolve(cliDir, "../../../../native/out", platformDir, fileName)
+      : null,
+    path.resolve(process.cwd(), "desktop/native/out", platformDir, fileName),
+    path.resolve(
+      __dirname,
+      "../../../desktop/native/out",
+      platformDir,
+      fileName,
+    ),
     path.resolve(__dirname, "../../../../native/out", platformDir, fileName),
   ];
 
@@ -106,9 +137,33 @@ export const runNativeHelper = async (args: {
     });
     child.unref();
 
-    const completion = new Promise<NativeHelperResult>((resolve) => {
+    const result = await new Promise<NativeHelperResult>((resolve) => {
+      let settled = false;
+      const signal = getComputerExecutionSignal();
+      const finish = (result: NativeHelperResult) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", onAbort);
+        resolve(result);
+      };
+      const onAbort = () => {
+        killDetachedProcess(child.pid);
+        const reason = signal?.reason;
+        const error =
+          reason instanceof Error
+            ? reason
+            : new Error("Native helper command aborted.");
+        finish({
+          helperPath,
+          status: 1,
+          stdout: readTrimmedFile(stdoutPath),
+          stderr: error.message,
+          error,
+        });
+      };
       child.once("error", (error) => {
-        resolve({
+        finish({
           helperPath,
           status: 1,
           stdout: readTrimmedFile(stdoutPath),
@@ -118,23 +173,23 @@ export const runNativeHelper = async (args: {
       });
 
       child.once("exit", (code) => {
-        resolve({
+        finish({
           helperPath,
           status: code ?? 1,
           stdout: readTrimmedFile(stdoutPath),
           stderr: readTrimmedFile(stderrPath),
         });
       });
-    });
 
-    const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const timeout = new Promise<NativeHelperResult>((resolve) => {
-      setTimeout(() => {
+      const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      const timeout = setTimeout(() => {
         killDetachedProcess(child.pid);
         const stdout = readTrimmedFile(stdoutPath);
         const stderr = readTrimmedFile(stderrPath);
-        const message = stderr || `Native helper "${args.helperName}" timed out after ${timeoutMs}ms.`;
-        resolve({
+        const message =
+          stderr ||
+          `Native helper "${args.helperName}" timed out after ${timeoutMs}ms.`;
+        finish({
           helperPath,
           status: 1,
           stdout,
@@ -142,9 +197,11 @@ export const runNativeHelper = async (args: {
           timedOut: true,
         });
       }, timeoutMs);
+      timeout.unref();
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();
     });
 
-    const result = await Promise.race([completion, timeout]);
     if (!result.timedOut) {
       cleanupTempDir(tempDir);
     }

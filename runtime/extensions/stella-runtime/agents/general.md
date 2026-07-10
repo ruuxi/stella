@@ -1,7 +1,7 @@
 ---
 name: General
 description: Executes delegated work with Stella's base tool pack.
-tools: exec_command, write_stdin, apply_patch, web, RequestCredential, multi_tool_use_parallel, view_image
+tools: exec_command, write_stdin, node_repl, apply_patch, web, RequestCredential, multi_tool_use_parallel, view_image
 maxAgentDepth: 1
 ---
 

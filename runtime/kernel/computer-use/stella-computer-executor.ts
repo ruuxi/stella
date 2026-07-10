@@ -1,0 +1,2976 @@
+import fs from "node:fs";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import net from "node:net";
+import { resolveStatePath } from "../cli/shared.js";
+import {
+  resolveNativeHelperPath,
+  runNativeHelper,
+} from "../cli/native-helper.js";
+import { screenshotPixelToScreenPoint } from "../cli/screenshot-coordinates.js";
+import { runWindowsStellaComputer } from "../cli/stella-computer-windows.js";
+import { sanitizeStellaComputerSessionId } from "../tools/stella-computer-session.js";
+import {
+  requestDesktopPermissionFromBridge,
+  type DesktopPermissionRequestResult,
+} from "../connectors/cli-broker-client.js";
+import {
+  loadLocalPreferences,
+  saveLocalPreferences,
+} from "../preferences/local-preferences.js";
+import {
+  computeStateDiff,
+  formatStateDiffBlock,
+  shouldUseDiffOnly,
+  type StateDiff,
+  type StateDiffTarget,
+} from "../cli/stella-computer-state-diff.js";
+import {
+  abortableComputerDelay,
+  getComputerExecutionEnv,
+  getComputerExecutionSignal,
+  runWithComputerExecutionContext,
+  throwIfComputerExecutionAborted,
+  writeComputerStderr,
+  writeComputerStdout,
+  type ComputerExecutionContextOptions,
+} from "./execution-context.js";
+
+type Rect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type Screenshot = {
+  mimeType: string;
+  data: string;
+  path?: string | null;
+  widthPx?: number | null;
+  heightPx?: number | null;
+  byteCount?: number | null;
+  captureMethod?: string | null;
+  exactWindowMatch?: boolean | null;
+  occludedRectFallback?: boolean | null;
+  treeRevision?: number | null;
+  reliableFinalFrame?: boolean | null;
+};
+
+type SnapshotNode = {
+  index?: number | null;
+  ref?: string | null;
+  role: string;
+  subrole?: string | null;
+  title?: string | null;
+  description?: string | null;
+  value?: string | null;
+  valueType?: string | null;
+  settable?: boolean | null;
+  details?: string | null;
+  help?: string | null;
+  identifier?: string | null;
+  url?: string | null;
+  enabled?: boolean | null;
+  focused?: boolean | null;
+  selected?: boolean | null;
+  expanded?: boolean | null;
+  placeholder?: string | null;
+  frame?: Rect | null;
+  actions: string[];
+  children: SnapshotNode[];
+};
+
+type OverlayEntry = {
+  frame?: Rect | null;
+};
+
+type SnapshotDocument = {
+  ok: boolean;
+  appName: string;
+  bundleId?: string | null;
+  pid: number;
+  windowTitle?: string | null;
+  windowFrame?: Rect | null;
+  windowId?: number | null;
+  nodeCount: number;
+  refCount: number;
+  refs?: Record<string, OverlayEntry> | null;
+  indices?: Record<string, OverlayEntry> | null;
+  warnings: string[];
+  screenshotPath?: string | null;
+  screenshot?: Screenshot | null;
+  appInstructions?: string | null;
+  selectedText?: string | null;
+  focusedSummary?: string | null;
+  nodes: SnapshotNode[];
+  capturedAt?: string | null;
+  maxDepth?: number | null;
+  maxNodes?: number | null;
+  allWindows?: boolean | null;
+  revision?: number | null;
+  materializedRevision?: number | null;
+  cacheHit?: boolean | null;
+  pendingActionCount?: number | null;
+  screenshotPolicy?: string | null;
+  settle?: AutomationSettle | null;
+};
+
+type ActionPayload = {
+  ok: boolean;
+  action: string;
+  ref?: string | null;
+  message: string;
+  matchedRef?: string | null;
+  usedAction?: string | null;
+  warnings: string[];
+  screenshotPath?: string | null;
+  screenshot?: Screenshot | null;
+  appInstructions?: string | null;
+  snapshotText?: string | null;
+  settle?: AutomationSettle | null;
+  receipt?: {
+    id: string;
+    baselineRevision: number;
+    invalidatedRevision: number;
+    deferred: boolean;
+  } | null;
+  revision?: number | null;
+  deferred?: boolean | null;
+  stateUpdated?: boolean | null;
+};
+
+type AutomationSettle = {
+  observed: boolean;
+  quietMs: number;
+  waitedMs: number;
+  eventCount: number;
+  timedOut: boolean;
+  reason?: string | null;
+  lastEventAt?: string | null;
+  baselineRevision?: number | null;
+  finalRevision?: number | null;
+  pendingActionCount?: number | null;
+  dirtyElementCount?: number | null;
+  dirtyScopes?: string[] | null;
+};
+
+type ListedAppPayload = {
+  name: string;
+  bundleId?: string | null;
+  pid: number;
+  activationPolicy: string;
+  isRunning?: boolean | null;
+  isActive: boolean;
+  // Spotlight-tracked usage data populated by the desktop_automation
+  // daemon. Either or both can be null when the bundle isn't indexed
+  // (sandboxed apps without read perms, network-mounted bundles, etc.).
+  lastUsedDate?: string | null;
+  useCount?: number | null;
+};
+
+type ListAppsPayload = {
+  ok: boolean;
+  apps: ListedAppPayload[];
+  warnings: string[];
+};
+
+type ListWindowsPayload = {
+  ok: boolean;
+  windows: Array<{
+    appName: string;
+    bundleId?: string | null;
+    pid: number;
+    windowId: number;
+    title?: string | null;
+    frame: Rect;
+    isActive: boolean;
+  }>;
+  warnings: string[];
+};
+
+type ErrorPayload = {
+  ok: boolean;
+  error: string;
+  warnings?: string[];
+  screenshotPath?: string | null;
+  screenshot?: Screenshot | null;
+};
+
+type SessionPaths = {
+  sessionId: string;
+  sessionDir: string;
+  statePath: string;
+  screenshotPath: string;
+};
+
+type AutomationDaemonRequestPayload = {
+  seq: number;
+  argv: string[];
+  env: Record<string, string>;
+};
+
+type AutomationDaemonResponsePayload = {
+  seq: number;
+  status: number;
+  stdout: string;
+  stderr: string;
+};
+
+type AutomationHelperResult = {
+  status: number;
+  stdout: string;
+  stderr: string;
+  error?: Error;
+  timedOut?: boolean;
+};
+
+type AccessibilityPermissionPayload = {
+  ok: boolean;
+  granted: boolean;
+  message: string;
+  warnings: string[];
+};
+
+type LockedUsePayload = {
+  ok: boolean;
+  enabled: boolean;
+  installed?: boolean | null;
+  active: boolean;
+  locked: boolean;
+  suppressedUntilManualUnlock: boolean;
+  message: string;
+  warnings: string[];
+};
+
+type SessionTargetSelector = {
+  pid?: number | null;
+  bundleId?: string | null;
+  appName?: string | null;
+};
+
+type SessionTargetRecord = {
+  key: string;
+  appName: string;
+  bundleId?: string | null;
+  pid?: number | null;
+  windowTitle?: string | null;
+  statePath: string;
+  screenshotPath: string;
+  capturedAt?: string | null;
+  updatedAt: string;
+};
+
+type SessionTargetRegistry = {
+  activeTargetKey?: string | null;
+  targets: Record<string, SessionTargetRecord>;
+};
+
+type AutomationDaemonReadyResult = { ok: true } | { ok: false; error: string };
+
+const stateDir = () =>
+  path.join(resolveStatePath(getComputerExecutionEnv()), "stella-computer");
+const sessionsDir = () => path.join(stateDir(), "sessions");
+const locksDir = () => path.join(stateDir(), "locks");
+const lockedUseDir = () => path.join(stateDir(), "locked-use");
+const defaultSessionId = "manual";
+const defaultSessionStateExample = path.join(
+  stateDir(),
+  "sessions",
+  "<session>",
+  "last-snapshot.json",
+);
+const defaultLockTimeoutMs = 30_000;
+const staleLockTimeoutMs = 90_000;
+const lockPollIntervalMs = 125;
+const automationDaemonStartupBudgetMs = 7_500;
+const parseNonNegativeIntegerEnv = (
+  value: string | undefined,
+  fallback: number,
+) => {
+  if (value === undefined || value.trim() === "") {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, parsed);
+};
+const automationAccessibilityWaitMs = () =>
+  parseNonNegativeIntegerEnv(
+    getComputerExecutionEnv().STELLA_COMPUTER_ACCESSIBILITY_WAIT_MS,
+    30_000,
+  );
+const automationAccessibilityPollIntervalMs = 500;
+// 30s covers heavy AppKit apps (Mail with thousands of messages, Notes with
+// large note bodies, Music with full library indexed) where the AX walk
+// reaches the maxNodes cap of 1500 before the daemon can return. Lighter
+// apps (Spotify, Notes empty) finish in 1–3s.
+const automationDaemonRequestTimeoutMs = 30_000;
+const lockedUseLeaseDurationMs = 30_000;
+const lockedUseInstallerTimeoutMs = 120_000;
+const sessionPruneIntervalMs = 24 * 60 * 60 * 1000;
+const sessionRetentionMs = 24 * 60 * 60 * 1000;
+const pruneStatePath = () => path.join(stateDir(), "last-prune.json");
+
+const resolveStellaDataDir = () => {
+  const env = getComputerExecutionEnv();
+  if (env.STELLA_DATA_DIR) {
+    return path.resolve(env.STELLA_DATA_DIR);
+  }
+  return resolveStatePath(env);
+};
+
+const usage = `stella-computer - control macOS apps through Accessibility, in the background
+
+Every command (except list-apps) requires an explicit target app via
+--app NAME, --bundle-id ID, or --pid PID. There is no frontmost-app
+fallback. Actions dispatch via Accessibility and never bring the target
+to the front, so the user can keep using their computer while Stella
+works.
+
+Usage:
+  stella-computer list-apps
+  stella-computer list-windows
+  stella-computer [--session ID] snapshot (--app NAME|--bundle-id ID|--pid PID) [--all-windows] [--screenshot [PATH]|--no-screenshot|--screenshot-policy auto|always|never] [--disable-diff] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
+  stella-computer [--session ID] get-state (--app NAME|--bundle-id ID|--pid PID) [--all-windows] [--screenshot [PATH]|--no-screenshot|--screenshot-policy auto|always|never] [--disable-diff] [--no-inline-screenshot] [--max-depth N] [--max-nodes N]
+  stella-computer [--session ID] click <element> [--mouse-button left|right|middle] [--click-count N] [--coordinate-fallback] [--allow-hid] [--defer-observation] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] fill <element> <text> [--defer-observation] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] select-text <element> <text> [--prefix TEXT] [--suffix TEXT] [--selection text|cursor-before|cursor-after] [--defer-observation] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] focus <element> [--defer-observation] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] secondary-action <element> <action> [--defer-observation] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] scroll <element> <up|down|left|right> [--pages N] [--defer-observation] [--no-screenshot] [--no-inline-screenshot] [--no-overlay]
+  stella-computer [--session ID] drag <from_x> <from_y> <to_x> <to_y> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] drag-element <source-element> (<dest-element> | <to_x> <to_y> | --to-ref REF | --to-x N --to-y N) [--type file|url|text] [--operation copy|link|move|every] [--allow-hid] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] click-point <x> <y> [--mouse-button left|right|middle] [--click-count N] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] click-screenshot <x_px> <y_px> [--mouse-button left|right|middle] [--click-count N] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] drag-screenshot <from_x_px> <from_y_px> <to_x_px> <to_y_px> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] type <text> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer [--session ID] press <key> [--allow-hid] [--raise] [--no-screenshot] [--no-inline-screenshot]
+  stella-computer locked-use status|enable|disable|install|uninstall [--json]
+
+Notes:
+  - snapshot writes element state to ${defaultSessionStateExample}
+  - get-state is an alias for snapshot
+  - click/fill/focus/secondary-action/scroll/drag reuse the last snapshot state unless --state is provided
+  - snapshots are also cached per target under sessions/<session>/targets/<target>/last-snapshot.json so one session can retain multiple apps
+  - snapshot captures a window screenshot by default; pass --screenshot-policy auto to capture only when visual context is needed, or --no-screenshot to skip it
+  - --all-windows enumerates every accessibility window the app advertises (default: focused only)
+  - menu bar items are intentionally omitted from snapshots so app-window automation does not open global menus by mistake
+  - successful actions refresh state automatically unless --defer-observation is set; deferred actions return an acknowledgement and leave settling/capture to the next get-state
+  - screenshots are auto-attached inline (base64 PNG); pass --no-inline-screenshot to keep only the file path
+  - the agent runtime detects "[stella-attach-image]" markers in output and attaches the image as vision input on the next turn
+  - Stella isolates default snapshot and screenshot files by session; agent runs set that session automatically
+  - non-snapshot commands may also use --app/--bundle-id/--pid to select a cached target snapshot inside the current session
+  - Global HID fallbacks require --allow-hid (or STELLA_COMPUTER_ALLOW_HID=1) because they can interfere with active user input
+  - element actions accept the numbered IDs shown in snapshot output (and still accept legacy @d refs); macOS Accessibility is tried first so Stella avoids taking over the physical cursor
+  - click-screenshot / drag-screenshot interpret coordinates in attached screenshot pixels, then map them back into screen space using the saved window frame
+  - --raise (or STELLA_COMPUTER_RAISE=1) is OFF by default; only opt in for HID coordinate clicks/keystrokes that genuinely need the target frontmost. The legacy --no-raise / STELLA_COMPUTER_NO_RAISE flags are accepted as no-ops.
+  - actions keep a session overlay alive between targets so the software cursor visibly moves from action to action; pass --no-overlay (or STELLA_COMPUTER_NO_OVERLAY=1) to skip it
+  - STELLA_COMPUTER_ALWAYS_SIMULATE_INPUT=1 forces CGEvent synthesis for click/type/press (CLICK alias kept for back-compat)
+  - locked-use enables macOS locked-screen Computer Use through a native authorization plug-in and a short per-action unlock lease
+  - STELLA_COMPUTER_APP_INSTRUCTIONS_DIR=<dir> adds per-bundle markdown manuals (e.g. com.example.app.md)
+  - Forbidden bundles: ${"set STELLA_COMPUTER_FORBIDDEN_BUNDLES=a,b,c to extend; the built-in deny list covers Stella, Keychain, password managers, System Settings"}
+  - Forbidden URLs: ${"set STELLA_COMPUTER_FORBIDDEN_URL_SUBSTRINGS=foo,bar to extend; the built-in list covers banking + auth surfaces"}
+`;
+
+const stripFlag = (args: string[], flag: string) => {
+  const nextArgs: string[] = [];
+  let found = false;
+  for (const arg of args) {
+    if (arg === flag) {
+      found = true;
+      continue;
+    }
+    nextArgs.push(arg);
+  }
+  return { found, args: nextArgs };
+};
+
+const stripOptionValue = (args: string[], flag: string) => {
+  const nextArgs: string[] = [];
+  let value: string | null = null;
+  let missingValue = false;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const current = args[index];
+    if (current === flag) {
+      const nextValue = args[index + 1];
+      if (!nextValue || nextValue.startsWith("--")) {
+        missingValue = true;
+      } else {
+        value = nextValue;
+        index += 1;
+      }
+      continue;
+    }
+    if (current.startsWith(`${flag}=`)) {
+      value = current.slice(flag.length + 1);
+      continue;
+    }
+    nextArgs.push(current);
+  }
+
+  return { value, args: nextArgs, missingValue };
+};
+
+const getOptionValue = (args: string[], flag: string) => {
+  for (let index = 0; index < args.length; index += 1) {
+    const current = args[index];
+    if (current === flag) {
+      return index + 1 < args.length ? args[index + 1] : null;
+    }
+    if (current.startsWith(`${flag}=`)) {
+      return current.slice(flag.length + 1);
+    }
+  }
+  return null;
+};
+
+const hasOption = (args: string[], flag: string) =>
+  args.includes(flag) || args.some((arg) => arg.startsWith(`${flag}=`));
+
+const splitArgsIntoPositionalsAndOptions = (args: string[]) => {
+  const positionals: string[] = [];
+  const options: string[] = [];
+  let index = 0;
+
+  while (index < args.length) {
+    const current = args[index];
+    if (current.startsWith("--")) {
+      options.push(current);
+      if (
+        !current.includes("=") &&
+        index + 1 < args.length &&
+        !args[index + 1].startsWith("--")
+      ) {
+        options.push(args[index + 1]);
+        index += 2;
+        continue;
+      }
+      index += 1;
+      continue;
+    }
+    positionals.push(current);
+    index += 1;
+  }
+
+  return { positionals, options };
+};
+
+const deriveScreenshotPath = (statePath: string) => {
+  const parsed = path.parse(statePath);
+  return path.join(parsed.dir, `${parsed.name}.png`);
+};
+
+const resolveSessionPaths = (sessionOverride?: string | null): SessionPaths => {
+  const sessionId =
+    sanitizeStellaComputerSessionId(sessionOverride) ??
+    sanitizeStellaComputerSessionId(
+      getComputerExecutionEnv().STELLA_COMPUTER_SESSION,
+    ) ??
+    defaultSessionId;
+  const sessionDir = path.join(sessionsDir(), sessionId);
+  const statePath = path.join(sessionDir, "last-snapshot.json");
+  return {
+    sessionId,
+    sessionDir,
+    statePath,
+    screenshotPath: deriveScreenshotPath(statePath),
+  };
+};
+
+const withStatePath = (args: string[], statePath: string) => {
+  if (hasOption(args, "--state")) {
+    return args;
+  }
+  return ["--state", statePath, ...args];
+};
+
+const ensureStateDirectory = (sessionPaths: SessionPaths) => {
+  fs.mkdirSync(stateDir(), { recursive: true });
+  fs.mkdirSync(locksDir(), { recursive: true });
+  fs.mkdirSync(lockedUseDir(), { recursive: true });
+  fs.mkdirSync(sessionPaths.sessionDir, { recursive: true });
+};
+
+const pidIsRunning = (pid: number) => {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const killDetachedProcess = (pid: number | null | undefined) => {
+  if (!pid || !Number.isInteger(pid) || pid <= 0) {
+    return;
+  }
+  try {
+    if (process.platform !== "win32") {
+      process.kill(-pid, "SIGKILL");
+      return;
+    }
+  } catch {
+    // fall through to direct pid kill
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // ignore kill failures
+  }
+};
+
+const readPidFile = (pidPath: string) => {
+  try {
+    const raw = fs.readFileSync(pidPath, "utf8").trim();
+    const pid = Number.parseInt(raw, 10);
+    return Number.isFinite(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+};
+
+const safeDirectoryEntries = (directory: string) => {
+  try {
+    return fs.readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+};
+
+const latestMtimeMs = (targetPath: string): number => {
+  let newest = 0;
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(targetPath);
+  } catch {
+    return newest;
+  }
+  newest = Math.max(newest, stats.mtimeMs);
+  if (!stats.isDirectory()) {
+    return newest;
+  }
+  for (const entry of safeDirectoryEntries(targetPath)) {
+    newest = Math.max(newest, latestMtimeMs(path.join(targetPath, entry.name)));
+  }
+  return newest;
+};
+
+const lastPrunedAtMs = () => {
+  try {
+    const raw = JSON.parse(fs.readFileSync(pruneStatePath(), "utf8")) as {
+      prunedAtMs?: unknown;
+    };
+    return typeof raw.prunedAtMs === "number" && Number.isFinite(raw.prunedAtMs)
+      ? raw.prunedAtMs
+      : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const writeLastPrunedAt = (prunedAtMs: number) => {
+  try {
+    fs.writeFileSync(
+      pruneStatePath(),
+      JSON.stringify({ prunedAtMs }, null, 2),
+      "utf8",
+    );
+  } catch {
+    // Best-effort cache maintenance.
+  }
+};
+
+const pruneGeneratedStateEntries = (
+  directory: string,
+  nowMs: number,
+  maxAgeMs: number,
+) => {
+  if (!fs.existsSync(directory)) return;
+  for (const entry of safeDirectoryEntries(directory)) {
+    const entryPath = path.join(directory, entry.name);
+    let mtimeMs = 0;
+    try {
+      mtimeMs = fs.statSync(entryPath).mtimeMs;
+    } catch {
+      continue;
+    }
+    if (nowMs - mtimeMs > maxAgeMs) {
+      fs.rmSync(entryPath, { recursive: true, force: true });
+    }
+  }
+};
+
+const pruneStellaComputerSessions = (activeSessionId: string) => {
+  const nowMs = Date.now();
+  if (nowMs - lastPrunedAtMs() < sessionPruneIntervalMs) {
+    return;
+  }
+  writeLastPrunedAt(nowMs);
+
+  for (const entry of safeDirectoryEntries(sessionsDir())) {
+    if (!entry.isDirectory() || entry.name === activeSessionId) {
+      continue;
+    }
+    const sessionPath = path.join(sessionsDir(), entry.name);
+    const pid = readPidFile(path.join(sessionPath, "automation.pid"));
+    if (pid !== null && pidIsRunning(pid)) {
+      continue;
+    }
+    const newestMtime = latestMtimeMs(sessionPath);
+    if (newestMtime > 0 && nowMs - newestMtime > sessionRetentionMs) {
+      fs.rmSync(sessionPath, { recursive: true, force: true });
+    }
+  }
+
+  pruneGeneratedStateEntries(automationSocketsDir(), nowMs, sessionRetentionMs);
+  pruneGeneratedStateEntries(locksDir(), nowMs, sessionRetentionMs);
+};
+
+const delayMs = abortableComputerDelay;
+
+const automationSocketsDir = () => path.join(stateDir(), "daemon-sockets");
+
+const automationSocketPath = (sessionPaths: SessionPaths) =>
+  path.join(
+    automationSocketsDir(),
+    `${createHash("sha1").update(sessionPaths.sessionId).digest("hex").slice(0, 16)}.sock`,
+  );
+
+const automationPidPath = (sessionPaths: SessionPaths) =>
+  path.join(sessionPaths.sessionDir, "automation.pid");
+
+const resetAutomationDaemonFiles = (sessionPaths: SessionPaths) => {
+  fs.rmSync(automationPidPath(sessionPaths), { force: true });
+  fs.rmSync(automationSocketPath(sessionPaths), { force: true });
+};
+
+const helperNewerThanDaemon = (helperPath: string, pidPath: string) => {
+  try {
+    const helperMtimeMs = fs.statSync(helperPath).mtimeMs;
+    const pidFileMtimeMs = fs.statSync(pidPath).mtimeMs;
+    return helperMtimeMs > pidFileMtimeMs + 500;
+  } catch {
+    return false;
+  }
+};
+
+const filteredAutomationDaemonEnv = () =>
+  Object.fromEntries(
+    Object.entries(getComputerExecutionEnv()).filter(
+      ([key, value]) =>
+        key.startsWith("STELLA_COMPUTER_") && typeof value === "string",
+    ),
+  ) as Record<string, string>;
+
+const promptForAutomationAccessibility = async (
+  sessionPaths: SessionPaths,
+): Promise<AutomationDaemonReadyResult> => {
+  const accessibilityWaitMs = automationAccessibilityWaitMs();
+  if (process.platform !== "darwin" || accessibilityWaitMs <= 0) {
+    return { ok: true };
+  }
+
+  const checkAccessibility = async (
+    openSettings: boolean,
+  ): Promise<AutomationDaemonReadyResult> => {
+    const helperArgs = [
+      "accessibility-permission",
+      ...(openSettings ? ["--open-settings"] : []),
+      "--wait-ms",
+      "0",
+    ];
+    const result = await runNativeHelper({
+      helperName: "desktop_automation",
+      helperArgs,
+      env: {
+        ...getComputerExecutionEnv(),
+        STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
+        STELLA_COMPUTER_STATE_DIR: stateDir(),
+      },
+      timeoutMs: 5_000,
+    });
+
+    if (result.error) {
+      return { ok: false, error: result.error.message };
+    }
+    if (!result.stdout) {
+      return {
+        ok: false,
+        error:
+          result.stderr ||
+          "Accessibility permission is required for the desktop_automation daemon.",
+      };
+    }
+
+    try {
+      const payload = parseJson<AccessibilityPermissionPayload>(result.stdout);
+      if (payload.granted) {
+        return { ok: true };
+      }
+      return { ok: false, error: payload.message };
+    } catch {
+      return {
+        ok: false,
+        error:
+          result.stderr ||
+          "Accessibility permission is required for the desktop_automation daemon.",
+      };
+    }
+  };
+
+  const requestViaHost = async (): Promise<DesktopPermissionRequestResult> => {
+    const socketPath = getComputerExecutionEnv().STELLA_CLI_BRIDGE_SOCK;
+    if (!socketPath) {
+      return { ok: false, reason: "no_bridge" as const };
+    }
+    try {
+      return await requestDesktopPermissionFromBridge({
+        socketPath,
+        kind: "accessibility",
+        timeoutMs: accessibilityWaitMs,
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        reason: (error as Error).message || "bridge_failed",
+      };
+    }
+  };
+
+  let lastResult = await checkAccessibility(false);
+  if (lastResult.ok) {
+    return lastResult;
+  }
+
+  const hostRequest = await requestViaHost();
+  if (hostRequest.ok && hostRequest.granted) {
+    return { ok: true };
+  }
+
+  const shouldOpenSettingsFallback =
+    !hostRequest.ok && hostRequest.reason === "no_bridge";
+  if (shouldOpenSettingsFallback) {
+    lastResult = await checkAccessibility(true);
+  }
+  if (lastResult.ok) {
+    return lastResult;
+  }
+
+  const deadline = Date.now() + accessibilityWaitMs;
+  while (Date.now() < deadline) {
+    await delayMs(automationAccessibilityPollIntervalMs);
+    lastResult = await checkAccessibility(false);
+    if (lastResult.ok) {
+      return lastResult;
+    }
+  }
+
+  return lastResult;
+};
+
+const ensureAutomationDaemon = async (
+  sessionPaths: SessionPaths,
+): Promise<AutomationDaemonReadyResult> => {
+  const pidPath = automationPidPath(sessionPaths);
+  const socketPath = automationSocketPath(sessionPaths);
+  const helperPath = resolveNativeHelperPath("desktop_automation");
+  if (!helperPath) {
+    return {
+      ok: false,
+      error:
+        'Native helper "desktop_automation" was not found. Build desktop/native first.',
+    };
+  }
+  const existingPid = readPidFile(pidPath);
+  if (existingPid && pidIsRunning(existingPid) && fs.existsSync(socketPath)) {
+    if (!helperNewerThanDaemon(helperPath, pidPath)) {
+      return { ok: true };
+    }
+    killDetachedProcess(existingPid);
+    resetAutomationDaemonFiles(sessionPaths);
+  }
+  if (existingPid && pidIsRunning(existingPid) && !fs.existsSync(socketPath)) {
+    killDetachedProcess(existingPid);
+  }
+  resetAutomationDaemonFiles(sessionPaths);
+  fs.mkdirSync(automationSocketsDir(), { recursive: true });
+
+  const permission = await promptForAutomationAccessibility(sessionPaths);
+  if (!permission.ok) {
+    return permission;
+  }
+
+  const child = spawn(
+    helperPath,
+    ["daemon", "--socket-path", socketPath, "--pid-file", pidPath],
+    {
+      detached: process.platform !== "win32",
+      stdio: "ignore",
+      windowsHide: true,
+      env: {
+        ...getComputerExecutionEnv(),
+        STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
+        STELLA_COMPUTER_STATE_DIR: stateDir(),
+      },
+    },
+  );
+  const startup: { error: Error | null } = { error: null };
+  child.once("error", (error) => {
+    startup.error = error;
+  });
+  child.unref();
+
+  for (
+    let attempt = 0;
+    attempt < Math.ceil(automationDaemonStartupBudgetMs / 25);
+    attempt += 1
+  ) {
+    await delayMs(25);
+    if (startup.error) {
+      resetAutomationDaemonFiles(sessionPaths);
+      return {
+        ok: false,
+        error: `desktop_automation daemon failed to start: ${startup.error.message}`,
+      };
+    }
+    const pid = readPidFile(pidPath);
+    if (pid && pidIsRunning(pid) && fs.existsSync(socketPath)) {
+      return { ok: true };
+    }
+  }
+  return {
+    ok: false,
+    error: `desktop_automation daemon failed to start after ${automationDaemonStartupBudgetMs}ms`,
+  };
+};
+
+const runAutomationDaemonCommand = async (
+  sessionPaths: SessionPaths,
+  helperArgs: string[],
+  timeoutMs = automationDaemonRequestTimeoutMs,
+): Promise<AutomationHelperResult> => {
+  const daemonReady = await ensureAutomationDaemon(sessionPaths);
+  if (!daemonReady.ok) {
+    resetAutomationDaemonFiles(sessionPaths);
+    return {
+      status: 1,
+      stdout: "",
+      stderr:
+        daemonReady.error ||
+        `desktop_automation daemon failed to start after ${automationDaemonStartupBudgetMs}ms`,
+    };
+  }
+
+  const seq = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+  const payload = JSON.stringify({
+    seq,
+    argv: helperArgs,
+    env: {
+      ...filteredAutomationDaemonEnv(),
+      STELLA_COMPUTER_SESSION: sessionPaths.sessionId,
+      STELLA_COMPUTER_STATE_DIR: stateDir(),
+    },
+  } satisfies AutomationDaemonRequestPayload);
+
+  return await new Promise<AutomationHelperResult>((resolve) => {
+    let settled = false;
+    const responseChunks: Buffer[] = [];
+    const socket = net.createConnection({
+      path: automationSocketPath(sessionPaths),
+    });
+    const signal = getComputerExecutionSignal();
+    const settle = (result: AutomationHelperResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      socket.destroy();
+      resolve(result);
+    };
+    const onAbort = () => {
+      const reason = signal?.reason;
+      settle({
+        status: 1,
+        stdout: "",
+        stderr:
+          reason instanceof Error
+            ? reason.message
+            : "Computer command aborted.",
+        error:
+          reason instanceof Error
+            ? reason
+            : new Error("Computer command aborted."),
+      });
+    };
+    const timer = setTimeout(() => {
+      const pid = readPidFile(automationPidPath(sessionPaths));
+      killDetachedProcess(pid);
+      resetAutomationDaemonFiles(sessionPaths);
+      settle({
+        status: 1,
+        stdout: "",
+        stderr: `desktop_automation daemon timed out after ${timeoutMs}ms`,
+        timedOut: true,
+      });
+    }, timeoutMs);
+
+    socket.on("connect", () => {
+      socket.write(`${payload}\n`);
+    });
+    socket.on("data", (chunk) => {
+      responseChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    socket.on("end", () => {
+      try {
+        const responseText = Buffer.concat(responseChunks).toString("utf8");
+        const response =
+          parseJson<AutomationDaemonResponsePayload>(responseText);
+        if (response.seq !== seq) {
+          settle({
+            status: 1,
+            stdout: "",
+            stderr:
+              "desktop_automation daemon returned a mismatched response sequence",
+          });
+          return;
+        }
+        settle({
+          status: response.status,
+          stdout: response.stdout,
+          stderr: response.stderr,
+        });
+      } catch {
+        settle({
+          status: 1,
+          stdout: "",
+          stderr: "desktop_automation daemon returned an invalid response",
+        });
+      }
+    });
+    socket.on("error", (error) => {
+      const pid = readPidFile(automationPidPath(sessionPaths));
+      if (pid && !pidIsRunning(pid)) {
+        resetAutomationDaemonFiles(sessionPaths);
+      }
+      settle({
+        status: 1,
+        stdout: "",
+        stderr:
+          error instanceof Error
+            ? `desktop_automation daemon connection failed: ${error.message}`
+            : "desktop_automation daemon connection failed",
+      });
+    });
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
+};
+
+const ensureSnapshotArgs = (args: string[], sessionPaths: SessionPaths) => {
+  const nextArgs = [...args];
+  const statePath =
+    getOptionValue(nextArgs, "--state") ?? sessionPaths.statePath;
+  if (!hasOption(nextArgs, "--state")) {
+    nextArgs.unshift(statePath);
+    nextArgs.unshift("--state");
+  }
+
+  if (
+    !hasOption(nextArgs, "--screenshot") &&
+    !hasOption(nextArgs, "--screenshot-policy") &&
+    !nextArgs.includes("--no-screenshot")
+  ) {
+    nextArgs.unshift(deriveScreenshotPath(statePath));
+    nextArgs.unshift("--screenshot");
+  }
+
+  const screenshotIndex = nextArgs.findIndex((arg) => arg === "--screenshot");
+  if (screenshotIndex >= 0) {
+    const nextValue = nextArgs[screenshotIndex + 1];
+    if (!nextValue || nextValue.startsWith("--")) {
+      nextArgs.splice(
+        screenshotIndex,
+        1,
+        "--screenshot",
+        deriveScreenshotPath(statePath),
+      );
+    }
+  }
+
+  return nextArgs;
+};
+
+const truncate = (value: string | null | undefined, limit = 80) => {
+  if (!value) {
+    return "";
+  }
+  return value.length > limit ? `${value.slice(0, limit)}...` : value;
+};
+
+const ACTIONS_TO_HIDE = new Set([
+  "AXPress",
+  "AXShowMenu",
+  "AXScrollToVisible",
+  "AXIncrement",
+  "AXDecrement",
+  "AXRaise",
+  // AppKit table/outline rows expose Show Default UI / Show Alternate UI
+  // alongside the user-meaningful AX actions. They flip an internal styling
+  // pair and are not actuatable affordances; surface only the real actions
+  // (e.g. swipe-to-Read on Mail message rows).
+  "AXShowDefaultUI",
+  "AXShowAlternateUI",
+]);
+
+const ROLES_WITH_VISIBLE_SETTABLE_STATE = new Set([
+  "AXCell",
+  "AXCheckBox",
+  "AXComboBox",
+  "AXGenericElement",
+  "AXGroup",
+  "AXPopUpButton",
+  "AXRadioButton",
+  "AXSearchField",
+  "AXSecureTextField",
+  "AXSlider",
+  "AXSplitGroup",
+  "AXSplitter",
+  "AXSwitch",
+  "AXTextArea",
+  "AXTextField",
+  "AXUnknown",
+  "AXWebArea",
+]);
+
+// Subrole-aware names for buttons so the model can tell window controls apart
+// instead of seeing a row of identical "button" entries.
+// Mirrors the role labels used by macOS desktop-automation renderers.
+const BUTTON_SUBROLE_LABELS: Record<string, string> = {
+  AXCloseButton: "close button",
+  AXMinimizeButton: "minimize button",
+  AXZoomButton: "full screen button",
+  AXFullScreenButton: "full screen button",
+  AXToolbarButton: "toolbar button",
+  AXSortButton: "sort button",
+  AXIncrementor: "incrementor button",
+  AXDecrementor: "decrementor button",
+};
+
+const formatUrlLike = (value: string) => value.replace(/^https?:\/\//, "");
+
+const escapeMarkdownLinkText = (value: string) =>
+  value.replace(/\\/g, "\\\\").replace(/\[/g, "\\[").replace(/\]/g, "\\]");
+
+const humanActionName = (action: string) => {
+  const trimmed = action.startsWith("AX") ? action.slice(2) : action;
+  return trimmed.replace(/([a-z])([A-Z])/g, "$1 $2");
+};
+
+const humanRole = (node: Pick<SnapshotNode, "role" | "subrole">): string => {
+  switch (node.role) {
+    case "AXWindow":
+      return node.subrole === "AXStandardWindow" ? "standard window" : "window";
+    case "AXWebArea":
+      return "HTML content";
+    case "AXGroup":
+    case "AXGenericElement":
+    case "AXUnknown":
+    case "AXSplitGroup":
+      return "container";
+    case "AXStaticText":
+      return "text";
+    case "AXCheckBox":
+      return node.subrole === "AXSwitch" ? "switch" : "checkbox";
+    case "AXList":
+      return "list box";
+    case "AXButton":
+      return (node.subrole && BUTTON_SUBROLE_LABELS[node.subrole]) || "button";
+    default: {
+      const trimmed = node.role.startsWith("AX")
+        ? node.role.slice(2)
+        : node.role;
+      return trimmed.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+    }
+  }
+};
+
+const secondaryActions = (actions: string[]) =>
+  actions
+    .filter((action) => !ACTIONS_TO_HIDE.has(action))
+    .map((action) => humanActionName(action));
+
+const displayValue = (node: SnapshotNode) => {
+  if (!node.value) return null;
+  if (node.subrole === "AXSwitch" && inferredValueType(node) === "boolean") {
+    if (node.value === "1") return "on";
+    if (node.value === "0") return "off";
+  }
+  return node.value;
+};
+
+const shouldSurfaceSettable = (node: SnapshotNode) =>
+  !!node.settable &&
+  (ROLES_WITH_VISIBLE_SETTABLE_STATE.has(node.role) ||
+    node.subrole === "AXSwitch" ||
+    !!node.value);
+
+const inferredValueType = (node: SnapshotNode) => {
+  if (node.role === "AXSlider") return "float";
+  if (node.subrole === "AXSwitch") return "boolean";
+  if (node.valueType && node.valueType !== "error") return node.valueType;
+  if (!shouldSurfaceSettable(node)) return null;
+  return "string";
+};
+
+const choosePrimaryLabel = (node: SnapshotNode) => {
+  if (node.title) return node.title;
+  if (node.role === "AXStaticText" && node.value) return node.value;
+  if (
+    (node.role === "AXButton" ||
+      node.role === "AXComboBox" ||
+      node.role === "AXMenuItem" ||
+      node.role === "AXRow" ||
+      node.role === "AXWindow" ||
+      node.role === "AXGroup" ||
+      node.role === "AXGenericElement" ||
+      node.role === "AXHeading" ||
+      node.role === "AXList" ||
+      // Brave/Chrome/Safari toolbar dropdowns (Brave Shields, Wallet, VPN,
+      // Extensions, profile picker, address-bar lock icon) and AppKit
+      // window-resize splitters all carry their human-readable label on
+      // AXDescription. Without surfacing it, browser/window chrome reads
+      // as a row of unnamed `(settable, string)` placeholders.
+      node.role === "AXPopUpButton" ||
+      node.role === "AXMenuButton" ||
+      node.role === "AXSplitter" ||
+      node.role === "AXWebArea") &&
+    node.description
+  ) {
+    return node.description;
+  }
+  // AppKit outline rows leave their description on a child AXCell. When the
+  // row has exactly one AXCell child whose description is the only label
+  // available, present that description as the row's own primary label so
+  // sidebars (Mail mailboxes, Finder source list, Notes accounts, etc.)
+  // surface readable names like "Inbox" / "Junk" instead of bare "row".
+  if (
+    node.role === "AXRow" &&
+    node.children.length === 1 &&
+    node.children[0]?.role === "AXCell" &&
+    node.children[0].description
+  ) {
+    return node.children[0].description;
+  }
+  if (!node.title && !node.description && node.value) return node.value;
+  return null;
+};
+
+const primaryLabelForLine = (
+  node: SnapshotNode,
+  primaryLabel: string | null,
+) => {
+  if (node.role !== "AXLink" || !node.url || !primaryLabel) {
+    return primaryLabel;
+  }
+  if (primaryLabel === node.url) {
+    return primaryLabel;
+  }
+  return `[${escapeMarkdownLinkText(primaryLabel)}](${node.url})`;
+};
+
+const annotationSegment = (node: SnapshotNode) => {
+  const flags: string[] = [];
+  if (node.enabled === false) flags.push("disabled");
+  if (node.selected) flags.push("selected");
+  // AppKit's outline/table cells inherit the parent table's focus bit, so
+  // every cell in a focused table reports `focused=true`. That tells the
+  // model nothing useful about which element actually has keyboard focus.
+  // Suppress the flag for cells; meaningful focus on a cell's text field
+  // child still surfaces normally.
+  if (node.focused && node.role !== "AXCell") flags.push("focused");
+  // Outline rows + disclosure groups expose AXExpanded so the model can
+  // tell whether sidebars/sections (Mail Favorites/Smart Mailboxes,
+  // Finder source list, Notes accounts) are open or collapsed before
+  // deciding whether to actuate the disclosure triangle.
+  if (node.expanded === true) flags.push("expanded");
+  else if (node.expanded === false) flags.push("collapsed");
+  if (shouldSurfaceSettable(node)) {
+    flags.push("settable");
+    const valueType = inferredValueType(node);
+    if (valueType) flags.push(valueType);
+  }
+  return flags.length > 0 ? ` (${flags.join(", ")})` : "";
+};
+
+// Internal AppKit selector identifiers (e.g. `_NS:355`, `_recentItemRequested:`)
+// are pure noise to the agent: not stable across builds, never useful for
+// targeting (the numeric ID already addresses the element). Hide them.
+const isInternalAppKitIdentifier = (identifier: string) =>
+  /^_[A-Za-z0-9_]+:?$/.test(identifier);
+
+// Cancel/Pick are present on every menu/menu-item via the AX API. They're
+// universal noise — surfacing them on every menu line would balloon the
+// snapshot without giving the agent any new affordance.
+const filterMenuActions = (actions: string[], role: string) =>
+  role === "AXMenuItem" || role === "AXMenuBarItem" || role === "AXMenu"
+    ? actions.filter((action) => action !== "AXCancel" && action !== "AXPick")
+    : actions;
+
+// Container roles that may be skipped from the rendered tree when the node
+// adds no information of its own. Their children re-attach at the parent's
+// depth so the model sees one tight tree instead of a deep stack of empty
+// `container` lines (e.g. web-area wrapper chains).
+const COLLAPSIBLE_CONTAINER_ROLES = new Set([
+  "AXGroup",
+  "AXGenericElement",
+  "AXUnknown",
+  "AXSplitGroup",
+]);
+
+export const formatNodeLines = (node: SnapshotNode, depth = 0): string[] => {
+  const indent = "\t".repeat(depth);
+  const id =
+    typeof node.index === "number" && Number.isFinite(node.index)
+      ? String(node.index)
+      : (node.ref ?? "_");
+
+  // Menu bar items are globally positioned app chrome, not the target window
+  // content. Hiding them prevents the agent from opening menus while trying
+  // to act on visible app UI.
+  if (node.role === "AXMenuBarItem") {
+    return [];
+  }
+
+  const role = humanRole(node);
+  const rawPrimaryLabel = choosePrimaryLabel(node);
+  const primaryLabel = primaryLabelForLine(node, rawPrimaryLabel);
+  const extras: string[] = [];
+
+  if (
+    node.description &&
+    node.description !== rawPrimaryLabel &&
+    node.description !== primaryLabel &&
+    (node.role === "AXLink" ||
+      node.role === "AXCheckBox" ||
+      node.subrole === "AXSwitch" ||
+      // Browser/Mail/Notes address-bar style fields name themselves on
+      // AXDescription ("Address and search bar", "Search field", "To:",
+      // "Subject:"). The value attribute carries the typed text, so
+      // surface description as a separate prefix rather than collapsing
+      // it into the primary label.
+      node.role === "AXTextField" ||
+      node.role === "AXSearchField" ||
+      node.role === "AXSecureTextField" ||
+      node.role === "AXTextArea")
+  ) {
+    extras.push(`Description: ${truncate(node.description, 120)}`);
+  }
+
+  const renderedValue = displayValue(node);
+  if (
+    renderedValue &&
+    renderedValue !== rawPrimaryLabel &&
+    renderedValue !== primaryLabel
+  ) {
+    extras.push(`Value: ${truncate(renderedValue, 120)}`);
+  }
+
+  if (
+    node.details &&
+    node.details !== primaryLabel &&
+    node.details !== renderedValue
+  ) {
+    extras.push(`Details: ${truncate(node.details, 120)}`);
+  }
+
+  if (node.help && node.help !== primaryLabel) {
+    extras.push(`Help: ${truncate(node.help, 120)}`);
+  }
+
+  if (
+    node.identifier &&
+    node.identifier !== rawPrimaryLabel &&
+    node.identifier !== primaryLabel &&
+    node.identifier !== node.description &&
+    node.identifier !== node.value &&
+    !isInternalAppKitIdentifier(node.identifier)
+  ) {
+    extras.push(`ID: ${truncate(node.identifier, 120)}`);
+  }
+
+  if (node.url) {
+    const renderedUrl = truncate(formatUrlLike(node.url), 100);
+    if (node.role === "AXLink" && primaryLabel !== rawPrimaryLabel) {
+      // The markdown link already carries the destination.
+    } else if (node.role === "AXLink" && !renderedValue) {
+      extras.push(`Value: ${renderedUrl}`);
+    } else {
+      extras.push(`URL: ${renderedUrl}`);
+    }
+  }
+
+  // Placeholder text for empty input fields (Brave's "Search Google or
+  // type a URL", Spotlight's "Spotlight Search", Mail's "To:" hint).
+  // Only meaningful for text-bearing roles, and only when the field
+  // doesn't already carry a typed value to display.
+  if (
+    node.placeholder &&
+    node.placeholder !== rawPrimaryLabel &&
+    node.placeholder !== primaryLabel &&
+    node.placeholder !== node.description &&
+    node.placeholder !== renderedValue &&
+    (node.role === "AXTextField" ||
+      node.role === "AXSearchField" ||
+      node.role === "AXSecureTextField" ||
+      node.role === "AXTextArea" ||
+      node.role === "AXComboBox")
+  ) {
+    extras.push(`Placeholder: ${truncate(node.placeholder, 120)}`);
+  }
+
+  const actions = secondaryActions(
+    filterMenuActions(node.actions ?? [], node.role),
+  );
+  if (actions.length > 0) {
+    extras.push(`Secondary Actions: ${actions.join(", ")}`);
+  }
+
+  const annotation = annotationSegment(node);
+
+  // Collapse / skip empty container nodes. Spotify alone emits ~140 such
+  // anonymous `container` lines per snapshot — they're pure DOM
+  // structural scaffolding from the web view, with no label, no extras,
+  // and no flag annotation worth surfacing. The model gets nothing from
+  // them. Two cases:
+  //
+  //   (a) Empty container with no children → drop entirely. Emitting
+  //       `\t\t\t\t\t<id> container` is just noise.
+  //   (b) Empty container with exactly one child → fold the wrapper:
+  //       render the child at the parent's depth. Most macOS
+  //       web-wrapped apps (Spotify, Slack, Discord, Notion, Cursor,
+  //       VS Code) produce 5–10 nested AXGroup/AXSplitGroup wrappers
+  //       around the actual UI. This rule subsumes the previous
+  //       same-role chain-collapse and applies even when the single
+  //       child is a meaningful node (button/text/link).
+  //
+  // "Empty" requires no primary label, no extras (description / value /
+  // url / placeholder / etc.), and no annotation flags (no
+  // disabled/focused/selected/expanded/settable). Containers that
+  // expose `settable` are still part of the actionable tree; we never
+  // collapse those.
+  const isEmptyCollapsibleContainer =
+    COLLAPSIBLE_CONTAINER_ROLES.has(node.role) &&
+    !primaryLabel &&
+    extras.length === 0 &&
+    annotation === "";
+  if (isEmptyCollapsibleContainer) {
+    if (node.children.length === 0) {
+      return [];
+    }
+    if (node.children.length === 1) {
+      return formatNodeLines(node.children[0]!, depth);
+    }
+  }
+
+  let line = `${indent}${id} ${role}${annotation}`;
+  if (primaryLabel) {
+    line += ` ${truncate(primaryLabel, 120)}`;
+    if (extras.length > 0) {
+      line += `, ${extras.join(", ")}`;
+    }
+  } else if (extras.length > 0) {
+    // When there's no primary label, extras hang directly off the role with a
+    // single space, no comma. The extras among themselves are still ", "-joined.
+    line += ` ${extras.join(", ")}`;
+  }
+  // Skip rendering the lone AXCell child of an AXRow when its description
+  // was already folded up into the row's primary label (see
+  // `choosePrimaryLabel`). Otherwise sidebars duplicate every label as a
+  // child cell line right under the row.
+  const childrenToRender =
+    node.role === "AXRow" &&
+    node.children.length === 1 &&
+    node.children[0]?.role === "AXCell" &&
+    primaryLabel === node.children[0].description
+      ? []
+      : node.children;
+  return [
+    line,
+    ...childrenToRender.flatMap((child) => formatNodeLines(child, depth + 1)),
+  ];
+};
+
+const findFocusedElement = (
+  nodes: SnapshotNode[],
+): { index: number | string; role: string } | null => {
+  for (const node of nodes) {
+    if (node.focused) {
+      return {
+        index:
+          typeof node.index === "number" && Number.isFinite(node.index)
+            ? node.index
+            : (node.ref ?? "_"),
+        role: humanRole(node),
+      };
+    }
+    const nested = findFocusedElement(node.children);
+    if (nested) return nested;
+  }
+  return null;
+};
+
+const printWarnings = (warnings: string[] | undefined) => {
+  for (const warning of warnings ?? []) {
+    writeComputerStdout(`[warning] ${warning}\n`);
+  }
+};
+
+const parseJson = <T>(text: string): T => {
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    throw new Error(
+      `Failed to parse desktop automation response: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+};
+
+// Emit a "[stella-attach-image]" marker line that the runtime layer can
+// detect when reading shell output to auto-attach the image as a vision
+// content block to the next assistant turn. The line is also human-readable
+// so it does no harm if the host doesn't auto-detect it. We include the
+// width/height so callers can pre-budget vision token cost without a follow-
+// up `Read` step.
+const formatScreenshotMarker = (
+  screenshot?: Screenshot | null,
+  fallbackPath?: string | null,
+) => {
+  const path = screenshot?.path ?? fallbackPath ?? null;
+  if (!path && !screenshot?.data) return "";
+  const dims =
+    screenshot?.widthPx && screenshot?.heightPx
+      ? ` ${screenshot.widthPx}x${screenshot.heightPx}`
+      : "";
+  const sizeKb = screenshot?.byteCount
+    ? ` ${(screenshot.byteCount / 1024).toFixed(0)}KB`
+    : "";
+  const inline = screenshot?.data ? " inline=image/png" : "";
+  if (path) {
+    return `[stella-attach-image]${dims}${sizeKb}${inline} path=${JSON.stringify(path)}\n`;
+  }
+  return `[stella-attach-image]${dims}${sizeKb}${inline}\n`;
+};
+
+const formatAppInstructions = (instructions?: string | null) => {
+  if (!instructions) return "";
+  const trimmed = instructions.trim();
+  if (!trimmed) return "";
+  return `<app_specific_instructions>\n${trimmed}\n</app_specific_instructions>\n`;
+};
+
+const formatBundleSpecificStateNote = (snapshot: SnapshotDocument) => {
+  if (snapshot.bundleId !== "com.spotify.client") {
+    return "";
+  }
+  return (
+    "Note: In order to be usable, Spotify app links must be rewritten as regular links " +
+    "(e.g. use open.spotify.com instead of xpui.app.spotify.com). Only use Spotify links " +
+    "that are written verbatim in the UI above. Note that IDs are only valid with their " +
+    'associated type (e.g. you cannot change an "album" URL to a "track" URL).'
+  );
+};
+
+const appStateLines = (snapshot: SnapshotDocument) => {
+  const lines: string[] = ["<app_state>"];
+  const appLabel = snapshot.bundleId
+    ? `App=${snapshot.bundleId} (pid ${snapshot.pid})`
+    : `App=${snapshot.appName} (pid ${snapshot.pid})`;
+  lines.push(appLabel);
+  if (snapshot.windowTitle) {
+    lines.push(`Window: "${snapshot.windowTitle}", App: ${snapshot.appName}.`);
+  }
+  if (snapshot.revision != null) {
+    lines.push(
+      `State revision: ${snapshot.revision} (materialized ${snapshot.materializedRevision ?? snapshot.revision}, cache_hit=${snapshot.cacheHit === true ? "true" : "false"}, pending_actions=${snapshot.pendingActionCount ?? 0}).`,
+    );
+  }
+  if (snapshot.screenshot) {
+    lines.push(
+      `Screenshot context: method=${snapshot.screenshot.captureMethod ?? "unknown"}, reliable_final_frame=${snapshot.screenshot.reliableFinalFrame === false ? "false" : "true"}, exact_window=${snapshot.screenshot.exactWindowMatch === true ? "true" : "false"}.`,
+    );
+  }
+  for (const node of snapshot.nodes) {
+    lines.push(...formatNodeLines(node));
+  }
+  if (snapshot.selectedText) {
+    lines.push("", `Selected text: [${snapshot.selectedText}]`);
+  } else if (snapshot.focusedSummary) {
+    lines.push("", `The focused UI element is ${snapshot.focusedSummary}.`);
+  } else {
+    const focused = findFocusedElement(snapshot.nodes);
+    if (focused) {
+      lines.push(
+        "",
+        `The focused UI element is ${focused.index} ${focused.role}.`,
+      );
+    }
+  }
+  const bundleNote = formatBundleSpecificStateNote(snapshot);
+  if (bundleNote) {
+    lines.push("", bundleNote);
+  }
+  lines.push("</app_state>");
+  return lines;
+};
+
+const formatAppStateBlock = (snapshot: SnapshotDocument) => {
+  writeComputerStdout(`${appStateLines(snapshot).join("\n")}\n`);
+};
+
+const diffTargetFromSnapshot = (
+  snapshot: SnapshotDocument,
+  lineCount: number,
+): StateDiffTarget => ({
+  appName: snapshot.appName,
+  bundleId: snapshot.bundleId ?? null,
+  pid: snapshot.pid,
+  windowTitle: snapshot.windowTitle ?? null,
+  windowId: snapshot.windowId ?? null,
+  capturedAt: snapshot.capturedAt ?? null,
+  nodeCount: snapshot.nodeCount,
+  lineCount,
+});
+
+const snapshotDiff = (
+  previous: SnapshotDocument | null,
+  current: SnapshotDocument,
+): StateDiff => {
+  const previousLines = previous ? appStateLines(previous) : null;
+  const currentLines = appStateLines(current);
+  return computeStateDiff({
+    previousLines,
+    currentLines,
+    previousTarget: previous
+      ? diffTargetFromSnapshot(previous, previousLines?.length ?? 0)
+      : null,
+    currentTarget: diffTargetFromSnapshot(current, currentLines.length),
+  });
+};
+
+const formatActionSettle = (settle?: AutomationSettle | null) => {
+  if (!settle) return;
+  const reason = settle.reason ? ` reason=${settle.reason}` : "";
+  const source = settle.observed ? "AX quiet" : "fixed post-action wait";
+  writeComputerStdout(
+    `Action settle: ${source}; waited=${settle.waitedMs}ms quiet=${settle.quietMs}ms events=${settle.eventCount} timed_out=${settle.timedOut ? "true" : "false"}${reason}\n`,
+  );
+};
+
+const formatSnapshot = (snapshot: SnapshotDocument) => {
+  const instructions = formatAppInstructions(snapshot.appInstructions);
+  if (instructions) {
+    writeComputerStdout(instructions);
+  }
+  formatAppStateBlock(snapshot);
+
+  writeComputerStdout(
+    formatScreenshotMarker(snapshot.screenshot, snapshot.screenshotPath),
+  );
+  printWarnings(snapshot.warnings);
+};
+
+const formatAction = (
+  payload: ActionPayload,
+  snapshot: SnapshotDocument | null,
+  stateDiff: StateDiff | null,
+) => {
+  writeComputerStdout(
+    payload.message.replace(/\bAX[A-Za-z]+\b/g, (action) =>
+      humanActionName(action),
+    ),
+  );
+  writeComputerStdout("\n");
+  formatActionSettle(payload.settle);
+  if (snapshot) {
+    if (stateDiff && shouldUseDiffOnly(stateDiff)) {
+      writeComputerStdout(formatStateDiffBlock(stateDiff));
+    } else {
+      if (stateDiff) {
+        writeComputerStdout(formatStateDiffBlock(stateDiff));
+      }
+      formatAppStateBlock(snapshot);
+    }
+  }
+  writeComputerStdout(
+    formatScreenshotMarker(payload.screenshot, payload.screenshotPath),
+  );
+  printWarnings(payload.warnings);
+};
+
+// Return only "regular" (user-launchable) apps. macOS exposes accessory and
+// background helpers (Spotlight, LoginWindow, WindowManager, renderer helpers)
+// that pollute the list and have no addressable UI for the agent.
+const LISTED_ACTIVATION_POLICIES = new Set(["regular"]);
+
+const formatListApps = (payload: ListAppsPayload) => {
+  const visible = payload.apps.filter((app) =>
+    LISTED_ACTIVATION_POLICIES.has(app.activationPolicy),
+  );
+  // Put the user's current app first, then keep the usage prior for the rest.
+  visible.sort((a, b) => {
+    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+    const usesA = a.useCount ?? -1;
+    const usesB = b.useCount ?? -1;
+    if (usesA !== usesB) return usesB - usesA;
+    return a.name.localeCompare(b.name);
+  });
+
+  for (const app of visible) {
+    const flags: string[] = [];
+    if (app.isRunning !== false) {
+      flags.push("running");
+    }
+    if (app.isActive) {
+      flags.push("frontmost");
+    }
+    if (app.lastUsedDate) {
+      flags.push(`last-used=${app.lastUsedDate}`);
+    }
+    if (typeof app.useCount === "number" && Number.isFinite(app.useCount)) {
+      flags.push(`uses=${app.useCount}`);
+    }
+    const bundle = app.bundleId ? ` — ${app.bundleId}` : "";
+    writeComputerStdout(`${app.name}${bundle} [${flags.join(", ")}]\n`);
+  }
+  printWarnings(payload.warnings);
+};
+
+const formatListWindows = (payload: ListWindowsPayload) => {
+  for (const window of payload.windows) {
+    const title = window.title ? ` — ${window.title}` : "";
+    const bundle = window.bundleId ? ` — ${window.bundleId}` : "";
+    const active = window.isActive ? " frontmost" : "";
+    writeComputerStdout(
+      `${window.appName}${title}${bundle} [window-id=${window.windowId}, pid=${window.pid}, frame=${window.frame.x},${window.frame.y},${window.frame.width},${window.frame.height}${active}]\n`,
+    );
+  }
+  printWarnings(payload.warnings);
+};
+
+const formatError = (payload: ErrorPayload) => {
+  writeComputerStderr(payload.error);
+  writeComputerStderr("\n");
+  // Mirror the action/snapshot screenshot-marker contract on the error path
+  // so failures still expose the diagnostic capture without requiring an
+  // extra Read step.
+  const marker = formatScreenshotMarker(
+    payload.screenshot,
+    payload.screenshotPath,
+  );
+  if (marker) writeComputerStderr(marker);
+  for (const warning of payload.warnings ?? []) {
+    writeComputerStderr(`[warning] ${warning}\n`);
+  }
+};
+
+const emitError = (payload: ErrorPayload, jsonMode: boolean) => {
+  if (jsonMode) {
+    writeComputerStdout(`${JSON.stringify(payload, null, 2)}\n`);
+  } else {
+    formatError(payload);
+  }
+  throw new StellaComputerExitError(1);
+};
+
+class StellaComputerExitError extends Error {
+  constructor(readonly exitCode: number) {
+    super(`stella-computer exited ${exitCode}`);
+  }
+}
+
+const isTruthyEnv = (value: string | undefined) =>
+  typeof value === "string" && /^(1|true|yes)$/i.test(value.trim());
+
+const hidAllowed = (args: string[]) =>
+  hasOption(args, "--allow-hid") ||
+  isTruthyEnv(getComputerExecutionEnv().STELLA_COMPUTER_ALLOW_HID);
+
+const normalizeLockKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 160);
+
+const fallbackStateLockKey = (statePath: string) => {
+  const relative = path.relative(stateDir(), path.resolve(statePath));
+  return `state-${normalizeLockKey(relative || path.basename(statePath)) || "default"}`;
+};
+
+const readSnapshotDocument = (statePath: string): SnapshotDocument | null => {
+  try {
+    return parseJson<SnapshotDocument>(fs.readFileSync(statePath, "utf8"));
+  } catch {
+    return null;
+  }
+};
+
+const sessionTargetsDir = (sessionPaths: SessionPaths) =>
+  path.join(sessionPaths.sessionDir, "targets");
+
+const sessionTargetRegistryPath = (sessionPaths: SessionPaths) =>
+  path.join(sessionPaths.sessionDir, "targets.json");
+
+const targetKeyFromSnapshot = (snapshot: SnapshotDocument) => {
+  const bundleId = normalizeLockKey(snapshot.bundleId ?? "");
+  if (bundleId) {
+    return `bundle-${bundleId}`;
+  }
+  const appName = normalizeLockKey(snapshot.appName ?? "");
+  if (appName) {
+    return `app-${appName}`;
+  }
+  return `pid-${snapshot.pid}`;
+};
+
+const targetStatePathForKey = (sessionPaths: SessionPaths, key: string) =>
+  path.join(sessionTargetsDir(sessionPaths), key, "last-snapshot.json");
+
+const writeJsonAtomic = (finalPath: string, value: unknown) => {
+  fs.mkdirSync(path.dirname(finalPath), { recursive: true });
+  const tempPath = `${finalPath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(value, null, 2));
+  fs.renameSync(tempPath, finalPath);
+};
+
+const readSessionTargetRegistry = (
+  sessionPaths: SessionPaths,
+): SessionTargetRegistry => {
+  try {
+    const raw = fs.readFileSync(
+      sessionTargetRegistryPath(sessionPaths),
+      "utf8",
+    );
+    const parsed = parseJson<SessionTargetRegistry>(raw);
+    return {
+      activeTargetKey: parsed.activeTargetKey ?? null,
+      targets: parsed.targets ?? {},
+    };
+  } catch {
+    return {
+      activeTargetKey: null,
+      targets: {},
+    };
+  }
+};
+
+const writeSessionTargetRegistry = (
+  sessionPaths: SessionPaths,
+  registry: SessionTargetRegistry,
+) => {
+  writeJsonAtomic(sessionTargetRegistryPath(sessionPaths), registry);
+};
+
+const mirrorSnapshotToPath = (
+  snapshot: SnapshotDocument,
+  destinationStatePath: string,
+  destinationScreenshotPath: string,
+) => {
+  const nextSnapshot: SnapshotDocument = {
+    ...snapshot,
+    screenshotPath: snapshot.screenshotPath
+      ? destinationScreenshotPath
+      : snapshot.screenshotPath,
+    screenshot: snapshot.screenshot
+      ? {
+          ...snapshot.screenshot,
+          path:
+            snapshot.screenshotPath || snapshot.screenshot.path
+              ? destinationScreenshotPath
+              : snapshot.screenshot.path,
+        }
+      : snapshot.screenshot,
+  };
+  if (
+    snapshot.screenshotPath &&
+    snapshot.screenshotPath !== destinationScreenshotPath &&
+    fs.existsSync(snapshot.screenshotPath)
+  ) {
+    fs.mkdirSync(path.dirname(destinationScreenshotPath), { recursive: true });
+    fs.copyFileSync(snapshot.screenshotPath, destinationScreenshotPath);
+  }
+  writeJsonAtomic(destinationStatePath, nextSnapshot);
+};
+
+const syncSessionTargetSnapshot = (
+  sessionPaths: SessionPaths,
+  statePath: string,
+) => {
+  const snapshot = readSnapshotDocument(statePath);
+  if (!snapshot?.ok) {
+    return;
+  }
+  const key = targetKeyFromSnapshot(snapshot);
+  const targetStatePath = targetStatePathForKey(sessionPaths, key);
+  const targetScreenshotPath = deriveScreenshotPath(targetStatePath);
+  mirrorSnapshotToPath(snapshot, targetStatePath, targetScreenshotPath);
+  if (statePath !== sessionPaths.statePath) {
+    mirrorSnapshotToPath(
+      snapshot,
+      sessionPaths.statePath,
+      sessionPaths.screenshotPath,
+    );
+  }
+  const registry = readSessionTargetRegistry(sessionPaths);
+  registry.activeTargetKey = key;
+  registry.targets[key] = {
+    key,
+    appName: snapshot.appName,
+    bundleId: snapshot.bundleId ?? null,
+    pid: snapshot.pid,
+    windowTitle: snapshot.windowTitle ?? null,
+    statePath: targetStatePath,
+    screenshotPath: targetScreenshotPath,
+    capturedAt: snapshot.capturedAt ?? null,
+    updatedAt: new Date().toISOString(),
+  };
+  writeSessionTargetRegistry(sessionPaths, registry);
+};
+
+const hasTargetSelector = (selector: SessionTargetSelector) =>
+  selector.pid != null || !!selector.bundleId || !!selector.appName;
+
+const describeTargetSelector = (selector: SessionTargetSelector) => {
+  if (selector.bundleId) return `bundle '${selector.bundleId}'`;
+  if (selector.pid != null) return `pid ${selector.pid}`;
+  if (selector.appName) return `app '${selector.appName}'`;
+  return "the requested target";
+};
+
+const consumeActionTargetSelector = (args: string[]) => {
+  let nextArgs = args;
+  const pidResult = stripOptionValue(nextArgs, "--pid");
+  nextArgs = pidResult.args;
+  const bundleResult = stripOptionValue(nextArgs, "--bundle-id");
+  nextArgs = bundleResult.args;
+  const appResult = stripOptionValue(nextArgs, "--app");
+  nextArgs = appResult.args;
+  const invalidPid =
+    pidResult.value != null && !Number.isFinite(Number(pidResult.value));
+  const parsedPid =
+    pidResult.value != null && Number.isFinite(Number(pidResult.value))
+      ? Number(pidResult.value)
+      : null;
+  return {
+    args: nextArgs,
+    selector: {
+      pid: parsedPid,
+      bundleId: bundleResult.value,
+      appName: appResult.value,
+    } satisfies SessionTargetSelector,
+    missingValue:
+      pidResult.missingValue ||
+      bundleResult.missingValue ||
+      appResult.missingValue,
+    invalidPid,
+  };
+};
+
+const resolveTargetRecord = (
+  sessionPaths: SessionPaths,
+  selector: SessionTargetSelector,
+): SessionTargetRecord => {
+  const registry = readSessionTargetRegistry(sessionPaths);
+  const targets = Object.values(registry.targets);
+  if (selector.pid != null) {
+    const exact = targets.find((target) => target.pid === selector.pid);
+    if (exact) return exact;
+    throw new Error(
+      `No cached target snapshot for pid ${selector.pid} in session '${sessionPaths.sessionId}'. Take a snapshot of that app first.`,
+    );
+  }
+  if (selector.bundleId) {
+    const needle = normalizeLockKey(selector.bundleId);
+    const exact = targets.find(
+      (target) => normalizeLockKey(target.bundleId ?? "") === needle,
+    );
+    if (exact) return exact;
+    throw new Error(
+      `No cached target snapshot for bundle '${selector.bundleId}' in session '${sessionPaths.sessionId}'. Take a snapshot of that app first.`,
+    );
+  }
+  if (selector.appName) {
+    const needle = normalizeLockKey(selector.appName);
+    const exact = targets.filter(
+      (target) => normalizeLockKey(target.appName ?? "") === needle,
+    );
+    if (exact.length === 1) {
+      return exact[0]!;
+    }
+    if (exact.length > 1) {
+      throw new Error(
+        `Multiple cached targets match --app '${selector.appName}'. Use --bundle-id or --pid instead.`,
+      );
+    }
+    const fuzzy = targets.filter((target) => {
+      const appName = normalizeLockKey(target.appName ?? "");
+      const bundleId = normalizeLockKey(target.bundleId ?? "");
+      return appName.includes(needle) || bundleId.includes(needle);
+    });
+    if (fuzzy.length === 1) {
+      return fuzzy[0]!;
+    }
+    if (fuzzy.length > 1) {
+      throw new Error(
+        `Multiple cached targets partially match --app '${selector.appName}'. Use --bundle-id or --pid instead.`,
+      );
+    }
+    throw new Error(
+      `No cached target snapshot for app '${selector.appName}' in session '${sessionPaths.sessionId}'. Take a snapshot of that app first.`,
+    );
+  }
+  throw new Error(
+    `No target selector provided for session '${sessionPaths.sessionId}'.`,
+  );
+};
+
+const resolveActionStatePath = (
+  sessionPaths: SessionPaths,
+  args: string[],
+  selector: SessionTargetSelector,
+) => {
+  const explicitStatePath = getOptionValue(args, "--state");
+  if (explicitStatePath) {
+    return explicitStatePath;
+  }
+  if (!hasTargetSelector(selector)) {
+    return sessionPaths.statePath;
+  }
+  return resolveTargetRecord(sessionPaths, selector).statePath;
+};
+
+const translateScreenshotCoordinateCommand = (
+  command: string,
+  args: string[],
+  statePath: string,
+) => {
+  if (command !== "click-screenshot" && command !== "drag-screenshot") {
+    return { command, args };
+  }
+
+  const { positionals, options } = splitArgsIntoPositionalsAndOptions(args);
+  const snapshot = readSnapshotDocument(statePath);
+
+  if (command === "click-screenshot") {
+    if (positionals.length < 2) {
+      throw new Error("click-screenshot requires x_px and y_px.");
+    }
+    const xPx = Number(positionals[0]);
+    const yPx = Number(positionals[1]);
+    const { point, error } = screenshotPixelToScreenPoint(snapshot, xPx, yPx);
+    if (!point) {
+      throw new Error(error ?? "Failed to map screenshot pixel coordinates.");
+    }
+    return {
+      command: "click-point",
+      args: [String(point.x), String(point.y), ...options],
+    };
+  }
+
+  if (positionals.length < 4) {
+    throw new Error(
+      "drag-screenshot requires from_x_px, from_y_px, to_x_px, and to_y_px.",
+    );
+  }
+
+  const fromX = Number(positionals[0]);
+  const fromY = Number(positionals[1]);
+  const toX = Number(positionals[2]);
+  const toY = Number(positionals[3]);
+  const fromPoint = screenshotPixelToScreenPoint(snapshot, fromX, fromY);
+  if (!fromPoint.point) {
+    throw new Error(
+      fromPoint.error ?? "Failed to map drag start screenshot coordinates.",
+    );
+  }
+  const toPoint = screenshotPixelToScreenPoint(snapshot, toX, toY);
+  if (!toPoint.point) {
+    throw new Error(
+      toPoint.error ?? "Failed to map drag end screenshot coordinates.",
+    );
+  }
+
+  return {
+    command: "drag",
+    args: [
+      String(fromPoint.point.x),
+      String(fromPoint.point.y),
+      String(toPoint.point.x),
+      String(toPoint.point.y),
+      ...options,
+    ],
+  };
+};
+
+const snapshotLockKeys = (
+  snapshot: SnapshotDocument | null,
+  statePath: string,
+) => {
+  const keys: string[] = [];
+  if (snapshot?.appName) {
+    keys.push(`app-${normalizeLockKey(snapshot.appName)}`);
+  }
+  if (snapshot?.bundleId) {
+    keys.push(`bundle-${normalizeLockKey(snapshot.bundleId)}`);
+  }
+  if (typeof snapshot?.pid === "number" && Number.isFinite(snapshot.pid)) {
+    keys.push(`pid-${snapshot.pid}`);
+  }
+  return keys.length > 0 ? keys : [fallbackStateLockKey(statePath)];
+};
+
+const resolveLockKeys = (
+  command: string,
+  args: string[],
+  sessionPaths: SessionPaths,
+) => {
+  if (command === "list-apps") {
+    return [];
+  }
+
+  const keys = new Set<string>();
+
+  if (command === "snapshot") {
+    const pidValue = getOptionValue(args, "--pid");
+    const bundleId = getOptionValue(args, "--bundle-id");
+    const appName = getOptionValue(args, "--app");
+
+    if (pidValue) {
+      keys.add(`pid-${pidValue}`);
+    }
+    if (bundleId) {
+      keys.add(`bundle-${normalizeLockKey(bundleId)}`);
+    }
+    if (appName) {
+      keys.add(`app-${normalizeLockKey(appName)}`);
+    }
+    if (keys.size === 0) {
+      keys.add("frontmost-app");
+    }
+  } else {
+    const statePath = getOptionValue(args, "--state") ?? sessionPaths.statePath;
+    for (const key of snapshotLockKeys(
+      readSnapshotDocument(statePath),
+      statePath,
+    )) {
+      keys.add(key);
+    }
+  }
+
+  if (
+    command === "drag" ||
+    command === "drag-element" ||
+    command === "click-point" ||
+    command === "type" ||
+    command === "press" ||
+    (command === "click" && hasOption(args, "--coordinate-fallback"))
+  ) {
+    keys.add("global-hid");
+  }
+
+  keys.add(`session-${sessionPaths.sessionId}`);
+
+  return [...keys].sort();
+};
+
+const ensureCommandPaths = (command: string, args: string[]) => {
+  if (command === "list-apps") {
+    return;
+  }
+
+  const statePath = getOptionValue(args, "--state");
+  if (statePath) {
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  }
+
+  if (command === "snapshot") {
+    const screenshotPath = getOptionValue(args, "--screenshot");
+    if (screenshotPath) {
+      fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
+    }
+  }
+};
+
+const getLockTimeoutMs = () => {
+  const parsed = Number(
+    getComputerExecutionEnv().STELLA_COMPUTER_LOCK_TIMEOUT_MS,
+  );
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return defaultLockTimeoutMs;
+};
+
+const sleep = abortableComputerDelay;
+
+const acquireLock = async (key: string, sessionId: string) => {
+  const lockPath = path.join(locksDir(), normalizeLockKey(key) || "lock");
+  const deadlineAt = Date.now() + getLockTimeoutMs();
+
+  while (Date.now() <= deadlineAt) {
+    try {
+      fs.mkdirSync(lockPath);
+      fs.writeFileSync(
+        path.join(lockPath, "owner.json"),
+        JSON.stringify(
+          {
+            pid: process.pid,
+            key,
+            sessionId,
+            acquiredAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+      return () => {
+        fs.rmSync(lockPath, { recursive: true, force: true });
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+
+      try {
+        const stats = fs.statSync(lockPath);
+        if (Date.now() - stats.mtimeMs > staleLockTimeoutMs) {
+          fs.rmSync(lockPath, { recursive: true, force: true });
+          continue;
+        }
+      } catch {
+        continue;
+      }
+
+      await sleep(lockPollIntervalMs);
+    }
+  }
+
+  throw new Error(`Timed out waiting for desktop automation lock: ${key}`);
+};
+
+const acquireLocks = async (keys: string[], sessionId: string) => {
+  const releases: Array<() => void> = [];
+  try {
+    for (const key of keys) {
+      releases.push(await acquireLock(key, sessionId));
+    }
+    return () => {
+      while (releases.length > 0) {
+        const release = releases.pop();
+        release?.();
+      }
+    };
+  } catch (error) {
+    while (releases.length > 0) {
+      const release = releases.pop();
+      release?.();
+    }
+    throw error;
+  }
+};
+
+const readLockedUseEnabled = () => {
+  if (isTruthyEnv(getComputerExecutionEnv().STELLA_COMPUTER_LOCKED_USE)) {
+    return true;
+  }
+  try {
+    return loadLocalPreferences(resolveStellaDataDir())
+      .lockedComputerUseEnabled;
+  } catch {
+    return false;
+  }
+};
+
+const writeLockedUseEnabled = (enabled: boolean) => {
+  const stellaDataDir = resolveStellaDataDir();
+  const prefs = loadLocalPreferences(stellaDataDir);
+  saveLocalPreferences(stellaDataDir, {
+    ...prefs,
+    lockedComputerUseEnabled: enabled,
+  });
+};
+
+const runProcessCapture = async (
+  command: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<AutomationHelperResult> =>
+  await new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    const settle = (result: AutomationHelperResult) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(result);
+    };
+    timer = setTimeout(() => {
+      killDetachedProcess(child.pid);
+      settle({
+        status: 1,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8").trim(),
+        stderr:
+          Buffer.concat(stderrChunks).toString("utf8").trim() ||
+          `${command} timed out after ${timeoutMs}ms`,
+        timedOut: true,
+      });
+    }, timeoutMs);
+    child.stdout?.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+    child.stderr?.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+    child.once("error", (error) => {
+      settle({
+        status: 1,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8").trim(),
+        stderr: error.message,
+        error,
+      });
+    });
+    child.once("exit", (status) => {
+      settle({
+        status: status ?? 1,
+        stdout: Buffer.concat(stdoutChunks).toString("utf8").trim(),
+        stderr: Buffer.concat(stderrChunks).toString("utf8").trim(),
+      });
+    });
+  });
+
+const lockedUseInstallerPaths = () => {
+  const installerPath = resolveNativeHelperPath("locked_use_installer");
+  if (!installerPath) {
+    throw new Error(
+      'Native helper "locked_use_installer" was not found. Build desktop/native first.',
+    );
+  }
+  return {
+    installerPath,
+    resourceDir: path.dirname(installerPath),
+  };
+};
+
+const lockedUseAuthorizerPath = () => {
+  const helperPath = resolveNativeHelperPath(
+    "Stella.app/Contents/MacOS/Stella",
+  );
+  if (!helperPath) {
+    throw new Error(
+      'Native helper "Stella.app" was not found. Build desktop/native first.',
+    );
+  }
+  return helperPath;
+};
+
+const runLockedUseInstaller = async (
+  action: "install" | "uninstall" | "status",
+  options: { admin?: boolean } = {},
+) => {
+  const { installerPath, resourceDir } = lockedUseInstallerPaths();
+  if (
+    options.admin &&
+    process.platform === "darwin" &&
+    typeof process.getuid === "function" &&
+    process.getuid() !== 0
+  ) {
+    return await runProcessCapture(
+      lockedUseAuthorizerPath(),
+      [action, resourceDir],
+      lockedUseInstallerTimeoutMs,
+    );
+  }
+  return await runNativeHelper({
+    helperName: "locked_use_installer",
+    helperArgs: [action, resourceDir],
+    timeoutMs: lockedUseInstallerTimeoutMs,
+  });
+};
+
+const lockedUseStatus = async () => {
+  let installed = false;
+  let statusText = "";
+  try {
+    const status = await runLockedUseInstaller("status");
+    statusText = [status.stdout, status.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    installed =
+      /\binstalled\b/.test(statusText) && !/\bnot-installed\b/.test(statusText);
+  } catch (error) {
+    statusText = error instanceof Error ? error.message : String(error);
+  }
+  return {
+    enabled: readLockedUseEnabled(),
+    installed,
+    statusText,
+  };
+};
+
+const runLockedUseManagementCommand = async (
+  action: string | undefined,
+  jsonMode: boolean,
+) => {
+  const requested = action ?? "status";
+  if (
+    !["status", "enable", "disable", "install", "uninstall"].includes(requested)
+  ) {
+    writeComputerStderr(`Unknown locked-use action: ${requested}\n`);
+    return 1;
+  }
+
+  if (requested === "status") {
+    const status = await lockedUseStatus();
+    const payload = {
+      ok: true,
+      enabled: status.enabled,
+      installed: status.installed,
+      active: false,
+      locked: false,
+      suppressedUntilManualUnlock: false,
+      message: status.statusText || "Locked computer use status unavailable.",
+      warnings: [],
+    } satisfies LockedUsePayload;
+    if (jsonMode) {
+      writeComputerStdout(`${JSON.stringify(payload, null, 2)}\n`);
+    } else {
+      writeComputerStdout(
+        `Locked computer use: ${status.enabled ? "enabled" : "disabled"} (${status.installed ? "installed" : "not installed"})\n`,
+      );
+      if (status.statusText) writeComputerStdout(`${status.statusText}\n`);
+    }
+    return 0;
+  }
+
+  if (requested === "disable") {
+    writeLockedUseEnabled(false);
+    const status = await lockedUseStatus();
+    const payload = {
+      ok: true,
+      enabled: status.enabled,
+      installed: status.installed,
+      active: false,
+      locked: false,
+      suppressedUntilManualUnlock: false,
+      message: status.statusText || "OK",
+      warnings: [],
+    } satisfies LockedUsePayload;
+    if (jsonMode) {
+      writeComputerStdout(`${JSON.stringify(payload, null, 2)}\n`);
+    } else {
+      writeComputerStdout(`${status.statusText || "OK"}\n`);
+    }
+    return 0;
+  }
+
+  const shouldInstall = requested === "enable" || requested === "install";
+  const currentStatus = await lockedUseStatus();
+  if (shouldInstall && currentStatus.installed) {
+    writeLockedUseEnabled(true);
+    const status = await lockedUseStatus();
+    const payload = {
+      ok: true,
+      enabled: status.enabled,
+      installed: status.installed,
+      active: false,
+      locked: false,
+      suppressedUntilManualUnlock: false,
+      message: status.statusText || "OK",
+      warnings: [],
+    } satisfies LockedUsePayload;
+    if (jsonMode) {
+      writeComputerStdout(`${JSON.stringify(payload, null, 2)}\n`);
+    } else {
+      writeComputerStdout(`${status.statusText || "OK"}\n`);
+    }
+    return 0;
+  }
+  if (requested === "uninstall" && !currentStatus.installed) {
+    writeLockedUseEnabled(false);
+    const status = await lockedUseStatus();
+    const payload = {
+      ok: true,
+      enabled: status.enabled,
+      installed: status.installed,
+      active: false,
+      locked: false,
+      suppressedUntilManualUnlock: false,
+      message: status.statusText || "OK",
+      warnings: [],
+    } satisfies LockedUsePayload;
+    if (jsonMode) {
+      writeComputerStdout(`${JSON.stringify(payload, null, 2)}\n`);
+    } else {
+      writeComputerStdout(`${status.statusText || "OK"}\n`);
+    }
+    return 0;
+  }
+
+  const installerResult = await runLockedUseInstaller(
+    shouldInstall ? "install" : "uninstall",
+    { admin: true },
+  );
+  if (installerResult.status !== 0) {
+    const message =
+      installerResult.stderr ||
+      installerResult.stdout ||
+      `locked-use ${requested} failed`;
+    if (jsonMode) {
+      writeComputerStdout(
+        `${JSON.stringify(
+          {
+            ok: false,
+            enabled: readLockedUseEnabled(),
+            installed: false,
+            active: false,
+            locked: false,
+            suppressedUntilManualUnlock: false,
+            message,
+            warnings: [],
+          } satisfies LockedUsePayload,
+          null,
+          2,
+        )}\n`,
+      );
+    } else {
+      writeComputerStderr(`${message}\n`);
+    }
+    return 1;
+  }
+
+  const status = await lockedUseStatus();
+  const installIncomplete = shouldInstall && !status.installed;
+  const uninstallIncomplete = requested === "uninstall" && status.installed;
+  if (installIncomplete || uninstallIncomplete) {
+    const message =
+      installerResult.stderr ||
+      installerResult.stdout ||
+      `locked-use ${requested} did not complete`;
+    if (jsonMode) {
+      writeComputerStdout(
+        `${JSON.stringify(
+          {
+            ok: false,
+            enabled: readLockedUseEnabled(),
+            installed: status.installed,
+            active: false,
+            locked: false,
+            suppressedUntilManualUnlock: false,
+            message,
+            warnings: [],
+          } satisfies LockedUsePayload,
+          null,
+          2,
+        )}\n`,
+      );
+    } else {
+      writeComputerStderr(`${message}\n`);
+    }
+    return 1;
+  }
+
+  writeLockedUseEnabled(shouldInstall);
+  if (jsonMode) {
+    writeComputerStdout(
+      `${JSON.stringify(
+        {
+          ok: true,
+          enabled: status.enabled,
+          installed: status.installed,
+          active: false,
+          locked: false,
+          suppressedUntilManualUnlock: false,
+          message: installerResult.stdout || installerResult.stderr || "OK",
+          warnings: [],
+        } satisfies LockedUsePayload,
+        null,
+        2,
+      )}\n`,
+    );
+  } else {
+    writeComputerStdout(
+      `${installerResult.stdout || installerResult.stderr || "OK"}\n`,
+    );
+  }
+  return 0;
+};
+
+const maybeBeginLockedUseLease = async (sessionPaths: SessionPaths) => {
+  if (process.platform !== "darwin" || !readLockedUseEnabled()) {
+    return false;
+  }
+  const result = await runAutomationDaemonCommand(
+    sessionPaths,
+    ["locked-use-begin", "--duration-ms", String(lockedUseLeaseDurationMs)],
+    7_500,
+  );
+  if (result.status !== 0 || !result.stdout) {
+    throw new Error(
+      result.stderr || "Failed to open locked computer use lease.",
+    );
+  }
+  const payload = parseJson<LockedUsePayload>(result.stdout);
+  if (!payload.ok) {
+    throw new Error(payload.message || "Locked computer use lease was denied.");
+  }
+  return true;
+};
+
+const endLockedUseLease = async (sessionPaths: SessionPaths) => {
+  if (process.platform !== "darwin" || !readLockedUseEnabled()) {
+    return;
+  }
+  await runAutomationDaemonCommand(
+    sessionPaths,
+    ["locked-use-end"],
+    5_000,
+  ).catch(() => {
+    // Best-effort cleanup; command result handling should not be masked by a
+    // failed lease close.
+  });
+};
+
+const validateHidAccess = (
+  command: string,
+  args: string[],
+  jsonMode: boolean,
+) => {
+  if (
+    command === "click" &&
+    hasOption(args, "--coordinate-fallback") &&
+    !hidAllowed(args)
+  ) {
+    emitError(
+      {
+        ok: false,
+        error:
+          "Coordinate fallback requires --allow-hid or STELLA_COMPUTER_ALLOW_HID=1.",
+        warnings: [],
+        screenshotPath: null,
+      },
+      jsonMode,
+    );
+  }
+
+  if (
+    (command === "drag" ||
+      command === "drag-element" ||
+      command === "type" ||
+      command === "press") &&
+    !hidAllowed(args)
+  ) {
+    emitError(
+      {
+        ok: false,
+        error: `${command} requires --allow-hid or STELLA_COMPUTER_ALLOW_HID=1 because it sends global HID events.`,
+        warnings: [],
+        screenshotPath: null,
+      },
+      jsonMode,
+    );
+  }
+};
+
+const runCommand = async (
+  command: string,
+  args: string[],
+  jsonMode: boolean,
+  sessionOverride?: string | null,
+): Promise<number> => {
+  const sessionPaths = resolveSessionPaths(sessionOverride);
+  ensureStateDirectory(sessionPaths);
+  pruneStellaComputerSessions(sessionPaths.sessionId);
+
+  let effectiveCommand = command === "get-state" ? "snapshot" : command;
+  let effectiveArgs = args;
+  let selectedStatePath = sessionPaths.statePath;
+  const isListCommand =
+    effectiveCommand === "list-apps" || effectiveCommand === "list-windows";
+  if (!isListCommand && effectiveCommand !== "snapshot") {
+    const selection = consumeActionTargetSelector(effectiveArgs);
+    if (selection.missingValue) {
+      emitError(
+        {
+          ok: false,
+          error:
+            "Target selectors require a value. Use --app NAME, --bundle-id ID, or --pid PID.",
+          warnings: [],
+          screenshotPath: null,
+        },
+        jsonMode,
+      );
+      return 1;
+    }
+    if (selection.invalidPid) {
+      emitError(
+        {
+          ok: false,
+          error: "Target selector --pid requires a numeric PID.",
+          warnings: [],
+          screenshotPath: null,
+        },
+        jsonMode,
+      );
+      return 1;
+    }
+    effectiveArgs = selection.args;
+    try {
+      selectedStatePath = resolveActionStatePath(
+        sessionPaths,
+        effectiveArgs,
+        selection.selector,
+      );
+    } catch (error) {
+      emitError(
+        {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+          warnings: hasTargetSelector(selection.selector)
+            ? [
+                `Session target selection failed for ${describeTargetSelector(
+                  selection.selector,
+                )}.`,
+              ]
+            : [],
+          screenshotPath: null,
+        },
+        jsonMode,
+      );
+      return 1;
+    }
+  }
+  try {
+    const translated = translateScreenshotCoordinateCommand(
+      effectiveCommand,
+      effectiveArgs,
+      selectedStatePath,
+    );
+    effectiveCommand = translated.command;
+    effectiveArgs = translated.args;
+  } catch (error) {
+    emitError(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        warnings: [],
+        screenshotPath: null,
+      },
+      jsonMode,
+    );
+  }
+
+  const initialHelperArgs = isListCommand
+    ? [effectiveCommand]
+    : effectiveCommand === "snapshot"
+      ? ["snapshot", ...ensureSnapshotArgs(effectiveArgs, sessionPaths)]
+      : [effectiveCommand, ...withStatePath(effectiveArgs, selectedStatePath)];
+  const statePathForCommand =
+    effectiveCommand === "snapshot"
+      ? (getOptionValue(initialHelperArgs.slice(1), "--state") ??
+        sessionPaths.statePath)
+      : selectedStatePath;
+  const previousSnapshotForDiff = !isListCommand
+    ? readSnapshotDocument(statePathForCommand)
+    : null;
+  const deferredObservation =
+    effectiveCommand !== "snapshot" &&
+    !isListCommand &&
+    hasOption(initialHelperArgs.slice(1), "--defer-observation");
+  const disableDiff = hasOption(initialHelperArgs.slice(1), "--disable-diff");
+
+  validateHidAccess(effectiveCommand, initialHelperArgs.slice(1), jsonMode);
+  ensureCommandPaths(effectiveCommand, initialHelperArgs.slice(1));
+
+  let releaseLocks: (() => void) | undefined;
+  try {
+    releaseLocks = await acquireLocks(
+      resolveLockKeys(
+        effectiveCommand,
+        initialHelperArgs.slice(1),
+        sessionPaths,
+      ),
+      sessionPaths.sessionId,
+    );
+  } catch (error) {
+    emitError(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        warnings: [],
+        screenshotPath: null,
+      },
+      jsonMode,
+    );
+  }
+
+  let lockedUseLeaseOpened = false;
+  try {
+    if (!isListCommand) {
+      lockedUseLeaseOpened = await maybeBeginLockedUseLease(sessionPaths);
+    }
+
+    const result = await runAutomationDaemonCommand(
+      sessionPaths,
+      initialHelperArgs,
+    );
+
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.timedOut) {
+      const payload = {
+        ok: false,
+        error: result.stderr || "desktop_automation timed out",
+        warnings: result.stdout
+          ? ["Partial helper output was discarded after timeout."]
+          : [],
+        screenshotPath: null,
+      } satisfies ErrorPayload;
+      if (jsonMode) {
+        writeComputerStdout(`${JSON.stringify(payload, null, 2)}\n`);
+      } else {
+        formatError(payload);
+      }
+      return 1;
+    }
+    if (!result.stdout) {
+      const payload = {
+        ok: false,
+        error: result.stderr || "desktop_automation returned no output",
+        warnings: [],
+        screenshotPath: null,
+      } satisfies ErrorPayload;
+      if (jsonMode) {
+        writeComputerStdout(`${JSON.stringify(payload, null, 2)}\n`);
+      } else {
+        formatError(payload);
+      }
+      return 1;
+    }
+
+    const parsed = parseJson<
+      | SnapshotDocument
+      | ActionPayload
+      | ListAppsPayload
+      | ListWindowsPayload
+      | ErrorPayload
+    >(result.stdout);
+    const stateUpdated =
+      effectiveCommand === "snapshot" ||
+      (!deferredObservation &&
+        (parsed as ActionPayload).stateUpdated !== false);
+
+    if (parsed.ok && !isListCommand && stateUpdated) {
+      syncSessionTargetSnapshot(sessionPaths, statePathForCommand);
+    }
+
+    const currentSnapshotForDiff =
+      parsed.ok && !isListCommand && stateUpdated
+        ? (readSnapshotDocument(statePathForCommand) ??
+          (effectiveCommand === "snapshot"
+            ? (parsed as SnapshotDocument)
+            : null))
+        : null;
+    const stateDiff =
+      currentSnapshotForDiff && !isListCommand && !disableDiff
+        ? snapshotDiff(previousSnapshotForDiff, currentSnapshotForDiff)
+        : null;
+
+    if (jsonMode) {
+      const jsonPayload = stateDiff ? { ...parsed, stateDiff } : parsed;
+      writeComputerStdout(`${JSON.stringify(jsonPayload, null, 2)}\n`);
+      return result.status === 0 ? 0 : 1;
+    }
+
+    if (!parsed.ok) {
+      formatError(parsed as ErrorPayload);
+      return 1;
+    }
+
+    if (effectiveCommand === "list-apps") {
+      formatListApps(parsed as ListAppsPayload);
+    } else if (effectiveCommand === "list-windows") {
+      formatListWindows(parsed as ListWindowsPayload);
+    } else if (effectiveCommand === "snapshot") {
+      formatSnapshot(
+        readSnapshotDocument(statePathForCommand) ??
+          (parsed as SnapshotDocument),
+      );
+    } else {
+      formatAction(parsed as ActionPayload, currentSnapshotForDiff, stateDiff);
+    }
+
+    return 0;
+  } finally {
+    if (lockedUseLeaseOpened) {
+      await endLockedUseLease(sessionPaths);
+    }
+    releaseLocks?.();
+  }
+};
+
+export type StellaComputerExecutionResult = {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+};
+
+export type StellaComputerExecutionOptions = ComputerExecutionContextOptions & {
+  timeoutMs?: number;
+};
+
+export const shutdownMacStellaComputerSession = (
+  sessionId: string,
+): boolean => {
+  if (process.platform !== "darwin") return false;
+  const sanitized = sanitizeStellaComputerSessionId(sessionId);
+  if (!sanitized) return false;
+  const sessionPaths = resolveSessionPaths(sanitized);
+  const pid = readPidFile(automationPidPath(sessionPaths));
+  if (pid && pidIsRunning(pid)) killDetachedProcess(pid);
+  resetAutomationDaemonFiles(sessionPaths);
+  return pid !== null;
+};
+
+const SUPPORTED_COMMANDS = new Set([
+  "list-apps",
+  "list-windows",
+  "snapshot",
+  "get-state",
+  "click",
+  "fill",
+  "select-text",
+  "focus",
+  "secondary-action",
+  "perform-secondary-action",
+  "scroll",
+  "drag",
+  "drag-element",
+  "click-point",
+  "click-screenshot",
+  "drag-screenshot",
+  "type",
+  "press",
+]);
+
+const executeArgv = async (rawArgv: string[]): Promise<number> => {
+  const {
+    value: sessionOverride,
+    args: argv,
+    missingValue: missingSessionValue,
+  } = stripOptionValue(rawArgv, "--session");
+
+  if (missingSessionValue) {
+    writeComputerStderr("--session requires a value.\n");
+    return 1;
+  }
+
+  if (process.platform === "win32") {
+    return await runWindowsStellaComputer(
+      argv,
+      argv.includes("--json"),
+      sessionOverride,
+    );
+  }
+
+  if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
+    writeComputerStdout(usage);
+    return 0;
+  }
+
+  if (process.platform !== "darwin") {
+    writeComputerStderr(
+      "stella-computer is currently only available on macOS.\n",
+    );
+    return 1;
+  }
+
+  const command = argv[0]!;
+  const restArgs = argv.slice(1);
+  const { found: jsonMode, args: plainArgs } = stripFlag(restArgs, "--json");
+
+  if (command === "locked-use") {
+    return await runLockedUseManagementCommand(plainArgs[0], jsonMode);
+  }
+  if (!SUPPORTED_COMMANDS.has(command)) {
+    writeComputerStderr(`Unknown command: ${command}\n\n${usage}`);
+    return 1;
+  }
+  return await runCommand(command, plainArgs, jsonMode, sessionOverride);
+};
+
+export const executeStellaComputerCommand = async (
+  argv: string[],
+  options: StellaComputerExecutionOptions = {},
+): Promise<StellaComputerExecutionResult> => {
+  const controller = new AbortController();
+  const onAbort = () =>
+    controller.abort(
+      options.signal?.reason instanceof Error
+        ? options.signal.reason
+        : new Error("Computer command aborted."),
+    );
+  options.signal?.addEventListener("abort", onAbort, { once: true });
+  if (options.signal?.aborted) onAbort();
+  const timeout =
+    options.timeoutMs && options.timeoutMs > 0
+      ? setTimeout(
+          () =>
+            controller.abort(
+              new Error(
+                `Computer command timed out after ${options.timeoutMs}ms.`,
+              ),
+            ),
+          options.timeoutMs,
+        )
+      : null;
+  timeout?.unref();
+
+  try {
+    return await runWithComputerExecutionContext(
+      { ...options, signal: controller.signal },
+      async () => {
+        try {
+          return await executeArgv([...argv]);
+        } catch (error) {
+          if (error instanceof StellaComputerExitError) return error.exitCode;
+          writeComputerStderr(
+            `${error instanceof Error ? error.message : String(error)}\n`,
+          );
+          return 1;
+        }
+      },
+    ).then(({ value, stdout, stderr }) => ({
+      exitCode: value,
+      stdout,
+      stderr,
+    }));
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", onAbort);
+  }
+};

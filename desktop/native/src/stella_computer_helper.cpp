@@ -12,11 +12,15 @@
 #include <tlhelp32.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -322,9 +326,40 @@ struct Snapshot {
     std::vector<std::string> warnings;
     std::string captureMethod;
     bool captureOccluded = false;
+    int screenshotWidth = 0;
+    int screenshotHeight = 0;
+    std::string appInstructions;
+    unsigned long long revision = 0;
+    unsigned long long materializedRevision = 0;
+    bool cacheHit = false;
+    std::string cacheKey;
+    int pendingActionCount = 0;
+    std::string screenshotPolicy = "always";
+    bool uiaEventsObserved = false;
+    bool elementCacheValidated = false;
+    int settleWaitedMs = 0;
+    int settleEventCount = 0;
+    bool settleTimedOut = false;
+    unsigned long long settleBaselineRevision = 0;
+    unsigned long long settleFinalRevision = 0;
 };
 
-static const int postActionSettleMs = 120;
+static const int screenshotLongEdgeCapPx = 1024;
+static const int adaptiveQuietMs = 140;
+static const int adaptiveSettleTimeoutMs = 5000;
+static bool processPerMonitorDpiAware = false;
+
+static bool enablePerMonitorDpiAwareness() {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (user32) {
+        typedef BOOL (WINAPI *SetProcessDpiAwarenessContextFn)(DPI_AWARENESS_CONTEXT);
+        SetProcessDpiAwarenessContextFn setContext =
+            reinterpret_cast<SetProcessDpiAwarenessContextFn>(
+                GetProcAddress(user32, "SetProcessDpiAwarenessContext"));
+        if (setContext && setContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) return true;
+    }
+    return !!SetProcessDPIAware();
+}
 
 static bool envFlag(const char* name) {
     char buffer[32] = {};
@@ -333,6 +368,37 @@ static bool envFlag(const char* name) {
     std::string v(buffer);
     std::transform(v.begin(), v.end(), v.begin(), ::tolower);
     return v == "1" || v == "true" || v == "yes" || v == "on";
+}
+
+static std::string readUtf8File(const std::wstring& path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return "";
+    std::ostringstream buffer;
+    buffer << input.rdbuf();
+    return buffer.str();
+}
+
+static std::string appInstructionsFor(const std::wstring& processName) {
+    wchar_t directory[32768] = {};
+    DWORD length = GetEnvironmentVariableW(
+        L"STELLA_COMPUTER_APP_INSTRUCTIONS_DIR",
+        directory,
+        (DWORD)(sizeof(directory) / sizeof(directory[0])));
+    if (length == 0 || length >= sizeof(directory) / sizeof(directory[0])) return "";
+
+    std::wstring safeName = processName;
+    size_t slash = safeName.find_last_of(L"\\/");
+    if (slash != std::wstring::npos) safeName = safeName.substr(slash + 1);
+    std::vector<std::wstring> candidates = {safeName + L".md"};
+    size_t dot = safeName.find_last_of(L'.');
+    if (dot != std::wstring::npos) candidates.push_back(safeName.substr(0, dot) + L".md");
+    for (const std::wstring& candidate : candidates) {
+        std::wstring path = directory;
+        if (!path.empty() && path.back() != L'\\' && path.back() != L'/') path += L'\\';
+        std::string contents = readUtf8File(path + candidate);
+        if (!contents.empty()) return contents;
+    }
+    return "";
 }
 
 static std::wstring lowerW(std::wstring value) {
@@ -922,6 +988,12 @@ static std::string frameJson(const Frame& frame) {
 static const size_t MAX_TREE_ELEMENTS = 3000;
 static const int MAX_TREE_DEPTH = 24;
 
+static std::string runtimeIdKey(const std::vector<int>& runtimeId) {
+    std::ostringstream key;
+    for (int value : runtimeId) key << value << ".";
+    return key.str();
+}
+
 static void appendTreeLine(const ElementRecord& record, int depth, std::vector<std::string>& lines) {
     std::wstring role = !record.localizedControlType.empty() ? record.localizedControlType : record.controlType;
     std::wstring title = elementTitle(record);
@@ -951,12 +1023,11 @@ static void appendTreeLine(const ElementRecord& record, int depth, std::vector<s
 
 static void renderTreeVisit(IUIAutomation* uia, IUIAutomationElement* node, int depth, const Frame& windowFrame,
                             std::set<std::string>& visited, std::vector<ElementRecord>& records,
-                            std::vector<std::string>& lines) {
+                            std::vector<std::string>& lines,
+                            std::map<std::string, IUIAutomationElement*>* liveElements = nullptr) {
     if (!node || records.size() >= MAX_TREE_ELEMENTS || depth > MAX_TREE_DEPTH) return;
     std::vector<int> runtime = getRuntimeId(node);
-    std::ostringstream key;
-    for (int value : runtime) key << value << ".";
-    std::string runtimeKey = key.str();
+    std::string runtimeKey = runtimeIdKey(runtime);
     if (runtimeKey.empty()) runtimeKey = std::to_string((uintptr_t)node);
     if (!visited.insert(runtimeKey).second) return;
 
@@ -964,6 +1035,10 @@ static void renderTreeVisit(IUIAutomation* uia, IUIAutomationElement* node, int 
     ElementRecord record = elementRecord(node, index, windowFrame);
     records.push_back(record);
     appendTreeLine(record, depth, lines);
+    if (liveElements && !runtimeKey.empty()) {
+        node->AddRef();
+        (*liveElements)[runtimeKey] = node;
+    }
 
     IUIAutomationCondition* condition = nullptr;
     IUIAutomationElementArray* children = nullptr;
@@ -974,7 +1049,7 @@ static void renderTreeVisit(IUIAutomation* uia, IUIAutomationElement* node, int 
         for (int i = 0; i < length; i++) {
             IUIAutomationElement* child = nullptr;
             if (SUCCEEDED(children->GetElement(i, &child))) {
-                renderTreeVisit(uia, child, depth + 1, windowFrame, visited, records, lines);
+                renderTreeVisit(uia, child, depth + 1, windowFrame, visited, records, lines, liveElements);
             }
             safeRelease(child);
         }
@@ -1015,13 +1090,31 @@ static std::string base64Encode(const std::vector<BYTE>& bytes) {
     return out;
 }
 
-static std::string encodeBitmapPngBase64(HBITMAP bitmap) {
+static std::string encodeBitmapPngBase64(HBITMAP bitmap, int* widthOut = nullptr, int* heightOut = nullptr) {
     std::string out;
     Gdiplus::Bitmap gdipBitmap(bitmap, NULL);
+    UINT sourceWidth = gdipBitmap.GetWidth();
+    UINT sourceHeight = gdipBitmap.GetHeight();
+    UINT outputWidth = sourceWidth;
+    UINT outputHeight = sourceHeight;
+    std::unique_ptr<Gdiplus::Bitmap> scaled;
+    int longEdge = (int)std::max(sourceWidth, sourceHeight);
+    if (longEdge > screenshotLongEdgeCapPx) {
+        double scale = (double)screenshotLongEdgeCapPx / (double)longEdge;
+        outputWidth = (UINT)std::max(1.0, std::round(sourceWidth * scale));
+        outputHeight = (UINT)std::max(1.0, std::round(sourceHeight * scale));
+        scaled.reset(new Gdiplus::Bitmap(outputWidth, outputHeight, PixelFormat32bppARGB));
+        Gdiplus::Graphics graphics(scaled.get());
+        graphics.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
+        graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+        graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
+        graphics.DrawImage(&gdipBitmap, 0, 0, outputWidth, outputHeight);
+    }
+    Gdiplus::Bitmap* encodedBitmap = scaled ? scaled.get() : &gdipBitmap;
     CLSID clsid = {};
     IStream* stream = nullptr;
     if (pngEncoderClsid(&clsid) >= 0 && SUCCEEDED(CreateStreamOnHGlobal(NULL, TRUE, &stream))) {
-        if (gdipBitmap.Save(stream, &clsid, NULL) == Gdiplus::Ok) {
+        if (encodedBitmap->Save(stream, &clsid, NULL) == Gdiplus::Ok) {
             STATSTG stat = {};
             if (SUCCEEDED(stream->Stat(&stat, STATFLAG_NONAME))) {
                 LARGE_INTEGER zero = {};
@@ -1036,6 +1129,10 @@ static std::string encodeBitmapPngBase64(HBITMAP bitmap) {
         }
     }
     safeRelease(stream);
+    if (!out.empty()) {
+        if (widthOut) *widthOut = (int)outputWidth;
+        if (heightOut) *heightOut = (int)outputHeight;
+    }
     return out;
 }
 
@@ -1082,7 +1179,7 @@ static bool isWindowLikelyOccluded(HWND hwnd, const Frame& bounds) {
     return false;
 }
 
-static std::string captureScreenRegionPngBase64(const Frame& bounds) {
+static std::string captureScreenRegionPngBase64(const Frame& bounds, int* widthOut, int* heightOut) {
     if (!bounds.present || bounds.width <= 0 || bounds.height <= 0) return "";
     int width = std::max(1, (int)std::round(bounds.width));
     int height = std::max(1, (int)std::round(bounds.height));
@@ -1094,7 +1191,7 @@ static std::string captureScreenRegionPngBase64(const Frame& bounds) {
 
     std::string out;
     if (ok) {
-        out = encodeBitmapPngBase64(bitmap);
+        out = encodeBitmapPngBase64(bitmap, widthOut, heightOut);
     }
 
     SelectObject(mem, old);
@@ -1104,7 +1201,7 @@ static std::string captureScreenRegionPngBase64(const Frame& bounds) {
     return out;
 }
 
-static std::string capturePrintWindowPngBase64(HWND hwnd, const Frame& bounds) {
+static std::string capturePrintWindowPngBase64(HWND hwnd, const Frame& bounds, int* widthOut, int* heightOut) {
     if (!hwnd || !bounds.present || bounds.width <= 0 || bounds.height <= 0) return "";
     int width = std::max(1, (int)std::round(bounds.width));
     int height = std::max(1, (int)std::round(bounds.height));
@@ -1119,7 +1216,7 @@ static std::string capturePrintWindowPngBase64(HWND hwnd, const Frame& bounds) {
 
     std::string out;
     if (ok && !sampledBitmapLooksBlack(mem, width, height)) {
-        out = encodeBitmapPngBase64(bitmap);
+        out = encodeBitmapPngBase64(bitmap, widthOut, heightOut);
     }
 
     SelectObject(mem, old);
@@ -1129,14 +1226,15 @@ static std::string capturePrintWindowPngBase64(HWND hwnd, const Frame& bounds) {
     return out;
 }
 
-static std::string captureWindowPngBase64(HWND hwnd, const Frame& bounds, std::string* methodOut = nullptr) {
-    std::string out = capturePrintWindowPngBase64(hwnd, bounds);
+static std::string captureWindowPngBase64(HWND hwnd, const Frame& bounds, std::string* methodOut = nullptr,
+                                          int* widthOut = nullptr, int* heightOut = nullptr) {
+    std::string out = capturePrintWindowPngBase64(hwnd, bounds, widthOut, heightOut);
     if (!out.empty()) {
         if (methodOut) *methodOut = "printwindow";
         return out;
     }
     if (methodOut) *methodOut = "bitblt";
-    return captureScreenRegionPngBase64(bounds);
+    return captureScreenRegionPngBase64(bounds, widthOut, heightOut);
 }
 
 static std::wstring focusedSummary(IUIAutomation* uia, DWORD pid) {
@@ -1186,29 +1284,370 @@ static std::wstring selectedText(IUIAutomation* uia, DWORD pid) {
     return out;
 }
 
-static Snapshot buildSnapshot(IUIAutomation* uia, const std::wstring& query, long long windowId = 0) {
-    WindowProcess process = resolveApp(uia, query, windowId);
+class TargetEventTracker : public IUIAutomationStructureChangedEventHandler,
+                           public IUIAutomationPropertyChangedEventHandler,
+                           public IUIAutomationEventHandler {
+public:
+    std::atomic<ULONG> references{1};
+    std::atomic<unsigned long long> revision{0};
+    std::atomic<unsigned long long> eventCount{0};
+    std::atomic<unsigned long long> lastEventTickMs{0};
+
+    void recordMutation() {
+        revision.fetch_add(1, std::memory_order_relaxed);
+        eventCount.fetch_add(1, std::memory_order_relaxed);
+        lastEventTickMs.store(GetTickCount64(), std::memory_order_relaxed);
+    }
+
+    void invalidateForAction() {
+        revision.fetch_add(1, std::memory_order_relaxed);
+        lastEventTickMs.store(GetTickCount64(), std::memory_order_relaxed);
+    }
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** object) override {
+        if (!object) return E_POINTER;
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IUIAutomationStructureChangedEventHandler)) {
+            *object = static_cast<IUIAutomationStructureChangedEventHandler*>(this);
+        } else if (riid == __uuidof(IUIAutomationPropertyChangedEventHandler)) {
+            *object = static_cast<IUIAutomationPropertyChangedEventHandler*>(this);
+        } else if (riid == __uuidof(IUIAutomationEventHandler)) {
+            *object = static_cast<IUIAutomationEventHandler*>(this);
+        } else {
+            *object = nullptr;
+            return E_NOINTERFACE;
+        }
+        AddRef();
+        return S_OK;
+    }
+
+    ULONG STDMETHODCALLTYPE AddRef() override { return references.fetch_add(1) + 1; }
+    ULONG STDMETHODCALLTYPE Release() override {
+        ULONG remaining = references.fetch_sub(1) - 1;
+        if (!remaining) delete this;
+        return remaining;
+    }
+    HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(
+        IUIAutomationElement*, StructureChangeType, SAFEARRAY*) override {
+        recordMutation();
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(
+        IUIAutomationElement*, PROPERTYID, VARIANT) override {
+        recordMutation();
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE HandleAutomationEvent(IUIAutomationElement*, EVENTID) override {
+        recordMutation();
+        return S_OK;
+    }
+};
+
+struct TargetState {
+    WindowProcess process;
     IUIAutomationElement* root = nullptr;
-    HRESULT hr = uia->ElementFromHandle(process.hwnd, &root);
-    if (FAILED(hr) || !root) {
+    TargetEventTracker* tracker = nullptr;
+    std::map<std::string, IUIAutomationElement*> liveElements;
+    Snapshot cachedSnapshot;
+    bool hasSnapshot = false;
+    unsigned long long materializedRevision = 0;
+    unsigned long long pendingBaselineRevision = 0;
+    unsigned long long pendingBaselineEventCount = 0;
+    int pendingActionCount = 0;
+    bool visualContextNeeded = false;
+    bool handlersInstalled = false;
+
+    void clearLiveElements() {
+        for (auto& item : liveElements) safeRelease(item.second);
+        liveElements.clear();
+    }
+};
+
+static std::map<long long, std::unique_ptr<TargetState>> targetStates;
+
+static void detachTargetHandlers(IUIAutomation* uia, TargetState& state) {
+    if (!state.handlersInstalled || !state.root || !state.tracker) return;
+    uia->RemoveStructureChangedEventHandler(
+        state.root,
+        static_cast<IUIAutomationStructureChangedEventHandler*>(state.tracker));
+    uia->RemovePropertyChangedEventHandler(
+        state.root,
+        static_cast<IUIAutomationPropertyChangedEventHandler*>(state.tracker));
+    const EVENTID events[] = {
+        UIA_LayoutInvalidatedEventId,
+        UIA_Text_TextChangedEventId,
+        UIA_Selection_InvalidatedEventId,
+    };
+    for (EVENTID eventId : events) {
+        uia->RemoveAutomationEventHandler(
+            eventId,
+            state.root,
+            static_cast<IUIAutomationEventHandler*>(state.tracker));
+    }
+    state.handlersInstalled = false;
+}
+
+static void releaseTargetState(IUIAutomation* uia, TargetState& state) {
+    detachTargetHandlers(uia, state);
+    state.clearLiveElements();
+    safeRelease(state.root);
+    if (state.tracker) state.tracker->Release();
+    state.tracker = nullptr;
+}
+
+static void releaseAllTargetStates(IUIAutomation* uia) {
+    for (auto& item : targetStates) releaseTargetState(uia, *item.second);
+    targetStates.clear();
+}
+
+static bool validateTargetState(TargetState& state, const WindowProcess& process) {
+    if (!state.root || !IsWindow(process.hwnd) || process.hwnd != state.process.hwnd || process.pid != state.process.pid) {
+        return false;
+    }
+    int rootPid = 0;
+    UIA_HWND rootHwnd = NULL;
+    return SUCCEEDED(state.root->get_CurrentProcessId(&rootPid)) &&
+           SUCCEEDED(state.root->get_CurrentNativeWindowHandle(&rootHwnd)) &&
+           (DWORD)rootPid == process.pid && (HWND)(intptr_t)rootHwnd == process.hwnd;
+}
+
+static void installTargetHandlers(IUIAutomation* uia, TargetState& state) {
+    state.tracker = new TargetEventTracker();
+    HRESULT structureResult = uia->AddStructureChangedEventHandler(
+        state.root,
+        TreeScope_Subtree,
+        nullptr,
+        static_cast<IUIAutomationStructureChangedEventHandler*>(state.tracker));
+    PROPERTYID properties[] = {
+        UIA_NamePropertyId,
+        UIA_ValueValuePropertyId,
+        UIA_BoundingRectanglePropertyId,
+        UIA_IsOffscreenPropertyId,
+        UIA_IsEnabledPropertyId,
+        UIA_HasKeyboardFocusPropertyId,
+        UIA_ExpandCollapseExpandCollapseStatePropertyId,
+        UIA_ToggleToggleStatePropertyId,
+        UIA_SelectionItemIsSelectedPropertyId,
+    };
+    HRESULT propertyResult = uia->AddPropertyChangedEventHandlerNativeArray(
+        state.root,
+        TreeScope_Subtree,
+        nullptr,
+        static_cast<IUIAutomationPropertyChangedEventHandler*>(state.tracker),
+        properties,
+        (int)(sizeof(properties) / sizeof(properties[0])));
+    const EVENTID events[] = {
+        UIA_LayoutInvalidatedEventId,
+        UIA_Text_TextChangedEventId,
+        UIA_Selection_InvalidatedEventId,
+    };
+    bool automationInstalled = false;
+    for (EVENTID eventId : events) {
+        if (SUCCEEDED(uia->AddAutomationEventHandler(
+                eventId,
+                state.root,
+                TreeScope_Subtree,
+                nullptr,
+                static_cast<IUIAutomationEventHandler*>(state.tracker)))) {
+            automationInstalled = true;
+        }
+    }
+    state.handlersInstalled = SUCCEEDED(structureResult) || SUCCEEDED(propertyResult) || automationInstalled;
+}
+
+static TargetState& targetStateFor(IUIAutomation* uia, const WindowProcess& process) {
+    long long key = hwndValue(process.hwnd);
+    auto existing = targetStates.find(key);
+    if (existing != targetStates.end() && !validateTargetState(*existing->second, process)) {
+        releaseTargetState(uia, *existing->second);
+        targetStates.erase(existing);
+        existing = targetStates.end();
+    }
+    if (existing != targetStates.end()) {
+        existing->second->process = process;
+        return *existing->second;
+    }
+
+    std::unique_ptr<TargetState> state(new TargetState());
+    state->process = process;
+    if (FAILED(uia->ElementFromHandle(process.hwnd, &state->root)) || !state->root) {
         throw std::runtime_error("No top-level UI Automation window is available for " + toUtf8(process.processName));
     }
-    Snapshot snapshot;
-    snapshot.appName = process.processName;
-    snapshot.pid = process.pid;
-    snapshot.windowId = hwndValue(process.hwnd);
-    snapshot.windowTitle = process.title;
-    snapshot.windowBounds = windowBounds(process.hwnd, root);
-    std::set<std::string> visited;
-    renderTreeVisit(uia, root, 0, snapshot.windowBounds, visited, snapshot.elements, snapshot.treeLines);
-    snapshot.screenshotBase64 = captureWindowPngBase64(process.hwnd, snapshot.windowBounds, &snapshot.captureMethod);
-    snapshot.captureOccluded = snapshot.captureMethod == "bitblt" && isWindowLikelyOccluded(process.hwnd, snapshot.windowBounds);
+    installTargetHandlers(uia, *state);
+    TargetState& result = *state;
+    targetStates[key] = std::move(state);
+    return result;
+}
+
+struct AdaptiveSettle {
+    bool observed = false;
+    int waitedMs = 0;
+    int eventCount = 0;
+    bool timedOut = false;
+    unsigned long long baselineRevision = 0;
+    unsigned long long finalRevision = 0;
+    int pendingActionCount = 0;
+};
+
+static bool targetShowsLoading(IUIAutomation* uia, TargetState& state) {
+    VARIANT value;
+    VariantInit(&value);
+    value.vt = VT_I4;
+    value.lVal = UIA_ProgressBarControlTypeId;
+    IUIAutomationCondition* condition = nullptr;
+    IUIAutomationElement* progress = nullptr;
+    bool loading = false;
+    if (SUCCEEDED(uia->CreatePropertyCondition(UIA_ControlTypePropertyId, value, &condition)) && condition &&
+        SUCCEEDED(state.root->FindFirst(TreeScope_Subtree, condition, &progress)) && progress) {
+        BOOL offscreen = TRUE;
+        loading = FAILED(progress->get_CurrentIsOffscreen(&offscreen)) || !offscreen;
+    }
+    safeRelease(progress);
+    safeRelease(condition);
+    VariantClear(&value);
+    return loading;
+}
+
+static AdaptiveSettle waitForTargetQuiet(
+    IUIAutomation* uia,
+    TargetState& state,
+    unsigned long long baselineRevision,
+    unsigned long long baselineEventCount) {
+    AdaptiveSettle settle;
+    settle.observed = state.handlersInstalled;
+    settle.baselineRevision = baselineRevision;
+    settle.pendingActionCount = state.pendingActionCount;
+    unsigned long long start = GetTickCount64();
+    unsigned long long deadline = start + adaptiveSettleTimeoutMs;
+    unsigned long long nextLoadingCheck = start;
+    bool loading = false;
+    Sleep(state.pendingActionCount > 0 ? 700 : 60);
+    while (true) {
+        unsigned long long now = GetTickCount64();
+        unsigned long long revision = state.tracker ? state.tracker->revision.load() : baselineRevision;
+        unsigned long long lastEvent = state.tracker ? state.tracker->lastEventTickMs.load() : start;
+        if (now >= nextLoadingCheck) {
+            loading = targetShowsLoading(uia, state);
+            nextLoadingCheck = now + 100;
+        }
+        bool changed = revision > baselineRevision;
+        bool quiet = !changed || now >= lastEvent + adaptiveQuietMs;
+        if (quiet && !loading) break;
+        if (now >= deadline) {
+            settle.timedOut = true;
+            break;
+        }
+        Sleep(20);
+    }
+    settle.waitedMs = (int)(GetTickCount64() - start);
+    settle.finalRevision = state.tracker ? state.tracker->revision.load() : baselineRevision;
+    unsigned long long totalEvents = state.tracker ? state.tracker->eventCount.load() : baselineEventCount;
+    settle.eventCount = (int)(totalEvents >= baselineEventCount ? totalEvents - baselineEventCount : 0);
+    return settle;
+}
+
+static void captureSnapshotImage(Snapshot& snapshot, HWND hwnd) {
+    snapshot.screenshotBase64 = captureWindowPngBase64(
+        hwnd,
+        snapshot.windowBounds,
+        &snapshot.captureMethod,
+        &snapshot.screenshotWidth,
+        &snapshot.screenshotHeight);
+    snapshot.captureOccluded = snapshot.captureMethod == "bitblt" && isWindowLikelyOccluded(hwnd, snapshot.windowBounds);
     if (snapshot.captureOccluded) {
         snapshot.warnings.push_back("Screenshot used screen-region capture while another window appears to overlap the target; pixels may include the covering window.");
     }
-    snapshot.focusedSummary = focusedSummary(uia, process.pid);
-    snapshot.selectedText = selectedText(uia, process.pid);
-    safeRelease(root);
+}
+
+static Snapshot materializeSnapshot(IUIAutomation* uia, TargetState& state, const std::string& screenshotPolicy) {
+    Snapshot snapshot;
+    snapshot.appName = state.process.processName;
+    snapshot.pid = state.process.pid;
+    snapshot.windowId = hwndValue(state.process.hwnd);
+    snapshot.windowTitle = getWindowText(state.process.hwnd);
+    snapshot.windowBounds = windowBounds(state.process.hwnd, state.root);
+    snapshot.appInstructions = appInstructionsFor(state.process.processName);
+    snapshot.cacheKey = "hwnd:" + std::to_string(snapshot.windowId);
+    snapshot.screenshotPolicy = screenshotPolicy;
+    snapshot.uiaEventsObserved = state.handlersInstalled;
+    state.clearLiveElements();
+    std::set<std::string> visited;
+    renderTreeVisit(
+        uia,
+        state.root,
+        0,
+        snapshot.windowBounds,
+        visited,
+        snapshot.elements,
+        snapshot.treeLines,
+        &state.liveElements);
+    snapshot.focusedSummary = focusedSummary(uia, state.process.pid);
+    snapshot.selectedText = selectedText(uia, state.process.pid);
+    bool capture = screenshotPolicy == "always" ||
+                   (screenshotPolicy == "auto" && (state.visualContextNeeded || snapshot.elements.size() < 3));
+    if (capture) captureSnapshotImage(snapshot, state.process.hwnd);
+    unsigned long long revision = state.tracker ? state.tracker->revision.load() : 0;
+    snapshot.revision = revision;
+    snapshot.materializedRevision = revision;
+    snapshot.pendingActionCount = state.pendingActionCount;
+    snapshot.elementCacheValidated = true;
+    state.materializedRevision = revision;
+    state.cachedSnapshot = snapshot;
+    state.hasSnapshot = true;
+    return snapshot;
+}
+
+static Snapshot snapshotForTarget(IUIAutomation* uia, TargetState& state, const std::string& screenshotPolicy) {
+    unsigned long long revision = state.tracker ? state.tracker->revision.load() : 0;
+    if (!state.hasSnapshot || state.materializedRevision != revision) {
+        return materializeSnapshot(uia, state, screenshotPolicy);
+    }
+    Snapshot snapshot = state.cachedSnapshot;
+    snapshot.cacheHit = true;
+    snapshot.revision = revision;
+    snapshot.materializedRevision = state.materializedRevision;
+    snapshot.pendingActionCount = state.pendingActionCount;
+    snapshot.screenshotPolicy = screenshotPolicy;
+    snapshot.screenshotBase64.clear();
+    snapshot.captureMethod.clear();
+    snapshot.captureOccluded = false;
+    snapshot.warnings.clear();
+    snapshot.screenshotWidth = 0;
+    snapshot.screenshotHeight = 0;
+    bool capture = screenshotPolicy == "always" ||
+                   (screenshotPolicy == "auto" && state.visualContextNeeded);
+    if (capture) captureSnapshotImage(snapshot, state.process.hwnd);
+    return snapshot;
+}
+
+static Snapshot buildSnapshot(
+    IUIAutomation* uia,
+    const std::wstring& query,
+    long long windowId = 0,
+    const std::string& screenshotPolicy = "always",
+    AdaptiveSettle* settleOut = nullptr) {
+    WindowProcess process = resolveApp(uia, query, windowId);
+    TargetState& state = targetStateFor(uia, process);
+    AdaptiveSettle pendingSettle;
+    bool settledPendingActions = false;
+    if (state.pendingActionCount > 0) {
+        pendingSettle = waitForTargetQuiet(
+            uia,
+            state,
+            state.pendingBaselineRevision,
+            state.pendingBaselineEventCount);
+        settledPendingActions = true;
+        if (settleOut) *settleOut = pendingSettle;
+    }
+    Snapshot snapshot = snapshotForTarget(uia, state, screenshotPolicy);
+    if (settledPendingActions) {
+        snapshot.settleWaitedMs = pendingSettle.waitedMs;
+        snapshot.settleEventCount = pendingSettle.eventCount;
+        snapshot.settleTimedOut = pendingSettle.timedOut;
+        snapshot.settleBaselineRevision = pendingSettle.baselineRevision;
+        snapshot.settleFinalRevision = pendingSettle.finalRevision;
+    }
+    state.pendingActionCount = 0;
+    state.visualContextNeeded = false;
     return snapshot;
 }
 
@@ -1288,6 +1727,23 @@ static IUIAutomationElement* findElement(IUIAutomation* uia, IUIAutomationElemen
     }
     for (IUIAutomationElement* element : all) element->Release();
     return nullptr;
+}
+
+static IUIAutomationElement* findValidatedCachedElement(TargetState& state, const Json* recordJson) {
+    std::vector<int> wantedRuntime = parseRuntimeId(recordJson);
+    if (wantedRuntime.empty()) return nullptr;
+    auto cached = state.liveElements.find(runtimeIdKey(wantedRuntime));
+    if (cached == state.liveElements.end() || !cached->second) return nullptr;
+    int pid = 0;
+    if (FAILED(cached->second->get_CurrentProcessId(&pid)) ||
+        (DWORD)pid != state.process.pid ||
+        !sameRuntimeId(getRuntimeId(cached->second), wantedRuntime)) {
+        safeRelease(cached->second);
+        state.liveElements.erase(cached);
+        return nullptr;
+    }
+    cached->second->AddRef();
+    return cached->second;
 }
 
 static POINT screenPointFromFrame(const Frame& local, const Frame& window) {
@@ -1755,6 +2211,94 @@ static void invokeSecondaryAction(IUIAutomationElement* element, const std::stri
     throw std::runtime_error(action + " is not a valid secondary action for " + std::to_string(index));
 }
 
+static void selectExactText(
+    IUIAutomationElement* element,
+    const std::wstring& exactText,
+    const std::wstring& prefix,
+    const std::wstring& suffix,
+    const std::string& selectionMode) {
+    if (!element) throw std::runtime_error("select-text target element is unavailable");
+    IUIAutomationTextPattern* pattern = getPattern<IUIAutomationTextPattern>(element, UIA_TextPatternId);
+    if (!pattern) {
+        throw std::runtime_error("select-text requires a UIA TextPattern-capable element");
+    }
+    IUIAutomationTextRange* document = nullptr;
+    BSTR documentText = nullptr;
+    HRESULT hr = pattern->get_DocumentRange(&document);
+    if (SUCCEEDED(hr) && document) hr = document->GetText(-1, &documentText);
+    if (FAILED(hr) || !document || !documentText) {
+        if (documentText) SysFreeString(documentText);
+        safeRelease(document);
+        safeRelease(pattern);
+        throw std::runtime_error("select-text could not read the UIA text document");
+    }
+    std::wstring fullText(documentText, SysStringLen(documentText));
+    SysFreeString(documentText);
+
+    std::vector<size_t> matches;
+    size_t searchFrom = 0;
+    while (searchFrom <= fullText.size()) {
+        size_t found = fullText.find(exactText, searchFrom);
+        if (found == std::wstring::npos) break;
+        bool prefixMatches = prefix.empty() ||
+            (found >= prefix.size() && fullText.compare(found - prefix.size(), prefix.size(), prefix) == 0);
+        size_t after = found + exactText.size();
+        bool suffixMatches = suffix.empty() ||
+            (after + suffix.size() <= fullText.size() && fullText.compare(after, suffix.size(), suffix) == 0);
+        if (prefixMatches && suffixMatches) matches.push_back(found);
+        searchFrom = found + std::max<size_t>(1, exactText.size());
+    }
+    if (matches.empty()) {
+        safeRelease(document);
+        safeRelease(pattern);
+        throw std::runtime_error("select-text could not find the exact text with the requested context");
+    }
+    if (matches.size() > 1) {
+        safeRelease(document);
+        safeRelease(pattern);
+        throw std::runtime_error("select-text matched more than once; provide --prefix or --suffix to disambiguate");
+    }
+
+    size_t matchStart = matches.front();
+    size_t matchEnd = matchStart + exactText.size();
+    size_t targetStart = selectionMode == "cursor-after" ? matchEnd : matchStart;
+    size_t targetEnd = selectionMode == "cursor-before" ? matchStart : matchEnd;
+    if (selectionMode != "text" && selectionMode != "cursor-before" && selectionMode != "cursor-after") {
+        safeRelease(document);
+        safeRelease(pattern);
+        throw std::runtime_error("select-text selection must be text, cursor-before, or cursor-after");
+    }
+
+    IUIAutomationTextRange* range = nullptr;
+    hr = document->Clone(&range);
+    if (SUCCEEDED(hr) && range) {
+        hr = range->MoveEndpointByRange(
+            TextPatternRangeEndpoint_End,
+            document,
+            TextPatternRangeEndpoint_Start);
+    }
+    int moved = 0;
+    if (SUCCEEDED(hr)) {
+        hr = range->MoveEndpointByUnit(
+            TextPatternRangeEndpoint_End,
+            TextUnit_Character,
+            (int)targetEnd,
+            &moved);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = range->MoveEndpointByUnit(
+            TextPatternRangeEndpoint_Start,
+            TextUnit_Character,
+            (int)targetStart,
+            &moved);
+    }
+    if (SUCCEEDED(hr)) hr = range->Select();
+    safeRelease(range);
+    safeRelease(document);
+    safeRelease(pattern);
+    if (FAILED(hr)) throw std::runtime_error("select-text could not set the requested UIA text range");
+}
+
 static bool invokeScroll(IUIAutomationElement* element, const std::string& direction, double pages) {
     IUIAutomationScrollPattern* scroll = getPattern<IUIAutomationScrollPattern>(element, UIA_ScrollPatternId);
     if (!scroll) return false;
@@ -1896,7 +2440,15 @@ static ActionProbe captureProbe() {
     return probe;
 }
 
-static std::string receiptJson(const ActionProbe& before, const std::string& route, const std::string& dispatch, int settleMs) {
+static std::string receiptJson(
+    const ActionProbe& before,
+    const std::string& route,
+    const std::string& dispatch,
+    const AdaptiveSettle* settle,
+    bool deferred,
+    unsigned long long baselineRevision,
+    unsigned long long finalRevision,
+    int pendingActionCount) {
     POINT after = {};
     bool afterKnown = !!GetCursorPos(&after);
     bool cursorMoved = !before.cursorKnown || !afterKnown || before.cursor.x != after.x || before.cursor.y != after.y;
@@ -1908,8 +2460,22 @@ static std::string receiptJson(const ActionProbe& before, const std::string& rou
         << ",\"cursor_moved\":" << (cursorMoved ? "true" : "false")
         << ",\"foreground_changed\":" << (foregroundChanged ? "true" : "false")
         << ",\"session\":\"parent\""
-        << ",\"settle\":{\"observed\":false,\"quietMs\":0,\"waitedMs\":" << settleMs
-        << ",\"eventCount\":0,\"timedOut\":false,\"reason\":\"fixed-post-action-delay\"}}";
+        << ",\"deferred\":" << (deferred ? "true" : "false")
+        << ",\"baselineRevision\":" << baselineRevision
+        << ",\"finalRevision\":" << finalRevision
+        << ",\"pendingActionCount\":" << pendingActionCount;
+    if (settle) {
+        out << ",\"settle\":{\"observed\":" << (settle->observed ? "true" : "false")
+            << ",\"quietMs\":" << adaptiveQuietMs
+            << ",\"waitedMs\":" << settle->waitedMs
+            << ",\"eventCount\":" << settle->eventCount
+            << ",\"timedOut\":" << (settle->timedOut ? "true" : "false")
+            << ",\"reason\":" << jsonString(settle->timedOut ? "uia-event-timeout" : "uia-event-quiet")
+            << ",\"baselineRevision\":" << settle->baselineRevision
+            << ",\"finalRevision\":" << settle->finalRevision
+            << ",\"pendingActionCount\":" << settle->pendingActionCount << "}";
+    }
+    out << "}";
     return out.str();
 }
 
@@ -1958,6 +2524,31 @@ static std::string snapshotJson(const Snapshot& snapshot) {
     out << ",\"selectedText\":";
     if (snapshot.selectedText.empty()) out << "null";
     else out << jsonString(toUtf8(snapshot.selectedText));
+    out << ",\"appInstructions\":";
+    if (snapshot.appInstructions.empty()) out << "null";
+    else out << jsonString(snapshot.appInstructions);
+    out << ",\"revision\":" << snapshot.revision
+        << ",\"materializedRevision\":" << snapshot.materializedRevision
+        << ",\"cacheHit\":" << (snapshot.cacheHit ? "true" : "false")
+        << ",\"cacheKey\":" << jsonString(snapshot.cacheKey)
+        << ",\"pendingActionCount\":" << snapshot.pendingActionCount
+        << ",\"screenshotPolicy\":" << jsonString(snapshot.screenshotPolicy)
+        << ",\"screenshot\":";
+    if (snapshot.screenshotWidth <= 0 || snapshot.screenshotHeight <= 0) {
+        out << "null";
+    } else {
+        out << "{\"widthPx\":" << snapshot.screenshotWidth
+            << ",\"heightPx\":" << snapshot.screenshotHeight << "}";
+    }
+    out << ",\"reliability\":{\"uiaEventsObserved\":" << (snapshot.uiaEventsObserved ? "true" : "false")
+        << ",\"elementCacheValidated\":" << (snapshot.elementCacheValidated ? "true" : "false")
+        << ",\"perMonitorDpiAware\":" << (processPerMonitorDpiAware ? "true" : "false")
+        << ",\"screenshotLongEdgeCapPx\":" << screenshotLongEdgeCapPx
+        << ",\"settleWaitedMs\":" << snapshot.settleWaitedMs
+        << ",\"settleEventCount\":" << snapshot.settleEventCount
+        << ",\"settleTimedOut\":" << (snapshot.settleTimedOut ? "true" : "false")
+        << ",\"settleBaselineRevision\":" << snapshot.settleBaselineRevision
+        << ",\"settleFinalRevision\":" << snapshot.settleFinalRevision << "}";
     out << ",\"warnings\":[";
     for (size_t i = 0; i < snapshot.warnings.size(); i++) {
         if (i) out << ",";
@@ -2221,6 +2812,19 @@ static int operationElementIndex(const Json& operation) {
     return element ? (int)element->num("index", -1) : -1;
 }
 
+static bool operationBool(const Json& operation, const std::string& key, bool fallback = false) {
+    const Json* value = operation.get(key);
+    return value && value->type == Json::Bool ? value->boolValue : fallback;
+}
+
+static std::string operationScreenshotPolicy(const Json& operation) {
+    std::string policy = operation.str("screenshot_policy", "always");
+    if (policy != "auto" && policy != "always" && policy != "never") {
+        throw std::runtime_error("screenshot_policy must be auto, always, or never");
+    }
+    return policy;
+}
+
 static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
     std::string tool = operation.str("tool");
     if (tool == "list_apps") {
@@ -2235,13 +2839,13 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
     std::wstring app = toWide(operation.str("app"));
     long long windowId = operationWindowId(operation);
     if (tool == "get_app_state") {
-        return okSnapshotJson(buildSnapshot(uia, app, windowId));
+        return okSnapshotJson(buildSnapshot(uia, app, windowId, operationScreenshotPolicy(operation)));
     }
     if (tool == "launch_app") {
         const Json* startMinimizedValue = operation.get("start_minimized");
         bool startMinimized = startMinimizedValue && startMinimizedValue->type == Json::Bool && startMinimizedValue->boolValue;
         WindowProcess launched = launchApp(uia, app, startMinimized);
-        Snapshot snapshot = buildSnapshot(uia, app, hwndValue(launched.hwnd));
+        Snapshot snapshot = buildSnapshot(uia, app, hwndValue(launched.hwnd), "always");
         std::ostringstream out;
         out << "{\"ok\":true,\"text\":"
             << jsonString("Launched " + toUtf8(launched.processName) + " target=hwnd:" + std::to_string(hwndValue(launched.hwnd)))
@@ -2251,14 +2855,14 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
     }
 
     WindowProcess process = resolveApp(uia, app, windowId);
-    IUIAutomationElement* root = nullptr;
-    if (FAILED(uia->ElementFromHandle(process.hwnd, &root)) || !root) {
-        throw std::runtime_error("No top-level UI Automation window is available for " + toUtf8(process.processName));
-    }
+    TargetState& targetState = targetStateFor(uia, process);
+    IUIAutomationElement* root = targetState.root;
+    root->AddRef();
     IUIAutomationElement* element = nullptr;
     try {
     const Json* elementJsonValue = operation.get("element");
-    element = findElement(uia, root, elementJsonValue);
+    element = findValidatedCachedElement(targetState, elementJsonValue);
+    if (!element) element = findElement(uia, root, elementJsonValue);
     Frame windowFrame = parseFrame(&operation);
     const Json* wb = operation.get("windowBounds");
     if (wb && wb->type == Json::Object) {
@@ -2271,6 +2875,8 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
         windowFrame = windowBounds(process.hwnd, root);
     }
     ActionProbe probe = captureProbe();
+    unsigned long long baselineRevision = targetState.tracker ? targetState.tracker->revision.load() : 0;
+    unsigned long long baselineEventCount = targetState.tracker ? targetState.tracker->eventCount.load() : 0;
     std::string route = "unknown";
     std::string dispatch = operation.str("dispatch", "background");
     if (dispatch != "background" && dispatch != "foreground" && dispatch != "auto") {
@@ -2290,8 +2896,12 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
             if (elementFrame.present && windowFrame.present) {
                 point = screenPointFromFrame(elementFrame, windowFrame);
             } else {
-                point.x = (LONG)std::round(windowFrame.x + operation.num("x"));
-                point.y = (LONG)std::round(windowFrame.y + operation.num("y"));
+                double screenshotWidth = operation.num("screenshot_width", windowFrame.width);
+                double screenshotHeight = operation.num("screenshot_height", windowFrame.height);
+                double scaleX = screenshotWidth > 0 ? windowFrame.width / screenshotWidth : 1.0;
+                double scaleY = screenshotHeight > 0 ? windowFrame.height / screenshotHeight : 1.0;
+                point.x = (LONG)std::round(windowFrame.x + operation.num("x") * scaleX);
+                point.y = (LONG)std::round(windowFrame.y + operation.num("y") * scaleY);
             }
             int clickCount = (int)operation.num("click_count", 1);
             if (button == "left" && clickCount == 1) {
@@ -2334,8 +2944,12 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
             }
         }
     } else if (tool == "drag") {
-        POINT from = {(LONG)std::round(windowFrame.x + operation.num("from_x")), (LONG)std::round(windowFrame.y + operation.num("from_y"))};
-        POINT to = {(LONG)std::round(windowFrame.x + operation.num("to_x")), (LONG)std::round(windowFrame.y + operation.num("to_y"))};
+        double screenshotWidth = operation.num("screenshot_width", windowFrame.width);
+        double screenshotHeight = operation.num("screenshot_height", windowFrame.height);
+        double scaleX = screenshotWidth > 0 ? windowFrame.width / screenshotWidth : 1.0;
+        double scaleY = screenshotHeight > 0 ? windowFrame.height / screenshotHeight : 1.0;
+        POINT from = {(LONG)std::round(windowFrame.x + operation.num("from_x") * scaleX), (LONG)std::round(windowFrame.y + operation.num("from_y") * scaleY)};
+        POINT to = {(LONG)std::round(windowFrame.x + operation.num("to_x") * scaleX), (LONG)std::round(windowFrame.y + operation.num("to_y") * scaleY)};
         if (shouldUseForegroundDispatch(process, "drag", dispatch)) {
             sendForegroundDrag(process.hwnd, from, to);
             route = "foreground.sendinput.drag";
@@ -2377,13 +2991,58 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
         value->Release();
         if (FAILED(hr)) throw std::runtime_error("Cannot set a value for an element that is not settable");
         route = "uia.value.set";
+    } else if (tool == "select_text") {
+        if (!element) throw std::runtime_error("unknown element_index '" + std::to_string(operationElementIndex(operation)) + "'");
+        selectExactText(
+            element,
+            toWide(operation.str("text")),
+            toWide(operation.str("prefix")),
+            toWide(operation.str("suffix")),
+            operation.str("selection", "text"));
+        route = "uia.text.select";
     } else {
         throw std::runtime_error("unsupportedTool(\"" + tool + "\")");
     }
 
-    Sleep(postActionSettleMs);
-    Snapshot refreshed = buildSnapshot(uia, app, hwndValue(process.hwnd));
-    std::string response = "{\"ok\":true,\"receipt\":" + receiptJson(probe, route, dispatch, postActionSettleMs) + ",\"snapshot\":" + snapshotJson(refreshed) + "}";
+    if (targetState.pendingActionCount == 0) {
+        targetState.pendingBaselineRevision = baselineRevision;
+        targetState.pendingBaselineEventCount = baselineEventCount;
+    }
+    targetState.pendingActionCount += 1;
+    targetState.visualContextNeeded = targetState.visualContextNeeded ||
+        tool == "click" || tool == "scroll" || tool == "drag" ||
+        tool == "press_key" || tool == "perform_secondary_action";
+    if (targetState.tracker) targetState.tracker->invalidateForAction();
+    unsigned long long invalidatedRevision = targetState.tracker
+        ? targetState.tracker->revision.load()
+        : baselineRevision + 1;
+    bool deferred = operationBool(operation, "defer_observation");
+    if (deferred) {
+        std::string response = "{\"ok\":true,\"receipt\":" +
+            receiptJson(probe, route, dispatch, nullptr, true, baselineRevision, invalidatedRevision, targetState.pendingActionCount) +
+            ",\"revision\":" + std::to_string(invalidatedRevision) + ",\"deferred\":true}";
+        safeRelease(element);
+        safeRelease(root);
+        return response;
+    }
+
+    AdaptiveSettle settle = waitForTargetQuiet(
+        uia,
+        targetState,
+        targetState.pendingBaselineRevision,
+        targetState.pendingBaselineEventCount);
+    Snapshot refreshed = snapshotForTarget(uia, targetState, operationScreenshotPolicy(operation));
+    refreshed.settleWaitedMs = settle.waitedMs;
+    refreshed.settleEventCount = settle.eventCount;
+    refreshed.settleTimedOut = settle.timedOut;
+    refreshed.settleBaselineRevision = settle.baselineRevision;
+    refreshed.settleFinalRevision = settle.finalRevision;
+    std::string response = "{\"ok\":true,\"receipt\":" +
+        receiptJson(probe, route, dispatch, &settle, false, baselineRevision, settle.finalRevision, targetState.pendingActionCount) +
+        ",\"revision\":" + std::to_string(settle.finalRevision) +
+        ",\"deferred\":false,\"snapshot\":" + snapshotJson(refreshed) + "}";
+    targetState.pendingActionCount = 0;
+    targetState.visualContextNeeded = false;
     safeRelease(element);
     safeRelease(root);
     return response;
@@ -2395,6 +3054,7 @@ static std::string executeOperation(IUIAutomation* uia, const Json& operation) {
 }
 
 int main(int argc, char** argv) {
+    processPerMonitorDpiAware = enablePerMonitorDpiAwareness();
     SetConsoleOutputCP(CP_UTF8);
     bool daemonMode = argc >= 2 && std::string(argv[1] ? argv[1] : "") == "daemon";
     if (!daemonMode && argc != 2) {
@@ -2424,10 +3084,12 @@ int main(int argc, char** argv) {
     if (daemonMode) {
         try {
             int code = runDaemon(uia, parseDaemonOptions(argc, argv));
+            releaseAllTargetStates(uia);
             safeRelease(uia);
             if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
             return code;
         } catch (const std::exception& error) {
+            releaseAllTargetStates(uia);
             safeRelease(uia);
             if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
             printf("%s\n", failJson(error.what()).c_str());
@@ -2450,6 +3112,7 @@ int main(int argc, char** argv) {
         fwrite("\n", 1, 1, stdout);
     }
 
+    releaseAllTargetStates(uia);
     safeRelease(uia);
     if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
     return 0;

@@ -52,6 +52,9 @@ import {
 import { buildBuiltinTools } from "./defs/index.js";
 import type { ToolDefinition as BuiltinToolDefinition } from "./types.js";
 import { sanitizeToolError, sanitizeToolResult } from "./safety.js";
+import { NodeReplKernelRegistry } from "../computer-use/kernel.js";
+import { shutdownMacStellaComputerSession } from "../computer-use/stella-computer-executor.js";
+import { cleanupWindowsStellaComputerSessionDaemon } from "../cli/stella-computer-windows.js";
 
 import type { ToolDefinition } from "../extensions/types.js";
 
@@ -101,6 +104,16 @@ export const createToolHost = ({
     agentApi,
     validateSpawnModel,
   );
+  const nodeReplRegistry = new NodeReplKernelRegistry({
+    cliPath: shellState.stellaComputerCliPath,
+    disposeSession: async (sessionId) => {
+      if (process.platform === "win32") {
+        await cleanupWindowsStellaComputerSessionDaemon(sessionId);
+      } else {
+        shutdownMacStellaComputerSession(sessionId);
+      }
+    },
+  });
 
   void recoverStaleSecretFiles(stateRoot)
     .then((result) => {
@@ -153,6 +166,7 @@ export const createToolHost = ({
     contextProvider,
     shellState,
     stateContext,
+    nodeReplRegistry,
     executeTool: (toolName, toolArgs, context, signal, onUpdate) =>
       executeTool(toolName, toolArgs, context, signal, onUpdate),
   });
@@ -331,6 +345,7 @@ export const createToolHost = ({
 
   const shutdown = async () => {
     killAllShells();
+    nodeReplRegistry.dispose();
   };
 
   const getToolCatalog = (
@@ -346,30 +361,29 @@ export const createToolHost = ({
       model: options?.model,
       agentEngine: options?.agentEngine,
     });
-    return Array.from(toolCatalog.values())
-      .filter((tool) => {
-        // A tool's `agentTypes` is the single audience gate: a tool with no
-        // `agentTypes` is available to every agent, and the per-agent
-        // frontmatter `tools:` allowlist (applied downstream in
-        // tool-adapters) decides what each agent is actually offered.
-        if (!isAgentAllowedForTool(tool, agentType)) return false;
-        if (tool.deferred && options?.includeDeferred !== true) return false;
-        // Swap the file-edit tool family to the agent's engine: Claude Code
-        // wants Write/Edit, Stella wants apply_patch.
-        if (
-          fileEditToolFamily === "write_edit" &&
-          tool.name === APPLY_PATCH_TOOL_NAME
-        ) {
-          return false;
-        }
-        if (
-          fileEditToolFamily === "apply_patch" &&
-          (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME)
-        ) {
-          return false;
-        }
-        return true;
-      });
+    return Array.from(toolCatalog.values()).filter((tool) => {
+      // A tool's `agentTypes` is the single audience gate: a tool with no
+      // `agentTypes` is available to every agent, and the per-agent
+      // frontmatter `tools:` allowlist (applied downstream in
+      // tool-adapters) decides what each agent is actually offered.
+      if (!isAgentAllowedForTool(tool, agentType)) return false;
+      if (tool.deferred && options?.includeDeferred !== true) return false;
+      // Swap the file-edit tool family to the agent's engine: Claude Code
+      // wants Write/Edit, Stella wants apply_patch.
+      if (
+        fileEditToolFamily === "write_edit" &&
+        tool.name === APPLY_PATCH_TOOL_NAME
+      ) {
+        return false;
+      }
+      if (
+        fileEditToolFamily === "apply_patch" &&
+        (tool.name === WRITE_TOOL_NAME || tool.name === EDIT_TOOL_NAME)
+      ) {
+        return false;
+      }
+      return true;
+    });
   };
 
   // Track tool names that came from user-installable extensions so a

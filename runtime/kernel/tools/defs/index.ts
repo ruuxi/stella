@@ -35,6 +35,7 @@ import { createImageGenTool } from "./image-gen.js";
 import { createLinqImessageTools } from "./linq-imessage.js";
 import { createMapTool } from "./map.js";
 import { createMultiToolUseParallelTool } from "./multi-tool-use-parallel.js";
+import { createNodeReplTool } from "./node-repl.js";
 import { readTool } from "./read.js";
 import { createRememberTool } from "./remember.js";
 import { createRequestCredentialTool } from "./request-credential.js";
@@ -52,6 +53,7 @@ import { writeTool } from "./write.js";
 import { createWriteStdinTool } from "./write-stdin.js";
 
 import type { StateContext } from "../state.js";
+import type { NodeReplKernelRegistry } from "../../computer-use/kernel.js";
 
 export type BuildBuiltinToolsContext = ToolHostOptions & {
   /**
@@ -65,6 +67,8 @@ export type BuildBuiltinToolsContext = ToolHostOptions & {
   shellState: ShellState;
   /** Initialized state context for the durable spawn_agent / send_input / pause_agent tools. */
   stateContext: StateContext;
+  /** ToolHost-owned persistent Node kernels, disposed with the host. */
+  nodeReplRegistry: NodeReplKernelRegistry;
   /**
    * Re-entrant tool dispatcher used by `multi_tool_use_parallel` to invoke
    * sibling tools. Provided by the host since the parallel tool needs a
@@ -114,6 +118,11 @@ export const buildBuiltinTools = (
   tools.push(editTool);
   tools.push(viewImageTool);
   tools.push(
+    createNodeReplTool({
+      registry: options.nodeReplRegistry,
+    }),
+  );
+  tools.push(
     createImageGenTool({
       getStellaSiteAuth: options.getStellaSiteAuth,
     }),
@@ -157,9 +166,7 @@ export const buildBuiltinTools = (
   tools.push(
     ...createScheduleControlTools({ scheduleApi: options.scheduleApi }),
   );
-  tools.push(
-    createScriptDraftTool({ stellaDataDir: options.stellaDataDir }),
-  );
+  tools.push(createScriptDraftTool({ stellaDataDir: options.stellaDataDir }));
 
   // (Store agent moved to backend — no local tools.)
 

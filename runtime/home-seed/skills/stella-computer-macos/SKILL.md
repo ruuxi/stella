@@ -1,61 +1,98 @@
 ---
 name: stella-computer
-description: macOS desktop-app automation through Stella's stella-computer CLI.
+description: Control macOS desktop apps through Stella's persistent Computer Use runtime.
 ---
 
 # Stella Computer for macOS
 
-Use this skill when the user asks you to inspect or operate a macOS desktop app, including Spotify, Discord, Slack, Messages, Notes, Mail, Calendar, Music, Telegram, WhatsApp, Signal, Linear, Notion, Obsidian, Figma, Zoom, Cursor, VS Code, App Store, Reminders, FaceTime, Photos, Maps, Finder, Safari, Chrome, or any other windowed app.
+Use `node_repl` for desktop-app work. The persistent JavaScript runtime is already initialized and exposes a frozen `sky` client. Bindings and delivered app instructions persist for this agent session.
 
-Use `stella-computer` through `exec_command`.
+## Observe
 
-## Discover
+Start each desktop-app turn with fresh state for the named app:
 
-List available apps:
-
-```bash
-stella-computer list-apps
+```js
+var state = await sky.get_app_state({
+  app: "Spotify",
+  screenshot_policy: "auto",
+});
+nodeRepl.write(state.text);
+if (state.screenshot) await nodeRepl.emitImage(state.screenshot.url);
 ```
 
-Snapshot a target app:
+Use the app name directly. Call `await sky.list_apps()` only when the requested app cannot be resolved.
+Call `await sky.list_windows()` when window titles or native window IDs are needed to disambiguate several top-level windows.
 
-```bash
-stella-computer snapshot --app "Spotify"
+The default state is an accessibility-tree diff when that is sufficient. A screenshot is returned only when visual context is needed. Prefer the accessibility text and numbered `element_index` values; inspect the screenshot when the tree is sparse or the visible control is absent.
+
+Pass `disable_diff: true` only when you need a complete recovery tree.
+
+## Act
+
+Actions return after dispatch without rebuilding state or capturing a screenshot:
+
+```js
+await sky.click({ app: "Spotify", element_index: 42 });
+await sky.set_value({ app: "Spotify", element_index: 18, value: "Daft Punk" });
+await sky.perform_secondary_action({
+  app: "Spotify",
+  element_index: 9,
+  action: "Show Menu",
+});
+await sky.scroll({
+  app: "Spotify",
+  element_index: 55,
+  direction: "down",
+  pages: 1,
+});
+await sky.press_key({ app: "Spotify", key: "Return" });
+await sky.type_text({ app: "Spotify", text: "hello" });
 ```
 
-Start every desktop-app turn with `snapshot` for the target app. It returns a numbered accessibility tree and an inline screenshot. Act on the returned element IDs with the interaction commands below.
+Perform one or more actions in one `node_repl` call only when no intermediate result is needed. Then fetch settled state once:
 
-## Commands
+```js
+await sky.click({ app: "Spotify", element_index: 18 });
+await sky.set_value({ app: "Spotify", element_index: 18, value: "Daft Punk" });
+var nextState = await sky.get_app_state({
+  app: "Spotify",
+  screenshot_policy: "auto",
+});
+nodeRepl.write(nextState.text);
+if (nextState.screenshot) await nodeRepl.emitImage(nextState.screenshot.url);
+```
 
-- `stella-computer list-apps` - list apps on this device.
-- `stella-computer snapshot --app "<App>"` - return the current accessibility tree and screenshot.
-- `stella-computer click <id> --app "<App>"` - click an accessibility element from the latest snapshot.
-- `stella-computer click-screenshot <x> <y> --app "<App>"` - click screenshot coordinates.
-- `stella-computer drag <from_x> <from_y> <to_x> <to_y> --app "<App>"` - drag between screen coordinates.
-- `stella-computer drag-screenshot <from_x> <from_y> <to_x> <to_y> --app "<App>"` - drag between screenshot coordinates.
-- `stella-computer drag-element <source-id> <dest-id> --app "<App>"` - drag an element to another element when the app exposes usable AX refs.
-- `stella-computer secondary-action <id> AXPress --app "<App>"` - invoke an Accessibility action.
-- `stella-computer press Return --app "<App>" --allow-hid` - press a key or key combination.
-- `stella-computer scroll <id> down --app "<App>"` - scroll an element.
-- `stella-computer fill <id> "text" --app "<App>"` - set or fill a settable Accessibility value.
-- `stella-computer type "text" --app "<App>" --allow-hid` - type literal text through the keyboard.
+For a data-driven sequence, `sky.batch([...])` executes actions in order and stops on the first failure. Do not batch across a decision point, permission prompt, navigation-policy boundary, or any step whose result determines the next action.
 
-## Interaction Rules
+Always re-derive element indices from the latest state. Cached native element handles may be refetched safely, but stale indices must not be guessed after the interface changes.
 
-Use numbered element IDs when the visible UI is exposed in the accessibility tree. It is the most precise and resilient option.
+## Text Selection
 
-Use screenshot pixel coordinates with `click-screenshot` when the element is visible in the screenshot but not addressable through the accessibility tree. It is a no-raise background click by default; do not add `--allow-hid` or `--raise` unless a prior attempt explicitly says it needs a global fallback. After any point click, run `get-state` and confirm the app changed before assuming the click worked.
+Use semantic selection instead of repeated arrow-key commands:
 
-Use `drag-screenshot` and `drag-element` for drag operations only. These require `--allow-hid` because they can move the user's real cursor.
+```js
+await sky.select_text({
+  app: "TextEdit",
+  element_index: 7,
+  text: "matching text",
+  prefix: "optional text before",
+  suffix: "optional text after",
+  selection_type: "text",
+});
+```
 
-Avoid synthesized double-clicks with screenshot coordinates in web-view apps. Backgrounded webviews often drop them. Prefer a labeled action button, or single-click a row and press `Return` or `Space` with `--allow-hid`.
+`selection_type` may be `text`, `cursor-before`, or `cursor-after`. Prefix and suffix disambiguate repeated matches.
 
-`press` and `type` require `--allow-hid` because keyboard events can affect the active input path. This does not mean you should use `--raise`: no-raise per-app delivery is tried first. Use `--raise` only as an explicit last resort when background delivery has failed and the user-visible focus change is acceptable.
+## Coordinates And Input
 
-Spotify and other Chromium/Electron media surfaces may reject pixel clicks on player controls even when Stella successfully posts the event. If a Spotify play/pause point click reports success but `get-state` does not change, prefer `stella-computer press Space --app "Spotify" --allow-hid` without `--raise`, then verify with `get-state`.
+Use accessibility elements whenever possible. For a visible control missing from the tree, use screenshot pixel coordinates from the latest attached screenshot:
 
-The target app is not intentionally raised or focused. Do not use `--raise` to make a click work; use it only after background-safe routes have failed and there is no other practical route.
+```js
+await sky.click({ app: "Spotify", x: 620, y: 412 });
+```
 
-For consumer services with both an app and a website, default to the desktop app. Try `stella-computer snapshot --app "<App>"` first, then fall back to `stella-browser` only if `stella-computer list-apps` confirms the app is unavailable.
+Coordinate and keyboard actions may affect the active input path. Use them only when the semantic accessibility route is unavailable, and verify with one final `get_app_state`.
 
-Do not use `osascript`, `open -a`, AppleScript, `defaults write`, or shelling into app bundles to drive or inspect desktop apps.
+Spotify and other Chromium/Electron apps can expose sparse state briefly. Do not add sleeps; `get_app_state` performs adaptive settling and waits longer only while the app continues changing.
+
+Do not use AppleScript, `osascript`, `open -a`, app-bundle internals, or shell commands to drive desktop apps. Use `exec_command` only to diagnose the Computer Use runtime itself.

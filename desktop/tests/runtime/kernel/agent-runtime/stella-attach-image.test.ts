@@ -23,8 +23,8 @@ const ONE_BY_ONE_PNG = Buffer.from(
 );
 
 const JPEG_BYTES = Buffer.from([
-  0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
-  0xff, 0xd9,
+  0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff,
+  0xd9,
 ]);
 
 const writePng = (dir: string, name = "snap.png") => {
@@ -142,7 +142,10 @@ App=com.apple.finder (pid 504)
     // stream is cut off before IEND (a screenshot read mid-write).
     const tempDir = createTempDir();
     const imgPath = path.join(tempDir, "truncated.png");
-    writeFileSync(imgPath, ONE_BY_ONE_PNG.subarray(0, ONE_BY_ONE_PNG.length - 16));
+    writeFileSync(
+      imgPath,
+      ONE_BY_ONE_PNG.subarray(0, ONE_BY_ONE_PNG.length - 16),
+    );
     const text = `[stella-attach-image] 1x1 inline=image/png ${imgPath}\n`;
     const result = await extractAttachImageBlocks(text);
     expect(result.images).toEqual([]);
@@ -166,6 +169,60 @@ App=com.apple.finder (pid 504)
     } finally {
       process.chdir(previousCwd);
     }
+  });
+
+  it("extracts quoted path= markers with spaces, quotes, non-ASCII, and JSON escaping", async () => {
+    const tempDir = createTempDir();
+    const imgPath = writePng(tempDir, 'capture "café" final.png');
+    const marker = `[stella-attach-image] inline=image/png path=${JSON.stringify(imgPath)}`;
+    const result = await extractAttachImageBlocks(
+      JSON.stringify({ output: `visible tree\n${marker}\n` }, null, 2),
+    );
+
+    expect(result.images).toHaveLength(1);
+    expect(result.images[0].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
+    expect(result.text).toContain("visible tree");
+    expect(result.text).not.toContain("[stella-attach-image]");
+  });
+
+  it("extracts a quoted absolute Windows path containing spaces and non-ASCII", async () => {
+    const tempDir = createTempDir();
+    const previousCwd = process.cwd();
+    const winPath = 'C:\\Users\\René Test\\screen "final".png';
+    try {
+      process.chdir(tempDir);
+      writePng(tempDir, winPath);
+      const result = await extractAttachImageBlocks(
+        `[stella-attach-image] inline=image/png path=${JSON.stringify(winPath)}\n`,
+      );
+      expect(result.images).toHaveLength(1);
+      expect(result.images[0].data).toBe(ONE_BY_ONE_PNG.toString("base64"));
+      expect(result.text).not.toContain("[stella-attach-image]");
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
+  it("keeps valid sibling images when one referenced image is missing", async () => {
+    const tempDir = createTempDir();
+    const firstPath = writePng(tempDir, "first valid.png");
+    const secondPath = writePng(tempDir, "second valid.png");
+    const missingPath = path.join(tempDir, "missing image.png");
+    const text = [firstPath, missingPath, secondPath]
+      .map(
+        (imagePath) =>
+          `[stella-attach-image] inline=image/png path=${JSON.stringify(imagePath)}`,
+      )
+      .join("\n");
+
+    const result = await extractAttachImageBlocks(text);
+    expect(result.images).toHaveLength(2);
+    expect(result.images.map((image) => image.data)).toEqual([
+      ONE_BY_ONE_PNG.toString("base64"),
+      ONE_BY_ONE_PNG.toString("base64"),
+    ]);
+    expect(result.text).toContain(missingPath);
+    expect(result.text.match(/\[stella-attach-image\]/g)).toHaveLength(1);
   });
 
   it("auto-resizes oversized images and notes the coordinate mapping (pi parity)", async () => {

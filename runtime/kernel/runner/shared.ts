@@ -21,7 +21,7 @@ export const DEFAULT_ORCHESTRATOR_PROMPT =
   "You are Stella's orchestrator. Coordinate specialized work and keep work non-blocking by default. " +
   "For visual user-facing output, use image_gen and keep plain text mainly for acknowledgments, brief confirmations, and short replies. " +
   "After using image_gen, keep any chat text to one short sentence unless the user explicitly asks for detailed text. " +
-  'Use `stella-computer list-apps`, `snapshot`, element-based `click`, `fill "text"`, `secondary-action`, `scroll`, and coordinate/element drag commands (`drag`, `drag-screenshot`, `drag-element`) for arbitrary desktop apps via stella-computer automation.';
+  "Delegate arbitrary desktop-app work to the General agent, which uses Stella's persistent node_repl Computer Use runtime.";
 export const DEFAULT_SUBAGENT_PROMPT =
   "You are a Stella sub-agent. Execute delegated work directly, provide concise progress, and run tools safely.";
 export {
@@ -78,9 +78,7 @@ export const readMemorySummaryDoc = (
  * The durable user-profile facts written by the `Remember` tool, read
  * synchronously for resident injection.
  */
-export const readUserProfileDoc = (
-  stellaDataDir: string,
-): string | undefined =>
+export const readUserProfileDoc = (stellaDataDir: string): string | undefined =>
   readResidentMemoryDoc(path.join(stellaDataDir, "memories", "profile.md"));
 
 const MAX_AGENT_EVENT_FIELD_CHARS = 30_000;

@@ -28,8 +28,8 @@ const ONE_BY_ONE_PNG = Buffer.from(
 );
 
 const JPEG_BYTES = Buffer.from([
-  0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01,
-  0xff, 0xd9,
+  0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0xff,
+  0xd9,
 ]);
 
 describe("general agent tools", () => {
@@ -639,7 +639,7 @@ EOF`,
     }
   });
 
-  it("keeps desktop automation and connectors on the CLI path in the general agent allowlist", async () => {
+  it("exposes persistent Computer Use through node_repl in the general agent allowlist", async () => {
     const promptPath = path.join(
       repoRoot,
       "runtime/extensions/stella-runtime/agents/general.md",
@@ -653,6 +653,7 @@ EOF`,
     expect(toolsLine).not.toContain("computer_list_apps");
     expect(toolsLine).not.toContain("computer_get_app_state");
     expect(toolsLine).not.toContain("computer_click");
+    expect(toolsLine).toContain("node_repl");
     expect(prompt).toContain("stella-computer");
     expect(prompt).toContain("stella-connect");
   });

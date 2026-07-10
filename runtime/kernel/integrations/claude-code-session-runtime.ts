@@ -128,6 +128,15 @@ const CLAUDE_CODE_COMPACTION_LOOP_MESSAGE =
  */
 const MAX_STEP_RECOVERIES_PER_TURN = 2;
 
+type ClaudeCodePromptImage = Awaited<
+  ReturnType<typeof extractAttachImageBlocks>
+>["images"][number];
+
+export type ClaudeCodeToolResultPrompt = {
+  text: string;
+  images: ClaudeCodePromptImage[];
+};
+
 /**
  * The CLI process ended (exit, spawn stream teardown) while a step was still
  * waiting on its `result` line. `exitCode` 0 means a clean-but-early exit.
@@ -224,7 +233,10 @@ const buildSideEffectReconciliationPrompt = (
   return [
     "The previous step was interrupted after some of its file operations had already been applied.",
     paths.length > 0
-      ? ["File operations were already applied to:", ...paths.map((p) => `- ${p}`)].join("\n")
+      ? [
+          "File operations were already applied to:",
+          ...paths.map((p) => `- ${p}`),
+        ].join("\n")
       : "",
     "Do NOT redo, repeat, or revert any file operations from that step.",
     "If you are unsure what was applied, inspect the current state of the affected files first.",
@@ -458,7 +470,8 @@ const asNumber = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
 const normalizeErrorMessage = (error: unknown): string => {
-  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  if (error instanceof Error && error.message.trim())
+    return error.message.trim();
   if (typeof error === "string" && error.trim()) return error.trim();
   return "Unknown error";
 };
@@ -479,10 +492,7 @@ const isSessionAlreadyInUseError = (message: string): boolean =>
 const isMissingResumeSessionError = (message: string): boolean =>
   /No conversation found with session ID:/i.test(message);
 
-const configuredTimeoutMs = (
-  envName: string,
-  fallbackMs: number,
-): number => {
+const configuredTimeoutMs = (envName: string, fallbackMs: number): number => {
   const raw = process.env[envName]?.trim();
   if (!raw) return fallbackMs;
   const parsed = Number(raw);
@@ -610,7 +620,10 @@ const stringifyUnknown = (value: unknown): string => {
   }
 };
 
-const trimForPrompt = (value: string, maxChars = MAX_TOOL_RESULT_CHARS): string =>
+const trimForPrompt = (
+  value: string,
+  maxChars = MAX_TOOL_RESULT_CHARS,
+): string =>
   value.length > maxChars
     ? `${value.slice(0, maxChars)}\n\n[Truncated by Stella]`
     : value;
@@ -638,7 +651,7 @@ export const buildToolResultPrompt = async (args: {
   toolName: string;
   toolArgs: Record<string, unknown>;
   toolResult: ToolResult;
-}): Promise<string> => {
+}): Promise<ClaudeCodeToolResultPrompt> => {
   const rawResultText = stringifyUnknown(args.toolResult.result);
   const { text: forwardedResultText, images } =
     // The Claude Code engine runs on Anthropic; resize tool-result
@@ -660,7 +673,7 @@ export const buildToolResultPrompt = async (args: {
           : undefined,
     }),
   );
-  return [
+  const text = [
     "A Stella tool request has completed.",
     `Tool call id: ${args.toolCallId}`,
     `Tool name: ${args.toolName}`,
@@ -682,6 +695,7 @@ export const buildToolResultPrompt = async (args: {
   ]
     .filter((section) => section.trim().length > 0)
     .join("\n\n");
+  return { text, images };
 };
 
 const CLAUDE_CODE_RESPONSE_SCHEMA = JSON.stringify({
@@ -1037,8 +1051,9 @@ export const createClaudeCodeStreamEmitter = (
   let owner: "none" | "text" | "structured" = "none";
   let lastVisibleChar = "";
   let boundaryPending = false;
-  let structuredDecoder: ReturnType<typeof createClaudeCodeFinalMessageDecoder> | null =
-    null;
+  let structuredDecoder: ReturnType<
+    typeof createClaudeCodeFinalMessageDecoder
+  > | null = null;
   let suppressedTextDecoder: ReturnType<
     typeof createClaudeCodeFinalMessageDecoder
   > | null = null;
@@ -1089,7 +1104,10 @@ export const createClaudeCodeStreamEmitter = (
         structuredDecoder &&
         typeof rawDelta.partial_json === "string"
       ) {
-        emitVisible("structured", structuredDecoder.push(rawDelta.partial_json));
+        emitVisible(
+          "structured",
+          structuredDecoder.push(rawDelta.partial_json),
+        );
         return;
       }
     }
@@ -1135,7 +1153,11 @@ export const getClaudeCodeStatusChangeFromStreamEvent = (
         : "";
   const statusValue = typeof event.status === "string" ? event.status : "";
 
-  if (type === "system" && subtype === "status" && statusValue === "compacting") {
+  if (
+    type === "system" &&
+    subtype === "status" &&
+    statusValue === "compacting"
+  ) {
     return {
       state: "compacting",
       text: CLAUDE_CODE_COMPACTING_TEXT,
@@ -1239,7 +1261,10 @@ const cleanupSessionProcess = (session: SessionState) => {
 
 const ensureSessionState = (
   sessions: Map<string, SessionState>,
-  request: Pick<ClaudeCodeTurnRequest, "sessionKey" | "persistedSessionId" | "cwd">,
+  request: Pick<
+    ClaudeCodeTurnRequest,
+    "sessionKey" | "persistedSessionId" | "cwd"
+  >,
   sessionKey: string,
   cwd?: string,
 ): SessionState => {
@@ -1284,7 +1309,10 @@ const ensureSessionState = (
 
 class ClaudeCodeSessionRuntime {
   private readonly sessions = new Map<string, SessionState>();
-  private readonly activeProcesses = new Map<string, ChildProcessWithoutNullStreams>();
+  private readonly activeProcesses = new Map<
+    string,
+    ChildProcessWithoutNullStreams
+  >();
 
   async runTurn(request: ClaudeCodeTurnRequest): Promise<ClaudeCodeTurnResult> {
     const session = ensureSessionState(
@@ -1367,6 +1395,7 @@ class ClaudeCodeSessionRuntime {
     const turnFileChanges: FileChangeRecord[] = [];
     const turnFileChangeKeys = new Set<string>();
     let nextPrompt = buildInitialPrompt(session, request);
+    let nextPromptImages: ClaudeCodePromptImage[] = [];
 
     // Every user message reattempts the configured model: a fallback from a
     // previous turn does not stick to the session. The next
@@ -1389,10 +1418,15 @@ class ClaudeCodeSessionRuntime {
         request,
         effectiveSystemPrompt,
         nextPrompt,
+        nextPromptImages,
         recoveryBudget,
       );
       usage = mergeUsage(usage, response.usage);
-      mergeFileChanges(turnFileChanges, turnFileChangeKeys, response.fileChanges);
+      mergeFileChanges(
+        turnFileChanges,
+        turnFileChangeKeys,
+        response.fileChanges,
+      );
       if (response.action.type === "final") {
         return {
           text: response.action.message,
@@ -1419,12 +1453,14 @@ class ClaudeCodeSessionRuntime {
           });
         },
       );
-      nextPrompt = await buildToolResultPrompt({
+      const toolResultPrompt = await buildToolResultPrompt({
         toolCallId,
         toolName,
         toolArgs,
         toolResult,
       });
+      nextPrompt = toolResultPrompt.text;
+      nextPromptImages = toolResultPrompt.images;
     }
   }
 
@@ -1451,9 +1487,11 @@ class ClaudeCodeSessionRuntime {
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
     prompt: string,
+    promptImages: readonly ClaudeCodePromptImage[],
     recoveryBudget: { remaining: number },
   ): Promise<StructuredStepResult> {
     let currentPrompt = prompt;
+    let currentPromptImages = promptImages;
     const failedAttemptFileChanges: FileChangeRecord[] = [];
     const failedAttemptFileChangeKeys = new Set<string>();
     for (;;) {
@@ -1463,6 +1501,7 @@ class ClaudeCodeSessionRuntime {
           request,
           effectiveSystemPrompt,
           currentPrompt,
+          currentPromptImages,
           failedAttemptFileChanges,
         );
         if (failedAttemptFileChanges.length === 0) {
@@ -1509,10 +1548,12 @@ class ClaudeCodeSessionRuntime {
             currentPrompt = buildSideEffectReconciliationPrompt(
               failedAttemptFileChanges,
             );
+            currentPromptImages = [];
           }
           continue;
         }
         currentPrompt = buildDecisionRetryPrompt(Boolean(request.vanilla));
+        currentPromptImages = [];
       }
     }
   }
@@ -1573,6 +1614,7 @@ class ClaudeCodeSessionRuntime {
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
     prompt: string,
+    promptImages: readonly ClaudeCodePromptImage[],
     observedMutations: readonly FileChangeRecord[] = [],
   ): Promise<StructuredStepResult> {
     return await this.executeStructuredStepWithMode(
@@ -1582,6 +1624,7 @@ class ClaudeCodeSessionRuntime {
       prompt,
       session.resumeReady,
       true,
+      promptImages,
       observedMutations,
     );
   }
@@ -1600,6 +1643,7 @@ class ClaudeCodeSessionRuntime {
     prompt: string,
     useResume: boolean,
     allowCompactionLoopRestart = true,
+    promptImages: readonly ClaudeCodePromptImage[] = [],
     observedMutations: readonly FileChangeRecord[] = [],
   ): Promise<StructuredStepResult> {
     // Reseeded sessions have no transcript, so a mutation-guarded reseed
@@ -1620,7 +1664,13 @@ class ClaudeCodeSessionRuntime {
         effectiveSystemPrompt,
         useResume,
       );
-      return await this.sendStreamingPrompt(session, processState, request, prompt);
+      return await this.sendStreamingPrompt(
+        session,
+        processState,
+        request,
+        prompt,
+        promptImages,
+      );
     } catch (error) {
       const message = normalizeErrorMessage(error);
       if (!useResume && isSessionAlreadyInUseError(message)) {
@@ -1632,6 +1682,7 @@ class ClaudeCodeSessionRuntime {
           prompt,
           true,
           allowCompactionLoopRestart,
+          promptImages,
           observedMutations,
         );
       }
@@ -1647,6 +1698,7 @@ class ClaudeCodeSessionRuntime {
           buildReseedPrompt(observedMutations),
           false,
           allowCompactionLoopRestart,
+          promptImages,
           observedMutations,
         );
       }
@@ -1676,6 +1728,7 @@ class ClaudeCodeSessionRuntime {
           buildReseedPrompt(mutations),
           false,
           false,
+          promptImages,
           mutations,
         );
         if (error.fileChanges.length === 0) {
@@ -1807,17 +1860,21 @@ class ClaudeCodeSessionRuntime {
         Math.min(100, Math.max(1, Math.floor(request.autoCompactTriggerPct!))),
       );
     }
-    const child = spawn("claude", this.buildClaudeCodeArgs(
-      session,
-      request,
-      effectiveSystemPrompt,
-      useResume,
-    ), {
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-      cwd: request.cwd,
-      env: childEnv,
-    });
+    const child = spawn(
+      "claude",
+      this.buildClaudeCodeArgs(
+        session,
+        request,
+        effectiveSystemPrompt,
+        useResume,
+      ),
+      {
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+        cwd: request.cwd,
+        env: childEnv,
+      },
+    );
     const processState: ClaudeCodeStreamingProcess = {
       child,
       stdoutBuffer: "",
@@ -1840,9 +1897,13 @@ class ClaudeCodeSessionRuntime {
     };
 
     const consumeStdout = (flush = false) => {
-      const segments = flush ? [processState.stdoutBuffer] : processState.stdoutBuffer.split("\n");
+      const segments = flush
+        ? [processState.stdoutBuffer]
+        : processState.stdoutBuffer.split("\n");
       const completeSegments = flush ? segments : segments.slice(0, -1);
-      processState.stdoutBuffer = flush ? "" : segments[segments.length - 1] ?? "";
+      processState.stdoutBuffer = flush
+        ? ""
+        : (segments[segments.length - 1] ?? "");
       for (const segment of completeSegments) {
         const line = segment.trim();
         if (!line) {
@@ -1882,7 +1943,11 @@ class ClaudeCodeSessionRuntime {
             processState.compacting = true;
             processState.compactionCount += 1;
             if (processState.compactionCount > MAX_COMPACTIONS_PER_TURN) {
-              this.failCompactionLoop(request.sessionKey, session, processState);
+              this.failCompactionLoop(
+                request.sessionKey,
+                session,
+                processState,
+              );
               return;
             }
           } else if (status.state === "running") {
@@ -2003,7 +2068,11 @@ class ClaudeCodeSessionRuntime {
         pending.reject(
           pending.request.abortSignal?.aborted
             ? new Error("Claude Code run aborted.")
-            : new ClaudeCodeProcessEndedError(message, code, pending.fileChanges),
+            : new ClaudeCodeProcessEndedError(
+                message,
+                code,
+                pending.fileChanges,
+              ),
         );
       }
     });
@@ -2016,6 +2085,7 @@ class ClaudeCodeSessionRuntime {
     processState: ClaudeCodeStreamingProcess,
     request: ClaudeCodeTurnRequest,
     prompt: string,
+    promptImages: readonly ClaudeCodePromptImage[] = [],
   ): Promise<StructuredStepResult> {
     if (processState.closed || processState.child.stdin.destroyed) {
       throw new ClaudeCodeProcessEndedError("Claude Code stream is closed.");
@@ -2040,12 +2110,29 @@ class ClaudeCodeSessionRuntime {
         }
       }
       processState.pending.push(pending);
+      // Claude Code's stream-json input accepts Anthropic image content
+      // blocks directly, so screenshots reach vision without enabling any
+      // Claude-native file or shell tools outside Stella's tool boundary.
+      const content =
+        promptImages.length > 0
+          ? [
+              { type: "text", text: prompt },
+              ...promptImages.map((image) => ({
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: image.mimeType,
+                  data: image.data,
+                },
+              })),
+            ]
+          : prompt;
       const payload = JSON.stringify({
         type: "user",
         session_id: session.sessionId,
         message: {
           role: "user",
-          content: prompt,
+          content,
         },
         parent_tool_use_id: null,
       });
@@ -2136,8 +2223,12 @@ class ClaudeCodeSessionRuntime {
       throw new Error(resultError);
     }
     const usageRaw = parsed.usage as Record<string, unknown> | undefined;
-    const inputTokens = asNumber(usageRaw?.input_tokens ?? usageRaw?.inputTokens);
-    const outputTokens = asNumber(usageRaw?.output_tokens ?? usageRaw?.outputTokens);
+    const inputTokens = asNumber(
+      usageRaw?.input_tokens ?? usageRaw?.inputTokens,
+    );
+    const outputTokens = asNumber(
+      usageRaw?.output_tokens ?? usageRaw?.outputTokens,
+    );
     const usage =
       inputTokens !== undefined || outputTokens !== undefined
         ? { inputTokens, outputTokens }
@@ -2239,7 +2330,10 @@ class ClaudeCodeSessionRuntime {
     }
   }
 
-  private resetStreamingProcess(sessionKey: string, session: SessionState): void {
+  private resetStreamingProcess(
+    sessionKey: string,
+    session: SessionState,
+  ): void {
     if (!session.process) {
       return;
     }
@@ -2257,12 +2351,14 @@ const runtime = new ClaudeCodeSessionRuntime();
 export const isClaudeCodeModel = (modelId: string): boolean =>
   modelId.trim().startsWith(CLAUDE_CODE_MODEL_PREFIX);
 
-export const runClaudeCodeTurn = async (request: ClaudeCodeTurnRequest): Promise<ClaudeCodeTurnResult> =>
-  await runtime.runTurn(request);
+export const runClaudeCodeTurn = async (
+  request: ClaudeCodeTurnRequest,
+): Promise<ClaudeCodeTurnResult> => await runtime.runTurn(request);
 
 /** Diagnostic/test hook: is a live CLI process tracked for this session key? */
-export const claudeCodeSessionHasActiveProcess = (sessionKey: string): boolean =>
-  runtime.hasActiveProcess(sessionKey);
+export const claudeCodeSessionHasActiveProcess = (
+  sessionKey: string,
+): boolean => runtime.hasActiveProcess(sessionKey);
 
 export const listClaudeCodeModels = async (
   auth?: { apiKey?: string | null; oauthToken?: string | null },

@@ -47,7 +47,8 @@ const formatToolLabel = (toolName: string): string =>
     .replace(/\b\w/g, (letter) => letter.toUpperCase()) || toolName;
 
 const formatToolWorkingText = (metadata: ToolMetadata): string =>
-  metadata.workingText ?? `Running ${metadata.label ?? formatToolLabel(metadata.name)}`;
+  metadata.workingText ??
+  `Running ${metadata.label ?? formatToolLabel(metadata.name)}`;
 
 export const getRequestedRuntimeToolNames = (
   toolsAllowlist?: string[],
@@ -185,6 +186,7 @@ export const truncateModelVisibleToolText = (
 // wire up the same way): when tool output contains a substring of the form
 //
 //     [stella-attach-image][ <WxH>][ <N>KB][ inline=image/png] <PATH>
+//     [stella-attach-image] ... path="<JSON-escaped absolute path>"
 //
 // the runtime reads the file at <PATH> and emits an image content block
 // alongside the text result, so the model sees the screenshot on its very
@@ -198,11 +200,79 @@ export const truncateModelVisibleToolText = (
 // goes through this transform. The marker can appear anywhere in the
 // tool result text, including inside a JSON-stringified `output` field
 // where real newlines are escaped as `\n` — that's why this regex is
-// position-agnostic and excludes `"` from the path so we never grab past a
-// JSON string boundary. Windows paths can be raw (`C:\...`) or JSON-escaped
-// (`C:\\...`), so captured paths are unescaped before reading.
-const STELLA_ATTACH_IMAGE_RE =
-  /\[stella-attach-image\][^\n"]*?\s((?:\/[^\s\n"]+|[A-Za-z]:[\\/][^\s\n"]+?)\.(?:png|jpg|jpeg|gif|webp))/g;
+// position-agnostic. New emitters should use `path=${JSON.stringify(path)}`
+// so spaces, quotes, non-ASCII, and Windows separators survive transport.
+// Legacy whitespace-delimited paths remain supported.
+const STELLA_ATTACH_IMAGE_MARKER = "[stella-attach-image]";
+const ATTACH_IMAGE_EXTENSION_RE = /\.(?:png|jpg|jpeg|gif|webp)$/i;
+const ABSOLUTE_IMAGE_PATH_RE = /^(?:\/|[A-Za-z]:[\\/])/;
+
+type AttachImageMatch = {
+  full: string;
+  path: string;
+  detailOriginal: boolean;
+};
+
+const parseAttachImageMatches = (text: string): AttachImageMatch[] => {
+  const matches: AttachImageMatch[] = [];
+  let markerStart = text.indexOf(STELLA_ATTACH_IMAGE_MARKER);
+  while (markerStart >= 0) {
+    const nextMarker = text.indexOf(
+      STELLA_ATTACH_IMAGE_MARKER,
+      markerStart + STELLA_ATTACH_IMAGE_MARKER.length,
+    );
+    const newline = text.indexOf("\n", markerStart);
+    const markerEnd = Math.min(
+      nextMarker < 0 ? text.length : nextMarker,
+      newline < 0 ? text.length : newline,
+    );
+    const marker = text.slice(markerStart, markerEnd);
+    const pathAssignment = /\bpath\s*=\s*("(?:\\.|[^"\\])*")/.exec(marker);
+    const quotedFallback = pathAssignment
+      ? null
+      : /(?:^|\s)("(?:\\.|[^"\\])*")/.exec(marker);
+    const legacyFallback =
+      pathAssignment || quotedFallback
+        ? null
+        : /(?:^|\s)((?:\/[^\s"]+|[A-Za-z]:[\\/][^\s"]+?)\.(?:png|jpg|jpeg|gif|webp))/i.exec(
+            marker,
+          );
+    const token = pathAssignment?.[1] ?? quotedFallback?.[1];
+    let imagePath: string | undefined;
+    if (token) {
+      try {
+        imagePath = JSON.parse(token) as string;
+      } catch {
+        imagePath = undefined;
+      }
+    } else if (legacyFallback?.[1]) {
+      imagePath = normalizeAttachImagePath(legacyFallback[1]);
+    }
+    if (
+      imagePath &&
+      ABSOLUTE_IMAGE_PATH_RE.test(imagePath) &&
+      ATTACH_IMAGE_EXTENSION_RE.test(imagePath)
+    ) {
+      const pathEnd =
+        markerStart +
+        (pathAssignment?.index ??
+          quotedFallback?.index ??
+          legacyFallback?.index ??
+          0) +
+        (pathAssignment?.[0].length ??
+          quotedFallback?.[0].length ??
+          legacyFallback?.[0].length ??
+          marker.length);
+      matches.push({
+        full: text.slice(markerStart, pathEnd),
+        path: imagePath,
+        detailOriginal: /\bdetail=original\b/.test(marker),
+      });
+    }
+    markerStart = nextMarker;
+  }
+  return matches;
+};
 
 type ImageBlock = { type: "image"; mimeType: string; data: string };
 
@@ -253,18 +323,25 @@ export const extractAttachImageBlocks = async (
   if (!text || !text.includes("[stella-attach-image]")) {
     return { text, images: [] };
   }
-  const matches: Array<{ full: string; path: string; detailOriginal: boolean }> =
-    [];
-  for (const m of text.matchAll(STELLA_ATTACH_IMAGE_RE)) {
-    if (m[1])
-      matches.push({
-        full: m[0],
-        path: normalizeAttachImagePath(m[1]),
-        // `view_image detail: "original"` marks the marker so we keep native
-        // resolution (bounded by the provider ceiling) instead of downscaling.
-        detailOriginal: /\bdetail=original\b/.test(m[0]),
-      });
+  let jsonValue: unknown;
+  try {
+    jsonValue = JSON.parse(text);
+  } catch {
+    jsonValue = undefined;
   }
+  const jsonStrings: string[] = [];
+  const collectJsonStrings = (value: unknown) => {
+    if (typeof value === "string") {
+      jsonStrings.push(value);
+    } else if (Array.isArray(value)) {
+      value.forEach(collectJsonStrings);
+    } else if (value && typeof value === "object") {
+      Object.values(value).forEach(collectJsonStrings);
+    }
+  };
+  if (jsonValue !== undefined) collectJsonStrings(jsonValue);
+  const sourceStrings = jsonStrings.length > 0 ? jsonStrings : [text];
+  const matches = sourceStrings.flatMap(parseAttachImageMatches);
   if (matches.length === 0) return { text, images: [] };
 
   const images: ImageBlock[] = [];
@@ -282,7 +359,11 @@ export const extractAttachImageBlocks = async (
       const buf = await readImageFileSettled(imgPath);
       const mimeType = resolveImageMimeType(imgPath, buf);
       if (!mimeType) {
-        return { text, images: [] };
+        markerReplacements.push({
+          full,
+          replacement: unreadableAttachImageNote(imgPath),
+        });
+        continue;
       }
       // Provider-aware auto-resize: pass-through when the image already fits
       // the resolved target's dimension + byte caps (e.g. every
@@ -346,14 +427,46 @@ export const extractAttachImageBlocks = async (
       });
     } catch {
       // If the file vanished between CLI exit and our read, leave the marker
-      // in the text so the model can still see what was attempted.
-      return { text, images: [] };
+      // in the text so the model can still see what was attempted, but keep
+      // processing sibling markers so one missing image cannot discard them.
+      markerReplacements.push({ full, replacement: full });
+      continue;
     }
   }
 
   // Strip attached markers (and swap oversized ones for their notes) so we
   // don't double-send paths the model no longer needs.
   let stripped = text;
+  if (jsonStrings.length > 0) {
+    let replacementIndex = 0;
+    const replaceJsonStrings = (value: unknown): unknown => {
+      if (typeof value === "string") {
+        let replaced = value;
+        for (const match of parseAttachImageMatches(value)) {
+          const replacement = markerReplacements[replacementIndex++];
+          if (replacement?.full === match.full) {
+            replaced = replaced.replace(
+              replacement.full,
+              replacement.replacement,
+            );
+          }
+        }
+        return replaced;
+      }
+      if (Array.isArray(value)) return value.map(replaceJsonStrings);
+      if (value && typeof value === "object") {
+        return Object.fromEntries(
+          Object.entries(value).map(([key, entry]) => [
+            key,
+            replaceJsonStrings(entry),
+          ]),
+        );
+      }
+      return value;
+    };
+    stripped = JSON.stringify(replaceJsonStrings(jsonValue), null, 2);
+    return { text: stripped, images };
+  }
   for (const { full, replacement } of markerReplacements) {
     stripped = stripped.replace(full, replacement).replace(/\n{3,}/g, "\n\n");
   }
@@ -569,9 +682,14 @@ export const createPiTools = (opts: {
           const matches = deferredTools
             .filter((tool) => {
               const requiredProvider = tool.deferred?.requiredConnectorProvider;
-              return !requiredProvider || requiredProvider === connectorProvider;
+              return (
+                !requiredProvider || requiredProvider === connectorProvider
+              );
             })
-            .map((tool) => ({ tool, score: scoreDeferredTool(tool, queryTokens) }))
+            .map((tool) => ({
+              tool,
+              score: scoreDeferredTool(tool, queryTokens),
+            }))
             .filter((entry) => entry.score > 0)
             .sort((left, right) => {
               if (right.score !== left.score) return right.score - left.score;

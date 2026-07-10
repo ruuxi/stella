@@ -28,6 +28,37 @@ struct Screenshot: Codable {
     let widthPx: Int?
     let heightPx: Int?
     let byteCount: Int
+    let captureMethod: String?
+    let exactWindowMatch: Bool?
+    let occludedRectFallback: Bool?
+    let treeRevision: UInt64?
+    let reliableFinalFrame: Bool?
+
+    init(
+        mimeType: String,
+        data: String,
+        path: String?,
+        widthPx: Int?,
+        heightPx: Int?,
+        byteCount: Int,
+        captureMethod: String? = nil,
+        exactWindowMatch: Bool? = nil,
+        occludedRectFallback: Bool? = nil,
+        treeRevision: UInt64? = nil,
+        reliableFinalFrame: Bool? = nil
+    ) {
+        self.mimeType = mimeType
+        self.data = data
+        self.path = path
+        self.widthPx = widthPx
+        self.heightPx = heightPx
+        self.byteCount = byteCount
+        self.captureMethod = captureMethod
+        self.exactWindowMatch = exactWindowMatch
+        self.occludedRectFallback = occludedRectFallback
+        self.treeRevision = treeRevision
+        self.reliableFinalFrame = reliableFinalFrame
+    }
 }
 
 struct RefEntry: Codable {
@@ -103,6 +134,25 @@ struct SnapshotDocument: Codable {
     let maxDepth: Int?
     let maxNodes: Int?
     let allWindows: Bool?
+    let revision: UInt64?
+    let materializedRevision: UInt64?
+    let cacheHit: Bool?
+    let cacheKey: String?
+    let pendingActionCount: Int?
+    let screenshotPolicy: String?
+    let settle: AutomationSettle?
+}
+
+struct ActionReceipt: Codable {
+    let id: String
+    let action: String
+    let targetPid: Int32
+    let targetBundleId: String?
+    let statePath: String
+    let baselineRevision: UInt64
+    let invalidatedRevision: UInt64
+    let deferred: Bool
+    let recordedAt: String
 }
 
 struct ActionPayload: Codable {
@@ -118,6 +168,10 @@ struct ActionPayload: Codable {
     let appInstructions: String?
     let snapshotText: String?
     let settle: AutomationSettle?
+    let receipt: ActionReceipt?
+    let revision: UInt64?
+    let deferred: Bool?
+    let stateUpdated: Bool?
 }
 
 struct AutomationSettle: Codable {
@@ -128,6 +182,11 @@ struct AutomationSettle: Codable {
     let timedOut: Bool
     let reason: String?
     let lastEventAt: String?
+    let baselineRevision: UInt64?
+    let finalRevision: UInt64?
+    let pendingActionCount: Int?
+    let dirtyElementCount: Int?
+    let dirtyScopes: [String]?
 }
 
 struct ListedAppPayload: Codable {
@@ -150,6 +209,22 @@ struct ListAppsPayload: Codable {
     let warnings: [String]
 }
 
+struct ListedWindowPayload: Codable {
+    let appName: String
+    let bundleId: String?
+    let pid: Int32
+    let windowId: UInt32
+    let title: String?
+    let frame: Rect
+    let isActive: Bool
+}
+
+struct ListWindowsPayload: Codable {
+    let ok: Bool
+    let windows: [ListedWindowPayload]
+    let warnings: [String]
+}
+
 struct ErrorPayload: Codable {
     let ok: Bool
     let error: String
@@ -162,6 +237,12 @@ struct AccessibilityPermissionPayload: Codable {
     let ok: Bool
     let granted: Bool
     let message: String
+    let warnings: [String]
+}
+
+struct NativeSelfTestPayload: Codable {
+    let ok: Bool
+    let tests: [String]
     let warnings: [String]
 }
 
@@ -216,6 +297,14 @@ struct SnapshotOptions {
     let screenshotPath: String?
     let inlineScreenshot: Bool
     let allWindows: Bool
+    let screenshotPolicy: ScreenshotPolicy
+    let explicitVision: Bool
+}
+
+enum ScreenshotPolicy: String {
+    case auto
+    case always
+    case never
 }
 
 struct ActionOptions {
@@ -232,6 +321,9 @@ struct ActionOptions {
     let raise: Bool
     let inlineScreenshot: Bool
     let showOverlay: Bool
+    let deferObservation: Bool
+    let screenshotPolicy: ScreenshotPolicy
+    let explicitVision: Bool
 }
 
 struct AppTarget {
@@ -697,34 +789,12 @@ let bundledAppInstructions: [String: String] = [
     "com.spotify.client": """
         ## Spotify Computer Use
 
-        ### Playing media
-
         Spotify is web-view-backed. The accessibility tree usually exposes the main content
-        (search, playlists, `Play <name>` buttons, song rows). When it does, click those by
-        `element_index`. When it doesn't, the visible Play button is still in the screenshot —
-        a single `computer_click({app, x, y})` on its pixel coordinates works fine, even with
-        Spotify in the background.
-
-        One thing to avoid: do not synthesize a double-click (`click_count: 2`) on `x/y` to
-        "open" a song row. Backgrounded Spotify silently drops those. Click a labeled `Play`
-        or `Play <name>` button instead, or single-click the row to focus it and press
-        `Return`/`Space`.
-
-        Spotify doesn't immediately update after requesting playback, so the result from a click
-        might indicate paused media or outdated media. Instead of acting again, first: run
-        `get-state` to confirm it didn't take. You may be pleasantly surprised. Do not sleep any
-        time, it should be updated by the time you notice and request another `get-state`.
-
-        ### Searching
-
-        Be sure the search field is focused before pressing return to search. If you press return
-        without the search field focused, it may affect playback inadvertently.
-
-        ### General Navigation
-
-        This app is not fully local state. That means you must sometimes wait for network to give
-        you a response. When searching, that means it might say "no results" momentarily. Err on
-        running `get-state` again before changing course.
+        (search, playlists, `Play <name>` buttons, and song rows). Prefer semantic refs; when the
+        tree is sparse, use one coordinate `sky.click({app, x, y})`. Avoid coordinate double-clicks
+        on backgrounded song rows; click a labeled Play control or focus the row and press Return.
+        Playback and search results update asynchronously, so call `sky.get_app_state({app})` before
+        retrying or changing course. Focus the search field before pressing Return.
         """,
     "com.apple.MobileSafari": """
         # Safari Computer Use
@@ -1211,6 +1281,13 @@ func axStringValue(_ element: AXUIElement, _ attribute: String) -> String? {
     if let numberValue = rawValue as? NSNumber {
         return numberValue.stringValue
     }
+    return nil
+}
+
+func axUntrimmedStringValue(_ element: AXUIElement, _ attribute: String) -> String? {
+    guard let rawValue = axAttributeValue(element, attribute) else { return nil }
+    if let stringValue = rawValue as? String { return stringValue }
+    if let numberValue = rawValue as? NSNumber { return numberValue.stringValue }
     return nil
 }
 
@@ -1787,6 +1864,7 @@ final class SnapshotBuilder {
     private(set) var warnings: [String] = []
     private(set) var refs: [String: RefEntry] = [:]
     private(set) var indices: [String: RefEntry] = [:]
+    private(set) var liveElements: [String: AXUIElement] = [:]
     private var nextRef = 1
     private var nextIndex = 0
     private var nodeCount = 0
@@ -1877,6 +1955,7 @@ final class SnapshotBuilder {
         }
 
         let indexToken = String(index)
+        liveElements[indexToken] = element
         indices[indexToken] = RefEntry(
             ref: indexToken,
             index: index,
@@ -1908,6 +1987,7 @@ final class SnapshotBuilder {
             ref = "@d\(nextRef)"
             nextRef += 1
             if let ref {
+                liveElements[ref] = element
                 refs[ref] = RefEntry(
                     ref: ref,
                     index: index,
@@ -2058,13 +2138,14 @@ func resolveTarget(
 func revalidateTarget(_ snapshot: SnapshotDocument) -> AppTarget? {
     let workspace = NSWorkspace.shared
     if let app = workspace.runningApplications.first(where: { $0.processIdentifier == snapshot.pid }) {
+        if let expectedBundle = snapshot.bundleId,
+           app.bundleIdentifier != expectedBundle {
+            forgetPreparedTarget(pid: snapshot.pid)
+            return nil
+        }
         return AppTarget(app: app, axApp: AXUIElementCreateApplication(app.processIdentifier))
     }
     forgetPreparedTarget(pid: snapshot.pid)
-    if let bundleId = snapshot.bundleId,
-       let app = workspace.runningApplications.first(where: { $0.bundleIdentifier == bundleId }) {
-        return AppTarget(app: app, axApp: AXUIElementCreateApplication(app.processIdentifier))
-    }
     return nil
 }
 
@@ -2097,7 +2178,18 @@ func shouldEnableManualAccessibility(for app: NSRunningApplication) -> Bool {
 // (which can be visually disruptive in some apps) every command invocation.
 var preparedTargetPids: Set<Int32> = []
 
-let observedAppNotificationNames: [String] = [
+let observedAutomationNotificationNames: [String] = [
+    kAXValueChangedNotification as String,
+    "AXSelectedTextChanged",
+    "AXSelectedChildrenChanged",
+    "AXSelectedRowsChanged",
+    "AXSelectedColumnsChanged",
+    "AXSelectedCellsChanged",
+    "AXLayoutChanged",
+    kAXTitleChangedNotification as String,
+    "AXRowCountChanged",
+    kAXMovedNotification as String,
+    kAXResizedNotification as String,
     kAXFocusedUIElementChangedNotification as String,
     kAXFocusedWindowChangedNotification as String,
     kAXMainWindowChangedNotification as String,
@@ -2119,9 +2211,13 @@ final class ObservedAutomationTarget {
     let observer: AXObserver
     let appElement: AXUIElement
     let context: AutomationObserverContext
-    var installedNotifications: [String]
+    var installedNotifications: [(AXUIElement, String)]
     var lastEventAt: Date?
     var eventCounts: [String: Int]
+    var revision: UInt64
+    var dirtyElements: Set<Int>
+    var dirtyScopes: Set<String>
+    var pendingActionCount: Int
 
     init(
         pid: Int32,
@@ -2138,6 +2234,10 @@ final class ObservedAutomationTarget {
         self.installedNotifications = []
         self.lastEventAt = nil
         self.eventCounts = [:]
+        self.revision = 0
+        self.dirtyElements = []
+        self.dirtyScopes = []
+        self.pendingActionCount = 0
     }
 }
 
@@ -2148,18 +2248,20 @@ final class AutomationObserverManager {
 
     func ensureObserved(_ target: AppTarget) {
         let pid = target.app.processIdentifier
-        if observedTargets[pid] != nil {
-            return
+        if let existing = observedTargets[pid] {
+            if existing.bundleId == target.app.bundleIdentifier { return }
+            forget(pid: pid)
         }
 
         var observerRef: AXObserver?
-        let creation = AXObserverCreate(pid, { _, _, notification, refcon in
+        let creation = AXObserverCreate(pid, { _, element, notification, refcon in
             guard let refcon else { return }
             let context = Unmanaged<AutomationObserverContext>
                 .fromOpaque(refcon)
                 .takeUnretainedValue()
             AutomationObserverManager.shared.recordEvent(
                 pid: context.pid,
+                element: element,
                 notification: notification as String
             )
         }, &observerRef)
@@ -2182,15 +2284,18 @@ final class AutomationObserverManager {
             CFRunLoopMode.commonModes
         )
 
-        for notificationName in observedAppNotificationNames {
-            let result = AXObserverAddNotification(
-                observerRef,
-                target.axApp,
-                notificationName as CFString,
-                Unmanaged.passUnretained(context).toOpaque()
-            )
-            if result == .success || result == .notificationAlreadyRegistered {
-                observed.installedNotifications.append(notificationName)
+        let notificationRoots = [target.axApp] + allWindowRoots(for: target.axApp)
+        for element in notificationRoots {
+            for notificationName in observedAutomationNotificationNames {
+                let result = AXObserverAddNotification(
+                    observerRef,
+                    element,
+                    notificationName as CFString,
+                    Unmanaged.passUnretained(context).toOpaque()
+                )
+                if result == .success || result == .notificationAlreadyRegistered {
+                    observed.installedNotifications.append((element, notificationName))
+                }
             }
         }
 
@@ -2201,10 +2306,10 @@ final class AutomationObserverManager {
         guard let observed = observedTargets.removeValue(forKey: pid) else {
             return
         }
-        for notificationName in observed.installedNotifications {
+        for (element, notificationName) in observed.installedNotifications {
             _ = AXObserverRemoveNotification(
                 observed.observer,
-                observed.appElement,
+                element,
                 notificationName as CFString
             )
         }
@@ -2215,19 +2320,57 @@ final class AutomationObserverManager {
         )
     }
 
-    private func recordEvent(pid: Int32, notification: String) {
+    private func recordEvent(pid: Int32, element: AXUIElement, notification: String) {
         guard let observed = observedTargets[pid] else {
             return
         }
+        observed.revision &+= 1
         observed.lastEventAt = Date()
         observed.eventCounts[notification, default: 0] += 1
+        observed.dirtyElements.insert(elementHash(element))
+        observed.dirtyScopes.insert(notification)
     }
 
     private func totalEventCount(_ observed: ObservedAutomationTarget) -> Int {
         observed.eventCounts.values.reduce(0, +)
     }
 
-    func waitForQuiet(pid: Int32, quietMs: Int = 120, timeoutMs: Int = 700) -> AutomationSettle {
+    func currentRevision(pid: Int32) -> UInt64 {
+        observedTargets[pid]?.revision ?? 0
+    }
+
+    func markAction(pid: Int32, action: String) -> (UInt64, UInt64) {
+        guard let observed = observedTargets[pid] else { return (0, 0) }
+        let baseline = observed.revision
+        observed.revision &+= 1
+        observed.pendingActionCount += 1
+        observed.dirtyScopes.insert("action:\(action)")
+        observed.lastEventAt = Date()
+        return (baseline, observed.revision)
+    }
+
+    func consumePendingActions(pid: Int32) {
+        guard let observed = observedTargets[pid] else { return }
+        observed.pendingActionCount = 0
+        observed.dirtyElements.removeAll(keepingCapacity: true)
+        observed.dirtyScopes.removeAll(keepingCapacity: true)
+    }
+
+    private func targetShowsLoading(_ observed: ObservedAutomationTarget) -> Bool {
+        if axBoolValue(observed.appElement, "AXBusy") == true { return true }
+        if let window = axElementValue(observed.appElement, kAXFocusedWindowAttribute as String),
+           axBoolValue(window, "AXBusy") == true {
+            return true
+        }
+        return false
+    }
+
+    func waitForQuiet(
+        pid: Int32,
+        baselineRevision: UInt64,
+        quietMs: Int = 140,
+        timeoutMs: Int = 5_000
+    ) -> AutomationSettle {
         guard let observed = observedTargets[pid] else {
             return AutomationSettle(
                 observed: false,
@@ -2236,13 +2379,19 @@ final class AutomationObserverManager {
                 eventCount: 0,
                 timedOut: false,
                 reason: "not-observed",
-                lastEventAt: nil
+                lastEventAt: nil,
+                baselineRevision: baselineRevision,
+                finalRevision: nil,
+                pendingActionCount: nil,
+                dirtyElementCount: nil,
+                dirtyScopes: nil
             )
         }
 
         let start = Date()
         let deadline = start.addingTimeInterval(Double(timeoutMs) / 1000.0)
-        let initialPumpDeadline = start.addingTimeInterval(0.02)
+        let initialGraceSeconds = observed.pendingActionCount > 0 ? 0.70 : 0.06
+        let initialPumpDeadline = start.addingTimeInterval(initialGraceSeconds)
         while Date() < initialPumpDeadline {
             _ = RunLoop.current.run(
                 mode: .default,
@@ -2253,9 +2402,11 @@ final class AutomationObserverManager {
         var timedOut = false
         while true {
             let now = Date()
-            if let lastEventAt = observed.lastEventAt {
+            let loading = targetShowsLoading(observed)
+            if let lastEventAt = observed.lastEventAt,
+               observed.revision > baselineRevision {
                 let quietForMs = now.timeIntervalSince(lastEventAt) * 1000.0
-                if quietForMs >= Double(quietMs) {
+                if quietForMs >= Double(quietMs), !loading {
                     break
                 }
                 if now >= deadline {
@@ -2269,7 +2420,12 @@ final class AutomationObserverManager {
                     before: [deadline, quietDeadline, nextPump].min() ?? deadline
                 )
             } else {
-                break
+                if !loading { break }
+                if now >= deadline {
+                    timedOut = true
+                    break
+                }
+                _ = RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.02))
             }
         }
 
@@ -2278,11 +2434,147 @@ final class AutomationObserverManager {
             observed: true,
             quietMs: quietMs,
             waitedMs: waitedMs,
-            eventCount: totalEventCount(observed),
+            eventCount: Int(observed.revision &- min(observed.revision, baselineRevision)),
             timedOut: timedOut,
             reason: timedOut ? "ax-observer-timeout" : "ax-observer-quiet",
-            lastEventAt: observed.lastEventAt.map { isoTimestamp($0) }
+            lastEventAt: observed.lastEventAt.map { isoTimestamp($0) },
+            baselineRevision: baselineRevision,
+            finalRevision: observed.revision,
+            pendingActionCount: observed.pendingActionCount,
+            dirtyElementCount: observed.dirtyElements.count,
+            dirtyScopes: observed.dirtyScopes.sorted()
         )
+    }
+}
+
+final class AutomationStateEntry {
+    let key: String
+    let canonicalStatePath: String
+    let pid: Int32
+    let bundleId: String?
+    var document: SnapshotDocument
+    var liveElements: [String: AXUIElement]
+    var materializedRevision: UInt64
+    var materializedAt: Date
+    var pendingActionCount: Int
+    var visualContextNeeded: Bool
+    var windowChanged: Bool
+
+    init(
+        key: String,
+        canonicalStatePath: String,
+        document: SnapshotDocument,
+        liveElements: [String: AXUIElement],
+        materializedRevision: UInt64
+    ) {
+        self.key = key
+        self.canonicalStatePath = canonicalStatePath
+        self.pid = document.pid
+        self.bundleId = document.bundleId
+        self.document = document
+        self.liveElements = liveElements
+        self.materializedRevision = materializedRevision
+        self.materializedAt = Date()
+        self.pendingActionCount = 0
+        self.visualContextNeeded = false
+        self.windowChanged = false
+    }
+}
+
+final class AutomationStateCache {
+    static let shared = AutomationStateCache()
+    private var entries: [String: AutomationStateEntry] = [:]
+
+    func canonicalPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    func key(statePath: String, pid: Int32, bundleId: String?) -> String {
+        "\(canonicalPath(statePath))|\(pid)|\(bundleId ?? "-")"
+    }
+
+    func entry(statePath: String, snapshot: SnapshotDocument) -> AutomationStateEntry? {
+        entries[key(statePath: statePath, pid: snapshot.pid, bundleId: snapshot.bundleId)]
+    }
+
+    func entry(statePath: String, pid: Int32, bundleId: String?) -> AutomationStateEntry? {
+        entries[key(statePath: statePath, pid: pid, bundleId: bundleId)]
+    }
+
+    func store(
+        statePath: String,
+        document: SnapshotDocument,
+        liveElements: [String: AXUIElement],
+        materializedRevision: UInt64
+    ) -> AutomationStateEntry {
+        let canonical = canonicalPath(statePath)
+        let cacheKey = key(statePath: statePath, pid: document.pid, bundleId: document.bundleId)
+        if let existing = entries[cacheKey] {
+            existing.document = document
+            existing.liveElements = liveElements
+            existing.materializedRevision = materializedRevision
+            existing.materializedAt = Date()
+            existing.pendingActionCount = 0
+            existing.visualContextNeeded = false
+            existing.windowChanged = false
+            return existing
+        }
+        let entry = AutomationStateEntry(
+            key: cacheKey,
+            canonicalStatePath: canonical,
+            document: document,
+            liveElements: liveElements,
+            materializedRevision: materializedRevision
+        )
+        entries[cacheKey] = entry
+        return entry
+    }
+
+    func recordAction(
+        statePath: String,
+        snapshot: SnapshotDocument,
+        target: AppTarget,
+        action: String,
+        deferred: Bool,
+        visualContextNeeded: Bool
+    ) -> ActionReceipt {
+        AutomationObserverManager.shared.ensureObserved(target)
+        let (baseline, invalidated) = AutomationObserverManager.shared.markAction(
+            pid: target.app.processIdentifier,
+            action: action
+        )
+        let stateEntry: AutomationStateEntry
+        if let existing = entry(statePath: statePath, snapshot: snapshot) {
+            stateEntry = existing
+        } else {
+            let canonical = canonicalPath(statePath)
+            let cacheKey = key(statePath: statePath, pid: snapshot.pid, bundleId: snapshot.bundleId)
+            stateEntry = AutomationStateEntry(
+                key: cacheKey,
+                canonicalStatePath: canonical,
+                document: snapshot,
+                liveElements: [:],
+                materializedRevision: snapshot.materializedRevision ?? baseline
+            )
+            entries[cacheKey] = stateEntry
+        }
+        stateEntry.pendingActionCount += 1
+        stateEntry.visualContextNeeded = stateEntry.visualContextNeeded || visualContextNeeded
+        return ActionReceipt(
+            id: UUID().uuidString.lowercased(),
+            action: action,
+            targetPid: target.app.processIdentifier,
+            targetBundleId: target.app.bundleIdentifier,
+            statePath: canonicalPath(statePath),
+            baselineRevision: baseline,
+            invalidatedRevision: invalidated,
+            deferred: deferred,
+            recordedAt: isoTimestamp()
+        )
+    }
+
+    func forget(pid: Int32) {
+        entries = entries.filter { $0.value.pid != pid }
     }
 }
 
@@ -2329,6 +2621,7 @@ func configureMessagingTimeout(for target: AppTarget) {
 func forgetPreparedTarget(pid: Int32) {
     preparedTargetPids.remove(pid)
     AutomationObserverManager.shared.forget(pid: pid)
+    AutomationStateCache.shared.forget(pid: pid)
 }
 
 // MARK: - Overlay support
@@ -3105,7 +3398,10 @@ func withActionOverlay<T>(
 
 func overlayEnabled(_ options: ActionOptions) -> Bool {
     if envBool("STELLA_COMPUTER_NO_OVERLAY") { return false }
-    return options.showOverlay
+    // Deferred chains optimize for command throughput. The daemon can keep
+    // its decorative overlay alive, but the action must not synchronously
+    // wait for cursor travel/click animation.
+    return options.showOverlay && !options.deferObservation
 }
 
 struct UnifiedOverlayTarget {
@@ -3916,7 +4212,10 @@ func captureScreenshot(
     }
 
     // Try SCK first when we have a target pid.
-    if let pid, #available(macOS 14.0, *) {
+    if let pid,
+       #available(macOS 14.0, *),
+       CGPreflightScreenCaptureAccess(),
+       !screenCaptureKitDisabledForProcess {
         let (screenshot, warning) = captureViaScreenCaptureKit(
             pid: pid,
             outputPath: outputPath,
@@ -3931,6 +4230,8 @@ func captureScreenshot(
             // SCK explicitly failed; fall through to screencapture shell-out.
             trace("screenshot:sck-failed reason=\(warning)")
         }
+    } else if pid != nil {
+        trace("screenshot:sck-skipped unavailable-for-process")
     }
 
     // Fallback: /usr/sbin/screencapture with -l<windowID>. Captures ONLY
@@ -3954,7 +4255,13 @@ func captureScreenshot(
             process.waitUntilExit()
             if process.terminationStatus == 0 {
                 return (
-                    screenshotFromOnDiskPNG(path: outputPath, includeBase64: includeBase64),
+                    screenshotFromOnDiskPNG(
+                        path: outputPath,
+                        includeBase64: includeBase64,
+                        captureMethod: "screencapture-window-id",
+                        exactWindowMatch: true,
+                        occludedRectFallback: false
+                    ),
                     nil
                 )
             }
@@ -3986,7 +4293,13 @@ func captureScreenshot(
             return (nil, "Failed to capture screenshot (screencapture exit \(process.terminationStatus)).")
         }
         return (
-            screenshotFromOnDiskPNG(path: outputPath, includeBase64: includeBase64),
+            screenshotFromOnDiskPNG(
+                path: outputPath,
+                includeBase64: includeBase64,
+                captureMethod: "screencapture-rect",
+                exactWindowMatch: false,
+                occludedRectFallback: true
+            ),
             nil
         )
     } catch {
@@ -4006,7 +4319,13 @@ func captureScreenshot(
 //
 // Apply the same SCREENSHOT_MAX_LONG_EDGE cap the SCK path uses so the
 // fallback shell-out doesn't ship a 5 MB retina PNG into the prompt.
-func screenshotFromOnDiskPNG(path: String, includeBase64: Bool) -> Screenshot? {
+func screenshotFromOnDiskPNG(
+    path: String,
+    includeBase64: Bool,
+    captureMethod: String,
+    exactWindowMatch: Bool,
+    occludedRectFallback: Bool
+) -> Screenshot? {
     guard let originalData = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
         return Screenshot(
             mimeType: "image/png",
@@ -4014,7 +4333,10 @@ func screenshotFromOnDiskPNG(path: String, includeBase64: Bool) -> Screenshot? {
             path: path,
             widthPx: nil,
             heightPx: nil,
-            byteCount: 0
+            byteCount: 0,
+            captureMethod: captureMethod,
+            exactWindowMatch: exactWindowMatch,
+            occludedRectFallback: occludedRectFallback
         )
     }
 
@@ -4043,7 +4365,10 @@ func screenshotFromOnDiskPNG(path: String, includeBase64: Bool) -> Screenshot? {
         path: path,
         widthPx: widthPx,
         heightPx: heightPx,
-        byteCount: pngData.count
+        byteCount: pngData.count,
+        captureMethod: captureMethod,
+        exactWindowMatch: exactWindowMatch,
+        occludedRectFallback: occludedRectFallback
     )
 }
 
@@ -4059,66 +4384,46 @@ private func captureViaScreenCaptureKit(
     var capturedImage: CGImage? = nil
     var captureError: String? = nil
 
-    SCShareableContent.getExcludingDesktopWindows(
-        false,
-        onScreenWindowsOnly: true
-    ) { content, error in
+    let captureTask = Task.detached {
         defer { semaphore.signal() }
-        if let error {
-            captureError = "SCShareableContent failed: \(error.localizedDescription)"
-            return
-        }
-        guard let content else {
-            captureError = "SCShareableContent returned no content"
-            return
-        }
-        guard let preferredWindow = resolveOnScreenWindow(
-            pid: pid,
-            expectedTitle: expectedTitle,
-            expectedFrame: expectedFrame
-        ) else {
-            captureError = "no on-screen window for pid \(pid)"
-            return
-        }
-        let window = content.windows.first {
-            $0.windowID == preferredWindow.windowID && $0.owningApplication?.processID == pid && $0.isOnScreen
-        }
-        guard let window else {
-            captureError = "ScreenCaptureKit could not find preferred window \(preferredWindow.windowID) for pid \(pid)"
-            return
-        }
-        let filter = SCContentFilter(desktopIndependentWindow: window)
-        let cfg = SCStreamConfiguration()
-        let scale = CGFloat(filter.pointPixelScale)
-        let pixelWidth = Int(window.frame.width * scale)
-        let pixelHeight = Int(window.frame.height * scale)
-        cfg.width = pixelWidth
-        cfg.height = pixelHeight
-        // Explicitly set `sourceRect` to the window's full content (no
-        // cropping) and pin the pixel format to BGRA. Both are no-ops
-        // relative to ScreenCaptureKit's defaults for a windowed capture,
-        // but they make the intent explicit.
-        cfg.sourceRect = CGRect(origin: .zero, size: window.frame.size)
-        cfg.pixelFormat = kCVPixelFormatType_32BGRA
-        cfg.showsCursor = false
-        cfg.scalesToFit = false
-        cfg.ignoreShadowsSingleWindow = true
-
-        let inner = DispatchSemaphore(value: 0)
-        SCScreenshotManager.captureImage(
-            contentFilter: filter,
-            configuration: cfg
-        ) { image, err in
-            defer { inner.signal() }
-            if let err {
-                captureError = "captureImage failed: \(err.localizedDescription)"
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
+            )
+            guard let preferredWindow = resolveOnScreenWindow(
+                pid: pid,
+                expectedTitle: expectedTitle,
+                expectedFrame: expectedFrame
+            ) else {
+                captureError = "no on-screen window for pid \(pid)"
                 return
             }
-            capturedImage = image
+            guard let window = content.windows.first(where: {
+                $0.windowID == preferredWindow.windowID &&
+                    $0.owningApplication?.processID == pid &&
+                    $0.isOnScreen
+            }) else {
+                captureError = "ScreenCaptureKit could not find preferred window \(preferredWindow.windowID) for pid \(pid)"
+                return
+            }
+            let filter = SCContentFilter(desktopIndependentWindow: window)
+            let cfg = SCStreamConfiguration()
+            cfg.width = Int(window.frame.width)
+            cfg.height = Int(window.frame.height)
+            capturedImage = try await SCScreenshotManager.captureImage(
+                contentFilter: filter,
+                configuration: cfg
+            )
+        } catch {
+            captureError = "ScreenCaptureKit failed: \(error.localizedDescription)"
         }
-        _ = inner.wait(timeout: .now() + 5)
     }
-    _ = semaphore.wait(timeout: .now() + 6)
+    if semaphore.wait(timeout: .now() + .milliseconds(750)) == .timedOut {
+        captureTask.cancel()
+        screenCaptureKitDisabledForProcess = true
+        return (nil, "ScreenCaptureKit timed out after 750ms")
+    }
 
     if let captureError {
         return (nil, captureError)
@@ -4145,13 +4450,18 @@ private func captureViaScreenCaptureKit(
             path: outputPath,
             widthPx: resized.width,
             heightPx: resized.height,
-            byteCount: png.count
+            byteCount: png.count,
+            captureMethod: "screen-capture-kit-window",
+            exactWindowMatch: true,
+            occludedRectFallback: false
         )
         return (screenshot, nil)
     } catch {
         return (nil, "PNG write failed: \(error.localizedDescription)")
     }
 }
+
+private var screenCaptureKitDisabledForProcess = false
 
 private let SCREENSHOT_MAX_LONG_EDGE: Int = {
     if let raw = ProcessInfo.processInfo.environment["STELLA_COMPUTER_SCREENSHOT_MAX_LONG_EDGE"],
@@ -4486,7 +4796,8 @@ func scoreCandidate(entry: PreparedRefEntry, candidate: PreparedCandidateNode) -
 func collectCandidates(
     target: AppTarget,
     maxDepth: Int,
-    maxNodes: Int
+    maxNodes: Int,
+    allWindows: Bool = false
 ) -> [CandidateNode] {
     var results: [CandidateNode] = []
     var nodeCount = 0
@@ -4577,7 +4888,8 @@ func collectCandidates(
         }
     }
 
-    for (index, root) in snapshotRoots(for: target.axApp).enumerated() {
+    let roots = allWindows ? allWindowRoots(for: target.axApp) : snapshotRoots(for: target.axApp)
+    for (index, root) in roots.enumerated() {
         walk(element: root, depth: 0, childPath: [index], ancestry: [], windowTitle: nil)
     }
 
@@ -5092,6 +5404,37 @@ func listAppsCommand() -> ListAppsPayload {
     }
 
     return ListAppsPayload(ok: true, apps: apps, warnings: [])
+}
+
+func listWindowsCommand() -> ListWindowsPayload {
+    let runningApps = Dictionary(
+        uniqueKeysWithValues: NSWorkspace.shared.runningApplications.map {
+            ($0.processIdentifier, $0)
+        }
+    )
+    let frontmostPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    let windows = enumerateOnScreenWindows().compactMap { entry -> ListedWindowPayload? in
+        guard entry.layer == 0,
+              let app = runningApps[entry.pid],
+              app.activationPolicy != .prohibited else {
+            return nil
+        }
+        return ListedWindowPayload(
+            appName: app.localizedName ?? app.bundleIdentifier ?? "pid \(entry.pid)",
+            bundleId: app.bundleIdentifier,
+            pid: entry.pid,
+            windowId: entry.windowID,
+            title: entry.title,
+            frame: Rect(
+                x: Double(entry.frame.origin.x),
+                y: Double(entry.frame.origin.y),
+                width: Double(entry.frame.width),
+                height: Double(entry.frame.height)
+            ),
+            isActive: entry.pid == frontmostPid
+        )
+    }
+    return ListWindowsPayload(ok: true, windows: windows, warnings: [])
 }
 
 func setFocused(_ element: AXUIElement) -> Bool {
@@ -5640,6 +5983,128 @@ func setValue(
     }
 
     return (false, nil)
+}
+
+enum TextSelectionMode: String {
+    case text
+    case cursorBefore = "cursor-before"
+    case cursorAfter = "cursor-after"
+}
+
+func resolveTextSelectionRange(
+    fullText: String,
+    text: String,
+    prefix: String?,
+    suffix: String?,
+    mode: TextSelectionMode
+) throws -> CFRange {
+    guard !text.isEmpty else {
+        throw failure("select-text requires non-empty text.")
+    }
+    let haystack = fullText as NSString
+    let needle = text as NSString
+    let prefixLength = (prefix as NSString?)?.length ?? 0
+    let suffixLength = (suffix as NSString?)?.length ?? 0
+    var search = NSRange(location: 0, length: haystack.length)
+    var matches: [NSRange] = []
+    while search.length >= needle.length {
+        let found = haystack.range(of: text, options: [], range: search)
+        if found.location == NSNotFound { break }
+        var contextMatches = true
+        if let prefix {
+            contextMatches = found.location >= prefixLength &&
+                haystack.substring(with: NSRange(
+                    location: found.location - prefixLength,
+                    length: prefixLength
+                )) == prefix
+        }
+        if contextMatches, let suffix {
+            let suffixStart = NSMaxRange(found)
+            contextMatches = suffixStart + suffixLength <= haystack.length &&
+                haystack.substring(with: NSRange(location: suffixStart, length: suffixLength)) == suffix
+        }
+        if contextMatches { matches.append(found) }
+        let next = found.location + 1
+        if next > haystack.length { break }
+        search = NSRange(location: next, length: haystack.length - next)
+    }
+
+    guard !matches.isEmpty else {
+        let context = [
+            prefix.map { "prefix '\($0)'" },
+            suffix.map { "suffix '\($0)'" },
+        ].compactMap { $0 }.joined(separator: " and ")
+        throw failure(
+            context.isEmpty
+                ? "No exact UTF-16 match for '\(text)' in the target element."
+                : "No exact UTF-16 match for '\(text)' with \(context) in the target element."
+        )
+    }
+    guard matches.count == 1, let match = matches.first else {
+        throw failure(
+            "Ambiguous text selection: '\(text)' matched \(matches.count) UTF-16 ranges. Add --prefix and/or --suffix."
+        )
+    }
+
+    var selectedRange: CFRange
+    switch mode {
+    case .text:
+        selectedRange = CFRange(location: match.location, length: match.length)
+    case .cursorBefore:
+        selectedRange = CFRange(location: match.location, length: 0)
+    case .cursorAfter:
+        selectedRange = CFRange(location: NSMaxRange(match), length: 0)
+    }
+    return selectedRange
+}
+
+func selectTextRange(
+    element: AXUIElement,
+    text: String,
+    prefix: String?,
+    suffix: String?,
+    mode: TextSelectionMode
+) throws -> CFRange {
+    guard let fullText = axUntrimmedStringValue(element, kAXValueAttribute as String) else {
+        throw failure("The target element does not expose a full AXValue string for semantic text selection.")
+    }
+    var selectedRange = try resolveTextSelectionRange(
+        fullText: fullText,
+        text: text,
+        prefix: prefix,
+        suffix: suffix,
+        mode: mode
+    )
+    guard let rangeValue = AXValueCreate(.cfRange, &selectedRange) else {
+        throw failure("Failed to encode the UTF-16 selection range.")
+    }
+    let result = AXUIElementSetAttributeValue(
+        element,
+        kAXSelectedTextRangeAttribute as CFString,
+        rangeValue
+    )
+    guard result == .success else {
+        throw failure("Failed to set AXSelectedTextRange (AX error \(result.rawValue)).")
+    }
+
+    if let raw = axAttributeValue(element, kAXSelectedTextRangeAttribute as String),
+       CFGetTypeID(raw) == AXValueGetTypeID() {
+        let axValue = raw as! AXValue
+        var observed = CFRange()
+        if AXValueGetType(axValue) == .cfRange,
+           AXValueGetValue(axValue, .cfRange, &observed),
+           observed.location != selectedRange.location || observed.length != selectedRange.length {
+            throw failure(
+                "AXSelectedTextRange verification failed: requested \(selectedRange.location):\(selectedRange.length), observed \(observed.location):\(observed.length)."
+            )
+        }
+    }
+    if mode == .text,
+       let observedText = axUntrimmedStringValue(element, kAXSelectedTextAttribute as String),
+       observedText != text {
+        throw failure("AX selected-text verification failed after setting the exact UTF-16 range.")
+    }
+    return selectedRange
 }
 
 func envBool(_ key: String) -> Bool {
@@ -7099,6 +7564,135 @@ func postKeyChord(_ keySpec: String, target: AppTarget, raise: Bool = true) -> B
     return simulateKeyChord(keySpec)
 }
 
+func snapshotWithMetadata(
+    _ source: SnapshotDocument,
+    warnings: [String],
+    screenshotPath: String?,
+    screenshot: Screenshot?,
+    revision: UInt64,
+    materializedRevision: UInt64,
+    cacheHit: Bool,
+    cacheKey: String,
+    pendingActionCount: Int,
+    screenshotPolicy: ScreenshotPolicy,
+    settle: AutomationSettle?
+) -> SnapshotDocument {
+    SnapshotDocument(
+        ok: source.ok,
+        appName: source.appName,
+        bundleId: source.bundleId,
+        pid: source.pid,
+        windowTitle: source.windowTitle,
+        windowFrame: source.windowFrame,
+        windowId: source.windowId,
+        nodeCount: source.nodeCount,
+        refCount: source.refCount,
+        refs: source.refs,
+        indices: source.indices,
+        nodes: source.nodes,
+        warnings: warnings,
+        screenshotPath: screenshotPath,
+        screenshot: screenshot,
+        appInstructions: source.appInstructions,
+        selectedText: source.selectedText,
+        focusedSummary: source.focusedSummary,
+        capturedAt: isoTimestamp(),
+        maxDepth: source.maxDepth,
+        maxNodes: source.maxNodes,
+        allWindows: source.allWindows,
+        revision: revision,
+        materializedRevision: materializedRevision,
+        cacheHit: cacheHit,
+        cacheKey: cacheKey,
+        pendingActionCount: pendingActionCount,
+        screenshotPolicy: screenshotPolicy.rawValue,
+        settle: settle
+    )
+}
+
+func screenshotWithReliability(
+    _ source: Screenshot,
+    revision: UInt64,
+    reliable: Bool
+) -> Screenshot {
+    Screenshot(
+        mimeType: source.mimeType,
+        data: source.data,
+        path: source.path,
+        widthPx: source.widthPx,
+        heightPx: source.heightPx,
+        byteCount: source.byteCount,
+        captureMethod: source.captureMethod,
+        exactWindowMatch: source.exactWindowMatch,
+        occludedRectFallback: source.occludedRectFallback,
+        treeRevision: revision,
+        reliableFinalFrame: reliable
+    )
+}
+
+func shouldCaptureAutoScreenshot(
+    initial: Bool,
+    nodeCount: Int,
+    refCount: Int,
+    warnings: [String],
+    entry: AutomationStateEntry?,
+    settle: AutomationSettle?,
+    explicitVision: Bool
+) -> Bool {
+    if initial || explicitVision || entry?.visualContextNeeded == true || entry?.windowChanged == true {
+        return true
+    }
+    if nodeCount < 25 || refCount == 0 || settle?.timedOut == true { return true }
+    let warningText = warnings.joined(separator: " ").lowercased()
+    if warningText.contains("truncated") || warningText.contains("oop") ||
+        warningText.contains("helper process") || warningText.contains("uncertain") ||
+        warningText.contains("heuristic") {
+        return true
+    }
+    let scopes = settle?.dirtyScopes ?? []
+    return scopes.contains { scope in
+        scope.contains("Window") || scope.contains("Title") || scope.contains("Moved") || scope.contains("Resized")
+    }
+}
+
+func captureReliableSnapshot(
+    path: String,
+    target: AppTarget,
+    windowFrame: Rect?,
+    windowTitle: String?,
+    inline: Bool,
+    treeRevision: UInt64
+) -> (Screenshot?, String?) {
+    let observer = AutomationObserverManager.shared
+    let before = observer.currentRevision(pid: target.app.processIdentifier)
+    var (captured, warning) = captureScreenshot(
+        to: path,
+        rect: windowFrame,
+        pid: target.app.processIdentifier,
+        expectedTitle: windowTitle,
+        includeBase64: inline
+    )
+    var after = observer.currentRevision(pid: target.app.processIdentifier)
+    if captured != nil, after != before {
+        _ = observer.waitForQuiet(
+            pid: target.app.processIdentifier,
+            baselineRevision: before
+        )
+        (captured, warning) = captureScreenshot(
+            to: path,
+            rect: windowFrame,
+            pid: target.app.processIdentifier,
+            expectedTitle: windowTitle,
+            includeBase64: inline
+        )
+        after = observer.currentRevision(pid: target.app.processIdentifier)
+    }
+    if let captured {
+        return (screenshotWithReliability(captured, revision: treeRevision, reliable: after == treeRevision), warning)
+    }
+    return (nil, warning)
+}
+
 func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
     let target = try resolveTarget(
         pid: options.pid,
@@ -7107,6 +7701,75 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
     )
     configureMessagingTimeout(for: target)
     recoverHiddenTargetWindowIfNeeded(target)
+    let observer = AutomationObserverManager.shared
+    let cache = AutomationStateCache.shared
+    let existing = cache.entry(
+        statePath: options.statePath,
+        pid: target.app.processIdentifier,
+        bundleId: target.app.bundleIdentifier
+    )
+    let pendingActionCount = existing?.pendingActionCount ?? 0
+    var settle: AutomationSettle? = nil
+    var currentRevision = observer.currentRevision(pid: target.app.processIdentifier)
+    if let existing, currentRevision != existing.materializedRevision || pendingActionCount > 0 {
+        settle = observer.waitForQuiet(
+            pid: target.app.processIdentifier,
+            baselineRevision: existing.materializedRevision
+        )
+        currentRevision = observer.currentRevision(pid: target.app.processIdentifier)
+    }
+
+    let compatibleCache = existing.flatMap { entry -> AutomationStateEntry? in
+        guard entry.materializedRevision == currentRevision,
+              Date().timeIntervalSince(entry.materializedAt) <= 2.0,
+              entry.document.maxDepth == options.maxDepth,
+              entry.document.maxNodes == options.maxNodes,
+              (entry.document.allWindows ?? false) == options.allWindows else { return nil }
+        return entry
+    }
+    if let compatibleCache {
+        let capture = options.screenshotPolicy == .always ||
+            (options.screenshotPolicy == .auto && shouldCaptureAutoScreenshot(
+                initial: false,
+                nodeCount: compatibleCache.document.nodeCount,
+                refCount: compatibleCache.document.refCount,
+                warnings: compatibleCache.document.warnings,
+                entry: compatibleCache,
+                settle: settle,
+                explicitVision: options.explicitVision
+            ))
+        var warnings = compatibleCache.document.warnings
+        var screenshot: Screenshot? = nil
+        let screenshotPath = capture ? options.screenshotPath : nil
+        if capture, let screenshotPath {
+            let result = captureReliableSnapshot(
+                path: screenshotPath,
+                target: target,
+                windowFrame: compatibleCache.document.windowFrame,
+                windowTitle: compatibleCache.document.windowTitle,
+                inline: options.inlineScreenshot,
+                treeRevision: currentRevision
+            )
+            screenshot = result.0
+            if let warning = result.1 { warnings.append(warning) }
+        }
+        let document = snapshotWithMetadata(
+            compatibleCache.document,
+            warnings: warnings,
+            screenshotPath: screenshotPath,
+            screenshot: screenshot,
+            revision: currentRevision,
+            materializedRevision: compatibleCache.materializedRevision,
+            cacheHit: true,
+            cacheKey: compatibleCache.key,
+            pendingActionCount: pendingActionCount,
+            screenshotPolicy: options.screenshotPolicy,
+            settle: settle
+        )
+        compatibleCache.document = document
+        try writeSnapshotState(document, statePath: options.statePath)
+        return document
+    }
 
     // Snapshot the app's currently relevant window roots. For Electron/CEF
     // hosts, `prepareTargetForAutomation(...)` enables manual accessibility
@@ -7147,6 +7810,7 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
         return (builder, walked)
     }
 
+    var walkBaseline = observer.currentRevision(pid: target.app.processIdentifier)
     var (builder, nodes) = walk()
     if isWebViewBacked, builder.currentNodeCount() < webViewSparseThreshold {
         for attempt in 1...maxRetries {
@@ -7171,6 +7835,16 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
             }
         }
     }
+    var materializedRevision = observer.currentRevision(pid: target.app.processIdentifier)
+    if materializedRevision != walkBaseline {
+        settle = observer.waitForQuiet(
+            pid: target.app.processIdentifier,
+            baselineRevision: walkBaseline
+        )
+        walkBaseline = observer.currentRevision(pid: target.app.processIdentifier)
+        (builder, nodes) = walk()
+        materializedRevision = observer.currentRevision(pid: target.app.processIdentifier)
+    }
 
     let windowTitle = currentWindowTitle(for: target) ?? nodes.first?.title
     let windowFrame = currentWindowFrame(for: target) ?? nodes.first?.frame
@@ -7178,14 +7852,26 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
     let focusedElementSummary = focusedSummary(in: nodes)
     var warnings = builder.warnings
 
+    let capture = options.screenshotPolicy == .always ||
+        (options.screenshotPolicy == .auto && shouldCaptureAutoScreenshot(
+            initial: existing == nil,
+            nodeCount: builder.currentNodeCount(),
+            refCount: builder.refs.count,
+            warnings: warnings,
+            entry: existing,
+            settle: settle,
+            explicitVision: options.explicitVision
+        ))
+    let effectiveScreenshotPath = capture ? options.screenshotPath : nil
     var screenshot: Screenshot? = nil
-    if let screenshotPath = options.screenshotPath {
-        let (captured, screenshotWarning) = captureScreenshot(
-            to: screenshotPath,
-            rect: windowFrame,
-            pid: target.app.processIdentifier,
-            expectedTitle: windowTitle,
-            includeBase64: options.inlineScreenshot
+    if let screenshotPath = effectiveScreenshotPath {
+        let (captured, screenshotWarning) = captureReliableSnapshot(
+            path: screenshotPath,
+            target: target,
+            windowFrame: windowFrame,
+            windowTitle: windowTitle,
+            inline: options.inlineScreenshot,
+            treeRevision: materializedRevision
         )
         if let screenshotWarning {
             warnings.append(screenshotWarning)
@@ -7214,7 +7900,7 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
         indices: builder.indices,
         nodes: nodes,
         warnings: warnings,
-        screenshotPath: options.screenshotPath,
+        screenshotPath: effectiveScreenshotPath,
         screenshot: screenshot,
         appInstructions: appInstructions,
         selectedText: selectedText,
@@ -7222,60 +7908,94 @@ func snapshotCommand(_ options: SnapshotOptions) throws -> SnapshotDocument {
         capturedAt: isoTimestamp(),
         maxDepth: options.maxDepth,
         maxNodes: options.maxNodes,
-        allWindows: options.allWindows
+        allWindows: options.allWindows,
+        revision: observer.currentRevision(pid: target.app.processIdentifier),
+        materializedRevision: materializedRevision,
+        cacheHit: false,
+        cacheKey: cache.key(
+            statePath: options.statePath,
+            pid: target.app.processIdentifier,
+            bundleId: target.app.bundleIdentifier
+        ),
+        pendingActionCount: pendingActionCount,
+        screenshotPolicy: options.screenshotPolicy.rawValue,
+        settle: settle
     )
 
     try writeSnapshotState(document, statePath: options.statePath)
+    _ = cache.store(
+        statePath: options.statePath,
+        document: document,
+        liveElements: builder.liveElements,
+        materializedRevision: materializedRevision
+    )
+    observer.consumePendingActions(pid: target.app.processIdentifier)
     return document
 }
 
 func refreshSnapshotAfterAction(
-    statePath: String,
-    snapshot: SnapshotDocument?,
-    captureScreenshot: Bool,
-    inlineScreenshot: Bool
-) -> (SnapshotDocument?, [String], AutomationSettle?) {
-    let settle = snapshot.map {
-        AutomationObserverManager.shared.waitForQuiet(pid: $0.pid)
+    options: ActionOptions,
+    snapshot: SnapshotDocument,
+    target: AppTarget,
+    action: String,
+    visualContextNeeded: Bool = false
+) throws -> (SnapshotDocument?, [String], AutomationSettle?, ActionReceipt) {
+    let receipt = AutomationStateCache.shared.recordAction(
+        statePath: options.statePath,
+        snapshot: snapshot,
+        target: target,
+        action: action,
+        deferred: options.deferObservation,
+        visualContextNeeded: visualContextNeeded || options.explicitVision
+    )
+    // Navigation-sensitive safety is deliberately independent of snapshot
+    // materialization so deferred chains cannot bypass a forbidden URL.
+    try ensureSafeActionContext(snapshot: snapshot, target: target)
+    if options.deferObservation {
+        return (nil, [], nil, receipt)
     }
     let options = SnapshotOptions(
-        pid: snapshot?.pid,
-        appName: snapshot?.appName,
-        bundleId: snapshot?.bundleId,
-        maxDepth: max(1, snapshot?.maxDepth ?? 4),
-        maxNodes: max(25, snapshot?.maxNodes ?? 320),
-        statePath: statePath,
-        screenshotPath: captureScreenshot
-            ? (snapshot?.screenshotPath ?? derivedScreenshotPath(for: statePath))
+        pid: snapshot.pid,
+        appName: snapshot.appName,
+        bundleId: snapshot.bundleId,
+        maxDepth: max(1, snapshot.maxDepth ?? 4),
+        maxNodes: max(25, snapshot.maxNodes ?? 320),
+        statePath: options.statePath,
+        screenshotPath: options.captureScreenshot
+            ? (snapshot.screenshotPath ?? derivedScreenshotPath(for: options.statePath))
             : nil,
-        inlineScreenshot: inlineScreenshot,
-        allWindows: snapshot?.allWindows ?? false
+        inlineScreenshot: options.inlineScreenshot,
+        allWindows: snapshot.allWindows ?? false,
+        screenshotPolicy: options.screenshotPolicy,
+        explicitVision: visualContextNeeded || options.explicitVision
     )
 
     do {
         let refreshed = try snapshotCommand(options)
-        var extraWarnings: [String] = []
-        // Post-action URL safety: if the refreshed window/focus surfaces a
-        // URL on a forbidden host, warn loudly. Cleaning up the side-effect
-        // is up to the caller, but we never want to silently leave the
-        // session on (e.g.) a banking page after a click.
+        try ensureSafeActionContext(snapshot: snapshot, target: target)
+        let extraWarnings: [String] = []
+        // Defense in depth for URL hints retained in the materialized tree.
+        // The full, untruncated live context check above is authoritative.
         if let urlNode = focusedUrlNode(in: refreshed.nodes) {
             let lower = urlNode.lowercased()
             for needle in forbiddenUrlSubstrings() {
                 if lower.contains(needle.lowercased()) {
-                    extraWarnings.append(
+                    throw failure(
                         "Post-action navigation reached a forbidden URL ('\(needle)' matched). "
-                        + "stella-computer will not act further on this surface; switch back manually."
+                        + "Further automation on this surface is blocked."
                     )
                 }
             }
         }
-        return (refreshed, extraWarnings, settle)
+        return (refreshed, extraWarnings, refreshed.settle, receipt)
+    } catch let safetyFailure as DesktopAutomationFailure {
+        throw safetyFailure
     } catch {
         return (
             nil,
             ["Failed to refresh the desktop snapshot after the action: \(error.localizedDescription)"],
-            settle
+            nil,
+            receipt
         )
     }
 }
@@ -7324,6 +8044,117 @@ func allWindowRoots(for app: AXUIElement) -> [AXUIElement] {
     return roots
 }
 
+func fullUrlContexts(target: AppTarget, candidate: AXUIElement? = nil) -> [String] {
+    var elements: [AXUIElement] = [target.axApp]
+    let appAttributes = [
+        kAXFocusedWindowAttribute as String,
+        kAXMainWindowAttribute as String,
+        kAXFocusedUIElementAttribute as String,
+    ]
+    for attribute in appAttributes {
+        if let element = axElementValue(target.axApp, attribute) {
+            appendUniqueElement(element, into: &elements)
+        }
+    }
+    if let candidate {
+        appendUniqueElement(candidate, into: &elements)
+        var ancestor: AXUIElement? = candidate
+        for _ in 0..<16 {
+            guard let current = ancestor,
+                  let parent = axElementValue(current, kAXParentAttribute as String) else { break }
+            appendUniqueElement(parent, into: &elements)
+            ancestor = parent
+        }
+    }
+
+    var urls: [String] = []
+    for element in elements {
+        for attribute in [kAXURLAttribute as String, "AXDocument"] {
+            guard let raw = axAttributeValue(element, attribute) else { continue }
+            if let url = coerceURL(raw) ?? coerceString(raw), !url.isEmpty, !urls.contains(url) {
+                urls.append(url)
+            }
+        }
+    }
+    return urls
+}
+
+func ensureSafeActionContext(
+    snapshot: SnapshotDocument,
+    target: AppTarget,
+    candidate: AXUIElement? = nil
+) throws {
+    guard !target.app.isTerminated,
+          target.app.processIdentifier == snapshot.pid else {
+        throw failure("Saved target pid \(snapshot.pid) is no longer the active target. Take a fresh snapshot before acting.")
+    }
+    if let expectedBundle = snapshot.bundleId,
+       target.app.bundleIdentifier != expectedBundle {
+        throw failure(
+            "Saved target pid \(snapshot.pid) no longer belongs to expected bundle '\(expectedBundle)'. Take a fresh snapshot."
+        )
+    }
+    try ensureTargetAllowed(target.app)
+    for url in fullUrlContexts(target: target, candidate: candidate) {
+        let lower = url.lowercased()
+        if let needle = forbiddenUrlSubstrings().first(where: { lower.contains($0.lowercased()) }) {
+            throw failure(
+                "stella-computer is not allowed to operate on '\(needle)'. Current URL context: \(url)"
+            )
+        }
+    }
+}
+
+func validatedCachedCandidate(
+    statePath: String,
+    snapshot: SnapshotDocument,
+    entry: RefEntry,
+    targetId: String,
+    target: AppTarget
+) -> ResolvedCandidate? {
+    guard let cache = AutomationStateCache.shared.entry(statePath: statePath, snapshot: snapshot),
+          let element = cache.liveElements[targetId] else {
+        return nil
+    }
+    var ownerPid: pid_t = 0
+    guard AXUIElementGetPid(element, &ownerPid) == .success,
+          ownerPid == target.app.processIdentifier else {
+        cache.liveElements.removeValue(forKey: targetId)
+        return nil
+    }
+    let details = nodeDetails(for: element)
+    guard details.role == entry.role else {
+        cache.liveElements.removeValue(forKey: targetId)
+        return nil
+    }
+    let candidate = CandidateNode(
+        element: element,
+        role: details.role,
+        subrole: details.subrole,
+        primaryLabel: primaryLabel(
+            title: details.title,
+            description: details.description,
+            value: details.value,
+            identifier: details.identifier
+        ),
+        title: details.title,
+        description: details.description,
+        value: details.value,
+        identifier: details.identifier,
+        url: details.url,
+        windowTitle: entry.windowTitle,
+        childPath: entry.childPath,
+        ancestry: entry.ancestry,
+        occurrence: entry.occurrence,
+        enabled: details.enabled,
+        focused: details.focused,
+        selected: details.selected,
+        frame: details.frame,
+        actions: details.actions
+    )
+    return ResolvedCandidate(candidate: candidate, score: Int.max, warnings: [])
+}
+
 func actionCandidate(
     statePath: String,
     targetId: String
@@ -7352,6 +8183,18 @@ func actionCandidate(
         )
     }
     configureMessagingTimeout(for: target)
+    try ensureSafeActionContext(snapshot: snapshot, target: target)
+
+    if let cached = validatedCachedCandidate(
+        statePath: statePath,
+        snapshot: snapshot,
+        entry: entry,
+        targetId: targetId,
+        target: target
+    ) {
+        try ensureSafeActionContext(snapshot: snapshot, target: target, candidate: cached.candidate.element)
+        return (snapshot, target, entry, cached)
+    }
 
     // URL safety: if the snapshot's matched window or focused element
     // resolves to a forbidden URL, block the action.
@@ -7372,7 +8215,12 @@ func actionCandidate(
     // anything actionable; floor at 32 to match the snapshot defaults.
     let lookupDepth = max(snapshot.maxDepth ?? 32, 32)
     let lookupNodes = max((snapshot.maxNodes ?? 1500) * 2, 3000)
-    let candidates = collectCandidates(target: target, maxDepth: lookupDepth, maxNodes: lookupNodes)
+    let candidates = collectCandidates(
+        target: target,
+        maxDepth: lookupDepth,
+        maxNodes: lookupNodes,
+        allWindows: snapshot.allWindows ?? false
+    )
     let ranked = rankedCandidates(for: entry, in: candidates)
     guard var candidate = bestCandidate(for: entry, ranked: ranked) else {
         if ranked.count > 1 {
@@ -7411,6 +8259,7 @@ func actionCandidate(
             warnings: candidate.warnings + oopWarnings
         )
     }
+    try ensureSafeActionContext(snapshot: snapshot, target: target, candidate: candidate.candidate.element)
     return (snapshot, target, entry, candidate)
 }
 
@@ -7440,6 +8289,22 @@ func isHidAllowed(_ args: [String]) -> Bool {
     return rawValue == "1" || rawValue == "true" || rawValue == "yes"
 }
 
+func screenshotPolicy(from args: [String]) throws -> ScreenshotPolicy {
+    if hasFlag(args, key: "--no-screenshot") { return .never }
+    if parseNamedOption(args, key: "--screenshot") != nil { return .always }
+    guard let raw = parseNamedOption(args, key: "--screenshot-policy")?.lowercased() else {
+        // Preserve the historical helper contract unless the caller opts in
+        // to adaptive capture explicitly.
+        return .always
+    }
+    guard let policy = ScreenshotPolicy(rawValue: raw) else {
+        throw NSError(domain: "desktop_automation", code: 52, userInfo: [
+            NSLocalizedDescriptionKey: "--screenshot-policy must be auto, always, or never."
+        ])
+    }
+    return policy
+}
+
 func snapshotOptions(from args: [String]) throws -> SnapshotOptions {
     guard let statePath = parseNamedOption(args, key: "--state") else {
         throw NSError(domain: "desktop_automation", code: 4, userInfo: [
@@ -7459,7 +8324,8 @@ func snapshotOptions(from args: [String]) throws -> SnapshotOptions {
     // for CEF means the snapshot stops before reaching anything actionable.
     let maxDepth = parseNamedOption(args, key: "--max-depth").flatMap(Int.init) ?? 32
     let maxNodes = parseNamedOption(args, key: "--max-nodes").flatMap(Int.init) ?? 1500
-    let screenshotPath = hasFlag(args, key: "--no-screenshot")
+    let policy = try screenshotPolicy(from: args)
+    let screenshotPath = policy == .never
         ? nil
         : parseNamedOption(args, key: "--screenshot") ?? derivedScreenshotPath(for: statePath)
     let inlineScreenshot = !hasFlag(args, key: "--no-inline-screenshot")
@@ -7474,7 +8340,9 @@ func snapshotOptions(from args: [String]) throws -> SnapshotOptions {
         statePath: statePath,
         screenshotPath: screenshotPath,
         inlineScreenshot: inlineScreenshot,
-        allWindows: allWindows
+        allWindows: allWindows,
+        screenshotPolicy: policy,
+        explicitVision: hasFlag(args, key: "--vision")
     )
 }
 
@@ -7495,18 +8363,27 @@ func actionOptions(from args: [String]) throws -> ActionOptions {
     // Default is no-raise. Opt in via --raise or STELLA_COMPUTER_RAISE=1.
     // --no-raise is accepted as a no-op for back-compat with older callers.
     let raise = hasFlag(args, key: "--raise") || envBool("STELLA_COMPUTER_RAISE")
+    let policy = try screenshotPolicy(from: args)
     return ActionOptions(
         statePath: statePath,
         coordinateFallback: hasFlag(args, key: "--coordinate-fallback"),
         allowHid: isHidAllowed(args),
-        captureScreenshot: !hasFlag(args, key: "--no-screenshot"),
+        captureScreenshot: policy != .never,
         raise: raise,
         inlineScreenshot: inlineScreenshot,
-        showOverlay: showOverlay
+        showOverlay: showOverlay,
+        deferObservation: hasFlag(args, key: "--defer-observation"),
+        screenshotPolicy: policy,
+        explicitVision: hasFlag(args, key: "--vision")
     )
 }
 
 func positionalArguments(_ args: [String]) -> [String] {
+    let valuelessFlags: Set<String> = [
+        "--allow-hid", "--coordinate-fallback", "--defer-observation",
+        "--no-inline-screenshot", "--no-overlay", "--no-raise",
+        "--no-screenshot", "--raise", "--vision", "--all-windows",
+    ]
     var results: [String] = []
     var index = 0
     while index < args.count {
@@ -7516,7 +8393,9 @@ func positionalArguments(_ args: [String]) -> [String] {
                 index += 1
                 continue
             }
-            if index + 1 < args.count, !args[index + 1].hasPrefix("--") {
+            if valuelessFlags.contains(current) {
+                index += 1
+            } else if index + 1 < args.count, !args[index + 1].hasPrefix("--") {
                 index += 2
             } else {
                 index += 1
@@ -7531,11 +8410,7 @@ func positionalArguments(_ args: [String]) -> [String] {
 
 func stateContext(for statePath: String) -> (SnapshotDocument?, AppTarget?) {
     let snapshot = tryLoadSnapshotState(from: statePath)
-    let target = try? resolveTarget(
-        pid: snapshot?.pid,
-        appName: snapshot?.appName,
-        bundleId: snapshot?.bundleId
-    )
+    let target = snapshot.flatMap(revalidateTarget)
     if let target {
         configureMessagingTimeout(for: target)
     }
@@ -7550,7 +8425,8 @@ func actionSuccessPayload(
     usedAction: String?,
     warnings: [String],
     refreshedSnapshot: SnapshotDocument?,
-    settle: AutomationSettle? = nil
+    settle: AutomationSettle? = nil,
+    receipt: ActionReceipt
 ) -> ActionPayload {
     ActionPayload(
         ok: true,
@@ -7564,8 +8440,72 @@ func actionSuccessPayload(
         screenshot: refreshedSnapshot?.screenshot,
         appInstructions: refreshedSnapshot?.appInstructions,
         snapshotText: nil,
-        settle: settle
+        settle: settle,
+        receipt: receipt,
+        revision: refreshedSnapshot?.revision ?? receipt.invalidatedRevision,
+        deferred: receipt.deferred,
+        stateUpdated: refreshedSnapshot != nil
     )
+}
+
+func nativeSelfTestCommand() -> NativeSelfTestPayload {
+    var passed: [String] = []
+    var warnings: [String] = []
+    func check(_ name: String, _ condition: @autoclosure () -> Bool) {
+        if condition() { passed.append(name) } else { warnings.append("failed: \(name)") }
+    }
+
+    do {
+        let first = try resolveTextSelectionRange(
+            fullText: "A😀 beta 😀 beta",
+            text: "😀",
+            prefix: "A",
+            suffix: " beta",
+            mode: .text
+        )
+        check("utf16-text-range", first.location == 1 && first.length == 2)
+        let secondCursor = try resolveTextSelectionRange(
+            fullText: "A😀 beta 😀 beta",
+            text: "😀",
+            prefix: " beta ",
+            suffix: " beta",
+            mode: .cursorAfter
+        )
+        check("prefix-suffix-disambiguation", secondCursor.location == 11 && secondCursor.length == 0)
+    } catch {
+        warnings.append("selection resolver threw: \(error.localizedDescription)")
+    }
+    do {
+        _ = try resolveTextSelectionRange(
+            fullText: "same same",
+            text: "same",
+            prefix: nil,
+            suffix: nil,
+            mode: .text
+        )
+        warnings.append("failed: ambiguous-match-rejected")
+    } catch {
+        passed.append("ambiguous-match-rejected")
+    }
+    do {
+        let autoPolicy = try screenshotPolicy(from: ["--screenshot-policy", "auto"])
+        let neverPolicy = try screenshotPolicy(from: ["--no-screenshot"])
+        check("screenshot-policy-auto", autoPolicy == .auto)
+        check("explicit-no-screenshot", neverPolicy == .never)
+        let deferred = try actionOptions(from: [
+            "--state", "/tmp/stella-self-test.json",
+            "--defer-observation",
+            "--screenshot-policy", "auto",
+        ])
+        check("deferred-action-options", deferred.deferObservation && deferred.screenshotPolicy == .auto)
+        check(
+            "valueless-flag-positionals",
+            positionalArguments(["@d1", "--defer-observation"]) == ["@d1"]
+        )
+    } catch {
+        warnings.append("option parser threw: \(error.localizedDescription)")
+    }
+    return NativeSelfTestPayload(ok: warnings.isEmpty, tests: passed, warnings: warnings)
 }
 
 func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
@@ -7580,6 +8520,9 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
     // WindowServer connection, so it short-circuits before the bootstrap.
     if command == "list-apps" {
         return commandResult(listAppsCommand())
+    }
+    if command == "list-windows" {
+        return commandResult(listWindowsCommand())
     }
 
     if command == "accessibility-permission" {
@@ -7601,6 +8544,11 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             ),
             code: granted ? 0 : 1
         )
+    }
+
+    if command == "self-test" {
+        let payload = nativeSelfTestCommand()
+        return commandResult(payload, code: payload.ok ? 0 : 1)
     }
 
     if command == "locked-use-begin" ||
@@ -7737,11 +8685,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         if usedAction == "coordinate-fallback" {
             warnings.append("Coordinate-targeted click can interfere with active user input.")
         }
-        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
-            statePath: options.statePath,
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
             snapshot: snapshot,
-            captureScreenshot: options.captureScreenshot,
-            inlineScreenshot: options.inlineScreenshot
+            target: target,
+            action: "click",
+            visualContextNeeded: usedAction == "coordinate-fallback" || !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
         return commandResult(
@@ -7753,7 +8702,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 usedAction: usedAction,
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
-                settle: settle
+                settle: settle,
+                receipt: receipt
             )
         )
     case "fill":
@@ -7796,11 +8746,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         if fillUsedAction == "keystroke" {
             warnings.append("AXValue rejected by element; fell back to keystroke fill.")
         }
-        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
-            statePath: options.statePath,
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
             snapshot: snapshot,
-            captureScreenshot: options.captureScreenshot,
-            inlineScreenshot: options.inlineScreenshot
+            target: target,
+            action: "fill",
+            visualContextNeeded: !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
         return commandResult(
@@ -7812,7 +8763,53 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 usedAction: fillUsedAction ?? "AXValue",
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
-                settle: settle
+                settle: settle,
+                receipt: receipt
+            )
+        )
+    case "select-text":
+        let options = try actionOptions(from: commandArgs)
+        let positional = positionalArguments(commandArgs)
+        guard positional.count >= 2 else {
+            throw failure("select-text requires a ref and exact text.")
+        }
+        let ref = positional[0]
+        let text = positional[1]
+        let modeRaw = parseNamedOption(commandArgs, key: "--selection") ?? "text"
+        guard let mode = TextSelectionMode(rawValue: modeRaw) else {
+            throw failure("--selection must be text, cursor-before, or cursor-after.")
+        }
+        let (snapshot, target, _, resolved) = try actionCandidate(
+            statePath: options.statePath,
+            targetId: ref
+        )
+        let selectedRange = try selectTextRange(
+            element: resolved.candidate.element,
+            text: text,
+            prefix: parseNamedOption(commandArgs, key: "--prefix"),
+            suffix: parseNamedOption(commandArgs, key: "--suffix"),
+            mode: mode
+        )
+        var warnings = resolved.warnings
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
+            snapshot: snapshot,
+            target: target,
+            action: "select-text",
+            visualContextNeeded: !resolved.warnings.isEmpty
+        )
+        warnings.append(contentsOf: refreshWarnings)
+        return commandResult(
+            actionSuccessPayload(
+                action: "select-text",
+                ref: ref,
+                message: "Set \(mode.rawValue) at UTF-16 range \(selectedRange.location):\(selectedRange.length) in \(ref).",
+                matchedRef: ref,
+                usedAction: "AXSelectedTextRange",
+                warnings: warnings,
+                refreshedSnapshot: refreshedSnapshot,
+                settle: settle,
+                receipt: receipt
             )
         )
     case "focus":
@@ -7845,11 +8842,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             )
         }
         var warnings = resolved.warnings
-        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
-            statePath: options.statePath,
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
             snapshot: snapshot,
-            captureScreenshot: options.captureScreenshot,
-            inlineScreenshot: options.inlineScreenshot
+            target: target,
+            action: "focus",
+            visualContextNeeded: !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
         return commandResult(
@@ -7861,7 +8859,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 usedAction: "AXFocused",
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
-                settle: settle
+                settle: settle,
+                receipt: receipt
             )
         )
     case "secondary-action", "perform-secondary-action":
@@ -7910,11 +8909,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             )
         }
         var warnings = resolved.warnings
-        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
-            statePath: options.statePath,
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
             snapshot: snapshot,
-            captureScreenshot: options.captureScreenshot,
-            inlineScreenshot: options.inlineScreenshot
+            target: target,
+            action: "secondary-action",
+            visualContextNeeded: !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
         return commandResult(
@@ -7926,7 +8926,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 usedAction: resolvedActionName,
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
-                settle: settle
+                settle: settle,
+                receipt: receipt
             )
         )
     case "scroll":
@@ -7977,11 +8978,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         }
         var warnings = resolved.warnings
         warnings.append(contentsOf: scrollWarnings)
-        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
-            statePath: options.statePath,
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
             snapshot: snapshot,
-            captureScreenshot: options.captureScreenshot,
-            inlineScreenshot: options.inlineScreenshot
+            target: target,
+            action: "scroll",
+            visualContextNeeded: usedAction.contains("CGEvent") || !resolved.warnings.isEmpty
         )
         warnings.append(contentsOf: refreshWarnings)
         let pageSummary = pages == 1 ? "1 page" : "\(pages) pages"
@@ -7994,7 +8996,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 usedAction: usedAction,
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
-                settle: settle
+                settle: settle,
+                receipt: receipt
             )
         )
     case "click-point":
@@ -8024,9 +9027,10 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             ])
         }
         let (snapshot, target) = stateContext(for: options.statePath)
-        guard let target else {
+        guard let snapshot, let target else {
             throw failure("click-point requires a valid target app context.")
         }
+        try ensureSafeActionContext(snapshot: snapshot, target: target)
         let point = CGPoint(x: x, y: y)
         let (clicked, usedAction) = withUnifiedActionOverlay(
             enabled: overlayEnabled(options),
@@ -8062,11 +9066,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         if usedAction == "global-coordinate-fallback" || usedAction == "system-events" {
             warnings.append("Global click injection can interfere with active user input.")
         }
-        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
-            statePath: options.statePath,
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
             snapshot: snapshot,
-            captureScreenshot: options.captureScreenshot,
-            inlineScreenshot: options.inlineScreenshot
+            target: target,
+            action: "click-point",
+            visualContextNeeded: true
         )
         warnings.append(contentsOf: refreshWarnings)
         return commandResult(
@@ -8078,7 +9083,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 usedAction: usedAction ?? "coordinate",
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
-                settle: settle
+                settle: settle,
+                receipt: receipt
             )
         )
     case "drag":
@@ -8100,9 +9106,10 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             ])
         }
         let (snapshot, target) = stateContext(for: options.statePath)
-        guard let target else {
+        guard let snapshot, let target else {
             throw failure("drag requires a valid target app context.")
         }
+        try ensureSafeActionContext(snapshot: snapshot, target: target)
         guard postDrag(
             from: CGPoint(x: fromX, y: fromY),
             to: CGPoint(x: toX, y: toY),
@@ -8122,11 +9129,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         var warnings = [
             "Drag currently uses global pointer injection and can interfere with active user input."
         ]
-        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
-            statePath: options.statePath,
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
             snapshot: snapshot,
-            captureScreenshot: options.captureScreenshot,
-            inlineScreenshot: options.inlineScreenshot
+            target: target,
+            action: "drag",
+            visualContextNeeded: true
         )
         warnings.append(contentsOf: refreshWarnings)
         return commandResult(
@@ -8138,7 +9146,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 usedAction: "drag",
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
-                settle: settle
+                settle: settle,
+                receipt: receipt
             )
         )
     case "drag-element":
@@ -8267,11 +9276,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
         }
         var warnings = sourceResolved.warnings
         warnings.append("Content drag uses real NSDraggingSession: the destination app sees a typed drop, but the user's cursor does move during the drag.")
-        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
-            statePath: options.statePath,
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
             snapshot: snapshot,
-            captureScreenshot: options.captureScreenshot,
-            inlineScreenshot: options.inlineScreenshot
+            target: target,
+            action: "drag-element",
+            visualContextNeeded: true
         )
         warnings.append(contentsOf: refreshWarnings)
         return commandResult(
@@ -8283,7 +9293,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 usedAction: "NSDraggingSession:\(usedKind)",
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
-                settle: settle
+                settle: settle,
+                receipt: receipt
             )
         )
     case "type":
@@ -8301,9 +9312,10 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             ])
         }
         let (snapshot, target) = stateContext(for: options.statePath)
-        guard let target else {
+        guard let snapshot, let target else {
             throw failure("type requires a valid target app context.")
         }
+        try ensureSafeActionContext(snapshot: snapshot, target: target)
         guard postUnicodeText(text, target: target, raise: options.raise) else {
             throw failureWithScreenshot(
                 "Failed to type text.",
@@ -8313,11 +9325,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             )
         }
         var warnings = ["Typed input goes to the currently focused element."]
-        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
-            statePath: options.statePath,
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
             snapshot: snapshot,
-            captureScreenshot: options.captureScreenshot,
-            inlineScreenshot: options.inlineScreenshot
+            target: target,
+            action: "type",
+            visualContextNeeded: true
         )
         warnings.append(contentsOf: refreshWarnings)
         return commandResult(
@@ -8329,7 +9342,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 usedAction: "unicode",
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
-                settle: settle
+                settle: settle,
+                receipt: receipt
             )
         )
     case "press":
@@ -8347,9 +9361,10 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             ])
         }
         let (snapshot, target) = stateContext(for: options.statePath)
-        guard let target else {
+        guard let snapshot, let target else {
             throw failure("press requires a valid target app context.")
         }
+        try ensureSafeActionContext(snapshot: snapshot, target: target)
         guard postKeyChord(keySpec, target: target, raise: options.raise) else {
             throw failureWithScreenshot(
                 "Failed to send key press.",
@@ -8359,11 +9374,12 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
             )
         }
         var warnings = ["Key presses go to the currently focused app."]
-        let (refreshedSnapshot, refreshWarnings, settle) = refreshSnapshotAfterAction(
-            statePath: options.statePath,
+        let (refreshedSnapshot, refreshWarnings, settle, receipt) = try refreshSnapshotAfterAction(
+            options: options,
             snapshot: snapshot,
-            captureScreenshot: options.captureScreenshot,
-            inlineScreenshot: options.inlineScreenshot
+            target: target,
+            action: "press",
+            visualContextNeeded: true
         )
         warnings.append(contentsOf: refreshWarnings)
         return commandResult(
@@ -8375,7 +9391,8 @@ func executeCommandInternal(args: [String]) throws -> CommandExecutionResult {
                 usedAction: keySpec,
                 warnings: warnings,
                 refreshedSnapshot: refreshedSnapshot,
-                settle: settle
+                settle: settle,
+                receipt: receipt
             )
         )
     default:
@@ -9088,15 +10105,25 @@ func encodedResponseData(for response: AutomationDaemonResponse) -> Data {
 }
 
 func readSocketData(from fd: Int32) -> Data? {
+    let maximumFrameBytes = 8 * 1024 * 1024
+    let chunkSize = 64 * 1024
     var data = Data()
-    var byte: UInt8 = 0
+    data.reserveCapacity(min(chunkSize, maximumFrameBytes))
+    var buffer = [UInt8](repeating: 0, count: chunkSize)
     while true {
-        let count = read(fd, &byte, 1)
+        let count = buffer.withUnsafeMutableBytes { rawBuffer in
+            read(fd, rawBuffer.baseAddress, rawBuffer.count)
+        }
         if count > 0 {
-            if byte == 0x0A {
+            let bytesRead = Int(count)
+            if let newline = buffer[..<bytesRead].firstIndex(of: 0x0A) {
+                let frameCount = newline
+                guard data.count + frameCount <= maximumFrameBytes else { return nil }
+                data.append(contentsOf: buffer[..<frameCount])
                 return data
             }
-            data.append(&byte, count: 1)
+            guard data.count + bytesRead <= maximumFrameBytes else { return nil }
+            data.append(contentsOf: buffer[..<bytesRead])
             continue
         }
         if count == 0 {

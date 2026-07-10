@@ -170,9 +170,7 @@ describe("claude-code-session-runtime", () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
-        data: [
-          { id: "claude-sonnet-4-6", display_name: "Claude Sonnet 4.6" },
-        ],
+        data: [{ id: "claude-sonnet-4-6", display_name: "Claude Sonnet 4.6" }],
       }),
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -236,9 +234,9 @@ describe("claude-code-session-runtime", () => {
         'API Error: 529 {"type":"error","error":{"type":"overloaded_error"}}',
       ),
     ).toBe(true);
-    expect(
-      isClaudeCodeModelRefusalOrOverloadError("Prompt is too long"),
-    ).toBe(false);
+    expect(isClaudeCodeModelRefusalOrOverloadError("Prompt is too long")).toBe(
+      false,
+    );
     expect(
       isClaudeCodeModelRefusalOrOverloadError(
         "Claude Code process ended before delivering a result.",
@@ -316,7 +314,7 @@ describe("claude-code-session-runtime", () => {
         type: "stream_event",
         event: {
           type: "content_block_delta",
-          delta: { type: "input_json_delta", partial_json: "{\"type\"" },
+          delta: { type: "input_json_delta", partial_json: '{"type"' },
         },
       }),
     ).toBeNull();
@@ -341,7 +339,12 @@ describe("claude-code-session-runtime", () => {
     const structuredOutputStart = () =>
       streamEvent({
         type: "content_block_start",
-        content_block: { type: "tool_use", id: "t1", name: "StructuredOutput", input: {} },
+        content_block: {
+          type: "tool_use",
+          id: "t1",
+          name: "StructuredOutput",
+          input: {},
+        },
       });
     const jsonDelta = (partial: string) =>
       streamEvent({
@@ -405,7 +408,7 @@ describe("claude-code-session-runtime", () => {
       emit(jsonDelta(""));
       emit(jsonDelta('{"type": "final'));
       emit(jsonDelta('", "message": "Paris is'));
-      emit(jsonDelta(' rainy.\\nBring an umbrella \\u2602'));
+      emit(jsonDelta(" rainy.\\nBring an umbrella \\u2602"));
       emit(jsonDelta('"}'));
       expect(chunks.join("")).toBe("Paris is rainy.\nBring an umbrella ☂");
     });
@@ -427,7 +430,11 @@ describe("claude-code-session-runtime", () => {
       emit(messageStart());
       emit(structuredOutputStart());
       emit(jsonDelta('{"message": "Checking the weather."'));
-      emit(jsonDelta(', "type": "tool_request", "toolName": "get_weather", "args": {}}'));
+      emit(
+        jsonDelta(
+          ', "type": "tool_request", "toolName": "get_weather", "args": {}}',
+        ),
+      );
       expect(chunks).toEqual([]);
     });
 
@@ -476,7 +483,7 @@ describe("claude-code-session-runtime", () => {
     });
   });
 
-  it("summarizes Stella inline image tool attachments without forwarding raw markers", async () => {
+  it("builds Stella inline image tool results with image bytes and no raw markers", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-claude-test-"));
     try {
       const imagePath = path.join(dir, "snapshot.png");
@@ -497,10 +504,17 @@ describe("claude-code-session-runtime", () => {
         },
       });
 
-      expect(prompt).toContain("Tool result attachments:");
-      expect(prompt).toContain("image/png");
-      expect(prompt).toContain("visible tree");
-      expect(prompt).not.toContain("[stella-attach-image]");
+      expect(prompt.text).toContain("Tool result attachments:");
+      expect(prompt.text).toContain("image/png");
+      expect(prompt.text).toContain("visible tree");
+      expect(prompt.text).not.toContain("[stella-attach-image]");
+      expect(prompt.images).toEqual([
+        expect.objectContaining({
+          type: "image",
+          mimeType: "image/png",
+          data: fs.readFileSync(imagePath).toString("base64"),
+        }),
+      ]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -518,10 +532,30 @@ describe("claude-code-session-runtime", () => {
       expect(
         collectClaudeCodeNativeFileChanges(
           assistantToolUse([
-            { type: "tool_use", name: "Write", input: { file_path: "/tmp/a.txt", content: "x" } },
-            { type: "tool_use", name: "Edit", input: { file_path: "/tmp/b.ts", old_string: "a", new_string: "b" } },
-            { type: "tool_use", name: "MultiEdit", input: { file_path: "/tmp/c.ts", edits: [] } },
-            { type: "tool_use", name: "NotebookEdit", input: { notebook_path: "/tmp/d.ipynb" } },
+            {
+              type: "tool_use",
+              name: "Write",
+              input: { file_path: "/tmp/a.txt", content: "x" },
+            },
+            {
+              type: "tool_use",
+              name: "Edit",
+              input: {
+                file_path: "/tmp/b.ts",
+                old_string: "a",
+                new_string: "b",
+              },
+            },
+            {
+              type: "tool_use",
+              name: "MultiEdit",
+              input: { file_path: "/tmp/c.ts", edits: [] },
+            },
+            {
+              type: "tool_use",
+              name: "NotebookEdit",
+              input: { notebook_path: "/tmp/d.ipynb" },
+            },
           ]),
         ),
       ).toEqual([
@@ -536,8 +570,16 @@ describe("claude-code-session-runtime", () => {
       expect(
         collectClaudeCodeNativeFileChanges(
           assistantToolUse([
-            { type: "tool_use", name: "Bash", input: { command: "touch /tmp/e.txt" } },
-            { type: "tool_use", name: "StructuredOutput", input: { type: "final", message: "done" } },
+            {
+              type: "tool_use",
+              name: "Bash",
+              input: { command: "touch /tmp/e.txt" },
+            },
+            {
+              type: "tool_use",
+              name: "StructuredOutput",
+              input: { type: "final", message: "done" },
+            },
             { type: "tool_use", name: "Write", input: { content: "no path" } },
             { type: "text", text: "hello" },
           ]),
@@ -549,7 +591,11 @@ describe("claude-code-session-runtime", () => {
           message: {
             role: "user",
             content: [
-              { type: "tool_use", name: "Write", input: { file_path: "/tmp/f.txt" } },
+              {
+                type: "tool_use",
+                name: "Write",
+                input: { file_path: "/tmp/f.txt" },
+              },
             ],
           },
         }),
@@ -558,7 +604,9 @@ describe("claude-code-session-runtime", () => {
   });
 
   it("surfaces vanilla-mode native file writes on the turn result", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-files-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-files-"),
+    );
     const binDir = path.join(dir, "bin");
     fs.mkdirSync(binDir, { recursive: true });
     const fakeClaude = path.join(binDir, "claude");
@@ -626,12 +674,18 @@ describe("claude-code-session-runtime", () => {
     }
   });
 
-  it("keeps a Claude Code stream-json input process open across Stella tool steps", async () => {
+  it("keeps a Claude Code stream open and sends tool screenshot bytes as an image block", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-"));
     const binDir = path.join(dir, "bin");
     const logPath = path.join(dir, "prompts.log");
     fs.mkdirSync(binDir, { recursive: true });
     const fakeClaude = path.join(binDir, "claude");
+    const screenshotPath = path.join(dir, "computer use screenshot.png");
+    const screenshotBytes = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII=",
+      "base64",
+    );
+    fs.writeFileSync(screenshotPath, screenshotBytes);
     fs.writeFileSync(
       fakeClaude,
       [
@@ -697,22 +751,53 @@ describe("claude-code-session-runtime", () => {
             parameters: { type: "object" },
           },
         ],
-        executeTool: async () => ({ result: "file contents" }),
+        executeTool: async () => ({
+          result:
+            "visible tree\n" +
+            `[stella-attach-image] inline=image/png path=${JSON.stringify(screenshotPath)}`,
+        }),
       });
 
       const records = fs
         .readFileSync(logPath, "utf8")
         .trim()
         .split("\n")
-        .map((line) => JSON.parse(line) as { argv: string[]; content: string });
+        .map(
+          (line) =>
+            JSON.parse(line) as {
+              argv: string[];
+              content:
+                | string
+                | Array<{
+                    type: string;
+                    text?: string;
+                    source?: { type: string; media_type: string; data: string };
+                  }>;
+            },
+        );
       expect(result.text).toBe("Done from fake Claude.");
       expect(records).toHaveLength(2);
       expect(records[0]?.argv).toContain("--input-format");
       expect(records[0]?.argv).toContain("stream-json");
       expect(records[0]?.argv).not.toContain("--model");
       expect(records[0]?.content).toContain("Please read a.txt.");
-      expect(records[1]?.content).toContain("A Stella tool request has completed.");
-      expect(records[1]?.content).toContain("file contents");
+      expect(records[1]?.content).toEqual([
+        expect.objectContaining({
+          type: "text",
+          text: expect.stringContaining("visible tree"),
+        }),
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: "image/png",
+            data: screenshotBytes.toString("base64"),
+          },
+        },
+      ]);
+      expect(JSON.stringify(records[1]?.content)).not.toContain(
+        "[stella-attach-image]",
+      );
     } finally {
       shutdownClaudeCodeRuntime();
       process.env.PATH = previousPath;
@@ -848,7 +933,9 @@ describe("claude-code-session-runtime", () => {
   });
 
   it("streams preamble text and decoded structured final messages across tool steps", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-stream-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-stream-"),
+    );
     const binDir = path.join(dir, "bin");
     fs.mkdirSync(binDir, { recursive: true });
     const fakeClaude = path.join(binDir, "claude");
@@ -872,13 +959,13 @@ describe("claude-code-session-runtime", () => {
         "    streamEvent({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'Checking the weather.' } });",
         "    streamEvent({ type: 'message_start' });",
         "    streamEvent({ type: 'content_block_start', content_block: { type: 'tool_use', id: 't1', name: 'StructuredOutput', input: {} } });",
-        "    streamEvent({ type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{\"type\": \"tool_request\", \"toolName\": \"get_weather\", \"args\": {\"city\": \"Paris\"}}' } });",
+        '    streamEvent({ type: \'content_block_delta\', delta: { type: \'input_json_delta\', partial_json: \'{"type": "tool_request", "toolName": "get_weather", "args": {"city": "Paris"}}\' } });',
         "    emit({ type: 'result', session_id: 'fake-session', is_error: false, usage: { input_tokens: 1, output_tokens: 1 }, structured_output: { type: 'tool_request', toolName: 'get_weather', args: { city: 'Paris' } } });",
         "    return;",
         "  }",
         "  streamEvent({ type: 'message_start' });",
         "  streamEvent({ type: 'content_block_start', content_block: { type: 'tool_use', id: 't2', name: 'StructuredOutput', input: {} } });",
-        "  streamEvent({ type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{\"type\": \"final\", \"message\": \"Paris is' } });",
+        '  streamEvent({ type: \'content_block_delta\', delta: { type: \'input_json_delta\', partial_json: \'{"type": "final", "message": "Paris is\' } });',
         "  streamEvent({ type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: ' 7\\u00b0C with light rain.\"}' } });",
         "  emit({ type: 'result', session_id: 'fake-session', is_error: false, usage: { input_tokens: 1, output_tokens: 1 }, structured_output: { type: 'final', message: 'Paris is 7\\u00b0C with light rain.' } });",
         "}",
@@ -930,7 +1017,9 @@ describe("claude-code-session-runtime", () => {
   });
 
   it("runs vanilla Claude Code untouched for per-spawn engine selections", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-vanilla-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-vanilla-"),
+    );
     const binDir = path.join(dir, "bin");
     const logPath = path.join(dir, "prompts.log");
     fs.mkdirSync(binDir, { recursive: true });
@@ -953,7 +1042,7 @@ describe("claude-code-session-runtime", () => {
         "    session_id: 'fake-session',",
         "    is_error: false,",
         "    usage: { input_tokens: 1, output_tokens: 1 },",
-        "    result: '{\\\"final\\\": \\\"answer that looks like JSON\\\"}',",
+        '    result: \'{\\"final\\": \\"answer that looks like JSON\\"}\',',
         "  }) + '\\n');",
         "}",
         "process.stdin.on('data', chunk => {",
@@ -1014,7 +1103,9 @@ describe("claude-code-session-runtime", () => {
       expect(argv).not.toContain("--mcp-config");
       expect(argv).not.toContain("--strict-mcp-config");
       expect(argv).not.toContain("--disable-slash-commands");
-      expect(records[0]?.content).toContain("Fix the failing test in the repo.");
+      expect(records[0]?.content).toContain(
+        "Fix the failing test in the repo.",
+      );
       expect(records[0]?.content).not.toContain("must NOT be forwarded");
     } finally {
       shutdownClaudeCodeRuntime();
@@ -1031,8 +1122,7 @@ describe("claude-code-session-runtime", () => {
   it("keeps vanilla and takeover Claude Code persisted session ids separate", () => {
     const values = new Map<string, string>();
     const store = {
-      getThreadExternalSessionId: (threadKey: string) =>
-        values.get(threadKey),
+      getThreadExternalSessionId: (threadKey: string) => values.get(threadKey),
       setThreadExternalSessionId: (threadKey: string, value: string) => {
         values.set(threadKey, value);
       },
@@ -1084,7 +1174,9 @@ describe("claude-code-session-runtime", () => {
   });
 
   it("fails a vanilla Claude Code turn that returns an empty result", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-empty-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-empty-"),
+    );
     const binDir = path.join(dir, "bin");
     fs.mkdirSync(binDir, { recursive: true });
     const fakeClaude = path.join(binDir, "claude");
@@ -1341,7 +1433,9 @@ describe("claude-code-session-runtime", () => {
           tools: [],
           executeTool: async () => ({ result: "unused" }),
         }),
-      ).rejects.toThrow(/exited with code 0 before returning a result.*retried 2 time/s);
+      ).rejects.toThrow(
+        /exited with code 0 before returning a result.*retried 2 time/s,
+      );
       const spawns = fs.readFileSync(logPath, "utf8").trim().split("\n");
       expect(spawns).toHaveLength(3);
     } finally {
@@ -1614,9 +1708,7 @@ describe("claude-code-session-runtime", () => {
       expect(records[2]?.argv).not.toContain("--resume");
       // The reseed must reconcile, never replay the fallback wholesale.
       expect(
-        records[2]?.content.startsWith(
-          "The previous step was interrupted",
-        ),
+        records[2]?.content.startsWith("The previous step was interrupted"),
       ).toBe(true);
       expect(records[2]?.content).toContain(
         "Do NOT redo, repeat, or revert any file operations",
@@ -1731,9 +1823,7 @@ describe("claude-code-session-runtime", () => {
       expect(records[1]?.argv).not.toContain("--resume");
       // The reseed reconciles instead of replaying resumeFallbackPrompt.
       expect(
-        records[1]?.content.startsWith(
-          "The previous step was interrupted",
-        ),
+        records[1]?.content.startsWith("The previous step was interrupted"),
       ).toBe(true);
       expect(records[1]?.content).toContain(
         "Do NOT redo, repeat, or revert any file operations",
@@ -1794,7 +1884,10 @@ describe("claude-code-session-runtime", () => {
         executeTool: async () => ({ result: "unused" }),
       };
       // Turn 1 leaves an idle process behind…
-      await runClaudeCodeTurn({ ...baseRequest, modelId: "claude-code/sonnet" });
+      await runClaudeCodeTurn({
+        ...baseRequest,
+        modelId: "claude-code/sonnet",
+      });
       // …turn 2's model change restarts it, registering a replacement child
       // under the same session key while the old child is still closing.
       const second = await runClaudeCodeTurn({
@@ -1820,7 +1913,9 @@ describe("claude-code-session-runtime", () => {
   });
 
   it("resumes after an aborted Claude Code turn once a session id was observed", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-abort-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-abort-"),
+    );
     const binDir = path.join(dir, "bin");
     const logPath = path.join(dir, "abort.log");
     fs.mkdirSync(binDir, { recursive: true });
@@ -1895,7 +1990,10 @@ describe("claude-code-session-runtime", () => {
       await new Promise<void>((resolve, reject) => {
         const startedAt = Date.now();
         const poll = () => {
-          if (fs.existsSync(logPath) && fs.readFileSync(logPath, "utf8").includes("prompt")) {
+          if (
+            fs.existsSync(logPath) &&
+            fs.readFileSync(logPath, "utf8").includes("prompt")
+          ) {
             resolve();
             return;
           }
@@ -1923,20 +2021,23 @@ describe("claude-code-session-runtime", () => {
         .readFileSync(logPath, "utf8")
         .trim()
         .split("\n")
-        .map((line) => JSON.parse(line) as {
-          event: string;
-          argv: string[];
-          payloadSessionId?: string;
-          content?: string;
-        });
+        .map(
+          (line) =>
+            JSON.parse(line) as {
+              event: string;
+              argv: string[];
+              payloadSessionId?: string;
+              content?: string;
+            },
+        );
       const prompts = records.filter((record) => record.event === "prompt");
       expect(result.text).toBe("Resumed after abort.");
       expect(prompts).toHaveLength(2);
       expect(prompts[0]?.argv).not.toContain("--resume");
       expect(prompts[1]?.argv).toContain("--resume");
-      expect(
-        prompts[1]?.argv[prompts[1].argv.indexOf("--resume") + 1],
-      ).toBe("observed-session");
+      expect(prompts[1]?.argv[prompts[1].argv.indexOf("--resume") + 1]).toBe(
+        "observed-session",
+      );
       expect(prompts[1]?.payloadSessionId).toBe("observed-session");
     } finally {
       shutdownClaudeCodeRuntime();
@@ -1951,7 +2052,9 @@ describe("claude-code-session-runtime", () => {
   });
 
   it("fails a silent Claude Code process instead of hanging", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-silent-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-silent-"),
+    );
     const binDir = path.join(dir, "bin");
     fs.mkdirSync(binDir, { recursive: true });
     const fakeClaude = path.join(binDir, "claude");
@@ -1994,7 +2097,9 @@ describe("claude-code-session-runtime", () => {
   });
 
   it("falls back to a fresh Claude Code session when the stored resume id is missing", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-resume-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-resume-"),
+    );
     const binDir = path.join(dir, "bin");
     const logPath = path.join(dir, "resume.log");
     fs.mkdirSync(binDir, { recursive: true });
@@ -2214,7 +2319,9 @@ describe("claude-code-session-runtime", () => {
       expect(historyPromptMessage?.text).toContain("[[THREAD_CHECKPOINT]]");
       expect(historyPromptMessage?.text).toContain("Condensed earlier work");
       expect(historyPromptMessage?.text).toContain("Latest request");
-      expect(historyPromptMessage?.text).not.toContain("Original giant request");
+      expect(historyPromptMessage?.text).not.toContain(
+        "Original giant request",
+      );
       expect(historyPromptMessage?.text).not.toContain("Original giant answer");
     } finally {
       db.close();
@@ -2223,7 +2330,9 @@ describe("claude-code-session-runtime", () => {
   });
 
   it("forwards the auto-compaction budget to the Claude Code CLI environment", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-compact-env-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-compact-env-"),
+    );
     const binDir = path.join(dir, "bin");
     const logPath = path.join(dir, "env.log");
     fs.mkdirSync(binDir, { recursive: true });
@@ -2288,7 +2397,9 @@ describe("claude-code-session-runtime", () => {
   });
 
   it("breaks a Claude Code compaction loop by reseeding a fresh session from the fallback prompt", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stella-fake-claude-loop-"));
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-loop-"),
+    );
     const binDir = path.join(dir, "bin");
     const logPath = path.join(dir, "loop.log");
     fs.mkdirSync(binDir, { recursive: true });
