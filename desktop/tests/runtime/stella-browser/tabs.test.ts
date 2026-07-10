@@ -57,6 +57,7 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
   let nextTabId = 1;
   let nextGroupId = 1;
 
+  const tabsCreated = createEvent<[MockTab]>();
   const tabsRemoved =
     createEvent<[number, { windowId: number; isWindowClosing: boolean }]>();
   const windowsRemoved = createEvent<[number]>();
@@ -196,6 +197,9 @@ const createChromeMock = (mockOptions: MockOptions = {}) => {
       },
     },
     tabs: {
+      // Real Chrome always exposes tabs.onCreated; tabs.js registers its
+      // child-tab adoption listener on it at module load.
+      onCreated: tabsCreated,
       onRemoved: tabsRemoved,
       async query(queryInfo: { windowId?: number; groupId?: number }) {
         return Array.from(tabs.values())
