@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   combineQueuedSendPayloads,
+  orderQueuedMessages,
   removeQueuedUserMessageById,
+  restoreQueuedMessagesAfterFailedDrain,
   restoreQueuedTextToComposer,
-  shouldClearQueuedUserMessagesForRunOutcome,
   type CombinableQueuedSendPayload,
   type QueuedUserMessage,
 } from '../../../src/features/chat/hooks/queued-user-messages'
@@ -15,6 +16,7 @@ const queued = (
 ): QueuedUserMessage => ({
   id,
   timestamp,
+  queueOrder: timestamp,
   text,
 })
 
@@ -26,12 +28,6 @@ describe('queued user message cleanup', () => {
         'queued-1',
       ),
     ).toEqual([queued('queued-2', 200)])
-  })
-
-  it('clears queued messages when the run fails or is canceled before acceptance', () => {
-    expect(shouldClearQueuedUserMessagesForRunOutcome('completed')).toBe(false)
-    expect(shouldClearQueuedUserMessagesForRunOutcome('error')).toBe(true)
-    expect(shouldClearQueuedUserMessagesForRunOutcome('canceled')).toBe(true)
   })
 })
 
@@ -47,6 +43,7 @@ const payload = (
   overrides: Partial<TestPayload> = {},
 ): TestPayload => ({
   id,
+  queueOrder: overrides.queueOrder ?? Number(id.replace(/\D/g, '')),
   conversationId: 'conv-1',
   deviceId: 'device-1',
   userPrompt,
@@ -80,6 +77,18 @@ describe('combineQueuedSendPayloads', () => {
     expect(combined?.optimisticEvent._id).toBe('queued-1')
     expect(combined?.conversationId).toBe('conv-1')
     expect(combined?.deviceId).toBe('device-1')
+  })
+
+  it('uses captured send order even when async preparation appended out of order', () => {
+    const combined = combineQueuedSendPayloads([
+      payload('queued-3', 'third question', { queueOrder: 3 }),
+      payload('queued-1', 'first question', { queueOrder: 1 }),
+      payload('queued-2', 'second question', { queueOrder: 2 }),
+    ])
+    expect(combined?.userPrompt).toBe(
+      'first question\n\nsecond question\n\nthird question',
+    )
+    expect(combined?.id).toBe('queued-1')
   })
 
   it('skips empty prompts (attachment-only messages) when joining text', () => {
@@ -193,6 +202,30 @@ describe('combineQueuedSendPayloads', () => {
       payload('queued-2', 'b'),
     ])
     expect(combined && 'messageMetadata' in combined && combined.messageMetadata).toBeFalsy()
+  })
+})
+
+describe('failed queued drain restoration', () => {
+  it('restores every drained payload in send order without duplicating ids', () => {
+    const first = payload('queued-1', 'first', { queueOrder: 1 })
+    const second = payload('queued-2', 'second', { queueOrder: 2 })
+    const third = payload('queued-3', 'third', { queueOrder: 3 })
+
+    expect(
+      restoreQueuedMessagesAfterFailedDrain(
+        [third, second],
+        [second, first],
+      ),
+    ).toEqual([first, second, third])
+  })
+
+  it('orders composer rows by monotonic send order, not async completion', () => {
+    expect(
+      orderQueuedMessages([
+        queued('queued-2', 2),
+        queued('queued-1', 1),
+      ]).map((message) => message.id),
+    ).toEqual(['queued-1', 'queued-2'])
   })
 })
 

@@ -18,6 +18,7 @@ import type {
 } from './streaming-types'
 import {
   assistantScrollFollowKey,
+  linkStreamingAssistantCanonicalMessage,
   streamingAssistantOverlayId,
 } from './streaming-types'
 import {
@@ -65,6 +66,8 @@ type StartStreamArgs = {
   messageMetadata?: Record<string, unknown>
   attachments?: AttachmentRef[]
   userMessageEventId?: string
+  /** Renderer send time, preserved across queued drains and IPC latency. */
+  userMessageTimestamp?: number
   onStartFailed?: () => void
 }
 
@@ -100,6 +103,7 @@ export function useLocalAgentStream({
   )
   const lastSeqByConversationRef = useRef(new Map<string, number>())
   const resumeSeqByConversationRef = useRef(new Map<string, number>())
+  const seenSourceEventKeysRef = useRef(new Set<string>())
   const terminalRunIdsRef = useRef(new Set<string>())
   // Tracks per-run agent IDs that have reached a terminal lifecycle state.
   // Mirrors the persisted-event guard in `extractTasksFromEvents` so that
@@ -258,21 +262,35 @@ export function useLocalAgentStream({
    * slot index, and let the next chunk create the next slot.
    */
   const finalizeMessageBoundary = useCallback(
-    (args: { runId: string; userMessageId: string | null }) => {
+    (args: {
+      runId: string
+      userMessageId: string | null
+      canonicalMessageId?: string
+    }) => {
+      const currentIndex = args.userMessageId
+        ? (nextSlotIndexByUserMessageIdRef.current.get(args.userMessageId) ?? 1)
+        : null
       finishStreamText(
         (entry) => entry.runId === args.runId,
         lockStreamSlot,
       )
-      if (args.userMessageId) {
-        const current =
-          nextSlotIndexByUserMessageIdRef.current.get(args.userMessageId) ?? 1
+      if (args.userMessageId && currentIndex !== null) {
+        if (args.canonicalMessageId) {
+          setStreamingAssistants((current) =>
+            linkStreamingAssistantCanonicalMessage(current, {
+              userMessageId: args.userMessageId!,
+              indexInTurn: currentIndex,
+              canonicalMessageId: args.canonicalMessageId!,
+            }),
+          )
+        }
         // Keep the active follow key until the next slot's first chunk
         // calls `beginAssistantScrollFollow` — clearing here dropped
         // auto-follow for late layout (image cards, undo) after the
         // final assistant message in a run.
         nextSlotIndexByUserMessageIdRef.current.set(
           args.userMessageId,
-          current + 1,
+          currentIndex + 1,
         )
       }
     },
@@ -373,6 +391,7 @@ export function useLocalAgentStream({
       activeRunIdByConversationRef,
       lastSeqByConversationRef,
       resumeSeqByConversationRef,
+      seenSourceEventKeysRef,
       terminalRunIdsRef,
       terminalTaskKeysRef,
       pendingRequestIdsRef,
@@ -430,6 +449,7 @@ export function useLocalAgentStream({
     discardStreamText()
     setStreamingAssistants([])
     nextSlotIndexByUserMessageIdRef.current.clear()
+    seenSourceEventKeysRef.current.clear()
     const timeoutId = window.setTimeout(() => {
       setPendingUserMessageId(null)
     }, 0)
@@ -489,6 +509,9 @@ export function useLocalAgentStream({
             : {}),
           ...(args.userMessageEventId
             ? { userMessageEventId: args.userMessageEventId }
+            : {}),
+          ...(Number.isFinite(args.userMessageTimestamp)
+            ? { userMessageTimestamp: args.userMessageTimestamp }
             : {}),
           storageMode,
         })

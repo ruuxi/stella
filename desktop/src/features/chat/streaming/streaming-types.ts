@@ -43,12 +43,35 @@ export type StreamingAssistantOverlay = {
   responseTarget?: AgentResponseTarget;
   timestamp: number;
   runId: string;
+  /** Exact persisted twin learned from the assistant-message boundary. */
+  canonicalMessageId?: string;
   /**
    * Marked true once this slot's text equals the full upstream-received
    * text for its message (set on `ASSISTANT_MESSAGE` boundary or
    * `RUN_FINISHED`).
    */
   locked?: boolean;
+};
+
+export const linkStreamingAssistantCanonicalMessage = (
+  overlays: StreamingAssistantOverlay[],
+  args: {
+    userMessageId: string;
+    indexInTurn: number;
+    canonicalMessageId: string;
+  },
+): StreamingAssistantOverlay[] => {
+  const index = overlays.findIndex(
+    (overlay) =>
+      overlay.userMessageId === args.userMessageId
+      && overlay.indexInTurn === args.indexInTurn,
+  );
+  if (index < 0) return overlays;
+  const current = overlays[index]!;
+  if (current.canonicalMessageId === args.canonicalMessageId) return overlays;
+  const next = overlays.slice();
+  next[index] = { ...current, canonicalMessageId: args.canonicalMessageId };
+  return next;
 };
 
 /** Stable synthetic id used for both the overlay row and its React key. */

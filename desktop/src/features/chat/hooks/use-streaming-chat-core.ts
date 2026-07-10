@@ -16,8 +16,9 @@ import { toPastedTextDescriptor } from '../lib/paste-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 import {
   combineQueuedSendPayloads,
+  orderQueuedMessages,
   removeQueuedUserMessageById,
-  shouldClearQueuedUserMessagesForRunOutcome,
+  restoreQueuedMessagesAfterFailedDrain,
   type QueuedUserMessage,
 } from './queued-user-messages'
 
@@ -100,6 +101,7 @@ const buildOptimisticUserEvent = (args: {
 
 type QueuedStreamPayload = {
   id: string
+  queueOrder: number
   conversationId: string
   userPrompt: string
   selectedText: SendMessageArgs['selectedText']
@@ -125,7 +127,10 @@ export function useStreamingChatCore({
     QueuedUserMessage[]
   >([])
   const queuedStreamPayloadsRef = useRef<QueuedStreamPayload[]>([])
+  const drainingQueuedPayloadsRef = useRef<QueuedStreamPayload[]>([])
   const drainingQueuedMessageIdRef = useRef<string | null>(null)
+  const queuedMessageOrderRef = useRef(0)
+  const queueDrainPausedRef = useRef(false)
   const {
     isLocalStorage,
     storageMode,
@@ -137,7 +142,9 @@ export function useStreamingChatCore({
     )
     if (drainingQueuedMessageIdRef.current === messageId) {
       drainingQueuedMessageIdRef.current = null
+      drainingQueuedPayloadsRef.current = []
     }
+    queueDrainPausedRef.current = false
     setQueuedUserMessages((current) =>
       removeQueuedUserMessageById(current, messageId),
     )
@@ -151,6 +158,7 @@ export function useStreamingChatCore({
     )
     if (drainingQueuedMessageIdRef.current === userMessageId) {
       drainingQueuedMessageIdRef.current = null
+      drainingQueuedPayloadsRef.current = []
     }
     setQueuedUserMessages((current) =>
       removeQueuedUserMessageById(current, userMessageId),
@@ -167,11 +175,12 @@ export function useStreamingChatCore({
         drainingQueuedMessageIdRef.current === event.userMessageId
       ) {
         drainingQueuedMessageIdRef.current = null
+        drainingQueuedPayloadsRef.current = []
       }
-      if (!shouldClearQueuedUserMessagesForRunOutcome(event.outcome)) return
-      queuedStreamPayloadsRef.current = []
-      drainingQueuedMessageIdRef.current = null
-      setQueuedUserMessages([])
+      // A terminal outcome for the active run must not discard renderer-owned
+      // follow-ups. If they have not been accepted yet, the idle-drain effect
+      // will send them as the next turn. A drain that did start is removed by
+      // `handleRunStarted`, so a later run error/cancel cannot replay it.
     },
     [],
   )
@@ -201,7 +210,10 @@ export function useStreamingChatCore({
 
   useEffect(() => {
     queuedStreamPayloadsRef.current = []
+    drainingQueuedPayloadsRef.current = []
     drainingQueuedMessageIdRef.current = null
+    queuedMessageOrderRef.current = 0
+    queueDrainPausedRef.current = false
     setOptimisticEvents([])
     setQueuedUserMessages([])
     setPendingUserMessageId(null)
@@ -219,19 +231,23 @@ export function useStreamingChatCore({
   const drainQueuedMessagesIfIdle = useCallback(() => {
     if (isStreaming || !activeConversationId) return
     if (drainingQueuedMessageIdRef.current) return
+    if (queueDrainPausedRef.current) return
     // Flush the ENTIRE queue in one drain: every message still waiting when
     // the app goes idle is combined (in queue order) into a single turn so
     // the assistant answers them together instead of running one full
     // response turn per queued message. A lone queued message passes through
     // `combineQueuedSendPayloads` untouched.
-    const drainable = queuedStreamPayloadsRef.current.filter(
-      (message) => message.conversationId === activeConversationId,
+    const drainable = orderQueuedMessages(
+      queuedStreamPayloadsRef.current.filter(
+        (message) => message.conversationId === activeConversationId,
+      ),
     )
     const combined = combineQueuedSendPayloads(drainable)
     if (!combined) return
 
     const drainedIds = new Set(drainable.map((message) => message.id))
     drainingQueuedMessageIdRef.current = combined.id
+    drainingQueuedPayloadsRef.current = drainable
     queuedStreamPayloadsRef.current = queuedStreamPayloadsRef.current.filter(
       (message) => !drainedIds.has(message.id),
     )
@@ -276,11 +292,38 @@ export function useStreamingChatCore({
         : {}),
       attachments: combined.attachments,
       userMessageEventId: combined.id,
+      userMessageTimestamp: combined.optimisticEvent.timestamp,
       onStartFailed: () => {
         if (drainingQueuedMessageIdRef.current === combined.id) {
           drainingQueuedMessageIdRef.current = null
         }
+        const failedDrain = drainingQueuedPayloadsRef.current
+        drainingQueuedPayloadsRef.current = []
+        queueDrainPausedRef.current = true
+        queuedStreamPayloadsRef.current = restoreQueuedMessagesAfterFailedDrain(
+          queuedStreamPayloadsRef.current,
+          failedDrain,
+        )
         clearOptimisticMessage(combined.id)
+        setQueuedUserMessages((current) =>
+          restoreQueuedMessagesAfterFailedDrain(
+            current,
+            failedDrain.map((message) => {
+              const payload = message.optimisticEvent.payload as
+                | { text?: unknown }
+                | undefined
+              return {
+                id: message.id,
+                text:
+                  (typeof payload?.text === 'string' ? payload.text : '')
+                  || message.userPrompt
+                  || 'Attached context',
+                timestamp: message.optimisticEvent.timestamp,
+                queueOrder: message.queueOrder,
+              }
+            }),
+          ),
+        )
       },
     })
   }, [
@@ -425,10 +468,15 @@ export function useStreamingChatCore({
           }))
       const mode = shouldQueueFollowUp ? 'follow_up' : undefined
       const optimisticUserMessageId = createLocalMessageId()
+      const queueOrder = ++queuedMessageOrderRef.current
       const optimisticText =
         cleanedText || options.selectedText?.trim() || 'Attached context'
 
       const messageTimestamp = Date.now()
+      // Resolve prerequisites before clearing the composer. A failed device
+      // lookup must leave the user's draft intact rather than silently lose
+      // a message that has not reached either queue or persistence.
+      const deviceId = await getOrCreateDeviceId()
       options.onClear()
       await nextAnimationFrame()
 
@@ -451,17 +499,6 @@ export function useStreamingChatCore({
         setPendingUserMessageId(optimisticUserMessageId)
       }
 
-      let deviceId: string
-      try {
-        deviceId = await getOrCreateDeviceId()
-      } catch (error) {
-        clearOptimisticMessage(optimisticUserMessageId)
-        setQueuedUserMessages((current) =>
-          current.filter((message) => message.id !== optimisticUserMessageId),
-        )
-        throw error
-      }
-
       // Fire-and-forget: surface a "model not available on your plan"
       // toast for restricted tiers (anonymous/free/go) when the user has a
       // saved non-default override for orchestrator/general. The backend
@@ -473,10 +510,12 @@ export function useStreamingChatCore({
         console.log(
           `[stella:trace] sendMessage (follow_up queued) | convId=${resolvedConversationId}`,
         )
-        queuedStreamPayloadsRef.current = [
+        queueDrainPausedRef.current = false
+        queuedStreamPayloadsRef.current = orderQueuedMessages([
           ...queuedStreamPayloadsRef.current,
           {
             id: optimisticUserMessageId,
+            queueOrder,
             conversationId: resolvedConversationId,
             userPrompt: cleanedText,
             selectedText: options.selectedText,
@@ -489,15 +528,16 @@ export function useStreamingChatCore({
             attachments,
             optimisticEvent,
           },
-        ]
-        setQueuedUserMessages((current) => [
+        ])
+        setQueuedUserMessages((current) => orderQueuedMessages([
           ...current,
           {
             id: optimisticUserMessageId,
             text: optimisticText,
             timestamp: messageTimestamp,
+            queueOrder,
           },
-        ])
+        ]))
         drainQueuedMessagesIfIdle()
         return
       }
@@ -516,6 +556,7 @@ export function useStreamingChatCore({
         ...(messageMetadata ? { messageMetadata } : {}),
         attachments,
         userMessageEventId: optimisticUserMessageId,
+        userMessageTimestamp: messageTimestamp,
         onStartFailed: () => {
           clearOptimisticMessage(optimisticUserMessageId)
         },

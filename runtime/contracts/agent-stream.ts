@@ -24,6 +24,8 @@ export type AgentStreamEvent = {
   type: AgentStreamEventType;
   runId: string;
   seq: number;
+  /** Runtime-recorder sequence retained when the main process re-sequences IPC. */
+  sourceSeq?: number;
   conversationId?: string;
   requestId?: string;
   userMessageId?: string;
@@ -51,6 +53,8 @@ export type AgentStreamEvent = {
   reason?: string;
   replacedByRunId?: string;
   responseTarget?: AgentResponseTarget;
+  /** Canonical SQLite row persisted for an `ASSISTANT_MESSAGE` boundary. */
+  assistantMessageEventId?: string;
   /**
    * On an `ASSISTANT_MESSAGE` boundary: true when the message that just
    * finalized ends with a tool call, i.e. it is an interim/preamble message

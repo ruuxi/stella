@@ -49,6 +49,7 @@ type AgentEventPayload = {
   type: AgentStreamEventType;
   runId: string;
   seq: number;
+  sourceSeq?: number;
   conversationId: string;
   requestId?: string;
   userMessageId?: string;
@@ -82,6 +83,7 @@ type AgentEventPayload = {
   /** Work group (`grp-…` key + human label) of the agent's thread. */
   groupKey?: string;
   groupLabel?: string;
+  assistantMessageEventId?: string;
 };
 
 type ActiveRunSnapshot = {
@@ -269,8 +271,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     event: Omit<AgentEventPayload, "seq"> & { seq?: number },
     targetWebContentsId?: number,
   ) => {
+    const sourceSeq = Number.isFinite(event.seq) ? event.seq : undefined;
     const normalizedEvent: AgentEventPayload = {
       ...event,
+      ...(sourceSeq !== undefined ? { sourceSeq } : {}),
       seq: nextAgentEventSeq(),
     };
     const trackedRunId = normalizedEvent.rootRunId ?? normalizedEvent.runId;
@@ -736,6 +740,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           previewUrl?: string;
         }>;
         userMessageEventId?: string;
+        userMessageTimestamp?: number;
         agentType?: string;
         storageMode?: "cloud" | "local";
         clientRequestId?: string;

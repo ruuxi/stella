@@ -57,6 +57,7 @@ type UseAgentEventHandlerOptions = {
     terminalTaskKeysRef: MutableRefObject<Set<string>>
     pendingRequestIdsRef: MutableRefObject<Set<string>>
     resumeSeqByConversationRef: MutableRefObject<Map<string, number>>
+    seenSourceEventKeysRef: MutableRefObject<Set<string>>
   }
   streaming: {
     setPendingUserMessageId: Dispatch<React.SetStateAction<string | null>>
@@ -84,6 +85,7 @@ type UseAgentEventHandlerOptions = {
     finalizeMessageBoundary: (args: {
       runId: string
       userMessageId: string | null
+      canonicalMessageId?: string
     }) => void
     finalizeRunOnFinish: (args: { runId: string }) => void
   }
@@ -117,6 +119,36 @@ type UseAgentEventHandlerOptions = {
 
 type AgentEventSource = 'live' | 'replay'
 
+/**
+ * Main-process `agent:event` sequences are globally monotonic, including the
+ * Date.now-scale values assigned by `createMonotonicSeqGenerator`. Live
+ * delivery and an in-flight resume response can contain the same event, so all
+ * positive sequences must participate in deduplication.
+ */
+export const acceptConversationAgentEventSequence = (
+  lastSeqByConversation: Map<string, number>,
+  conversationId: string,
+  seq: number,
+): boolean => {
+  if (!Number.isFinite(seq) || seq <= 0) return true
+  const previousSeq = lastSeqByConversation.get(conversationId) ?? 0
+  if (seq <= previousSeq) return false
+  lastSeqByConversation.set(conversationId, seq)
+  return true
+}
+
+export const acceptAgentEventSourceIdentity = (
+  seenKeys: Set<string>,
+  event: Pick<AgentStreamEvent, 'type' | 'runId' | 'seq' | 'sourceSeq'>,
+): boolean => {
+  const sourceSeq = event.sourceSeq ?? event.seq
+  if (!Number.isFinite(sourceSeq) || sourceSeq <= 0) return true
+  const key = `${event.runId}:${sourceSeq}:${event.type}`
+  if (seenKeys.has(key)) return false
+  seenKeys.add(key)
+  return true
+}
+
 export function useAgentEventHandler({
   dispatch,
   refs,
@@ -130,6 +162,7 @@ export function useAgentEventHandler({
     activeRunIdByConversationRef,
     lastSeqByConversationRef,
     resumeSeqByConversationRef,
+    seenSourceEventKeysRef,
     terminalRunIdsRef,
     terminalTaskKeysRef,
     pendingRequestIdsRef,
@@ -157,6 +190,9 @@ export function useAgentEventHandler({
       }
 
       const seq = Number.isFinite(event.seq) ? event.seq : 0
+      if (!acceptAgentEventSourceIdentity(seenSourceEventKeysRef.current, event)) {
+        return
+      }
       if (seq > 0) {
         const previousResumeSeq =
           resumeSeqByConversationRef.current.get(conversationId) ?? 0
@@ -164,29 +200,14 @@ export function useAgentEventHandler({
           resumeSeqByConversationRef.current.set(conversationId, seq)
         }
       }
-      // Synthetic seqs (used by sub-agent lifecycle events and hidden
-      // → visible mirror events on the worker, generated as
-      // `Date.now() + n`) are orders of magnitude larger than the
-      // recorder's per-run seqs (which start at 1 and increment per
-      // event). If we let a synthetic seq advance the conversation
-      // cursor, every subsequent recorder-seq event in the same
-      // conversation — including the orchestrator's post-tool
-      // `STREAM` chunks — fails the `seq > previousSeq` check and
-      // gets silently dropped, which manifests as "no live streaming
-      // after a tool, message just pops in fully when done".
-      //
-      // Threshold: recorder seqs are bounded by event count per run
-      // (a few thousand at most); `Date.now()` floors at ~1.78e12.
-      // Anything past 1e10 is unambiguously synthetic — let it
-      // through but don't touch the cursor.
-      const SYNTHETIC_SEQ_FLOOR = 1e10
-      if (seq > 0 && seq < SYNTHETIC_SEQ_FLOOR) {
-        const previousSeq =
-          lastSeqByConversationRef.current.get(conversationId) ?? 0
-        if (seq <= previousSeq) {
-          return
-        }
-        lastSeqByConversationRef.current.set(conversationId, seq)
+      if (
+        !acceptConversationAgentEventSequence(
+          lastSeqByConversationRef.current,
+          conversationId,
+          seq,
+        )
+      ) {
+        return
       }
 
       if (event.requestId) {
@@ -370,6 +391,9 @@ export function useAgentEventHandler({
             finalizeMessageBoundary({
               runId: event.runId,
               userMessageId: event.userMessageId ?? null,
+              ...(event.assistantMessageEventId
+                ? { canonicalMessageId: event.assistantMessageEventId }
+                : {}),
             })
             // Preamble → tool-call handoff: if this finalized message ends
             // with a tool call, clear the streaming-text flag now so the
@@ -592,6 +616,7 @@ export function useAgentEventHandler({
       pendingRequestIdsRef,
       queueAgentReasoningChunk,
       resumeSeqByConversationRef,
+      seenSourceEventKeysRef,
       scheduleTaskRemoval,
       setPendingUserMessageId,
       terminalRunIdsRef,

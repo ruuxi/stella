@@ -466,6 +466,8 @@ export type RuntimeChatPayload = {
   messageMetadata?: Record<string, unknown>;
   attachments?: RuntimeAttachmentRef[];
   userMessageEventId?: string;
+  /** Original renderer send time; remains stable while a queued turn waits. */
+  userMessageTimestamp?: number;
   agentType?: string;
   storageMode?: "cloud" | "local";
   selfModMetadata?: {
@@ -662,6 +664,7 @@ export type RuntimeAgentEventPayload = {
   type: string;
   runId: string;
   seq: number;
+  sourceSeq?: number;
   conversationId?: string;
   requestId?: string;
   userMessageId?: string;
@@ -704,6 +707,7 @@ export type RuntimeAgentEventPayload = {
         agentId: string;
         terminalState: "completed" | "failed" | "canceled";
       };
+  assistantMessageEventId?: string;
 };
 
 export type RuntimeVoiceAgentEventPayload = {

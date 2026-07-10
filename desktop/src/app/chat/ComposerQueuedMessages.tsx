@@ -133,7 +133,7 @@ export function ComposerQueuedMessages({
         if (a.leaving !== b.leaving) {
           return a.leaving ? -1 : 1;
         }
-        return a.timestamp - b.timestamp;
+        return a.queueOrder - b.queueOrder || a.timestamp - b.timestamp;
       });
       return next;
     });

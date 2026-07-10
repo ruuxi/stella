@@ -100,6 +100,69 @@ describe("conversation display message merge", () => {
       },
     });
   });
+
+  it("deduplicates a live assistant against its exact canonical row even if slot indexing drifted", () => {
+    const canonical = message({
+      _id: "assistant-msg-run-1-10",
+      timestamp: 30,
+      payload: { text: "same reply", userMessageId: "u1" },
+    });
+    const live = overlay({
+      // A replayed boundary used to advance this to the wrong ordinal.
+      _id: "stream-overlay:u1:2",
+      indexInTurn: 2,
+      text: "same reply",
+      canonicalMessageId: canonical._id,
+      locked: true,
+    });
+
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages: [
+        message({ _id: "u1", type: "user_message", timestamp: 1 }),
+        canonical,
+      ],
+      overlayMessages: [overlayToMessageRecord(live, canonical)],
+      streamingAssistants: [live],
+      persistedAssistantSlots: getPersistedAssistantSlots([canonical]),
+    });
+
+    expect(merged.map((item) => item._id)).toEqual([
+      "u1",
+      "stream-overlay:u1:2",
+    ]);
+    expect(merged.filter((item) => item.payload?.text === "same reply")).toHaveLength(1);
+  });
+
+  it("keeps a queued user send after an assistant that was visible first on cold load", () => {
+    const assistant = message({
+      _id: "assistant-before-queue",
+      // Persistence completed after the queued send.
+      timestamp: 400,
+      payload: {
+        text: "earlier visible reply",
+        userMessageId: "u1",
+        metadata: { runtime: { streamStartedAtMs: 100 } },
+      },
+    });
+    const queuedUser = message({
+      _id: "queued-user",
+      type: "user_message",
+      timestamp: 200,
+      payload: { text: "you don't need to trace" },
+    });
+
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages: [queuedUser, assistant],
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots([assistant]),
+    });
+
+    expect(merged.map((item) => item._id)).toEqual([
+      "assistant-before-queue",
+      "queued-user",
+    ]);
+  });
 });
 
 describe("conversation display merge — structural-sharing fast path", () => {

@@ -733,16 +733,23 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     seq: number;
     timezone?: string;
     responseTarget?: RuntimeAgentEventPayload["responseTarget"];
+    streamStartedAtMs?: number;
   }): string | null => {
     const trimmedText = args.text.trim();
     if (!trimmedText) {
       return null;
     }
 
-    const runtimeMetadata = args.responseTarget
+    const runtimeMetadata =
+      args.responseTarget || Number.isFinite(args.streamStartedAtMs)
       ? {
           runtime: {
-            responseTarget: args.responseTarget,
+            ...(args.responseTarget
+              ? { responseTarget: args.responseTarget }
+              : {}),
+            ...(Number.isFinite(args.streamStartedAtMs)
+              ? { streamStartedAtMs: args.streamStartedAtMs }
+              : {}),
           },
         }
       : undefined;
@@ -1679,7 +1686,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             ]
           : []),
       ];
-      const userMessageTimestamp = Date.now();
+      const userMessageTimestamp =
+        typeof payload.userMessageTimestamp === "number" &&
+        Number.isFinite(payload.userMessageTimestamp)
+          ? payload.userMessageTimestamp
+          : Date.now();
       const windowPreviewImageUrl = windowScreenshotAttachment?.url;
       const userMessageId =
         payload.userMessageEventId ?? `local:${crypto.randomUUID()}`;
@@ -1932,7 +1943,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           onRunStarted: (ev) => {
             activeRunId = ev.runId;
             if (ev.userMessageId === userMessageId) {
-              appendUserMessageEvent(Date.now());
+              appendUserMessageEvent();
             }
             const isHiddenRun = ev.uiVisibility === "hidden";
             if (isHiddenRun) {

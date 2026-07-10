@@ -651,6 +651,7 @@ export type ElectronAgentApi = {
       mimeType?: string;
     }>;
     userMessageEventId?: string;
+    userMessageTimestamp?: number;
     agentType?: string;
     storageMode?: "cloud" | "local";
     clientRequestId?: string;

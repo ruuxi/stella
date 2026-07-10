@@ -708,6 +708,7 @@ export class RuntimeHostAdapter {
         mimeType?: string;
       }>;
       userMessageEventId?: string;
+      userMessageTimestamp?: number;
       agentType?: string;
       storageMode?: "cloud" | "local";
       requestId?: string;

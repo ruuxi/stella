@@ -61,8 +61,26 @@ type UseConversationDisplayMessagesOptions = {
  */
 export type SortTimestampResolver = (message: MessageRecord) => number;
 
-const defaultSortTimestamp: SortTimestampResolver = (message) =>
-  message.timestamp;
+export const getMessageChronologicalTimestamp: SortTimestampResolver = (
+  message,
+) => {
+  if (message.type === "assistant_message") {
+    const payload = message.payload as
+      | { metadata?: { runtime?: { streamStartedAtMs?: unknown } } }
+      | undefined;
+    const streamStartedAtMs = payload?.metadata?.runtime?.streamStartedAtMs;
+    if (
+      typeof streamStartedAtMs === "number" &&
+      Number.isFinite(streamStartedAtMs)
+    ) {
+      return streamStartedAtMs;
+    }
+  }
+  return message.timestamp;
+};
+
+const defaultSortTimestamp: SortTimestampResolver =
+  getMessageChronologicalTimestamp;
 
 const compareDisplayOrder = (
   a: MessageRecord,
@@ -209,15 +227,15 @@ export const mergeConversationDisplayMessageSources = (args: {
     getSortTimestamp = defaultSortTimestamp,
   } = args;
   const resolverActive = getSortTimestamp !== defaultSortTimestamp;
+  const persistedById = new Map(
+    persistedMessages.map((message) => [message._id, message]),
+  );
   if (streamingAssistants.length === 0) {
     if (overlayMessages.length === 0) {
-      // No overlays: the SQLite window is already timestamp-ordered. Re-order
-      // it only when a frozen-slot resolver is in play (it can move a persisted
-      // twin back to its overlay's original position); otherwise return the
-      // input reference untouched (the hot idle path).
-      return resolverActive
-        ? orderByResolver(persistedMessages, getSortTimestamp)
-        : persistedMessages;
+      // SQLite is ordered by persistence time. Assistant rows with a captured
+      // `streamStartedAtMs` sort by when their text first became visible, so a
+      // queued user send cannot jump above an assistant it followed.
+      return orderByResolver(persistedMessages, getSortTimestamp);
     }
     return mergeMessageSources(
       getSortTimestamp,
@@ -228,9 +246,11 @@ export const mergeConversationDisplayMessageSources = (args: {
 
   const maskedPersistedIds = new Set<string>();
   for (const slot of streamingAssistants) {
-    const persisted = persistedAssistantSlots.get(slot.userMessageId)?.[
-      slot.indexInTurn - 1
-    ];
+    const persisted = slot.canonicalMessageId
+      ? persistedById.get(slot.canonicalMessageId)
+      : persistedAssistantSlots.get(slot.userMessageId)?.[
+          slot.indexInTurn - 1
+        ];
     if (persisted) {
       maskedPersistedIds.add(persisted._id);
     }
@@ -371,6 +391,10 @@ export const useConversationDisplayMessages = ({
     () => getPersistedAssistantSlots(persistedMessages),
     [persistedMessages],
   );
+  const persistedMessagesById = useMemo(
+    () => new Map(persistedMessages.map((message) => [message._id, message])),
+    [persistedMessages],
+  );
 
   /**
    * Per-slot frozen sort timestamps (`userMessageId:indexInTurn` -> ts).
@@ -417,13 +441,19 @@ export const useConversationDisplayMessages = ({
         }
       }
     }
+    for (const slot of streamingAssistants) {
+      if (slot.canonicalMessageId) {
+        map.set(slot.canonicalMessageId, slot.timestamp);
+      }
+    }
     return map;
   }, [persistedAssistantSlots, streamingAssistants]);
 
   const getSortTimestamp = useMemo<SortTimestampResolver | undefined>(() => {
     if (sortTimestampByMessageId.size === 0) return undefined;
     return (message) =>
-      sortTimestampByMessageId.get(message._id) ?? message.timestamp;
+      sortTimestampByMessageId.get(message._id) ??
+      getMessageChronologicalTimestamp(message);
   }, [sortTimestampByMessageId]);
 
   const overlayMessages = useMemo(() => {
@@ -441,9 +471,11 @@ export const useConversationDisplayMessages = ({
 
     const streamingOverlay: MessageRecord[] = [];
     for (const slot of streamingAssistants) {
-      const persisted = persistedAssistantSlots.get(slot.userMessageId)?.[
-        slot.indexInTurn - 1
-      ];
+      const persisted = slot.canonicalMessageId
+        ? persistedMessagesById.get(slot.canonicalMessageId)
+        : persistedAssistantSlots.get(slot.userMessageId)?.[
+            slot.indexInTurn - 1
+          ];
       streamingOverlay.push(overlayToMessageRecord(slot, persisted));
     }
 
@@ -454,6 +486,7 @@ export const useConversationDisplayMessages = ({
   }, [
     optimisticEvents,
     persistedAssistantSlots,
+    persistedMessagesById,
     scheduledEvents,
     streamingAssistants,
   ]);

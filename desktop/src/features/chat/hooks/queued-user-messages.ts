@@ -5,6 +5,8 @@ export type QueuedUserMessage = {
   id: string
   text: string
   timestamp: number
+  /** Monotonic renderer send order captured before any asynchronous work. */
+  queueOrder: number
 }
 
 /**
@@ -16,11 +18,38 @@ export type QueuedUserMessage = {
  */
 export type CombinableQueuedSendPayload = {
   id: string
+  queueOrder: number
   userPrompt: string
   selectedText: string | null
   chatContext: ChatContext | null
   messageMetadata?: MessageMetadata
   attachments: unknown[]
+}
+
+export const orderQueuedMessages = <
+  T extends Pick<CombinableQueuedSendPayload, 'id' | 'queueOrder'>,
+>(messages: readonly T[]): T[] =>
+  messages
+    .map((message, insertionIndex) => ({ message, insertionIndex }))
+    .sort(
+      (left, right) =>
+        left.message.queueOrder - right.message.queueOrder
+        || left.insertionIndex - right.insertionIndex,
+    )
+    .map(({ message }) => message)
+
+/**
+ * Restores a drain batch after `startChat` failed before acceptance. Existing
+ * ids win so a late failure callback cannot duplicate a message that was
+ * already re-queued through another path.
+ */
+export const restoreQueuedMessagesAfterFailedDrain = <
+  T extends Pick<CombinableQueuedSendPayload, 'id' | 'queueOrder'>,
+>(current: readonly T[], drained: readonly T[]): T[] => {
+  const byId = new Map<string, T>()
+  for (const message of drained) byId.set(message.id, message)
+  for (const message of current) byId.set(message.id, message)
+  return orderQueuedMessages([...byId.values()])
 }
 
 const definedEntries = (value: object) =>
@@ -103,25 +132,26 @@ export const combineQueuedSendPayloads = <
   payloads: readonly T[],
 ): T | null => {
   if (payloads.length === 0) return null
-  const first = payloads[0]
+  const ordered = orderQueuedMessages(payloads)
+  const first = ordered[0]
   if (payloads.length === 1) return first
 
-  const prompts = payloads
+  const prompts = ordered
     .map((payload) => payload.userPrompt.trim())
     .filter((prompt) => prompt.length > 0)
   const selectedText =
-    [...payloads]
+    [...ordered]
       .reverse()
       .find(
         (payload) =>
           typeof payload.selectedText === 'string'
           && payload.selectedText.trim().length > 0,
       )?.selectedText ?? null
-  const chatContexts = payloads
+  const chatContexts = ordered
     .map((payload) => payload.chatContext)
     .filter((context): context is ChatContext => context != null)
   const mergedMetadata = mergeMessageMetadata(
-    payloads
+    ordered
       .map((payload) => payload.messageMetadata)
       .filter((metadata): metadata is MessageMetadata => metadata != null),
   )
@@ -131,7 +161,7 @@ export const combineQueuedSendPayloads = <
     userPrompt: prompts.join('\n\n'),
     selectedText,
     chatContext: chatContexts.length > 0 ? mergeChatContexts(chatContexts) : null,
-    attachments: payloads.flatMap((payload) => payload.attachments),
+    attachments: ordered.flatMap((payload) => payload.attachments),
   }
   if (mergedMetadata) {
     combined.messageMetadata = mergedMetadata
@@ -141,16 +171,10 @@ export const combineQueuedSendPayloads = <
   return combined as T
 }
 
-export type TerminalRunOutcome = 'completed' | 'error' | 'canceled'
-
 export const removeQueuedUserMessageById = (
   messages: QueuedUserMessage[],
   messageId: string,
 ) => messages.filter((message) => message.id !== messageId)
-
-export const shouldClearQueuedUserMessagesForRunOutcome = (
-  outcome: TerminalRunOutcome,
-) => outcome === 'error' || outcome === 'canceled'
 
 /**
  * Resolves the composer text after a queued message is cancelled and its
