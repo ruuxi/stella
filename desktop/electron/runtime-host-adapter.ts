@@ -544,17 +544,22 @@ export class RuntimeHostAdapter {
   }
 
   async waitUntilReady(timeoutMs = 10_000) {
-    if (this.getAvailabilitySnapshot().ready) {
-      return;
-    }
+    // Refresh the host-owned snapshot first. A worker can answer its ordinary
+    // health RPC while a watcher/staleness restart is already queued; that is
+    // not an authoritative send-ready state.
+    this.lastRuntimeHealth = await this.host.health();
+    this.emitAvailabilityChange();
+    const isSendReady = (snapshot: RuntimeAvailabilitySnapshot) =>
+      snapshot.ready && snapshot.pendingRuntimeRestart !== true;
+    if (isSendReady(this.getAvailabilitySnapshot())) return;
     const initial = await this.agentHealthCheck();
-    if (initial?.ready) {
-      return;
-    }
+    this.lastRuntimeHealth = await this.host.health();
+    this.emitAvailabilityChange();
+    if (initial?.ready && isSendReady(this.getAvailabilitySnapshot())) return;
     await this.waitForAvailability(
-      (snapshot) => snapshot.ready,
+      isSendReady,
       timeoutMs,
-      "Runtime not available.",
+      "Stella is reconnecting to its runtime. Please try again.",
     );
   }
 

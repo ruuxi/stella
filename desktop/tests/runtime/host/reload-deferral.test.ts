@@ -72,6 +72,26 @@ describe("runtime reload deferral", () => {
     expect(restartWorker).toHaveBeenCalledTimes(1);
   });
 
+  it("consumes a deferred reload before replacement-worker initialization can flush it again", async () => {
+    vi.useFakeTimers();
+    const host = createHost();
+    const anyHost = host as any;
+    anyHost.started = true;
+    anyHost.restartWorker = vi.fn(async () => {
+      // Mirrors initializeConnection -> resetRuntimeReloadPauses on the newly
+      // spawned worker. This was the incident's self-rearming edge.
+      await anyHost.resetRuntimeReloadPauses();
+    });
+
+    anyHost.scheduleRuntimeReload();
+    await vi.runAllTimersAsync();
+    await anyHost.reloadQueue;
+
+    expect(anyHost.restartWorker).toHaveBeenCalledTimes(1);
+    expect(anyHost.deferredRuntimeReload).toBe(false);
+    expect(anyHost.restartRequestedDuringRestart).toBe(false);
+  });
+
   it("defers a worker restart until an in-flight morph transition settles", async () => {
     vi.useFakeTimers();
     const host = createHost();

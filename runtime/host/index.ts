@@ -1009,9 +1009,24 @@ export class StellaRuntimeHost {
           if (!this.canRestartWorkerNow(health)) return;
           const reason =
             this.pendingStaleWorkerRestart?.reason ?? "runtime-reload";
+          // Consume the watcher intent before the replacement worker starts.
+          // Worker initialization resets reload pauses and flushes pending
+          // restart intent; leaving this bit set there re-arms the restart
+          // forever, producing a spawn/ready/kill loop until Electron exits.
+          const consumedDeferredRuntimeReload = this.deferredRuntimeReload;
+          this.deferredRuntimeReload = false;
           getFileLogger()?.process("host.worker-restart", { reason });
           console.warn(`[runtime-host] Restarting runtime worker (${reason}).`);
-          await this.restartWorker();
+          try {
+            await this.restartWorker();
+          } catch (error) {
+            // A failed restart did not satisfy the watcher request. Preserve it
+            // for the next explicit readiness/recovery attempt.
+            if (consumedDeferredRuntimeReload) {
+              this.deferredRuntimeReload = true;
+            }
+            throw error;
+          }
         } finally {
           this.restartInProgress = false;
           if (this.restartRequestedDuringRestart) {
@@ -1019,6 +1034,15 @@ export class StellaRuntimeHost {
             setTimeout(() => {
               void this.flushWorkerRestart();
             }, 0);
+          }
+          // `restartWorker()` emits readiness while restartInProgress is still
+          // true, so that snapshot intentionally remains send-blocked. Publish
+          // the authoritative post-transition state after clearing the flag so
+          // waitUntilReady callers are released without polling or retrying.
+          if (this.started) {
+            void this.health().then((snapshot) => {
+              this.events.emit("runtime-ready", snapshot);
+            });
           }
         }
       });
@@ -3199,7 +3223,7 @@ export class StellaRuntimeHost {
         this.workerController.getState() === "starting",
       workerGeneration: this.workerGeneration,
       deviceId: workerHealth?.deviceId ?? this.deviceIdentity?.deviceId ?? null,
-      ...(this.pendingStaleWorkerRestart
+      ...(this.hasPendingWorkerRestartIntent() || this.restartInProgress
         ? { pendingWorkerRestart: true }
         : {}),
       activeRunId: workerHealth?.activeRun?.runId ?? null,

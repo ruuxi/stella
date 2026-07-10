@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,6 +8,32 @@ import { WorkerLifecycleServer } from "../../../../runtime/worker/lifecycle-serv
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("WorkerLifecycleServer", () => {
+  it("replaces a stale lock whose recorded owner is dead", async () => {
+    const stellaAppDir = await mkdtemp(path.join(tmpdir(), "stella-lifecycle-"));
+    const lifecycle = new WorkerLifecycleServer({
+      stellaAppDir,
+      onShutdown: () => undefined,
+    });
+
+    try {
+      await mkdir(lifecycle.paths.rootDir, { recursive: true });
+      await writeFile(lifecycle.paths.lockFile, "2147483647", "utf-8");
+      await writeFile(lifecycle.paths.pidFile, "2147483647", "utf-8");
+
+      await lifecycle.start();
+
+      expect(await readFile(lifecycle.paths.lockFile, "utf-8")).toBe(
+        String(process.pid),
+      );
+      expect(await readFile(lifecycle.paths.pidFile, "utf-8")).toBe(
+        String(process.pid),
+      );
+    } finally {
+      await lifecycle.shutdown("signal");
+      await rm(stellaAppDir, { recursive: true, force: true });
+    }
+  });
+
   it("delays idle shutdown while active work is in flight", async () => {
     const stellaAppDir = await mkdtemp(path.join(tmpdir(), "stella-lifecycle-"));
     const shutdownReasons: string[] = [];

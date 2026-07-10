@@ -837,23 +837,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
       try {
         await stellaHostRunner.waitUntilConnected(5_000);
-
-        // The worker is lazily spawned — startChat will wake it on demand
-        // via ensureWorker. Only block here to let a freshly-set auth token
-        // propagate; skip if the worker is simply asleep (no reason string).
-        const deadline = Date.now() + 5_000;
-        let health = await stellaHostRunner.agentHealthCheck();
-        while (
-          health?.ready === false &&
-          health.reason &&
-          Date.now() < deadline
-        ) {
-          await new Promise((r) => setTimeout(r, 200));
-          health = await stellaHostRunner.agentHealthCheck();
-        }
-        if (health?.ready === false && health.reason) {
-          throw new Error(health.reason);
-        }
+        await stellaHostRunner.waitUntilReady(15_000);
       } catch (error) {
         // Never started a run; let a future retry try again from scratch.
         requestOwners.delete(requestId);

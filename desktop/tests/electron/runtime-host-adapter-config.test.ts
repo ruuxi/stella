@@ -72,6 +72,36 @@ describe("RuntimeHostAdapter config batching", () => {
   });
 });
 
+describe("RuntimeHostAdapter send readiness", () => {
+  it("does not report send-ready while a worker restart is pending", async () => {
+    const adapter = createAdapter();
+    const anyAdapter = adapter as any;
+    anyAdapter.connected = true;
+    anyAdapter.lastRuntimeHealth = {
+      ready: true,
+      pendingWorkerRestart: true,
+    };
+    anyAdapter.host.health = vi.fn().mockResolvedValue({
+      ready: true,
+      pendingWorkerRestart: true,
+    });
+    anyAdapter.host.healthCheck = vi.fn().mockResolvedValue({ ready: true });
+
+    await expect(adapter.waitUntilReady(5)).rejects.toThrow(
+      "Stella is reconnecting to its runtime",
+    );
+  });
+
+  it("accepts an authoritative ready snapshot with no pending restart", async () => {
+    const adapter = createAdapter();
+    const anyAdapter = adapter as any;
+    anyAdapter.connected = true;
+    anyAdapter.host.health = vi.fn().mockResolvedValue({ ready: true });
+
+    await expect(adapter.waitUntilReady(5)).resolves.toBeUndefined();
+  });
+});
+
 describe("worker run-event acks", () => {
   it("keeps replay-critical terminal and synthetic events in the worker log", () => {
     expect(
