@@ -85,6 +85,13 @@ export type EvaluateOptions = {
 
 class KernelTerminatedError extends Error {}
 
+/**
+ * Error name the worker assigns to uncaught async throws surfaced through the
+ * REPL's output stream (see the inline literal in `kernel-worker.ts`, which is
+ * serialized into the worker source and cannot share this constant).
+ */
+const NODE_REPL_UNCAUGHT_ERROR_NAME = "NodeReplUncaughtError";
+
 const BLOCKED_NODE_MODULE_RE =
   /(?:from\s*|import\s*\(\s*|require\s*\(\s*)["'](?:node:)?(?:child_process|process|worker_threads)["']|process\s*\.\s*(?:binding|getBuiltinModule|dlopen)/;
 
@@ -486,7 +493,16 @@ class NodeReplKernel {
       return;
     }
     if (typed.type === "evaluation-error") {
-      this.settleActive(active, deserializeError(typed.error));
+      const error = deserializeError(typed.error);
+      if (error.name === NODE_REPL_UNCAUGHT_ERROR_NAME) {
+        // The worker's REPL caught an uncaught async throw via its domain and
+        // abandoned the in-flight evaluation; the REPL cannot be safely
+        // reused. Terminate so the registry disposes this kernel's session
+        // and the next evaluate starts a fresh kernel.
+        this.terminateActive(new KernelTerminatedError(error.message));
+        return;
+      }
+      this.settleActive(active, error);
     }
   }
 

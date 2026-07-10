@@ -347,7 +347,16 @@ const nodeReplWorkerMain = async (
         ) {
           const reject = outputErrorReject;
           outputErrorReject = undefined;
-          reject(new Error(outputBuffer.trim()));
+          // Errors surfaced through the REPL output (uncaught async throws
+          // caught by the REPL domain) abandon the in-flight `server.eval`,
+          // leaving the REPL with a pending evaluation that never settles.
+          // Name the error so the parent drops the kernel instead of reusing
+          // a REPL in that state. The literal must stay inline: this function
+          // is serialized with `toString()` into the worker source, so it
+          // cannot reference module-scope constants.
+          const uncaught = new Error(outputBuffer.trim());
+          uncaught.name = "NodeReplUncaughtError";
+          reject(uncaught);
         }
       }
       done();
