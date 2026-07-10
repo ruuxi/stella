@@ -163,8 +163,8 @@ describe("stale worker staleness handshake", () => {
     );
     expect(existsSync(paths.pendingWorkerRestartFile)).toBe(true);
 
-    // Idle path: the deferred kick runs through the quiescence check.
-    await anyHost.maybeRestartStaleWorkerWhenQuiescent();
+    // Idle path: the unified restart gate flushes the pending intent.
+    await anyHost.flushWorkerRestart();
     await drain(anyHost);
     expect(anyHost.restartWorker).toHaveBeenCalledTimes(1);
   });
@@ -222,14 +222,14 @@ describe("stale worker staleness handshake", () => {
     expect(anyHost.pendingStaleWorkerRestart?.reason).toBe(
       "build-stamp-mismatch",
     );
-    // Busy: quiescence checks must not restart.
-    await anyHost.maybeRestartStaleWorkerWhenQuiescent();
+    // Busy: the unified restart gate must not restart.
+    await anyHost.flushWorkerRestart();
     await drain(anyHost);
     expect(anyHost.restartWorker).not.toHaveBeenCalled();
 
     // Run finishes -> worker reports idle -> restart fires.
     anyHost.getWorkerHealth = vi.fn().mockResolvedValue(IDLE_HEALTH);
-    await anyHost.maybeRestartStaleWorkerWhenQuiescent();
+    await anyHost.flushWorkerRestart();
     await drain(anyHost);
     expect(anyHost.restartWorker).toHaveBeenCalledTimes(1);
   });
@@ -252,7 +252,7 @@ describe("stale worker staleness handshake", () => {
       .fn()
       .mockResolvedValueOnce(IDLE_HEALTH)
       .mockResolvedValue(BUSY_HEALTH);
-    await anyHost.maybeRestartStaleWorkerWhenQuiescent();
+    await anyHost.flushWorkerRestart();
     await drain(anyHost);
     expect(anyHost.restartWorker).not.toHaveBeenCalled();
     // Pending state survives for the next quiescent moment.
@@ -282,7 +282,7 @@ describe("stale worker staleness handshake", () => {
     expect(anyHostB.pendingStaleWorkerRestart?.reason).toBe(
       "pending-restart-flag",
     );
-    await anyHostB.maybeRestartStaleWorkerWhenQuiescent();
+    await anyHostB.flushWorkerRestart();
     await drain(anyHostB);
     expect(anyHostB.restartWorker).toHaveBeenCalledTimes(1);
   });
