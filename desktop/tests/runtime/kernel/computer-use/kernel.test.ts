@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFile, rm } from "node:fs/promises";
 
 import {
+  isBunNodeReplRuntime,
   NodeReplKernelRegistry,
   type ComputerUseSessionFactory,
   type ComputerUseSessionFactoryOptions,
@@ -106,6 +107,16 @@ const createRegistry = (idleTimeoutMs = 60_000) =>
   });
 
 describe("persistent Node REPL kernels", () => {
+  it("recognizes Bun so production kernels use the external Node transport", () => {
+    expect(
+      isBunNodeReplRuntime({
+        ...process.versions,
+        bun: "1.3.14",
+      }),
+    ).toBe(true);
+    expect(isBunNodeReplRuntime({ ...process.versions })).toBe(false);
+  });
+
   it("supports top-level await and preserves lexical bindings", async () => {
     const registry = createRegistry();
     try {

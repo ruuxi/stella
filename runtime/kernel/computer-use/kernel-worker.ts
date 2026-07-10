@@ -22,12 +22,29 @@ const nodeReplWorkerMain = async (
     "specifier",
     "return import(specifier)",
   ) as (specifier: string) => Promise<unknown>;
-  const { parentPort, workerData } = (await dynamicImport(
-    "node:worker_threads",
-  )) as {
+  const workerThreads = (await dynamicImport("node:worker_threads")) as {
     parentPort: MessagePort | null;
-    workerData: NodeReplWorkerData;
+    workerData?: NodeReplWorkerData;
   };
+  const ipcProcess = globalThis.process as NodeJS.Process & {
+    send?: (message: unknown) => boolean;
+  };
+  const parentPort =
+    workerThreads.parentPort ??
+    (typeof ipcProcess.send === "function"
+      ? {
+          postMessage: (message: unknown) => ipcProcess.send!(message),
+          on: (_event: "message", listener: (message: unknown) => void) =>
+            ipcProcess.on("message", listener),
+        }
+      : null);
+  const workerData =
+    workerThreads.workerData ??
+    (ipcProcess.env.STELLA_NODE_REPL_WORKER_DATA
+      ? (JSON.parse(
+          ipcProcess.env.STELLA_NODE_REPL_WORKER_DATA,
+        ) as NodeReplWorkerData)
+      : undefined);
   const os = (await dynamicImport("node:os")) as typeof import("node:os");
   const path = (await dynamicImport("node:path")) as typeof import("node:path");
   const replModule = (await dynamicImport(
@@ -50,7 +67,9 @@ const nodeReplWorkerMain = async (
     "node:util",
   )) as typeof import("node:util");
 
-  if (!parentPort) throw new Error("Node REPL worker requires a parent port.");
+  if (!parentPort || !workerData) {
+    throw new Error("Node REPL worker requires a parent transport and data.");
+  }
 
   const kernelRequire = createRequire(workerData.moduleUrl);
   const BLOCKED_NODE_MODULES = new Set([

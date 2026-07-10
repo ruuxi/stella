@@ -1,5 +1,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { Worker } from "node:worker_threads";
@@ -209,8 +210,71 @@ const NON_VISUAL_BROWSER_MUTATIONS = new Set([
 ]);
 const MAX_BROWSER_SCREENSHOT_FILES_PER_KERNEL = 100;
 
+type NodeReplTransport = {
+  on(event: "message", listener: (message: unknown) => void): unknown;
+  on(event: "error", listener: (error: Error) => void): unknown;
+  on(event: "exit", listener: (code: number | null) => void): unknown;
+  postMessage(message: ParentToNodeReplWorkerMessage): void;
+  ref(): void;
+  unref(): void;
+  terminate(): Promise<unknown>;
+};
+
+export const isBunNodeReplRuntime = (
+  versions: NodeJS.ProcessVersions & { bun?: string } = process.versions,
+) => Boolean(versions.bun);
+
+const createNodeReplTransport = (
+  source: string,
+  workerData: NodeReplWorkerData,
+  name: string,
+): NodeReplTransport => {
+  if (!isBunNodeReplRuntime()) {
+    return new Worker(source, { eval: true, workerData, name });
+  }
+
+  const executable =
+    process.env.STELLA_NODE_BIN?.trim() ||
+    process.env.STELLA_HOST_EXECUTABLE_PATH?.trim() ||
+    "node";
+  const child = spawn(executable, ["-"], {
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "1",
+      STELLA_NODE_REPL_WORKER_DATA: JSON.stringify(workerData),
+    },
+    stdio: ["pipe", "ignore", "ignore", "ipc"],
+    windowsHide: true,
+  });
+  child.stdin?.end(source);
+
+  return {
+    on(event, listener) {
+      child.on(event, listener as never);
+      return child;
+    },
+    postMessage(message) {
+      if (!child.connected) {
+        throw new Error("Node REPL child transport is not connected.");
+      }
+      child.send(message);
+    },
+    ref() {
+      child.ref();
+      child.channel?.ref?.();
+    },
+    unref() {
+      child.unref();
+      child.channel?.unref?.();
+    },
+    async terminate() {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+    },
+  };
+};
+
 class NodeReplKernel {
-  private readonly worker: Worker;
+  private readonly worker: NodeReplTransport;
   private readonly sky: SkyClient;
   private readonly browser: BrowserSessionClient;
   private readonly requestBrowserExtensionConnect?: BrowserExtensionConnectRequester;
@@ -279,11 +343,11 @@ class NodeReplKernel {
       maxPendingSkyCalls: MAX_NODE_REPL_PENDING_SKY_CALLS,
       maxPendingBrowserCalls: MAX_NODE_REPL_PENDING_BROWSER_CALLS,
     };
-    this.worker = new Worker(createNodeReplWorkerSource(), {
-      eval: true,
+    this.worker = createNodeReplTransport(
+      createNodeReplWorkerSource(),
       workerData,
-      name: `stella-node-repl-${id.slice(0, 48)}`,
-    });
+      `stella-node-repl-${id.slice(0, 48)}`,
+    );
     this.worker.on("message", (message: unknown) =>
       this.handleMessage(message),
     );
