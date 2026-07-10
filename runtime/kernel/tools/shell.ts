@@ -5,7 +5,7 @@
 import { spawn } from "child_process";
 import path from "path";
 import os from "os";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import { readdir, stat } from "fs/promises";
 import { setupEnvironment } from "dugite";
 import {
@@ -46,6 +46,7 @@ export type ShellState = {
   stellaConnectCliPath?: string;
   stellaMediaCliPath?: string;
   stellaXApiCliPath?: string;
+  nodeShimDir?: string;
   windowsCliShimDir?: string;
   getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
   /**
@@ -558,6 +559,41 @@ export const extractOfficePreviewRef = (
 const buildWindowsCliShimScript = (envVar: string): string =>
   ["@echo off", `"%STELLA_NODE_BIN%" "%${envVar}%" %*`, ""].join("\r\n");
 
+const buildWindowsNodeShimScript = (): string =>
+  [
+    "@echo off",
+    'set "ELECTRON_RUN_AS_NODE=1"',
+    '"%STELLA_NODE_BIN%" %*',
+    "",
+  ].join("\r\n");
+
+const buildUnixNodeShimScript = (): string =>
+  ["#!/bin/sh", 'ELECTRON_RUN_AS_NODE=1 exec "$STELLA_NODE_BIN" "$@"', ""].join(
+    "\n",
+  );
+
+const ensureNodeShim = (secretStateRoot: string): string | undefined => {
+  const shimDir = path.join(secretStateRoot, "shell-shims");
+  const shimPath = path.join(
+    shimDir,
+    process.platform === "win32" ? "node.cmd" : "node",
+  );
+  try {
+    mkdirSync(shimDir, { recursive: true });
+    writeFileSync(
+      shimPath,
+      process.platform === "win32"
+        ? buildWindowsNodeShimScript()
+        : buildUnixNodeShimScript(),
+      "utf-8",
+    );
+    if (process.platform !== "win32") chmodSync(shimPath, 0o700);
+    return shimDir;
+  } catch {
+    return undefined;
+  }
+};
+
 const ensureWindowsCliShims = (
   secretStateRoot: string,
   options?: ShellStateOptions,
@@ -593,6 +629,7 @@ export function createShellState(
     throw new Error("createShellState requires a secretStateRoot.");
   }
 
+  const nodeShimDir = ensureNodeShim(secretStateRoot);
   const windowsCliShimDir =
     process.platform === "win32"
       ? ensureWindowsCliShims(secretStateRoot, options)
@@ -607,6 +644,7 @@ export function createShellState(
     stellaConnectCliPath: options?.stellaConnectCliPath,
     stellaMediaCliPath: options?.stellaMediaCliPath,
     stellaXApiCliPath: options?.stellaXApiCliPath,
+    ...(nodeShimDir ? { nodeShimDir } : {}),
     getStellaSiteAuth: options?.getStellaSiteAuth,
     ...(windowsCliShimDir ? { windowsCliShimDir } : {}),
     cliBridgeSocketPath: options?.cliBridgeSocketPath,
@@ -845,6 +883,22 @@ type DugiteEnvContribution = {
 
 const dugiteEnvContributions = new Map<string, DugiteEnvContribution>();
 
+export const resolveShellNodeBinary = (
+  env: NodeJS.ProcessEnv = process.env,
+): string => {
+  const explicit = env.STELLA_NODE_BIN?.trim();
+  if (explicit && existsSync(explicit)) return explicit;
+
+  // The detached Stella runtime itself runs under Bun. Electron's host
+  // executable is passed into that worker specifically so child processes can
+  // launch its bundled Node runtime with ELECTRON_RUN_AS_NODE=1.
+  const hostExecutable = env.STELLA_HOST_EXECUTABLE_PATH?.trim();
+  if (hostExecutable && existsSync(hostExecutable)) return hostExecutable;
+
+  // Tests and non-Electron embeddings commonly run the kernel under Node.
+  return process.execPath;
+};
+
 const getDugiteEnvContribution = (
   mergedEnv: NodeJS.ProcessEnv,
 ): DugiteEnvContribution => {
@@ -884,13 +938,16 @@ const buildShellEnv = (
     stellaConnectCliPath?: string;
     stellaMediaCliPath?: string;
     stellaXApiCliPath?: string;
+    nodeShimDir?: string;
     windowsCliShimDir?: string;
     cliBridgeSocketPath?: string;
   },
 ) => {
   const mergedEnv: NodeJS.ProcessEnv = {
     ...(envOverrides ? { ...process.env, ...envOverrides } : process.env),
-    STELLA_NODE_BIN: process.execPath,
+    STELLA_NODE_BIN: resolveShellNodeBinary(
+      envOverrides ? { ...process.env, ...envOverrides } : process.env,
+    ),
     STELLA_RUNTIME_WORKER_PID: String(process.pid),
     STELLA_DEFERRED_DELETE_HELPER: deferredDeleteHelperPath,
     ...(options?.secretStateRoot
@@ -916,16 +973,24 @@ const buildShellEnv = (
       : {}),
   };
 
-  if (options?.windowsCliShimDir) {
+  const shellShimDirs = [options?.nodeShimDir, options?.windowsCliShimDir]
+    .filter((value): value is string => Boolean(value))
+    .filter((value, index, values) => values.indexOf(value) === index);
+  if (shellShimDirs.length > 0) {
     const pathKey =
       Object.keys(mergedEnv).find((key) => key.toLowerCase() === "path") ??
       "PATH";
     const existingPath =
       typeof mergedEnv[pathKey] === "string" ? mergedEnv[pathKey] : "";
-    mergedEnv[pathKey] = [options.windowsCliShimDir, existingPath]
+    mergedEnv[pathKey] = [...shellShimDirs, existingPath]
       .filter(Boolean)
       .join(path.delimiter);
-    mergedEnv.STELLA_WINDOWS_CLI_SHIM_DIR = options.windowsCliShimDir;
+    if (options?.nodeShimDir) {
+      mergedEnv.STELLA_NODE_SHIM_DIR = options.nodeShimDir;
+    }
+    if (options?.windowsCliShimDir) {
+      mergedEnv.STELLA_WINDOWS_CLI_SHIM_DIR = options.windowsCliShimDir;
+    }
   }
 
   const dugite = getDugiteEnvContribution(mergedEnv);

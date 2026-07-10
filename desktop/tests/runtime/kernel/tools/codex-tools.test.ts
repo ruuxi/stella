@@ -1,5 +1,5 @@
 import path from "node:path";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -58,6 +58,138 @@ describe("general agent tools", () => {
       exit_code: 0,
       output: "ready",
     });
+  });
+
+  it("exec_command exposes the bundled Node.js runtime", async () => {
+    const root = await createTempDir();
+    const shellState = createShellState(root);
+
+    const result = await handleExecCommand(
+      shellState,
+      {
+        cmd: 'node -e "process.stdout.write(String(6 * 7))"',
+        yield_time_ms: 500,
+      },
+      {
+        conversationId: "c-node",
+        deviceId: "d-node",
+        requestId: "r-node",
+        agentType: "general",
+        stellaAppDir: root,
+      },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toMatchObject({
+      session_id: null,
+      running: false,
+      exit_code: 0,
+      output: "42",
+    });
+  });
+
+  it("General launches Node.js through the ToolHost exec_command boundary", async () => {
+    const root = await createTempDir();
+    const host = createToolHost({ stellaAppDir: root });
+
+    try {
+      const result = await host.executeTool(
+        "exec_command",
+        {
+          cmd: 'node -e "process.stdout.write(JSON.stringify({runtime: process.release.name}))"',
+          yield_time_ms: 500,
+        },
+        {
+          conversationId: "c-general-node",
+          deviceId: "d-general-node",
+          requestId: "r-general-node",
+          agentType: "general",
+          stellaAppDir: root,
+          allowedToolNames: ["exec_command"],
+        },
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.result).toMatchObject({
+        running: false,
+        exit_code: 0,
+        output: '{"runtime":"node"}',
+      });
+    } finally {
+      await host.shutdown();
+    }
+  });
+
+  it("exec_command exposes Node.js to env shebang scripts", async () => {
+    const root = await createTempDir();
+    const scriptPath = path.join(root, "answer.js");
+    await writeFile(
+      scriptPath,
+      '#!/usr/bin/env node\nprocess.stdout.write(String(7 * 6));\n',
+      "utf-8",
+    );
+    await chmod(scriptPath, 0o700);
+    const shellState = createShellState(root);
+
+    const result = await handleExecCommand(
+      shellState,
+      { cmd: JSON.stringify(scriptPath), yield_time_ms: 500 },
+      {
+        conversationId: "c-node-shebang",
+        deviceId: "d-node-shebang",
+        requestId: "r-node-shebang",
+        agentType: "general",
+        stellaAppDir: root,
+      },
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.result).toMatchObject({
+      session_id: null,
+      running: false,
+      exit_code: 0,
+      output: "42",
+    });
+  });
+
+  it("write_stdin drives an interactive Node.js REPL", async () => {
+    const root = await createTempDir();
+    const shellState = createShellState(root);
+    const context = {
+      conversationId: "c-node-repl",
+      deviceId: "d-node-repl",
+      requestId: "r-node-repl",
+      agentType: "general",
+      stellaAppDir: root,
+    };
+
+    const started = await handleExecCommand(
+      shellState,
+      { cmd: "node -i", yield_time_ms: 100 },
+      context,
+    );
+    expect(started.error).toBeUndefined();
+    const sessionId = (started.result as { session_id: string | null })
+      .session_id;
+    expect(typeof sessionId).toBe("string");
+
+    const finished = await handleWriteStdin(
+      shellState,
+      {
+        session_id: sessionId,
+        chars: "console.log(21 * 2)\n.exit\n",
+        yield_time_ms: 1_000,
+      },
+      context,
+    );
+
+    expect(finished.error).toBeUndefined();
+    expect(finished.result).toMatchObject({
+      session_id: null,
+      running: false,
+      exit_code: 0,
+    });
+    expect((finished.result as { output: string }).output).toContain("42");
   });
 
   it("write_stdin continues an interactive exec_command session", async () => {

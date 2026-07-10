@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createShellState,
   handleBash,
+  resolveShellNodeBinary,
   runShell,
 } from "../../../../../runtime/kernel/tools/shell.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
@@ -120,6 +121,42 @@ describe("stella-computer shell bootstrap", () => {
       "utf-8",
     );
     expect(shim).toContain('"%STELLA_NODE_BIN%" "%STELLA_COMPUTER_CLI%" %*');
+  });
+
+  it("always creates a Windows cmd shim for Node.js", () => {
+    forcePlatform("win32");
+    const tempDir = createTempDir();
+
+    const state = createShellState(tempDir);
+
+    expect(state.nodeShimDir).toBeTruthy();
+    const shim = readFileSync(
+      path.join(String(state.nodeShimDir), "node.cmd"),
+      "utf-8",
+    );
+    expect(shim).toContain('set "ELECTRON_RUN_AS_NODE=1"');
+    expect(shim).toContain('"%STELLA_NODE_BIN%" %*');
+  });
+
+  it("uses Electron's Node runtime instead of the Bun worker executable", () => {
+    const tempDir = createTempDir();
+    const hostExecutable = path.join(tempDir, "electron-host");
+    const explicitNode = path.join(tempDir, "explicit-node");
+    writeFileSync(hostExecutable, "", "utf-8");
+    writeFileSync(explicitNode, "", "utf-8");
+
+    expect(
+      resolveShellNodeBinary({
+        STELLA_HOST_EXECUTABLE_PATH: hostExecutable,
+      }),
+    ).toBe(hostExecutable);
+    expect(
+      resolveShellNodeBinary({
+        STELLA_NODE_BIN: explicitNode,
+        STELLA_HOST_EXECUTABLE_PATH: hostExecutable,
+      }),
+    ).toBe(explicitNode);
+    expect(resolveShellNodeBinary({})).toBe(process.execPath);
   });
 
   it("injects stella-media with media auth for command runs", async () => {
