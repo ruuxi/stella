@@ -317,8 +317,8 @@ export function useFullShellChat({
     // footer is off-screen below the latest text).
     //
     // While a stream is already in flight, the send queues as a
-    // follow-up chip in the trailing region (no new user-row in the
-    // event list). The normal latest-user-row nudge is still skipped:
+    // follow-up chip at the keyed tail of the event list (not yet a sent
+    // user row). The normal latest-user-row nudge is still skipped:
     // it would fall through to the prior turn's user bubble and scroll
     // *backwards* to re-frame it. The streaming branch below uses a
     // footer-tail target instead.
@@ -343,7 +343,7 @@ export function useFullShellChat({
       // Queued follow-up — no new user row lands in the event list.
       // The streaming assistant row's own auto-follow keeps the reply
       // framed, but repeated queued chips live below that row in the
-      // footer and can drift under the viewport without their own tail
+      // virtualized tail and can drift under the viewport without their own
       // target.
       if (shouldKeepTailFramed) {
         nudgeQueuedMessagesIntoView();

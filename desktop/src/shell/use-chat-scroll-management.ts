@@ -1052,20 +1052,24 @@ export function useChatScrollManagement({
           0,
           rowBottom - attached.clientHeight + FOLLOW_BREATHING_PX,
         )
-        const queuedStack = attached.querySelector<HTMLElement>(
-          '.composer-queued-stack',
+        const queuedMessages = attached.querySelectorAll<HTMLElement>(
+          '.composer-queued-message:not(.composer-queued-message--leaving)',
         )
-        const queuedStackBottom = queuedStack
-          ? queuedStack.getBoundingClientRect().bottom -
+        const queuedMessage =
+          queuedMessages.length > 0
+            ? queuedMessages[queuedMessages.length - 1]!
+            : null
+        const queuedMessageBottom = queuedMessage
+          ? queuedMessage.getBoundingClientRect().bottom -
             containerRect.top +
             attached.scrollTop
           : null
         const queuedScrollTop =
-          queuedStackBottom === null
+          queuedMessageBottom === null
             ? 0
             : Math.max(
                 0,
-                queuedStackBottom -
+                queuedMessageBottom -
                   attached.clientHeight +
                   POST_SEND_USER_MESSAGE_BREATHING_PX,
               )

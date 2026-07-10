@@ -29,8 +29,8 @@
  *    browser then clamped `scrollTop` up to the new max — visible as a
  *    jump back to the top of the previous assistant reply just before
  *    the post-send nudge animated back down. The fixed bottom-floor
- *    `min-height` and queued-messages slot live on the `ListFooterComponent`
- *    instead.
+ *    `min-height` lives on the `ListFooterComponent`; queued messages are
+ *    regular keyed list items after every active assistant slot.
  *  - Older-history pagination is driven by the scroll hook's native input
  *    listener, not Legend's data-sensitive `onStartReached` callback.
  *
@@ -62,7 +62,10 @@ import {
   type InlineWorkingIndicatorMountProps,
 } from "./InlineWorkingIndicator";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
-import { eventRowRendersContent } from "@/features/chat/lib/assistant-row-content";
+import {
+  buildChatTimelineItems,
+  type ChatTimelineItem,
+} from "@/features/chat/lib/chat-timeline-items";
 import { LoaderCircle } from "@/ui/icons";
 
 type ChatTimelineProps = {
@@ -213,9 +216,7 @@ const gapAfterRow = (
   return ROW_GAP;
 };
 
-type TimelineListItem = {
-  id: string;
-  row: EventRowViewModel;
+type TimelineListItem = ChatTimelineItem & {
   /** Pre-computed spacing rendered below this row by the separator. */
   gapAfter: number;
 };
@@ -240,6 +241,32 @@ const renderRow = (
   );
 };
 
+const TimelineUserItem = ({
+  item,
+  onCancelQueued,
+}: {
+  item: Extract<
+    ChatTimelineItem,
+    { type: "message" | "queued-user" }
+  >;
+  onCancelQueued?: (message: QueuedUserMessage) => void;
+}) => {
+  const queuedMessage = item.type === "queued-user" ? item.message : null;
+  const queuedMessages = useMemo(
+    () => (queuedMessage ? [queuedMessage] : []),
+    [queuedMessage],
+  );
+  if (item.type === "queued-user") {
+    return (
+      <ComposerQueuedMessages
+        messages={queuedMessages}
+        onCancel={onCancelQueued}
+      />
+    );
+  }
+  return item.row.kind === "user" ? <UserMessageRow row={item.row} /> : null;
+};
+
 export const ChatTimeline = memo(function ChatTimeline({
   rows,
   conversationId,
@@ -259,24 +286,44 @@ export const ChatTimeline = memo(function ChatTimeline({
   contentContainerStyle,
 }: ChatTimelineProps) {
   const listItems = useMemo<TimelineListItem[]>(() => {
-    // Drop rows that paint nothing (empty assistant segments: tool-only
-    // stream slices, rows whose lifecycle cards were re-anchored away by
-    // route-lifecycle-events). If they stayed, each would still occupy a
-    // virtualized item + its separator gap — invisible spacers that
-    // stack into large voids between turns. Gaps are computed on the
-    // filtered list so neighbors join at their real spacing.
-    const visibleRows = rows.filter(eventRowRendersContent);
-    return visibleRows.map((row, index) => ({
-      id: row.id,
-      row,
-      gapAfter: gapAfterRow(row, visibleRows[index + 1]),
-    }));
-  }, [rows]);
+    const items = buildChatTimelineItems({
+      rows,
+      queuedUserMessages: queuedUserMessages ?? [],
+      includeWorkingIndicator: Boolean(indicator),
+    });
+    return items.map((item, index) => {
+      const next = items[index + 1];
+      if (item.type === "message") {
+        const nextRow = next?.type === "message" ? next.row : undefined;
+        return { ...item, gapAfter: gapAfterRow(item.row, nextRow) };
+      }
+      if (item.type === "working-indicator") {
+        return { ...item, gapAfter: next?.type === "queued-user" ? 20 : 0 };
+      }
+      return {
+        ...item,
+        gapAfter: next?.type === "queued-user" ? 6 : ROW_GAP,
+      };
+    });
+  }, [indicator, queuedUserMessages, rows]);
 
   const renderItem = useCallback(
-    ({ item }: LegendListRenderItemProps<TimelineListItem>) =>
-      renderRow(item.row, conversationId),
-    [conversationId],
+    ({ item }: LegendListRenderItemProps<TimelineListItem>) => {
+      if (item.type === "working-indicator") {
+        return indicator ? (
+          <div className="event-list-working-indicator">
+            <InlineWorkingIndicator {...indicator} />
+          </div>
+        ) : null;
+      }
+      if (item.type === "queued-user" || item.row.kind === "user") {
+        return (
+          <TimelineUserItem item={item} onCancelQueued={onCancelQueued} />
+        );
+      }
+      return renderRow(item.row, conversationId);
+    },
+    [conversationId, indicator, onCancelQueued],
   );
 
   const keyExtractor = useCallback((item: TimelineListItem) => item.id, []);
@@ -295,11 +342,10 @@ export const ChatTimeline = memo(function ChatTimeline({
   }, [hasOlderEvents, isLoadingOlder]);
 
   /**
-   * Footer: the Claude-style working indicator, the queued user-message
-   * stack, any surface-specific `extraTail` node, and a bottom-floor
-   * `min-height`. The indicator sits first so it reads as the line
-   * directly below the streaming/last assistant row, with queued messages
-   * stacking beneath it. The min-height pre-allocates the empty reading
+   * Footer: any surface-specific `extraTail` node and a bottom-floor
+   * `min-height`. Working and queued rows are regular keyed list data directly
+   * above this footer so a growing/new assistant slot can never be painted
+   * below them. The min-height pre-allocates the empty reading
    * area below the just-sent user bubble (and below short streaming
    * replies) without reserving the full viewport. Living here — rather
    * than wrapping the latest user/assistant rows in a re-keyed synthetic
@@ -311,21 +357,12 @@ export const ChatTimeline = memo(function ChatTimeline({
   const ListFooter = useMemo(
     () => (
       <div className="event-list-trailing-region">
-        {indicator ? (
-          <div className="event-list-working-indicator">
-            <InlineWorkingIndicator {...indicator} />
-          </div>
-        ) : null}
-        <ComposerQueuedMessages
-          messages={queuedUserMessages ?? []}
-          onCancel={onCancelQueued}
-        />
         {extraTail && (
           <div className="event-list-extra-tail">{extraTail}</div>
         )}
       </div>
     ),
-    [extraTail, indicator, queuedUserMessages, onCancelQueued],
+    [extraTail],
   );
 
   if (isLoadingHistory && rows.length === 0) {

@@ -1,10 +1,9 @@
 /**
  * Inline working indicator — the Claude-style "next-line" indicator.
  *
- * Mounted (persistently) at the top of the `ChatTimeline` footer
- * (`.event-list-working-indicator`), so it reads as the line directly
- * below the streaming/last assistant message and above any queued user
- * messages.
+ * Mounted (persistently) as a keyed `ChatTimeline` item
+ * (`.event-list-working-indicator`), so it reads as the line directly below
+ * the streaming/last assistant message and above any queued user messages.
  *
  * Behavior:
  *  - While the assistant is reasoning (no answer text yet) it shows a
@@ -25,7 +24,7 @@
  *    the node out before the exit animation runs. If `active` flips back
  *    true mid-exit, the exit is canceled and live updates resume.
  *  - Once fully exited, the inner content is removed (`--vacated`); the
- *    footer wrapper's `:has(--vacated)` rule then collapses the slot so an
+ *    timeline wrapper's `:has(--vacated)` rule then collapses the slot so an
  *    idle chat carries no ghost gutter.
  */
 import { useEffect, useMemo, useRef, useState } from "react";

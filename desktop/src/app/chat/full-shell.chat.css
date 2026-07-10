@@ -76,8 +76,8 @@
 
 /*
  * Trailing region: renders as the LegendList footer underneath every
- * virtualized row. Hosts the queued user-message stack, any
- * surface-specific `extraTail` node, and a fixed bottom-floor
+ * virtualized row. Hosts any surface-specific `extraTail` node and a fixed
+ * bottom-floor
  * `min-height` so the reading area below the latest row stays
  * pre-allocated even when the row itself is short (a freshly sent user
  * bubble before the assistant has streamed, or an empty streaming
@@ -106,16 +106,15 @@
   gap: 20px;
 }
 
-/* Queued user messages live in the active tail under the inline working
-   indicator, not above the composer. They keep the same right-aligned
-   bubble language as normal user messages while waiting for their turn. */
+/* Queued user messages are keyed virtualized items after the active assistant
+   slots and working indicator. They keep the same right-aligned bubble
+   language as normal user messages while waiting for their turn. */
 .composer-queued-stack {
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
-  margin-top: 10px;
 }
 
 .composer-queued-message {

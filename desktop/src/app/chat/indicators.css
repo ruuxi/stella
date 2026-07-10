@@ -61,14 +61,13 @@
   to { opacity: 0; transform: translateY(-4px); }
 }
 
-/* Inline working indicator — Claude-style. Rendered at the top of the
- * `ChatTimeline` footer (`.event-list-working-indicator`), so it reads as
- * the line directly below the streaming/last assistant message. As text
- * streams in line by line the footer (and this indicator) flows down with
- * the growing message, with queued messages stacking beneath it.
+/* Inline working indicator — Claude-style. Rendered as a keyed `ChatTimeline`
+ * item (`.event-list-working-indicator`), so it reads as the line directly
+ * below the streaming/last assistant message. As text streams in line by line
+ * the item flows down with the growing message, with queued items beneath it.
  *
  * It is NOT pinned to the viewport: the footer's bottom-floor reading area
- * sits below the indicator, so it scrolls with content (the user can
+ * follows the indicator, so it scrolls with content (the user can
  * scroll up past it) rather than floating over the chat. When the runtime
  * reports work, `active` is true and the indicator is shown; when there is
  * no work at all it plays the hold + grow-out exit and then collapses to
@@ -103,7 +102,7 @@
   padding: 0;
 }
 
-/* Footer slot for the indicator: a small line of breathing room above so
+/* Timeline slot for the indicator: a small line of breathing room above so
  * it sits a touch below the assistant message rather than flush against
  * it. When the inner indicator has fully exited (`--vacated`) the slot is
  * removed from flow entirely so an idle chat carries no ghost gutter — the

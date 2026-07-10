@@ -4,6 +4,7 @@ import type { StreamingAssistantOverlay } from "@/features/chat/streaming/stream
 import {
   findOverlayWinnerIndices,
   getPersistedAssistantSlots,
+  keepAssistantTurnsContiguous,
   mergeConversationDisplayMessageSources,
   overlayMergeShapeUnchanged,
   overlayToMessageRecord,
@@ -162,6 +163,73 @@ describe("conversation display message merge", () => {
       "assistant-before-queue",
       "queued-user",
     ]);
+  });
+
+  it("does not let a drained queued user split preamble and post-tool assistant slots", () => {
+    const activeUser = message({
+      _id: "u1",
+      type: "user_message",
+      timestamp: 50,
+    });
+    const preamble = message({
+      _id: "assistant-preamble",
+      timestamp: 100,
+      payload: { text: "I will check.", userMessageId: "u1" },
+    });
+    const drainedQueuedUser = message({
+      _id: "u2",
+      type: "user_message",
+      // The click happened while u1 was running.
+      timestamp: 200,
+      payload: { text: "follow up" },
+    });
+    const postToolAnswer = message({
+      _id: "assistant-post-tool",
+      // This slot first streamed after the queued click.
+      timestamp: 300,
+      payload: { text: "Done.", userMessageId: "u1" },
+    });
+
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages: [
+        activeUser,
+        preamble,
+        drainedQueuedUser,
+        postToolAnswer,
+      ],
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots([
+        preamble,
+        postToolAnswer,
+      ]),
+    });
+
+    expect(merged.map((item) => item._id)).toEqual([
+      "u1",
+      "assistant-preamble",
+      "assistant-post-tool",
+      "u2",
+    ]);
+  });
+
+  it("does not move a non-user-turn assistant notice across a later user", () => {
+    const messages = [
+      message({ _id: "u1", type: "user_message", timestamp: 1 }),
+      message({ _id: "u2", type: "user_message", timestamp: 2 }),
+      message({
+        _id: "terminal-notice",
+        timestamp: 3,
+        payload: {
+          userMessageId: "u1",
+          metadata: {
+            runtime: { responseTarget: { type: "agent_terminal_notice" } },
+          },
+        },
+      }),
+    ];
+
+    expect(keepAssistantTurnsContiguous(messages)).toBe(messages);
   });
 });
 

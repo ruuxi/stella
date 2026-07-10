@@ -93,6 +93,80 @@ const compareDisplayOrder = (
   return a._id.localeCompare(b._id);
 };
 
+const getAssistantUserMessageId = (
+  message: MessageRecord,
+): string | undefined => {
+  if (message.type !== "assistant_message") return undefined;
+  const payload = message.payload as { userMessageId?: string } | undefined;
+  const userMessageId = payload?.userMessageId;
+  return typeof userMessageId === "string" && userMessageId.length > 0
+    ? userMessageId
+    : undefined;
+};
+
+const isUserTurnAssistant = (message: MessageRecord): boolean => {
+  const payload = message.payload as
+    | {
+        metadata?: {
+          runtime?: { responseTarget?: { type?: unknown } };
+        };
+      }
+    | undefined;
+  const targetType = payload?.metadata?.runtime?.responseTarget?.type;
+  return targetType === undefined || targetType === "user_turn";
+};
+
+/**
+ * Timestamp ordering alone cannot represent a queued send: its click time is
+ * inside the preceding assistant run, before a later post-tool assistant slot
+ * receives its first chunk. Move only those late slots back across the first
+ * following user boundary, keeping the rest of the timestamp order intact.
+ */
+export const keepAssistantTurnsContiguous = (
+  messages: MessageRecord[],
+): MessageRecord[] => {
+  const userIndexById = new Map<string, number>();
+  const nextUserIndexAfter = new Array<number | undefined>(messages.length);
+  let nextUserIndex: number | undefined;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    nextUserIndexAfter[index] = nextUserIndex;
+    const message = messages[index]!;
+    if (message.type === "user_message") {
+      userIndexById.set(message._id, index);
+      nextUserIndex = index;
+    }
+  }
+
+  const movedIds = new Set<string>();
+  const insertBefore = new Map<number, MessageRecord[]>();
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index]!;
+    const anchorId = getAssistantUserMessageId(message);
+    if (!anchorId || !isUserTurnAssistant(message)) continue;
+    const anchorIndex = userIndexById.get(anchorId);
+    if (anchorIndex === undefined) continue;
+    const boundaryIndex = nextUserIndexAfter[anchorIndex];
+    if (boundaryIndex === undefined || index < boundaryIndex) continue;
+
+    movedIds.add(message._id);
+    const pending = insertBefore.get(boundaryIndex);
+    if (pending) pending.push(message);
+    else insertBefore.set(boundaryIndex, [message]);
+  }
+
+  if (movedIds.size === 0) return messages;
+
+  const result: MessageRecord[] = [];
+  for (let index = 0; index < messages.length; index += 1) {
+    const pending = insertBefore.get(index);
+    if (pending) result.push(...pending);
+    const message = messages[index]!;
+    if (!movedIds.has(message._id)) result.push(message);
+  }
+  return result;
+};
+
 /**
  * Returns `messages` ordered by `getSortTimestamp`, reusing the input array
  * reference when it is already ordered (the common case — the SQLite window is
@@ -103,14 +177,15 @@ const orderByResolver = (
   messages: MessageRecord[],
   getSortTimestamp: SortTimestampResolver,
 ): MessageRecord[] => {
+  let ordered = messages;
   for (let i = 1; i < messages.length; i += 1) {
     if (compareDisplayOrder(messages[i - 1]!, messages[i]!, getSortTimestamp) > 0) {
-      const copy = messages.slice();
-      copy.sort((a, b) => compareDisplayOrder(a, b, getSortTimestamp));
-      return copy;
+      ordered = messages.slice();
+      ordered.sort((a, b) => compareDisplayOrder(a, b, getSortTimestamp));
+      break;
     }
   }
-  return messages;
+  return keepAssistantTurnsContiguous(ordered);
 };
 
 const mergeMessageSources = (
@@ -137,17 +212,6 @@ const mergeMessageSources = (
   // stable sort of an already-sorted array leaves it unchanged, so the skipped
   // branch returns the same ordering the sort would have produced.
   return orderByResolver(merged, getSortTimestamp);
-};
-
-const getAssistantUserMessageId = (
-  message: MessageRecord,
-): string | undefined => {
-  if (message.type !== "assistant_message") return undefined;
-  const payload = message.payload as { userMessageId?: string } | undefined;
-  const userMessageId = payload?.userMessageId;
-  return typeof userMessageId === "string" && userMessageId.length > 0
-    ? userMessageId
-    : undefined;
 };
 
 export const getPersistedAssistantSlots = (
