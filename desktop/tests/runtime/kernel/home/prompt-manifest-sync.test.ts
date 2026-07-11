@@ -5,12 +5,14 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { STELLA_PROMPT_IDS } from "../../../../../runtime/contracts/stella-prompts.js";
+import { stellaPromptEndpointFromSiteUrl } from "../../../../../runtime/contracts/stella-api.js";
 import { buildDreamSystemPrompt } from "../../../../../runtime/kernel/agent-runtime/dream-scheduler.js";
 import { loadParsedAgentsFromDir } from "../../../../../runtime/kernel/agents/markdown-agent-loader.js";
 import { reconcileBundledAgents } from "../../../../../runtime/kernel/home/agents-sync.js";
 import {
   parseRemotePromptManifest,
   recordAppliedPromptManifest,
+  resetPromptAppliedStateMemoryForTests,
   reconcileRemotePromptManifest,
   resolvePromptManifest,
   type RemotePromptManifest,
@@ -240,6 +242,45 @@ describe("remote prompt startup sync", () => {
       manifest: null,
       endpoint,
     });
+  });
+
+  it("retains durable high-water marks independently for each canonical endpoint", async () => {
+    const home = await tempDir();
+    const endpointA = "https://a.example.test/api/stella/prompts";
+    const endpointB = "https://b.example.test/api/stella/prompts";
+    await recordAppliedPromptManifest({
+      stellaDataDir: home,
+      endpoint: endpointA,
+      manifest: manifest(50),
+    });
+    await recordAppliedPromptManifest({
+      stellaDataDir: home,
+      endpoint: endpointB,
+      manifest: manifest(70),
+    });
+    resetPromptAppliedStateMemoryForTests();
+
+    const result = await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl: "https://a.example.test/api/stella/relay",
+      fetchImpl: async () => new Response(JSON.stringify(manifest(49))),
+    });
+    expect(result).toEqual({
+      source: "bundled-bootstrap",
+      manifest: null,
+      endpoint: endpointA,
+    });
+  });
+
+  it("canonicalizes accepted site URL forms to the same prompt endpoint", () => {
+    expect(
+      stellaPromptEndpointFromSiteUrl(
+        "https://example.test/api/stella/relay/chat/completions",
+      ),
+    ).toBe("https://example.test/api/stella/prompts");
+    expect(
+      stellaPromptEndpointFromSiteUrl("https://example.test/api/stella"),
+    ).toBe("https://example.test/api/stella/prompts");
   });
 
   it("rejects an older remote publication than the cached last-known-good", async () => {

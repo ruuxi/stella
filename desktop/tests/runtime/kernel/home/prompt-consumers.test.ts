@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -298,13 +299,15 @@ describe("PERSONALITY.md sync tracking", () => {
     await writeFile(target, "previous untouched value\n", "utf-8");
     const expectedHomeHash = sha256("previous untouched value\n");
     await writeFile(staged, "incoming remote value\n", "utf-8");
-    await writeFile(target, "concurrent direct edit\n", "utf-8");
 
     expect(
       replacePersonalityIfHomeHashMatches({
         target,
         staged,
         expectedHomeHash,
+        onAfterTargetCaptured: () => {
+          writeFileSync(target, "concurrent direct edit\n", "utf-8");
+        },
       }),
     ).toBe(false);
     await expect(readFile(target, "utf-8")).resolves.toBe(

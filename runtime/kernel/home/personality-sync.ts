@@ -217,15 +217,86 @@ export const replacePersonalityIfHomeHashMatches = (args: {
   target: string;
   staged: string;
   expectedHomeHash: string | null;
+  onAfterTargetCaptured?: () => void;
 }): boolean => {
-  let currentHash: string | null = null;
-  try {
-    currentHash = sha256(fs.readFileSync(args.target, "utf-8"));
-  } catch {
-    currentHash = null;
+  const stagedHash = sha256(fs.readFileSync(args.staged, "utf-8"));
+  const installExclusively = (): boolean => {
+    try {
+      fs.linkSync(args.staged, args.target);
+      fs.unlinkSync(args.staged);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+      throw error;
+    }
+  };
+
+  if (args.expectedHomeHash === null) {
+    args.onAfterTargetCaptured?.();
+    return installExclusively();
   }
-  if (currentHash !== args.expectedHomeHash) return false;
-  fs.renameSync(args.staged, args.target);
+
+  const guard = `${args.target}.cas-${process.pid}-${Date.now()}`;
+  try {
+    // Atomically capture the exact inode currently at the user-visible path.
+    // A path-based editor save after this point creates a new target, causing
+    // the exclusive hard-link install below to fail instead of clobbering it.
+    fs.renameSync(args.target, guard);
+  } catch {
+    return false;
+  }
+  const capturedHash = sha256(fs.readFileSync(guard, "utf-8"));
+  if (capturedHash !== args.expectedHomeHash) {
+    if (fs.existsSync(args.target)) {
+      fs.renameSync(
+        guard,
+        `${args.target}.conflict-${process.pid}-${Date.now()}`,
+      );
+    } else {
+      fs.renameSync(guard, args.target);
+    }
+    return false;
+  }
+
+  args.onAfterTargetCaptured?.();
+  let installed = false;
+  try {
+    installed = installExclusively();
+  } catch (error) {
+    if (!fs.existsSync(args.target)) fs.renameSync(guard, args.target);
+    throw error;
+  }
+  if (!installed) {
+    // A direct path-based edit landed after the final captured read. It owns
+    // the canonical path; the unchanged prior inode can be discarded.
+    fs.rmSync(guard, { force: true });
+    return false;
+  }
+
+  const guardAfterHash = sha256(fs.readFileSync(guard, "utf-8"));
+  const targetAfterHash = sha256(fs.readFileSync(args.target, "utf-8"));
+  if (guardAfterHash !== args.expectedHomeHash) {
+    if (targetAfterHash === stagedHash) {
+      fs.rmSync(args.target, { force: true });
+      fs.renameSync(guard, args.target);
+    } else {
+      fs.renameSync(
+        guard,
+        `${args.target}.conflict-${process.pid}-${Date.now()}`,
+      );
+    }
+    return false;
+  }
+  if (targetAfterHash !== stagedHash) {
+    fs.rmSync(guard, { force: true });
+    return false;
+  }
+
+  // Residual limitation: an unrelated process that keeps the old inode open
+  // can write after this final verification but before guard removal. Node has
+  // no portable compare-and-swap/exchange primitive for closing that final
+  // cross-process descriptor window. Path-based editor saves are fully gated.
+  fs.rmSync(guard, { force: true });
   return true;
 };
 

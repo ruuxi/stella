@@ -13,7 +13,7 @@ import {
 } from "../../contracts/stella-prompts.js";
 import {
   STELLA_PROMPTS_PATH,
-  normalizeStellaSiteUrl,
+  stellaPromptEndpointFromSiteUrl,
 } from "../../contracts/stella-api.js";
 import { ensurePrivateDir } from "../shared/private-fs.js";
 import {
@@ -46,6 +46,11 @@ type AppliedPromptState = {
   revision: string;
 };
 
+type AppliedPromptStateFile = {
+  version: 1;
+  entries: Record<string, Pick<AppliedPromptState, "publishedAt" | "revision">>;
+};
+
 type ReconciledPrompt = RemotePrompt;
 
 export type PromptManifestResolution = {
@@ -55,6 +60,10 @@ export type PromptManifestResolution = {
 };
 
 const appliedStateMemory = new Map<string, AppliedPromptState>();
+
+export const resetPromptAppliedStateMemoryForTests = (): void => {
+  appliedStateMemory.clear();
+};
 
 const sha256 = (content: string): string =>
   createHash("sha256").update(content).digest("hex");
@@ -136,6 +145,24 @@ const isHttpEndpoint = (value: string): boolean => {
   }
 };
 
+const canonicalPromptEndpoint = (value: string): string | null => {
+  try {
+    const parsed = new URL(value);
+    if (
+      (parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+      parsed.search ||
+      parsed.hash ||
+      !parsed.pathname.endsWith(STELLA_PROMPTS_PATH)
+    ) {
+      return null;
+    }
+    const sitePath = parsed.pathname.slice(0, -STELLA_PROMPTS_PATH.length);
+    return stellaPromptEndpointFromSiteUrl(`${parsed.origin}${sitePath}`);
+  } catch {
+    return null;
+  }
+};
+
 const readCache = async (
   stellaDataDir: string,
   expectedEndpoint?: string,
@@ -169,13 +196,62 @@ const isValidAppliedState = (value: unknown): value is AppliedPromptState => {
   const candidate = value as Partial<AppliedPromptState>;
   return (
     typeof candidate.endpoint === "string" &&
-    isHttpEndpoint(candidate.endpoint) &&
+    canonicalPromptEndpoint(candidate.endpoint) === candidate.endpoint &&
     typeof candidate.publishedAt === "number" &&
     Number.isSafeInteger(candidate.publishedAt) &&
     candidate.publishedAt >= 0 &&
     typeof candidate.revision === "string" &&
     STELLA_PROMPT_REVISION_PATTERN.test(candidate.revision)
   );
+};
+
+const parseAppliedStateFile = (
+  value: unknown,
+): Map<string, AppliedPromptState> | null => {
+  if (isValidAppliedState(value)) {
+    return new Map([[value.endpoint, value]]);
+  }
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<AppliedPromptStateFile>;
+  if (
+    candidate.version !== 1 ||
+    !candidate.entries ||
+    typeof candidate.entries !== "object" ||
+    Array.isArray(candidate.entries)
+  ) {
+    return null;
+  }
+  const rawEntries = Object.entries(candidate.entries);
+  if (rawEntries.length > 32) return null;
+  const entries = new Map<string, AppliedPromptState>();
+  for (const [endpoint, raw] of rawEntries) {
+    if (
+      !raw ||
+      typeof raw !== "object" ||
+      Array.isArray(raw) ||
+      Object.keys(raw).sort().join(",") !== "publishedAt,revision"
+    ) {
+      return null;
+    }
+    const state = { ...(raw as object), endpoint };
+    if (!isValidAppliedState(state)) return null;
+    entries.set(endpoint, state);
+  }
+  return entries;
+};
+
+const readAppliedStateFile = async (
+  stellaDataDir: string,
+): Promise<Map<string, AppliedPromptState>> => {
+  try {
+    return (
+      parseAppliedStateFile(
+        JSON.parse(await fs.readFile(appliedStatePath(stellaDataDir), "utf-8")),
+      ) ?? new Map()
+    );
+  } catch {
+    return new Map();
+  }
 };
 
 const newerAppliedState = (
@@ -194,20 +270,12 @@ const readAppliedState = async (
   stellaDataDir: string,
   expectedEndpoint?: string,
 ): Promise<AppliedPromptState | null> => {
-  let disk: AppliedPromptState | null = null;
-  try {
-    const parsed = JSON.parse(
-      await fs.readFile(appliedStatePath(stellaDataDir), "utf-8"),
-    ) as unknown;
-    if (
-      isValidAppliedState(parsed) &&
-      (expectedEndpoint === undefined || parsed.endpoint === expectedEndpoint)
-    ) {
-      disk = parsed;
-    }
-  } catch {
-    // Missing/corrupt durable state still has the in-process high-water mark.
-  }
+  const diskEntries = await readAppliedStateFile(stellaDataDir);
+  const disk = expectedEndpoint
+    ? (diskEntries.get(expectedEndpoint) ?? null)
+    : ([...diskEntries.values()].sort(
+        (a, b) => b.publishedAt - a.publishedAt,
+      )[0] ?? null);
   const endpoint = expectedEndpoint ?? disk?.endpoint;
   const memory = endpoint
     ? (appliedStateMemory.get(appliedStateKey(stellaDataDir, endpoint)) ?? null)
@@ -221,9 +289,22 @@ const writeAppliedStateAtomic = async (
 ): Promise<void> => {
   const filePath = appliedStatePath(stellaDataDir);
   await ensurePrivateDir(path.dirname(filePath));
+  const entries = await readAppliedStateFile(stellaDataDir);
+  entries.set(state.endpoint, state);
+  const serialized: AppliedPromptStateFile = {
+    version: 1,
+    entries: Object.fromEntries(
+      [...entries.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([endpoint, entry]) => [
+          endpoint,
+          { publishedAt: entry.publishedAt, revision: entry.revision },
+        ]),
+    ),
+  };
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   try {
-    await fs.writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, {
+    await fs.writeFile(tempPath, `${JSON.stringify(serialized, null, 2)}\n`, {
       encoding: "utf-8",
       mode: 0o600,
     });
@@ -323,7 +404,7 @@ export const resolvePromptManifest = async (args: {
 }): Promise<PromptManifestResolution> => {
   const siteUrl = args.siteUrl?.trim();
   const configuredEndpoint = siteUrl
-    ? `${normalizeStellaSiteUrl(siteUrl)}${STELLA_PROMPTS_PATH}`
+    ? stellaPromptEndpointFromSiteUrl(siteUrl)
     : undefined;
   const cached = await readCache(args.stellaDataDir, configuredEndpoint);
   const initialApplied = await readAppliedState(

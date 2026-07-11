@@ -14,6 +14,7 @@ import {
   syncStellaPromptSnapshot,
 } from "../../../runtime/kernel/home/stella-home.js";
 import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
+import { stellaPromptEndpointFromSiteUrl } from "../../../runtime/contracts/stella-api.js";
 import {
   createStellaHostRunner,
   type RuntimeHostHandlers,
@@ -52,7 +53,7 @@ const IDLE_HMR_STATE: SelfModHmrState = {
 // so an in-process reset never needs to re-sync.
 let stellaDataDirSeedingPromise: Promise<void> | null = null;
 let configuredPromptSyncPromise: Promise<void> | null = null;
-let lastConfiguredPromptSiteUrl: string | null = null;
+let lastConfiguredPromptEndpoint: string | null = null;
 
 const ensureStellaDataDirSeededOnce = (
   stellaAppDir: string,
@@ -60,16 +61,14 @@ const ensureStellaDataDirSeededOnce = (
   promptSiteUrl?: string | null,
 ): Promise<void> => {
   if (!stellaDataDirSeedingPromise) {
-    const normalizedPromptSiteUrl =
-      promptSiteUrl?.trim().replace(/\/+$/, "") || null;
+    const promptEndpoint = promptSiteUrl
+      ? stellaPromptEndpointFromSiteUrl(promptSiteUrl)
+      : null;
     const attempt = ensureStellaDataDirSeeded(stellaAppDir, stellaDataDirPath, {
       promptSiteUrl,
     }).then((result) => {
-      if (
-        normalizedPromptSiteUrl &&
-        result.promptResolution !== "bundled-bootstrap"
-      ) {
-        lastConfiguredPromptSiteUrl = normalizedPromptSiteUrl;
+      if (promptEndpoint && result.promptResolution !== "bundled-bootstrap") {
+        lastConfiguredPromptEndpoint = promptEndpoint;
       }
     });
     stellaDataDirSeedingPromise = attempt;
@@ -86,28 +85,24 @@ export const syncConfiguredPromptSiteUrl = async (
   context: BootstrapContext,
   siteUrl: string,
 ): Promise<void> => {
-  const normalized = siteUrl.trim().replace(/\/+$/, "");
-  if (!normalized || normalized === lastConfiguredPromptSiteUrl) return;
+  const endpoint = stellaPromptEndpointFromSiteUrl(siteUrl);
+  if (endpoint === lastConfiguredPromptEndpoint) return;
   const previous = configuredPromptSyncPromise ?? Promise.resolve();
   const attempt = previous
     .catch(() => undefined)
     .then(async () => {
-      if (normalized === lastConfiguredPromptSiteUrl) return;
+      if (endpoint === lastConfiguredPromptEndpoint) return;
       const stellaAppDir = context.state.stellaAppDir;
       const stellaDataDirPath = context.state.stellaDataDirPath;
       if (!stellaAppDir || !stellaDataDirPath) return;
       await ensureStellaDataDirSeededOnce(
         stellaAppDir,
         stellaDataDirPath,
-        normalized,
+        siteUrl,
       );
-      if (normalized === lastConfiguredPromptSiteUrl) return;
-      await syncStellaPromptSnapshot(
-        stellaAppDir,
-        stellaDataDirPath,
-        normalized,
-      );
-      lastConfiguredPromptSiteUrl = normalized;
+      if (endpoint === lastConfiguredPromptEndpoint) return;
+      await syncStellaPromptSnapshot(stellaAppDir, stellaDataDirPath, siteUrl);
+      lastConfiguredPromptEndpoint = endpoint;
     });
   configuredPromptSyncPromise = attempt;
   try {
