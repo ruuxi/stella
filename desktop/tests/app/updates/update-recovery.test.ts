@@ -19,12 +19,25 @@ import {
 } from "../../../../runtime/kernel/self-mod/stella-source-control.js";
 import { createRuntimeUnavailableError } from "../../../../runtime/protocol/rpc-peer.js";
 import {
+  nativeHelperPlatformKey,
   recordAppliedDesktopUpdate,
   reconcileUpdaterOwnedPaths,
   recoverInterruptedDesktopUpdate,
   stageStellaBrowserUpdate,
   tryApplyCleanDesktopUpdate,
 } from "../../../electron/ipc/updates-handlers.js";
+
+describe("desktop release artifact platform selection", () => {
+  it.each([
+    ["darwin", "arm64", "darwin-arm64"],
+    ["darwin", "x64", "darwin-x64"],
+    ["win32", "x64", "win-x64"],
+    ["linux", "arm64", "linux-arm64"],
+    ["linux", "x64", "linux-x64"],
+  ] as const)("maps %s-%s to %s", (platform, arch, expected) => {
+    expect(nativeHelperPlatformKey(platform, arch)).toBe(expected);
+  });
+});
 
 const git = (
   cwd: string,
