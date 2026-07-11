@@ -50,7 +50,8 @@ const gitMaybe = (gitArgs, options = {}) => {
   }
 };
 
-const resolveCommit = (ref) => git(["rev-parse", ref]).trim();
+const resolveCommit = (ref) =>
+  git(["rev-parse", "--verify", `${ref}^{commit}`]).trim();
 
 const targetCommit = resolveCommit(targetRef);
 const baseRef =

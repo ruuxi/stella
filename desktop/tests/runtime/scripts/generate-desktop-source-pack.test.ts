@@ -132,6 +132,64 @@ describe("generate-desktop-source-pack", () => {
     });
   });
 
+  it("records the peeled commit for an annotated base tag", async () => {
+    git(repoRoot, ["tag", "-d", "desktop-v0.0.1"]);
+    git(repoRoot, [
+      "tag",
+      "-a",
+      "desktop-v0.0.1",
+      "-m",
+      "annotated desktop v1",
+    ]);
+    const baseTagObject = git(repoRoot, ["rev-parse", "desktop-v0.0.1"]);
+    const baseCommit = git(repoRoot, [
+      "rev-parse",
+      "desktop-v0.0.1^{commit}",
+    ]);
+    expect(baseTagObject).not.toBe(baseCommit);
+
+    await writeFile(
+      path.join(repoRoot, "src", "feature.ts"),
+      "one\ntwo\nthree\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", "."]);
+    git(repoRoot, ["commit", "-q", "-m", "desktop v2"]);
+    git(repoRoot, [
+      "tag",
+      "-a",
+      "desktop-v0.0.2",
+      "-m",
+      "annotated desktop v2",
+    ]);
+
+    const outputPath = path.join(repoRoot, "out", "source-pack.json");
+    const result = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        "--tag",
+        "desktop-v0.0.2",
+        "--target",
+        "desktop-v0.0.2",
+        "--base",
+        "desktop-v0.0.1",
+        "--output",
+        outputPath,
+      ],
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(0);
+    const pack = JSON.parse(await readFile(outputPath, "utf8"));
+    expect(pack.baseRevisionId).toBe(`git:${baseCommit}`);
+    expect(pack.baseRevisionId).not.toBe(`git:${baseTagObject}`);
+    expect(pack.changeSets[0].baseRevisionId).toBe(`git:${baseCommit}`);
+    expect(pack.changeSets[0].parentRevisionIds).toEqual([
+      `git:${baseCommit}`,
+    ]);
+  });
+
   it("still writes history when the content pack is above the release limit", async () => {
     await writeFile(
       path.join(repoRoot, "src", "feature.ts"),
