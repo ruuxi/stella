@@ -1,56 +1,79 @@
+import { execFile } from "node:child_process";
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { diffArrays } from "diff";
-import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+
+import { diffArrays } from "diff";
 
 import { mergeTextContent } from "./stella-source-control.js";
 
-export type LogicalFileContent = string | null;
+export type LogicalFileMode = "100644" | "100755" | "120000";
+
+export type LogicalFileState =
+  | { kind: "missing" }
+  | {
+      kind: "blob" | "symlink";
+      mode: LogicalFileMode;
+      contentBase64: string;
+      /** Only present for validated UTF-8 text blobs without NUL bytes. */
+      text?: string;
+    };
 
 export type LogicalFileConflict = {
   path: string;
-  reason: "text-conflict" | "add-delete-conflict" | "attribution-conflict";
-  base: LogicalFileContent;
-  local: LogicalFileContent;
-  incoming: LogicalFileContent;
+  reason:
+    | "text-conflict"
+    | "add-delete-conflict"
+    | "attribution-conflict"
+    | "binary-or-mode-conflict";
+  /** Bounded display excerpts; full states stay in controlled pending storage. */
+  base: string | null;
+  local: string | null;
+  incoming: string | null;
 };
 
 export type LogicalMergedFile = {
   path: string;
-  content?: string;
-  deleted?: boolean;
+  state: LogicalFileState;
 };
+
+type LineRange = { start: number; end: number };
 
 export type FrozenLogicalChangeSet = {
   changeSetId: string;
   runId: string;
+  createdAt: number;
   files: Array<{
     path: string;
-    base: LogicalFileContent;
-    incoming: LogicalFileContent;
-    ranges: Array<{ start: number; end: number }>;
+    base: LogicalFileState;
+    incoming: LogicalFileState;
+    ranges: LineRange[];
+    contentChanged: boolean;
+    modeChanged: boolean;
   }>;
   conflicts: LogicalFileConflict[];
   concurrentRunIds: string[];
 };
 
 export type LogicalMergeResult =
-  | { status: "clean"; files: LogicalMergedFile[]; noopPaths: string[] }
+  | {
+      status: "clean";
+      files: LogicalMergedFile[];
+      selectedFiles: LogicalMergedFile[];
+      noopPaths: string[];
+    }
   | { status: "conflicts"; conflicts: LogicalFileConflict[] };
 
 export type MediatedWriteCapture = {
   runId: string;
-  before: Map<string, LogicalFileContent>;
+  before: Map<string, LogicalFileState>;
   completeRepoSnapshot?: boolean;
 };
 
-const execFileAsync = promisify(execFile);
-
 type MutableLogicalFile = {
-  base: LogicalFileContent;
-  incoming: LogicalFileContent;
+  base: LogicalFileState;
+  incoming: LogicalFileState;
   conflict?: LogicalFileConflict;
 };
 
@@ -59,101 +82,199 @@ type MutableLogicalRun = {
   concurrentRunIds: Set<string>;
 };
 
-const changedLineRanges = (
-  base: LogicalFileContent,
-  incoming: LogicalFileContent,
-): Array<{ start: number; end: number }> => {
-  const baseLines = (base ?? "").split(/(?<=\n)/);
-  const incomingLines = (incoming ?? "").split(/(?<=\n)/);
-  const changes = diffArrays(baseLines, incomingLines);
-  const ranges: Array<{ start: number; end: number }> = [];
+const execFileAsync = promisify(execFile);
+const CONFLICT_EXCERPT_MAX = 2_000;
+const BINARY_RANGE: LineRange = { start: 0, end: Number.MAX_SAFE_INTEGER };
+
+const cloneState = (state: LogicalFileState): LogicalFileState =>
+  state.kind === "missing" ? { kind: "missing" } : { ...state };
+
+const statesEqual = (a: LogicalFileState, b: LogicalFileState): boolean => {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "missing" || b.kind === "missing") return true;
+  return a.mode === b.mode && a.contentBase64 === b.contentBase64;
+};
+
+const validatedText = (bytes: Buffer): string | undefined => {
+  if (bytes.includes(0)) return undefined;
+  const text = bytes.toString("utf8");
+  return Buffer.from(text, "utf8").equals(bytes) ? text : undefined;
+};
+
+const stateFromBytes = (args: {
+  kind: "blob" | "symlink";
+  mode: LogicalFileMode;
+  bytes: Buffer;
+}): LogicalFileState => ({
+  kind: args.kind,
+  mode: args.mode,
+  contentBase64: args.bytes.toString("base64"),
+  ...(args.kind === "blob" && validatedText(args.bytes) !== undefined
+    ? { text: validatedText(args.bytes) }
+    : {}),
+});
+
+const stateExcerpt = (state: LogicalFileState): string | null => {
+  if (state.kind === "missing") return null;
+  const raw =
+    state.text ??
+    `<${state.kind} ${state.mode} ${Buffer.from(state.contentBase64, "base64").length} bytes>`;
+  return raw.length <= CONFLICT_EXCERPT_MAX
+    ? raw
+    : `${raw.slice(0, CONFLICT_EXCERPT_MAX)}…`;
+};
+
+const conflictFor = (args: {
+  path: string;
+  reason: LogicalFileConflict["reason"];
+  base: LogicalFileState;
+  local: LogicalFileState;
+  incoming: LogicalFileState;
+}): LogicalFileConflict => ({
+  path: args.path,
+  reason: args.reason,
+  base: stateExcerpt(args.base),
+  local: stateExcerpt(args.local),
+  incoming: stateExcerpt(args.incoming),
+});
+
+const mergeMode = (
+  base: LogicalFileMode,
+  local: LogicalFileMode,
+  incoming: LogicalFileMode,
+): LogicalFileMode | null => {
+  if (local === incoming) return local;
+  if (local === base) return incoming;
+  if (incoming === base) return local;
+  return null;
+};
+
+const mergeState = (args: {
+  path: string;
+  base: LogicalFileState;
+  local: LogicalFileState;
+  incoming: LogicalFileState;
+  conflictReason?: LogicalFileConflict["reason"];
+}):
+  | { status: "clean"; state: LogicalFileState }
+  | { status: "conflict"; conflict: LogicalFileConflict } => {
+  if (statesEqual(args.local, args.incoming)) {
+    return { status: "clean", state: cloneState(args.local) };
+  }
+  if (statesEqual(args.local, args.base)) {
+    return { status: "clean", state: cloneState(args.incoming) };
+  }
+  if (statesEqual(args.incoming, args.base)) {
+    return { status: "clean", state: cloneState(args.local) };
+  }
+  if (
+    args.base.kind === "blob" &&
+    args.local.kind === "blob" &&
+    args.incoming.kind === "blob" &&
+    args.base.text !== undefined &&
+    args.local.text !== undefined &&
+    args.incoming.text !== undefined
+  ) {
+    const mode = mergeMode(args.base.mode, args.local.mode, args.incoming.mode);
+    const merged = mergeTextContent(
+      args.base.text,
+      args.local.text,
+      args.incoming.text,
+    );
+    if (mode && merged.status === "clean") {
+      return {
+        status: "clean",
+        state: stateFromBytes({
+          kind: "blob",
+          mode,
+          bytes: Buffer.from(merged.content, "utf8"),
+        }),
+      };
+    }
+  }
+  const hasMissing =
+    args.base.kind === "missing" ||
+    args.local.kind === "missing" ||
+    args.incoming.kind === "missing";
+  const allText = [args.base, args.local, args.incoming].every(
+    (state) => state.kind === "blob" && state.text !== undefined,
+  );
+  return {
+    status: "conflict",
+    conflict: conflictFor({
+      ...args,
+      reason:
+        args.conflictReason ??
+        (hasMissing
+          ? "add-delete-conflict"
+          : allText
+            ? "text-conflict"
+            : "binary-or-mode-conflict"),
+    }),
+  };
+};
+
+const changedRanges = (
+  base: LogicalFileState,
+  incoming: LogicalFileState,
+): LineRange[] => {
+  if (
+    base.kind !== "blob" ||
+    incoming.kind !== "blob" ||
+    base.text === undefined ||
+    incoming.text === undefined
+  ) {
+    return [BINARY_RANGE];
+  }
+  const baseLines = base.text.split(/(?<=\n)/);
+  const incomingLines = incoming.text.split(/(?<=\n)/);
+  const ranges: LineRange[] = [];
   let baseCursor = 0;
-  for (let index = 0; index < changes.length; index += 1) {
-    const change = changes[index]!;
+  for (const change of diffArrays(baseLines, incomingLines)) {
     if (change.added) {
       ranges.push({ start: baseCursor, end: baseCursor });
-      continue;
-    }
-    if (change.removed) {
+    } else if (change.removed) {
       const end = baseCursor + change.value.length;
       ranges.push({ start: baseCursor, end });
       baseCursor = end;
-      continue;
+    } else {
+      baseCursor += change.value.length;
     }
-    baseCursor += change.value.length;
   }
   return ranges;
 };
 
-const rangesOverlap = (
-  a: { start: number; end: number },
-  b: { start: number; end: number },
-): boolean => {
+const rangesOverlap = (a: LineRange, b: LineRange): boolean => {
   if (a.start === a.end && b.start === b.end) return a.start === b.start;
   if (a.start === a.end) return a.start >= b.start && a.start <= b.end;
   if (b.start === b.end) return b.start >= a.start && b.start <= a.end;
   return a.start < b.end && b.start < a.end;
 };
 
-const readFileOrNull = async (
+export const readWorkingTreeFileState = async (
   absolutePath: string,
-): Promise<LogicalFileContent> => {
+): Promise<LogicalFileState> => {
   try {
-    return await fs.readFile(absolutePath, "utf8");
+    const stat = await fs.lstat(absolutePath);
+    if (stat.isSymbolicLink()) {
+      const target = await fs.readlink(absolutePath, { encoding: "buffer" });
+      return stateFromBytes({ kind: "symlink", mode: "120000", bytes: target });
+    }
+    if (!stat.isFile()) return { kind: "missing" };
+    const bytes = await fs.readFile(absolutePath);
+    return stateFromBytes({
+      kind: "blob",
+      mode: (stat.mode & 0o111) !== 0 ? "100755" : "100644",
+      bytes,
+    });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { kind: "missing" };
+    }
     throw error;
   }
 };
 
-const mergeFile = (args: {
-  path: string;
-  base: LogicalFileContent;
-  local: LogicalFileContent;
-  incoming: LogicalFileContent;
-  conflictReason?: LogicalFileConflict["reason"];
-}):
-  | { status: "clean"; content: LogicalFileContent }
-  | { status: "conflict"; conflict: LogicalFileConflict } => {
-  if (args.local === args.incoming) {
-    return { status: "clean", content: args.local };
-  }
-  if (args.local === args.base) {
-    return { status: "clean", content: args.incoming };
-  }
-  if (args.incoming === args.base) {
-    return { status: "clean", content: args.local };
-  }
-  if (args.base !== null && args.local !== null && args.incoming !== null) {
-    const merged = mergeTextContent(args.base, args.local, args.incoming);
-    if (merged.status === "clean") {
-      return { status: "clean", content: merged.content };
-    }
-  }
-  return {
-    status: "conflict",
-    conflict: {
-      path: args.path,
-      reason:
-        args.conflictReason ??
-        (args.base === null || args.local === null || args.incoming === null
-          ? "add-delete-conflict"
-          : "text-conflict"),
-      base: args.base,
-      local: args.local,
-      incoming: args.incoming,
-    },
-  };
-};
-
-/**
- * Logical authored-delta store for one shared working tree.
- *
- * A run's first pre-write content is its per-file base. Each later mediated
- * write is represented as `before -> after` and replayed onto the run's
- * synthetic incoming state. This strips bytes merely inherited from another
- * run's live working-tree edits while retaining this run's own hunks.
- */
 export class LogicalSelfModChangeSetStore {
   private readonly activeRuns = new Map<string, MutableLogicalRun>();
   private readonly frozen = new Map<string, FrozenLogicalChangeSet>();
@@ -178,6 +299,7 @@ export class LogicalSelfModChangeSetStore {
 
   cancelRun(runId: string): void {
     this.activeRuns.delete(runId);
+    this.pruneAppliedConcurrent();
   }
 
   private normalizePath(candidate: string): string | null {
@@ -193,14 +315,14 @@ export class LogicalSelfModChangeSetStore {
     absolutePaths: Iterable<string>,
     options?: { captureAll?: boolean },
   ): Promise<MediatedWriteCapture | null> {
-    if (!this.activeRuns.has(runId)) return null;
-    const run = this.activeRuns.get(runId)!;
+    const run = this.activeRuns.get(runId);
+    if (!run) return null;
     for (const [otherRunId, otherRun] of this.activeRuns) {
       if (otherRunId === runId) continue;
       run.concurrentRunIds.add(otherRunId);
       otherRun.concurrentRunIds.add(runId);
     }
-    const before = new Map<string, LogicalFileContent>();
+    const before = new Map<string, LogicalFileState>();
     if (options?.captureAll) {
       const { stdout } = await execFileAsync(
         "git",
@@ -211,7 +333,7 @@ export class LogicalSelfModChangeSetStore {
         if (!relative) continue;
         before.set(
           relative,
-          await readFileOrNull(path.join(this.repoRoot, relative)),
+          await readWorkingTreeFileState(path.join(this.repoRoot, relative)),
         );
       }
     }
@@ -220,7 +342,7 @@ export class LogicalSelfModChangeSetStore {
       if (!relative || before.has(relative)) continue;
       before.set(
         relative,
-        await readFileOrNull(path.join(this.repoRoot, relative)),
+        await readWorkingTreeFileState(path.join(this.repoRoot, relative)),
       );
     }
     return {
@@ -241,34 +363,39 @@ export class LogicalSelfModChangeSetStore {
       const relative = this.normalizePath(candidate);
       if (!relative || capture.before.has(relative)) continue;
       if (capture.completeRepoSnapshot) {
-        capture.before.set(relative, null);
+        capture.before.set(relative, { kind: "missing" });
         continue;
       }
-      // A post-only path cannot be attributed safely. Preserve it as an
-      // explicit conflict instead of silently sweeping its whole-file bytes.
-      const after = await readFileOrNull(path.join(this.repoRoot, relative));
+      const after = await readWorkingTreeFileState(
+        path.join(this.repoRoot, relative),
+      );
       run.files.set(relative, {
-        base: null,
+        base: { kind: "missing" },
         incoming: after,
-        conflict: {
+        conflict: conflictFor({
           path: relative,
           reason: "attribution-conflict",
-          base: null,
-          local: null,
+          base: { kind: "missing" },
+          local: { kind: "missing" },
           incoming: after,
-        },
+        }),
       });
     }
     for (const [relative, before] of capture.before) {
-      const after = await readFileOrNull(path.join(this.repoRoot, relative));
-      if (after === before) continue;
+      const after = await readWorkingTreeFileState(
+        path.join(this.repoRoot, relative),
+      );
+      if (statesEqual(after, before)) continue;
       const existing = run.files.get(relative);
       if (!existing) {
-        run.files.set(relative, { base: before, incoming: after });
+        run.files.set(relative, {
+          base: cloneState(before),
+          incoming: cloneState(after),
+        });
         continue;
       }
       if (existing.conflict) continue;
-      const accumulated = mergeFile({
+      const accumulated = mergeState({
         path: relative,
         base: before,
         local: existing.incoming,
@@ -276,7 +403,7 @@ export class LogicalSelfModChangeSetStore {
         conflictReason: "attribution-conflict",
       });
       if (accumulated.status === "clean") {
-        existing.incoming = accumulated.content;
+        existing.incoming = accumulated.state;
       } else {
         existing.conflict = accumulated.conflict;
       }
@@ -290,13 +417,24 @@ export class LogicalSelfModChangeSetStore {
     const changeSet: FrozenLogicalChangeSet = {
       changeSetId: `selfmod-${crypto.randomUUID()}`,
       runId,
+      createdAt: Date.now(),
       files: [...run.files.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([filePath, state]) => ({
           path: filePath,
-          base: state.base,
-          incoming: state.incoming,
-          ranges: changedLineRanges(state.base, state.incoming),
+          base: cloneState(state.base),
+          incoming: cloneState(state.incoming),
+          ranges: changedRanges(state.base, state.incoming),
+          contentChanged:
+            state.base.kind !== state.incoming.kind ||
+            (state.base.kind !== "missing" &&
+              state.incoming.kind !== "missing" &&
+              state.base.contentBase64 !== state.incoming.contentBase64),
+          modeChanged:
+            state.base.kind !== state.incoming.kind ||
+            (state.base.kind !== "missing" &&
+              state.incoming.kind !== "missing" &&
+              state.base.mode !== state.incoming.mode),
         })),
       conflicts: [...run.files.values()].flatMap((state) =>
         state.conflict ? [state.conflict] : [],
@@ -311,9 +449,31 @@ export class LogicalSelfModChangeSetStore {
     return this.frozen.get(changeSetId) ?? null;
   }
 
-  discard(changeSetId: string): void {
+  listPending(): FrozenLogicalChangeSet[] {
+    return [...this.frozen.values()].sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  restore(changeSet: FrozenLogicalChangeSet): void {
+    if (!changeSet.changeSetId || this.frozen.has(changeSet.changeSetId))
+      return;
+    this.frozen.set(changeSet.changeSetId, {
+      ...changeSet,
+      files: changeSet.files.map((file) => ({
+        ...file,
+        base: cloneState(file.base),
+        incoming: cloneState(file.incoming),
+        ranges: file.ranges.map((range) => ({ ...range })),
+      })),
+      conflicts: changeSet.conflicts.map((conflict) => ({ ...conflict })),
+      concurrentRunIds: [...changeSet.concurrentRunIds],
+    });
+  }
+
+  discard(changeSetId: string): FrozenLogicalChangeSet | null {
+    const changeSet = this.frozen.get(changeSetId) ?? null;
     this.frozen.delete(changeSetId);
     this.pruneAppliedConcurrent();
+    return changeSet;
   }
 
   markApplied(changeSetId: string): void {
@@ -321,6 +481,17 @@ export class LogicalSelfModChangeSetStore {
     if (changeSet) this.appliedConcurrent.set(changeSetId, changeSet);
     this.frozen.delete(changeSetId);
     this.pruneAppliedConcurrent();
+  }
+
+  expireOlderThan(cutoffMs: number): FrozenLogicalChangeSet[] {
+    const expired: FrozenLogicalChangeSet[] = [];
+    for (const changeSet of this.frozen.values()) {
+      if (changeSet.createdAt >= cutoffMs) continue;
+      this.frozen.delete(changeSet.changeSetId);
+      expired.push(changeSet);
+    }
+    this.pruneAppliedConcurrent();
+    return expired;
   }
 
   private pruneAppliedConcurrent(): void {
@@ -332,18 +503,19 @@ export class LogicalSelfModChangeSetStore {
       for (const runId of changeSet.concurrentRunIds) neededRunIds.add(runId);
     }
     for (const [changeSetId, changeSet] of this.appliedConcurrent) {
-      if (!neededRunIds.has(changeSet.runId)) {
+      if (!neededRunIds.has(changeSet.runId))
         this.appliedConcurrent.delete(changeSetId);
-      }
     }
   }
 
   async mergeAgainst(
     changeSetId: string,
-    readHeadFile: (path: string) => Promise<LogicalFileContent>,
+    readHeadFile: (path: string) => Promise<LogicalFileState>,
   ): Promise<LogicalMergeResult> {
     const changeSet = this.frozen.get(changeSetId);
-    if (!changeSet) return { status: "clean", files: [], noopPaths: [] };
+    if (!changeSet) {
+      return { status: "clean", files: [], selectedFiles: [], noopPaths: [] };
+    }
     if (changeSet.conflicts.length > 0) {
       return { status: "conflicts", conflicts: changeSet.conflicts };
     }
@@ -361,6 +533,8 @@ export class LogicalSelfModChangeSetStore {
         .find(
           (otherFile) =>
             otherFile.path === file.path &&
+            (file.contentChanged ?? true) &&
+            (otherFile.contentChanged ?? true) &&
             file.ranges.some((a) =>
               otherFile.ranges.some((b) => rangesOverlap(a, b)),
             ),
@@ -369,23 +543,30 @@ export class LogicalSelfModChangeSetStore {
         return {
           status: "conflicts",
           conflicts: [
-            {
+            conflictFor({
               path: file.path,
-              reason: "text-conflict",
+              reason:
+                file.base.kind === "blob" &&
+                file.incoming.kind === "blob" &&
+                file.base.text !== undefined &&
+                file.incoming.text !== undefined
+                  ? "text-conflict"
+                  : "binary-or-mode-conflict",
               base: file.base,
               local: await readHeadFile(file.path),
               incoming: file.incoming,
-            },
+            }),
           ],
         };
       }
     }
     const files: LogicalMergedFile[] = [];
+    const selectedFiles: LogicalMergedFile[] = [];
     const noopPaths: string[] = [];
     const conflicts: LogicalFileConflict[] = [];
     for (const file of changeSet.files) {
       const local = await readHeadFile(file.path);
-      const merged = mergeFile({
+      const merged = mergeState({
         path: file.path,
         base: file.base,
         local,
@@ -395,18 +576,57 @@ export class LogicalSelfModChangeSetStore {
         conflicts.push(merged.conflict);
         continue;
       }
-      if (merged.content === local) {
+      const selected = { path: file.path, state: merged.state };
+      selectedFiles.push(selected);
+      if (statesEqual(merged.state, local)) {
         noopPaths.push(file.path);
-        continue;
+      } else {
+        files.push(selected);
       }
-      files.push(
-        merged.content === null
-          ? { path: file.path, deleted: true }
-          : { path: file.path, content: merged.content },
-      );
     }
     return conflicts.length > 0
       ? { status: "conflicts", conflicts }
-      : { status: "clean", files, noopPaths };
+      : { status: "clean", files, selectedFiles, noopPaths };
+  }
+
+  async buildLiveTree(
+    extraPaths: Iterable<string>,
+    readHeadFile: (path: string) => Promise<LogicalFileState>,
+    readDiskFile: (path: string) => Promise<LogicalFileState>,
+  ): Promise<Map<string, LogicalFileState>> {
+    const paths = new Set(extraPaths);
+    const pendingFiles = [
+      ...[...this.frozen.values()].flatMap((changeSet) => changeSet.files),
+      ...[...this.activeRuns.values()].flatMap((run) =>
+        [...run.files.entries()].map(([filePath, file]) => ({
+          path: filePath,
+          base: file.base,
+          incoming: file.incoming,
+        })),
+      ),
+    ];
+    for (const file of pendingFiles) paths.add(file.path);
+    const result = new Map<string, LogicalFileState>();
+    for (const filePath of paths) {
+      let current = await readHeadFile(filePath);
+      for (const file of pendingFiles) {
+        if (file.path !== filePath) continue;
+        const merged = mergeState({
+          path: filePath,
+          base: file.base,
+          local: current,
+          incoming: file.incoming,
+        });
+        if (merged.status === "conflict") {
+          // The live disk is the lossless authority when two still-live
+          // deltas cannot be replayed in isolation (e.g. unresolved overlap).
+          current = await readDiskFile(filePath);
+          break;
+        }
+        current = merged.state;
+      }
+      result.set(filePath, current);
+    }
+    return result;
   }
 }

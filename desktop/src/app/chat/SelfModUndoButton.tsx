@@ -9,6 +9,8 @@ export type { SelfModApplied } from "@/features/chat/self-mod-types";
 type ButtonState =
   | "pending"
   | "applying"
+  | "discarding"
+  | "discarded"
   | "conflict"
   | "idle"
   | "confirming"
@@ -24,7 +26,11 @@ export function SelfModUndoButton({
   selfModApplied: SelfModApplied;
 }) {
   const [state, setState] = useState<ButtonState>(() =>
-    (selfModApplied.status ?? "applied") === "pending" ? "pending" : "idle",
+    selfModApplied.status === "discarded"
+      ? "discarded"
+      : (selfModApplied.status ?? "applied") === "pending"
+        ? "pending"
+        : "idle",
   );
   const applySelector = selfModApplied.changeSetId ?? selfModApplied.commitHash;
 
@@ -47,9 +53,11 @@ export function SelfModUndoButton({
       ) {
         return current;
       }
-      return (selfModApplied.status ?? "applied") === "pending"
-        ? "pending"
-        : "idle";
+      return selfModApplied.status === "discarded"
+        ? "discarded"
+        : (selfModApplied.status ?? "applied") === "pending"
+          ? "pending"
+          : "idle";
     });
   }, [selfModApplied.commitHash, selfModApplied.status]);
 
@@ -107,6 +115,22 @@ export function SelfModUndoButton({
     }
   }, [state]);
 
+  const handleDiscard = useCallback(async () => {
+    if (state !== "pending" && state !== "conflict") return;
+    setState("discarding");
+    try {
+      const result = (await window.electronAPI?.agent.selfModDiscardPending(
+        applySelector,
+      )) as { discarded?: boolean } | undefined;
+      if (!result?.discarded) throw new Error("Pending update was not found");
+      setState("discarded");
+    } catch (err) {
+      console.error("Discard pending self-mod failed:", err);
+      showToast({ title: "Failed to discard update", variant: "error" });
+      setState("pending");
+    }
+  }, [applySelector, state]);
+
   const handleUndo = useCallback(async () => {
     // First click arms the confirmation; auto-disarms after a few seconds.
     if (state === "idle") {
@@ -142,13 +166,17 @@ export function SelfModUndoButton({
         ? "Update needs conflict resolution"
         : state === "applying"
           ? "Updating Stella…"
-          : state === "confirming"
-            ? "Undo this update?"
-            : state === "reverting"
-              ? "Undoing update…"
-              : state === "reverted"
-                ? "Update undone"
-                : "Stella was updated";
+          : state === "discarding"
+            ? "Discarding update…"
+            : state === "discarded"
+              ? "Update discarded"
+              : state === "confirming"
+                ? "Undo this update?"
+                : state === "reverting"
+                  ? "Undoing update…"
+                  : state === "reverted"
+                    ? "Update undone"
+                    : "Stella was updated";
 
   return (
     <div className="selfmod-card" data-state={state}>
@@ -172,6 +200,13 @@ export function SelfModUndoButton({
           >
             Update all
           </button>
+          <button
+            type="button"
+            className="selfmod-card__action"
+            onClick={handleDiscard}
+          >
+            Discard
+          </button>
         </>
       ) : state === "idle" || state === "confirming" ? (
         <button
@@ -183,7 +218,9 @@ export function SelfModUndoButton({
         >
           {state === "confirming" ? "Confirm" : "Undo"}
         </button>
-      ) : state === "applying" || state === "reverting" ? (
+      ) : state === "applying" ||
+        state === "discarding" ||
+        state === "reverting" ? (
         <button type="button" className="selfmod-card__action" disabled>
           <span className="selfmod-card__spinner" />
         </button>

@@ -31,6 +31,8 @@ import type {
   FileChangeRecord,
   ProducedFileRecord,
 } from "../../contracts/file-changes.js";
+import type { MediatedWriteCapture } from "../self-mod/logical-change-set.js";
+import { acquireSelfModMutationLock } from "../self-mod/mutation-lock.js";
 
 type BuildAgentContext = (
   args: BuildAgentContextArgs,
@@ -384,8 +386,13 @@ export const launchPreparedOrchestratorRun = (args: {
   let selfModLifecycleClosed = !shouldAttachSelfModLifecycle;
   const guardedShellSessionLeases = new Map<string, Set<string>>();
   const guardedShellLeaseSessions = new Map<string, string>();
+  const guardedShellLogicalCaptures = new Map<string, MediatedWriteCapture>();
+  const shellLeaseMutationReleases = new Map<string, () => void>();
+  const shellLeaseHasHmrGuard = new Set<string>();
 
-  const endShellMutationGuard = async () => {
+  const endShellMutationGuard = async (
+    logicalCapture?: MediatedWriteCapture,
+  ) => {
     const result = await context.selfModHmrController
       ?.endShellMutationGuard()
       .catch((error) => {
@@ -395,15 +402,17 @@ export const launchPreparedOrchestratorRun = (args: {
         );
         return null;
       });
-    if (result?.ok && result.changedPaths.length > 0) {
-      try {
-        await recordWritePaths(
-          result.changedPaths.map((repoRelativePath) =>
+    const changedAbsolutePaths =
+      result?.ok && result.changedPaths.length > 0
+        ? result.changedPaths.map((repoRelativePath) =>
             context.stellaAppDir
               ? `${context.stellaAppDir}/${repoRelativePath}`
               : repoRelativePath,
-          ),
-        );
+          )
+        : [];
+    if (changedAbsolutePaths.length > 0) {
+      try {
+        await recordWritePaths(changedAbsolutePaths);
       } catch (error) {
         console.warn(
           "[self-mod-hmr] failed to record suppressed shell updates:",
@@ -411,15 +420,44 @@ export const launchPreparedOrchestratorRun = (args: {
         );
       }
     }
+    if (logicalCapture) {
+      await context.selfModLifecycle?.finishMediatedWrite?.({
+        capture: logicalCapture,
+        additionalPaths: changedAbsolutePaths,
+      });
+    }
   };
 
-  const retainShellGuardLease = (sessionIds: string[]): boolean => {
+  const retainShellGuardLease = (
+    sessionIds: string[],
+    logicalCapture?: MediatedWriteCapture | null,
+    mutationRelease?: (() => void) | null,
+    hasHmrGuard = false,
+  ): boolean => {
     const uniqueSessionIds = [...new Set(sessionIds.filter(Boolean))];
     if (uniqueSessionIds.length === 0) return false;
     const leaseId = crypto.randomUUID();
     const sessions = new Set(uniqueSessionIds);
     guardedShellSessionLeases.set(leaseId, sessions);
+    if (logicalCapture)
+      guardedShellLogicalCaptures.set(leaseId, logicalCapture);
+    if (mutationRelease)
+      shellLeaseMutationReleases.set(leaseId, mutationRelease);
+    if (hasHmrGuard) shellLeaseHasHmrGuard.add(leaseId);
     for (const sessionId of sessions) {
+      guardedShellLeaseSessions.set(sessionId, leaseId);
+    }
+    return true;
+  };
+
+  const attachSessionsToShellLease = (
+    leaseId: string,
+    sessionIds: string[],
+  ): boolean => {
+    const sessions = guardedShellSessionLeases.get(leaseId);
+    if (!sessions) return false;
+    for (const sessionId of new Set(sessionIds.filter(Boolean))) {
+      sessions.add(sessionId);
       guardedShellLeaseSessions.set(sessionId, leaseId);
     }
     return true;
@@ -434,7 +472,40 @@ export const launchPreparedOrchestratorRun = (args: {
     guardedShellLeaseSessions.delete(sessionId);
     if (sessions.size === 0) {
       guardedShellSessionLeases.delete(leaseId);
-      await endShellMutationGuard();
+      const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
+      guardedShellLogicalCaptures.delete(leaseId);
+      if (shellLeaseHasHmrGuard.delete(leaseId)) {
+        await endShellMutationGuard(logicalCapture);
+      } else if (logicalCapture) {
+        await context.selfModLifecycle?.finishMediatedWrite?.({
+          capture: logicalCapture,
+        });
+      }
+      shellLeaseMutationReleases.get(leaseId)?.();
+      shellLeaseMutationReleases.delete(leaseId);
+    }
+  };
+
+  const closeOutstandingShellLeases = async () => {
+    const sessionIds = [...guardedShellLeaseSessions.keys()];
+    await Promise.allSettled(
+      sessionIds.map((sessionId) => context.toolHost.killShell(sessionId)),
+    );
+    const leaseIds = [...guardedShellSessionLeases.keys()];
+    guardedShellLeaseSessions.clear();
+    guardedShellSessionLeases.clear();
+    for (const leaseId of leaseIds) {
+      const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
+      guardedShellLogicalCaptures.delete(leaseId);
+      if (shellLeaseHasHmrGuard.delete(leaseId)) {
+        await endShellMutationGuard(logicalCapture);
+      } else if (logicalCapture) {
+        await context.selfModLifecycle?.finishMediatedWrite?.({
+          capture: logicalCapture,
+        });
+      }
+      shellLeaseMutationReleases.get(leaseId)?.();
+      shellLeaseMutationReleases.delete(leaseId);
     }
   };
 
@@ -496,6 +567,19 @@ export const launchPreparedOrchestratorRun = (args: {
       isShellPoll && shellSessionId
         ? guardedShellLeaseSessions.has(shellSessionId)
         : false;
+    const existingShellLeaseId =
+      isGuardedShellPoll && shellSessionId
+        ? guardedShellLeaseSessions.get(shellSessionId)
+        : undefined;
+    const activeShellLeaseId =
+      existingShellLeaseId ?? guardedShellSessionLeases.keys().next().value;
+    let mutationRelease: (() => void) | null = activeShellLeaseId
+      ? null
+      : await acquireSelfModMutationLock(
+          context.stellaAppDir ?? process.cwd(),
+          crypto.randomUUID(),
+        );
+    let mutationLockTransferred = Boolean(activeShellLeaseId);
     let shellGuardActive = false;
     let logicalWriteCapture: Awaited<
       ReturnType<
@@ -505,7 +589,10 @@ export const launchPreparedOrchestratorRun = (args: {
       >
     > = null;
     let logicalWriteCaptureFinished = false;
+    let nestedLeaseCapture: MediatedWriteCapture | null = null;
+    let nestedLeaseCaptureFinished = false;
     if (
+      !activeShellLeaseId &&
       (shouldGuardShellCommand || isParallelWithGuardedShellCommands) &&
       shouldAttachSelfModLifecycle
     ) {
@@ -524,6 +611,8 @@ export const launchPreparedOrchestratorRun = (args: {
         !shellGuardActive &&
         prepared.agentType !== AGENT_IDS.INSTALL_UPDATE
       ) {
+        mutationRelease?.();
+        mutationRelease = null;
         return {
           error:
             "Self-mod HMR shell guard failed before running a mutating shell command.",
@@ -538,7 +627,19 @@ export const launchPreparedOrchestratorRun = (args: {
 
     try {
       const preWritePaths = inferPreWritePaths(toolName, toolArgs, toolContext);
-      if (shouldAttachSelfModLifecycle) {
+      if (activeShellLeaseId) {
+        logicalWriteCapture =
+          guardedShellLogicalCaptures.get(activeShellLeaseId) ?? null;
+        logicalWriteCaptureFinished = true;
+        if (preWritePaths.length > 0 && shouldAttachSelfModLifecycle) {
+          nestedLeaseCapture =
+            (await context.selfModLifecycle?.beginMediatedWrite?.({
+              runId: prepared.runId,
+              paths: preWritePaths,
+              captureAll: false,
+            })) ?? null;
+        }
+      } else if (shouldAttachSelfModLifecycle) {
         logicalWriteCapture =
           (await context.selfModLifecycle?.beginMediatedWrite?.({
             runId: prepared.runId,
@@ -572,13 +673,6 @@ export const launchPreparedOrchestratorRun = (args: {
         ...collectWrittenPaths(result.fileChanges),
         ...collectWrittenPaths(result.producedFiles),
       ];
-      if (logicalWriteCapture) {
-        await context.selfModLifecycle?.finishMediatedWrite?.({
-          capture: logicalWriteCapture,
-          additionalPaths: postWritePaths,
-        });
-        logicalWriteCaptureFinished = true;
-      }
       if (isShellCommand || isParallelWithShellCommands || isGuardedShellPoll) {
         await recordToolWrites({
           fileChanges: result.fileChanges,
@@ -586,19 +680,40 @@ export const launchPreparedOrchestratorRun = (args: {
         });
       }
       const shellState = getShellExecutionState(result);
-      if (
-        isShellCommand &&
-        shellGuardActive &&
-        shellState?.running &&
-        shellState.sessionId
-      ) {
-        if (retainShellGuardLease([shellState.sessionId])) {
+      if (isShellCommand && shellState?.running && shellState.sessionId) {
+        if (activeShellLeaseId) {
+          attachSessionsToShellLease(activeShellLeaseId, [
+            shellState.sessionId,
+          ]);
+        } else if (
+          retainShellGuardLease(
+            [shellState.sessionId],
+            logicalWriteCapture,
+            mutationRelease,
+            shellGuardActive,
+          )
+        ) {
           shellGuardActive = false;
+          logicalWriteCaptureFinished = true;
+          mutationLockTransferred = true;
+          mutationRelease = null;
         }
-      } else if (isParallelWithShellCommands && shellGuardActive) {
+      } else if (isParallelWithShellCommands) {
         const runningSessionIds = getParallelRunningShellSessions(result);
-        if (retainShellGuardLease(runningSessionIds)) {
+        if (activeShellLeaseId) {
+          attachSessionsToShellLease(activeShellLeaseId, runningSessionIds);
+        } else if (
+          retainShellGuardLease(
+            runningSessionIds,
+            logicalWriteCapture,
+            mutationRelease,
+            shellGuardActive,
+          )
+        ) {
           shellGuardActive = false;
+          logicalWriteCaptureFinished = true;
+          mutationLockTransferred = true;
+          mutationRelease = null;
         }
       } else if (
         isGuardedShellPoll &&
@@ -607,8 +722,27 @@ export const launchPreparedOrchestratorRun = (args: {
       ) {
         await releaseShellSessionGuard(shellSessionId);
       }
+      if (logicalWriteCapture && !logicalWriteCaptureFinished) {
+        await context.selfModLifecycle?.finishMediatedWrite?.({
+          capture: logicalWriteCapture,
+          additionalPaths: postWritePaths,
+        });
+        logicalWriteCaptureFinished = true;
+      }
+      if (nestedLeaseCapture && !nestedLeaseCaptureFinished) {
+        await context.selfModLifecycle?.finishMediatedWrite?.({
+          capture: nestedLeaseCapture,
+          additionalPaths: postWritePaths,
+        });
+        nestedLeaseCaptureFinished = true;
+      }
       return result;
     } finally {
+      if (nestedLeaseCapture && !nestedLeaseCaptureFinished) {
+        await context.selfModLifecycle?.finishMediatedWrite?.({
+          capture: nestedLeaseCapture,
+        });
+      }
       if (logicalWriteCapture && !logicalWriteCaptureFinished) {
         await context.selfModLifecycle?.finishMediatedWrite?.({
           capture: logicalWriteCapture,
@@ -617,6 +751,7 @@ export const launchPreparedOrchestratorRun = (args: {
       if (shellGuardActive) {
         await endShellMutationGuard();
       }
+      if (!mutationLockTransferred) mutationRelease?.();
     }
   };
 
@@ -699,6 +834,7 @@ export const launchPreparedOrchestratorRun = (args: {
       onExecutionSessionCreated: args.onExecutionSessionCreated,
       orchestratorSession,
       beforeRunEnd: async () => {
+        await closeOutstandingShellLeases();
         if (!shouldAttachSelfModLifecycle || selfModLifecycleClosed) {
           return;
         }
@@ -729,14 +865,16 @@ export const launchPreparedOrchestratorRun = (args: {
         : {}),
     });
   })()
-    .catch((error) => {
+    .catch(async (error) => {
+      await closeOutstandingShellLeases();
       if (isReportedOrchestratorError(error)) {
         return;
       }
       args.cleanupRun(prepared.runId);
       args.onFatalError(error);
     })
-    .finally(() => {
+    .finally(async () => {
+      await closeOutstandingShellLeases();
       if (!shouldAttachSelfModLifecycle || selfModLifecycleClosed) {
         return;
       }

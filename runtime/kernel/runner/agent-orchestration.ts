@@ -39,6 +39,7 @@ import {
   sanitizeAuthoredCommitSubject,
 } from "../self-mod/feature-namer.js";
 import type { MediatedWriteCapture } from "../self-mod/logical-change-set.js";
+import { acquireSelfModMutationLock } from "../self-mod/mutation-lock.js";
 
 const collectFileChanges = (
   target: FileChangeRecord[],
@@ -450,7 +451,13 @@ export const createAgentOrchestration = (
   context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaDataDir),
-    resolveTaskThread: ({ conversationId, agentType, threadId, nameHint, group }) => {
+    resolveTaskThread: ({
+      conversationId,
+      agentType,
+      threadId,
+      nameHint,
+      group,
+    }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
       }
@@ -613,6 +620,8 @@ export const createAgentOrchestration = (
         string,
         MediatedWriteCapture
       >();
+      const shellLeaseMutationReleases = new Map<string, () => void>();
+      const shellLeaseHasHmrGuard = new Set<string>();
       let subagentInterrupted = false;
 
       const endShellMutationGuard = async (
@@ -660,7 +669,15 @@ export const createAgentOrchestration = (
         for (const leaseId of leaseIds) {
           const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
           guardedShellLogicalCaptures.delete(leaseId);
-          await endShellMutationGuard(logicalCapture);
+          if (shellLeaseHasHmrGuard.delete(leaseId)) {
+            await endShellMutationGuard(logicalCapture);
+          } else if (logicalCapture) {
+            await context.selfModLifecycle?.finishMediatedWrite?.({
+              capture: logicalCapture,
+            });
+          }
+          shellLeaseMutationReleases.get(leaseId)?.();
+          shellLeaseMutationReleases.delete(leaseId);
         }
       };
 
@@ -680,6 +697,8 @@ export const createAgentOrchestration = (
       const retainShellGuardLease = (
         sessionIds: string[],
         logicalCapture?: MediatedWriteCapture | null,
+        mutationRelease?: (() => void) | null,
+        hasHmrGuard = false,
       ) => {
         const uniqueSessionIds = [...new Set(sessionIds)].filter(Boolean);
         if (uniqueSessionIds.length === 0) return false;
@@ -688,7 +707,24 @@ export const createAgentOrchestration = (
         if (logicalCapture) {
           guardedShellLogicalCaptures.set(leaseId, logicalCapture);
         }
+        if (mutationRelease) {
+          shellLeaseMutationReleases.set(leaseId, mutationRelease);
+        }
+        if (hasHmrGuard) shellLeaseHasHmrGuard.add(leaseId);
         for (const sessionId of uniqueSessionIds) {
+          guardedShellSessionLeases.set(sessionId, leaseId);
+        }
+        return true;
+      };
+
+      const attachSessionsToShellLease = (
+        leaseId: string,
+        sessionIds: string[],
+      ): boolean => {
+        const sessions = guardedShellLeaseSessions.get(leaseId);
+        if (!sessions) return false;
+        for (const sessionId of new Set(sessionIds.filter(Boolean))) {
+          sessions.add(sessionId);
           guardedShellSessionLeases.set(sessionId, leaseId);
         }
         return true;
@@ -705,7 +741,15 @@ export const createAgentOrchestration = (
         guardedShellLeaseSessions.delete(leaseId);
         const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
         guardedShellLogicalCaptures.delete(leaseId);
-        await endShellMutationGuard(logicalCapture);
+        if (shellLeaseHasHmrGuard.delete(leaseId)) {
+          await endShellMutationGuard(logicalCapture);
+        } else if (logicalCapture) {
+          await context.selfModLifecycle?.finishMediatedWrite?.({
+            capture: logicalCapture,
+          });
+        }
+        shellLeaseMutationReleases.get(leaseId)?.();
+        shellLeaseMutationReleases.delete(leaseId);
       };
 
       const recordWritePaths = async (
@@ -764,6 +808,19 @@ export const createAgentOrchestration = (
           isShellPoll && shellSessionId
             ? guardedShellSessionLeases.has(shellSessionId)
             : false;
+        const existingShellLeaseId =
+          isGuardedShellPoll && shellSessionId
+            ? guardedShellSessionLeases.get(shellSessionId)
+            : undefined;
+        const activeShellLeaseId =
+          existingShellLeaseId ?? guardedShellLeaseSessions.keys().next().value;
+        let mutationRelease: (() => void) | null = activeShellLeaseId
+          ? null
+          : await acquireSelfModMutationLock(
+              context.stellaAppDir ?? process.cwd(),
+              crypto.randomUUID(),
+            );
+        let mutationLockTransferred = Boolean(activeShellLeaseId);
         let shellGuardActive = false;
         let logicalWriteCapture: Awaited<
           ReturnType<
@@ -773,7 +830,10 @@ export const createAgentOrchestration = (
           >
         > = null;
         let logicalWriteCaptureFinished = false;
+        let nestedLeaseCapture: MediatedWriteCapture | null = null;
+        let nestedLeaseCaptureFinished = false;
         if (
+          !activeShellLeaseId &&
           (shouldGuardShellCommand || isParallelWithGuardedShellCommands) &&
           shouldAttachSelfModLifecycle
         ) {
@@ -789,6 +849,8 @@ export const createAgentOrchestration = (
               }),
           );
           if (!shellGuardActive && agentType !== AGENT_IDS.INSTALL_UPDATE) {
+            mutationRelease?.();
+            mutationRelease = null;
             return {
               error:
                 "Self-mod HMR shell guard failed before running a mutating shell command.",
@@ -802,12 +864,19 @@ export const createAgentOrchestration = (
         }
         try {
           const preWritePaths = inferPreWritePaths(toolName, args, ctx);
-          if (isGuardedShellPoll && shellSessionId) {
-            const leaseId = guardedShellSessionLeases.get(shellSessionId);
-            logicalWriteCapture = leaseId
-              ? (guardedShellLogicalCaptures.get(leaseId) ?? null)
+          if (activeShellLeaseId) {
+            logicalWriteCapture = activeShellLeaseId
+              ? (guardedShellLogicalCaptures.get(activeShellLeaseId) ?? null)
               : null;
             logicalWriteCaptureFinished = true;
+            if (preWritePaths.length > 0 && shouldAttachSelfModLifecycle) {
+              nestedLeaseCapture =
+                (await context.selfModLifecycle?.beginMediatedWrite?.({
+                  runId: lifecycleRunId,
+                  paths: preWritePaths,
+                  captureAll: false,
+                })) ?? null;
+            }
           } else if (shouldAttachSelfModLifecycle) {
             logicalWriteCapture =
               (await context.selfModLifecycle?.beginMediatedWrite?.({
@@ -863,26 +932,40 @@ export const createAgentOrchestration = (
               touchedShellSessions.add(sessionId);
             }
           }
-          if (
-            isShellCommand &&
-            shellGuardActive &&
-            shellState?.running &&
-            shellState.sessionId
-          ) {
-            if (
+          if (isShellCommand && shellState?.running && shellState.sessionId) {
+            if (activeShellLeaseId) {
+              attachSessionsToShellLease(activeShellLeaseId, [
+                shellState.sessionId,
+              ]);
+            } else if (
               retainShellGuardLease(
                 [shellState.sessionId],
                 logicalWriteCapture,
+                mutationRelease,
+                shellGuardActive,
               )
             ) {
               shellGuardActive = false;
               logicalWriteCaptureFinished = true;
+              mutationLockTransferred = true;
+              mutationRelease = null;
             }
-          } else if (isParallelWithShellCommands && shellGuardActive) {
+          } else if (isParallelWithShellCommands) {
             const runningSessionIds = getParallelRunningShellSessions(result);
-            if (retainShellGuardLease(runningSessionIds, logicalWriteCapture)) {
+            if (activeShellLeaseId) {
+              attachSessionsToShellLease(activeShellLeaseId, runningSessionIds);
+            } else if (
+              retainShellGuardLease(
+                runningSessionIds,
+                logicalWriteCapture,
+                mutationRelease,
+                shellGuardActive,
+              )
+            ) {
               shellGuardActive = false;
               logicalWriteCaptureFinished = true;
+              mutationLockTransferred = true;
+              mutationRelease = null;
             }
           } else if (
             isGuardedShellPoll &&
@@ -898,8 +981,20 @@ export const createAgentOrchestration = (
             });
             logicalWriteCaptureFinished = true;
           }
+          if (nestedLeaseCapture && !nestedLeaseCaptureFinished) {
+            await context.selfModLifecycle?.finishMediatedWrite?.({
+              capture: nestedLeaseCapture,
+              additionalPaths: postWritePaths,
+            });
+            nestedLeaseCaptureFinished = true;
+          }
           return result;
         } finally {
+          if (nestedLeaseCapture && !nestedLeaseCaptureFinished) {
+            await context.selfModLifecycle?.finishMediatedWrite?.({
+              capture: nestedLeaseCapture,
+            });
+          }
           if (logicalWriteCapture && !logicalWriteCaptureFinished) {
             await context.selfModLifecycle?.finishMediatedWrite?.({
               capture: logicalWriteCapture,
@@ -908,6 +1003,7 @@ export const createAgentOrchestration = (
           if (shellGuardActive) {
             await endShellMutationGuard();
           }
+          if (!mutationLockTransferred) mutationRelease?.();
         }
       };
       try {

@@ -45,6 +45,7 @@ import {
   getLastSelfModCommitHash,
   listFilesForCommit,
 } from "../kernel/self-mod/git/log.js";
+import { readGitHeadFileState } from "../kernel/self-mod/git/commit.js";
 import { revertSelfModCommit } from "../kernel/self-mod/git/revert.js";
 import type { RuntimeStore } from "../kernel/storage/runtime-store.js";
 import type { WorkerPeerLike } from "./peer-broker.js";
@@ -57,6 +58,46 @@ export type PendingSelfModApply = {
   conversationId: string;
   files: string[];
   assistantMessageEventId?: string;
+};
+
+export type PendingSelfModCardPayload = {
+  commitHash: string;
+  changeSetId: string;
+  runId: string;
+  files: string[];
+  batchIndex: number;
+  status: "pending";
+};
+
+export const attachPendingSelfModCards = (args: {
+  pending: Map<string, PendingSelfModApply>;
+  conversationId: string;
+  append: (payload: PendingSelfModCardPayload) => string;
+  persist: (pending: PendingSelfModApply) => void;
+}): string[] => {
+  const attached: string[] = [];
+  for (const [commitHash, pending] of args.pending) {
+    if (
+      pending.conversationId !== args.conversationId ||
+      pending.assistantMessageEventId
+    ) {
+      continue;
+    }
+    const eventId = args.append({
+      commitHash,
+      changeSetId: pending.changeSetId,
+      runId: pending.runId,
+      files: pending.files,
+      batchIndex: 0,
+      status: "pending",
+    });
+    // Assignment and persistence happen only after append returns, so a
+    // failed durable write remains eligible for the next turn.
+    pending.assistantMessageEventId = eventId;
+    args.persist(pending);
+    attached.push(eventId);
+  }
+  return attached;
 };
 
 /**
@@ -84,6 +125,9 @@ type SelfModApplyMode =
   | "update"
   | "uninstall"
   | "desktop-update";
+
+const PENDING_CHANGE_SET_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
+const MAX_PENDING_CHANGE_SETS = 64;
 
 export type SelfModLifecycle = {
   beginRun: (args: {
@@ -142,6 +186,10 @@ export type SelfModCoordinator = {
     commitHash?: string;
   }) => Promise<RuntimeSelfModApplyResult>;
   applyAllPendingWithMorph: () => Promise<RuntimeSelfModApplyResult[]>;
+  discardPending: (args: {
+    commitHash?: string;
+  }) => Promise<{ discarded: boolean; commitHash?: string }>;
+  restorePending: (envelopes: unknown[]) => Promise<void>;
   resumeTransition: (payload: {
     transitionId?: string;
     runIds?: string[];
@@ -163,7 +211,7 @@ export type SelfModCoordinatorDeps = {
     conversationId: string;
     eventId?: string;
     commitHash: string;
-    status: "pending" | "applied";
+    status: "pending" | "applied" | "discarded";
     replacementCommitHash?: string;
   }) => void;
 };
@@ -273,8 +321,15 @@ export const createSelfModCoordinator = (
   ) => {
     const controller = getController();
     if (!controller) return;
+    const preservePaths = [
+      ...new Set(
+        [...getPendingSelfModApplies().values()].flatMap((pending) =>
+          pending.applyResult.appliedRuns.flatMap((run) => run.paths),
+        ),
+      ),
+    ];
     const discarded = await controller
-      .discard(applyResult.appliedRuns)
+      .discard(applyResult.appliedRuns, { preservePaths })
       .catch((error) => {
         console.warn(
           `[self-mod-hmr] Failed to discard Vite self-mod state after ${reason}:`,
@@ -416,6 +471,26 @@ export const createSelfModCoordinator = (
       if (!storeModService) {
         throw new Error("Store mod service is not available.");
       }
+      const expiredIds = storeModService.expirePreparedAuthorChanges(
+        Date.now() - PENDING_CHANGE_SET_TTL_MS,
+      );
+      for (const changeSetId of expiredIds) {
+        const expired = getPendingSelfModApplies().get(changeSetId);
+        if (!expired) continue;
+        getPendingSelfModApplies().delete(changeSetId);
+        await storeModService.materializeLiveTree(expired.files);
+        await discardFailedApplyState(expired.applyResult, "pending expiry");
+        await releaseRuntimeReloadFor(
+          expired.applyResult.restartRelevantRunIds,
+        );
+        dropRunBookkeeping(expired.applyResult.restartRelevantRunIds);
+        patchSelfModApplyStatus({
+          conversationId: expired.conversationId,
+          eventId: expired.assistantMessageEventId,
+          commitHash: expired.commitHash,
+          status: "discarded",
+        });
+      }
       await storeModService.beginSelfModRun({
         runId,
         taskDescription,
@@ -496,14 +571,23 @@ export const createSelfModCoordinator = (
       // to host a card — their conversations are background threads —
       // so they auto-apply under the morph cover instead.
       if (finalized?.commitHash && applyMode === "author") {
-        getPendingSelfModApplies().set(finalized.commitHash, {
+        const pending: PendingSelfModApply = {
           commitHash: finalized.commitHash,
           changeSetId: finalized.commitHash,
           runId,
           applyResult: decision,
           conversationId: conversationId ?? "",
           files: finalized.files,
-        });
+        };
+        getPendingSelfModApplies().set(finalized.commitHash, pending);
+        storeModService?.persistPendingEnvelope(finalized.commitHash, pending);
+        const overflow =
+          storeModService
+            ?.listPendingChangeSetIds()
+            .slice(0, -MAX_PENDING_CHANGE_SETS) ?? [];
+        for (const expiredSelector of overflow) {
+          await discardPending({ commitHash: expiredSelector });
+        }
         return;
       }
       await dispatchApplyBatch(decision);
@@ -819,17 +903,30 @@ export const createSelfModCoordinator = (
     }
     pendingSelfModApplies.delete(entry.commitHash);
     const mergedByPath = new Map(
-      prepared.files.map((file) => [file.path, file]),
+      prepared.selectedFiles.map((file) => [file.path, file]),
+    );
+    const repoRoot = getRepoRoot();
+    const appliedRuns = await Promise.all(
+      entry.applyResult.appliedRuns.map(async (run) => ({
+        ...run,
+        files: await Promise.all(
+          run.paths.map(async (filePath) => {
+            const file = mergedByPath.get(filePath);
+            return {
+              path: filePath,
+              state:
+                file?.state ??
+                (repoRoot
+                  ? await readGitHeadFileState(repoRoot, filePath)
+                  : { kind: "missing" as const }),
+            };
+          }),
+        ),
+      })),
     );
     const selectedApplyResult: ApplyResult = {
       ...entry.applyResult,
-      appliedRuns: entry.applyResult.appliedRuns.map((run) => ({
-        ...run,
-        files: run.paths.flatMap((filePath) => {
-          const file = mergedByPath.get(filePath);
-          return file ? [file] : [];
-        }),
-      })),
+      appliedRuns,
     };
     if (prepared.files.length > 0) {
       await dispatchApplyBatch(selectedApplyResult);
@@ -848,6 +945,81 @@ export const createSelfModCoordinator = (
       commitHash: prepared.commitHash ?? resolvedCommitHash,
       applied: true,
     };
+  };
+
+  const discardPending = async ({
+    commitHash,
+  }: {
+    commitHash?: string;
+  }): Promise<{ discarded: boolean; commitHash?: string }> => {
+    const selector = commitHash?.trim();
+    if (!selector) return { discarded: false };
+    const pending = getPendingSelfModApplies().get(selector);
+    if (!pending) return { discarded: false, commitHash: selector };
+
+    getPendingSelfModApplies().delete(selector);
+    getStoreModService()?.discardPreparedAuthorChange(selector);
+    // Removing a logical layer must also remove its bytes from the shared
+    // tree while retaining every other active/pending layer.
+    await getStoreModService()?.materializeLiveTree(pending.files);
+    await discardFailedApplyState(pending.applyResult, "pending discard");
+    await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds);
+    dropRunBookkeeping(pending.applyResult.restartRelevantRunIds);
+    patchSelfModApplyStatus({
+      conversationId: pending.conversationId,
+      eventId: pending.assistantMessageEventId,
+      commitHash: pending.commitHash,
+      status: "discarded",
+    });
+    return { discarded: true, commitHash: selector };
+  };
+
+  const restorePending = async (envelopes: unknown[]): Promise<void> => {
+    const controller = getController();
+    const repoRoot = getRepoRoot();
+    if (!controller || !repoRoot) return;
+    for (const raw of envelopes) {
+      if (!raw || typeof raw !== "object") continue;
+      const pending = raw as PendingSelfModApply;
+      if (
+        !pending.changeSetId ||
+        !pending.runId ||
+        !Array.isArray(pending.files)
+      ) {
+        continue;
+      }
+      await peer
+        .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, {
+          runId: pending.runId,
+        })
+        .catch(() => undefined);
+      await controller.beginRun(pending.runId);
+      const paths = pending.applyResult
+        ? pending.applyResult.appliedRuns.flatMap((run) => run.paths)
+        : pending.files;
+      if (paths.length > 0) {
+        await controller.recordWrite(
+          pending.runId,
+          paths.map((filePath) => path.join(repoRoot, filePath)),
+          { captureSnapshot: false },
+        );
+      }
+      const restoredDecision = controller.finalizeIsolated(pending.runId);
+      const restored: PendingSelfModApply = {
+        ...pending,
+        commitHash: pending.commitHash ?? pending.changeSetId,
+        conversationId: pending.conversationId ?? "",
+        applyResult: restoredDecision,
+      };
+      if (restored.applyResult.appliedRuns.length === 0) continue;
+      getPendingSelfModApplies().set(restored.changeSetId, restored);
+      selfModRunRootIds.set(restored.runId, restored.runId);
+      selfModRunApplyModes.set(restored.runId, "author");
+      getStoreModService()?.persistPendingEnvelope(
+        restored.changeSetId,
+        restored,
+      );
+    }
   };
 
   const resumeTransition = async (payload: {
@@ -876,14 +1048,16 @@ export const createSelfModCoordinator = (
     }
     const controller = getController();
     if (pending.requiresProcessRestart) {
-      const discarded = controller
-        ? await controller.discard(pending.applyResult.appliedRuns)
-        : false;
-      if (!discarded) {
-        console.warn(
-          "[self-mod-hmr] Failed to discard Vite state before process restart.",
-        );
-      }
+      // A process restart reloads from the shared tree, not the Vite overlay.
+      // Rebuild that tree from the newly-applied HEAD plus every other active
+      // or pending logical delta so the restart sees X without erasing Y.
+      await getStoreModService()?.materializeLiveTree(
+        pending.applyResult.appliedRuns.flatMap((run) => run.paths),
+      );
+      await discardFailedApplyState(
+        pending.applyResult,
+        "process restart reconstruction",
+      );
       pendingApplyBatches.delete(transitionId);
       await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds, {
         allowDeferredReload: false,
@@ -942,6 +1116,8 @@ export const createSelfModCoordinator = (
     externalLifecycle,
     revertWithMorph,
     applyPendingWithMorph,
+    discardPending,
+    restorePending,
     applyAllPendingWithMorph: async () => {
       const selectors = [...getPendingSelfModApplies().keys()];
       const results: RuntimeSelfModApplyResult[] = [];

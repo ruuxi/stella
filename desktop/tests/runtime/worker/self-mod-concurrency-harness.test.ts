@@ -6,12 +6,24 @@
  * exact Git commit, morph dispatch, and HMR HTTP apply path. No LLM or API.
  */
 import { spawnSync } from "node:child_process";
-import { createServer, type Server } from "node:http";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createServer as createNetServer } from "node:net";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
+import { createServer, type ViteDevServer } from "vite";
+import { selfModHmrControl } from "../../../vite/self-mod-hmr-plugin.js";
 
 import { METHOD_NAMES } from "../../../../runtime/protocol/index.js";
 import { commitGitMessage } from "../../../../runtime/kernel/self-mod/git/commit.js";
@@ -25,6 +37,7 @@ import {
 import type { SqliteDatabase } from "../../../../runtime/kernel/storage/shared.js";
 import { StoreModStore } from "../../../../runtime/kernel/storage/store-mod-store.js";
 import {
+  attachPendingSelfModCards,
   createSelfModCoordinator,
   type PendingSelfModApply,
 } from "../../../../runtime/worker/self-mod-coordinator.js";
@@ -36,10 +49,29 @@ const git = (cwd: string, args: string[]): string => {
   return result.stdout;
 };
 
+const gitBytes = (cwd: string, args: string[]): Buffer => {
+  const result = spawnSync("git", args, { cwd });
+  if (result.status !== 0) throw new Error(result.stderr.toString("utf8"));
+  return result.stdout;
+};
+
+const reservePort = async (): Promise<number> =>
+  await new Promise((resolve, reject) => {
+    const server = createNetServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string")
+        return reject(new Error("No port"));
+      server.close((error) => (error ? reject(error) : resolve(address.port)));
+    });
+  });
+
 type ApplyPayload = {
   runs: Array<{
     runId: string;
-    files: Array<{ path: string; content?: string; deleted?: boolean }>;
+    protocolVersion: number;
+    files: Array<{ path: string; state?: { kind: string; text?: string } }>;
   }>;
 };
 
@@ -68,28 +100,30 @@ const createHarness = async () => {
   const service = new StoreModService(repoRoot, new StoreModStore(db));
 
   const hmrApplies: ApplyPayload[] = [];
-  const hmrServer: Server = createServer(async (request, response) => {
-    let raw = "";
-    for await (const chunk of request) raw += String(chunk);
-    if (request.url?.endsWith("/apply") && raw) {
-      hmrApplies.push(JSON.parse(raw) as ApplyPayload);
-    }
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, changedPaths: [] }));
+  const previousMode = process.env.STELLA_SELF_MOD_HMR_MODE;
+  process.env.STELLA_SELF_MOD_HMR_MODE = "live";
+  const port = await reservePort();
+  const hmrServer: ViteDevServer = await createServer({
+    root: repoRoot,
+    logLevel: "silent",
+    server: { host: "127.0.0.1", port, strictPort: true },
+    plugins: [selfModHmrControl({ repoRoot })],
   });
-  await new Promise<void>((resolve) =>
-    hmrServer.listen(0, "127.0.0.1", resolve),
-  );
-  const address = hmrServer.address();
-  if (!address || typeof address === "string") throw new Error("No HMR port");
+  if (previousMode === undefined) delete process.env.STELLA_SELF_MOD_HMR_MODE;
+  else process.env.STELLA_SELF_MOD_HMR_MODE = previousMode;
+  await hmrServer.listen();
+  const devServerUrl = hmrServer.resolvedUrls?.local[0];
+  if (!devServerUrl) throw new Error("No Vite HMR URL");
 
   const controller = createSelfModHmrController({
-    getDevServerUrl: () => `http://127.0.0.1:${address.port}`,
+    getDevServerUrl: () => devServerUrl,
     enabled: true,
     repoRoot,
+    observeApplyPayload: (payload) => hmrApplies.push(payload as ApplyPayload),
   });
   const pending = new Map<string, PendingSelfModApply>();
   const hostRequests: Array<{ method: string; params: unknown }> = [];
+  const statusPatches: Array<Record<string, unknown>> = [];
   const peer: WorkerPeerLike = {
     notify: () => {},
     request: async <TResult>(method: string, params?: unknown) => {
@@ -106,7 +140,7 @@ const createHarness = async () => {
     getRuntimeStore: () => null,
     getRepoRoot: () => repoRoot,
     getPendingSelfModApplies: () => pending,
-    patchSelfModApplyStatus: () => {},
+    patchSelfModApplyStatus: (args) => statusPatches.push(args),
   });
   const harness = {
     repoRoot,
@@ -117,8 +151,11 @@ const createHarness = async () => {
     coordinator,
     pending,
     hostRequests,
+    statusPatches,
     hmrApplies,
     hmrServer,
+    devServerUrl,
+    phaseAudits: [] as Array<Record<string, unknown>>,
   };
   harnesses.add(harness);
   return harness;
@@ -126,8 +163,13 @@ const createHarness = async () => {
 
 afterEach(async () => {
   for (const h of harnesses) {
+    await h.controller.forceResumeAll();
+    expect(await h.controller.getStatus()).toMatchObject({
+      inFlightPaths: 0,
+      appliedOverlayPaths: 0,
+    });
     h.db.close();
-    await new Promise<void>((resolve) => h.hmrServer.close(() => resolve()));
+    await h.hmrServer.close();
     await rm(h.repoRoot, { recursive: true, force: true });
     await rm(h.dbRoot, { recursive: true, force: true });
   }
@@ -142,6 +184,59 @@ const seed = async (h: Harness, file: string, content: string) => {
   git(h.repoRoot, ["commit", "-q", "-m", `seed ${file}`]);
 };
 
+const auditPhase = async (h: Harness, phase: string) => {
+  const head = await getGitHead(h.repoRoot);
+  const index = git(h.repoRoot, ["ls-files", "--stage", "-z"]);
+  const paths = git(h.repoRoot, [
+    "ls-files",
+    "--cached",
+    "--others",
+    "--exclude-standard",
+    "-z",
+  ])
+    .split("\0")
+    .filter((file) => Boolean(file) && !file.startsWith(".vite/"));
+  const disk = new Map<string, string>();
+  for (const file of paths) {
+    const absolute = path.join(h.repoRoot, file);
+    const stat = await lstat(absolute).catch(() => null);
+    if (!stat) {
+      disk.set(file, "<missing>");
+    } else if (stat.isSymbolicLink()) {
+      disk.set(file, `<symlink:${await readlink(absolute)}>`);
+    } else {
+      disk.set(
+        file,
+        await readFile(absolute)
+          .then((bytes) => bytes.toString("base64"))
+          .catch(() => "<vanished>"),
+      );
+    }
+  }
+  const attachedCardIds = [...h.pending.values()]
+    .map((pending) => pending.assistantMessageEventId)
+    .filter((eventId): eventId is string => Boolean(eventId));
+  expect(new Set(attachedCardIds).size).toBe(attachedCardIds.length);
+  for (const payload of h.hmrApplies) {
+    for (const run of payload.runs) {
+      expect(run.protocolVersion).toBe(2);
+      expect(run.files.every((file) => file.state)).toBe(true);
+    }
+  }
+  const hmrStatus = await h.controller.getStatus();
+  expect(hmrStatus).not.toBeNull();
+  h.phaseAudits.push({
+    phase,
+    head,
+    index,
+    disk,
+    pendingSelectors: [...h.pending.keys()],
+    attachedCardIds,
+    hmrPayloadCount: h.hmrApplies.length,
+    hmrStatus,
+  });
+};
+
 const start = async (h: Harness, runId: string) => {
   await h.controller.beginRun(runId);
   await h.coordinator.lifecycle.beginRun({
@@ -151,6 +246,7 @@ const start = async (h: Harness, runId: string) => {
     conversationId: `conv-${runId}`,
     mode: "author",
   });
+  await auditPhase(h, `start:${runId}`);
 };
 
 const write = async (
@@ -175,6 +271,25 @@ const write = async (
   }
   await h.coordinator.lifecycle.finishMediatedWrite({ capture });
   await h.controller.recordWrite(runId, [absolute]);
+  await auditPhase(h, `write:${runId}:${file}`);
+};
+
+const mutateRaw = async (
+  h: Harness,
+  runId: string,
+  file: string,
+  mutation: (absolutePath: string) => Promise<void>,
+) => {
+  const absolute = path.join(h.repoRoot, file);
+  const capture = await h.coordinator.lifecycle.beginMediatedWrite({
+    runId,
+    paths: [absolute],
+  });
+  await h.controller.recordWrite(runId, [absolute], { captureSnapshot: false });
+  await mutation(absolute);
+  await h.coordinator.lifecycle.finishMediatedWrite({ capture });
+  await h.controller.recordWrite(runId, [absolute]);
+  await auditPhase(h, `mutate:${runId}:${file}`);
 };
 
 const finalize = async (h: Harness, runId: string): Promise<string> => {
@@ -190,6 +305,7 @@ const finalize = async (h: Harness, runId: string): Promise<string> => {
     ([, value]) => value.conversationId === `conv-${runId}`,
   );
   if (!entry) throw new Error(`No pending selector for ${runId}`);
+  await auditPhase(h, `finalize:${runId}`);
   return entry[0];
 };
 
@@ -206,6 +322,7 @@ const apply = async (h: Harness, selector: string) => {
     ).transitionId;
     await h.coordinator.resumeTransition({ transitionId });
   }
+  await auditPhase(h, `apply:${selector}`);
   return result;
 };
 
@@ -229,6 +346,25 @@ describe("scripted self-mod concurrency matrix", () => {
     await write(h, "b", "desktop/src/b.ts", () => "export const b = 1;\n");
     const a = await finalize(h, "a");
     const b = await finalize(h, "b");
+    for (const pending of h.pending.values()) {
+      pending.conversationId = "conv-shared";
+      h.service.persistPendingEnvelope(pending.changeSetId, pending);
+    }
+    const cardPayloads: Array<{ changeSetId: string }> = [];
+    const cardIds = attachPendingSelfModCards({
+      pending: h.pending,
+      conversationId: "conv-shared",
+      append: (payload) => {
+        cardPayloads.push(payload);
+        return `card-${payload.changeSetId}`;
+      },
+      persist: (pending) =>
+        h.service.persistPendingEnvelope(pending.changeSetId, pending),
+    });
+    expect(new Set(cardIds).size).toBe(2);
+    expect(cardPayloads.map((payload) => payload.changeSetId).sort()).toEqual(
+      [a, b].sort(),
+    );
     await apply(h, a);
     expect(headFile(h, "desktop/src/a.ts")).toBe("export const a = 1;\n");
     expect(headFile(h, "desktop/src/b.ts")).toBeNull();
@@ -238,6 +374,12 @@ describe("scripted self-mod concurrency matrix", () => {
     expect(h.hmrApplies.at(-1)?.runs.map((run) => run.runId)).toEqual(["a"]);
     await apply(h, b);
     expect(headFile(h, "desktop/src/b.ts")).toBe("export const b = 1;\n");
+    expect(
+      h.statusPatches
+        .filter((patch) => patch.status === "applied")
+        .map((patch) => patch.eventId)
+        .sort(),
+    ).toEqual([...cardIds].sort());
   });
 
   it("(b,f) merges same-file disjoint regions in either apply order", async () => {
@@ -277,6 +419,14 @@ describe("scripted self-mod concurrency matrix", () => {
       h.coordinator.applyPendingWithMorph({ commitHash: a }),
       h.coordinator.applyPendingWithMorph({ commitHash: b }),
     ]);
+    for (const request of h.hostRequests.filter(
+      (entry) => entry.method === METHOD_NAMES.HOST_HMR_RUN_TRANSITION,
+    )) {
+      await h.coordinator.resumeTransition({
+        transitionId: (request.params as { transitionId: string }).transitionId,
+      });
+    }
+    await auditPhase(h, "simultaneous-apply");
     expect(results.every((result) => result.applied)).toBe(true);
     expect(headFile(h, "desktop/src/shared.ts")).toBe("ONE\ntwo\nTHREE\n");
   });
@@ -289,8 +439,13 @@ describe("scripted self-mod concurrency matrix", () => {
     await write(h, "a", "desktop/src/shared.ts", replace("same", "from-a"));
     await write(h, "b", "desktop/src/shared.ts", replace("from-a", "from-b"));
     const a = await finalize(h, "a");
-    await finalize(h, "b");
+    const b = await finalize(h, "b");
     const beforeHead = await getGitHead(h.repoRoot);
+    const beforeIndex = git(h.repoRoot, ["ls-files", "--stage", "-z"]);
+    const liveBefore = await readFile(
+      path.join(h.repoRoot, "desktop/src/shared.ts"),
+      "utf8",
+    );
     const result = await apply(h, a);
     expect(result.applied).toBe(false);
     expect(result.conflicts).toEqual([
@@ -300,7 +455,28 @@ describe("scripted self-mod concurrency matrix", () => {
       }),
     ]);
     expect(await getGitHead(h.repoRoot)).toBe(beforeHead);
+    expect(git(h.repoRoot, ["ls-files", "--stage", "-z"])).toBe(beforeIndex);
+    expect(
+      await readFile(path.join(h.repoRoot, "desktop/src/shared.ts"), "utf8"),
+    ).toBe(liveBefore);
+    expect(liveBefore).not.toMatch(/<<<<<<<|=======|>>>>>>>/);
+    expect([...h.pending.keys()].sort()).toEqual([a, b].sort());
     expect(h.hmrApplies).toHaveLength(0);
+
+    expect(await h.coordinator.discardPending({ commitHash: b })).toMatchObject(
+      { discarded: true, commitHash: b },
+    );
+    expect(await h.controller.getStatus()).toMatchObject({ inFlightPaths: 1 });
+    const retry = await apply(h, a);
+    expect(retry.applied).toBe(true);
+    expect(headFile(h, "desktop/src/shared.ts")).toBe("from-a\nkeep\n");
+    expect(
+      await readFile(path.join(h.repoRoot, "desktop/src/shared.ts"), "utf8"),
+    ).not.toMatch(/<<<<<<<|=======|>>>>>>>/);
+    expect(await h.controller.getStatus()).toMatchObject({
+      inFlightPaths: 0,
+      appliedOverlayPaths: 0,
+    });
   });
 
   it("(d) isolates a staggered run whose base includes another run's live edit", async () => {
@@ -358,7 +534,17 @@ describe("scripted self-mod concurrency matrix", () => {
     const moved = await commitGitMessage({
       repoRoot: h.repoRoot,
       subject: "external head move",
-      files: [{ path: "desktop/src/shared.ts", content: "one\ntwo\nTHREE\n" }],
+      files: [
+        {
+          path: "desktop/src/shared.ts",
+          state: {
+            kind: "blob",
+            mode: "100644",
+            contentBase64: Buffer.from("one\ntwo\nTHREE\n").toString("base64"),
+            text: "one\ntwo\nTHREE\n",
+          },
+        },
+      ],
     });
     expect(moved).toBeTruthy();
     await apply(h, a);
@@ -385,6 +571,14 @@ describe("scripted self-mod concurrency matrix", () => {
       await finalize(h, id);
     }
     const results = await h.coordinator.applyAllPendingWithMorph();
+    for (const request of h.hostRequests.filter(
+      (entry) => entry.method === METHOD_NAMES.HOST_HMR_RUN_TRANSITION,
+    )) {
+      await h.coordinator.resumeTransition({
+        transitionId: (request.params as { transitionId: string }).transitionId,
+      });
+    }
+    await auditPhase(h, "apply-all");
     expect(results.every((result) => result.applied)).toBe(true);
     expect(h.pending.size).toBe(0);
     for (const id of ["a", "b", "c"]) {
@@ -403,8 +597,223 @@ describe("scripted self-mod concurrency matrix", () => {
     expect(h.hmrApplies.at(-1)?.runs).toEqual([
       expect.objectContaining({
         runId: "solo",
-        files: [{ path: "desktop/src/solo.ts", content: "solo\n" }],
+        protocolVersion: 2,
+        files: [
+          expect.objectContaining({
+            path: "desktop/src/solo.ts",
+            state: expect.objectContaining({ text: "solo\n" }),
+          }),
+        ],
       }),
     ]);
+  });
+
+  it("preserves binary bytes, executable modes, and symlink objects", async () => {
+    const h = await createHarness();
+    await mkdir(path.join(h.repoRoot, "runtime/worker"), { recursive: true });
+    await writeFile(
+      path.join(h.repoRoot, "runtime/worker/binary.bin"),
+      Buffer.from([0, 1, 2]),
+    );
+    await writeFile(
+      path.join(h.repoRoot, "runtime/worker/tool.sh"),
+      "#!/bin/sh\necho old\n",
+    );
+    await chmod(path.join(h.repoRoot, "runtime/worker/tool.sh"), 0o644);
+    await writeFile(path.join(h.repoRoot, "runtime/worker/target-a.ts"), "a\n");
+    await writeFile(path.join(h.repoRoot, "runtime/worker/target-b.ts"), "b\n");
+    await symlink(
+      "target-a.ts",
+      path.join(h.repoRoot, "runtime/worker/link.ts"),
+    );
+    git(h.repoRoot, ["add", "runtime/worker"]);
+    git(h.repoRoot, ["commit", "-q", "-m", "seed raw states"]);
+
+    await start(h, "raw");
+    await mutateRaw(h, "raw", "runtime/worker/binary.bin", async (absolute) => {
+      await writeFile(absolute, Buffer.from([0, 255, 254, 3]));
+    });
+    await mutateRaw(h, "raw", "runtime/worker/tool.sh", async (absolute) => {
+      await chmod(absolute, 0o755);
+    });
+    await mutateRaw(h, "raw", "runtime/worker/link.ts", async (absolute) => {
+      await rm(absolute);
+      await symlink("target-b.ts", absolute);
+    });
+    const selector = await finalize(h, "raw");
+    expect((await apply(h, selector)).applied).toBe(true);
+
+    expect(
+      gitBytes(h.repoRoot, ["show", "HEAD:runtime/worker/binary.bin"]),
+    ).toEqual(Buffer.from([0, 255, 254, 3]));
+    expect(
+      git(h.repoRoot, ["ls-tree", "HEAD", "runtime/worker/tool.sh"]),
+    ).toMatch(/^100755 /);
+    expect(
+      git(h.repoRoot, ["ls-tree", "HEAD", "runtime/worker/link.ts"]),
+    ).toMatch(/^120000 /);
+    expect(
+      await readlink(path.join(h.repoRoot, "runtime/worker/link.ts")),
+    ).toBe("target-b.ts");
+    expect(
+      (
+        await lstat(path.join(h.repoRoot, "runtime/worker/link.ts"))
+      ).isSymbolicLink(),
+    ).toBe(true);
+  });
+
+  it("preserves a user-staged selected-path index entry", async () => {
+    const h = await createHarness();
+    await seed(h, "desktop/src/staged.ts", "base\n");
+    const absolute = path.join(h.repoRoot, "desktop/src/staged.ts");
+    await writeFile(absolute, "user staged\n");
+    git(h.repoRoot, ["add", "desktop/src/staged.ts"]);
+    await writeFile(absolute, "base\n");
+
+    await start(h, "agent");
+    await write(h, "agent", "desktop/src/staged.ts", () => "agent\n");
+    const selector = await finalize(h, "agent");
+    expect((await apply(h, selector)).applied).toBe(true);
+    expect(headFile(h, "desktop/src/staged.ts")).toBe("agent\n");
+    expect(git(h.repoRoot, ["show", ":desktop/src/staged.ts"])).toBe(
+      "user staged\n",
+    );
+  });
+
+  it("merges a chmod-only delta with another run's text hunk", async () => {
+    const h = await createHarness();
+    await mkdir(path.join(h.repoRoot, "runtime/worker"), { recursive: true });
+    const relative = "runtime/worker/mode-and-text.sh";
+    const absolute = path.join(h.repoRoot, relative);
+    await writeFile(absolute, "#!/bin/sh\necho old\n", { mode: 0o644 });
+    git(h.repoRoot, ["add", relative]);
+    git(h.repoRoot, ["commit", "-q", "-m", "seed mode merge"]);
+    await start(h, "mode");
+    await start(h, "text");
+    await mutateRaw(h, "mode", relative, async (file) => chmod(file, 0o755));
+    await write(h, "text", relative, replace("old", "new"));
+    const modeSelector = await finalize(h, "mode");
+    const textSelector = await finalize(h, "text");
+    expect((await apply(h, textSelector)).applied).toBe(true);
+    expect(headFile(h, relative)).toBe("#!/bin/sh\necho new\n");
+    expect(git(h.repoRoot, ["ls-tree", "HEAD", relative])).toMatch(/^100644 /);
+    expect((await apply(h, modeSelector)).applied).toBe(true);
+    expect(headFile(h, relative)).toBe("#!/bin/sh\necho new\n");
+    expect(git(h.repoRoot, ["ls-tree", "HEAD", relative])).toMatch(/^100755 /);
+  });
+
+  it("sends explicit noop states in the versioned HMR protocol", async () => {
+    const h = await createHarness();
+    await seed(h, "runtime/worker/restart.ts", "old\n");
+    await seed(h, "desktop/src/noop.ts", "same\n");
+    await start(h, "noop");
+    await write(h, "noop", "runtime/worker/restart.ts", () => "new\n");
+    await h.controller.recordWrite(
+      "noop",
+      [path.join(h.repoRoot, "desktop/src/noop.ts")],
+      { captureSnapshot: false },
+    );
+    const selector = await finalize(h, "noop");
+    expect((await apply(h, selector)).applied).toBe(true);
+    const payload = h.hmrApplies.at(-1);
+    expect(payload?.runs[0]).toMatchObject({ protocolVersion: 2 });
+    expect(payload?.runs[0]?.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "desktop/src/noop.ts",
+          state: expect.objectContaining({ kind: "blob", text: "same\n" }),
+        }),
+      ]),
+    );
+  });
+
+  it("rebuilds process-restart disk as applied HEAD plus every live delta", async () => {
+    const h = await createHarness();
+    await writeFile(path.join(h.repoRoot, "package.json"), '{"name":"old"}\n');
+    git(h.repoRoot, ["add", "package.json"]);
+    git(h.repoRoot, ["commit", "-q", "-m", "seed package"]);
+    await start(h, "x");
+    await start(h, "y");
+    await write(h, "x", "package.json", () => '{"name":"x"}\n');
+    await write(h, "y", "desktop/src/y.ts", () => "export const y = true;\n");
+    const x = await finalize(h, "x");
+    await finalize(h, "y");
+    expect((await apply(h, x)).applied).toBe(true);
+    expect(headFile(h, "package.json")).toBe('{"name":"x"}\n');
+    expect(headFile(h, "desktop/src/y.ts")).toBeNull();
+    expect(await readFile(path.join(h.repoRoot, "package.json"), "utf8")).toBe(
+      '{"name":"x"}\n',
+    );
+    expect(
+      await readFile(path.join(h.repoRoot, "desktop/src/y.ts"), "utf8"),
+    ).toBe("export const y = true;\n");
+  });
+
+  it("restores a pending selector and logical snapshot after worker restart", async () => {
+    const h = await createHarness();
+    await start(h, "persisted");
+    await write(
+      h,
+      "persisted",
+      "desktop/src/persisted.ts",
+      () => "persisted\n",
+    );
+    const selector = await finalize(h, "persisted");
+    expect(h.service.listPendingEnvelopes()).toHaveLength(1);
+
+    const restoredService = new StoreModService(
+      h.repoRoot,
+      new StoreModStore(h.db),
+    );
+    const restoredPayloads: ApplyPayload[] = [];
+    const restoredController = createSelfModHmrController({
+      getDevServerUrl: () => h.devServerUrl,
+      enabled: true,
+      repoRoot: h.repoRoot,
+      observeApplyPayload: (payload) =>
+        restoredPayloads.push(payload as ApplyPayload),
+    });
+    const restoredPending = new Map<string, PendingSelfModApply>();
+    const restoredRequests: Array<{ method: string; params: unknown }> = [];
+    const restoredCoordinator = createSelfModCoordinator({
+      peer: {
+        notify: () => {},
+        request: async <TResult>(method: string, params?: unknown) => {
+          restoredRequests.push({ method, params });
+          return {} as TResult;
+        },
+        registerRequestHandler: () => {},
+        registerNotificationHandler: () => {},
+      },
+      getController: () => restoredController,
+      getStoreModService: () => restoredService,
+      getRuntimeStore: () => null,
+      getRepoRoot: () => h.repoRoot,
+      getPendingSelfModApplies: () => restoredPending,
+      patchSelfModApplyStatus: () => {},
+    });
+    await restoredCoordinator.restorePending(
+      restoredService.listPendingEnvelopes(),
+    );
+    expect([...restoredPending.keys()]).toEqual([selector]);
+    expect(
+      await restoredCoordinator.applyPendingWithMorph({ commitHash: selector }),
+    ).toMatchObject({ applied: true });
+    const transition = restoredRequests.find(
+      (request) => request.method === METHOD_NAMES.HOST_HMR_RUN_TRANSITION,
+    );
+    expect(transition).toBeTruthy();
+    await restoredCoordinator.resumeTransition({
+      transitionId: (transition!.params as { transitionId: string })
+        .transitionId,
+    });
+    expect(headFile(h, "desktop/src/persisted.ts")).toBe("persisted\n");
+    expect(restoredPayloads.at(-1)?.runs[0]?.protocolVersion).toBe(2);
+    expect(
+      new StoreModService(
+        h.repoRoot,
+        new StoreModStore(h.db),
+      ).listPendingEnvelopes(),
+    ).toHaveLength(0);
   });
 });

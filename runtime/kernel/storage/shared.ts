@@ -166,14 +166,13 @@ export type RuntimeThreadCompactionEntry = RuntimeThreadSessionEntryBase & {
   fromHook?: boolean;
 };
 
-export type RuntimeThreadBranchSummaryEntry =
-  RuntimeThreadSessionEntryBase & {
-    type: "branch_summary";
-    fromId: string;
-    summary: string;
-    details?: unknown;
-    fromHook?: boolean;
-  };
+export type RuntimeThreadBranchSummaryEntry = RuntimeThreadSessionEntryBase & {
+  type: "branch_summary";
+  fromId: string;
+  summary: string;
+  details?: unknown;
+  fromHook?: boolean;
+};
 
 export type RuntimeThreadCustomEntry = RuntimeThreadSessionEntryBase & {
   type: "custom";
@@ -181,13 +180,12 @@ export type RuntimeThreadCustomEntry = RuntimeThreadSessionEntryBase & {
   data?: unknown;
 };
 
-export type RuntimeThreadCustomMessageEntry =
-  RuntimeThreadSessionEntryBase & {
-    type: "custom_message";
-    customType: string;
-    content: string | (TextContent | ImageContent)[];
-    display: boolean;
-  };
+export type RuntimeThreadCustomMessageEntry = RuntimeThreadSessionEntryBase & {
+  type: "custom_message";
+  customType: string;
+  content: string | (TextContent | ImageContent)[];
+  display: boolean;
+};
 
 export type RuntimeThreadLabelEntry = RuntimeThreadSessionEntryBase & {
   type: "label";
@@ -253,11 +251,13 @@ export type RuntimeRunEvent = {
     commitHash: string;
     files: string[];
     batchIndex: number;
-    status?: "pending" | "applied";
+    status?: "pending" | "applied" | "discarded";
   };
 };
 
-export type RuntimeSelfModApplied = NonNullable<RuntimeRunEvent["selfModApplied"]>;
+export type RuntimeSelfModApplied = NonNullable<
+  RuntimeRunEvent["selfModApplied"]
+>;
 
 export type SqliteStatement = {
   run(...params: unknown[]): unknown;
@@ -342,7 +342,9 @@ export const toJsonValueString = (value: unknown): string | null => {
   }
 };
 
-export const parseJsonRecord = (value: string | null): Record<string, unknown> | undefined => {
+export const parseJsonRecord = (
+  value: string | null,
+): Record<string, unknown> | undefined => {
   if (!value) return undefined;
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -397,13 +399,17 @@ export const isUserContent = (
   value: unknown,
 ): value is string | (TextContent | ImageContent)[] =>
   typeof value === "string" ||
-  (Array.isArray(value) && value.every((entry) => isTextContent(entry) || isImageContent(entry)));
+  (Array.isArray(value) &&
+    value.every((entry) => isTextContent(entry) || isImageContent(entry)));
 
 const isAssistantContent = (
   value: unknown,
 ): value is (TextContent | ThinkingContent | ToolCall)[] =>
   Array.isArray(value) &&
-  value.every((entry) => isTextContent(entry) || isThinkingContent(entry) || isToolCall(entry));
+  value.every(
+    (entry) =>
+      isTextContent(entry) || isThinkingContent(entry) || isToolCall(entry),
+  );
 
 const isToolResultContent = (
   value: unknown,
@@ -566,7 +572,8 @@ export const parseRuntimeThreadPayload = (
         ...(typeof record.responseId === "string" && record.responseId.trim()
           ? { responseId: record.responseId }
           : {}),
-        ...(typeof record.errorMessage === "string" && record.errorMessage.trim()
+        ...(typeof record.errorMessage === "string" &&
+        record.errorMessage.trim()
           ? { errorMessage: record.errorMessage }
           : {}),
       } as unknown as PersistedRuntimeThreadPayload;
@@ -602,17 +609,23 @@ export const parseRuntimeSelfModApplied = (
   if (!record) return undefined;
   const commitHash =
     typeof record.commitHash === "string" ? record.commitHash.trim() : "";
-  const batchIndex = typeof record.batchIndex === "number" && Number.isFinite(record.batchIndex)
-    ? Math.floor(record.batchIndex)
-    : null;
+  const batchIndex =
+    typeof record.batchIndex === "number" && Number.isFinite(record.batchIndex)
+      ? Math.floor(record.batchIndex)
+      : null;
   const files = Array.isArray(record.files)
-    ? record.files.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    ? record.files.filter(
+        (entry): entry is string =>
+          typeof entry === "string" && entry.trim().length > 0,
+      )
     : [];
   if (!commitHash || batchIndex == null || files.length === 0) {
     return undefined;
   }
   const status =
-    record.status === "pending" || record.status === "applied"
+    record.status === "pending" ||
+    record.status === "applied" ||
+    record.status === "discarded"
       ? record.status
       : undefined;
   return {
@@ -623,7 +636,9 @@ export const parseRuntimeSelfModApplied = (
   };
 };
 
-export const eventTextFromPayload = (payload?: Record<string, unknown>): string => {
+export const eventTextFromPayload = (
+  payload?: Record<string, unknown>,
+): string => {
   const text = payload?.contextText ?? payload?.text;
   return typeof text === "string" ? text.trim() : "";
 };

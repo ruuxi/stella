@@ -7,7 +7,7 @@ import { StoreModStore } from "../storage/store-mod-store.js";
 import {
   commitGitMessage,
   getStagedDiffPreview,
-  readGitHeadFile,
+  readGitHeadFileState,
   type ExactGitFileState,
 } from "./git/commit.js";
 import { getGitCommitParent, listGitDirtyFiles } from "./git/log.js";
@@ -19,11 +19,18 @@ import type {
   StellaSourceRevisionOrigin,
   StellaSourceHistoryStore,
 } from "../storage/stella-source-history-store.js";
+import crypto from "node:crypto";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import {
   LogicalSelfModChangeSetStore,
+  readWorkingTreeFileState,
+  type FrozenLogicalChangeSet,
+  type LogicalFileState,
   type LogicalFileConflict,
   type MediatedWriteCapture,
 } from "./logical-change-set.js";
+import { acquireSelfModMutationLock } from "./mutation-lock.js";
 
 export type CommitMessageProviderArgs = {
   /** What the agent was asked to do (subagent task description). */
@@ -68,11 +75,22 @@ type PreparedAuthorChange = {
   featureTitle?: string;
 };
 
+type PersistedPreparedAuthorChange = {
+  changeSet: FrozenLogicalChangeSet;
+  prepared: Omit<PreparedAuthorChange, "activeRun"> & {
+    activeRun: Omit<ActiveSelfModRun, "baselineDirtyFiles"> & {
+      baselineDirtyFiles: string[];
+    };
+  };
+  envelope?: unknown;
+};
+
 export type ApplyPreparedAuthorResult =
   | {
       status: "applied";
       commitHash: string | null;
       files: ExactGitFileState[];
+      selectedFiles: ExactGitFileState[];
       noopPaths: string[];
     }
   | { status: "conflicts"; conflicts: LogicalFileConflict[] };
@@ -144,6 +162,7 @@ export class StoreModService {
     string,
     PreparedAuthorChange
   >();
+  private readonly pendingEnvelopes = new Map<string, unknown>();
   /** Serializes merge-against-HEAD + exact commit as one logical transaction. */
   private authorApplyTail: Promise<void> = Promise.resolve();
   /**
@@ -171,6 +190,85 @@ export class StoreModService {
         (error as Error).message,
       );
     }
+    this.restorePreparedAuthorChanges();
+  }
+
+  private restorePreparedAuthorChanges(): void {
+    for (const row of this.store.listPendingSelfModChangeSets(this.repoRoot)) {
+      const persisted = row.payload as PersistedPreparedAuthorChange;
+      if (
+        !persisted ||
+        typeof persisted !== "object" ||
+        !persisted.changeSet ||
+        !persisted.prepared?.activeRun
+      ) {
+        this.store.deletePendingSelfModChangeSet(row.changeSetId);
+        continue;
+      }
+      const activeRun = persisted.prepared.activeRun;
+      this.logicalChanges.restore(persisted.changeSet);
+      this.preparedAuthorChanges.set(row.changeSetId, {
+        ...persisted.prepared,
+        activeRun: {
+          ...activeRun,
+          baselineDirtyFiles: new Set(activeRun.baselineDirtyFiles ?? []),
+        },
+      });
+      if (persisted.envelope !== undefined) {
+        this.pendingEnvelopes.set(row.changeSetId, persisted.envelope);
+      }
+    }
+  }
+
+  private persistPreparedAuthorChange(changeSetId: string): void {
+    const changeSet = this.logicalChanges.get(changeSetId);
+    const prepared = this.preparedAuthorChanges.get(changeSetId);
+    if (!changeSet || !prepared) return;
+    this.store.upsertPendingSelfModChangeSet({
+      changeSetId,
+      repoRoot: this.repoRoot,
+      createdAt: changeSet.createdAt,
+      payload: {
+        changeSet,
+        prepared: {
+          ...prepared,
+          activeRun: {
+            ...prepared.activeRun,
+            baselineDirtyFiles: [...prepared.activeRun.baselineDirtyFiles],
+          },
+        },
+        ...(this.pendingEnvelopes.has(changeSetId)
+          ? { envelope: this.pendingEnvelopes.get(changeSetId) }
+          : {}),
+      } satisfies PersistedPreparedAuthorChange,
+    });
+  }
+
+  persistPendingEnvelope(changeSetId: string, envelope: unknown): void {
+    if (!this.preparedAuthorChanges.has(changeSetId)) return;
+    this.pendingEnvelopes.set(changeSetId, envelope);
+    this.persistPreparedAuthorChange(changeSetId);
+  }
+
+  listPendingEnvelopes(): unknown[] {
+    return this.logicalChanges.listPending().map((changeSet) => {
+      const envelope = this.pendingEnvelopes.get(changeSet.changeSetId);
+      if (envelope !== undefined) return envelope;
+      const prepared = this.preparedAuthorChanges.get(changeSet.changeSetId);
+      return {
+        commitHash: changeSet.changeSetId,
+        changeSetId: changeSet.changeSetId,
+        runId: changeSet.runId,
+        conversationId: prepared?.conversationTrailer ?? "",
+        files: changeSet.files.map((file) => file.path),
+      };
+    });
+  }
+
+  listPendingChangeSetIds(): string[] {
+    return this.logicalChanges
+      .listPending()
+      .map((changeSet) => changeSet.changeSetId);
   }
 
   async beginSelfModRun(args: {
@@ -214,6 +312,81 @@ export class StoreModService {
   cancelSelfModRun(runId: string): void {
     this.activeRuns.delete(runId);
     this.logicalChanges.cancelRun(runId);
+  }
+
+  discardPreparedAuthorChange(changeSetId: string): boolean {
+    const hadPrepared = this.preparedAuthorChanges.delete(changeSetId);
+    const discarded = this.logicalChanges.discard(changeSetId);
+    this.pendingEnvelopes.delete(changeSetId);
+    this.store.deletePendingSelfModChangeSet(changeSetId);
+    return hadPrepared || discarded !== null;
+  }
+
+  expirePreparedAuthorChanges(cutoffMs: number): string[] {
+    const expired = this.logicalChanges.expireOlderThan(cutoffMs);
+    for (const changeSet of expired) {
+      this.preparedAuthorChanges.delete(changeSet.changeSetId);
+      this.pendingEnvelopes.delete(changeSet.changeSetId);
+      this.store.deletePendingSelfModChangeSet(changeSet.changeSetId);
+    }
+    return expired.map((changeSet) => changeSet.changeSetId);
+  }
+
+  /**
+   * Reconstruct the shared working tree after a selected commit changes HEAD.
+   * HEAD is the applied layer; every still-pending or active logical delta is
+   * replayed above it. The repo-global mutation lock prevents tools from
+   * observing or writing through a partially reconstructed tree.
+   */
+  async materializeLiveTree(paths: Iterable<string>): Promise<void> {
+    const release = await acquireSelfModMutationLock(
+      this.repoRoot,
+      `materialize:${crypto.randomUUID()}`,
+    );
+    try {
+      const states = await this.logicalChanges.buildLiveTree(
+        paths,
+        (filePath) => readGitHeadFileState(this.repoRoot, filePath),
+        (filePath) =>
+          readWorkingTreeFileState(path.join(this.repoRoot, filePath)),
+      );
+      for (const [filePath, state] of states) {
+        await this.writeWorkingTreeState(filePath, state);
+      }
+    } finally {
+      release();
+    }
+  }
+
+  private async writeWorkingTreeState(
+    repoRelativePath: string,
+    state: LogicalFileState,
+  ): Promise<void> {
+    const destination = path.join(this.repoRoot, repoRelativePath);
+    if (state.kind === "missing") {
+      await fs.rm(destination, { force: true, recursive: true });
+      return;
+    }
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    const temporary = `${destination}.stella-selfmod-${crypto.randomUUID()}`;
+    try {
+      if (state.kind === "symlink") {
+        await fs.symlink(
+          Buffer.from(state.contentBase64, "base64").toString("utf8"),
+          temporary,
+        );
+      } else {
+        await fs.writeFile(
+          temporary,
+          Buffer.from(state.contentBase64, "base64"),
+          { mode: state.mode === "100755" ? 0o755 : 0o644 },
+        );
+        await fs.chmod(temporary, state.mode === "100755" ? 0o755 : 0o644);
+      }
+      await fs.rename(temporary, destination);
+    } finally {
+      await fs.rm(temporary, { force: true, recursive: true }).catch(() => {});
+    }
   }
 
   /**
@@ -331,6 +504,7 @@ export class StoreModService {
         ...(featureIdTrailer ? { featureIdTrailer } : {}),
         ...(featureTitle ? { featureTitle } : {}),
       });
+      this.persistPreparedAuthorChange(changeSet.changeSetId);
       return {
         // Pending cards historically call this field commitHash. It is an
         // opaque logical selector until apply creates the real commit.
@@ -456,19 +630,37 @@ export class StoreModService {
   ): Promise<ApplyPreparedAuthorResult | null> {
     const prepared = this.preparedAuthorChanges.get(changeSetId);
     if (!prepared) return null;
-    const merged = await this.logicalChanges.mergeAgainst(
-      changeSetId,
-      (filePath) => readGitHeadFile(this.repoRoot, filePath),
-    );
-    if (merged.status === "conflicts") {
-      return merged;
-    }
+    const mergeBox: {
+      value: Awaited<
+        ReturnType<LogicalSelfModChangeSetStore["mergeAgainst"]>
+      > | null;
+    } = { value: null };
     const commitHash = await commitGitMessage({
       repoRoot: this.repoRoot,
       subject: prepared.subject,
       trailers: prepared.trailers,
-      files: merged.files,
+      files: async () => {
+        const result = await this.logicalChanges.mergeAgainst(
+          changeSetId,
+          (filePath) => readGitHeadFileState(this.repoRoot, filePath),
+        );
+        mergeBox.value = result;
+        return result.status === "clean"
+          ? result.files.map((file) => ({ path: file.path, state: file.state }))
+          : [];
+      },
     });
+    const merged = mergeBox.value;
+    if (!merged) return null;
+    if (merged.status === "conflicts") return merged;
+    const files = merged.files.map((file) => ({
+      path: file.path,
+      state: file.state,
+    }));
+    const selectedFiles = merged.selectedFiles.map((file) => ({
+      path: file.path,
+      state: file.state,
+    }));
     if (commitHash) {
       if (prepared.featureIdTrailer) {
         try {
@@ -504,11 +696,14 @@ export class StoreModService {
       });
     }
     this.preparedAuthorChanges.delete(changeSetId);
+    this.pendingEnvelopes.delete(changeSetId);
+    this.store.deletePendingSelfModChangeSet(changeSetId);
     this.logicalChanges.markApplied(changeSetId);
     return {
       status: "applied",
       commitHash,
-      files: merged.files,
+      files,
+      selectedFiles,
       noopPaths: merged.noopPaths,
     };
   }

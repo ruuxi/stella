@@ -68,7 +68,7 @@ type AgentEventPayload = {
     commitHash: string;
     files: string[];
     batchIndex: number;
-    status?: "pending" | "applied";
+    status?: "pending" | "applied" | "discarded";
   };
   agentId?: string;
   agentType?: AgentIdLike;
@@ -868,7 +868,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           commitHash: string;
           files: string[];
           batchIndex: number;
-          status?: "pending" | "applied";
+          status?: "pending" | "applied" | "discarded";
         };
         error?: string;
         reason?: string;
@@ -1167,6 +1167,18 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     if (!stellaHostRunner) throw new Error("Stella runtime not available");
     return await stellaHostRunner.applyAllSelfModCommits();
   });
+
+  ipcMain.handle(
+    "selfmod:discardPending",
+    async (event, payload: { commitHash?: string }) => {
+      if (!options.assertPrivilegedSender(event, "selfmod:discardPending")) {
+        throw new Error("Blocked untrusted request.");
+      }
+      const stellaHostRunner = options.getStellaHostRunner();
+      if (!stellaHostRunner) throw new Error("Stella runtime not available");
+      return await stellaHostRunner.discardPendingSelfModCommit(payload);
+    },
+  );
 
   ipcMain.handle(
     "selfmod:revert",

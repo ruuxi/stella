@@ -4,5 +4,5 @@ export type SelfModApplied = {
   runId?: string;
   files: string[];
   batchIndex: number;
-  status?: "pending" | "applied";
+  status?: "pending" | "applied" | "discarded";
 };

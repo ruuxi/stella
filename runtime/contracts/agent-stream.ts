@@ -8,7 +8,7 @@ export type SelfModAppliedData = {
   featureId: string;
   files: string[];
   batchIndex: number;
-  status?: "pending" | "applied";
+  status?: "pending" | "applied" | "discarded";
 };
 
 export type AgentResponseTarget =

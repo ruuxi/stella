@@ -516,40 +516,14 @@ const isClearlyReadOnlyExecProgram = (source: string): boolean => {
 };
 
 const getFsLockKey = (
-  toolName: string,
-  args: Record<string, unknown>,
-  context?: ToolContext,
+  _toolName: string,
+  _args: Record<string, unknown>,
+  _context?: ToolContext,
 ): string | null => {
-  if (toolName === "Write" || toolName === "Edit") {
-    const filePath = normalizeString(
-      args.file_path ?? args.path ?? args.target_path,
-    );
-    if (!filePath) return "*";
-    return normalizeFsPathKey(
-      filePath,
-      normalizeString(
-        args.working_directory ?? args.cwd ?? context?.stellaAppDir,
-      ),
-    );
-  }
-  if (toolName === "Bash") {
-    const command = normalizeString(args.command);
-    if (!command) return "*";
-    const pathFromCommand = extractBashPath(command);
-    if (!pathFromCommand) return "*";
-    return normalizeFsPathKey(
-      pathFromCommand,
-      normalizeString(
-        args.working_directory ?? args.cwd ?? context?.stellaAppDir,
-      ),
-    );
-  }
-  if (toolName === "Exec") {
-    const source = normalizeString(args.source ?? args.code);
-    if (!source) return "*";
-    return isClearlyReadOnlyExecProgram(source) ? null : "*";
-  }
-  return null;
+  // Every tool enters the same transaction boundary. Tool-name/path parsing
+  // was incomplete for the production apply_patch/exec_command/write_stdin/
+  // StrReplace/parallel surfaces and allowed capture+mutation interleaving.
+  return "*";
 };
 
 const isSpawnAgentTool = (toolName: string): boolean =>
