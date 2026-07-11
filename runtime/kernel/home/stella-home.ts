@@ -40,7 +40,7 @@ export type StellaDataDir = {
  * they're reconciled into `${stellaDataDir}/agents/`, which is what the runtime
  * loads (so users can edit prompts and shipped updates still flow through).
  */
-const resolveBundledAgentsDir = (stellaAppDir: string): string =>
+export const resolveBundledAgentsDir = (stellaAppDir: string): string =>
   path.join(stellaAppDir, "runtime", "extensions", "stella-runtime", "agents");
 
 const resolveBundledPromptsDir = (stellaAppDir: string): string =>
@@ -155,6 +155,7 @@ export const ensureStellaDataDirSeeded = async (
     await reconcileRemotePromptManifest(
       promptResolution.manifest,
       stellaDataDir,
+      resolveBundledAgentsDir(stellaAppDir),
     );
   }
 
@@ -201,6 +202,34 @@ export const ensureStellaDataDirSeeded = async (
     personalitySync,
     promptResolution: promptResolution.source,
   };
+};
+
+/**
+ * Re-run only the remote prompt portion after the renderer supplies a site URL
+ * later than main-process startup. Agent bodies are live-read per turn and the
+ * extension watcher observes the atomic replacements.
+ */
+export const syncStellaPromptSnapshot = async (
+  stellaAppDir: string,
+  stellaDataDir: string,
+  promptSiteUrl: string,
+): Promise<PromptManifestResolution> => {
+  const resolution = await resolvePromptManifest({
+    stellaDataDir,
+    siteUrl: promptSiteUrl,
+  });
+  if (resolution.manifest) {
+    await reconcileRemotePromptManifest(
+      resolution.manifest,
+      stellaDataDir,
+      resolveBundledAgentsDir(stellaAppDir),
+    );
+    await reconcileSelectedPersonality(
+      stellaDataDir,
+      resolution.manifest.revision,
+    );
+  }
+  return resolution;
 };
 
 export const resolveStellaDataDir = async (

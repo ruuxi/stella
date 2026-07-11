@@ -9,7 +9,10 @@ import {
   loadConnectorTokenPayload,
   saveConnectorTokenPayload,
 } from "../../../runtime/kernel/connectors/oauth.js";
-import { ensureStellaDataDirSeeded } from "../../../runtime/kernel/home/stella-home.js";
+import {
+  ensureStellaDataDirSeeded,
+  syncStellaPromptSnapshot,
+} from "../../../runtime/kernel/home/stella-home.js";
 import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
 import {
   createStellaHostRunner,
@@ -48,18 +51,8 @@ const IDLE_HMR_STATE: SelfModHmrState = {
 // implies a process restart (which resets this module state and re-seeds),
 // so an in-process reset never needs to re-sync.
 let stellaDataDirSeedingPromise: Promise<void> | null = null;
-
-const waitForPromptSiteUrl = async (
-  getSiteUrl: () => string | null,
-): Promise<string | null> => {
-  const deadline = Date.now() + 1_500;
-  let siteUrl = getSiteUrl();
-  while (!siteUrl && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    siteUrl = getSiteUrl();
-  }
-  return siteUrl;
-};
+let configuredPromptSyncPromise: Promise<void> | null = null;
+let lastConfiguredPromptSiteUrl: string | null = null;
 
 const ensureStellaDataDirSeededOnce = (
   stellaAppDir: string,
@@ -67,13 +60,53 @@ const ensureStellaDataDirSeededOnce = (
   promptSiteUrl?: string | null,
 ): Promise<void> => {
   if (!stellaDataDirSeedingPromise) {
-    stellaDataDirSeedingPromise = ensureStellaDataDirSeeded(
+    const attempt = ensureStellaDataDirSeeded(
       stellaAppDir,
       stellaDataDirPath,
       { promptSiteUrl },
     ).then(() => undefined);
+    stellaDataDirSeedingPromise = attempt;
+    void attempt.catch(() => {
+      if (stellaDataDirSeedingPromise === attempt) {
+        stellaDataDirSeedingPromise = null;
+      }
+    });
   }
   return stellaDataDirSeedingPromise;
+};
+
+export const syncConfiguredPromptSiteUrl = async (
+  context: BootstrapContext,
+  siteUrl: string,
+): Promise<void> => {
+  const normalized = siteUrl.trim().replace(/\/+$/, "");
+  if (!normalized || normalized === lastConfiguredPromptSiteUrl) return;
+  const previous = configuredPromptSyncPromise ?? Promise.resolve();
+  const attempt = previous.catch(() => undefined).then(async () => {
+    if (normalized === lastConfiguredPromptSiteUrl) return;
+    const stellaAppDir = context.state.stellaAppDir;
+    const stellaDataDirPath = context.state.stellaDataDirPath;
+    if (!stellaAppDir || !stellaDataDirPath) return;
+    await ensureStellaDataDirSeededOnce(
+      stellaAppDir,
+      stellaDataDirPath,
+      normalized,
+    );
+    await syncStellaPromptSnapshot(
+      stellaAppDir,
+      stellaDataDirPath,
+      normalized,
+    );
+    lastConfiguredPromptSiteUrl = normalized;
+  });
+  configuredPromptSyncPromise = attempt;
+  try {
+    await attempt;
+  } finally {
+    if (configuredPromptSyncPromise === attempt) {
+      configuredPromptSyncPromise = null;
+    }
+  }
 };
 
 export const createHostRunnerHandlers = (
@@ -352,9 +385,8 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   // Reconcile bundled skills/agents into the home dir before the worker
   // (spawned by connectHostRunner -> runner.start()/ensureWorkerStarted) reads
   // them. One-shot cached so host-runner resets don't re-pay it.
-  const promptSiteUrl = await waitForPromptSiteUrl(() =>
-    services.authService.getConvexSiteUrl(),
-  );
+  const promptSiteUrl =
+    context.config.promptSiteUrl ?? services.authService.getConvexSiteUrl();
   await ensureStellaDataDirSeededOnce(
     stellaAppDir,
     stellaDataDirPath,

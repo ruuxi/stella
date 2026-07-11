@@ -20,17 +20,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  ensurePrivateDirSync,
-  writePrivateFileSync,
-} from "../shared/private-fs.js";
-import {
   coercePersonalityId,
   type PersonalityId,
 } from "../../contracts/personality.js";
 import { getPersonalityVoiceId } from "../preferences/local-preferences.js";
 import {
   resolvePersonalityPresetContent,
-  writePersonalitySyncMetadata,
+  writePersonalityTransaction,
 } from "../home/personality-sync.js";
 
 const PERSONALITY_FILE_RELATIVE = "PERSONALITY.md";
@@ -62,12 +58,7 @@ export const readOrSeedPersonality = (stellaDataDir: string): string => {
   const selectedId = coercePersonalityId(getPersonalityVoiceId(stellaDataDir));
   const seeded = composePersonalityContent(stellaDataDir, selectedId);
   try {
-    const dir = path.dirname(filePath);
-    if (!fs.existsSync(dir)) {
-      ensurePrivateDirSync(dir);
-    }
-    writePrivateFileSync(filePath, seeded);
-    writePersonalitySyncMetadata(stellaDataDir, selectedId, seeded);
+    writePersonalityTransaction(stellaDataDir, selectedId, seeded);
   } catch {
     // Seeding is best-effort; the live string is still returned below.
   }
@@ -83,13 +74,7 @@ export const writePersonality = (
   id: PersonalityId,
 ): string => {
   const content = composePersonalityContent(stellaDataDir, id);
-  const filePath = personalityFilePath(stellaDataDir);
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    ensurePrivateDirSync(dir);
-  }
-  writePrivateFileSync(filePath, content);
-  writePersonalitySyncMetadata(stellaDataDir, id, content);
+  writePersonalityTransaction(stellaDataDir, id, content);
   return content.trim();
 };
 

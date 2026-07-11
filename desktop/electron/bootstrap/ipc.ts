@@ -59,6 +59,7 @@ import { isBrowserBridgeEagerStartWorthwhile } from "../services/stella-browser-
 import { scheduleGlobalInputHooksAfterAppReady } from "./global-input-hooks.js";
 import { randomUUID } from "crypto";
 import { startOfficePreviewBridge } from "./office-preview-bridge.js";
+import { syncConfiguredPromptSiteUrl } from "./host-runner.js";
 
 const DEFAULT_STORE_WEB_URL = "https://stella.sh/store";
 // Delay native-service startup ~4s past app-ready so the bridge/office-preview
@@ -285,6 +286,11 @@ export const registerBootstrapIpcHandlers = (
     getStellaHostRunner: lifecycle.getRunner,
     onStellaHostRunnerChanged: lifecycle.onRunnerChanged,
     getStellaAppDir: lifecycle.getStellaDataDir,
+    onPromptSiteUrlConfigured: (siteUrl) => {
+      void syncConfiguredPromptSiteUrl(context, siteUrl).catch((error) => {
+        console.error("[startup] Failed to refresh remote prompts:", error);
+      });
+    },
     externalLinkService: services.externalLinkService,
     ensurePrivilegedActionApproval: (action, message, detail, event) =>
       services.securityPolicyService.ensureApproval(

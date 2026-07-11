@@ -251,8 +251,8 @@ export const reconcileBundledEntries = async (
       recordedHash !== undefined &&
       recordedHash === homeHash
     ) {
-      // Bundled changed, user hasn't touched it. Replace.
-      await adapter.remove(homeDir, id);
+      // Bundled changed, user hasn't touched it. Adapters replace atomically;
+      // removing first would create a crash window with no usable entry.
       await adapter.copy(bundledDir, homeDir, id);
       nextEntries[id] = {
         lastSyncedHash: bundledHash,
@@ -427,10 +427,35 @@ export const createDirectoryEntryAdapter = (
   hash: hashDirectoryUnit,
   copy: async (srcDir, destDir, id) => {
     await ensurePrivateDir(destDir);
-    await fs.cp(path.join(srcDir, id), path.join(destDir, id), {
+    const source = path.join(srcDir, id);
+    const target = path.join(destDir, id);
+    const nonce = `${process.pid}-${Date.now()}`;
+    const staging = path.join(destDir, `.${id}.staging-${nonce}`);
+    const backup = path.join(destDir, `.${id}.backup-${nonce}`);
+    await fs.rm(staging, { recursive: true, force: true });
+    await fs.cp(source, staging, {
       recursive: true,
       force: true,
     });
+    let movedExisting = false;
+    try {
+      if (await pathExists(target)) {
+        await fs.rename(target, backup);
+        movedExisting = true;
+      }
+      await fs.rename(staging, target);
+    } catch (error) {
+      await fs.rm(target, { recursive: true, force: true }).catch(() => {});
+      if (movedExisting) {
+        await fs.rename(backup, target).catch(() => {});
+      }
+      throw error;
+    } finally {
+      await fs.rm(staging, { recursive: true, force: true }).catch(() => {});
+    }
+    if (movedExisting) {
+      await fs.rm(backup, { recursive: true, force: true }).catch(() => {});
+    }
   },
   remove: async (dir, id) => {
     await fs.rm(path.join(dir, id), { recursive: true, force: true });
@@ -475,10 +500,15 @@ export const createFileEntryAdapter = (
     },
     copy: async (srcDir, destDir, id) => {
       await ensurePrivateDir(destDir);
-      await fs.copyFile(
-        path.join(srcDir, fileName(id)),
-        path.join(destDir, fileName(id)),
-      );
+      const target = path.join(destDir, fileName(id));
+      const temp = `${target}.tmp-${process.pid}-${Date.now()}`;
+      await fs.copyFile(path.join(srcDir, fileName(id)), temp);
+      try {
+        await fs.rename(temp, target);
+      } catch (error) {
+        await fs.rm(temp, { force: true }).catch(() => {});
+        throw error;
+      }
     },
     remove: async (dir, id) => {
       await fs.rm(path.join(dir, fileName(id)), { force: true });

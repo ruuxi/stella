@@ -22,6 +22,7 @@ import {
   registerBootstrapLifecycle,
 } from './bootstrap/lifecycle.js'
 import { activateStagedStellaBrowserBinaryForInstall } from './utils/stella-browser-paths.js'
+import { resolvePackagedPromptSiteUrl } from './prompt-site-config.js'
 const __dirname = import.meta.dirname
 const stellaAppDir = path.resolve(__dirname, '..', '..', '..', '..')
 const stellaDataDirPath = resolveRuntimeStatePath(undefined, stellaAppDir)
@@ -129,6 +130,7 @@ export const bootstrapMainProcess = () => {
     electronDir: __dirname,
     stellaAppDir,
     stellaDataDirPath,
+    promptSiteUrl: resolvePackagedPromptSiteUrl(stellaAppDir),
     hardResetMutableHomePaths: HARD_RESET_MUTABLE_HOME_PATHS,
     isDev,
     useDevServer,

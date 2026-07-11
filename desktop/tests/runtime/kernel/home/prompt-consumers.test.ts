@@ -64,8 +64,9 @@ const manifest = (
   revision: string,
   prompts: Record<string, string>,
 ): RemotePromptManifest => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   revision,
+  publishedAt: 1,
   prompts: Object.entries(prompts).map(([id, content]) => ({
     id: `prompts/${id}.md`,
     sha256: sha256(content),
@@ -178,6 +179,7 @@ describe("PERSONALITY.md sync tracking", () => {
         "personality-professional": "Professional remote v1\n",
       }),
       home,
+      home,
     );
     await reconcileSelectedPersonality(home, "r1");
     expect(readOrSeedPersonality(home)).toBe("Stella remote v1");
@@ -187,6 +189,7 @@ describe("PERSONALITY.md sync tracking", () => {
         "personality-stella": "Stella remote v2\n",
         "personality-professional": "Professional remote v2\n",
       }),
+      home,
       home,
     );
     await reconcileSelectedPersonality(home, "r2");
@@ -204,6 +207,7 @@ describe("PERSONALITY.md sync tracking", () => {
         "personality-stella": "Stella remote v3\n",
         "personality-professional": "Professional remote v3\n",
       }),
+      home,
       home,
     );
     await reconcileSelectedPersonality(home, "r3");
@@ -246,5 +250,43 @@ describe("PERSONALITY.md sync tracking", () => {
     expect(report.actions).toEqual([
       expect.objectContaining({ type: "adopt-identical", id: "PERSONALITY" }),
     ]);
+  });
+
+  it("updates an untouched pre-tracking in-code seed after its remote preset changes", async () => {
+    const home = await tempDir();
+    setPersonalityVoiceId(home, "stella");
+    await writeFile(
+      path.join(home, "PERSONALITY.md"),
+      `${PERSONALITY_TEMPLATES.stella.trim()}\n`,
+      "utf-8",
+    );
+    await writePrompt(home, "personality-stella", "new remote voice");
+
+    await reconcileSelectedPersonality(home, "remote-r2");
+
+    await expect(
+      readFile(path.join(home, "PERSONALITY.md"), "utf-8"),
+    ).resolves.toBe("new remote voice\n");
+    const tracked = JSON.parse(
+      await readFile(path.join(home, ".personality-manifest.json"), "utf-8"),
+    );
+    expect(tracked.entries.PERSONALITY).toEqual({
+      lastSyncedHash: sha256("new remote voice\n"),
+      sourceRevision: "remote-r2",
+      customized: false,
+    });
+  });
+
+  it("recovers an uncustomized file when preset preference and metadata disagree", async () => {
+    const home = await tempDir();
+    setPersonalityVoiceId(home, "stella");
+    writePersonality(home, "stella");
+    setPersonalityVoiceId(home, "professional");
+
+    await reconcileSelectedPersonality(home, "recovery-r1");
+
+    await expect(
+      readFile(path.join(home, "PERSONALITY.md"), "utf-8"),
+    ).resolves.toBe(`${PERSONALITY_TEMPLATES.professional.trim()}\n`);
   });
 });

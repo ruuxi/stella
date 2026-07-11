@@ -37,6 +37,7 @@ export type BootstrapConfig = {
   electronDir: string;
   stellaAppDir: string;
   stellaDataDirPath: string;
+  promptSiteUrl?: string | null;
   hardResetMutableHomePaths: readonly string[];
   isDev: boolean;
   useDevServer: boolean;
