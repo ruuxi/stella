@@ -268,4 +268,100 @@ describe("Stella model catalog metadata", () => {
       await rm(stellaDataDir, { recursive: true, force: true });
     }
   });
+
+  const catalogResponse = (resolvedModel: string) =>
+    new Response(
+      JSON.stringify({
+        data: [],
+        defaults: [
+          { agentType: "general", model: "stella/standard", resolvedModel },
+        ],
+      }),
+      { status: 200 },
+    );
+
+  it("serves the stale disk copy immediately on a version bump and refreshes in the background", async () => {
+    const stellaDataDir = await mkdtemp(
+      path.join(os.tmpdir(), "stella-model-catalog-"),
+    );
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(catalogResponse("openai/gpt-5.5"))
+        .mockResolvedValueOnce(catalogResponse("openai/gpt-6"));
+      globalThis.fetch = fetchMock as typeof fetch;
+      const route = resolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: undefined,
+        agentType: "general",
+        site: site("token-stale"),
+      });
+      const callWithVersion = (modelCatalogUpdatedAt: number) =>
+        withStellaModelCatalogMetadata({
+          route,
+          agentType: "general",
+          site: site("token-stale"),
+          deviceId: "device-e",
+          modelCatalogUpdatedAt,
+          stellaDataDir,
+        });
+
+      await callWithVersion(1);
+      invalidateStellaModelCatalogCache();
+
+      // Version bumped: the v1 disk copy answers immediately (stale) while
+      // the refresh happens behind the caller's back.
+      const staleServed = await callWithVersion(2);
+      expect(staleServed.toolPolicyModel?.id).toBe("openai/gpt-5.5");
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+      const refreshed = await callWithVersion(2);
+      expect(refreshed.toolPolicyModel?.id).toBe("openai/gpt-6");
+    } finally {
+      await rm(stellaDataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps serving the stale copy when the refresh fails, without hammering the endpoint", async () => {
+    const stellaDataDir = await mkdtemp(
+      path.join(os.tmpdir(), "stella-model-catalog-"),
+    );
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(catalogResponse("openai/gpt-5.5"))
+        .mockRejectedValue(new Error("backend mid-deploy"));
+      globalThis.fetch = fetchMock as typeof fetch;
+      const route = resolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: undefined,
+        agentType: "general",
+        site: site("token-stale-fail"),
+      });
+      const callWithVersion = (modelCatalogUpdatedAt: number) =>
+        withStellaModelCatalogMetadata({
+          route,
+          agentType: "general",
+          site: site("token-stale-fail"),
+          deviceId: "device-f",
+          modelCatalogUpdatedAt,
+          stellaDataDir,
+        });
+
+      await callWithVersion(1);
+      invalidateStellaModelCatalogCache();
+
+      const first = await callWithVersion(2);
+      expect(first.toolPolicyModel?.id).toBe("openai/gpt-5.5");
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+      // Refresh failed; later calls still answer from the stale copy and
+      // the failed attempt's spacing stops an immediate re-fetch.
+      const second = await callWithVersion(2);
+      expect(second.toolPolicyModel?.id).toBe("openai/gpt-5.5");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      await rm(stellaDataDir, { recursive: true, force: true });
+    }
+  });
 });

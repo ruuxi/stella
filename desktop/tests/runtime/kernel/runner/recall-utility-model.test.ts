@@ -32,10 +32,14 @@ vi.mock(
 
 // Catalog metadata resolution is a network round-trip against the Stella
 // site; identity pass-through keeps the tests offline without changing the
-// candidate-selection behavior under test.
+// candidate-selection behavior under test. The call counter lets tests
+// assert which engine paths touch the catalog at all.
+const catalogMetadataCalls = vi.hoisted(() => ({ count: 0 }));
 vi.mock("../../../../../runtime/kernel/stella-model-catalog.js", () => ({
-  withStellaModelCatalogMetadata: async (args: { route: unknown }) =>
-    args.route,
+  withStellaModelCatalogMetadata: async (args: { route: unknown }) => {
+    catalogMetadataCalls.count += 1;
+    return args.route;
+  },
 }));
 
 const model = (
@@ -94,6 +98,7 @@ const makeContext = (args: {
 beforeEach(() => {
   credentials.clear();
   oauthCredentials.clear();
+  catalogMetadataCalls.count = 0;
   vi.resetModules();
 });
 
@@ -181,6 +186,11 @@ describe("resolveRunnerUtilityLlmRoute (Recall pin)", () => {
     // (`getClaudeCodeAgentModelId`); the route itself stays on the pin so
     // `runRecall` sees the raw alias.
     expect(route.model.id).toBe(RUNNER_UTILITY_PINNED_MODEL);
+    // And the engine path must never touch the catalog: metadata resolution
+    // is a network round-trip whose result the CC engine discards. A stalled
+    // catalog fetch here once hung Recall (and its orchestrator turn) even
+    // though the engine never talks to the stella provider.
+    expect(catalogMetadataCalls.count).toBe(0);
   });
 
   it("preserves the pre-pin failure mode when no candidate is usable", async () => {

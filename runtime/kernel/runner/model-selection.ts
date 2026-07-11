@@ -87,7 +87,27 @@ export const resolveRunnerUtilityLlmRoute = async (
   for (const candidate of candidates) {
     let route: ResolvedLlmRoute;
     try {
-      route = await resolveRunnerLlmRouteWithMetadata(
+      route = resolveRunnerLlmRoute(context, agentType, candidate);
+    } catch {
+      continue;
+    }
+    // Engine check FIRST, on the synchronous credential-free route: the
+    // Claude Code engine maps the pinned utility model to its own light
+    // model downstream and needs neither a route credential nor catalog
+    // metadata. Resolving metadata before this check put a network fetch
+    // (the stella model catalog) on every utility pass even when the
+    // engine never talks to the stella provider at all.
+    if (
+      shouldUseClaudeCodeAgentRuntime({
+        stellaAppDir: context.stellaDataDir,
+        modelId: route.model.id,
+      })
+    ) {
+      return route;
+    }
+    let enriched: ResolvedLlmRoute;
+    try {
+      enriched = await resolveRunnerLlmRouteWithMetadata(
         context,
         agentType,
         candidate,
@@ -95,19 +115,12 @@ export const resolveRunnerUtilityLlmRoute = async (
     } catch {
       continue;
     }
-    const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-      stellaAppDir: context.stellaDataDir,
-      modelId: route.model.id,
-    });
-    const apiKey = useClaudeCode
-      ? undefined
-      : (await route.getApiKey())?.trim();
+    const apiKey = (await enriched.getApiKey())?.trim();
     if (
-      useClaudeCode ||
       Boolean(apiKey) ||
-      resolvedLlmSupportsCredentiallessCalls(route)
+      resolvedLlmSupportsCredentiallessCalls(enriched)
     ) {
-      return route;
+      return enriched;
     }
   }
   return await resolveRunnerLlmRouteWithMetadata(
