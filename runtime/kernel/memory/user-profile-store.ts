@@ -23,9 +23,7 @@ import { redactMemoryText } from "./redaction.js";
 export const USER_PROFILE_FILE = "profile.md";
 
 /** Cap on the rendered entries body (excludes the header). */
-export const MAX_USER_PROFILE_CHARS = 2_000;
-/** Cap on a single entry, after whitespace collapsing. */
-const MAX_ENTRY_CHARS = 320;
+export const MAX_USER_PROFILE_CHARS = 4_000;
 
 const HEADER = [
   "# User Profile",
@@ -142,7 +140,7 @@ const applyUserProfileOperationLocked = async (
 ): Promise<UserProfileOperationResult> => {
   const entries = await readEntries(stellaDataDir);
   const content = op.content
-    ? collapseWhitespace(redactMemoryText(op.content)).slice(0, MAX_ENTRY_CHARS)
+    ? collapseWhitespace(redactMemoryText(op.content))
     : "";
   const oldContent = op.oldContent
     ? collapseWhitespace(redactMemoryText(op.oldContent))

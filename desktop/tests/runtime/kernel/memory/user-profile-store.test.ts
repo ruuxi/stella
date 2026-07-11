@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   applyUserProfileOperation,
+  MAX_USER_PROFILE_CHARS,
   parseUserProfileEntries,
   readUserProfile,
   userProfilePath,
@@ -88,6 +89,33 @@ describe("user-profile-store", () => {
     });
     expect(result.ok).toBe(false);
     expect(result.message).toMatch(/no matching/i);
+  });
+
+  it("preserves a long entry instead of silently truncating it", async () => {
+    const content = `A durable fact with a long tail: ${"detail ".repeat(80)}finished.`;
+
+    const result = await applyUserProfileOperation(dir, {
+      action: "add",
+      content,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(await entries()).toEqual([content]);
+  });
+
+  it("allows ten lean facts within the doubled aggregate size cap", async () => {
+    const entry = "x".repeat(390);
+
+    for (let index = 0; index < 10; index += 1) {
+      const result = await applyUserProfileOperation(dir, {
+        action: "add",
+        content: `${index}:${entry}`,
+      });
+      expect(result.ok).toBe(true);
+    }
+
+    expect(await entries()).toHaveLength(10);
+    expect(MAX_USER_PROFILE_CHARS).toBe(4_000);
   });
 
   it("rejects adds that would exceed the size cap", async () => {
