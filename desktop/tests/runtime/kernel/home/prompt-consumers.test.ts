@@ -3,10 +3,18 @@ import {
   closeSync,
   ftruncateSync,
   openSync,
+  unlinkSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -346,5 +354,67 @@ describe("PERSONALITY.md sync tracking", () => {
       closeSync(oldDescriptor);
     }
     await expect(readFile(target, "utf-8")).resolves.toBe("descriptor edit\n");
+  });
+
+  it("preserves both a target-path edit and an old-descriptor edit during recovery", async () => {
+    const home = await tempDir();
+    const target = path.join(home, "PERSONALITY.md");
+    const staged = path.join(home, "PERSONALITY.md.staged");
+    await writeFile(target, "previous untouched value\n", "utf-8");
+    const expectedHomeHash = sha256("previous untouched value\n");
+    await writeFile(staged, "incoming remote value\n", "utf-8");
+    const oldDescriptor = openSync(target, "r+");
+
+    try {
+      expect(
+        replacePersonalityIfHomeHashMatches({
+          target,
+          staged,
+          expectedHomeHash,
+          onAfterInstalledTargetVerified: () => {
+            ftruncateSync(oldDescriptor, 0);
+            writeSync(oldDescriptor, "descriptor edit\n", 0, "utf-8");
+            writeFileSync(target, "target-path edit\n", "utf-8");
+          },
+        }),
+      ).toBe(false);
+    } finally {
+      closeSync(oldDescriptor);
+    }
+
+    await expect(readFile(target, "utf-8")).resolves.toBe("target-path edit\n");
+    const conflictContents = await Promise.all(
+      (await readdir(home))
+        .filter((name) => name.startsWith("PERSONALITY.md.conflict-"))
+        .map((name) => readFile(path.join(home, name), "utf-8")),
+    );
+    expect(conflictContents).toContain("descriptor edit\n");
+    expect((await readdir(home)).some((name) => name.includes(".cas-"))).toBe(
+      false,
+    );
+  });
+
+  it("recovers the guard when the installed target disappears mid-check", async () => {
+    const home = await tempDir();
+    const target = path.join(home, "PERSONALITY.md");
+    const staged = path.join(home, "PERSONALITY.md.staged");
+    await writeFile(target, "previous untouched value\n", "utf-8");
+    await writeFile(staged, "incoming remote value\n", "utf-8");
+
+    expect(() =>
+      replacePersonalityIfHomeHashMatches({
+        target,
+        staged,
+        expectedHomeHash: sha256("previous untouched value\n"),
+        onAfterInstalledTargetVerified: () => unlinkSync(target),
+      }),
+    ).toThrow();
+
+    await expect(readFile(target, "utf-8")).resolves.toBe(
+      "previous untouched value\n",
+    );
+    const files = await readdir(home);
+    expect(files.some((name) => name.includes(".cas-"))).toBe(false);
+    expect(files.some((name) => name.includes(".installed-"))).toBe(false);
   });
 });

@@ -24,10 +24,9 @@ import {
 
 const PROMPT_CACHE_FILE = "prompt-manifest.json";
 const PROMPT_APPLIED_STATE_FILE = "prompt-applied-state.json";
-const PROMPT_APPLIED_STATE_LOCK = "prompt-applied-state.lock";
-const PROMPT_APPLIED_STATE_MAX_BYTES = 256 * 1024;
-const APPLIED_STATE_LOCK_TIMEOUT_MS = 10_000;
-const APPLIED_STATE_STALE_LOCK_MS = 60_000;
+const PROMPT_APPLIED_STATE_DIR = "prompt-applied-state";
+const PROMPT_LEGACY_APPLIED_STATE_MAX_BYTES = 256 * 1024;
+const PROMPT_APPLIED_STATE_RECORD_MAX_BYTES = 4 * 1024;
 const FETCH_TIMEOUT_MS = 3_000;
 
 export type RemotePrompt = { id: string; sha256: string; content: string };
@@ -64,7 +63,6 @@ export type PromptManifestResolution = {
 };
 
 const appliedStateMemory = new Map<string, AppliedPromptState>();
-const appliedStateWriteQueues = new Map<string, Promise<void>>();
 
 export const resetPromptAppliedStateMemoryForTests = (): void => {
   appliedStateMemory.clear();
@@ -138,8 +136,13 @@ const cachePath = (stellaDataDir: string): string =>
 const appliedStatePath = (stellaDataDir: string): string =>
   path.join(stellaDataDir, "cache", PROMPT_APPLIED_STATE_FILE);
 
-const appliedStateLockPath = (stellaDataDir: string): string =>
-  path.join(stellaDataDir, "cache", PROMPT_APPLIED_STATE_LOCK);
+const appliedStateDir = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "cache", PROMPT_APPLIED_STATE_DIR);
+
+const appliedStateEndpointDir = (
+  stellaDataDir: string,
+  endpoint: string,
+): string => path.join(appliedStateDir(stellaDataDir), sha256(endpoint));
 
 const appliedStateKey = (stellaDataDir: string, endpoint: string): string =>
   `${path.resolve(stellaDataDir)}\0${endpoint}`;
@@ -247,64 +250,30 @@ const parseAppliedStateFile = (
   return entries;
 };
 
-const readAppliedStateFile = async (
+const readLegacyAppliedStateFile = async (
   stellaDataDir: string,
 ): Promise<Map<string, AppliedPromptState>> => {
   try {
     const raw = await fs.readFile(appliedStatePath(stellaDataDir), "utf-8");
-    if (utf8Bytes(raw) > PROMPT_APPLIED_STATE_MAX_BYTES) return new Map();
+    if (utf8Bytes(raw) > PROMPT_LEGACY_APPLIED_STATE_MAX_BYTES) {
+      return new Map();
+    }
     return parseAppliedStateFile(JSON.parse(raw)) ?? new Map();
   } catch {
     return new Map();
   }
 };
 
-const acquireAppliedStateLock = async (
-  stellaDataDir: string,
-): Promise<() => Promise<void>> => {
-  const lockPath = appliedStateLockPath(stellaDataDir);
-  await ensurePrivateDir(path.dirname(lockPath));
-  const deadline = Date.now() + APPLIED_STATE_LOCK_TIMEOUT_MS;
-  while (true) {
-    try {
-      await fs.mkdir(lockPath, { mode: 0o700 });
-      return async () => {
-        await fs.rm(lockPath, { recursive: true, force: true });
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      try {
-        const stat = await fs.stat(lockPath);
-        if (Date.now() - stat.mtimeMs > APPLIED_STATE_STALE_LOCK_MS) {
-          await fs.rm(lockPath, { recursive: true, force: true });
-          continue;
-        }
-      } catch (statError) {
-        if ((statError as NodeJS.ErrnoException).code === "ENOENT") continue;
-        throw statError;
-      }
-      if (Date.now() >= deadline) {
-        throw new Error("Timed out waiting for prompt applied-state lock");
-      }
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-  }
-};
-
-const serializeAppliedStateWrite = async (
-  stellaDataDir: string,
-  operation: () => Promise<void>,
-): Promise<void> => {
-  const key = path.resolve(stellaDataDir);
-  const previous = appliedStateWriteQueues.get(key) ?? Promise.resolve();
-  const current = previous.catch(() => undefined).then(operation);
-  appliedStateWriteQueues.set(key, current);
+const readAppliedStateRecord = async (
+  filePath: string,
+): Promise<AppliedPromptState | null> => {
   try {
-    await current;
-  } finally {
-    if (appliedStateWriteQueues.get(key) === current) {
-      appliedStateWriteQueues.delete(key);
-    }
+    const raw = await fs.readFile(filePath, "utf-8");
+    if (utf8Bytes(raw) > PROMPT_APPLIED_STATE_RECORD_MAX_BYTES) return null;
+    const parsed = JSON.parse(raw);
+    return isValidAppliedState(parsed) ? parsed : null;
+  } catch {
+    return null;
   }
 };
 
@@ -317,19 +286,52 @@ const newerAppliedState = (
   if (left.publishedAt !== right.publishedAt) {
     return left.publishedAt > right.publishedAt ? left : right;
   }
-  return left.revision === right.revision ? left : right;
+  return left.revision.localeCompare(right.revision) >= 0 ? left : right;
+};
+
+const readAppliedStateRecords = async (
+  stellaDataDir: string,
+  expectedEndpoint?: string,
+): Promise<AppliedPromptState | null> => {
+  const endpointDirs = expectedEndpoint
+    ? [appliedStateEndpointDir(stellaDataDir, expectedEndpoint)]
+    : await fs
+        .readdir(appliedStateDir(stellaDataDir), { withFileTypes: true })
+        .then((entries) =>
+          entries
+            .filter((entry) => entry.isDirectory())
+            .map((entry) =>
+              path.join(appliedStateDir(stellaDataDir), entry.name),
+            ),
+        )
+        .catch(() => []);
+  let latest: AppliedPromptState | null = null;
+  for (const endpointDir of endpointDirs) {
+    const files = await fs.readdir(endpointDir).catch(() => []);
+    for (const file of files) {
+      if (!file.endsWith(".json")) continue;
+      const state = await readAppliedStateRecord(path.join(endpointDir, file));
+      if (state && (!expectedEndpoint || state.endpoint === expectedEndpoint)) {
+        latest = newerAppliedState(latest, state);
+      }
+    }
+  }
+  return latest;
 };
 
 const readAppliedState = async (
   stellaDataDir: string,
   expectedEndpoint?: string,
 ): Promise<AppliedPromptState | null> => {
-  const diskEntries = await readAppliedStateFile(stellaDataDir);
-  const disk = expectedEndpoint
-    ? (diskEntries.get(expectedEndpoint) ?? null)
-    : ([...diskEntries.values()].sort(
-        (a, b) => b.publishedAt - a.publishedAt,
-      )[0] ?? null);
+  const legacyEntries = await readLegacyAppliedStateFile(stellaDataDir);
+  const legacy = expectedEndpoint
+    ? (legacyEntries.get(expectedEndpoint) ?? null)
+    : ([...legacyEntries.values()].reduce(newerAppliedState, null) ?? null);
+  const records = await readAppliedStateRecords(
+    stellaDataDir,
+    expectedEndpoint,
+  );
+  const disk = newerAppliedState(legacy, records);
   const endpoint = expectedEndpoint ?? disk?.endpoint;
   const memory = endpoint
     ? (appliedStateMemory.get(appliedStateKey(stellaDataDir, endpoint)) ?? null)
@@ -341,43 +343,58 @@ const writeAppliedStateAtomic = async (
   stellaDataDir: string,
   state: AppliedPromptState,
 ): Promise<void> => {
-  const filePath = appliedStatePath(stellaDataDir);
-  await ensurePrivateDir(path.dirname(filePath));
-  const releaseLock = await acquireAppliedStateLock(stellaDataDir);
-  try {
-    const entries = await readAppliedStateFile(stellaDataDir);
-    entries.set(
-      state.endpoint,
-      newerAppliedState(entries.get(state.endpoint) ?? null, state)!,
-    );
-    const serialized: AppliedPromptStateFile = {
-      version: 1,
-      entries: Object.fromEntries(
-        [...entries.entries()]
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([endpoint, entry]) => [
-            endpoint,
-            { publishedAt: entry.publishedAt, revision: entry.revision },
-          ]),
-      ),
-    };
-    const content = `${JSON.stringify(serialized, null, 2)}\n`;
-    if (utf8Bytes(content) > PROMPT_APPLIED_STATE_MAX_BYTES) {
-      throw new Error("Prompt applied-state map exceeds the size limit");
+  const endpointDir = appliedStateEndpointDir(stellaDataDir, state.endpoint);
+  await ensurePrivateDir(endpointDir);
+  const filePath = path.join(
+    endpointDir,
+    `${state.publishedAt}-${state.revision}.json`,
+  );
+  const content = `${JSON.stringify(state, null, 2)}\n`;
+  if (utf8Bytes(content) > PROMPT_APPLIED_STATE_RECORD_MAX_BYTES) {
+    throw new Error("Prompt applied-state record exceeds the size limit");
+  }
+  const existing = await readAppliedStateRecord(filePath);
+  if (existing) {
+    if (
+      existing.endpoint !== state.endpoint ||
+      existing.publishedAt !== state.publishedAt ||
+      existing.revision !== state.revision
+    ) {
+      throw new Error("Prompt applied-state record collision");
     }
-    const tempPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
-    await fs.writeFile(tempPath, content, {
-      encoding: "utf-8",
-      mode: 0o600,
-    });
+    const fileHandle = await fs.open(filePath, "r");
     try {
-      await fs.rename(tempPath, filePath);
-    } catch (error) {
-      await fs.rm(tempPath, { force: true }).catch(() => {});
-      throw error;
+      await fileHandle.sync();
+    } finally {
+      await fileHandle.close();
     }
-  } finally {
-    await releaseLock();
+    const dirHandle = await fs.open(endpointDir, "r");
+    try {
+      await dirHandle.sync();
+    } finally {
+      await dirHandle.close();
+    }
+    return;
+  }
+  const tempPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+  let tempHandle: Awaited<ReturnType<typeof fs.open>> | null = null;
+  try {
+    tempHandle = await fs.open(tempPath, "wx", 0o600);
+    await tempHandle.writeFile(content, "utf-8");
+    await tempHandle.sync();
+    await tempHandle.close();
+    tempHandle = null;
+    await fs.rename(tempPath, filePath);
+    const dirHandle = await fs.open(endpointDir, "r");
+    try {
+      await dirHandle.sync();
+    } finally {
+      await dirHandle.close();
+    }
+  } catch (error) {
+    await tempHandle?.close().catch(() => {});
+    await fs.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
   }
 };
 
@@ -395,18 +412,11 @@ export const recordAppliedPromptManifest = async (args: {
   const key = appliedStateKey(args.stellaDataDir, args.endpoint);
   const current = appliedStateMemory.get(key) ?? null;
   const next = newerAppliedState(current, state)!;
+  await (args.writeStateImpl ?? writeAppliedStateAtomic)(
+    args.stellaDataDir,
+    next,
+  );
   appliedStateMemory.set(key, next);
-  await serializeAppliedStateWrite(args.stellaDataDir, async () => {
-    await (args.writeStateImpl ?? writeAppliedStateAtomic)(
-      args.stellaDataDir,
-      next,
-    );
-  }).catch((error) => {
-    console.warn(
-      "[stella-home] Could not persist applied prompt high-water state:",
-      error,
-    );
-  });
 };
 
 const writeCacheAtomic = async (

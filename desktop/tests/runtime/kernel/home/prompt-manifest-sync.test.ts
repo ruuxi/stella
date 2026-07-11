@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -33,6 +41,46 @@ afterEach(async () => {
 
 const hash = (content: string) =>
   createHash("sha256").update(content).digest("hex");
+const siteUrlForEndpoint = (endpoint: string) =>
+  endpoint.slice(0, -"/api/stella/prompts".length);
+
+const runRecordChild = async (
+  home: string,
+  endpoint: string,
+  publishedAt: number,
+): Promise<void> => {
+  const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
+  const script = `
+    import { recordAppliedPromptManifest } from "./runtime/kernel/home/prompt-manifest-sync.ts";
+    await recordAppliedPromptManifest({
+      stellaDataDir: process.env.TEST_STELLA_HOME,
+      endpoint: process.env.TEST_PROMPT_ENDPOINT,
+      manifest: { publishedAt: Number(process.env.TEST_PUBLISHED_AT), revision: "a".repeat(64) },
+    });
+  `;
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("bun", ["--eval", script], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        TEST_STELLA_HOME: home,
+        TEST_PROMPT_ENDPOINT: endpoint,
+        TEST_PUBLISHED_AT: String(publishedAt),
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.setEncoding("utf-8");
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`record child exited ${code}: ${stderr}`));
+    });
+  });
+};
 
 const agentId = (promptId: string) => promptId.slice("agents/".length, -3);
 const agentFrontmatter = (id: string) =>
@@ -219,29 +267,27 @@ describe("remote prompt startup sync", () => {
     });
   });
 
-  it("retains the applied high-water mark in memory when its durable write fails", async () => {
+  it("fails before recording an applied manifest when durable persistence fails", async () => {
     const home = await tempDir();
     const endpoint = "https://memory-only.test/api/stella/prompts";
     const applied = manifest(40);
-    await recordAppliedPromptManifest({
-      stellaDataDir: home,
-      endpoint,
-      manifest: applied,
-      writeStateImpl: async () => {
-        throw new Error("read-only cache directory");
-      },
-    });
+    await expect(
+      recordAppliedPromptManifest({
+        stellaDataDir: home,
+        endpoint,
+        manifest: applied,
+        writeStateImpl: async () => {
+          throw new Error("read-only cache directory");
+        },
+      }),
+    ).rejects.toThrow("read-only cache directory");
 
     const result = await resolvePromptManifest({
       stellaDataDir: home,
       siteUrl: "https://memory-only.test",
       fetchImpl: async () => new Response(JSON.stringify(manifest(39))),
     });
-    expect(result).toEqual({
-      source: "bundled-bootstrap",
-      manifest: null,
-      endpoint,
-    });
+    expect(result.manifest).toEqual(manifest(39));
   });
 
   it("retains durable high-water marks independently for each canonical endpoint", async () => {
@@ -272,11 +318,36 @@ describe("remote prompt startup sync", () => {
     });
   });
 
-  it("keeps more than 32 endpoint high-water marks readable after restart", async () => {
+  it("retains rollback protection from the legacy aggregate state file", async () => {
     const home = await tempDir();
+    const endpoint = "https://legacy.example.test/api/stella/prompts";
+    await mkdir(path.join(home, "cache"), { recursive: true });
+    await writeFile(
+      path.join(home, "cache/prompt-applied-state.json"),
+      `${JSON.stringify({
+        version: 1,
+        entries: {
+          [endpoint]: { publishedAt: 60, revision: "b".repeat(64) },
+        },
+      })}\n`,
+      "utf-8",
+    );
+
+    const result = await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl: siteUrlForEndpoint(endpoint),
+      fetchImpl: async () => new Response(JSON.stringify(manifest(59))),
+    });
+    expect(result.manifest).toBeNull();
+  });
+
+  it("keeps high-water marks durable beyond the former aggregate capacity", async () => {
+    const home = await tempDir();
+    const longSitePath = "x".repeat(3_000);
     const endpoints = Array.from(
-      { length: 33 },
-      (_, index) => `https://endpoint-${index}.example.test/api/stella/prompts`,
+      { length: 100 },
+      (_, index) =>
+        `https://endpoint-${index}.example.test/${longSitePath}/api/stella/prompts`,
     );
     for (const [index, endpoint] of endpoints.entries()) {
       await recordAppliedPromptManifest({
@@ -287,51 +358,66 @@ describe("remote prompt startup sync", () => {
     }
     resetPromptAppliedStateMemoryForTests();
 
-    const persisted = JSON.parse(
-      await readFile(
-        path.join(home, "cache/prompt-applied-state.json"),
-        "utf-8",
-      ),
+    const endpointDirs = await readdir(
+      path.join(home, "cache/prompt-applied-state"),
+      { withFileTypes: true },
     );
-    expect(Object.keys(persisted.entries)).toHaveLength(33);
+    expect(endpointDirs.filter((entry) => entry.isDirectory())).toHaveLength(
+      100,
+    );
 
     const result = await resolvePromptManifest({
       stellaDataDir: home,
-      siteUrl: "https://endpoint-0.example.test",
+      siteUrl: siteUrlForEndpoint(endpoints[81]),
       fetchImpl: async () => new Response(JSON.stringify(manifest(0))),
     });
     expect(result).toEqual({
       source: "bundled-bootstrap",
       manifest: null,
-      endpoint: endpoints[0],
+      endpoint: endpoints[81],
     });
   });
 
-  it("merges concurrent endpoint high-water writes without temp collisions", async () => {
+  it("handles multi-process writes without stale or paused aggregate locks", async () => {
     const home = await tempDir();
+    const obsoleteLock = path.join(home, "cache/prompt-applied-state.lock");
+    await mkdir(obsoleteLock, { recursive: true });
+    await writeFile(path.join(obsoleteLock, "owner"), "paused-owner\n");
     const endpoints = Array.from(
       { length: 8 },
       (_, index) =>
         `https://concurrent-${index}.example.test/api/stella/prompts`,
     );
-    await Promise.all(
-      endpoints.map((endpoint, index) =>
-        recordAppliedPromptManifest({
-          stellaDataDir: home,
-          endpoint,
-          manifest: manifest(index + 1),
-        }),
+    const sharedEndpoint =
+      "https://concurrent-shared.example.test/api/stella/prompts";
+    await Promise.all([
+      ...endpoints.map((endpoint, index) =>
+        runRecordChild(home, endpoint, index + 1),
       ),
-    );
+      runRecordChild(home, sharedEndpoint, 50),
+      runRecordChild(home, sharedEndpoint, 51),
+    ]);
     resetPromptAppliedStateMemoryForTests();
 
-    const persisted = JSON.parse(
-      await readFile(
-        path.join(home, "cache/prompt-applied-state.json"),
-        "utf-8",
-      ),
+    await Promise.all(
+      endpoints.map(async (endpoint, index) => {
+        const result = await resolvePromptManifest({
+          stellaDataDir: home,
+          siteUrl: siteUrlForEndpoint(endpoint),
+          fetchImpl: async () => new Response(JSON.stringify(manifest(index))),
+        });
+        expect(result.manifest).toBeNull();
+      }),
     );
-    expect(Object.keys(persisted.entries).sort()).toEqual(endpoints.sort());
+    const sharedResult = await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl: siteUrlForEndpoint(sharedEndpoint),
+      fetchImpl: async () => new Response(JSON.stringify(manifest(49))),
+    });
+    expect(sharedResult.manifest).toBeNull();
+    await expect(
+      readFile(path.join(obsoleteLock, "owner"), "utf-8"),
+    ).resolves.toBe("paused-owner\n");
   });
 
   it("canonicalizes accepted site URL forms to the same prompt endpoint", () => {

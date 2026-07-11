@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { promises as fsp } from "node:fs";
 import path from "node:path";
@@ -221,6 +221,23 @@ export const replacePersonalityIfHomeHashMatches = (args: {
   onAfterInstalledTargetVerified?: () => void;
 }): boolean => {
   const stagedHash = sha256(fs.readFileSync(args.staged, "utf-8"));
+  const conflictPath = (): string =>
+    `${args.target}.conflict-${process.pid}-${randomUUID()}`;
+  const preserveAsConflict = (filePath: string): void => {
+    if (fs.existsSync(filePath)) fs.renameSync(filePath, conflictPath());
+  };
+  const restoreExclusivelyOrPreserve = (filePath: string): boolean => {
+    if (!fs.existsSync(filePath)) return false;
+    try {
+      fs.linkSync(filePath, args.target);
+      fs.unlinkSync(filePath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      preserveAsConflict(filePath);
+      return false;
+    }
+  };
   const installExclusively = (): boolean => {
     try {
       fs.linkSync(args.staged, args.target);
@@ -249,12 +266,9 @@ export const replacePersonalityIfHomeHashMatches = (args: {
   const capturedHash = sha256(fs.readFileSync(guard, "utf-8"));
   if (capturedHash !== args.expectedHomeHash) {
     if (fs.existsSync(args.target)) {
-      fs.renameSync(
-        guard,
-        `${args.target}.conflict-${process.pid}-${Date.now()}`,
-      );
+      preserveAsConflict(guard);
     } else {
-      fs.renameSync(guard, args.target);
+      restoreExclusivelyOrPreserve(guard);
     }
     return false;
   }
@@ -268,41 +282,69 @@ export const replacePersonalityIfHomeHashMatches = (args: {
     throw error;
   }
   if (!installed) {
-    // A direct path-based edit landed after the final captured read. It owns
-    // the canonical path; the unchanged prior inode can be discarded.
-    fs.rmSync(guard, { force: true });
+    // A direct path-based edit owns the canonical path. Preserve the captured
+    // inode too because another process may still be writing through it.
+    preserveAsConflict(guard);
     return false;
   }
 
-  const targetAfterHash = sha256(fs.readFileSync(args.target, "utf-8"));
-  args.onAfterInstalledTargetVerified?.();
-  // This is deliberately the final read before guard removal. A write through
-  // an old descriptor during target verification changes this inode and forces
-  // conflict recovery instead of silently discarding the edit.
-  const guardAfterHash = sha256(fs.readFileSync(guard, "utf-8"));
-  if (guardAfterHash !== args.expectedHomeHash) {
-    if (targetAfterHash === stagedHash) {
-      fs.rmSync(args.target, { force: true });
-      fs.renameSync(guard, args.target);
+  const installedCapture = `${args.target}.installed-${process.pid}-${randomUUID()}`;
+  try {
+    const targetAfterHash = sha256(fs.readFileSync(args.target, "utf-8"));
+    args.onAfterInstalledTargetVerified?.();
+    const guardAfterHash = sha256(fs.readFileSync(guard, "utf-8"));
+    // Atomically recapture the installed target before deciding which version
+    // owns the canonical path. A path edit after this rename creates a new
+    // target and wins through the exclusive restore helper below.
+    fs.renameSync(args.target, installedCapture);
+    const installedHash = sha256(fs.readFileSync(installedCapture, "utf-8"));
+    if (fs.existsSync(args.target)) {
+      preserveAsConflict(installedCapture);
+      preserveAsConflict(guard);
+      return false;
+    }
+
+    if (
+      guardAfterHash === args.expectedHomeHash &&
+      targetAfterHash === stagedHash &&
+      installedHash === stagedHash
+    ) {
+      const restored = restoreExclusivelyOrPreserve(installedCapture);
+      // Keep the old inode linked so a late write through an already-open file
+      // descriptor remains recoverable. This can leave a redundant artifact,
+      // but never silently discards the write.
+      preserveAsConflict(guard);
+      return restored;
+    }
+
+    if (installedHash !== stagedHash) {
+      restoreExclusivelyOrPreserve(installedCapture);
+      preserveAsConflict(guard);
     } else {
-      fs.renameSync(
-        guard,
-        `${args.target}.conflict-${process.pid}-${Date.now()}`,
-      );
+      restoreExclusivelyOrPreserve(guard);
+      preserveAsConflict(installedCapture);
     }
     return false;
+  } catch (error) {
+    const recoveryErrors: unknown[] = [];
+    try {
+      restoreExclusivelyOrPreserve(installedCapture);
+    } catch (recoveryError) {
+      recoveryErrors.push(recoveryError);
+    }
+    try {
+      restoreExclusivelyOrPreserve(guard);
+    } catch (recoveryError) {
+      recoveryErrors.push(recoveryError);
+    }
+    if (recoveryErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...recoveryErrors],
+        "PERSONALITY.md replacement and recovery both failed",
+      );
+    }
+    throw error;
   }
-  if (targetAfterHash !== stagedHash) {
-    fs.rmSync(guard, { force: true });
-    return false;
-  }
-
-  // Residual limitation begins only after the final guard-inode read above: an
-  // unrelated process can still write through that old open descriptor before
-  // guard removal. Node has no portable compare-and-swap/exchange primitive
-  // for closing those final two filesystem operations. Path saves are gated.
-  fs.rmSync(guard, { force: true });
-  return true;
 };
 
 const reconcileSelectedPersonalityAttempt = async (

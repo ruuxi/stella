@@ -153,11 +153,6 @@ export const ensureStellaDataDirSeeded = async (
     siteUrl: options.promptSiteUrl,
   });
   if (promptResolution.manifest) {
-    await reconcileRemotePromptManifest(
-      promptResolution.manifest,
-      stellaDataDir,
-      resolveBundledAgentsDir(stellaAppDir),
-    );
     if (promptResolution.endpoint) {
       await recordAppliedPromptManifest({
         stellaDataDir,
@@ -165,6 +160,11 @@ export const ensureStellaDataDirSeeded = async (
         manifest: promptResolution.manifest,
       });
     }
+    await reconcileRemotePromptManifest(
+      promptResolution.manifest,
+      stellaDataDir,
+      resolveBundledAgentsDir(stellaAppDir),
+    );
   }
 
   // The bundle is the final offline/bootstrap fallback. It only fills missing
@@ -227,11 +227,6 @@ export const syncStellaPromptSnapshot = async (
     siteUrl: promptSiteUrl,
   });
   if (resolution.manifest) {
-    await reconcileRemotePromptManifest(
-      resolution.manifest,
-      stellaDataDir,
-      resolveBundledAgentsDir(stellaAppDir),
-    );
     if (resolution.endpoint) {
       await recordAppliedPromptManifest({
         stellaDataDir,
@@ -239,6 +234,11 @@ export const syncStellaPromptSnapshot = async (
         manifest: resolution.manifest,
       });
     }
+    await reconcileRemotePromptManifest(
+      resolution.manifest,
+      stellaDataDir,
+      resolveBundledAgentsDir(stellaAppDir),
+    );
     await reconcileSelectedPersonality(
       stellaDataDir,
       resolution.manifest.revision,
