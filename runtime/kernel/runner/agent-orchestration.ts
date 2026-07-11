@@ -40,7 +40,6 @@ import {
   sanitizeAuthoredCommitSubject,
 } from "../self-mod/feature-namer.js";
 import type { MediatedWriteCapture } from "../self-mod/logical-change-set.js";
-import { enumerateRepoChangedAbsolutePaths } from "../self-mod/logical-change-set.js";
 import { acquireSelfModMutationLock } from "../self-mod/mutation-lock.js";
 
 const collectFileChanges = (
@@ -1280,28 +1279,34 @@ export const createAgentOrchestration = (
         // finish the logical capture, and release the lock. On the error path
         // this is handled by releaseGuardedShellSessions in the finally.
         if (externalEngineLeaseId && externalEngineLeaseSessionId) {
-          // Discover EVERY path the external turn touched by inspecting the
-          // working tree under the STILL-HELD mutation lock — external engines
-          // (e.g. Claude Code) never report Bash-side writes. Feed these to the
-          // HMR contention tracker (so the apply pipeline produces a pending
-          // changeset for them) and to the logical capture (so it attributes
-          // them), independent of the engine's own file list.
-          const discoveredPaths = await enumerateRepoChangedAbsolutePaths(
-            context.stellaAppDir ?? process.cwd(),
-          ).catch((error) => {
-            console.warn(
-              "[self-mod] failed to enumerate external-turn changes:",
-              (error as Error).message,
-            );
-            return [] as string[];
-          });
-          const externalChangedPaths = [
-            ...new Set([
-              ...collectWrittenPaths(result.fileChanges),
-              ...collectWrittenPaths(result.producedFiles),
-              ...discoveredPaths,
-            ]),
-          ];
+          // The logical capture already computes THIS run's authored delta
+          // (before/after under the lease). Reuse it as the SINGLE SOURCE OF
+          // TRUTH for the HMR path set too, so the run never records
+          // pre-existing dirt or another run's earlier writes — only the files
+          // it actually created/modified/deleted. External engines (e.g. Claude
+          // Code) never report Bash-side writes, and the capture delta captures
+          // them regardless. Runs under the STILL-HELD mutation lock.
+          const externalCapture = externalEngineLeaseId
+            ? (guardedShellLogicalCaptures.get(externalEngineLeaseId) ?? null)
+            : null;
+          const externalChangedPaths = externalCapture
+            ? await (
+                context.selfModLifecycle?.changedPathsForCapture?.({
+                  capture: externalCapture,
+                }) ?? Promise.resolve([] as string[])
+              ).catch((error: unknown) => {
+                console.warn(
+                  "[self-mod] failed to compute external-turn changed paths:",
+                  (error as Error).message,
+                );
+                return [] as string[];
+              })
+            : [
+                ...new Set([
+                  ...collectWrittenPaths(result.fileChanges),
+                  ...collectWrittenPaths(result.producedFiles),
+                ]),
+              ];
           if (externalChangedPaths.length > 0) {
             shellLeaseAdditionalPaths.set(
               externalEngineLeaseId,

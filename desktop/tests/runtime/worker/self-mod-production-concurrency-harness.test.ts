@@ -1372,6 +1372,78 @@ describe("production-path self-mod concurrency harness", () => {
     });
   });
 
+  it("P1(f): external HMR path set is exactly this run's delta, not pre-existing dirt", async () => {
+    const h = await createRepo();
+    // Unrelated tracked file left DIRTY vs HEAD before the turn (stands in for
+    // another active/pending run's earlier writes, or unrelated pre-existing
+    // dirt the lock can't distinguish from this run's work).
+    const dirtyTrackedRel = "desktop/src/preexisting-dirty.ts";
+    const dirtyTrackedAbs = path.join(h.repoRoot, dirtyTrackedRel);
+    await writeFile(dirtyTrackedAbs, "export const clean = 1;\n");
+    git(h.repoRoot, ["add", dirtyTrackedRel]);
+    git(h.repoRoot, ["commit", "-q", "-m", "seed preexisting"]);
+    await writeFile(dirtyTrackedAbs, "export const clean = 999;\n");
+    // Unrelated UNTRACKED file present before the turn.
+    const dirtyUntrackedRel = "desktop/src/preexisting-untracked.ts";
+    const dirtyUntrackedAbs = path.join(h.repoRoot, dirtyUntrackedRel);
+    await writeFile(dirtyUntrackedAbs, "export const stray = true;\n");
+
+    const ownRel = "desktop/src/own-delta.ts";
+    const ownAbs = path.join(h.repoRoot, ownRel);
+    const ownText = "export const own = true;\n";
+
+    await runSingleExternalTurn(h, {
+      conversationId: "isolated-delta",
+      agentEngine: "claude_code_local",
+      driver: async () => {
+        // The run authors EXACTLY one file; it never touches the pre-existing
+        // dirty paths.
+        await writeFile(ownAbs, ownText);
+        return { fileChanges: [] } as ToolResult;
+      },
+    });
+
+    const selector = selectorForConversation(h, "isolated-delta");
+    expect(selector).toBeTruthy();
+    const frozen = h.service.getPreparedLogicalChangeSet(selector!);
+    expect((frozen?.files ?? []).map((file) => file.path)).toEqual([ownRel]);
+
+    expect(
+      await h.coordinator.applyPendingWithMorph({ commitHash: selector! }),
+    ).toMatchObject({ applied: true });
+    expect(await resumeLatestTransition(h)).toMatchObject({ ok: true });
+
+    // The HMR apply path set contains ONLY the run's own delta — never the
+    // pre-existing dirty paths.
+    const applyPaths = (
+      h.applyPayloads.at(-1) as {
+        runs: Array<{ paths?: string[]; files?: Array<{ path: string }> }>;
+      }
+    ).runs.flatMap((run) => [
+      ...(run.paths ?? []),
+      ...(run.files ?? []).map((file) => file.path),
+    ]);
+    expect(applyPaths.some((p) => p.includes("own-delta"))).toBe(true);
+    expect(applyPaths.some((p) => p.includes("preexisting-dirty"))).toBe(false);
+    expect(applyPaths.some((p) => p.includes("preexisting-untracked"))).toBe(
+      false,
+    );
+
+    // The run owned/committed only its delta; pre-existing dirt stays dirty on
+    // disk and its committed content is unchanged (this run never snapshotted,
+    // pinned, or applied it).
+    expect(git(h.repoRoot, ["show", `HEAD:${ownRel}`])).toBe(ownText);
+    expect(git(h.repoRoot, ["show", `HEAD:${dirtyTrackedRel}`])).toBe(
+      "export const clean = 1;\n",
+    );
+    expect(await readFile(dirtyTrackedAbs, "utf8")).toBe(
+      "export const clean = 999;\n",
+    );
+    expect(await readFile(dirtyUntrackedAbs, "utf8")).toBe(
+      "export const stray = true;\n",
+    );
+  });
+
   it("P0: selector, update-all, discard, and restart use strict V2 overlays", async () => {
     const h = await createRepo();
     const relativePath = "desktop/src/shared.ts";

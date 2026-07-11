@@ -88,33 +88,6 @@ type MutableLogicalRun = {
 
 const execFileAsync = promisify(execFile);
 
-/**
- * Absolute paths of every file created, modified, or deleted in the working
- * tree relative to HEAD (untracked via `ls-files --others --exclude-standard`,
- * plus tracked modifications/deletions via `diff --name-only HEAD`). Callers
- * enumerate this WHILE HOLDING the mutation lock so an external engine's
- * Bash-side writes — which it never reports — can be recorded for HMR and
- * attributed to the run independently of the engine's own file list.
- */
-export const enumerateRepoChangedAbsolutePaths = async (
-  repoRoot: string,
-): Promise<string[]> => {
-  const runGit = async (args: string[]): Promise<string[]> => {
-    const { stdout } = await execFileAsync("git", args, {
-      cwd: repoRoot,
-      encoding: "buffer",
-      maxBuffer: 32 * 1024 * 1024,
-    });
-    return Buffer.from(stdout).toString("utf8").split("\0").filter(Boolean);
-  };
-  const [untracked, tracked] = await Promise.all([
-    runGit(["ls-files", "--others", "--exclude-standard", "-z"]),
-    runGit(["diff", "--name-only", "-z", "HEAD"]),
-  ]);
-  const unique = new Set<string>([...untracked, ...tracked]);
-  return [...unique].map((relative) => path.join(repoRoot, relative));
-};
-
 const CONFLICT_EXCERPT_MAX = 2_000;
 const BINARY_RANGE: LineRange = { start: 0, end: Number.MAX_SAFE_INTEGER };
 
@@ -467,6 +440,42 @@ export class LogicalSelfModChangeSetStore {
         existing.conflict = accumulated.conflict;
       }
     }
+  }
+
+  /**
+   * Absolute paths whose CURRENT working-tree state differs from this capture's
+   * pre-turn snapshot — i.e. EXACTLY the delta this run authored while it held
+   * the lease (created, modified, or deleted files), including all-repo
+   * created-file discovery. Read-only: it does not mutate run state. This is the
+   * same source of truth as the logical changeset, so callers can feed the HMR
+   * contention tracker the run's authored delta and never pre-existing dirt
+   * that was already present before the lease was acquired.
+   */
+  async changedPathsForCapture(
+    capture: MediatedWriteCapture | null,
+  ): Promise<string[]> {
+    if (!capture) return [];
+    const candidates = new Map(capture.before);
+    if (capture.completeRepoSnapshot) {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        { cwd: this.repoRoot, encoding: "buffer", maxBuffer: 32 * 1024 * 1024 },
+      );
+      for (const relative of Buffer.from(stdout).toString("utf8").split("\0")) {
+        if (!relative || candidates.has(relative)) continue;
+        candidates.set(relative, { kind: "missing" });
+      }
+    }
+    const changed: string[] = [];
+    for (const [relative, before] of candidates) {
+      const after = await readWorkingTreeFileState(
+        path.join(this.repoRoot, relative),
+      );
+      if (statesEqual(after, before)) continue;
+      changed.push(path.join(this.repoRoot, relative));
+    }
+    return changed;
   }
 
   finalizeRun(runId: string): FrozenLogicalChangeSet | null {

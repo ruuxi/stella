@@ -171,6 +171,9 @@ export type SelfModLifecycle = {
     capture: MediatedWriteCapture | null;
     additionalPaths?: string[];
   }) => Promise<void>;
+  changedPathsForCapture: (args: {
+    capture: MediatedWriteCapture | null;
+  }) => Promise<string[]>;
 };
 
 export type ExternalSelfModLifecycle = {
@@ -629,6 +632,9 @@ export const createSelfModCoordinator = (
         additionalPaths ?? [],
       );
     },
+
+    changedPathsForCapture: async ({ capture }) =>
+      (await getStoreModService()?.changedPathsForCapture(capture)) ?? [],
   };
 
   const externalLifecycle: ExternalSelfModLifecycle = {

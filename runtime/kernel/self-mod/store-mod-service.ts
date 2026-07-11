@@ -401,6 +401,12 @@ export class StoreModService {
     await this.logicalChanges.finishWrite(capture, additionalAbsolutePaths);
   }
 
+  async changedPathsForCapture(
+    capture: MediatedWriteCapture | null,
+  ): Promise<string[]> {
+    return await this.logicalChanges.changedPathsForCapture(capture);
+  }
+
   cancelSelfModRun(runId: string): void {
     this.activeRuns.delete(runId);
     this.logicalChanges.cancelRun(runId);

@@ -140,6 +140,11 @@ export type StellaHostRunnerOptions = {
         | null;
       additionalPaths?: string[];
     }) => Promise<void>;
+    changedPathsForCapture?: (args: {
+      capture:
+        | import("../self-mod/logical-change-set.js").MediatedWriteCapture
+        | null;
+    }) => Promise<string[]>;
   } | null;
   selfModHmrController?:
     | import("../self-mod/hmr.js").SelfModHmrController
