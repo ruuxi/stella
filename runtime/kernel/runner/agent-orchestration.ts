@@ -7,6 +7,7 @@ import {
   getModelOverride,
 } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
+import { willRunExternalSubagentEngine } from "../agent-runtime/external-engines.js";
 import { createAgentLifecycleResponseTarget } from "../agent-runtime/response-target.js";
 import { persistThreadCustomMessage } from "../agent-runtime/thread-memory.js";
 import { runExplore } from "../agent-runtime/explore.js";
@@ -625,6 +626,17 @@ export const createAgentOrchestration = (
       >();
       const shellLeaseMutationReleases = new Map<string, () => void>();
       const shellLeaseHasHmrGuard = new Set<string>();
+      // Extra authored paths to attribute to a lease's logical capture when it
+      // is finished (e.g. files an external-engine turn created during the
+      // lease, which are absent from the capture's pre-turn snapshot).
+      const shellLeaseAdditionalPaths = new Map<string, string[]>();
+      const consumeLeaseAdditionalPaths = (
+        leaseId: string,
+      ): string[] | undefined => {
+        const paths = shellLeaseAdditionalPaths.get(leaseId);
+        shellLeaseAdditionalPaths.delete(leaseId);
+        return paths && paths.length > 0 ? paths : undefined;
+      };
       let subagentInterrupted = false;
 
       const endShellMutationGuard = async (
@@ -672,11 +684,13 @@ export const createAgentOrchestration = (
         for (const leaseId of leaseIds) {
           const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
           guardedShellLogicalCaptures.delete(leaseId);
+          const additionalPaths = consumeLeaseAdditionalPaths(leaseId);
           if (shellLeaseHasHmrGuard.delete(leaseId)) {
             await endShellMutationGuard(logicalCapture);
           } else if (logicalCapture) {
             await context.selfModLifecycle?.finishMediatedWrite?.({
               capture: logicalCapture,
+              ...(additionalPaths ? { additionalPaths } : {}),
             });
           }
           shellLeaseMutationReleases.get(leaseId)?.();
@@ -702,9 +716,9 @@ export const createAgentOrchestration = (
         logicalCapture?: MediatedWriteCapture | null,
         mutationRelease?: (() => void) | null,
         hasHmrGuard = false,
-      ) => {
+      ): string | null => {
         const uniqueSessionIds = [...new Set(sessionIds)].filter(Boolean);
-        if (uniqueSessionIds.length === 0) return false;
+        if (uniqueSessionIds.length === 0) return null;
         const leaseId = crypto.randomUUID();
         guardedShellLeaseSessions.set(leaseId, new Set(uniqueSessionIds));
         if (logicalCapture) {
@@ -717,7 +731,7 @@ export const createAgentOrchestration = (
         for (const sessionId of uniqueSessionIds) {
           guardedShellSessionLeases.set(sessionId, leaseId);
         }
-        return true;
+        return leaseId;
       };
 
       const attachSessionsToShellLease = (
@@ -744,11 +758,13 @@ export const createAgentOrchestration = (
         guardedShellLeaseSessions.delete(leaseId);
         const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
         guardedShellLogicalCaptures.delete(leaseId);
+        const additionalPaths = consumeLeaseAdditionalPaths(leaseId);
         if (shellLeaseHasHmrGuard.delete(leaseId)) {
           await endShellMutationGuard(logicalCapture);
         } else if (logicalCapture) {
           await context.selfModLifecycle?.finishMediatedWrite?.({
             capture: logicalCapture,
+            ...(additionalPaths ? { additionalPaths } : {}),
           });
         }
         shellLeaseMutationReleases.get(leaseId)?.();
@@ -1009,7 +1025,57 @@ export const createAgentOrchestration = (
           if (!mutationLockTransferred) mutationRelease?.();
         }
       };
+      const willUseExternalEngine =
+        shouldAttachSelfModLifecycle &&
+        willRunExternalSubagentEngine({
+          agentType,
+          ...(agentContext.agentEngine
+            ? { agentEngine: agentContext.agentEngine }
+            : {}),
+          ...(agentContext.model ? { model: agentContext.model } : {}),
+          ...(resolvedLlm.model?.id
+            ? { resolvedModelId: resolvedLlm.model.id }
+            : {}),
+          ...(context.stellaAppDir
+            ? { stellaAppDir: context.stellaAppDir }
+            : {}),
+        });
+      // External-engine turns (Codex / Claude Code) run under
+      // danger-full-access and mutate the shared working tree DIRECTLY, outside
+      // the per-tool mediated-write path. Hold ONE self-mod mutation lease plus
+      // an all-repo logical capture around the ENTIRE turn so it is serialized
+      // against every other run and its writes are attributed to this run only.
+      // Registering it as a guard lease also makes any nested Stella tool call
+      // routed back through hmrAwareToolExecutor reuse this lease instead of
+      // re-acquiring the (non-reentrant) lock, avoiding self-deadlock.
+      let externalEngineLeaseId: string | null = null;
+      let externalEngineLeaseSessionId: string | null = null;
       try {
+        if (willUseExternalEngine) {
+          const externalMutationRelease = await acquireSelfModMutationLock(
+            context.stellaAppDir ?? process.cwd(),
+            crypto.randomUUID(),
+          );
+          externalEngineLeaseSessionId = `external-engine:${crypto.randomUUID()}`;
+          externalEngineLeaseId = retainShellGuardLease(
+            [externalEngineLeaseSessionId],
+            null,
+            externalMutationRelease,
+            false,
+          );
+          const externalCapture =
+            (await context.selfModLifecycle?.beginMediatedWrite?.({
+              runId: lifecycleRunId,
+              paths: [],
+              captureAll: true,
+            })) ?? null;
+          if (externalEngineLeaseId && externalCapture) {
+            guardedShellLogicalCaptures.set(
+              externalEngineLeaseId,
+              externalCapture,
+            );
+          }
+        }
         const result = await runSubagentTask({
           conversationId,
           userMessageId,
@@ -1185,6 +1251,25 @@ export const createAgentOrchestration = (
               producedFiles: result.producedFiles,
             }),
           );
+        }
+        // Close the external-engine turn's mutation lease: attribute the files
+        // it created (absent from the pre-turn snapshot) via additionalPaths,
+        // finish the logical capture, and release the lock. On the error path
+        // this is handled by releaseGuardedShellSessions in the finally.
+        if (externalEngineLeaseId && externalEngineLeaseSessionId) {
+          const externalChangedPaths = [
+            ...collectWrittenPaths(result.fileChanges),
+            ...collectWrittenPaths(result.producedFiles),
+          ];
+          if (externalChangedPaths.length > 0) {
+            shellLeaseAdditionalPaths.set(
+              externalEngineLeaseId,
+              externalChangedPaths,
+            );
+          }
+          await releaseShellSessionGuard(externalEngineLeaseSessionId);
+          externalEngineLeaseId = null;
+          externalEngineLeaseSessionId = null;
         }
         return result;
       } finally {

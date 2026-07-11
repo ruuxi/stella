@@ -65,7 +65,14 @@ vi.mock("../../../../runtime/kernel/agent-runtime.js", () => ({
       ) => unknown
         ? T
         : never;
+      suppressCompletionSideEffects?: boolean;
     }) => {
+      // The commit-subject / feature namer runs a no-tools one-shot
+      // (`suppressCompletionSideEffects`) that must never mutate the working
+      // tree. Short-circuit it so it does not re-enter the harness driver.
+      if (opts.suppressCompletionSideEffects) {
+        return { runId: "one-shot-run", result: "named", error: undefined };
+      }
       const result = await getDriver().runTool("subagent", opts.toolExecutor);
       return {
         runId: "subagent-run",
@@ -588,6 +595,215 @@ const runIndependentWrapperAttribution = async (
   ).toBe(true);
 };
 
+// Two GENERAL subagent runs pinned to the Codex external engine. External
+// engines run under danger-full-access and mutate the shared working tree
+// DIRECTLY (outside Stella's mediated-write tool path), so the whole turn must
+// be wrapped in one self-mod mutation lease + all-repo capture. Without that,
+// two concurrent external turns interleave their raw writes with no per-run
+// attribution, and applying one run clobbers the other. This drives the real
+// subagent orchestration wrapper; the external turn is simulated by mutating
+// disk directly and reporting fileChanges (never calling the tool executor).
+const runNativeExternalEngineRace = async (
+  order: readonly ["a", "b"] | readonly ["b", "a"],
+) => {
+  const h = await createRepo();
+  const relativePath = "desktop/src/shared.ts";
+  const filePath = path.join(h.repoRoot, relativePath);
+  const original =
+    "export const value = 'original';\nexport const second = 'original';\n";
+  const afterA =
+    "export const value = 'from-a';\nexport const second = 'original';\n";
+  const afterBOnly =
+    "export const value = 'original';\nexport const second = 'from-b';\n";
+  const combined =
+    "export const value = 'from-a';\nexport const second = 'from-b';\n";
+  await writeFile(filePath, original);
+  git(h.repoRoot, ["add", relativePath]);
+  git(h.repoRoot, ["commit", "-q", "-m", "seed external race"]);
+  const seedHead = git(h.repoRoot, ["rev-parse", "HEAD"]).trim();
+
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  let aEnteredResolve!: () => void;
+  const aEntered = new Promise<void>((resolve) => {
+    aEnteredResolve = resolve;
+  });
+  let lockStatusDuringA: { locked: boolean; queued: number } = {
+    locked: false,
+    queued: 0,
+  };
+
+  let invocation = 0;
+  const mutate = async (from: string, to: string) => {
+    const current = await readFile(filePath, "utf8");
+    await writeFile(filePath, current.replace(from, to));
+  };
+  const toolHost = {
+    getToolCatalog: () => [],
+    executeTool: async () => ({ result: "unused" }),
+    registerExtensionTools: vi.fn(),
+    drainCompletedShellProducedFiles: vi.fn(async () => []),
+    killAllShells: vi.fn(),
+    killShell: vi.fn(),
+    killShellsByPort: vi.fn(),
+    shutdown: vi.fn(),
+  };
+  let nextThread = 0;
+  const context = {
+    stellaAppDir: h.repoRoot,
+    stellaDataDir: h.dataRoot,
+    deviceId: "device-1",
+    runtimeStore: {
+      resolveOrCreateActiveThread: () => ({
+        threadId: `thread-${++nextThread}`,
+        reused: false,
+      }),
+      listActiveThreads: () => [],
+      saveAgentRecord: vi.fn(),
+      getAgentRecord: () => null,
+    },
+    appendLocalChatEvent: vi.fn(),
+    state: {
+      localAgentManager: null,
+      runCallbacksByRunId: new Map(),
+      conversationCallbacks: new Map(),
+      convexSiteUrl: null,
+      authToken: null,
+      orchestratorSessions: new Map(),
+    },
+    selfModHmrController: h.controller,
+    selfModLifecycle: h.coordinator.lifecycle,
+    toolHost,
+    hookEmitter: { emit: vi.fn() },
+    paths: {},
+  } as any;
+
+  (
+    globalThis as unknown as { __selfModProductionHarness: HarnessDriver }
+  ).__selfModProductionHarness = {
+    // The tool executor is intentionally ignored: an external engine mutates
+    // the working tree itself and only reports the resulting fileChanges.
+    runTool: async (): Promise<ToolResult> => {
+      const index = ++invocation;
+      if (index === 1) {
+        aEnteredResolve();
+        // Wait until run B has queued behind the shared mutation lock — proof
+        // that the two external turns are serialized rather than interleaved.
+        for (
+          let attempt = 0;
+          attempt < 200 && getSelfModMutationLockStatus(h.repoRoot).queued < 1;
+          attempt += 1
+        ) {
+          await sleep(5);
+        }
+        lockStatusDuringA = getSelfModMutationLockStatus(h.repoRoot);
+        await mutate(
+          "export const value = 'original';",
+          "export const value = 'from-a';",
+        );
+        return {
+          fileChanges: [{ path: filePath, kind: { type: "update" } }],
+        } as ToolResult;
+      }
+      await mutate(
+        "export const second = 'original';",
+        "export const second = 'from-b';",
+      );
+      return {
+        fileChanges: [{ path: filePath, kind: { type: "update" } }],
+      } as ToolResult;
+    },
+  };
+
+  createAgentOrchestration(context, {
+    buildAgentContext: async () => ({
+      systemPrompt: "",
+      dynamicContext: "",
+      maxAgentDepth: 1,
+      agentEngine: "codex_cli",
+    }),
+    sendMessage: async () => {},
+  });
+
+  const runA = await context.state.localAgentManager.createAgent({
+    conversationId: "run-a",
+    description: "external-a",
+    prompt: "external-a",
+    agentType: AGENT_IDS.GENERAL,
+    storageMode: "local",
+  });
+  // A now holds the lease and is parked inside its turn waiting for B.
+  await aEntered;
+  const runB = await context.state.localAgentManager.createAgent({
+    conversationId: "run-b",
+    description: "external-b",
+    prompt: "external-b",
+    agentType: AGENT_IDS.GENERAL,
+    storageMode: "local",
+  });
+  await Promise.all([
+    waitForAgent(context.state.localAgentManager, runA.threadId),
+    waitForAgent(context.state.localAgentManager, runB.threadId),
+  ]);
+
+  // Run B was blocked on the mutation lock while A's external turn held it.
+  expect(lockStatusDuringA.locked).toBe(true);
+  expect(lockStatusDuringA.queued).toBeGreaterThanOrEqual(1);
+
+  const selectors = {
+    a: [...h.pending.values()].find(
+      (pending) => pending.conversationId === "run-a",
+    )?.changeSetId,
+    b: [...h.pending.values()].find(
+      (pending) => pending.conversationId === "run-b",
+    )?.changeSetId,
+  };
+  expect(selectors.a).toBeTruthy();
+  expect(selectors.b).toBeTruthy();
+
+  const aFrozen = h.service.getPreparedLogicalChangeSet(selectors.a!);
+  const bFrozen = h.service.getPreparedLogicalChangeSet(selectors.b!);
+  // Each external turn's changeset holds EXACTLY its own authored delta.
+  expect(aFrozen?.files).toHaveLength(1);
+  expect(aFrozen?.files[0]).toMatchObject({
+    path: relativePath,
+    base: expect.objectContaining({ text: original }),
+    incoming: expect.objectContaining({ text: afterA }),
+  });
+  expect(bFrozen?.files).toHaveLength(1);
+  expect(bFrozen?.files[0]).toMatchObject({
+    path: relativePath,
+    base: expect.objectContaining({ text: afterA }),
+    incoming: expect.objectContaining({ text: combined }),
+  });
+  // Runs were genuinely concurrent (both registered before either finalized).
+  expect(aFrozen?.concurrentRunIds ?? []).toContain(bFrozen?.runId);
+  expect(bFrozen?.concurrentRunIds ?? []).toContain(aFrozen?.runId);
+  // The shared working tree holds both edits, neither clobbered.
+  expect(await readFile(filePath, "utf8")).toBe(combined);
+
+  // Applying each run in either order materializes only that run's delta.
+  for (const [index, owner] of order.entries()) {
+    expect(
+      await h.coordinator.applyPendingWithMorph({
+        commitHash: selectors[owner]!,
+      }),
+    ).toMatchObject({ applied: true });
+    expect(await resumeLatestTransition(h)).toMatchObject({ ok: true });
+    const expectedHead =
+      index === 1 ? combined : owner === "a" ? afterA : afterBOnly;
+    expect(git(h.repoRoot, ["show", `HEAD:${relativePath}`])).toBe(
+      expectedHead,
+    );
+    expect(git(h.repoRoot, ["diff", "--cached", "--name-only"])).toBe("");
+  }
+  expect(await readFile(filePath, "utf8")).toBe(combined);
+  expect(
+    git(h.repoRoot, ["rev-list", "--count", `${seedHead}..HEAD`]).trim(),
+  ).toBe("2");
+};
+
 describe("production-path self-mod concurrency harness", () => {
   it("P0: serializes one subagent apply_patch transaction against an orchestrator mutation", async () => {
     const h = await createRepo();
@@ -841,6 +1057,11 @@ describe("production-path self-mod concurrency harness", () => {
     await runIndependentWrapperAttribution(["orchestrator", "subagent"]);
   });
 
+  it("P1: serializes and isolates concurrent native external-engine (Codex) turns", async () => {
+    await runNativeExternalEngineRace(["a", "b"]);
+    await runNativeExternalEngineRace(["b", "a"]);
+  });
+
   it("P0: selector, update-all, discard, and restart use strict V2 overlays", async () => {
     const h = await createRepo();
     const relativePath = "desktop/src/shared.ts";
@@ -921,14 +1142,10 @@ describe("production-path self-mod concurrency harness", () => {
     }
     expect(h.applyPayloads.slice(-2)).toEqual([
       expect.objectContaining({
-        runs: [
-          expect.objectContaining({ runId: "run-y", protocolVersion: 2 }),
-        ],
+        runs: [expect.objectContaining({ runId: "run-y", protocolVersion: 2 })],
       }),
       expect.objectContaining({
-        runs: [
-          expect.objectContaining({ runId: "run-z", protocolVersion: 2 }),
-        ],
+        runs: [expect.objectContaining({ runId: "run-z", protocolVersion: 2 })],
       }),
     ]);
     expect(

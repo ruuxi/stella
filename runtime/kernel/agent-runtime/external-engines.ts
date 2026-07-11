@@ -36,6 +36,7 @@ import {
   getRuntimeToolMetadata,
   truncateModelVisibleToolText,
 } from "./tool-adapters.js";
+import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import type { ImageCapTarget } from "../../ai/utils/image-caps.js";
 import {
   markOrchestratorErrorReported,
@@ -193,6 +194,39 @@ export const selectExternalOrchestratorEngine = (
     return "claude_code_local";
   }
   return null;
+};
+
+/**
+ * Whether a subagent run will be handled by an external engine (Codex CLI or
+ * Claude Code) rather than the in-process Pi runtime. Mirrors the dispatch
+ * branch in `runExternalSubagentTurn` exactly (Claude Code first, then Codex)
+ * so callers can decide up front whether the whole turn mutates the shared
+ * working tree outside Stella's mediated-write tool path — and therefore needs
+ * a turn-level self-mod mutation lease + capture around it.
+ */
+export const willRunExternalSubagentEngine = (args: {
+  agentType: string;
+  agentEngine?: AgentRuntimeEngine;
+  model?: string;
+  resolvedModelId?: string;
+  stellaAppDir?: string;
+}): boolean => {
+  const claudeArgs: {
+    stellaAppDir?: string;
+    agentEngine?: AgentRuntimeEngine;
+    modelId?: string;
+  } = { agentEngine: args.agentEngine };
+  if (args.stellaAppDir !== undefined)
+    claudeArgs.stellaAppDir = args.stellaAppDir;
+  const modelId = args.model ?? args.resolvedModelId;
+  if (modelId !== undefined) claudeArgs.modelId = modelId;
+  if (shouldUseClaudeCodeAgentRuntime(claudeArgs)) {
+    return true;
+  }
+  return shouldUseCodexAgentRuntime({
+    agentType: args.agentType,
+    agentEngine: args.agentEngine,
+  });
 };
 
 const EXTERNAL_ENGINE_SESSION_PREFIXES: readonly string[] = [
@@ -413,7 +447,6 @@ export const buildClaudeCodeTurnPrompts = (args: {
       : {}),
   };
 };
-
 
 const formatQueuedClaudeMessage = (
   entry: ExternalQueuedMessage,
@@ -746,12 +779,14 @@ const runClaudeHostedTurn = async (args: {
     // Queued follow-ups always continue the session the turn just ran on, so
     // the main prompt never re-sends history; a lost resume reseeds via the
     // fallback prompt.
-    const { prompt: queuedPrompt, resumeFallbackPrompt: queuedResumeFallbackPrompt } =
-      buildClaudeCodeTurnPrompts({
-        historyPromptMessage: queuedHistoryPromptMessage,
-        promptMessages: queuedPromptMessages,
-        hasPersistedSession: true,
-      });
+    const {
+      prompt: queuedPrompt,
+      resumeFallbackPrompt: queuedResumeFallbackPrompt,
+    } = buildClaudeCodeTurnPrompts({
+      historyPromptMessage: queuedHistoryPromptMessage,
+      promptMessages: queuedPromptMessages,
+      hasPersistedSession: true,
+    });
     finalResult = await runClaudeCodeTurn({
       runId,
       sessionKey,
