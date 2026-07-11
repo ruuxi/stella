@@ -379,9 +379,10 @@
 }
 
 .chat-workspace-strip__task-detail .chat-workspace-strip__task-progress {
-  /* The detail block already carries the 23px indent — the rail hangs at
-     its left edge, aligned under the row label. */
-  margin: 0;
+  /* The detail block starts under the label. Pull only the reasoning rail
+     back to the center of the 15px status-icon column; file rows retain the
+     label indent below it. */
+  margin: 0 0 0 -16px;
   padding-left: 9px;
 }
 

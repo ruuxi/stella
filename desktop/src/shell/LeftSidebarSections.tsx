@@ -36,7 +36,6 @@ import {
   EMPTY_FIRST_SEEN_ORDER,
   activityRowKey,
   extractTasksFromActivities,
-  getTaskDisplayText,
   getTaskGroupStatusText,
   groupActivityTasks,
   mergeFooterTasks,
@@ -95,7 +94,7 @@ const AGENT_FILE_CAP = 5;
 
 const activityRowText = (row: ActivityRow): string =>
   row.kind === "task"
-    ? getTaskDisplayText(row.task) || row.task.description
+    ? row.task.description
     : row.group.label;
 
 // ── Row enter / exit / reorder motion ───────────────────────────────
@@ -270,7 +269,10 @@ const TaskRow = memo(function TaskRow({
   orderIndex: number;
 }) {
   const motionProps = useActivityRowMotionProps(orderIndex);
-  const label = (getTaskDisplayText(task) || task.description).trim();
+  // Sidebar and tray rows identify the delegated thread. Live tool state is
+  // intentionally reserved for the inline chat card, so it cannot replace
+  // the stable description here or leak into activity search.
+  const label = task.description.trim();
   const summaries = useAgentProgressSummaries(task.id);
   // Per-session only; resets when the row unmounts, which is fine.
   const [showAllFiles, setShowAllFiles] = useState(false);
