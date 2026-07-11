@@ -51,6 +51,31 @@ export const timestampQueuedOptimisticEventForDrain = <
   timestamp: dequeuedAtMs,
 })
 
+export type QueuedDequeueClock = {
+  userTimestamp: number
+  /** Reserves the next logical tick for this user's assistant response. */
+  nextTimelineFloor: number
+}
+
+/**
+ * Issues a monotonic user timestamp for a drain and reserves the following
+ * tick for its assistant. The reservation keeps a later drain beyond the
+ * prior response even when both cycles observe the same or a backward wall
+ * clock before the persisted assistant snapshot reaches the renderer.
+ */
+export const issueQueuedDequeueTimestamp = (
+  wallClockMs: number,
+  previousTimelineFloor: number,
+  transcriptFloor: number,
+): QueuedDequeueClock => {
+  const floor = Math.max(previousTimelineFloor, transcriptFloor)
+  const userTimestamp = Math.max(wallClockMs, floor + 1)
+  return {
+    userTimestamp,
+    nextTimelineFloor: userTimestamp + 1,
+  }
+}
+
 /**
  * Restores a drain batch after `startChat` failed before acceptance. Existing
  * ids win so a late failure callback cannot duplicate a message that was

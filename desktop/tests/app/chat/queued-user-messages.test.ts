@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   combineQueuedSendPayloads,
+  issueQueuedDequeueTimestamp,
   orderQueuedMessages,
   removeQueuedUserMessageById,
   restoreQueuedMessagesAfterFailedDrain,
@@ -45,6 +46,33 @@ describe('queued user message drain timestamp', () => {
     expect(dequeued).toEqual({ ...enqueued, timestamp: 400 })
     expect(dequeued).not.toBe(enqueued)
     expect(enqueued.timestamp).toBe(100)
+  })
+
+  it('advances past a same-millisecond transcript timestamp', () => {
+    expect(issueQueuedDequeueTimestamp(400, 0, 400)).toEqual({
+      userTimestamp: 401,
+      nextTimelineFloor: 402,
+    })
+  })
+
+  it('does not go backward when the wall clock regresses', () => {
+    expect(issueQueuedDequeueTimestamp(300, 402, 350)).toEqual({
+      userTimestamp: 403,
+      nextTimelineFloor: 404,
+    })
+  })
+
+  it('keeps separate same-millisecond drain cycles strictly ordered', () => {
+    const first = issueQueuedDequeueTimestamp(500, 0, 499)
+    const second = issueQueuedDequeueTimestamp(
+      500,
+      first.nextTimelineFloor,
+      499,
+    )
+
+    expect(first.userTimestamp).toBe(500)
+    expect(second.userTimestamp).toBe(502)
+    expect(second.userTimestamp).toBeGreaterThan(first.nextTimelineFloor)
   })
 })
 

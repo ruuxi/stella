@@ -277,6 +277,108 @@ describe("conversation display message merge", () => {
     ]);
   });
 
+  it("keeps a same-millisecond assistant response after its owning user", () => {
+    const user = message({
+      _id: "z-user",
+      type: "user_message",
+      timestamp: 400,
+    });
+    const response = message({
+      _id: "a-assistant",
+      timestamp: 400,
+      payload: { text: "response", userMessageId: "z-user" },
+    });
+
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages: [response, user],
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots([response]),
+    });
+
+    expect(merged.map((item) => item._id)).toEqual([
+      "z-user",
+      "a-assistant",
+    ]);
+  });
+
+  it("keeps a backward-clock assistant response after its owning user", () => {
+    const user = message({
+      _id: "u-backward",
+      type: "user_message",
+      timestamp: 800,
+    });
+    const response = message({
+      _id: "assistant-backward",
+      timestamp: 700,
+      payload: {
+        text: "response after clock regression",
+        userMessageId: "u-backward",
+        metadata: { runtime: { streamStartedAtMs: 650 } },
+      },
+    });
+
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages: [response, user],
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots([response]),
+    });
+
+    expect(merged.map((item) => item._id)).toEqual([
+      "u-backward",
+      "assistant-backward",
+    ]);
+  });
+
+  it("keeps user-response ordering stable across optimistic to canonical handoff", () => {
+    const user = message({
+      _id: "u-handoff",
+      type: "user_message",
+      timestamp: 900,
+    });
+    const live = overlay({
+      _id: "stream-overlay:u-handoff:1",
+      userMessageId: "u-handoff",
+      timestamp: 900,
+      runId: "run-handoff",
+    });
+    const liveMessage = overlayToMessageRecord(live);
+    const liveMerged = mergeConversationDisplayMessageSources({
+      persistedMessages: [],
+      overlayMessages: [user, liveMessage],
+      streamingAssistants: [live],
+      persistedAssistantSlots: new Map(),
+    });
+
+    const canonicalResponse = message({
+      _id: "assistant-handoff",
+      timestamp: 950,
+      payload: {
+        text: "canonical response",
+        userMessageId: "u-handoff",
+        metadata: { runtime: { streamStartedAtMs: 900 } },
+      },
+    });
+    const canonicalMerged = mergeConversationDisplayMessageSources({
+      persistedMessages: [user, canonicalResponse],
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots([
+        canonicalResponse,
+      ]),
+    });
+
+    expect(liveMerged.map((item) => item.type)).toEqual([
+      "user_message",
+      "assistant_message",
+    ]);
+    expect(canonicalMerged.map((item) => item.type)).toEqual([
+      "user_message",
+      "assistant_message",
+    ]);
+  });
+
   it("does not move a non-user-turn assistant notice across a later user", () => {
     const messages = [
       message({ _id: "u1", type: "user_message", timestamp: 1 }),

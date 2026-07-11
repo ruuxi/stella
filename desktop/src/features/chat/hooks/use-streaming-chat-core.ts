@@ -16,6 +16,7 @@ import { toPastedTextDescriptor } from '../lib/paste-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 import {
   combineQueuedSendPayloads,
+  issueQueuedDequeueTimestamp,
   orderQueuedMessages,
   removeQueuedUserMessageById,
   restoreQueuedMessagesAfterFailedDrain,
@@ -131,6 +132,7 @@ export function useStreamingChatCore({
   const drainingQueuedPayloadsRef = useRef<QueuedStreamPayload[]>([])
   const drainingQueuedMessageIdRef = useRef<string | null>(null)
   const queuedMessageOrderRef = useRef(0)
+  const dequeueTimelineFloorRef = useRef(0)
   const queueDrainPausedRef = useRef(false)
   const {
     isLocalStorage,
@@ -214,6 +216,7 @@ export function useStreamingChatCore({
     drainingQueuedPayloadsRef.current = []
     drainingQueuedMessageIdRef.current = null
     queuedMessageOrderRef.current = 0
+    dequeueTimelineFloorRef.current = 0
     queueDrainPausedRef.current = false
     setOptimisticEvents([])
     setQueuedUserMessages([])
@@ -255,7 +258,20 @@ export function useStreamingChatCore({
     setQueuedUserMessages((current) =>
       current.filter((message) => !drainedIds.has(message.id)),
     )
-    const dequeuedAtMs = Date.now()
+    let transcriptFloor = dequeueTimelineFloorRef.current
+    for (const message of persistedMessages) {
+      transcriptFloor = Math.max(transcriptFloor, message.timestamp)
+    }
+    for (const event of optimisticEvents) {
+      transcriptFloor = Math.max(transcriptFloor, event.timestamp)
+    }
+    const dequeueClock = issueQueuedDequeueTimestamp(
+      Date.now(),
+      dequeueTimelineFloorRef.current,
+      transcriptFloor,
+    )
+    const dequeuedAtMs = dequeueClock.userTimestamp
+    dequeueTimelineFloorRef.current = dequeueClock.nextTimelineFloor
     const optimisticEventTemplate =
       drainable.length === 1
         ? combined.optimisticEvent
@@ -336,6 +352,8 @@ export function useStreamingChatCore({
     activeConversationId,
     clearOptimisticMessage,
     isStreaming,
+    optimisticEvents,
+    persistedMessages,
     setPendingUserMessageId,
     startStream,
   ])

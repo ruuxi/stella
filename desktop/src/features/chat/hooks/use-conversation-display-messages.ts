@@ -82,6 +82,48 @@ export const getMessageChronologicalTimestamp: SortTimestampResolver = (
 const defaultSortTimestamp: SortTimestampResolver =
   getMessageChronologicalTimestamp;
 
+/**
+ * Floors every assistant chronological anchor one logical tick after the user
+ * turn it answers. Worker/renderer clocks can tie or move backward; the turn
+ * relationship is authoritative when wall-clock timestamps disagree.
+ */
+export const createOwningUserClampedSortTimestampResolver = (
+  messages: readonly MessageRecord[],
+  baseResolver: SortTimestampResolver = defaultSortTimestamp,
+): SortTimestampResolver => {
+  const userTimestampById = new Map<string, number>();
+  for (const message of messages) {
+    if (message.type === "user_message") {
+      userTimestampById.set(message._id, baseResolver(message));
+    }
+  }
+
+  let needsClamp = false;
+  for (const message of messages) {
+    const ownerId = getAssistantUserMessageId(message);
+    if (!ownerId) continue;
+    const ownerTimestamp = userTimestampById.get(ownerId);
+    if (
+      ownerTimestamp !== undefined &&
+      baseResolver(message) <= ownerTimestamp
+    ) {
+      needsClamp = true;
+      break;
+    }
+  }
+  if (!needsClamp) return baseResolver;
+
+  return (message) => {
+    const timestamp = baseResolver(message);
+    const ownerId = getAssistantUserMessageId(message);
+    if (!ownerId) return timestamp;
+    const ownerTimestamp = userTimestampById.get(ownerId);
+    return ownerTimestamp === undefined
+      ? timestamp
+      : Math.max(timestamp, ownerTimestamp + 1);
+  };
+};
+
 const compareDisplayOrder = (
   a: MessageRecord,
   b: MessageRecord,
@@ -290,7 +332,14 @@ export const mergeConversationDisplayMessageSources = (args: {
     persistedAssistantSlots,
     getSortTimestamp = defaultSortTimestamp,
   } = args;
-  const resolverActive = getSortTimestamp !== defaultSortTimestamp;
+  const effectiveSortTimestamp =
+    createOwningUserClampedSortTimestampResolver(
+      overlayMessages.length > 0
+        ? [...persistedMessages, ...overlayMessages]
+        : persistedMessages,
+      getSortTimestamp,
+    );
+  const resolverActive = effectiveSortTimestamp !== defaultSortTimestamp;
   const persistedById = new Map(
     persistedMessages.map((message) => [message._id, message]),
   );
@@ -299,10 +348,10 @@ export const mergeConversationDisplayMessageSources = (args: {
       // SQLite is ordered by persistence time. Assistant rows with a captured
       // `streamStartedAtMs` sort by when their text first became visible, so a
       // queued user send cannot jump above an assistant it followed.
-      return orderByResolver(persistedMessages, getSortTimestamp);
+      return orderByResolver(persistedMessages, effectiveSortTimestamp);
     }
     return mergeMessageSources(
-      getSortTimestamp,
+      effectiveSortTimestamp,
       persistedMessages,
       overlayMessages,
     );
@@ -329,11 +378,11 @@ export const mergeConversationDisplayMessageSources = (args: {
 
   if (overlayMessages.length === 0) {
     return resolverActive
-      ? orderByResolver(persistedMessagesForDisplay, getSortTimestamp)
+      ? orderByResolver(persistedMessagesForDisplay, effectiveSortTimestamp)
       : persistedMessagesForDisplay;
   }
   return mergeMessageSources(
-    getSortTimestamp,
+    effectiveSortTimestamp,
     persistedMessagesForDisplay,
     overlayMessages,
   );
