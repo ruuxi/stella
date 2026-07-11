@@ -2885,6 +2885,14 @@ export class StellaRuntimeHost {
     );
   }
 
+  async applyAllSelfModCommits() {
+    return await this.requestWorker<RuntimeSelfModApplyResult[]>(
+      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_APPLY_ALL,
+      undefined,
+      { ensureWorker: true, recordActivity: true },
+    );
+  }
+
   async getCrashRecoveryStatus() {
     return await this.requestWorker<RuntimeCrashRecoveryStatus>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_CRASH_RECOVERY_STATUS,

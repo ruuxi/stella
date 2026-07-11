@@ -791,6 +791,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     eventId: string;
     selfModApplied: {
       commitHash: string;
+      changeSetId?: string;
+      runId?: string;
       files: string[];
       batchIndex: number;
       status?: "pending" | "applied";
@@ -811,6 +813,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     eventId?: string;
     commitHash: string;
     status: "pending" | "applied";
+    replacementCommitHash?: string;
   }): void => {
     const current = state.chatStore
       ?.listEvents(args.conversationId, 500)
@@ -836,6 +839,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       patch: {
         selfModApplied: {
           ...currentSelfMod,
+          ...(args.replacementCommitHash
+            ? { commitHash: args.replacementCommitHash }
+            : {}),
           status: args.status,
         },
       },
@@ -2281,6 +2287,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                     eventId: lastAssistantMessageEventId,
                     selfModApplied: {
                       commitHash,
+                      changeSetId: pending.changeSetId,
+                      runId: pending.runId,
                       files: pending.files,
                       batchIndex: 0,
                       status: "pending",
@@ -3775,6 +3783,16 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       return await selfMod.applyPendingWithMorph({
         commitHash: payload.commitHash,
       });
+    },
+  );
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_APPLY_ALL,
+    async () => {
+      if (!state.init) {
+        throw new Error("Self-mod apply handler is not available.");
+      }
+      return await selfMod.applyAllPendingWithMorph();
     },
   );
 

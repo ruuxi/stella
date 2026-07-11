@@ -127,6 +127,19 @@ export type StellaHostRunnerOptions = {
       }) => Promise<string | null>;
     }) => Promise<void> | void;
     cancelRun?: (runId: string) => Promise<void> | void;
+    beginMediatedWrite?: (args: {
+      runId: string;
+      paths: string[];
+      captureAll?: boolean;
+    }) => Promise<
+      import("../self-mod/logical-change-set.js").MediatedWriteCapture | null
+    >;
+    finishMediatedWrite?: (args: {
+      capture:
+        | import("../self-mod/logical-change-set.js").MediatedWriteCapture
+        | null;
+      additionalPaths?: string[];
+    }) => Promise<void>;
   } | null;
   selfModHmrController?:
     | import("../self-mod/hmr.js").SelfModHmrController

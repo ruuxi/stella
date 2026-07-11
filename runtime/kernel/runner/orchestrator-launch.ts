@@ -497,6 +497,14 @@ export const launchPreparedOrchestratorRun = (args: {
         ? guardedShellLeaseSessions.has(shellSessionId)
         : false;
     let shellGuardActive = false;
+    let logicalWriteCapture: Awaited<
+      ReturnType<
+        NonNullable<
+          NonNullable<typeof context.selfModLifecycle>["beginMediatedWrite"]
+        >
+      >
+    > = null;
+    let logicalWriteCaptureFinished = false;
     if (
       (shouldGuardShellCommand || isParallelWithGuardedShellCommands) &&
       shouldAttachSelfModLifecycle
@@ -530,6 +538,15 @@ export const launchPreparedOrchestratorRun = (args: {
 
     try {
       const preWritePaths = inferPreWritePaths(toolName, toolArgs, toolContext);
+      if (shouldAttachSelfModLifecycle) {
+        logicalWriteCapture =
+          (await context.selfModLifecycle?.beginMediatedWrite?.({
+            runId: prepared.runId,
+            paths: preWritePaths,
+            captureAll:
+              shouldGuardShellCommand || isParallelWithGuardedShellCommands,
+          })) ?? null;
+      }
       if (preWritePaths.length > 0) {
         try {
           await recordWritePaths(preWritePaths, { captureSnapshot: false });
@@ -551,6 +568,17 @@ export const launchPreparedOrchestratorRun = (args: {
         signal,
         onUpdate,
       );
+      const postWritePaths = [
+        ...collectWrittenPaths(result.fileChanges),
+        ...collectWrittenPaths(result.producedFiles),
+      ];
+      if (logicalWriteCapture) {
+        await context.selfModLifecycle?.finishMediatedWrite?.({
+          capture: logicalWriteCapture,
+          additionalPaths: postWritePaths,
+        });
+        logicalWriteCaptureFinished = true;
+      }
       if (isShellCommand || isParallelWithShellCommands || isGuardedShellPoll) {
         await recordToolWrites({
           fileChanges: result.fileChanges,
@@ -581,6 +609,11 @@ export const launchPreparedOrchestratorRun = (args: {
       }
       return result;
     } finally {
+      if (logicalWriteCapture && !logicalWriteCaptureFinished) {
+        await context.selfModLifecycle?.finishMediatedWrite?.({
+          capture: logicalWriteCapture,
+        });
+      }
       if (shellGuardActive) {
         await endShellMutationGuard();
       }

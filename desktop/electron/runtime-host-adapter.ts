@@ -1154,6 +1154,10 @@ export class RuntimeHostAdapter {
     return this.host.applySelfModCommit(payload);
   }
 
+  applyAllSelfModCommits() {
+    return this.host.applyAllSelfModCommits();
+  }
+
   getCrashRecoveryStatus() {
     return this.host.getCrashRecoveryStatus();
   }

@@ -1005,6 +1005,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }>("runtime:availability"),
     selfModApply: (commitHash?: string) =>
       ipcRenderer.invoke("selfmod:apply", { commitHash }),
+    selfModApplyAll: () => ipcRenderer.invoke("selfmod:applyAll"),
     selfModRevert: (commitHash?: string, steps?: number) =>
       ipcRenderer.invoke("selfmod:revert", { commitHash, steps }),
     getCrashRecoveryStatus: () =>

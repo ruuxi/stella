@@ -341,6 +341,8 @@ export type SelfModHmrController = {
    * orchestrator hide the renderer flicker behind the cover.
    */
   finalize: (runId: string) => ApplyResult;
+  /** Finalize one logical author run without batching overlapping owners. */
+  finalizeIsolated: (runId: string) => ApplyResult;
   /**
    * Cancels `runId`. Returns any runs that drained as a side-effect, plus
    * paths whose last owner just cancelled. POSTs `/untrack-paths` for
@@ -634,6 +636,22 @@ export const createSelfModHmrController = (
           finalizedSnapshotsByRun.delete(runId);
         }
       }
+      return result;
+    },
+
+    finalizeIsolated(runId) {
+      snapshotRun(runId);
+      const touchedPaths = new Set(touchedPathsByRun.get(runId) ?? []);
+      const result = buildApplyResult(
+        {
+          applyBatch: touchedPaths.size > 0 ? [{ runId, touchedPaths }] : [],
+          releasedPaths: [],
+        },
+        finalizedSnapshotsByRun,
+        options.repoRoot,
+      );
+      tracker.cancel(runId);
+      dropRunState([runId]);
       return result;
     },
 

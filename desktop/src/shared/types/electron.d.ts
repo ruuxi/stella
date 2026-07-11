@@ -716,6 +716,7 @@ export type ElectronAgentApi = {
     }) => void,
   ) => () => void;
   selfModApply: (commitHash?: string) => Promise<unknown>;
+  selfModApplyAll: () => Promise<unknown>;
   selfModRevert: (commitHash?: string, steps?: number) => Promise<unknown>;
   getCrashRecoveryStatus: () => Promise<
     | {

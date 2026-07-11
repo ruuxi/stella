@@ -9,6 +9,7 @@ export type { SelfModApplied } from "@/features/chat/self-mod-types";
 type ButtonState =
   | "pending"
   | "applying"
+  | "conflict"
   | "idle"
   | "confirming"
   | "reverting"
@@ -25,6 +26,7 @@ export function SelfModUndoButton({
   const [state, setState] = useState<ButtonState>(() =>
     (selfModApplied.status ?? "applied") === "pending" ? "pending" : "idle",
   );
+  const applySelector = selfModApplied.changeSetId ?? selfModApplied.commitHash;
 
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearConfirmTimer = useCallback(() => {
@@ -52,17 +54,58 @@ export function SelfModUndoButton({
   }, [selfModApplied.commitHash, selfModApplied.status]);
 
   const handleApply = useCallback(async () => {
-    if (state !== "pending") return;
+    if (state !== "pending" && state !== "conflict") return;
     setState("applying");
     try {
-      await window.electronAPI?.agent.selfModApply(selfModApplied.commitHash);
+      const result = (await window.electronAPI?.agent.selfModApply(
+        applySelector,
+      )) as
+        | { applied?: boolean; conflicts?: Array<{ path: string }> }
+        | undefined;
+      if (result?.applied === false && result.conflicts?.length) {
+        setState("conflict");
+        showToast({
+          title: "Update needs conflict resolution",
+          description: result.conflicts
+            .map((conflict) => conflict.path)
+            .join(", "),
+          variant: "error",
+        });
+        return;
+      }
       setState("idle");
     } catch (err) {
       console.error("Self-mod apply failed:", err);
       showToast({ title: "Failed to update Stella", variant: "error" });
       setState("pending");
     }
-  }, [selfModApplied.commitHash, state]);
+  }, [applySelector, state]);
+
+  const handleApplyAll = useCallback(async () => {
+    if (state !== "pending" && state !== "conflict") return;
+    setState("applying");
+    try {
+      const results = (await window.electronAPI?.agent.selfModApplyAll()) as
+        | Array<{ applied?: boolean; conflicts?: Array<{ path: string }> }>
+        | undefined;
+      const conflicts =
+        results?.flatMap((result) => result.conflicts ?? []) ?? [];
+      if (conflicts.length > 0) {
+        setState("conflict");
+        showToast({
+          title: "Some updates need conflict resolution",
+          description: conflicts.map((conflict) => conflict.path).join(", "),
+          variant: "error",
+        });
+        return;
+      }
+      setState("idle");
+    } catch (err) {
+      console.error("Apply-all self-mod failed:", err);
+      showToast({ title: "Failed to update Stella", variant: "error" });
+      setState("pending");
+    }
+  }, [state]);
 
   const handleUndo = useCallback(async () => {
     // First click arms the confirmation; auto-disarms after a few seconds.
@@ -80,7 +123,10 @@ export function SelfModUndoButton({
     clearConfirmTimer();
     setState("reverting");
     try {
-      await window.electronAPI?.agent.selfModRevert(selfModApplied.commitHash, 1);
+      await window.electronAPI?.agent.selfModRevert(
+        selfModApplied.commitHash,
+        1,
+      );
       setState("reverted");
     } catch (err) {
       console.error("Self-mod revert failed:", err);
@@ -92,15 +138,17 @@ export function SelfModUndoButton({
   const label =
     state === "pending"
       ? "Stella has an update ready"
-      : state === "applying"
-        ? "Updating Stella…"
-        : state === "confirming"
-          ? "Undo this update?"
-          : state === "reverting"
-            ? "Undoing update…"
-            : state === "reverted"
-              ? "Update undone"
-              : "Stella was updated";
+      : state === "conflict"
+        ? "Update needs conflict resolution"
+        : state === "applying"
+          ? "Updating Stella…"
+          : state === "confirming"
+            ? "Undo this update?"
+            : state === "reverting"
+              ? "Undoing update…"
+              : state === "reverted"
+                ? "Update undone"
+                : "Stella was updated";
 
   return (
     <div className="selfmod-card" data-state={state}>
@@ -108,14 +156,23 @@ export function SelfModUndoButton({
         <StellaLogoIcon size={20} />
       </span>
       <span className="selfmod-card__label">{label}</span>
-      {state === "pending" ? (
-        <button
-          type="button"
-          className="selfmod-card__action"
-          onClick={handleApply}
-        >
-          Update
-        </button>
+      {state === "pending" || state === "conflict" ? (
+        <>
+          <button
+            type="button"
+            className="selfmod-card__action"
+            onClick={handleApply}
+          >
+            {state === "conflict" ? "Retry" : "Update"}
+          </button>
+          <button
+            type="button"
+            className="selfmod-card__action"
+            onClick={handleApplyAll}
+          >
+            Update all
+          </button>
+        </>
       ) : state === "idle" || state === "confirming" ? (
         <button
           type="button"

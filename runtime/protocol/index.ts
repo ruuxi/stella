@@ -293,6 +293,7 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_CHRONICLE_SUMMARY_TICK:
     "internal.worker.chronicle.summaryTick",
   INTERNAL_WORKER_SELF_MOD_APPLY: "internal.worker.selfMod.apply",
+  INTERNAL_WORKER_SELF_MOD_APPLY_ALL: "internal.worker.selfMod.applyAll",
   INTERNAL_WORKER_SELF_MOD_REVERT: "internal.worker.selfMod.revert",
   INTERNAL_WORKER_SELF_MOD_CRASH_RECOVERY_STATUS:
     "internal.worker.selfMod.crashRecoveryStatus",
@@ -610,6 +611,13 @@ export type RuntimeSelfModApplyResult = {
   commitHash?: string;
   applied: boolean;
   message?: string;
+  conflicts?: Array<{
+    path: string;
+    reason: "text-conflict" | "add-delete-conflict" | "attribution-conflict";
+    base: string | null;
+    local: string | null;
+    incoming: string | null;
+  }>;
 };
 
 export type RuntimeCrashRecoveryStatus =

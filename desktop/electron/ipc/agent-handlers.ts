@@ -1159,6 +1159,15 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     },
   );
 
+  ipcMain.handle("selfmod:applyAll", async (event) => {
+    if (!options.assertPrivilegedSender(event, "selfmod:applyAll")) {
+      throw new Error("Blocked untrusted request.");
+    }
+    const stellaHostRunner = options.getStellaHostRunner();
+    if (!stellaHostRunner) throw new Error("Stella runtime not available");
+    return await stellaHostRunner.applyAllSelfModCommits();
+  });
+
   ipcMain.handle(
     "selfmod:revert",
     async (event, payload: { commitHash?: string; steps?: number }) => {

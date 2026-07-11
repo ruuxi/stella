@@ -13,6 +13,12 @@ import {
 import { withRepoCommitLock } from "./commit-lock.js";
 import { getGitHead } from "./log.js";
 
+export type ExactGitFileState = {
+  path: string;
+  content?: string;
+  deleted?: boolean;
+};
+
 /**
  * Dependency manifest/lock files that should follow the changes the
  * agent makes (e.g. `bun install` updating `bun.lock`). Returns only
@@ -106,6 +112,91 @@ const commitPathScopedChanges = async (
   }
 };
 
+export const readGitHeadFile = async (
+  repoRoot: string,
+  repoRelativePath: string,
+): Promise<string | null> => {
+  const result = await runGitStatus(repoRoot, [
+    "show",
+    `HEAD:${repoRelativePath}`,
+  ]);
+  if (result.exitCode === 0) {
+    return Buffer.isBuffer(result.stdout)
+      ? result.stdout.toString("utf8")
+      : result.stdout;
+  }
+  return null;
+};
+
+const commitExactFileStates = async (
+  repoRoot: string,
+  files: ExactGitFileState[],
+  commitArgs: string[],
+): Promise<string | null> => {
+  if (files.length === 0) return null;
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "stella-git-index-"));
+  const indexPath = path.join(tempDir, "index");
+  const env = { GIT_INDEX_FILE: indexPath };
+  try {
+    await runGitWithEnv(repoRoot, ["read-tree", "HEAD"], env);
+    for (const [index, file] of files.entries()) {
+      if (file.deleted) {
+        await runGitWithEnvStatus(
+          repoRoot,
+          ["update-index", "--force-remove", "--", file.path],
+          env,
+        );
+        continue;
+      }
+      const blobFile = path.join(tempDir, `blob-${index}`);
+      await fs.writeFile(blobFile, file.content ?? "", "utf8");
+      const blob = await runGitWithEnv(
+        repoRoot,
+        ["hash-object", "-w", blobFile],
+        env,
+      );
+      const existingEntry = await runGitWithEnvStatus(
+        repoRoot,
+        ["ls-files", "--stage", "--", file.path],
+        env,
+      );
+      let mode = existingEntry.stdout.match(/^(100644|100755)\s/)?.[1];
+      if (!mode) {
+        const stat = await fs.stat(path.join(repoRoot, file.path)).catch(() => null);
+        mode = stat && (stat.mode & 0o111) !== 0 ? "100755" : "100644";
+      }
+      await runGitWithEnv(
+        repoRoot,
+        ["update-index", "--add", "--cacheinfo", `${mode},${blob},${file.path}`],
+        env,
+      );
+    }
+    const diff = await runGitWithEnvStatus(
+      repoRoot,
+      ["diff", "--cached", "--quiet"],
+      env,
+    );
+    if (diff.exitCode === 0) return null;
+    if (diff.exitCode !== 1) {
+      throw new Error(
+        diff.stderr || diff.stdout || "Exact self-mod diff failed.",
+      );
+    }
+    await runGitWithEnv(repoRoot, commitArgs, env);
+    await runGit(repoRoot, [
+      "reset",
+      "-q",
+      "--",
+      ...files.map((file) => file.path),
+    ]);
+    return await getGitHead(repoRoot);
+  } finally {
+    await fs
+      .rm(tempDir, { recursive: true, force: true })
+      .catch(() => undefined);
+  }
+};
+
 /**
  * Return a truncated unified diff for the changes about to be committed.
  *
@@ -164,6 +255,8 @@ export type GitMessageCommitArgs = {
    * swept into an agent-authored commit while still including new files.
    */
   paths?: string[];
+  /** Exact merged states to commit instead of reading shared working-tree bytes. */
+  files?: ExactGitFileState[];
 };
 
 const SUBJECT_MAX_LENGTH = 72;
@@ -196,7 +289,11 @@ export const commitGitMessage = async (
 ): Promise<string | null> => {
   await assertGitRepository(args.repoRoot);
   const paths = normalizePathspecs(args.paths);
-  if (paths.length === 0 && !(await hasStagedChanges(args.repoRoot))) {
+  if (
+    !args.files &&
+    paths.length === 0 &&
+    !(await hasStagedChanges(args.repoRoot))
+  ) {
     return null;
   }
 
@@ -228,6 +325,9 @@ export const commitGitMessage = async (
   // ref lock. The staged-changes checks above are read-only and safe outside
   // the lock; only the commit + HEAD read need the critical section.
   return await withRepoCommitLock(args.repoRoot, async () => {
+    if (args.files) {
+      return await commitExactFileStates(args.repoRoot, args.files, commitArgs);
+    }
     if (paths.length > 0) {
       return await commitPathScopedChanges(args.repoRoot, paths, commitArgs);
     }
