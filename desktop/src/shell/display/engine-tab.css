@@ -335,9 +335,9 @@
   min-height: 0;
 }
 
-.engine-runtime-model-panel[data-disabled] {
+.engine-runtime-model-panel[data-disabled] .engine-runtime-model-panel__search,
+.engine-runtime-model-panel[data-disabled] .engine-runtime-model-panel__list {
   opacity: 0.55;
-  pointer-events: none;
 }
 
 .engine-runtime-model-panel__pane {
