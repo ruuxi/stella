@@ -13,6 +13,7 @@ import {
 import { isOrchestratorAgentType } from "../../contracts/agent-runtime.js";
 import { formatAgentTerminalStateSystemReminder } from "../../contracts/system-reminders.js";
 import { redactMemoryText } from "../memory/redaction.js";
+import { readHomePrompt } from "../prompts/home-prompts.js";
 
 export const DEFAULT_MAX_AGENT_DEPTH = 8;
 export const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
@@ -30,9 +31,26 @@ export {
   sanitizeStellaBase,
 };
 
-export const defaultPromptForAgentType = (agentType: string): string => {
-  if (isOrchestratorAgentType(agentType)) return DEFAULT_ORCHESTRATOR_PROMPT;
-  return DEFAULT_SUBAGENT_PROMPT;
+export const defaultPromptForAgentType = (
+  agentType: string,
+  stellaDataDir?: string,
+): string => {
+  if (isOrchestratorAgentType(agentType)) {
+    return stellaDataDir
+      ? readHomePrompt(
+          stellaDataDir,
+          "fallback-orchestrator",
+          DEFAULT_ORCHESTRATOR_PROMPT,
+        )
+      : DEFAULT_ORCHESTRATOR_PROMPT;
+  }
+  return stellaDataDir
+    ? readHomePrompt(
+        stellaDataDir,
+        "fallback-subagent",
+        DEFAULT_SUBAGENT_PROMPT,
+      )
+    : DEFAULT_SUBAGENT_PROMPT;
 };
 
 export const readCoreMemory = (stellaDataDir: string): string | undefined => {

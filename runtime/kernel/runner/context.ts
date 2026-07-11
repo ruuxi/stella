@@ -930,7 +930,7 @@ export const buildAgentContext = async (
     systemPrompt:
       homeSystemPrompt ??
       agent?.systemPrompt ??
-      defaultPromptForAgentType(args.agentType),
+      defaultPromptForAgentType(args.agentType, context.stellaDataDir),
     dynamicContext: dynamicContextSections.join("\n\n"),
     orchestratorReminderText: activeThreadsPrompt || undefined,
     shouldInjectDynamicReminder: reminderState.shouldInjectDynamicReminder,

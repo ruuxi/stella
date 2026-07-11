@@ -24,19 +24,24 @@ import {
   writePrivateFileSync,
 } from "../shared/private-fs.js";
 import {
-  PERSONALITY_TEMPLATES,
   coercePersonalityId,
   type PersonalityId,
 } from "../../contracts/personality.js";
 import { getPersonalityVoiceId } from "../preferences/local-preferences.js";
+import {
+  resolvePersonalityPresetContent,
+  writePersonalitySyncMetadata,
+} from "../home/personality-sync.js";
 
 const PERSONALITY_FILE_RELATIVE = "PERSONALITY.md";
 
 const personalityFilePath = (stellaDataDir: string): string =>
   path.join(stellaDataDir, PERSONALITY_FILE_RELATIVE);
 
-const composePersonalityContent = (id: PersonalityId): string =>
-  PERSONALITY_TEMPLATES[id].trim() + "\n";
+const composePersonalityContent = (
+  stellaDataDir: string,
+  id: PersonalityId,
+): string => resolvePersonalityPresetContent(stellaDataDir, id);
 
 /**
  * Read the persisted personality file, seeding it on first access from the
@@ -54,15 +59,15 @@ export const readOrSeedPersonality = (stellaDataDir: string): string => {
     // Fall through to seed.
   }
 
-  const seeded = composePersonalityContent(
-    coercePersonalityId(getPersonalityVoiceId(stellaDataDir)),
-  );
+  const selectedId = coercePersonalityId(getPersonalityVoiceId(stellaDataDir));
+  const seeded = composePersonalityContent(stellaDataDir, selectedId);
   try {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
       ensurePrivateDirSync(dir);
     }
     writePrivateFileSync(filePath, seeded);
+    writePersonalitySyncMetadata(stellaDataDir, selectedId, seeded);
   } catch {
     // Seeding is best-effort; the live string is still returned below.
   }
@@ -77,13 +82,14 @@ export const writePersonality = (
   stellaDataDir: string,
   id: PersonalityId,
 ): string => {
-  const content = composePersonalityContent(id);
+  const content = composePersonalityContent(stellaDataDir, id);
   const filePath = personalityFilePath(stellaDataDir);
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) {
     ensurePrivateDirSync(dir);
   }
   writePrivateFileSync(filePath, content);
+  writePersonalitySyncMetadata(stellaDataDir, id, content);
   return content.trim();
 };
 

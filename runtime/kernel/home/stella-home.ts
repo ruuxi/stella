@@ -24,6 +24,7 @@ import {
   resolvePromptManifest,
   type PromptManifestResolution,
 } from "./prompt-manifest-sync.js";
+import { reconcileSelectedPersonality } from "./personality-sync.js";
 
 export type StellaDataDir = {
   stellaAppDir: string;
@@ -122,6 +123,7 @@ export const ensureStellaDataDirSeeded = async (
   skillsSync: SkillsSyncReport;
   agentsSync: AgentsSyncReport;
   promptsSync: BundledSyncReport;
+  personalitySync: BundledSyncReport;
   promptResolution: PromptManifestResolution["source"];
 }> => {
   await ensureDir(stellaDataDir);
@@ -187,10 +189,16 @@ export const ensureStellaDataDirSeeded = async (
     console.log(`[stella-home] prompts sync: ${promptsSummary}`);
   }
 
+  const personalitySync = await reconcileSelectedPersonality(
+    stellaDataDir,
+    promptResolution.manifest?.revision ?? "bundled-bootstrap",
+  );
+
   return {
     skillsSync,
     agentsSync,
     promptsSync,
+    personalitySync,
     promptResolution: promptResolution.source,
   };
 };

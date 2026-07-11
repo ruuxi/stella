@@ -40,6 +40,7 @@ import {
   shouldUseClaudeCodeAgentRuntime,
 } from "../integrations/claude-code-agent-runtime.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
+import { readHomePrompt } from "../prompts/home-prompts.js";
 
 const logger = createRuntimeLogger("memory.chronicle-summarizer");
 
@@ -247,23 +248,35 @@ const readExistingInputFingerprint = async (
   }
 };
 
-const buildSystemPrompt = (window: ChronicleSummaryWindow): string => {
+export const CHRONICLE_SYSTEM_PROMPT_FALLBACK = [
+  "You are Chronicle's recursive summarizer for Stella.",
+  "You receive deduped on-screen text lines that the OCR sampler observed across {{horizon}} of screen activity.",
+  "Distill them into a short markdown block describing what the user was actively doing.",
+  "",
+  "Rules:",
+  "  - Do not quote raw OCR lines verbatim. Paraphrase and group.",
+  "  - Identify the dominant app(s)/contexts and any notable transitions.",
+  "  - Skip OS chrome, generic UI strings, and stale fragments.",
+  "  - 5-12 lines max. Use bullet points. No preamble. No closing remarks.",
+  "  - If the lines look meaningless, irrelevant, or insufficient signal, respond exactly with: NO_SIGNAL",
+].join("\n");
+
+export const buildChronicleSystemPrompt = (
+  stellaDataDir: string | undefined,
+  window: ChronicleSummaryWindow,
+): string => {
   const horizon =
     window === "10m"
       ? "the last ~10 minutes"
       : "the last ~6 hours";
-  return [
-    "You are Chronicle's recursive summarizer for Stella.",
-    `You receive deduped on-screen text lines that the OCR sampler observed across ${horizon} of screen activity.`,
-    "Distill them into a short markdown block describing what the user was actively doing.",
-    "",
-    "Rules:",
-    "  - Do not quote raw OCR lines verbatim. Paraphrase and group.",
-    "  - Identify the dominant app(s)/contexts and any notable transitions.",
-    "  - Skip OS chrome, generic UI strings, and stale fragments.",
-    "  - 5-12 lines max. Use bullet points. No preamble. No closing remarks.",
-    "  - If the lines look meaningless, irrelevant, or insufficient signal, respond exactly with: NO_SIGNAL",
-  ].join("\n");
+  const template = stellaDataDir
+    ? readHomePrompt(
+        stellaDataDir,
+        "chronicle-summarizer",
+        CHRONICLE_SYSTEM_PROMPT_FALLBACK,
+      )
+    : CHRONICLE_SYSTEM_PROMPT_FALLBACK;
+  return template.replaceAll("{{horizon}}", horizon);
 };
 
 const buildUserPrompt = (
@@ -422,7 +435,7 @@ export const runChronicleSummary = async (args: {
       },
     ];
     const context: Context = {
-      systemPrompt: buildSystemPrompt(args.window),
+      systemPrompt: buildChronicleSystemPrompt(args.stellaDataDir, args.window),
       messages,
       tools: [],
     };

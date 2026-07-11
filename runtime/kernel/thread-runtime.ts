@@ -10,11 +10,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRuntimeLogger } from "./debug.js";
 import { redactMemoryText } from "./memory/redaction.js";
+import { readHomePrompt } from "./prompts/home-prompts.js";
 
 const logger = createRuntimeLogger("thread-runtime");
 
 const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
-const THREAD_COMPACTION_SYSTEM_PROMPT = "Output ONLY the summary content.";
+export const THREAD_COMPACTION_SYSTEM_PROMPT_FALLBACK =
+  "Output ONLY the summary content.";
+
+export const resolveThreadCompactionSystemPrompt = (
+  stellaDataDir?: string,
+): string =>
+  stellaDataDir
+    ? readHomePrompt(
+        stellaDataDir,
+        "thread-compaction",
+        THREAD_COMPACTION_SYSTEM_PROMPT_FALLBACK,
+      )
+    : THREAD_COMPACTION_SYSTEM_PROMPT_FALLBACK;
 const THREAD_COMPACTION_RESERVE_TOKENS = 16_384;
 /**
  * Fraction of the model's real context window at which the orchestrator
@@ -650,6 +663,7 @@ const generateThreadSummary = async (args: {
   previousSummary?: string;
   resolvedLlm: ResolvedLlmRoute;
   durableMemoryReference?: string;
+  stellaDataDir?: string;
 }): Promise<string | null> => {
   const apiKey = (await args.resolvedLlm.getApiKey())?.trim();
   if (!apiKey) {
@@ -684,7 +698,7 @@ const generateThreadSummary = async (args: {
   const message = await completeSimple(
     args.resolvedLlm.model,
     {
-      systemPrompt: THREAD_COMPACTION_SYSTEM_PROMPT,
+      systemPrompt: resolveThreadCompactionSystemPrompt(args.stellaDataDir),
       messages: [
         {
           role: "user",
@@ -807,6 +821,7 @@ export const maybeCompactRuntimeThread = async (args: {
       messages: splitMessages.middleMessages,
       previousSummary: splitMessages.previousSummary,
       resolvedLlm: args.resolvedLlm,
+      stellaDataDir: args.stellaDataDir,
       // Only the orchestrator has the durable-memory docs injected on every
       // turn; other agents must keep such facts in the summary itself.
       durableMemoryReference:

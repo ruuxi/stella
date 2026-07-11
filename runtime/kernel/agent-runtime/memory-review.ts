@@ -35,6 +35,7 @@ import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
 } from "../integrations/claude-code-agent-runtime.js";
+import { readHomePrompt } from "../prompts/home-prompts.js";
 
 const logger = createRuntimeLogger("agent-runtime.memory-review");
 
@@ -43,7 +44,7 @@ export const MEMORY_REVIEW_TURN_THRESHOLD = 20;
 const KNOWN_MEMORY_RECENT_NOTE_LIMIT = 8;
 const KNOWN_MEMORY_MAX_CHARS = 6_000;
 
-const MEMORY_REVIEW_SYSTEM_PROMPT = [
+export const MEMORY_REVIEW_SYSTEM_PROMPT_FALLBACK = [
   "You are Stella's background memory pass for the Orchestrator — the ongoing conversation between the user and Stella. You see only recent user and assistant messages from that conversation.",
   "",
   'Capture what Stella should still know about this conversation after the live context is compacted away, so that later — when the user picks a topic back up or says "the thing we discussed" — Stella still has it.',
@@ -73,8 +74,16 @@ const MEMORY_REVIEW_SYSTEM_PROMPT = [
 const MEMORY_REVIEW_USER_PROMPT_PREFIX =
   "Review the recent conversation below and act according to your instructions.\n\n";
 
-export const buildMemoryReviewSystemPrompt = (): string =>
-  MEMORY_REVIEW_SYSTEM_PROMPT;
+export const buildMemoryReviewSystemPrompt = (
+  stellaDataDir?: string,
+): string =>
+  stellaDataDir
+    ? readHomePrompt(
+        stellaDataDir,
+        "memory-review",
+        MEMORY_REVIEW_SYSTEM_PROMPT_FALLBACK,
+      )
+    : MEMORY_REVIEW_SYSTEM_PROMPT_FALLBACK;
 
 const formatTextContent = (parts: AssistantMessage["content"]): string =>
   parts
@@ -326,7 +335,7 @@ const runReview = async (args: {
     stellaDataDir: args.stellaDataDir,
     store: args.store,
   }).catch(() => "");
-  const reviewSystemPrompt = buildMemoryReviewSystemPrompt();
+  const reviewSystemPrompt = buildMemoryReviewSystemPrompt(args.stellaDataDir);
   const messages: Message[] = [
     {
       role: "user",
