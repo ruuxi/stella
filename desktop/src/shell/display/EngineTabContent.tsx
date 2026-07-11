@@ -59,6 +59,7 @@ import {
   buildEngineTransitionReasoningPatch,
   intersectChatGptModels,
   OPENAI_CODEX_PROVIDER,
+  resolveChatGptModelSelection,
 } from "@/global/settings/lib/engine-model-routing";
 import "./engine-tab.css";
 
@@ -486,20 +487,13 @@ export function EngineTabContent() {
         return true;
       }
       setSaving("engine");
+      // ChatGPT auto-matches to an available OpenAI model instead of forcing
+      // a manual pick; auth is the only real gate.
+      let resolvedCodexModel = preferences.codexModel;
       try {
         if (engine === "codex_cli") {
           if (codexCatalog.loading) {
             throw new Error("Wait for ChatGPT models to finish verifying.");
-          }
-          const selectedModel = preferences.codexModel;
-          const available = codexCatalog.models
-            ? intersectChatGptModels(engineCatalogModels, codexCatalog.models)
-            : [];
-          if (!available.some((model) => model.modelId === selectedModel)) {
-            throw new Error(
-              codexCatalog.error ??
-                "Choose an available ChatGPT model before changing routes.",
-            );
           }
           let validation = await credentials.validateOAuth(
             OPENAI_CODEX_PROVIDER,
@@ -519,10 +513,25 @@ export function EngineTabContent() {
             throw new Error("ChatGPT needs to be connected before selection.");
           }
           setChatGptConnection("connected");
+          const available = codexCatalog.models
+            ? intersectChatGptModels(engineCatalogModels, codexCatalog.models)
+            : [];
+          const resolved = resolveChatGptModelSelection(
+            preferences.codexModel,
+            available.map((model) => model.modelId),
+            preferences.codexModel || DEFAULT_CODEX_MODEL,
+          );
+          if (!resolved) {
+            throw new Error(
+              codexCatalog.error ??
+                "No ChatGPT models are currently available.",
+            );
+          }
+          resolvedCodexModel = resolved;
         }
         const model =
           engine === "codex_cli"
-            ? preferences.codexModel
+            ? resolvedCodexModel
             : engine === "claude_code_local"
               ? preferences.claudeCodeModel
               : undefined;

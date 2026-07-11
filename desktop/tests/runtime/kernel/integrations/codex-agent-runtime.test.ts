@@ -11,6 +11,7 @@ import {
   buildCodexUserInput,
   buildCodexPromptFromMessages,
   codexImagePathFromFileUrl,
+  CODEX_LIGHT_MODEL,
   extractCodexDeveloperInstructions,
   fileChangesFromCodexItem,
   getCodexRuntimePreferences,
@@ -310,18 +311,20 @@ describe("Codex agent runtime", () => {
       path.join(os.tmpdir(), "stella-codex-light-model-"),
     );
     try {
+      // Saved model equals the default => the user hasn't picked a distinct
+      // Codex model, so Stella Light downgrades to the light model.
       updateLocalModelPreferences(stellaDataDir, {
-        codexModel: "gpt-5.5",
+        codexModel: DEFAULT_CODEX_MODEL,
       });
-      expect(getCodexRuntimePreferences(stellaDataDir, "stella/light").model).toBe(
-        "gpt-5.4-mini",
-      );
+      expect(
+        getCodexRuntimePreferences(stellaDataDir, "stella/light").model,
+      ).toBe(CODEX_LIGHT_MODEL);
       updateLocalModelPreferences(stellaDataDir, {
         codexModel: "custom-codex-model",
       });
-      expect(getCodexRuntimePreferences(stellaDataDir, "stella/light").model).toBe(
-        "custom-codex-model",
-      );
+      expect(
+        getCodexRuntimePreferences(stellaDataDir, "stella/light").model,
+      ).toBe("custom-codex-model");
     } finally {
       fs.rmSync(stellaDataDir, { recursive: true, force: true });
       if (previousModel === undefined) {

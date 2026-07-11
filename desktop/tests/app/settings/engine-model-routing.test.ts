@@ -7,6 +7,7 @@ import {
   DEFAULT_CHATGPT_MODEL,
   intersectChatGptModels,
   listChatGptCatalogModels,
+  resolveChatGptModelSelection,
 } from "../../../src/global/settings/lib/engine-model-routing";
 import { DEFAULT_CODEX_MODEL } from "../../../../runtime/contracts/agent-engine";
 
@@ -35,6 +36,35 @@ const preferences = {
 describe("engine model routing", () => {
   it("uses the runtime contract as the single ChatGPT default", () => {
     expect(DEFAULT_CHATGPT_MODEL).toBe(DEFAULT_CODEX_MODEL);
+  });
+
+  describe("resolveChatGptModelSelection auto-match", () => {
+    const available = ["gpt-5.6-sol", "gpt-5.5", "gpt-5.4"];
+    it("keeps the requested model when it is available", () => {
+      expect(
+        resolveChatGptModelSelection("gpt-5.5", available, "gpt-5.6-sol"),
+      ).toBe("gpt-5.5");
+    });
+    it("falls back to the default when the request is unavailable", () => {
+      expect(
+        resolveChatGptModelSelection("gpt-5.4-mini", available, "gpt-5.6-sol"),
+      ).toBe("gpt-5.6-sol");
+    });
+    it("falls back to the first available model when neither matches", () => {
+      expect(
+        resolveChatGptModelSelection("gpt-5.4-mini", available, "legacy"),
+      ).toBe("gpt-5.6-sol");
+    });
+    it("resolves the default even when no model was requested", () => {
+      expect(
+        resolveChatGptModelSelection(undefined, available, "gpt-5.5"),
+      ).toBe("gpt-5.5");
+    });
+    it("returns null only when the catalog is empty", () => {
+      expect(resolveChatGptModelSelection("gpt-5.5", [], "gpt-5.6-sol")).toBe(
+        null,
+      );
+    });
   });
   it("scopes ChatGPT to OpenAI OAuth catalog models", () => {
     const models = [

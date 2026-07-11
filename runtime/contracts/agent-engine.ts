@@ -2,7 +2,7 @@ export type AgentRuntimeEngine = "default" | "claude_code_local" | "codex_cli";
 
 export const DEFAULT_AGENT_RUNTIME_ENGINE: AgentRuntimeEngine = "default";
 /** Saved Codex/ChatGPT model preference. Kept even when not in the live catalog. */
-export const DEFAULT_CODEX_MODEL = "gpt-5.5";
+export const DEFAULT_CODEX_MODEL = "gpt-5.6-sol";
 
 export const AGENT_RUNTIME_ENGINES: readonly AgentRuntimeEngine[] = [
   "default",

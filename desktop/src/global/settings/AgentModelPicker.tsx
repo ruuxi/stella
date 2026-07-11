@@ -47,6 +47,7 @@ import {
   fromOpenAiCodexModelId,
   intersectChatGptModels,
   OPENAI_CODEX_PROVIDER,
+  resolveChatGptModelSelection,
   type ModelPickerEngine,
 } from "@/global/settings/lib/engine-model-routing";
 import "./AgentModelPicker.css";
@@ -759,6 +760,10 @@ export function AgentModelPicker({
       const previous = preferences;
       setPendingAgent(ENGINE_PENDING_TARGET);
       setError(null);
+      // ChatGPT auto-matches to an available OpenAI model; the model id passed
+      // into the routing patch is resolved below so selection never dead-ends
+      // on a "choose a model" gate. Auth is the only real interruption.
+      let effectiveModelId = modelId;
       try {
         if (engine === "codex_cli") {
           if (codexCatalog.loading) {
@@ -784,16 +789,22 @@ export function AgentModelPicker({
             throw new Error("ChatGPT needs to be connected before selection.");
           }
           setChatGptConnection("connected");
-          if (!chatGptModels.some((model) => model.id === selectedModel)) {
+          const resolved = resolveChatGptModelSelection(
+            selectedModel,
+            chatGptModels.map((model) => model.id),
+            preferences.codexModel || DEFAULT_CHATGPT_MODEL,
+          );
+          if (!resolved) {
             throw new Error(
               codexCatalog.error ??
-                "Choose an available ChatGPT model before changing routes.",
+                "No ChatGPT models are currently available.",
             );
           }
+          effectiveModelId = resolved;
         }
 
         const patch = {
-          ...buildEngineRoutingPatch(preferences, engine, modelId),
+          ...buildEngineRoutingPatch(preferences, engine, effectiveModelId),
           ...buildEngineTransitionReasoningPatch(preferences, engine),
         } as Partial<LocalModelPreferences>;
         const optimistic = { ...preferences, ...patch };

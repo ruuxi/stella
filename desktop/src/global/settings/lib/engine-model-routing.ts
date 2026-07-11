@@ -60,6 +60,26 @@ export function intersectChatGptModels(
   );
 }
 
+/**
+ * ChatGPT is directly selectable: the only real gate is OpenAI auth, never a
+ * forced model pick. When the requested/saved model isn't in the live catalog
+ * we auto-match to the closest available OpenAI model instead of dead-ending
+ * the user — preferring the exact request, then the default, then the first
+ * available id. Returns null only when the catalog is genuinely empty.
+ */
+export function resolveChatGptModelSelection(
+  requested: string | undefined,
+  available: readonly string[],
+  fallback: string,
+): string | null {
+  if (available.length === 0) return null;
+  const req = requested?.trim();
+  if (req && available.includes(req)) return req;
+  const fb = fallback.trim();
+  if (fb && available.includes(fb)) return fb;
+  return available[0];
+}
+
 export function normalizeClaudeCodeReasoningEffort(
   effort: EngineReasoningEffort,
 ): EngineReasoningEffort {
