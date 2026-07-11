@@ -121,7 +121,20 @@ export function SelfModUndoButton({
     try {
       const result = (await window.electronAPI?.agent.selfModDiscardPending(
         applySelector,
-      )) as { discarded?: boolean } | undefined;
+      )) as
+        | { discarded?: boolean; conflicts?: Array<{ path: string }> }
+        | undefined;
+      if (result?.conflicts?.length) {
+        setState("conflict");
+        showToast({
+          title: "Discard needs conflict resolution",
+          description: result.conflicts
+            .map((conflict) => conflict.path)
+            .join(", "),
+          variant: "error",
+        });
+        return;
+      }
       if (!result?.discarded) throw new Error("Pending update was not found");
       setState("discarded");
     } catch (err) {

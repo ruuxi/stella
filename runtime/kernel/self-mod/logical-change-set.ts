@@ -65,6 +65,10 @@ export type LogicalMergeResult =
     }
   | { status: "conflicts"; conflicts: LogicalFileConflict[] };
 
+export type LogicalLiveTreeResult =
+  | { status: "clean"; states: Map<string, LogicalFileState> }
+  | { status: "conflicts"; conflicts: LogicalFileConflict[] };
+
 export type MediatedWriteCapture = {
   runId: string;
   before: Map<string, LogicalFileState>;
@@ -241,13 +245,22 @@ const changedRanges = (
       baseCursor += change.value.length;
     }
   }
-  return ranges;
+  const normalized: LineRange[] = [];
+  for (const range of ranges) {
+    const previous = normalized.at(-1);
+    if (previous && range.start <= previous.end) {
+      previous.end = Math.max(previous.end, range.end);
+    } else {
+      normalized.push({ ...range });
+    }
+  }
+  return normalized;
 };
 
 const rangesOverlap = (a: LineRange, b: LineRange): boolean => {
   if (a.start === a.end && b.start === b.end) return a.start === b.start;
-  if (a.start === a.end) return a.start >= b.start && a.start <= b.end;
-  if (b.start === b.end) return b.start >= a.start && b.start <= a.end;
+  if (a.start === a.end) return a.start > b.start && a.start < b.end;
+  if (b.start === b.end) return b.start > a.start && b.start < a.end;
   return a.start < b.end && b.start < a.end;
 };
 
@@ -483,17 +496,6 @@ export class LogicalSelfModChangeSetStore {
     this.pruneAppliedConcurrent();
   }
 
-  expireOlderThan(cutoffMs: number): FrozenLogicalChangeSet[] {
-    const expired: FrozenLogicalChangeSet[] = [];
-    for (const changeSet of this.frozen.values()) {
-      if (changeSet.createdAt >= cutoffMs) continue;
-      this.frozen.delete(changeSet.changeSetId);
-      expired.push(changeSet);
-    }
-    this.pruneAppliedConcurrent();
-    return expired;
-  }
-
   private pruneAppliedConcurrent(): void {
     const neededRunIds = new Set<string>();
     for (const run of this.activeRuns.values()) {
@@ -592,11 +594,14 @@ export class LogicalSelfModChangeSetStore {
   async buildLiveTree(
     extraPaths: Iterable<string>,
     readHeadFile: (path: string) => Promise<LogicalFileState>,
-    readDiskFile: (path: string) => Promise<LogicalFileState>,
-  ): Promise<Map<string, LogicalFileState>> {
+    options?: { excludeChangeSetIds?: Iterable<string> },
+  ): Promise<LogicalLiveTreeResult> {
     const paths = new Set(extraPaths);
+    const excluded = new Set(options?.excludeChangeSetIds ?? []);
     const pendingFiles = [
-      ...[...this.frozen.values()].flatMap((changeSet) => changeSet.files),
+      ...[...this.frozen.values()]
+        .filter((changeSet) => !excluded.has(changeSet.changeSetId))
+        .flatMap((changeSet) => changeSet.files),
       ...[...this.activeRuns.values()].flatMap((run) =>
         [...run.files.entries()].map(([filePath, file]) => ({
           path: filePath,
@@ -606,7 +611,8 @@ export class LogicalSelfModChangeSetStore {
       ),
     ];
     for (const file of pendingFiles) paths.add(file.path);
-    const result = new Map<string, LogicalFileState>();
+    const states = new Map<string, LogicalFileState>();
+    const conflicts: LogicalFileConflict[] = [];
     for (const filePath of paths) {
       let current = await readHeadFile(filePath);
       for (const file of pendingFiles) {
@@ -618,15 +624,17 @@ export class LogicalSelfModChangeSetStore {
           incoming: file.incoming,
         });
         if (merged.status === "conflict") {
-          // The live disk is the lossless authority when two still-live
-          // deltas cannot be replayed in isolation (e.g. unresolved overlap).
-          current = await readDiskFile(filePath);
+          conflicts.push(merged.conflict);
           break;
         }
         current = merged.state;
       }
-      result.set(filePath, current);
+      if (!conflicts.some((conflict) => conflict.path === filePath)) {
+        states.set(filePath, current);
+      }
     }
-    return result;
+    return conflicts.length > 0
+      ? { status: "conflicts", conflicts }
+      : { status: "clean", states };
   }
 }

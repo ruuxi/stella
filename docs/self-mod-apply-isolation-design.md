@@ -16,6 +16,11 @@ the selected versioned snapshot as an overlay and never reconciles it back to
 the shared disk. A process restart first rebuilds disk under the mutation lock
 as `new HEAD + every still-pending/active logical delta`.
 
+Live-tree reconstruction is a deterministic plan, never an ambient-disk
+fallback: any replay conflict returns structured conflicts before the first
+write. Disk writes use rollback snapshots for I/O failure, and discard removes
+logical/coordinator/persistence state only after reconstruction succeeds.
+
 Text blobs auto-merge only when their true changed regions do not collide.
 Literal same-line overlap, binary/base divergence, incompatible mode changes,
 and add/delete collisions return a structured conflict without touching HEAD,
@@ -23,8 +28,11 @@ the index, disk bytes, or pending selectors. Conflict display excerpts are
 bounded; full raw states remain only in the persisted pending-resolution row.
 Discard and seven-day expiry remove the logical state, coordinator envelope,
 Vite pins, reload lease, and card state, then reconstruct the remaining live
-tree. Pending selectors are persisted in SQLite and restored with their HMR
-ownership after a worker restart. Each selector has its own card event; an
+tree. TTL and the 64-row cap are applied before startup restores logical state,
+cards, HMR ownership, or reload leases; rejected rows go through the same full
+cleanup only after deterministic reconstruction succeeds. Pending selectors
+are persisted in SQLite and restored with their HMR ownership after a worker
+restart. Each selector has its own card event; an
 explicit Update all action remains separate.
 
 The production-path harness drives deterministic fake mutations through both

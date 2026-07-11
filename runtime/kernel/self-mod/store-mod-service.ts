@@ -85,6 +85,16 @@ type PersistedPreparedAuthorChange = {
   envelope?: unknown;
 };
 
+export const PENDING_CHANGE_SET_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
+export const MAX_PENDING_CHANGE_SETS = 64;
+
+export type StartupDiscardCandidate = {
+  changeSetId: string;
+  runId: string;
+  files: string[];
+  envelope?: unknown;
+};
+
 export type ApplyPreparedAuthorResult =
   | {
       status: "applied";
@@ -93,6 +103,10 @@ export type ApplyPreparedAuthorResult =
       selectedFiles: ExactGitFileState[];
       noopPaths: string[];
     }
+  | { status: "conflicts"; conflicts: LogicalFileConflict[] };
+
+export type MaterializeLiveTreeResult =
+  | { status: "applied" }
   | { status: "conflicts"; conflicts: LogicalFileConflict[] };
 
 export type FinalizedSelfModCommit = {
@@ -163,6 +177,10 @@ export class StoreModService {
     PreparedAuthorChange
   >();
   private readonly pendingEnvelopes = new Map<string, unknown>();
+  private readonly startupDiscardCandidates = new Map<
+    string,
+    StartupDiscardCandidate
+  >();
   /** Serializes merge-against-HEAD + exact commit as one logical transaction. */
   private authorApplyTail: Promise<void> = Promise.resolve();
   /**
@@ -194,6 +212,11 @@ export class StoreModService {
   }
 
   private restorePreparedAuthorChanges(): void {
+    const validRows: Array<{
+      row: ReturnType<StoreModStore["listPendingSelfModChangeSets"]>[number];
+      persisted: PersistedPreparedAuthorChange;
+      createdAt: number;
+    }> = [];
     for (const row of this.store.listPendingSelfModChangeSets(this.repoRoot)) {
       const persisted = row.payload as PersistedPreparedAuthorChange;
       if (
@@ -203,6 +226,36 @@ export class StoreModService {
         !persisted.prepared?.activeRun
       ) {
         this.store.deletePendingSelfModChangeSet(row.changeSetId);
+        continue;
+      }
+      validRows.push({
+        row,
+        persisted,
+        createdAt: Number.isFinite(persisted.changeSet.createdAt)
+          ? persisted.changeSet.createdAt
+          : row.createdAt,
+      });
+    }
+
+    const cutoff = Date.now() - PENDING_CHANGE_SET_TTL_MS;
+    const freshRows = validRows.filter((entry) => entry.createdAt >= cutoff);
+    const retainedIds = new Set(
+      freshRows
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .slice(-MAX_PENDING_CHANGE_SETS)
+        .map((entry) => entry.row.changeSetId),
+    );
+
+    for (const { row, persisted } of validRows) {
+      if (!retainedIds.has(row.changeSetId)) {
+        this.startupDiscardCandidates.set(row.changeSetId, {
+          changeSetId: row.changeSetId,
+          runId: persisted.changeSet.runId,
+          files: persisted.changeSet.files.map((file) => file.path),
+          ...(persisted.envelope !== undefined
+            ? { envelope: persisted.envelope }
+            : {}),
+        });
         continue;
       }
       const activeRun = persisted.prepared.activeRun;
@@ -217,6 +270,17 @@ export class StoreModService {
       if (persisted.envelope !== undefined) {
         this.pendingEnvelopes.set(row.changeSetId, persisted.envelope);
       }
+    }
+  }
+
+  listStartupDiscardCandidates(): StartupDiscardCandidate[] {
+    return [...this.startupDiscardCandidates.values()];
+  }
+
+  completeStartupDiscardCandidates(changeSetIds: Iterable<string>): void {
+    for (const changeSetId of changeSetIds) {
+      this.startupDiscardCandidates.delete(changeSetId);
+      this.store.deletePendingSelfModChangeSet(changeSetId);
     }
   }
 
@@ -271,6 +335,20 @@ export class StoreModService {
       .map((changeSet) => changeSet.changeSetId);
   }
 
+  listExpiredPendingChangeSetIds(now = Date.now()): string[] {
+    const cutoff = now - PENDING_CHANGE_SET_TTL_MS;
+    return this.logicalChanges
+      .listPending()
+      .filter((changeSet) => changeSet.createdAt < cutoff)
+      .map((changeSet) => changeSet.changeSetId);
+  }
+
+  getPreparedLogicalChangeSet(
+    changeSetId: string,
+  ): FrozenLogicalChangeSet | null {
+    return this.logicalChanges.get(changeSetId);
+  }
+
   async beginSelfModRun(args: {
     runId: string;
     taskDescription: string;
@@ -322,37 +400,55 @@ export class StoreModService {
     return hadPrepared || discarded !== null;
   }
 
-  expirePreparedAuthorChanges(cutoffMs: number): string[] {
-    const expired = this.logicalChanges.expireOlderThan(cutoffMs);
-    for (const changeSet of expired) {
-      this.preparedAuthorChanges.delete(changeSet.changeSetId);
-      this.pendingEnvelopes.delete(changeSet.changeSetId);
-      this.store.deletePendingSelfModChangeSet(changeSet.changeSetId);
-    }
-    return expired.map((changeSet) => changeSet.changeSetId);
-  }
-
   /**
    * Reconstruct the shared working tree after a selected commit changes HEAD.
    * HEAD is the applied layer; every still-pending or active logical delta is
    * replayed above it. The repo-global mutation lock prevents tools from
    * observing or writing through a partially reconstructed tree.
    */
-  async materializeLiveTree(paths: Iterable<string>): Promise<void> {
+  async materializeLiveTree(
+    paths: Iterable<string>,
+    options?: { excludeChangeSetIds?: Iterable<string> },
+  ): Promise<MaterializeLiveTreeResult> {
     const release = await acquireSelfModMutationLock(
       this.repoRoot,
       `materialize:${crypto.randomUUID()}`,
     );
     try {
-      const states = await this.logicalChanges.buildLiveTree(
+      const plan = await this.logicalChanges.buildLiveTree(
         paths,
         (filePath) => readGitHeadFileState(this.repoRoot, filePath),
-        (filePath) =>
-          readWorkingTreeFileState(path.join(this.repoRoot, filePath)),
+        options,
       );
-      for (const [filePath, state] of states) {
-        await this.writeWorkingTreeState(filePath, state);
+      if (plan.status === "conflicts") return plan;
+
+      const originals = new Map<string, LogicalFileState>();
+      for (const filePath of plan.states.keys()) {
+        originals.set(
+          filePath,
+          await readWorkingTreeFileState(path.join(this.repoRoot, filePath)),
+        );
       }
+      try {
+        for (const [filePath, state] of plan.states) {
+          await this.writeWorkingTreeState(filePath, state);
+        }
+      } catch (error) {
+        const rollbackErrors: unknown[] = [];
+        for (const [filePath, state] of originals) {
+          await this.writeWorkingTreeState(filePath, state).catch(
+            (rollbackError) => rollbackErrors.push(rollbackError),
+          );
+        }
+        if (rollbackErrors.length > 0) {
+          console.error(
+            "[self-mod] live-tree reconstruction rollback failed:",
+            rollbackErrors,
+          );
+        }
+        throw error;
+      }
+      return { status: "applied" };
     } finally {
       release();
     }

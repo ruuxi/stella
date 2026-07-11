@@ -38,9 +38,17 @@ import {
 } from "../kernel/self-mod/hmr.js";
 import type {
   CommitMessageProvider,
+  MaterializeLiveTreeResult,
   StoreModService,
 } from "../kernel/self-mod/store-mod-service.js";
-import type { MediatedWriteCapture } from "../kernel/self-mod/logical-change-set.js";
+import {
+  MAX_PENDING_CHANGE_SETS,
+  type StartupDiscardCandidate,
+} from "../kernel/self-mod/store-mod-service.js";
+import type {
+  LogicalFileConflict,
+  MediatedWriteCapture,
+} from "../kernel/self-mod/logical-change-set.js";
 import {
   getLastSelfModCommitHash,
   listFilesForCommit,
@@ -117,7 +125,11 @@ type PendingApplyBatch = {
 
 export type ResumeTransitionResult =
   | { ok: true; requiresClientFullReload: boolean }
-  | { ok: false; reason: "unknown-transition" | "apply-failed" };
+  | {
+      ok: false;
+      reason: "unknown-transition" | "apply-failed" | "reconstruction-conflict";
+      conflicts?: LogicalFileConflict[];
+    };
 
 type SelfModApplyMode =
   | "author"
@@ -125,9 +137,6 @@ type SelfModApplyMode =
   | "update"
   | "uninstall"
   | "desktop-update";
-
-const PENDING_CHANGE_SET_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
-const MAX_PENDING_CHANGE_SETS = 64;
 
 export type SelfModLifecycle = {
   beginRun: (args: {
@@ -186,10 +195,15 @@ export type SelfModCoordinator = {
     commitHash?: string;
   }) => Promise<RuntimeSelfModApplyResult>;
   applyAllPendingWithMorph: () => Promise<RuntimeSelfModApplyResult[]>;
-  discardPending: (args: {
+  discardPending: (args: { commitHash?: string }) => Promise<{
+    discarded: boolean;
     commitHash?: string;
-  }) => Promise<{ discarded: boolean; commitHash?: string }>;
+    conflicts?: LogicalFileConflict[];
+  }>;
   restorePending: (envelopes: unknown[]) => Promise<void>;
+  cleanupStartupDiscardCandidates: (
+    candidates: StartupDiscardCandidate[],
+  ) => Promise<MaterializeLiveTreeResult>;
   resumeTransition: (payload: {
     transitionId?: string;
     runIds?: string[];
@@ -455,6 +469,19 @@ export const createSelfModCoordinator = (
       releaseNumber,
       mode,
     }) => {
+      const storeModService = getStoreModService();
+      if (!storeModService) {
+        throw new Error("Store mod service is not available.");
+      }
+      for (const changeSetId of storeModService.listExpiredPendingChangeSetIds?.() ??
+        []) {
+        const discarded = await discardPending({ commitHash: changeSetId });
+        if (!discarded.discarded) {
+          throw new Error(
+            `Expired self-mod change set could not be reconstructed safely: ${changeSetId}`,
+          );
+        }
+      }
       selfModRunRootIds.set(runId, rootRunId ?? runId);
       selfModRunApplyModes.set(runId, mode);
       await peer
@@ -467,30 +494,6 @@ export const createSelfModCoordinator = (
             (error as Error).message,
           );
         });
-      const storeModService = getStoreModService();
-      if (!storeModService) {
-        throw new Error("Store mod service is not available.");
-      }
-      const expiredIds = storeModService.expirePreparedAuthorChanges(
-        Date.now() - PENDING_CHANGE_SET_TTL_MS,
-      );
-      for (const changeSetId of expiredIds) {
-        const expired = getPendingSelfModApplies().get(changeSetId);
-        if (!expired) continue;
-        getPendingSelfModApplies().delete(changeSetId);
-        await storeModService.materializeLiveTree(expired.files);
-        await discardFailedApplyState(expired.applyResult, "pending expiry");
-        await releaseRuntimeReloadFor(
-          expired.applyResult.restartRelevantRunIds,
-        );
-        dropRunBookkeeping(expired.applyResult.restartRelevantRunIds);
-        patchSelfModApplyStatus({
-          conversationId: expired.conversationId,
-          eventId: expired.assistantMessageEventId,
-          commitHash: expired.commitHash,
-          status: "discarded",
-        });
-      }
       await storeModService.beginSelfModRun({
         runId,
         taskDescription,
@@ -951,17 +954,33 @@ export const createSelfModCoordinator = (
     commitHash,
   }: {
     commitHash?: string;
-  }): Promise<{ discarded: boolean; commitHash?: string }> => {
+  }): Promise<{
+    discarded: boolean;
+    commitHash?: string;
+    conflicts?: LogicalFileConflict[];
+  }> => {
     const selector = commitHash?.trim();
     if (!selector) return { discarded: false };
     const pending = getPendingSelfModApplies().get(selector);
     if (!pending) return { discarded: false, commitHash: selector };
 
-    getPendingSelfModApplies().delete(selector);
-    getStoreModService()?.discardPreparedAuthorChange(selector);
     // Removing a logical layer must also remove its bytes from the shared
     // tree while retaining every other active/pending layer.
-    await getStoreModService()?.materializeLiveTree(pending.files);
+    const service = getStoreModService();
+    if (!service) return { discarded: false, commitHash: selector };
+    const reconstruction = await service.materializeLiveTree(pending.files, {
+      excludeChangeSetIds: [selector],
+    });
+    if (reconstruction.status === "conflicts") {
+      return {
+        discarded: false,
+        commitHash: selector,
+        conflicts: reconstruction.conflicts,
+      };
+    }
+
+    getPendingSelfModApplies().delete(selector);
+    service.discardPreparedAuthorChange(selector);
     await discardFailedApplyState(pending.applyResult, "pending discard");
     await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds);
     dropRunBookkeeping(pending.applyResult.restartRelevantRunIds);
@@ -1022,6 +1041,65 @@ export const createSelfModCoordinator = (
     }
   };
 
+  const cleanupStartupDiscardCandidates = async (
+    candidates: StartupDiscardCandidate[],
+  ): Promise<MaterializeLiveTreeResult> => {
+    if (candidates.length === 0) return { status: "applied" };
+    const service = getStoreModService();
+    if (!service) throw new Error("Store mod service is not available.");
+
+    // The service restored only retained rows. Reconstruct first; no
+    // persistence, card, HMR, or reload state is removed if replay conflicts.
+    const reconstruction = await service.materializeLiveTree(
+      candidates.flatMap((candidate) => candidate.files),
+    );
+    if (reconstruction.status === "conflicts") return reconstruction;
+
+    const controller = getController();
+    const retainedPaths = service.listPendingEnvelopes().flatMap((raw) => {
+      if (!raw || typeof raw !== "object") return [];
+      const files = (raw as { files?: unknown }).files;
+      return Array.isArray(files)
+        ? files.filter((file): file is string => typeof file === "string")
+        : [];
+    });
+    for (const candidate of candidates) {
+      const envelope =
+        candidate.envelope && typeof candidate.envelope === "object"
+          ? (candidate.envelope as Partial<PendingSelfModApply>)
+          : null;
+      const appliedRuns = envelope?.applyResult?.appliedRuns ?? [
+        {
+          runId: candidate.runId,
+          paths: candidate.files,
+          files: [],
+          runtimeRestartRelevantPaths: [],
+          processRestartRelevantPaths: [],
+          restartRelevantPaths: [],
+          fullReloadRelevantPaths: [],
+        },
+      ];
+      await controller
+        ?.discard(appliedRuns, { preservePaths: retainedPaths })
+        .catch(() => false);
+      await controller?.releaseRuns([candidate.runId]).catch(() => false);
+      await releaseRuntimeReloadFor([candidate.runId]);
+      dropRunBookkeeping([candidate.runId]);
+      if (envelope?.conversationId && envelope.commitHash) {
+        patchSelfModApplyStatus({
+          conversationId: envelope.conversationId,
+          eventId: envelope.assistantMessageEventId,
+          commitHash: envelope.commitHash,
+          status: "discarded",
+        });
+      }
+    }
+    service.completeStartupDiscardCandidates(
+      candidates.map((candidate) => candidate.changeSetId),
+    );
+    return { status: "applied" };
+  };
+
   const resumeTransition = async (payload: {
     transitionId?: string;
     runIds?: string[];
@@ -1051,9 +1129,16 @@ export const createSelfModCoordinator = (
       // A process restart reloads from the shared tree, not the Vite overlay.
       // Rebuild that tree from the newly-applied HEAD plus every other active
       // or pending logical delta so the restart sees X without erasing Y.
-      await getStoreModService()?.materializeLiveTree(
+      const reconstruction = await getStoreModService()?.materializeLiveTree(
         pending.applyResult.appliedRuns.flatMap((run) => run.paths),
       );
+      if (reconstruction?.status === "conflicts") {
+        return {
+          ok: false,
+          reason: "reconstruction-conflict",
+          conflicts: reconstruction.conflicts,
+        };
+      }
       await discardFailedApplyState(
         pending.applyResult,
         "process restart reconstruction",
@@ -1117,6 +1202,7 @@ export const createSelfModCoordinator = (
     revertWithMorph,
     applyPendingWithMorph,
     discardPending,
+    cleanupStartupDiscardCandidates,
     restorePending,
     applyAllPendingWithMorph: async () => {
       const selectors = [...getPendingSelfModApplies().keys()];

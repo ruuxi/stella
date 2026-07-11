@@ -57,46 +57,53 @@ vi.mock("../../../../runtime/kernel/model-routing.js", () => ({
 
 vi.mock("../../../../runtime/kernel/agent-runtime.js", () => ({
   shutdownSubagentRuntimes: vi.fn(),
-  runSubagentTask: vi.fn(async (opts: {
-    toolExecutor: HarnessDriver["runTool"] extends (
-      surface: never,
-      executor: infer T,
-    ) => unknown
-      ? T
-      : never;
-  }) => {
-    const result = await getDriver().runTool("subagent", opts.toolExecutor);
-    return {
-      runId: "subagent-run",
-      result: result.error ? "" : "done",
-      error: result.error,
-      fileChanges: result.fileChanges,
-      producedFiles: result.producedFiles,
-    };
-  }),
-  runOrchestratorTurn: vi.fn(async (opts: {
-    toolExecutor: HarnessDriver["runTool"] extends (
-      surface: never,
-      executor: infer T,
-    ) => unknown
-      ? T
-      : never;
-    beforeRunEnd?: () => Promise<void>;
-    callbacks: { onEnd?: (event: Record<string, unknown>) => void };
-    runId: string;
-    agentType: string;
-  }) => {
-    const result = await getDriver().runTool("orchestrator", opts.toolExecutor);
-    await opts.beforeRunEnd?.();
-    opts.callbacks.onEnd?.({
-      type: "run_finished",
-      runId: opts.runId,
-      agentType: opts.agentType,
-      seq: 1,
-      finalText: result.error ? "" : "done",
-      timestamp: Date.now(),
-    });
-  }),
+  runSubagentTask: vi.fn(
+    async (opts: {
+      toolExecutor: HarnessDriver["runTool"] extends (
+        surface: never,
+        executor: infer T,
+      ) => unknown
+        ? T
+        : never;
+    }) => {
+      const result = await getDriver().runTool("subagent", opts.toolExecutor);
+      return {
+        runId: "subagent-run",
+        result: result.error ? "" : "done",
+        error: result.error,
+        fileChanges: result.fileChanges,
+        producedFiles: result.producedFiles,
+      };
+    },
+  ),
+  runOrchestratorTurn: vi.fn(
+    async (opts: {
+      toolExecutor: HarnessDriver["runTool"] extends (
+        surface: never,
+        executor: infer T,
+      ) => unknown
+        ? T
+        : never;
+      beforeRunEnd?: () => Promise<void>;
+      callbacks: { onEnd?: (event: Record<string, unknown>) => void };
+      runId: string;
+      agentType: string;
+    }) => {
+      const result = await getDriver().runTool(
+        "orchestrator",
+        opts.toolExecutor,
+      );
+      await opts.beforeRunEnd?.();
+      opts.callbacks.onEnd?.({
+        type: "run_finished",
+        runId: opts.runId,
+        agentType: opts.agentType,
+        seq: 1,
+        finalText: result.error ? "" : "done",
+        timestamp: Date.now(),
+      });
+    },
+  ),
 }));
 
 const roots: string[] = [];
@@ -104,8 +111,9 @@ const servers: ViteDevServer[] = [];
 const databases: SqliteDatabase[] = [];
 
 afterEach(async () => {
-  delete (globalThis as unknown as { __selfModProductionHarness?: HarnessDriver })
-    .__selfModProductionHarness;
+  delete (
+    globalThis as unknown as { __selfModProductionHarness?: HarnessDriver }
+  ).__selfModProductionHarness;
   for (const server of servers.splice(0)) await server.close();
   for (const database of databases.splice(0)) database.close();
   await Promise.all(
@@ -126,14 +134,19 @@ const reservePort = async (): Promise<number> =>
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
-      if (!address || typeof address === "string") return reject(new Error("No port"));
+      if (!address || typeof address === "string")
+        return reject(new Error("No port"));
       server.close((error) => (error ? reject(error) : resolve(address.port)));
     });
   });
 
 const createRepo = async () => {
-  const repoRoot = await mkdtemp(path.join(os.tmpdir(), "stella-prod-harness-"));
-  const dataRoot = await mkdtemp(path.join(os.tmpdir(), "stella-prod-harness-db-"));
+  const repoRoot = await mkdtemp(
+    path.join(os.tmpdir(), "stella-prod-harness-"),
+  );
+  const dataRoot = await mkdtemp(
+    path.join(os.tmpdir(), "stella-prod-harness-db-"),
+  );
   roots.push(repoRoot, dataRoot);
   git(repoRoot, ["init", "-q", "-b", "main"]);
   git(repoRoot, ["config", "user.name", "Stella Test"]);
@@ -154,26 +167,53 @@ const createRepo = async () => {
   databases.push(database);
   initializeDesktopDatabase(database);
   const service = new StoreModService(repoRoot, new StoreModStore(database));
+  const applyPayloads: unknown[] = [];
+  const overlayServedReads: Array<{
+    path: string;
+    status: number;
+    content: string;
+  }> = [];
+  const overlayReadyPaths: string[][] = [];
 
   const previousMode = process.env.STELLA_SELF_MOD_HMR_MODE;
   process.env.STELLA_SELF_MOD_HMR_MODE = "live";
   const port = await reservePort();
+  let devServerUrl = "";
   const server = await createServer({
     root: repoRoot,
     logLevel: "silent",
     server: { host: "127.0.0.1", port, strictPort: true },
-    plugins: [selfModHmrControl({ repoRoot })],
+    plugins: [
+      selfModHmrControl({
+        repoRoot,
+        onOverlayReady: async (paths) => {
+          overlayReadyPaths.push(paths);
+          for (const repoRelativePath of paths) {
+            const response = await fetch(
+              `${devServerUrl}${repoRelativePath}?selfmod-overlay-probe=${overlayServedReads.length}`,
+              { headers: { Origin: new URL(devServerUrl).origin } },
+            );
+            overlayServedReads.push({
+              path: repoRelativePath,
+              status: response.status,
+              content: await response.text(),
+            });
+          }
+        },
+      }),
+    ],
   });
   if (previousMode === undefined) delete process.env.STELLA_SELF_MOD_HMR_MODE;
   else process.env.STELLA_SELF_MOD_HMR_MODE = previousMode;
   servers.push(server);
   await server.listen();
-  const devServerUrl = server.resolvedUrls?.local[0];
+  devServerUrl = server.resolvedUrls?.local[0] ?? "";
   if (!devServerUrl) throw new Error("Vite harness did not resolve a URL.");
   const controller = createSelfModHmrController({
     enabled: true,
     getDevServerUrl: () => devServerUrl,
     repoRoot,
+    observeApplyPayload: (payload) => applyPayloads.push(payload),
   });
   const pending = new Map<string, PendingSelfModApply>();
   const hostRequests: Array<{ method: string; params: unknown }> = [];
@@ -206,6 +246,10 @@ const createRepo = async () => {
     hostRequests,
     statusPatches,
     devServerUrl,
+    applyPayloads,
+    overlayServedReads,
+    overlayReadyPaths,
+    database,
   };
 };
 
@@ -234,10 +278,326 @@ const patchFor = (filePath: string, from: string, to: string): string =>
     "",
   ].join("\n");
 
+type ProductionHarness = Awaited<ReturnType<typeof createRepo>>;
+
+const beginAuthorRun = async (h: ProductionHarness, runId: string) => {
+  await h.controller.beginRun(runId);
+  await h.coordinator.lifecycle.beginRun({
+    runId,
+    taskDescription: `synthetic ${runId}`,
+    taskPrompt: `synthetic ${runId}`,
+    conversationId: `conversation-${runId}`,
+    mode: "author",
+  });
+};
+
+const writeAuthorText = async (
+  h: ProductionHarness,
+  runId: string,
+  relativePath: string,
+  content: string,
+) => {
+  const absolutePath = path.join(h.repoRoot, relativePath);
+  const capture = await h.coordinator.lifecycle.beginMediatedWrite({
+    runId,
+    paths: [absolutePath],
+  });
+  await h.controller.recordWrite(runId, [absolutePath], {
+    captureSnapshot: false,
+  });
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, content);
+  await h.coordinator.lifecycle.finishMediatedWrite({ capture });
+  await h.controller.recordWrite(runId, [absolutePath]);
+};
+
+const finalizeAuthorRun = async (
+  h: ProductionHarness,
+  runId: string,
+): Promise<string> => {
+  await h.coordinator.lifecycle.finalizeRun({
+    runId,
+    taskDescription: `synthetic ${runId}`,
+    taskPrompt: `synthetic ${runId}`,
+    conversationId: `conversation-${runId}`,
+    succeeded: true,
+  });
+  const selector = [...h.pending.values()].find(
+    (pending) => pending.runId === runId,
+  )?.changeSetId;
+  if (!selector) throw new Error(`Missing selector for ${runId}`);
+  return selector;
+};
+
+const resumeLatestTransition = async (h: ProductionHarness) => {
+  const transition = [...h.hostRequests]
+    .reverse()
+    .find((request) => request.method === METHOD_NAMES.HOST_HMR_RUN_TRANSITION);
+  if (!transition) throw new Error("Missing host HMR transition");
+  return await h.coordinator.resumeTransition({
+    transitionId: (transition.params as { transitionId: string }).transitionId,
+  });
+};
+
+const runIndependentWrapperAttribution = async (
+  order:
+    | readonly ["subagent", "orchestrator"]
+    | readonly ["orchestrator", "subagent"],
+) => {
+  const h = await createRepo();
+  const relativePath = "desktop/src/shared.ts";
+  const filePath = path.join(h.repoRoot, relativePath);
+  const original =
+    "export const value = 'original';\nexport const second = 'original';\n";
+  const combined =
+    "export const value = 'from-subagent';\nexport const second = 'from-orchestrator';\n";
+  await writeFile(filePath, original);
+  git(h.repoRoot, ["add", relativePath]);
+  git(h.repoRoot, ["commit", "-q", "-m", "seed independent lines"]);
+  const seedHead = git(h.repoRoot, ["rev-parse", "HEAD"]).trim();
+
+  let firstEnteredResolve!: () => void;
+  const firstEntered = new Promise<void>((resolve) => {
+    firstEnteredResolve = resolve;
+  });
+  let secondEnteredResolve!: () => void;
+  const secondEntered = new Promise<void>((resolve) => {
+    secondEnteredResolve = resolve;
+  });
+  let firstWrittenResolve!: () => void;
+  const firstWritten = new Promise<void>((resolve) => {
+    firstWrittenResolve = resolve;
+  });
+  let toolEntries = 0;
+  const toolHost = {
+    getToolCatalog: () => [],
+    executeTool: async (
+      toolName: string,
+      args: Record<string, unknown>,
+      context: ToolContext,
+    ) => {
+      if (toolName !== "apply_patch") return { result: "unused" };
+      toolEntries += 1;
+      if (toolEntries === 1) {
+        firstEnteredResolve();
+        await Promise.race([
+          secondEntered,
+          new Promise((resolve) => setTimeout(resolve, 150)),
+        ]);
+        const result = await handleApplyPatch(args, context);
+        firstWrittenResolve();
+        return result;
+      }
+      secondEnteredResolve();
+      await firstWritten;
+      return await handleApplyPatch(args, context);
+    },
+    registerExtensionTools: vi.fn(),
+    drainCompletedShellProducedFiles: vi.fn(async () => []),
+    killAllShells: vi.fn(),
+    killShell: vi.fn(),
+    killShellsByPort: vi.fn(),
+    shutdown: vi.fn(),
+  };
+  let nextThread = 0;
+  const context = {
+    stellaAppDir: h.repoRoot,
+    stellaDataDir: h.dataRoot,
+    deviceId: "device-1",
+    runtimeStore: {
+      resolveOrCreateActiveThread: () => ({
+        threadId: `thread-${++nextThread}`,
+        reused: false,
+      }),
+      listActiveThreads: () => [],
+      saveAgentRecord: vi.fn(),
+      getAgentRecord: () => null,
+    },
+    appendLocalChatEvent: vi.fn(),
+    state: {
+      localAgentManager: null,
+      runCallbacksByRunId: new Map(),
+      conversationCallbacks: new Map(),
+      convexSiteUrl: null,
+      authToken: null,
+      orchestratorSessions: new Map(),
+    },
+    selfModHmrController: h.controller,
+    selfModLifecycle: h.coordinator.lifecycle,
+    toolHost,
+    hookEmitter: { emit: vi.fn() },
+    paths: {},
+  } as any;
+  (
+    globalThis as unknown as { __selfModProductionHarness: HarnessDriver }
+  ).__selfModProductionHarness = {
+    runTool: async (surface, executor) =>
+      await executor(
+        "apply_patch",
+        {
+          input:
+            surface === "subagent"
+              ? [
+                  "*** Begin Patch",
+                  `*** Update File: ${filePath}`,
+                  "@@",
+                  "-export const value = 'original';",
+                  "+export const value = 'from-subagent';",
+                  "*** End Patch",
+                  "",
+                ].join("\n")
+              : [
+                  "*** Begin Patch",
+                  `*** Update File: ${filePath}`,
+                  "@@",
+                  "-export const second = 'original';",
+                  "+export const second = 'from-orchestrator';",
+                  "*** End Patch",
+                  "",
+                ].join("\n"),
+        },
+        {
+          conversationId: `${surface}-conversation`,
+          deviceId: "device-1",
+          requestId: `${surface}-request`,
+          stellaAppDir: h.repoRoot,
+        },
+      ),
+  };
+
+  createAgentOrchestration(context, {
+    buildAgentContext: async () => ({
+      systemPrompt: "",
+      dynamicContext: "",
+      maxAgentDepth: 1,
+    }),
+    sendMessage: async () => {},
+  });
+  const { threadId } = await context.state.localAgentManager.createAgent({
+    conversationId: "subagent-conversation",
+    description: "subagent-independent",
+    prompt: "subagent-independent",
+    agentType: AGENT_IDS.GENERAL,
+    storageMode: "local",
+  });
+  await firstEntered;
+  let orchestratorDoneResolve!: () => void;
+  const orchestratorDone = new Promise<void>((resolve) => {
+    orchestratorDoneResolve = resolve;
+  });
+  launchPreparedOrchestratorRun({
+    context,
+    prepared: {
+      runId: "orchestrator-independent",
+      conversationId: "orchestrator-conversation",
+      agentType: AGENT_IDS.INSTALL_UPDATE,
+      userPrompt: "orchestrator-independent",
+      attachments: [],
+      agentContext: { systemPrompt: "", dynamicContext: "", maxAgentDepth: 1 },
+      resolvedLlm: {
+        model: { id: "test-model", provider: "test-provider" },
+        route: "direct-provider",
+        getApiKey: () => "test-key",
+      },
+      abortController: new AbortController(),
+      selfModMetadata: { mode: "author" },
+    },
+    userMessageId: "orchestrator-user-message",
+    runtimeCallbacks: { onEnd: () => orchestratorDoneResolve() },
+    cleanupRun: () => {},
+    onFatalError: (error) => {
+      throw error;
+    },
+  } as any);
+  await Promise.all([
+    waitForAgent(context.state.localAgentManager, threadId),
+    orchestratorDone,
+  ]);
+
+  const selectors = {
+    subagent: [...h.pending.values()].find(
+      (pending) => pending.conversationId === "subagent-conversation",
+    )!.changeSetId,
+    orchestrator: [...h.pending.values()].find(
+      (pending) => pending.conversationId === "orchestrator-conversation",
+    )!.changeSetId,
+  };
+  const subagentFrozen = h.service.getPreparedLogicalChangeSet(
+    selectors.subagent,
+  );
+  const orchestratorFrozen = h.service.getPreparedLogicalChangeSet(
+    selectors.orchestrator,
+  );
+  expect(subagentFrozen?.files[0]).toMatchObject({
+    base: expect.objectContaining({ text: original }),
+    incoming: expect.objectContaining({
+      text: "export const value = 'from-subagent';\nexport const second = 'original';\n",
+    }),
+  });
+  expect(orchestratorFrozen?.files[0]).toMatchObject({
+    base: expect.objectContaining({
+      text: "export const value = 'from-subagent';\nexport const second = 'original';\n",
+    }),
+    incoming: expect.objectContaining({ text: combined }),
+  });
+  expect(await readFile(filePath, "utf8")).toBe(combined);
+
+  for (const [index, owner] of order.entries()) {
+    expect(
+      await h.coordinator.applyPendingWithMorph({
+        commitHash: selectors[owner],
+      }),
+    ).toMatchObject({ applied: true });
+    expect(await resumeLatestTransition(h)).toMatchObject({ ok: true });
+    const expectedHead =
+      index === 1
+        ? combined
+        : owner === "subagent"
+          ? "export const value = 'from-subagent';\nexport const second = 'original';\n"
+          : "export const value = 'original';\nexport const second = 'from-orchestrator';\n";
+    expect(git(h.repoRoot, ["show", `HEAD:${relativePath}`])).toBe(
+      expectedHead,
+    );
+    expect(await readFile(filePath, "utf8")).toBe(combined);
+    const overlayContent = h.overlayServedReads.at(-1)?.content ?? "";
+    expect(overlayContent).toContain(
+      index === 1 || owner === "subagent" ? "from-subagent" : "original",
+    );
+    expect(overlayContent).toContain(
+      index === 1 || owner === "orchestrator"
+        ? "from-orchestrator"
+        : "original",
+    );
+    if (index === 0) {
+      expect(overlayContent).not.toContain(
+        owner === "subagent" ? "from-orchestrator" : "from-subagent",
+      );
+    }
+    expect(git(h.repoRoot, ["diff", "--cached", "--name-only"])).toBe("");
+  }
+  expect(
+    git(h.repoRoot, ["rev-list", "--count", `${seedHead}..HEAD`]).trim(),
+  ).toBe("2");
+  expect(h.applyPayloads).toHaveLength(2);
+  expect(
+    h.applyPayloads.every(
+      (payload) =>
+        (payload as { runs: Array<{ protocolVersion: number }> }).runs[0]
+          ?.protocolVersion === 2,
+    ),
+  ).toBe(true);
+};
+
 describe("production-path self-mod concurrency harness", () => {
   it("P0: serializes one subagent apply_patch transaction against an orchestrator mutation", async () => {
     const h = await createRepo();
     const filePath = path.join(h.repoRoot, "desktop/src/shared.ts");
+    await writeFile(
+      filePath,
+      "export const value = 'original';\nexport const second = 'original';\n",
+    );
+    git(h.repoRoot, ["add", "desktop/src/shared.ts"]);
+    git(h.repoRoot, ["commit", "-q", "-m", "seed independent attribution"]);
     const finalized = new Map<string, string>();
     let nextThread = 0;
     let firstEnteredResolve!: () => void;
@@ -294,7 +654,11 @@ describe("production-path self-mod concurrency harness", () => {
     };
 
     const lifecycle = {
-      beginRun: async (args: { runId: string; mode?: string; taskDescription: string }) => {
+      beginRun: async (args: {
+        runId: string;
+        mode?: string;
+        taskDescription: string;
+      }) => {
         await h.service.beginSelfModRun({
           runId: args.runId,
           taskDescription: args.taskDescription,
@@ -313,10 +677,7 @@ describe("production-path self-mod concurrency harness", () => {
         capture: Parameters<StoreModService["finishMediatedWrite"]>[0];
         additionalPaths?: string[];
       }) =>
-        await h.service.finishMediatedWrite(
-          args.capture,
-          args.additionalPaths,
-        ),
+        await h.service.finishMediatedWrite(args.capture, args.additionalPaths),
       finalizeRun: async (args: {
         runId: string;
         succeeded: boolean;
@@ -361,8 +722,9 @@ describe("production-path self-mod concurrency harness", () => {
       paths: {},
     } as any;
 
-    (globalThis as unknown as { __selfModProductionHarness: HarnessDriver })
-      .__selfModProductionHarness = {
+    (
+      globalThis as unknown as { __selfModProductionHarness: HarnessDriver }
+    ).__selfModProductionHarness = {
       runTool: async (surface, executor) =>
         await executor(
           "apply_patch",
@@ -370,7 +732,15 @@ describe("production-path self-mod concurrency harness", () => {
             input:
               surface === "subagent"
                 ? patchFor(filePath, "original", "from-subagent")
-                : patchFor(filePath, "from-subagent", "from-orchestrator"),
+                : [
+                    "*** Begin Patch",
+                    `*** Update File: ${filePath}`,
+                    "@@",
+                    "-export const second = 'original';",
+                    "+export const second = 'from-orchestrator';",
+                    "*** End Patch",
+                    "",
+                  ].join("\n"),
           },
           {
             conversationId: `${surface}-conversation`,
@@ -410,7 +780,11 @@ describe("production-path self-mod concurrency harness", () => {
         agentType: AGENT_IDS.INSTALL_UPDATE,
         userPrompt: "orchestrator-y",
         attachments: [],
-        agentContext: { systemPrompt: "", dynamicContext: "", maxAgentDepth: 1 },
+        agentContext: {
+          systemPrompt: "",
+          dynamicContext: "",
+          maxAgentDepth: 1,
+        },
         resolvedLlm: {
           model: { id: "test-model", provider: "test-provider" },
           route: "direct-provider",
@@ -432,11 +806,16 @@ describe("production-path self-mod concurrency harness", () => {
       orchestratorDone,
     ]);
     expect(subagent).toMatchObject({ status: "completed" });
-    const selector = [...finalized.values()][0];
+    const selector = [...finalized.entries()].find(
+      ([runId]) => runId !== "orchestrator-y",
+    )?.[1];
     expect(selector).toBeTruthy();
     const orchestratorSelector = finalized.get("orchestrator-y");
     expect(orchestratorSelector).toBeTruthy();
-    h.service.discardPreparedAuthorChange(orchestratorSelector!);
+    expect(h.service.getPreparedLogicalChangeSet(selector!)).toBeTruthy();
+    expect(
+      h.service.getPreparedLogicalChangeSet(orchestratorSelector!),
+    ).toBeTruthy();
     const applied = await h.service.applyPreparedAuthorChange(selector!);
     expect(applied).toMatchObject({
       status: "applied",
@@ -444,44 +823,177 @@ describe("production-path self-mod concurrency harness", () => {
         expect.objectContaining({
           path: "desktop/src/shared.ts",
           state: expect.objectContaining({
-            text: "export const value = 'from-subagent';\n",
+            text: "export const value = 'from-subagent';\nexport const second = 'original';\n",
           }),
         }),
       ],
     });
+    expect(
+      await h.service.applyPreparedAuthorChange(orchestratorSelector!),
+    ).toMatchObject({ status: "applied" });
+    expect(git(h.repoRoot, ["show", "HEAD:desktop/src/shared.ts"])).toBe(
+      "export const value = 'from-subagent';\nexport const second = 'from-orchestrator';\n",
+    );
   });
 
-  it("P0: real Vite apply keeps every other run's shared-disk bytes", async () => {
+  it("P0: independently attributes both wrapper changes in either apply order", async () => {
+    await runIndependentWrapperAttribution(["subagent", "orchestrator"]);
+    await runIndependentWrapperAttribution(["orchestrator", "subagent"]);
+  });
+
+  it("P0: selector, update-all, discard, and restart use strict V2 overlays", async () => {
     const h = await createRepo();
     const relativePath = "desktop/src/shared.ts";
     const filePath = path.join(h.repoRoot, relativePath);
-    await h.controller.beginRun("run-x");
-    await h.controller.recordWrite("run-x", [filePath], {
-      captureSnapshot: false,
-    });
+
+    await beginAuthorRun(h, "run-x");
+    await beginAuthorRun(h, "run-y");
+    await beginAuthorRun(h, "run-z");
+    await writeAuthorText(
+      h,
+      "run-x",
+      relativePath,
+      "export const value = 'from-x';\n",
+    );
     const liveCombined =
       "export const value = 'from-x';\nexport const pendingY = true;\n";
-    await writeFile(filePath, liveCombined);
-    const response = await h.controller.apply([
-      {
-        runId: "run-x",
-        paths: [relativePath],
-        files: [
-          {
-            path: relativePath,
-            content: "export const value = 'from-x';\n",
-          },
-        ],
-        runtimeRestartRelevantPaths: [],
-        processRestartRelevantPaths: [],
-        restartRelevantPaths: [],
-        fullReloadRelevantPaths: [],
-      },
-    ]);
-    expect(response.ok).toBe(true);
+    await writeAuthorText(h, "run-y", relativePath, liveCombined);
+    await writeAuthorText(
+      h,
+      "run-z",
+      "desktop/src/z.ts",
+      "export const z = true;\n",
+    );
+    const selectorX = await finalizeAuthorRun(h, "run-x");
+    await finalizeAuthorRun(h, "run-y");
+    await finalizeAuthorRun(h, "run-z");
+
+    expect(
+      await h.coordinator.applyPendingWithMorph({ commitHash: selectorX }),
+    ).toMatchObject({ applied: true });
+    expect(await resumeLatestTransition(h)).toMatchObject({ ok: true });
+    expect(h.applyPayloads.at(-1)).toMatchObject({
+      runs: [
+        expect.objectContaining({
+          runId: "run-x",
+          protocolVersion: 2,
+          paths: [relativePath],
+          files: [
+            expect.objectContaining({
+              path: relativePath,
+              state: expect.objectContaining({
+                kind: "blob",
+                text: "export const value = 'from-x';\n",
+              }),
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(h.overlayReadyPaths).toContainEqual([relativePath]);
+    const selectedOverlay = h.overlayServedReads.at(-1);
+    expect(selectedOverlay).toMatchObject({ path: relativePath, status: 200 });
+    expect(selectedOverlay?.content).toContain("from-x");
+    expect(selectedOverlay?.content).not.toContain("pendingY");
     expect(await readFile(filePath, "utf8")).toBe(liveCombined);
-    const status = await h.controller.getStatus();
-    expect(status).toMatchObject({
+
+    const transitionCountBeforeUpdateAll = h.hostRequests.filter(
+      (request) => request.method === METHOD_NAMES.HOST_HMR_RUN_TRANSITION,
+    ).length;
+    const updateAllResults = await h.coordinator.applyAllPendingWithMorph();
+    expect(updateAllResults).toEqual([
+      expect.objectContaining({ applied: true }),
+      expect.objectContaining({ applied: true }),
+    ]);
+    const updateAllTransitions = h.hostRequests
+      .filter(
+        (request) => request.method === METHOD_NAMES.HOST_HMR_RUN_TRANSITION,
+      )
+      .slice(transitionCountBeforeUpdateAll);
+    expect(updateAllTransitions).toHaveLength(2);
+    for (const transition of updateAllTransitions) {
+      expect(
+        await h.coordinator.resumeTransition({
+          transitionId: (transition.params as { transitionId: string })
+            .transitionId,
+        }),
+      ).toMatchObject({ ok: true });
+    }
+    expect(h.applyPayloads.slice(-2)).toEqual([
+      expect.objectContaining({
+        runs: [
+          expect.objectContaining({ runId: "run-y", protocolVersion: 2 }),
+        ],
+      }),
+      expect.objectContaining({
+        runs: [
+          expect.objectContaining({ runId: "run-z", protocolVersion: 2 }),
+        ],
+      }),
+    ]);
+    expect(
+      h.overlayServedReads.some((read) => read.content.includes("pendingY")),
+    ).toBe(true);
+    expect(h.overlayServedReads.at(-1)?.content).toContain("z = true");
+    expect(git(h.repoRoot, ["show", `HEAD:${relativePath}`])).toBe(
+      liveCombined,
+    );
+
+    const payloadCountBeforeDiscard = h.applyPayloads.length;
+    await beginAuthorRun(h, "run-discard");
+    await writeAuthorText(
+      h,
+      "run-discard",
+      relativePath,
+      `${liveCombined}export const discarded = true;\n`,
+    );
+    const discardSelector = await finalizeAuthorRun(h, "run-discard");
+    expect(
+      await h.coordinator.discardPending({ commitHash: discardSelector }),
+    ).toMatchObject({ discarded: true });
+    expect(await readFile(filePath, "utf8")).toBe(liveCombined);
+    expect(h.applyPayloads).toHaveLength(payloadCountBeforeDiscard);
+
+    await writeFile(
+      path.join(h.repoRoot, "package.json"),
+      '{"name":"before"}\n',
+    );
+    git(h.repoRoot, ["add", "package.json"]);
+    git(h.repoRoot, ["commit", "-q", "-m", "seed package"]);
+    await beginAuthorRun(h, "run-restart");
+    await beginAuthorRun(h, "run-live");
+    await writeAuthorText(
+      h,
+      "run-restart",
+      "package.json",
+      '{"name":"after"}\n',
+    );
+    await writeAuthorText(
+      h,
+      "run-live",
+      "desktop/src/live.ts",
+      "export const live = true;\n",
+    );
+    const restartSelector = await finalizeAuthorRun(h, "run-restart");
+    const liveSelector = await finalizeAuthorRun(h, "run-live");
+    expect(
+      await h.coordinator.applyPendingWithMorph({
+        commitHash: restartSelector,
+      }),
+    ).toMatchObject({ applied: true });
+    expect(await resumeLatestTransition(h)).toMatchObject({ ok: true });
+    expect(await readFile(path.join(h.repoRoot, "package.json"), "utf8")).toBe(
+      '{"name":"after"}\n',
+    );
+    expect(
+      await readFile(path.join(h.repoRoot, "desktop/src/live.ts"), "utf8"),
+    ).toBe("export const live = true;\n");
+    expect(h.applyPayloads).toHaveLength(payloadCountBeforeDiscard);
+    expect(await h.controller.getStatus()).toMatchObject({ inFlightPaths: 1 });
+    expect(
+      await h.coordinator.discardPending({ commitHash: liveSelector }),
+    ).toMatchObject({ discarded: true });
+    expect(await h.controller.getStatus()).toMatchObject({
       inFlightPaths: 0,
       appliedOverlayPaths: 0,
     });
@@ -533,10 +1045,13 @@ describe("production-path self-mod concurrency harness", () => {
           await writeFile(filePath, "export const value = 'late';\n");
           return {
             details: { session_id: "lease-1", running: false },
-            fileChanges: [{ path: filePath, kind: { type: "update" as const } }],
+            fileChanges: [
+              { path: filePath, kind: { type: "update" as const } },
+            ],
           };
         }
-        if (toolName === "apply_patch") return await handleApplyPatch(args, context);
+        if (toolName === "apply_patch")
+          return await handleApplyPatch(args, context);
         return { result: "unused" };
       },
       registerExtensionTools: vi.fn(),
@@ -564,8 +1079,9 @@ describe("production-path self-mod concurrency harness", () => {
       hookEmitter: { emit: vi.fn() },
       paths: {},
     } as any;
-    (globalThis as unknown as { __selfModProductionHarness: HarnessDriver })
-      .__selfModProductionHarness = {
+    (
+      globalThis as unknown as { __selfModProductionHarness: HarnessDriver }
+    ).__selfModProductionHarness = {
       runTool: async (surface, executor) => {
         expect(surface).toBe("orchestrator");
         const execResult = await executor(
@@ -624,7 +1140,11 @@ describe("production-path self-mod concurrency harness", () => {
         agentType: AGENT_IDS.INSTALL_UPDATE,
         userPrompt: "long shell",
         attachments: [],
-        agentContext: { systemPrompt: "", dynamicContext: "", maxAgentDepth: 1 },
+        agentContext: {
+          systemPrompt: "",
+          dynamicContext: "",
+          maxAgentDepth: 1,
+        },
         resolvedLlm: {
           model: { id: "test-model", provider: "test-provider" },
           route: "direct-provider",
@@ -655,7 +1175,8 @@ describe("production-path self-mod concurrency harness", () => {
     );
     expect(transition).toBeTruthy();
     await coordinator.resumeTransition({
-      transitionId: (transition!.params as { transitionId: string }).transitionId,
+      transitionId: (transition!.params as { transitionId: string })
+        .transitionId,
     });
     expect(git(h.repoRoot, ["show", "HEAD:desktop/src/shared.ts"])).toBe(
       "export const value = 'late';\n",
@@ -670,10 +1191,14 @@ describe("production-path self-mod concurrency harness", () => {
           files: expect.arrayContaining([
             expect.objectContaining({
               path: "desktop/src/lease-extra.ts",
-              state: expect.objectContaining({ text: "export const extra = true;\n" }),
+              state: expect.objectContaining({
+                text: "export const extra = true;\n",
+              }),
             }),
             expect.objectContaining({
-              state: expect.objectContaining({ text: "export const value = 'late';\n" }),
+              state: expect.objectContaining({
+                text: "export const value = 'late';\n",
+              }),
             }),
           ]),
         }),

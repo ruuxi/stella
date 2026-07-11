@@ -1028,6 +1028,16 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     state.socialSessionStore = socialSessionStore;
     state.runEventLog = runEventLog;
     state.pendingSelfModApplies.clear();
+    const startupCleanup = await selfMod.cleanupStartupDiscardCandidates(
+      storeModService.listStartupDiscardCandidates(),
+    );
+    if (startupCleanup.status === "conflicts") {
+      throw new Error(
+        `Pending self-mod retention cleanup could not reconstruct the live tree: ${startupCleanup.conflicts
+          .map((conflict) => conflict.path)
+          .join(", ")}`,
+      );
+    }
     await selfMod.restorePending(storeModService.listPendingEnvelopes());
     const bridgePaths = resolveRuntimePaths(init.stellaAppDir);
 

@@ -79,14 +79,28 @@ const stripIdSuffix = (id: string): string => {
   return id.slice(0, end)
 }
 
+const canonicalFsPath = (candidate: string): string => {
+  const normalized = candidate.replace(/\\/g, '/')
+  try {
+    return fs.realpathSync.native(normalized).replace(/\\/g, '/')
+  } catch {
+    try {
+      const parent = fs.realpathSync.native(path.dirname(normalized))
+      return path.join(parent, path.basename(normalized)).replace(/\\/g, '/')
+    } catch {
+      return normalized
+    }
+  }
+}
+
 const normalizeIdKey = (id: string): string => {
   const stripped = stripIdSuffix(id).replace(/\\/g, '/')
   // Vite sometimes prefixes resolved fs paths with `/@fs/`; strip it so the
   // overlay key matches whichever form the worker reports (always absolute).
   if (stripped.startsWith('/@fs/')) {
-    return stripped.slice('/@fs'.length)
+    return canonicalFsPath(stripped.slice('/@fs'.length))
   }
-  return stripped
+  return path.isAbsolute(stripped) ? canonicalFsPath(stripped) : stripped
 }
 
 const SELF_MOD_OVERLAY_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs']
@@ -315,8 +329,15 @@ const collectShellSnapshotFiles = (repoRoot: string): string[] => {
  *   - POST /force-resume   (clear all state; emergency)
  *   - GET  /status         (debug introspection)
  */
-export function selfModHmrControl(options?: { repoRoot?: string }): Plugin {
-  const repoRoot = path.resolve(options?.repoRoot ?? DEFAULT_STELLA_REPO_ROOT)
+export function selfModHmrControl(options?: {
+  repoRoot?: string
+  /** Test-only probe invoked while the selected overlay is still installed. */
+  onOverlayReady?: (repoRelativePaths: string[]) => Promise<void>
+}): Plugin {
+  const repoRoot = canonicalFsPath(
+    path.resolve(options?.repoRoot ?? DEFAULT_STELLA_REPO_ROOT),
+  )
+  const onOverlayReady = options?.onOverlayReady
   const parkClientUpdates = shouldParkSelfModHmrClientUpdates()
   const pausedRunIds = new Set<string>()
   const inFlightPaths = new Set<string>()
@@ -878,6 +899,16 @@ export function selfModHmrControl(options?: { repoRoot?: string }): Plugin {
             }, 5_000).unref?.()
           }
 
+          if (onOverlayReady) {
+            await onOverlayReady(
+              runs.flatMap((run) =>
+                run.files.map((file) =>
+                  path.relative(repoRoot, file.absPath).replace(/\\/g, '/'),
+                ),
+              ),
+            )
+          }
+
           if (suppressClientFullReload) {
             for (const absPath of appliedOverlayPaths) {
               appliedOverlay.delete(absPath)
@@ -1247,7 +1278,6 @@ export function selfModHmrControl(options?: { repoRoot?: string }): Plugin {
         // run. Consume the bypass entry so any later real disk write goes
         // back through the standard suppression path.
         recentlyEmittedSyntheticPaths.delete(key)
-        if (appliedOverlay.has(key)) appliedOverlay.delete(key)
         return undefined
       }
       if (isClientUpdatePaused()) {
@@ -1265,7 +1295,7 @@ export function selfModHmrControl(options?: { repoRoot?: string }): Plugin {
         // pipeline drives all visible HMR for tracked paths.
         return []
       }
-      if (appliedOverlay.has(key)) {
+      if (appliedOverlay.has(key) && clientUpdateReleaseDepth === 0) {
         // A normal user/dev edit outside the self-mod apply pipeline should
         // take control again. Otherwise load() would keep serving the last
         // applied overlay content and make the file appear stuck.

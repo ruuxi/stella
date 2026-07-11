@@ -479,6 +479,124 @@ describe("scripted self-mod concurrency matrix", () => {
     });
   });
 
+  it("discard reconstruction conflicts transactionally without ambient resurrection", async () => {
+    const h = await createHarness();
+    const relativePath = "desktop/src/reconstruct.ts";
+    const absolutePath = path.join(h.repoRoot, relativePath);
+    await seed(h, relativePath, "a0\nb0\n");
+    for (const runId of ["discard", "b", "c"]) await start(h, runId);
+    await write(h, "discard", relativePath, replace("a0", "A"));
+    await write(h, "b", relativePath, replace("b0", "B"));
+    await write(h, "c", relativePath, replace("B", "C"));
+    const discardSelector = await finalize(h, "discard");
+    const cSelector = await finalize(h, "c");
+    const bSelector = await finalize(h, "b");
+    const beforeHead = await getGitHead(h.repoRoot);
+    const beforeIndex = git(h.repoRoot, ["ls-files", "--stage", "-z"]);
+    const beforeDisk = await readFile(absolutePath, "utf8");
+
+    const failed = await h.coordinator.discardPending({
+      commitHash: discardSelector,
+    });
+    expect(failed).toMatchObject({
+      discarded: false,
+      conflicts: [expect.objectContaining({ path: relativePath })],
+    });
+    expect(await getGitHead(h.repoRoot)).toBe(beforeHead);
+    expect(git(h.repoRoot, ["ls-files", "--stage", "-z"])).toBe(beforeIndex);
+    expect(await readFile(absolutePath, "utf8")).toBe(beforeDisk);
+    expect(beforeDisk).toBe("A\nC\n");
+    expect([...h.pending.keys()].sort()).toEqual(
+      [discardSelector, bSelector, cSelector].sort(),
+    );
+    expect(h.service.getPreparedLogicalChangeSet(discardSelector)).toBeTruthy();
+    expect(
+      new StoreModService(h.repoRoot, new StoreModStore(h.db))
+        .listPendingEnvelopes()
+        .some(
+          (envelope) =>
+            (envelope as { changeSetId?: string }).changeSetId ===
+            discardSelector,
+        ),
+    ).toBe(true);
+
+    expect(
+      await h.coordinator.discardPending({ commitHash: cSelector }),
+    ).toMatchObject({ discarded: true });
+    expect(
+      await h.coordinator.discardPending({ commitHash: discardSelector }),
+    ).toMatchObject({ discarded: true });
+    expect(await readFile(absolutePath, "utf8")).toBe("a0\nB\n");
+    expect([...h.pending.keys()]).toEqual([bSelector]);
+  });
+
+  it("process-restart reconstruction returns a structured conflict and retries", async () => {
+    const h = await createHarness();
+    await writeFile(path.join(h.repoRoot, "package.json"), '{"name":"old"}\n');
+    await seed(h, "desktop/src/restart-conflict.ts", "same\n");
+    git(h.repoRoot, ["add", "package.json"]);
+    git(h.repoRoot, ["commit", "-q", "-m", "seed restart package"]);
+    for (const runId of ["restart", "b", "c"]) await start(h, runId);
+    await write(h, "restart", "package.json", () => '{"name":"new"}\n');
+    await write(
+      h,
+      "b",
+      "desktop/src/restart-conflict.ts",
+      replace("same", "B"),
+    );
+    await write(h, "c", "desktop/src/restart-conflict.ts", replace("B", "C"));
+    const restartSelector = await finalize(h, "restart");
+    const cSelector = await finalize(h, "c");
+    await finalize(h, "b");
+    expect(
+      await h.coordinator.applyPendingWithMorph({
+        commitHash: restartSelector,
+      }),
+    ).toMatchObject({ applied: true });
+    const transition = h.hostRequests.find(
+      (request) => request.method === METHOD_NAMES.HOST_HMR_RUN_TRANSITION,
+    )!;
+    const diskBefore = await readFile(
+      path.join(h.repoRoot, "desktop/src/restart-conflict.ts"),
+      "utf8",
+    );
+    const firstResume = await h.coordinator.resumeTransition({
+      transitionId: (transition.params as { transitionId: string })
+        .transitionId,
+    });
+    expect(firstResume).toMatchObject({
+      ok: false,
+      reason: "reconstruction-conflict",
+      conflicts: [
+        expect.objectContaining({ path: "desktop/src/restart-conflict.ts" }),
+      ],
+    });
+    expect(
+      await readFile(
+        path.join(h.repoRoot, "desktop/src/restart-conflict.ts"),
+        "utf8",
+      ),
+    ).toBe(diskBefore);
+    expect(
+      await h.coordinator.discardPending({ commitHash: cSelector }),
+    ).toMatchObject({ discarded: true });
+    expect(
+      await h.coordinator.resumeTransition({
+        transitionId: (transition.params as { transitionId: string })
+          .transitionId,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(await readFile(path.join(h.repoRoot, "package.json"), "utf8")).toBe(
+      '{"name":"new"}\n',
+    );
+    expect(
+      await readFile(
+        path.join(h.repoRoot, "desktop/src/restart-conflict.ts"),
+        "utf8",
+      ),
+    ).toBe("B\n");
+  });
+
   it("(d) isolates a staggered run whose base includes another run's live edit", async () => {
     const h = await createHarness();
     await seed(h, "desktop/src/shared.ts", "one\ntwo\nthree\n");
@@ -815,5 +933,152 @@ describe("scripted self-mod concurrency matrix", () => {
         new StoreModStore(h.db),
       ).listPendingEnvelopes(),
     ).toHaveLength(0);
+  });
+
+  it("enforces TTL and the 64-row cap before restoring HMR ownership", async () => {
+    const h = await createHarness();
+    const store = new StoreModStore(h.db);
+    const now = Date.now();
+    const ids: string[] = [];
+    for (let index = 0; index < 67; index += 1) {
+      const changeSetId = `retained-${String(index).padStart(2, "0")}`;
+      const runId = `restore-run-${index}`;
+      const relativePath = `desktop/src/restore-${index}.ts`;
+      const content = `export const restored = ${index};\n`;
+      const createdAt =
+        index === 0 ? now - 8 * 24 * 60 * 60 * 1_000 : now - 10_000 + index;
+      ids.push(changeSetId);
+      await writeFile(path.join(h.repoRoot, relativePath), content);
+      store.upsertPendingSelfModChangeSet({
+        changeSetId,
+        repoRoot: h.repoRoot,
+        createdAt,
+        payload: {
+          changeSet: {
+            changeSetId,
+            runId,
+            createdAt,
+            files: [
+              {
+                path: relativePath,
+                base: { kind: "missing" },
+                incoming: {
+                  kind: "blob",
+                  mode: "100644",
+                  contentBase64: Buffer.from(content).toString("base64"),
+                  text: content,
+                },
+                ranges: [{ start: 0, end: Number.MAX_SAFE_INTEGER }],
+                contentChanged: true,
+                modeChanged: true,
+              },
+            ],
+            conflicts: [],
+            concurrentRunIds: [],
+          },
+          prepared: {
+            activeRun: {
+              baselineDirtyFiles: [],
+              taskDescription: `restore ${index}`,
+              applyMode: "author",
+            },
+            subject: `restore ${index}`,
+            trailers: {},
+            conversationTrailer: `restore-conversation-${index}`,
+          },
+          envelope: {
+            commitHash: changeSetId,
+            changeSetId,
+            runId,
+            conversationId: `restore-conversation-${index}`,
+            assistantMessageEventId: `restore-card-${index}`,
+            files: [relativePath],
+            applyResult: {
+              appliedRuns: [
+                {
+                  runId,
+                  paths: [relativePath],
+                  files: [],
+                  runtimeRestartRelevantPaths: [],
+                  processRestartRelevantPaths: [],
+                  restartRelevantPaths: [],
+                  fullReloadRelevantPaths: [],
+                },
+              ],
+              restartRelevantRunIds: [runId],
+              hasRestartRelevantPaths: false,
+              hasRuntimeRestartRelevantPaths: false,
+              hasProcessRestartRelevantPaths: false,
+              hasFullReloadRelevantPaths: false,
+            },
+          },
+        },
+      });
+    }
+
+    const restoredService = new StoreModService(h.repoRoot, store);
+    expect(restoredService.listPendingChangeSetIds()).toHaveLength(64);
+    expect(
+      restoredService
+        .listStartupDiscardCandidates()
+        .map((candidate) => candidate.changeSetId),
+    ).toEqual(ids.slice(0, 3));
+
+    const restoredPending = new Map<string, PendingSelfModApply>();
+    const restoredRequests: Array<{ method: string; params: unknown }> = [];
+    const restoredPatches: Array<Record<string, unknown>> = [];
+    const restoredCoordinator = createSelfModCoordinator({
+      peer: {
+        notify: () => {},
+        request: async <TResult>(method: string, params?: unknown) => {
+          restoredRequests.push({ method, params });
+          return {} as TResult;
+        },
+        registerRequestHandler: () => {},
+        registerNotificationHandler: () => {},
+      },
+      getController: () => h.controller,
+      getStoreModService: () => restoredService,
+      getRuntimeStore: () => null,
+      getRepoRoot: () => h.repoRoot,
+      getPendingSelfModApplies: () => restoredPending,
+      patchSelfModApplyStatus: (args) => restoredPatches.push(args),
+    });
+    expect(
+      restoredRequests.filter(
+        (request) => request.method === METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE,
+      ),
+    ).toHaveLength(0);
+    expect(
+      await restoredCoordinator.cleanupStartupDiscardCandidates(
+        restoredService.listStartupDiscardCandidates(),
+      ),
+    ).toEqual({ status: "applied" });
+    for (const index of [0, 1, 2]) {
+      await expect(
+        readFile(path.join(h.repoRoot, `desktop/src/restore-${index}.ts`)),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    }
+    expect(
+      restoredPatches.filter((patch) => patch.status === "discarded"),
+    ).toHaveLength(3);
+
+    await restoredCoordinator.restorePending(
+      restoredService.listPendingEnvelopes(),
+    );
+    expect(restoredPending.size).toBe(64);
+    expect(
+      [...restoredPending.keys()].some((id) => ids.slice(0, 3).includes(id)),
+    ).toBe(false);
+    const pausedRunIds = restoredRequests
+      .filter(
+        (request) => request.method === METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE,
+      )
+      .map((request) => (request.params as { runId: string }).runId);
+    expect(pausedRunIds).toHaveLength(64);
+    expect(pausedRunIds).not.toContain("restore-run-0");
+    expect(
+      new StoreModStore(h.db).listPendingSelfModChangeSets(h.repoRoot),
+    ).toHaveLength(64);
   });
 });
