@@ -20,6 +20,11 @@ describe("redactSensitiveText", () => {
       "monkey=happy",
       "donkey=grey",
       "turnkey=works",
+      // Benign keys that merely start/end with a fused secret name survive
+      // because fused matching is exact-equality only.
+      "passwordless=true",
+      "accessKeyboard=enabled",
+      "clientSecretary=Alex",
     ])("keeps %s untouched", (input) => {
       expect(redactSensitiveText(input)).toBe(input);
     });
@@ -42,6 +47,9 @@ describe("redactSensitiveText", () => {
       ["AUTHTOKEN=leak-me", "AUTHTOKEN=[REDACTED]"],
       ["CLIENTSECRET=leak-me", "CLIENTSECRET=[REDACTED]"],
       ["clientsecret=leak-me", "clientsecret=[REDACTED]"],
+      ["password=leak-me", "password=[REDACTED]"],
+      // Delimited / camelCase keys still redact via the token-boundary matcher.
+      ["db_password=leak-me", "db_password=[REDACTED]"],
       // Whitespace around `=` must not bypass sensitive-key handling.
       ["FOO_TOKEN = leak-me", "FOO_TOKEN=[REDACTED]"],
       ["API_KEY = short", "API_KEY=[REDACTED]"],
@@ -160,6 +168,16 @@ describe("redactSensitiveText", () => {
     it("leaves a lone 40-char token without aws/secret context alone", () => {
       const input = "checksum abcdef0123456789abcdef0123456789abcdef01";
       expect(redactSensitiveText(input)).toBe(input);
+    });
+
+    it("redacts a real secret VALUE even under an unrecognized fused key", () => {
+      // Documents the mitigation for the middle-embedded fused-name residual:
+      // the key `openaiapikeyprod` is not in the fused allowlist, but the
+      // value is a real sk- token and is caught by the value-based patterns.
+      const token = "sk-proj-abcDEF1234567890ghiJKLmno";
+      const out = redactSensitiveText(`openaiapikeyprod=${token}`);
+      expect(out).not.toContain(token);
+      expect(out).toContain("[REDACTED]");
     });
   });
 });
