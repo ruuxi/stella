@@ -16,13 +16,13 @@ import { toPastedTextDescriptor } from '../lib/paste-context'
 import { useLocalAgentStream } from '../streaming/use-local-agent-stream'
 import {
   combineQueuedSendPayloads,
-  issueQueuedDequeueTimestamp,
   orderQueuedMessages,
   removeQueuedUserMessageById,
   restoreQueuedMessagesAfterFailedDrain,
   timestampQueuedOptimisticEventForDrain,
   type QueuedUserMessage,
 } from './queued-user-messages'
+import { useQueuedDequeueClock } from './use-queued-dequeue-clock'
 
 export type { QueuedUserMessage } from './queued-user-messages'
 
@@ -132,12 +132,16 @@ export function useStreamingChatCore({
   const drainingQueuedPayloadsRef = useRef<QueuedStreamPayload[]>([])
   const drainingQueuedMessageIdRef = useRef<string | null>(null)
   const queuedMessageOrderRef = useRef(0)
-  const dequeueTimelineFloorRef = useRef(0)
   const queueDrainPausedRef = useRef(false)
   const {
     isLocalStorage,
     storageMode,
   } = useChatStore()
+  const issueDequeueTimestamp = useQueuedDequeueClock({
+    conversationId: activeConversationId,
+    persistedMessages,
+    optimisticEvents,
+  })
 
   const removeQueuedUserMessage = useCallback((messageId: string) => {
     queuedStreamPayloadsRef.current = queuedStreamPayloadsRef.current.filter(
@@ -216,7 +220,6 @@ export function useStreamingChatCore({
     drainingQueuedPayloadsRef.current = []
     drainingQueuedMessageIdRef.current = null
     queuedMessageOrderRef.current = 0
-    dequeueTimelineFloorRef.current = 0
     queueDrainPausedRef.current = false
     setOptimisticEvents([])
     setQueuedUserMessages([])
@@ -258,20 +261,7 @@ export function useStreamingChatCore({
     setQueuedUserMessages((current) =>
       current.filter((message) => !drainedIds.has(message.id)),
     )
-    let transcriptFloor = dequeueTimelineFloorRef.current
-    for (const message of persistedMessages) {
-      transcriptFloor = Math.max(transcriptFloor, message.timestamp)
-    }
-    for (const event of optimisticEvents) {
-      transcriptFloor = Math.max(transcriptFloor, event.timestamp)
-    }
-    const dequeueClock = issueQueuedDequeueTimestamp(
-      Date.now(),
-      dequeueTimelineFloorRef.current,
-      transcriptFloor,
-    )
-    const dequeuedAtMs = dequeueClock.userTimestamp
-    dequeueTimelineFloorRef.current = dequeueClock.nextTimelineFloor
+    const dequeuedAtMs = issueDequeueTimestamp()
     const optimisticEventTemplate =
       drainable.length === 1
         ? combined.optimisticEvent
@@ -352,8 +342,7 @@ export function useStreamingChatCore({
     activeConversationId,
     clearOptimisticMessage,
     isStreaming,
-    optimisticEvents,
-    persistedMessages,
+    issueDequeueTimestamp,
     setPendingUserMessageId,
     startStream,
   ])

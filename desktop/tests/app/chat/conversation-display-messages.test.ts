@@ -331,8 +331,56 @@ describe("conversation display message merge", () => {
     ]);
   });
 
-  it("keeps user-response ordering stable across optimistic to canonical handoff", () => {
+  it("preserves same-turn assistant segment ordinals when clamped anchors tie", () => {
     const user = message({
+      _id: "u-segments",
+      type: "user_message",
+      timestamp: 1_000,
+    });
+    const preamble = message({
+      _id: "assistant-msg-run-2",
+      timestamp: 800,
+      payload: {
+        text: "preamble",
+        userMessageId: "u-segments",
+        metadata: { runtime: { streamStartedAtMs: 700 } },
+      },
+    });
+    const postTool = message({
+      _id: "assistant-msg-run-10",
+      timestamp: 900,
+      payload: {
+        text: "post-tool answer",
+        userMessageId: "u-segments",
+        metadata: { runtime: { streamStartedAtMs: 750 } },
+      },
+    });
+    const nextUser = message({
+      _id: "u-next",
+      type: "user_message",
+      timestamp: 1_002,
+    });
+
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages: [user, preamble, postTool, nextUser],
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots([
+        preamble,
+        postTool,
+      ]),
+    });
+
+    expect(merged.map((item) => item._id)).toEqual([
+      "u-segments",
+      "assistant-msg-run-2",
+      "assistant-msg-run-10",
+      "u-next",
+    ]);
+  });
+
+  it("keeps user-response ordering stable across optimistic to canonical handoff", () => {
+    const optimisticUser = message({
       _id: "u-handoff",
       type: "user_message",
       timestamp: 900,
@@ -346,11 +394,17 @@ describe("conversation display message merge", () => {
     const liveMessage = overlayToMessageRecord(live);
     const liveMerged = mergeConversationDisplayMessageSources({
       persistedMessages: [],
-      overlayMessages: [user, liveMessage],
+      overlayMessages: [optimisticUser, liveMessage],
       streamingAssistants: [live],
       persistedAssistantSlots: new Map(),
     });
 
+    const canonicalUser = message({
+      _id: "u-handoff",
+      type: "user_message",
+      timestamp: 900,
+      payload: { text: "persisted user" },
+    });
     const canonicalResponse = message({
       _id: "assistant-handoff",
       timestamp: 950,
@@ -361,7 +415,7 @@ describe("conversation display message merge", () => {
       },
     });
     const canonicalMerged = mergeConversationDisplayMessageSources({
-      persistedMessages: [user, canonicalResponse],
+      persistedMessages: [canonicalUser, canonicalResponse],
       overlayMessages: [],
       streamingAssistants: [],
       persistedAssistantSlots: getPersistedAssistantSlots([
@@ -369,13 +423,17 @@ describe("conversation display message merge", () => {
       ]),
     });
 
-    expect(liveMerged.map((item) => item.type)).toEqual([
-      "user_message",
-      "assistant_message",
+    expect(optimisticUser).not.toBe(canonicalUser);
+    expect(canonicalUser.timestamp).toBe(optimisticUser.timestamp);
+    expect(liveMerged.map((item) => [item._id, item.timestamp])).toEqual([
+      ["u-handoff", 900],
+      ["stream-overlay:u-handoff:1", 900],
     ]);
-    expect(canonicalMerged.map((item) => item.type)).toEqual([
-      "user_message",
-      "assistant_message",
+    expect(
+      canonicalMerged.map((item) => [item._id, item.timestamp]),
+    ).toEqual([
+      ["u-handoff", 900],
+      ["assistant-handoff", 950],
     ]);
   });
 

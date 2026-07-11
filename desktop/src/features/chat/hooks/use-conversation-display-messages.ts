@@ -128,10 +128,24 @@ const compareDisplayOrder = (
   a: MessageRecord,
   b: MessageRecord,
   getSortTimestamp: SortTimestampResolver = defaultSortTimestamp,
+  assistantOrdinalById?: ReadonlyMap<
+    string,
+    { ownerId: string; ordinal: number }
+  >,
 ): number => {
   const ta = getSortTimestamp(a);
   const tb = getSortTimestamp(b);
   if (ta !== tb) return ta - tb;
+  const aOrdinal = assistantOrdinalById?.get(a._id);
+  const bOrdinal = assistantOrdinalById?.get(b._id);
+  if (
+    aOrdinal &&
+    bOrdinal &&
+    aOrdinal.ownerId === bOrdinal.ownerId &&
+    aOrdinal.ordinal !== bOrdinal.ordinal
+  ) {
+    return aOrdinal.ordinal - bOrdinal.ordinal;
+  }
   return a._id.localeCompare(b._id);
 };
 
@@ -219,11 +233,38 @@ const orderByResolver = (
   messages: MessageRecord[],
   getSortTimestamp: SortTimestampResolver,
 ): MessageRecord[] => {
+  const nextAssistantOrdinalByOwner = new Map<string, number>();
+  const assistantOrdinalById = new Map<
+    string,
+    { ownerId: string; ordinal: number }
+  >();
+  for (const message of messages) {
+    const ownerId = getAssistantUserMessageId(message);
+    if (!ownerId) continue;
+    const ordinal = nextAssistantOrdinalByOwner.get(ownerId) ?? 0;
+    nextAssistantOrdinalByOwner.set(ownerId, ordinal + 1);
+    assistantOrdinalById.set(message._id, { ownerId, ordinal });
+  }
+
   let ordered = messages;
   for (let i = 1; i < messages.length; i += 1) {
-    if (compareDisplayOrder(messages[i - 1]!, messages[i]!, getSortTimestamp) > 0) {
+    if (
+      compareDisplayOrder(
+        messages[i - 1]!,
+        messages[i]!,
+        getSortTimestamp,
+        assistantOrdinalById,
+      ) > 0
+    ) {
       ordered = messages.slice();
-      ordered.sort((a, b) => compareDisplayOrder(a, b, getSortTimestamp));
+      ordered.sort((a, b) =>
+        compareDisplayOrder(
+          a,
+          b,
+          getSortTimestamp,
+          assistantOrdinalById,
+        ),
+      );
       break;
     }
   }
