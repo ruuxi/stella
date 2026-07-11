@@ -487,6 +487,8 @@ export const createAgentOrchestration = (
       shouldContinueSelfModLifecycleAfterInterrupt,
       subagentSession,
       onProgress,
+      onToolStart,
+      onToolEnd,
       toolExecutor,
     }) => {
       const runId = `local:sub:${crypto.randomUUID()}`;
@@ -915,14 +917,18 @@ export const createAgentOrchestration = (
                         : {}),
                     });
                   },
-                  onToolStart: (event) => runnerCallbacks.onToolStart(event),
                   onError: (event) => runnerCallbacks.onError(event),
                   onInterrupted: (event) =>
                     runnerCallbacks.onInterrupted?.(event),
                   onEnd: (event) => runnerCallbacks.onEnd(event),
                 }
               : {}),
+            onToolStart: (event) => {
+              onToolStart?.(event);
+              runnerCallbacks?.onToolStart(event);
+            },
             onToolEnd: (event) => {
+              onToolEnd?.(event);
               collectFileChanges(
                 subagentFileChanges,
                 subagentFileChangeKeys,

@@ -67,6 +67,7 @@ import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
 } from "../../protocol/index.js";
+import { sanitizeSensitiveData } from "../../contracts/sensitive-data.js";
 
 const EMPTY_USAGE: Usage = {
   input: 0,
@@ -609,19 +610,18 @@ const runClaudeHostedTurn = async (args: {
     const imageCapTarget: ImageCapTarget = { provider: "anthropic" };
     flushPreambleBeforeTool({ toolCallId, toolName, toolArgs });
     responseTargetTracker?.noteToolStart(toolName, toolArgs);
-    args.callbacks?.onToolStart?.(
-      runEvents.recordToolStart({
-        toolCallId,
-        toolName,
-        toolArgs,
-      }),
-    );
+    const toolStartEvent = runEvents.recordToolStart({
+      toolCallId,
+      toolName,
+      toolArgs,
+    });
+    args.callbacks?.onToolStart?.(toolStartEvent);
     persistThreadPayloadMessage(args.opts.store, {
       threadKey,
       payload: buildToolCallPayload({
         toolCallId,
         toolName,
-        toolArgs,
+        toolArgs: toolStartEvent.args,
       }),
     });
     const toolResult = await executeRuntimeToolCall({
@@ -655,13 +655,17 @@ const runClaudeHostedTurn = async (args: {
         details: toolResult.details,
       }),
     );
+    const sanitizedToolResult = sanitizeSensitiveData(toolResult) as ToolResult;
     persistThreadPayloadMessage(args.opts.store, {
       threadKey,
       payload: {
         role: "toolResult",
         toolCallId,
         toolName,
-        content: await buildToolResultContent(toolResult, imageCapTarget),
+        content: await buildToolResultContent(
+          sanitizedToolResult,
+          imageCapTarget,
+        ),
         isError: Boolean(toolResult.error),
         timestamp: now(),
       },
@@ -904,19 +908,18 @@ const runCodexHostedTurn = async (args: {
     const imageCapTarget: ImageCapTarget = { provider: "openai" };
     flushPreambleBeforeTool({ toolCallId, toolName, toolArgs });
     responseTargetTracker?.noteToolStart(toolName, toolArgs);
-    args.callbacks?.onToolStart?.(
-      runEvents.recordToolStart({
-        toolCallId,
-        toolName,
-        toolArgs,
-      }),
-    );
+    const toolStartEvent = runEvents.recordToolStart({
+      toolCallId,
+      toolName,
+      toolArgs,
+    });
+    args.callbacks?.onToolStart?.(toolStartEvent);
     persistThreadPayloadMessage(args.opts.store, {
       threadKey,
       payload: buildToolCallPayload({
         toolCallId,
         toolName,
-        toolArgs,
+        toolArgs: toolStartEvent.args,
       }),
     });
     const toolResult = await executeRuntimeToolCall({
@@ -950,13 +953,17 @@ const runCodexHostedTurn = async (args: {
         details: toolResult.details,
       }),
     );
+    const sanitizedToolResult = sanitizeSensitiveData(toolResult) as ToolResult;
     persistThreadPayloadMessage(args.opts.store, {
       threadKey,
       payload: {
         role: "toolResult",
         toolCallId,
         toolName,
-        content: await buildToolResultContent(toolResult, imageCapTarget),
+        content: await buildToolResultContent(
+          sanitizedToolResult,
+          imageCapTarget,
+        ),
         isError: Boolean(toolResult.error),
         timestamp: now(),
       },

@@ -507,10 +507,11 @@ describe("Codex agent runtime", () => {
         "    const turn = { id: 'turn-progress', status: 'inProgress' };",
         "    send({ id: message.id, result: { turn } });",
         "    send({ method: 'turn/started', params: { threadId, turn } });",
-        "    send({ method: 'item/reasoning/textDelta', params: { threadId, turnId: turn.id, itemId: 'reasoning-1', delta: 'checking ' } });",
-        "    send({ method: 'item/reasoning/summaryTextDelta', params: { threadId, turnId: turn.id, itemId: 'reasoning-1', delta: 'the build' } });",
-        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-progress', command: 'API_TOKEN=super-secret bun test --token also-secret', cwd: '/repo', status: 'inProgress' } } });",
-        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-progress', command: 'API_TOKEN=super-secret bun test --token also-secret', cwd: '/repo', status: 'completed', exitCode: 0 } } });",
+        "    send({ method: 'item/reasoning/textDelta', params: { threadId, turnId: turn.id, itemId: 'reasoning-1', delta: 'Authorization: Bearer reasoning-secret' } });",
+        "    send({ method: 'item/reasoning/summaryTextDelta', params: { threadId, turnId: turn.id, itemId: 'reasoning-1', delta: ' Cookie: session=reasoning-cookie' } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'webSearch', id: 'search-progress', query: 'Authorization: Bearer search-secret' } } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-progress', command: 'API_TOKEN=super-secret curl Authorization: Bearer header-secret --token also-secret', cwd: '/repo/API_KEY=cwd-secret', status: 'inProgress' } } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-progress', command: 'API_TOKEN=super-secret curl Authorization: Bearer header-secret --token also-secret', cwd: '/repo/API_KEY=cwd-secret', status: 'completed', exitCode: 0 } } });",
         "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-progress', text: 'done', phase: 'final_answer' } } });",
         "    send({ method: 'turn/completed', params: { threadId, turn: { id: turn.id, status: 'completed' } } });",
         "  }",
@@ -521,6 +522,7 @@ describe("Codex agent runtime", () => {
     fs.chmodSync(fakeCodex, 0o755);
     const previousPath = process.env.STELLA_CODEX_CLI_PATH;
     const reasoning: string[] = [];
+    const statuses: string[] = [];
     const commands: Array<{
       command: string;
       status: string;
@@ -532,19 +534,33 @@ describe("Codex agent runtime", () => {
         runId: "run-task-progress",
         prompt: "check the build",
         onReasoning: (chunk) => reasoning.push(chunk),
+        onStatus: (status) => statuses.push(status),
         onCommandExecution: (activity) => commands.push(activity),
       });
 
       expect(result.text).toBe("done");
-      expect(reasoning.join("")).toBe("checking the build");
+      expect(reasoning.join("")).toContain("[REDACTED]");
       expect(commands.map((command) => command.status)).toEqual([
         "inProgress",
         "completed",
       ]);
       expect(commands[0]?.command).toContain("API_TOKEN=[REDACTED]");
-      expect(commands[0]?.command).toContain("--token [REDACTED]");
-      expect(commands[0]?.command).not.toContain("super-secret");
-      expect(commands[0]?.command).not.toContain("also-secret");
+      const serializedProgress = JSON.stringify({
+        reasoning,
+        statuses,
+        commands,
+      });
+      for (const secret of [
+        "reasoning-secret",
+        "reasoning-cookie",
+        "search-secret",
+        "super-secret",
+        "header-secret",
+        "also-secret",
+        "cwd-secret",
+      ]) {
+        expect(serializedProgress).not.toContain(secret);
+      }
       expect(commands[1]?.exitCode).toBe(0);
     } finally {
       if (previousPath === undefined) {
@@ -1132,8 +1148,8 @@ describe("Codex agent runtime", () => {
         onSessionId: (sessionId) => {
           observedSessionIds.push(sessionId);
         },
-        onStatus: (status) => {
-          if (status === "first turn started") markFirstTurnStarted?.();
+        onReasoning: (reasoning) => {
+          if (reasoning === "first turn started") markFirstTurnStarted?.();
         },
       });
 

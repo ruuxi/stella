@@ -969,6 +969,95 @@ describe("subscribeRuntimeAgentEvents", () => {
   });
 });
 
+describe("sensitive runtime event payloads", () => {
+  it("redacts reasoning, status, tool events, and persisted previews before dispatch", () => {
+    const store = { recordRunEvent: vi.fn() };
+    const recorder = createRunEventRecorder({
+      store: store as never,
+      runId: "run-redaction",
+      conversationId: "conversation-redaction",
+      agentType: AGENT_IDS.GENERAL,
+      userMessageId: "user-redaction",
+    });
+    const jwt =
+      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZWNyZXQtdXNlciJ9.signature123";
+    const privateKey =
+      "-----BEGIN PRIVATE KEY-----\nprivate-material\n-----END PRIVATE KEY-----";
+    const reasoning = recorder.recordReasoning(
+      `checking Authorization: Bearer reasoning-secret ${jwt} ${privateKey}`,
+    );
+    const status = recorder.recordStatus(
+      "Cookie: session=status-secret; tracking=1",
+    );
+    const toolStart = recorder.recordToolStart({
+      toolCallId: "tool-redaction",
+      toolName: "exec_command",
+      statusText: "Authorization: Basic c3RhdHVzOnNlY3JldA==",
+      toolArgs: {
+        command: "API_TOKEN=command-secret curl --password flag-secret",
+        headers: { authorization: "Bearer header-secret" },
+        privateKey,
+      },
+    });
+    const toolEnd = recorder.recordToolEnd({
+      toolCallId: "tool-redaction",
+      toolName: "exec_command",
+      result: "Cookie: session=result-secret",
+      details: {
+        output: `Authorization: Bearer detail-secret ${jwt}`,
+        password: "object-secret",
+      },
+    });
+
+    const serialized = JSON.stringify({
+      reasoning,
+      status,
+      toolStart,
+      toolEnd,
+      persisted: store.recordRunEvent.mock.calls,
+    });
+    for (const secret of [
+      "reasoning-secret",
+      "private-material",
+      "status-secret",
+      "command-secret",
+      "flag-secret",
+      "header-secret",
+      "result-secret",
+      "detail-secret",
+      "object-secret",
+      jwt,
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+
+    let state = streamStoreReducer(initialStoreState, {
+      type: "task-upsert",
+      runId: "run-redaction",
+      conversationId: "conversation-redaction",
+      task: {
+        id: "agent-redaction",
+        description: "Redaction task",
+        agentType: AGENT_IDS.GENERAL,
+        status: "running",
+        statusText: status.statusText,
+        startedAtMs: 1,
+        lastUpdatedAtMs: 1,
+      },
+    });
+    state = streamStoreReducer(state, {
+      type: "agent-reasoning",
+      runId: "run-redaction",
+      conversationId: "conversation-redaction",
+      agentId: "agent-redaction",
+      chunk: reasoning.chunk,
+    });
+    const task = state.tasksByRunId["run-redaction"]?.["agent-redaction"];
+    expect(task?.reasoningText).toContain("[REDACTED]");
+    expect(task?.statusText).not.toContain("status-secret");
+  });
+});
+
 describe("resumed-thread task labeling", () => {
   const runId = "run-resumed";
   const conversationId = "conversation-1";

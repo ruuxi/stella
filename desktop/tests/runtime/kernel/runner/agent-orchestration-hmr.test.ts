@@ -36,6 +36,7 @@ type MockRuntimeState = {
     | "install_update_merge"
     | "running_shell"
     | "parallel_running_shell"
+    | "tool_activity"
     | "interrupted"
     | "interrupt_after_apply_patch"
     | "send_input_then_apply_patch";
@@ -57,6 +58,7 @@ const mockRuntime: MockRuntimeState = {
     | "install_update_merge"
     | "running_shell"
     | "parallel_running_shell"
+    | "tool_activity"
     | "interrupted"
     | "interrupt_after_apply_patch"
     | "send_input_then_apply_patch",
@@ -79,6 +81,15 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
         context: ToolContext,
       ) => Promise<ToolResult>;
       callbacks?: {
+        onToolStart?: (event: {
+          runId: string;
+          agentType: string;
+          seq: number;
+          toolCallId: string;
+          toolName: string;
+          statusText?: string;
+          args: Record<string, unknown>;
+        }) => void;
         onToolEnd?: (event: {
           runId: string;
           seq: number;
@@ -87,6 +98,7 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
           resultPreview: string;
           fileChanges?: ToolResult["fileChanges"];
           producedFiles?: ToolResult["producedFiles"];
+          details?: unknown;
         }) => void;
       };
       abortSignal?: AbortSignal;
@@ -101,6 +113,34 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
         requestId: "request-1",
         stellaAppDir: runtime.root,
       };
+      if (runtime.mode === "tool_activity") {
+        opts.callbacks?.onToolStart?.({
+          runId: "subagent-run-tool-activity",
+          agentType: AGENT_IDS.GENERAL,
+          seq: 1,
+          toolCallId: "command-1",
+          toolName: "exec_command",
+          statusText: "Running command",
+          args: { command: "API_TOKEN=hidden bun test", cwd: runtime.root },
+        });
+        opts.callbacks?.onToolEnd?.({
+          runId: "subagent-run-tool-activity",
+          seq: 2,
+          toolCallId: "command-1",
+          toolName: "exec_command",
+          resultPreview: "completed",
+          details: {
+            command: "API_TOKEN=hidden bun test",
+            cwd: runtime.root,
+            state: "completed",
+            exitCode: 0,
+          },
+        });
+        return {
+          runId: "subagent-run-tool-activity",
+          result: "done",
+        };
+      }
       if (runtime.mode === "send_input_then_apply_patch" && runCount === 1) {
         const result = await opts.toolExecutor(
           "apply_patch",
@@ -1064,6 +1104,74 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(context.toolHost.killAllShells).not.toHaveBeenCalled();
     expect(context.selfModLifecycle.finalizeRun).not.toHaveBeenCalled();
     expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("composes production tool callbacks into task activity and root-run consumers", async () => {
+    const root = await makeTempRoot();
+    mockRuntime.root = root;
+    mockRuntime.mode = "tool_activity";
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
+    const context = createTestContext(root, {
+      beginRun: vi.fn(),
+      recordWrite: vi.fn(),
+      beginShellMutationGuard: vi.fn(async () => true),
+      endShellMutationGuard: vi.fn(async () => true),
+      hasRun: vi.fn(() => true),
+    });
+    const rootToolStart = vi.fn();
+    const rootToolEnd = vi.fn();
+    context.state.runCallbacksByRunId.set("root-tool-activity", {
+      onStream: vi.fn(),
+      onToolStart: rootToolStart,
+      onToolEnd: rootToolEnd,
+      onError: vi.fn(),
+      onEnd: vi.fn(),
+    });
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "watch command progress",
+      prompt: "watch command progress",
+      agentType: AGENT_IDS.GENERAL,
+      rootRunId: "root-tool-activity",
+      storageMode: "local",
+    });
+    await waitForAgentStatus(context.state.localAgentManager, threadId);
+
+    const progressPayloads = context.appendLocalChatEvent.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.type === "agent-progress")
+      .map((event) => event.payload);
+    expect(progressPayloads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolActivity: expect.objectContaining({
+            toolCallId: "command-1",
+            state: "started",
+            argsHint: expect.stringContaining("API_TOKEN=[REDACTED]"),
+          }),
+        }),
+        expect.objectContaining({
+          toolActivity: expect.objectContaining({
+            toolCallId: "command-1",
+            state: "completed",
+            exitCode: 0,
+          }),
+        }),
+      ]),
+    );
+    expect(rootToolStart).toHaveBeenCalledTimes(1);
+    expect(rootToolEnd).toHaveBeenCalledTimes(1);
   });
 
   it("still runs install-update git commands when the shell mutation guard is unavailable", async () => {

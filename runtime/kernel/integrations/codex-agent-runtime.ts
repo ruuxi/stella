@@ -15,6 +15,7 @@ import { setupEnvironment } from "dugite";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
+import { redactSensitiveText } from "../../contracts/sensitive-data.js";
 import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
@@ -269,18 +270,8 @@ export type CodexCommandExecutionActivity = {
   exitCode?: number | null;
 };
 
-const CODEX_ENV_ASSIGNMENT_RE =
-  /\b([A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|[^\s]+)/g;
-const CODEX_SECRET_FLAG_RE =
-  /(\s--?(?:api[-_]?key|token|secret|password|passwd|authorization))(?:=|\s+)(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
-const CODEX_URL_SECRET_RE =
-  /([?&](?:api[-_]?key|token|access_token|refresh_token|session|secret|password)=)([^&#\s]+)/gi;
-
 export const sanitizeCodexCommandForActivity = (command: string): string =>
-  command
-    .replace(CODEX_URL_SECRET_RE, "$1[REDACTED]")
-    .replace(CODEX_ENV_ASSIGNMENT_RE, "$1=[REDACTED]")
-    .replace(CODEX_SECRET_FLAG_RE, "$1 [REDACTED]");
+  redactSensitiveText(command);
 
 export type CodexAppServerModel = CodexModel;
 
@@ -1289,6 +1280,8 @@ export const runCodexAgentTurn = async (request: {
   ) => Promise<ToolResult>;
   reuseAppServer?: boolean;
 }): Promise<CodexAgentTurnResult> => {
+  const emitStatus = (status: string) =>
+    request.onStatus?.(redactSensitiveText(status));
   const { model, reasoningEffort } = getCodexRuntimePreferences(
     request.stellaDataDir,
     request.stellaModel,
@@ -1438,7 +1431,9 @@ export const runCodexAgentTurn = async (request: {
         case "item/reasoning/textDelta":
         case "item/reasoning/summaryTextDelta": {
           if (notification.params.delta) {
-            request.onReasoning?.(notification.params.delta);
+            request.onReasoning?.(
+              redactSensitiveText(notification.params.delta),
+            );
           }
           return;
         }
@@ -1446,12 +1441,14 @@ export const runCodexAgentTurn = async (request: {
         case "item/completed": {
           const item = notification.params.item;
           const status = statusFromCodexItem(item);
-          if (status) request.onStatus?.(status);
+          if (status) emitStatus(status);
           if (item.type === "commandExecution") {
             request.onCommandExecution?.({
               id: item.id,
               command: sanitizeCodexCommandForActivity(item.command),
-              ...(item.cwd ? { cwd: item.cwd } : {}),
+              ...(item.cwd
+                ? { cwd: redactSensitiveText(item.cwd) }
+                : {}),
               status: item.status,
               ...(item.exitCode !== undefined
                 ? { exitCode: item.exitCode }
@@ -1520,7 +1517,7 @@ export const runCodexAgentTurn = async (request: {
               update,
             });
             const statusText = buildToolResultText(update).trim();
-            if (statusText) request.onStatus?.(statusText);
+            if (statusText) emitStatus(statusText);
           },
         );
         refreshTurnIdleTimer?.();
@@ -1572,7 +1569,7 @@ export const runCodexAgentTurn = async (request: {
       model,
       cwd: request.cwd,
       systemPrompt: request.systemPrompt,
-      onStatus: request.onStatus,
+      onStatus: emitStatus,
     });
     request.onSessionId?.(threadId);
     if (request.abortSignal?.aborted) {

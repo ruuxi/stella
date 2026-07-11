@@ -21,10 +21,12 @@ import {
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import { agentProgressSummaryStore } from "@/features/chat/agent-progress-summary-store";
+import { redactSensitiveText } from "../../../../runtime/contracts/sensitive-data.js";
 
 const FIRST_DELAY_MS = 10_000;
 const INTERVAL_MS = 30_000;
 const MEANINGFUL_CHANGE_DEBOUNCE_MS = 750;
+export const PROGRESS_SUMMARY_MIN_REQUEST_INTERVAL_MS = 10_000;
 
 const REASONING_CONTEXT_CHARS = 1200;
 const SIGNATURE_TAIL_CHARS = 200;
@@ -45,20 +47,22 @@ type TimerState = {
   debounceTimeout: ReturnType<typeof setTimeout> | null;
   lastSignature: string | null;
   observedSignature: string;
+  lastRequestAtMs: number | null;
+  trailingPending: boolean;
   inFlight: boolean;
 };
 
 export const buildAgentProgressSignature = (task: TaskItem): string => {
-  const reasoning = task.reasoningText ?? "";
+  const reasoning = redactSensitiveText(task.reasoningText ?? "");
   const tool = task.toolActivity;
   return [
     reasoning.length,
     reasoning.slice(-SIGNATURE_TAIL_CHARS),
-    task.statusText ?? "",
-    tool?.toolCallId ?? "",
-    tool?.toolName ?? "",
-    tool?.label ?? "",
-    tool?.argsHint ?? "",
+    redactSensitiveText(task.statusText ?? ""),
+    redactSensitiveText(tool?.toolCallId ?? ""),
+    redactSensitiveText(tool?.toolName ?? ""),
+    redactSensitiveText(tool?.label ?? ""),
+    redactSensitiveText(tool?.argsHint ?? ""),
     tool?.state ?? "",
     tool?.exitCode ?? "",
     task.status,
@@ -84,20 +88,25 @@ const sanitizeSummary = (raw: string): string => {
   return text;
 };
 
-const buildUserText = (task: TaskItem, priorPhrases: string[]): string => {
-  const reasoning = (task.reasoningText ?? "")
+export const buildAgentProgressUserText = (
+  task: TaskItem,
+  priorPhrases: string[],
+): string => {
+  const reasoning = redactSensitiveText(task.reasoningText ?? "")
     .slice(-REASONING_CONTEXT_CHARS)
     .trim();
   const lines = [
-    `Task: ${task.description?.trim() || "(background task)"}`,
-    `Current activity: ${task.statusText?.trim() || "working"}`,
+    `Task: ${redactSensitiveText(task.description?.trim() || "(background task)")}`,
+    `Current activity: ${redactSensitiveText(task.statusText?.trim() || "working")}`,
   ];
   if (task.toolActivity) {
     lines.push(
-      `Tool: ${task.toolActivity.label} (${task.toolActivity.toolName})`,
+      `Tool: ${redactSensitiveText(task.toolActivity.label)} (${redactSensitiveText(task.toolActivity.toolName)})`,
     );
     if (task.toolActivity.argsHint) {
-      lines.push(`Tool context: ${task.toolActivity.argsHint}`);
+      lines.push(
+        `Tool context: ${redactSensitiveText(task.toolActivity.argsHint)}`,
+      );
     }
   }
   if (reasoning) {
@@ -105,7 +114,7 @@ const buildUserText = (task: TaskItem, priorPhrases: string[]): string => {
   }
   lines.push(
     "",
-    `Previous phrases: ${priorPhrases.length > 0 ? priorPhrases.join("; ") : "(none yet)"}`,
+    `Previous phrases: ${priorPhrases.length > 0 ? redactSensitiveText(priorPhrases.join("; ")) : "(none yet)"}`,
   );
   return lines.join("\n");
 };
@@ -122,7 +131,7 @@ const requestSummary = async (
     // If a pure-BYOK user has no Stella access, ride their general pick.
     fallbackAgentTypes: ["general"],
     systemPrompt: SUMMARY_SYSTEM_PROMPT,
-    userText: buildUserText(task, priorPhrases),
+    userText: buildAgentProgressUserText(task, priorPhrases),
     maxOutputTokens: 24,
     temperature: 0.4,
   });
@@ -163,10 +172,18 @@ export function useAgentProgressSummaryEngine(
     if (state.debounceTimeout) clearTimeout(state.debounceTimeout);
     const task = tasksRef.current.get(agentId);
     if (!task || task.status !== "running") return;
+    state.trailingPending = true;
+    const earliestRequestAt =
+      (state.lastRequestAtMs ?? -Infinity) +
+      PROGRESS_SUMMARY_MIN_REQUEST_INTERVAL_MS;
+    const delayMs = Math.max(
+      MEANINGFUL_CHANGE_DEBOUNCE_MS,
+      earliestRequestAt - Date.now(),
+    );
     state.debounceTimeout = setTimeout(() => {
       state.debounceTimeout = null;
       runRef.current(agentId);
-    }, MEANINGFUL_CHANGE_DEBOUNCE_MS);
+    }, delayMs);
   };
 
   runRef.current = (agentId) => {
@@ -175,18 +192,31 @@ export function useAgentProgressSummaryEngine(
     const task = tasksRef.current.get(agentId);
     if (!task || task.status !== "running") return;
     if (state.inFlight) {
-      scheduleDebounceRef.current(agentId);
+      state.trailingPending = true;
       return;
     }
 
     const signature = buildAgentProgressSignature(task);
     if (signature === state.lastSignature) {
+      state.trailingPending = false;
       // Nothing new since the last summary — skip the call until next tick.
       scheduleRef.current(agentId, INTERVAL_MS);
       return;
     }
 
+    const nowMs = Date.now();
+    if (
+      state.lastRequestAtMs !== null &&
+      nowMs - state.lastRequestAtMs <
+        PROGRESS_SUMMARY_MIN_REQUEST_INTERVAL_MS
+    ) {
+      scheduleDebounceRef.current(agentId);
+      return;
+    }
+
     state.inFlight = true;
+    state.trailingPending = false;
+    state.lastRequestAtMs = nowMs;
     const prior = agentProgressSummaryStore
       .getSummaries(agentId)
       .map((entry) => entry.text);
@@ -211,7 +241,8 @@ export function useAgentProgressSummaryEngine(
         const current = tasksRef.current.get(agentId);
         if (
           current?.status === "running" &&
-          buildAgentProgressSignature(current) !== signature
+          (state.trailingPending ||
+            buildAgentProgressSignature(current) !== signature)
         ) {
           scheduleDebounceRef.current(agentId);
         } else {
@@ -264,6 +295,8 @@ export function useAgentProgressSummaryEngine(
         observedSignature: buildAgentProgressSignature(
           tasksRef.current.get(agentId)!,
         ),
+        lastRequestAtMs: null,
+        trailingPending: false,
         inFlight: false,
       });
       scheduleRef.current(agentId, FIRST_DELAY_MS);

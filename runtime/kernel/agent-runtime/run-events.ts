@@ -1,5 +1,9 @@
 import { RUNTIME_RUN_EVENT_TYPES } from "../../contracts/agent-runtime.js";
 import {
+  redactSensitiveText,
+  sanitizeSensitiveData,
+} from "../../contracts/sensitive-data.js";
+import {
   isFileChangeRecordArray,
   isProducedFileRecordArray,
 } from "../../contracts/file-changes.js";
@@ -209,7 +213,7 @@ export const createRunEventRecorder = ({
         runId,
         agentType,
         seq,
-        chunk,
+        chunk: redactSensitiveText(chunk),
         userMessageId: currentUserMessageId,
         ...(responseTarget ? { responseTarget } : {}),
         ...(uiVisibility ? { uiVisibility } : {}),
@@ -226,7 +230,7 @@ export const createRunEventRecorder = ({
         agentType,
         seq,
         statusState,
-        statusText,
+        statusText: redactSensitiveText(statusText),
         ...(uiVisibility ? { uiVisibility } : {}),
       };
     },
@@ -238,6 +242,11 @@ export const createRunEventRecorder = ({
       toolArgs: Record<string, unknown>;
     }): RuntimeToolStartEvent {
       const seq = nextSeq();
+      const toolCallId = redactSensitiveText(args.toolCallId);
+      const toolName = redactSensitiveText(args.toolName);
+      const sanitizedArgs = sanitizeSensitiveData(
+        args.toolArgs,
+      ) as Record<string, unknown>;
       store.recordRunEvent({
         timestamp: now(),
         runId,
@@ -245,17 +254,19 @@ export const createRunEventRecorder = ({
         agentType,
         seq,
         type: RUNTIME_RUN_EVENT_TYPES.TOOL_START,
-        toolCallId: args.toolCallId,
-        toolName: args.toolName,
+        toolCallId,
+        toolName,
       });
       return {
         runId,
         agentType,
         seq,
-        toolCallId: args.toolCallId,
-        toolName: args.toolName,
-        ...(args.statusText ? { statusText: args.statusText } : {}),
-        args: args.toolArgs,
+        toolCallId,
+        toolName,
+        ...(args.statusText
+          ? { statusText: redactSensitiveText(args.statusText) }
+          : {}),
+        args: sanitizedArgs,
         ...(uiVisibility ? { uiVisibility } : {}),
       };
     },
@@ -266,11 +277,17 @@ export const createRunEventRecorder = ({
       result: unknown;
       details?: unknown;
     }): RuntimeToolEndEvent {
-      const resultPreview = getToolResultPreview(
-        args.toolName,
-        // Structured side-channels (schedule receipts, image metadata, etc.)
-        // live in `details`; previews must stay human-readable.
-        args.result ?? args.details,
+      const toolCallId = redactSensitiveText(args.toolCallId);
+      const toolName = redactSensitiveText(args.toolName);
+      const sanitizedResult = sanitizeSensitiveData(args.result);
+      const sanitizedDetails = sanitizeSensitiveData(args.details);
+      const resultPreview = redactSensitiveText(
+        getToolResultPreview(
+          toolName,
+          // Structured side-channels (schedule receipts, image metadata, etc.)
+          // live in `details`; previews must stay human-readable.
+          sanitizedResult ?? sanitizedDetails,
+        ),
       );
       const seq = nextSeq();
       store.recordRunEvent({
@@ -280,8 +297,8 @@ export const createRunEventRecorder = ({
         agentType,
         seq,
         type: RUNTIME_RUN_EVENT_TYPES.TOOL_END,
-        toolCallId: args.toolCallId,
-        toolName: args.toolName,
+        toolCallId,
+        toolName,
         resultPreview,
       });
       const fileChanges =
@@ -294,10 +311,10 @@ export const createRunEventRecorder = ({
         runId,
         agentType,
         seq,
-        toolCallId: args.toolCallId,
-        toolName: args.toolName,
+        toolCallId,
+        toolName,
         resultPreview,
-        ...(args.details !== undefined ? { details: args.details } : {}),
+        ...(args.details !== undefined ? { details: sanitizedDetails } : {}),
         ...(fileChanges ? { fileChanges } : {}),
         ...(producedFiles ? { producedFiles } : {}),
         ...(uiVisibility ? { uiVisibility } : {}),
