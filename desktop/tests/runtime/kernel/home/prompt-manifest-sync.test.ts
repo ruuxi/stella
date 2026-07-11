@@ -314,7 +314,7 @@ describe("remote prompt startup sync", () => {
       fetchImpl: async () =>
         new Response(JSON.stringify(remote), {
           status: 200,
-          headers: { ETag: `"${remote.revision}"` },
+          headers: { ETag: `"${remote.publishedAt}-${remote.revision}"` },
         }),
     });
     expect(fresh.source).toBe("fresh-remote");
@@ -390,6 +390,73 @@ describe("remote prompt startup sync", () => {
     expect(result).toEqual({
       source: "bundled-bootstrap",
       manifest: null,
+      endpoint,
+    });
+  });
+
+  it("advances an A/B/A publication and rejects the intervening stale B", async () => {
+    const home = await tempDir();
+    const endpoint = "https://aba-etag.example.test/api/stella/prompts";
+    const siteUrl = siteUrlForEndpoint(endpoint);
+    const a10 = manifest(10, { "agents/orchestrator.md": "A\n" });
+    const b15 = manifest(15, { "agents/orchestrator.md": "B\n" });
+    const a20 = manifest(20, { "agents/orchestrator.md": "A\n" });
+    expect(a20.revision).toBe(a10.revision);
+
+    await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl,
+      fetchImpl: async () =>
+        new Response(JSON.stringify(a10), {
+          status: 200,
+          headers: { ETag: `"10-${a10.revision}"` },
+        }),
+    });
+    await recordAppliedPromptManifest({
+      stellaDataDir: home,
+      endpoint,
+      manifest: a10,
+    });
+
+    let sentValidator = "";
+    const refreshedA = await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl,
+      fetchImpl: async (_input, init) => {
+        sentValidator = new Headers(init?.headers).get("if-none-match") ?? "";
+        const currentEtag = `"20-${a20.revision}"`;
+        return sentValidator === currentEtag
+          ? new Response(null, { status: 304, headers: { ETag: currentEtag } })
+          : new Response(JSON.stringify(a20), {
+              status: 200,
+              headers: { ETag: currentEtag },
+            });
+      },
+    });
+    expect(sentValidator).toBe(`"10-${a10.revision}"`);
+    expect(refreshedA).toEqual({
+      source: "fresh-remote",
+      manifest: a20,
+      endpoint,
+    });
+    await recordAppliedPromptManifest({
+      stellaDataDir: home,
+      endpoint,
+      manifest: a20,
+    });
+
+    const staleB = await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl,
+      fetchImpl: async () =>
+        new Response(JSON.stringify(b15), {
+          status: 200,
+          headers: { ETag: `"15-${b15.revision}"` },
+        }),
+    });
+    expect(staleB).toEqual({
+      source: "cached-remote",
+      manifest: a20,
       endpoint,
     });
   });

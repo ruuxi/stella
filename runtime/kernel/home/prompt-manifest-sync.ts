@@ -86,6 +86,10 @@ const revisionForPrompts = (prompts: readonly RemotePrompt[]): string =>
       .join("\n"),
   );
 
+const publicationEtag = (
+  manifest: Pick<RemotePromptManifest, "publishedAt" | "revision">,
+): string => `"${manifest.publishedAt}-${manifest.revision}"`;
+
 export const parseRemotePromptManifest = (
   value: unknown,
 ): RemotePromptManifest | null => {
@@ -679,7 +683,7 @@ export const resolvePromptManifest = async (args: {
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const headers: Record<string, string> = {};
-    if (cached?.etag) headers["If-None-Match"] = cached.etag;
+    if (cached) headers["If-None-Match"] = publicationEtag(cached.manifest);
     const response = await (args.fetchImpl ?? fetch)(endpoint, {
       headers,
       signal: controller.signal,
@@ -704,9 +708,7 @@ export const resolvePromptManifest = async (args: {
 
     const nextCache: CachedPromptManifest = {
       endpoint,
-      ...(response.headers.get("etag")
-        ? { etag: response.headers.get("etag")! }
-        : {}),
+      etag: publicationEtag(manifest),
       manifest,
     };
     await (args.writeCacheImpl ?? writeCacheAtomic)(
