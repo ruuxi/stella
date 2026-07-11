@@ -1166,6 +1166,14 @@ export class RuntimeHostAdapter {
     return this.host.applySelfModCommit(payload);
   }
 
+  applyAllSelfModCommits() {
+    return this.host.applyAllSelfModCommits();
+  }
+
+  discardPendingSelfModCommit(payload: { commitHash?: string }) {
+    return this.host.discardPendingSelfModCommit(payload);
+  }
+
   getCrashRecoveryStatus() {
     return this.host.getCrashRecoveryStatus();
   }

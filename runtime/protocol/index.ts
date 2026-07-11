@@ -150,6 +150,7 @@ export const METHOD_NAMES = {
   PROJECTS_START: "projects.start",
   PROJECTS_STOP: "projects.stop",
   SELF_MOD_APPLY: "selfMod.apply",
+  SELF_MOD_DISCARD_PENDING: "selfMod.discardPending",
   SELF_MOD_REVERT: "selfMod.revert",
   SELF_MOD_CRASH_RECOVERY_STATUS: "selfMod.crashRecoveryStatus",
   SELF_MOD_DISCARD_UNFINISHED: "selfMod.discardUnfinished",
@@ -293,6 +294,9 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_CHRONICLE_SUMMARY_TICK:
     "internal.worker.chronicle.summaryTick",
   INTERNAL_WORKER_SELF_MOD_APPLY: "internal.worker.selfMod.apply",
+  INTERNAL_WORKER_SELF_MOD_APPLY_ALL: "internal.worker.selfMod.applyAll",
+  INTERNAL_WORKER_SELF_MOD_DISCARD_PENDING:
+    "internal.worker.selfMod.discardPending",
   INTERNAL_WORKER_SELF_MOD_REVERT: "internal.worker.selfMod.revert",
   INTERNAL_WORKER_SELF_MOD_CRASH_RECOVERY_STATUS:
     "internal.worker.selfMod.crashRecoveryStatus",
@@ -610,6 +614,17 @@ export type RuntimeSelfModApplyResult = {
   commitHash?: string;
   applied: boolean;
   message?: string;
+  conflicts?: Array<{
+    path: string;
+    reason:
+      | "text-conflict"
+      | "add-delete-conflict"
+      | "attribution-conflict"
+      | "binary-or-mode-conflict";
+    base: string | null;
+    local: string | null;
+    incoming: string | null;
+  }>;
 };
 
 export type RuntimeCrashRecoveryStatus =
@@ -687,7 +702,7 @@ export type RuntimeAgentEventPayload = {
     commitHash: string;
     files: string[];
     batchIndex: number;
-    status?: "pending" | "applied";
+    status?: "pending" | "applied" | "discarded";
   };
   agentId?: string;
   agentType?: string;

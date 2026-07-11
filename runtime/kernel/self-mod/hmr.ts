@@ -16,6 +16,7 @@ import {
   isViteTrackablePath,
   toSelfModRelevantKey,
 } from "./path-relevance.js";
+import type { LogicalFileState } from "./logical-change-set.js";
 
 const HMR_ENDPOINT_BASE = "/__stella/self-mod/hmr";
 // Per-attempt timeout — kept tight so we get multiple retries inside the
@@ -44,6 +45,8 @@ type HmrControllerOptions = {
    * repo-relative form the tracker and overlay agree on.
    */
   repoRoot: string;
+  /** Test/diagnostic tap; the payload is still sent to the real endpoint. */
+  observeApplyPayload?: (payload: unknown) => void;
 };
 
 export type HmrStatus = {
@@ -60,7 +63,12 @@ export type ShellMutationGuardEndResult = {
 export type AppliedRun = {
   runId: string;
   paths: string[];
-  files: Array<{ path: string; content?: string; deleted?: boolean }>;
+  files: Array<{
+    path: string;
+    content?: string;
+    deleted?: boolean;
+    state?: LogicalFileState;
+  }>;
   runtimeRestartRelevantPaths: string[];
   processRestartRelevantPaths: string[];
   restartRelevantPaths: string[];
@@ -139,11 +147,9 @@ export const deriveApplyTransitionRequirements = (
 const withTimeoutSignal = (timeoutMs: number): AbortSignal => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  controller.signal.addEventListener(
-    "abort",
-    () => clearTimeout(timer),
-    { once: true },
-  );
+  controller.signal.addEventListener("abort", () => clearTimeout(timer), {
+    once: true,
+  });
   return controller.signal;
 };
 
@@ -197,7 +203,7 @@ const postWithRetry = async (args: {
   maxWaitMs: number;
   body?: unknown;
 }): Promise<boolean> =>
-  (await postJsonWithRetry<unknown>(args)) !== null;
+  (await postJsonWithRetry<{ ok?: unknown }>(args))?.ok === true;
 
 const partitionRestartPaths = (paths: string[]): string[] =>
   paths.filter(
@@ -341,6 +347,8 @@ export type SelfModHmrController = {
    * orchestrator hide the renderer flicker behind the cover.
    */
   finalize: (runId: string) => ApplyResult;
+  /** Finalize one logical author run without batching overlapping owners. */
+  finalizeIsolated: (runId: string) => ApplyResult;
   /**
    * Cancels `runId`. Returns any runs that drained as a side-effect, plus
    * paths whose last owner just cancelled. POSTs `/untrack-paths` for
@@ -363,7 +371,10 @@ export type SelfModHmrController = {
    * runs were released from the controller. This is intentionally narrower
    * than forceResumeAll so unrelated active runs keep their isolation state.
    */
-  discard: (appliedRuns: AppliedRun[]) => Promise<boolean>;
+  discard: (
+    appliedRuns: AppliedRun[],
+    options?: { preservePaths?: string[] },
+  ) => Promise<boolean>;
   releaseRuns: (runIds: string[]) => Promise<boolean>;
   beginShellMutationGuard: () => Promise<boolean>;
   endShellMutationGuard: () => Promise<ShellMutationGuardEndResult>;
@@ -395,12 +406,12 @@ export const createSelfModHmrController = (
 ): SelfModHmrController => {
   const tracker = createContentionTracker();
   const touchedPathsByRun = new Map<string, Set<string>>();
-  const finalizedSnapshotsByRun = new Map<
-    string,
-    Map<string, string | null>
-  >();
+  const finalizedSnapshotsByRun = new Map<string, Map<string, string | null>>();
 
-  const snapshotPathForRun = (runId: string, repoRelativePath: string): void => {
+  const snapshotPathForRun = (
+    runId: string,
+    repoRelativePath: string,
+  ): void => {
     let snapshot = finalizedSnapshotsByRun.get(runId);
     if (!snapshot) {
       snapshot = new Map();
@@ -412,7 +423,7 @@ export const createSelfModHmrController = (
     );
     snapshot.set(
       repoRelativePath,
-      snapshotContent.deleted ? null : snapshotContent.content ?? "",
+      snapshotContent.deleted ? null : (snapshotContent.content ?? ""),
     );
   };
 
@@ -467,23 +478,29 @@ export const createSelfModHmrController = (
     applyOptions?: ApplyOptions,
   ): Promise<HmrApplyResponse> => {
     if (appliedRuns.length === 0 || !options.enabled) return { ok: true };
+    const body = {
+      runs: appliedRuns.map((run) => ({
+        runId: run.runId,
+        paths: run.paths,
+        files: run.files,
+        protocolVersion: run.files.every((file) => file.state) ? 2 : 1,
+      })),
+      ...(applyOptions ? { options: applyOptions } : {}),
+    };
+    options.observeApplyPayload?.(body);
     const response = await postJsonWithRetry<HmrApplyResponse>({
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/apply`,
       maxWaitMs: APPLY_MAX_WAIT_MS,
-      body: {
-        runs: appliedRuns.map((run) => ({
-          runId: run.runId,
-          paths: run.paths,
-          files: run.files,
-        })),
-        ...(applyOptions ? { options: applyOptions } : {}),
-      },
+      body,
     });
     return response?.ok ? response : { ok: false };
   };
 
-  const sendDiscard = async (appliedRuns: AppliedRun[]): Promise<boolean> => {
+  const sendDiscard = async (
+    appliedRuns: AppliedRun[],
+    discardOptions?: { preservePaths?: string[] },
+  ): Promise<boolean> => {
     if (appliedRuns.length === 0 || !options.enabled) return true;
     const paths = [
       ...new Set(
@@ -499,7 +516,12 @@ export const createSelfModHmrController = (
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/discard`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
-      body: { paths },
+      body: {
+        paths,
+        ...(discardOptions?.preservePaths?.length
+          ? { preservePaths: discardOptions.preservePaths }
+          : {}),
+      },
     });
   };
 
@@ -570,13 +592,8 @@ export const createSelfModHmrController = (
         const key = toSelfModRelevantKey(absPath, options.repoRoot);
         if (key) repoRelative.push(key);
       }
-      const {
-        paths: expandedRepoRelative,
-        deferSnapshotPaths,
-      } = expandGeneratedDependentPaths(
-        options.repoRoot,
-        repoRelative,
-      );
+      const { paths: expandedRepoRelative, deferSnapshotPaths } =
+        expandGeneratedDependentPaths(options.repoRoot, repoRelative);
       if (expandedRepoRelative.length === 0) {
         return;
       }
@@ -608,7 +625,8 @@ export const createSelfModHmrController = (
       await trackPaths(viteTrackablePaths);
       if (tracker.getRunStatus(runId) !== "active") {
         const unownedPaths = viteTrackablePaths.filter(
-          (repoRelativePath) => tracker.getOwners(repoRelativePath).length === 0,
+          (repoRelativePath) =>
+            tracker.getOwners(repoRelativePath).length === 0,
         );
         await untrackPaths(unownedPaths);
         return;
@@ -637,6 +655,22 @@ export const createSelfModHmrController = (
       return result;
     },
 
+    finalizeIsolated(runId) {
+      snapshotRun(runId);
+      const touchedPaths = new Set(touchedPathsByRun.get(runId) ?? []);
+      const result = buildApplyResult(
+        {
+          applyBatch: touchedPaths.size > 0 ? [{ runId, touchedPaths }] : [],
+          releasedPaths: [],
+        },
+        finalizedSnapshotsByRun,
+        options.repoRoot,
+      );
+      tracker.cancel(runId);
+      dropRunState([runId]);
+      return result;
+    },
+
     async cancel(runId) {
       dropRunState([runId]);
       const decision = tracker.cancel(runId);
@@ -654,8 +688,8 @@ export const createSelfModHmrController = (
       return await sendApply(appliedRuns, applyOptions);
     },
 
-    async discard(appliedRuns) {
-      return await sendDiscard(appliedRuns);
+    async discard(appliedRuns, discardOptions) {
+      return await sendDiscard(appliedRuns, discardOptions);
     },
 
     async releaseRuns(runIds) {
@@ -668,7 +702,9 @@ export const createSelfModHmrController = (
 
     async endShellMutationGuard() {
       if (!options.enabled) return { ok: true, changedPaths: [] };
-      const response = await postJsonWithRetry<Partial<ShellMutationGuardEndResult>>({
+      const response = await postJsonWithRetry<
+        Partial<ShellMutationGuardEndResult>
+      >({
         getDevServerUrl: options.getDevServerUrl,
         path: `${HMR_ENDPOINT_BASE}/end-shell-mutation`,
         maxWaitMs: TRACK_MAX_WAIT_MS,
@@ -749,9 +785,7 @@ export const createSelfModHmrController = (
     isPathOwnedByAnotherActiveRun(repoRelativePath, runId) {
       return tracker
         .getOwners(repoRelativePath)
-        .some(
-          (owner) => owner.runId !== runId && owner.status === "active",
-        );
+        .some((owner) => owner.runId !== runId && owner.status === "active");
     },
 
     __tracker: tracker,
