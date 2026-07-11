@@ -18,6 +18,7 @@
   -webkit-text-fill-color: transparent;
   animation-name: text-shimmer-sweep;
   animation-duration: var(--text-shimmer-duration, 2s);
+  animation-delay: var(--text-shimmer-delay, 0ms);
   animation-iteration-count: infinite;
   animation-timing-function: linear;
 }

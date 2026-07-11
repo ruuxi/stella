@@ -12,6 +12,8 @@ interface TextShimmerProps {
   className?: string;
   /** Fixed sweep duration; when omitted, scales with text length. */
   durationMs?: number;
+  /** Anchor the sweep phase to a shared wall clock across separate mounts. */
+  syncPhase?: boolean;
 }
 
 export function TextShimmer({
@@ -19,12 +21,17 @@ export function TextShimmer({
   active = true,
   className,
   durationMs,
+  syncPhase = false,
 }: TextShimmerProps) {
   const duration = useMemo(() => {
     if (durationMs !== undefined) return durationMs;
     const perCharMs = 95;
     return Math.max(1400, Math.min(4000, text.length * perCharMs));
   }, [durationMs, text.length]);
+  const phaseDelayMs = useMemo(
+    () => (syncPhase ? -(Date.now() % duration) : 0),
+    [duration, syncPhase],
+  );
 
   if (!active) {
     return <span className={className}>{text}</span>;
@@ -36,6 +43,7 @@ export function TextShimmer({
       style={
         {
           "--text-shimmer-duration": `${duration}ms`,
+          "--text-shimmer-delay": `${phaseDelayMs}ms`,
         } as React.CSSProperties
       }
     >

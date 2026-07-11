@@ -312,7 +312,7 @@ const TaskRow = memo(function TaskRow({
           </span>
           <span className="chat-workspace-strip__task-label">
             {task.status === "running" ? (
-              <TextShimmer text={label} durationMs={2000} />
+              <TextShimmer text={label} durationMs={2000} syncPhase />
             ) : (
               label
             )}
@@ -436,7 +436,7 @@ const GroupRow = memo(function GroupRow({
         </span>
         <span className="chat-workspace-strip__task-label">
           {group.status === "running" ? (
-            <TextShimmer text={label} durationMs={2000} />
+            <TextShimmer text={label} durationMs={2000} syncPhase />
           ) : (
             label
           )}
