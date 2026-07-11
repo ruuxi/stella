@@ -2,6 +2,7 @@ import type {
   AgentIdLike,
   AgentRunFinishOutcome,
   AgentStreamEventType,
+  TaskToolActivity,
 } from "./agent-runtime.js";
 
 export type SelfModAppliedData = {
@@ -49,6 +50,7 @@ export type AgentStreamEvent = {
   parentAgentId?: string;
   result?: string;
   statusText?: string;
+  toolActivity?: TaskToolActivity;
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;

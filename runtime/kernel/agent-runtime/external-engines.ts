@@ -23,6 +23,7 @@ import {
   runCodexAgentTurn,
   shutdownCodexAppServerRuntime,
   shouldUseCodexAgentRuntime,
+  type CodexCommandExecutionActivity,
 } from "../integrations/codex-agent-runtime.js";
 import {
   buildRuntimeSystemPrompt,
@@ -962,6 +963,54 @@ const runCodexHostedTurn = async (args: {
     });
     return toolResult;
   };
+  const emitCodexCommandExecution = (
+    activity: CodexCommandExecutionActivity,
+  ) => {
+    const toolName = "exec_command";
+    const toolArgs = {
+      command: activity.command,
+      ...(activity.cwd ? { cwd: activity.cwd } : {}),
+      state: activity.status,
+    };
+    if (activity.status === "inProgress") {
+      flushPreambleBeforeTool({
+        toolCallId: activity.id,
+        toolName,
+        toolArgs,
+      });
+      responseTargetTracker?.noteToolStart(toolName, toolArgs);
+      args.callbacks?.onToolStart?.(
+        runEvents.recordToolStart({
+          toolCallId: activity.id,
+          toolName,
+          statusText: "Running command",
+          toolArgs,
+        }),
+      );
+      return;
+    }
+    const details = {
+      ...toolArgs,
+      ...(activity.exitCode !== undefined
+        ? { exitCode: activity.exitCode }
+        : {}),
+      codexBuiltinCommandExecution: true,
+    };
+    responseTargetTracker?.noteToolEnd(toolName, details);
+    args.callbacks?.onToolEnd?.(
+      runEvents.recordToolEnd({
+        toolCallId: activity.id,
+        toolName,
+        result: {
+          state: activity.status,
+          ...(activity.exitCode !== undefined
+            ? { exitCode: activity.exitCode }
+            : {}),
+        },
+        details,
+      }),
+    );
+  };
   const prompt = buildCodexPromptFromMessages({
     promptMessages: args.promptMessages,
   });
@@ -986,6 +1035,10 @@ const runCodexHostedTurn = async (args: {
       args.opts.onProgress?.(status);
       args.callbacks?.onStatus?.(runEvents.recordStatus(status));
     },
+    onReasoning: (chunk) => {
+      args.callbacks?.onReasoning?.(runEvents.recordReasoning(chunk));
+    },
+    onCommandExecution: emitCodexCommandExecution,
     onStream: (chunk) => {
       streamedAssistantText += chunk;
       args.opts.onProgress?.(chunk);
@@ -1032,6 +1085,10 @@ const runCodexHostedTurn = async (args: {
         args.opts.onProgress?.(status);
         args.callbacks?.onStatus?.(runEvents.recordStatus(status));
       },
+      onReasoning: (chunk) => {
+        args.callbacks?.onReasoning?.(runEvents.recordReasoning(chunk));
+      },
+      onCommandExecution: emitCodexCommandExecution,
       onStream: (chunk) => {
         streamedAssistantText += chunk;
         args.opts.onProgress?.(chunk);

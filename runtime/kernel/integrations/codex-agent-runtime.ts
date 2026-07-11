@@ -261,6 +261,27 @@ export type CodexAgentTurnResult = {
   fileChanges?: FileChangeRecord[];
 };
 
+export type CodexCommandExecutionActivity = {
+  id: string;
+  command: string;
+  cwd?: string;
+  status: "inProgress" | "completed" | "failed" | "declined";
+  exitCode?: number | null;
+};
+
+const CODEX_ENV_ASSIGNMENT_RE =
+  /\b([A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|[^\s]+)/g;
+const CODEX_SECRET_FLAG_RE =
+  /(\s--?(?:api[-_]?key|token|secret|password|passwd|authorization))(?:=|\s+)(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
+const CODEX_URL_SECRET_RE =
+  /([?&](?:api[-_]?key|token|access_token|refresh_token|session|secret|password)=)([^&#\s]+)/gi;
+
+export const sanitizeCodexCommandForActivity = (command: string): string =>
+  command
+    .replace(CODEX_URL_SECRET_RE, "$1[REDACTED]")
+    .replace(CODEX_ENV_ASSIGNMENT_RE, "$1=[REDACTED]")
+    .replace(CODEX_SECRET_FLAG_RE, "$1 [REDACTED]");
+
 export type CodexAppServerModel = CodexModel;
 
 export const shouldUseCodexAgentRuntime = (args: {
@@ -1249,6 +1270,8 @@ export const runCodexAgentTurn = async (request: {
   attachments?: RuntimeAttachmentRef[];
   abortSignal?: AbortSignal;
   onStatus?: (status: string) => void;
+  onReasoning?: (chunk: string) => void;
+  onCommandExecution?: (activity: CodexCommandExecutionActivity) => void;
   onStream?: (chunk: string) => void;
   onSessionId?: (sessionId: string) => void;
   streamFinalAnswer?: boolean;
@@ -1414,8 +1437,9 @@ export const runCodexAgentTurn = async (request: {
           return;
         case "item/reasoning/textDelta":
         case "item/reasoning/summaryTextDelta": {
-          const status = notification.params.delta.trim();
-          if (status) request.onStatus?.(status);
+          if (notification.params.delta) {
+            request.onReasoning?.(notification.params.delta);
+          }
           return;
         }
         case "item/started":
@@ -1423,6 +1447,17 @@ export const runCodexAgentTurn = async (request: {
           const item = notification.params.item;
           const status = statusFromCodexItem(item);
           if (status) request.onStatus?.(status);
+          if (item.type === "commandExecution") {
+            request.onCommandExecution?.({
+              id: item.id,
+              command: sanitizeCodexCommandForActivity(item.command),
+              ...(item.cwd ? { cwd: item.cwd } : {}),
+              status: item.status,
+              ...(item.exitCode !== undefined
+                ? { exitCode: item.exitCode }
+                : {}),
+            });
+          }
           if (item.type === "agentMessage") {
             agentMessageIsCommentary.set(item.id, item.phase === "commentary");
           }

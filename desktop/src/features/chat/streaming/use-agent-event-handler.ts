@@ -545,6 +545,7 @@ export function useAgentEventHandler({
               groupKey: event.groupKey,
               groupLabel: event.groupLabel,
               statusText: normalizeTaskDisplayStatusText(event.statusText),
+              toolActivity: event.toolActivity,
               reasoningText:
                 event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED
                   ? ''

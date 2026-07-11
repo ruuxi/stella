@@ -2212,6 +2212,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               result: ev.result,
               error: ev.error,
               statusText: ev.statusText,
+              ...(ev.toolActivity ? { toolActivity: ev.toolActivity } : {}),
               ...(ev.groupKey ? { groupKey: ev.groupKey } : {}),
               ...(ev.groupLabel ? { groupLabel: ev.groupLabel } : {}),
             });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_ORPHANED_RESTART_CANCEL_REASON,
   LocalAgentManager,
+  sanitizeTaskToolArgsHint,
 } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type { AgentLifecycleEvent } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
@@ -23,6 +24,25 @@ import { waitForAgentSettled } from "../../../helpers/agent.js";
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+describe("task tool activity sanitization", () => {
+  it("redacts environment and credential values before renderer delivery", () => {
+    const hint = sanitizeTaskToolArgsHint({
+      cmd: "OPENAI_API_KEY=sk-secret curl --token top-secret https://example.com?access_token=url-secret",
+      env: { PUBLIC_MODE: "debug", PRIVATE_VALUE: "hidden" },
+      password: "also-hidden",
+    });
+
+    expect(hint).toContain("OPENAI_API_KEY=[REDACTED]");
+    expect(hint).toContain("--token [REDACTED]");
+    expect(hint).toContain("access_token=[REDACTED]");
+    expect(hint).not.toContain("sk-secret");
+    expect(hint).not.toContain("top-secret");
+    expect(hint).not.toContain("url-secret");
+    expect(hint).not.toContain("debug");
+    expect(hint).not.toContain("hidden");
+  });
+});
 
 describe("LocalAgentManager Exec fs locking", () => {
   it("cancels persisted running agents left behind by a previous worker", () => {

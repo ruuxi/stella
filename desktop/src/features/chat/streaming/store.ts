@@ -511,6 +511,10 @@ export function streamStoreReducer(
                 ? undefined
                 : nextDescription))
             : undefined,
+        toolActivity:
+          action.task.status === 'running'
+            ? (action.task.toolActivity ?? existing?.toolActivity)
+            : undefined,
         reasoningText:
           typeof action.task.reasoningText === 'string'
             ? action.task.reasoningText

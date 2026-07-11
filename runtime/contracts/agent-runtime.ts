@@ -459,6 +459,20 @@ export type TaskLifecycleStatus =
   | "error"
   | "canceled";
 
+/**
+ * Redacted task-scoped tool state used by the Activity summary engine.
+ * Raw tool arguments must never be placed here: this shape crosses IPC and
+ * is persisted in local chat lifecycle rows.
+ */
+export type TaskToolActivity = {
+  toolCallId: string;
+  toolName: string;
+  label: string;
+  argsHint?: string;
+  state: "started" | "completed";
+  exitCode?: number | null;
+};
+
 export type TerminalTaskLifecycleStatus = Exclude<
   TaskLifecycleStatus,
   "running"

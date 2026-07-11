@@ -334,6 +334,7 @@ const buildLifecycleEventPayload = (
         agentId: event.agentId,
         ...runFields,
         statusText: event.statusText,
+        ...(event.toolActivity ? { toolActivity: event.toolActivity } : {}),
         ...(event.description ? { description: event.description } : {}),
         ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
         ...groupFields,

@@ -32,6 +32,7 @@
 
 import path from "path";
 import type {
+  TaskToolActivity,
   TaskLifecycleStatus,
   TerminalTaskLifecycleStatus,
 } from "../../contracts/agent-runtime.js";
@@ -47,7 +48,7 @@ import type {
   AgentToolRequest,
   AgentToolSnapshot,
 } from "../tools/types.js";
-import { truncate } from "../tools/utils.js";
+import { sanitizeForLogs, truncate } from "../tools/utils.js";
 import type { PersistedAgentRecord } from "../storage/runtime-store.js";
 import type {
   PersistedRuntimeThreadPayload,
@@ -279,6 +280,7 @@ export type AgentLifecycleEvent = {
   producedFiles?: ProducedFileRecord[];
   error?: string;
   statusText?: string;
+  toolActivity?: TaskToolActivity;
   /**
    * `agent-started` only. `true` when this start re-activates an existing
    * thread (a `send_input` follow-up) rather than spawning fresh work — the
@@ -310,6 +312,106 @@ export type AgentLifecycleEvent = {
    */
   groupKey?: string;
   groupLabel?: string;
+};
+
+const ENV_ASSIGNMENT_RE =
+  /\b([A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|[^\s]+)/g;
+const SECRET_FLAG_RE =
+  /(\s--?(?:api[-_]?key|token|secret|password|passwd|authorization))(?:=|\s+)(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
+const TOOL_ACTIVITY_HINT_CHARS = 320;
+
+const redactEnvironmentValues = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(redactEnvironmentValues);
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const output: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (
+      /^(?:env|environment)$/i.test(key) &&
+      entry &&
+      typeof entry === "object"
+    ) {
+      output[key] = Object.fromEntries(
+        Object.keys(entry as Record<string, unknown>).map((envKey) => [
+          envKey,
+          "[REDACTED]",
+        ]),
+      );
+      continue;
+    }
+    output[key] = redactEnvironmentValues(entry);
+  }
+  return output;
+};
+
+export const sanitizeTaskToolArgsHint = (value: unknown): string => {
+  let serialized = "";
+  try {
+    const json = JSON.stringify(
+      redactEnvironmentValues(sanitizeForLogs(value)),
+    );
+    serialized = typeof json === "string" ? json : "";
+  } catch {
+    return "";
+  }
+  return truncate(
+    serialized
+      .replace(ENV_ASSIGNMENT_RE, "$1=[REDACTED]")
+      .replace(SECRET_FLAG_RE, "$1 [REDACTED]"),
+    TOOL_ACTIVITY_HINT_CHARS,
+  );
+};
+
+const exitCodeFromToolEnd = (event: {
+  details?: unknown;
+  resultPreview?: string;
+}): number | null | undefined => {
+  const details =
+    event.details && typeof event.details === "object"
+      ? (event.details as Record<string, unknown>)
+      : null;
+  const value = details?.exitCode ?? details?.exit_code;
+  return typeof value === "number" ? value : undefined;
+};
+
+const taskToolActivityFromStart = (event: {
+  toolCallId: string;
+  toolName: string;
+  statusText?: string;
+  args?: Record<string, unknown>;
+}): TaskToolActivity => {
+  const argsHint = sanitizeTaskToolArgsHint(event.args);
+  return {
+    toolCallId: event.toolCallId,
+    toolName: event.toolName,
+    label: event.statusText ?? `Running ${event.toolName}`,
+    ...(argsHint ? { argsHint } : {}),
+    state: "started",
+  };
+};
+
+const taskToolActivityFromEnd = (event: {
+  toolCallId: string;
+  toolName: string;
+  details?: unknown;
+  resultPreview?: string;
+}): TaskToolActivity => {
+  const exitCode = exitCodeFromToolEnd(event);
+  const argsHint = sanitizeTaskToolArgsHint(event.details);
+  return {
+    toolCallId: event.toolCallId,
+    toolName: event.toolName,
+    label:
+      exitCode === undefined
+        ? `Finished ${event.toolName}`
+        : `${event.toolName} exited ${exitCode}`,
+    ...(argsHint ? { argsHint } : {}),
+    state: "completed",
+    ...(exitCode !== undefined ? { exitCode } : {}),
+  };
 };
 
 type LocalAgentManagerOpts = {
@@ -1012,6 +1114,10 @@ export class LocalAgentManager implements AgentToolApi {
             return;
           }
           const statusText = ev.statusText ?? `Running ${ev.toolName}`;
+          const toolActivity = taskToolActivityFromStart({
+            ...ev,
+            statusText,
+          });
           // Tool lifecycle is a liveness signal too: without this, a single
           // long tool call looks idle to snapshot pollers even though the
           // agent is working.
@@ -1027,6 +1133,7 @@ export class LocalAgentManager implements AgentToolApi {
             description: task.description,
             parentAgentId: task.parentAgentId,
             statusText,
+            toolActivity,
           });
           logWorkingIndicatorTrace(
             "[stella:working-indicator:agent-progress]",
@@ -1039,12 +1146,25 @@ export class LocalAgentManager implements AgentToolApi {
             },
           );
         },
-        onToolEnd: () => {
+        onToolEnd: (ev) => {
           if (task.controller.signal.aborted || task.status === "canceled") {
             return;
           }
           task.lastActivityAt = Date.now();
           task.activeToolCount = Math.max(0, task.activeToolCount - 1);
+          const toolActivity = taskToolActivityFromEnd(ev);
+          task.recentActivity = [truncate(toolActivity.label, 500)];
+          this.opts.onAgentEvent?.({
+            type: "agent-progress",
+            conversationId: task.conversationId,
+            rootRunId: task.rootRunId,
+            agentId: task.threadId,
+            agentType: task.agentType,
+            description: task.description,
+            parentAgentId: task.parentAgentId,
+            statusText: toolActivity.label,
+            toolActivity,
+          });
         },
         toolExecutor: async (toolName, toolArgs, toolContext, signal) => {
           if (

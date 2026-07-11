@@ -2,6 +2,7 @@ import {
   AGENT_IDS,
   isTerminalTaskLifecycleStatus,
   type TaskLifecycleStatus,
+  type TaskToolActivity,
 } from '../../../../../runtime/contracts/agent-runtime.js'
 import { normalizeDisplayStatusText } from '../status-utils'
 import type {
@@ -100,6 +101,7 @@ type AgentCanceledEventPayload = AgentLifecycleGroupFields & {
 type AgentProgressEventPayload = AgentLifecycleGroupFields & {
   agentId: string
   statusText: string
+  toolActivity?: TaskToolActivity
 }
 
 // Task item for UI display
@@ -124,6 +126,7 @@ export type TaskItem = {
   groupKey?: string
   groupLabel?: string
   statusText?: string
+  toolActivity?: TaskToolActivity
   reasoningText?: string
   startedAtMs: number
   completedAtMs?: number
@@ -476,6 +479,7 @@ export function extractTasksFromActivities(
       groupKey: previous?.groupKey,
       groupLabel: previous?.groupLabel,
       statusText: normalizeTaskDisplayStatusText(previous?.statusText),
+      toolActivity: previous?.toolActivity,
       startedAtMs: previous?.startedAtMs ?? timestamp,
       completedAtMs: previous?.completedAtMs,
       lastUpdatedAtMs: previous?.lastUpdatedAtMs ?? timestamp,
@@ -559,6 +563,7 @@ export function extractTasksFromActivities(
           statusText:
             normalizeTaskDisplayStatusText(event.payload.statusText) ??
             normalizeTaskDisplayStatusText(previous?.statusText),
+          toolActivity: event.payload.toolActivity ?? previous?.toolActivity,
           completedAtMs: undefined,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: undefined,
@@ -579,6 +584,7 @@ export function extractTasksFromActivities(
         ensureTask(event.payload.agentId, event.timestamp, {
           status: 'completed',
           statusText: undefined,
+          toolActivity: undefined,
           completedAtMs: event.timestamp,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: event.payload.result,
@@ -600,6 +606,7 @@ export function extractTasksFromActivities(
         ensureTask(event.payload.agentId, event.timestamp, {
           status: 'error',
           statusText: undefined,
+          toolActivity: undefined,
           completedAtMs: event.timestamp,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: event.payload.error,
@@ -621,6 +628,7 @@ export function extractTasksFromActivities(
         ensureTask(event.payload.agentId, event.timestamp, {
           status: 'canceled',
           statusText: undefined,
+          toolActivity: undefined,
           completedAtMs: event.timestamp,
           lastUpdatedAtMs: event.timestamp,
           outputPreview: event.payload.error ?? 'Canceled',

@@ -486,6 +486,76 @@ describe("Codex agent runtime", () => {
     }
   });
 
+  it("routes reasoning and redacted built-in command transitions through dedicated callbacks", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-task-progress-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const readline = require("node:readline");',
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'thread/start') { send({ id: message.id, result: { thread: { id: 'thread-progress' } } }); return; }",
+        "  if (message.method === 'turn/start') {",
+        "    const threadId = message.params.threadId;",
+        "    const turn = { id: 'turn-progress', status: 'inProgress' };",
+        "    send({ id: message.id, result: { turn } });",
+        "    send({ method: 'turn/started', params: { threadId, turn } });",
+        "    send({ method: 'item/reasoning/textDelta', params: { threadId, turnId: turn.id, itemId: 'reasoning-1', delta: 'checking ' } });",
+        "    send({ method: 'item/reasoning/summaryTextDelta', params: { threadId, turnId: turn.id, itemId: 'reasoning-1', delta: 'the build' } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-progress', command: 'API_TOKEN=super-secret bun test --token also-secret', cwd: '/repo', status: 'inProgress' } } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-progress', command: 'API_TOKEN=super-secret bun test --token also-secret', cwd: '/repo', status: 'completed', exitCode: 0 } } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-progress', text: 'done', phase: 'final_answer' } } });",
+        "    send({ method: 'turn/completed', params: { threadId, turn: { id: turn.id, status: 'completed' } } });",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    const reasoning: string[] = [];
+    const commands: Array<{
+      command: string;
+      status: string;
+      exitCode?: number | null;
+    }> = [];
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    try {
+      const result = await runCodexAgentTurn({
+        runId: "run-task-progress",
+        prompt: "check the build",
+        onReasoning: (chunk) => reasoning.push(chunk),
+        onCommandExecution: (activity) => commands.push(activity),
+      });
+
+      expect(result.text).toBe("done");
+      expect(reasoning.join("")).toBe("checking the build");
+      expect(commands.map((command) => command.status)).toEqual([
+        "inProgress",
+        "completed",
+      ]);
+      expect(commands[0]?.command).toContain("API_TOKEN=[REDACTED]");
+      expect(commands[0]?.command).toContain("--token [REDACTED]");
+      expect(commands[0]?.command).not.toContain("super-secret");
+      expect(commands[0]?.command).not.toContain("also-secret");
+      expect(commands[1]?.exitCode).toBe(0);
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("waits for a final Codex assistant item sent after turn completion", async () => {
     const dir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-fake-codex-late-final-item-"),

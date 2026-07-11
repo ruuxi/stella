@@ -29,6 +29,7 @@ import {
   getWorkingIndicatorDisplayStatus,
   shouldTreatResumedAnswerAsStarted,
 } from "@/features/chat/working-indicator-state";
+import { buildAgentProgressSignature } from "@/features/chat/use-agent-progress-summary-engine";
 
 const event = (
   id: string,
@@ -120,6 +121,44 @@ describe("fallbackTaskDescription", () => {
 });
 
 describe("extractTasksFromEvents", () => {
+  it("keeps redacted task tool activity and gives distinct commands distinct summary signatures", () => {
+    const firstActivity = {
+      toolCallId: "call-1",
+      toolName: "exec_command",
+      label: "Running command",
+      argsHint: '{"cmd":"git status"}',
+      state: "started" as const,
+    };
+    const secondActivity = {
+      ...firstActivity,
+      toolCallId: "call-2",
+      argsHint: '{"cmd":"git diff"}',
+    };
+    const events = [
+      event("1", 100, "agent-started", {
+        agentId: "task-1",
+        description: "Inspect repository",
+        agentType: "general",
+      }),
+      event("2", 200, "agent-progress", {
+        agentId: "task-1",
+        statusText: "Running command",
+        toolActivity: firstActivity,
+      }),
+    ];
+
+    const [firstTask] = extractTasksFromEvents(events);
+    const secondTask: TaskItem = {
+      ...firstTask,
+      toolActivity: secondActivity,
+    };
+
+    expect(firstTask.toolActivity).toEqual(firstActivity);
+    expect(buildAgentProgressSignature(firstTask)).not.toBe(
+      buildAgentProgressSignature(secondTask),
+    );
+  });
+
   it("treats agent-canceled as terminal even if a stale agent-progress arrives later", () => {
     // Race recreated by pause_agent: the orchestrator cancels the task while
     // the subagent's agent loop is still iterating tool calls, so a few
