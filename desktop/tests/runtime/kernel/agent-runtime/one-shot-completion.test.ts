@@ -7,6 +7,9 @@ import path from "path";
 // one-shot pipeline reaches the local engine without any resolvable route.
 const claudeCodeCalls: Array<Record<string, unknown>> = [];
 let claudeCodeEngineActive = false;
+const closedSessionKeys: string[] = [];
+const scheduledSessionCloses: Array<{ sessionKey: string; timeoutMs: number }> =
+  [];
 
 vi.mock(
   "../../../../../runtime/kernel/integrations/claude-code-agent-runtime.js",
@@ -15,6 +18,21 @@ vi.mock(
     runClaudeCodeAgentTextCompletion: async (args: Record<string, unknown>) => {
       claudeCodeCalls.push(args);
       return "summarizing agent progress now";
+    },
+  }),
+);
+
+vi.mock(
+  "../../../../../runtime/kernel/integrations/claude-code-session-runtime.js",
+  () => ({
+    closeClaudeCodeSessionWhenIdle: (sessionKey: string) => {
+      closedSessionKeys.push(sessionKey);
+    },
+    scheduleClaudeCodeSessionCloseWhenIdle: (
+      sessionKey: string,
+      timeoutMs: number,
+    ) => {
+      scheduledSessionCloses.push({ sessionKey, timeoutMs });
     },
   }),
 );
@@ -53,6 +71,8 @@ let dataDir: string;
 beforeEach(() => {
   claudeCodeCalls.length = 0;
   completeSimpleCalls.length = 0;
+  closedSessionKeys.length = 0;
+  scheduledSessionCloses.length = 0;
   claudeCodeEngineActive = false;
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "one-shot-test-"));
 });
@@ -82,6 +102,35 @@ describe("runOneShotCompletion", () => {
     expect(claudeCodeCalls[0]?.stellaAppDir).toBe(dataDir);
     // …while the CLI runs in the app dir, never inside the data dir.
     expect(claudeCodeCalls[0]?.cwd).toBe("/tmp/does-not-matter-app-dir");
+  });
+
+  it("reuses and closes an explicitly lifecycle-scoped Claude session", async () => {
+    claudeCodeEngineActive = true;
+    const persistentRequest = {
+      ...request,
+      sessionKey: "progress-summary:agent-1",
+      sessionIdleTtlMs: 60_000,
+    };
+    await runOneShotCompletion({
+      request: persistentRequest,
+      runtime: makeRuntime({ authToken: null, dataDir }),
+    });
+    expect(claudeCodeCalls[0]?.sessionKey).toBe("progress-summary:agent-1");
+    expect(scheduledSessionCloses).toEqual([
+      { sessionKey: "progress-summary:agent-1", timeoutMs: 60_000 },
+    ]);
+
+    await runOneShotCompletion({
+      request: {
+        agentType: "progress_summary",
+        userText: "",
+        sessionKey: "progress-summary:agent-1",
+        closeSession: true,
+      },
+      runtime: makeRuntime({ authToken: null, dataDir }),
+    });
+    expect(closedSessionKeys).toEqual(["progress-summary:agent-1"]);
+    expect(claudeCodeCalls).toHaveLength(1);
   });
 
   it("still fails loudly when signed out on the native engine", async () => {

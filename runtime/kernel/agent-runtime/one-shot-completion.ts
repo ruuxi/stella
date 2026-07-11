@@ -33,6 +33,10 @@ import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
 } from "../integrations/claude-code-agent-runtime.js";
+import {
+  closeClaudeCodeSessionWhenIdle,
+  scheduleClaudeCodeSessionCloseWhenIdle,
+} from "../integrations/claude-code-session-runtime.js";
 import { createRuntimeLogger } from "../debug.js";
 import type {
   RuntimeOneShotCompletionRequest,
@@ -74,6 +78,11 @@ export const runOneShotCompletion = async (args: {
   runtime: OneShotCompletionRuntimeContext;
 }): Promise<RuntimeOneShotCompletionResult> => {
   const { request, runtime } = args;
+  const sessionKey = request.sessionKey?.trim() || undefined;
+  if (request.closeSession) {
+    if (sessionKey) closeClaudeCodeSessionWhenIdle(sessionKey);
+    return { text: "" };
+  }
   const userText = request.userText.trim();
   if (!userText) {
     return { text: "" };
@@ -204,11 +213,18 @@ export const runOneShotCompletion = async (args: {
           stellaAppDir: runtime.stellaAppDir,
         }),
         agentType: request.agentType,
-        ...(modelName ?? route?.model.id
+        ...(sessionKey ? { sessionKey } : {}),
+        ...((modelName ?? route?.model.id)
           ? { stellaModel: (modelName ?? route?.model.id) as string }
           : {}),
         context,
       });
+      if (sessionKey) {
+        scheduleClaudeCodeSessionCloseWhenIdle(
+          sessionKey,
+          Math.max(1_000, request.sessionIdleTtlMs ?? 60_000),
+        );
+      }
       return { text: text.trim() };
     }
     if (!route) {

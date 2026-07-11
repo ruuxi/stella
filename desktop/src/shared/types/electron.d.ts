@@ -623,6 +623,9 @@ export type ElectronAgentApi = {
     temperature?: number;
     fallbackAgentTypes?: string[];
     model?: string;
+    sessionKey?: string;
+    closeSession?: boolean;
+    sessionIdleTtlMs?: number;
   }) => Promise<{ text: string }>;
   healthCheck: () => Promise<AgentHealth | null>;
   getActiveRun: () => Promise<{

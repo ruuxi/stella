@@ -16,6 +16,7 @@ import {
   listClaudeCodeModels,
   parseClaudeCodeDecision,
   runClaudeCodeTurn,
+  scheduleClaudeCodeSessionCloseWhenIdle,
   shutdownClaudeCodeRuntime,
 } from "../../../../../runtime/kernel/integrations/claude-code-session-runtime.js";
 import { recordClaudeCodeResolvedModel } from "../../../../../runtime/kernel/integrations/claude-code-resolved-models.js";
@@ -1905,6 +1906,13 @@ describe("claude-code-session-runtime", () => {
         modelId: "claude-code/opus",
       });
       expect(third.text).toBe("ok");
+      scheduleClaudeCodeSessionCloseWhenIdle(sessionKey, 1_000);
+      await vi.waitFor(
+        () => {
+          expect(claudeCodeSessionHasActiveProcess(sessionKey)).toBe(false);
+        },
+        { timeout: 2_000 },
+      );
     } finally {
       shutdownClaudeCodeRuntime();
       process.env.PATH = previousPath;

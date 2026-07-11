@@ -800,6 +800,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       temperature?: number;
       fallbackAgentTypes?: string[];
       model?: string;
+      sessionKey?: string;
+      closeSession?: boolean;
+      sessionIdleTtlMs?: number;
     }) =>
       ipcRenderer.invoke("agent:oneShotCompletion", payload) as Promise<{
         text: string;

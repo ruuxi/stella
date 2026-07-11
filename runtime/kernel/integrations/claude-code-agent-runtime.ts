@@ -16,9 +16,13 @@ import {
   type ReasoningEffort,
 } from "../preferences/local-preferences.js";
 import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
-import { resolveLocalCliCwd, textFromUnknown } from "../agent-runtime/shared.js";
+import {
+  resolveLocalCliCwd,
+  textFromUnknown,
+} from "../agent-runtime/shared.js";
 import type { ToolMetadata, ToolResult } from "../tools/types.js";
 import {
+  closeClaudeCodeSessionWhenIdle,
   isClaudeCodeModel,
   runClaudeCodeTurn,
 } from "./claude-code-session-runtime.js";
@@ -108,17 +112,20 @@ export const getClaudeCodeRuntimeEffortLevel = (
   return CLAUDE_CODE_EFFORT_BY_REASONING[effort];
 };
 
-type PromptContentPart = TextContent | ImageContent | ThinkingContent | ToolCall;
+type PromptContentPart =
+  | TextContent
+  | ImageContent
+  | ThinkingContent
+  | ToolCall;
 
 const contentPartToText = (part: PromptContentPart): string => {
   if (part.type === "text") return part.text;
   if (part.type === "thinking") return part.thinking;
   if (part.type === "image") return `[Image: ${part.mimeType}]`;
   if (part.type === "toolCall") {
-    return [
-      `[Tool call: ${part.name}]`,
-      textFromUnknown(part.arguments),
-    ].filter(Boolean).join("\n");
+    return [`[Tool call: ${part.name}]`, textFromUnknown(part.arguments)]
+      .filter(Boolean)
+      .join("\n");
   }
   return "";
 };
@@ -177,34 +184,42 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
     signal?: AbortSignal,
   ) => Promise<ToolResult>;
 }): Promise<string> => {
-  const runId = args.runId ?? `claude-code:${args.agentType}:${crypto.randomUUID()}`;
+  const runId =
+    args.runId ?? `claude-code:${args.agentType}:${crypto.randomUUID()}`;
   const modelId = getClaudeCodeAgentModelId(
     args.stellaAppDir,
     args.stellaModel,
     args.agentType,
   );
   const effortLevel = getClaudeCodeRuntimeEffortLevel(args.stellaAppDir);
-  const result = await runClaudeCodeTurn({
-    runId,
-    sessionKey: args.sessionKey ?? `${args.agentType}:one-shot:${runId}`,
-    modelId,
-    ...(effortLevel ? { effortLevel } : {}),
-    prompt: buildPromptFromMessages(args.context.messages),
-    systemPrompt: args.context.systemPrompt,
-    cwd:
-      args.cwd?.trim() ||
-      resolveLocalCliCwd({
-        agentType: args.agentType,
-        stellaAppDir: args.stellaAppDir,
-      }),
-    tools: toolsToMetadata(args.context.tools),
-    abortSignal: args.abortSignal,
-    executeTool: async (toolCallId, toolName, toolArgs, signal) => {
-      if (!args.executeTool) {
-        return { error: `Tool ${toolName} is not available in this run.` };
-      }
-      return args.executeTool(toolCallId, toolName, toolArgs, signal);
-    },
-  });
-  return result.text;
+  const sessionKey = args.sessionKey ?? `${args.agentType}:one-shot:${runId}`;
+  try {
+    const result = await runClaudeCodeTurn({
+      runId,
+      sessionKey,
+      modelId,
+      ...(effortLevel ? { effortLevel } : {}),
+      prompt: buildPromptFromMessages(args.context.messages),
+      systemPrompt: args.context.systemPrompt,
+      cwd:
+        args.cwd?.trim() ||
+        resolveLocalCliCwd({
+          agentType: args.agentType,
+          stellaAppDir: args.stellaAppDir,
+        }),
+      tools: toolsToMetadata(args.context.tools),
+      abortSignal: args.abortSignal,
+      executeTool: async (toolCallId, toolName, toolArgs, signal) => {
+        if (!args.executeTool) {
+          return { error: `Tool ${toolName} is not available in this run.` };
+        }
+        return args.executeTool(toolCallId, toolName, toolArgs, signal);
+      },
+    });
+    return result.text;
+  } finally {
+    // Callers that provide a stable key own that reusable utility session's
+    // lifecycle. Anonymous text completions remain truly one-shot.
+    if (!args.sessionKey) closeClaudeCodeSessionWhenIdle(sessionKey);
+  }
 };

@@ -9,7 +9,7 @@ import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import {
   buildAgentProgressSignature,
   buildAgentProgressUserText,
-  PROGRESS_SUMMARY_MIN_REQUEST_INTERVAL_MS,
+  PROGRESS_SUMMARY_INTERVAL_MS,
   useAgentProgressSummaryEngine,
 } from "@/features/chat/use-agent-progress-summary-engine";
 
@@ -80,16 +80,10 @@ describe("agent progress summary engine", () => {
     }
   });
 
-  it("coalesces rapid and in-flight changes into one rate-limited trailing request", async () => {
-    let resolveFirst: ((value: { text: string }) => void) | undefined;
+  it("runs once after 10 seconds and then only on 30-second ticks", async () => {
     const oneShotCompletion = vi
       .fn()
-      .mockImplementationOnce(
-        () =>
-          new Promise<{ text: string }>((resolve) => {
-            resolveFirst = resolve;
-          }),
-      )
+      .mockResolvedValueOnce({ text: "checking initial command" })
       .mockResolvedValue({ text: "checking updated command" });
     Object.defineProperty(window, "electronAPI", {
       configurable: true,
@@ -116,19 +110,13 @@ describe("agent progress summary engine", () => {
 
     await act(async () => {
       root.render(<SummaryEngineHarness tasks={[task("second state")]} />);
-      await vi.advanceTimersByTimeAsync(750);
+      await vi.advanceTimersByTimeAsync(10_000);
       root.render(<SummaryEngineHarness tasks={[task("third state")]} />);
     });
     expect(oneShotCompletion).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      resolveFirst?.({ text: "checking initial command" });
-      await Promise.resolve();
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(
-        PROGRESS_SUMMARY_MIN_REQUEST_INTERVAL_MS - 751,
-      );
+      await vi.advanceTimersByTimeAsync(PROGRESS_SUMMARY_INTERVAL_MS - 10_001);
     });
     expect(oneShotCompletion).toHaveBeenCalledTimes(1);
     await act(async () => {
@@ -137,10 +125,23 @@ describe("agent progress summary engine", () => {
     expect(oneShotCompletion).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(
-        PROGRESS_SUMMARY_MIN_REQUEST_INTERVAL_MS,
-      );
+      await vi.advanceTimersByTimeAsync(PROGRESS_SUMMARY_INTERVAL_MS - 1);
     });
     expect(oneShotCompletion).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      root.render(<SummaryEngineHarness tasks={[]} />);
+    });
+    expect(oneShotCompletion).toHaveBeenCalledTimes(3);
+    expect(oneShotCompletion.mock.calls[0]?.[0].sessionKey).toBe(
+      "progress-summary:agent-summary-rate-limit",
+    );
+    expect(oneShotCompletion.mock.calls[1]?.[0].sessionKey).toBe(
+      "progress-summary:agent-summary-rate-limit",
+    );
+    expect(oneShotCompletion.mock.calls[2]?.[0]).toMatchObject({
+      sessionKey: "progress-summary:agent-summary-rate-limit",
+      closeSession: true,
+    });
   });
 });

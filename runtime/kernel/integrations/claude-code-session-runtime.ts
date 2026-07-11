@@ -1317,8 +1317,14 @@ class ClaudeCodeSessionRuntime {
     string,
     ChildProcessWithoutNullStreams
   >();
+  private readonly closeWhenIdle = new Set<string>();
+  private readonly idleCloseTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
 
   async runTurn(request: ClaudeCodeTurnRequest): Promise<ClaudeCodeTurnResult> {
+    this.clearIdleCloseTimer(request.sessionKey);
     const session = ensureSessionState(
       this.sessions,
       request,
@@ -1343,6 +1349,45 @@ class ClaudeCodeSessionRuntime {
     return Boolean(child && !child.killed && child.exitCode === null);
   }
 
+  closeSessionWhenIdle(sessionKey: string): void {
+    this.clearIdleCloseTimer(sessionKey);
+    const session = this.sessions.get(sessionKey);
+    if (!session) return;
+    if (session.running || session.queue.length > 0) {
+      this.closeWhenIdle.add(sessionKey);
+      return;
+    }
+    this.closeSession(sessionKey, session);
+  }
+
+  scheduleSessionCloseWhenIdle(sessionKey: string, timeoutMs: number): void {
+    this.clearIdleCloseTimer(sessionKey);
+    const timer = setTimeout(
+      () => this.closeSessionWhenIdle(sessionKey),
+      Math.max(1_000, timeoutMs),
+    );
+    timer.unref?.();
+    this.idleCloseTimers.set(sessionKey, timer);
+  }
+
+  private clearIdleCloseTimer(sessionKey: string): void {
+    const timer = this.idleCloseTimers.get(sessionKey);
+    if (timer) clearTimeout(timer);
+    this.idleCloseTimers.delete(sessionKey);
+  }
+
+  private closeSession(sessionKey: string, session: SessionState): void {
+    this.clearIdleCloseTimer(sessionKey);
+    const child = session.process?.child;
+    if (child && this.activeProcesses.get(sessionKey) === child) {
+      this.activeProcesses.delete(sessionKey);
+    }
+    cleanupSessionProcess(session);
+    cleanupSessionArtifacts(session);
+    this.sessions.delete(sessionKey);
+    this.closeWhenIdle.delete(sessionKey);
+  }
+
   dispose(): void {
     for (const child of this.activeProcesses.values()) {
       killProcess(child);
@@ -1353,6 +1398,9 @@ class ClaudeCodeSessionRuntime {
       cleanupSessionArtifacts(session);
     }
     this.sessions.clear();
+    this.closeWhenIdle.clear();
+    for (const timer of this.idleCloseTimers.values()) clearTimeout(timer);
+    this.idleCloseTimers.clear();
   }
 
   private pruneIdleSessions(): void {
@@ -1382,6 +1430,10 @@ class ClaudeCodeSessionRuntime {
       .finally(() => {
         session.running = false;
         session.lastUsedAt = Date.now();
+        if (this.closeWhenIdle.has(sessionKey) && session.queue.length === 0) {
+          this.closeSession(sessionKey, session);
+          return;
+        }
         this.pumpSession(sessionKey, session);
       });
   }
@@ -2364,6 +2416,17 @@ export const runClaudeCodeTurn = async (
 export const claudeCodeSessionHasActiveProcess = (
   sessionKey: string,
 ): boolean => runtime.hasActiveProcess(sessionKey);
+
+export const closeClaudeCodeSessionWhenIdle = (sessionKey: string): void => {
+  runtime.closeSessionWhenIdle(sessionKey);
+};
+
+export const scheduleClaudeCodeSessionCloseWhenIdle = (
+  sessionKey: string,
+  timeoutMs: number,
+): void => {
+  runtime.scheduleSessionCloseWhenIdle(sessionKey, timeoutMs);
+};
 
 export const listClaudeCodeModels = async (
   auth?: { apiKey?: string | null; oauthToken?: string | null },

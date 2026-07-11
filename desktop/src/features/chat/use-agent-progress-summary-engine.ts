@@ -25,13 +25,16 @@ import { redactSensitiveText } from "../../../../runtime/contracts/sensitive-dat
 
 const FIRST_DELAY_MS = 10_000;
 const INTERVAL_MS = 30_000;
-const MEANINGFUL_CHANGE_DEBOUNCE_MS = 750;
-export const PROGRESS_SUMMARY_MIN_REQUEST_INTERVAL_MS = 10_000;
+export const PROGRESS_SUMMARY_INTERVAL_MS = INTERVAL_MS;
 
 const REASONING_CONTEXT_CHARS = 1200;
 const SIGNATURE_TAIL_CHARS = 200;
 const MAX_SUMMARY_WORDS = 7;
 const MAX_SUMMARY_CHARS = 64;
+const SUMMARY_SESSION_IDLE_TTL_MS = 60_000;
+
+const summarySessionKey = (agentId: string): string =>
+  `progress-summary:${agentId}`;
 
 const SUMMARY_SYSTEM_PROMPT = [
   "You narrate, in real time, what a background AI agent is currently doing.",
@@ -44,11 +47,7 @@ const SUMMARY_SYSTEM_PROMPT = [
 
 type TimerState = {
   timeout: ReturnType<typeof setTimeout> | null;
-  debounceTimeout: ReturnType<typeof setTimeout> | null;
   lastSignature: string | null;
-  observedSignature: string;
-  lastRequestAtMs: number | null;
-  trailingPending: boolean;
   inFlight: boolean;
 };
 
@@ -134,8 +133,23 @@ const requestSummary = async (
     userText: buildAgentProgressUserText(task, priorPhrases),
     maxOutputTokens: 24,
     temperature: 0.4,
+    sessionKey: summarySessionKey(task.id),
+    sessionIdleTtlMs: SUMMARY_SESSION_IDLE_TTL_MS,
   });
   return sanitizeSummary(result?.text ?? "");
+};
+
+const closeSummarySession = (agentId: string): void => {
+  const agentApi = window.electronAPI?.agent;
+  if (!agentApi?.oneShotCompletion) return;
+  void agentApi
+    .oneShotCompletion({
+      agentType: "progress_summary",
+      userText: "",
+      sessionKey: summarySessionKey(agentId),
+      closeSession: true,
+    })
+    .catch(() => undefined);
 };
 
 export function useAgentProgressSummaryEngine(
@@ -147,7 +161,6 @@ export function useAgentProgressSummaryEngine(
   const scheduleRef = useRef<(agentId: string, delayMs: number) => void>(
     () => {},
   );
-  const scheduleDebounceRef = useRef<(agentId: string) => void>(() => {});
 
   // Keep a by-id snapshot the timer callbacks can read at fire time.
   const taskMap = useMemo(() => {
@@ -166,57 +179,24 @@ export function useAgentProgressSummaryEngine(
     state.timeout = setTimeout(() => runRef.current(agentId), delayMs);
   };
 
-  scheduleDebounceRef.current = (agentId) => {
-    const state = timersRef.current.get(agentId);
-    if (!state) return;
-    if (state.debounceTimeout) clearTimeout(state.debounceTimeout);
-    const task = tasksRef.current.get(agentId);
-    if (!task || task.status !== "running") return;
-    state.trailingPending = true;
-    const earliestRequestAt =
-      (state.lastRequestAtMs ?? -Infinity) +
-      PROGRESS_SUMMARY_MIN_REQUEST_INTERVAL_MS;
-    const delayMs = Math.max(
-      MEANINGFUL_CHANGE_DEBOUNCE_MS,
-      earliestRequestAt - Date.now(),
-    );
-    state.debounceTimeout = setTimeout(() => {
-      state.debounceTimeout = null;
-      runRef.current(agentId);
-    }, delayMs);
-  };
-
   runRef.current = (agentId) => {
     const state = timersRef.current.get(agentId);
     if (!state) return;
     const task = tasksRef.current.get(agentId);
     if (!task || task.status !== "running") return;
     if (state.inFlight) {
-      state.trailingPending = true;
+      scheduleRef.current(agentId, INTERVAL_MS);
       return;
     }
 
     const signature = buildAgentProgressSignature(task);
     if (signature === state.lastSignature) {
-      state.trailingPending = false;
       // Nothing new since the last summary — skip the call until next tick.
       scheduleRef.current(agentId, INTERVAL_MS);
       return;
     }
 
-    const nowMs = Date.now();
-    if (
-      state.lastRequestAtMs !== null &&
-      nowMs - state.lastRequestAtMs <
-        PROGRESS_SUMMARY_MIN_REQUEST_INTERVAL_MS
-    ) {
-      scheduleDebounceRef.current(agentId);
-      return;
-    }
-
     state.inFlight = true;
-    state.trailingPending = false;
-    state.lastRequestAtMs = nowMs;
     const prior = agentProgressSummaryStore
       .getSummaries(agentId)
       .map((entry) => entry.text);
@@ -238,16 +218,7 @@ export function useAgentProgressSummaryEngine(
       })
       .finally(() => {
         state.inFlight = false;
-        const current = tasksRef.current.get(agentId);
-        if (
-          current?.status === "running" &&
-          (state.trailingPending ||
-            buildAgentProgressSignature(current) !== signature)
-        ) {
-          scheduleDebounceRef.current(agentId);
-        } else {
-          scheduleRef.current(agentId, INTERVAL_MS);
-        }
+        scheduleRef.current(agentId, INTERVAL_MS);
       });
   };
 
@@ -263,16 +234,6 @@ export function useAgentProgressSummaryEngine(
         .join("\u0000"),
     [liveTasks],
   );
-  const meaningfulTaskStateKey = useMemo(
-    () =>
-      liveTasks
-        .filter((task) => task.status === "running" && isActivityFeedTask(task))
-        .map((task) => `${task.id}\u0001${buildAgentProgressSignature(task)}`)
-        .sort()
-        .join("\u0002"),
-    [liveTasks],
-  );
-
   useEffect(() => {
     const running = new Set(runningIdsKey ? runningIdsKey.split("\u0000") : []);
     // Deliberately NO store pruning here. This used to call
@@ -290,13 +251,7 @@ export function useAgentProgressSummaryEngine(
       if (timers.has(agentId)) continue;
       timers.set(agentId, {
         timeout: null,
-        debounceTimeout: null,
         lastSignature: null,
-        observedSignature: buildAgentProgressSignature(
-          tasksRef.current.get(agentId)!,
-        ),
-        lastRequestAtMs: null,
-        trailingPending: false,
         inFlight: false,
       });
       scheduleRef.current(agentId, FIRST_DELAY_MS);
@@ -304,28 +259,17 @@ export function useAgentProgressSummaryEngine(
     for (const [agentId, state] of timers) {
       if (running.has(agentId)) continue;
       if (state.timeout) clearTimeout(state.timeout);
-      if (state.debounceTimeout) clearTimeout(state.debounceTimeout);
       timers.delete(agentId);
+      closeSummarySession(agentId);
     }
   }, [runningIdsKey]);
 
   useEffect(() => {
-    for (const [agentId, state] of timersRef.current) {
-      const task = tasksRef.current.get(agentId);
-      if (!task || task.status !== "running") continue;
-      const signature = buildAgentProgressSignature(task);
-      if (signature === state.observedSignature) continue;
-      state.observedSignature = signature;
-      scheduleDebounceRef.current(agentId);
-    }
-  }, [meaningfulTaskStateKey]);
-
-  useEffect(() => {
     const timers = timersRef.current;
     return () => {
-      for (const state of timers.values()) {
+      for (const [agentId, state] of timers) {
         if (state.timeout) clearTimeout(state.timeout);
-        if (state.debounceTimeout) clearTimeout(state.debounceTimeout);
+        closeSummarySession(agentId);
       }
       timers.clear();
     };

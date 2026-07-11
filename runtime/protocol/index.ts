@@ -572,6 +572,12 @@ export type RuntimeOneShotCompletionRequest = {
    * (Haiku / mini) instead of the user's expensive default.
    */
   model?: string;
+  /** Stable key for a short-lived reusable utility session. */
+  sessionKey?: string;
+  /** Close a previously-created reusable utility session without a model call. */
+  closeSession?: boolean;
+  /** Safety cleanup for reusable sessions when lifecycle cleanup is missed. */
+  sessionIdleTtlMs?: number;
 };
 
 export type RuntimeOneShotCompletionResult = {
