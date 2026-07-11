@@ -21,6 +21,7 @@ import type {
   RuntimePromptMessage,
 } from "../../protocol/index.js";
 import type { ToolResult, ToolUpdateCallback } from "../tools/types.js";
+import { executeToolWithInactivityBound } from "./tool-inactivity.js";
 import {
   DEFAULT_CODEX_MODEL,
   loadLocalPreferences,
@@ -1532,6 +1533,7 @@ export const runCodexAgentTurn = async (request: {
             success: false,
           };
         }
+        const executeTool = request.executeTool;
         const toolName = params.tool;
         const toolArgs = toolArgsFromCodexValue(params.arguments);
         const workKey = `tool:${params.callId}`;
@@ -1539,22 +1541,31 @@ export const runCodexAgentTurn = async (request: {
         refreshTurnIdleTimer?.();
         let toolResult: ToolResult;
         try {
-          toolResult = await request.executeTool(
-            params.callId,
+          // Same per-tool inactivity bound as the native loop: a Stella tool
+          // that never settles gets cancelled with an error result instead of
+          // holding the turn open until the run-level ceiling kills it.
+          toolResult = await executeToolWithInactivityBound({
             toolName,
-            toolArgs,
-            request.abortSignal,
-            (update) => {
-              refreshTurnIdleTimer?.();
-              request.onToolUpdate?.({
-                toolCallId: params.callId,
+            signal: request.abortSignal,
+            run: (signal, onActivity) =>
+              executeTool(
+                params.callId,
                 toolName,
-                update,
-              });
-              const statusText = buildToolResultText(update).trim();
-              if (statusText) emitStatus(statusText);
-            },
-          );
+                toolArgs,
+                signal,
+                (update) => {
+                  onActivity();
+                  refreshTurnIdleTimer?.();
+                  request.onToolUpdate?.({
+                    toolCallId: params.callId,
+                    toolName,
+                    update,
+                  });
+                  const statusText = buildToolResultText(update).trim();
+                  if (statusText) emitStatus(statusText);
+                },
+              ),
+          });
         } finally {
           activeTurnWork.delete(workKey);
           refreshTurnIdleTimer?.();

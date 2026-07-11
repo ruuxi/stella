@@ -10,6 +10,7 @@ import type {
   ToolUpdateCallback,
 } from "../tools/types.js";
 import { extractAttachImageBlocks } from "../agent-runtime/tool-adapters.js";
+import { executeToolWithInactivityBound } from "./tool-inactivity.js";
 import { SAFETY_ABORT_FABLE_ATTEMPTS } from "../agent-runtime/provider-abort-containment.js";
 import type {
   FileChangeKind,
@@ -1545,19 +1546,22 @@ class ClaudeCodeSessionRuntime {
       const toolName = response.action.toolName;
       const toolArgs = response.action.args;
       const toolCallId = crypto.randomUUID();
-      const toolResult = await request.executeTool(
-        toolCallId,
+      // Bridged Stella tools run outside the CLI, so the pending-prompt idle
+      // watchdog cannot see them; without this bound a tool that never
+      // settles holds the whole turn (and the conversation) open forever.
+      const toolResult = await executeToolWithInactivityBound({
         toolName,
-        toolArgs,
-        request.abortSignal,
-        (update) => {
-          request.onToolUpdate?.({
-            toolCallId,
-            toolName,
-            update,
-          });
-        },
-      );
+        signal: request.abortSignal,
+        run: (signal, onActivity) =>
+          request.executeTool(toolCallId, toolName, toolArgs, signal, (update) => {
+            onActivity();
+            request.onToolUpdate?.({
+              toolCallId,
+              toolName,
+              update,
+            });
+          }),
+      });
       const toolResultPrompt = await buildToolResultPrompt({
         toolCallId,
         toolName,

@@ -243,7 +243,13 @@ const fetchStellaModelCatalog = async (args: {
           catalogCache.set(request.cacheKey, diskCached);
           return cloneCatalog(diskCached);
         }
-        const res = await fetch(request.endpoint, { headers: request.headers });
+        // Bounded: this fetch sits on hot internal paths (utility model
+        // resolution for Recall, one-shot completions). An unbounded stall
+        // here silently hangs the tool call that triggered it.
+        const res = await fetch(request.endpoint, {
+          headers: request.headers,
+          signal: AbortSignal.timeout(15_000),
+        });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
