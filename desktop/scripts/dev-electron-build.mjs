@@ -527,29 +527,37 @@ const smokeTestWorkerChunksUnderBun = () => {
   } catch {
     return;
   }
-  const bunBinary = resolveBunBinary();
-  for (const chunkFile of chunkFiles) {
-    const chunkPath = path.join(chunksDir, chunkFile);
-    const result = spawnSync(
-      bunBinary,
-      [
-        "--eval",
-        `import(${JSON.stringify(chunkPath)}).then(() => process.exit(0), (e) => { console.error(e); process.exit(1); })`,
-      ],
-      { cwd: repoRootDir, encoding: "utf8", timeout: 30_000 },
+  const chunkPaths = chunkFiles.map((f) => path.join(chunksDir, f));
+  // One Bun process for the whole set: chunks import each other anyway, and
+  // per-chunk spawns would add ~10s of process startup to release builds.
+  const importScript = [
+    `const chunks = ${JSON.stringify(chunkPaths)};`,
+    "for (const chunk of chunks) {",
+    "  try { await import(chunk); }",
+    "  catch (error) {",
+    '    console.error("CHUNK_IMPORT_FAILED " + chunk);',
+    "    console.error(error);",
+    "    process.exit(1);",
+    "  }",
+    "}",
+    "process.exit(0);",
+  ].join("\n");
+  const result = spawnSync(resolveBunBinary(), ["--eval", importScript], {
+    cwd: repoRootDir,
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  if (result.error?.code === "ENOENT") {
+    console.warn(
+      "[electron-build] bun not found; skipping worker chunk smoke test.",
     );
-    if (result.error?.code === "ENOENT") {
-      console.warn(
-        "[electron-build] bun not found; skipping worker chunk smoke test.",
-      );
-      return;
-    }
-    if (result.status !== 0) {
-      throw new Error(
-        `Worker chunk failed to import under Bun: ${chunkFile}\n` +
-          `${result.stderr || result.stdout || result.error?.message || "unknown error"}`,
-      );
-    }
+    return;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      "Worker chunk failed to import under Bun (would crash the detached worker):\n" +
+        `${result.stderr || result.stdout || result.error?.message || "unknown error"}`,
+    );
   }
   console.log(
     `[electron-build] ${chunkFiles.length} worker chunk(s) import cleanly under Bun.`,
