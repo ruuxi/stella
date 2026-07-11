@@ -260,6 +260,16 @@ const backgroundWorkEqual = (
     ) {
       return false;
     }
+    const aTool = a.toolActivities?.[threadId];
+    const bTool = b.toolActivities?.[threadId];
+    if (
+      (aTool?.toolCallId ?? null) !== (bTool?.toolCallId ?? null) ||
+      (aTool?.toolName ?? null) !== (bTool?.toolName ?? null) ||
+      (aTool?.state ?? null) !== (bTool?.state ?? null) ||
+      (aTool?.exitCode ?? null) !== (bTool?.exitCode ?? null)
+    ) {
+      return false;
+    }
     if (
       (a.terminalEventIdsByThread?.[threadId] ?? null) !==
       (b.terminalEventIdsByThread?.[threadId] ?? null)

@@ -7,6 +7,7 @@ import type { DisplayPayload } from "@/shared/contracts/display-payload";
 import type { AgentResponseTarget } from "@/features/chat/streaming/streaming-types";
 import type { SelfModApplied } from "@/features/chat/self-mod-types";
 import type { WebSearchImageHit } from "@/features/chat/lib/derive-turn-web-search";
+import type { TaskToolActivity } from "../../../../runtime/contracts/agent-runtime.js";
 import type { TurnMapArtifact } from "@/features/chat/lib/derive-turn-map-artifacts";
 import type { PastedTextDescriptor } from "@/features/chat/lib/paste-context";
 import type { ToolActivityGroup } from "@/features/chat/lib/tool-activity";
@@ -139,6 +140,9 @@ export type AssistantRowViewModel = {
     statusTexts?: Record<string, string>;
     /** Latest run-scoped progress narration, keyed by thread id. */
     progressTexts?: Record<string, string>;
+    /** Structured current tool state, used only for the inline card's
+     *  friendly subtitle. Activity-list titles remain description-only. */
+    toolActivities?: Record<string, TaskToolActivity>;
     /** Threads on this card that are `send_input` follow-ups (an update to an
      *  already-spawned thread) rather than fresh spawns — drives the distinct
      *  "follow-up" card variant. */

@@ -11,6 +11,7 @@ import {
   buildAgentCompletionSections,
   type AgentCompletionSection,
 } from "./agent-completion";
+import type { TaskToolActivity } from "../../../../../runtime/contracts/agent-runtime.js";
 
 export type BackgroundTaskCardStatus =
   | "running"
@@ -38,6 +39,7 @@ export type BackgroundTaskCardState = {
   latestEventId: string;
   latestEventAtMs: number;
   progressText?: string;
+  toolActivity?: TaskToolActivity;
   errorText?: string;
   terminalEventId?: string;
   completion?: AgentCompletionSection;
@@ -53,6 +55,7 @@ export type ResolvedBackgroundTaskCardLifecycle = {
   pausedThreadIds: string[];
   failedThreadIds: string[];
   progressTexts: Record<string, string>;
+  toolActivities: Record<string, TaskToolActivity>;
   terminalEventIdsByThread: Record<string, string>;
   completionSections: AgentCompletionSection[];
 };
@@ -186,7 +189,12 @@ export const buildBackgroundTaskLifecycleIndex = (
     }
 
     const payload = event.payload as
-      | { agentId?: unknown; rootRunId?: unknown; statusText?: unknown }
+      | {
+          agentId?: unknown;
+          rootRunId?: unknown;
+          statusText?: unknown;
+          toolActivity?: TaskToolActivity;
+        }
       | undefined;
     const agentId = asNonEmptyString(payload?.agentId);
     if (!agentId) continue;
@@ -209,6 +217,11 @@ export const buildBackgroundTaskLifecycleIndex = (
       state.latestEventId = event._id;
       state.latestEventAtMs = event.timestamp;
       if (text) state.progressText = text;
+      if (event.payload.toolActivity) {
+        state.toolActivity = event.payload.toolActivity;
+      } else {
+        delete state.toolActivity;
+      }
       continue;
     }
 
@@ -263,6 +276,7 @@ export const resolveBackgroundTaskCardLifecycle = (
     pausedThreadIds: [],
     failedThreadIds: [],
     progressTexts: {},
+    toolActivities: {},
     terminalEventIdsByThread: {},
     completionSections: [],
   };
@@ -274,6 +288,8 @@ export const resolveBackgroundTaskCardLifecycle = (
     if (!state) continue;
     if (state.progressText)
       resolved.progressTexts[threadId] = state.progressText;
+    if (state.toolActivity)
+      resolved.toolActivities[threadId] = state.toolActivity;
     if (state.terminalEventId) {
       resolved.terminalEventIdsByThread[threadId] = state.terminalEventId;
     }

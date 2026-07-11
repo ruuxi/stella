@@ -27,6 +27,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { MessageSquarePlus, Send, X } from "@/ui/icons";
 import { TextShimmer } from "@/app/chat/TextShimmer";
+import type { TaskToolActivity } from "../../../../runtime/contracts/agent-runtime.js";
+import { friendlyInlineToolStatus } from "@/app/chat/friendly-tool-status";
 import "./background-work-card.css";
 
 /** A thread with no completion signal that was spawned longer ago than this
@@ -125,6 +127,7 @@ export function BackgroundWorkCard({
   descriptions,
   statusTexts,
   progressTexts,
+  toolActivities,
   followUpThreadIds,
   cardId,
   startEventIdsByThread,
@@ -150,6 +153,7 @@ export function BackgroundWorkCard({
   /** Per-thread follow-up text for `send_input` re-activations. */
   statusTexts?: Record<string, string>;
   progressTexts?: Record<string, string>;
+  toolActivities?: Record<string, TaskToolActivity>;
   /** Threads on this card that are `send_input` follow-ups, not fresh spawns. */
   followUpThreadIds?: string[];
   cardId: string;
@@ -222,10 +226,13 @@ export function BackgroundWorkCard({
   const failed = (failedThreadIds?.length ?? 0) > 0;
   const showPaused = paused && !working && !failed;
   const progressText = !multi ? progressTexts?.[threadIds[0]] : undefined;
+  const toolActivity = !multi ? toolActivities?.[threadIds[0]] : undefined;
   const subtitle = failed
     ? "Failed"
     : showPaused
       ? "Paused"
+      : working && toolActivity
+        ? friendlyInlineToolStatus(toolActivity)
       : working && progressText && progressText !== title
         ? progressText
         : isFollowUp

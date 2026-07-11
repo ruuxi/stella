@@ -612,6 +612,7 @@ export const AssistantMessageRow = memo(
               descriptions={row.backgroundWork.descriptions}
               statusTexts={row.backgroundWork.statusTexts}
               progressTexts={row.backgroundWork.progressTexts}
+              toolActivities={row.backgroundWork.toolActivities}
               followUpThreadIds={row.backgroundWork.followUpThreadIds}
               label={row.backgroundWork.label}
               cardId={row.backgroundWork.cardId}

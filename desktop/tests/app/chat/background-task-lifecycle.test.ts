@@ -277,6 +277,13 @@ describe("spawn-anchored background task lifecycle", () => {
       agentId: "builder",
       rootRunId: "run-fail",
       statusText: "Compressing files",
+      toolActivity: {
+        toolCallId: "call-1",
+        toolName: "exec_command",
+        label: "exec_command exited 0",
+        state: "completed",
+        exitCode: 0,
+      },
     });
     const failed = event("failed-1", 200, "agent-failed", {
       agentId: "builder",
@@ -295,6 +302,11 @@ describe("spawn-anchored background task lifecycle", () => {
     );
     expect(resolved.failedThreadIds).toEqual(["builder"]);
     expect(resolved.progressTexts.builder).toBe("Compressing files");
+    expect(resolved.toolActivities.builder).toMatchObject({
+      toolName: "exec_command",
+      state: "completed",
+      exitCode: 0,
+    });
     expect(resolved.terminalEventIdsByThread.builder).toBe("failed-1");
     expect(index.byStartEventId.get("start-fail")).toMatchObject({
       status: "failed",
