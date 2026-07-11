@@ -12,6 +12,7 @@ import {
 } from "./exec.js";
 import { withRepoCommitLock } from "./commit-lock.js";
 import { getGitHead } from "./log.js";
+import { recordSelfModCommitInLedger } from "../applied-ledger.js";
 import type { LogicalFileState } from "../logical-change-set.js";
 
 export type ExactGitFileState = {
@@ -412,13 +413,20 @@ export const commitGitMessage = async (
   // (all in the shared worker process) queue instead of colliding on the HEAD
   // ref lock. The staged-changes checks above are read-only and safe outside
   // the lock; only the commit + HEAD read need the critical section.
-  return await withRepoCommitLock(args.repoRoot, async () => {
+  let committedPaths: string[] = paths;
+  const commitHash = await withRepoCommitLock(args.repoRoot, async () => {
     if (args.files) {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const files =
           typeof args.files === "function" ? await args.files() : args.files;
         try {
-          return await commitExactFileStates(args.repoRoot, files, commitArgs);
+          const hash = await commitExactFileStates(
+            args.repoRoot,
+            files,
+            commitArgs,
+          );
+          committedPaths = files.map((file) => file.path);
+          return hash;
         } catch (error) {
           if (!(error instanceof GitHeadMovedError) || attempt === 2)
             throw error;
@@ -433,4 +441,19 @@ export const commitGitMessage = async (
     await runGit(args.repoRoot, commitArgs);
     return await getGitHead(args.repoRoot);
   });
+  if (commitHash) {
+    // Push-based self-mod detection: run finalization reads this ledger
+    // instead of scanning git history, so the fact that a self-mod commit
+    // landed must be recorded at the moment of creation. The ledger applies
+    // the same trailer filter the git scan used; non-self-mod commits
+    // routed through this committer are ignored there.
+    recordSelfModCommitInLedger({
+      commitHash,
+      files: committedPaths,
+      message: [subject, body, trailerLines.join("\n")]
+        .filter(Boolean)
+        .join("\n\n"),
+    });
+  }
+  return commitHash;
 };

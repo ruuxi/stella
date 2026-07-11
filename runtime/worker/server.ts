@@ -124,13 +124,16 @@ import {
 } from "./cli-bridge-server.js";
 import { resolveRuntimePaths } from "./runtime-paths.js";
 import {
-  detectSelfModAppliedSince,
   getGitHead,
   getLastSelfModCommitHash,
   listFilesForCommit,
   listGitDirtyFiles,
   listRecentSelfModCommits,
 } from "../kernel/self-mod/git/log.js";
+import {
+  currentSelfModLedgerCursor,
+  detectSelfModAppliedSinceCursor,
+} from "../kernel/self-mod/applied-ledger.js";
 import {
   discardGitDirtyFiles,
   rollbackGitChangesSince,
@@ -1355,9 +1358,16 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         },
       },
       // Store agent moved to backend — no local agent surface.
+      // Self-mod detection is push-based: `commitGitMessage` records every
+      // self-mod commit into the applied ledger at creation, and the
+      // baseline/detect pair here just reads ledger cursors. The previous
+      // git-backed monitor ran a `git` subprocess on EVERY successful
+      // orchestrator turn's start and finalize; one wedged exec silently
+      // withheld RUN_FINISHED and froze the conversation.
       selfModMonitor: {
-        getBaselineHead: getGitHead,
-        detectAppliedSince: detectSelfModAppliedSince,
+        getBaselineHead: async () => currentSelfModLedgerCursor(),
+        detectAppliedSince: async ({ sinceHead }) =>
+          detectSelfModAppliedSinceCursor(sinceHead),
       },
       selfModHmrController,
       selfModLifecycle: selfMod.lifecycle,
