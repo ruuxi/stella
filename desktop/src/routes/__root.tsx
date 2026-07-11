@@ -57,11 +57,6 @@ const ProviderConnectedDialog = lazy(() =>
     default: m.ProviderConnectedDialog,
   })),
 );
-const CodexEngineNoticeDialog = lazy(() =>
-  import("@/global/settings/CodexEngineNoticeDialog").then((m) => ({
-    default: m.CodexEngineNoticeDialog,
-  })),
-);
 const SubscriptionUpgradeDialog = lazy(() =>
   import("@/global/billing/SubscriptionUpgradeDialog").then((m) => ({
     default: m.SubscriptionUpgradeDialog,
@@ -743,10 +738,6 @@ function RootChrome() {
 
       <Suspense fallback={null}>
         <ProviderConnectedDialog />
-      </Suspense>
-
-      <Suspense fallback={null}>
-        <CodexEngineNoticeDialog />
       </Suspense>
 
       <Suspense fallback={null}>

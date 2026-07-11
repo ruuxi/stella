@@ -47,7 +47,10 @@ export type LlmCredentialActions = {
     plaintext: string,
   ) => Promise<void>;
   removeApiKey: (provider: string) => Promise<void>;
-  loginOAuth: (provider: string) => Promise<void>;
+  loginOAuth: (
+    provider: string,
+    options?: { announceConnection?: boolean },
+  ) => Promise<void>;
   logoutOAuth: (provider: string) => Promise<void>;
 };
 
@@ -61,7 +64,10 @@ const EMPTY_SNAPSHOT: CredentialSnapshot = {
 
 const SINGLETON_KEY = "default" as const;
 
-const credentialStore = createResourceStore<typeof SINGLETON_KEY, CredentialSnapshot>({
+const credentialStore = createResourceStore<
+  typeof SINGLETON_KEY,
+  CredentialSnapshot
+>({
   fetcher: async () => {
     const systemApi = window.electronAPI?.system;
     if (!systemApi?.listLlmCredentials) {
@@ -180,20 +186,29 @@ export function useLlmCredentials(): LlmCredentials {
     knownConnected.delete(provider);
   }, []);
 
-  const loginOAuth = useCallback(async (provider: string) => {
-    if (!window.electronAPI?.system?.loginLlmOAuthCredential) {
-      throw new Error("OAuth login is unavailable in this window.");
-    }
-    const wasConnected = knownConnected.has(provider);
-    const saved =
-      await window.electronAPI.system.loginLlmOAuthCredential(provider);
-    const current = credentialStore.get(SINGLETON_KEY).data ?? EMPTY_SNAPSHOT;
-    credentialStore.set(SINGLETON_KEY, {
-      ...current,
-      oauthCredentials: upsertCredential(current.oauthCredentials, saved),
-    });
-    if (!wasConnected) dispatchConnected(provider, "oauth");
-  }, []);
+  const loginOAuth = useCallback(
+    async (provider: string, options?: { announceConnection?: boolean }) => {
+      if (!window.electronAPI?.system?.loginLlmOAuthCredential) {
+        throw new Error("OAuth login is unavailable in this window.");
+      }
+      const wasConnected = knownConnected.has(provider);
+      const saved =
+        await window.electronAPI.system.loginLlmOAuthCredential(provider);
+      const current = credentialStore.get(SINGLETON_KEY).data ?? EMPTY_SNAPSHOT;
+      credentialStore.set(SINGLETON_KEY, {
+        ...current,
+        oauthCredentials: upsertCredential(current.oauthCredentials, saved),
+      });
+      if (!wasConnected) {
+        if (options?.announceConnection === false) {
+          knownConnected.add(provider);
+        } else {
+          dispatchConnected(provider, "oauth");
+        }
+      }
+    },
+    [],
+  );
 
   const logoutOAuth = useCallback(async (provider: string) => {
     if (!window.electronAPI?.system?.deleteLlmOAuthCredential) {

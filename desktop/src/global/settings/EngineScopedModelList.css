@@ -1,0 +1,93 @@
+.engine-scoped-model-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: clamp(360px, 60vh, 480px);
+  padding: 12px 4px 4px;
+}
+
+.engine-scoped-model-list__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 8px;
+  color: var(--text-weak);
+  font-size: var(--font-size-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.engine-scoped-model-list__rows {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding: 0 4px 18px;
+  scrollbar-width: thin;
+}
+
+.engine-scoped-model-list__rows > button {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: var(--text-strong);
+  font: inherit;
+  text-align: left;
+}
+
+.engine-scoped-model-list__rows > button:hover:not(:disabled),
+.engine-scoped-model-list__rows > button:focus-visible {
+  background: color-mix(in oklch, var(--text-strong) 5%, transparent);
+  outline: none;
+}
+
+.engine-scoped-model-list__rows > button[data-selected] {
+  background: var(--select-fill);
+  color: var(--select-text);
+}
+
+.engine-scoped-model-list__rows > button:disabled {
+  opacity: 0.5;
+}
+
+.engine-scoped-model-list__text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.engine-scoped-model-list__name,
+.engine-scoped-model-list__description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engine-scoped-model-list__name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
+}
+
+.engine-scoped-model-list__description,
+.engine-scoped-model-list__rows p {
+  margin: 0;
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+}
+
+.engine-scoped-model-list__rows p {
+  padding: 18px 10px;
+  text-align: center;
+}

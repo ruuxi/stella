@@ -27,7 +27,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/ui/dropdown-menu";
-import { requestCodexEngineNotice } from "@/global/settings/CodexEngineNoticeDialog";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
 import {
   ProviderOnlyPicker,
@@ -50,6 +49,17 @@ import {
 } from "@/global/billing/audience";
 import type { RealtimeVoicePreferences } from "../../../../runtime/contracts/local-preferences";
 import { EngineRuntimeModelPanel } from "./EngineRuntimeModelPanel";
+import {
+  findOauthCredential,
+  useLlmCredentials,
+} from "@/global/settings/hooks/use-llm-credentials";
+import {
+  buildEngineReasoningPatch,
+  buildEngineRoutingPatch,
+  DEFAULT_CHATGPT_MODEL,
+  listChatGptCatalogModels,
+  OPENAI_CODEX_PROVIDER,
+} from "@/global/settings/lib/engine-model-routing";
 import "./engine-tab.css";
 
 /* ── types ────────────────────────────────────────────────────── */
@@ -98,22 +108,6 @@ type LocalModelPreferences = {
   realtimeVoice: RealtimeVoicePreferences;
 };
 
-type CodexModelOption = {
-  id: string;
-  model: string;
-  displayName: string;
-  description: string;
-  hidden: boolean;
-  supportedReasoningEfforts: Array<{
-    reasoningEffort: CodexReasoningEffort;
-    description: string;
-  }>;
-  defaultReasoningEffort: CodexReasoningEffort;
-  inputModalities: string[];
-  additionalSpeedTiers: string[];
-  isDefault: boolean;
-};
-
 type ClaudeCodeModelOption = {
   id: string;
   displayName: string;
@@ -146,7 +140,7 @@ const ENGINE_OPTIONS: ReadonlyArray<{
   label: string;
 }> = [
   { id: "default", label: "Stella" },
-  { id: "codex_cli", label: "Codex" },
+  { id: "codex_cli", label: "ChatGPT" },
   { id: "claude_code_local", label: "Claude Code" },
 ];
 
@@ -191,7 +185,6 @@ const CONVERSATION_AGENT_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 const STELLA_PROVIDER_PREFIX = "stella/";
-const CODEX_MODEL_PREFIX = "codex-cli/";
 const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
 const GENERAL_AGENT_KEY = "general";
 const CHRONICLE_AGENT_KEY = "chronicle";
@@ -209,19 +202,7 @@ const usesRuntimeModelPicker = (
 const isStellaModelId = (modelId: string): boolean =>
   modelId === "" || modelId.startsWith(STELLA_PROVIDER_PREFIX);
 
-const toRuntimeOverrideId = (
-  engine: RuntimeModelEngine,
-  modelId: string,
-): string => {
-  const prefix =
-    engine === "codex_cli" ? CODEX_MODEL_PREFIX : CLAUDE_CODE_MODEL_PREFIX;
-  return modelId.startsWith(prefix) ? modelId : `${prefix}${modelId}`;
-};
-
 const fromRuntimeOverrideId = (modelId: string): string => {
-  if (modelId.startsWith(CODEX_MODEL_PREFIX)) {
-    return modelId.slice(CODEX_MODEL_PREFIX.length);
-  }
   if (modelId.startsWith(CLAUDE_CODE_MODEL_PREFIX)) {
     return modelId.slice(CLAUDE_CODE_MODEL_PREFIX.length);
   }
@@ -243,8 +224,6 @@ export function EngineTabContent() {
   const [preferences, setPreferences] = useState<LocalModelPreferences | null>(
     () => cachedPreferences,
   );
-  const [codexModels, setCodexModels] = useState<CodexModelOption[]>([]);
-  const [codexModelsLoading, setCodexModelsLoading] = useState(false);
   const [claudeCodeModels, setClaudeCodeModels] = useState<
     ClaudeCodeModelOption[]
   >([]);
@@ -253,10 +232,10 @@ export function EngineTabContent() {
   const [saving, setSaving] = useState<SavingKind>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [mediaTab, setMediaTab] = useState<MediaTab>("agents");
+  const credentials = useLlmCredentials();
 
   const selfDispatchRef = useRef(false);
   const noticeTimerRef = useRef<number | null>(null);
-  const codexModelsLoadedRef = useRef(false);
   const claudeCodeModelsLoadedRef = useRef(false);
 
   const selectedEngine = preferences?.agentRuntimeEngine ?? "default";
@@ -348,19 +327,6 @@ export function EngineTabContent() {
     [clearStatus, notifyPrefsChanged, preferences, showError],
   );
 
-  const loadCodexModels = useCallback(async () => {
-    setCodexModelsLoading(true);
-    try {
-      const result = await window.electronAPI?.system?.listCodexModels?.();
-      setCodexModels(result?.models ?? []);
-      codexModelsLoadedRef.current = true;
-    } catch (caught) {
-      showError(errorText(caught, "Codex models did not load."));
-    } finally {
-      setCodexModelsLoading(false);
-    }
-  }, [showError]);
-
   const loadClaudeCodeModels = useCallback(async () => {
     setClaudeCodeModelsLoading(true);
     try {
@@ -384,12 +350,6 @@ export function EngineTabContent() {
           await window.electronAPI?.system?.getLocalModelPreferences?.();
         applySavedPrefs(prefs as LocalModelPreferences | undefined);
         if (
-          prefs?.agentRuntimeEngine === "codex_cli" &&
-          !codexModelsLoadedRef.current
-        ) {
-          void loadCodexModels();
-        }
-        if (
           prefs?.agentRuntimeEngine === "claude_code_local" &&
           !claudeCodeModelsLoadedRef.current
         ) {
@@ -401,20 +361,17 @@ export function EngineTabContent() {
         if (!options?.silent) setLoading(false);
       }
     },
-    [applySavedPrefs, loadClaudeCodeModels, loadCodexModels, showError],
+    [applySavedPrefs, loadClaudeCodeModels, showError],
   );
 
   useEffect(() => {
-    if (selectedEngine === "codex_cli" && !codexModelsLoadedRef.current) {
-      void loadCodexModels();
-    }
     if (
       selectedEngine === "claude_code_local" &&
       !claudeCodeModelsLoadedRef.current
     ) {
       void loadClaudeCodeModels();
     }
-  }, [loadClaudeCodeModels, loadCodexModels, selectedEngine]);
+  }, [loadClaudeCodeModels, selectedEngine]);
 
   useEffect(() => {
     void load();
@@ -439,16 +396,42 @@ export function EngineTabContent() {
   const saveEngine = useCallback(
     async (engine: AgentRuntimeEngine) => {
       if (!preferences || engine === preferences.agentRuntimeEngine) return;
-      // Codex only runs the agents Stella spawns, not Stella herself. Hand off
-      // to the root-mounted notice dialog, which explains that and applies the
-      // switch once the user acknowledges it.
-      if (engine === "codex_cli") {
-        requestCodexEngineNotice();
-        return;
+      try {
+        if (
+          engine === "codex_cli" &&
+          !findOauthCredential(
+            credentials.oauthCredentials,
+            OPENAI_CODEX_PROVIDER,
+          )
+        ) {
+          await credentials.loginOAuth(OPENAI_CODEX_PROVIDER, {
+            announceConnection: false,
+          });
+        }
+        const patch = buildEngineRoutingPatch(
+          preferences,
+          engine,
+          engine === "codex_cli"
+            ? preferences.codexModel === DEFAULT_CODEX_MODEL
+              ? DEFAULT_CHATGPT_MODEL
+              : preferences.codexModel
+            : engine === "claude_code_local"
+              ? preferences.claudeCodeModel
+              : undefined,
+        );
+        await writePreferences(patch, "engine");
+      } catch (caught) {
+        showError(
+          errorText(
+            caught,
+            engine === "codex_cli"
+              ? "Could not connect ChatGPT."
+              : "Could not change the engine.",
+          ),
+        );
       }
-      await writePreferences({ agentRuntimeEngine: engine }, "engine");
     },
-    [preferences, writePreferences],
+    [credentials, preferences, showError, writePreferences],
   );
 
   /* ── render ─────────────────────────────────────────────────── */
@@ -503,9 +486,6 @@ export function EngineTabContent() {
           inputsDisabled={inputsDisabled}
           showNotice={showNotice}
           selectedEngine={selectedEngine}
-          codexModels={codexModels}
-          codexModelsLoading={codexModelsLoading}
-          onRefreshCodexModels={() => void loadCodexModels()}
           claudeCodeModels={claudeCodeModels}
           claudeCodeModelsLoading={claudeCodeModelsLoading}
           onRefreshClaudeCodeModels={() => void loadClaudeCodeModels()}
@@ -528,9 +508,6 @@ interface ModelsSectionProps {
   inputsDisabled: boolean;
   showNotice: (text: string) => void;
   selectedEngine: AgentRuntimeEngine;
-  codexModels: CodexModelOption[];
-  codexModelsLoading: boolean;
-  onRefreshCodexModels: () => void;
   claudeCodeModels: ClaudeCodeModelOption[];
   claudeCodeModelsLoading: boolean;
   onRefreshClaudeCodeModels: () => void;
@@ -544,15 +521,13 @@ function ModelsSection({
   inputsDisabled,
   showNotice,
   selectedEngine,
-  codexModels,
-  codexModelsLoading,
-  onRefreshCodexModels,
   claudeCodeModels,
   claudeCodeModelsLoading,
   onRefreshClaudeCodeModels,
 }: ModelsSectionProps) {
   const {
     models: stellaModels,
+    allModels,
     defaults: stellaDefaultModels,
     groups,
     refresh,
@@ -624,12 +599,12 @@ function ModelsSection({
 
   const codexRuntimeModels = useMemo(
     () =>
-      codexModels.map((model) => ({
-        id: model.id,
-        label: model.displayName || model.id,
-        subtitle: model.model,
+      listChatGptCatalogModels(allModels).map((model) => ({
+        id: model.modelId,
+        label: model.name || model.modelId,
+        subtitle: model.modelId,
       })),
-    [codexModels],
+    [allModels],
   );
 
   const claudeRuntimeModels = useMemo(
@@ -707,15 +682,6 @@ function ModelsSection({
         reasoningEfforts: nextReasoning,
         assistantPropagatedAgents: Array.from(nextPropagated),
       };
-      if (modelId.startsWith(CODEX_MODEL_PREFIX)) {
-        const codexModel = fromRuntimeOverrideId(modelId);
-        if (
-          agentKeys.includes("orchestrator") ||
-          agentKeys.includes(GENERAL_AGENT_KEY)
-        ) {
-          patch.codexModel = codexModel;
-        }
-      }
       if (modelId.startsWith(CLAUDE_CODE_MODEL_PREFIX)) {
         const claudeCodeModel = fromRuntimeOverrideId(modelId);
         if (
@@ -736,9 +702,21 @@ function ModelsSection({
       runtimeEngine: RuntimeModelEngine | null = null,
     ) => {
       if (!preferences || !modelId) return;
-      const normalizedId = runtimeEngine
-        ? toRuntimeOverrideId(runtimeEngine, modelId)
-        : modelId;
+      if (runtimeEngine === "codex_cli") {
+        await writePreferences(
+          buildEngineRoutingPatch(preferences, runtimeEngine, modelId),
+          "overrides",
+        );
+        return;
+      }
+      if (runtimeEngine === "claude_code_local") {
+        await writePreferences(
+          buildEngineRoutingPatch(preferences, runtimeEngine, modelId),
+          "overrides",
+        );
+        return;
+      }
+      const normalizedId = modelId;
       const agentKeys = batchAssignableAgents.map((entry) => entry.key);
       if (agentKeys.length === 0) return;
       // Preserve the current reasoning effort when switching models so a
@@ -749,7 +727,7 @@ function ModelsSection({
         "default";
       await assignTo(normalizedId, agentKeys, effort);
     },
-    [assignTo, batchAssignableAgents, preferences],
+    [assignTo, batchAssignableAgents, preferences, writePreferences],
   );
 
   const selectedReasoningEffort: ReasoningEffort =
@@ -772,37 +750,16 @@ function ModelsSection({
   const selectRuntimeReasoning = useCallback(
     async (modelId: string, effort: ReasoningEffort) => {
       if (!preferences || !runtimeModelEngine) return;
-      const normalizedId = toRuntimeOverrideId(runtimeModelEngine, modelId);
-      const agentKeys = batchAssignableAgents.map((entry) => entry.key);
-      if (agentKeys.length === 0) return;
-      const nextOverrides = { ...preferences.modelOverrides };
-      const nextReasoning = { ...(preferences.reasoningEfforts ?? {}) };
-      const nextPropagated = new Set(
-        preferences.assistantPropagatedAgents ?? [],
-      );
-      for (const key of agentKeys) {
-        nextOverrides[key] = normalizedId;
-        // Runtime engines use the engine-global effort, not per-agent.
-        delete nextReasoning[key];
-        if (CONVERSATION_AGENT_KEYS.has(key)) nextPropagated.delete(key);
-        else nextPropagated.add(key);
-      }
-      const bareModel = fromRuntimeOverrideId(normalizedId);
       const patch: Partial<LocalModelPreferences> = {
-        modelOverrides: nextOverrides,
-        reasoningEfforts: nextReasoning,
-        assistantPropagatedAgents: Array.from(nextPropagated),
+        ...buildEngineRoutingPatch(preferences, runtimeModelEngine, modelId),
+        ...buildEngineReasoningPatch(preferences, runtimeModelEngine, effort, [
+          "orchestrator",
+          "general",
+        ]),
       };
-      if (runtimeModelEngine === "codex_cli") {
-        patch.codexModel = bareModel;
-        patch.codexReasoningEffort = effort as CodexReasoningPreference;
-      } else {
-        patch.claudeCodeModel = bareModel;
-        patch.claudeCodeReasoningEffort = effort;
-      }
       await writePreferences(patch, "overrides");
     },
-    [batchAssignableAgents, preferences, runtimeModelEngine, writePreferences],
+    [preferences, runtimeModelEngine, writePreferences],
   );
 
   // Per-row reasoning affordance: applies the model to the agent set at the
@@ -889,16 +846,14 @@ function ModelsSection({
   const orchestratorCurrent = overrides.orchestrator ?? overrides.general ?? "";
 
   const runtimePanelLabel =
-    runtimeModelEngine === "codex_cli" ? "Codex" : "Claude Code";
+    runtimeModelEngine === "codex_cli" ? "ChatGPT" : "Claude Code";
   const runtimePanelFavoriteScope =
     runtimeModelEngine === "codex_cli" ? "engine:codex" : "engine:claude-code";
   const runtimePanelLoading =
-    runtimeModelEngine === "codex_cli"
-      ? codexModelsLoading
-      : claudeCodeModelsLoading;
+    runtimeModelEngine === "codex_cli" ? refreshing : claudeCodeModelsLoading;
   const runtimePanelRefresh =
     runtimeModelEngine === "codex_cli"
-      ? onRefreshCodexModels
+      ? () => void refresh()
       : onRefreshClaudeCodeModels;
 
   return (

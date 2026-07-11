@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, RefreshCw } from "@/ui/icons";
+import { RefreshCw } from "@/ui/icons";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
-import { CompactStellaModelList } from "@/global/settings/CompactStellaModelList";
-import { LocalRuntimeOptions } from "@/global/settings/LocalRuntimeOptions";
+import {
+  EngineScopedModelList,
+  type EngineScopedModelOption,
+} from "@/global/settings/EngineScopedModelList";
 import {
   ProviderOnlyPicker,
   type ProviderOption,
@@ -17,14 +19,6 @@ import {
 import { Select } from "@/ui/select";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
-import {
-  buildRecentModelRows,
-  createKnownModelIdPredicate,
-  pruneRecentModels,
-  readRecentModels,
-  recordRecentModel,
-} from "@/global/settings/lib/recent-models";
-import type { CompactModelListEntry } from "@/global/settings/CompactStellaModelList";
 import {
   buildModelDefaultsMap,
   buildResolvedModelDefaultsMap,
@@ -41,6 +35,20 @@ import {
 } from "@/global/billing/audience";
 import { router } from "@/router";
 import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs";
+import {
+  findOauthCredential,
+  useLlmCredentials,
+} from "@/global/settings/hooks/use-llm-credentials";
+import {
+  buildEngineReasoningPatch,
+  buildEngineRoutingPatch,
+  DEFAULT_CHATGPT_MODEL,
+  DEFAULT_CLAUDE_CODE_MODEL,
+  fromOpenAiCodexModelId,
+  listChatGptCatalogModels,
+  OPENAI_CODEX_PROVIDER,
+  type ModelPickerEngine,
+} from "@/global/settings/lib/engine-model-routing";
 import "./AgentModelPicker.css";
 
 type ImageGenerationProvider = "stella" | "openai" | "openrouter" | "fal";
@@ -56,7 +64,9 @@ type LocalModelPreferences = {
   reasoningEfforts: Record<string, ReasoningEffort>;
   agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
   codexModel: string;
+  codexReasoningEffort: ReasoningEffort;
   claudeCodeModel: string;
+  claudeCodeReasoningEffort: ReasoningEffort;
   maxAgentConcurrency: number;
   imageGeneration: ImageGenerationPreferences;
   realtimeVoice: RealtimeVoicePreferences;
@@ -85,6 +95,16 @@ const REASONING_EFFORT_OPTIONS: Array<{
 const ASSISTANT_TARGET = "__assistant__";
 const IMAGE_TARGET = "__image__";
 const VOICE_TARGET = "__voice__";
+const ENGINE_PENDING_TARGET = "__engine__";
+
+const ENGINE_OPTIONS: ReadonlyArray<{
+  id: ModelPickerEngine;
+  label: string;
+}> = [
+  { id: "default", label: "Stella" },
+  { id: "codex_cli", label: "ChatGPT" },
+  { id: "claude_code_local", label: "Claude Code" },
+];
 
 /**
  * The Assistant tab in the sidebar picker writes to both the orchestrator
@@ -198,7 +218,7 @@ function getModelPickerDisplayLabel(
     return `Claude Code · ${CLAUDE_CODE_ALIAS_LABELS[engineModel] ?? engineModel}`;
   }
   if (modelId.startsWith("codex-cli/")) {
-    return `Codex · ${modelId.slice("codex-cli/".length)}`;
+    return `ChatGPT · ${modelId.slice("codex-cli/".length)}`;
   }
   if (modelId.startsWith("local/")) {
     const localId = modelId.slice("local/".length);
@@ -225,19 +245,12 @@ interface AgentModelPickerProps {
   /** Optional className appended to the root element. */
   className?: string;
   /**
-   * When true the picker mounts already expanded (shows the full provider
-   * rail + local runtime options). Defaults to false: callers see just the
-   * curated Stella presets and a "More options" toggle.
-   */
-  defaultExpanded?: boolean;
-  /**
    * Surface this picker is mounted on. The sidebar popover shows a lean
    * `Assistant | Image | Voice` tab strip and dual-writes Assistant to both
    * the orchestrator and general agent keys. The Settings page shows every
    * configurable agent as its own tab (orchestrator and general included
    * but no longer coupled) plus image + voice, and uses the same layout
-   * (compact Stella presets, expandable to the full provider catalog) for
-   * each.
+   * with the same engine-scoped model catalog for each.
    */
   surface?: "sidebar" | "settings";
 }
@@ -251,36 +264,26 @@ interface AgentModelPickerProps {
 export function AgentModelPicker({
   onSelected,
   className,
-  defaultExpanded = false,
   surface = "sidebar",
 }: AgentModelPickerProps) {
-  // The Settings page surfaces the full provider catalog inline (no
-  // compact-vs-expanded toggle, no "Connect a provider" affordance to
-  // discover): users land on Models specifically to manage providers, so
-  // we treat the picker as permanently expanded there. The sidebar
-  // popover keeps the compact-by-default behavior.
-  const isSettings = surface === "settings";
-  const [expandedState, setExpanded] = useState<boolean>(defaultExpanded);
-  const expanded = isSettings ? true : expandedState;
   const {
-    models: stellaModels,
     allModels,
     defaults: stellaDefaultModels,
     groups,
     refresh,
     refreshing,
     audience,
-    loading: catalogLoading,
-    error: catalogError,
   } = useModelCatalog();
 
   const [preferences, setPreferencesRaw] =
     useState<LocalModelPreferences | null>(() => cachedLocalPreferences);
   const [pendingAgent, setPendingAgent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [recentModelIds, setRecentModelIds] = useState<string[]>(() =>
-    readRecentModels(),
-  );
+  const [claudeCodeModels, setClaudeCodeModels] = useState<
+    EngineScopedModelOption[] | null
+  >(null);
+  const [claudeCodeModelsLoading, setClaudeCodeModelsLoading] = useState(false);
+  const credentials = useLlmCredentials();
 
   // Mirror state writes into the module-level cache so re-mounting the
   // picker (Radix unmounts popover content on close) shows the last
@@ -339,7 +342,46 @@ export function AgentModelPicker({
         onExternalChange,
       );
     };
-  }, []);
+  }, [setPreferences]);
+
+  const loadClaudeCodeModels = useCallback(async () => {
+    if (claudeCodeModelsLoading) return;
+    setClaudeCodeModelsLoading(true);
+    try {
+      const result = await window.electronAPI?.system?.listClaudeCodeModels?.();
+      setClaudeCodeModels(
+        (result?.models ?? []).map((model) => ({
+          id: model.id,
+          label: model.displayName || model.id,
+          description: model.description,
+        })),
+      );
+    } catch (caught) {
+      setClaudeCodeModels([]);
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Failed to load Claude Code models.",
+      );
+    } finally {
+      setClaudeCodeModelsLoading(false);
+    }
+  }, [claudeCodeModelsLoading]);
+
+  useEffect(() => {
+    if (
+      preferences?.agentRuntimeEngine === "claude_code_local" &&
+      claudeCodeModels === null &&
+      !claudeCodeModelsLoading
+    ) {
+      void loadClaudeCodeModels();
+    }
+  }, [
+    claudeCodeModels,
+    claudeCodeModelsLoading,
+    loadClaudeCodeModels,
+    preferences?.agentRuntimeEngine,
+  ]);
 
   const modelDefaults = useMemo<ModelDefaultEntry[] | undefined>(() => {
     if (!preferences) return undefined;
@@ -361,6 +403,44 @@ export function AgentModelPicker({
     }
     return next;
   }, [allModels]);
+
+  const chatGptCatalogModels = useMemo(
+    () => listChatGptCatalogModels(allModels),
+    [allModels],
+  );
+  const chatGptModels = useMemo<EngineScopedModelOption[]>(
+    () =>
+      chatGptCatalogModels.map((model) => ({
+        id: model.modelId,
+        label: model.name || model.modelId,
+        description: model.modelId,
+      })),
+    [chatGptCatalogModels],
+  );
+  const chatGptModelIds = useMemo(
+    () => new Set(chatGptModels.map((model) => model.id)),
+    [chatGptModels],
+  );
+  const savedChatGptOverride = preferences
+    ? fromOpenAiCodexModelId(
+        preferences.modelOverrides.orchestrator ??
+          preferences.modelOverrides.general ??
+          "",
+      )
+    : null;
+  const selectedChatGptModel =
+    (savedChatGptOverride && chatGptModelIds.has(savedChatGptOverride)
+      ? savedChatGptOverride
+      : null) ??
+    (preferences?.codexModel && chatGptModelIds.has(preferences.codexModel)
+      ? preferences.codexModel
+      : null) ??
+    (chatGptModelIds.has(DEFAULT_CHATGPT_MODEL)
+      ? DEFAULT_CHATGPT_MODEL
+      : chatGptModels[0]?.id) ??
+    DEFAULT_CHATGPT_MODEL;
+  const selectedClaudeCodeModel =
+    preferences?.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL;
 
   const defaultModelMap = useMemo(
     () => buildModelDefaultsMap(modelDefaults),
@@ -508,7 +588,6 @@ export function AgentModelPicker({
           new CustomEvent("stella:local-model-preferences-changed"),
         );
         setError(null);
-        if (value) setRecentModelIds(recordRecentModel(value));
         // Restricted-tier picks used to fire a toast here. The picker
         // now disables Stella-provider models that aren't available on
         // the user's plan up front, so reaching this path means the
@@ -541,7 +620,95 @@ export function AgentModelPicker({
       onSelected,
       pendingAgent,
       preferences,
+      setPreferences,
     ],
+  );
+
+  const commitEngineSelection = useCallback(
+    async (engine: ModelPickerEngine, modelId?: string): Promise<boolean> => {
+      if (!preferences || pendingAgent) return false;
+      const previous = preferences;
+      setPendingAgent(ENGINE_PENDING_TARGET);
+      setError(null);
+      try {
+        if (
+          engine === "codex_cli" &&
+          !findOauthCredential(
+            credentials.oauthCredentials,
+            OPENAI_CODEX_PROVIDER,
+          )
+        ) {
+          await credentials.loginOAuth(OPENAI_CODEX_PROVIDER, {
+            announceConnection: false,
+          });
+        }
+
+        const patch = buildEngineRoutingPatch(
+          preferences,
+          engine,
+          modelId,
+        ) as Partial<LocalModelPreferences>;
+        const optimistic = { ...preferences, ...patch };
+        setPreferences(optimistic);
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.(patch);
+        if (saved) setPreferences(saved);
+        window.dispatchEvent(
+          new CustomEvent("stella:local-model-preferences-changed"),
+        );
+        return true;
+      } catch (caught) {
+        setPreferences(previous);
+        setError(
+          caught instanceof Error && caught.message.trim()
+            ? caught.message
+            : engine === "codex_cli"
+              ? "Failed to connect ChatGPT."
+              : "Failed to update the engine.",
+        );
+        return false;
+      } finally {
+        setPendingAgent(null);
+      }
+    },
+    [credentials, pendingAgent, preferences, setPreferences],
+  );
+
+  const handleEngineChange = useCallback(
+    async (engine: ModelPickerEngine) => {
+      if (!preferences || engine === preferences.agentRuntimeEngine) return;
+      if (engine === "claude_code_local" && claudeCodeModels === null) {
+        void loadClaudeCodeModels();
+      }
+      await commitEngineSelection(
+        engine,
+        engine === "codex_cli"
+          ? selectedChatGptModel
+          : engine === "claude_code_local"
+            ? selectedClaudeCodeModel
+            : undefined,
+      );
+    },
+    [
+      claudeCodeModels,
+      commitEngineSelection,
+      loadClaudeCodeModels,
+      preferences,
+      selectedChatGptModel,
+      selectedClaudeCodeModel,
+    ],
+  );
+
+  const handleEngineModelSelect = useCallback(
+    async (modelId: string) => {
+      if (!preferences) return;
+      const saved = await commitEngineSelection(
+        preferences.agentRuntimeEngine,
+        modelId,
+      );
+      if (saved) onSelected?.();
+    },
+    [commitEngineSelection, onSelected, preferences],
   );
 
   const handleImageProviderSelect = useCallback(
@@ -586,7 +753,7 @@ export function AgentModelPicker({
         setPendingAgent(null);
       }
     },
-    [onSelected, pendingAgent, preferences],
+    [onSelected, pendingAgent, preferences, setPreferences],
   );
 
   /**
@@ -617,7 +784,7 @@ export function AgentModelPicker({
         setError(caught instanceof Error ? caught.message : errorLabel);
       }
     },
-    [preferences],
+    [preferences, setPreferences],
   );
 
   const handleVoiceSelect = useCallback(
@@ -718,41 +885,44 @@ export function AgentModelPicker({
         setPendingAgent(null);
       }
     },
-    [onSelected, pendingAgent, preferences],
+    [onSelected, pendingAgent, preferences, setPreferences],
   );
 
   const handleReasoningEffortSelect = useCallback(
     async (effort: ReasoningEffort) => {
       if (!preferences || pendingAgent) return;
+      const selectedEngine = preferences.agentRuntimeEngine;
       const writeKeys = activeAssistant ? assistantWriteKeys : [activeAgent];
       const previousReasoningEfforts = {
         ...(preferences.reasoningEfforts ?? {}),
       };
-      const nextReasoningEfforts = {
-        ...previousReasoningEfforts,
-      };
-      if (effort === "default") {
-        for (const key of writeKeys) delete nextReasoningEfforts[key];
-      } else {
-        for (const key of writeKeys) nextReasoningEfforts[key] = effort;
-      }
+      const patch = buildEngineReasoningPatch(
+        preferences,
+        selectedEngine,
+        effort,
+        writeKeys,
+      ) as Partial<LocalModelPreferences>;
       setPendingAgent(activeAgent);
       setPreferences({
         ...preferences,
-        reasoningEfforts: nextReasoningEfforts,
+        ...patch,
       });
       try {
         const saved =
-          await window.electronAPI?.system?.setLocalModelPreferences?.({
-            reasoningEfforts: nextReasoningEfforts,
-          });
+          await window.electronAPI?.system?.setLocalModelPreferences?.(patch);
         if (saved) setPreferences(saved);
         setError(null);
         onSelected?.();
       } catch (caught) {
         setPreferences((current) =>
           current
-            ? { ...current, reasoningEfforts: previousReasoningEfforts }
+            ? {
+                ...current,
+                reasoningEfforts: previousReasoningEfforts,
+                codexReasoningEffort: preferences.codexReasoningEffort,
+                claudeCodeReasoningEffort:
+                  preferences.claudeCodeReasoningEffort,
+              }
             : current,
         );
         setError(
@@ -771,6 +941,7 @@ export function AgentModelPicker({
       onSelected,
       pendingAgent,
       preferences,
+      setPreferences,
     ],
   );
 
@@ -823,82 +994,37 @@ export function AgentModelPicker({
         ? getModelPickerDisplayLabel(current, modelNamesById)
         : defaultLabel
       : "Loading…";
-  // Whether an override id still resolves to something selectable — see
-  // createKnownModelIdPredicate for the rules. Validated against the FULL
-  // merged catalog (allModels), never the Stella subset.
-  const catalogModelIds = useMemo(
-    () => new Set(allModels.map((model) => model.id)),
-    [allModels],
-  );
-  // Validation is suspended (everything passes) while any catalog fetch is
-  // still in flight: the merged catalog lands in pieces (Stella first,
-  // BYOK/local after), and validating against a partial merge would
-  // briefly mislabel valid picks as unavailable.
-  const catalogSettled = !catalogLoading && !refreshing;
-  const isKnownModelId = useMemo(
-    () =>
-      catalogSettled
-        ? createKnownModelIdPredicate(catalogModelIds)
-        : () => true,
-    [catalogModelIds, catalogSettled],
-  );
+  const selectedEngine = preferences?.agentRuntimeEngine ?? "default";
+  const claudeCodeModelsWithCurrent = useMemo<EngineScopedModelOption[]>(() => {
+    const models = claudeCodeModels ?? [];
+    if (
+      claudeCodeModels === null ||
+      !selectedClaudeCodeModel ||
+      models.some((model) => model.id === selectedClaudeCodeModel)
+    ) {
+      return models;
+    }
+    return [
+      ...models,
+      {
+        id: selectedClaudeCodeModel,
+        label: selectedClaudeCodeModel,
+        description: "Unavailable",
+        unavailable: true,
+      },
+    ];
+  }, [claudeCodeModels, selectedClaudeCodeModel]);
 
-  // Once the catalog is in, drop persisted recents that no longer resolve
-  // so stale ids can't be re-selected and written back into overrides.
-  useEffect(() => {
-    if (!catalogSettled || allModels.length === 0) return;
-    setRecentModelIds((currentIds) => {
-      const next = pruneRecentModels(isKnownModelId);
-      return next.length === currentIds.length ? currentIds : next;
-    });
-  }, [allModels, catalogSettled, isKnownModelId]);
-
-  /**
-   * Rows pinned above the compact Stella presets: the current selection
-   * (when it isn't a preset already listed below — e.g. a BYOK provider
-   * model or an engine model) plus the most recently used models. Keeps
-   * the active pick visible+checked the moment the popover opens and puts
-   * the user's usual back-and-forth switches one click away. A current
-   * selection that no longer resolves renders disabled as "Unavailable"
-   * instead of silently offering a dead pick.
-   */
-  const compactRecentEntries = useMemo<CompactModelListEntry[]>(() => {
-    if (activeProviderSetting) return [];
-    const presetIds = new Set(
-      stellaModels
-        .filter(
-          (model) =>
-            model.provider === "stella" &&
-            model.id.startsWith("stella/") &&
-            !model.modelId.includes("/"),
-        )
-        .map((model) => model.id),
-    );
-    return buildRecentModelRows({
-      currentId: current,
-      recentIds: recentModelIds,
-      excludeIds: presetIds,
-      isKnownModelId,
-    }).map((row) => ({
-      id: row.id,
-      label: getModelPickerDisplayLabel(row.id, modelNamesById),
-      ...(row.unavailable ? { unavailable: true } : {}),
-    }));
-  }, [
-    activeProviderSetting,
-    current,
-    isKnownModelId,
-    modelNamesById,
-    recentModelIds,
-    stellaModels,
-  ]);
-
-  const currentReasoningEffort = activeAssistant
-    ? (preferences?.reasoningEfforts?.orchestrator ??
-      preferences?.reasoningEfforts?.general ??
-      "default")
-    : (preferences?.reasoningEfforts?.[activeAgent] ?? "default");
-  const showFullPanel = expanded && !activeProviderSetting;
+  const currentReasoningEffort =
+    selectedEngine === "codex_cli"
+      ? (preferences?.codexReasoningEffort ?? "default")
+      : selectedEngine === "claude_code_local"
+        ? (preferences?.claudeCodeReasoningEffort ?? "default")
+        : activeAssistant
+          ? (preferences?.reasoningEfforts?.orchestrator ??
+            preferences?.reasoningEfforts?.general ??
+            "default")
+          : (preferences?.reasoningEfforts?.[activeAgent] ?? "default");
 
   /**
    * On free / anonymous / Go plans the backend silently coerces any
@@ -1000,15 +1126,27 @@ export function AgentModelPicker({
         <button
           type="button"
           className="agent-model-picker-refresh"
-          onClick={() => void refresh()}
-          disabled={refreshing}
-          title="Refresh model catalog"
-          aria-label="Refresh model catalog"
+          onClick={() =>
+            selectedEngine === "claude_code_local"
+              ? void loadClaudeCodeModels()
+              : void refresh()
+          }
+          disabled={refreshing || claudeCodeModelsLoading}
+          title={
+            selectedEngine === "claude_code_local"
+              ? "Refresh Claude Code models"
+              : "Refresh model catalog"
+          }
+          aria-label={
+            selectedEngine === "claude_code_local"
+              ? "Refresh Claude Code models"
+              : "Refresh model catalog"
+          }
         >
           <RefreshCw
             size={13}
             strokeWidth={1.75}
-            data-spinning={refreshing || undefined}
+            data-spinning={refreshing || claudeCodeModelsLoading || undefined}
           />
         </button>
       </div>
@@ -1058,40 +1196,35 @@ export function AgentModelPicker({
               disabled={!preferences || pendingAgent !== null}
             />
           </>
-        ) : showFullPanel ? (
-          <>
-            <ProviderModelPanel
-              value={current}
-              defaultLabel={defaultLabel}
-              currentLabel={currentLabel}
-              groups={groups}
-              disabled={!ready || pendingAgent !== null}
-              restrictStellaPicks={restrictedStellaPicks}
-              restrictedPlanLabel={restrictedPlanLabel}
-              ariaLabel="Assistant model picker"
-              onSelect={handleSelect}
-            />
-            <LocalRuntimeOptions />
-          </>
+        ) : selectedEngine === "codex_cli" ? (
+          <EngineScopedModelList
+            engineLabel="ChatGPT"
+            models={chatGptModels}
+            value={selectedChatGptModel}
+            onSelect={(modelId) => void handleEngineModelSelect(modelId)}
+            loading={refreshing}
+            disabled={!preferences || pendingAgent !== null}
+          />
+        ) : selectedEngine === "claude_code_local" ? (
+          <EngineScopedModelList
+            engineLabel="Claude Code"
+            models={claudeCodeModelsWithCurrent}
+            value={selectedClaudeCodeModel}
+            onSelect={(modelId) => void handleEngineModelSelect(modelId)}
+            loading={claudeCodeModelsLoading}
+            disabled={!preferences || pendingAgent !== null}
+          />
         ) : (
-          <CompactStellaModelList
-            stellaModels={stellaModels}
+          <ProviderModelPanel
             value={current}
-            recents={compactRecentEntries}
             defaultLabel={defaultLabel}
-            onSelect={handleSelect}
+            currentLabel={currentLabel}
+            groups={groups}
             disabled={!ready || pendingAgent !== null}
-            loading={catalogLoading}
-            error={catalogError}
-            onRetry={() => {
-              void refresh();
-            }}
-            restricted={restrictedStellaPicks}
+            restrictStellaPicks={restrictedStellaPicks}
             restrictedPlanLabel={restrictedPlanLabel}
-            onUpgrade={() => {
-              void router.navigate({ to: "/billing" });
-              onSelected?.();
-            }}
+            ariaLabel="Assistant model picker"
+            onSelect={handleSelect}
           />
         )}
 
@@ -1118,6 +1251,32 @@ export function AgentModelPicker({
 
       {activeProviderSetting ? null : (
         <div className="agent-model-picker-footer">
+          <div
+            className="agent-model-picker-engine"
+            role="radiogroup"
+            aria-label="Engine"
+          >
+            {ENGINE_OPTIONS.map((option) => {
+              const active = option.id === selectedEngine;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  data-active={active || undefined}
+                  disabled={
+                    !preferences ||
+                    pendingAgent !== null ||
+                    (option.id === "codex_cli" && credentials.loading)
+                  }
+                  onClick={() => void handleEngineChange(option.id)}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
           <div className="agent-model-picker-reasoning">
             <span>Reasoning</span>
             <Select
@@ -1135,22 +1294,6 @@ export function AgentModelPicker({
               }))}
             />
           </div>
-          {isSettings ? null : (
-            <button
-              type="button"
-              className="agent-model-picker-toggle-more"
-              onClick={() => setExpanded((prev) => !prev)}
-              aria-expanded={expanded}
-              title="Bring your own key or sign in to another provider"
-            >
-              <span>{expanded ? "Done" : "Connect a provider (BYOK)"}</span>
-              <ChevronDown
-                size={14}
-                strokeWidth={1.75}
-                data-rotated={expanded || undefined}
-              />
-            </button>
-          )}
         </div>
       )}
     </div>

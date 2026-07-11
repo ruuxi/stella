@@ -68,6 +68,49 @@
   border-top: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
 }
 
+.agent-model-picker-engine {
+  display: inline-flex;
+  min-width: 0;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
+  border-radius: var(--radius-full);
+  background: color-mix(in oklch, var(--text-strong) 6%, transparent);
+}
+
+.agent-model-picker-engine button {
+  appearance: none;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-weak);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.agent-model-picker-engine button:hover:not(:disabled),
+.agent-model-picker-engine button:focus-visible {
+  color: var(--text-strong);
+  outline: none;
+}
+
+.agent-model-picker-engine button[data-active] {
+  background: var(--background);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-subtle);
+}
+
+.agent-model-picker-engine button:disabled {
+  opacity: 0.5;
+}
+
 .agent-model-picker-reasoning {
   display: inline-flex;
   align-items: center;
@@ -200,31 +243,18 @@
   overflow: hidden;
 }
 
-.agent-model-picker-toggle-more {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 2px;
-  background: none;
-  border: none;
-  color: var(--text-weak);
-  font-family: inherit;
-  font-size: var(--font-size-sm);
-  font-weight: var(--weight-medium);
-  cursor: default;
-  transition: color 120ms ease;
-}
+@media (max-width: 520px) {
+  .agent-model-picker-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
 
-.agent-model-picker-toggle-more:hover,
-.agent-model-picker-toggle-more:focus-visible {
-  color: var(--text-strong);
-  outline: none;
-}
+  .agent-model-picker-engine {
+    width: 100%;
+  }
 
-.agent-model-picker-toggle-more svg {
-  transition: transform 160ms ease;
-}
-
-.agent-model-picker-toggle-more svg[data-rotated] {
-  transform: rotate(180deg);
+  .agent-model-picker-engine button {
+    flex: 1 1 0;
+    padding-inline: 6px;
+  }
 }
