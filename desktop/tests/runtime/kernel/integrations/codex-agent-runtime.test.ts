@@ -545,6 +545,21 @@ describe("Codex agent runtime", () => {
         "completed",
       ]);
       expect(commands[0]?.command).toContain("API_TOKEN=[REDACTED]");
+      // Guard against a silently vacuous redaction test: the fixture script
+      // must genuinely emit every secret so the not.toContain checks below are
+      // meaningful (secret present in raw input, absent after redaction).
+      const fixtureScript = fs.readFileSync(fakeCodex, "utf8");
+      for (const secret of [
+        "reasoning-secret",
+        "reasoning-cookie",
+        "search-secret",
+        "super-secret",
+        "header-secret",
+        "also-secret",
+        "cwd-secret",
+      ]) {
+        expect(fixtureScript).toContain(secret);
+      }
       const serializedProgress = JSON.stringify({
         reasoning,
         statuses,
@@ -562,6 +577,66 @@ describe("Codex agent runtime", () => {
         expect(serializedProgress).not.toContain(secret);
       }
       expect(commands[1]?.exitCode).toBe(0);
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps benign key=value reasoning readable while redacting secrets", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-benign-reasoning-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const readline = require("node:readline");',
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'thread/start') { send({ id: message.id, result: { thread: { id: 'thread-benign' } } }); return; }",
+        "  if (message.method === 'turn/start') {",
+        "    const threadId = message.params.threadId;",
+        "    const turn = { id: 'turn-benign', status: 'inProgress' };",
+        "    send({ id: message.id, result: { turn } });",
+        "    send({ method: 'turn/started', params: { threadId, turn } });",
+        "    send({ method: 'item/reasoning/textDelta', params: { threadId, turnId: turn.id, itemId: 'reasoning-benign', delta: 'retrying with retries=3 count=0 timeout=30 then FOO_TOKEN=leak-me' } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-benign', text: 'done', phase: 'final_answer' } } });",
+        "    send({ method: 'turn/completed', params: { threadId, turn: { id: turn.id, status: 'completed' } } });",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    const reasoning: string[] = [];
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    try {
+      const result = await runCodexAgentTurn({
+        runId: "run-benign-reasoning",
+        prompt: "retry",
+        onReasoning: (chunk) => reasoning.push(chunk),
+      });
+
+      expect(result.text).toBe("done");
+      const joined = reasoning.join("");
+      // Plain short numeric/identifier assignments must survive redaction so
+      // the reasoning the feature exists to surface stays readable.
+      expect(joined).toContain("retries=3");
+      expect(joined).toContain("count=0");
+      expect(joined).toContain("timeout=30");
+      // A genuinely sensitive assignment in the same delta is still redacted.
+      expect(joined).not.toContain("leak-me");
+      expect(joined).toContain("[REDACTED]");
     } finally {
       if (previousPath === undefined) {
         delete process.env.STELLA_CODEX_CLI_PATH;

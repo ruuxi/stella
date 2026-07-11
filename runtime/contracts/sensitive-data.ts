@@ -10,10 +10,44 @@ const BEARER_RE = /\b(Bearer)\s+[A-Za-z0-9\-._~+/]+=*\b/gi;
 const BASIC_RE = /\b(Basic)\s+[A-Za-z0-9+/=]+\b/gi;
 const COOKIE_INLINE_RE = /\b(cookie|set-cookie)\s*:\s*([^\n\r;]+)/gi;
 const JWT_RE = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
-const ENV_ASSIGNMENT_RE =
-  /\b([A-Za-z_][A-Za-z0-9_]*)=(?:"[^"]*"|'[^']*'|[^\s]+)/g;
+// Bare AWS access key IDs (AKIA/ASIA prefix + 16 base32 chars).
+const AWS_ACCESS_KEY_RE = /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g;
+// 40-char base64 AWS secret access keys, only when reached through an
+// aws/secret context (e.g. `"aws_secret_access_key": "…"`, `aws secret=…`).
+const AWS_SECRET_KEY_RE =
+  /\b((?:aws|secret)[A-Za-z0-9_]*['"\s:=-]+)([A-Za-z0-9/+]{40})(?![A-Za-z0-9/+])/gi;
+// Bare provider API tokens such as OpenAI `sk-…`.
+const SK_TOKEN_RE = /\bsk-[A-Za-z0-9]{20,}\b/g;
+// Generic `key=value` assignments. Only redact when the KEY reads as a secret,
+// or the VALUE is quoted / long+high-entropy — plain short identifiers and
+// numbers (count=0, retries=3, timeout=30) must stay readable.
+const ASSIGNMENT_RE = /\b([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s]+)/g;
+const SECRET_ASSIGNMENT_KEY_RE =
+  /token|secret|key|password|passwd|pwd|auth|cookie|bearer|credential|api[-_]?key/i;
+// High-entropy value: a single opaque token (no path/URL punctuation) that is
+// long and mixes letters with digits. Excludes `/` and `.` so filesystem paths
+// and version strings are not mistaken for secrets.
+const HIGH_ENTROPY_VALUE_RE = /^[A-Za-z0-9+_=-]{24,}$/;
 const SECRET_FLAG_RE =
   /(\s--?(?:api[-_]?key|token|secret|password|passwd|authorization))(?:=|\s+)(?:"[^"]*"|'[^']*'|[^\s]+)/gi;
+
+const assignmentValueIsSensitive = (rawValue: string): boolean => {
+  const quoted =
+    (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+    (rawValue.startsWith("'") && rawValue.endsWith("'"));
+  if (quoted) return true;
+  if (!HIGH_ENTROPY_VALUE_RE.test(rawValue)) return false;
+  return /[A-Za-z]/.test(rawValue) && /[0-9]/.test(rawValue);
+};
+
+const redactAssignment = (
+  match: string,
+  key: string,
+  rawValue: string,
+): string =>
+  SECRET_ASSIGNMENT_KEY_RE.test(key) || assignmentValueIsSensitive(rawValue)
+    ? `${key}=[REDACTED]`
+    : match;
 
 export const redactSensitiveText = (input: string): string =>
   input
@@ -24,7 +58,10 @@ export const redactSensitiveText = (input: string): string =>
     .replace(BASIC_RE, "$1 [REDACTED]")
     .replace(COOKIE_INLINE_RE, "$1: [REDACTED]")
     .replace(JWT_RE, "[REDACTED]")
-    .replace(ENV_ASSIGNMENT_RE, "$1=[REDACTED]")
+    .replace(AWS_ACCESS_KEY_RE, "[REDACTED]")
+    .replace(AWS_SECRET_KEY_RE, "$1[REDACTED]")
+    .replace(SK_TOKEN_RE, "[REDACTED]")
+    .replace(ASSIGNMENT_RE, redactAssignment)
     .replace(SECRET_FLAG_RE, "$1 [REDACTED]");
 
 export const sanitizeSensitiveData = (
