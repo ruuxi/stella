@@ -19,6 +19,7 @@ describe("redactSensitiveText", () => {
       "keyboard=us",
       "monkey=happy",
       "donkey=grey",
+      "turnkey=works",
     ])("keeps %s untouched", (input) => {
       expect(redactSensitiveText(input)).toBe(input);
     });
@@ -34,6 +35,13 @@ describe("redactSensitiveText", () => {
       ["authToken=abc", "authToken=[REDACTED]"],
       ["clientSecret=abc", "clientSecret=[REDACTED]"],
       ["credential=x", "credential=[REDACTED]"],
+      // Fused (no-delimiter) sensitive key names, both cases.
+      ["apikey=leak-me", "apikey=[REDACTED]"],
+      ["APIKEY=leak-me", "APIKEY=[REDACTED]"],
+      ["authorization=leak-me", "authorization=[REDACTED]"],
+      ["AUTHTOKEN=leak-me", "AUTHTOKEN=[REDACTED]"],
+      ["CLIENTSECRET=leak-me", "CLIENTSECRET=[REDACTED]"],
+      ["clientsecret=leak-me", "clientsecret=[REDACTED]"],
       // Whitespace around `=` must not bypass sensitive-key handling.
       ["FOO_TOKEN = leak-me", "FOO_TOKEN=[REDACTED]"],
       ["API_KEY = short", "API_KEY=[REDACTED]"],

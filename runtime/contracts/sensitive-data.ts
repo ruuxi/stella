@@ -42,6 +42,29 @@ const SECRET_KEY_TOKENS = new Set([
   "bearer",
   "credential",
 ]);
+// Established FUSED (no-delimiter) sensitive key names that splitKeyTokens
+// cannot break apart. Matched against the normalized key by exact equality or
+// a start-/end-of-key boundary — never as an unrestricted substring, so
+// `author`/`keyboard`/`monkey`/`donkey`/`turnkey` still survive.
+const FUSED_SECRET_KEYS = [
+  "apikey",
+  "apisecret",
+  "apitoken",
+  "authtoken",
+  "authorization",
+  "accesskey",
+  "accesstoken",
+  "secretkey",
+  "secrettoken",
+  "clientsecret",
+  "clientkey",
+  "privatekey",
+  "sessiontoken",
+  "bearertoken",
+  "password",
+  "passwd",
+  "passphrase",
+];
 // High-entropy value: a single opaque token (no path/URL punctuation) that is
 // long and mixes letters with digits. Excludes `/` and `.` so filesystem paths
 // and version strings are not mistaken for secrets.
@@ -58,10 +81,20 @@ const splitKeyTokens = (key: string): string[] =>
     .split(/[\s_-]+/)
     .filter(Boolean);
 
-const keyLooksSensitive = (key: string): boolean =>
-  splitKeyTokens(key).some((token) =>
-    SECRET_KEY_TOKENS.has(token.toLowerCase()),
+const keyLooksSensitive = (key: string): boolean => {
+  if (
+    splitKeyTokens(key).some((token) => SECRET_KEY_TOKENS.has(token.toLowerCase()))
+  ) {
+    return true;
+  }
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return FUSED_SECRET_KEYS.some(
+    (name) =>
+      normalized === name ||
+      normalized.startsWith(name) ||
+      normalized.endsWith(name),
   );
+};
 
 const assignmentValueIsSensitive = (rawValue: string): boolean => {
   const quoted =
