@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
+
+import type { SqliteDatabase } from "../storage/shared.js";
 
 import {
   STELLA_PROMPT_COUNT,
@@ -67,6 +68,32 @@ export type PromptManifestResolution = {
 
 const appliedStateMemory = new Map<string, AppliedPromptState>();
 const promptApplyQueueTails = new Map<string, Promise<void>>();
+
+type SqliteDatabaseCtor = new (path: string) => SqliteDatabase;
+
+const dynamicImport = (specifier: string): Promise<Record<string, unknown>> =>
+  import(/* @vite-ignore */ specifier) as Promise<Record<string, unknown>>;
+
+/**
+ * The prompt sync runs in both Electron/Node tests and Stella's detached Bun
+ * worker. A static `node:sqlite` import makes the lazily loaded runner chunk
+ * fail before it can initialize under Bun, so resolve the native database
+ * implementation for the current host at runtime instead.
+ */
+const loadSqliteDatabaseCtor = async (): Promise<SqliteDatabaseCtor> => {
+  try {
+    const nodeSqlite = await dynamicImport("node:sqlite");
+    if (typeof nodeSqlite.DatabaseSync === "function") {
+      return nodeSqlite.DatabaseSync as SqliteDatabaseCtor;
+    }
+  } catch {}
+
+  const bunSqlite = await dynamicImport("bun:sqlite");
+  if (typeof bunSqlite.Database === "function") {
+    return bunSqlite.Database as SqliteDatabaseCtor;
+  }
+  throw new Error("No compatible SQLite runtime is available.");
+};
 
 export const resetPromptAppliedStateMemoryForTests = (): void => {
   appliedStateMemory.clear();
@@ -475,9 +502,10 @@ export const compactAppliedStateRecords = async (
 const acquirePromptApplyDatabaseLock = async (
   stellaDataDir: string,
   endpoint: string,
-): Promise<DatabaseSync> => {
+): Promise<SqliteDatabase> => {
   await ensureDurableAppliedStateDirs(stellaDataDir, endpoint);
-  const database = new DatabaseSync(promptApplyLockDatabasePath(stellaDataDir));
+  const Database = await loadSqliteDatabaseCtor();
+  const database = new Database(promptApplyLockDatabasePath(stellaDataDir));
   try {
     database.exec(`PRAGMA busy_timeout = ${PROMPT_APPLY_LOCK_TIMEOUT_MS}`);
     database.exec("BEGIN IMMEDIATE");
@@ -488,7 +516,7 @@ const acquirePromptApplyDatabaseLock = async (
   }
 };
 
-const releasePromptApplyDatabaseLock = (database: DatabaseSync): void => {
+const releasePromptApplyDatabaseLock = (database: SqliteDatabase): void => {
   try {
     database.exec("ROLLBACK");
   } catch {
@@ -514,7 +542,7 @@ const withPromptApplyLock = async <T>(
   });
   promptApplyQueueTails.set(key, turn);
   await previous;
-  let database: DatabaseSync | null = null;
+  let database: SqliteDatabase | null = null;
   try {
     database = await acquirePromptApplyDatabaseLock(stellaDataDir, endpoint);
     return await operation();

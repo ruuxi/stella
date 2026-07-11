@@ -544,23 +544,32 @@ export class RuntimeHostAdapter {
   }
 
   async waitUntilReady(timeoutMs = 10_000) {
-    // Refresh the host-owned snapshot first. A worker can answer its ordinary
-    // health RPC while a watcher/staleness restart is already queued; that is
-    // not an authoritative send-ready state.
-    this.lastRuntimeHealth = await this.host.health();
-    this.emitAvailabilityChange();
-    const isSendReady = (snapshot: RuntimeAvailabilitySnapshot) =>
-      snapshot.ready && snapshot.pendingRuntimeRestart !== true;
-    if (isSendReady(this.getAvailabilitySnapshot())) return;
-    const initial = await this.agentHealthCheck();
-    this.lastRuntimeHealth = await this.host.health();
-    this.emitAvailabilityChange();
-    if (initial?.ready && isSendReady(this.getAvailabilitySnapshot())) return;
-    await this.waitForAvailability(
-      isSendReady,
-      timeoutMs,
-      "Stella is reconnecting to its runtime. Please try again.",
-    );
+    const deadline = Date.now() + timeoutMs;
+    while (true) {
+      // Host readiness only proves that the socket and host-owned services are
+      // online. The worker builds its runner lazily after that handshake, and
+      // a failed lazy import leaves the socket healthy while chats cannot run.
+      // Require both layers to report ready before accepting a send.
+      this.lastRuntimeHealth = await this.host.health();
+      const workerHealth = await this.agentHealthCheck();
+      this.emitAvailabilityChange();
+      const snapshot = this.getAvailabilitySnapshot();
+      if (
+        workerHealth?.ready === true &&
+        snapshot.ready &&
+        snapshot.pendingRuntimeRestart !== true
+      ) {
+        return;
+      }
+      if (Date.now() >= deadline) {
+        throw createRuntimeUnavailableError(
+          workerHealth?.reason ??
+            snapshot.reason ??
+            "Stella is reconnecting to its runtime. Please try again.",
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
   }
 
   async waitUntilConnected(timeoutMs = 10_000) {

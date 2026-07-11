@@ -245,6 +245,41 @@ const manifest = (
 };
 
 describe("remote prompt startup sync", () => {
+  it("acquires its cross-process lock under the Bun worker runtime", async () => {
+    const home = await tempDir();
+    const endpoint = "https://example.com/api/stella/prompts";
+    const bundle = await buildPromptSyncBundle(home);
+    const script = `
+      const { recordAppliedPromptManifest } = await import(process.env.TEST_PROMPT_SYNC_BUNDLE);
+      await recordAppliedPromptManifest({
+        stellaDataDir: process.env.TEST_STELLA_HOME,
+        endpoint: process.env.TEST_PROMPT_ENDPOINT,
+        manifest: { publishedAt: 1, revision: "a".repeat(64) },
+      });
+    `;
+    const child = spawn("bun", ["--eval", script], {
+      env: {
+        ...process.env,
+        TEST_PROMPT_SYNC_BUNDLE: pathToFileURL(bundle).href,
+        TEST_STELLA_HOME: home,
+        TEST_PROMPT_ENDPOINT: endpoint,
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.setEncoding("utf-8");
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    await new Promise<void>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", (code, signal) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Bun child exited ${code}/${signal}: ${stderr}`));
+      });
+    });
+  });
+
   it("updates untouched prompts, seeds missing prompts, and preserves customized prompts with history", async () => {
     const home = await tempDir();
     const bundled = await createBundledAgents();

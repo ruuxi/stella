@@ -97,8 +97,24 @@ describe("RuntimeHostAdapter send readiness", () => {
     const anyAdapter = adapter as any;
     anyAdapter.connected = true;
     anyAdapter.host.health = vi.fn().mockResolvedValue({ ready: true });
+    anyAdapter.host.healthCheck = vi.fn().mockResolvedValue({ ready: true });
 
     await expect(adapter.waitUntilReady(5)).resolves.toBeUndefined();
+  });
+
+  it("does not treat a healthy host socket as a ready worker runner", async () => {
+    const adapter = createAdapter();
+    const anyAdapter = adapter as any;
+    anyAdapter.connected = true;
+    anyAdapter.host.health = vi.fn().mockResolvedValue({ ready: true });
+    anyAdapter.host.healthCheck = vi.fn().mockResolvedValue({
+      ready: false,
+      reason: "Runtime worker is not ready.",
+    });
+
+    await expect(adapter.waitUntilReady(5)).rejects.toThrow(
+      "Runtime worker is not ready.",
+    );
   });
 });
 
