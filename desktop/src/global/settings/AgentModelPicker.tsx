@@ -535,7 +535,6 @@ export function AgentModelPicker({
           new CustomEvent("stella:local-model-preferences-changed"),
         );
       } catch (caught) {
-        migrationAttemptedRef.current = null;
         setError(
           caught instanceof Error
             ? caught.message
@@ -756,6 +755,7 @@ export function AgentModelPicker({
   const commitEngineSelection = useCallback(
     async (engine: ModelPickerEngine, modelId?: string): Promise<boolean> => {
       if (!preferences || pendingAgent) return false;
+      migrationAttemptedRef.current = null;
       const previous = preferences;
       setPendingAgent(ENGINE_PENDING_TARGET);
       setError(null);
@@ -1061,6 +1061,7 @@ export function AgentModelPicker({
   const handleReasoningEffortSelect = useCallback(
     async (effort: ReasoningEffort) => {
       if (!preferences || pendingAgent) return;
+      migrationAttemptedRef.current = null;
       const selectedEngine = preferences.agentRuntimeEngine;
       const writeKeys = activeAssistant ? assistantWriteKeys : [activeAgent];
       const previousReasoningEfforts = {
@@ -1295,13 +1296,16 @@ export function AgentModelPicker({
         <button
           type="button"
           className="agent-model-picker-refresh"
-          onClick={() =>
-            selectedEngine === "claude_code_local"
-              ? void loadClaudeCodeModels()
-              : selectedEngine === "codex_cli"
-                ? void codexCatalog.refresh()
-                : void refresh()
-          }
+          onClick={() => {
+            if (selectedEngine === "claude_code_local") {
+              void loadClaudeCodeModels();
+            } else if (selectedEngine === "codex_cli") {
+              migrationAttemptedRef.current = null;
+              void codexCatalog.refresh();
+            } else {
+              void refresh();
+            }
+          }}
           disabled={
             pendingAgent !== null ||
             refreshing ||

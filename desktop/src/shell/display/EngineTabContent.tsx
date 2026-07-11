@@ -627,6 +627,7 @@ export function EngineTabContent() {
           claudeCodeModelsLoading={claudeCodeModelsLoading}
           onRefreshClaudeCodeModels={() => void loadClaudeCodeModels()}
           chatGptConnected={chatGptConnection === "connected"}
+          codexCatalog={codexCatalog}
         />
       </section>
     </div>
@@ -650,6 +651,7 @@ interface ModelsSectionProps {
   claudeCodeModelsLoading: boolean;
   onRefreshClaudeCodeModels: () => void;
   chatGptConnected: boolean;
+  codexCatalog: ReturnType<typeof useCodexModelCatalog>;
 }
 
 function ModelsSection({
@@ -664,6 +666,7 @@ function ModelsSection({
   claudeCodeModelsLoading,
   onRefreshClaudeCodeModels,
   chatGptConnected,
+  codexCatalog,
 }: ModelsSectionProps) {
   const {
     models: stellaModels,
@@ -674,8 +677,6 @@ function ModelsSection({
     refreshing,
     audience,
   } = useModelCatalog();
-  const codexCatalog = useCodexModelCatalog();
-
   const modelDefaults = useMemo(
     () =>
       preferences
