@@ -500,6 +500,7 @@ export function AgentModelPicker({
   useEffect(() => {
     if (
       !preferences ||
+      pendingAgent !== null ||
       preferences.agentRuntimeEngine !== "codex_cli" ||
       chatGptConnection !== "connected" ||
       !chatGptModels.some((model) => model.id === selectedChatGptModel)
@@ -516,6 +517,7 @@ export function AgentModelPicker({
     const migrationKey = `${selectedChatGptModel}:${preferences.modelOverrides.orchestrator ?? ""}:${preferences.modelOverrides.general ?? ""}`;
     if (migrationAttemptedRef.current === migrationKey) return;
     migrationAttemptedRef.current = migrationKey;
+    setPendingAgent(ENGINE_PENDING_TARGET);
     const patch = {
       ...buildEngineRoutingPatch(
         preferences,
@@ -524,24 +526,29 @@ export function AgentModelPicker({
       ),
       ...buildEngineTransitionReasoningPatch(preferences, "codex_cli"),
     } as Partial<LocalModelPreferences>;
-    void window.electronAPI?.system
-      ?.setLocalModelPreferences?.(patch)
-      .then((saved) => {
+    void (async () => {
+      try {
+        const saved =
+          await window.electronAPI?.system?.setLocalModelPreferences?.(patch);
         if (saved) setPreferences(saved);
         window.dispatchEvent(
           new CustomEvent("stella:local-model-preferences-changed"),
         );
-      })
-      .catch((caught) => {
+      } catch (caught) {
+        migrationAttemptedRef.current = null;
         setError(
           caught instanceof Error
             ? caught.message
             : "ChatGPT routing migration failed.",
         );
-      });
+      } finally {
+        setPendingAgent(null);
+      }
+    })();
   }, [
     chatGptConnection,
     chatGptModels,
+    pendingAgent,
     preferences,
     selectedChatGptModel,
     setPreferences,
@@ -754,6 +761,9 @@ export function AgentModelPicker({
       setError(null);
       try {
         if (engine === "codex_cli") {
+          if (codexCatalog.loading) {
+            throw new Error("Wait for ChatGPT models to finish verifying.");
+          }
           const selectedModel = modelId?.trim() || preferences.codexModel;
           setChatGptConnection("checking");
           let validation = await credentials.validateOAuth(
@@ -819,6 +829,7 @@ export function AgentModelPicker({
     [
       chatGptModels,
       codexCatalog.error,
+      codexCatalog.loading,
       credentials,
       pendingAgent,
       preferences,
@@ -828,15 +839,16 @@ export function AgentModelPicker({
 
   const handleEngineChange = useCallback(
     async (engine: ModelPickerEngine) => {
-      if (!preferences || engine === selectedEngine) return;
+      if (!preferences) return;
+      if (engine === selectedEngine) {
+        setDraftEngine(null);
+        return;
+      }
       setDraftEngine(engine);
       if (engine === "claude_code_local" && claudeCodeModels === null) {
         void loadClaudeCodeModels();
       }
-      const compatibleChatGptModel = chatGptModels.some(
-        (model) => model.id === selectedChatGptModel,
-      );
-      const saved = await commitEngineSelection(
+      await commitEngineSelection(
         engine,
         engine === "codex_cli"
           ? selectedChatGptModel
@@ -844,9 +856,7 @@ export function AgentModelPicker({
             ? selectedClaudeCodeModel
             : undefined,
       );
-      if (saved || engine !== "codex_cli" || compatibleChatGptModel) {
-        setDraftEngine(null);
-      }
+      setDraftEngine(null);
     },
     [
       claudeCodeModels,
@@ -854,7 +864,6 @@ export function AgentModelPicker({
       loadClaudeCodeModels,
       preferences,
       selectedEngine,
-      chatGptModels,
       selectedChatGptModel,
       selectedClaudeCodeModel,
     ],
@@ -1386,7 +1395,7 @@ export function AgentModelPicker({
                   : "ChatGPT is disconnected."}{" "}
                 <button
                   type="button"
-                  disabled={pendingAgent !== null}
+                  disabled={pendingAgent !== null || codexCatalog.loading}
                   onClick={() =>
                     void commitEngineSelection(
                       "codex_cli",
@@ -1425,6 +1434,7 @@ export function AgentModelPicker({
                 !preferences ||
                 pendingAgent !== null ||
                 chatGptConnection !== "connected" ||
+                codexCatalog.loading ||
                 codexCatalog.models === null
               }
             />
@@ -1480,7 +1490,10 @@ export function AgentModelPicker({
             options={ENGINE_OPTIONS}
             value={selectedEngine}
             disabled={
-              !preferences || pendingAgent !== null || credentials.loading
+              !preferences ||
+              pendingAgent !== null ||
+              credentials.loading ||
+              codexCatalog.loading
             }
             onChange={(engine) => void handleEngineChange(engine)}
           />
@@ -1496,7 +1509,7 @@ export function AgentModelPicker({
               disabled={
                 pendingAgent !== null ||
                 (selectedEngine === "codex_cli" &&
-                  chatGptConnection !== "connected")
+                  (chatGptConnection !== "connected" || codexCatalog.loading))
               }
               aria-label="Reasoning effort"
               options={REASONING_EFFORT_OPTIONS.filter(

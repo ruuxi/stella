@@ -470,16 +470,23 @@ export function EngineTabContent() {
 
   const saveEngine = useCallback(
     async (engine: AgentRuntimeEngine): Promise<boolean> => {
-      if (!preferences) return false;
+      if (!preferences) {
+        setDraftEngine(null);
+        return false;
+      }
       if (
         engine === preferences.agentRuntimeEngine &&
         !(engine === "codex_cli" && chatGptConnection !== "connected")
       ) {
+        setDraftEngine(null);
         return true;
       }
       setSaving("engine");
       try {
         if (engine === "codex_cli") {
+          if (codexCatalog.loading) {
+            throw new Error("Wait for ChatGPT models to finish verifying.");
+          }
           const selectedModel = preferences.codexModel;
           const available = codexCatalog.models
             ? intersectChatGptModels(engineCatalogModels, codexCatalog.models)
@@ -570,7 +577,7 @@ export function EngineTabContent() {
             className="engine-tab__engine-list"
             options={ENGINE_OPTIONS}
             value={selectedEngine}
-            disabled={inputsDisabled}
+            disabled={inputsDisabled || codexCatalog.loading}
             onChange={(engine) => {
               setDraftEngine(engine);
               void saveEngine(engine);
@@ -598,7 +605,7 @@ export function EngineTabContent() {
               ) : (
                 <button
                   type="button"
-                  disabled={inputsDisabled}
+                  disabled={inputsDisabled || codexCatalog.loading}
                   onClick={() => void saveEngine("codex_cli")}
                 >
                   Connect
@@ -1140,6 +1147,8 @@ function ModelsSection({
                 disabled={
                   inputsDisabled ||
                   (runtimeModelEngine === "codex_cli" && !chatGptConnected) ||
+                  (runtimeModelEngine === "codex_cli" &&
+                    codexCatalog.loading) ||
                   (runtimeModelEngine === "codex_cli" &&
                     codexCatalog.models === null)
                 }

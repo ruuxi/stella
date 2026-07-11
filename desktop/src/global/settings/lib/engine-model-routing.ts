@@ -97,11 +97,11 @@ export function buildEngineRoutingPatch(
     (key) => !CONVERSATION_AGENT_KEYS.some((agentKey) => agentKey === key),
   );
 
-  const missingStellaSnapshot = CONVERSATION_AGENT_KEYS.every(
-    (key) => !stellaOverrides[key],
-  );
-  if (preferences.agentRuntimeEngine === "default" || missingStellaSnapshot) {
-    for (const key of CONVERSATION_AGENT_KEYS) {
+  for (const key of CONVERSATION_AGENT_KEYS) {
+    const shouldCapture =
+      preferences.agentRuntimeEngine === "default" ||
+      !Object.prototype.hasOwnProperty.call(stellaOverrides, key);
+    if (shouldCapture) {
       if (
         nextOverrides[key] &&
         fromOpenAiCodexModelId(nextOverrides[key]) === null
@@ -191,14 +191,11 @@ export function buildEngineTransitionReasoningPatch(
   const stellaReasoning = {
     ...preferences.stellaConversationReasoningEfforts,
   };
-  const missingStellaReasoningSnapshot = CONVERSATION_AGENT_KEYS.every(
-    (key) => !stellaReasoning[key],
-  );
-  if (
-    preferences.agentRuntimeEngine === "default" ||
-    missingStellaReasoningSnapshot
-  ) {
-    for (const key of CONVERSATION_AGENT_KEYS) {
+  for (const key of CONVERSATION_AGENT_KEYS) {
+    const shouldCapture =
+      preferences.agentRuntimeEngine === "default" ||
+      !Object.prototype.hasOwnProperty.call(stellaReasoning, key);
+    if (shouldCapture) {
       const effort = next[key];
       if (effort && effort !== "default") stellaReasoning[key] = effort;
       else delete stellaReasoning[key];

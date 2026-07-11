@@ -219,4 +219,47 @@ describe("engine model routing", () => {
       },
     });
   });
+
+  it("fills each missing legacy snapshot key without replacing existing keys", () => {
+    const partialClaude = {
+      ...preferences,
+      agentRuntimeEngine: "claude_code_local" as const,
+      stellaConversationModelOverrides: {
+        orchestrator: "openrouter/existing-orchestrator",
+      },
+    };
+    expect(buildEngineRoutingPatch(partialClaude, "default")).toMatchObject({
+      modelOverrides: {
+        orchestrator: "openrouter/existing-orchestrator",
+        general: "anthropic/claude-opus-4.8",
+        chronicle: "stella/light",
+      },
+      stellaConversationModelOverrides: {
+        orchestrator: "openrouter/existing-orchestrator",
+        general: "anthropic/claude-opus-4.8",
+      },
+    });
+
+    expect(
+      buildEngineTransitionReasoningPatch(
+        {
+          agentRuntimeEngine: "claude_code_local",
+          reasoningEfforts: {
+            orchestrator: "medium",
+            general: "low",
+          },
+          stellaConversationReasoningEfforts: { orchestrator: "high" },
+          codexReasoningEffort: "default",
+          claudeCodeReasoningEffort: "high",
+        },
+        "default",
+      ),
+    ).toEqual({
+      reasoningEfforts: { orchestrator: "high", general: "low" },
+      stellaConversationReasoningEfforts: {
+        orchestrator: "high",
+        general: "low",
+      },
+    });
+  });
 });

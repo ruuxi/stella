@@ -3,7 +3,7 @@ import type { LiveCodexModel } from "@/global/settings/lib/engine-model-routing"
 
 export function useCodexModelCatalog() {
   const [models, setModels] = useState<LiveCodexModel[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
