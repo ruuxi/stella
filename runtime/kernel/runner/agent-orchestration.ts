@@ -40,6 +40,7 @@ import {
   sanitizeAuthoredCommitSubject,
 } from "../self-mod/feature-namer.js";
 import type { MediatedWriteCapture } from "../self-mod/logical-change-set.js";
+import { enumerateRepoChangedAbsolutePaths } from "../self-mod/logical-change-set.js";
 import { acquireSelfModMutationLock } from "../self-mod/mutation-lock.js";
 
 const collectFileChanges = (
@@ -681,20 +682,33 @@ export const createAgentOrchestration = (
         const leaseIds = [...guardedShellLeaseSessions.keys()];
         guardedShellSessionLeases.clear();
         guardedShellLeaseSessions.clear();
-        for (const leaseId of leaseIds) {
-          const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
-          guardedShellLogicalCaptures.delete(leaseId);
-          const additionalPaths = consumeLeaseAdditionalPaths(leaseId);
-          if (shellLeaseHasHmrGuard.delete(leaseId)) {
-            await endShellMutationGuard(logicalCapture);
-          } else if (logicalCapture) {
-            await context.selfModLifecycle?.finishMediatedWrite?.({
-              capture: logicalCapture,
-              ...(additionalPaths ? { additionalPaths } : {}),
-            });
-          }
-          shellLeaseMutationReleases.get(leaseId)?.();
+        // Detach EVERY mutation-release callback up front, then invoke them all
+        // in a finally that wraps capture/HMR finalization. The repo mutation
+        // lock is non-reentrant, so a throw from finishMediatedWrite
+        // (FS/Git I/O) must never strand it — and because the leases are
+        // already removed from tracking here, no later path could retry the
+        // release.
+        const pendingReleases = leaseIds.map((leaseId) => {
+          const release = shellLeaseMutationReleases.get(leaseId);
           shellLeaseMutationReleases.delete(leaseId);
+          return release;
+        });
+        try {
+          for (const leaseId of leaseIds) {
+            const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
+            guardedShellLogicalCaptures.delete(leaseId);
+            const additionalPaths = consumeLeaseAdditionalPaths(leaseId);
+            if (shellLeaseHasHmrGuard.delete(leaseId)) {
+              await endShellMutationGuard(logicalCapture);
+            } else if (logicalCapture) {
+              await context.selfModLifecycle?.finishMediatedWrite?.({
+                capture: logicalCapture,
+                ...(additionalPaths ? { additionalPaths } : {}),
+              });
+            }
+          }
+        } finally {
+          for (const release of pendingReleases) release?.();
         }
       };
 
@@ -759,16 +773,25 @@ export const createAgentOrchestration = (
         const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
         guardedShellLogicalCaptures.delete(leaseId);
         const additionalPaths = consumeLeaseAdditionalPaths(leaseId);
-        if (shellLeaseHasHmrGuard.delete(leaseId)) {
-          await endShellMutationGuard(logicalCapture);
-        } else if (logicalCapture) {
-          await context.selfModLifecycle?.finishMediatedWrite?.({
-            capture: logicalCapture,
-            ...(additionalPaths ? { additionalPaths } : {}),
-          });
-        }
-        shellLeaseMutationReleases.get(leaseId)?.();
+        const hasHmrGuard = shellLeaseHasHmrGuard.delete(leaseId);
+        // Detach the mutation-release callback BEFORE any awaited capture/HMR
+        // finalization and invoke it unconditionally in a finally. The lock is
+        // non-reentrant and the lease is already removed from tracking, so a
+        // throw from finishMediatedWrite must never leak it.
+        const releaseMutationLock = shellLeaseMutationReleases.get(leaseId);
         shellLeaseMutationReleases.delete(leaseId);
+        try {
+          if (hasHmrGuard) {
+            await endShellMutationGuard(logicalCapture);
+          } else if (logicalCapture) {
+            await context.selfModLifecycle?.finishMediatedWrite?.({
+              capture: logicalCapture,
+              ...(additionalPaths ? { additionalPaths } : {}),
+            });
+          }
+        } finally {
+          releaseMutationLock?.();
+        }
       };
 
       const recordWritePaths = async (
@@ -1257,15 +1280,39 @@ export const createAgentOrchestration = (
         // finish the logical capture, and release the lock. On the error path
         // this is handled by releaseGuardedShellSessions in the finally.
         if (externalEngineLeaseId && externalEngineLeaseSessionId) {
+          // Discover EVERY path the external turn touched by inspecting the
+          // working tree under the STILL-HELD mutation lock — external engines
+          // (e.g. Claude Code) never report Bash-side writes. Feed these to the
+          // HMR contention tracker (so the apply pipeline produces a pending
+          // changeset for them) and to the logical capture (so it attributes
+          // them), independent of the engine's own file list.
+          const discoveredPaths = await enumerateRepoChangedAbsolutePaths(
+            context.stellaAppDir ?? process.cwd(),
+          ).catch((error) => {
+            console.warn(
+              "[self-mod] failed to enumerate external-turn changes:",
+              (error as Error).message,
+            );
+            return [] as string[];
+          });
           const externalChangedPaths = [
-            ...collectWrittenPaths(result.fileChanges),
-            ...collectWrittenPaths(result.producedFiles),
+            ...new Set([
+              ...collectWrittenPaths(result.fileChanges),
+              ...collectWrittenPaths(result.producedFiles),
+              ...discoveredPaths,
+            ]),
           ];
           if (externalChangedPaths.length > 0) {
             shellLeaseAdditionalPaths.set(
               externalEngineLeaseId,
               externalChangedPaths,
             );
+            await recordWritePaths(externalChangedPaths).catch((error) => {
+              console.warn(
+                "[self-mod-hmr] failed to record external-turn changes:",
+                (error as Error).message,
+              );
+            });
           }
           await releaseShellSessionGuard(externalEngineLeaseSessionId);
           externalEngineLeaseId = null;

@@ -160,6 +160,7 @@ const createRepo = async () => {
   git(repoRoot, ["config", "user.email", "test@stella.local"]);
   git(repoRoot, ["config", "commit.gpgsign", "false"]);
   await mkdir(path.join(repoRoot, "desktop/src"), { recursive: true });
+  await writeFile(path.join(repoRoot, ".gitignore"), ".vite/\nnode_modules/\n");
   await writeFile(path.join(repoRoot, "index.html"), "<div id='app'></div>\n");
   await writeFile(
     path.join(repoRoot, "desktop/src/shared.ts"),
@@ -804,6 +805,109 @@ const runNativeExternalEngineRace = async (
   ).toBe("2");
 };
 
+type ExternalTurnExecutor = Parameters<HarnessDriver["runTool"]>[1];
+
+const selectorForConversation = (
+  h: ProductionHarness,
+  conversationId: string,
+): string | undefined =>
+  [...h.pending.values()].find(
+    (pending) => pending.conversationId === conversationId,
+  )?.changeSetId;
+
+// Drives ONE real external-engine subagent turn through the production
+// orchestration wrapper (real mutation lock, all-repo capture, lease reuse,
+// git-status discovery, and release). The external engine itself is scripted:
+// `driver` mutates the working tree the way Codex/Claude would under
+// danger-full-access and returns the fileChanges the engine WOULD report
+// (Claude omits Bash-side writes). `executeTool` backs any nested Stella tool
+// the driver routes through the passed executor; `selfModLifecycle` can be
+// overridden to inject a capture-finalization failure.
+const runSingleExternalTurn = async (
+  h: ProductionHarness,
+  args: {
+    conversationId: string;
+    agentEngine?: "codex_cli" | "claude_code_local";
+    driver: (executor: ExternalTurnExecutor) => Promise<ToolResult>;
+    selfModLifecycle?: unknown;
+    executeTool?: (
+      toolName: string,
+      toolArgs: Record<string, unknown>,
+      ctx: ToolContext,
+    ) => Promise<ToolResult>;
+  },
+): Promise<{ threadId: string; status: string | undefined }> => {
+  let nextThread = 0;
+  const toolHost = {
+    getToolCatalog: () => [],
+    executeTool:
+      args.executeTool ?? (async () => ({ result: "unused" }) as ToolResult),
+    registerExtensionTools: vi.fn(),
+    drainCompletedShellProducedFiles: vi.fn(async () => []),
+    killAllShells: vi.fn(),
+    killShell: vi.fn(),
+    killShellsByPort: vi.fn(),
+    shutdown: vi.fn(),
+  };
+  const context = {
+    stellaAppDir: h.repoRoot,
+    stellaDataDir: h.dataRoot,
+    deviceId: "device-1",
+    runtimeStore: {
+      resolveOrCreateActiveThread: () => ({
+        threadId: `thread-${++nextThread}`,
+        reused: false,
+      }),
+      listActiveThreads: () => [],
+      saveAgentRecord: vi.fn(),
+      getAgentRecord: () => null,
+    },
+    appendLocalChatEvent: vi.fn(),
+    state: {
+      localAgentManager: null,
+      runCallbacksByRunId: new Map(),
+      conversationCallbacks: new Map(),
+      convexSiteUrl: null,
+      authToken: null,
+      orchestratorSessions: new Map(),
+    },
+    selfModHmrController: h.controller,
+    selfModLifecycle: args.selfModLifecycle ?? h.coordinator.lifecycle,
+    toolHost,
+    hookEmitter: { emit: vi.fn() },
+    paths: {},
+  } as any;
+
+  (
+    globalThis as unknown as { __selfModProductionHarness: HarnessDriver }
+  ).__selfModProductionHarness = {
+    runTool: async (_surface, executor) => await args.driver(executor),
+  };
+
+  createAgentOrchestration(context, {
+    buildAgentContext: async () => ({
+      systemPrompt: "",
+      dynamicContext: "",
+      maxAgentDepth: 1,
+      agentEngine: args.agentEngine ?? "codex_cli",
+    }),
+    sendMessage: async () => {},
+  });
+
+  const run = await context.state.localAgentManager.createAgent({
+    conversationId: args.conversationId,
+    description: args.conversationId,
+    prompt: args.conversationId,
+    agentType: AGENT_IDS.GENERAL,
+    storageMode: "local",
+  });
+  const snapshot = await waitForAgent(
+    context.state.localAgentManager,
+    run.threadId,
+  );
+  return { threadId: run.threadId, status: snapshot?.status };
+};
+
 describe("production-path self-mod concurrency harness", () => {
   it("P0: serializes one subagent apply_patch transaction against an orchestrator mutation", async () => {
     const h = await createRepo();
@@ -1060,6 +1164,212 @@ describe("production-path self-mod concurrency harness", () => {
   it("P1: serializes and isolates concurrent native external-engine (Codex) turns", async () => {
     await runNativeExternalEngineRace(["a", "b"]);
     await runNativeExternalEngineRace(["b", "a"]);
+  });
+
+  it("P1(a): attributes a Claude Bash-created file the engine never reported", async () => {
+    const h = await createRepo();
+    const createdRel = "desktop/src/created-by-bash.ts";
+    const createdAbs = path.join(h.repoRoot, createdRel);
+    const createdText = "export const createdByBash = true;\n";
+
+    await runSingleExternalTurn(h, {
+      conversationId: "claude-bash-create",
+      agentEngine: "claude_code_local",
+      driver: async () => {
+        // Claude Bash-side `mkdir … && printf … > new-file`: lands in the tree
+        // but is INVISIBLE to Claude's tool-event file collector.
+        await mkdir(path.dirname(createdAbs), { recursive: true });
+        await writeFile(createdAbs, createdText);
+        return { fileChanges: [] } as ToolResult;
+      },
+    });
+
+    const selector = selectorForConversation(h, "claude-bash-create");
+    expect(selector).toBeTruthy();
+    const frozen = h.service.getPreparedLogicalChangeSet(selector!);
+    const created = frozen?.files.find((file) => file.path === createdRel);
+    expect(created).toBeTruthy();
+    expect(created?.base).toMatchObject({ kind: "missing" });
+    expect(created?.incoming).toMatchObject({ text: createdText });
+
+    expect(
+      await h.coordinator.applyPendingWithMorph({ commitHash: selector! }),
+    ).toMatchObject({ applied: true });
+    expect(await resumeLatestTransition(h)).toMatchObject({ ok: true });
+    expect(git(h.repoRoot, ["show", `HEAD:${createdRel}`])).toBe(createdText);
+    expect(getSelfModMutationLockStatus(h.repoRoot)).toEqual({
+      locked: false,
+      queued: 0,
+    });
+  });
+
+  it("P1(b): captures a deletion performed during an external turn", async () => {
+    const h = await createRepo();
+    const rel = "desktop/src/doomed.ts";
+    const abs = path.join(h.repoRoot, rel);
+    await writeFile(abs, "export const doomed = 1;\n");
+    git(h.repoRoot, ["add", rel]);
+    git(h.repoRoot, ["commit", "-q", "-m", "seed doomed"]);
+
+    await runSingleExternalTurn(h, {
+      conversationId: "codex-delete",
+      driver: async () => {
+        await rm(abs);
+        return { fileChanges: [] } as ToolResult;
+      },
+    });
+
+    const selector = selectorForConversation(h, "codex-delete");
+    expect(selector).toBeTruthy();
+    const frozen = h.service.getPreparedLogicalChangeSet(selector!);
+    const deleted = frozen?.files.find((file) => file.path === rel);
+    expect(deleted).toBeTruthy();
+    expect(deleted?.incoming).toMatchObject({ kind: "missing" });
+
+    expect(
+      await h.coordinator.applyPendingWithMorph({ commitHash: selector! }),
+    ).toMatchObject({ applied: true });
+    expect(await resumeLatestTransition(h)).toMatchObject({ ok: true });
+    expect(git(h.repoRoot, ["ls-files", rel]).trim()).toBe("");
+    expect(getSelfModMutationLockStatus(h.repoRoot)).toEqual({
+      locked: false,
+      queued: 0,
+    });
+  });
+
+  it("P1(c): a nested Stella tool reuses the external lease without re-acquiring the lock", async () => {
+    const h = await createRepo();
+    const editedRel = "desktop/src/shared.ts";
+    const editedAbs = path.join(h.repoRoot, editedRel);
+    const bashRel = "desktop/src/bash-side.ts";
+    const bashAbs = path.join(h.repoRoot, bashRel);
+    let lockDuringNested = { locked: false, queued: 0 };
+
+    await runSingleExternalTurn(h, {
+      conversationId: "nested-reuse",
+      executeTool: async (toolName, toolArgs, ctx) =>
+        toolName === "apply_patch"
+          ? await handleApplyPatch(toolArgs, ctx)
+          : ({ result: "unused" } as ToolResult),
+      driver: async (executor) => {
+        // External Bash-side write (unreported by the engine).
+        await writeFile(bashAbs, "export const bashSide = true;\n");
+        // Nested Stella tool routed back through the REAL hmrAwareToolExecutor
+        // while the external lease holds the (non-reentrant) lock. Must reuse
+        // the lease instead of deadlocking on a second acquisition.
+        const nested = await executor(
+          "apply_patch",
+          { input: patchFor(editedAbs, "original", "from-nested") },
+          {
+            conversationId: "nested-reuse",
+            deviceId: "device-1",
+            requestId: "nested-reuse-request",
+            stellaAppDir: h.repoRoot,
+          } as ToolContext,
+        );
+        lockDuringNested = getSelfModMutationLockStatus(h.repoRoot);
+        return { fileChanges: nested.fileChanges ?? [] } as ToolResult;
+      },
+    });
+
+    // Single owner throughout the nested call: the lease was reused, so no
+    // second acquisition and nothing queued.
+    expect(lockDuringNested.locked).toBe(true);
+    expect(lockDuringNested.queued).toBe(0);
+
+    const selector = selectorForConversation(h, "nested-reuse");
+    expect(selector).toBeTruthy();
+    const frozen = h.service.getPreparedLogicalChangeSet(selector!);
+    const paths = (frozen?.files ?? []).map((file) => file.path).sort();
+    // BOTH the Bash-side creation and the nested tool edit attribute to this run.
+    expect(paths).toEqual([bashRel, editedRel].sort());
+    expect(getSelfModMutationLockStatus(h.repoRoot)).toEqual({
+      locked: false,
+      queued: 0,
+    });
+  });
+
+  it("P1(d): a throw during the native turn still releases the mutation lock", async () => {
+    const h = await createRepo();
+
+    const failed = await runSingleExternalTurn(h, {
+      conversationId: "throwing-turn",
+      driver: async () => {
+        await writeFile(path.join(h.repoRoot, "desktop/src/partial.ts"), "x\n");
+        throw new Error("synthetic external engine failure");
+      },
+    });
+    expect(failed.status).toBe("error");
+    // Failed runs produce no pending changeset, and the lock is free.
+    expect(selectorForConversation(h, "throwing-turn")).toBeUndefined();
+    expect(getSelfModMutationLockStatus(h.repoRoot)).toEqual({
+      locked: false,
+      queued: 0,
+    });
+
+    // A subsequent external run still acquires the lock and commits.
+    await runSingleExternalTurn(h, {
+      conversationId: "after-throw",
+      driver: async () => {
+        await writeFile(path.join(h.repoRoot, "desktop/src/after.ts"), "y\n");
+        return { fileChanges: [] } as ToolResult;
+      },
+    });
+    expect(selectorForConversation(h, "after-throw")).toBeTruthy();
+    expect(getSelfModMutationLockStatus(h.repoRoot)).toEqual({
+      locked: false,
+      queued: 0,
+    });
+  });
+
+  it("P1(e): a capture-finalization failure does NOT leak the mutation lock", async () => {
+    const h = await createRepo();
+    let failNextFinish = true;
+    const lifecycle = {
+      ...h.coordinator.lifecycle,
+      finishMediatedWrite: async (
+        finishArgs: Parameters<
+          typeof h.coordinator.lifecycle.finishMediatedWrite
+        >[0],
+      ) => {
+        if (failNextFinish) {
+          failNextFinish = false;
+          throw new Error("synthetic capture finalization failure");
+        }
+        return await h.coordinator.lifecycle.finishMediatedWrite(finishArgs);
+      },
+    };
+
+    await runSingleExternalTurn(h, {
+      conversationId: "finish-throws",
+      selfModLifecycle: lifecycle,
+      driver: async () => {
+        await writeFile(path.join(h.repoRoot, "desktop/src/e.ts"), "z\n");
+        return { fileChanges: [] } as ToolResult;
+      },
+    });
+
+    // The exact P0 repro: finishMediatedWrite threw, but the non-reentrant lock
+    // MUST have been released regardless.
+    expect(getSelfModMutationLockStatus(h.repoRoot)).toEqual({
+      locked: false,
+      queued: 0,
+    });
+    expect(failNextFinish).toBe(false);
+
+    // The lock is genuinely free: a subsequent run proceeds and commits.
+    await runSingleExternalTurn(h, {
+      conversationId: "finish-after",
+      driver: async () => {
+        await writeFile(path.join(h.repoRoot, "desktop/src/after-e.ts"), "w\n");
+        return { fileChanges: [] } as ToolResult;
+      },
+    });
+    expect(selectorForConversation(h, "finish-after")).toBeTruthy();
+    expect(getSelfModMutationLockStatus(h.repoRoot)).toEqual({
+      locked: false,
+      queued: 0,
+    });
   });
 
   it("P0: selector, update-all, discard, and restart use strict V2 overlays", async () => {

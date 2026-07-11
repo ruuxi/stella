@@ -87,6 +87,34 @@ type MutableLogicalRun = {
 };
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Absolute paths of every file created, modified, or deleted in the working
+ * tree relative to HEAD (untracked via `ls-files --others --exclude-standard`,
+ * plus tracked modifications/deletions via `diff --name-only HEAD`). Callers
+ * enumerate this WHILE HOLDING the mutation lock so an external engine's
+ * Bash-side writes — which it never reports — can be recorded for HMR and
+ * attributed to the run independently of the engine's own file list.
+ */
+export const enumerateRepoChangedAbsolutePaths = async (
+  repoRoot: string,
+): Promise<string[]> => {
+  const runGit = async (args: string[]): Promise<string[]> => {
+    const { stdout } = await execFileAsync("git", args, {
+      cwd: repoRoot,
+      encoding: "buffer",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    return Buffer.from(stdout).toString("utf8").split("\0").filter(Boolean);
+  };
+  const [untracked, tracked] = await Promise.all([
+    runGit(["ls-files", "--others", "--exclude-standard", "-z"]),
+    runGit(["diff", "--name-only", "-z", "HEAD"]),
+  ]);
+  const unique = new Set<string>([...untracked, ...tracked]);
+  return [...unique].map((relative) => path.join(repoRoot, relative));
+};
+
 const CONFLICT_EXCERPT_MAX = 2_000;
 const BINARY_RANGE: LineRange = { start: 0, end: Number.MAX_SAFE_INTEGER };
 
@@ -372,6 +400,24 @@ export class LogicalSelfModChangeSetStore {
     if (!capture) return;
     const run = this.activeRuns.get(capture.runId);
     if (!run) return;
+    // For all-repo captures, DISCOVER files created during the turn
+    // independently of any engine-reported path list: enumerate the current
+    // tracked + untracked working tree and treat every path absent from the
+    // pre-turn snapshot as a creation (base = missing) so the diff loop below
+    // attributes it. This is essential for external engines (e.g. Claude Code)
+    // whose Bash-side `>` / `mkdir` writes are invisible to their tool-event
+    // file collectors. Runs while the caller still holds the mutation lock.
+    if (capture.completeRepoSnapshot) {
+      const { stdout } = await execFileAsync(
+        "git",
+        ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        { cwd: this.repoRoot, encoding: "buffer", maxBuffer: 32 * 1024 * 1024 },
+      );
+      for (const relative of Buffer.from(stdout).toString("utf8").split("\0")) {
+        if (!relative || capture.before.has(relative)) continue;
+        capture.before.set(relative, { kind: "missing" });
+      }
+    }
     for (const candidate of additionalAbsolutePaths) {
       const relative = this.normalizePath(candidate);
       if (!relative || capture.before.has(relative)) continue;
