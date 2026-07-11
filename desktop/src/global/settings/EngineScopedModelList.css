@@ -49,7 +49,11 @@
 .engine-scoped-model-list__rows > button:hover:not(:disabled),
 .engine-scoped-model-list__rows > button:focus-visible {
   background: color-mix(in oklch, var(--text-strong) 5%, transparent);
-  outline: none;
+}
+
+.engine-scoped-model-list__rows > button:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: -2px;
 }
 
 .engine-scoped-model-list__rows > button[data-selected] {

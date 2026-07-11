@@ -146,7 +146,7 @@ export function EngineRuntimeModelPanel({
           />
         </div>
 
-        <div className="engine-runtime-model-panel__list" role="listbox">
+        <div className="engine-runtime-model-panel__list">
           {loading && models.length === 0 ? (
             <p className="engine-runtime-model-panel__empty">
               Loading {providerLabel} models…
@@ -169,6 +169,7 @@ export function EngineRuntimeModelPanel({
                 onToggleFavorite={toggleFavorite}
                 reasoningEffort={reasoningEffort}
                 onSelectReasoning={onSelectReasoning}
+                providerLabel={providerLabel}
               />
             ))
           )}
@@ -179,6 +180,7 @@ export function EngineRuntimeModelPanel({
 }
 
 type EngineRuntimeModelRowProps = {
+  providerLabel: string;
   model: EngineRuntimeModelOption;
   selected: boolean;
   favorite: boolean;
@@ -193,6 +195,7 @@ type EngineRuntimeModelRowProps = {
 };
 
 const EngineRuntimeModelRow = memo(function EngineRuntimeModelRow({
+  providerLabel,
   model,
   selected,
   favorite,
@@ -212,8 +215,7 @@ const EngineRuntimeModelRow = memo(function EngineRuntimeModelRow({
     >
       <button
         type="button"
-        role="option"
-        aria-selected={selected}
+        aria-pressed={selected}
         aria-disabled={model.unavailable || undefined}
         className="engine-runtime-model-panel__model"
         data-selected={selected || undefined}
@@ -268,7 +270,10 @@ const EngineRuntimeModelRow = memo(function EngineRuntimeModelRow({
                 )
               }
             >
-              {REASONING_OPTIONS.map((option) => (
+              {REASONING_OPTIONS.filter(
+                (option) =>
+                  providerLabel !== "Claude Code" || option.id !== "minimal",
+              ).map((option) => (
                 <DropdownMenuRadioItem key={option.id} value={option.id}>
                   {option.label}
                 </DropdownMenuRadioItem>

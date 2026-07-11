@@ -3,6 +3,8 @@ import type { CatalogModel } from "../../../src/global/settings/lib/model-catalo
 import {
   buildEngineReasoningPatch,
   buildEngineRoutingPatch,
+  buildEngineTransitionReasoningPatch,
+  intersectChatGptModels,
   listChatGptCatalogModels,
 } from "../../../src/global/settings/lib/engine-model-routing";
 
@@ -21,6 +23,7 @@ const preferences = {
     general: "anthropic/claude-opus-4.8",
     chronicle: "stella/light",
   },
+  stellaConversationModelOverrides: {},
   assistantPropagatedAgents: ["general", "explore"],
   agentRuntimeEngine: "default" as const,
   codexModel: "gpt-5.4",
@@ -41,6 +44,20 @@ describe("engine model routing", () => {
     ]);
   });
 
+  it("only shows models present in both the registry and live Codex list", () => {
+    const models = [
+      catalogModel("openai-codex", "gpt-5.4"),
+      catalogModel("openai-codex", "gpt-5.4-mini"),
+    ];
+    expect(
+      intersectChatGptModels(models, [
+        { id: "gpt-5.4", hidden: false },
+        { id: "gpt-5.4-mini", hidden: true },
+        { id: "future-model", hidden: false },
+      ]).map((model) => model.modelId),
+    ).toEqual(["gpt-5.4"]);
+  });
+
   it("routes ChatGPT orchestrator through OAuth and general through Codex", () => {
     expect(
       buildEngineRoutingPatch(preferences, "codex_cli", "gpt-5.4"),
@@ -53,6 +70,10 @@ describe("engine model routing", () => {
         chronicle: "stella/light",
       },
       assistantPropagatedAgents: ["explore"],
+      stellaConversationModelOverrides: {
+        orchestrator: "anthropic/claude-opus-4.8",
+        general: "anthropic/claude-opus-4.8",
+      },
     });
   });
 
@@ -70,6 +91,7 @@ describe("engine model routing", () => {
     expect(buildEngineRoutingPatch(chatGptPreferences, "default")).toEqual({
       agentRuntimeEngine: "default",
       modelOverrides: { chronicle: "stella/light" },
+      stellaConversationModelOverrides: {},
       assistantPropagatedAgents: ["explore"],
     });
   });
@@ -81,16 +103,22 @@ describe("engine model routing", () => {
       agentRuntimeEngine: "claude_code_local",
       claudeCodeModel: "opus",
       modelOverrides: preferences.modelOverrides,
+      stellaConversationModelOverrides: {
+        orchestrator: "anthropic/claude-opus-4.8",
+        general: "anthropic/claude-opus-4.8",
+      },
       assistantPropagatedAgents: ["explore"],
     });
   });
 
   it("uses engine-specific reasoning storage for ChatGPT and Claude Code", () => {
     const reasoningPreferences = {
+      agentRuntimeEngine: "default" as const,
       reasoningEfforts: {
         orchestrator: "low" as const,
         general: "low" as const,
       },
+      stellaConversationReasoningEfforts: {},
       codexReasoningEffort: "default" as const,
       claudeCodeReasoningEffort: "default" as const,
     };
@@ -114,6 +142,39 @@ describe("engine model routing", () => {
     ).toEqual({
       reasoningEfforts: {},
       claudeCodeReasoningEffort: "xhigh",
+    });
+  });
+
+  it("restores Stella reasoning after a ChatGPT round trip", () => {
+    const base = {
+      agentRuntimeEngine: "default" as const,
+      reasoningEfforts: {
+        orchestrator: "low" as const,
+        general: "low" as const,
+      },
+      stellaConversationReasoningEfforts: {},
+      codexReasoningEffort: "high" as const,
+      claudeCodeReasoningEffort: "default" as const,
+    };
+    const entering = buildEngineTransitionReasoningPatch(base, "codex_cli");
+    expect(entering).toEqual({
+      reasoningEfforts: { orchestrator: "high" },
+      stellaConversationReasoningEfforts: {
+        orchestrator: "low",
+        general: "low",
+      },
+    });
+    expect(
+      buildEngineTransitionReasoningPatch(
+        { ...base, ...entering, agentRuntimeEngine: "codex_cli" },
+        "default",
+      ),
+    ).toEqual({
+      reasoningEfforts: { orchestrator: "low", general: "low" },
+      stellaConversationReasoningEfforts: {
+        orchestrator: "low",
+        general: "low",
+      },
     });
   });
 });

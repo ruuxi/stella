@@ -481,6 +481,7 @@ type SystemHandlersOptions = {
     listener: (runner: StellaHostRunner | null) => void,
   ) => () => void;
   getStellaAppDir: () => string | null;
+  onPromptSiteUrlConfigured?: (siteUrl: string) => void;
   externalLinkService: ExternalLinkService;
   ensurePrivilegedActionApproval: (
     action: string,
@@ -862,6 +863,7 @@ const asSocialSessionStatus = (value: unknown): RuntimeSocialSessionStatus => {
 };
 
 export const registerSystemHandlers = (options: SystemHandlersOptions) => {
+  const activeOAuthLogins = new Map<string, AbortController>();
   ipcMain.handle("device:getId", () => options.getDeviceId());
 
   ipcMain.handle(IPC_APP_QUIT_FOR_RESTART, (event) => {
@@ -1037,6 +1039,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           convexUrl,
           convexSiteUrl,
         });
+        if (convexSiteUrl) {
+          options.onPromptSiteUrlConfigured?.(convexSiteUrl);
+        }
       }
       return { deviceId: options.getDeviceId() };
     },
@@ -2108,12 +2113,17 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         throw new Error("Unknown personality preset id.");
       }
       const normalized = coercePersonalityId(voiceId);
-      setPersonalityVoiceId(stellaAppDir, normalized);
+      const previous = coercePersonalityId(getPersonalityVoiceId(stellaAppDir));
       try {
+        setPersonalityVoiceId(stellaAppDir, normalized);
         writePersonality(stellaAppDir, normalized);
-      } catch {
-        // Best-effort — the seed pass on the next orchestrator turn will
-        // re-compose from the preference if the file is missing.
+      } catch (error) {
+        setPersonalityVoiceId(stellaAppDir, previous);
+        return {
+          ok: false,
+          voiceId: previous,
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
       return { ok: true, voiceId: normalized };
     },
@@ -2167,7 +2177,10 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     const oauthToken = stellaAppDir
       ? await getLocalLlmOAuthApiKey(stellaAppDir, "anthropic")
       : null;
-    return listClaudeCodeModels({ apiKey, oauthToken }, stellaAppDir ?? undefined);
+    return listClaudeCodeModels(
+      { apiKey, oauthToken },
+      stellaAppDir ?? undefined,
+    );
   });
 
   ipcMain.handle(
@@ -2194,6 +2207,12 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       const nextReasoningEfforts = sanitizeReasoningEfforts(
         payload?.reasoningEfforts,
       );
+      const nextStellaConversationModelOverrides = sanitizeStringRecord(
+        payload?.stellaConversationModelOverrides,
+      );
+      const nextStellaConversationReasoningEfforts = sanitizeReasoningEfforts(
+        payload?.stellaConversationReasoningEfforts,
+      );
 
       const agentRuntimeEngine = coerceAgentRuntimeEngine(
         payload?.agentRuntimeEngine,
@@ -2216,6 +2235,14 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
       if (payload?.reasoningEfforts !== undefined) {
         patch.reasoningEfforts = nextReasoningEfforts;
+      }
+      if (payload?.stellaConversationModelOverrides !== undefined) {
+        patch.stellaConversationModelOverrides =
+          nextStellaConversationModelOverrides;
+      }
+      if (payload?.stellaConversationReasoningEfforts !== undefined) {
+        patch.stellaConversationReasoningEfforts =
+          nextStellaConversationReasoningEfforts;
       }
       if (payload?.agentRuntimeEngine !== undefined) {
         patch.agentRuntimeEngine = agentRuntimeEngine;
@@ -2328,29 +2355,95 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         throw new Error("Unsupported OAuth provider.");
       }
 
-      const credentials = await provider.login({
-        onAuth: (info) => {
-          void shell.openExternal(info.url);
-        },
-        onPrompt: async (prompt) => {
-          if (prompt.allowEmpty) return "";
-          const result = await dialog.showMessageBox({
-            type: "info",
-            message: prompt.message,
-            detail: prompt.placeholder
-              ? `Expected value: ${prompt.placeholder}`
-              : undefined,
-            buttons: ["Continue"],
-          });
-          return result.response === 0 ? "" : "";
-        },
-      });
+      const loginKey = `${event.sender.id}:${providerId}`;
+      activeOAuthLogins.get(loginKey)?.abort();
+      const controller = new AbortController();
+      activeOAuthLogins.set(loginKey, controller);
+      const abortOnSenderDestroyed = () => controller.abort();
+      event.sender.once("destroyed", abortOnSenderDestroyed);
+      try {
+        const credentials = await provider.login({
+          onAuth: (info) => {
+            void shell.openExternal(info.url);
+          },
+          onPrompt: async (prompt) => {
+            if (prompt.allowEmpty) return "";
+            const result = await dialog.showMessageBox({
+              type: "info",
+              message: prompt.message,
+              detail: prompt.placeholder
+                ? `Expected value: ${prompt.placeholder}`
+                : undefined,
+              buttons: ["Continue"],
+            });
+            return result.response === 0 ? "" : "";
+          },
+          signal: controller.signal,
+        });
 
-      return saveLocalLlmOAuthCredential(stellaAppDir, {
-        provider: provider.id,
-        label: provider.name,
-        credentials,
-      });
+        return saveLocalLlmOAuthCredential(stellaAppDir, {
+          provider: provider.id,
+          label: provider.name,
+          credentials,
+        });
+      } finally {
+        event.sender.removeListener("destroyed", abortOnSenderDestroyed);
+        if (activeOAuthLogins.get(loginKey) === controller) {
+          activeOAuthLogins.delete(loginKey);
+        }
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "llmCredentials:cancelOAuth",
+    (event, payload: { provider?: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "llmCredentials:cancelOAuth",
+        )
+      ) {
+        throw new Error("Blocked untrusted OAuth cancel request.");
+      }
+      const providerId = asTrimmedString(payload?.provider).toLowerCase();
+      const key = `${event.sender.id}:${providerId}`;
+      const controller = activeOAuthLogins.get(key);
+      controller?.abort();
+      return { canceled: Boolean(controller) };
+    },
+  );
+
+  ipcMain.handle(
+    "llmCredentials:validateOAuth",
+    async (event, payload: { provider?: string }) => {
+      if (
+        !options.externalLinkService.assertPrivilegedSender(
+          event,
+          "llmCredentials:validateOAuth",
+        )
+      ) {
+        throw new Error("Blocked untrusted OAuth validation request.");
+      }
+      const stellaAppDir = options.getStellaAppDir();
+      const provider = asTrimmedString(payload?.provider).toLowerCase();
+      if (!stellaAppDir || !provider) {
+        return { connected: false, needsReauth: false };
+      }
+      if (
+        !listLocalLlmOAuthCredentials(stellaAppDir).some(
+          (entry) => entry.provider === provider,
+        )
+      ) {
+        return { connected: false, needsReauth: false };
+      }
+      try {
+        const key = await getLocalLlmOAuthApiKey(stellaAppDir, provider);
+        return { connected: Boolean(key), needsReauth: !key };
+      } catch {
+        deleteLocalLlmOAuthCredential(stellaAppDir, provider);
+        return { connected: false, needsReauth: true };
+      }
     },
   );
 

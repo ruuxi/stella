@@ -29,6 +29,24 @@ const writePreferences = (
 };
 
 describe("loadLocalPreferences", () => {
+  it("persists engine-scoped Stella state and normalizes Claude minimal", () => {
+    const stellaDataDir = makeStellaDataDir();
+    writePreferences(stellaDataDir, {
+      stellaConversationModelOverrides: {
+        orchestrator: " anthropic/claude-opus-4.8 ",
+      },
+      stellaConversationReasoningEfforts: { orchestrator: "high" },
+      claudeCodeReasoningEffort: "minimal",
+    });
+    const loaded = loadLocalPreferences(stellaDataDir);
+    expect(loaded.stellaConversationModelOverrides).toEqual({
+      orchestrator: "anthropic/claude-opus-4.8",
+    });
+    expect(loaded.stellaConversationReasoningEfforts).toEqual({
+      orchestrator: "high",
+    });
+    expect(loaded.claudeCodeReasoningEffort).toBe("low");
+  });
   it("defaults wake-word listening off when the preference is missing", () => {
     const stellaDataDir = makeStellaDataDir();
     writePreferences(stellaDataDir, {});
@@ -158,7 +176,9 @@ describe("loadLocalPreferences", () => {
     });
 
     expect(saved.codexReasoningEffort).toBe("high");
-    expect(loadLocalPreferences(stellaDataDir).codexReasoningEffort).toBe("high");
+    expect(loadLocalPreferences(stellaDataDir).codexReasoningEffort).toBe(
+      "high",
+    );
   });
 
   it("preserves the Claude Code model preference", () => {
@@ -169,7 +189,9 @@ describe("loadLocalPreferences", () => {
     });
 
     expect(saved.claudeCodeModel).toBe("sonnet[1m]");
-    expect(loadLocalPreferences(stellaDataDir).claudeCodeModel).toBe("sonnet[1m]");
+    expect(loadLocalPreferences(stellaDataDir).claudeCodeModel).toBe(
+      "sonnet[1m]",
+    );
   });
 
   it("defaults realtime voice to Stella", () => {

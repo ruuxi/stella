@@ -34,6 +34,8 @@ import {
 } from "@/global/settings/ProviderOnlyPicker";
 import { VoiceProviderPicker } from "@/global/settings/VoiceProviderPicker";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
+import { useCodexModelCatalog } from "@/global/settings/hooks/use-codex-model-catalog";
+import { EnginePickerPill } from "@/global/settings/EnginePickerPill";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
   buildModelDefaultsMap,
@@ -49,15 +51,12 @@ import {
 } from "@/global/billing/audience";
 import type { RealtimeVoicePreferences } from "../../../../runtime/contracts/local-preferences";
 import { EngineRuntimeModelPanel } from "./EngineRuntimeModelPanel";
-import {
-  findOauthCredential,
-  useLlmCredentials,
-} from "@/global/settings/hooks/use-llm-credentials";
+import { useLlmCredentials } from "@/global/settings/hooks/use-llm-credentials";
 import {
   buildEngineReasoningPatch,
   buildEngineRoutingPatch,
-  DEFAULT_CHATGPT_MODEL,
-  listChatGptCatalogModels,
+  buildEngineTransitionReasoningPatch,
+  intersectChatGptModels,
   OPENAI_CODEX_PROVIDER,
 } from "@/global/settings/lib/engine-model-routing";
 import "./engine-tab.css";
@@ -98,6 +97,8 @@ type LocalModelPreferences = {
   modelOverrides: Record<string, string>;
   assistantPropagatedAgents: string[];
   reasoningEfforts: Record<string, ReasoningEffort>;
+  stellaConversationModelOverrides: Record<string, string>;
+  stellaConversationReasoningEfforts: Record<string, ReasoningEffort>;
   agentRuntimeEngine: AgentRuntimeEngine;
   codexModel: string;
   codexReasoningEffort: CodexReasoningPreference;
@@ -221,6 +222,7 @@ let cachedPreferences: LocalModelPreferences | null = null;
 /* ── component ────────────────────────────────────────────────── */
 
 export function EngineTabContent() {
+  const { allModels: engineCatalogModels } = useModelCatalog();
   const [preferences, setPreferences] = useState<LocalModelPreferences | null>(
     () => cachedPreferences,
   );
@@ -233,12 +235,22 @@ export function EngineTabContent() {
   const [status, setStatus] = useState<Status | null>(null);
   const [mediaTab, setMediaTab] = useState<MediaTab>("agents");
   const credentials = useLlmCredentials();
+  const codexCatalog = useCodexModelCatalog();
+  const [chatGptConnection, setChatGptConnection] = useState<
+    "checking" | "connected" | "disconnected" | "needs-reauth"
+  >("checking");
+  const [draftEngine, setDraftEngine] = useState<AgentRuntimeEngine | null>(
+    null,
+  );
+  const oauthPendingRef = useRef(false);
+  const migrationAttemptedRef = useRef<string | null>(null);
 
   const selfDispatchRef = useRef(false);
   const noticeTimerRef = useRef<number | null>(null);
   const claudeCodeModelsLoadedRef = useRef(false);
 
-  const selectedEngine = preferences?.agentRuntimeEngine ?? "default";
+  const selectedEngine =
+    draftEngine ?? preferences?.agentRuntimeEngine ?? "default";
   const inputsDisabled = loading || saving !== null;
 
   /* ── status helpers ─────────────────────────────────────────── */
@@ -296,7 +308,7 @@ export function EngineTabContent() {
       if (!preferences) return null;
       const previous = preferences;
       const optimistic: LocalModelPreferences = { ...previous, ...patch };
-      const markSaving = kind !== "overrides" && kind !== "engine";
+      const markSaving = kind !== null;
       cachedPreferences = optimistic;
       setPreferences(optimistic);
       if (markSaving) {
@@ -374,6 +386,65 @@ export function EngineTabContent() {
   }, [loadClaudeCodeModels, selectedEngine]);
 
   useEffect(() => {
+    if (selectedEngine !== "codex_cli") return;
+    let cancelled = false;
+    void credentials.validateOAuth(OPENAI_CODEX_PROVIDER).then((result) => {
+      if (!cancelled) {
+        setChatGptConnection(
+          result.connected
+            ? "connected"
+            : result.needsReauth
+              ? "needs-reauth"
+              : "disconnected",
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [credentials.validateOAuth, selectedEngine]);
+
+  useEffect(() => {
+    if (
+      !preferences ||
+      selectedEngine !== "codex_cli" ||
+      chatGptConnection !== "connected" ||
+      !codexCatalog.models
+    )
+      return;
+    const compatible = intersectChatGptModels(
+      engineCatalogModels,
+      codexCatalog.models,
+    ).some((model) => model.modelId === preferences.codexModel);
+    if (!compatible) return;
+    const route = `${OPENAI_CODEX_PROVIDER}/${preferences.codexModel}`;
+    if (
+      preferences.modelOverrides.orchestrator === route &&
+      preferences.modelOverrides.general === route
+    )
+      return;
+    const key = `${preferences.codexModel}:${preferences.modelOverrides.orchestrator ?? ""}:${preferences.modelOverrides.general ?? ""}`;
+    if (migrationAttemptedRef.current === key) return;
+    migrationAttemptedRef.current = key;
+    const patch = {
+      ...buildEngineRoutingPatch(
+        preferences,
+        "codex_cli",
+        preferences.codexModel,
+      ),
+      ...buildEngineTransitionReasoningPatch(preferences, "codex_cli"),
+    };
+    void writePreferences(patch, "engine");
+  }, [
+    chatGptConnection,
+    codexCatalog.models,
+    engineCatalogModels,
+    preferences,
+    selectedEngine,
+    writePreferences,
+  ]);
+
+  useEffect(() => {
     void load();
     const onExternalChange = () => {
       if (selfDispatchRef.current) {
@@ -386,6 +457,9 @@ export function EngineTabContent() {
     return () => {
       window.removeEventListener(PREFS_EVENT, onExternalChange);
       if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current);
+      if (oauthPendingRef.current) {
+        void credentials.cancelOAuth(OPENAI_CODEX_PROVIDER);
+      }
     };
     // `load` is stable for the panel's lifetime; avoid re-subscribing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -395,32 +469,63 @@ export function EngineTabContent() {
 
   const saveEngine = useCallback(
     async (engine: AgentRuntimeEngine) => {
-      if (!preferences || engine === preferences.agentRuntimeEngine) return;
+      if (
+        !preferences ||
+        (engine === preferences.agentRuntimeEngine &&
+          !(engine === "codex_cli" && chatGptConnection !== "connected"))
+      )
+        return;
+      setSaving("engine");
       try {
-        if (
-          engine === "codex_cli" &&
-          !findOauthCredential(
-            credentials.oauthCredentials,
+        if (engine === "codex_cli") {
+          const selectedModel = preferences.codexModel;
+          const available = codexCatalog.models
+            ? intersectChatGptModels(engineCatalogModels, codexCatalog.models)
+            : [];
+          if (!available.some((model) => model.modelId === selectedModel)) {
+            throw new Error(
+              codexCatalog.error ??
+                "Choose an available ChatGPT model before changing routes.",
+            );
+          }
+          let validation = await credentials.validateOAuth(
             OPENAI_CODEX_PROVIDER,
-          )
-        ) {
-          await credentials.loginOAuth(OPENAI_CODEX_PROVIDER, {
-            announceConnection: false,
-          });
+          );
+          if (!validation.connected) {
+            oauthPendingRef.current = true;
+            await credentials.loginOAuth(OPENAI_CODEX_PROVIDER, {
+              announceConnection: false,
+            });
+            oauthPendingRef.current = false;
+            validation = await credentials.validateOAuth(OPENAI_CODEX_PROVIDER);
+          }
+          if (!validation.connected) {
+            setChatGptConnection(
+              validation.needsReauth ? "needs-reauth" : "disconnected",
+            );
+            throw new Error("ChatGPT needs to be connected before selection.");
+          }
+          setChatGptConnection("connected");
         }
-        const patch = buildEngineRoutingPatch(
-          preferences,
-          engine,
+        const model =
           engine === "codex_cli"
-            ? preferences.codexModel === DEFAULT_CODEX_MODEL
-              ? DEFAULT_CHATGPT_MODEL
-              : preferences.codexModel
+            ? preferences.codexModel
             : engine === "claude_code_local"
               ? preferences.claudeCodeModel
-              : undefined,
-        );
+              : undefined;
+        const patch = {
+          ...buildEngineRoutingPatch(preferences, engine, model),
+          ...buildEngineTransitionReasoningPatch(preferences, engine),
+        };
         await writePreferences(patch, "engine");
       } catch (caught) {
+        oauthPendingRef.current = false;
+        if (
+          caught instanceof Error &&
+          caught.message.toLowerCase().includes("cancel")
+        ) {
+          setDraftEngine(null);
+        }
         showError(
           errorText(
             caught,
@@ -429,9 +534,20 @@ export function EngineTabContent() {
               : "Could not change the engine.",
           ),
         );
+      } finally {
+        setSaving(null);
       }
     },
-    [credentials, preferences, showError, writePreferences],
+    [
+      chatGptConnection,
+      codexCatalog.error,
+      codexCatalog.models,
+      credentials,
+      engineCatalogModels,
+      preferences,
+      showError,
+      writePreferences,
+    ],
   );
 
   /* ── render ─────────────────────────────────────────────────── */
@@ -451,31 +567,46 @@ export function EngineTabContent() {
 
           <span className="engine-tab__engine-kicker">Engine</span>
 
-          <div
+          <EnginePickerPill
             className="engine-tab__engine-list"
-            role="radiogroup"
-            aria-label="Model engine"
-          >
-            {ENGINE_OPTIONS.map((option) => {
-              const selected = option.id === selectedEngine;
-              return (
+            options={ENGINE_OPTIONS}
+            value={selectedEngine}
+            disabled={inputsDisabled}
+            onChange={(engine) => {
+              setDraftEngine(engine);
+              void saveEngine(engine);
+            }}
+          />
+          {selectedEngine === "codex_cli" &&
+          chatGptConnection !== "connected" ? (
+            <div className="engine-tab__connection" role="status">
+              <span>
+                {chatGptConnection === "needs-reauth"
+                  ? "ChatGPT needs to be reconnected."
+                  : chatGptConnection === "checking"
+                    ? "Checking ChatGPT…"
+                    : "ChatGPT is disconnected."}
+              </span>
+              {saving === "engine" && oauthPendingRef.current ? (
                 <button
-                  key={option.id}
                   type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  data-selected={selected || undefined}
-                  className="engine-tab__engine-option"
-                  disabled={inputsDisabled}
-                  onClick={() => void saveEngine(option.id)}
+                  onClick={() =>
+                    void credentials.cancelOAuth(OPENAI_CODEX_PROVIDER)
+                  }
                 >
-                  <span className="engine-tab__engine-label">
-                    {option.label}
-                  </span>
+                  Cancel
                 </button>
-              );
-            })}
-          </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={inputsDisabled}
+                  onClick={() => void saveEngine("codex_cli")}
+                >
+                  Connect
+                </button>
+              )}
+            </div>
+          ) : null}
         </div>
 
         <ModelsSection
@@ -489,6 +620,7 @@ export function EngineTabContent() {
           claudeCodeModels={claudeCodeModels}
           claudeCodeModelsLoading={claudeCodeModelsLoading}
           onRefreshClaudeCodeModels={() => void loadClaudeCodeModels()}
+          chatGptConnected={chatGptConnection === "connected"}
         />
       </section>
     </div>
@@ -511,6 +643,7 @@ interface ModelsSectionProps {
   claudeCodeModels: ClaudeCodeModelOption[];
   claudeCodeModelsLoading: boolean;
   onRefreshClaudeCodeModels: () => void;
+  chatGptConnected: boolean;
 }
 
 function ModelsSection({
@@ -524,6 +657,7 @@ function ModelsSection({
   claudeCodeModels,
   claudeCodeModelsLoading,
   onRefreshClaudeCodeModels,
+  chatGptConnected,
 }: ModelsSectionProps) {
   const {
     models: stellaModels,
@@ -534,6 +668,7 @@ function ModelsSection({
     refreshing,
     audience,
   } = useModelCatalog();
+  const codexCatalog = useCodexModelCatalog();
 
   const modelDefaults = useMemo(
     () =>
@@ -599,12 +734,15 @@ function ModelsSection({
 
   const codexRuntimeModels = useMemo(
     () =>
-      listChatGptCatalogModels(allModels).map((model) => ({
+      (codexCatalog.models
+        ? intersectChatGptModels(allModels, codexCatalog.models)
+        : []
+      ).map((model) => ({
         id: model.modelId,
         label: model.name || model.modelId,
         subtitle: model.modelId,
       })),
-    [allModels],
+    [allModels, codexCatalog.models],
   );
 
   const claudeRuntimeModels = useMemo(
@@ -630,7 +768,6 @@ function ModelsSection({
     // empty base means loading/failed, not stale.
     if (
       !selectedRuntimeModelId ||
-      base.length === 0 ||
       base.some((model) => model.id === selectedRuntimeModelId)
     ) {
       return base;
@@ -682,6 +819,22 @@ function ModelsSection({
         reasoningEfforts: nextReasoning,
         assistantPropagatedAgents: Array.from(nextPropagated),
       };
+      if (preferences.agentRuntimeEngine === "default") {
+        const stellaModels = {
+          ...(preferences.stellaConversationModelOverrides ?? {}),
+        };
+        const stellaReasoning = {
+          ...(preferences.stellaConversationReasoningEfforts ?? {}),
+        };
+        for (const key of ["orchestrator", GENERAL_AGENT_KEY]) {
+          if (nextOverrides[key]) stellaModels[key] = nextOverrides[key];
+          else delete stellaModels[key];
+          if (nextReasoning[key]) stellaReasoning[key] = nextReasoning[key];
+          else delete stellaReasoning[key];
+        }
+        patch.stellaConversationModelOverrides = stellaModels;
+        patch.stellaConversationReasoningEfforts = stellaReasoning;
+      }
       if (modelId.startsWith(CLAUDE_CODE_MODEL_PREFIX)) {
         const claudeCodeModel = fromRuntimeOverrideId(modelId);
         if (
@@ -791,6 +944,12 @@ function ModelsSection({
         modelOverrides: nextOverrides,
         reasoningEfforts: nextReasoning,
         assistantPropagatedAgents: Array.from(nextPropagated),
+        ...(preferences.agentRuntimeEngine === "default"
+          ? {
+              stellaConversationModelOverrides: {},
+              stellaConversationReasoningEfforts: {},
+            }
+          : {}),
       },
       "overrides",
     );
@@ -850,10 +1009,12 @@ function ModelsSection({
   const runtimePanelFavoriteScope =
     runtimeModelEngine === "codex_cli" ? "engine:codex" : "engine:claude-code";
   const runtimePanelLoading =
-    runtimeModelEngine === "codex_cli" ? refreshing : claudeCodeModelsLoading;
+    runtimeModelEngine === "codex_cli"
+      ? codexCatalog.loading
+      : claudeCodeModelsLoading;
   const runtimePanelRefresh =
     runtimeModelEngine === "codex_cli"
-      ? () => void refresh()
+      ? () => void codexCatalog.refresh()
       : onRefreshClaudeCodeModels;
 
   return (
@@ -942,7 +1103,12 @@ function ModelsSection({
                 models={activeRuntimeModels}
                 selectedModelId={selectedRuntimeModelId}
                 loading={runtimePanelLoading}
-                disabled={inputsDisabled}
+                disabled={
+                  inputsDisabled ||
+                  (runtimeModelEngine === "codex_cli" && !chatGptConnected) ||
+                  (runtimeModelEngine === "codex_cli" &&
+                    codexCatalog.models === null)
+                }
                 favoriteScope={runtimePanelFavoriteScope}
                 onRefresh={runtimePanelRefresh}
                 onSelectModel={(modelId) =>

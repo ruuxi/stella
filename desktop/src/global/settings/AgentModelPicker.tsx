@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "@/ui/icons";
 import { ProviderModelPanel } from "@/global/settings/ProviderModelPanel";
 import {
@@ -18,6 +18,8 @@ import {
 } from "../../../../runtime/contracts/local-preferences";
 import { Select } from "@/ui/select";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
+import { useCodexModelCatalog } from "@/global/settings/hooks/use-codex-model-catalog";
+import { EnginePickerPill } from "@/global/settings/EnginePickerPill";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
   buildModelDefaultsMap,
@@ -35,17 +37,15 @@ import {
 } from "@/global/billing/audience";
 import { router } from "@/router";
 import { openEngineDisplayTab } from "@/features/workspace-display/default-tabs";
-import {
-  findOauthCredential,
-  useLlmCredentials,
-} from "@/global/settings/hooks/use-llm-credentials";
+import { useLlmCredentials } from "@/global/settings/hooks/use-llm-credentials";
 import {
   buildEngineReasoningPatch,
   buildEngineRoutingPatch,
+  buildEngineTransitionReasoningPatch,
   DEFAULT_CHATGPT_MODEL,
   DEFAULT_CLAUDE_CODE_MODEL,
   fromOpenAiCodexModelId,
-  listChatGptCatalogModels,
+  intersectChatGptModels,
   OPENAI_CODEX_PROVIDER,
   type ModelPickerEngine,
 } from "@/global/settings/lib/engine-model-routing";
@@ -62,6 +62,8 @@ type LocalModelPreferences = {
   modelOverrides: Record<string, string>;
   assistantPropagatedAgents: string[];
   reasoningEfforts: Record<string, ReasoningEffort>;
+  stellaConversationModelOverrides: Record<string, string>;
+  stellaConversationReasoningEfforts: Record<string, ReasoningEffort>;
   agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
   codexModel: string;
   codexReasoningEffort: ReasoningEffort;
@@ -284,6 +286,13 @@ export function AgentModelPicker({
   >(null);
   const [claudeCodeModelsLoading, setClaudeCodeModelsLoading] = useState(false);
   const credentials = useLlmCredentials();
+  const codexCatalog = useCodexModelCatalog();
+  const [chatGptConnection, setChatGptConnection] = useState<
+    "checking" | "connected" | "disconnected" | "needs-reauth"
+  >("checking");
+  const [draftEngine, setDraftEngine] = useState<ModelPickerEngine | null>(
+    null,
+  );
 
   // Mirror state writes into the module-level cache so re-mounting the
   // picker (Radix unmounts popover content on close) shows the last
@@ -405,8 +414,11 @@ export function AgentModelPicker({
   }, [allModels]);
 
   const chatGptCatalogModels = useMemo(
-    () => listChatGptCatalogModels(allModels),
-    [allModels],
+    () =>
+      codexCatalog.models
+        ? intersectChatGptModels(allModels, codexCatalog.models)
+        : [],
+    [allModels, codexCatalog.models],
   );
   const chatGptModels = useMemo<EngineScopedModelOption[]>(
     () =>
@@ -417,10 +429,6 @@ export function AgentModelPicker({
       })),
     [chatGptCatalogModels],
   );
-  const chatGptModelIds = useMemo(
-    () => new Set(chatGptModels.map((model) => model.id)),
-    [chatGptModels],
-  );
   const savedChatGptOverride = preferences
     ? fromOpenAiCodexModelId(
         preferences.modelOverrides.orchestrator ??
@@ -429,18 +437,108 @@ export function AgentModelPicker({
       )
     : null;
   const selectedChatGptModel =
-    (savedChatGptOverride && chatGptModelIds.has(savedChatGptOverride)
-      ? savedChatGptOverride
-      : null) ??
-    (preferences?.codexModel && chatGptModelIds.has(preferences.codexModel)
-      ? preferences.codexModel
-      : null) ??
-    (chatGptModelIds.has(DEFAULT_CHATGPT_MODEL)
-      ? DEFAULT_CHATGPT_MODEL
-      : chatGptModels[0]?.id) ??
-    DEFAULT_CHATGPT_MODEL;
+    savedChatGptOverride ?? preferences?.codexModel ?? DEFAULT_CHATGPT_MODEL;
+  const chatGptModelsWithCurrent = useMemo<EngineScopedModelOption[]>(() => {
+    if (
+      !selectedChatGptModel ||
+      chatGptModels.some((model) => model.id === selectedChatGptModel)
+    ) {
+      return chatGptModels;
+    }
+    return [
+      ...chatGptModels,
+      {
+        id: selectedChatGptModel,
+        label: selectedChatGptModel,
+        description: "Unavailable — choose another model",
+        unavailable: true,
+      },
+    ];
+  }, [chatGptModels, selectedChatGptModel]);
   const selectedClaudeCodeModel =
     preferences?.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL;
+  const selectedEngine =
+    draftEngine ?? preferences?.agentRuntimeEngine ?? "default";
+  const oauthPendingRef = useRef(false);
+  const migrationAttemptedRef = useRef<string | null>(null);
+
+  useEffect(
+    () => () => {
+      if (oauthPendingRef.current) {
+        void credentials.cancelOAuth(OPENAI_CODEX_PROVIDER);
+      }
+    },
+    [credentials.cancelOAuth],
+  );
+
+  useEffect(() => {
+    if (preferences?.agentRuntimeEngine !== "codex_cli") return;
+    let cancelled = false;
+    void credentials.validateOAuth(OPENAI_CODEX_PROVIDER).then((result) => {
+      if (!cancelled) {
+        setChatGptConnection(
+          result.connected
+            ? "connected"
+            : result.needsReauth
+              ? "needs-reauth"
+              : "disconnected",
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [credentials.validateOAuth, preferences?.agentRuntimeEngine]);
+
+  useEffect(() => {
+    if (
+      !preferences ||
+      preferences.agentRuntimeEngine !== "codex_cli" ||
+      chatGptConnection !== "connected" ||
+      !chatGptModels.some((model) => model.id === selectedChatGptModel)
+    ) {
+      return;
+    }
+    const route = `${OPENAI_CODEX_PROVIDER}/${selectedChatGptModel}`;
+    if (
+      preferences.modelOverrides.orchestrator === route &&
+      preferences.modelOverrides.general === route
+    ) {
+      return;
+    }
+    const migrationKey = `${selectedChatGptModel}:${preferences.modelOverrides.orchestrator ?? ""}:${preferences.modelOverrides.general ?? ""}`;
+    if (migrationAttemptedRef.current === migrationKey) return;
+    migrationAttemptedRef.current = migrationKey;
+    const patch = {
+      ...buildEngineRoutingPatch(
+        preferences,
+        "codex_cli",
+        selectedChatGptModel,
+      ),
+      ...buildEngineTransitionReasoningPatch(preferences, "codex_cli"),
+    } as Partial<LocalModelPreferences>;
+    void window.electronAPI?.system
+      ?.setLocalModelPreferences?.(patch)
+      .then((saved) => {
+        if (saved) setPreferences(saved);
+        window.dispatchEvent(
+          new CustomEvent("stella:local-model-preferences-changed"),
+        );
+      })
+      .catch((caught) => {
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "ChatGPT routing migration failed.",
+        );
+      });
+  }, [
+    chatGptConnection,
+    chatGptModels,
+    preferences,
+    selectedChatGptModel,
+    setPreferences,
+  ]);
 
   const defaultModelMap = useMemo(
     () => buildModelDefaultsMap(modelDefaults),
@@ -570,16 +668,31 @@ export function AgentModelPicker({
       }
 
       setPendingAgent(activeAgent);
+      const nextStellaConversationModelOverrides = {
+        ...(preferences.stellaConversationModelOverrides ?? {}),
+      };
+      if (preferences.agentRuntimeEngine === "default") {
+        for (const key of ASSISTANT_AGENT_KEYS) {
+          if (nextOverrides[key]) {
+            nextStellaConversationModelOverrides[key] = nextOverrides[key];
+          } else {
+            delete nextStellaConversationModelOverrides[key];
+          }
+        }
+      }
       setPreferences({
         ...preferences,
         modelOverrides: nextOverrides,
         assistantPropagatedAgents: nextPropagated,
+        stellaConversationModelOverrides: nextStellaConversationModelOverrides,
       });
       try {
         const saved =
           await window.electronAPI?.system?.setLocalModelPreferences?.({
             modelOverrides: nextOverrides,
             assistantPropagatedAgents: nextPropagated,
+            stellaConversationModelOverrides:
+              nextStellaConversationModelOverrides,
           });
         if (saved) setPreferences(saved);
         // Let other listeners (notably the Memory tab's chronicle gate)
@@ -600,6 +713,8 @@ export function AgentModelPicker({
                 ...current,
                 modelOverrides: previousOverrides,
                 assistantPropagatedAgents: previousPropagated,
+                stellaConversationModelOverrides:
+                  preferences.stellaConversationModelOverrides,
               }
             : current,
         );
@@ -631,23 +746,39 @@ export function AgentModelPicker({
       setPendingAgent(ENGINE_PENDING_TARGET);
       setError(null);
       try {
-        if (
-          engine === "codex_cli" &&
-          !findOauthCredential(
-            credentials.oauthCredentials,
+        if (engine === "codex_cli") {
+          const selectedModel = modelId?.trim() || preferences.codexModel;
+          setChatGptConnection("checking");
+          let validation = await credentials.validateOAuth(
             OPENAI_CODEX_PROVIDER,
-          )
-        ) {
-          await credentials.loginOAuth(OPENAI_CODEX_PROVIDER, {
-            announceConnection: false,
-          });
+          );
+          if (!validation.connected) {
+            oauthPendingRef.current = true;
+            await credentials.loginOAuth(OPENAI_CODEX_PROVIDER, {
+              announceConnection: false,
+            });
+            oauthPendingRef.current = false;
+            validation = await credentials.validateOAuth(OPENAI_CODEX_PROVIDER);
+          }
+          if (!validation.connected) {
+            setChatGptConnection(
+              validation.needsReauth ? "needs-reauth" : "disconnected",
+            );
+            throw new Error("ChatGPT needs to be connected before selection.");
+          }
+          setChatGptConnection("connected");
+          if (!chatGptModels.some((model) => model.id === selectedModel)) {
+            throw new Error(
+              codexCatalog.error ??
+                "Choose an available ChatGPT model before changing routes.",
+            );
+          }
         }
 
-        const patch = buildEngineRoutingPatch(
-          preferences,
-          engine,
-          modelId,
-        ) as Partial<LocalModelPreferences>;
+        const patch = {
+          ...buildEngineRoutingPatch(preferences, engine, modelId),
+          ...buildEngineTransitionReasoningPatch(preferences, engine),
+        } as Partial<LocalModelPreferences>;
         const optimistic = { ...preferences, ...patch };
         setPreferences(optimistic);
         const saved =
@@ -658,6 +789,13 @@ export function AgentModelPicker({
         );
         return true;
       } catch (caught) {
+        oauthPendingRef.current = false;
+        if (
+          caught instanceof Error &&
+          caught.message.toLowerCase().includes("cancel")
+        ) {
+          setDraftEngine(null);
+        }
         setPreferences(previous);
         setError(
           caught instanceof Error && caught.message.trim()
@@ -671,16 +809,27 @@ export function AgentModelPicker({
         setPendingAgent(null);
       }
     },
-    [credentials, pendingAgent, preferences, setPreferences],
+    [
+      chatGptModels,
+      codexCatalog.error,
+      credentials,
+      pendingAgent,
+      preferences,
+      setPreferences,
+    ],
   );
 
   const handleEngineChange = useCallback(
     async (engine: ModelPickerEngine) => {
-      if (!preferences || engine === preferences.agentRuntimeEngine) return;
+      if (!preferences || engine === selectedEngine) return;
+      setDraftEngine(engine);
       if (engine === "claude_code_local" && claudeCodeModels === null) {
         void loadClaudeCodeModels();
       }
-      await commitEngineSelection(
+      const compatibleChatGptModel = chatGptModels.some(
+        (model) => model.id === selectedChatGptModel,
+      );
+      const saved = await commitEngineSelection(
         engine,
         engine === "codex_cli"
           ? selectedChatGptModel
@@ -688,12 +837,17 @@ export function AgentModelPicker({
             ? selectedClaudeCodeModel
             : undefined,
       );
+      if (saved || engine !== "codex_cli" || compatibleChatGptModel) {
+        setDraftEngine(null);
+      }
     },
     [
       claudeCodeModels,
       commitEngineSelection,
       loadClaudeCodeModels,
       preferences,
+      selectedEngine,
+      chatGptModels,
       selectedChatGptModel,
       selectedClaudeCodeModel,
     ],
@@ -702,13 +856,13 @@ export function AgentModelPicker({
   const handleEngineModelSelect = useCallback(
     async (modelId: string) => {
       if (!preferences) return;
-      const saved = await commitEngineSelection(
-        preferences.agentRuntimeEngine,
-        modelId,
-      );
-      if (saved) onSelected?.();
+      const saved = await commitEngineSelection(selectedEngine, modelId);
+      if (saved) {
+        setDraftEngine(null);
+        onSelected?.();
+      }
     },
-    [commitEngineSelection, onSelected, preferences],
+    [commitEngineSelection, onSelected, preferences, selectedEngine],
   );
 
   const handleImageProviderSelect = useCallback(
@@ -994,7 +1148,6 @@ export function AgentModelPicker({
         ? getModelPickerDisplayLabel(current, modelNamesById)
         : defaultLabel
       : "Loading…";
-  const selectedEngine = preferences?.agentRuntimeEngine ?? "default";
   const claudeCodeModelsWithCurrent = useMemo<EngineScopedModelOption[]>(() => {
     const models = claudeCodeModels ?? [];
     if (
@@ -1129,9 +1282,16 @@ export function AgentModelPicker({
           onClick={() =>
             selectedEngine === "claude_code_local"
               ? void loadClaudeCodeModels()
-              : void refresh()
+              : selectedEngine === "codex_cli"
+                ? void codexCatalog.refresh()
+                : void refresh()
           }
-          disabled={refreshing || claudeCodeModelsLoading}
+          disabled={
+            pendingAgent !== null ||
+            refreshing ||
+            claudeCodeModelsLoading ||
+            codexCatalog.loading
+          }
           title={
             selectedEngine === "claude_code_local"
               ? "Refresh Claude Code models"
@@ -1155,6 +1315,19 @@ export function AgentModelPicker({
         {error ? (
           <p className="agent-model-picker-error" role="alert">
             {error}
+          </p>
+        ) : null}
+        {pendingAgent === ENGINE_PENDING_TARGET && oauthPendingRef.current ? (
+          <p className="agent-model-picker-connection" role="status">
+            Waiting for ChatGPT…{" "}
+            <button
+              type="button"
+              onClick={() =>
+                void credentials.cancelOAuth(OPENAI_CODEX_PROVIDER)
+              }
+            >
+              Cancel
+            </button>
           </p>
         ) : null}
 
@@ -1197,14 +1370,45 @@ export function AgentModelPicker({
             />
           </>
         ) : selectedEngine === "codex_cli" ? (
-          <EngineScopedModelList
-            engineLabel="ChatGPT"
-            models={chatGptModels}
-            value={selectedChatGptModel}
-            onSelect={(modelId) => void handleEngineModelSelect(modelId)}
-            loading={refreshing}
-            disabled={!preferences || pendingAgent !== null}
-          />
+          <>
+            {chatGptConnection === "disconnected" ||
+            chatGptConnection === "needs-reauth" ? (
+              <p className="agent-model-picker-connection">
+                {chatGptConnection === "needs-reauth"
+                  ? "ChatGPT needs to be reconnected."
+                  : "ChatGPT is disconnected."}{" "}
+                <button
+                  type="button"
+                  disabled={pendingAgent !== null}
+                  onClick={() =>
+                    void commitEngineSelection(
+                      "codex_cli",
+                      selectedChatGptModel,
+                    )
+                  }
+                >
+                  Connect
+                </button>
+              </p>
+            ) : codexCatalog.error ? (
+              <p className="agent-model-picker-error" role="alert">
+                ChatGPT models could not be verified: {codexCatalog.error}
+              </p>
+            ) : null}
+            <EngineScopedModelList
+              engineLabel="ChatGPT"
+              models={chatGptModelsWithCurrent}
+              value={selectedChatGptModel}
+              onSelect={(modelId) => void handleEngineModelSelect(modelId)}
+              loading={codexCatalog.loading}
+              disabled={
+                !preferences ||
+                pendingAgent !== null ||
+                chatGptConnection !== "connected" ||
+                codexCatalog.models === null
+              }
+            />
+          </>
         ) : selectedEngine === "claude_code_local" ? (
           <EngineScopedModelList
             engineLabel="Claude Code"
@@ -1251,32 +1455,15 @@ export function AgentModelPicker({
 
       {activeProviderSetting ? null : (
         <div className="agent-model-picker-footer">
-          <div
+          <EnginePickerPill
             className="agent-model-picker-engine"
-            role="radiogroup"
-            aria-label="Engine"
-          >
-            {ENGINE_OPTIONS.map((option) => {
-              const active = option.id === selectedEngine;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  data-active={active || undefined}
-                  disabled={
-                    !preferences ||
-                    pendingAgent !== null ||
-                    (option.id === "codex_cli" && credentials.loading)
-                  }
-                  onClick={() => void handleEngineChange(option.id)}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
+            options={ENGINE_OPTIONS}
+            value={selectedEngine}
+            disabled={
+              !preferences || pendingAgent !== null || credentials.loading
+            }
+            onChange={(engine) => void handleEngineChange(engine)}
+          />
           <div className="agent-model-picker-reasoning">
             <span>Reasoning</span>
             <Select
@@ -1286,9 +1473,17 @@ export function AgentModelPicker({
                   void handleReasoningEffortSelect(value);
                 }
               }}
-              disabled={pendingAgent !== null}
+              disabled={
+                pendingAgent !== null ||
+                (selectedEngine === "codex_cli" &&
+                  chatGptConnection !== "connected")
+              }
               aria-label="Reasoning effort"
-              options={REASONING_EFFORT_OPTIONS.map((option) => ({
+              options={REASONING_EFFORT_OPTIONS.filter(
+                (option) =>
+                  selectedEngine !== "claude_code_local" ||
+                  option.id !== "minimal",
+              ).map((option) => ({
                 value: option.id,
                 label: option.label,
               }))}

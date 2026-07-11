@@ -51,6 +51,11 @@ export type LlmCredentialActions = {
     provider: string,
     options?: { announceConnection?: boolean },
   ) => Promise<void>;
+  cancelOAuth: (provider: string) => Promise<void>;
+  validateOAuth: (provider: string) => Promise<{
+    connected: boolean;
+    needsReauth: boolean;
+  }>;
   logoutOAuth: (provider: string) => Promise<void>;
 };
 
@@ -223,6 +228,25 @@ export function useLlmCredentials(): LlmCredentials {
     knownConnected.delete(provider);
   }, []);
 
+  const cancelOAuth = useCallback(async (provider: string) => {
+    await window.electronAPI?.system?.cancelLlmOAuthCredential?.(provider);
+  }, []);
+
+  const validateOAuth = useCallback(async (provider: string) => {
+    const result =
+      await window.electronAPI?.system?.validateLlmOAuthCredential?.(provider);
+    const next = result ?? { connected: false, needsReauth: false };
+    if (!next.connected) {
+      const current = credentialStore.get(SINGLETON_KEY).data ?? EMPTY_SNAPSHOT;
+      credentialStore.set(SINGLETON_KEY, {
+        ...current,
+        oauthCredentials: removeProvider(current.oauthCredentials, provider),
+      });
+      knownConnected.delete(provider);
+    }
+    return next;
+  }, []);
+
   return {
     apiKeys: snapshot.apiKeys,
     oauthProviders: snapshot.oauthProviders,
@@ -233,6 +257,8 @@ export function useLlmCredentials(): LlmCredentials {
     saveApiKey,
     removeApiKey,
     loginOAuth,
+    cancelOAuth,
+    validateOAuth,
     logoutOAuth,
   };
 }

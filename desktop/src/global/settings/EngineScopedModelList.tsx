@@ -28,7 +28,6 @@ export function EngineScopedModelList({
   return (
     <div
       className="engine-scoped-model-list"
-      role="listbox"
       aria-label={`${engineLabel} models`}
     >
       <div className="engine-scoped-model-list__head">
@@ -46,8 +45,7 @@ export function EngineScopedModelList({
               <button
                 key={model.id}
                 type="button"
-                role="option"
-                aria-selected={selected}
+                aria-pressed={selected}
                 aria-disabled={model.unavailable || undefined}
                 data-selected={selected || undefined}
                 disabled={disabled || model.unavailable}

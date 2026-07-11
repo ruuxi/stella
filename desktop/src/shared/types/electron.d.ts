@@ -358,10 +358,7 @@ export type ElectronRadialApi = {
     ) => void,
   ) => () => void;
   onAddIcon: (
-    callback: (
-      event: unknown,
-      data: { iconDataUrl: string | null },
-    ) => void,
+    callback: (event: unknown, data: { iconDataUrl: string | null }) => void,
   ) => () => void;
 };
 
@@ -905,6 +902,11 @@ export type ElectronSystemApi = {
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
+    stellaConversationModelOverrides: Record<string, string>;
+    stellaConversationReasoningEfforts: Record<
+      string,
+      "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
+    >;
     agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
     codexModel: string;
     codexReasoningEffort:
@@ -937,6 +939,11 @@ export type ElectronSystemApi = {
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
+    stellaConversationModelOverrides?: Record<string, string>;
+    stellaConversationReasoningEfforts?: Record<
+      string,
+      "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
+    >;
     agentRuntimeEngine?: "default" | "claude_code_local" | "codex_cli";
     codexModel?: string;
     codexReasoningEffort?:
@@ -965,6 +972,11 @@ export type ElectronSystemApi = {
     modelOverrides: Record<string, string>;
     assistantPropagatedAgents: string[];
     reasoningEfforts: Record<
+      string,
+      "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
+    >;
+    stellaConversationModelOverrides: Record<string, string>;
+    stellaConversationReasoningEfforts: Record<
       string,
       "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
     >;
@@ -1035,6 +1047,13 @@ export type ElectronSystemApi = {
   loginLlmOAuthCredential: (
     provider: string,
   ) => Promise<LocalLlmCredentialSummary>;
+  cancelLlmOAuthCredential: (
+    provider: string,
+  ) => Promise<{ canceled: boolean }>;
+  validateLlmOAuthCredential: (provider: string) => Promise<{
+    connected: boolean;
+    needsReauth: boolean;
+  }>;
   deleteLlmOAuthCredential: (provider: string) => Promise<{ removed: boolean }>;
   saveLlmCredential: (payload: {
     provider: string;
@@ -1816,16 +1835,13 @@ export type ElectronDisplayApi = {
    * usual sandboxed canvas path. Resolves `null` when the URL is not a valid
    * share link or the fetch fails.
    */
-  openSharedCanvas: (payload: { url: string }) => Promise<
-    | {
-        kind: "canvas-html";
-        filePath: string;
-        slug: string;
-        title: string;
-        createdAt: number;
-      }
-    | null
-  >;
+  openSharedCanvas: (payload: { url: string }) => Promise<{
+    kind: "canvas-html";
+    filePath: string;
+    slug: string;
+    title: string;
+    createdAt: number;
+  } | null>;
   listTrash: () => Promise<{
     items: Array<{
       id: string;

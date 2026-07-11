@@ -98,7 +98,8 @@
 .agent-model-picker-engine button:hover:not(:disabled),
 .agent-model-picker-engine button:focus-visible {
   color: var(--text-strong);
-  outline: none;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: 2px;
 }
 
 .agent-model-picker-engine button[data-active] {

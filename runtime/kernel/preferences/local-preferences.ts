@@ -86,6 +86,10 @@ export type LocalPreferences = {
   assistantPropagatedAgents: string[];
   /** Reasoning effort overrides keyed by agent type. */
   reasoningEfforts: Record<string, ReasoningEffort>;
+  /** Conversation routes to restore when leaving a local runtime engine. */
+  stellaConversationModelOverrides: Record<string, string>;
+  /** Stella-scoped conversation reasoning restored with its routes. */
+  stellaConversationReasoningEfforts: Record<string, ReasoningEffort>;
   /** Runtime engine shared by every local CLI-backed agent. */
   agentRuntimeEngine: AgentEngine;
   /** Codex model id used when the Codex engine is selected. */
@@ -162,6 +166,8 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "modelOverrides"
   | "assistantPropagatedAgents"
   | "reasoningEfforts"
+  | "stellaConversationModelOverrides"
+  | "stellaConversationReasoningEfforts"
   | "agentRuntimeEngine"
   | "codexModel"
   | "codexReasoningEffort"
@@ -180,6 +186,8 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   modelOverrides: {},
   assistantPropagatedAgents: [],
   reasoningEfforts: {},
+  stellaConversationModelOverrides: {},
+  stellaConversationReasoningEfforts: {},
   agentRuntimeEngine: "default",
   codexModel: DEFAULT_CODEX_MODEL,
   codexReasoningEffort: "default",
@@ -214,7 +222,9 @@ let _cachedMtime: number | null = null;
 const prefsPath = (stellaDataDir: string) =>
   path.join(stellaDataDir, "preferences.json");
 
-export const loadLocalPreferences = (stellaDataDir: string): LocalPreferences => {
+export const loadLocalPreferences = (
+  stellaDataDir: string,
+): LocalPreferences => {
   const filePath = prefsPath(stellaDataDir);
 
   try {
@@ -233,15 +243,22 @@ export const loadLocalPreferences = (stellaDataDir: string): LocalPreferences =>
         parsed.assistantPropagatedAgents,
       ),
       reasoningEfforts: normalizeReasoningEfforts(parsed.reasoningEfforts),
+      stellaConversationModelOverrides: normalizeModelPreferenceMap(
+        parsed.stellaConversationModelOverrides,
+      ),
+      stellaConversationReasoningEfforts: normalizeReasoningEfforts(
+        parsed.stellaConversationReasoningEfforts,
+      ),
       agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
       codexModel: normalizeCodexModel(parsed.codexModel),
       codexReasoningEffort: normalizeReasoningEffort(
         parsed.codexReasoningEffort,
       ),
       claudeCodeModel: normalizeClaudeCodeModel(parsed.claudeCodeModel),
-      claudeCodeReasoningEffort: normalizeReasoningEffort(
-        parsed.claudeCodeReasoningEffort,
-      ),
+      claudeCodeReasoningEffort:
+        normalizeReasoningEffort(parsed.claudeCodeReasoningEffort) === "minimal"
+          ? "low"
+          : normalizeReasoningEffort(parsed.claudeCodeReasoningEffort),
       maxAgentConcurrency: normalizeConcurrency(parsed.maxAgentConcurrency),
       imageGeneration: normalizeImageGenerationPreferences(
         parsed.imageGeneration,
@@ -361,6 +378,12 @@ export const getLocalModelPreferences = (
     modelOverrides: { ...prefs.modelOverrides },
     assistantPropagatedAgents: [...prefs.assistantPropagatedAgents],
     reasoningEfforts: { ...prefs.reasoningEfforts },
+    stellaConversationModelOverrides: {
+      ...prefs.stellaConversationModelOverrides,
+    },
+    stellaConversationReasoningEfforts: {
+      ...prefs.stellaConversationReasoningEfforts,
+    },
     agentRuntimeEngine: prefs.agentRuntimeEngine,
     codexModel: prefs.codexModel,
     codexReasoningEffort: prefs.codexReasoningEffort,
@@ -395,6 +418,14 @@ export const updateLocalModelPreferences = (
       patch.reasoningEfforts === undefined
         ? prefs.reasoningEfforts
         : normalizeReasoningEfforts(patch.reasoningEfforts),
+    stellaConversationModelOverrides:
+      patch.stellaConversationModelOverrides === undefined
+        ? prefs.stellaConversationModelOverrides
+        : normalizeModelPreferenceMap(patch.stellaConversationModelOverrides),
+    stellaConversationReasoningEfforts:
+      patch.stellaConversationReasoningEfforts === undefined
+        ? prefs.stellaConversationReasoningEfforts
+        : normalizeReasoningEfforts(patch.stellaConversationReasoningEfforts),
     agentRuntimeEngine:
       patch.agentRuntimeEngine === undefined
         ? prefs.agentRuntimeEngine
@@ -414,7 +445,10 @@ export const updateLocalModelPreferences = (
     claudeCodeReasoningEffort:
       patch.claudeCodeReasoningEffort === undefined
         ? prefs.claudeCodeReasoningEffort
-        : normalizeReasoningEffort(patch.claudeCodeReasoningEffort),
+        : normalizeReasoningEffort(patch.claudeCodeReasoningEffort) ===
+            "minimal"
+          ? "low"
+          : normalizeReasoningEffort(patch.claudeCodeReasoningEffort),
     maxAgentConcurrency:
       patch.maxAgentConcurrency === undefined
         ? prefs.maxAgentConcurrency
@@ -457,7 +491,9 @@ export const getLockedComputerUseEnabled = (stellaDataDir: string): boolean => {
   return loadLocalPreferences(stellaDataDir).lockedComputerUseEnabled;
 };
 
-export const getSoundNotificationsEnabled = (stellaDataDir: string): boolean => {
+export const getSoundNotificationsEnabled = (
+  stellaDataDir: string,
+): boolean => {
   return loadLocalPreferences(stellaDataDir).soundNotificationsEnabled;
 };
 

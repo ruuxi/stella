@@ -215,7 +215,9 @@ contextBridge.exposeInMainWorld(
   "__stellaUiState",
   (() => {
     try {
-      const snapshot = ipcRenderer.sendSync(IPC_UI_STATE_KV_SNAPSHOT) as unknown;
+      const snapshot = ipcRenderer.sendSync(
+        IPC_UI_STATE_KV_SNAPSHOT,
+      ) as unknown;
       return snapshot && typeof snapshot === "object" ? snapshot : {};
     } catch {
       return {};
@@ -283,16 +285,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
         }>
       >,
     openSharedCanvas: (payload: { url: string }) =>
-      ipcRenderer.invoke(IPC_DISPLAY_OPEN_SHARED_CANVAS, payload) as Promise<
-        | {
-            kind: "canvas-html";
-            filePath: string;
-            slug: string;
-            title: string;
-            createdAt: number;
-          }
-        | null
-      >,
+      ipcRenderer.invoke(IPC_DISPLAY_OPEN_SHARED_CANVAS, payload) as Promise<{
+        kind: "canvas-html";
+        filePath: string;
+        slug: string;
+        title: string;
+        createdAt: number;
+      } | null>,
     listTrash: () => ipcRenderer.invoke(IPC_DISPLAY_TRASH_LIST),
     forceDeleteTrash: (payload: { id?: string; all?: boolean }) =>
       ipcRenderer.invoke(IPC_DISPLAY_TRASH_FORCE_DELETE, payload),
@@ -505,9 +504,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       centerX: number;
       centerY: number;
     }>("radial:cursor"),
-    onAddIcon: onIpcWithEvent<{ iconDataUrl: string | null }>(
-      "radial:addIcon",
-    ),
+    onAddIcon: onIpcWithEvent<{ iconDataUrl: string | null }>("radial:addIcon"),
   },
 
   overlay: {
@@ -894,7 +891,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
           uiVisibility?: "visible" | "hidden";
           rootRunId?: string;
           chunk?: string;
-          statusState?: "running" | "compacting" | "provider-retry" | "model-fallback";
+          statusState?:
+            | "running"
+            | "compacting"
+            | "provider-retry"
+            | "model-fallback";
           toolCallId?: string;
           toolName?: string;
           args?: Record<string, unknown>;
@@ -958,7 +959,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
       uiVisibility?: "visible" | "hidden";
       rootRunId?: string;
       chunk?: string;
-      statusState?: "running" | "compacting" | "provider-retry" | "model-fallback";
+      statusState?:
+        | "running"
+        | "compacting"
+        | "provider-retry"
+        | "model-fallback";
       toolCallId?: string;
       toolName?: string;
       args?: Record<string, unknown>;
@@ -1280,6 +1285,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
           string,
           "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
         >;
+        stellaConversationModelOverrides: Record<string, string>;
+        stellaConversationReasoningEfforts: Record<
+          string,
+          "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
+        >;
         agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
         codexModel: string;
         codexReasoningEffort:
@@ -1312,6 +1322,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
         string,
         "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
       >;
+      stellaConversationModelOverrides?: Record<string, string>;
+      stellaConversationReasoningEfforts?: Record<
+        string,
+        "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
+      >;
       agentRuntimeEngine?: "default" | "claude_code_local" | "codex_cli";
       codexModel?: string;
       codexReasoningEffort?:
@@ -1341,6 +1356,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
         modelOverrides: Record<string, string>;
         assistantPropagatedAgents: string[];
         reasoningEfforts: Record<
+          string,
+          "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
+        >;
+        stellaConversationModelOverrides: Record<string, string>;
+        stellaConversationReasoningEfforts: Record<
           string,
           "default" | "minimal" | "low" | "medium" | "high" | "xhigh"
         >;
@@ -1435,6 +1455,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
         label: string;
         status: "active";
         updatedAt: number;
+      }>,
+    cancelLlmOAuthCredential: (provider: string) =>
+      ipcRenderer.invoke("llmCredentials:cancelOAuth", {
+        provider,
+      }) as Promise<{
+        canceled: boolean;
+      }>,
+    validateLlmOAuthCredential: (provider: string) =>
+      ipcRenderer.invoke("llmCredentials:validateOAuth", {
+        provider,
+      }) as Promise<{
+        connected: boolean;
+        needsReauth: boolean;
       }>,
     deleteLlmOAuthCredential: (provider: string) =>
       ipcRenderer.invoke("llmCredentials:deleteOAuth", {
