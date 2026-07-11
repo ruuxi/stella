@@ -73,7 +73,7 @@ describe("RuntimeHostAdapter config batching", () => {
 });
 
 describe("RuntimeHostAdapter send readiness", () => {
-  it("does not report send-ready while a worker restart is pending", async () => {
+  it("keeps a healthy worker send-ready while its restart is pending", async () => {
     const adapter = createAdapter();
     const anyAdapter = adapter as any;
     anyAdapter.connected = true;
@@ -87,9 +87,7 @@ describe("RuntimeHostAdapter send readiness", () => {
     });
     anyAdapter.host.healthCheck = vi.fn().mockResolvedValue({ ready: true });
 
-    await expect(adapter.waitUntilReady(5)).rejects.toThrow(
-      "Stella is reconnecting to its runtime",
-    );
+    await expect(adapter.waitUntilReady(5)).resolves.toBeUndefined();
   });
 
   it("accepts an authoritative ready snapshot with no pending restart", async () => {

@@ -554,10 +554,13 @@ export class RuntimeHostAdapter {
       const workerHealth = await this.agentHealthCheck();
       this.emitAvailabilityChange();
       const snapshot = this.getAvailabilitySnapshot();
+      // A pending restart is intentionally informational: the current worker
+      // remains authoritative and usable until its active work drains. During
+      // the actual stop/start window workerHealth is not ready, so sends still
+      // wait without locking the user out for the entire deferral period.
       if (
         workerHealth?.ready === true &&
-        snapshot.ready &&
-        snapshot.pendingRuntimeRestart !== true
+        snapshot.ready
       ) {
         return;
       }
