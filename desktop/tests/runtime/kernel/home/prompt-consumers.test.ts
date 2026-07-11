@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import {
+import fs, {
   closeSync,
   ftruncateSync,
   openSync,
@@ -18,7 +18,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import { PERSONALITY_TEMPLATES } from "../../../../../runtime/contracts/personality.js";
@@ -62,6 +62,7 @@ const tempDir = async () => {
 };
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     [...roots].map((root) => rm(root, { recursive: true, force: true })),
   );
@@ -416,5 +417,42 @@ describe("PERSONALITY.md sync tracking", () => {
     const files = await readdir(home);
     expect(files.some((name) => name.includes(".cas-"))).toBe(false);
     expect(files.some((name) => name.includes(".installed-"))).toBe(false);
+  });
+
+  it("finalizes the guard when staged cleanup fails after a successful link", async () => {
+    const home = await tempDir();
+    const target = path.join(home, "PERSONALITY.md");
+    const staged = path.join(home, "PERSONALITY.md.staged");
+    await writeFile(target, "previous untouched value\n", "utf-8");
+    await writeFile(staged, "incoming remote value\n", "utf-8");
+    const originalUnlink = fs.unlinkSync.bind(fs);
+    vi.spyOn(fs, "unlinkSync").mockImplementation((filePath) => {
+      if (filePath === staged) {
+        throw Object.assign(new Error("injected staged unlink failure"), {
+          code: "EIO",
+        });
+      }
+      return originalUnlink(filePath);
+    });
+
+    expect(
+      replacePersonalityIfHomeHashMatches({
+        target,
+        staged,
+        expectedHomeHash: sha256("previous untouched value\n"),
+      }),
+    ).toBe(true);
+    await expect(readFile(target, "utf-8")).resolves.toBe(
+      "incoming remote value\n",
+    );
+    await expect(readFile(staged, "utf-8")).rejects.toThrow();
+    const files = await readdir(home);
+    expect(files.some((name) => name.includes(".cas-"))).toBe(false);
+    const conflicts = await Promise.all(
+      files
+        .filter((name) => name.startsWith("PERSONALITY.md.conflict-"))
+        .map((name) => readFile(path.join(home, name), "utf-8")),
+    );
+    expect(conflicts).toContain("previous untouched value\n");
   });
 });

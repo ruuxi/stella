@@ -18,6 +18,8 @@ import { buildDreamSystemPrompt } from "../../../../../runtime/kernel/agent-runt
 import { loadParsedAgentsFromDir } from "../../../../../runtime/kernel/agents/markdown-agent-loader.js";
 import { reconcileBundledAgents } from "../../../../../runtime/kernel/home/agents-sync.js";
 import {
+  StalePromptManifestError,
+  applyPromptManifestIfCurrent,
   parseRemotePromptManifest,
   recordAppliedPromptManifest,
   resetPromptAppliedStateMemoryForTests,
@@ -52,11 +54,15 @@ const runRecordChild = async (
   const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
   const script = `
     import { recordAppliedPromptManifest } from "./runtime/kernel/home/prompt-manifest-sync.ts";
-    await recordAppliedPromptManifest({
-      stellaDataDir: process.env.TEST_STELLA_HOME,
-      endpoint: process.env.TEST_PROMPT_ENDPOINT,
-      manifest: { publishedAt: Number(process.env.TEST_PUBLISHED_AT), revision: "a".repeat(64) },
-    });
+    try {
+      await recordAppliedPromptManifest({
+        stellaDataDir: process.env.TEST_STELLA_HOME,
+        endpoint: process.env.TEST_PROMPT_ENDPOINT,
+        manifest: { publishedAt: Number(process.env.TEST_PUBLISHED_AT), revision: "a".repeat(64) },
+      });
+    } catch (error) {
+      if (error?.name !== "StalePromptManifestError") throw error;
+    }
   `;
   await new Promise<void>((resolve, reject) => {
     const child = spawn("bun", ["--eval", script], {
@@ -318,6 +324,38 @@ describe("remote prompt startup sync", () => {
     });
   });
 
+  it("rejects an A/B/A stale resolver before it can reconcile older prompts", async () => {
+    const home = await tempDir();
+    const endpoint = "https://aba.example.test/api/stella/prompts";
+    const staleResolution = manifest(10, {
+      "agents/orchestrator.md": "OLD\n",
+    });
+    const freshResolution = manifest(20, {
+      "agents/orchestrator.md": "NEW\n",
+    });
+    let installed = "";
+
+    await applyPromptManifestIfCurrent({
+      stellaDataDir: home,
+      endpoint,
+      manifest: freshResolution,
+      reconcile: async () => {
+        installed = freshResolution.prompts[0].content;
+      },
+    });
+    await expect(
+      applyPromptManifestIfCurrent({
+        stellaDataDir: home,
+        endpoint,
+        manifest: staleResolution,
+        reconcile: async () => {
+          installed = staleResolution.prompts[0].content;
+        },
+      }),
+    ).rejects.toBeInstanceOf(StalePromptManifestError);
+    expect(installed).toBe("NEW\n");
+  });
+
   it("retains rollback protection from the legacy aggregate state file", async () => {
     const home = await tempDir();
     const endpoint = "https://legacy.example.test/api/stella/prompts";
@@ -418,6 +456,31 @@ describe("remote prompt startup sync", () => {
     await expect(
       readFile(path.join(obsoleteLock, "owner"), "utf-8"),
     ).resolves.toBe("paused-owner\n");
+  });
+
+  it("compacts endpoint publications while retaining the durable maximum", async () => {
+    const home = await tempDir();
+    const endpoint = "https://compact.example.test/api/stella/prompts";
+    for (let publishedAt = 1; publishedAt <= 12; publishedAt += 1) {
+      await recordAppliedPromptManifest({
+        stellaDataDir: home,
+        endpoint,
+        manifest: manifest(publishedAt),
+      });
+    }
+    resetPromptAppliedStateMemoryForTests();
+
+    const endpointHash = hash(endpoint);
+    const records = await readdir(
+      path.join(home, "cache/prompt-applied-state", endpointHash),
+    );
+    expect(records.filter((file) => file.endsWith(".json"))).toHaveLength(4);
+    const result = await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl: siteUrlForEndpoint(endpoint),
+      fetchImpl: async () => new Response(JSON.stringify(manifest(11))),
+    });
+    expect(result.manifest).toBeNull();
   });
 
   it("canonicalizes accepted site URL forms to the same prompt endpoint", () => {

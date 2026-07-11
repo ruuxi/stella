@@ -238,20 +238,33 @@ export const replacePersonalityIfHomeHashMatches = (args: {
       return false;
     }
   };
+  let stagedCleanupError: unknown = null;
+  const finishStagedCleanup = <T>(result: T): T => {
+    if (stagedCleanupError && fs.existsSync(args.staged)) {
+      fs.rmSync(args.staged, { force: true });
+    }
+    return result;
+  };
   const installExclusively = (): boolean => {
     try {
       fs.linkSync(args.staged, args.target);
-      fs.unlinkSync(args.staged);
-      return true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
       throw error;
     }
+    try {
+      fs.unlinkSync(args.staged);
+    } catch (error) {
+      // The target link already exists. Continue through guard verification and
+      // conflict recovery; staged cleanup is retried only after finalization.
+      stagedCleanupError = error;
+    }
+    return true;
   };
 
   if (args.expectedHomeHash === null) {
     args.onAfterTargetCaptured?.();
-    return installExclusively();
+    return finishStagedCleanup(installExclusively());
   }
 
   const guard = `${args.target}.cas-${process.pid}-${Date.now()}`;
@@ -278,14 +291,14 @@ export const replacePersonalityIfHomeHashMatches = (args: {
   try {
     installed = installExclusively();
   } catch (error) {
-    if (!fs.existsSync(args.target)) fs.renameSync(guard, args.target);
+    restoreExclusivelyOrPreserve(guard);
     throw error;
   }
   if (!installed) {
     // A direct path-based edit owns the canonical path. Preserve the captured
     // inode too because another process may still be writing through it.
     preserveAsConflict(guard);
-    return false;
+    return finishStagedCleanup(false);
   }
 
   const installedCapture = `${args.target}.installed-${process.pid}-${randomUUID()}`;
@@ -301,7 +314,7 @@ export const replacePersonalityIfHomeHashMatches = (args: {
     if (fs.existsSync(args.target)) {
       preserveAsConflict(installedCapture);
       preserveAsConflict(guard);
-      return false;
+      return finishStagedCleanup(false);
     }
 
     if (
@@ -314,7 +327,7 @@ export const replacePersonalityIfHomeHashMatches = (args: {
       // descriptor remains recoverable. This can leave a redundant artifact,
       // but never silently discards the write.
       preserveAsConflict(guard);
-      return restored;
+      return finishStagedCleanup(restored);
     }
 
     if (installedHash !== stagedHash) {
@@ -324,7 +337,7 @@ export const replacePersonalityIfHomeHashMatches = (args: {
       restoreExclusivelyOrPreserve(guard);
       preserveAsConflict(installedCapture);
     }
-    return false;
+    return finishStagedCleanup(false);
   } catch (error) {
     const recoveryErrors: unknown[] = [];
     try {
@@ -341,6 +354,14 @@ export const replacePersonalityIfHomeHashMatches = (args: {
       throw new AggregateError(
         [error, ...recoveryErrors],
         "PERSONALITY.md replacement and recovery both failed",
+      );
+    }
+    try {
+      finishStagedCleanup(undefined);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "PERSONALITY.md replacement failed after guard recovery",
       );
     }
     throw error;

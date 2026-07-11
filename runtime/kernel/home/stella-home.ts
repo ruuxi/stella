@@ -20,7 +20,8 @@ import {
   type BundledSyncReport,
 } from "./bundled-sync.js";
 import {
-  recordAppliedPromptManifest,
+  StalePromptManifestError,
+  applyPromptManifestIfCurrent,
   reconcileRemotePromptManifest,
   resolvePromptManifest,
   type PromptManifestResolution,
@@ -152,19 +153,32 @@ export const ensureStellaDataDirSeeded = async (
     stellaDataDir,
     siteUrl: options.promptSiteUrl,
   });
+  let personalitySync: BundledSyncReport | null = null;
   if (promptResolution.manifest) {
-    if (promptResolution.endpoint) {
-      await recordAppliedPromptManifest({
+    if (!promptResolution.endpoint) {
+      throw new Error("Resolved prompt manifest is missing its endpoint");
+    }
+    try {
+      await applyPromptManifestIfCurrent({
         stellaDataDir,
         endpoint: promptResolution.endpoint,
         manifest: promptResolution.manifest,
+        reconcile: async () => {
+          await reconcileRemotePromptManifest(
+            promptResolution.manifest!,
+            stellaDataDir,
+            resolveBundledAgentsDir(stellaAppDir),
+          );
+          personalitySync = await reconcileSelectedPersonality(
+            stellaDataDir,
+            promptResolution.manifest!.revision,
+          );
+        },
       });
+    } catch (error) {
+      if (!(error instanceof StalePromptManifestError)) throw error;
+      personalitySync = { actions: [] };
     }
-    await reconcileRemotePromptManifest(
-      promptResolution.manifest,
-      stellaDataDir,
-      resolveBundledAgentsDir(stellaAppDir),
-    );
   }
 
   // The bundle is the final offline/bootstrap fallback. It only fills missing
@@ -198,9 +212,9 @@ export const ensureStellaDataDirSeeded = async (
     console.log(`[stella-home] prompts sync: ${promptsSummary}`);
   }
 
-  const personalitySync = await reconcileSelectedPersonality(
+  personalitySync ??= await reconcileSelectedPersonality(
     stellaDataDir,
-    promptResolution.manifest?.revision ?? "bundled-bootstrap",
+    "bundled-bootstrap",
   );
 
   return {
@@ -227,22 +241,29 @@ export const syncStellaPromptSnapshot = async (
     siteUrl: promptSiteUrl,
   });
   if (resolution.manifest) {
-    if (resolution.endpoint) {
-      await recordAppliedPromptManifest({
+    if (!resolution.endpoint) {
+      throw new Error("Resolved prompt manifest is missing its endpoint");
+    }
+    try {
+      await applyPromptManifestIfCurrent({
         stellaDataDir,
         endpoint: resolution.endpoint,
         manifest: resolution.manifest,
+        reconcile: async () => {
+          await reconcileRemotePromptManifest(
+            resolution.manifest!,
+            stellaDataDir,
+            resolveBundledAgentsDir(stellaAppDir),
+          );
+          await reconcileSelectedPersonality(
+            stellaDataDir,
+            resolution.manifest!.revision,
+          );
+        },
       });
+    } catch (error) {
+      if (!(error instanceof StalePromptManifestError)) throw error;
     }
-    await reconcileRemotePromptManifest(
-      resolution.manifest,
-      stellaDataDir,
-      resolveBundledAgentsDir(stellaAppDir),
-    );
-    await reconcileSelectedPersonality(
-      stellaDataDir,
-      resolution.manifest.revision,
-    );
   }
   return resolution;
 };

@@ -27,6 +27,9 @@ const PROMPT_APPLIED_STATE_FILE = "prompt-applied-state.json";
 const PROMPT_APPLIED_STATE_DIR = "prompt-applied-state";
 const PROMPT_LEGACY_APPLIED_STATE_MAX_BYTES = 256 * 1024;
 const PROMPT_APPLIED_STATE_RECORD_MAX_BYTES = 4 * 1024;
+const PROMPT_APPLIED_STATE_RECOVERY_RECORDS = 4;
+const PROMPT_APPLY_LOCK_TIMEOUT_MS = 30_000;
+const PROMPT_APPLY_LOCK_POLL_MS = 20;
 const FETCH_TIMEOUT_MS = 3_000;
 
 export type RemotePrompt = { id: string; sha256: string; content: string };
@@ -43,7 +46,7 @@ type CachedPromptManifest = {
   manifest: RemotePromptManifest;
 };
 
-type AppliedPromptState = {
+export type AppliedPromptState = {
   endpoint: string;
   publishedAt: number;
   revision: string;
@@ -63,6 +66,7 @@ export type PromptManifestResolution = {
 };
 
 const appliedStateMemory = new Map<string, AppliedPromptState>();
+const promptApplyQueueTails = new Map<string, Promise<void>>();
 
 export const resetPromptAppliedStateMemoryForTests = (): void => {
   appliedStateMemory.clear();
@@ -143,6 +147,9 @@ const appliedStateEndpointDir = (
   stellaDataDir: string,
   endpoint: string,
 ): string => path.join(appliedStateDir(stellaDataDir), sha256(endpoint));
+
+const promptApplyLockPath = (stellaDataDir: string, endpoint: string): string =>
+  path.join(appliedStateDir(stellaDataDir), `${sha256(endpoint)}.apply-lock`);
 
 const appliedStateKey = (stellaDataDir: string, endpoint: string): string =>
   `${path.resolve(stellaDataDir)}\0${endpoint}`;
@@ -277,6 +284,24 @@ const readAppliedStateRecord = async (
   }
 };
 
+type AppliedStateRecord = { filePath: string; state: AppliedPromptState };
+
+const listAppliedStateRecords = async (
+  stellaDataDir: string,
+  endpoint: string,
+): Promise<AppliedStateRecord[]> => {
+  const endpointDir = appliedStateEndpointDir(stellaDataDir, endpoint);
+  const files = await fs.readdir(endpointDir).catch(() => []);
+  const records: AppliedStateRecord[] = [];
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    const filePath = path.join(endpointDir, file);
+    const state = await readAppliedStateRecord(filePath);
+    if (state?.endpoint === endpoint) records.push({ filePath, state });
+  }
+  return records;
+};
+
 const newerAppliedState = (
   left: AppliedPromptState | null,
   right: AppliedPromptState | null,
@@ -319,7 +344,33 @@ const readAppliedStateRecords = async (
   return latest;
 };
 
-const readAppliedState = async (
+const syncDirectory = async (dirPath: string): Promise<void> => {
+  const handle = await fs.open(dirPath, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+};
+
+const ensureDurableAppliedStateDirs = async (
+  stellaDataDir: string,
+  endpoint: string,
+): Promise<string> => {
+  const cacheDir = path.join(stellaDataDir, "cache");
+  const stateDir = appliedStateDir(stellaDataDir);
+  const endpointDir = appliedStateEndpointDir(stellaDataDir, endpoint);
+  await ensurePrivateDir(stellaDataDir);
+  await ensurePrivateDir(cacheDir);
+  await syncDirectory(stellaDataDir);
+  await ensurePrivateDir(stateDir);
+  await syncDirectory(cacheDir);
+  await ensurePrivateDir(endpointDir);
+  await syncDirectory(stateDir);
+  return endpointDir;
+};
+
+const readDurableAppliedState = async (
   stellaDataDir: string,
   expectedEndpoint?: string,
 ): Promise<AppliedPromptState | null> => {
@@ -331,7 +382,14 @@ const readAppliedState = async (
     stellaDataDir,
     expectedEndpoint,
   );
-  const disk = newerAppliedState(legacy, records);
+  return newerAppliedState(legacy, records);
+};
+
+const readAppliedState = async (
+  stellaDataDir: string,
+  expectedEndpoint?: string,
+): Promise<AppliedPromptState | null> => {
+  const disk = await readDurableAppliedState(stellaDataDir, expectedEndpoint);
   const endpoint = expectedEndpoint ?? disk?.endpoint;
   const memory = endpoint
     ? (appliedStateMemory.get(appliedStateKey(stellaDataDir, endpoint)) ?? null)
@@ -343,8 +401,10 @@ const writeAppliedStateAtomic = async (
   stellaDataDir: string,
   state: AppliedPromptState,
 ): Promise<void> => {
-  const endpointDir = appliedStateEndpointDir(stellaDataDir, state.endpoint);
-  await ensurePrivateDir(endpointDir);
+  const endpointDir = await ensureDurableAppliedStateDirs(
+    stellaDataDir,
+    state.endpoint,
+  );
   const filePath = path.join(
     endpointDir,
     `${state.publishedAt}-${state.revision}.json`,
@@ -368,12 +428,7 @@ const writeAppliedStateAtomic = async (
     } finally {
       await fileHandle.close();
     }
-    const dirHandle = await fs.open(endpointDir, "r");
-    try {
-      await dirHandle.sync();
-    } finally {
-      await dirHandle.close();
-    }
+    await syncDirectory(endpointDir);
     return;
   }
   const tempPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
@@ -385,12 +440,7 @@ const writeAppliedStateAtomic = async (
     await tempHandle.close();
     tempHandle = null;
     await fs.rename(tempPath, filePath);
-    const dirHandle = await fs.open(endpointDir, "r");
-    try {
-      await dirHandle.sync();
-    } finally {
-      await dirHandle.close();
-    }
+    await syncDirectory(endpointDir);
   } catch (error) {
     await tempHandle?.close().catch(() => {});
     await fs.rm(tempPath, { force: true }).catch(() => {});
@@ -398,26 +448,205 @@ const writeAppliedStateAtomic = async (
   }
 };
 
+const compactAppliedStateRecords = async (
+  stellaDataDir: string,
+  endpoint: string,
+): Promise<void> => {
+  const records = await listAppliedStateRecords(stellaDataDir, endpoint);
+  records.sort((left, right) => {
+    if (left.state.publishedAt !== right.state.publishedAt) {
+      return right.state.publishedAt - left.state.publishedAt;
+    }
+    return right.state.revision.localeCompare(left.state.revision);
+  });
+  const obsolete = records.slice(PROMPT_APPLIED_STATE_RECOVERY_RECORDS);
+  await Promise.all(obsolete.map((record) => fs.rm(record.filePath)));
+  if (obsolete.length > 0) {
+    await syncDirectory(appliedStateEndpointDir(stellaDataDir, endpoint));
+  }
+};
+
+type PromptApplyLease = { lockPath: string; token: string };
+
+const processIsAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+};
+
+const acquirePromptApplyLease = async (
+  stellaDataDir: string,
+  endpoint: string,
+): Promise<PromptApplyLease> => {
+  await ensureDurableAppliedStateDirs(stellaDataDir, endpoint);
+  const lockPath = promptApplyLockPath(stellaDataDir, endpoint);
+  const deadline = Date.now() + PROMPT_APPLY_LOCK_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const token = randomUUID();
+    const preparedPath = `${lockPath}.lease-${process.pid}-${token}`;
+    await fs.mkdir(preparedPath, { mode: 0o700 });
+    await fs.writeFile(
+      path.join(preparedPath, "owner.json"),
+      JSON.stringify({ pid: process.pid, token }),
+      { encoding: "utf-8", mode: 0o600 },
+    );
+    try {
+      await fs.rename(preparedPath, lockPath);
+      return { lockPath, token };
+    } catch (error) {
+      await fs.rm(preparedPath, { recursive: true, force: true });
+      if (
+        !["EEXIST", "ENOTEMPTY"].includes(
+          (error as NodeJS.ErrnoException).code ?? "",
+        )
+      ) {
+        throw error;
+      }
+    }
+
+    try {
+      const owner = JSON.parse(
+        await fs.readFile(path.join(lockPath, "owner.json"), "utf-8"),
+      ) as { pid?: unknown };
+      if (
+        typeof owner.pid === "number" &&
+        Number.isInteger(owner.pid) &&
+        processIsAlive(owner.pid)
+      ) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, PROMPT_APPLY_LOCK_POLL_MS),
+        );
+        continue;
+      }
+    } catch {
+      // Missing or malformed ownership is stale and can be atomically moved.
+    }
+    const stalePath = `${lockPath}.stale-${process.pid}-${randomUUID()}`;
+    try {
+      await fs.rename(lockPath, stalePath);
+      await fs.rm(stalePath, { recursive: true, force: true });
+    } catch {
+      // Another contender won the atomic takeover; retry acquisition.
+    }
+  }
+  throw new Error(`Timed out acquiring prompt apply lock for ${endpoint}`);
+};
+
+const releasePromptApplyLease = async (
+  lease: PromptApplyLease,
+): Promise<void> => {
+  try {
+    const owner = JSON.parse(
+      await fs.readFile(path.join(lease.lockPath, "owner.json"), "utf-8"),
+    ) as { token?: unknown };
+    if (owner.token !== lease.token) return;
+  } catch {
+    return;
+  }
+  const releasePath = `${lease.lockPath}.release-${process.pid}-${lease.token}`;
+  try {
+    await fs.rename(lease.lockPath, releasePath);
+  } catch {
+    return;
+  }
+  await fs.rm(releasePath, { recursive: true, force: true });
+};
+
+const withPromptApplyLock = async <T>(
+  stellaDataDir: string,
+  endpoint: string,
+  operation: () => Promise<T>,
+): Promise<T> => {
+  const key = appliedStateKey(stellaDataDir, endpoint);
+  const previous = promptApplyQueueTails.get(key) ?? Promise.resolve();
+  let releaseTurn!: () => void;
+  const turn = new Promise<void>((resolve) => {
+    releaseTurn = resolve;
+  });
+  promptApplyQueueTails.set(key, turn);
+  await previous;
+  let lease: PromptApplyLease | null = null;
+  try {
+    lease = await acquirePromptApplyLease(stellaDataDir, endpoint);
+    return await operation();
+  } finally {
+    if (lease) await releasePromptApplyLease(lease);
+    releaseTurn();
+    if (promptApplyQueueTails.get(key) === turn) {
+      promptApplyQueueTails.delete(key);
+    }
+  }
+};
+
+export class StalePromptManifestError extends Error {
+  constructor(
+    readonly candidate: AppliedPromptState,
+    readonly winner: AppliedPromptState,
+  ) {
+    super(
+      `Prompt publication ${candidate.publishedAt}/${candidate.revision} is stale; durable maximum is ${winner.publishedAt}/${winner.revision}`,
+    );
+    this.name = "StalePromptManifestError";
+  }
+}
+
+const recordAppliedPromptManifestLocked = async (args: {
+  stellaDataDir: string;
+  endpoint: string;
+  manifest: RemotePromptManifest;
+  writeStateImpl?: typeof writeAppliedStateAtomic;
+}): Promise<AppliedPromptState> => {
+  const candidate: AppliedPromptState = {
+    endpoint: args.endpoint,
+    publishedAt: args.manifest.publishedAt,
+    revision: args.manifest.revision,
+  };
+  await (args.writeStateImpl ?? writeAppliedStateAtomic)(
+    args.stellaDataDir,
+    candidate,
+  );
+  const winner = await readDurableAppliedState(
+    args.stellaDataDir,
+    args.endpoint,
+  );
+  if (!winner) throw new Error("Applied prompt state vanished after write");
+  appliedStateMemory.set(
+    appliedStateKey(args.stellaDataDir, args.endpoint),
+    winner,
+  );
+  await compactAppliedStateRecords(args.stellaDataDir, args.endpoint);
+  if (
+    winner.publishedAt !== candidate.publishedAt ||
+    winner.revision !== candidate.revision
+  ) {
+    throw new StalePromptManifestError(candidate, winner);
+  }
+  return winner;
+};
+
 export const recordAppliedPromptManifest = async (args: {
   stellaDataDir: string;
   endpoint: string;
   manifest: RemotePromptManifest;
   writeStateImpl?: typeof writeAppliedStateAtomic;
-}): Promise<void> => {
-  const state: AppliedPromptState = {
-    endpoint: args.endpoint,
-    publishedAt: args.manifest.publishedAt,
-    revision: args.manifest.revision,
-  };
-  const key = appliedStateKey(args.stellaDataDir, args.endpoint);
-  const current = appliedStateMemory.get(key) ?? null;
-  const next = newerAppliedState(current, state)!;
-  await (args.writeStateImpl ?? writeAppliedStateAtomic)(
-    args.stellaDataDir,
-    next,
+}): Promise<AppliedPromptState> =>
+  withPromptApplyLock(args.stellaDataDir, args.endpoint, () =>
+    recordAppliedPromptManifestLocked(args),
   );
-  appliedStateMemory.set(key, next);
-};
+
+export const applyPromptManifestIfCurrent = async <T>(args: {
+  stellaDataDir: string;
+  endpoint: string;
+  manifest: RemotePromptManifest;
+  reconcile: () => Promise<T>;
+}): Promise<T> =>
+  withPromptApplyLock(args.stellaDataDir, args.endpoint, async () => {
+    await recordAppliedPromptManifestLocked(args);
+    return await args.reconcile();
+  });
 
 const writeCacheAtomic = async (
   stellaDataDir: string,
