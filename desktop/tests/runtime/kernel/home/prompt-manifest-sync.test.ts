@@ -10,6 +10,8 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { build } from "esbuild";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { STELLA_PROMPT_IDS } from "../../../../../runtime/contracts/stella-prompts.js";
@@ -20,6 +22,7 @@ import { reconcileBundledAgents } from "../../../../../runtime/kernel/home/agent
 import {
   StalePromptManifestError,
   applyPromptManifestIfCurrent,
+  compactAppliedStateRecords,
   parseRemotePromptManifest,
   recordAppliedPromptManifest,
   resetPromptAppliedStateMemoryForTests,
@@ -29,6 +32,7 @@ import {
 } from "../../../../../runtime/kernel/home/prompt-manifest-sync.js";
 
 const roots = new Set<string>();
+const promptSyncBundles = new Map<string, Promise<string>>();
 const tempDir = async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "stella-prompts-"));
   roots.add(dir);
@@ -39,6 +43,7 @@ afterEach(async () => {
     [...roots].map((root) => rm(root, { recursive: true, force: true })),
   );
   roots.clear();
+  promptSyncBundles.clear();
 });
 
 const hash = (content: string) =>
@@ -46,14 +51,73 @@ const hash = (content: string) =>
 const siteUrlForEndpoint = (endpoint: string) =>
   endpoint.slice(0, -"/api/stella/prompts".length);
 
+const buildPromptSyncBundle = async (home: string): Promise<string> => {
+  const existing = promptSyncBundles.get(home);
+  if (existing) return existing;
+  const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
+  const outfile = path.join(home, "prompt-manifest-sync.bundle.mjs");
+  const bundle = build({
+    entryPoints: [
+      path.join(repoRoot, "runtime/kernel/home/prompt-manifest-sync.ts"),
+    ],
+    outfile,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node24",
+  }).then(() => outfile);
+  promptSyncBundles.set(home, bundle);
+  return bundle;
+};
+
+const waitForFile = async (filePath: string): Promise<void> => {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    try {
+      await readFile(filePath);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  throw new Error(`Timed out waiting for ${filePath}`);
+};
+
+const spawnNodeEval = (
+  script: string,
+  env: Record<string, string>,
+): { child: ReturnType<typeof spawn>; completion: Promise<void> } => {
+  const child = spawn(
+    process.execPath,
+    ["--input-type=module", "--eval", script],
+    {
+      env: { ...process.env, ...env },
+      stdio: ["ignore", "ignore", "pipe"],
+    },
+  );
+  const completion = new Promise<void>((resolve, reject) => {
+    let stderr = "";
+    child.stderr.setEncoding("utf-8");
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(`child exited ${code}/${signal}: ${stderr}`));
+    });
+  });
+  return { child, completion };
+};
+
 const runRecordChild = async (
   home: string,
   endpoint: string,
   publishedAt: number,
 ): Promise<void> => {
-  const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
+  const bundle = await buildPromptSyncBundle(home);
   const script = `
-    import { recordAppliedPromptManifest } from "./runtime/kernel/home/prompt-manifest-sync.ts";
+    const { recordAppliedPromptManifest } = await import(process.env.TEST_PROMPT_SYNC_BUNDLE);
     try {
       await recordAppliedPromptManifest({
         stellaDataDir: process.env.TEST_STELLA_HOME,
@@ -64,27 +128,84 @@ const runRecordChild = async (
       if (error?.name !== "StalePromptManifestError") throw error;
     }
   `;
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn("bun", ["--eval", script], {
-      cwd: repoRoot,
-      env: {
-        ...process.env,
-        TEST_STELLA_HOME: home,
-        TEST_PROMPT_ENDPOINT: endpoint,
-        TEST_PUBLISHED_AT: String(publishedAt),
+  await spawnNodeEval(script, {
+    TEST_PROMPT_SYNC_BUNDLE: pathToFileURL(bundle).href,
+    TEST_STELLA_HOME: home,
+    TEST_PROMPT_ENDPOINT: endpoint,
+    TEST_PUBLISHED_AT: String(publishedAt),
+  }).completion;
+};
+
+const spawnApplyChild = async (args: {
+  home: string;
+  endpoint: string;
+  publishedAt: number;
+  id: string;
+  content: string;
+  readyFile: string;
+  startFile?: string;
+  waitingFile?: string;
+  releaseFile?: string;
+  logFile: string;
+  finalFile: string;
+}) => {
+  const bundle = await buildPromptSyncBundle(args.home);
+  const script = `
+    const fs = await import("node:fs/promises");
+    const { applyPromptManifestIfCurrent } = await import(process.env.TEST_PROMPT_SYNC_BUNDLE);
+    if (process.env.TEST_START_FILE) {
+      await fs.writeFile(process.env.TEST_WAITING_FILE, "waiting\\n");
+      while (true) {
+        try {
+          await fs.access(process.env.TEST_START_FILE);
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+      }
+    }
+    await applyPromptManifestIfCurrent({
+      stellaDataDir: process.env.TEST_STELLA_HOME,
+      endpoint: process.env.TEST_PROMPT_ENDPOINT,
+      manifest: {
+        publishedAt: Number(process.env.TEST_PUBLISHED_AT),
+        revision: String(process.env.TEST_PUBLISHED_AT).padStart(64, "0"),
       },
-      stdio: ["ignore", "ignore", "pipe"],
+      reconcile: async () => {
+        await fs.appendFile(process.env.TEST_LOG_FILE, "enter:" + process.env.TEST_ID + "\\n");
+        await fs.writeFile(process.env.TEST_FINAL_FILE, process.env.TEST_CONTENT);
+        await fs.writeFile(process.env.TEST_READY_FILE, "ready\\n");
+        if (process.env.TEST_RELEASE_FILE) {
+          while (true) {
+            try {
+              await fs.access(process.env.TEST_RELEASE_FILE);
+              break;
+            } catch {
+              await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+          }
+        }
+        await fs.appendFile(process.env.TEST_LOG_FILE, "exit:" + process.env.TEST_ID + "\\n");
+      },
     });
-    let stderr = "";
-    child.stderr.setEncoding("utf-8");
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`record child exited ${code}: ${stderr}`));
-    });
+  `;
+  return spawnNodeEval(script, {
+    TEST_PROMPT_SYNC_BUNDLE: pathToFileURL(bundle).href,
+    TEST_STELLA_HOME: args.home,
+    TEST_PROMPT_ENDPOINT: args.endpoint,
+    TEST_PUBLISHED_AT: String(args.publishedAt),
+    TEST_ID: args.id,
+    TEST_CONTENT: args.content,
+    TEST_READY_FILE: args.readyFile,
+    ...(args.startFile
+      ? {
+          TEST_START_FILE: args.startFile,
+          TEST_WAITING_FILE: args.waitingFile!,
+        }
+      : {}),
+    ...(args.releaseFile ? { TEST_RELEASE_FILE: args.releaseFile } : {}),
+    TEST_LOG_FILE: args.logFile,
+    TEST_FINAL_FILE: args.finalFile,
   });
 };
 
@@ -356,6 +477,72 @@ describe("remote prompt startup sync", () => {
     expect(installed).toBe("NEW\n");
   });
 
+  it("releases a crashed OS lock without revoking the next live transaction", async () => {
+    const home = await tempDir();
+    const endpoint = "https://kernel-lock.example.test/api/stella/prompts";
+    const logFile = path.join(home, "apply.log");
+    const finalFile = path.join(home, "installed.txt");
+    const crashedReady = path.join(home, "crashed.ready");
+    const crashedRelease = path.join(home, "never.release");
+    const crashed = await spawnApplyChild({
+      home,
+      endpoint,
+      publishedAt: 5,
+      id: "CRASHED",
+      content: "CRASHED",
+      readyFile: crashedReady,
+      releaseFile: crashedRelease,
+      logFile,
+      finalFile,
+    });
+    await waitForFile(crashedReady);
+    crashed.child.kill("SIGKILL");
+    await crashed.completion.catch(() => undefined);
+    await writeFile(logFile, "");
+
+    const newStart = path.join(home, "new.start");
+    const newWaiting = path.join(home, "new.waiting");
+    const newer = await spawnApplyChild({
+      home,
+      endpoint,
+      publishedAt: 20,
+      id: "NEW",
+      content: "NEW",
+      readyFile: path.join(home, "new.ready"),
+      startFile: newStart,
+      waitingFile: newWaiting,
+      logFile,
+      finalFile,
+    });
+    await waitForFile(newWaiting);
+
+    const oldReady = path.join(home, "old.ready");
+    const oldRelease = path.join(home, "old.release");
+    const older = await spawnApplyChild({
+      home,
+      endpoint,
+      publishedAt: 10,
+      id: "OLD",
+      content: "OLD",
+      readyFile: oldReady,
+      releaseFile: oldRelease,
+      logFile,
+      finalFile,
+    });
+    await waitForFile(oldReady);
+    await writeFile(newStart, "resume\n");
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await expect(readFile(logFile, "utf-8")).resolves.toBe("enter:OLD\n");
+    await writeFile(oldRelease, "release\n");
+    await Promise.all([older.completion, newer.completion]);
+
+    await expect(readFile(finalFile, "utf-8")).resolves.toBe("NEW");
+    await expect(readFile(logFile, "utf-8")).resolves.toBe(
+      "enter:OLD\nexit:OLD\nenter:NEW\nexit:NEW\n",
+    );
+  });
+
   it("retains rollback protection from the legacy aggregate state file", async () => {
     const home = await tempDir();
     const endpoint = "https://legacy.example.test/api/stella/prompts";
@@ -458,29 +645,67 @@ describe("remote prompt startup sync", () => {
     ).resolves.toBe("paused-owner\n");
   });
 
-  it("compacts endpoint publications while retaining the durable maximum", async () => {
+  it("retains exact recovery identities and the maximum across a compaction crash", async () => {
     const home = await tempDir();
     const endpoint = "https://compact.example.test/api/stella/prompts";
+    const endpointHash = hash(endpoint);
+    const endpointDir = path.join(
+      home,
+      "cache/prompt-applied-state",
+      endpointHash,
+    );
+    await mkdir(endpointDir, { recursive: true });
+    const revision = manifest(1).revision;
     for (let publishedAt = 1; publishedAt <= 12; publishedAt += 1) {
-      await recordAppliedPromptManifest({
-        stellaDataDir: home,
-        endpoint,
-        manifest: manifest(publishedAt),
-      });
+      await writeFile(
+        path.join(endpointDir, `${publishedAt}-${revision}.json`),
+        `${JSON.stringify({ endpoint, publishedAt, revision })}\n`,
+      );
     }
+
+    const bundle = await buildPromptSyncBundle(home);
+    const crashMarker = path.join(home, "compact-crash.ready");
+    const crashScript = `
+      const fs = await import("node:fs/promises");
+      const { compactAppliedStateRecords } = await import(process.env.TEST_PROMPT_SYNC_BUNDLE);
+      await compactAppliedStateRecords(
+        process.env.TEST_STELLA_HOME,
+        process.env.TEST_PROMPT_ENDPOINT,
+        {
+          onDurableDelete: async () => {
+            await fs.writeFile(process.env.TEST_CRASH_MARKER, "ready\\n");
+            await new Promise(() => setInterval(() => {}, 1_000));
+          },
+        },
+      );
+    `;
+    const crashing = spawnNodeEval(crashScript, {
+      TEST_PROMPT_SYNC_BUNDLE: pathToFileURL(bundle).href,
+      TEST_STELLA_HOME: home,
+      TEST_PROMPT_ENDPOINT: endpoint,
+      TEST_CRASH_MARKER: crashMarker,
+    });
+    await waitForFile(crashMarker);
+    crashing.child.kill("SIGKILL");
+    await crashing.completion.catch(() => undefined);
     resetPromptAppliedStateMemoryForTests();
 
-    const endpointHash = hash(endpoint);
-    const records = await readdir(
-      path.join(home, "cache/prompt-applied-state", endpointHash),
-    );
-    expect(records.filter((file) => file.endsWith(".json"))).toHaveLength(4);
     const result = await resolvePromptManifest({
       stellaDataDir: home,
       siteUrl: siteUrlForEndpoint(endpoint),
       fetchImpl: async () => new Response(JSON.stringify(manifest(11))),
     });
     expect(result.manifest).toBeNull();
+
+    await compactAppliedStateRecords(home, endpoint);
+    const records = (await readdir(endpointDir))
+      .filter((file) => file.endsWith(".json"))
+      .sort();
+    expect(records).toEqual(
+      [9, 10, 11, 12]
+        .map((publishedAt) => `${publishedAt}-${revision}.json`)
+        .sort(),
+    );
   });
 
   it("canonicalizes accepted site URL forms to the same prompt endpoint", () => {

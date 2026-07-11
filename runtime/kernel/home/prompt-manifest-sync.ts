@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import {
   STELLA_PROMPT_COUNT,
@@ -29,7 +30,6 @@ const PROMPT_LEGACY_APPLIED_STATE_MAX_BYTES = 256 * 1024;
 const PROMPT_APPLIED_STATE_RECORD_MAX_BYTES = 4 * 1024;
 const PROMPT_APPLIED_STATE_RECOVERY_RECORDS = 4;
 const PROMPT_APPLY_LOCK_TIMEOUT_MS = 30_000;
-const PROMPT_APPLY_LOCK_POLL_MS = 20;
 const FETCH_TIMEOUT_MS = 3_000;
 
 export type RemotePrompt = { id: string; sha256: string; content: string };
@@ -148,8 +148,8 @@ const appliedStateEndpointDir = (
   endpoint: string,
 ): string => path.join(appliedStateDir(stellaDataDir), sha256(endpoint));
 
-const promptApplyLockPath = (stellaDataDir: string, endpoint: string): string =>
-  path.join(appliedStateDir(stellaDataDir), `${sha256(endpoint)}.apply-lock`);
+const promptApplyLockDatabasePath = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "cache", "prompt-apply-lock.sqlite");
 
 const appliedStateKey = (stellaDataDir: string, endpoint: string): string =>
   `${path.resolve(stellaDataDir)}\0${endpoint}`;
@@ -448,9 +448,10 @@ const writeAppliedStateAtomic = async (
   }
 };
 
-const compactAppliedStateRecords = async (
+export const compactAppliedStateRecords = async (
   stellaDataDir: string,
   endpoint: string,
+  options: { onDurableDelete?: (filePath: string) => Promise<void> } = {},
 ): Promise<void> => {
   const records = await listAppliedStateRecords(stellaDataDir, endpoint);
   records.sort((left, right) => {
@@ -460,99 +461,37 @@ const compactAppliedStateRecords = async (
     return right.state.revision.localeCompare(left.state.revision);
   });
   const obsolete = records.slice(PROMPT_APPLIED_STATE_RECOVERY_RECORDS);
-  await Promise.all(obsolete.map((record) => fs.rm(record.filePath)));
-  if (obsolete.length > 0) {
+  for (const record of obsolete) {
+    await fs.rm(record.filePath);
     await syncDirectory(appliedStateEndpointDir(stellaDataDir, endpoint));
+    await options.onDurableDelete?.(record.filePath);
   }
 };
 
-type PromptApplyLease = { lockPath: string; token: string };
-
-const processIsAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
-  }
-};
-
-const acquirePromptApplyLease = async (
+const acquirePromptApplyDatabaseLock = async (
   stellaDataDir: string,
   endpoint: string,
-): Promise<PromptApplyLease> => {
+): Promise<DatabaseSync> => {
   await ensureDurableAppliedStateDirs(stellaDataDir, endpoint);
-  const lockPath = promptApplyLockPath(stellaDataDir, endpoint);
-  const deadline = Date.now() + PROMPT_APPLY_LOCK_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const token = randomUUID();
-    const preparedPath = `${lockPath}.lease-${process.pid}-${token}`;
-    await fs.mkdir(preparedPath, { mode: 0o700 });
-    await fs.writeFile(
-      path.join(preparedPath, "owner.json"),
-      JSON.stringify({ pid: process.pid, token }),
-      { encoding: "utf-8", mode: 0o600 },
-    );
-    try {
-      await fs.rename(preparedPath, lockPath);
-      return { lockPath, token };
-    } catch (error) {
-      await fs.rm(preparedPath, { recursive: true, force: true });
-      if (
-        !["EEXIST", "ENOTEMPTY"].includes(
-          (error as NodeJS.ErrnoException).code ?? "",
-        )
-      ) {
-        throw error;
-      }
-    }
-
-    try {
-      const owner = JSON.parse(
-        await fs.readFile(path.join(lockPath, "owner.json"), "utf-8"),
-      ) as { pid?: unknown };
-      if (
-        typeof owner.pid === "number" &&
-        Number.isInteger(owner.pid) &&
-        processIsAlive(owner.pid)
-      ) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, PROMPT_APPLY_LOCK_POLL_MS),
-        );
-        continue;
-      }
-    } catch {
-      // Missing or malformed ownership is stale and can be atomically moved.
-    }
-    const stalePath = `${lockPath}.stale-${process.pid}-${randomUUID()}`;
-    try {
-      await fs.rename(lockPath, stalePath);
-      await fs.rm(stalePath, { recursive: true, force: true });
-    } catch {
-      // Another contender won the atomic takeover; retry acquisition.
-    }
+  const database = new DatabaseSync(promptApplyLockDatabasePath(stellaDataDir));
+  try {
+    database.exec(`PRAGMA busy_timeout = ${PROMPT_APPLY_LOCK_TIMEOUT_MS}`);
+    database.exec("BEGIN IMMEDIATE");
+    return database;
+  } catch (error) {
+    database.close();
+    throw error;
   }
-  throw new Error(`Timed out acquiring prompt apply lock for ${endpoint}`);
 };
 
-const releasePromptApplyLease = async (
-  lease: PromptApplyLease,
-): Promise<void> => {
+const releasePromptApplyDatabaseLock = (database: DatabaseSync): void => {
   try {
-    const owner = JSON.parse(
-      await fs.readFile(path.join(lease.lockPath, "owner.json"), "utf-8"),
-    ) as { token?: unknown };
-    if (owner.token !== lease.token) return;
+    database.exec("ROLLBACK");
   } catch {
-    return;
+    // A killed or compromised connection already released its kernel lock.
+  } finally {
+    database.close();
   }
-  const releasePath = `${lease.lockPath}.release-${process.pid}-${lease.token}`;
-  try {
-    await fs.rename(lease.lockPath, releasePath);
-  } catch {
-    return;
-  }
-  await fs.rm(releasePath, { recursive: true, force: true });
 };
 
 const withPromptApplyLock = async <T>(
@@ -560,7 +499,10 @@ const withPromptApplyLock = async <T>(
   endpoint: string,
   operation: () => Promise<T>,
 ): Promise<T> => {
-  const key = appliedStateKey(stellaDataDir, endpoint);
+  // SQLite serializes every writer to this data directory, so the in-process
+  // queue must use the same scope. Otherwise a second synchronous BEGIN could
+  // block the event loop while the first holder awaits reconciliation.
+  const key = path.resolve(stellaDataDir);
   const previous = promptApplyQueueTails.get(key) ?? Promise.resolve();
   let releaseTurn!: () => void;
   const turn = new Promise<void>((resolve) => {
@@ -568,12 +510,12 @@ const withPromptApplyLock = async <T>(
   });
   promptApplyQueueTails.set(key, turn);
   await previous;
-  let lease: PromptApplyLease | null = null;
+  let database: DatabaseSync | null = null;
   try {
-    lease = await acquirePromptApplyLease(stellaDataDir, endpoint);
+    database = await acquirePromptApplyDatabaseLock(stellaDataDir, endpoint);
     return await operation();
   } finally {
-    if (lease) await releasePromptApplyLease(lease);
+    if (database) releasePromptApplyDatabaseLock(database);
     releaseTurn();
     if (promptApplyQueueTails.get(key) === turn) {
       promptApplyQueueTails.delete(key);
