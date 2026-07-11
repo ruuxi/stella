@@ -122,7 +122,14 @@ export function clampThinkingLevel<TApi extends Api>(
  */
 export function supportsXhigh<TApi extends Api>(model: Model<TApi>): boolean {
 	if (model.thinkingLevelMap?.xhigh !== undefined) return model.thinkingLevelMap.xhigh !== null;
-	if (model.id.includes("gpt-5.2") || model.id.includes("gpt-5.3") || model.id.includes("gpt-5.4")) return true;
+	if (
+		model.id.includes("gpt-5.2") ||
+		model.id.includes("gpt-5.3") ||
+		model.id.includes("gpt-5.4") ||
+		model.id.includes("gpt-5.5") ||
+		model.id.includes("gpt-5.6")
+	)
+		return true;
 	if (model.api === "anthropic-messages") return model.id.includes("opus-4-6") || model.id.includes("opus-4.6");
 	return false;
 }

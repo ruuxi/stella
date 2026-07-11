@@ -58,8 +58,9 @@ import {
   buildEngineRoutingPatch,
   buildEngineTransitionReasoningPatch,
   intersectChatGptModels,
+  listChatGptCatalogModels,
   OPENAI_CODEX_PROVIDER,
-  resolveChatGptModelSelection,
+  resolveChatGptEngineModel,
 } from "@/global/settings/lib/engine-model-routing";
 import "./engine-tab.css";
 
@@ -516,18 +517,29 @@ export function EngineTabContent() {
           const available = codexCatalog.models
             ? intersectChatGptModels(engineCatalogModels, codexCatalog.models)
             : [];
-          const resolved = resolveChatGptModelSelection(
+          const resolution = resolveChatGptEngineModel(
             preferences.codexModel,
             available.map((model) => model.modelId),
-            preferences.codexModel || DEFAULT_CODEX_MODEL,
+            listChatGptCatalogModels(engineCatalogModels).map(
+              (model) => model.modelId,
+            ),
+            DEFAULT_CODEX_MODEL,
           );
-          if (!resolved) {
+          if (resolution.kind === "unavailable") {
             throw new Error(
               codexCatalog.error ??
                 "No ChatGPT models are currently available.",
             );
           }
-          resolvedCodexModel = resolved;
+          // transient-gap keeps the saved (registry-routable) model instead of
+          // silently switching on a flaky live-list miss; rerouted surfaces a
+          // notice so a genuine switch is never silent.
+          resolvedCodexModel = resolution.modelId;
+          if (resolution.kind === "rerouted") {
+            showNotice(
+              `Routed to ${resolution.modelId} (saved model unavailable).`,
+            );
+          }
         }
         const model =
           engine === "codex_cli"
@@ -565,6 +577,7 @@ export function EngineTabContent() {
       engineCatalogModels,
       preferences,
       showError,
+      showNotice,
       writePreferences,
       resetMigrationLatch,
     ],

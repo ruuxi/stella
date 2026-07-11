@@ -6159,6 +6159,10 @@ export const MODELS = {
 			maxTokens: 100000,
 		} satisfies Model<"openai-responses">,
 	},
+	// HAND-CURATED: the openai-codex `gpt-5.5` and `gpt-5.6-*` entries below are
+	// maintained by hand (they come from the Codex app-server model/list, not the
+	// models.dev source, and their pricing is an estimate). A regen must preserve
+	// them — re-add any missing openai-codex ids reported by `codex app-server`.
 	"openai-codex": {
 		"gpt-5.6-sol": {
 			id: "gpt-5.6-sol",

@@ -335,6 +335,35 @@ describe("Codex agent runtime", () => {
     }
   });
 
+  it("treats a legacy default codexModel as non-explicit for Stella Light", () => {
+    // Pre-upgrade prefs.json bakes the OLD materialized default (gpt-5.5) into
+    // codexModel. It must not read as an explicit pick, so Stella Light still
+    // downgrades to the light model while full spawns keep the legacy model.
+    const previousModel = process.env.STELLA_CODEX_MODEL;
+    delete process.env.STELLA_CODEX_MODEL;
+    const stellaDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-codex-legacy-default-"),
+    );
+    try {
+      updateLocalModelPreferences(stellaDataDir, {
+        codexModel: "gpt-5.5",
+      });
+      expect(
+        getCodexRuntimePreferences(stellaDataDir, "stella/light").model,
+      ).toBe(CODEX_LIGHT_MODEL);
+      expect(getCodexRuntimePreferences(stellaDataDir, "general").model).toBe(
+        "gpt-5.5",
+      );
+    } finally {
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
+      if (previousModel === undefined) {
+        delete process.env.STELLA_CODEX_MODEL;
+      } else {
+        process.env.STELLA_CODEX_MODEL = previousModel;
+      }
+    }
+  });
+
   it("decodes file URL image attachment paths before passing them to Codex", () => {
     const filePath = path.join("/tmp", "stella image with spaces.png");
 

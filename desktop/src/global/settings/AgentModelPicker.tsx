@@ -46,8 +46,9 @@ import {
   DEFAULT_CLAUDE_CODE_MODEL,
   fromOpenAiCodexModelId,
   intersectChatGptModels,
+  listChatGptCatalogModels,
   OPENAI_CODEX_PROVIDER,
-  resolveChatGptModelSelection,
+  resolveChatGptEngineModel,
   type ModelPickerEngine,
 } from "@/global/settings/lib/engine-model-routing";
 import "./AgentModelPicker.css";
@@ -291,6 +292,11 @@ export function AgentModelPicker({
   const [chatGptConnection, setChatGptConnection] = useState<
     "checking" | "connected" | "disconnected" | "needs-reauth"
   >("checking");
+  // Soft status shown when a genuinely-gone saved ChatGPT model was rerouted
+  // to an available one, so the switch is never silent.
+  const [chatGptRoutedNotice, setChatGptRoutedNotice] = useState<string | null>(
+    null,
+  );
   const [draftEngine, setDraftEngine] = useState<ModelPickerEngine | null>(
     null,
   );
@@ -429,6 +435,13 @@ export function AgentModelPicker({
         description: model.modelId,
       })),
     [chatGptCatalogModels],
+  );
+  // Every openai-codex id known to the static registry (independent of the
+  // live model/list) so we can tell a genuinely-removed model from a
+  // transient live-list gap.
+  const chatGptRegistryIds = useMemo(
+    () => listChatGptCatalogModels(allModels).map((model) => model.modelId),
+    [allModels],
   );
   const savedChatGptOverride = preferences
     ? fromOpenAiCodexModelId(
@@ -760,6 +773,7 @@ export function AgentModelPicker({
       const previous = preferences;
       setPendingAgent(ENGINE_PENDING_TARGET);
       setError(null);
+      setChatGptRoutedNotice(null);
       // ChatGPT auto-matches to an available OpenAI model; the model id passed
       // into the routing patch is resolved below so selection never dead-ends
       // on a "choose a model" gate. Auth is the only real interruption.
@@ -789,18 +803,27 @@ export function AgentModelPicker({
             throw new Error("ChatGPT needs to be connected before selection.");
           }
           setChatGptConnection("connected");
-          const resolved = resolveChatGptModelSelection(
+          const resolution = resolveChatGptEngineModel(
             selectedModel,
             chatGptModels.map((model) => model.id),
-            preferences.codexModel || DEFAULT_CHATGPT_MODEL,
+            chatGptRegistryIds,
+            DEFAULT_CHATGPT_MODEL,
           );
-          if (!resolved) {
+          if (resolution.kind === "unavailable") {
             throw new Error(
               codexCatalog.error ??
                 "No ChatGPT models are currently available.",
             );
           }
-          effectiveModelId = resolved;
+          // transient-gap keeps the saved (registry-routable) model rather than
+          // silently switching on a flaky live-list miss; rerouted surfaces a
+          // notice so a genuine switch is never silent.
+          effectiveModelId = resolution.modelId;
+          if (resolution.kind === "rerouted") {
+            setChatGptRoutedNotice(
+              `Routed to ${resolution.modelId} (saved model unavailable).`,
+            );
+          }
         }
 
         const patch = {
@@ -839,6 +862,7 @@ export function AgentModelPicker({
     },
     [
       chatGptModels,
+      chatGptRegistryIds,
       codexCatalog.error,
       codexCatalog.loading,
       credentials,
@@ -1437,6 +1461,10 @@ export function AgentModelPicker({
             ) : selectedChatGptModelUnavailable ? (
               <p className="agent-model-picker-connection" role="status">
                 The saved model is unavailable. Choose another model.
+              </p>
+            ) : chatGptRoutedNotice ? (
+              <p className="agent-model-picker-connection" role="status">
+                {chatGptRoutedNotice}
               </p>
             ) : null}
             <EngineScopedModelList

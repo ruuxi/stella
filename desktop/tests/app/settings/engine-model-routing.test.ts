@@ -7,6 +7,7 @@ import {
   DEFAULT_CHATGPT_MODEL,
   intersectChatGptModels,
   listChatGptCatalogModels,
+  resolveChatGptEngineModel,
   resolveChatGptModelSelection,
 } from "../../../src/global/settings/lib/engine-model-routing";
 import { DEFAULT_CODEX_MODEL } from "../../../../runtime/contracts/agent-engine";
@@ -64,6 +65,58 @@ describe("engine model routing", () => {
       expect(resolveChatGptModelSelection("gpt-5.5", [], "gpt-5.6-sol")).toBe(
         null,
       );
+    });
+  });
+
+  describe("resolveChatGptEngineModel classification", () => {
+    const liveIds = ["gpt-5.6-sol", "gpt-5.4"];
+    const registryIds = ["gpt-5.6-sol", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
+    it("keeps a saved model present in the live list", () => {
+      expect(
+        resolveChatGptEngineModel(
+          "gpt-5.4",
+          liveIds,
+          registryIds,
+          "gpt-5.6-sol",
+        ),
+      ).toEqual({ kind: "available", modelId: "gpt-5.4" });
+    });
+    it("keeps a registry-routable model missing from a flaky live list", () => {
+      // gpt-5.5 is a real model temporarily absent from model/list; do NOT
+      // silently reroute the user off it.
+      expect(
+        resolveChatGptEngineModel(
+          "gpt-5.5",
+          liveIds,
+          registryIds,
+          "gpt-5.6-sol",
+        ),
+      ).toEqual({ kind: "transient-gap", modelId: "gpt-5.5" });
+    });
+    it("reroutes only when the saved model is gone from both sources", () => {
+      expect(
+        resolveChatGptEngineModel(
+          "gpt-4o-legacy",
+          liveIds,
+          registryIds,
+          "gpt-5.6-sol",
+        ),
+      ).toEqual({
+        kind: "rerouted",
+        modelId: "gpt-5.6-sol",
+        savedModel: "gpt-4o-legacy",
+      });
+    });
+    it("reports unavailable when the live list is empty and model is gone", () => {
+      expect(
+        resolveChatGptEngineModel("gpt-4o-legacy", [], [], "gpt-5.6-sol"),
+      ).toEqual({ kind: "unavailable" });
+    });
+    it("treats a transient gap even when the live list is empty", () => {
+      // A total live-list failure must not evict a registry-routable saved id.
+      expect(
+        resolveChatGptEngineModel("gpt-5.5", [], registryIds, "gpt-5.6-sol"),
+      ).toEqual({ kind: "transient-gap", modelId: "gpt-5.5" });
     });
   });
   it("scopes ChatGPT to OpenAI OAuth catalog models", () => {
