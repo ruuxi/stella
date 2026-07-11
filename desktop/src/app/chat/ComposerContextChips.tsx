@@ -30,6 +30,7 @@ import {
   removeComposerScreenshotContext,
   truncateChipLabel,
 } from "@/features/chat/composer-context";
+import "./composer-context.css";
 
 type SetChatContext = Dispatch<SetStateAction<ChatContext | null>>;
 
@@ -294,19 +295,32 @@ type ScreenshotContextChipsProps = {
   imageClassName?: string;
 };
 
-function ScreenshotContextChip({
-  screenshot,
-  index,
-  setChatContext,
-  chipClassName,
-  imageClassName,
-}: {
-  screenshot: NonNullable<ChatContext["regionScreenshots"]>[number];
-  index: number;
-  setChatContext: SetChatContext;
+type ImageAttachmentChipProps = {
+  thumbnailUrl: string;
+  fullImageUrl: string;
+  alt: string;
+  title: string;
   chipClassName?: string;
   imageClassName?: string;
-}) {
+  removeLabel?: string;
+  onRemove?: () => void;
+};
+
+/**
+ * Canonical compact image-attachment chip used before and after send.
+ * Composer callers add removal; sent-message callers keep the same visual
+ * body and lightbox behavior without exposing a remove affordance.
+ */
+export function ImageAttachmentChip({
+  thumbnailUrl,
+  fullImageUrl,
+  alt,
+  title,
+  chipClassName,
+  imageClassName,
+  removeLabel,
+  onRemove,
+}: ImageAttachmentChipProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
   return (
     <span className="composer-chip-shell">
@@ -318,27 +332,26 @@ function ScreenshotContextChip({
         )}
         data-with-thumb="true"
         data-region-card="true"
-        title="Click to enlarge screenshot"
+        title={title}
         onClick={() => setPreviewOpen(true)}
       >
         <img
-          src={screenshot.previewUrl ?? screenshot.dataUrl}
+          src={thumbnailUrl}
           className={cn(
             imageClassName,
             "chat-composer-context-window-thumb chat-composer-context-region-thumb",
           )}
-          alt={`Screenshot ${index + 1}`}
+          alt={alt}
         />
       </button>
-      <ChipRemoveButton
-        label={`Remove screenshot ${index + 1}`}
-        onRemove={() => removeComposerScreenshotContext(index, setChatContext)}
-      />
+      {onRemove && removeLabel ? (
+        <ChipRemoveButton label={removeLabel} onRemove={onRemove} />
+      ) : null}
       <ImageLightbox
         open={previewOpen}
         onOpenChange={setPreviewOpen}
-        src={screenshot.dataUrl}
-        alt={`Screenshot ${index + 1}`}
+        src={fullImageUrl}
+        alt={alt}
       />
     </span>
   );
@@ -353,13 +366,18 @@ export function ScreenshotContextChips({
   return (
     <>
       {screenshots.map((screenshot, index) => (
-        <ScreenshotContextChip
+        <ImageAttachmentChip
           key={index}
-          screenshot={screenshot}
-          index={index}
-          setChatContext={setChatContext}
+          thumbnailUrl={screenshot.previewUrl ?? screenshot.dataUrl}
+          fullImageUrl={screenshot.dataUrl}
+          alt={`Screenshot ${index + 1}`}
+          title="Click to enlarge screenshot"
           chipClassName={chipClassName}
           imageClassName={imageClassName}
+          removeLabel={`Remove screenshot ${index + 1}`}
+          onRemove={() =>
+            removeComposerScreenshotContext(index, setChatContext)
+          }
         />
       ))}
     </>

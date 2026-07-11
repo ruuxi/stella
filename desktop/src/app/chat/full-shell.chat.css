@@ -485,10 +485,6 @@
   box-shadow: var(--shadow-overlay), var(--panel-surface-highlight);
 }
 
-.event-context-overflow-card .event-attachment {
-  max-width: 100%;
-}
-
 .event-window-badge-hovercard {
   position: relative;
   display: inline-flex;
@@ -625,24 +621,6 @@ button.event-context-chip--overflow:focus-visible {
 .event-channel-badge.kind {
   text-transform: uppercase;
   letter-spacing: 0.05em;
-}
-
-.event-attachment {
-  max-width: 200px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-base);
-  object-fit: cover;
-  cursor: pointer;
-  transition: transform 0.15s ease;
-}
-
-.event-attachment:hover {
-  transform: scale(1.02);
-}
-
-.event-attachment:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
 }
 
 .event-empty {

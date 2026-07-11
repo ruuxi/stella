@@ -43,7 +43,6 @@ import {
 } from "@/features/chat/lib/paste-context";
 import { ChipPreviewPortal } from "@/app/chat/ChipPreviewPortal";
 import { useHoverPreview } from "@/app/chat/use-hover-preview";
-import { ImageLightbox } from "@/ui/image-lightbox";
 import type {
   Attachment,
   ChannelEnvelope,
@@ -68,6 +67,7 @@ import { VoiceSessionCard } from "@/app/chat/VoiceSessionCard";
 import { sanitizeAttachmentImageUrl } from "@/shared/lib/url-safety";
 import { UserMessageBody } from "@/app/chat/UserMessageBody";
 import { MessageActions } from "@/app/chat/MessageActions";
+import { ImageAttachmentChip } from "@/app/chat/ComposerContextChips";
 import { eventRowEqual } from "@/features/chat/lib/row-equality";
 import { assistantRowHasVisibleContent } from "@/features/chat/lib/assistant-row-content";
 import type {
@@ -335,10 +335,9 @@ function UserContextChips({ chips }: { chips: ContextChip[] }) {
 }
 
 /**
- * A user-attached image inside the sent message. Clicking (or pressing
- * Enter / Space) opens a full-window enlarged preview via the shared
- * {@link ImageLightbox}, mirroring how generated images can be opened in a
- * larger view.
+ * A user-attached image inside the sent message. Presentation reuses the
+ * composer's compact, uniform image chip while retaining the shared
+ * full-window lightbox.
  */
 function AttachmentImage({
   attachment,
@@ -349,36 +348,16 @@ function AttachmentImage({
   index: number;
   safeUrl: string;
 }) {
-  const [previewOpen, setPreviewOpen] = useState(false);
   const label = getAttachmentLabel(attachment, index);
-
-  const open = () => {
-    setPreviewOpen(true);
-  };
-
   return (
-    <>
-      <img
-        src={safeUrl}
-        alt={attachment.name ?? "Attachment"}
-        className="event-attachment"
-        onClick={open}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(eventKey) => {
-          if (eventKey.key === "Enter" || eventKey.key === " ") {
-            eventKey.preventDefault();
-            open();
-          }
-        }}
-      />
-      <ImageLightbox
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        src={safeUrl}
-        alt={label}
-      />
-    </>
+    <ImageAttachmentChip
+      thumbnailUrl={safeUrl}
+      fullImageUrl={safeUrl}
+      alt={attachment.name ?? "Attachment"}
+      title={`Click to enlarge ${label}`}
+      chipClassName="chat-composer-context-chip chat-composer-context-chip--screenshot composer-context-chip composer-context-chip--screenshot"
+      imageClassName="chat-composer-context-thumb composer-context-thumb"
+    />
   );
 }
 
