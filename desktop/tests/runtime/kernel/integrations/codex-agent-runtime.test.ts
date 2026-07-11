@@ -304,27 +304,55 @@ describe("Codex agent runtime", () => {
     }
   });
 
-  it("keeps an explicit Codex model preference for Stella Light agents", () => {
+  it("honors an explicitly-picked Codex model for Stella Light agents", () => {
+    // Provenance marker set => the user actively picked this model, so a
+    // Stella Light spawn honors it instead of downgrading, and full spawns
+    // honor it too.
     const previousModel = process.env.STELLA_CODEX_MODEL;
     delete process.env.STELLA_CODEX_MODEL;
     const stellaDataDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-codex-light-model-"),
     );
     try {
-      // Saved model equals the default => the user hasn't picked a distinct
-      // Codex model, so Stella Light downgrades to the light model.
-      updateLocalModelPreferences(stellaDataDir, {
-        codexModel: DEFAULT_CODEX_MODEL,
-      });
-      expect(
-        getCodexRuntimePreferences(stellaDataDir, "stella/light").model,
-      ).toBe(CODEX_LIGHT_MODEL);
       updateLocalModelPreferences(stellaDataDir, {
         codexModel: "custom-codex-model",
+        codexModelExplicit: true,
       });
       expect(
         getCodexRuntimePreferences(stellaDataDir, "stella/light").model,
       ).toBe("custom-codex-model");
+      expect(getCodexRuntimePreferences(stellaDataDir, "general").model).toBe(
+        "custom-codex-model",
+      );
+    } finally {
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
+      if (previousModel === undefined) {
+        delete process.env.STELLA_CODEX_MODEL;
+      } else {
+        process.env.STELLA_CODEX_MODEL = previousModel;
+      }
+    }
+  });
+
+  it("honors an explicit gpt-5.5 pick for Stella Light (marker set)", () => {
+    // Same string as the legacy baked default, but with the explicit marker
+    // it is an intentional pick and must NOT downgrade light spawns.
+    const previousModel = process.env.STELLA_CODEX_MODEL;
+    delete process.env.STELLA_CODEX_MODEL;
+    const stellaDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-codex-explicit-55-"),
+    );
+    try {
+      updateLocalModelPreferences(stellaDataDir, {
+        codexModel: "gpt-5.5",
+        codexModelExplicit: true,
+      });
+      expect(
+        getCodexRuntimePreferences(stellaDataDir, "stella/light").model,
+      ).toBe("gpt-5.5");
+      expect(getCodexRuntimePreferences(stellaDataDir, "general").model).toBe(
+        "gpt-5.5",
+      );
     } finally {
       fs.rmSync(stellaDataDir, { recursive: true, force: true });
       if (previousModel === undefined) {
@@ -337,8 +365,8 @@ describe("Codex agent runtime", () => {
 
   it("treats a legacy default codexModel as non-explicit for Stella Light", () => {
     // Pre-upgrade prefs.json bakes the OLD materialized default (gpt-5.5) into
-    // codexModel. It must not read as an explicit pick, so Stella Light still
-    // downgrades to the light model while full spawns keep the legacy model.
+    // codexModel with NO marker. It must not read as an explicit pick, so
+    // Stella Light still downgrades while full spawns keep the legacy model.
     const previousModel = process.env.STELLA_CODEX_MODEL;
     delete process.env.STELLA_CODEX_MODEL;
     const stellaDataDir = fs.mkdtempSync(

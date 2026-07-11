@@ -68,6 +68,7 @@ type LocalModelPreferences = {
   stellaConversationReasoningEfforts: Record<string, ReasoningEffort>;
   agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
   codexModel: string;
+  codexModelExplicit: boolean;
   codexReasoningEffort: ReasoningEffort;
   claudeCodeModel: string;
   claudeCodeReasoningEffort: ReasoningEffort;
@@ -767,7 +768,11 @@ export function AgentModelPicker({
   );
 
   const commitEngineSelection = useCallback(
-    async (engine: ModelPickerEngine, modelId?: string): Promise<boolean> => {
+    async (
+      engine: ModelPickerEngine,
+      modelId?: string,
+      options?: { explicit?: boolean },
+    ): Promise<boolean> => {
       if (!preferences || pendingAgent) return false;
       migrationAttemptedRef.current = null;
       const previous = preferences;
@@ -829,6 +834,12 @@ export function AgentModelPicker({
         const patch = {
           ...buildEngineRoutingPatch(preferences, engine, effectiveModelId),
           ...buildEngineTransitionReasoningPatch(preferences, engine),
+          // Record provenance only for an explicit ChatGPT model pick so
+          // Stella Light honors it; engine switches / auto-matches leave the
+          // marker untouched.
+          ...(engine === "codex_cli" && options?.explicit
+            ? { codexModelExplicit: true }
+            : {}),
         } as Partial<LocalModelPreferences>;
         const optimistic = { ...preferences, ...patch };
         setPreferences(optimistic);
@@ -907,7 +918,10 @@ export function AgentModelPicker({
   const handleEngineModelSelect = useCallback(
     async (modelId: string) => {
       if (!preferences) return;
-      const saved = await commitEngineSelection(selectedEngine, modelId);
+      // Selecting a row from the model list is an explicit user pick.
+      const saved = await commitEngineSelection(selectedEngine, modelId, {
+        explicit: true,
+      });
       if (saved) {
         setDraftEngine(null);
         onSelected?.();

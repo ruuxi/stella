@@ -1298,6 +1298,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         >;
         agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
         codexModel: string;
+        codexModelExplicit: boolean;
         codexReasoningEffort:
           | "default"
           | "minimal"
@@ -1335,6 +1336,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       >;
       agentRuntimeEngine?: "default" | "claude_code_local" | "codex_cli";
       codexModel?: string;
+      codexModelExplicit?: boolean;
       codexReasoningEffort?:
         | "default"
         | "minimal"
@@ -1372,6 +1374,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         >;
         agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
         codexModel: string;
+        codexModelExplicit: boolean;
         codexReasoningEffort:
           | "default"
           | "minimal"

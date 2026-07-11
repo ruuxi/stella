@@ -104,6 +104,7 @@ type LocalModelPreferences = {
   stellaConversationReasoningEfforts: Record<string, ReasoningEffort>;
   agentRuntimeEngine: AgentRuntimeEngine;
   codexModel: string;
+  codexModelExplicit: boolean;
   codexReasoningEffort: CodexReasoningPreference;
   claudeCodeModel: string;
   claudeCodeReasoningEffort: ReasoningEffort;
@@ -491,6 +492,9 @@ export function EngineTabContent() {
       // ChatGPT auto-matches to an available OpenAI model instead of forcing
       // a manual pick; auth is the only real gate.
       let resolvedCodexModel = preferences.codexModel;
+      // Deferred: writePreferences() clears status before its first await, so
+      // the reroute notice must be surfaced AFTER the save succeeds.
+      let rerouteNotice: string | null = null;
       try {
         if (engine === "codex_cli") {
           if (codexCatalog.loading) {
@@ -536,9 +540,7 @@ export function EngineTabContent() {
           // notice so a genuine switch is never silent.
           resolvedCodexModel = resolution.modelId;
           if (resolution.kind === "rerouted") {
-            showNotice(
-              `Routed to ${resolution.modelId} (saved model unavailable).`,
-            );
+            rerouteNotice = `Routed to ${resolution.modelId} (saved model unavailable).`;
           }
         }
         const model =
@@ -552,6 +554,9 @@ export function EngineTabContent() {
           ...buildEngineTransitionReasoningPatch(preferences, engine),
         };
         const saved = await writePreferences(patch, "engine");
+        if (saved !== null && rerouteNotice) {
+          showNotice(rerouteNotice);
+        }
         return saved !== null;
       } catch (caught) {
         oauthPendingRef.current = false;
@@ -904,7 +909,12 @@ function ModelsSection({
       if (runtimeEngine === "codex_cli") {
         onExplicitCodexAction();
         await writePreferences(
-          buildEngineRoutingPatch(preferences, runtimeEngine, modelId),
+          {
+            ...buildEngineRoutingPatch(preferences, runtimeEngine, modelId),
+            // Explicit model-row pick: record provenance so Stella Light
+            // honors this model instead of downgrading.
+            codexModelExplicit: true,
+          },
           "overrides",
         );
         return;
@@ -963,6 +973,10 @@ function ModelsSection({
           "orchestrator",
           "general",
         ]),
+        // Explicit model-row pick records provenance for Stella Light.
+        ...(runtimeModelEngine === "codex_cli"
+          ? { codexModelExplicit: true }
+          : {}),
       };
       await writePreferences(patch, "overrides");
     },

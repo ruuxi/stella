@@ -95,6 +95,14 @@ export type LocalPreferences = {
   agentRuntimeEngine: AgentEngine;
   /** Codex model id used when the Codex engine is selected. */
   codexModel: string;
+  /**
+   * True once the user actively picks a Codex/ChatGPT model in a picker
+   * surface. Distinguishes an explicit pick from a materialized default that
+   * legacy prefs.json bake into `codexModel`. Only an explicit pick makes
+   * Stella Light honor the saved model instead of downgrading to the light
+   * model. Absent/false on legacy files => treated as non-explicit.
+   */
+  codexModelExplicit: boolean;
   /** Codex reasoning effort used when the Codex engine is selected. */
   codexReasoningEffort: ReasoningEffort;
   /** Claude Code model or alias used when the Claude Code engine is selected. */
@@ -171,6 +179,7 @@ export type LocalModelPreferencesSnapshot = Pick<
   | "stellaConversationReasoningEfforts"
   | "agentRuntimeEngine"
   | "codexModel"
+  | "codexModelExplicit"
   | "codexReasoningEffort"
   | "claudeCodeModel"
   | "claudeCodeReasoningEffort"
@@ -191,6 +200,7 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
   stellaConversationReasoningEfforts: {},
   agentRuntimeEngine: "default",
   codexModel: DEFAULT_CODEX_MODEL,
+  codexModelExplicit: false,
   codexReasoningEffort: "default",
   claudeCodeModel: DEFAULT_CLAUDE_CODE_MODEL,
   claudeCodeReasoningEffort: "default",
@@ -252,6 +262,7 @@ export const loadLocalPreferences = (
       ),
       agentRuntimeEngine: normalizeEngine(parsed.agentRuntimeEngine),
       codexModel: normalizeCodexModel(parsed.codexModel),
+      codexModelExplicit: parsed.codexModelExplicit === true,
       codexReasoningEffort: normalizeReasoningEffort(
         parsed.codexReasoningEffort,
       ),
@@ -387,6 +398,7 @@ export const getLocalModelPreferences = (
     },
     agentRuntimeEngine: prefs.agentRuntimeEngine,
     codexModel: prefs.codexModel,
+    codexModelExplicit: prefs.codexModelExplicit,
     codexReasoningEffort: prefs.codexReasoningEffort,
     claudeCodeModel: prefs.claudeCodeModel,
     claudeCodeReasoningEffort: prefs.claudeCodeReasoningEffort,
@@ -435,6 +447,10 @@ export const updateLocalModelPreferences = (
       patch.codexModel === undefined
         ? prefs.codexModel
         : normalizeCodexModel(patch.codexModel),
+    codexModelExplicit:
+      patch.codexModelExplicit === undefined
+        ? prefs.codexModelExplicit
+        : patch.codexModelExplicit === true,
     codexReasoningEffort:
       patch.codexReasoningEffort === undefined
         ? prefs.codexReasoningEffort

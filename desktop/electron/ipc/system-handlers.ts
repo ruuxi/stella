@@ -2253,6 +2253,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
             ? payload.codexModel.trim()
             : "";
       }
+      if (payload?.codexModelExplicit !== undefined) {
+        patch.codexModelExplicit = payload.codexModelExplicit === true;
+      }
       if (payload?.codexReasoningEffort !== undefined) {
         patch.codexReasoningEffort = sanitizeReasoningEffort(
           payload.codexReasoningEffort,

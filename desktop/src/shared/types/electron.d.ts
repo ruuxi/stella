@@ -914,6 +914,7 @@ export type ElectronSystemApi = {
     >;
     agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
     codexModel: string;
+    codexModelExplicit: boolean;
     codexReasoningEffort:
       | "default"
       | "minimal"
@@ -951,6 +952,7 @@ export type ElectronSystemApi = {
     >;
     agentRuntimeEngine?: "default" | "claude_code_local" | "codex_cli";
     codexModel?: string;
+    codexModelExplicit?: boolean;
     codexReasoningEffort?:
       | "default"
       | "minimal"
@@ -987,6 +989,7 @@ export type ElectronSystemApi = {
     >;
     agentRuntimeEngine: "default" | "claude_code_local" | "codex_cli";
     codexModel: string;
+    codexModelExplicit: boolean;
     codexReasoningEffort:
       | "default"
       | "minimal"

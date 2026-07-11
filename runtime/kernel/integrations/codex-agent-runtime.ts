@@ -37,15 +37,6 @@ const DEFAULT_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS = 750;
 export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
-/**
- * Codex models that were the persisted default in an earlier build. Legacy
- * prefs.json files bake the materialized default into `codexModel`, so a bare
- * literal here must NOT read as an explicit user pick — otherwise Stella Light
- * spawns would stop downgrading to CODEX_LIGHT_MODEL for every pre-upgrade
- * user and silently run the full model. Keep this in sync when the default
- * changes: whatever value used to ship as DEFAULT_CODEX_MODEL belongs here.
- */
-const LEGACY_CODEX_DEFAULTS = new Set(["gpt-5.5"]);
 const execFileAsync = promisify(execFile);
 
 type JsonRpcId = number | string;
@@ -553,10 +544,12 @@ export const getCodexRuntimePreferences = (
   const lightDefault =
     stellaModel?.trim() === "stella/light" ? CODEX_LIGHT_MODEL : undefined;
   const preferredModel = prefs?.codexModel;
+  // Provenance, not string-matching: only an explicit pick (marker set at
+  // selection time) makes a Stella Light spawn honor the saved model. Legacy
+  // prefs.json without the marker read as non-explicit, so a baked default
+  // (including gpt-5.5) still downgrades light spawns to CODEX_LIGHT_MODEL.
   const userSelectedModel =
-    preferredModel &&
-    preferredModel !== DEFAULT_CODEX_MODEL &&
-    !LEGACY_CODEX_DEFAULTS.has(preferredModel)
+    prefs?.codexModelExplicit === true && preferredModel
       ? preferredModel
       : undefined;
   // A per-spawn pin (spawn_agent `model: codex/<model>`) is an explicit user
