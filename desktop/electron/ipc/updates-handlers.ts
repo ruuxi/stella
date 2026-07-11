@@ -1441,10 +1441,10 @@ const writeAppliedReleasePointer = async (
  * every upstream line — only that the merge process completed and HEAD is
  * caught up with target.
  */
-const verifyMergeApplied = async (
+const verifyMergeAppliedOnce = async (
   stellaAppDir: string,
   targetCommit: string,
-): Promise<VerifyResult> => {
+): Promise<VerifyResult & { retryable?: boolean }> => {
   const gitDir = await runGit(stellaAppDir, ["rev-parse", "--git-dir"]);
   if (gitDir.exitCode !== 0) {
     return {
@@ -1456,6 +1456,7 @@ const verifyMergeApplied = async (
     await fs.access(path.join(stellaAppDir, ".git", "MERGE_HEAD"));
     return {
       ok: false,
+      retryable: true,
       reason:
         "A merge is still in progress in the install tree — Stella didn't finish applying the update.",
     };
@@ -1463,6 +1464,7 @@ const verifyMergeApplied = async (
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       return {
         ok: false,
+        retryable: true,
         reason: `Could not inspect .git/MERGE_HEAD: ${(err as Error).message}`,
       };
     }
@@ -1473,20 +1475,75 @@ const verifyMergeApplied = async (
     targetCommit,
     "HEAD",
   ]);
-  if (isAncestor.exitCode !== 0) {
+  if (isAncestor.exitCode === 1) {
+    // A real "not in HEAD's ancestry" answer from git. Still retryable at
+    // the wrapper level: the applier's reset/merge may be landing this very
+    // second (observed in the field — the verify raced a `git reset` that
+    // completed within the same second and reported a false failure).
     return {
       ok: false,
+      retryable: true,
       reason: `Stella could not confirm the update was applied. The update agent finished, but this install is still not on ${targetCommit.slice(0, 8)}. Please try Update again.`,
+    };
+  }
+  if (isAncestor.exitCode !== 0) {
+    // Not an ancestry answer at all — the git invocation itself failed
+    // (index.lock contention with the install's auto-commit machinery,
+    // missing object, etc.). Don't report this as "not on <commit>".
+    return {
+      ok: false,
+      retryable: true,
+      reason: `Stella could not verify the update: git exited ${isAncestor.exitCode}${isAncestor.stderr.trim() ? ` (${isAncestor.stderr.trim().slice(0, 200)})` : ""}. Please try Update again.`,
     };
   }
   const headRev = await runGit(stellaAppDir, ["rev-parse", "HEAD"]);
   if (headRev.exitCode !== 0) {
     return {
       ok: false,
+      retryable: true,
       reason: "Could not read current HEAD after the update.",
     };
   }
   return { ok: true, headCommit: headRev.stdout.trim() };
+};
+
+const VERIFY_MERGE_APPLIED_ATTEMPTS = 4;
+const VERIFY_MERGE_APPLIED_RETRY_DELAY_MS = 500;
+
+/**
+ * Retrying wrapper around {@link verifyMergeAppliedOnce}. The verify step
+ * runs concurrently with the tail of the apply path (agent finalization,
+ * startup recovery replay, the install's own auto-commits), so a transient
+ * "not there yet" or a locked .git must not fail the update — re-check a
+ * few times before reporting failure.
+ */
+export const verifyMergeApplied = async (
+  stellaAppDir: string,
+  targetCommit: string,
+): Promise<VerifyResult> => {
+  let last: VerifyResult & { retryable?: boolean } = {
+    ok: false,
+    reason: "Update verification did not run.",
+  };
+  for (let attempt = 0; attempt < VERIFY_MERGE_APPLIED_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, VERIFY_MERGE_APPLIED_RETRY_DELAY_MS),
+      );
+    }
+    last = await verifyMergeAppliedOnce(stellaAppDir, targetCommit);
+    if (last.ok || !last.retryable) {
+      break;
+    }
+    logDesktopUpdateWarn("desktop-update.verify.retry", {
+      attempt: attempt + 1,
+      commit: shortCommit(targetCommit),
+      reason: last.reason,
+    });
+  }
+  return last.ok
+    ? { ok: true, headCommit: last.headCommit }
+    : { ok: false, reason: last.reason };
 };
 
 const parseManifest = (raw: string): InstallManifestSnapshot => {

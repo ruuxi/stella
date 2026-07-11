@@ -490,7 +490,14 @@ export class StellaRuntimeHost {
   // Serializes the single gated flush (`flushWorkerRestart`) so concurrent
   // triggers/hooks don't stack overlapping health probes or restarts.
   private workerRestartCheckInFlight = false;
-  private readonly pausedRuntimeReloadRuns = new Set<string>();
+  // runId -> pausedAtMs. The timestamp drives the leak backstop: a pause is
+  // normally released by the worker's apply lifecycle within seconds, so one
+  // that outlives the TTL (or its run) is treated as leaked and force-cleared
+  // rather than deferring reloads/restarts forever.
+  private readonly pausedRuntimeReloadRuns = new Map<string, number>();
+  private pausedRuntimeReloadSweepTimer: ReturnType<
+    typeof setInterval
+  > | null = null;
   private reloadQueue = Promise.resolve();
   private configCache: RuntimeConfigureParams = {};
   private deviceIdentity: HostDeviceIdentity | null = null;
@@ -685,7 +692,8 @@ export class StellaRuntimeHost {
   }
 
   private async pauseRuntimeReloads(runId: string) {
-    this.pausedRuntimeReloadRuns.add(runId);
+    this.pausedRuntimeReloadRuns.set(runId, Date.now());
+    this.startPausedRuntimeReloadSweep();
     await this.persistRuntimeReloadPauseState();
   }
 
@@ -698,6 +706,7 @@ export class StellaRuntimeHost {
     if (this.pausedRuntimeReloadRuns.size > 0) {
       return;
     }
+    this.stopPausedRuntimeReloadSweep();
     // The last self-mod pause released. A process-restart apply opts out of an
     // immediate worker reload for this release (`allowDeferredReload: false`) —
     // drop that intent, but still let a persisted stale restart proceed.
@@ -709,11 +718,93 @@ export class StellaRuntimeHost {
 
   private async resetRuntimeReloadPauses() {
     this.pausedRuntimeReloadRuns.clear();
+    this.stopPausedRuntimeReloadSweep();
     await this.persistRuntimeReloadPauseState();
     // Pauses were force-cleared (the worker reinitialized underneath held
     // runs). Any deferred reload / pending stale restart intent survives and
     // can now be re-evaluated through the unified gate.
     void this.flushWorkerRestart();
+  }
+
+  /**
+   * Leak backstops for runtime-reload pauses. A pause is acquired by the
+   * worker around a self-mod apply and normally released within seconds by
+   * the same lifecycle. Two observed ways that release never happens:
+   *  - the apply's morph transition dies between dispatch and resume (e.g.
+   *    an Electron restart replays into `unknown-transition`), or
+   *  - the owning run is killed without its cleanup running.
+   * A leaked pause silently blocks every worker reload and restart — dev
+   * reloads stop landing and a pending desktop update defers forever. So:
+   * pauses older than the TTL are force-released by a slow sweep, and a
+   * pause whose run reports RUN_FINISHED is force-released after a short
+   * grace window.
+   */
+  private forceReleaseRuntimeReloadPause(runId: string, reason: string) {
+    if (!this.pausedRuntimeReloadRuns.delete(runId)) {
+      return;
+    }
+    getFileLogger()?.warn("host.runtime-reload-pause-force-released", {
+      runId,
+      reason,
+    });
+    console.warn(
+      `[runtime-host] Force-released a leaked self-mod reload pause (run ${runId}, ${reason}).`,
+    );
+    if (this.pausedRuntimeReloadRuns.size === 0) {
+      this.stopPausedRuntimeReloadSweep();
+    }
+    void this.persistRuntimeReloadPauseState().catch(() => undefined);
+    void this.flushWorkerRestart();
+  }
+
+  private getRuntimeReloadPauseTtlMs(): number {
+    const raw = process.env.STELLA_SELF_MOD_RELOAD_PAUSE_TTL_MS?.trim();
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 10 * 60 * 1000;
+  }
+
+  private startPausedRuntimeReloadSweep() {
+    if (this.pausedRuntimeReloadSweepTimer) return;
+    this.pausedRuntimeReloadSweepTimer = setInterval(() => {
+      const ttlMs = this.getRuntimeReloadPauseTtlMs();
+      const now = Date.now();
+      for (const [runId, pausedAtMs] of this.pausedRuntimeReloadRuns) {
+        if (now - pausedAtMs >= ttlMs) {
+          this.forceReleaseRuntimeReloadPause(
+            runId,
+            `held for ${Math.round((now - pausedAtMs) / 1000)}s, TTL ${Math.round(ttlMs / 1000)}s`,
+          );
+        }
+      }
+    }, 60_000);
+    this.pausedRuntimeReloadSweepTimer.unref?.();
+  }
+
+  private stopPausedRuntimeReloadSweep() {
+    if (!this.pausedRuntimeReloadSweepTimer) return;
+    clearInterval(this.pausedRuntimeReloadSweepTimer);
+    this.pausedRuntimeReloadSweepTimer = null;
+  }
+
+  /**
+   * RUN_FINISHED hook for the run-liveness backstop: a finished run can no
+   * longer legitimately hold a reload pause, but its release RPC may still
+   * be in flight — give it a short grace window before force-clearing.
+   */
+  private scheduleRuntimeReloadPauseReleaseForFinishedRun(runId: string) {
+    if (!this.pausedRuntimeReloadRuns.has(runId)) {
+      return;
+    }
+    const pausedAtMs = this.pausedRuntimeReloadRuns.get(runId);
+    const timer = setTimeout(() => {
+      // Only release the exact acquisition we observed at RUN_FINISHED; a
+      // newer timestamp means the pause was re-acquired since (by a replay
+      // for the same run) and gets its own TTL treatment.
+      if (this.pausedRuntimeReloadRuns.get(runId) === pausedAtMs) {
+        this.forceReleaseRuntimeReloadPause(runId, "run finished");
+      }
+    }, 30_000);
+    timer.unref?.();
   }
 
   /**
@@ -2160,6 +2251,7 @@ export class StellaRuntimeHost {
     if (this.runEventAckTimer) clearTimeout(this.runEventAckTimer);
     this.runEventAckTimer = null;
     this.pausedRuntimeReloadRuns.clear();
+    this.stopPausedRuntimeReloadSweep();
     this.deferredRuntimeReload = false;
     this.restartInProgress = false;
     this.restartRequestedDuringRestart = false;
@@ -2211,6 +2303,7 @@ export class StellaRuntimeHost {
         count: this.pausedRuntimeReloadRuns.size,
       });
       this.pausedRuntimeReloadRuns.clear();
+      this.stopPausedRuntimeReloadSweep();
       this.deferredRuntimeReload = false;
       await this.persistRuntimeReloadPauseState().catch(() => undefined);
     }
@@ -3737,17 +3830,21 @@ export class StellaRuntimeHost {
       if (payload.runId && shouldAckWorkerRunEvent(payload)) {
         this.scheduleRunEventAck(payload.runId, payload.seq);
       }
-      if (
-        this.hasPendingWorkerRestartIntent() &&
-        payload.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED
-      ) {
-        // A deferred worker restart is waiting for the worker to go idle; give
-        // immediate follow-up runs a moment to register before the unified
-        // gate re-checks.
-        const timer = setTimeout(() => {
-          void this.flushWorkerRestart();
-        }, 500);
-        timer.unref?.();
+      if (payload.type === AGENT_STREAM_EVENT_TYPES.RUN_FINISHED) {
+        if (payload.runId) {
+          // Run-liveness backstop: a finished run must not keep holding a
+          // self-mod reload pause (see forceReleaseRuntimeReloadPause).
+          this.scheduleRuntimeReloadPauseReleaseForFinishedRun(payload.runId);
+        }
+        if (this.hasPendingWorkerRestartIntent()) {
+          // A deferred worker restart is waiting for the worker to go idle;
+          // give immediate follow-up runs a moment to register before the
+          // unified gate re-checks.
+          const timer = setTimeout(() => {
+            void this.flushWorkerRestart();
+          }, 500);
+          timer.unref?.();
+        }
       }
     });
     peer.registerNotificationHandler(

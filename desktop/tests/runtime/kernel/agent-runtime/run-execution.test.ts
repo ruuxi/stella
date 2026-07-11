@@ -221,4 +221,60 @@ describe("executeRuntimeAgentPrompt", () => {
       }
     }
   });
+
+  it("aborts the run at the tool ceiling when in-flight tool tracking leaks", async () => {
+    const previousIdle = process.env.STELLA_AGENT_IDLE_TIMEOUT_MS;
+    const previousToolIdle = process.env.STELLA_AGENT_TOOL_IDLE_TIMEOUT_MS;
+    process.env.STELLA_AGENT_IDLE_TIMEOUT_MS = "25";
+    process.env.STELLA_AGENT_TOOL_IDLE_TIMEOUT_MS = "60";
+    let idleListener: ((event: never) => void) | undefined;
+    const agent = {
+      state: {
+        messages: [] as Array<ReturnType<typeof createAssistantMessage>>,
+      },
+      subscribe: vi.fn((listener: (event: never) => void) => {
+        idleListener ??= listener;
+        return () => {};
+      }),
+      prompt: vi.fn(() => new Promise<void>(() => {})),
+      followUp: vi.fn(),
+      continue: vi.fn(),
+      abort: vi.fn(),
+    };
+
+    try {
+      const execution = executeRuntimeAgentPrompt({
+        agent,
+        promptText: "run a command whose end event is lost",
+        runId: "run-5",
+        agentType: "general",
+        userMessageId: "msg-5",
+        recorder: {} as never,
+      });
+      await vi.waitFor(() => expect(idleListener).toBeDefined());
+      idleListener?.({
+        type: "tool_execution_start",
+        toolCallId: "tool-leaked",
+        toolName: "exec_command",
+        args: {},
+      } as never);
+      // Outlives the plain idle window (25ms) because a tool is in flight...
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(agent.abort).not.toHaveBeenCalled();
+      // ...but the tool ceiling (60ms) still bounds a leaked entry.
+      await expect(execution).rejects.toThrow(/still marked in flight/);
+      expect(agent.abort).toHaveBeenCalled();
+    } finally {
+      if (previousIdle === undefined) {
+        delete process.env.STELLA_AGENT_IDLE_TIMEOUT_MS;
+      } else {
+        process.env.STELLA_AGENT_IDLE_TIMEOUT_MS = previousIdle;
+      }
+      if (previousToolIdle === undefined) {
+        delete process.env.STELLA_AGENT_TOOL_IDLE_TIMEOUT_MS;
+      } else {
+        process.env.STELLA_AGENT_TOOL_IDLE_TIMEOUT_MS = previousToolIdle;
+      }
+    }
+  });
 });

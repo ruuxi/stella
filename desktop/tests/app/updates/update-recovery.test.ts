@@ -25,6 +25,7 @@ import {
   recoverInterruptedDesktopUpdate,
   stageStellaBrowserUpdate,
   tryApplyCleanDesktopUpdate,
+  verifyMergeApplied,
 } from "../../../electron/ipc/updates-handlers.js";
 
 describe("desktop release artifact platform selection", () => {
@@ -1693,4 +1694,75 @@ describe("recoverInterruptedDesktopUpdate", () => {
       installState: { desktopReleaseCommit: baseCommit },
     });
   });
+});
+
+describe("verifyMergeApplied", () => {
+  let repoRoot = "";
+
+  beforeEach(async () => {
+    repoRoot = await mkdtemp(path.join(os.tmpdir(), "stella-verify-merge-"));
+    git(repoRoot, ["init", "-q", "-b", "main"]);
+    git(repoRoot, ["config", "user.email", "test@stella.local"]);
+    git(repoRoot, ["config", "user.name", "Stella Test"]);
+    git(repoRoot, ["config", "commit.gpgsign", "false"]);
+    await writeFile(path.join(repoRoot, "app.txt"), "base\n", "utf8");
+    git(repoRoot, ["add", "app.txt"]);
+    git(repoRoot, ["commit", "-q", "-m", "Base desktop release"]);
+  });
+
+  afterEach(async () => {
+    await rm(repoRoot, { recursive: true, force: true });
+  });
+
+  it("confirms a target commit that is already in HEAD's ancestry", async () => {
+    const head = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    await expect(verifyMergeApplied(repoRoot, head)).resolves.toEqual({
+      ok: true,
+      headCommit: head,
+    });
+  });
+
+  it("survives the apply landing between verification attempts", async () => {
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    await writeFile(path.join(repoRoot, "app.txt"), "target\n", "utf8");
+    git(repoRoot, ["add", "app.txt"]);
+    git(repoRoot, ["commit", "-q", "-m", "Target release"]);
+    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    // Simulate the observed race: verification starts while the install is
+    // still on the old commit, and the applier's reset lands mid-verify.
+    git(repoRoot, ["reset", "-q", "--hard", baseCommit]);
+    const verification = verifyMergeApplied(repoRoot, targetCommit);
+    setTimeout(() => {
+      git(repoRoot, ["reset", "-q", "--hard", targetCommit]);
+    }, 250);
+    await expect(verification).resolves.toEqual({
+      ok: true,
+      headCommit: targetCommit,
+    });
+  }, 15_000);
+
+  it("still reports a genuinely missing commit after retries", async () => {
+    const missingCommit = "0123456789abcdef0123456789abcdef01234567";
+    const result = await verifyMergeApplied(repoRoot, missingCommit);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain("could not verify the update");
+    }
+  }, 15_000);
+
+  it("reports 'still not on' for a real commit that is not an ancestor", async () => {
+    git(repoRoot, ["checkout", "-q", "-b", "side"]);
+    await writeFile(path.join(repoRoot, "app.txt"), "side\n", "utf8");
+    git(repoRoot, ["add", "app.txt"]);
+    git(repoRoot, ["commit", "-q", "-m", "Side branch commit"]);
+    const sideCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    git(repoRoot, ["checkout", "-q", "main"]);
+    const result = await verifyMergeApplied(repoRoot, sideCommit);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain(
+        `still not on ${sideCommit.slice(0, 8)}`,
+      );
+    }
+  }, 15_000);
 });

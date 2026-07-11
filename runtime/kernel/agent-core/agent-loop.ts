@@ -447,7 +447,7 @@ async function executeToolCallsSequential(
 		if (preparation.kind === "immediate") {
 			results.push(await emitToolCallOutcome(toolCall, preparation.result, preparation.isError, emit));
 		} else {
-			const executed = await executePreparedToolCall(preparation, signal, emit);
+			const executed = await executePreparedToolCall(preparation, signal, emit, config.toolInactivityTimeoutMs);
 			results.push(
 				await finalizeExecutedToolCall(
 					currentContext,
@@ -505,7 +505,7 @@ async function executeToolCallsParallel(
 
 	const runningCalls = runnableCalls.map((prepared) => ({
 		prepared,
-		execution: executePreparedToolCall(prepared, signal, emit),
+		execution: executePreparedToolCall(prepared, signal, emit, config.toolInactivityTimeoutMs),
 	}));
 
 	for (const running of runningCalls) {
@@ -533,7 +533,7 @@ async function executeToolCallsParallel(
 	return { toolResults: results, steeringMessages };
 }
 
-type PreparedToolCall = {
+export type PreparedToolCall = {
 	kind: "prepared";
 	toolCall: AgentToolCall;
 	tool: AgentTool;
@@ -602,32 +602,77 @@ async function prepareToolCall(
 	}
 }
 
-async function executePreparedToolCall(
+/**
+ * Tools that emit no `onUpdate` progress for this long are cancelled and
+ * reported to the model as an error tool result; the agent loop keeps
+ * running. Progress resets the clock, so a long-running tool survives as
+ * long as it shows signs of life. Override via
+ * `AgentLoopConfig.toolInactivityTimeoutMs`; <= 0 disables the bound.
+ */
+export const DEFAULT_TOOL_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+
+export async function executePreparedToolCall(
 	prepared: PreparedToolCall,
 	signal: AbortSignal | undefined,
 	emit: AgentEventSink,
+	inactivityTimeoutMs?: number,
 ): Promise<ExecutedToolCallOutcome> {
 	const updateEvents: Promise<void>[] = [];
+	const timeoutMs = inactivityTimeoutMs ?? DEFAULT_TOOL_INACTIVITY_TIMEOUT_MS;
+
+	// Bound the tool, not the agent. The tool gets a composed abort signal so
+	// a cooperative implementation can clean up; a tool that ignores it is
+	// abandoned via the race below so the loop still gets its error result.
+	const toolAbort = new AbortController();
+	const onOuterAbort = () => toolAbort.abort(signal?.reason);
+	if (signal?.aborted) onOuterAbort();
+	signal?.addEventListener("abort", onOuterAbort);
+	let inactivityTimer: ReturnType<typeof setTimeout> | undefined;
+	let timedOut = false;
+	let rejectOnInactivity: (error: Error) => void = () => {};
+	const inactivityFailure = new Promise<never>((_, reject) => {
+		rejectOnInactivity = reject;
+	});
+	inactivityFailure.catch(() => undefined);
+	const armInactivityTimer = () => {
+		if (inactivityTimer) clearTimeout(inactivityTimer);
+		if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return;
+		inactivityTimer = setTimeout(() => {
+			timedOut = true;
+			const error = new Error(
+				`Tool ${prepared.toolCall.name} produced no output for ${Math.round(timeoutMs / 1000)}s and was cancelled. The agent may retry or continue without it.`,
+			);
+			toolAbort.abort(error);
+			rejectOnInactivity(error);
+		}, timeoutMs);
+		inactivityTimer.unref?.();
+	};
+	armInactivityTimer();
 
 	try {
-		const result = await prepared.tool.execute(
-			prepared.toolCall.id,
-			prepared.args as never,
-			signal,
-			(partialResult) => {
-				updateEvents.push(
-					Promise.resolve(
-						emit({
-							type: "tool_execution_update",
-							toolCallId: prepared.toolCall.id,
-							toolName: prepared.toolCall.name,
-							args: prepared.toolCall.arguments,
-							partialResult,
-						}),
-					),
-				);
-			},
-		);
+		const result = await Promise.race([
+			prepared.tool.execute(
+				prepared.toolCall.id,
+				prepared.args as never,
+				toolAbort.signal,
+				(partialResult) => {
+					if (timedOut) return;
+					armInactivityTimer();
+					updateEvents.push(
+						Promise.resolve(
+							emit({
+								type: "tool_execution_update",
+								toolCallId: prepared.toolCall.id,
+								toolName: prepared.toolCall.name,
+								args: prepared.toolCall.arguments,
+								partialResult,
+							}),
+						),
+					);
+				},
+			),
+			inactivityFailure,
+		]);
 		await Promise.all(updateEvents);
 		return { result, isError: false };
 	} catch (error) {
@@ -636,6 +681,9 @@ async function executePreparedToolCall(
 			result: createErrorToolResult(error instanceof Error ? error.message : String(error)),
 			isError: true,
 		};
+	} finally {
+		if (inactivityTimer) clearTimeout(inactivityTimer);
+		signal?.removeEventListener("abort", onOuterAbort);
 	}
 }
 

@@ -35,6 +35,10 @@ const SIGKILL_TIMEOUT_MS = 4_000;
 const DEFAULT_CODEX_REQUEST_TIMEOUT_MS = 60 * 1000;
 const DEFAULT_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+// Ceiling while confirmed turn work (native command / Stella tool) is in
+// flight. A native command that never leaves inProgress, or a Stella tool
+// whose bookkeeping leaked, would otherwise disarm the watchdog forever.
+const DEFAULT_CODEX_TURN_TOOL_IDLE_TIMEOUT_MS = 45 * 60 * 1000;
 const CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS = 750;
 export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
 const execFileAsync = promisify(execFile);
@@ -1358,18 +1362,24 @@ export const runCodexAgentTurn = async (request: {
       turnIdleTimer = undefined;
       // App-server notifications are edge-triggered. A native command or a
       // Stella tool may remain silent while it legitimately runs beyond the
-      // stream idle window, so only arm the watchdog when no confirmed work
-      // is in flight.
-      if (activeTurnWork.size > 0) return;
-      const timeoutMs = hasTurnProgress
+      // stream idle window, so while confirmed work is in flight the watchdog
+      // is armed with the much longer tool ceiling instead of disarming —
+      // work that never reports completion must not hang the turn forever.
+      const workInFlight = activeTurnWork.size > 0;
+      const timeoutMs = workInFlight
         ? configuredTimeoutMs(
-            "STELLA_CODEX_TURN_IDLE_TIMEOUT_MS",
-            DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS,
+            "STELLA_CODEX_TURN_TOOL_IDLE_TIMEOUT_MS",
+            DEFAULT_CODEX_TURN_TOOL_IDLE_TIMEOUT_MS,
           )
-        : configuredTimeoutMs(
-            "STELLA_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS",
-            DEFAULT_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS,
-          );
+        : hasTurnProgress
+          ? configuredTimeoutMs(
+              "STELLA_CODEX_TURN_IDLE_TIMEOUT_MS",
+              DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS,
+            )
+          : configuredTimeoutMs(
+              "STELLA_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS",
+              DEFAULT_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS,
+            );
       turnIdleTimer = setTimeout(() => {
         if (
           turnCompletionReported &&
@@ -1381,7 +1391,9 @@ export const runCodexAgentTurn = async (request: {
         }
         reject(
           new Error(
-            `Codex app-server did not report turn progress for ${Math.round(timeoutMs / 1000)}s.`,
+            workInFlight
+              ? `Codex app-server reported no turn progress for ${Math.round(timeoutMs / 1000)}s with ${activeTurnWork.size} work item(s) still marked in flight.`
+              : `Codex app-server did not report turn progress for ${Math.round(timeoutMs / 1000)}s.`,
           ),
         );
         client.abort();

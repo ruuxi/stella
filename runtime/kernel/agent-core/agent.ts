@@ -127,6 +127,13 @@ export interface AgentOptions {
 	/** Tool execution mode. Default: "parallel" */
 	toolExecution?: ToolExecutionMode;
 
+	/**
+	 * Cancel a tool call with no `onUpdate` progress for this many
+	 * milliseconds; the loop reports an error tool result and the agent
+	 * keeps running. <= 0 disables the bound. Default: 30 minutes.
+	 */
+	toolInactivityTimeoutMs?: number;
+
 	/** Called before a tool is executed, after arguments have been validated. */
 	beforeToolCall?: (
 		context: BeforeToolCallContext,
@@ -173,6 +180,7 @@ export class Agent {
 	private _transport: Transport;
 	private _maxRetryDelayMs?: number;
 	private _toolExecution: ToolExecutionMode;
+	private _toolInactivityTimeoutMs?: number;
 	private _beforeToolCall?: (
 		context: BeforeToolCallContext,
 		signal?: AbortSignal,
@@ -198,6 +206,7 @@ export class Agent {
 		this._transport = opts.transport ?? "sse";
 		this._maxRetryDelayMs = opts.maxRetryDelayMs;
 		this._toolExecution = opts.toolExecution ?? "parallel";
+		this._toolInactivityTimeoutMs = opts.toolInactivityTimeoutMs;
 		this._beforeToolCall = opts.beforeToolCall;
 		this._afterToolCall = opts.afterToolCall;
 	}
@@ -569,6 +578,7 @@ export class Agent {
 			thinkingBudgets: this._thinkingBudgets,
 			maxRetryDelayMs: this._maxRetryDelayMs,
 			toolExecution: this._toolExecution,
+			toolInactivityTimeoutMs: this._toolInactivityTimeoutMs,
 			beforeToolCall: this._beforeToolCall
 				? async (toolContext, signal) => {
 						try {

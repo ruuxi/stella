@@ -101,6 +101,11 @@ const MAX_STDERR_CAPTURE = 4_000;
 const MAX_TOOL_RESULT_CHARS = 80_000;
 const DEFAULT_STEP_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_STEP_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+// Ceiling while native tool_use blocks are unresolved. Native tools run
+// inside the CLI where we cannot cancel just the tool, so this is the only
+// bound on a turn whose tool never reports a result — long enough for real
+// silent work, finite so a wedged CLI can't hang the session forever.
+const DEFAULT_STEP_TOOL_IDLE_TIMEOUT_MS = 45 * 60 * 1000;
 const CLAUDE_CODE_COMPACTING_TEXT = "Compacting context";
 const CLAUDE_CODE_RUNNING_TEXT = "Working";
 /**
@@ -2292,16 +2297,24 @@ class ClaudeCodeSessionRuntime {
     // Vanilla Claude Code runs native tools inside the CLI. Their stream-json
     // lifecycle is edge-triggered, so a silent Bash/Task invocation is still
     // confirmed live work and must not be mistaken for a dead output stream.
-    if (pending.activeNativeToolUseIds.size > 0) return;
-    const timeoutMs = pending.hasOutput
+    // We cannot cancel an individual native tool from out here, so instead of
+    // disarming entirely (an unresolved tool_use would hang the session
+    // forever), arm the watchdog with the much longer tool ceiling.
+    const toolsInFlight = pending.activeNativeToolUseIds.size > 0;
+    const timeoutMs = toolsInFlight
       ? configuredTimeoutMs(
-          "STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS",
-          DEFAULT_STEP_IDLE_TIMEOUT_MS,
+          "STELLA_CLAUDE_CODE_TOOL_IDLE_TIMEOUT_MS",
+          DEFAULT_STEP_TOOL_IDLE_TIMEOUT_MS,
         )
-      : configuredTimeoutMs(
-          "STELLA_CLAUDE_CODE_STARTUP_IDLE_TIMEOUT_MS",
-          DEFAULT_STEP_STARTUP_IDLE_TIMEOUT_MS,
-        );
+      : pending.hasOutput
+        ? configuredTimeoutMs(
+            "STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS",
+            DEFAULT_STEP_IDLE_TIMEOUT_MS,
+          )
+        : configuredTimeoutMs(
+            "STELLA_CLAUDE_CODE_STARTUP_IDLE_TIMEOUT_MS",
+            DEFAULT_STEP_STARTUP_IDLE_TIMEOUT_MS,
+          );
     pending.idleTimer = setTimeout(() => {
       const index = processState.pending.indexOf(pending);
       if (index >= 0) {
@@ -2311,7 +2324,9 @@ class ClaudeCodeSessionRuntime {
       abortProcess(processState.child);
       pending.reject(
         new Error(
-          `Claude Code did not produce output for ${Math.round(timeoutMs / 1000)}s.`,
+          toolsInFlight
+            ? `Claude Code produced no output for ${Math.round(timeoutMs / 1000)}s with ${pending.activeNativeToolUseIds.size} native tool call(s) still unresolved.`
+            : `Claude Code did not produce output for ${Math.round(timeoutMs / 1000)}s.`,
         ),
       );
     }, timeoutMs);

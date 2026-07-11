@@ -203,6 +203,16 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	toolExecution?: ToolExecutionMode;
 
 	/**
+	 * Cancel a tool call that has produced no `onUpdate` progress for this
+	 * many milliseconds. The tool's abort signal fires and the loop reports
+	 * an error tool result to the model; the agent itself keeps running.
+	 * Progress resets the clock. <= 0 disables the bound.
+	 *
+	 * Default: 30 minutes.
+	 */
+	toolInactivityTimeoutMs?: number;
+
+	/**
 	 * Called before a tool is executed, after arguments have been validated.
 	 *
 	 * Return `{ block: true }` to prevent execution. The loop emits an error tool result instead.

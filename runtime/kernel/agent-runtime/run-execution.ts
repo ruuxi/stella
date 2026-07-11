@@ -33,6 +33,12 @@ type RuntimeExecutableAgent = {
 
 const DEFAULT_AGENT_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+// Ceiling while tool calls are in flight. Deliberately above the agent-core
+// per-tool inactivity bound (30 min) so the tool-level cancellation — which
+// fails only the tool and lets the agent continue — always wins when tool
+// tracking is intact. This run-killing backstop fires only when tracking
+// leaked (e.g. a lost tool_execution_end).
+const DEFAULT_AGENT_TOOL_IDLE_TIMEOUT_MS = 45 * 60 * 1000;
 
 const configuredTimeoutMs = (
   envName: string,
@@ -129,6 +135,10 @@ export const executeRuntimeAgentPrompt = async (args: {
     "STELLA_AGENT_IDLE_TIMEOUT_MS",
     DEFAULT_AGENT_IDLE_TIMEOUT_MS,
   );
+  const toolIdleTimeoutMs = configuredTimeoutMs(
+    "STELLA_AGENT_TOOL_IDLE_TIMEOUT_MS",
+    DEFAULT_AGENT_TOOL_IDLE_TIMEOUT_MS,
+  );
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let idleSettled = false;
   let hasAgentActivity = false;
@@ -143,10 +153,17 @@ export const executeRuntimeAgentPrompt = async (args: {
     idleTimer = undefined;
     // A tool owns its own completion/cancellation semantics. Long-running
     // commands can legitimately be silent for more than the agent stream's
-    // idle window, so absence of model events is not evidence that the agent
-    // is dead while at least one tool call is still in flight.
-    if (activeToolCallIds.size > 0) return;
-    const timeoutMs = hasAgentActivity ? idleTimeoutMs : startupIdleTimeoutMs;
+    // idle window, so while tool calls are in flight the watchdog is armed
+    // with the much longer tool ceiling instead of the stream idle window.
+    // The agent-core per-tool inactivity bound cancels a silent tool (with
+    // an error result the agent survives) well before this fires; reaching
+    // this timeout means tool tracking leaked and the run really is dead.
+    const toolsInFlight = activeToolCallIds.size > 0;
+    const timeoutMs = toolsInFlight
+      ? toolIdleTimeoutMs
+      : hasAgentActivity
+        ? idleTimeoutMs
+        : startupIdleTimeoutMs;
     idleTimer = setTimeout(() => {
       idleSettled = true;
       try {
@@ -156,7 +173,9 @@ export const executeRuntimeAgentPrompt = async (args: {
       }
       rejectIdle(
         new Error(
-          `Agent did not produce activity for ${Math.round(timeoutMs / 1000)}s.`,
+          toolsInFlight
+            ? `Agent produced no activity for ${Math.round(timeoutMs / 1000)}s while ${activeToolCallIds.size} tool call(s) were still marked in flight.`
+            : `Agent did not produce activity for ${Math.round(timeoutMs / 1000)}s.`,
         ),
       );
     }, timeoutMs);

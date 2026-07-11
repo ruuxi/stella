@@ -469,6 +469,8 @@ export const createRuntimeAgent = (args: {
   }) => void;
 }): Agent => {
   const resolveLlm = args.resolvedLlmOverride ?? (() => args.resolvedLlm);
+  const toolInactivityRaw = process.env.STELLA_TOOL_INACTIVITY_TIMEOUT_MS?.trim();
+  const toolInactivityParsed = toolInactivityRaw ? Number(toolInactivityRaw) : Number.NaN;
   return new Agent({
     initialState: {
       systemPrompt: args.systemPrompt,
@@ -480,6 +482,12 @@ export const createRuntimeAgent = (args: {
       messages: args.historySource,
     },
     sessionId: args.cacheSessionId ?? args.agentType,
+    // Per-tool inactivity bound (default 30 min in agent-core): a tool that
+    // goes fully silent is cancelled with an error tool result instead of
+    // tripping the run-level idle watchdog and killing the whole agent.
+    ...(Number.isFinite(toolInactivityParsed)
+      ? { toolInactivityTimeoutMs: toolInactivityParsed }
+      : {}),
     convertToLlm: PI_AGENT_MESSAGE_FILTER,
     // Recompute the context budget against the current model route.
     transformContext: async (messages, signal) =>

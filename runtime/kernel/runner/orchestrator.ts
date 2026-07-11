@@ -33,6 +33,7 @@ import {
   normalizeAutomationRunInput,
   normalizeChatRunInput,
 } from "./orchestrator-policy.js";
+import { resolveLiveUserMessageDelivery } from "./shared.js";
 
 const logger = createRuntimeLogger("runner.orchestrator");
 const UI_VISIBILITY_HIDDEN = "hidden" as const;
@@ -171,6 +172,7 @@ export const createOrchestratorController = (
             conversationId: args.conversationId,
             agentType: args.agentType,
             uiVisibility: args.uiVisibility ?? UI_VISIBILITY_VISIBLE,
+            startedAtMs: Date.now(),
             queueCallbackSwitch: (callbacks) => {
               steerableCallbacks.switchTo(callbacks);
             },
@@ -361,21 +363,31 @@ export const createOrchestratorController = (
           payload: message,
         });
       }
-      // UI-queued chat messages (`role: "user"`) wait for the entire
-      // current orchestrator run to complete — including the post-tool
-      // answer — before being injected. Using `"steer"` here would
-      // dequeue the message at the next turn boundary (after the
-      // preamble's tools), so the queued user_message would land
-      // BETWEEN the preamble and the post-tool assistant row instead
-      // of below it. `"followUp"` defers until `agent_end`, which
-      // matches the user-facing "queued messages flush after the
-      // current task finishes" expectation.
+      // UI-queued chat messages (`role: "user"`) into a YOUNG run wait for
+      // the entire current orchestrator run to complete — including the
+      // post-tool answer — before being injected. Using `"steer"` there
+      // would dequeue the message at the next turn boundary (after the
+      // preamble's tools), so the queued user_message would land BETWEEN
+      // the preamble and the post-tool assistant row instead of below it.
+      // `"followUp"` defers until `agent_end`, which matches the
+      // user-facing "queued messages flush after the current task
+      // finishes" expectation.
+      //
+      // Once the run outlives the promotion window it is long-form work
+      // (background-agent supervision, benchmarks) whose `agent_end` may be
+      // hours away, so user messages promote to `"steer"` — an answer at
+      // the next safe turn boundary beats perfect message placement (see
+      // resolveLiveUserMessageDelivery).
       //
       // Hidden runtime-internal injections (system reminders,
       // workspace-creation requests, etc.) keep `"steer"` so they
       // still interrupt the live turn at the next safe boundary.
       const delivery: "steer" | "followUp" =
-        message.role === "user" ? "followUp" : "steer";
+        message.role === "user"
+          ? resolveLiveUserMessageDelivery({
+              sessionStartedAtMs: args.session.startedAtMs,
+            })
+          : "steer";
       if (delivery === "followUp" && message.role === "user") {
         recordPendingFollowUpReply(args.session.conversationId, promptInput.text);
       }
