@@ -25,6 +25,7 @@
  * `--once` behavior: clean outdir, full build, exit.
  */
 import { build as runEsbuildBuild, stop as stopEsbuildService } from "esbuild";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -482,6 +483,79 @@ export const watchElectronBundleSources = ({
   };
 };
 
+// Same candidate order as the host's worker spawn (runtime/host/lifecycle.ts).
+const resolveBunBinary = () => {
+  const candidates = [
+    process.env.STELLA_BUN_PATH?.trim(),
+    process.env.BUN_PATH?.trim(),
+  ];
+  const homeDir = process.env.HOME || process.env.USERPROFILE;
+  if (homeDir) {
+    candidates.push(
+      path.join(
+        homeDir,
+        ".bun",
+        "bin",
+        process.platform === "win32" ? "bun.exe" : "bun",
+      ),
+    );
+  }
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return "bun";
+};
+
+/**
+ * Import every worker chunk under Bun — the runtime the detached worker
+ * actually runs on, unlike the Node-based test suite. Chunks execute their
+ * module scope on import, which is exactly where the desktop-v0.0.409 outage
+ * lived (a static `node:sqlite` import Node accepts but Bun rejects): the
+ * worker's socket came up, but the lazy runner chunk crashed on load and
+ * every send failed. `entry.js` is excluded — importing it starts the stdio
+ * transport — and is covered by the static boundary check instead. One-shot
+ * (postinstall/release) builds only; dev rebuilds skip this to keep worker
+ * reloads fast.
+ */
+const smokeTestWorkerChunksUnderBun = () => {
+  const chunksDir = path.join(desktopDir, outdir, "runtime", "worker", "chunks");
+  let chunkFiles;
+  try {
+    chunkFiles = readdirSync(chunksDir).filter((f) => f.endsWith(".js"));
+  } catch {
+    return;
+  }
+  const bunBinary = resolveBunBinary();
+  for (const chunkFile of chunkFiles) {
+    const chunkPath = path.join(chunksDir, chunkFile);
+    const result = spawnSync(
+      bunBinary,
+      [
+        "--eval",
+        `import(${JSON.stringify(chunkPath)}).then(() => process.exit(0), (e) => { console.error(e); process.exit(1); })`,
+      ],
+      { cwd: repoRootDir, encoding: "utf8", timeout: 30_000 },
+    );
+    if (result.error?.code === "ENOENT") {
+      console.warn(
+        "[electron-build] bun not found; skipping worker chunk smoke test.",
+      );
+      return;
+    }
+    if (result.status !== 0) {
+      throw new Error(
+        `Worker chunk failed to import under Bun: ${chunkFile}\n` +
+          `${result.stderr || result.stdout || result.error?.message || "unknown error"}`,
+      );
+    }
+  }
+  console.log(
+    `[electron-build] ${chunkFiles.length} worker chunk(s) import cleanly under Bun.`,
+  );
+};
+
 const isRunDirectly = (() => {
   const entry = process.argv[1];
   if (!entry) {
@@ -501,6 +575,7 @@ if (isRunDirectly) {
   try {
     await cleanOutdir();
     await buildElectronBundles();
+    smokeTestWorkerChunksUnderBun();
     writeBundleFingerprint(computeBundleInputsFingerprint());
     process.exit(0);
   } catch (error) {
