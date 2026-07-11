@@ -124,29 +124,31 @@ export const createOwningUserClampedSortTimestampResolver = (
   };
 };
 
-const compareDisplayOrder = (
-  a: MessageRecord,
-  b: MessageRecord,
+/**
+ * Builds one coherent total ordering for a merge input. Every row in an
+ * equal-timestamp bucket uses its pre-sort position as the secondary key;
+ * mixing owner-specific ordinals with lexical ids would make the comparator
+ * non-transitive when assistants from multiple turns share a clamped anchor.
+ */
+export const createDisplayOrderComparator = (
+  messages: readonly MessageRecord[],
   getSortTimestamp: SortTimestampResolver = defaultSortTimestamp,
-  assistantOrdinalById?: ReadonlyMap<
-    string,
-    { ownerId: string; ordinal: number }
-  >,
-): number => {
-  const ta = getSortTimestamp(a);
-  const tb = getSortTimestamp(b);
-  if (ta !== tb) return ta - tb;
-  const aOrdinal = assistantOrdinalById?.get(a._id);
-  const bOrdinal = assistantOrdinalById?.get(b._id);
-  if (
-    aOrdinal &&
-    bOrdinal &&
-    aOrdinal.ownerId === bOrdinal.ownerId &&
-    aOrdinal.ordinal !== bOrdinal.ordinal
-  ) {
-    return aOrdinal.ordinal - bOrdinal.ordinal;
+) => {
+  const inputOrderById = new Map<string, number>();
+  for (let index = 0; index < messages.length; index += 1) {
+    const id = messages[index]!._id;
+    if (!inputOrderById.has(id)) inputOrderById.set(id, index);
   }
-  return a._id.localeCompare(b._id);
+
+  return (a: MessageRecord, b: MessageRecord): number => {
+    const ta = getSortTimestamp(a);
+    const tb = getSortTimestamp(b);
+    if (ta !== tb) return ta - tb;
+    const inputOrder =
+      (inputOrderById.get(a._id) ?? Number.MAX_SAFE_INTEGER) -
+      (inputOrderById.get(b._id) ?? Number.MAX_SAFE_INTEGER);
+    return inputOrder !== 0 ? inputOrder : a._id.localeCompare(b._id);
+  };
 };
 
 const getAssistantUserMessageId = (
@@ -233,38 +235,16 @@ const orderByResolver = (
   messages: MessageRecord[],
   getSortTimestamp: SortTimestampResolver,
 ): MessageRecord[] => {
-  const nextAssistantOrdinalByOwner = new Map<string, number>();
-  const assistantOrdinalById = new Map<
-    string,
-    { ownerId: string; ordinal: number }
-  >();
-  for (const message of messages) {
-    const ownerId = getAssistantUserMessageId(message);
-    if (!ownerId) continue;
-    const ordinal = nextAssistantOrdinalByOwner.get(ownerId) ?? 0;
-    nextAssistantOrdinalByOwner.set(ownerId, ordinal + 1);
-    assistantOrdinalById.set(message._id, { ownerId, ordinal });
-  }
+  const compareDisplayOrder = createDisplayOrderComparator(
+    messages,
+    getSortTimestamp,
+  );
 
   let ordered = messages;
   for (let i = 1; i < messages.length; i += 1) {
-    if (
-      compareDisplayOrder(
-        messages[i - 1]!,
-        messages[i]!,
-        getSortTimestamp,
-        assistantOrdinalById,
-      ) > 0
-    ) {
+    if (compareDisplayOrder(messages[i - 1]!, messages[i]!) > 0) {
       ordered = messages.slice();
-      ordered.sort((a, b) =>
-        compareDisplayOrder(
-          a,
-          b,
-          getSortTimestamp,
-          assistantOrdinalById,
-        ),
-      );
+      ordered.sort(compareDisplayOrder);
       break;
     }
   }

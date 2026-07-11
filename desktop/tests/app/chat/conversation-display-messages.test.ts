@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat";
 import type { StreamingAssistantOverlay } from "@/features/chat/streaming/streaming-types";
 import {
+  createDisplayOrderComparator,
+  createOwningUserClampedSortTimestampResolver,
   findOverlayWinnerIndices,
   getPersistedAssistantSlots,
   keepAssistantTurnsContiguous,
@@ -379,6 +381,164 @@ describe("conversation display message merge", () => {
     ]);
   });
 
+  it("keeps cross-turn clamped collisions transitive without reversing current segments", () => {
+    const previousUser = message({
+      _id: "u-previous",
+      type: "user_message",
+      timestamp: 900,
+    });
+    const currentUser = message({
+      _id: "u-current",
+      type: "user_message",
+      timestamp: 1_000,
+    });
+    const firstCurrentSegment = message({
+      _id: "z-first",
+      timestamp: 700,
+      payload: {
+        text: "first current segment",
+        userMessageId: "u-current",
+        metadata: { runtime: { streamStartedAtMs: 700 } },
+      },
+    });
+    const previousTurnAssistant = message({
+      _id: "m-other",
+      timestamp: 1_001,
+      payload: {
+        text: "previous turn response",
+        userMessageId: "u-previous",
+        metadata: { runtime: { streamStartedAtMs: 1_001 } },
+      },
+    });
+    const secondCurrentSegment = message({
+      _id: "a-second",
+      timestamp: 800,
+      payload: {
+        text: "second current segment",
+        userMessageId: "u-current",
+        metadata: { runtime: { streamStartedAtMs: 800 } },
+      },
+    });
+    const nextUser = message({
+      _id: "u-next-collision",
+      type: "user_message",
+      timestamp: 1_002,
+    });
+
+    const persistedMessages = [
+      previousUser,
+      currentUser,
+      firstCurrentSegment,
+      previousTurnAssistant,
+      secondCurrentSegment,
+      nextUser,
+    ];
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages,
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots(
+        persistedMessages,
+      ),
+    });
+
+    expect(merged.map((item) => item._id)).toEqual([
+      "u-previous",
+      "m-other",
+      "u-current",
+      "z-first",
+      "a-second",
+      "u-next-collision",
+    ]);
+  });
+
+  it("defines an antisymmetric and transitive order for every tied-bucket triple", () => {
+    const bucket = [
+      "z-first",
+      "m-other",
+      "a-second",
+      "q-fourth",
+      "b-fifth",
+    ].map((_id, index) =>
+      message({
+        _id,
+        timestamp: 800 - index,
+        payload: { userMessageId: `owner-${index % 3}` },
+      }),
+    );
+    const clampedResolver = createOwningUserClampedSortTimestampResolver(
+      bucket,
+      () => 1_001,
+    );
+    const compare = createDisplayOrderComparator(bucket, clampedResolver);
+
+    for (const a of bucket) {
+      for (const b of bucket) {
+        expect(Math.sign(compare(a, b)) + Math.sign(compare(b, a))).toBe(0);
+        for (const c of bucket) {
+          if (compare(a, b) <= 0 && compare(b, c) <= 0) {
+            expect(compare(a, c)).toBeLessThanOrEqual(0);
+          }
+        }
+      }
+    }
+    expect([...bucket].sort(compare).map((item) => item._id)).toEqual(
+      bucket.map((item) => item._id),
+    );
+  });
+
+  it("never produces a comparison cycle on randomized tied buckets", () => {
+    let seed = 0x5eed;
+    const random = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return seed / 2_147_483_648;
+    };
+
+    for (let round = 0; round < 50; round += 1) {
+      const size = 3 + Math.floor(random() * 6);
+      const userIds: string[] = [];
+      const rows = Array.from({ length: size }, (_, index) => {
+        const idPrefix = String.fromCharCode(
+          97 + Math.floor(random() * 26),
+        );
+        const _id = `${idPrefix}-${round}-${index}`;
+        const timestamp = 1_000 + Math.floor(random() * 3);
+        if (userIds.length === 0 || random() < 0.3) {
+          userIds.push(_id);
+          return message({ _id, type: "user_message", timestamp });
+        }
+        const ownerId =
+          random() < 0.75
+            ? userIds[Math.floor(random() * userIds.length)]!
+            : `missing-owner-${round}`;
+        return message({
+          _id,
+          timestamp,
+          payload: { userMessageId: ownerId },
+        });
+      });
+
+      const clampedResolver = createOwningUserClampedSortTimestampResolver(
+        rows,
+        () => 1_001,
+      );
+      const compare = createDisplayOrderComparator(rows, clampedResolver);
+
+      for (const a of rows) {
+        for (const b of rows) {
+          expect(
+            Math.sign(compare(a, b)) + Math.sign(compare(b, a)),
+          ).toBe(0);
+          for (const c of rows) {
+            if (compare(a, b) <= 0 && compare(b, c) <= 0) {
+              expect(compare(a, c)).toBeLessThanOrEqual(0);
+            }
+          }
+        }
+      }
+    }
+  });
+
   it("keeps user-response ordering stable across optimistic to canonical handoff", () => {
     const optimisticUser = message({
       _id: "u-handoff",
@@ -624,7 +784,7 @@ describe("conversation display merge — structural-sharing fast path", () => {
     expect(merged.map((m) => m._id)).toEqual(["u1", "a1", "a2", "a3"]);
   });
 
-  it("breaks equal timestamps by _id and dedups first-wins (persisted over overlay)", () => {
+  it("preserves equal-timestamp input order and dedups first-wins", () => {
     const persistedWinner = message({ _id: "dup", timestamp: 5 });
     const persistedMessages = [
       message({ _id: "b", timestamp: 5 }),
@@ -642,8 +802,9 @@ describe("conversation display merge — structural-sharing fast path", () => {
       streamingAssistants: [],
       persistedAssistantSlots: getPersistedAssistantSlots(persistedMessages),
     });
-    // Equal timestamps → ordered by _id; "dup" resolves to the persisted obj.
-    expect(merged.map((m) => m._id)).toEqual(["a", "b", "c", "dup"]);
+    // Equal timestamps retain the pre-sort union order; "dup" resolves to the
+    // persisted object because that source is merged first.
+    expect(merged.map((m) => m._id)).toEqual(["b", "dup", "a", "c"]);
     expect(merged.find((m) => m._id === "dup")).toBe(persistedWinner);
   });
 
