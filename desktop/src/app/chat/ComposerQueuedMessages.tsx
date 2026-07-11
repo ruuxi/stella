@@ -4,7 +4,26 @@ import { X } from "@/ui/icons";
 
 const EXIT_MS = 100;
 
-type VisibleItem = QueuedUserMessage & { leaving: boolean };
+type VisibleItem = QueuedUserMessage & {
+  leaving: boolean;
+  /** Latched for this mount so ordinary updates cannot interrupt entry. */
+  entering: boolean;
+};
+
+/**
+ * Legend may reconstruct a keyed virtual item while adjacent streaming rows
+ * and measurements settle. Keep the playback record outside the item subtree
+ * so that reconstruction cannot replay the queued bubble's CSS animation.
+ * Message ids are renderer-owned and remain stable through queue reconciliation
+ * and the queued-to-sent handoff.
+ */
+const queuedMessageEnterPlayedIds = new Set<string>();
+
+const toVisibleItem = (message: QueuedUserMessage): VisibleItem => ({
+  ...message,
+  leaving: false,
+  entering: !queuedMessageEnterPlayedIds.has(message.id),
+});
 
 type ComposerQueuedMessagesProps = {
   messages: QueuedUserMessage[];
@@ -33,6 +52,10 @@ function QueuedMessageBubble({
   const [truncated, setTruncated] = useState(false);
 
   useLayoutEffect(() => {
+    queuedMessageEnterPlayedIds.add(item.id);
+  }, [item.id]);
+
+  useLayoutEffect(() => {
     const el = bubbleRef.current;
     if (!el) return;
     const measure = () => {
@@ -48,6 +71,9 @@ function QueuedMessageBubble({
 
   return (
     <div
+      style={
+        !item.entering && !item.leaving ? { animation: "none" } : undefined
+      }
       className={
         "composer-queued-message" +
         (item.leaving ? " composer-queued-message--leaving" : "")
@@ -82,7 +108,7 @@ export function ComposerQueuedMessages({
   onCancel,
 }: ComposerQueuedMessagesProps) {
   const [visible, setVisible] = useState<VisibleItem[]>(() =>
-    messages.map((message) => ({ ...message, leaving: false })),
+    messages.map(toVisibleItem),
   );
   const exitTimersRef = useRef(new Map<string, number>());
 
@@ -102,7 +128,7 @@ export function ComposerQueuedMessages({
             window.clearTimeout(exitTimer);
             exitTimersRef.current.delete(item.id);
           }
-          next.push({ ...fresh, leaving: false });
+          next.push({ ...fresh, leaving: false, entering: item.entering });
           continue;
         }
 
@@ -125,7 +151,7 @@ export function ComposerQueuedMessages({
 
       for (const message of messages) {
         if (!seenIds.has(message.id)) {
-          next.push({ ...message, leaving: false });
+          next.push(toVisibleItem(message));
         }
       }
 
