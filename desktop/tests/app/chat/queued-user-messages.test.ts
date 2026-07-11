@@ -5,6 +5,7 @@ import {
   removeQueuedUserMessageById,
   restoreQueuedMessagesAfterFailedDrain,
   restoreQueuedTextToComposer,
+  timestampQueuedOptimisticEventForDrain,
   type CombinableQueuedSendPayload,
   type QueuedUserMessage,
 } from '../../../src/features/chat/hooks/queued-user-messages'
@@ -28,6 +29,22 @@ describe('queued user message cleanup', () => {
         'queued-1',
       ),
     ).toEqual([queued('queued-2', 200)])
+  })
+})
+
+describe('queued user message drain timestamp', () => {
+  it('moves the optimistic row from enqueue time to dequeue time', () => {
+    const enqueued = {
+      _id: 'queued-1',
+      timestamp: 100,
+      payload: { text: 'follow up' },
+    }
+
+    const dequeued = timestampQueuedOptimisticEventForDrain(enqueued, 400)
+
+    expect(dequeued).toEqual({ ...enqueued, timestamp: 400 })
+    expect(dequeued).not.toBe(enqueued)
+    expect(enqueued.timestamp).toBe(100)
   })
 })
 

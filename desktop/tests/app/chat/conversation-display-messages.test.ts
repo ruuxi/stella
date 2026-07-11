@@ -213,6 +213,70 @@ describe("conversation display message merge", () => {
     ]);
   });
 
+  it("places a dequeued user below every assistant that completed while it waited", () => {
+    const activeUser = message({
+      _id: "u1",
+      type: "user_message",
+      timestamp: 50,
+    });
+    const correction = message({
+      _id: "assistant-correction",
+      timestamp: 200,
+      payload: {
+        text: "Sent the correction.",
+        userMessageId: "u1",
+      },
+    });
+    const review = message({
+      _id: "assistant-review",
+      timestamp: 300,
+      payload: {
+        text: "Self-mod round-3 review running.",
+        userMessageId: "u1",
+      },
+    });
+    const dequeuedUser = message({
+      _id: "u2",
+      type: "user_message",
+      // Enqueued at 150, but officially dequeued after both prior replies.
+      timestamp: 400,
+      payload: { text: "Nevermind, let it publish." },
+    });
+    const ownResponse = message({
+      _id: "assistant-for-u2",
+      timestamp: 500,
+      payload: {
+        text: "No worries — letting it publish.",
+        userMessageId: "u2",
+      },
+    });
+
+    const merged = mergeConversationDisplayMessageSources({
+      persistedMessages: [
+        activeUser,
+        correction,
+        review,
+        dequeuedUser,
+        ownResponse,
+      ],
+      overlayMessages: [],
+      streamingAssistants: [],
+      persistedAssistantSlots: getPersistedAssistantSlots([
+        correction,
+        review,
+        ownResponse,
+      ]),
+    });
+
+    expect(merged.map((item) => item._id)).toEqual([
+      "u1",
+      "assistant-correction",
+      "assistant-review",
+      "u2",
+      "assistant-for-u2",
+    ]);
+  });
+
   it("does not move a non-user-turn assistant notice across a later user", () => {
     const messages = [
       message({ _id: "u1", type: "user_message", timestamp: 1 }),

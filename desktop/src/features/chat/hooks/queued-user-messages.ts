@@ -39,6 +39,19 @@ export const orderQueuedMessages = <
     .map(({ message }) => message)
 
 /**
+ * A queued message is visible at enqueue time but does not join the transcript
+ * until its drain is accepted. Re-stamp the optimistic row at that boundary so
+ * both the live overlay and persisted user event sort after assistant output
+ * that completed while the message waited.
+ */
+export const timestampQueuedOptimisticEventForDrain = <
+  T extends { timestamp: number },
+>(event: T, dequeuedAtMs: number): T => ({
+  ...event,
+  timestamp: dequeuedAtMs,
+})
+
+/**
  * Restores a drain batch after `startChat` failed before acceptance. Existing
  * ids win so a late failure callback cannot duplicate a message that was
  * already re-queued through another path.

@@ -19,6 +19,7 @@ import {
   orderQueuedMessages,
   removeQueuedUserMessageById,
   restoreQueuedMessagesAfterFailedDrain,
+  timestampQueuedOptimisticEventForDrain,
   type QueuedUserMessage,
 } from './queued-user-messages'
 
@@ -254,7 +255,8 @@ export function useStreamingChatCore({
     setQueuedUserMessages((current) =>
       current.filter((message) => !drainedIds.has(message.id)),
     )
-    const optimisticEvent =
+    const dequeuedAtMs = Date.now()
+    const optimisticEventTemplate =
       drainable.length === 1
         ? combined.optimisticEvent
         : buildOptimisticUserEvent({
@@ -263,7 +265,7 @@ export function useStreamingChatCore({
               combined.userPrompt
               || combined.selectedText?.trim()
               || 'Attached context',
-            timestamp: combined.optimisticEvent.timestamp,
+            timestamp: dequeuedAtMs,
             platform: combined.platform,
             timezone: combined.timezone,
             locale: combined.locale,
@@ -272,6 +274,10 @@ export function useStreamingChatCore({
               : {}),
             attachments: toDisplayAttachments(combined.attachments),
           })
+    const optimisticEvent = timestampQueuedOptimisticEventForDrain(
+      optimisticEventTemplate,
+      dequeuedAtMs,
+    )
     setOptimisticEvents((current) =>
       current.some((event) => event._id === combined.id)
         ? current
@@ -292,7 +298,7 @@ export function useStreamingChatCore({
         : {}),
       attachments: combined.attachments,
       userMessageEventId: combined.id,
-      userMessageTimestamp: combined.optimisticEvent.timestamp,
+      userMessageTimestamp: optimisticEvent.timestamp,
       onStartFailed: () => {
         if (drainingQueuedMessageIdRef.current === combined.id) {
           drainingQueuedMessageIdRef.current = null
