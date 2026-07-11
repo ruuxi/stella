@@ -133,24 +133,17 @@
   max-height: min(60vh, 32rem);
 }
 
-/* While the user is typing, hold the results region at a stable reserved
-   height. Without this the popover re-flows to fit each debounced/deferred
-   match set and its height snaps on every keystroke — a jarring staircase.
-   The reserve keeps the container settled (matches scroll inside it); it
-   eases in once so engaging search doesn't itself jump. Idle keeps the
-   natural content-fit height so a short overview isn't padded with a void. */
-.composer-activity-tray__body {
-  transition: min-height 140ms ease;
-}
-
+/* While searching, freeze the results region to a FIXED, resolved height and
+   scroll matches inside it. A min-height floor alone still let taller match
+   sets grow the popover up to its cap and re-flow per keystroke; a fixed
+   height bounds it from both sides, so the OUTER popover height stays
+   constant regardless of how many results match — the box never re-flows as
+   you type. Idle keeps the natural content-fit height so a short overview
+   isn't padded with a void. */
 .composer-activity-tray[data-searching] .composer-activity-tray__body {
-  min-height: min(18rem, 46vh);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .composer-activity-tray__body {
-    transition: none;
-  }
+  height: min(18rem, 46vh);
+  display: flex;
+  flex-direction: column;
 }
 
 .composer-activity-tray__search {
@@ -195,4 +188,16 @@
   color: var(--text-weaker);
   font-size: var(--font-size-sm);
   line-height: 1.5;
+}
+
+/* With the fixed-height searching box, a no-matches message would otherwise
+   sit at the top over a large blank void. Grow it to fill the reserved box
+   and center the copy so the empty state reads as intentional. */
+.composer-activity-tray[data-searching] .composer-activity-tray__empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
 }

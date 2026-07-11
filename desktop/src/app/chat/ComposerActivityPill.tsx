@@ -67,6 +67,27 @@ export const getDisplayedActivityPillState = (
   sidebarDocked: boolean,
 ): PillState => (sidebarDocked && state === "running" ? "idle" : state);
 
+/**
+ * Whether the tray should hold its fixed "searching" layout (a resolved,
+ * scroll-bounded results box) rather than its natural content-fit height.
+ *
+ * Two inputs, deliberately OR'd:
+ *   • `inputValue` — the immediate keystroke value, so the fixed box engages
+ *     on the very first character, before the debounced/deferred results
+ *     reconcile (no first-keystroke jump).
+ *   • `deferredQuery` — the value the results are actually rendered from.
+ *     Holding on it keeps the fixed layout in place after the field is
+ *     cleared until the results reconcile back to the overview, so clearing
+ *     collapses the box exactly once (a single settle) instead of dropping
+ *     the layout immediately and resizing again 150ms later when the query
+ *     clears (the two-stage drop).
+ */
+export const shouldTrayHoldSearchLayout = (
+  inputValue: string,
+  deferredQuery: string,
+): boolean =>
+  inputValue.trim().length > 0 || deferredQuery.trim().length > 0;
+
 /** Live status of the whole conversation's background work, distilled into
  *  a single pill state (+ running count) with a minimum dwell on terminal
  *  states. */
@@ -191,13 +212,13 @@ function ActivityTray({ onNavigate }: { onNavigate: () => void }) {
     return () => window.clearTimeout(timer);
   }, [inputValue]);
 
-  // Reserve a stable results height the moment the user starts typing. The
-  // per-keystroke result churn (debounced + deferred) otherwise re-flows the
-  // popover to fit each intermediate match set, hard-snapping its height into
-  // a rapid staircase. Keying the reserve off the immediate input (not the
-  // deferred query) engages it before results reconcile, so the container
-  // settles instead of flickering. Idle keeps its natural, content-fit height.
-  const searching = inputValue.trim().length > 0;
+  // While searching, the body becomes a fixed-height, internally-scrolling
+  // box (see CSS) so the OUTER popover height stays constant no matter how
+  // many results match — the results scroll inside a stable frame instead of
+  // re-flowing the popover per keystroke. The layout is held on the immediate
+  // input OR the still-deferred query so it engages before the first result
+  // and collapses only once, after the field clears and results reconcile.
+  const searching = shouldTrayHoldSearchLayout(inputValue, deferredQuery);
 
   return (
     <div className="composer-activity-tray" data-searching={searching || undefined}>

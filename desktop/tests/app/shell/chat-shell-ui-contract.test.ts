@@ -4,7 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { getContextSuggestionLabel } from "@/app/chat/ComposerAddMenu";
-import { getDisplayedActivityPillState } from "@/app/chat/ComposerActivityPill";
+import {
+  getDisplayedActivityPillState,
+  shouldTrayHoldSearchLayout,
+} from "@/app/chat/ComposerActivityPill";
 import { isComposerContextMenuTarget } from "@/shell/context-menu/StellaContextMenu";
 import type { ComposerContextSuggestion } from "@/app/chat/ComposerContextRow";
 
@@ -104,7 +107,25 @@ describe("chat shell UI contracts", () => {
     expect(sidebar).toContain('<LeftSidebarSections variant="overview" />');
   });
 
-  it("reserves a stable tray height while searching so it doesn't snap per keystroke", () => {
+  it("holds the tray search layout through engage and a single-settle clear", () => {
+    // Engages on the very first keystroke, before the deferred results
+    // reconcile (immediate input drives it on).
+    expect(shouldTrayHoldSearchLayout("a", "")).toBe(true);
+    // Steady state while searching: both the input and the rendered query set.
+    expect(shouldTrayHoldSearchLayout("map", "map")).toBe(true);
+    // Two-stage-drop regression: after the field is cleared the results still
+    // render the previous query for ~150ms. The layout MUST stay held so the
+    // box collapses once (when results reconcile), not twice. A naive
+    // input-only predicate returns false here and fails this assertion.
+    expect(shouldTrayHoldSearchLayout("", "map")).toBe(true);
+    // Only once both the field and the deferred results have cleared does the
+    // tray release its fixed layout back to the natural overview height.
+    expect(shouldTrayHoldSearchLayout("", "")).toBe(false);
+    // Whitespace-only input is not a search.
+    expect(shouldTrayHoldSearchLayout("   ", "")).toBe(false);
+  });
+
+  it("bounds the searching results box to a fixed height with internal scroll", () => {
     const activityPill = fs.readFileSync(
       path.join(SOURCE_ROOT, "app/chat/ComposerActivityPill.tsx"),
       "utf8",
@@ -114,13 +135,27 @@ describe("chat shell UI contracts", () => {
       "utf8",
     );
 
-    // The tray marks itself as searching off the immediate input (not the
-    // deferred query) so the reserve engages before results reconcile.
-    expect(activityPill).toContain("const searching = inputValue.trim().length > 0");
-    expect(activityPill).toContain("data-searching={searching || undefined}");
-    // CSS holds the results region at a reserved height while searching.
-    expect(css).toMatch(
-      /\.composer-activity-tray\[data-searching\][\s\S]*?min-height:/,
+    // The component drives the searching layout off the hold predicate (not a
+    // bare input check) and marks the tray for CSS.
+    expect(activityPill).toContain(
+      "shouldTrayHoldSearchLayout(inputValue, deferredQuery)",
     );
+    expect(activityPill).toContain("data-searching={searching || undefined}");
+
+    // The base body scrolls its overflow internally.
+    expect(css).toMatch(
+      /\.composer-activity-tray__body\s*\{[^}]*overflow-y:\s*auto/,
+    );
+
+    // While searching the body is pinned to a FIXED, resolved height so the
+    // outer popover can't grow/shrink with the match count. A `min-height`
+    // floor (the old, still-content-driven behavior) does NOT satisfy this.
+    const searchingBody = css.match(
+      /\.composer-activity-tray\[data-searching\]\s+\.composer-activity-tray__body\s*\{([^}]*)\}/,
+    );
+    expect(searchingBody).not.toBeNull();
+    const decls = searchingBody?.[1] ?? "";
+    expect(decls).toMatch(/(^|[;{\s])height:\s*min\(/);
+    expect(decls).not.toMatch(/min-height:/);
   });
 });
