@@ -13,6 +13,7 @@ import {
 } from "../../../../../runtime/kernel/agent-runtime/memory-review.js";
 import {
   reconcileSelectedPersonality,
+  replacePersonalityIfHomeHashMatches,
   resolvePersonalityPresetContent,
 } from "../../../../../runtime/kernel/home/personality-sync.js";
 import {
@@ -288,5 +289,26 @@ describe("PERSONALITY.md sync tracking", () => {
     await expect(
       readFile(path.join(home, "PERSONALITY.md"), "utf-8"),
     ).resolves.toBe(`${PERSONALITY_TEMPLATES.professional.trim()}\n`);
+  });
+
+  it("does not replace a direct edit made after the untouched hash decision", async () => {
+    const home = await tempDir();
+    const target = path.join(home, "PERSONALITY.md");
+    const staged = path.join(home, "PERSONALITY.md.staged");
+    await writeFile(target, "previous untouched value\n", "utf-8");
+    const expectedHomeHash = sha256("previous untouched value\n");
+    await writeFile(staged, "incoming remote value\n", "utf-8");
+    await writeFile(target, "concurrent direct edit\n", "utf-8");
+
+    expect(
+      replacePersonalityIfHomeHashMatches({
+        target,
+        staged,
+        expectedHomeHash,
+      }),
+    ).toBe(false);
+    await expect(readFile(target, "utf-8")).resolves.toBe(
+      "concurrent direct edit\n",
+    );
   });
 });

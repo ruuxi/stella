@@ -213,6 +213,22 @@ const seedLegacyPersonalityMetadata = async (
   }
 };
 
+export const replacePersonalityIfHomeHashMatches = (args: {
+  target: string;
+  staged: string;
+  expectedHomeHash: string | null;
+}): boolean => {
+  let currentHash: string | null = null;
+  try {
+    currentHash = sha256(fs.readFileSync(args.target, "utf-8"));
+  } catch {
+    currentHash = null;
+  }
+  if (currentHash !== args.expectedHomeHash) return false;
+  fs.renameSync(args.staged, args.target);
+  return true;
+};
+
 const reconcileSelectedPersonalityAttempt = async (
   stellaDataDir: string,
   sourceRevision: string,
@@ -222,6 +238,8 @@ const reconcileSelectedPersonalityAttempt = async (
   const generation = intentionalWriteGeneration;
   const content = resolvePersonalityPresetContent(stellaDataDir, selectedId);
   const sourceKey = `personality:${selectedId}:${sourceRevision}`;
+  let expectedHomeHash: string | null | undefined;
+  let directEditDetected = false;
   const adapter: BundledEntryAdapter = {
     listIds: async (dir) => {
       if (dir === sourceKey) return [PERSONALITY_ENTRY_ID];
@@ -236,10 +254,13 @@ const reconcileSelectedPersonalityAttempt = async (
     hash: async (dir) => {
       if (dir === sourceKey) return sha256(content);
       try {
-        return sha256(
+        const homeHash = sha256(
           await fsp.readFile(path.join(dir, PERSONALITY_FILENAME), "utf-8"),
         );
+        expectedHomeHash = homeHash;
+        return homeHash;
       } catch {
+        expectedHomeHash = null;
         return null;
       }
     },
@@ -255,9 +276,17 @@ const reconcileSelectedPersonalityAttempt = async (
         await fsp.rm(temp, { force: true });
         return;
       }
-      // The final check and rename are synchronous so an intentional write in
-      // this process cannot interleave between them.
-      fs.renameSync(temp, target);
+      if (
+        expectedHomeHash === undefined ||
+        !replacePersonalityIfHomeHashMatches({
+          target,
+          staged: temp,
+          expectedHomeHash,
+        })
+      ) {
+        directEditDetected = true;
+        await fsp.rm(temp, { force: true });
+      }
     },
     remove: async (dir) => {
       await fsp.rm(path.join(dir, PERSONALITY_FILENAME), { force: true });
@@ -276,6 +305,7 @@ const reconcileSelectedPersonalityAttempt = async (
   return {
     report,
     stable:
+      !directEditDetected &&
       generation === intentionalWriteGeneration &&
       coercePersonalityId(getPersonalityVoiceId(stellaDataDir)) === selectedId,
   };

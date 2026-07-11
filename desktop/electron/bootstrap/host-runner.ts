@@ -60,11 +60,18 @@ const ensureStellaDataDirSeededOnce = (
   promptSiteUrl?: string | null,
 ): Promise<void> => {
   if (!stellaDataDirSeedingPromise) {
-    const attempt = ensureStellaDataDirSeeded(
-      stellaAppDir,
-      stellaDataDirPath,
-      { promptSiteUrl },
-    ).then(() => undefined);
+    const normalizedPromptSiteUrl =
+      promptSiteUrl?.trim().replace(/\/+$/, "") || null;
+    const attempt = ensureStellaDataDirSeeded(stellaAppDir, stellaDataDirPath, {
+      promptSiteUrl,
+    }).then((result) => {
+      if (
+        normalizedPromptSiteUrl &&
+        result.promptResolution !== "bundled-bootstrap"
+      ) {
+        lastConfiguredPromptSiteUrl = normalizedPromptSiteUrl;
+      }
+    });
     stellaDataDirSeedingPromise = attempt;
     void attempt.catch(() => {
       if (stellaDataDirSeedingPromise === attempt) {
@@ -82,23 +89,26 @@ export const syncConfiguredPromptSiteUrl = async (
   const normalized = siteUrl.trim().replace(/\/+$/, "");
   if (!normalized || normalized === lastConfiguredPromptSiteUrl) return;
   const previous = configuredPromptSyncPromise ?? Promise.resolve();
-  const attempt = previous.catch(() => undefined).then(async () => {
-    if (normalized === lastConfiguredPromptSiteUrl) return;
-    const stellaAppDir = context.state.stellaAppDir;
-    const stellaDataDirPath = context.state.stellaDataDirPath;
-    if (!stellaAppDir || !stellaDataDirPath) return;
-    await ensureStellaDataDirSeededOnce(
-      stellaAppDir,
-      stellaDataDirPath,
-      normalized,
-    );
-    await syncStellaPromptSnapshot(
-      stellaAppDir,
-      stellaDataDirPath,
-      normalized,
-    );
-    lastConfiguredPromptSiteUrl = normalized;
-  });
+  const attempt = previous
+    .catch(() => undefined)
+    .then(async () => {
+      if (normalized === lastConfiguredPromptSiteUrl) return;
+      const stellaAppDir = context.state.stellaAppDir;
+      const stellaDataDirPath = context.state.stellaDataDirPath;
+      if (!stellaAppDir || !stellaDataDirPath) return;
+      await ensureStellaDataDirSeededOnce(
+        stellaAppDir,
+        stellaDataDirPath,
+        normalized,
+      );
+      if (normalized === lastConfiguredPromptSiteUrl) return;
+      await syncStellaPromptSnapshot(
+        stellaAppDir,
+        stellaDataDirPath,
+        normalized,
+      );
+      lastConfiguredPromptSiteUrl = normalized;
+    });
   configuredPromptSyncPromise = attempt;
   try {
     await attempt;

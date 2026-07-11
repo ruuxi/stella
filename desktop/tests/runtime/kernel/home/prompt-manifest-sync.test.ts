@@ -10,6 +10,7 @@ import { loadParsedAgentsFromDir } from "../../../../../runtime/kernel/agents/ma
 import { reconcileBundledAgents } from "../../../../../runtime/kernel/home/agents-sync.js";
 import {
   parseRemotePromptManifest,
+  recordAppliedPromptManifest,
   reconcileRemotePromptManifest,
   resolvePromptManifest,
   type RemotePromptManifest,
@@ -147,7 +148,11 @@ describe("remote prompt startup sync", () => {
         throw new Error("offline");
       },
     });
-    expect(cached).toEqual({ source: "cached-remote", manifest: remote });
+    expect(cached).toEqual({
+      source: "cached-remote",
+      manifest: remote,
+      endpoint: "https://example.test/api/stella/prompts",
+    });
   });
 
   it("applies a validated fresh manifest even when cache persistence fails", async () => {
@@ -161,7 +166,80 @@ describe("remote prompt startup sync", () => {
         throw new Error("disk full");
       },
     });
-    expect(result).toEqual({ source: "fresh-remote", manifest: remote });
+    expect(result).toEqual({
+      source: "fresh-remote",
+      manifest: remote,
+      endpoint: "https://example.test/api/stella/prompts",
+    });
+  });
+
+  it("keeps the applied high-water mark when manifest cache persistence fails", async () => {
+    const home = await tempDir();
+    const endpoint = "https://example.test/api/stella/prompts";
+    const olderCached = manifest(10, {
+      "prompts/memory-review.md": "cached older\n",
+    });
+    await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl: "https://example.test",
+      fetchImpl: async () => new Response(JSON.stringify(olderCached)),
+    });
+    const applied = manifest(30, {
+      "prompts/memory-review.md": "applied newest\n",
+    });
+    const fresh = await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl: "https://example.test",
+      fetchImpl: async () => new Response(JSON.stringify(applied)),
+      writeCacheImpl: async () => {
+        throw new Error("disk full");
+      },
+    });
+    expect(fresh.manifest).toEqual(applied);
+    await recordAppliedPromptManifest({
+      stellaDataDir: home,
+      endpoint,
+      manifest: applied,
+    });
+
+    const intermediate = manifest(20, {
+      "prompts/memory-review.md": "rollback candidate\n",
+    });
+    const result = await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl: "https://example.test",
+      fetchImpl: async () => new Response(JSON.stringify(intermediate)),
+    });
+    expect(result).toEqual({
+      source: "bundled-bootstrap",
+      manifest: null,
+      endpoint,
+    });
+  });
+
+  it("retains the applied high-water mark in memory when its durable write fails", async () => {
+    const home = await tempDir();
+    const endpoint = "https://memory-only.test/api/stella/prompts";
+    const applied = manifest(40);
+    await recordAppliedPromptManifest({
+      stellaDataDir: home,
+      endpoint,
+      manifest: applied,
+      writeStateImpl: async () => {
+        throw new Error("read-only cache directory");
+      },
+    });
+
+    const result = await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl: "https://memory-only.test",
+      fetchImpl: async () => new Response(JSON.stringify(manifest(39))),
+    });
+    expect(result).toEqual({
+      source: "bundled-bootstrap",
+      manifest: null,
+      endpoint,
+    });
   });
 
   it("rejects an older remote publication than the cached last-known-good", async () => {
@@ -178,7 +256,11 @@ describe("remote prompt startup sync", () => {
       siteUrl: "https://example.test",
       fetchImpl: async () => new Response(JSON.stringify(older)),
     });
-    expect(result).toEqual({ source: "cached-remote", manifest: current });
+    expect(result).toEqual({
+      source: "cached-remote",
+      manifest: current,
+      endpoint: "https://example.test/api/stella/prompts",
+    });
   });
 
   it("rejects manifests with missing entries or invalid content-derived revisions", () => {

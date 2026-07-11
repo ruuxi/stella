@@ -20,6 +20,7 @@ import {
   type BundledSyncReport,
 } from "./bundled-sync.js";
 import {
+  recordAppliedPromptManifest,
   reconcileRemotePromptManifest,
   resolvePromptManifest,
   type PromptManifestResolution,
@@ -157,6 +158,13 @@ export const ensureStellaDataDirSeeded = async (
       stellaDataDir,
       resolveBundledAgentsDir(stellaAppDir),
     );
+    if (promptResolution.endpoint) {
+      await recordAppliedPromptManifest({
+        stellaDataDir,
+        endpoint: promptResolution.endpoint,
+        manifest: promptResolution.manifest,
+      });
+    }
   }
 
   // The bundle is the final offline/bootstrap fallback. It only fills missing
@@ -224,6 +232,13 @@ export const syncStellaPromptSnapshot = async (
       stellaDataDir,
       resolveBundledAgentsDir(stellaAppDir),
     );
+    if (resolution.endpoint) {
+      await recordAppliedPromptManifest({
+        stellaDataDir,
+        endpoint: resolution.endpoint,
+        manifest: resolution.manifest,
+      });
+    }
     await reconcileSelectedPersonality(
       stellaDataDir,
       resolution.manifest.revision,

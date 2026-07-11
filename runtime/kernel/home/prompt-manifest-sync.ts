@@ -23,6 +23,7 @@ import {
 } from "./bundled-sync.js";
 
 const PROMPT_CACHE_FILE = "prompt-manifest.json";
+const PROMPT_APPLIED_STATE_FILE = "prompt-applied-state.json";
 const FETCH_TIMEOUT_MS = 3_000;
 
 export type RemotePrompt = { id: string; sha256: string; content: string };
@@ -39,12 +40,21 @@ type CachedPromptManifest = {
   manifest: RemotePromptManifest;
 };
 
+type AppliedPromptState = {
+  endpoint: string;
+  publishedAt: number;
+  revision: string;
+};
+
 type ReconciledPrompt = RemotePrompt;
 
 export type PromptManifestResolution = {
   source: "fresh-remote" | "cached-remote" | "bundled-bootstrap";
   manifest: RemotePromptManifest | null;
+  endpoint?: string;
 };
+
+const appliedStateMemory = new Map<string, AppliedPromptState>();
 
 const sha256 = (content: string): string =>
   createHash("sha256").update(content).digest("hex");
@@ -111,6 +121,12 @@ export const parseRemotePromptManifest = (
 const cachePath = (stellaDataDir: string): string =>
   path.join(stellaDataDir, "cache", PROMPT_CACHE_FILE);
 
+const appliedStatePath = (stellaDataDir: string): string =>
+  path.join(stellaDataDir, "cache", PROMPT_APPLIED_STATE_FILE);
+
+const appliedStateKey = (stellaDataDir: string, endpoint: string): string =>
+  `${path.resolve(stellaDataDir)}\0${endpoint}`;
+
 const isHttpEndpoint = (value: string): boolean => {
   try {
     const parsed = new URL(value);
@@ -146,6 +162,102 @@ const readCache = async (
   } catch {
     return null;
   }
+};
+
+const isValidAppliedState = (value: unknown): value is AppliedPromptState => {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<AppliedPromptState>;
+  return (
+    typeof candidate.endpoint === "string" &&
+    isHttpEndpoint(candidate.endpoint) &&
+    typeof candidate.publishedAt === "number" &&
+    Number.isSafeInteger(candidate.publishedAt) &&
+    candidate.publishedAt >= 0 &&
+    typeof candidate.revision === "string" &&
+    STELLA_PROMPT_REVISION_PATTERN.test(candidate.revision)
+  );
+};
+
+const newerAppliedState = (
+  left: AppliedPromptState | null,
+  right: AppliedPromptState | null,
+): AppliedPromptState | null => {
+  if (!left) return right;
+  if (!right) return left;
+  if (left.publishedAt !== right.publishedAt) {
+    return left.publishedAt > right.publishedAt ? left : right;
+  }
+  return left.revision === right.revision ? left : right;
+};
+
+const readAppliedState = async (
+  stellaDataDir: string,
+  expectedEndpoint?: string,
+): Promise<AppliedPromptState | null> => {
+  let disk: AppliedPromptState | null = null;
+  try {
+    const parsed = JSON.parse(
+      await fs.readFile(appliedStatePath(stellaDataDir), "utf-8"),
+    ) as unknown;
+    if (
+      isValidAppliedState(parsed) &&
+      (expectedEndpoint === undefined || parsed.endpoint === expectedEndpoint)
+    ) {
+      disk = parsed;
+    }
+  } catch {
+    // Missing/corrupt durable state still has the in-process high-water mark.
+  }
+  const endpoint = expectedEndpoint ?? disk?.endpoint;
+  const memory = endpoint
+    ? (appliedStateMemory.get(appliedStateKey(stellaDataDir, endpoint)) ?? null)
+    : null;
+  return newerAppliedState(disk, memory);
+};
+
+const writeAppliedStateAtomic = async (
+  stellaDataDir: string,
+  state: AppliedPromptState,
+): Promise<void> => {
+  const filePath = appliedStatePath(stellaDataDir);
+  await ensurePrivateDir(path.dirname(filePath));
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    await fs.writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, {
+      encoding: "utf-8",
+      mode: 0o600,
+    });
+    await fs.rename(tempPath, filePath);
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
+};
+
+export const recordAppliedPromptManifest = async (args: {
+  stellaDataDir: string;
+  endpoint: string;
+  manifest: RemotePromptManifest;
+  writeStateImpl?: typeof writeAppliedStateAtomic;
+}): Promise<void> => {
+  const state: AppliedPromptState = {
+    endpoint: args.endpoint,
+    publishedAt: args.manifest.publishedAt,
+    revision: args.manifest.revision,
+  };
+  const key = appliedStateKey(args.stellaDataDir, args.endpoint);
+  const current = appliedStateMemory.get(key) ?? null;
+  const next = newerAppliedState(current, state)!;
+  appliedStateMemory.set(key, next);
+  await (args.writeStateImpl ?? writeAppliedStateAtomic)(
+    args.stellaDataDir,
+    next,
+  ).catch((error) => {
+    console.warn(
+      "[stella-home] Could not persist applied prompt high-water state:",
+      error,
+    );
+  });
 };
 
 const writeCacheAtomic = async (
@@ -186,11 +298,22 @@ const readBoundedJsonResponse = async (
 
 const isRollback = (
   fresh: RemotePromptManifest,
-  cached: RemotePromptManifest,
+  highWater: Pick<RemotePromptManifest, "publishedAt" | "revision">,
 ): boolean =>
-  fresh.publishedAt < cached.publishedAt ||
-  (fresh.publishedAt === cached.publishedAt &&
-    fresh.revision !== cached.revision);
+  fresh.publishedAt < highWater.publishedAt ||
+  (fresh.publishedAt === highWater.publishedAt &&
+    fresh.revision !== highWater.revision);
+
+const highestKnownState = (
+  cached: CachedPromptManifest | null,
+  applied: AppliedPromptState | null,
+): Pick<RemotePromptManifest, "publishedAt" | "revision"> | null => {
+  if (!cached) return applied;
+  if (!applied) return cached.manifest;
+  return cached.manifest.publishedAt > applied.publishedAt
+    ? cached.manifest
+    : applied;
+};
 
 export const resolvePromptManifest = async (args: {
   stellaDataDir: string;
@@ -203,10 +326,24 @@ export const resolvePromptManifest = async (args: {
     ? `${normalizeStellaSiteUrl(siteUrl)}${STELLA_PROMPTS_PATH}`
     : undefined;
   const cached = await readCache(args.stellaDataDir, configuredEndpoint);
-  const endpoint = configuredEndpoint ?? cached?.endpoint;
+  const initialApplied = await readAppliedState(
+    args.stellaDataDir,
+    configuredEndpoint,
+  );
+  const endpoint =
+    configuredEndpoint ?? cached?.endpoint ?? initialApplied?.endpoint;
   if (!endpoint) {
     return { source: "bundled-bootstrap", manifest: null };
   }
+  const applied =
+    initialApplied?.endpoint === endpoint
+      ? initialApplied
+      : await readAppliedState(args.stellaDataDir, endpoint);
+  const highWater = highestKnownState(cached, applied);
+  const safeCached =
+    cached && (!applied || !isRollback(cached.manifest, applied))
+      ? cached
+      : null;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -217,16 +354,22 @@ export const resolvePromptManifest = async (args: {
       headers,
       signal: controller.signal,
     });
-    if (response.status === 304 && cached) {
-      return { source: "fresh-remote", manifest: cached.manifest };
+    if (response.status === 304 && safeCached) {
+      return {
+        source: "fresh-remote",
+        manifest: safeCached.manifest,
+        endpoint,
+      };
     }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const manifest = parseRemotePromptManifest(
       await readBoundedJsonResponse(response),
     );
     if (!manifest) throw new Error("Invalid prompt manifest");
-    if (cached && isRollback(manifest, cached.manifest)) {
-      return { source: "cached-remote", manifest: cached.manifest };
+    if (highWater && isRollback(manifest, highWater)) {
+      return safeCached
+        ? { source: "cached-remote", manifest: safeCached.manifest, endpoint }
+        : { source: "bundled-bootstrap", manifest: null, endpoint };
     }
 
     const nextCache: CachedPromptManifest = {
@@ -245,11 +388,11 @@ export const resolvePromptManifest = async (args: {
         error,
       );
     });
-    return { source: "fresh-remote", manifest };
+    return { source: "fresh-remote", manifest, endpoint };
   } catch {
-    return cached
-      ? { source: "cached-remote", manifest: cached.manifest }
-      : { source: "bundled-bootstrap", manifest: null };
+    return safeCached
+      ? { source: "cached-remote", manifest: safeCached.manifest, endpoint }
+      : { source: "bundled-bootstrap", manifest: null, endpoint };
   } finally {
     clearTimeout(timeout);
   }
