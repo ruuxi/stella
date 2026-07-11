@@ -293,7 +293,7 @@ export const createSelfModCoordinator = (
     const results = await Promise.all(
       runIds.map(async (runId) => {
         try {
-          await peer.request(
+          const response = await peer.request<{ ok?: unknown }>(
             METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME,
             {
               runId,
@@ -301,7 +301,7 @@ export const createSelfModCoordinator = (
             },
             { retryOnDisconnect: true },
           );
-          return true;
+          return response?.ok === true;
         } catch (error) {
           console.warn(
             "[self-mod-reload] Failed to resume host runtime reloads:",

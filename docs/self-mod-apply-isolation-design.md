@@ -38,13 +38,16 @@ cleanup only after deterministic reconstruction succeeds. Pending selectors
 are persisted in SQLite and restored with their HMR ownership after a worker
 restart. Startup cleanup requires affirmative Vite discard, Vite run-release,
 and host reload-release acknowledgements before deleting each durable row. A
-partially cleaned candidate remains durable and retryable; the external cleanup
-operations are idempotent. Each selector has its own card event; an explicit
-Update all action remains separate.
+response is affirmative only when its typed body has `ok === true`; 2xx
+negative, missing, malformed, and rejected acknowledgements all retain the row
+and leave its card unchanged. A partially cleaned candidate remains durable and
+retryable; the external cleanup operations are idempotent. Each selector has
+its own card event; an explicit Update all action remains separate.
 
 The production-path harness drives deterministic fake mutations through both
 real runner wrappers, mediated capture, the shared mutation lock, coordinator
 finalize/apply, exact Git commit, real index, real Vite plugin HTTP endpoint,
 HMR overlay payload, and long-running shell leases. It asserts HEAD, index,
 shared-disk bytes, pending selectors/cards, payloads, conflicts, retry, and
-cleanup across the concurrency matrix.
+cleanup across the concurrency matrix, including same-path parallel discards,
+duplicate discard, and queue/lock release after a thrown transaction.

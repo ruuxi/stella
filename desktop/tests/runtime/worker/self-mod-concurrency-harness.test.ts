@@ -6,6 +6,7 @@
  * exact Git commit, morph dispatch, and HMR HTTP apply path. No LLM or API.
  */
 import { spawnSync } from "node:child_process";
+import { createServer as createHttpServer } from "node:http";
 import {
   chmod,
   lstat,
@@ -29,6 +30,7 @@ import { METHOD_NAMES } from "../../../../runtime/protocol/index.js";
 import { commitGitMessage } from "../../../../runtime/kernel/self-mod/git/commit.js";
 import { getGitHead } from "../../../../runtime/kernel/self-mod/git/log.js";
 import { createSelfModHmrController } from "../../../../runtime/kernel/self-mod/hmr.js";
+import { getSelfModMutationLockStatus } from "../../../../runtime/kernel/self-mod/mutation-lock.js";
 import { StoreModService } from "../../../../runtime/kernel/self-mod/store-mod-service.js";
 import {
   getDesktopDatabasePath,
@@ -66,6 +68,35 @@ const reservePort = async (): Promise<number> =>
       server.close((error) => (error ? reject(error) : resolve(address.port)));
     });
   });
+
+const createNegativeAckController = async (
+  repoRoot: string,
+  negativeEndpoint: "discard" | "release-client-updates",
+) => {
+  const port = await reservePort();
+  const server = createHttpServer((request, response) => {
+    request.resume();
+    const negative = request.url?.endsWith(`/${negativeEndpoint}`) === true;
+    response.statusCode = 200;
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ ok: !negative }));
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", resolve);
+  });
+  return {
+    controller: createSelfModHmrController({
+      getDevServerUrl: () => `http://127.0.0.1:${port}`,
+      enabled: true,
+      repoRoot,
+    }),
+    close: async () =>
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
+  };
+};
 
 type ApplyPayload = {
   runs: Array<{
@@ -606,14 +637,12 @@ describe("scripted self-mod concurrency matrix", () => {
 
   it("concurrent discards atomically remove both logical layers without orphaned bytes", async () => {
     const h = await createHarness();
-    const xPath = "desktop/src/discard-x.ts";
-    const yPath = "desktop/src/discard-y.ts";
-    await seed(h, xPath, "x-base\n");
-    await seed(h, yPath, "y-base\n");
+    const sharedPath = "desktop/src/concurrent-discard.ts";
+    await seed(h, sharedPath, "x-base\nmiddle\ny-base\n");
     await start(h, "discard-x");
     await start(h, "discard-y");
-    await write(h, "discard-x", xPath, replace("x-base", "x-owned"));
-    await write(h, "discard-y", yPath, replace("y-base", "y-owned"));
+    await write(h, "discard-x", sharedPath, replace("x-base", "x-owned"));
+    await write(h, "discard-y", sharedPath, replace("y-base", "y-owned"));
     const xSelector = await finalize(h, "discard-x");
     const ySelector = await finalize(h, "discard-y");
     const beforeHead = await getGitHead(h.repoRoot);
@@ -628,11 +657,8 @@ describe("scripted self-mod concurrency matrix", () => {
     expect(yResult).toMatchObject({ discarded: true, commitHash: ySelector });
     expect(await getGitHead(h.repoRoot)).toBe(beforeHead);
     expect(git(h.repoRoot, ["ls-files", "--stage", "-z"])).toBe(beforeIndex);
-    expect(await readFile(path.join(h.repoRoot, xPath), "utf8")).toBe(
-      "x-base\n",
-    );
-    expect(await readFile(path.join(h.repoRoot, yPath), "utf8")).toBe(
-      "y-base\n",
+    expect(await readFile(path.join(h.repoRoot, sharedPath), "utf8")).toBe(
+      "x-base\nmiddle\ny-base\n",
     );
     expect(h.pending.size).toBe(0);
     expect(h.service.getPreparedLogicalChangeSet(xSelector)).toBeNull();
@@ -643,6 +669,67 @@ describe("scripted self-mod concurrency matrix", () => {
     expect(await h.controller.getStatus()).toMatchObject({
       inFlightPaths: 0,
       appliedOverlayPaths: 0,
+    });
+  });
+
+  it("concurrent duplicate discard has one owner and remains idempotent", async () => {
+    const h = await createHarness();
+    const relativePath = "desktop/src/duplicate-discard.ts";
+    await seed(h, relativePath, "base\n");
+    await start(h, "duplicate-discard");
+    await write(h, "duplicate-discard", relativePath, () => "owned\n");
+    const selector = await finalize(h, "duplicate-discard");
+
+    const results = await Promise.all([
+      h.coordinator.discardPending({ commitHash: selector }),
+      h.coordinator.discardPending({ commitHash: selector }),
+    ]);
+
+    expect(results.map((result) => result.discarded).sort()).toEqual([
+      false,
+      true,
+    ]);
+    expect(await readFile(path.join(h.repoRoot, relativePath), "utf8")).toBe(
+      "base\n",
+    );
+    expect(h.pending.size).toBe(0);
+    expect(h.service.getPreparedLogicalChangeSet(selector)).toBeNull();
+    expect(
+      new StoreModStore(h.db).listPendingSelfModChangeSets(h.repoRoot),
+    ).toHaveLength(0);
+  });
+
+  it("releases the transaction queue and mutation lock after a thrown discard", async () => {
+    const h = await createHarness();
+    const relativePath = "desktop/src/blocked/queue-release.ts";
+    const absolutePath = path.join(h.repoRoot, relativePath);
+    await seed(h, relativePath, "base\n");
+    await start(h, "queue-release");
+    await write(h, "queue-release", relativePath, () => "owned\n");
+    const selector = await finalize(h, "queue-release");
+    await rm(path.dirname(absolutePath), { recursive: true, force: true });
+    await writeFile(path.dirname(absolutePath), "not-a-directory\n");
+
+    await expect(
+      h.coordinator.discardPending({ commitHash: selector }),
+    ).rejects.toThrow();
+    expect(getSelfModMutationLockStatus(h.repoRoot)).toEqual({
+      locked: false,
+      queued: 0,
+    });
+    expect(h.pending.has(selector)).toBe(true);
+    expect(h.service.getPreparedLogicalChangeSet(selector)).toBeTruthy();
+
+    await rm(path.dirname(absolutePath), { force: true });
+    await mkdir(path.dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, "owned\n");
+    expect(
+      await h.coordinator.discardPending({ commitHash: selector }),
+    ).toMatchObject({ discarded: true });
+    expect(await readFile(absolutePath, "utf8")).toBe("base\n");
+    expect(getSelfModMutationLockStatus(h.repoRoot)).toEqual({
+      locked: false,
+      queued: 0,
     });
   });
 
@@ -1014,7 +1101,7 @@ describe("scripted self-mod concurrency matrix", () => {
         notify: () => {},
         request: async <TResult>(method: string, params?: unknown) => {
           restoredRequests.push({ method, params });
-          return {} as TResult;
+          return { ok: true } as TResult;
         },
         registerRequestHandler: () => {},
         registerNotificationHandler: () => {},
@@ -1148,7 +1235,7 @@ describe("scripted self-mod concurrency matrix", () => {
         notify: () => {},
         request: async <TResult>(method: string, params?: unknown) => {
           restoredRequests.push({ method, params });
-          return {} as TResult;
+          return { ok: true } as TResult;
         },
         registerRequestHandler: () => {},
         registerNotificationHandler: () => {},
@@ -1202,8 +1289,13 @@ describe("scripted self-mod concurrency matrix", () => {
     ).toHaveLength(64);
   });
 
-  it.each(["discard", "releaseRuns", "reload"] as const)(
-    "retains startup cleanup persistence when %s does not acknowledge completion",
+  it.each([
+    "vite-discard-negative",
+    "vite-release-negative",
+    "host-reload-negative",
+    "host-reload-rejected",
+  ] as const)(
+    "retains startup cleanup persistence when %s is not affirmative",
     async (failure) => {
       const h = await createHarness();
       const candidate = await persistExpiredCandidate(h, failure);
@@ -1216,29 +1308,33 @@ describe("scripted self-mod concurrency matrix", () => {
         candidate.changeSetId,
       ]);
       const patches: Array<Record<string, unknown>> = [];
-      const failingController = {
-        ...h.controller,
-        ...(failure === "discard" ? { discard: async () => false } : undefined),
-        ...(failure === "releaseRuns"
-          ? { releaseRuns: async () => false }
-          : undefined),
-      };
+      const negativeVite = failure.startsWith("vite-")
+        ? await createNegativeAckController(
+            h.repoRoot,
+            failure === "vite-discard-negative"
+              ? "discard"
+              : "release-client-updates",
+          )
+        : null;
       const failingCoordinator = createSelfModCoordinator({
         peer: {
           notify: () => {},
           request: async <TResult>(method: string) => {
-            if (
-              failure === "reload" &&
-              method === METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME
-            ) {
+            if (method === METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME) {
+              if (failure === "host-reload-negative") {
+                return { ok: false } as TResult;
+              }
+              if (failure !== "host-reload-rejected") {
+                return { ok: true } as TResult;
+              }
               throw new Error("synthetic reload transport failure");
             }
-            return {} as TResult;
+            return { ok: true } as TResult;
           },
           registerRequestHandler: () => {},
           registerNotificationHandler: () => {},
         },
-        getController: () => failingController,
+        getController: () => negativeVite?.controller ?? h.controller,
         getStoreModService: () => restoredService,
         getRuntimeStore: () => null,
         getRepoRoot: () => h.repoRoot,
@@ -1246,13 +1342,17 @@ describe("scripted self-mod concurrency matrix", () => {
         patchSelfModApplyStatus: (args) => patches.push(args),
       });
 
-      expect(
-        await failingCoordinator.cleanupStartupDiscardCandidates(candidates),
-      ).toEqual({
-        status: "applied",
-        completedChangeSetIds: [],
-        retryChangeSetIds: [candidate.changeSetId],
-      });
+      try {
+        expect(
+          await failingCoordinator.cleanupStartupDiscardCandidates(candidates),
+        ).toEqual({
+          status: "applied",
+          completedChangeSetIds: [],
+          retryChangeSetIds: [candidate.changeSetId],
+        });
+      } finally {
+        await negativeVite?.close();
+      }
       expect(
         new StoreModStore(h.db)
           .listPendingSelfModChangeSets(h.repoRoot)
@@ -1271,7 +1371,7 @@ describe("scripted self-mod concurrency matrix", () => {
       const retryCoordinator = createSelfModCoordinator({
         peer: {
           notify: () => {},
-          request: async <TResult>() => ({}) as TResult,
+          request: async <TResult>() => ({ ok: true }) as TResult,
           registerRequestHandler: () => {},
           registerNotificationHandler: () => {},
         },

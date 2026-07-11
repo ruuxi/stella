@@ -202,7 +202,8 @@ const postWithRetry = async (args: {
   path: string;
   maxWaitMs: number;
   body?: unknown;
-}): Promise<boolean> => (await postJsonWithRetry<unknown>(args)) !== null;
+}): Promise<boolean> =>
+  (await postJsonWithRetry<{ ok?: unknown }>(args))?.ok === true;
 
 const partitionRestartPaths = (paths: string[]): string[] =>
   paths.filter(
