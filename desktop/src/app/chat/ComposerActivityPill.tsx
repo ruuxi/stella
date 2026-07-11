@@ -22,6 +22,7 @@
  */
 import {
   memo,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -172,11 +173,23 @@ function PillGlyph({ state }: { state: PillState }) {
 
 function ActivityTray({ onNavigate }: { onNavigate: () => void }) {
   const query = useDisplaySearchQuery();
+  const [inputValue, setInputValue] = useState(query);
+  const deferredQuery = useDeferredValue(query);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Keep typing on the input's tiny local state and only wake the full
+  // activity/files search tree after a short pause. `useDeferredValue` gives
+  // React room to paint the final keystroke before reconciling the results.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      displaySearchStore.setQuery(inputValue);
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [inputValue]);
 
   return (
     <div className="composer-activity-tray">
@@ -186,22 +199,20 @@ function ActivityTray({ onNavigate }: { onNavigate: () => void }) {
           ref={inputRef}
           type="text"
           className="composer-activity-tray__search-input"
-          value={query}
+          value={inputValue}
           placeholder="Search activity, files, and more"
-          onChange={(event) =>
-            displaySearchStore.setQuery(event.currentTarget.value)
-          }
+          onChange={(event) => setInputValue(event.currentTarget.value)}
           aria-label="Search activity, files, and more"
         />
       </div>
       <div className="composer-activity-tray__body">
         <LeftSidebarSections
-          query={query}
+          query={deferredQuery}
           variant="overview"
           onNavigate={onNavigate}
           renderEmpty={() => (
             <div className="composer-activity-tray__empty">
-              {query.trim()
+              {deferredQuery.trim()
                 ? "Nothing matches that search."
                 : "Activity will show up here as Stella works."}
             </div>

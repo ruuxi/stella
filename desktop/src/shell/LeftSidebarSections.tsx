@@ -50,6 +50,7 @@ import {
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import {
+  deriveConversationFiles,
   type ConversationFileEntry,
 } from "@/features/workspace-display/derive-conversation-files";
 import {
@@ -79,12 +80,10 @@ const SECTION_CAPS = {
   strip: { activity: 8, files: 5, schedule: 4, store: 5 },
   overview: { activity: 6, files: 6, schedule: 6, store: 6 },
 } as const;
-const UNCAPPED = {
-  activity: Infinity,
-  files: Infinity,
-  schedule: Infinity,
-  store: Infinity,
-};
+// Search still scans every loaded record, but rendering an unbounded match
+// set made a common query mount hundreds of rows at once. The history dialogs
+// remain the escape hatch for longer result sets.
+const SEARCH_CAPS = { activity: 40, files: 40, schedule: 30, store: 30 };
 const EMPTY_TASKS: TaskItem[] = [];
 const EMPTY_FILES: ReadonlyArray<ConversationFileEntry> = [];
 /** Most-recent reasoning summaries shown under an expanded agent. */
@@ -578,8 +577,9 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   const schedules = useConversationSchedules(conversationId);
   const storeState = useStoreSidePanelState();
 
-  const searching = query.trim().length > 0;
-  const caps = searching ? UNCAPPED : SECTION_CAPS[variant];
+  const normalizedQuery = query.trim().toLowerCase();
+  const searching = normalizedQuery.length > 0;
+  const caps = searching ? SEARCH_CAPS : SECTION_CAPS[variant];
 
   useEffect(() => {
     void refreshFeatureSnapshot();
@@ -722,12 +722,26 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     setGroupExpandOverrides((prev) => pruneGroupExpandOverrides(prev, allTasks));
   }, [allTasks]);
 
-  const activityRows = useMemo(() => {
-    if (!query) return groupedRows;
-    return groupedRows.filter((row) =>
-      matchesQuery(activityRowText(row), query),
-    );
-  }, [groupedRows, query]);
+  const matchingActivityKeys = useMemo(() => {
+    if (!searching) return null;
+    const keys = new Set<string>();
+    for (const row of groupedRows) {
+      if (activityRowText(row).toLowerCase().includes(normalizedQuery)) {
+        keys.add(activityRowKey(row));
+      }
+    }
+    return keys;
+  }, [groupedRows, normalizedQuery, searching]);
+
+  const activityRows = useMemo(
+    () =>
+      matchingActivityKeys
+        ? groupedRows.filter((row) =>
+            matchingActivityKeys.has(activityRowKey(row)),
+          )
+        : groupedRows,
+    [groupedRows, matchingActivityKeys],
+  );
 
   // Running agents are no longer filtered out — they list alongside finished
   // ones, newest at the top. Each row is pinned to a frozen index captured
@@ -761,8 +775,10 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     // for unchanged input, so a repeat run (e.g. StrictMode) yields the same
     // frozen indices.
     runningOrderRef.current = state;
-    const visible = query
-      ? ordered.filter((row) => matchesQuery(activityRowText(row), query))
+    const visible = matchingActivityKeys
+      ? ordered.filter((row) =>
+          matchingActivityKeys.has(activityRowKey(row)),
+        )
       : ordered;
     // Never cap the running list — every active/running thread stays visible
     // regardless of the orchestrator's busy/idle state. While the orchestrator
@@ -773,7 +789,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     // Only the done rows are capped: `visibleDoneRows` takes whatever budget
     // the running rows leave, and they carry the "View all activity" affordance.
     return visible;
-  }, [groupedRows, query]);
+  }, [groupedRows, matchingActivityKeys]);
 
   const doneRows = useMemo(
     () =>
@@ -826,6 +842,25 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     return result;
   }, [agentFileEvents]);
 
+  // The standalone Files section was intentionally removed from the default
+  // sidebar when files moved under each agent, but it is still essential as
+  // a global search result. Derive once per file-feed update; query changes
+  // only scan the cheap normalized path index.
+  const searchableFiles = useMemo(
+    () =>
+      deriveConversationFiles(filesFeed.files).map((entry) => ({
+        entry,
+        searchText: entry.path.toLowerCase(),
+      })),
+    [filesFeed.files],
+  );
+  const filteredFiles = useMemo(() => {
+    if (!searching) return EMPTY_FILES;
+    return searchableFiles
+      .filter(({ searchText }) => searchText.includes(normalizedQuery))
+      .map(({ entry }) => entry);
+  }, [normalizedQuery, searchableFiles, searching]);
+
   const filteredSchedules = useMemo(() => {
     if (!query) return schedules;
     return schedules.filter((entry) => matchesQuery(entry.name, query));
@@ -851,6 +886,11 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     () => [...runningRows, ...visibleDoneRows],
     [runningRows, visibleDoneRows],
   );
+  const visibleFiles = useMemo(
+    () => filteredFiles.slice(0, caps.files),
+    [caps.files, filteredFiles],
+  );
+  const hiddenFilesCount = filteredFiles.length - visibleFiles.length;
   const upNext = useMemo(
     () => filteredSchedules.slice(0, caps.schedule),
     [filteredSchedules, caps.schedule],
@@ -860,6 +900,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   const hiddenStoreCount = storeItems.length - storePreview.length;
 
   const hasActivity = visibleActivityRows.length > 0;
+  const hasFiles = searching && visibleFiles.length > 0;
   const hasSchedule = upNext.length > 0;
   // Store is no longer listed by default — it only surfaces while searching.
   const hasStore = searching && storePreview.length > 0;
@@ -876,7 +917,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     [onNavigate],
   );
 
-  if (!hasActivity && !hasSchedule && !hasStore) {
+  if (!hasActivity && !hasFiles && !hasSchedule && !hasStore) {
     return renderEmpty ? <>{renderEmpty()}</> : null;
   }
 
@@ -901,6 +942,43 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
               agentFiles={agentFiles}
               onOpenFile={handleOpenFile}
             />
+          </WorkspaceSection>
+        )}
+
+        {hasFiles && (
+          <WorkspaceSection
+            title="Files"
+            sectionId="files"
+            onOpenHistory={
+              hiddenFilesCount > 0
+                ? () => setHistorySection("files")
+                : undefined
+            }
+            historyLabel={`View all matching files (${filteredFiles.length})`}
+          >
+            <ul className="chat-workspace-strip__list">
+              {visibleFiles.map((file) => (
+                <li
+                  key={file.path}
+                  className="chat-workspace-strip__row"
+                  title={file.path}
+                >
+                  <button
+                    type="button"
+                    className="chat-workspace-strip__file-button"
+                    onClick={() => handleOpenFile(file)}
+                  >
+                    <DisplayTabIcon
+                      kind={displayTabKindForPayload(file.payload)}
+                      size={15}
+                    />
+                    <span className="chat-workspace-strip__file-name">
+                      {basenameOf(file.path)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           </WorkspaceSection>
         )}
 
