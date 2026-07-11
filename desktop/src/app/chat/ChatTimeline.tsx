@@ -29,8 +29,8 @@
  *    browser then clamped `scrollTop` up to the new max — visible as a
  *    jump back to the top of the previous assistant reply just before
  *    the post-send nudge animated back down. The fixed bottom-floor
- *    `min-height` lives on the `ListFooterComponent`; queued messages are
- *    regular keyed list items after every active assistant slot.
+ *    `min-height` lives on the `ListFooterComponent`; the collapsed queue is
+ *    one keyed list item after every active assistant slot.
  *  - Older-history pagination is driven by the scroll hook's native input
  *    listener, not Legend's data-sensitive `onStartReached` callback.
  *
@@ -83,9 +83,8 @@ type ChatTimelineProps = {
   extraTail?: React.ReactNode;
   queuedUserMessages?: QueuedUserMessage[];
   /**
-   * When provided, each queued bubble reveals a hover "X" that cancels just
-   * that message. The surface pairs queue removal with restoring the text to
-   * its composer input.
+   * When provided, the single-message bubble or collapsed queue preview lets
+   * the user cancel one queued message and restore its text to the composer.
    */
   onCancelQueued?: (message: QueuedUserMessage) => void;
   /**
@@ -247,19 +246,14 @@ const TimelineUserItem = ({
 }: {
   item: Extract<
     ChatTimelineItem,
-    { type: "message" | "queued-user" }
+    { type: "message" | "queued-users" }
   >;
   onCancelQueued?: (message: QueuedUserMessage) => void;
 }) => {
-  const queuedMessage = item.type === "queued-user" ? item.message : null;
-  const queuedMessages = useMemo(
-    () => (queuedMessage ? [queuedMessage] : []),
-    [queuedMessage],
-  );
-  if (item.type === "queued-user") {
+  if (item.type === "queued-users") {
     return (
       <ComposerQueuedMessages
-        messages={queuedMessages}
+        messages={item.messages}
         onCancel={onCancelQueued}
       />
     );
@@ -298,11 +292,11 @@ export const ChatTimeline = memo(function ChatTimeline({
         return { ...item, gapAfter: gapAfterRow(item.row, nextRow) };
       }
       if (item.type === "working-indicator") {
-        return { ...item, gapAfter: next?.type === "queued-user" ? 20 : 0 };
+        return { ...item, gapAfter: next?.type === "queued-users" ? 20 : 0 };
       }
       return {
         ...item,
-        gapAfter: next?.type === "queued-user" ? 6 : ROW_GAP,
+        gapAfter: next?.type === "queued-users" ? 6 : ROW_GAP,
       };
     });
   }, [indicator, queuedUserMessages, rows]);
@@ -316,7 +310,7 @@ export const ChatTimeline = memo(function ChatTimeline({
           </div>
         ) : null;
       }
-      if (item.type === "queued-user" || item.row.kind === "user") {
+      if (item.type === "queued-users" || item.row.kind === "user") {
         return (
           <TimelineUserItem item={item} onCancelQueued={onCancelQueued} />
         );
@@ -327,6 +321,9 @@ export const ChatTimeline = memo(function ChatTimeline({
   );
 
   const keyExtractor = useCallback((item: TimelineListItem) => item.id, []);
+  const hasQueuedTimelineItem = listItems.some(
+    (item) => item.type === "queued-users",
+  );
 
   /**
    * Header: only the older-loading status banner. Empty/loading-history
@@ -343,8 +340,8 @@ export const ChatTimeline = memo(function ChatTimeline({
 
   /**
    * Footer: any surface-specific `extraTail` node and a bottom-floor
-   * `min-height`. Working and queued rows are regular keyed list data directly
-   * above this footer so a growing/new assistant slot can never be painted
+   * `min-height`. Working state and the collapsed queue are keyed list data
+   * directly above this footer so a growing/new assistant slot cannot paint
    * below them. The min-height pre-allocates the empty reading
    * area below the just-sent user bubble (and below short streaming
    * replies) without reserving the full viewport. Living here — rather
@@ -356,13 +353,20 @@ export const ChatTimeline = memo(function ChatTimeline({
    */
   const ListFooter = useMemo(
     () => (
-      <div className="event-list-trailing-region">
+      <div
+        className={
+          "event-list-trailing-region" +
+          (hasQueuedTimelineItem
+            ? " event-list-trailing-region--after-queue"
+            : "")
+        }
+      >
         {extraTail && (
           <div className="event-list-extra-tail">{extraTail}</div>
         )}
       </div>
     ),
-    [extraTail],
+    [extraTail, hasQueuedTimelineItem],
   );
 
   if (isLoadingHistory && rows.length === 0) {

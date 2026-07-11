@@ -10,11 +10,15 @@ class ResizeObserverStub {
   disconnect = vi.fn();
 }
 
-const queued = (id: string): QueuedUserMessage => ({
+const queued = (
+  id: string,
+  text = "Follow up",
+  queueOrder = 1,
+): QueuedUserMessage => ({
   id,
-  text: "Follow up",
-  timestamp: 100,
-  queueOrder: 1,
+  text,
+  timestamp: 100 + queueOrder,
+  queueOrder,
 });
 
 describe("ComposerQueuedMessages", () => {
@@ -54,6 +58,70 @@ describe("ComposerQueuedMessages", () => {
       root.render(<ComposerQueuedMessages messages={[message]} />);
     });
 
+    expect(
+      container.querySelector<HTMLElement>(".composer-queued-message")?.style
+        .animation,
+    ).toBe("none");
+  });
+
+  it("keeps one queued message as its normal text bubble", async () => {
+    await act(async () => {
+      root.render(
+        <ComposerQueuedMessages
+          messages={[queued("queued-single", "Only this message")]}
+        />,
+      );
+    });
+
+    expect(container.querySelectorAll(".composer-queued-message")).toHaveLength(
+      1,
+    );
+    expect(container.querySelector(".composer-queued-message__bubble")?.textContent)
+      .toBe("Only this message");
+    expect(
+      container.querySelector(".composer-queued-message__bubble--summary"),
+    ).toBeNull();
+  });
+
+  it("collapses multiple messages and previews their ordered contents", async () => {
+    const messages = [
+      queued("queued-third", "Third in input", 3),
+      queued("queued-first", "First in queue", 1),
+      queued("queued-second", "Second in queue", 2),
+    ];
+
+    await act(async () => {
+      root.render(<ComposerQueuedMessages messages={messages} />);
+    });
+
+    expect(container.querySelectorAll(".composer-queued-message")).toHaveLength(
+      1,
+    );
+    const summary = container.querySelector<HTMLButtonElement>(
+      ".composer-queued-message__bubble--summary",
+    );
+    expect(summary?.textContent).toBe("3 messages queued");
+    expect(summary?.getAttribute("aria-expanded")).toBe("false");
+
+    await act(async () => {
+      summary!.dispatchEvent(new MouseEvent("mouseenter"));
+    });
+
+    const preview = document.body.querySelector(".composer-queued-preview");
+    expect(preview).not.toBeNull();
+    expect(summary?.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      Array.from(
+        preview!.querySelectorAll(".composer-queued-preview__text"),
+        (node) => node.textContent,
+      ),
+    ).toEqual(["First in queue", "Second in queue", "Third in input"]);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<ComposerQueuedMessages messages={messages} />);
+    });
     expect(
       container.querySelector<HTMLElement>(".composer-queued-message")?.style
         .animation,

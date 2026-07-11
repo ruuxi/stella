@@ -1,14 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import { X } from "@/ui/icons";
+import { ChipPreviewPortal } from "./ChipPreviewPortal";
+import { useHoverPreview } from "./use-hover-preview";
 
 const EXIT_MS = 100;
 
-type VisibleItem = QueuedUserMessage & {
-  leaving: boolean;
-  /** Latched for this mount so ordinary updates cannot interrupt entry. */
-  entering: boolean;
-};
+type VisibleItem = QueuedUserMessage & { leaving: boolean };
 
 /**
  * Legend may reconstruct a keyed virtual item while adjacent streaming rows
@@ -22,42 +20,47 @@ const queuedMessageEnterPlayedIds = new Set<string>();
 const toVisibleItem = (message: QueuedUserMessage): VisibleItem => ({
   ...message,
   leaving: false,
-  entering: !queuedMessageEnterPlayedIds.has(message.id),
 });
 
 type ComposerQueuedMessagesProps = {
   messages: QueuedUserMessage[];
   /**
-   * When provided, each queued bubble reveals an "X" on hover that cancels
-   * just that message. The surface pairs removal from the queue with
-   * restoring the bubble's text to its own composer input.
+   * When provided, the single-message bubble or each collapsed-preview row
+   * can cancel that message and restore its text to the composer.
    */
   onCancel?: (message: QueuedUserMessage) => void;
 };
 
 /**
- * A single queued bubble. Splits into its own component so it can own a ref
- * to the bubble node and detect whether its clamped text actually overflows
- * — only overflowing bubbles get the soft bottom-fade truncation treatment,
- * so short queued messages keep a crisp bottom edge.
+ * The one visible queue bubble. A single message shows its text unchanged;
+ * multiple messages collapse into a count whose hover/focus preview reuses
+ * the composer's pasted-text preview portal and floating surface.
  */
 function QueuedMessageBubble({
-  item,
+  items,
+  entering,
+  leaving,
   onCancel,
 }: {
-  item: VisibleItem;
+  items: VisibleItem[];
+  entering: boolean;
+  leaving: boolean;
   onCancel?: (message: QueuedUserMessage) => void;
 }) {
+  const { triggerRef, open, previewProps } =
+    useHoverPreview<HTMLButtonElement>();
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const [truncated, setTruncated] = useState(false);
-
-  useLayoutEffect(() => {
-    queuedMessageEnterPlayedIds.add(item.id);
-  }, [item.id]);
+  const collapsed = items.length > 1;
+  const first = items[0]!;
+  const label = collapsed ? `${items.length} messages queued` : first.text;
 
   useLayoutEffect(() => {
     const el = bubbleRef.current;
-    if (!el) return;
+    if (!el || collapsed) {
+      setTruncated(false);
+      return undefined;
+    }
     const measure = () => {
       // `-webkit-line-clamp` caps the painted height, so an overflowing
       // bubble reports a taller scrollHeight than its clamped clientHeight.
@@ -67,37 +70,79 @@ function QueuedMessageBubble({
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [item.text]);
+  }, [collapsed, first.text]);
+
+  const bubbleClassName =
+    "composer-queued-message__bubble" +
+    (collapsed ? " composer-queued-message__bubble--summary" : "") +
+    (truncated ? " composer-queued-message__bubble--truncated" : "");
 
   return (
     <div
-      style={
-        !item.entering && !item.leaving ? { animation: "none" } : undefined
-      }
+      style={!entering && !leaving ? { animation: "none" } : undefined}
       className={
         "composer-queued-message" +
-        (item.leaving ? " composer-queued-message--leaving" : "")
+        (leaving ? " composer-queued-message--leaving" : "")
       }
     >
-      <div
-        ref={bubbleRef}
-        className={
-          "composer-queued-message__bubble" +
-          (truncated ? " composer-queued-message__bubble--truncated" : "")
-        }
-      >
-        {item.text}
-      </div>
-      {onCancel && !item.leaving ? (
+      {collapsed ? (
+        <button
+          ref={triggerRef}
+          type="button"
+          className={bubbleClassName}
+          aria-label={`${label}. Preview queued messages`}
+          aria-expanded={open}
+          aria-haspopup="true"
+        >
+          {label}
+        </button>
+      ) : (
+        <div ref={bubbleRef} className={bubbleClassName}>
+          {label}
+        </div>
+      )}
+      {onCancel && !leaving && !collapsed ? (
         <button
           type="button"
           className="composer-queued-message__cancel"
           aria-label="Cancel queued message"
           title="Cancel and edit"
-          onClick={() => onCancel(item)}
+          onClick={() => onCancel(first)}
         >
           <X size={14} strokeWidth={2.25} aria-hidden="true" />
         </button>
+      ) : null}
+      {collapsed ? (
+        <ChipPreviewPortal
+          triggerRef={triggerRef}
+          open={open}
+          className="composer-context-preview composer-context-preview--portal composer-queued-preview"
+          {...previewProps}
+        >
+          <ol className="composer-queued-preview__list">
+            {items.map((item, index) => (
+              <li className="composer-queued-preview__item" key={item.id}>
+                <span className="composer-queued-preview__number">
+                  {index + 1}
+                </span>
+                <span className="composer-queued-preview__text">
+                  {item.text}
+                </span>
+                {onCancel ? (
+                  <button
+                    type="button"
+                    className="composer-queued-preview__cancel"
+                    aria-label={`Cancel queued message ${index + 1}`}
+                    title="Cancel and edit"
+                    onClick={() => onCancel(item)}
+                  >
+                    <X size={14} strokeWidth={2.25} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </ChipPreviewPortal>
       ) : null}
     </div>
   );
@@ -107,10 +152,22 @@ export function ComposerQueuedMessages({
   messages,
   onCancel,
 }: ComposerQueuedMessagesProps) {
+  // Latched for this virtual-item mount. Every represented id is registered
+  // after commit, so a Legend reconstruction settles immediately while a
+  // count update on the existing collapsed bubble cannot restart animation.
+  const enteringRef = useRef(
+    messages.some((message) => !queuedMessageEnterPlayedIds.has(message.id)),
+  );
   const [visible, setVisible] = useState<VisibleItem[]>(() =>
     messages.map(toVisibleItem),
   );
   const exitTimersRef = useRef(new Map<string, number>());
+
+  useLayoutEffect(() => {
+    for (const message of messages) {
+      queuedMessageEnterPlayedIds.add(message.id);
+    }
+  }, [messages]);
 
   useEffect(() => {
     const incomingById = new Map(messages.map((message) => [message.id, message]));
@@ -128,7 +185,7 @@ export function ComposerQueuedMessages({
             window.clearTimeout(exitTimer);
             exitTimersRef.current.delete(item.id);
           }
-          next.push({ ...fresh, leaving: false, entering: item.entering });
+          next.push({ ...fresh, leaving: false });
           continue;
         }
 
@@ -177,11 +234,21 @@ export function ComposerQueuedMessages({
 
   if (visible.length === 0) return null;
 
+  const active = visible.filter((item) => !item.leaving);
+  const displayed = active.length > 0 ? active : visible.slice(0, 1);
+
   return (
-    <div className="composer-queued-stack" aria-live="polite">
-      {visible.map((item) => (
-        <QueuedMessageBubble key={item.id} item={item} onCancel={onCancel} />
-      ))}
+    <div
+      className="composer-queued-stack"
+      aria-live="polite"
+      data-queue-count={active.length}
+    >
+      <QueuedMessageBubble
+        items={displayed}
+        entering={enteringRef.current}
+        leaving={active.length === 0}
+        onCancel={onCancel}
+      />
     </div>
   );
 }

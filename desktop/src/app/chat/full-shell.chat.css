@@ -100,21 +100,41 @@
   min-height: 120px;
 }
 
+/* The queued virtual item owns the normal trailing floor and bottom-aligns
+   its bubble inside it. Once that item exists, the footer only supplies the
+   small physical gap between the bubble and composer. This preserves total
+   scroll geometry while moving the empty space above the queued state. */
+.event-list-trailing-region--after-queue,
+.chat-viewport-region--sidebar .event-list-trailing-region--after-queue,
+.chat-viewport-region--mini .event-list-trailing-region--after-queue,
+.chat-viewport-region--orb .event-list-trailing-region--after-queue {
+  min-height: 12px;
+}
+
 .event-list-extra-tail {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-/* Queued user messages are keyed virtualized items after the active assistant
-   slots and working indicator. They keep the same right-aligned bubble
-   language as normal user messages while waiting for their turn. */
+/* The queue is one keyed virtualized item after the active assistant slots
+   and working indicator. It keeps the same right-aligned bubble language as
+   normal user messages while waiting for its turn. */
 .composer-queued-stack {
   width: 100%;
+  padding-top: 148px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  justify-content: flex-end;
   gap: 6px;
+}
+
+.chat-viewport-region--sidebar .composer-queued-stack,
+.chat-viewport-region--mini .composer-queued-stack,
+.chat-viewport-region--orb .composer-queued-stack {
+  padding-top: 108px;
 }
 
 .composer-queued-message {
@@ -133,6 +153,7 @@
 }
 
 .composer-queued-message__bubble {
+  appearance: none;
   background: color-mix(in srgb, var(--primary) 10%, var(--card));
   border: 1px solid var(--border);
   border-radius: var(--radius-3xl);
@@ -143,6 +164,7 @@
   /* Match the settled user bubble so a message doesn't visibly resize or
      reflow when it transitions from queued to sent. */
   font-size: var(--chat-text-size);
+  font-family: inherit;
   line-height: var(--chat-text-line-height);
   font-weight: var(--chat-text-weight);
   letter-spacing: var(--chat-text-tracking);
@@ -155,6 +177,23 @@
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  text-align: left;
+  cursor: default;
+}
+
+.composer-queued-message__bubble--summary {
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-queued-message__bubble--summary:hover {
+  background: color-mix(in srgb, var(--primary) 13%, var(--card));
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+}
+
+.composer-queued-message__bubble--summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* When a long queued message is actually clamped (detected in JS), fade the
@@ -213,6 +252,82 @@
 }
 
 .composer-queued-message__cancel:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Reuses the composer's pasted-text preview shell; these rules only provide
+   ordered queue rows and their retained cancel affordances. */
+.composer-queued-preview {
+  max-height: min(320px, calc(100vh - 96px));
+}
+
+.composer-queued-preview__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.composer-queued-preview__item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 24px;
+  gap: 8px;
+  align-items: start;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.composer-queued-preview__item:first-child {
+  padding-top: 0;
+}
+
+.composer-queued-preview__item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.composer-queued-preview__number {
+  color: var(--text-weaker);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.composer-queued-preview__text {
+  min-width: 0;
+  color: var(--text-strong);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.composer-queued-preview__cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-weak);
+  cursor: default;
+}
+
+.composer-queued-preview__cancel:hover {
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.composer-queued-preview__cancel:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }

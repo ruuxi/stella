@@ -13,9 +13,10 @@ export type ChatTimelineItem =
       type: "working-indicator";
     }
   | {
+      /** Head id preserves the queued-to-sent handoff identity. */
       id: string;
-      type: "queued-user";
-      message: QueuedUserMessage;
+      type: "queued-users";
+      messages: QueuedUserMessage[];
     };
 
 /**
@@ -23,7 +24,7 @@ export type ChatTimelineItem =
  * Queued sends must be list data, not a ListFooter: Legend can retain a
  * footer's old measured position while a streaming row grows or a new
  * post-tool assistant segment is inserted, briefly painting that footer
- * above the active row. Keeping the queue in `data` gives every queued send
+ * above the active row. Keeping the queue in `data` gives the collapsed queue
  * a stable key and an explicit order after every segment of the active turn.
  */
 export const buildChatTimelineItems = (args: {
@@ -54,12 +55,19 @@ export const buildChatTimelineItems = (args: {
         left.message.queueOrder - right.message.queueOrder ||
         left.insertionIndex - right.insertionIndex,
     );
+  const visibleQueued: QueuedUserMessage[] = [];
   for (const { message } of queued) {
     // Persistence and queue cleanup can land in separate React updates. The
     // canonical/optimistic row wins that overlap frame, preserving one item
     // with the same id instead of rendering queued + sent twins.
-    if (messageIds.has(message.id)) continue;
-    items.push({ id: message.id, type: "queued-user", message });
+    if (!messageIds.has(message.id)) visibleQueued.push(message);
+  }
+  if (visibleQueued.length > 0) {
+    items.push({
+      id: visibleQueued[0]!.id,
+      type: "queued-users",
+      messages: visibleQueued,
+    });
   }
 
   return items;

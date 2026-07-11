@@ -47,7 +47,7 @@ describe("buildChatTimelineItems", () => {
       "message:u1",
       "message:assistant-active",
       "working-indicator:chat-timeline:working-indicator",
-      "queued-user:u2",
+      "queued-users:u2",
     ]);
   });
 
@@ -68,9 +68,15 @@ describe("buildChatTimelineItems", () => {
       "message:assistant-preamble",
       "message:assistant-post-tool",
       "working-indicator:chat-timeline:working-indicator",
-      "queued-user:u2",
-      "queued-user:u3",
+      "queued-users:u2",
     ]);
+    expect(items.at(-1)).toMatchObject({
+      type: "queued-users",
+      messages: [
+        expect.objectContaining({ id: "u2" }),
+        expect.objectContaining({ id: "u3" }),
+      ],
+    });
   });
 
   it("preserves the queued id and assistant predecessor when drain makes it a sent row", () => {
@@ -92,7 +98,7 @@ describe("buildChatTimelineItems", () => {
 
     const queuedItem = queuedItems.find((item) => item.id === "u2");
     const sentItem = sentItems.find((item) => item.id === "u2");
-    expect(queuedItem).toMatchObject({ id: "u2", type: "queued-user" });
+    expect(queuedItem).toMatchObject({ id: "u2", type: "queued-users" });
     expect(sentItem).toMatchObject({ id: "u2", type: "message" });
 
     const visibleIds = (items: typeof queuedItems) =>
@@ -117,5 +123,20 @@ describe("buildChatTimelineItems", () => {
 
     expect(items.filter((item) => item.id === "u2")).toHaveLength(1);
     expect(items.at(-1)).toMatchObject({ id: "u2", type: "message" });
+  });
+
+  it("filters a canonical overlap without dropping later queued messages", () => {
+    const items = buildChatTimelineItems({
+      rows: [user("u1"), assistant("a1", "done"), user("u2")],
+      queuedUserMessages: [queued("u3", 2), queued("u2", 1)],
+      includeWorkingIndicator: false,
+    });
+
+    expect(items.filter((item) => item.id === "u2")).toHaveLength(1);
+    expect(items.at(-1)).toMatchObject({
+      id: "u3",
+      type: "queued-users",
+      messages: [expect.objectContaining({ id: "u3" })],
+    });
   });
 });
