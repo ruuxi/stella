@@ -14,6 +14,11 @@ describe("redactSensitiveText", () => {
       "limit=100 offset=20",
       "path=/usr/local/lib/python3.11/site-packages",
       "version=1.2.3",
+      // Sensitive words appearing only as substrings of a benign key token.
+      "author=Rahul",
+      "keyboard=us",
+      "monkey=happy",
+      "donkey=grey",
     ])("keeps %s untouched", (input) => {
       expect(redactSensitiveText(input)).toBe(input);
     });
@@ -26,7 +31,12 @@ describe("redactSensitiveText", () => {
       ["OPENAI_API_KEY=whatever", "OPENAI_API_KEY=[REDACTED]"],
       ["password=hunter2", "password=[REDACTED]"],
       ["AUTH=abc", "AUTH=[REDACTED]"],
+      ["authToken=abc", "authToken=[REDACTED]"],
+      ["clientSecret=abc", "clientSecret=[REDACTED]"],
       ["credential=x", "credential=[REDACTED]"],
+      // Whitespace around `=` must not bypass sensitive-key handling.
+      ["FOO_TOKEN = leak-me", "FOO_TOKEN=[REDACTED]"],
+      ["API_KEY = short", "API_KEY=[REDACTED]"],
     ])("redacts %s by key name", (input, expected) => {
       expect(redactSensitiveText(input)).toBe(expected);
     });
@@ -115,9 +125,22 @@ describe("redactSensitiveText", () => {
       expect(out).toContain("[REDACTED]");
     });
 
-    it("redacts bare sk- provider tokens", () => {
-      const out = redactSensitiveText("using sk-abcDEF1234567890ghiJKL now");
-      expect(out).not.toContain("sk-abcDEF1234567890ghiJKL");
+    it("redacts labeled-prose AWS Secret Access Key", () => {
+      const secret = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+      const out = redactSensitiveText(`AWS Secret Access Key: ${secret}`);
+      expect(out).not.toContain(secret);
+      expect(out).toContain("[REDACTED]");
+    });
+
+    it.each([
+      "using sk-abcDEF1234567890ghiJKL now",
+      "key sk-proj-abcDEF1234567890ghiJKLmno set",
+      "key sk-svcacct-abcDEF1234567890ghiJKLmno set",
+    ])("redacts sk- provider tokens in %s", (input) => {
+      const out = redactSensitiveText(input);
+      const token = input.split(" ").find((word) => word.startsWith("sk-"));
+      expect(token).toBeDefined();
+      expect(out).not.toContain(token as string);
       expect(out).toContain("[REDACTED]");
     });
 
