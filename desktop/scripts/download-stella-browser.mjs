@@ -146,13 +146,19 @@ if (
 
 mkdirSync(outDir, { recursive: true });
 const tempPath = `${binaryPath}.${process.pid}.tmp`;
+const manifestTempPath = `${installedManifestPath}.${process.pid}.tmp`;
+const previousPath = `${binaryPath}.previous`;
+const previousManifestPath = `${installedManifestPath}.previous`;
+let binaryPreviousMoved = false;
+let manifestPreviousMoved = false;
+let binaryReplacementInstalled = false;
+let manifestReplacementInstalled = false;
+let replacementCommitted = false;
 try {
   writeFileSync(tempPath, bytes, { mode: 0o755 });
   if (process.platform !== "win32") chmodSync(tempPath, 0o755);
-  if (process.platform === "win32") rmSync(binaryPath, { force: true });
-  renameSync(tempPath, binaryPath);
   writeFileSync(
-    installedManifestPath,
+    manifestTempPath,
     `${JSON.stringify(
       {
         schemaVersion: 1,
@@ -167,8 +173,46 @@ try {
       2,
     )}\n`,
   );
+  rmSync(previousPath, { force: true });
+  rmSync(previousManifestPath, { force: true });
+  if (existsSync(binaryPath)) {
+    renameSync(binaryPath, previousPath);
+    binaryPreviousMoved = true;
+  }
+  if (existsSync(installedManifestPath)) {
+    renameSync(installedManifestPath, previousManifestPath);
+    manifestPreviousMoved = true;
+  }
+  renameSync(tempPath, binaryPath);
+  binaryReplacementInstalled = true;
+  renameSync(manifestTempPath, installedManifestPath);
+  manifestReplacementInstalled = true;
+  replacementCommitted = true;
+} catch (error) {
+  if (binaryReplacementInstalled) {
+    rmSync(binaryPath, { force: true });
+  }
+  if (manifestReplacementInstalled) {
+    rmSync(installedManifestPath, { force: true });
+  }
+  if (binaryPreviousMoved && existsSync(previousPath)) {
+    renameSync(previousPath, binaryPath);
+    binaryPreviousMoved = false;
+  }
+  if (manifestPreviousMoved && existsSync(previousManifestPath)) {
+    renameSync(previousManifestPath, installedManifestPath);
+    manifestPreviousMoved = false;
+  }
+  throw error;
 } finally {
   rmSync(tempPath, { force: true });
+  rmSync(manifestTempPath, { force: true });
+  if (replacementCommitted || !binaryPreviousMoved) {
+    rmSync(previousPath, { force: true });
+  }
+  if (replacementCommitted || !manifestPreviousMoved) {
+    rmSync(previousManifestPath, { force: true });
+  }
 }
 
 process.stdout.write(

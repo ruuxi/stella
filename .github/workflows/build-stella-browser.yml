@@ -99,6 +99,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency:
+      group: stella-browser-current-publish
+      cancel-in-progress: false
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -162,8 +165,17 @@ jobs:
             --content-type application/json \
             --cache-control "public, max-age=31536000, immutable" \
             --endpoint-url "$R2_ENDPOINT"
-          aws s3 cp "$manifest_path" \
-            "s3://${R2_BUCKET}/stella-browser/current.json" \
-            --content-type application/json \
-            --cache-control no-cache \
-            --endpoint-url "$R2_ENDPOINT"
+          master_sha="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/master | awk '{print $1}')"
+          if [ -z "$master_sha" ]; then
+            echo "Could not resolve origin/master; refusing to update current.json." >&2
+            exit 1
+          fi
+          if [ "$SOURCE_SHA" = "$master_sha" ]; then
+            aws s3 cp "$manifest_path" \
+              "s3://${R2_BUCKET}/stella-browser/current.json" \
+              --content-type application/json \
+              --cache-control no-cache \
+              --endpoint-url "$R2_ENDPOINT"
+          else
+            echo "Published immutable artifacts for $SOURCE_SHA; current master is $master_sha, so current.json was left unchanged."
+          fi

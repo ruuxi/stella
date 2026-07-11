@@ -32,6 +32,28 @@ describe("Stella Browser release contract", () => {
     );
     expect(workflow).not.toContain("source_sha:");
     expect(workflow).toContain("SOURCE_SHA: ${{ github.sha }}");
+    expect(workflow).toContain("group: stella-browser-current-publish");
+    expect(workflow).toContain(
+      'git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/master',
+    );
+    expect(workflow).toContain('if [ "$SOURCE_SHA" = "$master_sha" ]');
+  });
+
+  it("preserves the installed browser binary until its replacement is ready", async () => {
+    const downloader = await readRepoFile(
+      "desktop/scripts/download-stella-browser.mjs",
+    );
+    expect(downloader).toContain("renameSync(binaryPath, previousPath)");
+    expect(downloader).toContain("renameSync(previousPath, binaryPath)");
+    expect(downloader).toContain(
+      "renameSync(installedManifestPath, previousManifestPath)",
+    );
+    expect(downloader).toContain(
+      "renameSync(previousManifestPath, installedManifestPath)",
+    );
+    expect(downloader).not.toContain(
+      'if (process.platform === "win32") rmSync(binaryPath',
+    );
   });
 
   it("hydrates the browser automatically for install and dev entrypoints", async () => {

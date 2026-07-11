@@ -3015,13 +3015,20 @@ const tryLandContentCleanPublishedTree = async (
   const obstructionPaths = [
     ...new Set([...obstructingUntrackedFiles, ...obstructingIgnoredPaths]),
   ];
+  const stagedBrowserPath = await stageStellaBrowserUpdate(
+    stellaAppDir,
+    args.artifactRefs,
+  );
+  const transitionPaths = stagedBrowserPath
+    ? [...new Set([...changedFiles, stagedBrowserPath])]
+    : changedFiles;
 
-  if (changedFiles.length > 0 && !runner) {
+  if (transitionPaths.length > 0 && !runner) {
     return {
       status: "needs-agent",
       reason: "Stella runtime is not available for the update morph.",
       headCommit: await readHeadCommit(stellaAppDir),
-      changedFiles,
+      changedFiles: transitionPaths,
     };
   }
 
@@ -3031,18 +3038,18 @@ const tryLandContentCleanPublishedTree = async (
   let hmrRunStarted = false;
   let landed = false;
   try {
-    if (runner && changedFiles.length > 0) {
+    if (runner && transitionPaths.length > 0) {
       await withDesktopUpdateTimeout(
         "content-landing.begin-external-self-mod",
         UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
         runner.beginExternalSelfMod({
           runId,
-          paths: expandExternalSelfModPaths(changedFiles),
+          paths: expandExternalSelfModPaths(transitionPaths),
         }),
         {
           runId,
           releaseTag: args.releaseTag,
-          changedFileCount: changedFiles.length,
+          changedFileCount: transitionPaths.length,
           changedFileScope: "release-update-files",
         },
       );
@@ -3053,13 +3060,13 @@ const tryLandContentCleanPublishedTree = async (
       phase: "content-landing",
       mode: "git",
       recoveryAction: "resume",
-      changedFiles,
+      changedFiles: transitionPaths,
     });
     logDesktopUpdateProcess("desktop-update.content-landing.start", {
       runId,
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
-      changedFileCount: changedFiles.length,
+      changedFileCount: transitionPaths.length,
       changedFileScope: "release-update-files",
     });
     const recoverySnapshot = await createContentLandingRecoverySnapshot({
@@ -3099,16 +3106,9 @@ const tryLandContentCleanPublishedTree = async (
     }
     landed = true;
 
-    const stagedBrowserPath = await stageStellaBrowserUpdate(
-      stellaAppDir,
-      args.artifactRefs,
-    );
-    const updaterOwnedPaths = stagedBrowserPath
-      ? [...new Set([...changedFiles, stagedBrowserPath])]
-      : changedFiles;
     const reconciliation = await reconcileUpdaterOwnedPaths(
       stellaAppDir,
-      updaterOwnedPaths,
+      changedFiles,
     );
     const dependencyInstallRan = await runDesktopUpdateDependencyInstall({
       stellaAppDir,
@@ -3123,7 +3123,7 @@ const tryLandContentCleanPublishedTree = async (
         runner,
         reacquireRunner: args.reacquireRunner,
         runId,
-        paths: changedFiles,
+        paths: transitionPaths,
         logScope: "git",
         logFields: {
           runId,
@@ -3140,16 +3140,16 @@ const tryLandContentCleanPublishedTree = async (
       {
         transaction: args.transaction,
         mode: "git",
-        changedFiles,
+        changedFiles: transitionPaths,
       },
     );
-    await reconcileUpdaterOwnedPaths(stellaAppDir, updaterOwnedPaths);
+    await reconcileUpdaterOwnedPaths(stellaAppDir, changedFiles);
     if (!reloaded) {
       return {
         status: "applied",
         manifest: null,
         headCommit: await readHeadCommit(stellaAppDir),
-        changedFiles,
+        changedFiles: transitionPaths,
         dependencyInstallRan,
         nativeHelpersRefreshed: true,
         reloaded: false,
@@ -3159,7 +3159,7 @@ const tryLandContentCleanPublishedTree = async (
       phase: "record-complete",
       mode: "git",
       recoveryAction: "resume",
-      changedFiles,
+      changedFiles: transitionPaths,
     });
     const manifest = await writeAppliedCommit(
       stellaAppDir,
@@ -3178,7 +3178,7 @@ const tryLandContentCleanPublishedTree = async (
       status: "applied",
       manifest,
       headCommit: await readHeadCommit(stellaAppDir),
-      changedFiles,
+      changedFiles: transitionPaths,
       dependencyInstallRan,
       nativeHelpersRefreshed: true,
       reloaded: true,
@@ -3934,13 +3934,75 @@ export const tryApplyCleanDesktopUpdate = async (
     const manifestBefore = await readManifestWithRecovery(stellaAppDir).catch(
       () => null,
     );
+    const stagedBrowserPath = await stageStellaBrowserUpdate(
+      stellaAppDir,
+      args.artifactRefs,
+    );
+    const transitionPaths = stagedBrowserPath ? [stagedBrowserPath] : [];
     const alreadyLive =
-      manifestBefore?.installState?.desktopReleaseCommit === args.targetCommit;
+      manifestBefore?.installState?.desktopReleaseCommit ===
+        args.targetCommit && !stagedBrowserPath;
     logDesktopUpdateProcess("desktop-update.git.already-applied", {
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
       alreadyLive,
+      stagedBrowserPath,
     });
+    let reloaded = alreadyLive;
+    if (stagedBrowserPath) {
+      if (!runner) {
+        return {
+          status: "needs-agent",
+          reason:
+            "Stella runtime is not available to activate the browser update.",
+          headCommit: await readHeadCommit(stellaAppDir),
+          changedFiles: transitionPaths,
+        };
+      }
+      const runId = `desktop-update-git-browser-resume:${Date.now()}:${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
+        phase: "dependency-install",
+        mode: "git",
+        recoveryAction: "resume",
+        changedFiles: transitionPaths,
+      });
+      await withDesktopUpdateTimeout(
+        "git-browser-resume.begin-external-self-mod",
+        UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
+        runner.beginExternalSelfMod({
+          runId,
+          paths: expandExternalSelfModPaths(transitionPaths),
+        }),
+        {
+          runId,
+          releaseTag: args.releaseTag,
+          targetCommit: shortCommit(args.targetCommit),
+          changedFileCount: transitionPaths.length,
+        },
+      );
+      try {
+        await reconcileUpdaterOwnedPaths(stellaAppDir, []);
+        ({ reloaded } = await finishUpdateSelfModRun({
+          runner,
+          reacquireRunner: args.reacquireRunner,
+          runId,
+          paths: transitionPaths,
+          logScope: "git",
+          logFields: {
+            runId,
+            releaseTag: args.releaseTag,
+            targetCommit: shortCommit(args.targetCommit),
+          },
+        }));
+      } catch (error) {
+        await runner
+          .finishExternalSelfMod({ runId, succeeded: false })
+          .catch(() => undefined);
+        throw error;
+      }
+    }
     await refreshNativeHelpers(
       stellaAppDir,
       args.releaseTag,
@@ -3948,14 +4010,26 @@ export const tryApplyCleanDesktopUpdate = async (
       {
         transaction: args.transaction,
         mode: "git",
-        changedFiles: [],
+        changedFiles: transitionPaths,
       },
     );
+    await reconcileUpdaterOwnedPaths(stellaAppDir, []);
+    if (!reloaded) {
+      return {
+        status: "applied",
+        manifest: null,
+        headCommit: await readHeadCommit(stellaAppDir),
+        changedFiles: transitionPaths,
+        dependencyInstallRan: false,
+        nativeHelpersRefreshed: true,
+        reloaded: false,
+      };
+    }
     await writeDesktopUpdatePhase(stellaAppDir, args.transaction, {
       phase: "record-complete",
       mode: "git",
       recoveryAction: "resume",
-      changedFiles: [],
+      changedFiles: transitionPaths,
     });
     const manifest = await writeAppliedCommit(
       stellaAppDir,
@@ -3966,10 +4040,10 @@ export const tryApplyCleanDesktopUpdate = async (
       status: "applied",
       manifest,
       headCommit: await readHeadCommit(stellaAppDir),
-      changedFiles: [],
+      changedFiles: transitionPaths,
       dependencyInstallRan: false,
       nativeHelpersRefreshed: true,
-      reloaded: alreadyLive,
+      reloaded: true,
     };
   }
 
@@ -4058,6 +4132,13 @@ export const tryApplyCleanDesktopUpdate = async (
       changedFileScope: "release-update-files",
     });
   }
+  const stagedBrowserPath = await stageStellaBrowserUpdate(
+    stellaAppDir,
+    args.artifactRefs,
+  );
+  const transitionPaths = stagedBrowserPath
+    ? [...new Set([...changedFiles, stagedBrowserPath])]
+    : changedFiles;
   const runId = `desktop-update-fast:${Date.now()}:${Math.random()
     .toString(36)
     .slice(2)}`;
@@ -4065,19 +4146,19 @@ export const tryApplyCleanDesktopUpdate = async (
   let mergeLanded = false;
 
   try {
-    if (changedFiles.length > 0) {
+    if (transitionPaths.length > 0) {
       if (!runner) {
         logDesktopUpdateWarn("desktop-update.fast.needs-agent", {
           releaseTag: args.releaseTag,
           targetCommit: shortCommit(args.targetCommit),
           reason: "runtime-unavailable-for-morph",
-          changedFileCount: changedFiles.length,
+          changedFileCount: transitionPaths.length,
         });
         return {
           status: "needs-agent",
           reason: "Stella runtime is not available for the update morph.",
           headCommit: await readHeadCommit(stellaAppDir),
-          changedFiles,
+          changedFiles: transitionPaths,
         };
       }
       await withDesktopUpdateTimeout(
@@ -4085,13 +4166,13 @@ export const tryApplyCleanDesktopUpdate = async (
         UPDATE_RUNTIME_HANDSHAKE_TIMEOUT_MS,
         runner.beginExternalSelfMod({
           runId,
-          paths: expandExternalSelfModPaths(changedFiles),
+          paths: expandExternalSelfModPaths(transitionPaths),
         }),
         {
           runId,
           releaseTag: args.releaseTag,
           targetCommit: shortCommit(args.targetCommit),
-          changedFileCount: changedFiles.length,
+          changedFileCount: transitionPaths.length,
         },
       );
       hmrRunStarted = true;
@@ -4101,13 +4182,13 @@ export const tryApplyCleanDesktopUpdate = async (
       phase: "git-merge",
       mode: "git",
       recoveryAction: "resume",
-      changedFiles,
+      changedFiles: transitionPaths,
     });
     logDesktopUpdateProcess("desktop-update.git.merge.start", {
       runId,
       releaseTag: args.releaseTag,
       targetCommit: shortCommit(args.targetCommit),
-      changedFileCount: changedFiles.length,
+      changedFileCount: transitionPaths.length,
     });
     const mergeResult = await runGit(stellaAppDir, [
       "merge",
@@ -4128,12 +4209,12 @@ export const tryApplyCleanDesktopUpdate = async (
         runId,
         releaseTag: args.releaseTag,
         targetCommit: shortCommit(args.targetCommit),
-        changedFileCount: changedFiles.length,
+        changedFileCount: transitionPaths.length,
       });
       return {
         status: "needs-agent",
         reason: gitFailureDetail(mergeResult, "Git could not merge cleanly."),
-        changedFiles,
+        changedFiles: transitionPaths,
       };
     }
     mergeLanded = true;
@@ -4156,6 +4237,10 @@ export const tryApplyCleanDesktopUpdate = async (
       runId,
       releaseTag: args.releaseTag,
     });
+    const browserReconciliation = await reconcileUpdaterOwnedPaths(
+      stellaAppDir,
+      [],
+    );
 
     logDesktopUpdateProcess("desktop-update.fast.applied", {
       runId,
@@ -4163,6 +4248,7 @@ export const tryApplyCleanDesktopUpdate = async (
       targetCommit: shortCommit(args.targetCommit),
       changedFileCount: changedFiles.length,
       dependencyInstallRan,
+      browserBinaryActivated: browserReconciliation.browserBinaryActivated,
     });
     // Drive the reload morph BEFORE the native-helper refresh and before
     // recording completion — see the source-pack path for rationale.
@@ -4172,7 +4258,7 @@ export const tryApplyCleanDesktopUpdate = async (
         runner,
         reacquireRunner: args.reacquireRunner,
         runId,
-        paths: changedFiles,
+        paths: transitionPaths,
         logScope: "git",
         logFields: {
           runId,
@@ -4189,9 +4275,10 @@ export const tryApplyCleanDesktopUpdate = async (
       {
         transaction: args.transaction,
         mode: "git",
-        changedFiles,
+        changedFiles: transitionPaths,
       },
     );
+    await reconcileUpdaterOwnedPaths(stellaAppDir, []);
     if (!reloaded) {
       logDesktopUpdateWarn("desktop-update.git.applied-without-reload", {
         runId,
@@ -4202,7 +4289,7 @@ export const tryApplyCleanDesktopUpdate = async (
         status: "applied",
         manifest: null,
         headCommit: await readHeadCommit(stellaAppDir),
-        changedFiles,
+        changedFiles: transitionPaths,
         dependencyInstallRan,
         nativeHelpersRefreshed: true,
         reloaded: false,
@@ -4212,7 +4299,7 @@ export const tryApplyCleanDesktopUpdate = async (
       phase: "record-complete",
       mode: "git",
       recoveryAction: "resume",
-      changedFiles,
+      changedFiles: transitionPaths,
     });
     const manifest = await writeAppliedCommit(
       stellaAppDir,
@@ -4223,7 +4310,7 @@ export const tryApplyCleanDesktopUpdate = async (
       status: "applied",
       manifest,
       headCommit: await readHeadCommit(stellaAppDir),
-      changedFiles,
+      changedFiles: transitionPaths,
       dependencyInstallRan,
       nativeHelpersRefreshed: true,
       reloaded: true,
