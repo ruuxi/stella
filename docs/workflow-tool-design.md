@@ -17,8 +17,8 @@ not judgment.
 The workflow tool reifies that loop. The orchestrator describes the workflow in
 natural language, exactly as it would brief a sub-agent. A **workflow-authoring
 LLM** — a new agent type running on the orchestrator's own model and engine —
-writes a JS/TS script against a small workflow SDK and executes it in a
-sandboxed interpreter. The script spawns and joins leaf agents, applies real
+writes a JS/TS script against a small workflow SDK and runs it directly as
+trusted code (no sandbox — §7). The script spawns and joins leaf agents, applies real
 control flow (loops, barriers, retries, dedupe sets), and calls back into LLM
 judgment nodes where a decision is needed. When the authoring LLM decides the
 work is done, it finalizes with a result — the workflow completes exactly like
@@ -57,7 +57,7 @@ and two UI surfaces:
 
 | Piece | Location | Pattern it follows |
 | --- | --- | --- |
-| Workflow runtime (sandbox host, scheduler, journal, SDK bindings) | `runtime/kernel/workflow/` (new) | sibling of `runtime/kernel/agents/` |
+| Workflow runtime (scheduler, journal, SDK bindings, script host) | `runtime/kernel/workflow/` (new) | sibling of `runtime/kernel/agents/` |
 | Tool def `run_workflow` | `runtime/kernel/tools/defs/workflow.ts`, registered in `defs/index.ts` | `createAgentTools(stateContext)` DI pattern — closes over `agentApi`/`LocalAgentManager` at construction (`runtime/kernel/tools/defs/task.ts:22`); capability never flows through `ToolContext` |
 | `workflow` agent type | `AGENT_IDS.WORKFLOW` in `runtime/contracts/agent-runtime.ts:1` + an `AgentDefinition` in `BUILTIN_AGENT_DEFINITIONS` | the `general` agent def (`agent-runtime.ts:153`) |
 | Authoring-LLM system prompt | `runtime/extensions/stella-runtime/agents/workflow.md` | markdown agents, loaded via `loadParsedAgentsFromDir` |
@@ -87,7 +87,7 @@ this and should be consumed, not re-invented:
 orchestrator turn
   └─ run_workflow(description, prompt)          ← tool returns thread_id immediately
        └─ workflow thread (agentType "workflow", durable runtime_threads row)
-            authoring LLM  ── run_script ──▶  sandbox (QuickJS/WASM)
+            authoring LLM  ── run_script ──▶  workflow script (trusted JS/TS)
                  ▲                              │ agent()/llm()/parallel()/pipeline()
                  │ script result / error        ▼
                  │                      workflow scheduler (semaphore, journal)
@@ -302,37 +302,44 @@ enforced at the SDK boundary — the leaf's prompt gets a "return only JSON
 matching this schema" suffix, the result is parsed and validated, and on
 mismatch the same session is re-asked once or twice before the call rejects.
 
-## 7. Sandbox and determinism
+## 7. Execution model and determinism (no sandbox)
 
-The script runs in an embedded **QuickJS-via-WASM interpreter**
-(quickjs-emscripten or equivalent) inside the runtime worker — not `node:vm`,
-which shares the host realm and has a long history of escape gadgets. The
-sandbox has:
+The authored control-flow script runs **directly as trusted code** in the
+workflow runtime worker — the same trust level as the authoring model itself.
+There is no QuickJS/WASM interpreter and no hardened `node:vm`; sandboxing was
+dropped deliberately. The authoring LLM is the orchestrator's own model+engine
+and does what it is briefed to do, so wrapping its orchestration glue in a
+realm jail bought isolation the threat model does not require, at real cost in
+async host bridging. The execution model is:
 
-- **No filesystem, no network, no Node/Bun APIs, no `require`/`import`.** The
-  only capabilities are the SDK globals in §6, bridged as host functions whose
-  real work (spawning agents, model calls, journal writes) executes on the
-  host side under the scheduler. Standard JS built-ins (`JSON`, `Math`,
-  `Array`, `Set`, `Map`, `RegExp`, …) are available.
-- **Determinism traps:** `Date.now()`, `Math.random()`, and zero-argument
-  `new Date()` **throw** with a guidance message ("workflow scripts are
-  replayed on resume; timestamps come from the journal — stamp results after
-  the workflow returns"). `setTimeout`/`setInterval` are absent. This makes a
-  script a pure function of its inputs and its journal, which is what makes
-  §8's replay sound. Randomized behavior, when wanted, is expressed by varying
-  the agent prompt per index.
-- **TS accepted:** scripts are type-stripped (the repo already ships
-  `typescript-7`; erasable-syntax-only strip, no type checking) before
-  evaluation, so the authoring LLM may write either JS or TS. Enums/namespaces
-  and other non-erasable syntax are rejected with a clear parse error.
+- **The SDK globals in §6 are ordinary functions in scope**, executing on the
+  host under the scheduler (spawning agents, model calls, journal writes).
+  Standard JS built-ins (`JSON`, `Math`, `Array`, `Set`, `Map`, `RegExp`, …)
+  are available; so, in principle, are Node/Bun APIs — the design no longer
+  blocks them, though the authoring prompt tells the LLM the script is
+  orchestration glue only and that real work belongs in leaf agents.
+- **Determinism is a soft convention, not an enforced guarantee.** With no
+  interpreter to trap on, `Date.now()`, `Math.random()`, and argless
+  `new Date()` no longer throw. The authoring prompt and the SDK skill still
+  *advise* against ambient nondeterminism in control flow (it muddies the
+  debug journal), and a lint/advisory pass MAY flag such calls, but
+  determinism is no longer required for correctness: §8's resume model is
+  **effect-replay**, which replays journaled effect *results* rather than
+  trusting the code to recompute identically, so a stray timestamp or random
+  branch cannot corrupt a resume.
+- **TS accepted:** scripts are type-stripped / transpiled (the repo already
+  ships `typescript-7`) before execution, so the authoring LLM may write
+  either JS or TS.
 - **Interrupt:** the host holds an abort handle; pause/send_input (§10) and
-  shutdown tear the interpreter down mid-await. In-flight leaf agents receive
+  shutdown abort the running script mid-await. In-flight leaf agents receive
   the abort signal through the existing cancel path.
 
-The *leaf agents* are not sandboxed — they are ordinary Stella agents with
-their normal tool catalogs (shell, files, browser). The sandbox boundary is
-about making the **orchestration layer** deterministic and replayable, not
-about containing the work.
+The *leaf agents* were never sandboxed either — they are ordinary Stella
+agents with their normal tool catalogs (shell, files, browser). Dropping the
+orchestration-layer sandbox simply makes the whole feature one trust domain:
+the authoring model, its script, and its leaves all run as trusted Stella
+code. Replayability now comes from the journal (§8), not from a deterministic
+interpreter.
 
 ## 8. Journaled resume (`resume_from`)
 
@@ -348,19 +355,28 @@ workflow_journal: run_id, seq, kind ('agent'|'thread_send'|'llm'), fingerprint,
 
 `fingerprint` = hash of `(kind, prompt, opts)` — the call's identity.
 
-**Replay semantics** (prefix-cache, same rule as Claude Code's): on
-`resume_from`, the new script's effectful calls are matched in order against
-the prior run's journal. The longest unchanged prefix returns cached results
-instantly; the first edited, reordered, or new call — and everything after it —
-runs live. Same script, same inputs → 100% cache hit. Because §7 bans ambient
-nondeterminism, "same prompt" reliably means "same call".
+**Resume via effect-replay** (not code re-execution): the journal records the
+*result* of every effectful call in order. On `resume_from`, the runtime
+re-runs the new script live, but every effectful call it reaches is matched —
+in sequence — against the prior run's journal by position and `fingerprint`.
+For the **longest unchanged prefix**, the runtime returns the journaled result
+immediately **without re-performing the side effect** — no agent is
+re-spawned, no model re-called; execution goes live only from the first call
+whose fingerprint diverges (edited, reordered, or new) onward. Because resume
+replays *effect results* rather than trusting the surrounding control-flow code
+to recompute identically, ambient nondeterminism in the JS (a timestamp, a
+random branch) cannot desync a resume — only a change to the effectful calls
+themselves can. Already-journaled side effects are **never** re-executed.
 
 The journal is also the **debug record**: the authoring LLM reads back a
 per-call digest (label, status, result excerpt, duration) after each
 `run_script`, and the full `result_json` rows answer "why did the workflow
 return an empty list" without re-running anything. The workflow card links to
-it (§13). Retention: journal rows live as long as their workflow thread row;
-no separate TTL in v1 (open question §17).
+it (§13). **Retention (resolved, §17): nothing outlives the workflow.** The
+journal, every child thread row, and all workflow state are scoped to the
+workflow thread's lifetime — they live and die with that thread row and are
+never promoted to survive independently; there is no separate TTL because
+there is nothing to retain past the workflow itself.
 
 Two distinct resume paths share this machinery:
 
@@ -424,15 +440,22 @@ report to the script, per `runEphemeralAgent`'s contract — that primitive is
 extended to optionally persist the thread row + transcript entries it
 currently skips). This diverges from the current `::subagent::` blanket
 exclusion: workflow children **are** findable via Recall's `searchThreads` and
-transcript search (their prompts and results are real episodic memory), but
-they are **excluded from the top-level Thread Index** so a 300-agent audit
-doesn't flood the index — the workflow's own row, carrying phase/progress and
-the result excerpt, represents them there. Persistent `thread()` leaves are the
-same rows, just multi-turn.
+transcript search, **and** they **are** carried in Recall's top-level Thread
+Index (resolved, §17). Because workflow children do not emit periodic reasoning
+summaries the way `spawn_agent` agents do (§11), each child's
+`RecallIndexThreadRow` is keyed by its **description plus its most recent
+assistant text** (the latest assistant output on that child thread) in place of
+the reasoning-summary signal a normal delegated thread would supply — so a
+child still carries a meaningful, searchable snippet without a summary stream,
+and "where did that one finding come from?" resolves later. The workflow's own
+row (phase/progress + result excerpt) still represents the run as a whole. All
+child rows — including persistent `thread()` leaves, which are the same rows,
+just multi-turn — are scoped to the workflow's lifetime and are never promoted
+to a standalone slotted thread (§17).
 
 **Pause** — `pause_agent(workflow_thread_id)` works unchanged through
 `cancelAgent` with the `AGENT_PAUSE_CANCEL_REASON` sentinel
-(`local-agent-manager.ts:643`): the sandbox is aborted, in-flight leaves are
+(`local-agent-manager.ts:643`): the running script is aborted, in-flight leaves are
 cancelled, journal rows for completed calls survive, no noisy `[Task
 canceled]` follow-up fires. The thread stays on the roster as `paused`.
 
@@ -500,7 +523,7 @@ advise(message: string, opts?: { wait?: boolean }): Promise<string | void>
   §10's abort-and-redeliver path, the runtime special-cases a pending
   `advise(wait)` to deliver the reply as the *resolution of the await* rather
   than aborting the script — the one place send_input does not tear the
-  sandbox down. Use: "both fix strategies pass tests; A is simpler, B is
+  running script down. Use: "both fix strategies pass tests; A is simpler, B is
   faster — pick one." A configurable staleness nudge (not a timeout — nothing
   auto-fails) re-advises after long silence.
 
@@ -686,48 +709,62 @@ involvement: one `run_workflow` call and one completion report.
 | Mid-run interaction | One-way (user watches /workflows); agents can't call home | **Advisor channel** (`advise` inform/ask) + `send_input` abort-and-redeliver into the authoring LLM |
 | Sub-agent display | Progress tree of agents per phase | Reasoning summaries **off** for all workflow children; one rolled-up card + one activity row; per-child detail is pull-only (journal) |
 | Multi-turn leaves | Stateless `agent()` calls (workflow() nesting for composition) | `thread()` persistent leaves (the builder pattern) alongside one-shot `agent()` |
+| Nested workflows | One nesting level allowed | **Forbidden in v1** — a workflow cannot call `run_workflow` (the tool is absent from the authoring LLM's catalog); chain single-phase workflows across turns instead (§14) |
+| Orchestration sandbox | (script runs in the CC process) | **None** — the authored script runs as trusted code at the authoring model's trust level; replayability comes from the journal, not a deterministic interpreter (§7) |
 | UI | Terminal progress tree | Dedicated workflow artifact card in chat + low-noise activity row (§13) |
 
 Kept deliberately compatible: the SDK verbs (`agent`/`parallel`/`pipeline`/
 `phase`/`log`), streaming-pipeline-by-default with barriers as the exception,
-determinism traps on clock/random, prefix-replay resume semantics, and the
+effect-replay resume semantics (§8), determinism as a soft convention (§7), and the
 quality-pattern vocabulary (adversarial verify, judge panel, loop-until-dry,
 multi-modal sweep) — these are good ideas with no Stella-specific reason to
 diverge.
 
-## 17. Open decisions needing a human call
+## 17. Decisions and remaining open questions
 
-1. **Sandbox engine.** Recommended: QuickJS-via-WASM (true realm isolation,
-   deterministic, ~MB-scale dependency; async host bridging is the cost).
-   Alternative: hardened `node:vm`/SES (lighter, faster bridging, weaker
-   isolation guarantee against a prompt-injected script). This is a
-   security-posture call: the script is LLM-authored from LLM-read content, so
-   injection into the *orchestration layer* is in-threat-model even though
-   leaves already run with full tools.
-2. **Recall exposure of workflow children.** Design says: searchable but
-   excluded from the top-level Thread Index (§10). The alternative — index
-   children too, with an adaptive cap — helps "where did that one finding come
-   from?" months later at the cost of index bloat. Needs a product call on
-   Recall's noise floor.
-3. **`thread()` leaves and roster slots.** Design says slotless (contained by
-   the workflow's single slot). If a builder thread should *outlive* its
-   workflow (orchestrator keeps `send_input`-ing it afterward), it needs
-   promotion to a real slotted thread on workflow completion — worth deciding
-   before the schema is set.
-4. **External-engine bridging fidelity.** Authoring on `claude_code_local` /
+Rahul has resolved five of the original open questions; two remain.
+
+### Resolved
+
+1. **No sandbox (§7).** The authored control-flow script runs directly as
+   trusted code — the authoring model's own trust level — not in QuickJS-WASM
+   and not in a hardened `node:vm`. The sandbox is no longer a security
+   boundary in this design. Rationale: the authoring LLM is the orchestrator's
+   own model+engine and does what it is briefed to do; realm isolation bought
+   guarantees the threat model does not need, at real bridging cost.
+2. **Determinism + resume (§7, §8).** Determinism is a soft authoring
+   convention, not an enforced guarantee — `Date.now()`, `Math.random()`, and
+   argless `new Date()` no longer throw (optionally lint-flagged). Resume
+   switches to **effect-replay**: journaled effect *results* are replayed in
+   order for the longest unchanged prefix and never re-executed; live
+   execution resumes only past the first diverging effectful call. Resume no
+   longer depends on re-executing control-flow code, so ambient nondeterminism
+   cannot corrupt it.
+3. **Recall exposure of workflow children (§10).** Children **are** indexed in
+   Recall's top-level Thread Index, each keyed by its description plus its most
+   recent assistant text in place of a reasoning summary (children don't emit
+   summary streams, §11), and are searchable via `searchThreads` and transcript
+   search.
+4. **Retention / lifetime — nothing outlives the workflow (§8, §10).**
+   Children, the journal, and all workflow state are scoped to the workflow
+   thread's lifetime and are never promoted to survive independently. The
+   former "promote a builder `thread()` to a standalone slotted thread" option
+   is dropped, and the journal-TTL question is resolved as "bound to the
+   workflow thread row — nothing to retain past the workflow itself."
+5. **Nested workflows — forbidden in v1 (§14).** A workflow cannot invoke
+   `run_workflow`; the tool is simply absent from the authoring LLM's catalog
+   (§2). Multi-phase campaigns chain single-phase workflows across orchestrator
+   turns instead. Not revisited in v1.
+
+### Still open (need a human call)
+
+6. **External-engine bridging fidelity.** Authoring on `claude_code_local` /
    `codex_cli` requires the bridged (non-vanilla) hosted turn carrying
    `run_script`/`advise` (§4). If the CC/Codex tool bridges can't stream
    `run_script` progress updates cleanly, fallback options are: authoring LLM
    on the native engine whenever the orchestrator's *model* is reachable
    natively, or accepting coarser progress. Needs a spike before committing to
    "always engine-mirrored" with no caveat.
-5. **Nested workflows.** v1 recommendation: forbid `run_workflow` from inside
-   a workflow (chain across turns instead, §14). CC allows one nesting level;
-   Stella could later, but it complicates the card, the journal, and the caps
-   accounting for little v1 value.
-6. **Journal retention.** Tied to thread-row lifetime in v1; whether journals
-   need their own TTL/size cap (a 1000-agent run's `result_json` rows are
-   megabytes) is a storage-budget call.
 7. **`advise(wait: true)` staleness behavior.** Design says nudge, never
    auto-fail. If Rahul prefers parked workflows to eventually self-finalize
    with partial results, that changes the advisor contract.
