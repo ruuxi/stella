@@ -103,4 +103,24 @@ describe("chat shell UI contracts", () => {
     // It renders the overview unfiltered (no query prop threaded in).
     expect(sidebar).toContain('<LeftSidebarSections variant="overview" />');
   });
+
+  it("reserves a stable tray height while searching so it doesn't snap per keystroke", () => {
+    const activityPill = fs.readFileSync(
+      path.join(SOURCE_ROOT, "app/chat/ComposerActivityPill.tsx"),
+      "utf8",
+    );
+    const css = fs.readFileSync(
+      path.join(SOURCE_ROOT, "app/chat/composer-activity-pill.css"),
+      "utf8",
+    );
+
+    // The tray marks itself as searching off the immediate input (not the
+    // deferred query) so the reserve engages before results reconcile.
+    expect(activityPill).toContain("const searching = inputValue.trim().length > 0");
+    expect(activityPill).toContain("data-searching={searching || undefined}");
+    // CSS holds the results region at a reserved height while searching.
+    expect(css).toMatch(
+      /\.composer-activity-tray\[data-searching\][\s\S]*?min-height:/,
+    );
+  });
 });

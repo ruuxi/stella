@@ -191,8 +191,16 @@ function ActivityTray({ onNavigate }: { onNavigate: () => void }) {
     return () => window.clearTimeout(timer);
   }, [inputValue]);
 
+  // Reserve a stable results height the moment the user starts typing. The
+  // per-keystroke result churn (debounced + deferred) otherwise re-flows the
+  // popover to fit each intermediate match set, hard-snapping its height into
+  // a rapid staircase. Keying the reserve off the immediate input (not the
+  // deferred query) engages it before results reconcile, so the container
+  // settles instead of flickering. Idle keeps its natural, content-fit height.
+  const searching = inputValue.trim().length > 0;
+
   return (
-    <div className="composer-activity-tray">
+    <div className="composer-activity-tray" data-searching={searching || undefined}>
       <div className="composer-activity-tray__search">
         <Search size={15} strokeWidth={1.75} aria-hidden="true" />
         <input
