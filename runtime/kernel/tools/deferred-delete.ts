@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
-import { resolveRuntimeStatePath } from "../home/stella-home.js";
+import { resolveRuntimeStatePath } from "../home/stella-paths.js";
 
 export const DEFERRED_DELETE_RETENTION_MS = 24 * 60 * 60 * 1000;
 

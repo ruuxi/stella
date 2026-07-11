@@ -2,7 +2,7 @@ import { createWriteStream, promises as fs } from "fs";
 import path from "path";
 import { pipeline } from "stream/promises";
 import { spawn } from "child_process";
-import { resolveDefaultStellaDataDir } from "../home/stella-home.js";
+import { resolveDefaultStellaDataDir } from "../home/stella-paths.js";
 import type { ToolContext } from "./types.js";
 
 const RIPGREP_VERSION = "15.1.0";

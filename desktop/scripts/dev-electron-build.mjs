@@ -132,6 +132,8 @@ const createBuildOptions = () => [
     // relatively at runtime; entry.js stays at its existing path.
     splitting: true,
     chunkNames: "runtime/worker/chunks/[name]-[hash]",
+    // Consumed by assertWorkerBundleBoundary after each build.
+    metafile: true,
     logLevel: "warning",
     outbase: ".",
     outdir: path.join("desktop", outdir),
@@ -169,6 +171,42 @@ const createBuildOptions = () => [
     tsconfig: path.join("desktop", "tsconfig.preload.json"),
   },
 ];
+
+/**
+ * Modules that must never reach the worker bundle. The worker runs under
+ * Bun, detached from Electron; these modules are Electron-main-owned (home
+ * seeding, remote prompt sync + its sqlite update lock). In desktop-v0.0.409
+ * a static `node:sqlite` import leaked in through this exact path — worker
+ * tools imported path helpers from `stella-home.ts`, which statically drags
+ * in the whole sync graph — and every new worker crashed on runner load
+ * while its socket still looked healthy. Worker code needing path helpers
+ * imports `runtime/kernel/home/stella-paths.ts` instead.
+ */
+const workerBannedInputs = [
+  "runtime/kernel/home/stella-home.ts",
+  "runtime/kernel/home/prompt-manifest-sync.ts",
+  "runtime/kernel/home/skills-sync.ts",
+  "runtime/kernel/home/agents-sync.ts",
+];
+const workerBannedInputPrefixes = ["desktop/electron/"];
+
+const assertWorkerBundleBoundary = (metafile) => {
+  const inputs = Object.keys(metafile?.inputs ?? {}).map((input) =>
+    toPosix(input),
+  );
+  const violations = inputs.filter(
+    (input) =>
+      workerBannedInputs.includes(input) ||
+      workerBannedInputPrefixes.some((prefix) => input.startsWith(prefix)),
+  );
+  if (violations.length > 0) {
+    throw new Error(
+      `Electron-only module(s) bundled into the Bun worker: ${violations.join(", ")}. ` +
+        "Import pure path helpers from runtime/kernel/home/stella-paths.ts instead of " +
+        "stella-home.ts, or move the shared code into a runtime-safe module.",
+    );
+  }
+};
 
 const writeOutputIfChanged = (absPath, contents) => {
   try {
@@ -216,11 +254,14 @@ const copyRuntimeStaticAssets = async () => {
  */
 export const buildElectronBundles = async () => {
   try {
+    const optionsList = createBuildOptions();
     const results = await Promise.all(
-      createBuildOptions().map((options) =>
-        runEsbuildBuild({ ...options, write: false }),
-      ),
+      optionsList.map((options) => runEsbuildBuild({ ...options, write: false })),
     );
+    const workerResult = results[
+      optionsList.findIndex((options) => options.entryPoints === workerEntryPoints)
+    ];
+    assertWorkerBundleBoundary(workerResult.metafile);
     const changedOutputs = [];
     for (const result of results) {
       for (const file of result.outputFiles ?? []) {
