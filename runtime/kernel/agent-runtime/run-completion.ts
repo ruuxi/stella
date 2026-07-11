@@ -13,8 +13,58 @@ import type {
   SubagentRunResult,
 } from "./types.js";
 import type { SelfModAppliedPayload } from "../../contracts/local-chat.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 
 const logger = createRuntimeLogger("agent-runtime.completion");
+
+/**
+ * Ceiling on each awaited finalization stage between "final answer produced"
+ * and the RUN_FINISHED emit. A stage that pends past this is force-skipped
+ * with a loud log naming it: the user has already seen the reply, and
+ * withholding run-end makes the whole conversation read as "busy" forever
+ * (observed in the field with no log trail — this ceiling is also the
+ * instrumentation that names the culprit next time).
+ */
+const FINALIZE_STAGE_TIMEOUT_MS = 30_000;
+
+const boundedFinalizeStage = async <T>(args: {
+  stage: string;
+  runId: string;
+  work: () => Promise<T> | T;
+  fallback: T;
+}): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const startedAt = Date.now();
+  try {
+    return await Promise.race([
+      Promise.resolve(args.work()),
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => {
+          logger.warn("orchestrator.finalize-stage-timeout", {
+            stage: args.stage,
+            runId: args.runId,
+            timeoutMs: FINALIZE_STAGE_TIMEOUT_MS,
+          });
+          console.warn(
+            `[runtime] Run finalization stage "${args.stage}" exceeded ${Math.round(FINALIZE_STAGE_TIMEOUT_MS / 1000)}s; finishing the run without it (run ${args.runId}).`,
+          );
+          resolve(args.fallback);
+        }, FINALIZE_STAGE_TIMEOUT_MS);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs > 5_000) {
+      logger.warn("orchestrator.finalize-stage-slow", {
+        stage: args.stage,
+        runId: args.runId,
+        elapsedMs,
+      });
+    }
+  }
+};
 const REPORTED_ORCHESTRATOR_ERROR = Symbol("reportedOrchestratorError");
 const INTERRUPT_MESSAGE_RE =
   /^(?:aborted|request was aborted\.?|request aborted by user|interrupted by .+|canceled(?: because .*)?|this operation was aborted|claude code run aborted\.?)$/i;
@@ -364,14 +414,27 @@ export const finalizeOrchestratorSuccess = async (args: {
     finalTextPreview: args.finalText.slice(0, 300),
   });
 
-  await Promise.resolve(
-    args.opts.beforeRunEnd?.({
+  const runBeforeRunEnd = () =>
+    Promise.resolve(
+      args.opts.beforeRunEnd?.({
+        runId: args.runId,
+        threadKey: args.threadKey,
+        finalText: args.finalText,
+        outcome: "success",
+      }),
+    );
+  if (args.opts.agentType === AGENT_IDS.INSTALL_UPDATE) {
+    // The install-update agent legitimately holds run-end until its child
+    // agents land the update commit — that wait must not be ceilinged.
+    await runBeforeRunEnd();
+  } else {
+    await boundedFinalizeStage({
+      stage: "beforeRunEnd",
       runId: args.runId,
-      threadKey: args.threadKey,
-      finalText: args.finalText,
-      outcome: "success",
-    }),
-  );
+      fallback: undefined,
+      work: runBeforeRunEnd,
+    });
+  }
 
   // Estimated orchestrator thread size on the same basis the compaction
   // trigger uses, so post-finalize hooks can drive the token-interval Dream
@@ -392,18 +455,24 @@ export const finalizeOrchestratorSuccess = async (args: {
     });
   }
 
-  const selfModApplied = await emitAgentEndHook(args.opts, {
-    finalText: args.finalText,
+  const selfModApplied = await boundedFinalizeStage({
+    stage: "agent_end-hooks",
     runId: args.runId,
-    threadKey: args.threadKey,
-    // Snapshot the messages array now so memory-review / other
-    // post-finalize hooks see the state at end-of-turn rather than a
-    // mutated state if a follow-up turn lands before the hook handler
-    // runs.
-    messagesSnapshot: [...args.agent.state.messages],
-    ...(orchestratorTokenEstimate != null
-      ? { orchestratorTokenEstimate }
-      : {}),
+    fallback: null,
+    work: () =>
+      emitAgentEndHook(args.opts, {
+        finalText: args.finalText,
+        runId: args.runId,
+        threadKey: args.threadKey,
+        // Snapshot the messages array now so memory-review / other
+        // post-finalize hooks see the state at end-of-turn rather than a
+        // mutated state if a follow-up turn lands before the hook handler
+        // runs.
+        messagesSnapshot: [...args.agent.state.messages],
+        ...(orchestratorTokenEstimate != null
+          ? { orchestratorTokenEstimate }
+          : {}),
+      }),
   });
 
   // Finish the visible turn before scheduling compaction.

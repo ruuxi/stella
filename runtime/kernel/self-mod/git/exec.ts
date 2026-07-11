@@ -90,6 +90,14 @@ export const runGitStatus = async (
         encoding,
         maxBuffer: options?.maxBuffer ?? 10 * 1024 * 1024,
         windowsHide: true,
+        // Self-mod git calls run on hot paths — including run finalization
+        // (detectAppliedSince fires on every successful orchestrator turn).
+        // An unbounded hang here silently withholds RUN_FINISHED and the
+        // whole conversation reads as "busy" forever after the reply. All
+        // commands this module issues are local (no clone/fetch/push), so a
+        // minute is generous headroom even for large-tree resets/commits.
+        timeout: 60_000,
+        killSignal: "SIGKILL",
       });
       return { exitCode: 0, stdout: result.stdout, stderr: result.stderr };
     } catch (error) {

@@ -384,6 +384,13 @@ export const launchPreparedOrchestratorRun = (args: {
     agentControlsSelfModHmr(prepared.agentType) &&
     Boolean(context.selfModLifecycle);
   let selfModLifecycleClosed = !shouldAttachSelfModLifecycle;
+  // Whether THIS run actually performed self-mod work (recorded write paths
+  // or took the shell mutation guard). Attaching the lifecycle alone must not
+  // count: a purely-delegating orchestrator turn (spawn/resume background
+  // agents, answer, done) has no delta to protect, and holding its run-end
+  // hostage to hours-long children makes the whole conversation read as
+  // "busy" forever after the reply.
+  let selfModWorkObserved = false;
   const guardedShellSessionLeases = new Map<string, Set<string>>();
   const guardedShellLeaseSessions = new Map<string, string>();
   const guardedShellLogicalCaptures = new Map<string, MediatedWriteCapture>();
@@ -517,6 +524,7 @@ export const launchPreparedOrchestratorRun = (args: {
       return;
     }
     if (paths.length === 0) return;
+    selfModWorkObserved = true;
     await context.selfModHmrController.recordWrite(
       prepared.runId,
       paths,
@@ -607,6 +615,11 @@ export const launchPreparedOrchestratorRun = (args: {
             return false;
           }),
       );
+      if (shellGuardActive) {
+        // A guarded mutating shell may write paths the engine never reports;
+        // treat the guard itself as self-mod work for run-end gating.
+        selfModWorkObserved = true;
+      }
       if (
         !shellGuardActive &&
         prepared.agentType !== AGENT_IDS.INSTALL_UPDATE
@@ -838,11 +851,24 @@ export const launchPreparedOrchestratorRun = (args: {
         if (!shouldAttachSelfModLifecycle || selfModLifecycleClosed) {
           return;
         }
-        await waitForBackgroundAgentsForRootRun(
-          context,
-          prepared.runId,
-          prepared.abortController.signal,
-        );
+        // Hold run-end for background agents ONLY when this run's own
+        // self-mod delta could still be affected by them: the run recorded
+        // self-mod work itself, or it's the install-update agent (whose
+        // children land the update commit the finalize records). A
+        // delegating-only turn (spawn/resume agents, reply, done) must end
+        // immediately — children carry this run's rootRunId for grouping,
+        // and waiting on them held conversations "busy" for the entire
+        // lifetime of hours-long benchmark agents.
+        if (
+          selfModWorkObserved ||
+          prepared.agentType === AGENT_IDS.INSTALL_UPDATE
+        ) {
+          await waitForBackgroundAgentsForRootRun(
+            context,
+            prepared.runId,
+            prepared.abortController.signal,
+          );
+        }
         await Promise.resolve(
           context.selfModLifecycle!.finalizeRun({
             runId: prepared.runId,
