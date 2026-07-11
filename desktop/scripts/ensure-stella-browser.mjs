@@ -37,15 +37,6 @@ if (!platformKey) {
 const hydratedName =
   platformKey === "win-x64" ? "stella-browser.exe" : "stella-browser";
 const hydratedPath = path.join(browserRoot, "out", platformKey, hydratedName);
-const legacyName =
-  platformKey === "win-x64"
-    ? "stella-browser-win32-x64.exe"
-    : `stella-browser-${platformKey}`;
-const legacyPath = path.join(browserRoot, "bin", legacyName);
-
-if (existsSync(hydratedPath) || existsSync(legacyPath)) {
-  process.exit(0);
-}
 
 const download = spawnSync(
   process.execPath,

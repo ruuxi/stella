@@ -66,6 +66,14 @@ describe("Stella Browser release contract", () => {
     expect(packageJson.scripts["electron:dev"]).toContain(
       "ensure-stella-browser.mjs --allow-build-fallback",
     );
+    const ensureScript = await readRepoFile(
+      "desktop/scripts/ensure-stella-browser.mjs",
+    );
+    expect(ensureScript).toContain("download-stella-browser.mjs");
+    expect(ensureScript).not.toMatch(
+      /if \(existsSync\(hydratedPath\).*process\.exit\(0\)/s,
+    );
+    expect(ensureScript).not.toContain("existsSync(legacyPath)");
   });
 
   it("rejects a pinned manifest whose sourceSha does not match", async () => {
