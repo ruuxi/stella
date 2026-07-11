@@ -1317,6 +1317,7 @@ export const runCodexAgentTurn = async (request: {
   let turnCompletionReported = false;
   let waitingForTurnCompletion = false;
   let hasTurnProgress = false;
+  const activeTurnWork = new Set<string>();
   let turnIdleTimer: ReturnType<typeof setTimeout> | undefined;
   let agentMessageCompletionTimer: ReturnType<typeof setTimeout> | undefined;
   let refreshTurnIdleTimer: (() => void) | undefined;
@@ -1354,6 +1355,12 @@ export const runCodexAgentTurn = async (request: {
     refreshTurnIdleTimer = () => {
       if (!waitingForTurnCompletion || completed) return;
       if (turnIdleTimer) clearTimeout(turnIdleTimer);
+      turnIdleTimer = undefined;
+      // App-server notifications are edge-triggered. A native command or a
+      // Stella tool may remain silent while it legitimately runs beyond the
+      // stream idle window, so only arm the watchdog when no confirmed work
+      // is in flight.
+      if (activeTurnWork.size > 0) return;
       const timeoutMs = hasTurnProgress
         ? configuredTimeoutMs(
             "STELLA_CODEX_TURN_IDLE_TIMEOUT_MS",
@@ -1447,6 +1454,13 @@ export const runCodexAgentTurn = async (request: {
           const status = statusFromCodexItem(item);
           if (status) emitStatus(status);
           if (item.type === "commandExecution") {
+            const workKey = `command:${item.id}`;
+            if (item.status === "inProgress") {
+              activeTurnWork.add(workKey);
+            } else {
+              activeTurnWork.delete(workKey);
+            }
+            refreshTurnIdleTimer?.();
             request.onCommandExecution?.({
               id: item.id,
               command: sanitizeCodexCommandForActivity(item.command),
@@ -1508,23 +1522,31 @@ export const runCodexAgentTurn = async (request: {
         }
         const toolName = params.tool;
         const toolArgs = toolArgsFromCodexValue(params.arguments);
-        const toolResult = await request.executeTool(
-          params.callId,
-          toolName,
-          toolArgs,
-          request.abortSignal,
-          (update) => {
-            refreshTurnIdleTimer?.();
-            request.onToolUpdate?.({
-              toolCallId: params.callId,
-              toolName,
-              update,
-            });
-            const statusText = buildToolResultText(update).trim();
-            if (statusText) emitStatus(statusText);
-          },
-        );
+        const workKey = `tool:${params.callId}`;
+        activeTurnWork.add(workKey);
         refreshTurnIdleTimer?.();
+        let toolResult: ToolResult;
+        try {
+          toolResult = await request.executeTool(
+            params.callId,
+            toolName,
+            toolArgs,
+            request.abortSignal,
+            (update) => {
+              refreshTurnIdleTimer?.();
+              request.onToolUpdate?.({
+                toolCallId: params.callId,
+                toolName,
+                update,
+              });
+              const statusText = buildToolResultText(update).trim();
+              if (statusText) emitStatus(statusText);
+            },
+          );
+        } finally {
+          activeTurnWork.delete(workKey);
+          refreshTurnIdleTimer?.();
+        }
         appendUniqueFileChanges(fileChanges, toolResult.fileChanges ?? []);
         return {
           contentItems: [

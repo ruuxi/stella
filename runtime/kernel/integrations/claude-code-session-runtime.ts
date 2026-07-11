@@ -415,6 +415,7 @@ type PendingStructuredPrompt = {
   abortListener?: () => void;
   idleTimer?: ReturnType<typeof setTimeout>;
   hasOutput?: boolean;
+  activeNativeToolUseIds: Set<string>;
 };
 
 type ClaudeCodeStreamingProcess = {
@@ -859,6 +860,49 @@ export const collectClaudeCodeNativeFileChanges = (
     out.push({ path: filePath.trim(), kind: spec.kind });
   }
   return out;
+};
+
+const updateClaudeCodeNativeToolActivity = (
+  event: Record<string, unknown>,
+  activeToolUseIds: Set<string>,
+): boolean => {
+  const before = activeToolUseIds.size;
+  const updateFromContent = (content: unknown) => {
+    if (!Array.isArray(content)) return;
+    for (const raw of content) {
+      const block = asObject(raw);
+      if (
+        block?.type === "tool_use" &&
+        block.name !== "StructuredOutput" &&
+        typeof block.id === "string"
+      ) {
+        activeToolUseIds.add(block.id);
+      } else if (
+        block?.type === "tool_result" &&
+        typeof block.tool_use_id === "string"
+      ) {
+        activeToolUseIds.delete(block.tool_use_id);
+      }
+    }
+  };
+
+  if (event.type === "assistant" || event.type === "user") {
+    updateFromContent(asObject(event.message)?.content);
+  }
+  if (event.type === "stream_event") {
+    const source = asObject(event.event);
+    if (source?.type === "content_block_start") {
+      const block = asObject(source.content_block);
+      if (
+        block?.type === "tool_use" &&
+        block.name !== "StructuredOutput" &&
+        typeof block.id === "string"
+      ) {
+        activeToolUseIds.add(block.id);
+      }
+    }
+  }
+  return before !== activeToolUseIds.size;
 };
 
 const fileChangeDedupeKey = (record: FileChangeRecord): string =>
@@ -2019,6 +2063,14 @@ class ClaudeCodeSessionRuntime {
           getClaudeCodeModelFallbackFromStreamEvent(parsedLine);
         const current = processState.pending[0];
         if (current) {
+          if (
+            updateClaudeCodeNativeToolActivity(
+              parsedLine,
+              current.activeNativeToolUseIds,
+            )
+          ) {
+            this.refreshPendingIdleTimer(processState, current);
+          }
           if (status) {
             current.request.onStatusChange?.(status);
           }
@@ -2154,6 +2206,7 @@ class ClaudeCodeSessionRuntime {
         reject,
         emitStreamDelta: createClaudeCodeStreamEmitter(request.onStream),
         fileChanges: [],
+        activeNativeToolUseIds: new Set(),
       };
       this.refreshPendingIdleTimer(processState, pending);
       if (request.abortSignal) {
@@ -2235,6 +2288,11 @@ class ClaudeCodeSessionRuntime {
     if (pending.idleTimer) {
       clearTimeout(pending.idleTimer);
     }
+    pending.idleTimer = undefined;
+    // Vanilla Claude Code runs native tools inside the CLI. Their stream-json
+    // lifecycle is edge-triggered, so a silent Bash/Task invocation is still
+    // confirmed live work and must not be mistaken for a dead output stream.
+    if (pending.activeNativeToolUseIds.size > 0) return;
     const timeoutMs = pending.hasOutput
       ? configuredTimeoutMs(
           "STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS",

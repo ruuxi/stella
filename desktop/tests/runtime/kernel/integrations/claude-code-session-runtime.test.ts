@@ -1120,6 +1120,60 @@ describe("claude-code-session-runtime", () => {
     }
   });
 
+  it("does not time out while a vanilla Claude Code native tool is in progress", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-long-native-tool-"),
+    );
+    const binDir = path.join(dir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "let buffer = '';",
+        "const emit = (payload) => process.stdout.write(JSON.stringify(payload) + '\\n');",
+        "function handle() {",
+        "  emit({ type: 'assistant', session_id: 'fake-session', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'tool-long', name: 'Bash', input: { command: 'sleep 60' } }] } });",
+        "  setTimeout(() => {",
+        "    emit({ type: 'user', session_id: 'fake-session', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool-long', content: 'done' }] } });",
+        "    emit({ type: 'result', session_id: 'fake-session', is_error: false, result: 'native command finished' });",
+        "  }, 60);",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  if (buffer.includes('\\n')) { buffer = ''; handle(); }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousTimeout = process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS = "25";
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-long-native-tool",
+        sessionKey: `test-long-native-tool:${Date.now()}`,
+        prompt: "wait for the command",
+        modelId: "claude-code/fable",
+        vanilla: true,
+        tools: [],
+        executeTool: async () => ({ result: "unused" }),
+      });
+      expect(result.text).toBe("native command finished");
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousTimeout === undefined) {
+        delete process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS;
+      } else {
+        process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS = previousTimeout;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps vanilla and takeover Claude Code persisted session ids separate", () => {
     const values = new Map<string, string>();
     const store = {

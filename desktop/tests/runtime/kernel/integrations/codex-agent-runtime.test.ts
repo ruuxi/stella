@@ -865,6 +865,65 @@ describe("Codex agent runtime", () => {
     }
   });
 
+  it("does not time out while a native Codex command is still in progress", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-long-command-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const readline = require("node:readline");',
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'thread/start') { send({ id: message.id, result: { thread: { id: 'thread-long-command' } } }); return; }",
+        "  if (message.method === 'turn/start') {",
+        "    const threadId = message.params.threadId;",
+        "    const turn = { id: 'turn-long-command', status: 'inProgress' };",
+        "    send({ id: message.id, result: { turn } });",
+        "    send({ method: 'turn/started', params: { threadId, turn } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-long', command: 'sleep 60', status: 'inProgress' } } });",
+        "    setTimeout(() => {",
+        "      const completedTurn = { id: turn.id, status: 'completed' };",
+        "      send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-long', command: 'sleep 60', status: 'completed', exitCode: 0 } } });",
+        "      send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-final', text: 'command finished', phase: 'final_answer' } } });",
+        "      send({ method: 'turn/completed', params: { threadId, turn: completedTurn } });",
+        "    }, 60);",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    const previousTimeout = process.env.STELLA_CODEX_TURN_IDLE_TIMEOUT_MS;
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    process.env.STELLA_CODEX_TURN_IDLE_TIMEOUT_MS = "25";
+    try {
+      const result = await runCodexAgentTurn({
+        runId: "run-long-command",
+        prompt: "run it",
+      });
+      expect(result.text).toBe("command finished");
+    } finally {
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      if (previousTimeout === undefined) {
+        delete process.env.STELLA_CODEX_TURN_IDLE_TIMEOUT_MS;
+      } else {
+        process.env.STELLA_CODEX_TURN_IDLE_TIMEOUT_MS = previousTimeout;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("does not leak commentary preamble deltas into the final Codex answer", async () => {
     const dir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-fake-codex-commentary-delta-"),

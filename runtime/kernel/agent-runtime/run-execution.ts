@@ -132,6 +132,7 @@ export const executeRuntimeAgentPrompt = async (args: {
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let idleSettled = false;
   let hasAgentActivity = false;
+  const activeToolCallIds = new Set<string>();
   let rejectIdle: (error: Error) => void = () => {};
   const idleFailure = new Promise<never>((_, reject) => {
     rejectIdle = reject;
@@ -139,6 +140,12 @@ export const executeRuntimeAgentPrompt = async (args: {
   const refreshIdleTimer = () => {
     if (idleSettled) return;
     if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = undefined;
+    // A tool owns its own completion/cancellation semantics. Long-running
+    // commands can legitimately be silent for more than the agent stream's
+    // idle window, so absence of model events is not evidence that the agent
+    // is dead while at least one tool call is still in flight.
+    if (activeToolCallIds.size > 0) return;
     const timeoutMs = hasAgentActivity ? idleTimeoutMs : startupIdleTimeoutMs;
     idleTimer = setTimeout(() => {
       idleSettled = true;
@@ -155,12 +162,17 @@ export const executeRuntimeAgentPrompt = async (args: {
     }, timeoutMs);
     idleTimer.unref?.();
   };
-  const markAgentActivity = () => {
+  const markAgentActivity = (event?: AgentEvent) => {
     hasAgentActivity = true;
+    if (event?.type === "tool_execution_start") {
+      activeToolCallIds.add(event.toolCallId);
+    } else if (event?.type === "tool_execution_end") {
+      activeToolCallIds.delete(event.toolCallId);
+    }
     refreshIdleTimer();
   };
   refreshIdleTimer();
-  const unsubscribeIdle = args.agent.subscribe(() => markAgentActivity());
+  const unsubscribeIdle = args.agent.subscribe(markAgentActivity);
 
   const unsubscribe = subscribeRuntimeAgentEvents({
     agent: args.agent,

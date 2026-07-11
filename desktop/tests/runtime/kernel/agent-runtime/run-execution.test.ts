@@ -157,4 +157,68 @@ describe("executeRuntimeAgentPrompt", () => {
       }
     }
   });
+
+  it("does not treat a silent in-flight tool as an idle agent", async () => {
+    const previousTimeout = process.env.STELLA_AGENT_IDLE_TIMEOUT_MS;
+    process.env.STELLA_AGENT_IDLE_TIMEOUT_MS = "25";
+    const listeners = new Set<(event: never) => void>();
+    let idleListener: ((event: never) => void) | undefined;
+    let finishPrompt: (() => void) | undefined;
+    const agent = {
+      state: {
+        messages: [] as Array<ReturnType<typeof createAssistantMessage>>,
+      },
+      subscribe: vi.fn((listener: (event: never) => void) => {
+        idleListener ??= listener;
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+      prompt: vi.fn(
+        () => new Promise<void>((resolve) => {
+          finishPrompt = resolve;
+        }),
+      ),
+      followUp: vi.fn(),
+      continue: vi.fn(),
+      abort: vi.fn(),
+    };
+
+    try {
+      const execution = executeRuntimeAgentPrompt({
+        agent,
+        promptText: "run a long command",
+        runId: "run-4",
+        agentType: "general",
+        userMessageId: "msg-4",
+        recorder: {} as never,
+      });
+      await vi.waitFor(() => expect(idleListener).toBeDefined());
+      idleListener?.({
+        type: "tool_execution_start",
+        toolCallId: "tool-1",
+        toolName: "exec_command",
+        args: {},
+      } as never);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(agent.abort).not.toHaveBeenCalled();
+
+      agent.state.messages = [createAssistantMessage("done")];
+      idleListener?.({
+        type: "tool_execution_end",
+        toolCallId: "tool-1",
+        toolName: "exec_command",
+        result: { content: [], details: {} },
+        isError: false,
+      } as never);
+      finishPrompt?.();
+      await expect(execution).resolves.toMatchObject({ finalText: "done" });
+      expect(agent.abort).not.toHaveBeenCalled();
+    } finally {
+      if (previousTimeout === undefined) {
+        delete process.env.STELLA_AGENT_IDLE_TIMEOUT_MS;
+      } else {
+        process.env.STELLA_AGENT_IDLE_TIMEOUT_MS = previousTimeout;
+      }
+    }
+  });
 });
