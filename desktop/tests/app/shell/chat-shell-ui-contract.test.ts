@@ -88,4 +88,19 @@ describe("chat shell UI contracts", () => {
       'placeholder="Search activity, files, and more"',
     );
   });
+
+  it("keeps tray search out of the left sidebar activity index", () => {
+    const sidebar = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/LeftSidebar.tsx"),
+      "utf8",
+    );
+
+    // The sidebar must not subscribe to the tray's shared search store, or
+    // typing in the activity-tray popover would leak filtered results into
+    // the sidebar's stable activity index.
+    expect(sidebar).not.toContain("useDisplaySearchQuery");
+    expect(sidebar).not.toContain("display-search-store");
+    // It renders the overview unfiltered (no query prop threaded in).
+    expect(sidebar).toContain('<LeftSidebarSections variant="overview" />');
+  });
 });

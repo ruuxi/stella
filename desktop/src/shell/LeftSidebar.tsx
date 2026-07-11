@@ -4,7 +4,9 @@
  * Top-to-bottom: primary nav (Home / Apps / Store / Social) and the
  * Activity sections (`LeftSidebarSections`). Nav rows navigate the center
  * content; activity rows expand in place to show each agent's reasoning and
- * files. Search remains available from the persistent composer pill.
+ * files. Search lives entirely in the composer pill's activity tray — the
+ * sidebar never filters by it, so an active tray search leaves this stable
+ * activity index untouched.
  *
  * Full window only — the mini window keeps its own chrome.
  */
@@ -17,7 +19,6 @@ import {
   subscribe as subscribeToAppRegistry,
 } from "@/shell/sidebar/app-registry";
 import { getPlatform } from "@/platform/electron/platform";
-import { useDisplaySearchQuery } from "@/features/workspace-display/display-search-store";
 import { LeftSidebarSections } from "@/shell/LeftSidebarSections";
 import { ShellTopBarAccount } from "@/shell/sidebar/ShellTopBarAccount";
 import { ShellTopBarUpdatePill } from "@/shell/ShellTopBarUpdatePill";
@@ -39,7 +40,6 @@ export function LeftSidebar({
   onConnect,
   collapsed = false,
 }: LeftSidebarProps) {
-  const query = useDisplaySearchQuery();
   const allApps = useRegisteredApps();
   const matchRoute = useMatchRoute();
   const platform = getPlatform();
@@ -100,7 +100,7 @@ export function LeftSidebar({
             </nav>
           ) : null}
 
-          <LeftSidebarSections query={query} variant="overview" />
+          <LeftSidebarSections variant="overview" />
         </div>
 
         <div className="left-sidebar__footer">
