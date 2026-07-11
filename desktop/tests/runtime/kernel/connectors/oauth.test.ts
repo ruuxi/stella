@@ -14,6 +14,7 @@ import {
   loadConnectorAccessToken,
   loadConnectorTokenPayload,
   saveConnectorAccessToken,
+  setConnectorTokenStoreBroker,
 } from "../../../../../runtime/kernel/connectors/oauth.js";
 
 type TestServer = {
@@ -30,6 +31,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  setConnectorTokenStoreBroker(null);
   if (originalDevStorage === undefined) {
     delete process.env.STELLA_DEV_INSECURE_PROTECTED_STORAGE;
   } else {
@@ -89,6 +91,42 @@ const startServer = async (
 };
 
 describe("connector OAuth credentials", () => {
+  it("routes token persistence through an in-memory broker when configured", async () => {
+    const root = createRoot();
+    const payloads = new Map<string, { accessToken: string }>();
+    const operations: string[] = [];
+    setConnectorTokenStoreBroker({
+      load: async (tokenKey) => {
+        operations.push(`load:${tokenKey}`);
+        return payloads.get(tokenKey) ?? null;
+      },
+      save: async (tokenKey, payload) => {
+        operations.push(`save:${tokenKey}`);
+        payloads.set(tokenKey, payload);
+      },
+      delete: async (tokenKeys) => {
+        operations.push(`delete:${tokenKeys.join(",")}`);
+        tokenKeys.forEach((tokenKey) => payloads.delete(tokenKey));
+      },
+    });
+
+    await saveConnectorAccessToken(root, "outlook", "access-from-host");
+    await expect(loadConnectorAccessToken(root, "outlook")).resolves.toBe(
+      "access-from-host",
+    );
+    await deleteConnectorAccessTokens(root, ["outlook"]);
+    await expect(loadConnectorAccessToken(root, "outlook")).resolves.toBeNull();
+    await expect(
+      readFile(path.join(root, "connectors", ".credentials.json"), "utf-8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    expect(operations).toEqual([
+      "save:outlook",
+      "load:outlook",
+      "delete:outlook",
+      "load:outlook",
+    ]);
+  });
+
   it("stores manually supplied connector tokens through protected storage", async () => {
     const root = createRoot();
 

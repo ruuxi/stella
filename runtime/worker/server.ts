@@ -1064,6 +1064,20 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
             }
           },
           handlers: {
+            requestConnectorTokenStore: async (params) => {
+              try {
+                return await peer.request(
+                  METHOD_NAMES.HOST_CONNECTOR_TOKEN_STORE_REQUEST,
+                  params,
+                  { retryOnDisconnect: true },
+                );
+              } catch (error) {
+                return {
+                  ok: false as const,
+                  reason: (error as Error).message || "host_unreachable",
+                };
+              }
+            },
             requestConnectorCredential: async (params) => {
               try {
                 return await peer.request<

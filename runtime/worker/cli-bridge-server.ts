@@ -18,6 +18,10 @@ import { promises as fsPromises } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import path from "node:path";
 import { runtimeIpcPathUsesFilesystem } from "./runtime-paths.js";
+import type {
+  ConnectorTokenStoreRequest,
+  ConnectorTokenStoreResult,
+} from "../kernel/connectors/cli-broker-client.js";
 
 type RequestMessage = {
   id?: string | number;
@@ -107,6 +111,9 @@ export type CliBridgeHandlers = {
       >
     | { ok: true; baseUrl: string; authToken: string }
     | { ok: false; reason: string };
+  requestConnectorTokenStore?: (
+    request: ConnectorTokenStoreRequest,
+  ) => Promise<ConnectorTokenStoreResult>;
   requestDesktopPermission?: (params: {
     kind: "accessibility" | "screen";
   }) =>
@@ -220,6 +227,61 @@ const dispatch = async (
         return { ok: false, reason: "unsupported" };
       }
       return await handlers.getStellaSiteAuth();
+    }
+    case "connector.tokenStore": {
+      if (!handlers.requestConnectorTokenStore) {
+        return { ok: false, reason: "unsupported" };
+      }
+      const record =
+        params && typeof params === "object"
+          ? (params as Record<string, unknown>)
+          : {};
+      const operation = record.operation;
+      if (operation === "load") {
+        const tokenKey =
+          typeof record.tokenKey === "string" ? record.tokenKey.trim() : "";
+        if (!tokenKey) {
+          throw new Error("connector.tokenStore: tokenKey is required");
+        }
+        return await handlers.requestConnectorTokenStore({
+          operation,
+          tokenKey,
+        });
+      }
+      if (operation === "save") {
+        const tokenKey =
+          typeof record.tokenKey === "string" ? record.tokenKey.trim() : "";
+        if (
+          !tokenKey ||
+          !record.payload ||
+          typeof record.payload !== "object"
+        ) {
+          throw new Error(
+            "connector.tokenStore: tokenKey and payload are required",
+          );
+        }
+        return await handlers.requestConnectorTokenStore({
+          operation,
+          tokenKey,
+          payload: record.payload as Extract<
+            ConnectorTokenStoreRequest,
+            { operation: "save" }
+          >["payload"],
+        });
+      }
+      if (operation === "delete") {
+        const tokenKeys = Array.isArray(record.tokenKeys)
+          ? record.tokenKeys.filter(
+              (value): value is string =>
+                typeof value === "string" && Boolean(value.trim()),
+            )
+          : [];
+        return await handlers.requestConnectorTokenStore({
+          operation,
+          tokenKeys,
+        });
+      }
+      throw new Error("connector.tokenStore: unsupported operation");
     }
     case "system.requestPermission": {
       if (!handlers.requestDesktopPermission) {

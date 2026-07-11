@@ -11,6 +11,7 @@ import path from "node:path";
 import { ConvexClient } from "convex/browser";
 import { anyApi } from "convex/server";
 import { readConfiguredConvexUrl } from "../kernel/convex-urls.js";
+import type { ConnectorTokenPayload } from "../kernel/connectors/oauth.js";
 import { resolveBundledRuntimeFile } from "../kernel/shared/runtime-paths.js";
 import { getFileLogger } from "../observability/file-logger.js";
 import { LocalSchedulerService } from "../kernel/local-scheduler-service.js";
@@ -157,6 +158,25 @@ export type RuntimeHostHandlers = {
     description?: string;
     placeholder?: string;
   }) => Promise<{ secretId: string; provider: string; label: string }>;
+  /**
+   * Performs connector token persistence in the desktop host, which delegates
+   * to the configured stable protected-storage owner (the signed launcher on
+   * macOS). Raw token payloads cross only the owner-only local runtime socket
+   * and are never persisted outside the protected connector store.
+   */
+  requestConnectorTokenStore?: (
+    request:
+      | { operation: "load"; tokenKey: string }
+      | {
+          operation: "save";
+          tokenKey: string;
+          payload: ConnectorTokenPayload;
+        }
+      | { operation: "delete"; tokenKeys: string[] },
+  ) => Promise<
+    | { ok: true; payload?: ConnectorTokenPayload | null }
+    | { ok: false; reason: string }
+  >;
   /**
    * Pop a credential dialog for a connector token (Stella Connect MCP /
    * REST integrations). Unlike `requestCredential` the value is written
@@ -3032,7 +3052,7 @@ export class StellaRuntimeHost {
               },
             ),
           getActiveOrchestratorRun: async () => await this.getActiveRun(),
-        }),
+          }),
       },
       // Pop a native banner whenever a scheduled fire delivers a message.
       // Routed through the same Electron handler the runtime uses for
@@ -3290,6 +3310,19 @@ export class StellaRuntimeHost {
             description?: string;
             placeholder?: string;
           },
+        );
+      },
+    );
+    peer.registerRequestHandler(
+      METHOD_NAMES.HOST_CONNECTOR_TOKEN_STORE_REQUEST,
+      async (params) => {
+        if (!this.options.hostHandlers.requestConnectorTokenStore) {
+          return { ok: false, reason: "unsupported" };
+        }
+        return await this.options.hostHandlers.requestConnectorTokenStore(
+          params as Parameters<
+            NonNullable<RuntimeHostHandlers["requestConnectorTokenStore"]>
+          >[0],
         );
       },
     );
@@ -3565,7 +3598,7 @@ export class StellaRuntimeHost {
               });
             }
           },
-          }),
+        }),
         );
         // Runtime-relevant apply with no dev watcher running (packaged /
         // prod): nothing else will restart the worker for this change, so
