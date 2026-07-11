@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import {
+  closeSync,
+  ftruncateSync,
+  openSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -313,5 +319,32 @@ describe("PERSONALITY.md sync tracking", () => {
     await expect(readFile(target, "utf-8")).resolves.toBe(
       "concurrent direct edit\n",
     );
+  });
+
+  it("preserves a write through the old descriptor during target verification", async () => {
+    const home = await tempDir();
+    const target = path.join(home, "PERSONALITY.md");
+    const staged = path.join(home, "PERSONALITY.md.staged");
+    await writeFile(target, "previous untouched value\n", "utf-8");
+    const expectedHomeHash = sha256("previous untouched value\n");
+    await writeFile(staged, "incoming remote value\n", "utf-8");
+    const oldDescriptor = openSync(target, "r+");
+
+    try {
+      expect(
+        replacePersonalityIfHomeHashMatches({
+          target,
+          staged,
+          expectedHomeHash,
+          onAfterInstalledTargetVerified: () => {
+            ftruncateSync(oldDescriptor, 0);
+            writeSync(oldDescriptor, "descriptor edit\n", 0, "utf-8");
+          },
+        }),
+      ).toBe(false);
+    } finally {
+      closeSync(oldDescriptor);
+    }
+    await expect(readFile(target, "utf-8")).resolves.toBe("descriptor edit\n");
   });
 });

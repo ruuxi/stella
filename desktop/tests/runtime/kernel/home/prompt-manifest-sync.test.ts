@@ -272,6 +272,68 @@ describe("remote prompt startup sync", () => {
     });
   });
 
+  it("keeps more than 32 endpoint high-water marks readable after restart", async () => {
+    const home = await tempDir();
+    const endpoints = Array.from(
+      { length: 33 },
+      (_, index) => `https://endpoint-${index}.example.test/api/stella/prompts`,
+    );
+    for (const [index, endpoint] of endpoints.entries()) {
+      await recordAppliedPromptManifest({
+        stellaDataDir: home,
+        endpoint,
+        manifest: manifest(index + 1),
+      });
+    }
+    resetPromptAppliedStateMemoryForTests();
+
+    const persisted = JSON.parse(
+      await readFile(
+        path.join(home, "cache/prompt-applied-state.json"),
+        "utf-8",
+      ),
+    );
+    expect(Object.keys(persisted.entries)).toHaveLength(33);
+
+    const result = await resolvePromptManifest({
+      stellaDataDir: home,
+      siteUrl: "https://endpoint-0.example.test",
+      fetchImpl: async () => new Response(JSON.stringify(manifest(0))),
+    });
+    expect(result).toEqual({
+      source: "bundled-bootstrap",
+      manifest: null,
+      endpoint: endpoints[0],
+    });
+  });
+
+  it("merges concurrent endpoint high-water writes without temp collisions", async () => {
+    const home = await tempDir();
+    const endpoints = Array.from(
+      { length: 8 },
+      (_, index) =>
+        `https://concurrent-${index}.example.test/api/stella/prompts`,
+    );
+    await Promise.all(
+      endpoints.map((endpoint, index) =>
+        recordAppliedPromptManifest({
+          stellaDataDir: home,
+          endpoint,
+          manifest: manifest(index + 1),
+        }),
+      ),
+    );
+    resetPromptAppliedStateMemoryForTests();
+
+    const persisted = JSON.parse(
+      await readFile(
+        path.join(home, "cache/prompt-applied-state.json"),
+        "utf-8",
+      ),
+    );
+    expect(Object.keys(persisted.entries).sort()).toEqual(endpoints.sort());
+  });
+
   it("canonicalizes accepted site URL forms to the same prompt endpoint", () => {
     expect(
       stellaPromptEndpointFromSiteUrl(

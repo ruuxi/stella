@@ -218,6 +218,7 @@ export const replacePersonalityIfHomeHashMatches = (args: {
   staged: string;
   expectedHomeHash: string | null;
   onAfterTargetCaptured?: () => void;
+  onAfterInstalledTargetVerified?: () => void;
 }): boolean => {
   const stagedHash = sha256(fs.readFileSync(args.staged, "utf-8"));
   const installExclusively = (): boolean => {
@@ -273,8 +274,12 @@ export const replacePersonalityIfHomeHashMatches = (args: {
     return false;
   }
 
-  const guardAfterHash = sha256(fs.readFileSync(guard, "utf-8"));
   const targetAfterHash = sha256(fs.readFileSync(args.target, "utf-8"));
+  args.onAfterInstalledTargetVerified?.();
+  // This is deliberately the final read before guard removal. A write through
+  // an old descriptor during target verification changes this inode and forces
+  // conflict recovery instead of silently discarding the edit.
+  const guardAfterHash = sha256(fs.readFileSync(guard, "utf-8"));
   if (guardAfterHash !== args.expectedHomeHash) {
     if (targetAfterHash === stagedHash) {
       fs.rmSync(args.target, { force: true });
@@ -292,10 +297,10 @@ export const replacePersonalityIfHomeHashMatches = (args: {
     return false;
   }
 
-  // Residual limitation: an unrelated process that keeps the old inode open
-  // can write after this final verification but before guard removal. Node has
-  // no portable compare-and-swap/exchange primitive for closing that final
-  // cross-process descriptor window. Path-based editor saves are fully gated.
+  // Residual limitation begins only after the final guard-inode read above: an
+  // unrelated process can still write through that old open descriptor before
+  // guard removal. Node has no portable compare-and-swap/exchange primitive
+  // for closing those final two filesystem operations. Path saves are gated.
   fs.rmSync(guard, { force: true });
   return true;
 };
