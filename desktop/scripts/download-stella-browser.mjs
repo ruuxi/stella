@@ -19,12 +19,18 @@ const DEFAULT_MANIFEST_URL =
 
 const args = process.argv.slice(2);
 let manifestUrl = DEFAULT_MANIFEST_URL;
+let manifestFile = "";
+let expectedSourceSha = "";
 let platformOverride = "";
 let force = false;
 for (let index = 0; index < args.length; index += 1) {
   const arg = args[index];
   if (arg === "--manifest-url" && args[index + 1]) {
     manifestUrl = args[++index];
+  } else if (arg === "--manifest-file" && args[index + 1]) {
+    manifestFile = args[++index];
+  } else if (arg === "--expected-source-sha" && args[index + 1]) {
+    expectedSourceSha = args[++index].trim();
   } else if (arg === "--platform" && args[index + 1]) {
     platformOverride = args[++index];
   } else if (arg === "--force") {
@@ -73,13 +79,25 @@ const normalizeSha = (value) =>
     .replace(/^sha256:/i, "")
     .toLowerCase();
 
-const response = await fetch(manifestUrl);
-if (!response.ok) {
+const manifest = manifestFile
+  ? JSON.parse(readFileSync(path.resolve(manifestFile), "utf8"))
+  : await (async () => {
+      const response = await fetch(manifestUrl);
+      if (!response.ok) {
+        throw new Error(
+          `Stella Browser manifest download failed (${response.status}).`,
+        );
+      }
+      return await response.json();
+    })();
+if (
+  expectedSourceSha &&
+  String(manifest?.sourceSha ?? "").trim() !== expectedSourceSha
+) {
   throw new Error(
-    `Stella Browser manifest download failed (${response.status}).`,
+    `Stella Browser manifest sourceSha did not match ${expectedSourceSha}.`,
   );
 }
-const manifest = await response.json();
 const asset = manifest?.assets?.[platformKey];
 if (
   !asset ||
@@ -138,7 +156,8 @@ try {
     `${JSON.stringify(
       {
         schemaVersion: 1,
-        sourceManifestUrl: manifestUrl,
+        sourceManifestUrl: manifestFile ? null : manifestUrl,
+        sourceManifestFile: manifestFile ? path.resolve(manifestFile) : null,
         sourceSha: manifest.sourceSha ?? null,
         platform: platformKey,
         asset,

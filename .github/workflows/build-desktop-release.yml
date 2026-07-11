@@ -15,7 +15,54 @@ permissions:
   contents: write
 
 jobs:
+  resolve-stella-browser:
+    # Ship ordering: Build Stella Browser must publish current.json first.
+    # Desktop releases intentionally fail here rather than package no binary or
+    # mix mutable browser versions across matrix/publish jobs.
+    runs-on: ubuntu-latest
+    outputs:
+      source-sha: ${{ steps.pin.outputs.source_sha }}
+    steps:
+      - name: Resolve immutable Stella Browser manifest
+        id: pin
+        env:
+          R2_PUBLIC_BASE_URL: https://pub-a319aaada8144dc9be5a83625033769c.r2.dev
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-pins
+          current_manifest="$(mktemp)"
+          curl --fail --show-error --silent \
+            "${R2_PUBLIC_BASE_URL%/}/stella-browser/current.json" \
+            --output "$current_manifest"
+          source_sha="$(node -e '
+            const manifest = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            const sha = String(manifest.sourceSha || "").trim();
+            if (!/^[0-9a-f]{40,64}$/i.test(sha)) throw new Error("Invalid Stella Browser sourceSha");
+            process.stdout.write(sha);
+          ' "$current_manifest")"
+          immutable_url="${R2_PUBLIC_BASE_URL%/}/stella-browser/${source_sha}/manifest.json"
+          curl --fail --show-error --silent \
+            "$immutable_url" \
+            --output release-pins/stella-browser-manifest.json
+          node - "$source_sha" release-pins/stella-browser-manifest.json <<'NODE'
+          const { readFileSync } = require("node:fs");
+          const [expectedSha, manifestPath] = process.argv.slice(2);
+          const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+          if (manifest.sourceSha !== expectedSha) {
+            throw new Error(`Immutable Stella Browser manifest mismatch: expected ${expectedSha}, got ${manifest.sourceSha}`);
+          }
+          NODE
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-pin-stella-browser
+          path: release-pins/stella-browser-manifest.json
+          retention-days: 7
+
   desktop:
+    needs: resolve-stella-browser
     strategy:
       matrix:
         include:
@@ -51,6 +98,8 @@ jobs:
           bun-version: latest
 
       - name: Install desktop dependencies
+        env:
+          STELLA_SKIP_BROWSER_HYDRATE: "1"
         shell: bash
         run: |
           set -euo pipefail
@@ -67,11 +116,20 @@ jobs:
           node desktop/scripts/download-native-helpers.mjs --platform "${{ matrix.platform }}" --force
           test -f "desktop/native/out/${STELLA_NATIVE_HELPER_PLATFORM_DIR}/.stella-native-helpers.json"
 
-      - name: Download published Stella Browser service
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-pin-stella-browser
+          path: release-pins
+
+      - name: Download pinned Stella Browser service
         shell: bash
         run: |
           set -euo pipefail
-          node desktop/scripts/download-stella-browser.mjs --platform "${{ matrix.platform }}" --force
+          node desktop/scripts/download-stella-browser.mjs \
+            --manifest-file release-pins/stella-browser-manifest.json \
+            --expected-source-sha "${{ needs.resolve-stella-browser.outputs.source-sha }}" \
+            --platform "${{ matrix.platform }}" \
+            --force
           test -f "desktop/stella-browser/out/${{ matrix.platform }}/.stella-browser.json"
 
       - name: Package release tarball
@@ -171,6 +229,7 @@ jobs:
   publish-release:
     if: startsWith(github.ref, 'refs/tags/')
     needs:
+      - resolve-stella-browser
       - desktop
     runs-on: ubuntu-latest
 
@@ -185,6 +244,11 @@ jobs:
           path: release-assets
           pattern: stella-*
           merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-pin-stella-browser
+          path: release-pins
 
       - name: Generate desktop source pack
         shell: bash
@@ -211,22 +275,20 @@ jobs:
           release_dir="desktop/releases/${tag}"
           manifest_path="$(mktemp)"
           native_helpers_manifest_path="$(mktemp)"
-          stella_browser_manifest_path="$(mktemp)"
+          stella_browser_manifest_path="release-pins/stella-browser-manifest.json"
           curl --fail --show-error --silent \
             "${R2_PUBLIC_BASE_URL%/}/native-helpers/current.json" \
             --output "$native_helpers_manifest_path"
-          curl --fail --show-error --silent \
-            "${R2_PUBLIC_BASE_URL%/}/stella-browser/current.json" \
-            --output "$stella_browser_manifest_path"
 
-          node - "$manifest_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" "$native_helpers_manifest_path" "$stella_browser_manifest_path" release-assets/stella-desktop-source-pack.json release-assets/stella-desktop-source-history.json release-assets/stella-desktop-*.tar.zst <<'NODE'
+          node - "$manifest_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" "$native_helpers_manifest_path" "$stella_browser_manifest_path" "${{ needs.resolve-stella-browser.outputs.source-sha }}" release-assets/stella-desktop-source-pack.json release-assets/stella-desktop-source-history.json release-assets/stella-desktop-*.tar.zst <<'NODE'
           const { createHash } = require("node:crypto");
           const { existsSync, readFileSync, statSync, writeFileSync } = require("node:fs");
           const { basename } = require("node:path");
 
-          const [manifestPath, tag, commit, publicBaseUrl, nativeHelpersManifestPath, stellaBrowserManifestPath, sourcePackPath, sourceHistoryPath, ...archivePaths] = process.argv.slice(2);
+          const [manifestPath, tag, commit, publicBaseUrl, nativeHelpersManifestPath, stellaBrowserManifestPath, expectedBrowserSourceSha, sourcePackPath, sourceHistoryPath, ...archivePaths] = process.argv.slice(2);
           const nativeHelpersManifest = JSON.parse(readFileSync(nativeHelpersManifestPath, "utf8"));
           const stellaBrowserManifest = JSON.parse(readFileSync(stellaBrowserManifestPath, "utf8"));
+          if (stellaBrowserManifest.sourceSha !== expectedBrowserSourceSha) throw new Error("Pinned Stella Browser manifest sourceSha changed");
           const releaseFileRef = (filePath) =>
             existsSync(filePath)
               ? {
@@ -362,22 +424,20 @@ jobs:
           tag="${GITHUB_REF_NAME}"
           payload_path="$(mktemp)"
           native_helpers_manifest_path="$(mktemp)"
-          stella_browser_manifest_path="$(mktemp)"
+          stella_browser_manifest_path="release-pins/stella-browser-manifest.json"
           curl --fail --show-error --silent \
             "${R2_PUBLIC_BASE_URL%/}/native-helpers/current.json" \
             --output "$native_helpers_manifest_path"
-          curl --fail --show-error --silent \
-            "${R2_PUBLIC_BASE_URL%/}/stella-browser/current.json" \
-            --output "$stella_browser_manifest_path"
 
-          node - "$payload_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" "$native_helpers_manifest_path" "$stella_browser_manifest_path" release-assets/stella-desktop-source-pack.json release-assets/stella-desktop-source-history.json release-assets/stella-desktop-*.tar.zst <<'NODE'
+          node - "$payload_path" "$tag" "$GITHUB_SHA" "$R2_PUBLIC_BASE_URL" "$native_helpers_manifest_path" "$stella_browser_manifest_path" "${{ needs.resolve-stella-browser.outputs.source-sha }}" release-assets/stella-desktop-source-pack.json release-assets/stella-desktop-source-history.json release-assets/stella-desktop-*.tar.zst <<'NODE'
           const { createHash } = require("node:crypto");
           const { existsSync, readFileSync, statSync, writeFileSync } = require("node:fs");
           const { basename } = require("node:path");
 
-          const [payloadPath, tag, commit, publicBaseUrl, nativeHelpersManifestPath, stellaBrowserManifestPath, sourcePackPath, sourceHistoryPath, ...archivePaths] = process.argv.slice(2);
+          const [payloadPath, tag, commit, publicBaseUrl, nativeHelpersManifestPath, stellaBrowserManifestPath, expectedBrowserSourceSha, sourcePackPath, sourceHistoryPath, ...archivePaths] = process.argv.slice(2);
           const nativeHelpersManifest = JSON.parse(readFileSync(nativeHelpersManifestPath, "utf8"));
           const stellaBrowserManifest = JSON.parse(readFileSync(stellaBrowserManifestPath, "utf8"));
+          if (stellaBrowserManifest.sourceSha !== expectedBrowserSourceSha) throw new Error("Pinned Stella Browser manifest sourceSha changed");
           const releaseFileRef = (filePath) =>
             existsSync(filePath)
               ? {

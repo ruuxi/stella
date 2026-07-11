@@ -77,4 +77,10 @@ describe("activateStagedStellaBrowserBinary", () => {
     await writeFile(hydratedPath, "hydrated");
     expect(resolveStellaBrowserBinaryPath(root)).toBe(hydratedPath);
   });
+
+  it("returns null instead of inventing a nonexistent executable path", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "stella-browser-root-"));
+    roots.push(root);
+    expect(resolveStellaBrowserBinaryPath(root)).toBeNull();
+  });
 });

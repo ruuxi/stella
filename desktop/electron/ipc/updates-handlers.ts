@@ -2698,6 +2698,173 @@ const listUntrackedFiles = async (stellaAppDir: string): Promise<string[]> => {
   return parseGitNulList(result.stdout);
 };
 
+const listIgnoredPaths = async (stellaAppDir: string): Promise<string[]> => {
+  const result = await runGit(stellaAppDir, [
+    "-c",
+    "core.quotepath=false",
+    "ls-files",
+    "--others",
+    "--ignored",
+    "--exclude-standard",
+    "--directory",
+    "-z",
+  ]);
+  if (result.exitCode !== 0) {
+    throw new Error(
+      gitFailureDetail(result, "Could not inspect ignored install paths."),
+    );
+  }
+  return parseGitNulList(result.stdout);
+};
+
+const topmostRepoPaths = (paths: string[]): string[] => {
+  const sorted = [...new Set(paths)].sort(
+    (left, right) => left.length - right.length || left.localeCompare(right),
+  );
+  return sorted.filter(
+    (candidate, index) =>
+      !sorted
+        .slice(0, index)
+        .some((parent) => repoPathOverlaps(parent, candidate)),
+  );
+};
+
+type ContentLandingRecoverySnapshot = {
+  recoveryRoot: string;
+  recoveryRef: string;
+  snapshotCommit: string;
+  movedObstructions: Array<{ path: string; backupPath: string }>;
+};
+
+const createContentLandingRecoverySnapshot = async (args: {
+  stellaAppDir: string;
+  stellaDataDir: string;
+  baseCommit: string;
+  targetCommit: string;
+  releaseTag: string;
+  overlay: DesktopContentOverlay;
+  obstructionPaths: string[];
+}): Promise<ContentLandingRecoverySnapshot> => {
+  const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const recoveryRoot = path.join(
+    args.stellaDataDir,
+    "raw",
+    "desktop-update-recovery",
+    id,
+  );
+  await fs.mkdir(recoveryRoot, { recursive: true });
+
+  const startingHead = await readHeadCommit(args.stellaAppDir);
+  const stashResult = await runGit(args.stellaAppDir, [
+    "stash",
+    "create",
+    `Stella desktop update recovery ${id}`,
+  ]);
+  if (stashResult.exitCode !== 0) {
+    throw new Error(
+      gitFailureDetail(
+        stashResult,
+        "Could not snapshot the install before content landing.",
+      ),
+    );
+  }
+  const snapshotCommit = stashResult.stdout.trim() || startingHead;
+  const recoveryRef = `refs/stella/update-recovery/${id}`;
+  const refResult = await runGit(args.stellaAppDir, [
+    "update-ref",
+    recoveryRef,
+    snapshotCommit,
+  ]);
+  if (refResult.exitCode !== 0) {
+    throw new Error(
+      gitFailureDetail(
+        refResult,
+        "Could not preserve the pre-update recovery ref.",
+      ),
+    );
+  }
+
+  const movedObstructions: ContentLandingRecoverySnapshot["movedObstructions"] =
+    [];
+  const snapshot = {
+    recoveryRoot,
+    recoveryRef,
+    snapshotCommit,
+    movedObstructions,
+  };
+
+  try {
+    for (const repoPath of topmostRepoPaths(args.obstructionPaths)) {
+      const sourcePath = path.join(args.stellaAppDir, ...repoPath.split("/"));
+      const backupPath = path.join(
+        recoveryRoot,
+        "obstructions",
+        ...repoPath.split("/"),
+      );
+      await fs.mkdir(path.dirname(backupPath), { recursive: true });
+      try {
+        await fs.rename(sourcePath, backupPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EXDEV") {
+          await fs.cp(sourcePath, backupPath, { recursive: true });
+          await fs.rm(sourcePath, { recursive: true, force: true });
+        } else {
+          throw error;
+        }
+      }
+      movedObstructions.push({ path: repoPath, backupPath });
+    }
+
+    await fs.writeFile(
+      path.join(recoveryRoot, "snapshot.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          createdAt: new Date().toISOString(),
+          releaseTag: args.releaseTag,
+          baseCommit: args.baseCommit,
+          targetCommit: args.targetCommit,
+          startingHead,
+          snapshotCommit,
+          recoveryRef,
+          overlay: args.overlay,
+          movedObstructions,
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    return snapshot;
+  } catch (error) {
+    await restoreContentLandingObstructions(args.stellaAppDir, snapshot).catch(
+      () => undefined,
+    );
+    throw error;
+  }
+};
+
+const restoreContentLandingObstructions = async (
+  stellaAppDir: string,
+  snapshot: ContentLandingRecoverySnapshot,
+): Promise<void> => {
+  for (const entry of [...snapshot.movedObstructions].reverse()) {
+    const restorePath = path.join(stellaAppDir, ...entry.path.split("/"));
+    await fs.mkdir(path.dirname(restorePath), { recursive: true });
+    await fs.rm(restorePath, { recursive: true, force: true });
+    try {
+      await fs.rename(entry.backupPath, restorePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EXDEV") {
+        await fs.cp(entry.backupPath, restorePath, { recursive: true });
+        await fs.rm(entry.backupPath, { recursive: true, force: true });
+      } else {
+        throw error;
+      }
+    }
+  }
+};
+
 const isLegacyTrackedBrowserBinaryPath = (filePath: string): boolean =>
   /^desktop\/stella-browser\/bin\/stella-browser-(?:darwin|linux|win32)-/.test(
     filePath,
@@ -2743,6 +2910,7 @@ const listLegacyBrowserPathsRemovedByTarget = async (
  */
 const tryLandContentCleanPublishedTree = async (
   stellaAppDir: string,
+  stellaDataDir: string,
   runner: StellaHostRunner | null,
   args: {
     baseCommit: string;
@@ -2812,20 +2980,41 @@ const tryLandContentCleanPublishedTree = async (
     );
   }
   const changedFiles = parseGitNulList(changedResult.stdout);
-  const untrackedFiles = await listUntrackedFiles(stellaAppDir);
+  const targetFilesResult = await runGit(stellaAppDir, [
+    "-c",
+    "core.quotepath=false",
+    "ls-tree",
+    "-r",
+    "--name-only",
+    "-z",
+    args.targetCommit,
+    "--",
+    ...changedFiles,
+  ]);
+  if (targetFilesResult.exitCode !== 0) {
+    throw new Error(
+      gitFailureDetail(
+        targetFilesResult,
+        "Could not inspect target paths before content landing.",
+      ),
+    );
+  }
+  const targetFiles = parseGitNulList(targetFilesResult.stdout);
+  const [untrackedFiles, ignoredPaths] = await Promise.all([
+    listUntrackedFiles(stellaAppDir),
+    listIgnoredPaths(stellaAppDir),
+  ]);
   const obstructingUntrackedFiles = findOverlappingRepoPaths(
     untrackedFiles,
-    changedFiles,
+    targetFiles,
   );
-  if (obstructingUntrackedFiles.length > 0) {
-    logDesktopUpdateWarn("desktop-update.content-landing.obstructed", {
-      releaseTag: args.releaseTag,
-      obstructingUntrackedFiles,
-      changedFileCount: changedFiles.length,
-      changedFileScope: "release-update-files",
-    });
-    return null;
-  }
+  const obstructingIgnoredPaths = findOverlappingRepoPaths(
+    ignoredPaths,
+    targetFiles,
+  );
+  const obstructionPaths = [
+    ...new Set([...obstructingUntrackedFiles, ...obstructingIgnoredPaths]),
+  ];
 
   if (changedFiles.length > 0 && !runner) {
     return {
@@ -2873,12 +3062,34 @@ const tryLandContentCleanPublishedTree = async (
       changedFileCount: changedFiles.length,
       changedFileScope: "release-update-files",
     });
+    const recoverySnapshot = await createContentLandingRecoverySnapshot({
+      stellaAppDir,
+      stellaDataDir,
+      baseCommit: args.baseCommit,
+      targetCommit: args.targetCommit,
+      releaseTag: args.releaseTag,
+      overlay,
+      obstructionPaths,
+    });
+    logDesktopUpdateProcess("desktop-update.content-landing.snapshot", {
+      runId,
+      releaseTag: args.releaseTag,
+      recoveryRoot: recoverySnapshot.recoveryRoot,
+      recoveryRef: recoverySnapshot.recoveryRef,
+      snapshotCommit: shortCommit(recoverySnapshot.snapshotCommit),
+      movedObstructionPaths: recoverySnapshot.movedObstructions.map(
+        (entry) => entry.path,
+      ),
+      ignoredObstructionPaths: obstructingIgnoredPaths,
+      untrackedObstructionPaths: obstructingUntrackedFiles,
+    });
     const resetResult = await runGit(stellaAppDir, [
       "reset",
       "--hard",
       args.targetCommit,
     ]);
     if (resetResult.exitCode !== 0) {
+      await restoreContentLandingObstructions(stellaAppDir, recoverySnapshot);
       throw new Error(
         gitFailureDetail(
           resetResult,
@@ -3072,6 +3283,7 @@ const tryApplySourcePackDesktopUpdate = async (
     );
     const contentLanding = await tryLandContentCleanPublishedTree(
       stellaAppDir,
+      stellaDataDir,
       runner,
       {
         baseCommit: args.baseCommit,
@@ -3701,6 +3913,7 @@ export const tryApplyCleanDesktopUpdate = async (
 
   const contentLanding = await tryLandContentCleanPublishedTree(
     stellaAppDir,
+    stellaDataDir,
     runner,
     args,
   );

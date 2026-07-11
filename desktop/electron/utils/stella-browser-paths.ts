@@ -111,7 +111,7 @@ export const resolveStellaBrowserBinaryPath = (
   const hydrated = resolveHydratedStellaBrowserBinaryPath(stellaBrowserRoot);
   if (hydrated && existsSync(hydrated)) return hydrated;
   const legacy = resolveLegacyStellaBrowserBinaryPath(stellaBrowserRoot);
-  return legacy && existsSync(legacy) ? legacy : (hydrated ?? legacy);
+  return legacy && existsSync(legacy) ? legacy : null;
 };
 
 const promoteStagedBinary = (binaryPath: string): boolean => {

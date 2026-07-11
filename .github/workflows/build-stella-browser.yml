@@ -1,5 +1,8 @@
 name: Build Stella Browser
 
+# Run/publish this workflow before the first desktop release that removes the
+# legacy tracked bin/ executables. Existing installs retain the bin/ fallback.
+
 on:
   push:
     branches: [master]
@@ -9,11 +12,6 @@ on:
       - "desktop/stella-browser/scripts/**"
       - ".github/workflows/build-stella-browser.yml"
   workflow_dispatch:
-    inputs:
-      source_sha:
-        description: "Optional source SHA key (defaults to commit SHA)"
-        required: false
-        default: ""
 
 permissions:
   contents: read
@@ -114,7 +112,7 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_PUBLIC_BASE_URL: https://pub-a319aaada8144dc9be5a83625033769c.r2.dev
-          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
+          SOURCE_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail

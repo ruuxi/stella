@@ -26,13 +26,13 @@
     "workspace:create-app": "cd desktop && node scripts/create-workspace-app.mjs",
     "electron:install": "bun ./node_modules/electron/install.js",
     "deps:prewarm": "node desktop/scripts/prewarm-vite-deps.mjs",
-    "electron:dev": "node desktop/scripts/electron-dev-runner.mjs",
+    "electron:dev": "node desktop/scripts/ensure-stella-browser.mjs --allow-build-fallback && node desktop/scripts/electron-dev-runner.mjs",
     "electron:typecheck": "cd desktop && ../node_modules/typescript-7/bin/tsc -p tsconfig.electron.json --pretty false --noEmit && ../node_modules/typescript-7/bin/tsc -p tsconfig.preload.json --pretty false --noEmit",
     "electron:typecheck:watch": "cd desktop && concurrently -k --kill-others-on-fail \"../node_modules/typescript-7/bin/tsc -w -p tsconfig.electron.json --preserveWatchOutput --noEmit\" \"../node_modules/typescript-7/bin/tsc -w -p tsconfig.preload.json --preserveWatchOutput --noEmit\"",
     "electron:build": "bun run native:build && cd desktop && ../node_modules/typescript-7/bin/tsc --build && vite build && node scripts/check-renderer-bundle-budget.mjs && ../node_modules/typescript-7/bin/tsc -p tsconfig.electron.json && ../node_modules/typescript-7/bin/tsc -p tsconfig.preload.json && cd .. && electron-builder",
     "electron:preview": "bun run electron:dev:low-resource",
     "electron:dev:low-resource": "node desktop/scripts/electron-low-resource-build.mjs && node desktop/scripts/electron-static-preview.mjs",
-    "postinstall": "node desktop/scripts/postinstall-dist-electron.mjs",
+    "postinstall": "node desktop/scripts/postinstall-dist-electron.mjs && node desktop/scripts/ensure-stella-browser.mjs --allow-build-fallback --best-effort",
     "check:boundary": "node runtime/scripts/check-boundary.mjs"
   },
   "dependencies": {

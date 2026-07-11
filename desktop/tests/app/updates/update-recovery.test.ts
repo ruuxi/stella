@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -810,6 +817,79 @@ describe("recoverInterruptedDesktopUpdate", () => {
         targetCommit,
       },
     });
+  });
+
+  it("moves ignored target obstructions aside and snapshots the pre-reset install", async () => {
+    await writeFile(path.join(repoRoot, ".gitignore"), "runtime-cache/\n");
+    git(repoRoot, ["add", ".gitignore"]);
+    git(repoRoot, ["commit", "-m", "Ignore runtime cache"]);
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    await mkdir(path.join(repoRoot, "runtime-cache"), { recursive: true });
+    await writeFile(
+      path.join(repoRoot, "runtime-cache", "config.json"),
+      "published target\n",
+    );
+    git(repoRoot, ["add", "-f", "runtime-cache/config.json"]);
+    git(repoRoot, ["commit", "-m", "Publish formerly ignored path"]);
+    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    git(repoRoot, ["reset", "--hard", baseCommit]);
+    await mkdir(path.join(repoRoot, "runtime-cache"), { recursive: true });
+    await writeFile(
+      path.join(repoRoot, "runtime-cache", "config.json"),
+      "user runtime data\n",
+    );
+    git(repoRoot, ["remote", "add", "origin", repoRoot]);
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: null,
+    });
+    await writeNativeHelperDownloadStub(repoRoot);
+    const runner = {
+      beginExternalSelfMod: vi.fn(async () => undefined),
+      finishExternalSelfMod: vi.fn(async () => undefined),
+    } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
+
+    const result = await tryApplyCleanDesktopUpdate(
+      repoRoot,
+      repoRoot,
+      runner,
+      {
+        baseCommit,
+        targetCommit,
+        releaseTag: "desktop-v9.9.19",
+      },
+    );
+
+    expect(result.status).toBe("applied");
+    await expect(
+      readFile(path.join(repoRoot, "runtime-cache", "config.json"), "utf8"),
+    ).resolves.toBe("published target\n");
+    const recoveryBase = path.join(repoRoot, "raw", "desktop-update-recovery");
+    const recoveryIds = await readdir(recoveryBase);
+    expect(recoveryIds).toHaveLength(1);
+    const snapshot = JSON.parse(
+      await readFile(
+        path.join(recoveryBase, recoveryIds[0]!, "snapshot.json"),
+        "utf8",
+      ),
+    ) as {
+      recoveryRef: string;
+      movedObstructions: Array<{ path: string; backupPath: string }>;
+    };
+    expect(snapshot.recoveryRef).toMatch(/^refs\/stella\/update-recovery\//);
+    expect(
+      git(repoRoot, ["show-ref", "--verify", snapshot.recoveryRef]).status,
+    ).toBe(0);
+    const moved = snapshot.movedObstructions.find((entry) =>
+      entry.path.startsWith("runtime-cache"),
+    );
+    expect(moved).toBeDefined();
+    const movedUserFile = moved!.path.endsWith("/")
+      ? path.join(moved!.backupPath, "config.json")
+      : moved!.backupPath;
+    await expect(readFile(movedUserFile, "utf8")).resolves.toBe(
+      "user runtime data\n",
+    );
   });
 
   it("lands divergent synthetic lineage directly on the published commit when the content overlay is empty", async () => {
