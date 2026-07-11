@@ -24,7 +24,10 @@ import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { shouldRestartElectronForBuildPath } from "./dev-electron-restart-filter.mjs";
-import { classifyElectronExit } from "./dev-electron-exit-policy.mjs";
+import {
+  classifyElectronExit,
+  shouldSuppressWatcherRestart,
+} from "./dev-electron-exit-policy.mjs";
 import {
   prepareMacDevAppBundle,
   resolveDisclaimBinary,
@@ -46,6 +49,10 @@ const runtimeReloadStateFile = path.join(
 const devRestartRequestFile = path.join(
   repoRootDir,
   ".stella-dev-restart-request",
+);
+const devUserQuitRequestFile = path.join(
+  repoRootDir,
+  ".stella-dev-user-quit-request",
 );
 // Records the pid of the currently-launched Electron app so the next dev
 // start can reap a leftover tree. On macOS `terminateStaleDevApps` scans
@@ -764,6 +771,8 @@ exec "$electron_bin" "\${non_launch_args[@]}"
     return true;
   };
 
+  const hasDevUserQuitRequest = () => existsSync(devUserQuitRequestFile);
+
   const waitForDevRestartRequest = async () => {
     const deadline = Date.now() + devRestartRequestGraceMs;
     while (!shuttingDown && Date.now() < deadline) {
@@ -789,6 +798,8 @@ exec "$electron_bin" "\${non_launch_args[@]}"
       return;
     }
 
+    rmSync(devUserQuitRequestFile, { force: true });
+
     const useDisclaim = disclaimBinary && existsSync(disclaimBinary);
     const spawnCmd = useDisclaim ? disclaimBinary : electronBinary;
     const spawnArgs = useDisclaim ? [electronBinary, "."] : ["."];
@@ -799,6 +810,7 @@ exec "$electron_bin" "\${non_launch_args[@]}"
         ...process.env,
         NODE_ENV: "development",
         STELLA_DEV_RESTART_REQUEST_FILE: devRestartRequestFile,
+        STELLA_DEV_USER_QUIT_REQUEST_FILE: devUserQuitRequestFile,
         ...resolveProtectedStorageEnv(launcherProtectedStorageBin),
         ...(electronEnv ?? {}),
       },
@@ -929,6 +941,14 @@ exec "$electron_bin" "\${non_launch_args[@]}"
       restartQueue = restartQueue
         .catch(() => undefined)
         .then(async () => {
+          if (
+            shouldSuppressWatcherRestart({
+              userQuitRequested: hasDevUserQuitRequest(),
+              explicitRestartRequested: existsSync(devRestartRequestFile),
+            })
+          ) {
+            return;
+          }
           await stopApp();
           await waitForBuildOutputsToSettle();
           // A restart-relevant change set can also rewrite vite.config.ts

@@ -16,3 +16,8 @@ export const classifyElectronExit = ({
   if (watcherRestartRequested) return "restart";
   return "wait-then-stop";
 };
+
+export const shouldSuppressWatcherRestart = ({
+  userQuitRequested,
+  explicitRestartRequested,
+}) => userQuitRequested && !explicitRestartRequested;

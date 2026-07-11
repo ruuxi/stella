@@ -1,4 +1,5 @@
 import { app, dialog, globalShortcut } from "electron";
+import { writeFileSync } from "node:fs";
 import { applyDockIcon } from "../app-icon.js";
 import type { BootstrapContext } from "./context.js";
 import { shutdownBootstrapRuntime } from "./resets.js";
@@ -111,6 +112,15 @@ export const registerBootstrapLifecycle = (context: BootstrapContext) => {
   app.on("before-quit", (event) => {
     if (quitAfterCleanup) {
       return;
+    }
+
+    const devUserQuitRequestFile = process.env.STELLA_DEV_USER_QUIT_REQUEST_FILE;
+    if (devUserQuitRequestFile) {
+      try {
+        writeFileSync(devUserQuitRequestFile, `${process.pid}\n`, "utf8");
+      } catch {
+        // Best-effort dev-supervisor signal; quitting must never depend on it.
+      }
     }
 
     event.preventDefault();

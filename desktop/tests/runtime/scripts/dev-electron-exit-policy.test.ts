@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyElectronExit } from "../../../scripts/dev-electron-exit-policy.mjs";
+import {
+  classifyElectronExit,
+  shouldSuppressWatcherRestart,
+} from "../../../scripts/dev-electron-exit-policy.mjs";
 
 describe("dev Electron exit policy", () => {
   it("lets an explicit relaunch request restart after a clean exit", () => {
@@ -45,5 +48,25 @@ describe("dev Electron exit policy", () => {
         watcherRestartRequested: false,
       }),
     ).toBe("wait-then-stop");
+  });
+});
+
+describe("dev Electron watcher restart suppression", () => {
+  it("suppresses a deferred watcher restart once the user starts quitting", () => {
+    expect(
+      shouldSuppressWatcherRestart({
+        userQuitRequested: true,
+        explicitRestartRequested: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("lets an explicit relaunch override the user-quit marker", () => {
+    expect(
+      shouldSuppressWatcherRestart({
+        userQuitRequested: true,
+        explicitRestartRequested: true,
+      }),
+    ).toBe(false);
   });
 });
