@@ -24,6 +24,7 @@ import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { shouldRestartElectronForBuildPath } from "./dev-electron-restart-filter.mjs";
+import { classifyElectronExit } from "./dev-electron-exit-policy.mjs";
 import {
   prepareMacDevAppBundle,
   resolveDisclaimBinary,
@@ -830,17 +831,22 @@ exec "$electron_bin" "\${non_launch_args[@]}"
         return;
       }
 
-      if (restartRequestedByWatcher) {
-        scheduleRestart();
-        return;
-      }
-
-      if (consumeDevRestartRequest()) {
+      const immediateRestartRequest = consumeDevRestartRequest();
+      const exitAction = classifyElectronExit({
+        code,
+        signal,
+        explicitRestartRequested: immediateRestartRequest,
+        watcherRestartRequested: restartRequestedByWatcher,
+      });
+      if (exitAction === "restart") {
         restartRequestedByWatcher = true;
         scheduleRestart();
         return;
       }
 
+      // A clean app quit wins over a deferred watcher restart. Still allow the
+      // explicit relaunch IPC a short grace window in case its marker write and
+      // the child exit race at the filesystem boundary.
       if (await waitForDevRestartRequest()) {
         restartRequestedByWatcher = true;
         scheduleRestart();
