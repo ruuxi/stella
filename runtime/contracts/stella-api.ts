@@ -1,10 +1,9 @@
 const STELLA_API_BASE_PATH = "/api/stella";
 export const STELLA_MODELS_PATH = `${STELLA_API_BASE_PATH}/models`;
+export const STELLA_PROMPTS_PATH = `${STELLA_API_BASE_PATH}/prompts`;
 export const STELLA_RELAY_PATH_PREFIX = `${STELLA_API_BASE_PATH}/relay`;
-export const STELLA_CHAT_COMPLETIONS_PATH =
-  `${STELLA_RELAY_PATH_PREFIX}/chat/completions`;
-export const STELLA_OPENROUTER_CHAT_COMPLETIONS_PATH =
-  `${STELLA_API_BASE_PATH}/openrouter/api/v1/chat/completions`;
+export const STELLA_CHAT_COMPLETIONS_PATH = `${STELLA_RELAY_PATH_PREFIX}/chat/completions`;
+export const STELLA_OPENROUTER_CHAT_COMPLETIONS_PATH = `${STELLA_API_BASE_PATH}/openrouter/api/v1/chat/completions`;
 export const STELLA_DEFAULT_MODEL = "stella/default";
 export const STELLA_STANDARD_MODEL = "stella/standard";
 export type StellaRelayProvider =
@@ -40,7 +39,10 @@ export const stellaManagedRelayBaseUrlFromSiteUrl = (siteUrl: string): string =>
 
 type ChatContentPart =
   | { type?: string; text?: string }
-  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } };
+  | {
+      type: "image_url";
+      image_url: { url: string; detail?: "auto" | "low" | "high" };
+    };
 
 type ChatToolCall = {
   id: string;

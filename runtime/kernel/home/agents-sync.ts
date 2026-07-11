@@ -14,6 +14,7 @@ import {
   reconcileBundledEntries,
   summarizeBundledSync,
   type BundledSyncReport,
+  type BundledSyncOptions,
 } from "./bundled-sync.js";
 
 export type AgentsSyncReport = BundledSyncReport;
@@ -23,11 +24,13 @@ const AGENT_PROMPT_EXTENSION = ".md";
 export const reconcileBundledAgents = async (
   bundledAgentsDir: string,
   homeAgentsDir: string,
+  options: BundledSyncOptions = {},
 ): Promise<AgentsSyncReport> =>
   reconcileBundledEntries(
     bundledAgentsDir,
     homeAgentsDir,
     createFileEntryAdapter(AGENT_PROMPT_EXTENSION),
+    options,
   );
 
 export const summarizeAgentsSync = summarizeBundledSync;

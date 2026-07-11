@@ -27,14 +27,18 @@ import { ensurePrivateDir } from "../shared/private-fs.js";
  * one algorithm.
  */
 
-const MANIFEST_VERSION = 1 as const;
+const MANIFEST_VERSION = 2 as const;
 
 export type Sha256Hex = string;
 
 export type BundledSyncAction =
   | { type: "seed"; id: string; bundledHash: Sha256Hex }
   | { type: "update"; id: string; bundledHash: Sha256Hex }
-  | { type: "skip-user-modified"; id: string; reason: "diverged" | "no-manifest" }
+  | {
+      type: "skip-user-modified";
+      id: string;
+      reason: "diverged" | "no-manifest";
+    }
   | { type: "adopt-identical"; id: string; bundledHash: Sha256Hex }
   | { type: "remove-obsolete"; id: string }
   | { type: "skip-obsolete-user-modified"; id: string }
@@ -67,13 +71,25 @@ export type BundledSyncOptions = {
    * the first boot.
    */
   legacyEntriesKey?: string;
+  /** Revision of the canonical snapshot being reconciled. */
+  sourceRevision?: string;
+  /** Offline bootstrap mode: populate missing entries, never replace files. */
+  seedMissingOnly?: boolean;
+  /** Whether untouched entries absent from the source should be removed. */
+  removeObsolete?: boolean;
 };
 
 const DEFAULT_MANIFEST_FILENAME = ".bundled-manifest.json";
 
+export type BundledManifestEntry = {
+  lastSyncedHash: Sha256Hex;
+  sourceRevision: string;
+  customized: boolean;
+};
+
 type BundledManifest = {
   version: typeof MANIFEST_VERSION;
-  entries: Record<string, Sha256Hex>;
+  entries: Record<string, BundledManifestEntry>;
 };
 
 const readManifest = async (
@@ -88,24 +104,43 @@ const readManifest = async (
   }
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      (parsed as { version?: unknown }).version === MANIFEST_VERSION
-    ) {
+    if (parsed && typeof parsed === "object") {
       const record = parsed as Record<string, unknown>;
+      if (record.version !== 1 && record.version !== MANIFEST_VERSION) {
+        return null;
+      }
       // Prefer the canonical `entries` map, falling back to a caller-declared
       // legacy key so manifests written before the rename still apply updates.
       const rawEntries =
         record.entries ??
         (legacyEntriesKey ? record[legacyEntriesKey] : undefined);
       if (rawEntries && typeof rawEntries === "object") {
-        const clean: Record<string, Sha256Hex> = {};
-        for (const [id, hash] of Object.entries(
+        const clean: Record<string, BundledManifestEntry> = {};
+        for (const [id, value] of Object.entries(
           rawEntries as Record<string, unknown>,
         )) {
-          if (typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)) {
-            clean[id] = hash;
+          if (typeof value === "string" && /^[0-9a-f]{64}$/.test(value)) {
+            clean[id] = {
+              lastSyncedHash: value,
+              sourceRevision: "bundled:legacy",
+              customized: false,
+            };
+            continue;
+          }
+          if (value && typeof value === "object") {
+            const entry = value as Partial<BundledManifestEntry>;
+            if (
+              typeof entry.lastSyncedHash === "string" &&
+              /^[0-9a-f]{64}$/.test(entry.lastSyncedHash) &&
+              typeof entry.sourceRevision === "string" &&
+              typeof entry.customized === "boolean"
+            ) {
+              clean[id] = {
+                lastSyncedHash: entry.lastSyncedHash,
+                sourceRevision: entry.sourceRevision,
+                customized: entry.customized,
+              };
+            }
           }
         }
         return { version: MANIFEST_VERSION, entries: clean };
@@ -147,13 +182,19 @@ export const reconcileBundledEntries = async (
   const manifest =
     (await readManifest(manifestPath, options.legacyEntriesKey)) ??
     ({ version: MANIFEST_VERSION, entries: {} } as BundledManifest);
+  const sourceRevision = options.sourceRevision?.trim() || "bundled";
+  const seedMissingOnly = options.seedMissingOnly === true;
 
   const includeBundledId = options.includeBundledId ?? (() => true);
-  const bundledIds = (await adapter.listIds(bundledDir)).filter(includeBundledId);
+  const bundledIds = (await adapter.listIds(bundledDir)).filter(
+    includeBundledId,
+  );
   const homeIds = await adapter.listIds(homeDir);
 
   const actions: BundledSyncAction[] = [];
-  const nextEntries: Record<string, Sha256Hex> = {};
+  const nextEntries: Record<string, BundledManifestEntry> = {
+    ...manifest.entries,
+  };
 
   // 1. Reconcile every bundled entry against home + manifest.
   for (const id of bundledIds) {
@@ -161,33 +202,73 @@ export const reconcileBundledEntries = async (
     if (!bundledHash) continue;
 
     const homeHash = await adapter.hash(homeDir, id);
-    const recordedHash = manifest.entries[id];
+    const recorded = manifest.entries[id];
+    const recordedHash = recorded?.lastSyncedHash;
 
     if (homeHash === null) {
       await adapter.copy(bundledDir, homeDir, id);
-      nextEntries[id] = bundledHash;
+      nextEntries[id] = {
+        lastSyncedHash: bundledHash,
+        sourceRevision,
+        customized: false,
+      };
       actions.push({ type: "seed", id, bundledHash });
       continue;
     }
 
+    if (seedMissingOnly) {
+      // Bundled bootstrap runs after fresh/cached remote reconciliation. If a
+      // file already exists, its remote/customization history is authoritative;
+      // an older app bundle must not rewrite either the file or its metadata.
+      if (recorded) {
+        nextEntries[id] = recorded;
+        continue;
+      }
+      if (homeHash !== bundledHash) {
+        actions.push({
+          type: "skip-user-modified",
+          id,
+          reason: "no-manifest",
+        });
+        continue;
+      }
+    }
+
     if (homeHash === bundledHash) {
-      nextEntries[id] = bundledHash;
+      nextEntries[id] = {
+        lastSyncedHash: bundledHash,
+        sourceRevision,
+        customized: false,
+      };
       if (recordedHash !== bundledHash) {
         actions.push({ type: "adopt-identical", id, bundledHash });
       }
       continue;
     }
 
-    if (recordedHash !== undefined && recordedHash === homeHash) {
+    if (
+      !seedMissingOnly &&
+      recordedHash !== undefined &&
+      recordedHash === homeHash
+    ) {
       // Bundled changed, user hasn't touched it. Replace.
       await adapter.remove(homeDir, id);
       await adapter.copy(bundledDir, homeDir, id);
-      nextEntries[id] = bundledHash;
+      nextEntries[id] = {
+        lastSyncedHash: bundledHash,
+        sourceRevision,
+        customized: false,
+      };
       actions.push({ type: "update", id, bundledHash });
       continue;
     }
 
     // User diverged (or first run with no manifest entry). Never overwrite.
+    nextEntries[id] = {
+      lastSyncedHash: recordedHash ?? bundledHash,
+      sourceRevision: recorded?.sourceRevision ?? sourceRevision,
+      customized: true,
+    };
     actions.push({
       type: "skip-user-modified",
       id,
@@ -197,9 +278,10 @@ export const reconcileBundledEntries = async (
 
   // 2. Handle entries the bundle no longer ships.
   const bundledIdSet = new Set(bundledIds);
-  for (const id of homeIds) {
+  for (const id of options.removeObsolete === false ? [] : homeIds) {
     if (bundledIdSet.has(id)) continue;
-    const recordedHash = manifest.entries[id];
+    const recorded = manifest.entries[id];
+    const recordedHash = recorded?.lastSyncedHash;
     if (recordedHash === undefined) {
       actions.push({ type: "ignore-user-entry", id });
       continue;
@@ -207,8 +289,10 @@ export const reconcileBundledEntries = async (
     const homeHash = await adapter.hash(homeDir, id);
     if (homeHash !== null && homeHash === recordedHash) {
       await adapter.remove(homeDir, id);
+      delete nextEntries[id];
       actions.push({ type: "remove-obsolete", id });
     } else {
+      nextEntries[id] = { ...recorded, customized: true };
       actions.push({ type: "skip-obsolete-user-modified", id });
     }
   }
@@ -339,8 +423,7 @@ const hashDirectoryUnit = async (
 export const createDirectoryEntryAdapter = (
   isValidId: (id: string) => boolean = () => true,
 ): BundledEntryAdapter => ({
-  listIds: async (dir) =>
-    (await listSubdirectoryIds(dir)).filter(isValidId),
+  listIds: async (dir) => (await listSubdirectoryIds(dir)).filter(isValidId),
   hash: hashDirectoryUnit,
   copy: async (srcDir, destDir, id) => {
     await ensurePrivateDir(destDir);

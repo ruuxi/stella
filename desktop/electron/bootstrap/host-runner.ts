@@ -44,14 +44,28 @@ const IDLE_HMR_STATE: SelfModHmrState = {
 // so an in-process reset never needs to re-sync.
 let stellaDataDirSeedingPromise: Promise<void> | null = null;
 
+const waitForPromptSiteUrl = async (
+  getSiteUrl: () => string | null,
+): Promise<string | null> => {
+  const deadline = Date.now() + 1_500;
+  let siteUrl = getSiteUrl();
+  while (!siteUrl && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    siteUrl = getSiteUrl();
+  }
+  return siteUrl;
+};
+
 const ensureStellaDataDirSeededOnce = (
   stellaAppDir: string,
   stellaDataDirPath: string,
+  promptSiteUrl?: string | null,
 ): Promise<void> => {
   if (!stellaDataDirSeedingPromise) {
     stellaDataDirSeedingPromise = ensureStellaDataDirSeeded(
       stellaAppDir,
       stellaDataDirPath,
+      { promptSiteUrl },
     ).then(() => undefined);
   }
   return stellaDataDirSeedingPromise;
@@ -308,7 +322,14 @@ export const initializeStellaHostRunner = async (context: BootstrapContext) => {
   // Reconcile bundled skills/agents into the home dir before the worker
   // (spawned by connectHostRunner -> runner.start()/ensureWorkerStarted) reads
   // them. One-shot cached so host-runner resets don't re-pay it.
-  await ensureStellaDataDirSeededOnce(stellaAppDir, stellaDataDirPath);
+  const promptSiteUrl = await waitForPromptSiteUrl(() =>
+    services.authService.getConvexSiteUrl(),
+  );
+  await ensureStellaDataDirSeededOnce(
+    stellaAppDir,
+    stellaDataDirPath,
+    promptSiteUrl,
+  );
 
   await services.securityPolicyService.loadPolicy();
 

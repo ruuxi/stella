@@ -45,7 +45,10 @@ const readManifest = async (homeSkillsDir: string) => {
   );
   return JSON.parse(raw) as {
     version: number;
-    entries: Record<string, string>;
+    entries: Record<
+      string,
+      { lastSyncedHash: string; sourceRevision: string; customized: boolean }
+    >;
   };
 };
 
@@ -228,10 +231,11 @@ describe("reconcileBundledSkills", () => {
       readFile(path.join(home, "alpha", "SKILL.md"), "utf-8"),
     ).resolves.toBe("user edits");
 
-    // The user's modified skill must not be tracked in the manifest, or a
-    // later revert would silently re-sync without their consent.
+    // Preserve the last synced hash while marking the local copy customized.
     const manifest = await readManifest(home);
-    expect(manifest.entries.alpha).toBeUndefined();
+    expect(manifest.entries.alpha).toEqual(
+      expect.objectContaining({ customized: true }),
+    );
   });
 
   it("deletes obsolete files inside an unmodified skill when the bundle removes them", async () => {
@@ -287,7 +291,7 @@ describe("reconcileBundledSkills", () => {
     expect(manifest.entries.obsolete).toBeUndefined();
   });
 
-  it("keeps a user-modified obsolete skill but stops tracking it", async () => {
+  it("keeps a user-modified obsolete skill and retains its sync history", async () => {
     const bundled = await tempDir("stella-bundled-");
     const home = await tempDir("stella-home-skills-");
 
@@ -313,7 +317,9 @@ describe("reconcileBundledSkills", () => {
       readFile(path.join(home, "obsolete", "SKILL.md"), "utf-8"),
     ).resolves.toBe("user edits");
     const manifest = await readManifest(home);
-    expect(manifest.entries.obsolete).toBeUndefined();
+    expect(manifest.entries.obsolete).toEqual(
+      expect.objectContaining({ customized: true }),
+    );
   });
 
   it("ignores user-authored skills with no bundled counterpart and no manifest entry", async () => {
@@ -352,9 +358,7 @@ describe("reconcileBundledSkills", () => {
     const report = await reconcileBundledSkills(bundled, home);
 
     expect(
-      report.actions.find((a) =>
-        "id" in a ? a.id === "user-profile" : false,
-      ),
+      report.actions.find((a) => ("id" in a ? a.id === "user-profile" : false)),
     ).toBeUndefined();
     await expect(
       readFile(path.join(home, "user-profile", "SKILL.md"), "utf-8"),
@@ -387,7 +391,7 @@ describe("reconcileBundledSkills", () => {
     ).resolves.toBe("alpha v2");
   });
 
-  it("on first run with no manifest, leaves a diverged local copy alone forever", async () => {
+  it("on first run with no manifest, preserves and tracks a diverged local copy", async () => {
     const bundled = await tempDir("stella-bundled-");
     const home = await tempDir("stella-home-skills-");
 
@@ -408,7 +412,9 @@ describe("reconcileBundledSkills", () => {
       readFile(path.join(home, "alpha", "SKILL.md"), "utf-8"),
     ).resolves.toBe("user-edited");
     const manifest = await readManifest(home);
-    expect(manifest.entries.alpha).toBeUndefined();
+    expect(manifest.entries.alpha).toEqual(
+      expect.objectContaining({ customized: true }),
+    );
   });
 
   it("reads a legacy `skills` manifest so already-installed users still get updates", async () => {
