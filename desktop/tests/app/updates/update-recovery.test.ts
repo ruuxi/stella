@@ -950,6 +950,141 @@ describe("recoverInterruptedDesktopUpdate", () => {
     });
   });
 
+  it("discards a staged browser artifact when a content landing is deferred", async () => {
+    const browserBinaryName =
+      platformKey === "win-x64" ? "stella-browser.exe" : "stella-browser";
+    const browserRelativePath = `desktop/stella-browser/out/${platformKey}/${browserBinaryName}`;
+    const browserPath = path.join(repoRoot, ...browserRelativePath.split("/"));
+    const nextBrowserBytes = Buffer.from("deferred-browser-binary");
+    await mkdir(path.dirname(browserPath), { recursive: true });
+    await writeFile(browserPath, "old-browser-binary", { mode: 0o755 });
+    await writeFile(
+      path.join(repoRoot, ".gitignore"),
+      "desktop/stella-browser/out/\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", ".gitignore"]);
+    git(repoRoot, ["commit", "-m", "Ignore hydrated browser artifacts"]);
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: null,
+    });
+    await writeFile(path.join(repoRoot, "app.txt"), "git target\n", "utf8");
+    git(repoRoot, ["commit", "-am", "Target desktop release"]);
+    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    git(repoRoot, ["reset", "--hard", baseCommit]);
+    git(repoRoot, ["remote", "add", "origin", repoRoot]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(nextBrowserBytes, { status: 200 })),
+    );
+
+    const result = await tryApplyCleanDesktopUpdate(repoRoot, repoRoot, null, {
+      baseCommit,
+      targetCommit,
+      releaseTag: "desktop-v9.9.83",
+      artifactRefs: [
+        {
+          kind: "stella-browser",
+          platform: platformKey,
+          asset: {
+            url: "https://releases.test/stella-browser",
+            sha256: `sha256:${createHash("sha256").update(nextBrowserBytes).digest("hex")}`,
+            sizeBytes: nextBrowserBytes.byteLength,
+          },
+        },
+      ],
+    });
+
+    expect(result.status).toBe("needs-agent");
+    expect(await readFile(browserPath, "utf8")).toBe("old-browser-binary");
+    await expect(readFile(`${browserPath}.update`)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("discards a staged browser artifact when a Git merge fails after preflight", async () => {
+    const browserBinaryName =
+      platformKey === "win-x64" ? "stella-browser.exe" : "stella-browser";
+    const browserRelativePath = `desktop/stella-browser/out/${platformKey}/${browserBinaryName}`;
+    const browserPath = path.join(repoRoot, ...browserRelativePath.split("/"));
+    const nextBrowserBytes = Buffer.from("failed-merge-browser-binary");
+    await mkdir(path.dirname(browserPath), { recursive: true });
+    await writeFile(browserPath, "old-browser-binary", { mode: 0o755 });
+    await writeFile(
+      path.join(repoRoot, ".gitignore"),
+      "desktop/stella-browser/out/\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", ".gitignore"]);
+    git(repoRoot, ["commit", "-m", "Ignore hydrated browser artifacts"]);
+    const baseCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    git(repoRoot, ["checkout", "-q", "-b", "upstream"]);
+    await writeFile(
+      path.join(repoRoot, "app.txt"),
+      "upstream target\n",
+      "utf8",
+    );
+    git(repoRoot, ["commit", "-am", "Target desktop release"]);
+    const targetCommit = git(repoRoot, ["rev-parse", "HEAD"]).stdout.trim();
+    git(repoRoot, ["checkout", "-q", "main"]);
+    await writeFile(
+      path.join(repoRoot, "local.txt"),
+      "local overlay\n",
+      "utf8",
+    );
+    git(repoRoot, ["add", "local.txt"]);
+    git(repoRoot, ["commit", "-m", "Keep local overlay"]);
+    git(repoRoot, ["remote", "add", "origin", repoRoot]);
+    await writeInstallManifest(repoRoot, {
+      activeCommit: baseCommit,
+      attempt: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(nextBrowserBytes, { status: 200 })),
+    );
+    const runner = {
+      beginExternalSelfMod: vi.fn(async () => {
+        await writeFile(
+          path.join(repoRoot, "app.txt"),
+          "late conflicting write\n",
+          "utf8",
+        );
+      }),
+      finishExternalSelfMod: vi.fn(async () => undefined),
+    } as unknown as Parameters<typeof tryApplyCleanDesktopUpdate>[2];
+
+    const result = await tryApplyCleanDesktopUpdate(
+      repoRoot,
+      repoRoot,
+      runner,
+      {
+        baseCommit,
+        targetCommit,
+        releaseTag: "desktop-v9.9.84",
+        artifactRefs: [
+          {
+            kind: "stella-browser",
+            platform: platformKey,
+            asset: {
+              url: "https://releases.test/stella-browser",
+              sha256: `sha256:${createHash("sha256").update(nextBrowserBytes).digest("hex")}`,
+              sizeBytes: nextBrowserBytes.byteLength,
+            },
+          },
+        ],
+      },
+    );
+
+    expect(result.status).toBe("needs-agent");
+    expect(await readFile(browserPath, "utf8")).toBe("old-browser-binary");
+    await expect(readFile(`${browserPath}.update`)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("moves ignored target obstructions aside and snapshots the pre-reset install", async () => {
     await writeFile(path.join(repoRoot, ".gitignore"), "runtime-cache/\n");
     git(repoRoot, ["add", ".gitignore"]);

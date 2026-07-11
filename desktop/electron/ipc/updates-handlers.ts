@@ -771,6 +771,15 @@ export const stageStellaBrowserUpdate = async (
   return relativePath;
 };
 
+const discardStagedStellaBrowserUpdate = async (
+  stellaAppDir: string,
+  relativePath: string | null,
+): Promise<void> => {
+  if (!relativePath) return;
+  const binaryPath = path.join(stellaAppDir, ...relativePath.split("/"));
+  await fs.rm(`${binaryPath}.update`, { force: true }).catch(() => undefined);
+};
+
 const readGitFile = async (
   cwd: string,
   revisionPath: string,
@@ -3024,6 +3033,7 @@ const tryLandContentCleanPublishedTree = async (
     : changedFiles;
 
   if (transitionPaths.length > 0 && !runner) {
+    await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
     return {
       status: "needs-agent",
       reason: "Stella runtime is not available for the update morph.",
@@ -3184,6 +3194,9 @@ const tryLandContentCleanPublishedTree = async (
       reloaded: true,
     };
   } catch (error) {
+    if (!landed) {
+      await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
+    }
     if (hmrRunStarted && runner) {
       await runner
         .finishExternalSelfMod({ runId, succeeded: landed })
@@ -3448,22 +3461,12 @@ const tryApplySourcePackDesktopUpdate = async (
   ];
 
   if (updaterOwnedTrackedPaths.length === 0) {
-    const browserReconciliation = await reconcileUpdaterOwnedPaths(
-      stellaAppDir,
-      [],
-    );
     const manifestBefore = await readManifestWithRecovery(stellaAppDir).catch(
       () => null,
     );
     const alreadyLive =
       manifestBefore?.installState?.desktopReleaseCommit ===
         args.targetCommit && !stagedBrowserPath;
-    logDesktopUpdateProcess("desktop-update.source-pack.noop", {
-      releaseTag: args.releaseTag,
-      targetCommit: shortCommit(args.targetCommit),
-      alreadyLive,
-      browserBinaryActivated: browserReconciliation.browserBinaryActivated,
-    });
     // The tree already matches the target. If the install was recorded
     // complete for this exact commit, the app already reloaded onto it and
     // there is nothing to do. Otherwise a previous attempt was interrupted
@@ -3471,6 +3474,10 @@ const tryApplySourcePackDesktopUpdate = async (
     // the running app is stale. Replay the self-mod reload cycle over the
     // pack's paths instead of fake-reporting success.
     let reloaded = alreadyLive;
+    let browserBinaryActivated = false;
+    if (!alreadyLive && !runner) {
+      await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
+    }
     if (!alreadyLive && runner && sourceUpdatePaths.length > 0) {
       const resumeRunId = `desktop-update-source-pack-resume:${Date.now()}:${Math.random()
         .toString(36)
@@ -3490,6 +3497,11 @@ const tryApplySourcePackDesktopUpdate = async (
             changedFileCount: sourceUpdatePaths.length,
           },
         );
+        const browserReconciliation = await reconcileUpdaterOwnedPaths(
+          stellaAppDir,
+          [],
+        );
+        browserBinaryActivated = browserReconciliation.browserBinaryActivated;
         ({ reloaded } = await finishUpdateSelfModRun({
           runner,
           reacquireRunner: args.reacquireRunner,
@@ -3515,9 +3527,16 @@ const tryApplySourcePackDesktopUpdate = async (
         await runner
           .finishExternalSelfMod({ runId: resumeRunId, succeeded: false })
           .catch(() => undefined);
+        await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
         reloaded = false;
       }
     }
+    logDesktopUpdateProcess("desktop-update.source-pack.noop", {
+      releaseTag: args.releaseTag,
+      targetCommit: shortCommit(args.targetCommit),
+      alreadyLive,
+      browserBinaryActivated,
+    });
     await recordSourceHistory();
     await refreshNativeHelpers(
       stellaAppDir,
@@ -3574,6 +3593,7 @@ const tryApplySourcePackDesktopUpdate = async (
   }
 
   if (!runner) {
+    await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
     return {
       status: "needs-agent",
       reason: "Stella runtime is not available for the update morph.",
@@ -3774,6 +3794,9 @@ const tryApplySourcePackDesktopUpdate = async (
       reloaded: true,
     };
   } catch (error) {
+    if (!sourcePackCommitLanded) {
+      await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
+    }
     logDesktopUpdateError("desktop-update.source-pack.failed", error, {
       runId,
       releaseTag: args.releaseTag,
@@ -3951,6 +3974,7 @@ export const tryApplyCleanDesktopUpdate = async (
     let reloaded = alreadyLive;
     if (stagedBrowserPath) {
       if (!runner) {
+        await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
         return {
           status: "needs-agent",
           reason:
@@ -4148,6 +4172,7 @@ export const tryApplyCleanDesktopUpdate = async (
   try {
     if (transitionPaths.length > 0) {
       if (!runner) {
+        await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
         logDesktopUpdateWarn("desktop-update.fast.needs-agent", {
           releaseTag: args.releaseTag,
           targetCommit: shortCommit(args.targetCommit),
@@ -4199,6 +4224,7 @@ export const tryApplyCleanDesktopUpdate = async (
     ]);
     if (mergeResult.exitCode !== 0) {
       await abortMergeIfNeeded(stellaAppDir);
+      await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
       if (hmrRunStarted && runner) {
         await runner
           .finishExternalSelfMod({ runId, succeeded: false })
@@ -4316,6 +4342,9 @@ export const tryApplyCleanDesktopUpdate = async (
       reloaded: true,
     };
   } catch (error) {
+    if (!mergeLanded) {
+      await discardStagedStellaBrowserUpdate(stellaAppDir, stagedBrowserPath);
+    }
     logDesktopUpdateError("desktop-update.fast.failed", error, {
       runId,
       releaseTag: args.releaseTag,
