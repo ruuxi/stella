@@ -25,7 +25,7 @@ import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { shouldRestartElectronForBuildPath } from "./dev-electron-restart-filter.mjs";
 import {
-  classifyElectronExit,
+  classifyElectronExit as classifyElectronExitPolicy,
   shouldSuppressWatcherRestart,
 } from "./dev-electron-exit-policy.mjs";
 import {
@@ -844,7 +844,7 @@ exec "$electron_bin" "\${non_launch_args[@]}"
       }
 
       const immediateRestartRequest = consumeDevRestartRequest();
-      const exitAction = classifyElectronExit({
+      const exitAction = classifyElectronExitPolicy({
         code,
         signal,
         explicitRestartRequested: immediateRestartRequest,
