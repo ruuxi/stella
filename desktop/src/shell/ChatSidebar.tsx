@@ -9,7 +9,10 @@ import {
 import { CompactConversationSurface } from "@/features/chat/CompactConversationSurface";
 import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
 import { useChatScrollManagement } from "@/shell/use-chat-scroll-management";
-import { ComposerContextRow } from "@/app/chat/ComposerContextRow";
+import {
+  ComposerContextRow,
+  useComposerContextSuggestions,
+} from "@/app/chat/ComposerContextRow";
 import { ComposerLeadRow } from "@/app/chat/ComposerLeadRow";
 import { ConnectorConnectCard } from "@/app/chat/ConnectorConnectCard";
 import { ComposerAddMenu } from "@/app/chat/ComposerAddMenu";
@@ -197,8 +200,7 @@ export function ChatPanelTab({
   // The activity pill reads the shared chat runtime, so it can only mount
   // where a provider exists. The mini window has none, so it keeps the inline
   // indicator covering spawned-agent work; every provider-backed surface shows
-  // the pill just like the full shell (the pill itself stands down while the
-  // docked left sidebar is on screen).
+  // the pill just like the full shell.
   const showActivityPill = variant !== "mini" && Boolean(chatRuntime);
 
   /*
@@ -283,6 +285,11 @@ export function ChatPanelTab({
 
   const { chatContext, setChatContext, selectedText, setSelectedText } =
     useCapturedChatContext();
+  const contextSuggestions = useComposerContextSuggestions(
+    surfaceActive,
+    chatContext,
+    setChatContext,
+  );
   const {
     screenshot: previewScreenshot,
     previewIndex: previewScreenshotIndex,
@@ -465,8 +472,7 @@ export function ChatPanelTab({
   // pending transcript is the content. Without this the submit arrow stays
   // disabled while the text is empty, so a press during transcription is
   // swallowed and the message is never sent/queued.
-  const dictationInFlight =
-    dictation.isRecording || dictation.isTranscribing;
+  const dictationInFlight = dictation.isRecording || dictation.isTranscribing;
   const canSubmitWithDictation = composerState.canSubmit || dictationInFlight;
   const hasText = inputText.trim().length > 0;
   const dictationBelow = dictation.isRecordingVisible && hasText;
@@ -536,9 +542,6 @@ export function ChatPanelTab({
                     : null
                 }
                 showActivityPill={showActivityPill}
-                suggestionsActive={surfaceActive}
-                chatContext={chatContext}
-                setChatContext={setChatContext}
               />
 
               <div
@@ -563,6 +566,7 @@ export function ChatPanelTab({
                   )}
                   <form
                     ref={formRef}
+                    data-composer-context-menu="native"
                     className={`chat-sidebar-form${formExpanded ? " expanded" : ""}`}
                     onSubmit={(event) => {
                       event.preventDefault();
@@ -575,6 +579,10 @@ export function ChatPanelTab({
                       setChatContext={setChatContext}
                       onSelectArea={handleSelectArea}
                       onNewChat={handleNewChat}
+                      contextSuggestions={contextSuggestions.suggestions}
+                      onSelectContextSuggestion={
+                        contextSuggestions.selectSuggestion
+                      }
                     />
 
                     {dictationInline ? (
@@ -623,6 +631,12 @@ export function ChatPanelTab({
                               setChatContext={setChatContext}
                               onSelectArea={handleSelectArea}
                               onNewChat={handleNewChat}
+                              contextSuggestions={
+                                contextSuggestions.suggestions
+                              }
+                              onSelectContextSuggestion={
+                                contextSuggestions.selectSuggestion
+                              }
                             />
                           </div>
 

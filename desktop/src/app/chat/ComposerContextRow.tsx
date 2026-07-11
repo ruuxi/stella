@@ -120,14 +120,17 @@ export function ComposerSuggestionContextRow({
     chatContext?.window?.app?.toLowerCase().trim() ?? null;
   const attachedUrl = chatContext?.browserUrl ?? null;
 
-  const isChipAttached = useCallback((chip: SuggestionChip): boolean => {
-    if (chip.kind === "tab") {
-      return Boolean(attachedUrl && attachedUrl === chip.url);
-    }
-    return Boolean(
-      attachedAppName && chip.name.toLowerCase().trim() === attachedAppName,
-    );
-  }, [attachedAppName, attachedUrl]);
+  const isChipAttached = useCallback(
+    (chip: SuggestionChip): boolean => {
+      if (chip.kind === "tab") {
+        return Boolean(attachedUrl && attachedUrl === chip.url);
+      }
+      return Boolean(
+        attachedAppName && chip.name.toLowerCase().trim() === attachedAppName,
+      );
+    },
+    [attachedAppName, attachedUrl],
+  );
 
   const laneVisibilityKey = useMemo(
     () =>
@@ -252,6 +255,69 @@ export function ComposerSuggestionContextRow({
       </div>
     </div>
   );
+}
+
+export type ComposerContextSuggestion = SuggestionSlot;
+
+/**
+ * Auto-detected app/tab context prepared for the composer's + menu. Keeping
+ * the polling hook at the composer level lets both responsive + buttons share
+ * one snapshot instead of starting duplicate native-app polling loops.
+ */
+export function useComposerContextSuggestions(
+  active: boolean,
+  chatContext: ChatContext | null,
+  setChatContext: Dispatch<SetStateAction<ChatContext | null>>,
+): {
+  suggestions: ComposerContextSuggestion[];
+  selectSuggestion: (suggestion: ComposerContextSuggestion) => void;
+} {
+  const { lanes, dismissSlot } = useAutoContextChips(active);
+  const attachedAppName =
+    chatContext?.window?.app?.toLowerCase().trim() ?? null;
+  const attachedUrl = chatContext?.browserUrl ?? null;
+
+  const suggestions = useMemo(
+    () =>
+      lanes.flatMap((lane) => {
+        const slot = lane.current;
+        if (!slot) return [];
+        const attached =
+          slot.chip.kind === "tab"
+            ? Boolean(attachedUrl && attachedUrl === slot.chip.url)
+            : Boolean(
+                attachedAppName &&
+                  slot.chip.name.toLowerCase().trim() === attachedAppName,
+              );
+        return attached ? [] : [slot];
+      }),
+    [attachedAppName, attachedUrl, lanes],
+  );
+
+  const selectSuggestion = useCallback(
+    (slot: ComposerContextSuggestion) => {
+      if (slot.chip.kind === "tab") {
+        setChatContext(tabChipToChatContext(slot.chip));
+        captureAppWindowAsync(
+          { appName: slot.chip.browser, pid: null },
+          setChatContext,
+        );
+      } else {
+        setChatContext(appChipToChatContext(slot.chip));
+        captureAppWindowAsync(
+          {
+            appName: slot.chip.name,
+            pid: slot.chip.pid > 0 ? slot.chip.pid : null,
+          },
+          setChatContext,
+        );
+      }
+      dismissSlot(slot.key);
+    },
+    [dismissSlot, setChatContext],
+  );
+
+  return { suggestions, selectSuggestion };
 }
 
 /**

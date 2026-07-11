@@ -2,8 +2,8 @@
  * Effective on-screen state of the docked left sidebar (visible AND not
  * force-hidden by breakpoints / window type). Written by the root chrome —
  * the single owner of `leftSidebarVisible` + shell breakpoints — and read by
- * the composer activity pill, which renders only while the sidebar is off
- * screen so background work always has exactly one home.
+ * the composer activity pill, which suppresses its running state while the
+ * sidebar's Activity section is visible.
  *
  * A tiny module store (not React state) because the root chrome and the
  * composer live in separate parts of the tree and threading a prop through

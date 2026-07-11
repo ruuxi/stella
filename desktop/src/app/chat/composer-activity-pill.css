@@ -1,18 +1,13 @@
 /* ============================================================
    Composer activity pill — the search / background-work marker that leads
-   the context chip row above the composer while the left sidebar is
-   collapsed (the sidebar's Activity section carries the same data when
-   docked, so the pill stands down then). Shares the soft "panel surface"
+   the composer regardless of left-sidebar state. Shares the soft "panel surface"
    fill + hairline border the composer / sidebar use, but as a single-row
    pill: a leading glyph (search · check · alert · dot) plus one line of
    text. While running there's no glyph — the shimmering task count carries
    the status on its own.
    ============================================================ */
 
-/* Motion wrapper the pill animates in/out of when the sidebar toggles.
-   Fade + slide are compositor-driven; the slot's width also tweens 0 ↔ auto
-   (see ComposerActivityPill) so the neighboring chips slide over instead of
-   jumping — overflow clips the pill while the window narrows. */
+/* Motion wrapper for the pill's initial entrance. */
 .composer-activity-pill-slot {
   display: inline-flex;
   flex-shrink: 0;

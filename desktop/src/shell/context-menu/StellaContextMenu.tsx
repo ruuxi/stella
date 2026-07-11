@@ -2,11 +2,7 @@
  * StellaContextMenu — right-click toggles the sidebar chat panel.
  */
 
-import {
-  useCallback,
-  useRef,
-  type ReactNode,
-} from "react";
+import { useCallback, useRef, type ReactNode } from "react";
 
 type StellaContextMenuProps = {
   children: ReactNode;
@@ -14,6 +10,13 @@ type StellaContextMenuProps = {
   onOpen: () => void;
   onClose: () => void;
 };
+
+export const isComposerContextMenuTarget = (
+  target: EventTarget | null,
+): boolean =>
+  typeof Element !== "undefined" &&
+  target instanceof Element &&
+  Boolean(target.closest('[data-composer-context-menu="native"]'));
 
 export function StellaContextMenu({
   children,
@@ -29,6 +32,7 @@ export function StellaContextMenu({
   isOpenRef.current = isOpen;
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    if (isComposerContextMenuTarget(e.target)) return;
     e.preventDefault();
 
     if (isOpenRef.current) {
@@ -39,10 +43,7 @@ export function StellaContextMenu({
   }, []);
 
   return (
-    <div
-      onContextMenu={handleContextMenu}
-      style={{ display: "contents" }}
-    >
+    <div onContextMenu={handleContextMenu} style={{ display: "contents" }}>
       {children}
     </div>
   );

@@ -40,6 +40,7 @@ import {
 } from "@/features/chat/lib/file-attach";
 import { useRecentFiles } from "@/features/chat/hooks/use-recent-files";
 import type { ChatContext, ChatContextFile } from "@/shared/types/electron";
+import type { ComposerContextSuggestion } from "./ComposerContextRow";
 import "./composer-add-menu.css";
 
 type ComposerAddMenuProps = {
@@ -48,9 +49,24 @@ type ComposerAddMenuProps = {
   title?: string;
   onSelectArea?: () => void;
   onNewChat?: () => void | Promise<void>;
+  contextSuggestions?: ComposerContextSuggestion[];
+  onSelectContextSuggestion?: (suggestion: ComposerContextSuggestion) => void;
 };
 
 const FILE_NAME_MAX_DISPLAY = 28;
+
+export const getContextSuggestionLabel = (
+  suggestion: ComposerContextSuggestion,
+): string => {
+  const chip = suggestion.chip;
+  return chip.kind === "tab"
+    ? chip.title
+      ? `${chip.browser} — ${chip.title}`
+      : `${chip.browser} — ${chip.host}`
+    : chip.windowTitle
+      ? `${chip.name} — ${chip.windowTitle}`
+      : chip.name;
+};
 
 function truncateFileName(
   name: string,
@@ -75,6 +91,8 @@ export function ComposerAddMenu({
   title,
   onSelectArea,
   onNewChat,
+  contextSuggestions = [],
+  onSelectContextSuggestion,
 }: ComposerAddMenuProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -229,6 +247,30 @@ export function ComposerAddMenu({
               ))}
             </>
           )}
+          {contextSuggestions.length > 0 ? (
+            <>
+              <DropdownMenuLabel>Context</DropdownMenuLabel>
+              {contextSuggestions.map((suggestion) => {
+                const label = getContextSuggestionLabel(suggestion);
+                return (
+                  <DropdownMenuItem
+                    key={suggestion.key}
+                    onSelect={() => onSelectContextSuggestion?.(suggestion)}
+                  >
+                    <span data-slot="dropdown-menu-item-icon">
+                      <ContextSuggestionIcon suggestion={suggestion} />
+                    </span>
+                    <span
+                      className="composer-add-menu__context-name"
+                      title={label}
+                    >
+                      {label}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </>
+          ) : null}
           {onNewChat ? (
             <DropdownMenuItem
               onSelect={(event) => {
@@ -282,4 +324,29 @@ export function ComposerAddMenu({
 
 function FileGlyphIcon() {
   return <File size={16} strokeWidth={1.75} aria-hidden />;
+}
+
+function ContextSuggestionIcon({
+  suggestion,
+}: {
+  suggestion: ComposerContextSuggestion;
+}) {
+  const chip = suggestion.chip;
+  const label = chip.kind === "tab" ? chip.browser : chip.name;
+  if (chip.iconDataUrl) {
+    return (
+      <img
+        src={chip.iconDataUrl}
+        alt=""
+        aria-hidden="true"
+        className="composer-add-menu__context-icon"
+        draggable={false}
+      />
+    );
+  }
+  return (
+    <span className="composer-add-menu__context-fallback" aria-hidden="true">
+      {label.slice(0, 1).toUpperCase()}
+    </span>
+  );
 }

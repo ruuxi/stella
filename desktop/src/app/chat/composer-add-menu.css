@@ -16,6 +16,37 @@
   text-overflow: ellipsis;
 }
 
+.composer-add-menu__context-name {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-add-menu__context-icon,
+.composer-add-menu__context-fallback {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.composer-add-menu__context-icon {
+  display: block;
+  object-fit: contain;
+}
+
+.composer-add-menu__context-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-raised);
+  color: var(--text-weak);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+}
+
 /* Native <input type="file"> is the file picker primitive — keep it in
    the DOM (so the click handler can trigger it) but never visible. */
 .composer-add-menu__file-input {

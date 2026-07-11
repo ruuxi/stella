@@ -2,12 +2,9 @@
  * Composer activity pill — the compact presentation of background work that
  * sits in the context chip row above the composer.
  *
- * It renders ONLY while the docked left sidebar is off screen (collapsed by
- * the toggle or force-hidden at narrow widths / non-full windows). When the
- * sidebar is visible its Activity section carries the same information, so
- * the pill stands down — background work always has exactly one home. Both
- * read the same chat-runtime activity data, so the two presentations can
- * never disagree.
+ * It stays visible regardless of the docked left sidebar state so search is
+ * always available above the composer. While the sidebar is visible, its
+ * Activity section owns live progress and the pill stays in its Search state.
  *
  * The pill does double duty:
  *   • Idle, it's the entry point to search — a search icon + "Search".
@@ -23,8 +20,15 @@
  * overview (`LeftSidebarSections`, the same component the sidebar hosts —
  * expand/collapse, reasoning summaries, live per-agent files).
  */
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { AlertCircle, Check, Search } from "@/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { TextShimmer } from "@/app/chat/TextShimmer";
@@ -42,7 +46,7 @@ import { useLeftSidebarDocked } from "@/shell/left-sidebar-visibility-store";
 import { LeftSidebarSections } from "@/shell/LeftSidebarSections";
 import "./composer-activity-pill.css";
 
-type PillState = "idle" | "running" | "done" | "error" | "canceled";
+export type PillState = "idle" | "running" | "done" | "error" | "canceled";
 
 /** Sweep for the running-title shimmer — matches the inline card. */
 const TITLE_SHIMMER_MS = 1900;
@@ -56,6 +60,11 @@ const STATUS_FALLBACK: Record<Exclude<PillState, "idle">, string> = {
   error: "Couldn’t finish",
   canceled: "Stopped",
 };
+
+export const getDisplayedActivityPillState = (
+  state: PillState,
+  sidebarDocked: boolean,
+): PillState => (sidebarDocked && state === "running" ? "idle" : state);
 
 /** Live status of the whole conversation's background work, distilled into
  *  a single pill state (+ running count) with a minimum dwell on terminal
@@ -203,9 +212,7 @@ function ActivityTray({ onNavigate }: { onNavigate: () => void }) {
   );
 }
 
-/** The pill + tray proper — only mounted while the pill is on screen, so
- *  the popover machinery isn't reconciled on every chat tick when the
- *  sidebar carries the activity instead. */
+/** The pill + searchable activity tray. */
 const ActivityPillBody = memo(function ActivityPillBody({
   state,
   runningCount,
@@ -279,6 +286,7 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
   });
 
   const { state, runningCount } = useActivityPillState(tasks);
+  const displayedState = getDisplayedActivityPillState(state, sidebarDocked);
 
   const [open, setOpen] = useState(false);
   const handleOpenChange = (next: boolean) => {
@@ -286,51 +294,21 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
     if (!next) displaySearchStore.clear();
   };
 
-  // If the sidebar comes back while the tray is open, close the tray as the
-  // pill animates away — the sidebar now owns the activity view.
-  useEffect(() => {
-    if (sidebarDocked && open) {
-      setOpen(false);
-      displaySearchStore.clear();
-    }
-  }, [sidebarDocked, open]);
-
   return (
-    <AnimatePresence initial={false}>
-      {!sidebarDocked ? (
-        <motion.div
-          key="composer-activity-pill"
-          className="composer-activity-pill-slot"
-          // The slot's occupied width animates 0 ↔ auto so the neighboring
-          // suggestion chips slide over instead of teleporting when the pill
-          // enters/leaves; `marginRight: -6` cancels the lead row's 6px flex
-          // gap at zero width so the chips settle exactly where they'd sit
-          // with no pill at all. Fade + slide ride on top (compositor); the
-          // width tween matches the sidebar's own 460ms slide so the two
-          // read as one motion.
-          initial={{ opacity: 0, x: -8, scale: 0.96, width: 0, marginRight: -6 }}
-          animate={{ opacity: 1, x: 0, scale: 1, width: "auto", marginRight: 0 }}
-          exit={{ opacity: 0, x: -8, scale: 0.96, width: 0, marginRight: -6 }}
-          transition={
-            reduceMotion
-              ? { duration: 0 }
-              : {
-                  duration: 0.42,
-                  ease: [0.32, 0.72, 0.16, 1],
-                  // Fade resolves ahead of the width so the pill never
-                  // lingers as a squished sliver mid-collapse.
-                  opacity: { duration: 0.26, ease: "easeOut" },
-                }
-          }
-        >
-          <ActivityPillBody
-            state={state}
-            runningCount={runningCount}
-            open={open}
-            onOpenChange={handleOpenChange}
-          />
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+    <motion.div
+      className="composer-activity-pill-slot"
+      initial={{ opacity: 0, x: -8, scale: 0.96 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      transition={
+        reduceMotion ? { duration: 0 } : { duration: 0.26, ease: "easeOut" }
+      }
+    >
+      <ActivityPillBody
+        state={displayedState}
+        runningCount={runningCount}
+        open={open}
+        onOpenChange={handleOpenChange}
+      />
+    </motion.div>
   );
 });

@@ -5,7 +5,10 @@
 import type { Dispatch, SetStateAction } from "react";
 import { memo, useEffect, useRef, useState } from "react";
 import type { ChatContext } from "@/shared/types/electron";
-import { ComposerContextRow } from "./ComposerContextRow";
+import {
+  ComposerContextRow,
+  useComposerContextSuggestions,
+} from "./ComposerContextRow";
 import { ComposerLeadRow } from "./ComposerLeadRow";
 import { type AssistantReplyPeekProps } from "./AssistantReplyPeek";
 import { ComposerAddMenu } from "./ComposerAddMenu";
@@ -131,8 +134,7 @@ function ComposerImpl({
   // disabled (canSubmit is false while the text is still empty), so a press
   // during transcription is swallowed and `submitComposer` never runs —
   // the transcription finishes but the message is never sent/queued.
-  const dictationInFlight =
-    dictation.isRecording || dictation.isTranscribing;
+  const dictationInFlight = dictation.isRecording || dictation.isTranscribing;
   const canSubmitWithDictation = canSubmit || dictationInFlight;
   const hasText = message.trim().length > 0;
   const dictationBelow = dictation.isRecordingVisible && hasText;
@@ -163,16 +165,15 @@ function ComposerImpl({
   }, [message]);
 
   const hasAttachedChips = hasAttachedComposerChips(chatContext, selectedText);
+  const contextSuggestions = useComposerContextSuggestions(
+    suggestionsActive,
+    chatContext,
+    setChatContext,
+  );
 
   return (
     <div className="composer">
-      <ComposerLeadRow
-        replyPeek={replyPeek}
-        showActivityPill
-        suggestionsActive={suggestionsActive}
-        chatContext={chatContext}
-        setChatContext={setChatContext}
-      />
+      <ComposerLeadRow replyPeek={replyPeek} showActivityPill />
       <div
         ref={shellRef}
         className={`composer-shell${isDragOver ? " composer-shell--drag-over" : ""}`}
@@ -191,6 +192,7 @@ function ComposerImpl({
           )}
           <form
             ref={formRef}
+            data-composer-context-menu="native"
             className={`composer-form${isExpanded ? " expanded" : ""}`}
             aria-busy={isStreaming}
             onSubmit={(event) => {
@@ -204,6 +206,8 @@ function ComposerImpl({
               setChatContext={setChatContext}
               onSelectArea={onSelectArea}
               onNewChat={onNewChat}
+              contextSuggestions={contextSuggestions.suggestions}
+              onSelectContextSuggestion={contextSuggestions.selectSuggestion}
             />
 
             {dictationInline ? (
@@ -252,6 +256,10 @@ function ComposerImpl({
                       setChatContext={setChatContext}
                       onSelectArea={onSelectArea}
                       onNewChat={onNewChat}
+                      contextSuggestions={contextSuggestions.suggestions}
+                      onSelectContextSuggestion={
+                        contextSuggestions.selectSuggestion
+                      }
                     />
                   </div>
 
