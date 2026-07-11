@@ -337,6 +337,80 @@ const headFile = (h: Harness, file: string): string | null => {
 const replace = (from: string, to: string) => (before: string | null) =>
   (before ?? "").replace(from, to);
 
+const persistExpiredCandidate = async (h: Harness, suffix: string) => {
+  const changeSetId = `expired-${suffix}`;
+  const runId = `expired-run-${suffix}`;
+  const relativePath = `desktop/src/expired-${suffix}.ts`;
+  const content = `export const expired = ${JSON.stringify(suffix)};\n`;
+  const createdAt = Date.now() - 8 * 24 * 60 * 60 * 1_000;
+  await writeFile(path.join(h.repoRoot, relativePath), content);
+  new StoreModStore(h.db).upsertPendingSelfModChangeSet({
+    changeSetId,
+    repoRoot: h.repoRoot,
+    createdAt,
+    payload: {
+      changeSet: {
+        changeSetId,
+        runId,
+        createdAt,
+        files: [
+          {
+            path: relativePath,
+            base: { kind: "missing" },
+            incoming: {
+              kind: "blob",
+              mode: "100644",
+              contentBase64: Buffer.from(content).toString("base64"),
+              text: content,
+            },
+            ranges: [{ start: 0, end: Number.MAX_SAFE_INTEGER }],
+            contentChanged: true,
+            modeChanged: true,
+          },
+        ],
+        conflicts: [],
+        concurrentRunIds: [],
+      },
+      prepared: {
+        activeRun: {
+          baselineDirtyFiles: [],
+          taskDescription: `expired ${suffix}`,
+          applyMode: "author",
+        },
+        subject: `expired ${suffix}`,
+        trailers: {},
+      },
+      envelope: {
+        commitHash: changeSetId,
+        changeSetId,
+        runId,
+        conversationId: `expired-conversation-${suffix}`,
+        assistantMessageEventId: `expired-card-${suffix}`,
+        files: [relativePath],
+        applyResult: {
+          appliedRuns: [
+            {
+              runId,
+              paths: [relativePath],
+              files: [],
+              runtimeRestartRelevantPaths: [],
+              processRestartRelevantPaths: [],
+              restartRelevantPaths: [],
+              fullReloadRelevantPaths: [],
+            },
+          ],
+          restartRelevantRunIds: [runId],
+          hasRestartRelevantPaths: false,
+          hasRuntimeRestartRelevantPaths: false,
+          hasProcessRestartRelevantPaths: false,
+          hasFullReloadRelevantPaths: false,
+        },
+      },
+    },
+  });
+  return { changeSetId, runId, relativePath };
+};
+
 describe("scripted self-mod concurrency matrix", () => {
   it("(a) isolates two runs on different files", async () => {
     const h = await createHarness();
@@ -528,6 +602,48 @@ describe("scripted self-mod concurrency matrix", () => {
     ).toMatchObject({ discarded: true });
     expect(await readFile(absolutePath, "utf8")).toBe("a0\nB\n");
     expect([...h.pending.keys()]).toEqual([bSelector]);
+  });
+
+  it("concurrent discards atomically remove both logical layers without orphaned bytes", async () => {
+    const h = await createHarness();
+    const xPath = "desktop/src/discard-x.ts";
+    const yPath = "desktop/src/discard-y.ts";
+    await seed(h, xPath, "x-base\n");
+    await seed(h, yPath, "y-base\n");
+    await start(h, "discard-x");
+    await start(h, "discard-y");
+    await write(h, "discard-x", xPath, replace("x-base", "x-owned"));
+    await write(h, "discard-y", yPath, replace("y-base", "y-owned"));
+    const xSelector = await finalize(h, "discard-x");
+    const ySelector = await finalize(h, "discard-y");
+    const beforeHead = await getGitHead(h.repoRoot);
+    const beforeIndex = git(h.repoRoot, ["ls-files", "--stage", "-z"]);
+
+    const [xResult, yResult] = await Promise.all([
+      h.coordinator.discardPending({ commitHash: xSelector }),
+      h.coordinator.discardPending({ commitHash: ySelector }),
+    ]);
+
+    expect(xResult).toMatchObject({ discarded: true, commitHash: xSelector });
+    expect(yResult).toMatchObject({ discarded: true, commitHash: ySelector });
+    expect(await getGitHead(h.repoRoot)).toBe(beforeHead);
+    expect(git(h.repoRoot, ["ls-files", "--stage", "-z"])).toBe(beforeIndex);
+    expect(await readFile(path.join(h.repoRoot, xPath), "utf8")).toBe(
+      "x-base\n",
+    );
+    expect(await readFile(path.join(h.repoRoot, yPath), "utf8")).toBe(
+      "y-base\n",
+    );
+    expect(h.pending.size).toBe(0);
+    expect(h.service.getPreparedLogicalChangeSet(xSelector)).toBeNull();
+    expect(h.service.getPreparedLogicalChangeSet(ySelector)).toBeNull();
+    expect(
+      new StoreModStore(h.db).listPendingSelfModChangeSets(h.repoRoot),
+    ).toHaveLength(0);
+    expect(await h.controller.getStatus()).toMatchObject({
+      inFlightPaths: 0,
+      appliedOverlayPaths: 0,
+    });
   });
 
   it("process-restart reconstruction returns a structured conflict and retries", async () => {
@@ -1053,7 +1169,11 @@ describe("scripted self-mod concurrency matrix", () => {
       await restoredCoordinator.cleanupStartupDiscardCandidates(
         restoredService.listStartupDiscardCandidates(),
       ),
-    ).toEqual({ status: "applied" });
+    ).toEqual({
+      status: "applied",
+      completedChangeSetIds: ids.slice(0, 3),
+      retryChangeSetIds: [],
+    });
     for (const index of [0, 1, 2]) {
       await expect(
         readFile(path.join(h.repoRoot, `desktop/src/restore-${index}.ts`)),
@@ -1081,4 +1201,106 @@ describe("scripted self-mod concurrency matrix", () => {
       new StoreModStore(h.db).listPendingSelfModChangeSets(h.repoRoot),
     ).toHaveLength(64);
   });
+
+  it.each(["discard", "releaseRuns", "reload"] as const)(
+    "retains startup cleanup persistence when %s does not acknowledge completion",
+    async (failure) => {
+      const h = await createHarness();
+      const candidate = await persistExpiredCandidate(h, failure);
+      const restoredService = new StoreModService(
+        h.repoRoot,
+        new StoreModStore(h.db),
+      );
+      const candidates = restoredService.listStartupDiscardCandidates();
+      expect(candidates.map((entry) => entry.changeSetId)).toEqual([
+        candidate.changeSetId,
+      ]);
+      const patches: Array<Record<string, unknown>> = [];
+      const failingController = {
+        ...h.controller,
+        ...(failure === "discard" ? { discard: async () => false } : undefined),
+        ...(failure === "releaseRuns"
+          ? { releaseRuns: async () => false }
+          : undefined),
+      };
+      const failingCoordinator = createSelfModCoordinator({
+        peer: {
+          notify: () => {},
+          request: async <TResult>(method: string) => {
+            if (
+              failure === "reload" &&
+              method === METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME
+            ) {
+              throw new Error("synthetic reload transport failure");
+            }
+            return {} as TResult;
+          },
+          registerRequestHandler: () => {},
+          registerNotificationHandler: () => {},
+        },
+        getController: () => failingController,
+        getStoreModService: () => restoredService,
+        getRuntimeStore: () => null,
+        getRepoRoot: () => h.repoRoot,
+        getPendingSelfModApplies: () => new Map(),
+        patchSelfModApplyStatus: (args) => patches.push(args),
+      });
+
+      expect(
+        await failingCoordinator.cleanupStartupDiscardCandidates(candidates),
+      ).toEqual({
+        status: "applied",
+        completedChangeSetIds: [],
+        retryChangeSetIds: [candidate.changeSetId],
+      });
+      expect(
+        new StoreModStore(h.db)
+          .listPendingSelfModChangeSets(h.repoRoot)
+          .map((row) => row.changeSetId),
+      ).toEqual([candidate.changeSetId]);
+      expect(
+        restoredService
+          .listStartupDiscardCandidates()
+          .map((entry) => entry.changeSetId),
+      ).toEqual([candidate.changeSetId]);
+      expect(patches).toHaveLength(0);
+      await expect(
+        readFile(path.join(h.repoRoot, candidate.relativePath)),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+
+      const retryCoordinator = createSelfModCoordinator({
+        peer: {
+          notify: () => {},
+          request: async <TResult>() => ({}) as TResult,
+          registerRequestHandler: () => {},
+          registerNotificationHandler: () => {},
+        },
+        getController: () => h.controller,
+        getStoreModService: () => restoredService,
+        getRuntimeStore: () => null,
+        getRepoRoot: () => h.repoRoot,
+        getPendingSelfModApplies: () => new Map(),
+        patchSelfModApplyStatus: (args) => patches.push(args),
+      });
+      expect(
+        await retryCoordinator.cleanupStartupDiscardCandidates(
+          restoredService.listStartupDiscardCandidates(),
+        ),
+      ).toEqual({
+        status: "applied",
+        completedChangeSetIds: [candidate.changeSetId],
+        retryChangeSetIds: [],
+      });
+      expect(
+        new StoreModStore(h.db).listPendingSelfModChangeSets(h.repoRoot),
+      ).toHaveLength(0);
+      expect(restoredService.listStartupDiscardCandidates()).toHaveLength(0);
+      expect(patches).toEqual([
+        expect.objectContaining({
+          commitHash: candidate.changeSetId,
+          status: "discarded",
+        }),
+      ]);
+    },
+  );
 });

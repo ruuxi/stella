@@ -19,7 +19,11 @@ as `new HEAD + every still-pending/active logical delta`.
 Live-tree reconstruction is a deterministic plan, never an ambient-disk
 fallback: any replay conflict returns structured conflicts before the first
 write. Disk writes use rollback snapshots for I/O failure, and discard removes
-logical/coordinator/persistence state only after reconstruction succeeds.
+logical and persistence state only after reconstruction succeeds. Apply,
+discard, process-restart reconstruction, and retention cleanup share one
+service transaction queue and the repo mutation lock. A discard holds both
+through planning, working-tree writes, and logical/persistent deletion, so two
+selectors cannot reconstruct from stale ownership.
 
 Text blobs auto-merge only when their true changed regions do not collide.
 Literal same-line overlap, binary/base divergence, incompatible mode changes,
@@ -32,8 +36,11 @@ tree. TTL and the 64-row cap are applied before startup restores logical state,
 cards, HMR ownership, or reload leases; rejected rows go through the same full
 cleanup only after deterministic reconstruction succeeds. Pending selectors
 are persisted in SQLite and restored with their HMR ownership after a worker
-restart. Each selector has its own card event; an
-explicit Update all action remains separate.
+restart. Startup cleanup requires affirmative Vite discard, Vite run-release,
+and host reload-release acknowledgements before deleting each durable row. A
+partially cleaned candidate remains durable and retryable; the external cleanup
+operations are idempotent. Each selector has its own card event; an explicit
+Update all action remains separate.
 
 The production-path harness drives deterministic fake mutations through both
 real runner wrappers, mediated capture, the shared mutation lock, coordinator

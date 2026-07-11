@@ -1038,6 +1038,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           .join(", ")}`,
       );
     }
+    if (startupCleanup.retryChangeSetIds.length > 0) {
+      console.warn(
+        `[self-mod] Retaining ${startupCleanup.retryChangeSetIds.length} startup cleanup candidate(s) for retry after an external cleanup acknowledgement failed.`,
+      );
+    }
     await selfMod.restorePending(storeModService.listPendingEnvelopes());
     const bridgePaths = resolveRuntimePaths(init.stellaAppDir);
 

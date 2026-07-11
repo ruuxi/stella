@@ -109,6 +109,18 @@ export type MaterializeLiveTreeResult =
   | { status: "applied" }
   | { status: "conflicts"; conflicts: LogicalFileConflict[] };
 
+export type AtomicDiscardPreparedAuthorResult =
+  | { status: "discarded"; discarded: boolean }
+  | { status: "conflicts"; conflicts: LogicalFileConflict[] };
+
+export type StartupDiscardCleanupResult =
+  | {
+      status: "applied";
+      completedChangeSetIds: string[];
+      retryChangeSetIds: string[];
+    }
+  | { status: "conflicts"; conflicts: LogicalFileConflict[] };
+
 export type FinalizedSelfModCommit = {
   commitHash: string;
   files: string[];
@@ -181,8 +193,8 @@ export class StoreModService {
     string,
     StartupDiscardCandidate
   >();
-  /** Serializes merge-against-HEAD + exact commit as one logical transaction. */
-  private authorApplyTail: Promise<void> = Promise.resolve();
+  /** Serializes apply, discard, reconstruction, and retention cleanup. */
+  private authorMutationTail: Promise<void> = Promise.resolve();
   /**
    * Serialized queue for post-commit background work (source-history
    * recording). Chained so revisions record in commit order —
@@ -277,7 +289,9 @@ export class StoreModService {
     return [...this.startupDiscardCandidates.values()];
   }
 
-  completeStartupDiscardCandidates(changeSetIds: Iterable<string>): void {
+  private completeStartupDiscardCandidates(
+    changeSetIds: Iterable<string>,
+  ): void {
     for (const changeSetId of changeSetIds) {
       this.startupDiscardCandidates.delete(changeSetId);
       this.store.deletePendingSelfModChangeSet(changeSetId);
@@ -392,12 +406,35 @@ export class StoreModService {
     this.logicalChanges.cancelRun(runId);
   }
 
-  discardPreparedAuthorChange(changeSetId: string): boolean {
+  private discardPreparedAuthorChange(changeSetId: string): boolean {
     const hadPrepared = this.preparedAuthorChanges.delete(changeSetId);
     const discarded = this.logicalChanges.discard(changeSetId);
     this.pendingEnvelopes.delete(changeSetId);
     this.store.deletePendingSelfModChangeSet(changeSetId);
     return hadPrepared || discarded !== null;
+  }
+
+  private async withAuthorMutationTransaction<T>(
+    label: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.authorMutationTail;
+    let releaseQueue!: () => void;
+    this.authorMutationTail = new Promise<void>((resolve) => {
+      releaseQueue = resolve;
+    });
+    await previous;
+    let releaseMutation: (() => void) | undefined;
+    try {
+      releaseMutation = await acquireSelfModMutationLock(
+        this.repoRoot,
+        `${label}:${crypto.randomUUID()}`,
+      );
+      return await operation();
+    } finally {
+      releaseMutation?.();
+      releaseQueue();
+    }
   }
 
   /**
@@ -410,48 +447,116 @@ export class StoreModService {
     paths: Iterable<string>,
     options?: { excludeChangeSetIds?: Iterable<string> },
   ): Promise<MaterializeLiveTreeResult> {
-    const release = await acquireSelfModMutationLock(
-      this.repoRoot,
-      `materialize:${crypto.randomUUID()}`,
+    return await this.withAuthorMutationTransaction("materialize", async () =>
+      this.materializeLiveTreeLocked(paths, options),
     );
-    try {
-      const plan = await this.logicalChanges.buildLiveTree(
-        paths,
-        (filePath) => readGitHeadFileState(this.repoRoot, filePath),
-        options,
-      );
-      if (plan.status === "conflicts") return plan;
+  }
 
-      const originals = new Map<string, LogicalFileState>();
-      for (const filePath of plan.states.keys()) {
-        originals.set(
-          filePath,
-          await readWorkingTreeFileState(path.join(this.repoRoot, filePath)),
+  private async materializeLiveTreeLocked(
+    paths: Iterable<string>,
+    options?: { excludeChangeSetIds?: Iterable<string> },
+  ): Promise<MaterializeLiveTreeResult> {
+    const plan = await this.logicalChanges.buildLiveTree(
+      paths,
+      (filePath) => readGitHeadFileState(this.repoRoot, filePath),
+      options,
+    );
+    if (plan.status === "conflicts") return plan;
+
+    const originals = new Map<string, LogicalFileState>();
+    for (const filePath of plan.states.keys()) {
+      originals.set(
+        filePath,
+        await readWorkingTreeFileState(path.join(this.repoRoot, filePath)),
+      );
+    }
+    try {
+      for (const [filePath, state] of plan.states) {
+        await this.writeWorkingTreeState(filePath, state);
+      }
+    } catch (error) {
+      const rollbackErrors: unknown[] = [];
+      for (const [filePath, state] of originals) {
+        await this.writeWorkingTreeState(filePath, state).catch(
+          (rollbackError) => rollbackErrors.push(rollbackError),
         );
       }
-      try {
-        for (const [filePath, state] of plan.states) {
-          await this.writeWorkingTreeState(filePath, state);
-        }
-      } catch (error) {
-        const rollbackErrors: unknown[] = [];
-        for (const [filePath, state] of originals) {
-          await this.writeWorkingTreeState(filePath, state).catch(
-            (rollbackError) => rollbackErrors.push(rollbackError),
-          );
-        }
-        if (rollbackErrors.length > 0) {
-          console.error(
-            "[self-mod] live-tree reconstruction rollback failed:",
-            rollbackErrors,
-          );
-        }
-        throw error;
+      if (rollbackErrors.length > 0) {
+        console.error(
+          "[self-mod] live-tree reconstruction rollback failed:",
+          rollbackErrors,
+        );
       }
-      return { status: "applied" };
-    } finally {
-      release();
+      throw error;
     }
+    return { status: "applied" };
+  }
+
+  async discardPreparedAuthorChangeAtomically(
+    changeSetId: string,
+    paths: Iterable<string>,
+  ): Promise<AtomicDiscardPreparedAuthorResult> {
+    return await this.withAuthorMutationTransaction(
+      `discard:${changeSetId}`,
+      async () => {
+        if (
+          !this.preparedAuthorChanges.has(changeSetId) &&
+          !this.logicalChanges.get(changeSetId)
+        ) {
+          return { status: "discarded", discarded: false };
+        }
+        const reconstruction = await this.materializeLiveTreeLocked(paths, {
+          excludeChangeSetIds: [changeSetId],
+        });
+        if (reconstruction.status === "conflicts") return reconstruction;
+        return {
+          status: "discarded",
+          discarded: this.discardPreparedAuthorChange(changeSetId),
+        };
+      },
+    );
+  }
+
+  async cleanupStartupDiscardCandidatesAtomically(
+    candidates: StartupDiscardCandidate[],
+    cleanupExternalState: (
+      candidate: StartupDiscardCandidate,
+    ) => Promise<boolean>,
+  ): Promise<StartupDiscardCleanupResult> {
+    return await this.withAuthorMutationTransaction(
+      "startup-retention-cleanup",
+      async () => {
+        const reconstruction = await this.materializeLiveTreeLocked(
+          candidates.flatMap((candidate) => candidate.files),
+        );
+        if (reconstruction.status === "conflicts") return reconstruction;
+
+        const completedChangeSetIds: string[] = [];
+        const retryChangeSetIds: string[] = [];
+        for (const candidate of candidates) {
+          let completed = false;
+          try {
+            completed = await cleanupExternalState(candidate);
+          } catch (error) {
+            console.warn(
+              `[self-mod] Startup cleanup failed for ${candidate.changeSetId}:`,
+              (error as Error).message,
+            );
+          }
+          if (!completed) {
+            retryChangeSetIds.push(candidate.changeSetId);
+            continue;
+          }
+          this.completeStartupDiscardCandidates([candidate.changeSetId]);
+          completedChangeSetIds.push(candidate.changeSetId);
+        }
+        return {
+          status: "applied",
+          completedChangeSetIds,
+          retryChangeSetIds,
+        };
+      },
+    );
   }
 
   private async writeWorkingTreeState(
@@ -708,17 +813,10 @@ export class StoreModService {
   async applyPreparedAuthorChange(
     changeSetId: string,
   ): Promise<ApplyPreparedAuthorResult | null> {
-    const previous = this.authorApplyTail;
-    let release!: () => void;
-    this.authorApplyTail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await previous;
-    try {
-      return await this.applyPreparedAuthorChangeSerialized(changeSetId);
-    } finally {
-      release();
-    }
+    return await this.withAuthorMutationTransaction(
+      `apply:${changeSetId}`,
+      async () => this.applyPreparedAuthorChangeSerialized(changeSetId),
+    );
   }
 
   private async applyPreparedAuthorChangeSerialized(
