@@ -15,6 +15,7 @@ type EngineScopedModelListProps = {
   onSelect: (modelId: string) => void;
   loading?: boolean;
   disabled?: boolean;
+  emptyMessage?: string | null;
 };
 
 export function EngineScopedModelList({
@@ -24,6 +25,7 @@ export function EngineScopedModelList({
   onSelect,
   loading = false,
   disabled = false,
+  emptyMessage,
 }: EngineScopedModelListProps) {
   return (
     <div
@@ -37,7 +39,9 @@ export function EngineScopedModelList({
         {loading && models.length === 0 ? (
           <p>Loading {engineLabel} models…</p>
         ) : models.length === 0 ? (
-          <p>No {engineLabel} models are available.</p>
+          emptyMessage === null ? null : (
+            <p>{emptyMessage ?? `No ${engineLabel} models are available.`}</p>
+          )
         ) : (
           models.map((model) => {
             const selected = model.id === value;

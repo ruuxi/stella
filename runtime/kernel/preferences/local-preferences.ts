@@ -29,6 +29,7 @@ import {
 } from "../../contracts/local-preferences.js";
 import {
   coerceAgentRuntimeEngine,
+  DEFAULT_CODEX_MODEL,
   type AgentRuntimeEngine,
 } from "../../contracts/agent-engine.js";
 import {
@@ -37,7 +38,7 @@ import {
 } from "../../contracts/personality.js";
 
 type AgentEngine = AgentRuntimeEngine;
-export const DEFAULT_CODEX_MODEL = "gpt-5.5";
+export { DEFAULT_CODEX_MODEL } from "../../contracts/agent-engine.js";
 export const DEFAULT_CLAUDE_CODE_MODEL = "default";
 export type ReasoningEffort =
   | "default"

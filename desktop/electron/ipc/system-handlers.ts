@@ -2380,6 +2380,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
           },
           signal: controller.signal,
         });
+        if (controller.signal.aborted) {
+          throw controller.signal.reason instanceof Error
+            ? controller.signal.reason
+            : new Error("OAuth login was canceled.");
+        }
 
         return saveLocalLlmOAuthCredential(stellaAppDir, {
           provider: provider.id,
@@ -2439,7 +2444,9 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
       }
       try {
         const key = await getLocalLlmOAuthApiKey(stellaAppDir, provider);
-        return { connected: Boolean(key), needsReauth: !key };
+        if (key) return { connected: true, needsReauth: false };
+        deleteLocalLlmOAuthCredential(stellaAppDir, provider);
+        return { connected: false, needsReauth: true };
       } catch {
         deleteLocalLlmOAuthCredential(stellaAppDir, provider);
         return { connected: false, needsReauth: true };

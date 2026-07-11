@@ -438,8 +438,15 @@ export function AgentModelPicker({
     : null;
   const selectedChatGptModel =
     savedChatGptOverride ?? preferences?.codexModel ?? DEFAULT_CHATGPT_MODEL;
+  const chatGptCatalogSettled =
+    !codexCatalog.loading && codexCatalog.models !== null;
+  const selectedChatGptModelUnavailable =
+    chatGptCatalogSettled &&
+    Boolean(selectedChatGptModel) &&
+    !chatGptModels.some((model) => model.id === selectedChatGptModel);
   const chatGptModelsWithCurrent = useMemo<EngineScopedModelOption[]>(() => {
     if (
+      !chatGptCatalogSettled ||
       !selectedChatGptModel ||
       chatGptModels.some((model) => model.id === selectedChatGptModel)
     ) {
@@ -454,7 +461,7 @@ export function AgentModelPicker({
         unavailable: true,
       },
     ];
-  }, [chatGptModels, selectedChatGptModel]);
+  }, [chatGptCatalogSettled, chatGptModels, selectedChatGptModel]);
   const selectedClaudeCodeModel =
     preferences?.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL;
   const selectedEngine =
@@ -1390,9 +1397,22 @@ export function AgentModelPicker({
                   Connect
                 </button>
               </p>
-            ) : codexCatalog.error ? (
+            ) : null}
+            {codexCatalog.error ? (
               <p className="agent-model-picker-error" role="alert">
                 ChatGPT models could not be verified: {codexCatalog.error}
+              </p>
+            ) : codexCatalog.loading ? (
+              <p className="agent-model-picker-connection" role="status">
+                Verifying ChatGPT models…
+              </p>
+            ) : chatGptModels.length === 0 ? (
+              <p className="agent-model-picker-connection" role="status">
+                No models are currently available to both ChatGPT and Codex.
+              </p>
+            ) : selectedChatGptModelUnavailable ? (
+              <p className="agent-model-picker-connection" role="status">
+                The saved model is unavailable. Choose another model.
               </p>
             ) : null}
             <EngineScopedModelList
@@ -1400,7 +1420,7 @@ export function AgentModelPicker({
               models={chatGptModelsWithCurrent}
               value={selectedChatGptModel}
               onSelect={(modelId) => void handleEngineModelSelect(modelId)}
-              loading={codexCatalog.loading}
+              emptyMessage={null}
               disabled={
                 !preferences ||
                 pendingAgent !== null ||

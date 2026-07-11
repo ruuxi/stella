@@ -53,6 +53,8 @@ interface EngineRuntimeModelPanelProps {
   selectedModelId?: string;
   favoriteScope: string;
   onRefresh?: () => void;
+  stateMessage?: string;
+  stateKind?: "status" | "error";
   onSelectModel: (modelId: string) => void;
   /**
    * Current engine-wide thinking/effort level. When `onSelectReasoning` is
@@ -75,6 +77,8 @@ export function EngineRuntimeModelPanel({
   selectedModelId,
   favoriteScope,
   onRefresh,
+  stateMessage,
+  stateKind = "status",
   onSelectModel,
   reasoningEffort,
   onSelectReasoning,
@@ -146,12 +150,20 @@ export function EngineRuntimeModelPanel({
           />
         </div>
 
+        {stateMessage ? (
+          <p
+            className="engine-runtime-model-panel__empty"
+            role={stateKind === "error" ? "alert" : "status"}
+          >
+            {stateMessage}
+          </p>
+        ) : null}
         <div className="engine-runtime-model-panel__list">
-          {loading && models.length === 0 ? (
+          {!stateMessage && loading && models.length === 0 ? (
             <p className="engine-runtime-model-panel__empty">
               Loading {providerLabel} models…
             </p>
-          ) : filteredModels.length === 0 ? (
+          ) : !stateMessage && filteredModels.length === 0 ? (
             <p className="engine-runtime-model-panel__empty">
               {models.length === 0
                 ? `No ${providerLabel} models available yet.`

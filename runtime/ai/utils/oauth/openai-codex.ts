@@ -52,6 +52,39 @@ type JwtPayload = {
   [key: string]: unknown;
 };
 
+const OAUTH_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
+
+const oauthAbortError = (signal?: AbortSignal): Error =>
+  signal?.reason instanceof Error
+    ? signal.reason
+    : new Error("OpenAI OAuth was canceled.");
+
+function throwIfOAuthAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw oauthAbortError(signal);
+}
+
+function awaitWithOAuthAbort<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) return promise;
+  throwIfOAuthAborted(signal);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(oauthAbortError(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 function createState(): string {
   if (!_randomBytes) {
     throw new Error(
@@ -110,6 +143,7 @@ async function exchangeAuthorizationCode(
   code: string,
   verifier: string,
   redirectUri: string = REDIRECT_URI,
+  signal?: AbortSignal,
 ): Promise<TokenResult> {
   const response = await fetch(TOKEN_URL, {
     method: "POST",
@@ -121,10 +155,13 @@ async function exchangeAuthorizationCode(
       code_verifier: verifier,
       redirect_uri: redirectUri,
     }),
+    signal,
   });
+  throwIfOAuthAborted(signal);
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+    throwIfOAuthAborted(signal);
     console.error("[openai-codex] code->token failed:", response.status, text);
     return { type: "failed" };
   }
@@ -134,6 +171,7 @@ async function exchangeAuthorizationCode(
     refresh_token?: string;
     expires_in?: number;
   };
+  throwIfOAuthAborted(signal);
 
   if (
     !json.access_token ||
@@ -206,8 +244,13 @@ async function refreshAccessToken(refreshToken: string): Promise<TokenResult> {
 
 async function createAuthorizationFlow(
   originator: string = "stella",
+  signal?: AbortSignal,
 ): Promise<{ verifier: string; state: string; url: string }> {
-  const { verifier, challenge } = await generatePKCE();
+  const { verifier, challenge } = await awaitWithOAuthAbort(
+    generatePKCE(),
+    signal,
+  );
+  throwIfOAuthAborted(signal);
   const state = createState();
 
   const url = new URL(AUTHORIZE_URL);
@@ -231,8 +274,6 @@ type OAuthServerInfo = {
   waitForCode: () => Promise<{ code?: string; error?: string } | null>;
 };
 
-const OAUTH_CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
-
 function startLocalOAuthServer(
   state: string,
   signal?: AbortSignal,
@@ -246,7 +287,6 @@ function startLocalOAuthServer(
   let settleWait:
     | ((value: { code?: string; error?: string } | null) => void)
     | undefined;
-  let timeout: ReturnType<typeof setTimeout> | undefined;
   const waitForCodePromise = new Promise<{
     code?: string;
     error?: string;
@@ -260,10 +300,6 @@ function startLocalOAuthServer(
   });
   const abortWait = () => settleWait?.(null);
   signal?.addEventListener("abort", abortWait, { once: true });
-  timeout = setTimeout(
-    () => settleWait?.({ error: "OpenAI OAuth timed out." }),
-    OAUTH_CALLBACK_TIMEOUT_MS,
-  );
 
   const server = _http.createServer((req, res) => {
     try {
@@ -312,9 +348,17 @@ function startLocalOAuthServer(
   return new Promise((resolve) => {
     server
       .listen(1455, "127.0.0.1", () => {
+        if (signal?.aborted) {
+          server.close();
+          resolve({
+            close: () => {},
+            cancelWait: () => {},
+            waitForCode: async () => null,
+          });
+          return;
+        }
         resolve({
           close: () => {
-            if (timeout) clearTimeout(timeout);
             signal?.removeEventListener("abort", abortWait);
             server.close();
           },
@@ -333,7 +377,6 @@ function startLocalOAuthServer(
         settleWait?.(null);
         resolve({
           close: () => {
-            if (timeout) clearTimeout(timeout);
             signal?.removeEventListener("abort", abortWait);
             try {
               server.close();
@@ -376,19 +419,38 @@ export async function loginOpenAICodex(options: {
   originator?: string;
   signal?: AbortSignal;
 }): Promise<OAuthCredentials> {
-  if (options.signal?.aborted) throw new Error("OpenAI OAuth was canceled.");
-  const { verifier, state, url } = await createAuthorizationFlow(
-    options.originator,
+  const controller = new AbortController();
+  const abortFromCaller = () =>
+    controller.abort(new Error("OpenAI OAuth was canceled."));
+  options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  const deadline = setTimeout(
+    () => controller.abort(new Error("OpenAI OAuth timed out.")),
+    OAUTH_LOGIN_TIMEOUT_MS,
   );
-  const server = await startLocalOAuthServer(state, options.signal);
-
-  options.onAuth({
-    url,
-    instructions: "A browser window should open. Complete login to finish.",
-  });
-
-  let code: string | undefined;
+  const signal = controller.signal;
+  let server: OAuthServerInfo | null = null;
   try {
+    throwIfOAuthAborted(options.signal);
+    throwIfOAuthAborted(signal);
+    const { verifier, state, url } = await createAuthorizationFlow(
+      options.originator,
+      signal,
+    );
+    throwIfOAuthAborted(signal);
+    server = await awaitWithOAuthAbort(
+      startLocalOAuthServer(state, signal),
+      signal,
+    );
+    const callbackServer = server;
+    throwIfOAuthAborted(signal);
+
+    options.onAuth({
+      url,
+      instructions: "A browser window should open. Complete login to finish.",
+    });
+    throwIfOAuthAborted(signal);
+
+    let code: string | undefined;
     if (options.onManualCodeInput) {
       // Race between browser callback and manual input
       let manualCode: string | undefined;
@@ -397,14 +459,18 @@ export async function loginOpenAICodex(options: {
         .onManualCodeInput()
         .then((input) => {
           manualCode = input;
-          server.cancelWait();
+          callbackServer.cancelWait();
         })
         .catch((err) => {
           manualError = err instanceof Error ? err : new Error(String(err));
-          server.cancelWait();
+          callbackServer.cancelWait();
         });
 
-      const result = await server.waitForCode();
+      const result = await awaitWithOAuthAbort(
+        callbackServer.waitForCode(),
+        signal,
+      );
+      throwIfOAuthAborted(signal);
       if (result?.error) throw new Error(result.error);
 
       // If manual input was cancelled, throw that error
@@ -426,7 +492,8 @@ export async function loginOpenAICodex(options: {
 
       // If still no code, wait for manual promise to complete and try that
       if (!code) {
-        await manualPromise;
+        await awaitWithOAuthAbort(manualPromise, signal);
+        throwIfOAuthAborted(signal);
         if (manualError) {
           throw manualError;
         }
@@ -440,7 +507,11 @@ export async function loginOpenAICodex(options: {
       }
     } else {
       // Original flow: wait for callback, then prompt if needed
-      const result = await server.waitForCode();
+      const result = await awaitWithOAuthAbort(
+        callbackServer.waitForCode(),
+        signal,
+      );
+      throwIfOAuthAborted(signal);
       if (result?.error) throw new Error(result.error);
       if (result?.code) {
         code = result.code;
@@ -448,13 +519,15 @@ export async function loginOpenAICodex(options: {
     }
 
     // Fallback to onPrompt if still no code
-    if (options.signal?.aborted) {
-      throw new Error("OpenAI OAuth was canceled.");
-    }
+    throwIfOAuthAborted(signal);
     if (!code) {
-      const input = await options.onPrompt({
-        message: "Paste the authorization code (or full redirect URL):",
-      });
+      const input = await awaitWithOAuthAbort(
+        options.onPrompt({
+          message: "Paste the authorization code (or full redirect URL):",
+        }),
+        signal,
+      );
+      throwIfOAuthAborted(signal);
       const parsed = parseAuthorizationInput(input);
       if (parsed.state && parsed.state !== state) {
         throw new Error("State mismatch");
@@ -466,7 +539,13 @@ export async function loginOpenAICodex(options: {
       throw new Error("Missing authorization code");
     }
 
-    const tokenResult = await exchangeAuthorizationCode(code, verifier);
+    const tokenResult = await exchangeAuthorizationCode(
+      code,
+      verifier,
+      REDIRECT_URI,
+      signal,
+    );
+    throwIfOAuthAborted(signal);
     if (tokenResult.type !== "success") {
       throw new Error("Token exchange failed");
     }
@@ -483,7 +562,9 @@ export async function loginOpenAICodex(options: {
       accountId,
     };
   } finally {
-    server.close();
+    clearTimeout(deadline);
+    options.signal?.removeEventListener("abort", abortFromCaller);
+    server?.close();
   }
 }
 

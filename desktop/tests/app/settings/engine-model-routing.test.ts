@@ -4,9 +4,11 @@ import {
   buildEngineReasoningPatch,
   buildEngineRoutingPatch,
   buildEngineTransitionReasoningPatch,
+  DEFAULT_CHATGPT_MODEL,
   intersectChatGptModels,
   listChatGptCatalogModels,
 } from "../../../src/global/settings/lib/engine-model-routing";
+import { DEFAULT_CODEX_MODEL } from "../../../../runtime/contracts/agent-engine";
 
 const catalogModel = (provider: string, modelId: string): CatalogModel => ({
   id: `${provider}/${modelId}`,
@@ -31,6 +33,9 @@ const preferences = {
 };
 
 describe("engine model routing", () => {
+  it("uses the runtime contract as the single ChatGPT default", () => {
+    expect(DEFAULT_CHATGPT_MODEL).toBe(DEFAULT_CODEX_MODEL);
+  });
   it("scopes ChatGPT to OpenAI OAuth catalog models", () => {
     const models = [
       catalogModel("stella", "standard"),
@@ -173,6 +178,43 @@ describe("engine model routing", () => {
       reasoningEfforts: { orchestrator: "low", general: "low" },
       stellaConversationReasoningEfforts: {
         orchestrator: "low",
+        general: "low",
+      },
+    });
+  });
+
+  it("migrates legacy Claude routes and reasoning before leaving the engine", () => {
+    const legacyClaude = {
+      ...preferences,
+      agentRuntimeEngine: "claude_code_local" as const,
+      stellaConversationModelOverrides: {},
+    };
+    expect(buildEngineRoutingPatch(legacyClaude, "default")).toMatchObject({
+      agentRuntimeEngine: "default",
+      modelOverrides: preferences.modelOverrides,
+      stellaConversationModelOverrides: {
+        orchestrator: "anthropic/claude-opus-4.8",
+        general: "anthropic/claude-opus-4.8",
+      },
+    });
+
+    const reasoning = buildEngineTransitionReasoningPatch(
+      {
+        agentRuntimeEngine: "claude_code_local",
+        reasoningEfforts: {
+          orchestrator: "medium",
+          general: "low",
+        },
+        stellaConversationReasoningEfforts: {},
+        codexReasoningEffort: "default",
+        claudeCodeReasoningEffort: "high",
+      },
+      "default",
+    );
+    expect(reasoning).toEqual({
+      reasoningEfforts: { orchestrator: "medium", general: "low" },
+      stellaConversationReasoningEfforts: {
+        orchestrator: "medium",
         general: "low",
       },
     });

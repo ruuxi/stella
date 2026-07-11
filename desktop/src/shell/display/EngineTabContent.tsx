@@ -50,6 +50,7 @@ import {
   isRestrictedModelOverrideAudience,
 } from "@/global/billing/audience";
 import type { RealtimeVoicePreferences } from "../../../../runtime/contracts/local-preferences";
+import { DEFAULT_CODEX_MODEL } from "../../../../runtime/contracts/agent-engine";
 import { EngineRuntimeModelPanel } from "./EngineRuntimeModelPanel";
 import { useLlmCredentials } from "@/global/settings/hooks/use-llm-credentials";
 import {
@@ -173,7 +174,6 @@ const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
   provider: "stella",
 };
 
-const DEFAULT_CODEX_MODEL = "gpt-5.5";
 const DEFAULT_CLAUDE_CODE_MODEL = "default";
 const DEFAULT_CODEX_REASONING: CodexReasoningPreference = "default";
 const DEFAULT_CLAUDE_CODE_REASONING: ReasoningEffort = "default";
@@ -407,7 +407,8 @@ export function EngineTabContent() {
   useEffect(() => {
     if (
       !preferences ||
-      selectedEngine !== "codex_cli" ||
+      preferences.agentRuntimeEngine !== "codex_cli" ||
+      saving !== null ||
       chatGptConnection !== "connected" ||
       !codexCatalog.models
     )
@@ -440,7 +441,7 @@ export function EngineTabContent() {
     codexCatalog.models,
     engineCatalogModels,
     preferences,
-    selectedEngine,
+    saving,
     writePreferences,
   ]);
 
@@ -468,13 +469,14 @@ export function EngineTabContent() {
   /* ── engine handlers ────────────────────────────────────────── */
 
   const saveEngine = useCallback(
-    async (engine: AgentRuntimeEngine) => {
+    async (engine: AgentRuntimeEngine): Promise<boolean> => {
+      if (!preferences) return false;
       if (
-        !preferences ||
-        (engine === preferences.agentRuntimeEngine &&
-          !(engine === "codex_cli" && chatGptConnection !== "connected"))
-      )
-        return;
+        engine === preferences.agentRuntimeEngine &&
+        !(engine === "codex_cli" && chatGptConnection !== "connected")
+      ) {
+        return true;
+      }
       setSaving("engine");
       try {
         if (engine === "codex_cli") {
@@ -517,15 +519,10 @@ export function EngineTabContent() {
           ...buildEngineRoutingPatch(preferences, engine, model),
           ...buildEngineTransitionReasoningPatch(preferences, engine),
         };
-        await writePreferences(patch, "engine");
+        const saved = await writePreferences(patch, "engine");
+        return saved !== null;
       } catch (caught) {
         oauthPendingRef.current = false;
-        if (
-          caught instanceof Error &&
-          caught.message.toLowerCase().includes("cancel")
-        ) {
-          setDraftEngine(null);
-        }
         showError(
           errorText(
             caught,
@@ -534,7 +531,9 @@ export function EngineTabContent() {
               : "Could not change the engine.",
           ),
         );
+        return false;
       } finally {
+        setDraftEngine(null);
         setSaving(null);
       }
     },
@@ -744,6 +743,13 @@ function ModelsSection({
       })),
     [allModels, codexCatalog.models],
   );
+  const codexCatalogSettled =
+    !codexCatalog.loading && codexCatalog.models !== null;
+  const selectedCodexModelUnavailable =
+    runtimeModelEngine === "codex_cli" &&
+    codexCatalogSettled &&
+    Boolean(selectedRuntimeModelId) &&
+    !codexRuntimeModels.some((model) => model.id === selectedRuntimeModelId);
 
   const claudeRuntimeModels = useMemo(
     () =>
@@ -768,6 +774,7 @@ function ModelsSection({
     // empty base means loading/failed, not stale.
     if (
       !selectedRuntimeModelId ||
+      (runtimeModelEngine === "codex_cli" && !codexCatalogSettled) ||
       base.some((model) => model.id === selectedRuntimeModelId)
     ) {
       return base;
@@ -784,6 +791,7 @@ function ModelsSection({
   }, [
     claudeRuntimeModels,
     codexRuntimeModels,
+    codexCatalogSettled,
     runtimeModelEngine,
     selectedRuntimeModelId,
   ]);
@@ -1016,6 +1024,32 @@ function ModelsSection({
     runtimeModelEngine === "codex_cli"
       ? () => void codexCatalog.refresh()
       : onRefreshClaudeCodeModels;
+  const runtimePanelState =
+    runtimeModelEngine !== "codex_cli"
+      ? null
+      : codexCatalog.error
+        ? {
+            kind: "error" as const,
+            message: `ChatGPT models could not be verified: ${codexCatalog.error}`,
+          }
+        : codexCatalog.loading
+          ? {
+              kind: "status" as const,
+              message: "Verifying ChatGPT models…",
+            }
+          : codexRuntimeModels.length === 0
+            ? {
+                kind: "status" as const,
+                message:
+                  "No models are currently available to both ChatGPT and Codex.",
+              }
+            : selectedCodexModelUnavailable
+              ? {
+                  kind: "status" as const,
+                  message:
+                    "The saved model is unavailable. Choose another model.",
+                }
+              : null;
 
   return (
     <div className="engine-tab__models">
@@ -1111,6 +1145,8 @@ function ModelsSection({
                 }
                 favoriteScope={runtimePanelFavoriteScope}
                 onRefresh={runtimePanelRefresh}
+                stateMessage={runtimePanelState?.message}
+                stateKind={runtimePanelState?.kind}
                 onSelectModel={(modelId) =>
                   void autoApplyModel(
                     modelId,

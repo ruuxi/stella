@@ -1,4 +1,5 @@
 import type { CatalogModel } from "./model-catalog";
+import { DEFAULT_CODEX_MODEL } from "../../../../../runtime/contracts/agent-engine";
 
 export type ModelPickerEngine = "default" | "codex_cli" | "claude_code_local";
 
@@ -28,7 +29,7 @@ export type EngineReasoningPreferences = {
 };
 
 export const OPENAI_CODEX_PROVIDER = "openai-codex";
-export const DEFAULT_CHATGPT_MODEL = "gpt-5.4";
+export const DEFAULT_CHATGPT_MODEL = DEFAULT_CODEX_MODEL;
 export const DEFAULT_CLAUDE_CODE_MODEL = "default";
 
 const CONVERSATION_AGENT_KEYS = ["orchestrator", "general"] as const;
@@ -99,10 +100,7 @@ export function buildEngineRoutingPatch(
   const missingStellaSnapshot = CONVERSATION_AGENT_KEYS.every(
     (key) => !stellaOverrides[key],
   );
-  if (
-    preferences.agentRuntimeEngine === "default" ||
-    (preferences.agentRuntimeEngine === "codex_cli" && missingStellaSnapshot)
-  ) {
+  if (preferences.agentRuntimeEngine === "default" || missingStellaSnapshot) {
     for (const key of CONVERSATION_AGENT_KEYS) {
       if (
         nextOverrides[key] &&
@@ -193,7 +191,13 @@ export function buildEngineTransitionReasoningPatch(
   const stellaReasoning = {
     ...preferences.stellaConversationReasoningEfforts,
   };
-  if (preferences.agentRuntimeEngine === "default") {
+  const missingStellaReasoningSnapshot = CONVERSATION_AGENT_KEYS.every(
+    (key) => !stellaReasoning[key],
+  );
+  if (
+    preferences.agentRuntimeEngine === "default" ||
+    missingStellaReasoningSnapshot
+  ) {
     for (const key of CONVERSATION_AGENT_KEYS) {
       const effort = next[key];
       if (effort && effort !== "default") stellaReasoning[key] = effort;
@@ -202,7 +206,7 @@ export function buildEngineTransitionReasoningPatch(
   }
   if (engine === "default") {
     for (const key of CONVERSATION_AGENT_KEYS) {
-      const effort = preferences.stellaConversationReasoningEfforts[key];
+      const effort = stellaReasoning[key];
       if (effort && effort !== "default") next[key] = effort;
       else delete next[key];
     }
