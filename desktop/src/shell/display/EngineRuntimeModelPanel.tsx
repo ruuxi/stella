@@ -53,6 +53,7 @@ interface EngineRuntimeModelPanelProps {
   selectedModelId?: string;
   favoriteScope: string;
   onRefresh?: () => void;
+  refreshDisabled?: boolean;
   stateMessage?: string;
   stateKind?: "status" | "error";
   onSelectModel: (modelId: string) => void;
@@ -77,6 +78,7 @@ export function EngineRuntimeModelPanel({
   selectedModelId,
   favoriteScope,
   onRefresh,
+  refreshDisabled = false,
   stateMessage,
   stateKind = "status",
   onSelectModel,
@@ -123,7 +125,7 @@ export function EngineRuntimeModelPanel({
             <button
               type="button"
               className="engine-runtime-model-panel__refresh"
-              disabled={loading || disabled}
+              disabled={loading || refreshDisabled}
               onClick={onRefresh}
             >
               <RefreshCw

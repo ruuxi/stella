@@ -252,6 +252,9 @@ export function EngineTabContent() {
   const selectedEngine =
     draftEngine ?? preferences?.agentRuntimeEngine ?? "default";
   const inputsDisabled = loading || saving !== null;
+  const resetMigrationLatch = useCallback(() => {
+    migrationAttemptedRef.current = null;
+  }, []);
 
   /* ── status helpers ─────────────────────────────────────────── */
 
@@ -470,6 +473,7 @@ export function EngineTabContent() {
 
   const saveEngine = useCallback(
     async (engine: AgentRuntimeEngine): Promise<boolean> => {
+      resetMigrationLatch();
       if (!preferences) {
         setDraftEngine(null);
         return false;
@@ -553,6 +557,7 @@ export function EngineTabContent() {
       preferences,
       showError,
       writePreferences,
+      resetMigrationLatch,
     ],
   );
 
@@ -628,6 +633,7 @@ export function EngineTabContent() {
           onRefreshClaudeCodeModels={() => void loadClaudeCodeModels()}
           chatGptConnected={chatGptConnection === "connected"}
           codexCatalog={codexCatalog}
+          onExplicitCodexAction={resetMigrationLatch}
         />
       </section>
     </div>
@@ -652,6 +658,7 @@ interface ModelsSectionProps {
   onRefreshClaudeCodeModels: () => void;
   chatGptConnected: boolean;
   codexCatalog: ReturnType<typeof useCodexModelCatalog>;
+  onExplicitCodexAction: () => void;
 }
 
 function ModelsSection({
@@ -667,6 +674,7 @@ function ModelsSection({
   onRefreshClaudeCodeModels,
   chatGptConnected,
   codexCatalog,
+  onExplicitCodexAction,
 }: ModelsSectionProps) {
   const {
     models: stellaModels,
@@ -872,6 +880,7 @@ function ModelsSection({
     ) => {
       if (!preferences || !modelId) return;
       if (runtimeEngine === "codex_cli") {
+        onExplicitCodexAction();
         await writePreferences(
           buildEngineRoutingPatch(preferences, runtimeEngine, modelId),
           "overrides",
@@ -896,7 +905,13 @@ function ModelsSection({
         "default";
       await assignTo(normalizedId, agentKeys, effort);
     },
-    [assignTo, batchAssignableAgents, preferences, writePreferences],
+    [
+      assignTo,
+      batchAssignableAgents,
+      onExplicitCodexAction,
+      preferences,
+      writePreferences,
+    ],
   );
 
   const selectedReasoningEffort: ReasoningEffort =
@@ -919,6 +934,7 @@ function ModelsSection({
   const selectRuntimeReasoning = useCallback(
     async (modelId: string, effort: ReasoningEffort) => {
       if (!preferences || !runtimeModelEngine) return;
+      if (runtimeModelEngine === "codex_cli") onExplicitCodexAction();
       const patch: Partial<LocalModelPreferences> = {
         ...buildEngineRoutingPatch(preferences, runtimeModelEngine, modelId),
         ...buildEngineReasoningPatch(preferences, runtimeModelEngine, effort, [
@@ -928,7 +944,7 @@ function ModelsSection({
       };
       await writePreferences(patch, "overrides");
     },
-    [preferences, runtimeModelEngine, writePreferences],
+    [onExplicitCodexAction, preferences, runtimeModelEngine, writePreferences],
   );
 
   // Per-row reasoning affordance: applies the model to the agent set at the
@@ -1030,7 +1046,10 @@ function ModelsSection({
       : claudeCodeModelsLoading;
   const runtimePanelRefresh =
     runtimeModelEngine === "codex_cli"
-      ? () => void codexCatalog.refresh()
+      ? () => {
+          onExplicitCodexAction();
+          void codexCatalog.refresh();
+        }
       : onRefreshClaudeCodeModels;
   const runtimePanelState =
     runtimeModelEngine !== "codex_cli"
@@ -1155,6 +1174,7 @@ function ModelsSection({
                 }
                 favoriteScope={runtimePanelFavoriteScope}
                 onRefresh={runtimePanelRefresh}
+                refreshDisabled={inputsDisabled}
                 stateMessage={runtimePanelState?.message}
                 stateKind={runtimePanelState?.kind}
                 onSelectModel={(modelId) =>
