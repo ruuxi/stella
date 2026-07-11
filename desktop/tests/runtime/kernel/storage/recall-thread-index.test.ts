@@ -172,6 +172,45 @@ describe("listThreadsForRecallIndex", () => {
     expect(rows[0]?.threadId).toBe(worker);
     expect(rows[0]?.resultExcerpt?.length).toBe(400);
   });
+
+  it("drops threads whose last activity predates activeSinceMs", () => {
+    const { store } = createTestContext();
+    vi.useFakeTimers();
+    const stale = createThreadAt(store, 1_000, {
+      conversationId: "conv-a",
+      nameHint: "Stale thread",
+    });
+    const fresh = createThreadAt(store, 9_000, {
+      conversationId: "conv-a",
+      nameHint: "Fresh thread",
+    });
+    // A stale thread whose AGENT record was recently updated stays in the
+    // window — last activity is the max of thread and agent recency.
+    const staleButBusy = createThreadAt(store, 2_000, {
+      conversationId: "conv-b",
+      nameHint: "Stale but busy",
+    });
+    store.saveAgentRecord({
+      threadId: staleButBusy,
+      conversationId: "conv-b",
+      agentType: "general",
+      description: "Stale but busy",
+      agentDepth: 0,
+      status: "running",
+      startedAt: 2_000,
+      completedAt: null,
+      updatedAt: 8_000,
+    });
+
+    const rows = store.listThreadsForRecallIndex({
+      limit: 10,
+      activeSinceMs: 5_000,
+    });
+    expect(rows.map((row) => row.threadId).sort()).toEqual(
+      [fresh, staleButBusy].sort(),
+    );
+    expect(rows.map((row) => row.threadId)).not.toContain(stale);
+  });
 });
 
 describe("countThreadsCreatedSince", () => {

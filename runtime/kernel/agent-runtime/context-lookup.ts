@@ -49,30 +49,31 @@ const CHRONICLE_DIR_SEGMENTS = ["memories_extensions", "chronicle"] as const;
 
 type ContextLookupStore = Pick<
   RuntimeStore,
-  | "listThreadsForRecallIndex"
-  | "countThreadsCreatedSince"
-  | "listAgentProgressSummaries"
+  "listThreadsForRecallIndex" | "listAgentProgressSummaries"
 >;
 
 /**
  * Thread lookup is an LLM read over an inline index, not a query: the seed
- * carries the most recent N threads and the model identifies candidates
- * directly, so recall no longer depends on how a status question is phrased.
- * N covers ~a month of realistic recall at heavy usage; a high-volume day
- * (heavy fan-out users) widens it.
+ * carries the recent threads and the model identifies candidates directly,
+ * so recall no longer depends on how a status question is phrased. The
+ * index is deliberately SMALL and RECENT — the most recently active threads
+ * from the last few days, hard-capped — because the seed is re-sent on
+ * every recall step and a month-scale index made each lookup cost ~60k
+ * tokens per step. Anything older is reachable through `search`, which
+ * covers agent work too old for the index.
  */
-export const RECALL_INDEX_BASE_LIMIT = 500;
-export const RECALL_INDEX_HIGH_VOLUME_LIMIT = 1_000;
-const RECALL_INDEX_HIGH_VOLUME_DAILY_THREADS = 100;
+export const RECALL_INDEX_MAX_THREADS = 60;
 const DAY_MS = 24 * 60 * 60 * 1000;
+export const RECALL_INDEX_WINDOW_MS = 3 * DAY_MS;
 /**
  * Hard ceiling on the RENDERED index, enforced regardless of row limit —
- * the row caps only bound entry COUNT, and unbounded descriptions/excerpts
- * at 1000 rows could otherwise blow the seed. ~240k chars ≈ ~60k tokens.
- * When exceeded, the oldest-by-last-active entries drop first (they are the
- * least likely recall targets) and the index says how many were cut.
+ * the row cap only bounds entry COUNT, and unbounded descriptions/excerpts
+ * could otherwise blow the seed. Sized for the 60-row cap (~500 chars per
+ * entry plus slack). When exceeded, the oldest-by-last-active entries drop
+ * first (they are the least likely recall targets) and the index says how
+ * many were cut.
  */
-export const RECALL_INDEX_CHAR_BUDGET = 240_000;
+export const RECALL_INDEX_CHAR_BUDGET = 60_000;
 /** Per-entry cap on the description line; result/error are SQL-truncated. */
 const RECALL_INDEX_DESCRIPTION_CHARS = 300;
 
@@ -88,7 +89,7 @@ const RECALL_SEARCH_DESCRIPTION =
   "keyword-search past conversation transcripts (what the user and Stella actually said, across ALL conversations) plus agent work too old for the thread index. Returns matching [agent thread] entries first, then [message] hits in chronological order (oldest → newest) — read those as a timeline.";
 
 const RECALL_PROMPT_SHARED_GUIDANCE = [
-  "THREAD QUESTIONS ARE ANSWERED FROM THE INDEX, NOT BY SEARCHING. The context below carries a # Thread Index — the full record of Stella's recent delegated agent threads (name, description, last-active time, final-result excerpt, error) — and a # Live Thread Status tail listing the threads executing a turn RIGHT NOW with timestamped live-progress phrases. Any indexed thread absent from that tail is paused (idle but resumable); there is no 'dead' state. For any question about past work, a task, or a thread's status ('is X still running?', 'did it crash?', 'what did the Y agent do?'): scan the ENTIRE index for candidates — match on meaning, not exact wording — and OPEN YOUR BRIEF BY QUOTING the candidate thread_id(s) you matched, then answer from the entry, the live-status tail, and the current time (e.g. 'thread X is active; as of 3:04 PM it was searching documentation for rate limits'). Quote the error excerpt when a run errored. Do not guess at status, and do not conclude a thread doesn't exist until you have scanned the whole index.",
+  "RECENT THREAD QUESTIONS ARE ANSWERED FROM THE INDEX, NOT BY SEARCHING. The context below carries a # Thread Index — Stella's delegated agent threads active in the LAST 3 DAYS (name, description, last-active time, final-result excerpt, error) — and a # Live Thread Status tail listing the threads executing a turn RIGHT NOW with timestamped live-progress phrases. Any indexed thread absent from that tail is paused (idle but resumable); there is no 'dead' state. For any question about recent work, a task, or a thread's status ('is X still running?', 'did it crash?', 'what did the Y agent do?'): scan the ENTIRE index for candidates — match on meaning, not exact wording — and OPEN YOUR BRIEF BY QUOTING the candidate thread_id(s) you matched, then answer from the entry, the live-status tail, and the current time (e.g. 'thread X is active; as of 3:04 PM it was searching documentation for rate limits'). Quote the error excerpt when a run errored. Do not guess at status. The index ONLY covers the last 3 days — for work that is (or could be) older, run `search` before concluding a thread doesn't exist.",
   "",
   "Reading search results by their type labels: `[agent thread]` results are past work/tasks — they carry a resumable thread_id, live status, and summary. `[message]` results are things actually said in chat — dated snippets with their conversation context; these are what answer episodic questions (\"did I ever mention X\", \"where did we go\") that never became a task or memory note. When memory search comes up empty on something the user plausibly said before, run search before answering \"nothing found\".",
   "",
@@ -99,7 +100,7 @@ const RECALL_PROMPT_SHARED_GUIDANCE = [
   "The context below already includes the thread index, the memory summary, a (possibly truncated) ledger, the current time, live app/browser state, recent activity, live thread status, and chronicle. Search only when the answer likely lives in the deeper ledger or in past conversations. Resolve in as few steps as possible — answer the moment you can.",
   "",
   "When past threads are relevant, include their thread_id(s) in the brief so the orchestrator can resume them. Keep the brief tight — only what helps answer or route the request.",
-  'Answer with exactly "Nothing relevant found." ONLY when you have earned it: for thread/work questions, after scanning the entire # Thread Index; for episodic/message questions, after running search at least TWICE with DIFFERENT concrete terms (reformulate — drop status/filler words, use names, slugs, file paths, places). Never conclude nothing-found from a single noisy search.',
+  'Answer with exactly "Nothing relevant found." ONLY when you have earned it: for thread/work questions, after scanning the entire # Thread Index AND running search when the work could predate the index\'s 3-day window; for episodic/message questions, after running search at least TWICE with DIFFERENT concrete terms (reformulate — drop status/filler words, use names, slugs, file paths, places). Never conclude nothing-found from a single noisy search.',
 ];
 
 // Exported so replay/eval harnesses can drive the exact production prompt.
@@ -542,16 +543,6 @@ const formatThreadLiveProgressLines = (
   ];
 };
 
-/** Index limit for this call: widened when the last day was high-volume. */
-export const resolveRecallIndexLimit = (
-  store: Pick<ContextLookupStore, "countThreadsCreatedSince">,
-  now = Date.now(),
-): number =>
-  store.countThreadsCreatedSince(now - DAY_MS) >=
-  RECALL_INDEX_HIGH_VOLUME_DAILY_THREADS
-    ? RECALL_INDEX_HIGH_VOLUME_LIMIT
-    : RECALL_INDEX_BASE_LIMIT;
-
 const formatIndexTimestamp = (timestamp: number): string =>
   new Date(timestamp).toLocaleString("en-US", {
     year: "numeric",
@@ -586,20 +577,25 @@ export type RecallThreadIndexSections = {
 
 /**
  * Recall's inline thread index — the replacement for query-based thread
- * search. The model reads the full index (most recent `limit` threads across
- * ALL conversations, including evicted ones) and identifies candidates
+ * search for RECENT work. The model reads the index (threads active within
+ * {@link RECALL_INDEX_WINDOW_MS}, capped at {@link RECALL_INDEX_MAX_THREADS},
+ * across ALL conversations including evicted ones) and identifies candidates
  * directly, so a status lookup no longer depends on the phrasing of the
- * question or on lexical token overlap.
+ * question or on lexical token overlap. Older threads are found via the
+ * `search` action instead.
  */
 export const formatRecallThreadIndex = (
   store: ContextLookupStore,
   now = Date.now(),
 ): RecallThreadIndexSections => {
-  const limit = resolveRecallIndexLimit(store, now);
-  const threads = store.listThreadsForRecallIndex({ limit });
+  const threads = store.listThreadsForRecallIndex({
+    limit: RECALL_INDEX_MAX_THREADS,
+    activeSinceMs: now - RECALL_INDEX_WINDOW_MS,
+  });
   if (threads.length === 0) {
     return {
-      index: "No delegated agent threads recorded yet.",
+      index:
+        "No delegated agent threads were active in the index window (last 3 days). Older work is reachable via search.",
       liveStatus: "No agent threads are executing a turn right now.",
     };
   }
@@ -717,7 +713,7 @@ export const buildContextLookupUserPrompt = async (args: {
   // lookup request comes LAST so it sits closest to the model's answer.
   const sections = [
     "# Thread Index",
-    "Every delegated agent thread Stella has run recently (most recent first-class threads across ALL conversations, including evicted ones), oldest → newest by last activity. Each entry: thread_id | last active | name, plus description, final-result excerpt, and error when recorded.",
+    "Delegated agent threads active in the last 3 days (up to 60, across ALL conversations, including evicted ones), oldest → newest by last activity. Older threads are NOT listed — find them with `search`. Each entry: thread_id | last active | name, plus description, final-result excerpt, and error when recorded.",
     threadIndex.index,
     "",
     "# Memory Files",

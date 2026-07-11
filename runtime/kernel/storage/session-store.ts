@@ -3084,8 +3084,16 @@ export class SessionStore {
    * whichever column supplied that max. No full-table scan or whole-table
    * temp sort as history grows.
    */
-  listThreadsForRecallIndex(args: { limit: number }): RecallIndexThreadRow[] {
+  listThreadsForRecallIndex(args: {
+    limit: number;
+    /** Only include threads whose last activity is at or after this time. */
+    activeSinceMs?: number;
+  }): RecallIndexThreadRow[] {
     const limit = Math.max(1, Math.min(2_000, Math.floor(args.limit)));
+    const activeSinceMs =
+      Number.isFinite(args.activeSinceMs) && (args.activeSinceMs ?? 0) > 0
+        ? Math.floor(args.activeSinceMs as number)
+        : 0;
     const rows = this.db
       .prepare(
         `
@@ -3095,6 +3103,7 @@ export class SessionStore {
           FROM runtime_threads
           WHERE agent_type != 'orchestrator'
             AND thread_key NOT LIKE '%::subagent::%'
+            AND last_used_at >= ?
           ORDER BY last_used_at DESC
           LIMIT ?
         )
@@ -3104,6 +3113,7 @@ export class SessionStore {
           FROM runtime_agents
           WHERE agent_type != 'orchestrator'
             AND thread_id NOT LIKE '%::subagent::%'
+            AND updated_at >= ?
           ORDER BY updated_at DESC
           LIMIT ?
         )
@@ -3125,6 +3135,10 @@ export class SessionStore {
       WHERE thread_key IN (SELECT thread_key FROM candidates)
         AND runtime_threads.agent_type != 'orchestrator'
         AND thread_key NOT LIKE '%::subagent::%'
+        AND MAX(
+          runtime_threads.last_used_at,
+          COALESCE(runtime_agents.updated_at, 0)
+        ) >= ?
       ORDER BY MAX(
         runtime_threads.last_used_at,
         COALESCE(runtime_agents.updated_at, 0)
@@ -3132,7 +3146,7 @@ export class SessionStore {
       LIMIT ?
     `,
       )
-      .all(limit, limit, limit) as Array<{
+      .all(activeSinceMs, limit, activeSinceMs, limit, activeSinceMs, limit) as Array<{
       threadId: string;
       conversationId: string;
       name: string;

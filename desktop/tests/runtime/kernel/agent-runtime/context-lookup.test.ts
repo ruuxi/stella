@@ -7,9 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   RECALL_BUDGET_EXHAUSTED_TEXT,
   RECALL_EMPTY_BRIEF_TEXT,
-  RECALL_INDEX_BASE_LIMIT,
   RECALL_INDEX_CHAR_BUDGET,
-  RECALL_INDEX_HIGH_VOLUME_LIMIT,
+  RECALL_INDEX_MAX_THREADS,
+  RECALL_INDEX_WINDOW_MS,
   RECALL_TOOL_RUNTIME_SYSTEM_PROMPT,
   buildContextLookupUserPrompt,
   formatRecallThreadIndex,
@@ -601,7 +601,9 @@ describe("formatRecallThreadIndex", () => {
       "No agent threads are executing a turn right now",
     );
     const empty = formatRecallThreadIndex(makeStore([]), now);
-    expect(empty.index).toBe("No delegated agent threads recorded yet.");
+    expect(empty.index).toBe(
+      "No delegated agent threads were active in the index window (last 3 days). Older work is reachable via search.",
+    );
   });
 
   it("enforces the rendered-char budget by dropping the OLDEST entries whole", () => {
@@ -624,14 +626,17 @@ describe("formatRecallThreadIndex", () => {
     expect(out.index).not.toContain("thread-0000 |");
   });
 
-  it("widens the index after a high-volume day", () => {
-    const limits: number[] = [];
-    const record = (args: { limit: number }) => limits.push(args.limit);
-    formatRecallThreadIndex(makeStore([], {}, 40, record), Date.now());
-    formatRecallThreadIndex(makeStore([], {}, 150, record), Date.now());
-    expect(limits).toEqual([
-      RECALL_INDEX_BASE_LIMIT,
-      RECALL_INDEX_HIGH_VOLUME_LIMIT,
+  it("requests only the recent window, capped at the max thread count", () => {
+    const calls: Array<{ limit: number; activeSinceMs?: number }> = [];
+    const record = (args: { limit: number; activeSinceMs?: number }) =>
+      calls.push(args);
+    const now = Date.now();
+    formatRecallThreadIndex(makeStore([], {}, 0, record), now);
+    expect(calls).toEqual([
+      {
+        limit: RECALL_INDEX_MAX_THREADS,
+        activeSinceMs: now - RECALL_INDEX_WINDOW_MS,
+      },
     ]);
   });
 });
