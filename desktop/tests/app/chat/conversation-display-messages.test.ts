@@ -453,24 +453,68 @@ describe("conversation display message merge", () => {
   });
 
   it("defines an antisymmetric and transitive order for every tied-bucket triple", () => {
+    // z-first and a-second share an owner (slot order z before a) while
+    // m-other belongs to a different turn. The retired conditional comparator
+    // ordered z < a by slot ordinal but a < m < z lexically — an explicit
+    // z < a < m < z cycle. This fixture must keep failing that comparator.
     const bucket = [
-      "z-first",
-      "m-other",
-      "a-second",
-      "q-fourth",
-      "b-fifth",
-    ].map((_id, index) =>
+      { _id: "z-first", ownerId: "owner-current" },
+      { _id: "a-second", ownerId: "owner-current" },
+      { _id: "m-other", ownerId: "owner-previous" },
+      { _id: "q-fourth", ownerId: "owner-previous" },
+      { _id: "b-fifth", ownerId: "owner-third" },
+    ].map(({ _id, ownerId }, index) =>
       message({
         _id,
         timestamp: 800 - index,
-        payload: { userMessageId: `owner-${index % 3}` },
+        payload: { userMessageId: ownerId },
       }),
     );
     const clampedResolver = createOwningUserClampedSortTimestampResolver(
       bucket,
       () => 1_001,
     );
+
+    // Guard: reconstruct the retired conditional comparator (same-owner slot
+    // ordinal, lexical _id otherwise) and prove this fixture forms a cycle
+    // under it, so the regression fixture cannot silently rot into one both
+    // comparators satisfy.
+    const ordinalById = new Map<string, { ownerId: string; ordinal: number }>();
+    const nextOrdinalByOwner = new Map<string, number>();
+    for (const row of bucket) {
+      const ownerId = (row.payload as { userMessageId: string }).userMessageId;
+      const ordinal = nextOrdinalByOwner.get(ownerId) ?? 0;
+      nextOrdinalByOwner.set(ownerId, ordinal + 1);
+      ordinalById.set(row._id, { ownerId, ordinal });
+    }
+    const legacyCompare = (a: MessageRecord, b: MessageRecord): number => {
+      const ta = clampedResolver(a);
+      const tb = clampedResolver(b);
+      if (ta !== tb) return ta - tb;
+      const aOrdinal = ordinalById.get(a._id);
+      const bOrdinal = ordinalById.get(b._id);
+      if (
+        aOrdinal &&
+        bOrdinal &&
+        aOrdinal.ownerId === bOrdinal.ownerId &&
+        aOrdinal.ordinal !== bOrdinal.ordinal
+      ) {
+        return aOrdinal.ordinal - bOrdinal.ordinal;
+      }
+      return a._id.localeCompare(b._id);
+    };
+    const [zFirst, aSecond, mOther] = bucket;
+    expect(legacyCompare(zFirst!, aSecond!)).toBeLessThan(0);
+    expect(legacyCompare(aSecond!, mOther!)).toBeLessThan(0);
+    expect(legacyCompare(mOther!, zFirst!)).toBeLessThan(0);
+
     const compare = createDisplayOrderComparator(bucket, clampedResolver);
+
+    // The cyclic triple resolves to one consistent direction under the new
+    // comparator (input order: z < a < m).
+    expect(compare(zFirst!, aSecond!)).toBeLessThan(0);
+    expect(compare(aSecond!, mOther!)).toBeLessThan(0);
+    expect(compare(zFirst!, mOther!)).toBeLessThan(0);
 
     for (const a of bucket) {
       for (const b of bucket) {
