@@ -29,6 +29,11 @@ import {
 } from "./orchestrator-dispatch.js";
 import { startPreparedOrchestratorRun } from "./orchestrator-launch.js";
 import {
+  prunePendingFollowUpReplies,
+  recordPendingFollowUpReplyEntry,
+  resolveLiveChatMessageDelivery,
+} from "./shared.js";
+import {
   getOrchestratorHealth,
   normalizeAutomationRunInput,
   normalizeChatRunInput,
@@ -343,6 +348,15 @@ export const createOrchestratorController = (
     if (promptInputs.some((message) => message.messageType !== "message")) {
       args.session.queueUserMessageId(args.userMessageId, () => {
         args.session.queueCallbackSwitch(args.callbacks);
+        // Fires at the queued user message's `message_start` — the message is
+        // now in the model context and about to be answered, so drop its
+        // recovery mirror. Otherwise a steered message answered mid-run would
+        // be flushed (re-answered) if the run later ended abnormally.
+        prunePendingFollowUpReplies(
+          context.state.pendingFollowUpReplies,
+          args.session.conversationId,
+          args.userMessageId,
+        );
       });
     }
     for (const [index, promptInput] of promptInputs.entries()) {
@@ -361,65 +375,47 @@ export const createOrchestratorController = (
           payload: message,
         });
       }
-      // UI-queued chat messages (`role: "user"`) on the NATIVE engine are
-      // injected as `"steer"` so the agent sees them at the next safe turn
-      // boundary (after the current step's tools) and can respond mid-run,
-      // instead of only after the whole task drains at `agent_end`. The
-      // trade-off is ordering: the queued message can land between the
+      // Native engine: user messages `"steer"` (delivered at the next safe
+      // turn boundary, answered mid-run). External engines: `"followUp"`
+      // (their live agent drains only post-turn either way). Runtime-internal
+      // injections always `"steer"`. See resolveLiveChatMessageDelivery.
+      // Ordering trade-off on native: the queued message can land between the
       // run's preamble and its post-tool answer rather than strictly below
       // the finished answer — accepted in favor of responsiveness.
-      //
-      // External CLI engines (Claude Code, Codex) cannot inject mid-turn:
-      // their live agent buffers steer and followUp identically and drains
-      // only after the current turn completes. Keep `"followUp"` there so
-      // the semantics stay honest (delivery timing is post-turn either way).
-      //
-      // Hidden runtime-internal injections (system reminders,
-      // workspace-creation requests, etc.) always use `"steer"` so they
-      // interrupt the live turn at the next safe boundary.
-      const delivery: "steer" | "followUp" =
-        message.role === "user"
-          ? args.session.engine === "native"
-            ? "steer"
-            : "followUp"
-          : "steer";
+      const delivery = resolveLiveChatMessageDelivery({
+        role: message.role,
+        engine: args.session.engine,
+      });
       if (message.role === "user") {
-        // Mirror the message for abnormal-termination recovery regardless of
-        // delivery mode: a steered message queued but not yet delivered when
-        // the run dies is lost exactly like an undelivered follow-up. (If a
-        // steered message was already answered mid-run before the run later
-        // died, the flush may re-answer it — rare, and cheaper than dropping
-        // messages.)
-        recordPendingFollowUpReply(args.session.conversationId, promptInput.text);
+        // Mirror for abnormal-termination recovery regardless of delivery
+        // mode: a message queued but not yet delivered when the run dies is
+        // lost exactly like an undelivered follow-up. Pruned on delivery via
+        // the queueUserMessageId onStart above.
+        recordPendingFollowUpReply(args.session.conversationId, promptInput.text, args.userMessageId);
       }
       args.session.queueMessage(message, delivery);
     }
   };
 
   /**
-   * Mirror a follow-up user message so it can be answered after the active
-   * run drains. Follow-ups injected into the live run are only delivered at
-   * `agent_end`; if the run is interrupted or fails before then, the agent's
-   * in-memory follow-up queue is cleared and the user would never get a reply.
-   * The buffer is consumed by `flushPendingFollowUpReplies` on abnormal
-   * termination and discarded on clean completion.
+   * Mirror an injected live-run user message so it can be answered after the
+   * active run drains. If the run is interrupted or fails before the message
+   * is delivered, the agent's in-memory queues are cleared and the user would
+   * never get a reply. The buffer is consumed by
+   * `flushPendingFollowUpReplies` on abnormal termination, pruned per message
+   * on delivery (queueUserMessageId onStart), and discarded on clean
+   * completion.
    */
   const recordPendingFollowUpReply = (
     conversationId: string,
     text: string,
+    userMessageId?: string,
   ): void => {
-    const trimmed = text.trim();
-    if (!trimmed) {
-      return;
-    }
-    const existing = context.state.pendingFollowUpReplies.get(conversationId);
-    if (existing) {
-      existing.push({ text: trimmed });
-    } else {
-      context.state.pendingFollowUpReplies.set(conversationId, [
-        { text: trimmed },
-      ]);
-    }
+    recordPendingFollowUpReplyEntry(
+      context.state.pendingFollowUpReplies,
+      conversationId,
+      { text, ...(userMessageId ? { userMessageId } : {}) },
+    );
   };
 
   /**
@@ -594,10 +590,15 @@ export const createOrchestratorController = (
     if (liveSession) {
       liveSession.queueUserMessageId(userMessageId, () => {
         liveSession.queueCallbackSwitch(callbacks);
+        prunePendingFollowUpReplies(
+          context.state.pendingFollowUpReplies,
+          liveSession.conversationId,
+          userMessageId,
+        );
       });
       const message = persistInjectedUserMessage(liveSession, text, timestamp);
       if (delivery === "followUp") {
-        recordPendingFollowUpReply(liveSession.conversationId, text);
+        recordPendingFollowUpReply(liveSession.conversationId, text, userMessageId);
       }
       liveSession.queueMessage(message, delivery);
       return;

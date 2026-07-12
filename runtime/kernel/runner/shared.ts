@@ -191,3 +191,75 @@ export const buildAgentEventPrompt = (
 
   return formatAgentTerminalStateSystemReminder(lines);
 };
+
+/**
+ * Delivery mode for a chat message injected into a live orchestrator run.
+ *
+ * User messages on the NATIVE engine are `"steer"` so the agent sees them at
+ * the next safe turn boundary and can respond mid-run. External CLI engines
+ * (Claude Code, Codex) buffer steer and followUp identically and drain only
+ * after the current turn completes, so user messages stay `"followUp"` there
+ * to keep the semantics honest. Hidden runtime-internal injections (system
+ * reminders, workspace-creation requests, etc.) always `"steer"`.
+ */
+export const resolveLiveChatMessageDelivery = (args: {
+  role: string;
+  engine: "native" | "external";
+}): "steer" | "followUp" => {
+  if (args.role !== "user") {
+    return "steer";
+  }
+  return args.engine === "native" ? "steer" : "followUp";
+};
+
+/**
+ * Mirror an injected live-run user message for abnormal-termination recovery.
+ * If the run dies before the message is delivered, `flushPendingFollowUpReplies`
+ * answers it in a fresh turn. Entries are keyed by `userMessageId` so
+ * `prunePendingFollowUpReplies` can drop them once the message is actually
+ * delivered to the model.
+ */
+export const recordPendingFollowUpReplyEntry = (
+  replies: Map<string, import("./types.js").PendingFollowUpReply[]>,
+  conversationId: string,
+  entry: import("./types.js").PendingFollowUpReply,
+): void => {
+  const trimmed = entry.text.trim();
+  if (!trimmed) {
+    return;
+  }
+  const next = { ...entry, text: trimmed };
+  const existing = replies.get(conversationId);
+  if (existing) {
+    existing.push(next);
+  } else {
+    replies.set(conversationId, [next]);
+  }
+};
+
+/**
+ * Drop recovery mirrors for a queued user message once it has been delivered
+ * into the model context (the queued-user-message `message_start`). Without
+ * this, a steered message answered mid-run would still be flushed — and
+ * re-answered — if the run later ended abnormally. The remaining window (run
+ * dies after delivery but before the answer completes) is a single turn, far
+ * smaller than flushing every already-answered message.
+ */
+export const prunePendingFollowUpReplies = (
+  replies: Map<string, import("./types.js").PendingFollowUpReply[]>,
+  conversationId: string,
+  userMessageId: string,
+): void => {
+  const existing = replies.get(conversationId);
+  if (!existing) {
+    return;
+  }
+  const remaining = existing.filter(
+    (entry) => entry.userMessageId !== userMessageId,
+  );
+  if (remaining.length === 0) {
+    replies.delete(conversationId);
+  } else if (remaining.length !== existing.length) {
+    replies.set(conversationId, remaining);
+  }
+};

@@ -310,16 +310,20 @@ export type QueuedOrchestratorTurn = {
 
 /**
  * A user chat message that arrived while a run was already active on the
- * conversation and was injected into the live run as a `"followUp"` (so it
- * could add context to the in-flight work). These follow-ups are delivered to
- * the agent only at `agent_end`; if the active run is interrupted, fails
- * fatally, or is otherwise torn down before draining them, the in-memory
- * follow-up queue is discarded and the user is never answered. We mirror them
- * here so a fresh reply turn can be fired after the active run drains. See
- * `flushPendingFollowUpReplies` in `orchestrator.ts`.
+ * conversation and was injected into the live run (as `"steer"` on the native
+ * engine, `"followUp"` on external engines). If the run is interrupted, fails
+ * fatally, or is otherwise torn down before the message is delivered, the
+ * agent's in-memory queues are discarded and the user would never get a
+ * reply. We mirror the message here so a fresh reply turn can be fired after
+ * the active run drains, and prune the mirror once the message is actually
+ * delivered to the model so an already-answered message is not re-answered.
+ * See `flushPendingFollowUpReplies` in `orchestrator.ts` and
+ * `prunePendingFollowUpReplies` in `shared.ts`.
  */
 export type PendingFollowUpReply = {
   text: string;
+  /** Queued-message id used to prune the mirror on delivery. */
+  userMessageId?: string;
 };
 
 export type ParsedAgentLike = {
