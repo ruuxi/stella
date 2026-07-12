@@ -559,6 +559,22 @@ export const launchPreparedOrchestratorRun = (args: {
     signal,
     onUpdate,
   ) => {
+    // The Orchestrator coordinates work but never authors Stella source
+    // changes itself (`controlsSelfModHmr: false`). Keep its entire tool
+    // surface outside the shared mutation transaction so coordination,
+    // memory, web, and output tools cannot queue behind an authoring agent.
+    // Install Update is the only run using this launcher that owns self-mod
+    // HMR, and continues through the guarded path below.
+    if (!shouldAttachSelfModLifecycle) {
+      return await context.toolHost.executeTool(
+        toolName,
+        toolArgs,
+        toolContext,
+        signal,
+        onUpdate,
+      );
+    }
+
     const isShellCommand = toolName === "exec_command";
     const shouldGuardShellCommand =
       isShellCommand && !isReadOnlyShellCommand(toolArgs);

@@ -25,7 +25,10 @@ import {
   type PendingSelfModApply,
 } from "../../../../runtime/worker/self-mod-coordinator.js";
 import { METHOD_NAMES } from "../../../../runtime/protocol/index.js";
-import { getSelfModMutationLockStatus } from "../../../../runtime/kernel/self-mod/mutation-lock.js";
+import {
+  acquireSelfModMutationLock,
+  getSelfModMutationLockStatus,
+} from "../../../../runtime/kernel/self-mod/mutation-lock.js";
 import { handleApplyPatch } from "../../../../runtime/kernel/tools/apply-patch.js";
 import type {
   ToolContext,
@@ -909,6 +912,124 @@ const runSingleExternalTurn = async (
 };
 
 describe("production-path self-mod concurrency harness", () => {
+  it("P0: keeps every orchestrator tool outside the self-mod mutation lock", async () => {
+    const h = await createRepo();
+    const releaseMutationLock = await acquireSelfModMutationLock(
+      h.repoRoot,
+      "active-authoring-agent",
+    );
+    let toolExecutedResolve!: () => void;
+    const toolExecuted = new Promise<void>((resolve) => {
+      toolExecutedResolve = resolve;
+    });
+    let runDoneResolve!: () => void;
+    const runDone = new Promise<void>((resolve) => {
+      runDoneResolve = resolve;
+    });
+    const toolHost = {
+      getToolCatalog: () => [],
+      executeTool: vi.fn(async () => {
+        toolExecutedResolve();
+        return { result: "coordinated" } as ToolResult;
+      }),
+      registerExtensionTools: vi.fn(),
+      drainCompletedShellProducedFiles: vi.fn(async () => []),
+      killAllShells: vi.fn(),
+      killShell: vi.fn(),
+      killShellsByPort: vi.fn(),
+      shutdown: vi.fn(),
+    };
+    const context = {
+      stellaAppDir: h.repoRoot,
+      stellaDataDir: h.dataRoot,
+      deviceId: "device-1",
+      runtimeStore: {},
+      state: {
+        localAgentManager: null,
+        runCallbacksByRunId: new Map(),
+        conversationCallbacks: new Map(),
+        convexSiteUrl: null,
+        authToken: null,
+        orchestratorSessions: new Map(),
+      },
+      selfModHmrController: h.controller,
+      selfModLifecycle: h.coordinator.lifecycle,
+      toolHost,
+      hookEmitter: { emit: vi.fn() },
+      paths: {},
+    } as any;
+
+    (
+      globalThis as unknown as { __selfModProductionHarness: HarnessDriver }
+    ).__selfModProductionHarness = {
+      runTool: async (surface, executor) => {
+        expect(surface).toBe("orchestrator");
+        return await executor(
+          "Recall",
+          { query: "existing work" },
+          {
+            conversationId: "orchestrator-control-plane",
+            deviceId: "device-1",
+            requestId: "orchestrator-control-plane-request",
+            agentType: AGENT_IDS.ORCHESTRATOR,
+            stellaAppDir: h.repoRoot,
+          },
+        );
+      },
+    };
+
+    let executionResult: "executed" | "blocked";
+    let lockStatusWhileToolRan: { locked: boolean; queued: number };
+    try {
+      launchPreparedOrchestratorRun({
+        context,
+        prepared: {
+          runId: "orchestrator-control-plane-run",
+          conversationId: "orchestrator-control-plane",
+          agentType: AGENT_IDS.ORCHESTRATOR,
+          userPrompt: "Coordinate while an authoring agent is active",
+          attachments: [],
+          agentContext: {
+            systemPrompt: "",
+            dynamicContext: "",
+            maxAgentDepth: 1,
+          },
+          resolvedLlm: {
+            model: { id: "test-model", provider: "test-provider" },
+            route: "direct-provider",
+            getApiKey: () => "test-key",
+          },
+          abortController: new AbortController(),
+        },
+        userMessageId: "orchestrator-control-plane-user-message",
+        runtimeCallbacks: { onEnd: () => runDoneResolve() },
+        cleanupRun: () => {},
+        onFatalError: (error) => {
+          throw error;
+        },
+      } as any);
+
+      executionResult = await Promise.race([
+        toolExecuted.then(() => "executed" as const),
+        new Promise<"blocked">((resolve) =>
+          setTimeout(() => resolve("blocked"), 250),
+        ),
+      ]);
+      lockStatusWhileToolRan = getSelfModMutationLockStatus(h.repoRoot);
+    } finally {
+      releaseMutationLock();
+    }
+
+    await runDone;
+    expect(executionResult!).toBe("executed");
+    expect(toolHost.executeTool).toHaveBeenCalledOnce();
+    expect(lockStatusWhileToolRan!).toEqual({ locked: true, queued: 0 });
+    expect(getSelfModMutationLockStatus(h.repoRoot)).toEqual({
+      locked: false,
+      queued: 0,
+    });
+  });
+
   it("P0: serializes one subagent apply_patch transaction against an orchestrator mutation", async () => {
     const h = await createRepo();
     const filePath = path.join(h.repoRoot, "desktop/src/shared.ts");
