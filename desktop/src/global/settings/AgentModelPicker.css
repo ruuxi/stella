@@ -5,13 +5,11 @@
   flex-direction: column;
   gap: 10px;
   min-width: 0;
-  /* Reserve a stable height across the Assistant / Image / Voice tabs so
-   * switching between them doesn't make the popover dance. Sized to fit
-   * the Assistant compact list (default row + presets) plus the reasoning
-   * footer, which is the tallest of the three. Extra vertical slack is
-   * absorbed by `.agent-model-picker-body` so it sits below the model list
-   * (not as a dead zone under the reasoning/footer strip). */
-  min-height: 360px;
+  /* The picker owns ONE fixed height; every tab (Assistant / Image / Voice)
+   * and every engine panel flex-fills it. A floor-only min-height let each
+   * panel's own sizing leak out, so the popover grew/shrank when switching
+   * engines (ChatGPT's status notices stack above its list) or tabs. */
+  height: clamp(360px, 60vh, 480px);
 }
 
 .agent-model-picker-body {
@@ -20,6 +18,9 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
+  /* Content taller than the fixed picker height (e.g. the Voice tab's
+   * catalog) scrolls inside the body instead of resizing the popover. */
+  overflow-y: auto;
 }
 
 .agent-model-picker-header {
@@ -242,6 +243,17 @@
 
 .agent-model-picker .model-picker-shell {
   overflow: hidden;
+}
+
+/* Inside the picker the panels flex-fill the body's remaining space rather
+ * than imposing their own clamp height — otherwise anything rendered above
+ * them (ChatGPT connection/status notices) adds to the popover's total
+ * height and the popover resizes across engines. */
+.agent-model-picker .model-picker-shell,
+.agent-model-picker .engine-scoped-model-list {
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 @media (max-width: 520px) {
