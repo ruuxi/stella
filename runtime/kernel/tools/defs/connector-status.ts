@@ -19,10 +19,8 @@
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import {
-  buildMergedConnectorCatalog,
-  fetchServerNativeCatalog,
-  readCachedServerCatalog,
-  writeCachedServerCatalog,
+  resolveNativeConnectorCatalog,
+  type NativeCatalogSource,
 } from "../../connectors/catalog-cache.js";
 import {
   getConnectorDecline,
@@ -31,6 +29,7 @@ import {
 import { getNativeConnectorConnectionState } from "../../connectors/connection-status.js";
 import { scoreConnectorMatch } from "../../connectors/discovery.js";
 import type { NativeConnectorCatalogEntry } from "../../connectors/native-integrations.js";
+import { getNativeConnectorTools } from "../../connectors/native-integrations.js";
 import type { ToolDefinition } from "../types.js";
 
 export const CONNECTOR_STATUS_TOOL_NAME = "connector_status";
@@ -74,7 +73,9 @@ const SERVER_CATALOG_TTL_MS = 5 * 60 * 1000;
 type CatalogMemo = {
   stellaDataDir: string;
   loadedAt: number;
-  entries: NativeConnectorCatalogEntry[] | null;
+  entries: NativeConnectorCatalogEntry[];
+  source: NativeCatalogSource;
+  sources: Record<string, NativeCatalogSource>;
 };
 
 let catalogMemo: CatalogMemo | null = null;
@@ -86,40 +87,31 @@ export const resetConnectorStatusCatalogMemo = () => {
 
 const loadCatalog = async (
   options: ConnectorStatusToolOptions,
-): Promise<NativeConnectorCatalogEntry[]> => {
+): Promise<{
+  entries: NativeConnectorCatalogEntry[];
+  source: NativeCatalogSource;
+  sources: Record<string, NativeCatalogSource>;
+}> => {
   if (
     catalogMemo &&
     catalogMemo.stellaDataDir === options.stellaDataDir &&
     Date.now() - catalogMemo.loadedAt < SERVER_CATALOG_TTL_MS
   ) {
-    return buildMergedConnectorCatalog(catalogMemo.entries ?? undefined);
+    return {
+      entries: catalogMemo.entries,
+      source: catalogMemo.source,
+      sources: catalogMemo.sources,
+    };
   }
-  let serverEntries: NativeConnectorCatalogEntry[] | null = null;
-  const siteAuth = options.getStellaSiteAuth?.() ?? null;
-  if (siteAuth) {
-    serverEntries = await fetchServerNativeCatalog({
-      baseUrl: siteAuth.baseUrl,
-      authToken: siteAuth.authToken,
-      ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
-    });
-    if (serverEntries) {
-      // Write-through keeps the keyword reminder's index in sync.
-      await writeCachedServerCatalog(
-        options.stellaDataDir,
-        serverEntries,
-      ).catch(() => undefined);
-    }
-  }
-  if (!serverEntries) {
-    serverEntries =
-      (await readCachedServerCatalog(options.stellaDataDir))?.entries ?? null;
-  }
+  const resolved = await resolveNativeConnectorCatalog(options);
   catalogMemo = {
     stellaDataDir: options.stellaDataDir,
     loadedAt: Date.now(),
-    entries: serverEntries,
+    entries: resolved.entries,
+    source: resolved.source,
+    sources: resolved.sources,
   };
-  return buildMergedConnectorCatalog(serverEntries ?? undefined);
+  return resolved;
 };
 
 const tokenize = (value: string): string[] => [
@@ -215,7 +207,7 @@ export const createConnectorStatusTool = (
         : undefined;
 
     const catalog = await loadCatalog(options);
-    const { entry, suggestions } = resolveEntry(catalog, query);
+    const { entry, suggestions } = resolveEntry(catalog.entries, query);
     if (!entry) {
       const hint =
         suggestions.length > 0
@@ -232,10 +224,29 @@ export const createConnectorStatusTool = (
       options.stellaDataDir,
       entry,
     );
-    if (state.connected) {
+    const toolCount = getNativeConnectorTools(entry).length;
+    const executable = state.enabled && toolCount > 0;
+    const diagnostics = {
+      id: entry.id,
+      catalogSource: catalog.sources[entry.id] ?? catalog.source,
+      provider: entry.provider,
+      enabled: state.enabled,
+      providerStatus: state.authStatus,
+      accountVerified: state.accountVerified,
+      toolCount,
+      executable,
+    };
+    if (executable) {
       return {
-        result: `${entry.name} is connected (integration id \`${entry.id}\`). Proceed with the task — agents use it via \`stella-connect call ${entry.id} …\` (skill \`${entry.id}\`).`,
-        details: { id: entry.id, status: "connected" },
+        result: `${entry.name} is enabled and exposes ${toolCount} executable tool${toolCount === 1 ? "" : "s"} (integration id \`${entry.id}\`, catalog: ${diagnostics.catalogSource}, provider: ${entry.provider}).${state.accountVerified ? " The provider account is connected." : " Backend account linkage is managed server-side and was not independently verified by this status check."} Agents can inspect it with \`stella-connect tools ${entry.id}\`.`,
+        details: { ...diagnostics, status: "executable" },
+      };
+    }
+
+    if (toolCount === 0) {
+      return {
+        result: `${entry.name} ${state.enabled ? "is locally enabled, but" : "exists, but"} the resolved ${entry.provider} catalog entry exposes no executable tools. It is not ready to use.`,
+        details: { ...diagnostics, status: "not_executable" },
       };
     }
 

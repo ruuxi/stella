@@ -74,9 +74,15 @@ describe("connector_status tool", () => {
     const requester = vi.fn();
     const tool = makeTool(root, requester as never);
     const result = await tool.execute({ connector: "notion" }, context);
-    expect(resultText(result)).toContain("is connected");
+    expect(resultText(result)).toContain("is enabled");
+    expect(resultText(result)).toContain("not independently verified");
     expect(requester).not.toHaveBeenCalled();
-    expect(result.details).toMatchObject({ id: "notion", status: "connected" });
+    expect(result.details).toMatchObject({
+      id: "notion",
+      status: "executable",
+      providerStatus: "backend_managed_unverified",
+      accountVerified: false,
+    });
   });
 
   it("shows the card and reports success so the orchestrator proceeds", async () => {

@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { callApiConnector } from "../connectors/api-client.js";
 import {
-  fetchServerNativeCatalog,
-  writeCachedServerCatalog,
+  resolveNativeConnectorCatalog,
+  type NativeCatalogSource,
 } from "../connectors/catalog-cache.js";
 import { nativeConnectorAuthStatus as sharedNativeConnectorAuthStatus } from "../connectors/connection-status.js";
 import {
@@ -414,26 +414,36 @@ const loadStellaSiteAuth = async () => {
   }
   const socketPath = process.env.STELLA_CLI_BRIDGE_SOCK;
   if (!socketPath) return { ok: false as const, reason: "no_bridge" };
-  return await requestStellaSiteAuthFromBridge({ socketPath }).catch((error) => ({
-    ok: false as const,
-    reason: (error as Error).message || "bridge_unavailable",
-  }));
+  return await requestStellaSiteAuthFromBridge({ socketPath }).catch(
+    (error) => ({
+      ok: false as const,
+      reason: (error as Error).message || "bridge_unavailable",
+    }),
+  );
 };
 
-const loadServerNativeCatalog = async (): Promise<
-  NativeConnectorCatalogOverride | undefined
-> => {
-  const siteAuth = await loadStellaSiteAuth();
-  if (!siteAuth.ok) return undefined;
-  const entries = await fetchServerNativeCatalog({
-    baseUrl: siteAuth.baseUrl,
-    authToken: siteAuth.authToken,
+const loadServerNativeCatalog = async () =>
+  resolveNativeConnectorCatalog({
+    stellaDataDir: stellaAppDir,
+    getStellaSiteAuth: async () => {
+      const siteAuth = await loadStellaSiteAuth();
+      return siteAuth.ok
+        ? { baseUrl: siteAuth.baseUrl, authToken: siteAuth.authToken }
+        : null;
+    },
   });
-  if (!entries) return undefined;
-  // Write-through so the connector keyword reminder's index (built from
-  // the disk cache) stays in sync with the live catalog.
-  await writeCachedServerCatalog(stellaAppDir, entries).catch(() => undefined);
-  return entries;
+
+const nativeDiagnostics = (
+  entry: NativeConnectorCatalogEntry,
+  catalogSource: NativeCatalogSource,
+) => {
+  const toolCount = getNativeConnectorTools(entry).length;
+  return {
+    catalogSource,
+    provider: entry.provider,
+    toolCount,
+    executable: toolCount > 0,
+  };
 };
 
 const callBackendNativeIntegration = async (
@@ -451,22 +461,22 @@ const callBackendNativeIntegration = async (
     authToken: string;
   };
   const siteBaseUrl = connectedSiteAuth.baseUrl.replace(/\/+$/u, "");
-  const response = await fetch(
-    `${siteBaseUrl}/api/native-integrations/run`,
-    {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        authorization: `Bearer ${connectedSiteAuth.authToken}`,
-      },
-      body: JSON.stringify({ id, action, input }),
+  const response = await fetch(`${siteBaseUrl}/api/native-integrations/run`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      authorization: `Bearer ${connectedSiteAuth.authToken}`,
     },
-  );
+    body: JSON.stringify({ id, action, input }),
+  });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const message =
-      payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+      payload &&
+      typeof payload === "object" &&
+      "error" in payload &&
+      typeof payload.error === "string"
         ? payload.error
         : `Integration action failed (${response.status}).`;
     fail(message);
@@ -536,7 +546,9 @@ const callNativeConnector = async (
       return await callBackendNativeIntegration(
         id,
         nestedActionName,
-        nestedArgs && typeof nestedArgs === "object" && !Array.isArray(nestedArgs)
+        nestedArgs &&
+          typeof nestedArgs === "object" &&
+          !Array.isArray(nestedArgs)
           ? (nestedArgs as Record<string, unknown>)
           : {},
       );
@@ -604,7 +616,10 @@ const callNativeConnector = async (
       fail(`${entry.name} does not expose a native REST endpoint yet.`);
     const tokenInQuery = config?.apiAuthPlacement === "access_token_query";
     const attempt = async () => {
-      const tokenPayload = await loadConnectorTokenPayload(stellaAppDir, tokenKey);
+      const tokenPayload = await loadConnectorTokenPayload(
+        stellaAppDir,
+        tokenKey,
+      );
       const baseUrl =
         tokenPayload?.resourceUrl ??
         config?.resourceUrl ??
@@ -652,10 +667,7 @@ const callNativeConnector = async (
         },
       );
     };
-    return await withAuthRetry(
-      attempt,
-      nativeOAuthAuthHints(id, config),
-    );
+    return await withAuthRetry(attempt, nativeOAuthAuthHints(id, config));
   };
   if (entry.provider === "oauth-catalog" && action.startsWith("/")) {
     return await callNativeOAuthApiPath(action, {
@@ -865,16 +877,13 @@ const importMcp = async (argv: string[]) => {
   let probeDeferredReason: string | undefined;
   try {
     tools = await withConnectorBridgeCleanup(command, () =>
-      withAuthRetry(
-        () => listConnectorBridgeTools(stellaAppDir, command),
-        {
-          authType: command.auth?.type === "oauth" ? "oauth" : "api_key",
-          resourceUrl: command.url,
-          oauthClientId: command.auth?.clientId,
-          oauthResource: command.auth?.resource,
-          scopes: command.auth?.scopes,
-        },
-      ),
+      withAuthRetry(() => listConnectorBridgeTools(stellaAppDir, command), {
+        authType: command.auth?.type === "oauth" ? "oauth" : "api_key",
+        resourceUrl: command.url,
+        oauthClientId: command.auth?.clientId,
+        oauthResource: command.auth?.resource,
+        scopes: command.auth?.scopes,
+      }),
     );
   } catch (error) {
     if (error instanceof ConnectorAuthError && auth.type !== "none") {
@@ -959,7 +968,10 @@ const HELP_TEXT = [
 
 const main = async () => {
   const [commandName, ...rest] = process.argv.slice(2);
-  const serverNativeCatalog = await loadServerNativeCatalog();
+  const resolvedNativeCatalog = await loadServerNativeCatalog();
+  const serverNativeCatalog = resolvedNativeCatalog.entries;
+  const catalogSource = resolvedNativeCatalog.source;
+  const catalogSources = resolvedNativeCatalog.sources;
   switch (commandName) {
     case "installed": {
       const [commands, apis, native] = await Promise.all([
@@ -986,6 +998,10 @@ const main = async () => {
             .map(async (entry) => ({
               ...entry,
               authStatus: await nativeConnectorAuthStatus(entry),
+              ...nativeDiagnostics(
+                entry,
+                catalogSources[entry.id] ?? catalogSource,
+              ),
             })),
         ),
       });
@@ -995,7 +1011,7 @@ const main = async () => {
     case "find": {
       const { positionals } = parseOptions(rest);
       const query = positionals.join(" ").trim();
-      if (!query) fail('Usage: stella-connect discover <keywords>');
+      if (!query) fail("Usage: stella-connect discover <keywords>");
       const native = await listNativeConnectors(
         stellaAppDir,
         {},
@@ -1011,12 +1027,17 @@ const main = async () => {
       const enriched = await Promise.all(
         matches.map(async (match) => {
           let connected = false;
+          let nativeEntry: NativeConnectorCatalogEntry | undefined;
           if (match.kind === "native") {
-            const entry = findNative(match.id, serverNativeCatalog);
-            const authStatus = entry
-              ? await nativeConnectorAuthStatus(entry)
+            nativeEntry = findNative(match.id, serverNativeCatalog);
+            const authStatus = nativeEntry
+              ? await nativeConnectorAuthStatus(nativeEntry)
               : ("unsupported" as const);
-            connected = match.enabled && authStatus === "connected";
+            connected =
+              match.enabled &&
+              authStatus === "connected" &&
+              !!nativeEntry &&
+              getNativeConnectorTools(nativeEntry).length > 0;
           } else {
             const config =
               match.kind === "mcp"
@@ -1043,6 +1064,12 @@ const main = async () => {
             description: match.description,
             enabled: match.enabled,
             connected,
+            ...(match.kind === "native" && nativeEntry
+              ? nativeDiagnostics(
+                  nativeEntry,
+                  catalogSources[nativeEntry.id] ?? catalogSource,
+                )
+              : {}),
             declined: match.declined,
             next,
           };
@@ -1161,12 +1188,20 @@ const main = async () => {
       return;
     }
     case "apps": {
-      const native = await listNativeConnectors(stellaAppDir, {}, serverNativeCatalog);
+      const native = await listNativeConnectors(
+        stellaAppDir,
+        {},
+        serverNativeCatalog,
+      );
       printJson(
         await Promise.all(
           native.map(async (entry) => ({
             ...entry,
             authStatus: await nativeConnectorAuthStatus(entry),
+            ...nativeDiagnostics(
+              entry,
+              catalogSources[entry.id] ?? catalogSource,
+            ),
           })),
         ),
       );
@@ -1189,7 +1224,9 @@ const main = async () => {
     case "disable-native": {
       const id = rest[0];
       if (!id) fail("Usage: stella-connect disable-native <integration-id>");
-      printJson(await disableNativeConnector(stellaAppDir, id, {}, serverNativeCatalog));
+      printJson(
+        await disableNativeConnector(stellaAppDir, id, {}, serverNativeCatalog),
+      );
       return;
     }
     case "tools": {
@@ -1198,17 +1235,29 @@ const main = async () => {
       const native = findNative(id, serverNativeCatalog);
       if (native) {
         await ensureNativeEnabled(id, serverNativeCatalog);
-        printJson(getNativeConnectorTools(native));
+        const tools = getNativeConnectorTools(native);
+        printJson({
+          ...nativeDiagnostics(
+            native,
+            catalogSources[native.id] ?? catalogSource,
+          ),
+          tools,
+        });
         return;
       }
       const command = await findCommand(id);
       if (!command) fail(`Connector command is not installed: ${id}`);
       if (!command) return;
-      printJson(
-        await withConnectorBridgeCleanup(command, () =>
-          withAuthRetry(() => listConnectorBridgeTools(stellaAppDir, command)),
-        ),
+      const tools = await withConnectorBridgeCleanup(command, () =>
+        withAuthRetry(() => listConnectorBridgeTools(stellaAppDir, command)),
       );
+      printJson({
+        catalogSource: "imported",
+        provider: "mcp",
+        toolCount: tools.length,
+        executable: tools.length > 0,
+        tools,
+      });
       return;
     }
     case "catalog-actions": {
@@ -1236,18 +1285,23 @@ const main = async () => {
       );
       if (findNative(id, serverNativeCatalog)) {
         printJson(
-          await callNativeConnector(id, target, {
-            body,
-            method: optionString(options, "method"),
-            query: parseJson<Record<string, string | number | boolean>>(
-              optionString(options, "query-json"),
-              {},
-            ),
-            headers: parseJson<Record<string, string>>(
-              optionString(options, "header-json"),
-              {},
-            ),
-          }, serverNativeCatalog),
+          await callNativeConnector(
+            id,
+            target,
+            {
+              body,
+              method: optionString(options, "method"),
+              query: parseJson<Record<string, string | number | boolean>>(
+                optionString(options, "query-json"),
+                {},
+              ),
+              headers: parseJson<Record<string, string>>(
+                optionString(options, "header-json"),
+                {},
+              ),
+            },
+            serverNativeCatalog,
+          ),
         );
         return;
       }
@@ -1300,7 +1354,14 @@ const main = async () => {
       const id = rest[0];
       if (!id) fail("Usage: stella-connect remove <connector-id>");
       if (findNative(id, serverNativeCatalog)) {
-        printJson(await disableNativeConnector(stellaAppDir, id, {}, serverNativeCatalog));
+        printJson(
+          await disableNativeConnector(
+            stellaAppDir,
+            id,
+            {},
+            serverNativeCatalog,
+          ),
+        );
         return;
       }
       const removed = await removeConfiguredConnector(stellaAppDir, id);

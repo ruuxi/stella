@@ -32,6 +32,28 @@ type CatalogCacheFile = {
   entries: NativeConnectorCatalogEntry[];
 };
 
+export type NativeCatalogSource = "live" | "cache" | "bundled";
+
+export type ResolvedNativeCatalog = {
+  entries: NativeConnectorCatalogEntry[];
+  source: NativeCatalogSource;
+  sources: Record<string, NativeCatalogSource>;
+};
+
+const entrySources = (
+  entries: readonly NativeConnectorCatalogEntry[],
+  serverEntries: readonly NativeConnectorCatalogEntry[],
+  serverSource: "live" | "cache",
+) => {
+  const serverIds = new Set(serverEntries.map((entry) => entry.id));
+  return Object.fromEntries(
+    entries.map((entry) => [
+      entry.id,
+      serverIds.has(entry.id) ? serverSource : "bundled",
+    ]),
+  ) as Record<string, NativeCatalogSource>;
+};
+
 const cachePath = (stellaDataDir: string) =>
   path.join(getConnectorStateRoot(stellaDataDir), CACHE_FILE);
 
@@ -131,7 +153,8 @@ export const readCachedServerCatalog = async (
     return {
       entries,
       fetchedAt:
-        typeof parsed.fetchedAt === "number" && Number.isFinite(parsed.fetchedAt)
+        typeof parsed.fetchedAt === "number" &&
+        Number.isFinite(parsed.fetchedAt)
           ? parsed.fetchedAt
           : 0,
     };
@@ -168,6 +191,56 @@ export const buildMergedConnectorCatalog = (
   serverEntries?: readonly NativeConnectorCatalogEntry[],
 ): NativeConnectorCatalogEntry[] =>
   buildNativeConnectorCatalog(serverEntries ? [...serverEntries] : undefined);
+
+/**
+ * One catalog policy for every native-connector consumer. Server entries must
+ * win by id even when they came from disk: their provider selects the actual
+ * dispatcher, so replacing one with a bundled fallback changes semantics.
+ */
+export const resolveNativeConnectorCatalog = async (options: {
+  stellaDataDir: string;
+  getStellaSiteAuth?: () =>
+    | { baseUrl: string; authToken: string }
+    | null
+    | Promise<{ baseUrl: string; authToken: string } | null>;
+  fetchImpl?: typeof fetch;
+}): Promise<ResolvedNativeCatalog> => {
+  const siteAuth = (await options.getStellaSiteAuth?.()) ?? null;
+  if (siteAuth) {
+    const liveEntries = await fetchServerNativeCatalog({
+      baseUrl: siteAuth.baseUrl,
+      authToken: siteAuth.authToken,
+      ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
+    });
+    if (liveEntries) {
+      await writeCachedServerCatalog(options.stellaDataDir, liveEntries).catch(
+        () => undefined,
+      );
+      const entries = buildMergedConnectorCatalog(liveEntries);
+      return {
+        entries,
+        source: "live",
+        sources: entrySources(entries, liveEntries, "live"),
+      };
+    }
+  }
+
+  const cached = await readCachedServerCatalog(options.stellaDataDir);
+  if (cached) {
+    const entries = buildMergedConnectorCatalog(cached.entries);
+    return {
+      entries,
+      source: "cache",
+      sources: entrySources(entries, cached.entries, "cache"),
+    };
+  }
+  const entries = buildMergedConnectorCatalog();
+  return {
+    entries,
+    source: "bundled",
+    sources: Object.fromEntries(entries.map((entry) => [entry.id, "bundled"])),
+  };
+};
 
 /**
  * Fetch the live backend catalog. Returns null on any failure (signed

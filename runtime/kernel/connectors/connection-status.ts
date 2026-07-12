@@ -15,6 +15,7 @@ import { loadConnectorAccessToken } from "./oauth.js";
 
 export type NativeConnectorAuthStatus =
   | "connected"
+  | "backend_managed_unverified"
   | "not_logged_in"
   | "unsupported";
 
@@ -33,7 +34,8 @@ export const nativeConnectorAuthStatus = async (
       ? "connected"
       : "not_logged_in";
   }
-  if (entry.provider === "backend-composio") return "connected";
+  if (entry.provider === "backend-composio")
+    return "backend_managed_unverified";
   const config = entry.oauthConfig ?? getNativeOAuthProviderConfig(entry.id);
   if (!config?.tokenKey) return "unsupported";
   return (await loadConnectorAccessToken(stellaDataDir, config.tokenKey))
@@ -46,6 +48,8 @@ export type NativeConnectorConnectionState = {
   authStatus: NativeConnectorAuthStatus;
   /** Enabled AND credentialed — safe to call through stella-connect. */
   connected: boolean;
+  /** True only when this process actually verified a provider credential. */
+  accountVerified: boolean;
 };
 
 export const getNativeConnectorConnectionState = async (
@@ -59,6 +63,10 @@ export const getNativeConnectorConnectionState = async (
   return {
     enabled,
     authStatus,
-    connected: enabled && authStatus === "connected",
+    connected:
+      enabled &&
+      (authStatus === "connected" ||
+        authStatus === "backend_managed_unverified"),
+    accountVerified: authStatus === "connected",
   };
 };
