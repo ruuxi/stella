@@ -18,6 +18,7 @@ import { useEventRows } from "@/features/chat/hooks/use-event-rows";
 import { ChatTimeline } from "./ChatTimeline";
 import type { InlineWorkingIndicatorMountProps } from "./InlineWorkingIndicator";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
+import { hasQueuedMessageEntryPlayed } from "@/features/chat/lib/message-entry-animation-state";
 
 const USER_MESSAGE_ENTER_MS = 360;
 
@@ -124,7 +125,10 @@ export const ConversationEvents = memo(function ConversationEvents({
   });
 
   const justSentCandidates = useMemo(
-    () => (pendingUserMessageId ? [pendingUserMessageId] : []),
+    () =>
+      pendingUserMessageId && !hasQueuedMessageEntryPlayed(pendingUserMessageId)
+        ? [pendingUserMessageId]
+        : [],
     [pendingUserMessageId],
   );
   const animatingJustSentIds = useOneShotIds(

@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import { X } from "@/ui/icons";
+import {
+  hasQueuedMessageEntryPlayed,
+  markQueuedMessageEntryPlayed,
+} from "@/features/chat/lib/message-entry-animation-state";
 import { ChipPreviewPortal } from "./ChipPreviewPortal";
 import { useHoverPreview } from "./use-hover-preview";
 
@@ -15,8 +19,6 @@ type VisibleItem = QueuedUserMessage & { leaving: boolean };
  * Message ids are renderer-owned and remain stable through queue reconciliation
  * and the queued-to-sent handoff.
  */
-const queuedMessageEnterPlayedIds = new Set<string>();
-
 const toVisibleItem = (message: QueuedUserMessage): VisibleItem => ({
   ...message,
   leaving: false,
@@ -156,7 +158,7 @@ export function ComposerQueuedMessages({
   // after commit, so a Legend reconstruction settles immediately while a
   // count update on the existing collapsed bubble cannot restart animation.
   const enteringRef = useRef(
-    messages.some((message) => !queuedMessageEnterPlayedIds.has(message.id)),
+    messages.some((message) => !hasQueuedMessageEntryPlayed(message.id)),
   );
   const [visible, setVisible] = useState<VisibleItem[]>(() =>
     messages.map(toVisibleItem),
@@ -165,12 +167,14 @@ export function ComposerQueuedMessages({
 
   useLayoutEffect(() => {
     for (const message of messages) {
-      queuedMessageEnterPlayedIds.add(message.id);
+      markQueuedMessageEntryPlayed(message.id);
     }
   }, [messages]);
 
   useEffect(() => {
-    const incomingById = new Map(messages.map((message) => [message.id, message]));
+    const incomingById = new Map(
+      messages.map((message) => [message.id, message]),
+    );
 
     setVisible((current) => {
       const seenIds = new Set<string>();
