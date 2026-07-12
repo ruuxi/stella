@@ -12,6 +12,7 @@ import {
   buildCodexPromptFromMessages,
   codexImagePathFromFileUrl,
   CODEX_LIGHT_MODEL,
+  CODEX_UTILITY_MODEL,
   extractCodexDeveloperInstructions,
   fileChangesFromCodexItem,
   getCodexRuntimePreferences,
@@ -274,6 +275,11 @@ describe("Codex agent runtime", () => {
         process.env.STELLA_CODEX_MODEL = previousModel;
       }
     }
+  });
+
+  it("keeps automatic utility work on Luna, separate from Light agent spawns", () => {
+    expect(CODEX_UTILITY_MODEL).toBe("gpt-5.6-luna");
+    expect(CODEX_LIGHT_MODEL).toBe("gpt-5.4-mini");
   });
 
   it("honors a per-spawn pinned Codex model over env and preferences", () => {

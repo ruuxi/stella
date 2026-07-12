@@ -127,6 +127,8 @@ const requestSummary = async (
   const result = await agentApi.oneShotCompletion({
     agentType: "progress_summary",
     model: "stella/light",
+    reasoningEffort: "low",
+    utility: true,
     // If a pure-BYOK user has no Stella access, ride their general pick.
     fallbackAgentTypes: ["general"],
     systemPrompt: SUMMARY_SYSTEM_PROMPT,

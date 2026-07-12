@@ -574,6 +574,10 @@ export type RuntimeOneShotCompletionRequest = {
    * (Haiku / mini) instead of the user's expensive default.
    */
   model?: string;
+  /** Internal-only effort pin for bounded utility passes. */
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
+  /** Marks a non-user-facing automatic utility pass for engine policy. */
+  utility?: boolean;
   /** Stable key for a short-lived reusable utility session. */
   sessionKey?: string;
   /** Close a previously-created reusable utility session without a model call. */

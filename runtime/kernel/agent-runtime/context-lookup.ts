@@ -1132,6 +1132,7 @@ export const runRecall = async (args: {
           stellaAppDir: args.stellaAppDir,
           agentType: AGENT_IDS.ORCHESTRATOR,
           stellaModel: args.resolvedLlm.model.id,
+          effortLevel: "low",
           context,
           abortSignal: args.signal,
           executeTool: async (_toolCallId, toolName, toolArgs) =>
@@ -1176,6 +1177,7 @@ export const runRecall = async (args: {
       },
       {
         apiKey: apiKey as string,
+        reasoning: "low",
         ...(args.resolvedLlm.refreshApiKey
           ? { refreshApiKey: args.resolvedLlm.refreshApiKey }
           : {}),

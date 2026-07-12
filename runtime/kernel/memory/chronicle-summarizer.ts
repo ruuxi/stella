@@ -442,6 +442,7 @@ export const runChronicleSummary = async (args: {
             stellaAppDir: args.stellaDataDir,
             agentType: AGENT_IDS.CHRONICLE,
             stellaModel: args.resolvedLlm.model.id,
+            effortLevel: "low",
             context,
           })
         ).trim();
@@ -449,7 +450,7 @@ export const runChronicleSummary = async (args: {
         const response = await completeSimple(
           args.resolvedLlm.model,
           context,
-          apiKey ? { apiKey } : undefined,
+          { ...(apiKey ? { apiKey } : {}), reasoning: "low" },
         );
         responseText = readAssistantText(response).trim();
       }

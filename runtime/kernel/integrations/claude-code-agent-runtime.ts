@@ -171,6 +171,8 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
   sessionKey?: string;
   abortSignal?: AbortSignal;
   stellaModel?: string;
+  /** Internal utility passes may pin effort independently of user agent prefs. */
+  effortLevel?: string;
   /**
    * Explicit CLI working directory. Callers whose data dir differs from the
    * agent workspace should pass this; otherwise the cwd falls back to
@@ -191,7 +193,8 @@ export const runClaudeCodeAgentTextCompletion = async (args: {
     args.stellaModel,
     args.agentType,
   );
-  const effortLevel = getClaudeCodeRuntimeEffortLevel(args.stellaAppDir);
+  const effortLevel =
+    args.effortLevel ?? getClaudeCodeRuntimeEffortLevel(args.stellaAppDir);
   const sessionKey = args.sessionKey ?? `${args.agentType}:one-shot:${runId}`;
   try {
     const result = await runClaudeCodeTurn({

@@ -897,6 +897,7 @@ describe("runRecall", () => {
         expect(turn.context.systemPrompt).toBe(
           RECALL_TOOL_RUNTIME_SYSTEM_PROMPT,
         );
+        expect(turn.effortLevel).toBe("low");
         expect(turn.context.tools?.map((tool) => tool.name)).toEqual([
           "search_memory",
           "search_transcripts",

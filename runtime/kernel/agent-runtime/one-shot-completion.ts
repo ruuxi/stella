@@ -33,6 +33,8 @@ import {
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
 } from "../integrations/claude-code-agent-runtime.js";
+import { runCodexAgentTurn } from "../integrations/codex-agent-runtime.js";
+import { getAgentRuntimeEngine } from "../preferences/local-preferences.js";
 import {
   closeClaudeCodeSessionWhenIdle,
   scheduleClaudeCodeSessionCloseWhenIdle,
@@ -201,6 +203,27 @@ export const runOneShotCompletion = async (args: {
   };
 
   try {
+    if (
+      request.utility === true &&
+      getAgentRuntimeEngine(runtime.stellaDataDir) === "codex_cli"
+    ) {
+      const result = await runCodexAgentTurn({
+        runId: `codex:${request.agentType}:${crypto.randomUUID()}`,
+        ...(sessionKey ? { sessionKey } : {}),
+        prompt: userText,
+        ...(request.systemPrompt ? { systemPrompt: request.systemPrompt } : {}),
+        cwd: resolveLocalCliCwd({
+          agentType: request.agentType,
+          stellaAppDir: runtime.stellaAppDir,
+        }),
+        stellaDataDir: runtime.stellaDataDir,
+        stellaAppDir: runtime.stellaAppDir,
+        utility: true,
+        reuseAppServer: true,
+        streamFinalAnswer: false,
+      });
+      return { text: result.text.trim() };
+    }
     if (useClaudeCode) {
       const text = await runClaudeCodeAgentTextCompletion({
         // Data dir, matching the other CC completion callers: preferences
@@ -213,6 +236,9 @@ export const runOneShotCompletion = async (args: {
           stellaAppDir: runtime.stellaAppDir,
         }),
         agentType: request.agentType,
+        ...(request.reasoningEffort
+          ? { effortLevel: request.reasoningEffort }
+          : {}),
         ...(sessionKey ? { sessionKey } : {}),
         ...((modelName ?? route?.model.id)
           ? { stellaModel: (modelName ?? route?.model.id) as string }
@@ -233,6 +259,9 @@ export const runOneShotCompletion = async (args: {
     }
     const response = await completeSimple(route.model, context, {
       apiKey,
+      ...(request.reasoningEffort
+        ? { reasoning: request.reasoningEffort }
+        : {}),
       ...(request.maxOutputTokens != null
         ? { maxTokens: request.maxOutputTokens }
         : {}),

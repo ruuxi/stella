@@ -10,6 +10,7 @@ let claudeCodeEngineActive = false;
 const closedSessionKeys: string[] = [];
 const scheduledSessionCloses: Array<{ sessionKey: string; timeoutMs: number }> =
   [];
+const codexCalls: Array<Record<string, unknown>> = [];
 
 vi.mock(
   "../../../../../runtime/kernel/integrations/claude-code-agent-runtime.js",
@@ -18,6 +19,16 @@ vi.mock(
     runClaudeCodeAgentTextCompletion: async (args: Record<string, unknown>) => {
       claudeCodeCalls.push(args);
       return "summarizing agent progress now";
+    },
+  }),
+);
+
+vi.mock(
+  "../../../../../runtime/kernel/integrations/codex-agent-runtime.js",
+  () => ({
+    runCodexAgentTurn: async (args: Record<string, unknown>) => {
+      codexCalls.push(args);
+      return { text: "codex utility summary" };
     },
   }),
 );
@@ -39,8 +50,8 @@ vi.mock(
 
 const completeSimpleCalls: Array<Record<string, unknown>> = [];
 vi.mock("../../../../../runtime/ai/stream.js", () => ({
-  completeSimple: async (model: unknown) => {
-    completeSimpleCalls.push({ model });
+  completeSimple: async (model: unknown, context: unknown, options: unknown) => {
+    completeSimpleCalls.push({ model, context, options });
     return { content: [{ type: "text", text: "relay summary" }] };
   },
   readAssistantText: () => "relay summary",
@@ -64,6 +75,8 @@ const request = {
   userText: "Task: test\nCurrent activity: working",
   maxOutputTokens: 24,
   temperature: 0.4,
+  reasoningEffort: "low" as const,
+  utility: true,
 };
 
 let dataDir: string;
@@ -73,11 +86,26 @@ beforeEach(() => {
   completeSimpleCalls.length = 0;
   closedSessionKeys.length = 0;
   scheduledSessionCloses.length = 0;
+  codexCalls.length = 0;
   claudeCodeEngineActive = false;
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "one-shot-test-"));
 });
 
 describe("runOneShotCompletion", () => {
+  it("uses Luna/low utility policy on Codex without changing Light agent spawns", async () => {
+    fs.writeFileSync(
+      path.join(dataDir, "preferences.json"),
+      JSON.stringify({ agentRuntimeEngine: "codex_cli" }),
+    );
+    const result = await runOneShotCompletion({
+      request,
+      runtime: makeRuntime({ authToken: "token", dataDir }),
+    });
+    expect(result.text).toBe("codex utility summary");
+    expect(codexCalls).toHaveLength(1);
+    expect(codexCalls[0]?.utility).toBe(true);
+  });
+
   it("uses the Claude Code engine when no LLM route resolves (signed-out CC user)", async () => {
     claudeCodeEngineActive = true;
     const result = await runOneShotCompletion({
@@ -88,6 +116,7 @@ describe("runOneShotCompletion", () => {
     expect(claudeCodeCalls).toHaveLength(1);
     // The explicit stella/light pin must flow through so CC maps it to Haiku.
     expect(claudeCodeCalls[0]?.stellaModel).toBe("stella/light");
+    expect(claudeCodeCalls[0]?.effortLevel).toBe("low");
     expect(completeSimpleCalls).toHaveLength(0);
   });
 
