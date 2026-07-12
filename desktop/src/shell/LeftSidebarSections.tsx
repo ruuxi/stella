@@ -42,6 +42,10 @@ import {
   useSectionCollapsed,
 } from "@/shell/section-collapse-store";
 import {
+  EMPTY_ACTIVITY_EXPANSION,
+  activityExpansionStore,
+} from "@/shell/activity-expansion-store";
+import {
   EMPTY_FIRST_SEEN_ORDER,
   activityRowKey,
   extractTasksFromActivities,
@@ -733,6 +737,26 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     });
   }, []);
 
+  // Re-seed every piece of expansion state from the persisted store whenever
+  // the active conversation changes (including first mount). Without this, a
+  // relaunch loads every task as "already completed, never seen running" and
+  // collapses rows that were open — with their files visible — moments before
+  // quitting. Render-phase reset (the sanctioned derived-state pattern) so
+  // seeded values are in place before the roll-forward memo below runs.
+  const [seededConversationId, setSeededConversationId] = useState<
+    string | null | undefined
+  >(undefined);
+  if (seededConversationId !== conversationId) {
+    setSeededConversationId(conversationId);
+    const snapshot = conversationId
+      ? activityExpansionStore.load(conversationId)
+      : EMPTY_ACTIVITY_EXPANSION;
+    seenRunningTasksRef.current = new Set(snapshot.seenTaskIds);
+    seenRunningGroupsRef.current = new Set(snapshot.seenGroupKeys);
+    setExpandOverrides(new Map(Object.entries(snapshot.taskOverrides)));
+    setGroupExpandOverrides(new Map(Object.entries(snapshot.groupOverrides)));
+  }
+
   const allTasks = useMemo(() => {
     const persisted = extractTasksFromActivities(activity.activities, {
       latestMessageTimestampMs: activity.latestMessageTimestampMs,
@@ -745,6 +769,10 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   // its expansion; pruned to ids still present in the task list so they
   // can't grow unboundedly.
   useMemo(() => {
+    // An empty list usually means the activity feed hasn't loaded yet (cold
+    // start / conversation switch) — pruning against it would wipe the
+    // persisted seen-running state we just seeded, so wait for real data.
+    if (allTasks.length === 0) return;
     seenRunningTasksRef.current = updateSeenRunningTaskIds(
       seenRunningTasksRef.current,
       allTasks,
@@ -764,8 +792,25 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   // (rendered as a plain task row) or is merely hidden by the sidebar search
   // keeps the user's explicit choice for when it regrows.
   useEffect(() => {
+    if (allTasks.length === 0) return;
     setGroupExpandOverrides((prev) => pruneGroupExpandOverrides(prev, allTasks));
   }, [allTasks]);
+
+  // Persist the expansion state so a relaunch (which restores this
+  // conversation) brings the Activity rows back exactly as they looked —
+  // a finished agent's row keeps showing its files across restarts, not just
+  // across completions. Runs after the roll-forward memo above, so the saved
+  // sets are already pruned to the current activity window. Skipped while the
+  // task list is empty for the same cold-start reason as the pruning guards.
+  useEffect(() => {
+    if (!conversationId || allTasks.length === 0) return;
+    activityExpansionStore.save(conversationId, {
+      seenTaskIds: [...seenRunningTasksRef.current],
+      seenGroupKeys: [...seenRunningGroupsRef.current],
+      taskOverrides: Object.fromEntries(expandOverrides),
+      groupOverrides: Object.fromEntries(groupExpandOverrides),
+    });
+  }, [conversationId, allTasks, expandOverrides, groupExpandOverrides]);
 
   const matchingActivityKeys = useMemo(() => {
     if (!searching) return null;

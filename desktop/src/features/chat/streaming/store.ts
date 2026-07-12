@@ -489,7 +489,31 @@ export function streamStoreReducer(
     case 'task-upsert': {
       const runRecord = state.runsById[action.runId]
       const runTasks = state.tasksByRunId[action.runId] ?? {}
-      const existing = runTasks[action.task.id]
+      // A task lives under exactly one run: lifecycle events always carry
+      // the task's CURRENT rootRunId, so when a send_input follow-up
+      // rebinds a running task to the caller's run, any copy still parked
+      // under another run is a stale snapshot. Evict it — a frozen
+      // "running" copy left under the spawn run never receives a terminal
+      // event (the completion streams under the new run) and would win the
+      // footer merge forever, pinning the Activity row open after the
+      // follow-up completes.
+      let evictedCopy: TaskItem | undefined
+      let baseTasksByRunId = state.tasksByRunId
+      for (const [runId, tasks] of Object.entries(state.tasksByRunId)) {
+        if (runId === action.runId || !(action.task.id in tasks)) {
+          continue
+        }
+        if (baseTasksByRunId === state.tasksByRunId) {
+          baseTasksByRunId = { ...state.tasksByRunId }
+        }
+        const remaining = { ...tasks }
+        evictedCopy = evictedCopy ?? remaining[action.task.id]
+        delete remaining[action.task.id]
+        baseTasksByRunId[runId] = remaining
+      }
+      // The evicted copy still seeds continuity fields (description,
+      // startedAtMs) so the row doesn't reset when the task moves runs.
+      const existing = runTasks[action.task.id] ?? evictedCopy
       const nextDescription =
         isFallbackTaskDescription(action.task.description, action.task.id) &&
         existing?.description &&
@@ -538,7 +562,7 @@ export function streamStoreReducer(
               }),
             },
         tasksByRunId: {
-          ...state.tasksByRunId,
+          ...baseTasksByRunId,
           [action.runId]: {
             ...runTasks,
             [action.task.id]: nextTask,
