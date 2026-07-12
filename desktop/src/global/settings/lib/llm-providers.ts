@@ -64,8 +64,15 @@ export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
   },
 ];
 
+/**
+ * Providers whose registry models appear in the local (BYOK/direct) model
+ * catalog. `openai` was historically excluded so the grouped list didn't
+ * show two sections both labeled "OpenAI" (API key vs ChatGPT/codex OAuth);
+ * the picker's brand rail now splits those into explicit sources, so the
+ * OpenAI API models are listed like any other provider's.
+ */
 export const LOCAL_MODEL_PROVIDER_KEYS = new Set(
-  LLM_PROVIDERS.map((entry) => entry.key).filter((key) => key !== "openai"),
+  LLM_PROVIDERS.map((entry) => entry.key),
 );
 
 const byKey = new Map(LLM_PROVIDERS.map((entry) => [entry.key, entry]));

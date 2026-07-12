@@ -33,7 +33,10 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   opencode: "OpenCode",
   "opencode-go": "OpenCode Go",
   openai: "OpenAI",
-  "openai-codex": "OpenAI",
+  // Distinct from plain "OpenAI": this is the ChatGPT-subscription (Codex
+  // OAuth) route, and both providers can appear in the same grouped list
+  // now that OpenAI API models are cataloged too.
+  "openai-codex": "ChatGPT",
   openrouter: "OpenRouter",
   stella: "Stella",
   "vercel-ai-gateway": "Vercel AI Gateway",
