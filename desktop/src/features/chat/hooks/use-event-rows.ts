@@ -130,9 +130,7 @@ const asNonEmptyString = (value: unknown): string | undefined =>
  * `agent-started` carries `agentId` directly. It also fires on `send_input`
  * re-activation (so updating a thread drops a fresh card lower in the chat)
  * and for agents spawned via `multi_tool_use_parallel`, and never fires for
- * a failed spawn (so no phantom card). Multiple in one turn collapse into a
- * single descriptor (one card that tallies them); the optional group label
- * becomes the card's title.
+ * a failed spawn (so no phantom card).
  *
  * Only user-facing *delegated* work earns a card: the `general` agent and
  * any custom user-installed subagent. This applies just the
@@ -243,6 +241,23 @@ export const getBackgroundWork = (
     ...(groupKey ? { groupKey } : {}),
     ...(label ? { label } : {}),
   };
+};
+
+/**
+ * Preserve one inline receipt per lifecycle start occurrence. A spawn and a
+ * `send_input` follow-up can share the same assistant row, but they are still
+ * separate user-visible actions and must not be flattened into one card.
+ */
+export const getBackgroundWorks = (
+  events: readonly EventRecord[],
+): NonNullable<ReturnType<typeof getBackgroundWork>>[] => {
+  const cards: NonNullable<ReturnType<typeof getBackgroundWork>>[] = [];
+  for (const event of events) {
+    if (!isAgentStartedEvent(event)) continue;
+    const card = getBackgroundWork([event]);
+    if (card) cards.push(card);
+  }
+  return cards;
 };
 
 /**
@@ -593,17 +608,35 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
     // Spawn-anchored card descriptor. Terminal/progress payloads may live on a
     // much later message, but the lifecycle selector resolves them back to the
     // exact persisted start event represented by this card.
-    const buildBackgroundWork = (toolEvents: readonly EventRecord[]) => {
-      const base = getBackgroundWork(toolEvents);
-      if (!base) return undefined;
-      return {
+    const buildBackgroundWorks = (toolEvents: readonly EventRecord[]) =>
+      getBackgroundWorks(toolEvents).map((base) => ({
         ...base,
         ...resolveBackgroundTaskCardLifecycle(
           base.threadIds,
           base.startEventIdsByThread,
           lifecycleIndex,
         ),
-      };
+      }));
+
+    const pushAdditionalBackgroundWorkRows = (
+      produced: EventRowViewModel[],
+      works: ReturnType<typeof buildBackgroundWorks>,
+      baseId: string,
+      replyToUserMessageId?: string,
+    ) => {
+      for (let index = 1; index < works.length; index += 1) {
+        const backgroundWork = works[index];
+        if (!backgroundWork) continue;
+        const id = `${baseId}:agent-activity:${backgroundWork.cardId}`;
+        produced.push({
+          kind: "assistant",
+          id,
+          text: "",
+          cacheKey: id,
+          ...(replyToUserMessageId ? { replyToUserMessageId } : {}),
+          backgroundWork,
+        });
+      }
     };
 
     const projectionCache = projectionCacheRef.current;
@@ -693,7 +726,8 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         // Surface the card on a synthetic assistant row right under it so
         // background work is still visible (the working indicator steps
         // aside once a task is running).
-        const userBackgroundWork = buildBackgroundWork(message.toolEvents);
+        const userBackgroundWorks = buildBackgroundWorks(message.toolEvents);
+        const userBackgroundWork = userBackgroundWorks[0];
         if (userBackgroundWork) {
           const activityKey = `assistant-agent-activity-${message._id}`;
           produced.push({
@@ -704,6 +738,12 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
             replyToUserMessageId: message._id,
             backgroundWork: userBackgroundWork,
           });
+          pushAdditionalBackgroundWorkRows(
+            produced,
+            userBackgroundWorks,
+            activityKey,
+            message._id,
+          );
         }
       } else if (isAssistantMessage(message)) {
         const text = getDisplayMessageText(message);
@@ -754,7 +794,8 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const scheduleReceipt = getScheduleReceipt(toolEvents);
         const officePreviewRef = getOfficePreviewRef(toolEvents);
         const voiceSession = payload?.metadata?.voiceSession;
-        const backgroundWork = buildBackgroundWork(toolEvents);
+        const backgroundWorks = buildBackgroundWorks(toolEvents);
+        const backgroundWork = backgroundWorks[0];
         const agentCompletionSections = projectAgentCompletionSections(
           toolEvents,
           lifecycleIndex,
@@ -812,6 +853,12 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           ...(showInlineArtifacts && toolActivity ? { toolActivity } : {}),
         };
         produced.push(row);
+        pushAdditionalBackgroundWorkRows(
+          produced,
+          backgroundWorks,
+          stableKey,
+          replyToUserMessageId,
+        );
       }
 
       // Cache the projection for reuse on the next delta, EXCEPT rows that

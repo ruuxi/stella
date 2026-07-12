@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   derivePausedThreadIds,
   getBackgroundWork,
+  getBackgroundWorks,
 } from "@/features/chat/hooks/use-event-rows";
 import type { EventRecord } from "@/features/chat/lib/event-transforms";
 
@@ -109,8 +110,8 @@ describe("getBackgroundWork spawn vs send_input follow-up", () => {
     expect(work).toBeUndefined();
   });
 
-  it("keeps spawn and follow-up distinct within one turn (mixed start events)", () => {
-    const work = getBackgroundWork([
+  it("returns separate cards for a spawn and follow-up within one turn", () => {
+    const works = getBackgroundWorks([
       started("thread-a", "Spawned task", { statusText: "Spawned task" }),
       started("thread-b", "Original goal", {
         statusText: "Follow-up update for B",
@@ -118,10 +119,12 @@ describe("getBackgroundWork spawn vs send_input follow-up", () => {
         timestamp: 50,
       }),
     ]);
-    expect(work?.threadIds).toEqual(["thread-a", "thread-b"]);
-    expect(work?.followUpThreadIds).toEqual(["thread-b"]);
-    expect(work?.statusTexts["thread-b"]).toBe("Follow-up update for B");
-    expect(work?.statusTexts["thread-a"]).toBeUndefined();
+    expect(works).toHaveLength(2);
+    expect(works[0]?.threadIds).toEqual(["thread-a"]);
+    expect(works[0]?.followUpThreadIds).toEqual([]);
+    expect(works[1]?.threadIds).toEqual(["thread-b"]);
+    expect(works[1]?.followUpThreadIds).toEqual(["thread-b"]);
+    expect(works[1]?.statusTexts["thread-b"]).toBe("Follow-up update for B");
   });
 });
 

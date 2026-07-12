@@ -110,9 +110,9 @@ export type AssistantRowViewModel = {
   toolActivity?: ToolActivityGroup;
   /**
    * Inline "background work" card for a turn that kicked off (or updated)
-   * one or more background threads (orchestrator `spawn_agent` /
-   * `send_input`). Multiple in the same turn collapse onto one card —
-   * `threadIds` carries every thread it covers and the card tallies them.
+   * one background-work occurrence (orchestrator `spawn_agent` /
+   * `send_input`). Multiple starts in the same turn render as separate rows,
+   * preserving the distinct spawn and follow-up receipts.
    * Lifecycle state is keyed by each persisted `agent-started` event id.
    * Progress/completion/failure update this descriptor in place; completion
    * sections (including generated files) therefore render on this original
