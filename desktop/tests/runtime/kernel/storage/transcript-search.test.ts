@@ -149,7 +149,13 @@ describe("searchTranscripts", () => {
   it("treats LIKE wildcards as literals and returns nothing for empty queries", () => {
     const { store } = createTestContext();
     appendChat(store, "conv-1", "user_message", "reached 100% coverage", 1_000);
-    appendChat(store, "conv-1", "user_message", "processed 1000 records", 2_000);
+    appendChat(
+      store,
+      "conv-1",
+      "user_message",
+      "processed 1000 records",
+      2_000,
+    );
 
     expect(
       store.searchTranscripts({ query: "100%" }).map((hit) => hit.text),
@@ -185,16 +191,142 @@ describe("searchTranscripts", () => {
   it("respects the limit", () => {
     const { store } = createTestContext();
     for (let i = 0; i < 5; i += 1) {
-      appendChat(
-        store,
-        "conv-1",
-        "user_message",
-        `emira note ${i}`,
-        1_000 + i,
-      );
+      appendChat(store, "conv-1", "user_message", `emira note ${i}`, 1_000 + i);
     }
     expect(store.searchTranscripts({ query: "emira", limit: 2 })).toHaveLength(
       2,
     );
+  });
+});
+
+// The FTS5 index behind searchTranscripts: trigger-synced at write time so
+// the search is an index lookup instead of a full-table json_extract scan.
+describe("transcript FTS index", () => {
+  const ftsRowCount = (db: SqliteDatabase): number =>
+    (
+      db.prepare("SELECT COUNT(*) AS count FROM message_text_fts").get() as {
+        count: number;
+      }
+    ).count;
+
+  it("indexes eligible chat rows via triggers and matches stemmed word forms", () => {
+    const { store, db } = createTestContext();
+    appendChat(
+      store,
+      "conv-1",
+      "user_message",
+      "took the car for a drive",
+      1_000,
+    );
+    // Tool rows never reach the index.
+    store.appendEvent({
+      conversationId: "conv-1",
+      eventId: "evt-tool",
+      type: "tool_result",
+      timestamp: 2_000,
+      payload: { text: "drive in a tool result" },
+    });
+
+    expect(ftsRowCount(db)).toBe(1);
+    // Porter stemming: "drives" finds "drive" — the LIKE scan could not do
+    // this, so a hit here also proves the FTS path (not the fallback)
+    // answered.
+    const hits = store.searchTranscripts({ query: "drives" });
+    expect(hits.map((hit) => hit.text)).toEqual(["took the car for a drive"]);
+  });
+
+  it("stays in sync when an event's text is rewritten", () => {
+    const { store, db } = createTestContext();
+    store.appendEvent({
+      conversationId: "conv-1",
+      eventId: "evt-rewrite",
+      type: "user_message",
+      timestamp: 1_000,
+      payload: { text: "meet me at saguaro lake" },
+    });
+    // Same eventId → upsert rewrites the message's parts (delete+insert).
+    store.appendEvent({
+      conversationId: "conv-1",
+      eventId: "evt-rewrite",
+      type: "user_message",
+      timestamp: 1_000,
+      payload: { text: "meet me at canyon lake instead" },
+    });
+
+    expect(store.searchTranscripts({ query: "saguaro" })).toEqual([]);
+    expect(
+      store.searchTranscripts({ query: "canyon" }).map((hit) => hit.text),
+    ).toEqual(["meet me at canyon lake instead"]);
+    expect(ftsRowCount(db)).toBe(1);
+  });
+
+  it("drops a deleted conversation's rows via the cascade", () => {
+    const { store, db } = createTestContext();
+    appendChat(
+      store,
+      "conv-1",
+      "user_message",
+      "the secret is zanzibar",
+      1_000,
+    );
+    expect(store.searchTranscripts({ query: "zanzibar" })).toHaveLength(1);
+
+    db.prepare("DELETE FROM session WHERE id = ?").run("conv-1");
+
+    expect(store.searchTranscripts({ query: "zanzibar" })).toEqual([]);
+    expect(ftsRowCount(db)).toBe(0);
+  });
+
+  it("backfills pre-existing history when the index is rebuilt (upgrade path)", () => {
+    const { store, db } = createTestContext();
+    appendChat(
+      store,
+      "conv-1",
+      "user_message",
+      "remember the emira torque spec",
+      1_000,
+    );
+    // Simulate an old database: index contents and the backfill flag gone.
+    db.exec("DELETE FROM message_text_fts;");
+    db.prepare("DELETE FROM settings WHERE key = ?").run(
+      "transcript_fts_backfilled_v1",
+    );
+    expect(store.searchTranscripts({ query: "torque" })).toEqual([]);
+
+    initializeDesktopDatabase(db);
+
+    expect(ftsRowCount(db)).toBe(1);
+    expect(
+      store.searchTranscripts({ query: "torque" }).map((hit) => hit.text),
+    ).toEqual(["remember the emira torque spec"]);
+  });
+
+  it("falls back to the LIKE scan when the index is unavailable", () => {
+    const { store, db } = createTestContext();
+    appendChat(
+      store,
+      "conv-1",
+      "user_message",
+      "the secret is zanzibar",
+      1_000,
+    );
+    db.exec("DROP TRIGGER trg_message_text_fts_part_insert;");
+    db.exec("DROP TRIGGER trg_message_text_fts_part_update;");
+    db.exec("DROP TRIGGER trg_message_text_fts_part_delete;");
+    db.exec("DROP TABLE message_text_fts;");
+    // A fresh store re-detects availability (the flag is cached per store).
+    const fallbackStore = new SessionStore(db);
+
+    expect(
+      fallbackStore.searchTranscripts({ query: "zanzibar" }).map((h) => h.text),
+    ).toEqual(["the secret is zanzibar"]);
+  });
+
+  it("survives queries FTS cannot tokenize by falling back to the scan", () => {
+    const { store } = createTestContext();
+    appendChat(store, "conv-1", "user_message", "coverage hit 100%", 1_000);
+    // "%%%" tokenizes to nothing inside FTS MATCH (syntax error path) but
+    // stays a literal for the LIKE fallback.
+    expect(store.searchTranscripts({ query: "%%%" })).toEqual([]);
   });
 });

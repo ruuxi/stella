@@ -13,6 +13,424 @@ export const ensureDatabaseStateRoot = (stellaDataDir: string) => {
 export const getDesktopDatabasePath = (stellaDataDir: string) =>
   path.join(ensureDatabaseStateRoot(stellaDataDir), DB_FILE);
 
+/**
+ * Full-text index over what was actually SAID in chat — the FTS5 shadow of
+ * the `part` rows whose message is a user/assistant `user_message` /
+ * `assistant_message` and whose payload carries `$.text`. `searchTranscripts`
+ * was previously a full-table scan running `json_extract(...) LIKE '%…%'`
+ * per row per token, so every recall lookup got slower as history grew; the
+ * FTS table makes it an index lookup with the extraction done once, at
+ * write time.
+ *
+ * Shape notes:
+ * - The FTS rowid IS the `part` rowid. UNINDEXED columns are not queryable
+ *   efficiently, so the sync triggers delete by rowid — the one key FTS5
+ *   resolves without a scan.
+ * - Sync is trigger-based (insert/update/delete on `part`) so EVERY writer
+ *   is covered — appendEvent's delete-then-reinsert part rewrites, the
+ *   third-party importers, and cascading deletes (SQLite fires child-table
+ *   delete triggers for ON DELETE CASCADE), which is what keeps deleted
+ *   conversations from lingering in search.
+ * - `porter unicode61` stems index and query terms alike, replacing the one
+ *   thing the LIKE scan did better (substring matches: "drive" ~ "drives").
+ * - Backfill is one-time, guarded by a settings flag, and transactional; a
+ *   failed backfill drops the whole index so search degrades to the LIKE
+ *   scan instead of silently missing older history. An SQLite build without
+ *   FTS5 takes the same degradation path.
+ */
+const TRANSCRIPT_FTS_BACKFILL_FLAG = "transcript_fts_backfilled_v1";
+
+const TRANSCRIPT_FTS_ELIGIBLE_MESSAGE = `
+  message.role IN ('user', 'assistant')
+  AND message.type IN ('user_message', 'assistant_message')
+`;
+
+const dropTranscriptSearchIndex = (db: SqliteDatabase) => {
+  db.exec("DROP TRIGGER IF EXISTS trg_message_text_fts_part_insert;");
+  db.exec("DROP TRIGGER IF EXISTS trg_message_text_fts_part_update;");
+  db.exec("DROP TRIGGER IF EXISTS trg_message_text_fts_part_delete;");
+  db.exec("DROP TABLE IF EXISTS message_text_fts;");
+};
+
+const ensureTranscriptSearchIndex = (db: SqliteDatabase) => {
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS message_text_fts USING fts5(
+        text,
+        session_id UNINDEXED,
+        role UNINDEXED,
+        created_at UNINDEXED,
+        tokenize = 'porter unicode61 remove_diacritics 2'
+      );
+    `);
+  } catch {
+    // This SQLite build lacks FTS5 — searchTranscripts falls back to the
+    // LIKE scan. Nothing else to set up.
+    return;
+  }
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_message_text_fts_part_insert
+    AFTER INSERT ON part
+    WHEN json_extract(NEW.data_json, '$.text') IS NOT NULL
+    BEGIN
+      INSERT INTO message_text_fts(rowid, text, session_id, role, created_at)
+      SELECT
+        NEW.rowid,
+        json_extract(NEW.data_json, '$.text'),
+        message.session_id,
+        message.role,
+        message.created_at
+      FROM message
+      WHERE message.id = NEW.message_id
+        AND ${TRANSCRIPT_FTS_ELIGIBLE_MESSAGE};
+    END;
+  `);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_message_text_fts_part_update
+    AFTER UPDATE OF data_json ON part
+    BEGIN
+      DELETE FROM message_text_fts WHERE rowid = OLD.rowid;
+      INSERT INTO message_text_fts(rowid, text, session_id, role, created_at)
+      SELECT
+        NEW.rowid,
+        json_extract(NEW.data_json, '$.text'),
+        message.session_id,
+        message.role,
+        message.created_at
+      FROM message
+      WHERE message.id = NEW.message_id
+        AND json_extract(NEW.data_json, '$.text') IS NOT NULL
+        AND ${TRANSCRIPT_FTS_ELIGIBLE_MESSAGE};
+    END;
+  `);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_message_text_fts_part_delete
+    AFTER DELETE ON part
+    BEGIN
+      DELETE FROM message_text_fts WHERE rowid = OLD.rowid;
+    END;
+  `);
+
+  const backfilled = db
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get(TRANSCRIPT_FTS_BACKFILL_FLAG);
+  if (backfilled) return;
+  try {
+    db.exec("BEGIN IMMEDIATE;");
+    // An unset flag with rows present means a previous backfill died midway
+    // (or predates the flag) — wipe and redo rather than trust a partial
+    // index.
+    db.exec("DELETE FROM message_text_fts;");
+    db.exec(`
+      INSERT INTO message_text_fts(rowid, text, session_id, role, created_at)
+      SELECT
+        part.rowid,
+        json_extract(part.data_json, '$.text'),
+        message.session_id,
+        message.role,
+        message.created_at
+      FROM part
+      JOIN message ON message.id = part.message_id
+      WHERE json_extract(part.data_json, '$.text') IS NOT NULL
+        AND ${TRANSCRIPT_FTS_ELIGIBLE_MESSAGE};
+    `);
+    db.prepare(
+      `
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (?, '1', ?)
+      ON CONFLICT(key) DO UPDATE SET value = '1', updated_at = excluded.updated_at
+    `,
+    ).run(TRANSCRIPT_FTS_BACKFILL_FLAG, Date.now());
+    db.exec("COMMIT;");
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK;");
+    } catch {
+      // Not in a transaction — BEGIN itself failed.
+    }
+    // A half-built index silently loses older history; no index degrades
+    // loudly to the LIKE scan and retries the backfill on the next init.
+    dropTranscriptSearchIndex(db);
+    throw error instanceof Error
+      ? new TranscriptFtsBackfillError(error)
+      : error;
+  }
+};
+
+/**
+ * Wraps a backfill failure so callers can tell it apart from init failures
+ * that must abort startup: the transcript index is an optimization, so
+ * `initializeDesktopDatabase` catches this and continues without it.
+ */
+class TranscriptFtsBackfillError extends Error {
+  constructor(cause: Error) {
+    super(`Transcript FTS backfill failed: ${cause.message}`);
+    this.name = "TranscriptFtsBackfillError";
+  }
+}
+
+/**
+ * Full-text index over delegated agent threads — the FTS5 shadow behind
+ * `searchThreads`. The LIKE scan it replaces could only see thread metadata
+ * plus the agent's `description`; this index also carries the agent's final
+ * `result`/`error` text, which is the only durable record of what a finished
+ * thread actually did (`summary` is empty on nearly every real thread) and
+ * was previously unreachable by any keyword search.
+ *
+ * Shape notes:
+ * - The FTS rowid IS the `runtime_threads` rowid, so the sync triggers
+ *   delete by rowid — the one key FTS5 resolves without a scan.
+ * - MATCHING only, never ordering or payload: no volatile columns
+ *   (last_used_at, status) live here, or every progress heartbeat would
+ *   rewrite index rows. `searchThreads` resolves the FTS candidates back
+ *   through the base tables for ordering and record fields.
+ * - The `UPDATE OF` column lists on the triggers are the other half of that
+ *   guarantee: `touchThread`-style heartbeats (`runtime_threads.last_used_at`)
+ *   and status flips never fire them.
+ * - `thread_key` is indexed because models search by id fragments
+ *   ("connector-discovery"); unicode61 splits the key into those fragments.
+ * - Eligibility mirrors `searchThreads`' WHERE clause and is enforced at
+ *   write time, so orchestrator threads and implicit `::subagent::`
+ *   transcript rows never enter the index at all.
+ * - Backfill, degradation, and drop-on-failure follow the transcript index
+ *   above: no FTS5 → skip; failed backfill → drop the whole index and fall
+ *   back to the LIKE scan.
+ */
+const THREAD_FTS_BACKFILL_FLAG = "thread_search_fts_backfilled_v1";
+
+const THREAD_FTS_ELIGIBLE = `
+  runtime_threads.agent_type != 'orchestrator'
+  AND runtime_threads.thread_key NOT LIKE '%::subagent::%'
+`;
+
+const dropThreadSearchIndex = (db: SqliteDatabase) => {
+  db.exec("DROP TRIGGER IF EXISTS trg_thread_search_fts_thread_insert;");
+  db.exec("DROP TRIGGER IF EXISTS trg_thread_search_fts_thread_update;");
+  db.exec("DROP TRIGGER IF EXISTS trg_thread_search_fts_thread_delete;");
+  db.exec("DROP TRIGGER IF EXISTS trg_thread_search_fts_agent_insert;");
+  db.exec("DROP TRIGGER IF EXISTS trg_thread_search_fts_agent_update;");
+  db.exec("DROP TRIGGER IF EXISTS trg_thread_search_fts_agent_delete;");
+  db.exec("DROP TABLE IF EXISTS thread_search_fts;");
+};
+
+const ensureThreadSearchIndex = (db: SqliteDatabase) => {
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS thread_search_fts USING fts5(
+        thread_key,
+        name,
+        summary,
+        group_key,
+        group_label,
+        description,
+        result,
+        error,
+        tokenize = 'porter unicode61 remove_diacritics 2'
+      );
+    `);
+  } catch {
+    // This SQLite build lacks FTS5 — searchThreads falls back to the LIKE
+    // scan. Nothing else to set up.
+    return;
+  }
+
+  // The leading DELETE makes the insert idempotent per rowid: INSERT OR
+  // REPLACE on the base table would bypass the delete trigger and leave a
+  // stale FTS row behind. No current writer uses OR REPLACE, but the guard
+  // is one indexed delete and immunizes against future ones.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_thread_search_fts_thread_insert
+    AFTER INSERT ON runtime_threads
+    WHEN NEW.agent_type != 'orchestrator'
+      AND NEW.thread_key NOT LIKE '%::subagent::%'
+    BEGIN
+      DELETE FROM thread_search_fts WHERE rowid = NEW.rowid;
+      INSERT INTO thread_search_fts(
+        rowid, thread_key, name, summary, group_key, group_label,
+        description, result, error
+      )
+      VALUES (
+        NEW.rowid, NEW.thread_key, NEW.name, NEW.summary,
+        NEW.group_key, NEW.group_label,
+        (SELECT description FROM runtime_agents WHERE thread_id = NEW.thread_key),
+        (SELECT result FROM runtime_agents WHERE thread_id = NEW.thread_key),
+        (SELECT error FROM runtime_agents WHERE thread_id = NEW.thread_key)
+      );
+    END;
+  `);
+  // Only the searchable columns are listed: last_used_at churns on every
+  // heartbeat and status flips on evict/reactivate, and neither may rewrite
+  // index rows. agent_type/thread_key are immutable in practice, so
+  // eligibility can't change under an existing row.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_thread_search_fts_thread_update
+    AFTER UPDATE OF name, summary, group_key, group_label ON runtime_threads
+    WHEN NEW.agent_type != 'orchestrator'
+      AND NEW.thread_key NOT LIKE '%::subagent::%'
+    BEGIN
+      DELETE FROM thread_search_fts WHERE rowid = OLD.rowid;
+      INSERT INTO thread_search_fts(
+        rowid, thread_key, name, summary, group_key, group_label,
+        description, result, error
+      )
+      VALUES (
+        NEW.rowid, NEW.thread_key, NEW.name, NEW.summary,
+        NEW.group_key, NEW.group_label,
+        (SELECT description FROM runtime_agents WHERE thread_id = NEW.thread_key),
+        (SELECT result FROM runtime_agents WHERE thread_id = NEW.thread_key),
+        (SELECT error FROM runtime_agents WHERE thread_id = NEW.thread_key)
+      );
+    END;
+  `);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_thread_search_fts_thread_delete
+    AFTER DELETE ON runtime_threads
+    BEGIN
+      DELETE FROM thread_search_fts WHERE rowid = OLD.rowid;
+    END;
+  `);
+
+  // Agent writes rebuild the OWNING THREAD's row: the FTS rowid is the
+  // thread's, and `saveAgentRecord` upserts can land before the thread row
+  // exists — the INSERT..SELECT join then inserts nothing, and the later
+  // thread insert picks the agent columns up via its subqueries.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_thread_search_fts_agent_insert
+    AFTER INSERT ON runtime_agents
+    BEGIN
+      DELETE FROM thread_search_fts
+      WHERE rowid = (
+        SELECT rowid FROM runtime_threads WHERE thread_key = NEW.thread_id
+      );
+      INSERT INTO thread_search_fts(
+        rowid, thread_key, name, summary, group_key, group_label,
+        description, result, error
+      )
+      SELECT
+        runtime_threads.rowid, runtime_threads.thread_key,
+        runtime_threads.name, runtime_threads.summary,
+        runtime_threads.group_key, runtime_threads.group_label,
+        NEW.description, NEW.result, NEW.error
+      FROM runtime_threads
+      WHERE runtime_threads.thread_key = NEW.thread_id
+        AND ${THREAD_FTS_ELIGIBLE};
+    END;
+  `);
+  // status/updated_at churn on every agent heartbeat and are deliberately
+  // absent from this UPDATE OF list. The WHEN clause closes the remaining
+  // hole: saveAgentRecord's upsert SETs every column, and UPDATE OF fires on
+  // SET-list MEMBERSHIP, not value change — without it every agent save
+  // rebuilt the FTS row. IS NOT is the null-safe inequality.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_thread_search_fts_agent_update
+    AFTER UPDATE OF description, result, error ON runtime_agents
+    WHEN NEW.description IS NOT OLD.description
+      OR NEW.result IS NOT OLD.result
+      OR NEW.error IS NOT OLD.error
+    BEGIN
+      DELETE FROM thread_search_fts
+      WHERE rowid = (
+        SELECT rowid FROM runtime_threads WHERE thread_key = NEW.thread_id
+      );
+      INSERT INTO thread_search_fts(
+        rowid, thread_key, name, summary, group_key, group_label,
+        description, result, error
+      )
+      SELECT
+        runtime_threads.rowid, runtime_threads.thread_key,
+        runtime_threads.name, runtime_threads.summary,
+        runtime_threads.group_key, runtime_threads.group_label,
+        NEW.description, NEW.result, NEW.error
+      FROM runtime_threads
+      WHERE runtime_threads.thread_key = NEW.thread_id
+        AND ${THREAD_FTS_ELIGIBLE};
+    END;
+  `);
+  // The thread row can outlive its agent record, so a deleted agent strips
+  // the agent columns from the thread's row rather than dropping it.
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_thread_search_fts_agent_delete
+    AFTER DELETE ON runtime_agents
+    BEGIN
+      DELETE FROM thread_search_fts
+      WHERE rowid = (
+        SELECT rowid FROM runtime_threads WHERE thread_key = OLD.thread_id
+      );
+      INSERT INTO thread_search_fts(
+        rowid, thread_key, name, summary, group_key, group_label,
+        description, result, error
+      )
+      SELECT
+        runtime_threads.rowid, runtime_threads.thread_key,
+        runtime_threads.name, runtime_threads.summary,
+        runtime_threads.group_key, runtime_threads.group_label,
+        NULL, NULL, NULL
+      FROM runtime_threads
+      WHERE runtime_threads.thread_key = OLD.thread_id
+        AND ${THREAD_FTS_ELIGIBLE};
+    END;
+  `);
+
+  const backfilled = db
+    .prepare("SELECT value FROM settings WHERE key = ?")
+    .get(THREAD_FTS_BACKFILL_FLAG);
+  if (backfilled) return;
+  try {
+    db.exec("BEGIN IMMEDIATE;");
+    // An unset flag with rows present means a previous backfill died midway
+    // (or predates the flag) — wipe and redo rather than trust a partial
+    // index.
+    db.exec("DELETE FROM thread_search_fts;");
+    db.exec(`
+      INSERT INTO thread_search_fts(
+        rowid, thread_key, name, summary, group_key, group_label,
+        description, result, error
+      )
+      SELECT
+        runtime_threads.rowid, runtime_threads.thread_key,
+        runtime_threads.name, runtime_threads.summary,
+        runtime_threads.group_key, runtime_threads.group_label,
+        runtime_agents.description, runtime_agents.result,
+        runtime_agents.error
+      FROM runtime_threads
+      LEFT JOIN runtime_agents
+        ON runtime_agents.thread_id = runtime_threads.thread_key
+      WHERE ${THREAD_FTS_ELIGIBLE};
+    `);
+    db.prepare(
+      `
+      INSERT INTO settings (key, value, updated_at)
+      VALUES (?, '1', ?)
+      ON CONFLICT(key) DO UPDATE SET value = '1', updated_at = excluded.updated_at
+    `,
+    ).run(THREAD_FTS_BACKFILL_FLAG, Date.now());
+    db.exec("COMMIT;");
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK;");
+    } catch {
+      // Not in a transaction — BEGIN itself failed.
+    }
+    // A half-built index silently loses older threads; no index degrades
+    // loudly to the LIKE scan and retries the backfill on the next init.
+    dropThreadSearchIndex(db);
+    throw error instanceof Error ? new ThreadFtsBackfillError(error) : error;
+  }
+};
+
+/**
+ * Same contract as `TranscriptFtsBackfillError`: the thread index is an
+ * optimization, so `initializeDesktopDatabase` catches this and continues
+ * without it.
+ */
+class ThreadFtsBackfillError extends Error {
+  constructor(cause: Error) {
+    super(`Thread FTS backfill failed: ${cause.message}`);
+    this.name = "ThreadFtsBackfillError";
+  }
+}
+
 export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA synchronous = NORMAL;");
@@ -96,6 +514,15 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     CREATE INDEX IF NOT EXISTS idx_part_session_created
     ON part(session_id, created_at, id);
   `);
+
+  try {
+    ensureTranscriptSearchIndex(db);
+  } catch (error) {
+    // The transcript index is an optimization — a failed backfill (e.g. a
+    // malformed legacy row) must not brick startup. The index was dropped,
+    // so search degrades to the LIKE scan.
+    if (!(error instanceof TranscriptFtsBackfillError)) throw error;
+  }
 
   db.exec("DROP TABLE IF EXISTS chat_sync_checkpoints;");
   db.exec("DROP TABLE IF EXISTS chat_events;");
@@ -257,6 +684,17 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     CREATE INDEX IF NOT EXISTS idx_runtime_agents_updated
     ON runtime_agents(updated_at);
   `);
+
+  // Must run AFTER runtime_threads and runtime_agents exist — the sync
+  // triggers reference both tables.
+  try {
+    ensureThreadSearchIndex(db);
+  } catch (error) {
+    // Same degradation contract as the transcript index above: the thread
+    // index is an optimization, and searchThreads falls back to its LIKE
+    // scan once the failed index is dropped.
+    if (!(error instanceof ThreadFtsBackfillError)) throw error;
+  }
   // Rolling per-agent progress-summary phrases ("searching documentation for
   // rate limits"), generated by the renderer's progress-summary engine and
   // mirrored here so runtime consumers (Recall) can report what a running

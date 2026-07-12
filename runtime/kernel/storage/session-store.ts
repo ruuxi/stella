@@ -154,6 +154,12 @@ const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
 // formatter windows it further around the first match.
 const TRANSCRIPT_SEARCH_TEXT_CAP = 4_000;
 
+// Step-1 candidate cap for the FTS-backed thread search. Generous (the
+// result limit tops out at 25) so ordering parity with the LIKE scan is
+// preserved in practice; `ORDER BY rank` keeps the most relevant candidates
+// on the rare query where the cap binds.
+const THREAD_SEARCH_FTS_CANDIDATE_CAP = 200;
+
 /** One chat-transcript hit from `searchTranscripts`. */
 export type TranscriptSearchHit = {
   conversationId: string;
@@ -2976,6 +2982,16 @@ export class SessionStore {
    * work first. Orchestrator threads are excluded (they are the
    * conversations themselves, not work — transcript content is
    * `searchTranscripts`' job).
+   *
+   * Matching is backed by the `thread_search_fts` FTS5 index (see
+   * database-init) so the lookup scales with match count instead of total
+   * thread history, porter stemming matches word forms ("deploys" ~
+   * "deploy"), and — the main quality win — the agent's final
+   * `result`/`error` text is searchable, which no LIKE column ever was.
+   * When the index is unavailable (an SQLite build without FTS5, or a
+   * dropped index after a failed backfill), the original LIKE scan answers
+   * instead; it deliberately keeps its narrower column set, so result/error
+   * matching is exclusive to the FTS path.
    */
   searchThreads(args: {
     conversationId: string;
@@ -2984,6 +3000,123 @@ export class SessionStore {
   }): RuntimeThreadRecord[] {
     const limit = Math.max(1, Math.min(25, Math.floor(args.limit ?? 12)));
     const tokens = tokenizeSearchQuery(args.query);
+    // No tokens means "most recent work" — a pure recency read of the base
+    // table that the FTS index (matching only) has nothing to add to.
+    if (tokens.length > 0 && this.threadFtsAvailable()) {
+      try {
+        return this.searchThreadsFts(args.conversationId, tokens, limit);
+      } catch {
+        // A token FTS5 cannot tokenize (pure punctuation) makes MATCH
+        // throw — the LIKE scan below still handles it.
+      }
+    }
+    return this.searchThreadsLike(args.conversationId, tokens, limit);
+  }
+
+  private hasThreadFts: boolean | undefined;
+
+  private threadFtsAvailable(): boolean {
+    if (this.hasThreadFts === undefined) {
+      try {
+        this.hasThreadFts = Boolean(
+          this.db
+            .prepare(
+              "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'thread_search_fts'",
+            )
+            .get(),
+        );
+      } catch {
+        this.hasThreadFts = false;
+      }
+    }
+    return this.hasThreadFts;
+  }
+
+  /**
+   * Two-step FTS search: the index answers WHICH threads match, the base
+   * tables answer everything else. Step 1 collects candidate thread keys
+   * via MATCH; step 2 re-runs the exact LIKE-scan query shape over just
+   * those candidates — same eligibility clauses, same ORDER BY (scope,
+   * per-token LIKE match count, recency) — so ranking semantics are
+   * byte-identical to the fallback. Stemmed-only hits (which the LIKE
+   * CASEs score 0) rank after literal matches within their scope, ties
+   * newest-first.
+   */
+  private searchThreadsFts(
+    conversationId: string,
+    tokens: string[],
+    limit: number,
+  ): RuntimeThreadRecord[] {
+    // Each token becomes a quoted FTS phrase (quoting neutralizes MATCH
+    // operators in user text), OR'd to keep the any-token-matches semantics.
+    const matchQuery = tokens
+      .map((token) => `"${token.replace(/"/g, '""')}"`)
+      .join(" OR ");
+    const candidates = this.db
+      .prepare(
+        `
+      SELECT thread_key AS threadKey
+      FROM thread_search_fts
+      WHERE thread_search_fts MATCH ?
+      ORDER BY rank
+      LIMIT ${THREAD_SEARCH_FTS_CANDIDATE_CAP}
+    `,
+      )
+      .all(matchQuery) as Array<{ threadKey: string }>;
+    if (candidates.length === 0) return [];
+    const candidateKeys = candidates.map((row) => row.threadKey);
+    const escapeLike = (value: string) => value.replace(/([\\%_])/g, "\\$1");
+    const tokenClause = `(
+        thread_key LIKE ? ESCAPE '\\'
+        OR runtime_threads.name LIKE ? ESCAPE '\\'
+        OR runtime_threads.summary LIKE ? ESCAPE '\\'
+        OR runtime_threads.group_label LIKE ? ESCAPE '\\'
+        OR runtime_threads.group_key LIKE ? ESCAPE '\\'
+        OR runtime_agents.description LIKE ? ESCAPE '\\'
+      )`;
+    // The index already enforced eligibility at write time, but the clauses
+    // stay here so a stale index row can never resurrect an excluded thread.
+    const where = [
+      "runtime_threads.agent_type != 'orchestrator'",
+      "thread_key != ?",
+      "thread_key NOT LIKE '%::subagent::%'",
+      `thread_key IN (${candidateKeys.map(() => "?").join(", ")})`,
+    ].join("\n        AND ");
+    const orderBy = `(runtime_threads.conversation_id = ?) DESC,
+      (${tokens
+        .map(() => `CASE WHEN ${tokenClause} THEN 1 ELSE 0 END`)
+        .join(" + ")}) DESC,
+      runtime_threads.last_used_at DESC`;
+    const params: Array<string | number> = [
+      conversationId,
+      ...candidateKeys,
+      conversationId,
+    ];
+    for (const token of tokens) {
+      const pattern = `%${escapeLike(token)}%`;
+      params.push(pattern, pattern, pattern, pattern, pattern, pattern);
+    }
+    params.push(limit);
+    const rows = this.db
+      .prepare(
+        `
+      ${SessionStore.RUNTIME_THREAD_SELECT}
+      WHERE ${where}
+      ORDER BY ${orderBy}
+      LIMIT ?
+    `,
+      )
+      .all(...params) as Array<
+      Parameters<SessionStore["deserializeRuntimeThread"]>[0]
+    >;
+    return rows.map((row) => this.deserializeRuntimeThread(row));
+  }
+
+  private searchThreadsLike(
+    conversationId: string,
+    tokens: string[],
+    limit: number,
+  ): RuntimeThreadRecord[] {
     const escapeLike = (value: string) => value.replace(/([\\%_])/g, "\\$1");
     const tokenClause = `(
         thread_key LIKE ? ESCAPE '\\'
@@ -3017,7 +3150,7 @@ export class SessionStore {
       runtime_threads.last_used_at DESC`
         : `${scopeOrder},
       runtime_threads.last_used_at DESC`;
-    const params: Array<string | number> = [args.conversationId];
+    const params: Array<string | number> = [conversationId];
     const pushTokenParams = () => {
       for (const token of tokens) {
         const pattern = `%${escapeLike(token)}%`;
@@ -3025,7 +3158,7 @@ export class SessionStore {
       }
     };
     pushTokenParams(); // WHERE token binds,
-    params.push(args.conversationId); // then the ORDER BY scope bind,
+    params.push(conversationId); // then the ORDER BY scope bind,
     pushTokenParams(); // then ORDER BY rebinds the same patterns.
     params.push(limit);
     const rows = this.db
@@ -3125,7 +3258,14 @@ export class SessionStore {
       LIMIT ?
     `,
       )
-      .all(activeSinceMs, limit, activeSinceMs, limit, activeSinceMs, limit) as Array<{
+      .all(
+        activeSinceMs,
+        limit,
+        activeSinceMs,
+        limit,
+        activeSinceMs,
+        limit,
+      ) as Array<{
       threadId: string;
       conversationId: string;
       name: string;
@@ -3155,6 +3295,48 @@ export class SessionStore {
         : {}),
       ...(row.errorExcerpt?.trim() ? { errorExcerpt: row.errorExcerpt } : {}),
     }));
+  }
+
+  /**
+   * Final result/error excerpts for a set of threads, keyed by thread id.
+   * Recall's thread search renders these because `summary` is empty on
+   * nearly every real thread — the agent's final `result` is the only
+   * durable record of what a finished thread actually did.
+   */
+  listThreadResultExcerpts(
+    threadIds: readonly string[],
+  ): Map<string, { resultExcerpt?: string; errorExcerpt?: string }> {
+    const ids = [...new Set(threadIds)].slice(0, 64);
+    const map = new Map<
+      string,
+      { resultExcerpt?: string; errorExcerpt?: string }
+    >();
+    if (ids.length === 0) return map;
+    const rows = this.db
+      .prepare(
+        `
+      SELECT
+        thread_id AS threadId,
+        substr(result, 1, ${RECALL_INDEX_RESULT_EXCERPT_CHARS}) AS resultExcerpt,
+        substr(error, 1, ${RECALL_INDEX_ERROR_EXCERPT_CHARS}) AS errorExcerpt
+      FROM runtime_agents
+      WHERE thread_id IN (${ids.map(() => "?").join(", ")})
+    `,
+      )
+      .all(...ids) as Array<{
+      threadId: string;
+      resultExcerpt: string | null;
+      errorExcerpt: string | null;
+    }>;
+    for (const row of rows) {
+      map.set(row.threadId, {
+        ...(row.resultExcerpt?.trim()
+          ? { resultExcerpt: row.resultExcerpt }
+          : {}),
+        ...(row.errorExcerpt?.trim() ? { errorExcerpt: row.errorExcerpt } : {}),
+      });
+    }
+    return map;
   }
 
   /**
@@ -3191,6 +3373,12 @@ export class SessionStore {
    * ties break newest-first. Matching runs against the extracted `$.text`
    * of each chat payload, never the raw JSON, so attachments/base64 and
    * metadata cannot produce false hits.
+   *
+   * Backed by the `message_text_fts` FTS5 index (see database-init) so the
+   * lookup scales with match count, not history size, and porter stemming
+   * matches word forms ("drive" ~ "drives"). When the index is unavailable
+   * — an SQLite build without FTS5, or a dropped index after a failed
+   * backfill — the original LIKE scan answers instead.
    */
   searchTranscripts(args: {
     query: string;
@@ -3199,6 +3387,86 @@ export class SessionStore {
     const limit = Math.max(1, Math.min(25, Math.floor(args.limit ?? 12)));
     const tokens = tokenizeSearchQuery(args.query);
     if (tokens.length === 0) return [];
+    if (this.transcriptFtsAvailable()) {
+      try {
+        return this.searchTranscriptsFts(tokens, limit);
+      } catch {
+        // A token FTS5 cannot tokenize (pure punctuation) makes MATCH
+        // throw — the LIKE scan below still handles it.
+      }
+    }
+    return this.searchTranscriptsLike(tokens, limit);
+  }
+
+  private hasTranscriptFts: boolean | undefined;
+
+  private transcriptFtsAvailable(): boolean {
+    if (this.hasTranscriptFts === undefined) {
+      try {
+        this.hasTranscriptFts = Boolean(
+          this.db
+            .prepare(
+              "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'message_text_fts'",
+            )
+            .get(),
+        );
+      } catch {
+        this.hasTranscriptFts = false;
+      }
+    }
+    return this.hasTranscriptFts;
+  }
+
+  private searchTranscriptsFts(
+    tokens: string[],
+    limit: number,
+  ): TranscriptSearchHit[] {
+    // Each token becomes a quoted FTS phrase (quoting neutralizes MATCH
+    // operators in user text), OR'd to keep the any-token-matches
+    // semantics. The matched-token count for RANKING is computed with the
+    // same LIKE test the scan used — but only over the FTS matches, never
+    // the whole table — so ordering is unchanged: more matched tokens
+    // first, ties newest-first.
+    const matchQuery = tokens
+      .map((token) => `"${token.replace(/"/g, '""')}"`)
+      .join(" OR ");
+    const escapeLike = (value: string) => value.replace(/([\\%_])/g, "\\$1");
+    const tokenClause = `text LIKE ? ESCAPE '\\'`;
+    const rows = this.db
+      .prepare(
+        `
+      SELECT
+        session_id AS conversationId,
+        role,
+        created_at AS atMs,
+        substr(text, 1, ${TRANSCRIPT_SEARCH_TEXT_CAP}) AS text
+      FROM message_text_fts
+      WHERE message_text_fts MATCH ?
+      ORDER BY
+        (${tokens
+          .map(() => `CASE WHEN ${tokenClause} THEN 1 ELSE 0 END`)
+          .join(" + ")}) DESC,
+        created_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(
+        matchQuery,
+        ...tokens.map((token) => `%${escapeLike(token)}%`),
+        limit,
+      ) as Array<{
+      conversationId: string;
+      role: string;
+      atMs: number;
+      text: unknown;
+    }>;
+    return this.deserializeTranscriptHits(rows);
+  }
+
+  private searchTranscriptsLike(
+    tokens: string[],
+    limit: number,
+  ): TranscriptSearchHit[] {
     const escapeLike = (value: string) => value.replace(/([\\%_])/g, "\\$1");
     const textExpr = `json_extract(part.data_json, '$.text')`;
     const tokenClause = `${textExpr} LIKE ? ESCAPE '\\'`;
@@ -3234,6 +3502,17 @@ export class SessionStore {
       atMs: number;
       text: unknown;
     }>;
+    return this.deserializeTranscriptHits(rows);
+  }
+
+  private deserializeTranscriptHits(
+    rows: Array<{
+      conversationId: string;
+      role: string;
+      atMs: number;
+      text: unknown;
+    }>,
+  ): TranscriptSearchHit[] {
     return rows.flatMap((row) => {
       const text = typeof row.text === "string" ? row.text.trim() : "";
       if (!text) return [];
