@@ -24,6 +24,9 @@ import { convertResponsesMessages, convertResponsesTools, processResponsesStream
 import { buildBaseOptions } from "./simple-options.js";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
+const STELLA_RELAY_RESUME_HEADER = "x-stella-relay-resume";
+const STELLA_RELAY_REQUEST_ID_HEADER = "x-stella-relay-request-id";
+const STELLA_RELAY_RESUME_VERSION = "1";
 
 /**
  * Resolve cache retention preference.
@@ -72,6 +75,7 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 
 	// Start async processing
 	(async () => {
+		let detachRelayAbortListener = () => {};
 		const output: AssistantMessage = {
 			role: "assistant",
 			content: [],
@@ -113,38 +117,64 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 				maxRetries: 0,
 				headers: { "Idempotency-Key": idempotencyKey },
 			});
+			let relayRequestId: string | undefined;
+			let relayResumeCapable = false;
+			let relayAbortListenerAttached = false;
+			const providerDurableResumeEnabled = params.background === true && params.store !== false;
+			const noteResponse = async (response: Response): Promise<void> => {
+				const headers = headersToRecord(response.headers);
+				const advertisedVersion = response.headers.get(STELLA_RELAY_RESUME_HEADER)?.trim();
+				const advertisedRequestId = response.headers.get(STELLA_RELAY_REQUEST_ID_HEADER)?.trim();
+				if (advertisedVersion === STELLA_RELAY_RESUME_VERSION && advertisedRequestId) {
+					relayResumeCapable = true;
+					relayRequestId = advertisedRequestId;
+					if (options?.signal && !relayAbortListenerAttached) {
+						relayAbortListenerAttached = true;
+						const cancelRelayResponse = () => {
+							void client
+								.delete<void>(`/responses/${encodeURIComponent(advertisedRequestId)}`, {
+									maxRetries: 0,
+									timeout: options.timeoutMs ?? 10_000,
+								})
+								.catch(() => undefined);
+						};
+						if (options.signal.aborted) cancelRelayResponse();
+						else options.signal.addEventListener("abort", cancelRelayResponse, { once: true });
+						detachRelayAbortListener = () =>
+							options.signal?.removeEventListener("abort", cancelRelayResponse);
+					}
+				}
+				await options?.onResponse?.({ status: response.status, headers }, model);
+			};
 			const connect = async (signal?: AbortSignal): Promise<AsyncIterable<ResponseStreamEvent>> => {
 				const { data, response } = await client.responses.create(params, requestOptions(signal)).withResponse();
-				await options?.onResponse?.(
-					{
-						status: response.status,
-						headers: headersToRecord(response.headers),
-					},
-					model,
-				);
+				await noteResponse(response);
 				return data;
 			};
-			const durableResumeEnabled = params.background === true && params.store !== false;
-			const resume = durableResumeEnabled
-				? async ({ runId, cursor, signal }: { runId: string; cursor: number; signal?: AbortSignal }) => {
-						const { data, response } = await client.responses
-							.retrieve(runId, { stream: true, starting_after: cursor }, requestOptions(signal))
-							.withResponse();
-						await options?.onResponse?.(
-							{
-								status: response.status,
-								headers: headersToRecord(response.headers),
-							},
-							model,
-						);
-						return data;
-					}
-				: undefined;
+			const resume = async ({ runId, cursor, signal }: { runId: string; cursor: number; signal?: AbortSignal }) => {
+				const { data, response } = await client.responses
+					.retrieve(runId, { stream: true, starting_after: cursor }, requestOptions(signal))
+					.withResponse();
+				await noteResponse(response);
+				return data;
+			};
 			const openaiStream = resilientEventStream<ResponseStreamEvent>({
 				connect,
-				...(resume ? { resume } : {}),
-				getRunId: (event) => ("response" in event && event.response?.id ? event.response.id : undefined),
-				getSequence: (event) => (typeof event.sequence_number === "number" ? event.sequence_number : undefined),
+				resume,
+				getRunId: (event) => {
+					if (relayResumeCapable) return relayRequestId;
+					return providerDurableResumeEnabled && "response" in event && event.response?.id
+						? event.response.id
+						: undefined;
+				},
+				getSequence: (event) => {
+					const relaySequence = (event as ResponseStreamEvent & { stella_relay_sequence?: unknown })
+						.stella_relay_sequence;
+					if (relayResumeCapable) {
+						return typeof relaySequence === "number" ? relaySequence : undefined;
+					}
+					return typeof event.sequence_number === "number" ? event.sequence_number : undefined;
+				},
 				isTerminal: (event) => event.type === "response.completed" || event.type === "response.failed" || event.type === "error",
 				...(options?.signal ? { signal: options.signal } : {}),
 				onReconnect: ({ attempt, delayMs, reason }) => options?.onProviderRetry?.({ attempt, delayMs, reason }),
@@ -165,8 +195,10 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 			}
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
+			detachRelayAbortListener();
 			stream.end();
 		} catch (error) {
+			detachRelayAbortListener();
 			for (const block of output.content) {
 				delete (block as { index?: number }).index;
 				// partialJson is only a streaming scratch buffer; never persist it.

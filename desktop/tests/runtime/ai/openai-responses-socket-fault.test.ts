@@ -291,4 +291,296 @@ describe("OpenAI Responses socket fault injection", () => {
       `/v1/responses/${responseId}?stream=true&starting_after=2`,
     );
   });
+
+  it("resumes an unexpected relay EOF from the advertised relay cursor without replaying the POST or tool call", async () => {
+    const relayRequestId = "relay_resume_fault";
+    const requests: Array<{ method?: string; url?: string; body: string }> = [];
+    const server = http.createServer(async (request, response) => {
+      let body = "";
+      for await (const chunk of request) body += chunk.toString();
+      requests.push({ method: request.method, url: request.url, body });
+      if (request.method === "POST") {
+        response.writeHead(200, {
+          "content-type": "text/event-stream",
+          "x-stella-relay-resume": "1",
+          "x-stella-relay-request-id": relayRequestId,
+          connection: "close",
+        });
+        response.write(
+          sse([
+            {
+              type: "response.created",
+              sequence_number: 0,
+              stella_relay_sequence: 1,
+              response: { id: "resp_provider" },
+            },
+            {
+              type: "response.output_item.added",
+              sequence_number: 1,
+              stella_relay_sequence: 2,
+              output_index: 0,
+              item: {
+                type: "function_call",
+                id: "item_tool",
+                call_id: "call_tool",
+                name: "read_file",
+                arguments: "",
+                status: "in_progress",
+              },
+            },
+            {
+              type: "response.function_call_arguments.delta",
+              sequence_number: 2,
+              stella_relay_sequence: 3,
+              output_index: 0,
+              item_id: "item_tool",
+              delta: '{"path":"/tmp/',
+            },
+          ]),
+        );
+        setImmediate(() => response.destroy());
+        return;
+      }
+
+      response.writeHead(200, {
+        "content-type": "text/event-stream",
+        "x-stella-relay-resume": "1",
+        "x-stella-relay-request-id": relayRequestId,
+        connection: "close",
+      });
+      response.end(
+        sse([
+          {
+            type: "response.function_call_arguments.delta",
+            sequence_number: 2,
+            stella_relay_sequence: 3,
+            output_index: 0,
+            item_id: "item_tool",
+            delta: '{"path":"/tmp/',
+          },
+          {
+            type: "response.function_call_arguments.delta",
+            sequence_number: 3,
+            stella_relay_sequence: 4,
+            output_index: 0,
+            item_id: "item_tool",
+            delta: 'evidence.txt"}',
+          },
+          {
+            type: "response.output_item.done",
+            sequence_number: 4,
+            stella_relay_sequence: 5,
+            output_index: 0,
+            item: {
+              type: "function_call",
+              id: "item_tool",
+              call_id: "call_tool",
+              name: "read_file",
+              arguments: '{"path":"/tmp/evidence.txt"}',
+              status: "completed",
+            },
+          },
+          {
+            type: "response.completed",
+            sequence_number: 5,
+            stella_relay_sequence: 6,
+            response: completedResponse("resp_provider"),
+          },
+        ]) + "data: [DONE]\n\n",
+      );
+    });
+    servers.add(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const model: Model<"openai-responses"> = {
+      id: "stella/openai/test-model",
+      name: "Relay resumable model",
+      api: "openai-responses",
+      provider: "openai",
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8_000,
+      maxTokens: 1_000,
+    };
+
+    const result = await streamOpenAIResponses(
+      model,
+      { messages: [{ role: "user", content: "read it", timestamp: 0 }] },
+      { apiKey: "test" },
+    ).result();
+
+    expect(result.stopReason).toBe("toolUse");
+    expect(result.content).toEqual([
+      {
+        type: "toolCall",
+        id: "call_tool|item_tool",
+        name: "read_file",
+        arguments: { path: "/tmp/evidence.txt" },
+      },
+    ]);
+    expect(requests.map((request) => request.method)).toEqual(["POST", "GET"]);
+    expect(requests[1]?.url).toContain(
+      `/v1/responses/${relayRequestId}?stream=true&starting_after=3`,
+    );
+    expect(JSON.parse(requests[0]!.body).store).toBe(false);
+  });
+
+  it("surfaces an expired relay cursor without replaying the original POST", async () => {
+    let posts = 0;
+    let gets = 0;
+    const server = http.createServer(async (request, response) => {
+      for await (const _chunk of request) {
+        // Drain request bodies.
+      }
+      if (request.method === "POST") {
+        posts += 1;
+        response.writeHead(200, {
+          "content-type": "text/event-stream",
+          "x-stella-relay-resume": "1",
+          "x-stella-relay-request-id": "relay_expired",
+          connection: "close",
+        });
+        response.write(
+          sse([
+            {
+              type: "response.created",
+              sequence_number: 0,
+              stella_relay_sequence: 1,
+              response: { id: "resp_expired" },
+            },
+          ]),
+        );
+        setImmediate(() => response.destroy());
+        return;
+      }
+      gets += 1;
+      response.writeHead(410, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({ error: { message: "Relay resume cursor expired" } }),
+      );
+    });
+    servers.add(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const model: Model<"openai-responses"> = {
+      id: "stella/openai/test-model",
+      name: "Expired relay cursor model",
+      api: "openai-responses",
+      provider: "openai",
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8_000,
+      maxTokens: 1_000,
+    };
+
+    const result = await streamOpenAIResponses(
+      model,
+      { messages: [{ role: "user", content: "hello", timestamp: 0 }] },
+      { apiKey: "test" },
+    ).result();
+    expect(result.stopReason).toBe("error");
+    expect(result.errorMessage).toContain("Relay resume cursor expired");
+    expect(posts).toBe(1);
+    expect(gets).toBe(1);
+  });
+
+  it("sends an owner-authenticated relay cancel signal on explicit abort", async () => {
+    const methods: string[] = [];
+    let resolveDelete!: () => void;
+    const deleted = new Promise<void>((resolve) => {
+      resolveDelete = resolve;
+    });
+    const server = http.createServer(async (request, response) => {
+      methods.push(request.method ?? "");
+      for await (const _chunk of request) {
+        // Drain request bodies.
+      }
+      if (request.method === "DELETE") {
+        expect(request.url).toBe("/v1/responses/relay_cancel");
+        response.writeHead(204);
+        response.end();
+        resolveDelete();
+        return;
+      }
+      response.writeHead(200, {
+        "content-type": "text/event-stream",
+        "x-stella-relay-resume": "1",
+        "x-stella-relay-request-id": "relay_cancel",
+      });
+      response.write(
+        sse([
+          {
+            type: "response.created",
+            sequence_number: 0,
+            stella_relay_sequence: 1,
+            response: { id: "resp_cancel" },
+          },
+          {
+            type: "response.output_item.added",
+            sequence_number: 1,
+            stella_relay_sequence: 2,
+            output_index: 0,
+            item: {
+              type: "message",
+              id: "msg_cancel",
+              role: "assistant",
+              content: [],
+              status: "in_progress",
+            },
+          },
+          {
+            type: "response.output_text.delta",
+            sequence_number: 2,
+            stella_relay_sequence: 3,
+            output_index: 0,
+            item_id: "msg_cancel",
+            content_index: 0,
+            delta: "partial",
+          },
+        ]),
+      );
+    });
+    servers.add(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const controller = new AbortController();
+    const model: Model<"openai-responses"> = {
+      id: "stella/openai/test-model",
+      name: "Relay cancellation model",
+      api: "openai-responses",
+      provider: "openai",
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8_000,
+      maxTokens: 1_000,
+    };
+    const stream = streamOpenAIResponses(
+      model,
+      { messages: [{ role: "user", content: "hello", timestamp: 0 }] },
+      { apiKey: "test", signal: controller.signal },
+    );
+    const eventsDone = (async () => {
+      for await (const event of stream) {
+        if (event.type === "text_delta") controller.abort("user canceled");
+      }
+    })();
+
+    const result = await stream.result();
+    await eventsDone;
+    await deleted;
+    expect(result.stopReason).toBe("aborted");
+    expect(methods).toEqual(["POST", "DELETE"]);
+  });
 });
