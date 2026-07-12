@@ -13,7 +13,16 @@ import {
   type ReactNode,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { History, CheckCircle2, Circle, CircleDot, AlertCircle, ChevronDown } from "@/ui/icons";
+import {
+  History,
+  CheckCircle2,
+  Circle,
+  CircleDot,
+  AlertCircle,
+  ChevronDown,
+  MessageSquarePlus,
+} from "@/ui/icons";
+import type { ChatContext } from "@/shared/types/electron";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import {
@@ -251,10 +260,28 @@ function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
   }
 }
 
+/** Chip payload for referencing an activity thread from the composer. */
+const taskToActivityContext = (
+  task: TaskItem,
+): NonNullable<ChatContext["activity"]> => ({
+  id: task.id,
+  label: task.description.trim() || "Activity",
+  agentType: task.agentType,
+  status: task.status,
+  ...(task.runId ? { runId: task.runId } : {}),
+  ...(task.anchorTurnId ? { anchorTurnId: task.anchorTurnId } : {}),
+  startedAtMs: task.startedAtMs,
+  ...(typeof task.completedAtMs === "number"
+    ? { completedAtMs: task.completedAtMs }
+    : {}),
+  lastUpdatedAtMs: task.lastUpdatedAtMs,
+});
+
 const TaskRow = memo(function TaskRow({
   task,
   expanded,
   onToggle,
+  onSelect,
   files,
   onOpenFile,
   orderIndex,
@@ -262,6 +289,8 @@ const TaskRow = memo(function TaskRow({
   task: TaskItem;
   expanded: boolean;
   onToggle: (taskId: string, nextExpanded: boolean) => void;
+  /** Attach this activity as a composer context chip. */
+  onSelect: (task: TaskItem) => void;
   files: ReadonlyArray<ConversationFileEntry>;
   onOpenFile: (entry: ConversationFileEntry) => void;
   /** Position in the host list; drives reorder FLIP measurement. */
@@ -318,6 +347,15 @@ const TaskRow = memo(function TaskRow({
               label
             )}
           </span>
+        </button>
+        <button
+          type="button"
+          className="chat-workspace-strip__task-attach"
+          onClick={() => onSelect(task)}
+          aria-label={`Reference ${label || "activity"} in chat`}
+          title="Reference in chat"
+        >
+          <MessageSquarePlus size={14} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>
       {/* Always mounted so both the user toggle and the first summary/file
@@ -398,6 +436,7 @@ const GroupRow = memo(function GroupRow({
   onToggle,
   isTaskExpanded,
   onToggleTask,
+  onSelectTask,
   agentFiles,
   onOpenFile,
   orderIndex,
@@ -407,6 +446,7 @@ const GroupRow = memo(function GroupRow({
   onToggle: (groupKey: string, nextExpanded: boolean) => void;
   isTaskExpanded: (task: TaskItem) => boolean;
   onToggleTask: (taskId: string, nextExpanded: boolean) => void;
+  onSelectTask: (task: TaskItem) => void;
   agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
   onOpenFile: (entry: ConversationFileEntry) => void;
   /** Position in the host list; drives reorder FLIP measurement. */
@@ -461,6 +501,7 @@ const GroupRow = memo(function GroupRow({
                   task={task}
                   expanded={isTaskExpanded(task)}
                   onToggle={onToggleTask}
+                  onSelect={onSelectTask}
                   files={agentFiles.get(task.id) ?? EMPTY_FILES}
                   onOpenFile={onOpenFile}
                   orderIndex={index}
@@ -478,6 +519,7 @@ const TasksList = memo(function TasksList({
   rows,
   isTaskExpanded,
   onToggleTask,
+  onSelectTask,
   isGroupExpanded,
   onToggleGroup,
   agentFiles,
@@ -486,6 +528,7 @@ const TasksList = memo(function TasksList({
   rows: ReadonlyArray<ActivityRow>;
   isTaskExpanded: (task: TaskItem) => boolean;
   onToggleTask: (taskId: string, nextExpanded: boolean) => void;
+  onSelectTask: (task: TaskItem) => void;
   isGroupExpanded: (group: TaskGroup) => boolean;
   onToggleGroup: (groupKey: string, nextExpanded: boolean) => void;
   agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
@@ -503,6 +546,7 @@ const TasksList = memo(function TasksList({
               task={row.task}
               expanded={isTaskExpanded(row.task)}
               onToggle={onToggleTask}
+              onSelect={onSelectTask}
               files={agentFiles.get(row.task.id) ?? EMPTY_FILES}
               onOpenFile={onOpenFile}
               orderIndex={index}
@@ -515,6 +559,7 @@ const TasksList = memo(function TasksList({
               onToggle={onToggleGroup}
               isTaskExpanded={isTaskExpanded}
               onToggleTask={onToggleTask}
+              onSelectTask={onSelectTask}
               agentFiles={agentFiles}
               onOpenFile={onOpenFile}
               orderIndex={index}
@@ -917,6 +962,26 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     [onNavigate],
   );
 
+  // Attach the activity as a composer context chip (one at a time — the
+  // `activity` slot on ChatContext) so the thread can be referenced in the
+  // next message, then hand focus to the composer.
+  const handleSelectTask = useCallback(
+    (task: TaskItem) => {
+      chat.composer.setChatContext((prev) => ({
+        ...(prev ?? {
+          window: null,
+          browserUrl: null,
+          selectedText: null,
+          regionScreenshots: [],
+        }),
+        activity: taskToActivityContext(task),
+      }));
+      chat.composer.requestFocus?.();
+      onNavigate?.();
+    },
+    [chat.composer, onNavigate],
+  );
+
   if (!hasActivity && !hasFiles && !hasSchedule && !hasStore) {
     return renderEmpty ? <>{renderEmpty()}</> : null;
   }
@@ -937,6 +1002,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
               rows={visibleActivityRows}
               isTaskExpanded={isTaskExpanded}
               onToggleTask={toggleTask}
+              onSelectTask={handleSelectTask}
               isGroupExpanded={isGroupExpanded}
               onToggleGroup={toggleGroup}
               agentFiles={agentFiles}
