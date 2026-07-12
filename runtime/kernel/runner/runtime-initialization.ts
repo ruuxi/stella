@@ -7,6 +7,7 @@ import {
 import { loadExtensions } from "../extensions/loader.js";
 import type { ExtensionServices } from "../extensions/services.js";
 import { fetchAndRegisterModelsDevDirectProviderModels } from "../../ai/models-dev.js";
+import { fetchAndRegisterGrokLiveModels } from "../grok-live-models.js";
 import { registerModel, unregisterModel } from "../../ai/models.js";
 import type { Api, Model } from "../../ai/types.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -147,6 +148,17 @@ export const createRuntimeInitialization = (
     }
   };
 
+  const loadAndRegisterGrokLiveCatalog = async (): Promise<void> => {
+    try {
+      const registered = await fetchAndRegisterGrokLiveModels();
+      if (registered > 0) logger.info("grok-models.ready", { registered });
+    } catch (error) {
+      logger.warn("grok-models.load-failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  };
+
   const initializeRuntime = () => {
     // Stella's lifecycle hooks (self-mod, memory, …) live in the
     // stella-runtime extension and register through the same loader path
@@ -168,6 +180,9 @@ export const createRuntimeInitialization = (
     // keeping its existing error swallowing) so it populates whenever it
     // resolves, and make readiness depend on the extensions load ONLY.
     void loadAndRegisterModelsDevCatalog();
+    // Same deal for the grok CLI proxy's live model list (additive,
+    // skipped entirely when there's no grok login session).
+    void loadAndRegisterGrokLiveCatalog();
 
     context.state.initializationPromise = extensionsLoad.then(() => {
       context.state.isInitialized = true;

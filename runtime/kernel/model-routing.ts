@@ -36,9 +36,8 @@ export type ResolvedLlmRoute = {
 const LOCAL_PROVIDER = "local";
 const DEFAULT_LOCAL_OPENAI_BASE_URL = "http://127.0.0.1:11434/v1";
 const GROK_PROVIDER = "grok";
-const GROK_COMPOSER_MODEL = "grok-composer-2.5-fast";
 
-const readGrokCliSessionToken = (): string | undefined => {
+export const readGrokCliSessionToken = (): string | undefined => {
   const authPath =
     process.env.GROK_AUTH_PATH?.trim() ||
     path.join(
@@ -343,10 +342,11 @@ const resolveDirectProviderRoute = (args: {
     return { kind: "unknown-model" };
   }
 
-  if (
-    args.provider === GROK_PROVIDER &&
-    directModel.id === GROK_COMPOSER_MODEL
-  ) {
+  // Any registry model under the grok CLI-proxy provider authenticates with
+  // the grok login session token (grok is not synthesizable, so this only
+  // ever matches models registered with their own routing headers — the
+  // built-in Composer entry plus live models from `grok-live-models.ts`).
+  if (args.provider === GROK_PROVIDER) {
     return {
       kind: "route",
       route: {
