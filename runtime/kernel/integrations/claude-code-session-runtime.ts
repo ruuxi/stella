@@ -320,6 +320,10 @@ const withStepRecoveryExhausted = (error: unknown): Error =>
 const buildClaudeCodeHookSettings = (): string => {
   const command = `"${process.execPath}" -e ""`;
   return JSON.stringify({
+    // Keep the CLI's built-in workflow/keyword-trigger feature from hijacking
+    // sub-agent turns whose prompts merely mention workflow-related keywords.
+    workflowKeywordTriggerEnabled: false,
+    disableWorkflows: true,
     hooks: {
       PreCompact: [{ hooks: [{ type: "command", command }] }],
       PostCompact: [{ hooks: [{ type: "command", command }] }],

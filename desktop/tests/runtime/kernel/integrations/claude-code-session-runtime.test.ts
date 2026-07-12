@@ -676,6 +676,14 @@ describe("claude-code-session-runtime", () => {
       expect(argv).toContain("--strict-mcp-config");
       expect(argv).toContain("--disable-slash-commands");
       expect(argv).not.toContain("--json-schema");
+      const settingsIndex = argv.indexOf("--settings");
+      expect(settingsIndex).toBeGreaterThanOrEqual(0);
+      const inlineSettings = JSON.parse(argv[settingsIndex + 1] ?? "{}") as {
+        workflowKeywordTriggerEnabled?: boolean;
+        disableWorkflows?: boolean;
+      };
+      expect(inlineSettings.workflowKeywordTriggerEnabled).toBe(false);
+      expect(inlineSettings.disableWorkflows).toBe(true);
       const toolsIndex = argv.indexOf("--tools");
       expect(argv[toolsIndex + 1]).toBe("");
       const mcpConfigIndex = argv.indexOf("--mcp-config");
