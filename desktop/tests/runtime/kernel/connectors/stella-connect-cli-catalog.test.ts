@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -14,8 +14,10 @@ import {
   createConnectorStatusTool,
   resetConnectorStatusCatalogMemo,
 } from "../../../../../runtime/kernel/tools/defs/connector-status.js";
+import { startCliBridgeServer } from "../../../../../runtime/worker/cli-bridge-server.js";
 
 const roots: string[] = [];
+const servers: Array<{ stop: () => Promise<void> }> = [];
 const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
 const cliPath = path.join(repoRoot, "runtime/kernel/cli/stella-connect.ts");
 
@@ -68,8 +70,39 @@ const runCli = <T = Record<string, unknown>>(root: string, ...args: string[]) =>
     }),
   ) as T;
 
+const runCliAsync = async (
+  root: string,
+  socketPath: string,
+  ...args: string[]
+) => {
+  return await new Promise<{
+    exitCode: number | null;
+    stdout: Record<string, unknown>;
+    stderr: string;
+  }>((resolve, reject) => {
+    const child = spawn("bun", [cliPath, ...args], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        STELLA_DATA_DIR: root,
+        STELLA_CLI_BRIDGE_SOCK: socketPath,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk) => (stdout += chunk));
+    child.stderr.setEncoding("utf8").on("data", (chunk) => (stderr += chunk));
+    child.on("error", reject);
+    child.on("close", (exitCode) => {
+      resolve({ exitCode, stdout: JSON.parse(stdout), stderr });
+    });
+  });
+};
+
 afterEach(async () => {
   resetConnectorStatusCatalogMemo();
+  await Promise.all(servers.splice(0).map((server) => server.stop()));
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
@@ -229,6 +262,55 @@ describe("stella-connect shared native catalog resolution", () => {
     expect(
       runCli<Array<Record<string, unknown>>>(root, "tools", "gmail"),
     ).toContainEqual(expect.objectContaining({ name: "gmail.search" }));
+  });
+
+  it("never dispatches a connect card for bundled-only Outlook but allows disconnected Composio", async () => {
+    const root = await makeRoot();
+    const socketPath = path.join(root, "cli-bridge.sock");
+    const connectionRequests: string[] = [];
+    const server = await startCliBridgeServer({
+      socketPath,
+      handlers: {
+        requestConnectorCredential: async () => ({
+          ok: false,
+          reason: "unused",
+        }),
+        getStellaSiteAuth: async () => ({ ok: false, reason: "offline" }),
+        requestConnectorConnection: async ({ id }) => {
+          connectionRequests.push(id);
+          return { ok: false, reason: "declined" };
+        },
+      },
+    });
+    servers.push(server);
+
+    const outlook = await runCliAsync(
+      root,
+      socketPath,
+      "request-connection",
+      "outlook",
+    );
+    expect(outlook.exitCode).toBe(2);
+    expect(outlook.stdout).toMatchObject({
+      error: "connector_unavailable",
+      id: "outlook",
+      provider: "oauth-catalog",
+      toolCount: 0,
+      executable: false,
+    });
+    expect(connectionRequests).toEqual([]);
+
+    const notion = backendEntry("notion", "Notion", "NOTION");
+    await writeCachedServerCatalog(root, [notion]);
+    const composio = await runCliAsync(
+      root,
+      socketPath,
+      "request-connection",
+      "notion",
+    );
+    expect(composio.exitCode).toBe(2);
+    expect(composio.stdout).toMatchObject({ error: "declined", id: "notion" });
+    expect(connectionRequests).toEqual(["notion"]);
   });
 
   it("keeps native and imported MCP tools output as top-level arrays", async () => {

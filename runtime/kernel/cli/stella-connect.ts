@@ -1122,6 +1122,27 @@ const main = async () => {
         });
         return;
       }
+      if (
+        readiness.toolCount === 0 ||
+        !entry.connectable ||
+        (enabled && !readiness.executable)
+      ) {
+        exitStructured({
+          ok: false,
+          error: "connector_unavailable",
+          id: entry.id,
+          catalogSource: catalogSources[entry.id] ?? catalogSource,
+          provider: entry.provider,
+          providerStatus: readiness.authStatus,
+          enabled,
+          toolCount: readiness.toolCount,
+          executable: readiness.executable,
+          message:
+            entry.localExecution === "incomplete"
+              ? `${entry.name} is available only as incomplete/deprecated bundled metadata. A live or cached authoritative Store catalog entry is required; no connection card was shown.`
+              : `${entry.name} does not currently expose a connectable executable integration; no connection card was shown.`,
+        });
+      }
       const requestedByUser = options["requested-by-user"] === true;
       const decline = await getConnectorDecline(stellaAppDir, entry.id);
       if (decline && !requestedByUser) {

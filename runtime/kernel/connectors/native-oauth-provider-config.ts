@@ -871,17 +871,16 @@ export const hasNativeOAuthProviderTemplate = (id: string) => {
 };
 
 /**
- * Explicit local-execution capability. Microsoft Graph aliases are excluded:
- * that implementation is deprecated/incomplete and Store execution is owned
- * by the authoritative Composio catalog until a deliberate replacement ships.
+ * Affirmative, reviewed policy for generic OAuth-catalog dispatchers. Empty by
+ * design today: the shipped local integrations are the separately enumerated
+ * Google Workspace entries in native-integrations.ts. Adding a template or
+ * OAuth config must never activate execution without a deliberate allowlist
+ * change here.
  */
-export const isNativeOAuthLocalExecutionProductionReady = (id: string) => {
-  const normalizedId = id.trim().toLowerCase();
-  return (
-    !MICROSOFT_GRAPH_ALIASES.has(normalizedId) &&
-    hasNativeOAuthProviderTemplate(normalizedId)
-  );
-};
+const PRODUCTION_READY_LOCAL_OAUTH_PROVIDER_IDS = new Set<string>([]);
+
+export const isNativeOAuthLocalExecutionProductionReady = (id: string) =>
+  PRODUCTION_READY_LOCAL_OAUTH_PROVIDER_IDS.has(id.trim().toLowerCase());
 
 const readSharedOAuthProviderConfig = (
   id: string,
