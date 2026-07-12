@@ -17,6 +17,7 @@ import { loadConnectorAccessToken } from "./oauth.js";
 export type NativeConnectorAuthStatus =
   | "connected"
   | "backend_managed_unverified"
+  | "local_implementation_incomplete"
   | "not_logged_in"
   | "unsupported";
 
@@ -37,6 +38,9 @@ export const nativeConnectorAuthStatus = async (
   }
   if (entry.provider === "backend-composio")
     return "backend_managed_unverified";
+  if (entry.localExecution !== "production-ready") {
+    return "local_implementation_incomplete";
+  }
   const config = entry.oauthConfig ?? getNativeOAuthProviderConfig(entry.id);
   if (!config?.tokenKey) return "unsupported";
   return (await loadConnectorAccessToken(stellaDataDir, config.tokenKey))

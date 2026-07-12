@@ -104,9 +104,7 @@ const readEnvTokenExchange = (
   id: string,
   fallback?: NativeOAuthProviderConfig["tokenExchange"],
 ) => {
-  const value = process.env[envKey(id, "TOKEN_EXCHANGE")]
-    ?.trim()
-    .toLowerCase();
+  const value = process.env[envKey(id, "TOKEN_EXCHANGE")]?.trim().toLowerCase();
   if (value === "backend") {
     return {
       type: "backend" as const,
@@ -210,7 +208,10 @@ const applyEnvOverrides = (
       common.authorizationEndpoint,
     callbackId:
       process.env[envKey(id, "CALLBACK_ID")]?.trim() || common.callbackId,
-    callbackUrl: readEnvCallbackUrl(id, common.callbackUrl ?? DEFAULT_CALLBACK_URL),
+    callbackUrl: readEnvCallbackUrl(
+      id,
+      common.callbackUrl ?? DEFAULT_CALLBACK_URL,
+    ),
     callbackMode:
       process.env[envKey(id, "CALLBACK_MODE")] === "external"
         ? "external"
@@ -369,7 +370,14 @@ const MAILCHIMP_SCOPES = [
   "lists:write",
   "reports:read",
 ];
-const CLICKUP_SCOPES = ["task:read", "task:write", "team:read", "space:read", "folder:read", "list:read"];
+const CLICKUP_SCOPES = [
+  "task:read",
+  "task:write",
+  "team:read",
+  "space:read",
+  "folder:read",
+  "list:read",
+];
 const WEBFLOW_SCOPES = [
   "sites:read",
   "sites:write",
@@ -746,12 +754,7 @@ const LEVER_SCOPES = [
   "postings:read:admin",
   "requisitions:read:admin",
 ];
-const LINKHUT_SCOPES = [
-  "posts:read",
-  "posts:write",
-  "tags:read",
-  "tags:write",
-];
+const LINKHUT_SCOPES = ["posts:read", "posts:write", "tags:read", "tags:write"];
 const PRISMA_SCOPES = ["workspace:admin", "offline_access"];
 const TONEDEN_SCOPES: string[] = [];
 
@@ -843,9 +846,7 @@ const SHARED_OAUTH_PROVIDER_SETUP_GROUPS: Record<
   ...[...MICROSOFT_GRAPH_ALIASES].map(
     (id) => [id, { id: "microsoft", name: "Microsoft" }] as const,
   ),
-  ...[...META_ALIASES].map(
-    (id) => [id, { id: "meta", name: "Meta" }] as const,
-  ),
+  ...[...META_ALIASES].map((id) => [id, { id: "meta", name: "Meta" }] as const),
   ...[...ATLASSIAN_ALIASES].map(
     (id) => [id, { id: "atlassian", name: "Atlassian" }] as const,
   ),
@@ -866,6 +867,19 @@ export const hasNativeOAuthProviderTemplate = (id: string) => {
     normalizedId in BUILTIN_NATIVE_OAUTH ||
     ENV_BACKED_NATIVE_OAUTH_PROVIDER_IDS.has(normalizedId) ||
     normalizedId in SHARED_OAUTH_PROVIDER_SETUP_GROUPS
+  );
+};
+
+/**
+ * Explicit local-execution capability. Microsoft Graph aliases are excluded:
+ * that implementation is deprecated/incomplete and Store execution is owned
+ * by the authoritative Composio catalog until a deliberate replacement ships.
+ */
+export const isNativeOAuthLocalExecutionProductionReady = (id: string) => {
+  const normalizedId = id.trim().toLowerCase();
+  return (
+    !MICROSOFT_GRAPH_ALIASES.has(normalizedId) &&
+    hasNativeOAuthProviderTemplate(normalizedId)
   );
 };
 
@@ -1523,8 +1537,7 @@ const readEnvBackedOAuthProviderConfig = (
         flow: "authorization_code",
         tokenKey: "native-oauth:wrike",
         clientId,
-        authorizationEndpoint:
-          "https://login.wrike.com/oauth2/authorize/v4",
+        authorizationEndpoint: "https://login.wrike.com/oauth2/authorize/v4",
         tokenEndpoint: "https://login.wrike.com/oauth2/token",
         callbackId: "wrike",
         callbackUrl: readEnvCallbackUrl(
@@ -2070,9 +2083,7 @@ const readEnvBackedOAuthProviderConfig = (
         tokenExchange: { type: "backend", provider: "contentful" },
       };
     case "databricks": {
-      const workspaceUrl = process.env[
-        envKey("databricks", "WORKSPACE_URL")
-      ]
+      const workspaceUrl = process.env[envKey("databricks", "WORKSPACE_URL")]
         ?.trim()
         .replace(/\/+$/u, "");
       if (!workspaceUrl) return null;

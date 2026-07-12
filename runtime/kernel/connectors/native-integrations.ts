@@ -11,6 +11,7 @@ import {
   getNativeOAuthProviderSetupGroup,
   hasNativeOAuthProviderClientIdOverride,
   hasNativeOAuthProviderTemplate,
+  isNativeOAuthLocalExecutionProductionReady,
   isNativeOAuthProviderConfigReady,
   type NativeOAuthProviderConfig,
   type NativeOAuthProviderConfigOptions,
@@ -24,6 +25,7 @@ import type { OAuthCatalogTool } from "./oauth-provider-catalog.js";
 export type NativeConnectorAvailability = "ready";
 export type NativeConnectorOAuthSetupStatus =
   | "ready"
+  | "local_implementation_incomplete"
   | "missing_oauth_app"
   | "missing_backend_exchange"
   | "missing_callback_bridge";
@@ -36,6 +38,8 @@ export type NativeConnectorCatalogEntry = {
   catalogToolCount: number;
   availability: NativeConnectorAvailability;
   provider: "google-workspace" | "oauth-catalog" | "backend-composio";
+  /** Bundled execution is opt-in. Recovered OAuth entries are metadata only. */
+  localExecution?: "production-ready" | "incomplete";
   toolPrefix?: string;
   description: string;
   sourceUrl?: string;
@@ -60,7 +64,8 @@ export type NativeConnectorCatalogAction = {
   inputSchema?: Record<string, unknown>;
 };
 
-export type NativeConnectorCatalogOverride = readonly NativeConnectorCatalogEntry[];
+export type NativeConnectorCatalogOverride =
+  readonly NativeConnectorCatalogEntry[];
 
 type NativeConnectorStateEntry = {
   enabled: boolean;
@@ -143,6 +148,7 @@ const GOOGLE_WORKSPACE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
     catalogToolCount: 63,
     availability: "ready",
     provider: "google-workspace",
+    localExecution: "production-ready",
     toolPrefix: "gmail.",
     connectable: true,
     description: "Search, read, label, draft, and send Gmail messages.",
@@ -155,6 +161,7 @@ const GOOGLE_WORKSPACE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
     catalogToolCount: 48,
     availability: "ready",
     provider: "google-workspace",
+    localExecution: "production-ready",
     toolPrefix: "calendar.",
     connectable: true,
     description:
@@ -168,6 +175,7 @@ const GOOGLE_WORKSPACE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
     catalogToolCount: 35,
     availability: "ready",
     provider: "google-workspace",
+    localExecution: "production-ready",
     toolPrefix: "docs.",
     connectable: true,
     description: "Create, read, edit, comment on, and format Google Docs.",
@@ -180,6 +188,7 @@ const GOOGLE_WORKSPACE_CONNECTOR_CATALOG: NativeConnectorCatalogEntry[] = [
     catalogToolCount: 89,
     availability: "ready",
     provider: "google-workspace",
+    localExecution: "production-ready",
     toolPrefix: "drive.",
     connectable: true,
     description:
@@ -212,6 +221,9 @@ const getNativeConnectorCatalog = (): NativeConnectorCatalogEntry[] => {
         catalogToolCount: entry.catalogToolCount,
         availability: "ready" as const,
         provider: "oauth-catalog" as const,
+        localExecution: isNativeOAuthLocalExecutionProductionReady(entry.id)
+          ? ("production-ready" as const)
+          : ("incomplete" as const),
         description: entry.description,
         sourceUrl: entry.sourceUrl,
         connectable: false,
@@ -249,8 +261,7 @@ export const buildNativeConnectorCatalog = (
 const statePath = (stellaAppDir: string) =>
   path.join(getConnectorStateRoot(stellaAppDir), STATE_FILE);
 
-const skillsRoot = (stellaAppDir: string) =>
-  path.join(stellaAppDir, "skills");
+const skillsRoot = (stellaAppDir: string) => path.join(stellaAppDir, "skills");
 
 const readState = async (
   stellaAppDir: string,
@@ -346,12 +357,19 @@ const summarizeInputSchema = (schema?: Record<string, unknown>) => {
     .slice(0, Math.max(0, 8 - requiredProperties.length));
   const parts: string[] = [];
   if (requiredProperties.length > 0) {
-    parts.push(`Required: ${requiredProperties.map(describeProperty).join("; ")}`);
+    parts.push(
+      `Required: ${requiredProperties.map(describeProperty).join("; ")}`,
+    );
   }
   if (optionalProperties.length > 0) {
-    parts.push(`Optional: ${optionalProperties.map(describeProperty).join("; ")}`);
+    parts.push(
+      `Optional: ${optionalProperties.map(describeProperty).join("; ")}`,
+    );
   }
-  const omitted = propertyNames.length - requiredProperties.length - optionalProperties.length;
+  const omitted =
+    propertyNames.length -
+    requiredProperties.length -
+    optionalProperties.length;
   return parts.length > 0
     ? ` ${parts.join(". ")}${omitted > 0 ? `. Plus ${omitted} more.` : "."}`
     : "";
@@ -360,7 +378,10 @@ const summarizeInputSchema = (schema?: Record<string, unknown>) => {
 export const getNativeConnectorCatalogActions = (
   entry: NativeConnectorCatalogEntry,
 ): NativeConnectorCatalogAction[] => {
-  if (entry.provider === "oauth-catalog" || entry.provider === "backend-composio") {
+  if (
+    entry.provider === "oauth-catalog" ||
+    entry.provider === "backend-composio"
+  ) {
     if (entry.oauthConfig) return [];
     return (getOAuthCatalogProvider(entry.id)?.tools ?? []).map((tool) => ({
       name: normalizeOAuthCatalogToolName(tool),
@@ -416,6 +437,7 @@ export const getNativeConnectorTools = (
       },
     ];
   }
+  if (entry.localExecution !== "production-ready") return [];
   if (entry.provider === "oauth-catalog") {
     const config = getNativeConnectorOAuthConfig(entry);
     if (!config?.resourceUrl) return [];
@@ -515,6 +537,14 @@ const getNativeConnectorOAuthSetup = (
       oauthSetupMessage: "Ready to connect.",
     };
   }
+  if (entry.localExecution !== "production-ready") {
+    return {
+      connectable: false,
+      oauthSetupStatus: "local_implementation_incomplete" as const,
+      oauthSetupMessage:
+        "This recovered catalog entry is metadata only. Stella currently relies on its authoritative Store provider for execution.",
+    };
+  }
   if (entry.connectable) {
     return {
       connectable: true,
@@ -612,7 +642,8 @@ export const listNativeConnectors = async (
       skillPath: stored?.skillPath,
       toolCount: getNativeConnectorTools(entry).length,
       actionCount:
-        entry.provider === "oauth-catalog" || entry.provider === "backend-composio"
+        entry.provider === "oauth-catalog" ||
+        entry.provider === "backend-composio"
           ? entry.catalogToolCount
           : getNativeConnectorCatalogActions(entry).length,
     };
@@ -655,7 +686,10 @@ const writeNativeConnectorSkill = async (
           .join("\n")
       : "- No recovered catalog actions were available for this provider.";
   const catalogActionsPath = path.join(skillDir, "ACTIONS.md");
-  if (entry.provider === "oauth-catalog" || entry.provider === "backend-composio") {
+  if (
+    entry.provider === "oauth-catalog" ||
+    entry.provider === "backend-composio"
+  ) {
     await fs.writeFile(
       catalogActionsPath,
       entry.provider === "backend-composio"
@@ -698,7 +732,7 @@ stella-connect catalog-actions ${entry.id}
 \`\`\`
 `
     : entry.provider === "oauth-catalog"
-    ? `
+      ? `
 For native OAuth API calls, pass an API path instead of an action name:
 
 \`\`\`bash
@@ -713,7 +747,7 @@ Inspect the recovered catalog actions:
 stella-connect catalog-actions ${entry.id}
 \`\`\`
 `
-    : `
+      : `
 Call an action:
 
 \`\`\`bash
@@ -751,6 +785,11 @@ export const enableNativeConnector = async (
   if (!entry) throw new Error(`Unknown native integration: ${id}`);
   const setup = getNativeConnectorOAuthSetup(entry, options);
   if (!setup.connectable) {
+    if (setup.oauthSetupStatus === "local_implementation_incomplete") {
+      throw new Error(
+        `${entry.name} local execution is incomplete; an authoritative Store catalog entry is required.`,
+      );
+    }
     const config = getNativeConnectorOAuthConfig(entry);
     if (config?.tokenExchange?.type === "backend") {
       const tokenExchangeProvider = (config.tokenExchange.provider ?? entry.id)

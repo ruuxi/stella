@@ -243,8 +243,13 @@ export const createConnectorStatusTool = (
     }
 
     if (toolCount === 0) {
+      const incompleteLocal =
+        entry.provider === "oauth-catalog" &&
+        entry.localExecution !== "production-ready";
       return {
-        result: `${entry.name} ${state.enabled ? "is locally enabled, but" : "exists, but"} the resolved ${entry.provider} catalog entry exposes no executable tools. It is not ready to use.`,
+        result: incompleteLocal
+          ? `${entry.name} ${state.enabled ? "is locally enabled, but its authoritative Store catalog is unavailable" : "is present only as bundled metadata"}. The bundled OAuth implementation is incomplete/deprecated and is not an execution fallback. It is not ready to use.`
+          : `${entry.name} ${state.enabled ? "is locally enabled, but" : "exists, but"} the resolved ${entry.provider} catalog entry exposes no executable tools. It is not ready to use.`,
         details: { ...diagnostics, status: "not_executable" },
       };
     }

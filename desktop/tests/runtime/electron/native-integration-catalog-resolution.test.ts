@@ -34,6 +34,21 @@ afterEach(async () => {
 });
 
 describe("desktop native integration catalog resolution", () => {
+  it("returns incomplete bundled Outlook metadata when no authoritative catalog exists", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "stella-desktop-catalog-"));
+    roots.push(root);
+    const resolved = await resolveDesktopNativeConnectorEntry(
+      {},
+      root,
+      "outlook",
+    );
+    expect(resolved.catalog.sources.outlook).toBe("bundled");
+    expect(resolved.entry).toMatchObject({
+      provider: "oauth-catalog",
+      localExecution: "incomplete",
+    });
+  });
+
   it("keeps cached Outlook backend semantics when live auth is unavailable", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "stella-desktop-catalog-"));
     roots.push(root);

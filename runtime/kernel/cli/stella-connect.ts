@@ -529,6 +529,14 @@ const callNativeConnector = async (
 ) => {
   const entry = await ensureNativeEnabled(id, catalogOverride);
   if (!entry) return null;
+  if (
+    entry.provider !== "backend-composio" &&
+    entry.localExecution !== "production-ready"
+  ) {
+    fail(
+      `${entry.name} local execution is incomplete. A live or cached authoritative Store catalog entry is required.`,
+    );
+  }
   if (entry.provider === "backend-composio") {
     const runAction = backendIntegrationRunToolName(id);
     if (action === runAction) {

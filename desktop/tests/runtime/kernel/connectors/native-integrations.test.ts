@@ -9,7 +9,9 @@ import {
   enableNativeConnector,
   getNativeConnectorCatalogActions,
   getNativeConnectorCatalogEntry,
+  getNativeConnectorTools,
   listNativeConnectors,
+  type NativeConnectorCatalogEntry,
 } from "../../../../../runtime/kernel/connectors/native-integrations.js";
 import { getOAuthProviderCatalog } from "../../../../../runtime/kernel/connectors/oauth-provider-catalog.js";
 import { getNativeOAuthProviderConfig } from "../../../../../runtime/kernel/connectors/native-oauth-provider-config.js";
@@ -161,6 +163,52 @@ const createRoot = () => {
 };
 
 describe("native OAuth integration readiness", () => {
+  it("requires explicit local readiness and never overrides an authoritative server identity by accident", () => {
+    const bundled = buildNativeConnectorCatalog();
+    expect(bundled.find((entry) => entry.id === "gmail")).toMatchObject({
+      provider: "google-workspace",
+      localExecution: "production-ready",
+    });
+    expect(bundled.find((entry) => entry.id === "outlook")).toMatchObject({
+      provider: "oauth-catalog",
+      localExecution: "incomplete",
+    });
+
+    const serverGmail: NativeConnectorCatalogEntry = {
+      id: "gmail",
+      name: "Gmail",
+      category: "email",
+      auth: ["OAUTH2"],
+      catalogToolCount: 61,
+      availability: "ready",
+      provider: "backend-composio",
+      description: "Authoritative Store Gmail.",
+      connectable: true,
+      backendConnector: { type: "composio", toolkit: "GMAIL" },
+    };
+    expect(
+      buildNativeConnectorCatalog([serverGmail]).find(
+        (entry) => entry.id === "gmail",
+      ),
+    ).toMatchObject({ provider: "backend-composio" });
+
+    const futureLocal: NativeConnectorCatalogEntry = {
+      ...bundled.find((entry) => entry.id === "notion")!,
+      localExecution: "production-ready",
+      oauthConfig: {
+        flow: "authorization_code",
+        tokenKey: "future-notion",
+        clientId: "future-client",
+        authorizationEndpoint: "https://example.com/authorize",
+        tokenEndpoint: "https://example.com/token",
+        resourceUrl: "https://api.example.com",
+      },
+    };
+    expect(getNativeConnectorTools(futureLocal)).toEqual([
+      expect.objectContaining({ name: "NOTION_API_REQUEST" }),
+    ]);
+  });
+
   it("keeps native Google Workspace as the fallback but lets the server catalog override it", async () => {
     const root = createRoot();
     const connectors = await listNativeConnectors(root);
@@ -199,9 +247,7 @@ describe("native OAuth integration readiness", () => {
         },
       },
     ]);
-    expect(
-      overlaid.filter((entry) => entry.id === "gmail"),
-    ).toEqual([
+    expect(overlaid.filter((entry) => entry.id === "gmail")).toEqual([
       expect.objectContaining({
         id: "gmail",
         provider: "backend-composio",
@@ -240,8 +286,9 @@ describe("native OAuth integration readiness", () => {
     ];
 
     const oauthProviderCatalog = getOAuthProviderCatalog();
-    expect(oauthProviderCatalog.every((entry) => entry.auth[0] === "OAUTH2"))
-      .toBe(true);
+    expect(
+      oauthProviderCatalog.every((entry) => entry.auth[0] === "OAUTH2"),
+    ).toBe(true);
     expect(
       oauthProviderCatalog.filter((entry) =>
         entry.auth.some((auth) => auth.includes("API_KEY")),
@@ -408,13 +455,11 @@ describe("native OAuth integration readiness", () => {
     ).rejects.toThrow("provider setup");
     expect(outlook).toMatchObject({
       connectable: false,
-      oauthSetupStatus: "missing_oauth_app",
-      oauthSetupGroup: {
-        id: "microsoft",
-        name: "Microsoft",
-      },
+      oauthSetupStatus: "local_implementation_incomplete",
+      localExecution: "incomplete",
+      toolCount: 0,
     });
-    expect(outlook?.oauthSetupMessage).toContain("one Microsoft connection setup");
+    expect(outlook?.oauthSetupMessage).toContain("metadata only");
   });
 
   it("marks hosted external-callback direct PKCE providers connectable", async () => {
@@ -537,8 +582,7 @@ describe("native OAuth integration readiness", () => {
       "https://stella.sh/oauth/todoist/callback";
     process.env.STELLA_NATIVE_OAUTH_TODOIST_CALLBACK_MODE = "external";
     process.env.STELLA_NATIVE_OAUTH_TODOIST_TOKEN_EXCHANGE = "backend";
-    process.env.STELLA_NATIVE_OAUTH_TODOIST_TOKEN_EXCHANGE_PROVIDER =
-      "todoist";
+    process.env.STELLA_NATIVE_OAUTH_TODOIST_TOKEN_EXCHANGE_PROVIDER = "todoist";
     process.env.STELLA_NATIVE_OAUTH_TODOIST_SCOPES = "data:read data:delete";
 
     const config = getNativeOAuthProviderConfig("todoist");
@@ -679,8 +723,7 @@ describe("native OAuth integration readiness", () => {
     process.env.STELLA_NATIVE_OAUTH_CANVAS_INSTALL_URL =
       "https://canvas.example.edu";
     process.env.STELLA_NATIVE_OAUTH_DATADOG_CLIENT_ID = "datadog-client";
-    process.env.STELLA_NATIVE_OAUTH_DATADOG_SITE =
-      "https://app.datadoghq.com";
+    process.env.STELLA_NATIVE_OAUTH_DATADOG_SITE = "https://app.datadoghq.com";
     process.env.STELLA_NATIVE_OAUTH_GORGIAS_CLIENT_ID = "gorgias-client";
     process.env.STELLA_NATIVE_OAUTH_GORGIAS_SUBDOMAIN = "stella-help";
     process.env.STELLA_NATIVE_OAUTH_BAMBOOHR_CLIENT_ID = "bamboohr-client";
@@ -704,11 +747,15 @@ describe("native OAuth integration readiness", () => {
       "https://stella.crm.dynamics.com";
 
     const withoutBackend = await listNativeConnectors(root);
-    expect(withoutBackend.find((entry) => entry.id === "twitter")).toMatchObject({
+    expect(
+      withoutBackend.find((entry) => entry.id === "twitter"),
+    ).toMatchObject({
       connectable: true,
       oauthSetupStatus: "ready",
     });
-    expect(withoutBackend.find((entry) => entry.id === "beeminder")).toMatchObject({
+    expect(
+      withoutBackend.find((entry) => entry.id === "beeminder"),
+    ).toMatchObject({
       connectable: true,
       oauthSetupStatus: "ready",
     });
@@ -979,14 +1026,14 @@ describe("native OAuth integration readiness", () => {
       tokenEndpoint: "https://stella-test.zendesk.com/oauth/tokens",
     });
     expect(getNativeOAuthProviderConfig("linkedin")).toMatchObject({
-      authorizationEndpoint:
-        "https://www.linkedin.com/oauth/v2/authorization",
+      authorizationEndpoint: "https://www.linkedin.com/oauth/v2/authorization",
       tokenEndpoint: "https://www.linkedin.com/oauth/v2/accessToken",
     });
     expect(getNativeOAuthProviderConfig("shopify")).toMatchObject({
       authorizationEndpoint:
         "https://stella-shop.myshopify.com/admin/oauth/authorize",
-      tokenEndpoint: "https://stella-shop.myshopify.com/admin/oauth/access_token",
+      tokenEndpoint:
+        "https://stella-shop.myshopify.com/admin/oauth/access_token",
     });
     expect(getNativeOAuthProviderConfig("strava")).toMatchObject({
       authorizationEndpoint: "https://www.strava.com/oauth/authorize",
@@ -1324,8 +1371,7 @@ describe("native OAuth integration readiness", () => {
     expect(getNativeOAuthProviderConfig("brex")).toMatchObject({
       authorizationEndpoint:
         "https://accounts-api.brex.com/oauth2/default/v1/authorize",
-      tokenEndpoint:
-        "https://accounts-api.brex.com/oauth2/default/v1/token",
+      tokenEndpoint: "https://accounts-api.brex.com/oauth2/default/v1/token",
       tokenAuth: "basic",
       resourceUrl: "https://platform.brexapis.com",
     });
@@ -1644,9 +1690,10 @@ describe("native OAuth integration readiness", () => {
 
     for (const id of ["excel", "one_drive", "outlook", "share_point"]) {
       expect(connectors.find((entry) => entry.id === id)).toMatchObject({
-        connectable: true,
-        oauthSetupStatus: "ready",
-        toolCount: 1,
+        connectable: false,
+        oauthSetupStatus: "local_implementation_incomplete",
+        localExecution: "incomplete",
+        toolCount: 0,
       });
     }
 
@@ -1686,12 +1733,9 @@ describe("native OAuth integration readiness", () => {
       });
     }
 
-    await expect(
-      enableNativeConnector(root, "outlook", "cli"),
-    ).resolves.toMatchObject({
-      id: "outlook",
-      enabled: true,
-    });
+    await expect(enableNativeConnector(root, "outlook", "cli")).rejects.toThrow(
+      "local execution is incomplete",
+    );
     await expect(
       enableNativeConnector(root, "jira", "cli", {
         configuredBackendProviders: new Set(["atlassian"]),

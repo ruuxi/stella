@@ -214,6 +214,23 @@ describe("stella-connect shared native catalog resolution", () => {
     expect(String(result.result)).toContain("not ready");
   });
 
+  it("keeps incomplete bundled Outlook metadata non-executable while local Gmail remains available", async () => {
+    const root = await makeRoot();
+    await enable(root, ["outlook", "gmail"]);
+
+    expect(runCli(root, "tools", "outlook")).toEqual([]);
+    expect(runCli(root, "tools-diagnostics", "outlook")).toMatchObject({
+      catalogSource: "bundled",
+      provider: "oauth-catalog",
+      providerStatus: "local_implementation_incomplete",
+      toolCount: 0,
+      executable: false,
+    });
+    expect(
+      runCli<Array<Record<string, unknown>>>(root, "tools", "gmail"),
+    ).toContainEqual(expect.objectContaining({ name: "gmail.search" }));
+  });
+
   it("keeps native and imported MCP tools output as top-level arrays", async () => {
     const root = await makeRoot();
     const outlook = backendEntry("outlook", "Outlook", "OUTLOOK");
