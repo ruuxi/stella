@@ -7,17 +7,7 @@ import {
   summarizeSkillsSync,
   type SkillsSyncReport,
 } from "./skills-sync.js";
-import {
-  reconcileBundledAgents,
-  summarizeAgentsSync,
-  type AgentsSyncReport,
-} from "./agents-sync.js";
-import {
-  createFileEntryAdapter,
-  reconcileBundledEntries,
-  summarizeBundledSync,
-  type BundledSyncReport,
-} from "./bundled-sync.js";
+import { type BundledSyncReport } from "./bundled-sync.js";
 import {
   StalePromptManifestError,
   applyPromptManifestIfCurrent,
@@ -27,7 +17,7 @@ import {
 } from "./prompt-manifest-sync.js";
 import { reconcileSelectedPersonality } from "./personality-sync.js";
 import {
-  resolveBundledAgentsDir,
+  resolveBundledAgentMetadataDir,
   resolveDefaultStellaDataDir,
   resolveRuntimeStatePath,
   resolveStellaAppDir,
@@ -38,7 +28,7 @@ import {
 // working; runtime-worker code must import `stella-paths.js` directly so this
 // module (and the sync machinery it drags in) stays out of the worker bundle.
 export {
-  resolveBundledAgentsDir,
+  resolveBundledAgentMetadataDir,
   resolveDefaultStellaDataDir,
   resolveRuntimeStatePath,
   resolveStellaAppDir,
@@ -53,9 +43,6 @@ export type StellaDataDir = {
   workspacePath: string;
   workspaceAppsPath: string;
 };
-
-const resolveBundledPromptsDir = (stellaAppDir: string): string =>
-  path.join(stellaAppDir, "runtime", "extensions", "stella-runtime", "prompts");
 
 const ensureDir = async (dirPath: string) => {
   await ensurePrivateDir(dirPath);
@@ -101,8 +88,6 @@ export const ensureStellaDataDirSeeded = async (
   options: { promptSiteUrl?: string | null } = {},
 ): Promise<{
   skillsSync: SkillsSyncReport;
-  agentsSync: AgentsSyncReport;
-  promptsSync: BundledSyncReport;
   personalitySync: BundledSyncReport;
   promptResolution: PromptManifestResolution["source"];
 }> => {
@@ -145,7 +130,7 @@ export const ensureStellaDataDirSeeded = async (
           await reconcileRemotePromptManifest(
             promptResolution.manifest!,
             stellaDataDir,
-            resolveBundledAgentsDir(stellaAppDir),
+            resolveBundledAgentMetadataDir(stellaAppDir),
           );
           personalitySync = await reconcileSelectedPersonality(
             stellaDataDir,
@@ -159,46 +144,10 @@ export const ensureStellaDataDirSeeded = async (
     }
   }
 
-  // The bundle is the final offline/bootstrap fallback. It only fills missing
-  // files so an older app release can never roll back a remote-synced prompt.
-  const agentsSync = await reconcileBundledAgents(
-    resolveBundledAgentsDir(stellaAppDir),
-    path.join(stellaDataDir, "agents"),
-    {
-      sourceRevision: "bundled-bootstrap",
-      seedMissingOnly: true,
-      removeObsolete: false,
-    },
-  );
-  const agentsSummary = summarizeAgentsSync(agentsSync);
-  if (agentsSummary !== "no-op") {
-    console.log(`[stella-home] agents sync: ${agentsSummary}`);
-  }
-
-  const promptsSync = await reconcileBundledEntries(
-    resolveBundledPromptsDir(stellaAppDir),
-    path.join(stellaDataDir, "prompts"),
-    createFileEntryAdapter(".md"),
-    {
-      sourceRevision: "bundled-bootstrap",
-      seedMissingOnly: true,
-      removeObsolete: false,
-    },
-  );
-  const promptsSummary = summarizeBundledSync(promptsSync);
-  if (promptsSummary !== "no-op") {
-    console.log(`[stella-home] prompts sync: ${promptsSummary}`);
-  }
-
-  personalitySync ??= await reconcileSelectedPersonality(
-    stellaDataDir,
-    "bundled-bootstrap",
-  );
+  personalitySync ??= { actions: [] };
 
   return {
     skillsSync,
-    agentsSync,
-    promptsSync,
     personalitySync,
     promptResolution: promptResolution.source,
   };
@@ -231,7 +180,7 @@ export const syncStellaPromptSnapshot = async (
           await reconcileRemotePromptManifest(
             resolution.manifest!,
             stellaDataDir,
-            resolveBundledAgentsDir(stellaAppDir),
+            resolveBundledAgentMetadataDir(stellaAppDir),
           );
           await reconcileSelectedPersonality(
             stellaDataDir,

@@ -2,7 +2,7 @@
  * Per-agent allowlist for the install-update agent's `exec_command` tool.
  *
  * The install-update agent runs `git merge` against attached upstream
- * history (see `runtime/extensions/stella-runtime/agents/install_update.md`)
+ * history (see the backend-owned `agents/install_update.md` prompt)
  * and otherwise inspects the repo. It only needs git plus the one dependency
  * install command required after package manifest updates, so we restrict
  * every command it can run to a narrow allowlist — even though

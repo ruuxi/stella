@@ -81,14 +81,19 @@ const summaryMetaPath = (
   stellaDataDir: string,
   window: ChronicleSummaryWindow,
 ): string =>
-  path.join(chronicleExtensionDir(stellaDataDir), `${window}-current.meta.json`);
+  path.join(
+    chronicleExtensionDir(stellaDataDir),
+    `${window}-current.meta.json`,
+  );
 
 const isChronicleEnabled = async (stellaDataDir: string): Promise<boolean> => {
   return getChronicleEnabled(stellaDataDir);
 };
 
-const lockDir = (stellaDataDir: string, window: ChronicleSummaryWindow): string =>
-  path.join(stellaDataDir, "locks", `chronicle-summary-${window}`);
+const lockDir = (
+  stellaDataDir: string,
+  window: ChronicleSummaryWindow,
+): string => path.join(stellaDataDir, "locks", `chronicle-summary-${window}`);
 
 const acquireLock = (
   stellaDataDir: string,
@@ -238,7 +243,10 @@ const readExistingInputFingerprint = async (
   window: ChronicleSummaryWindow,
 ): Promise<string | null> => {
   try {
-    const raw = await fsp.readFile(summaryMetaPath(stellaDataDir, window), "utf-8");
+    const raw = await fsp.readFile(
+      summaryMetaPath(stellaDataDir, window),
+      "utf-8",
+    );
     const parsed = JSON.parse(raw) as { inputFingerprint?: unknown };
     return typeof parsed.inputFingerprint === "string"
       ? parsed.inputFingerprint
@@ -248,34 +256,15 @@ const readExistingInputFingerprint = async (
   }
 };
 
-export const CHRONICLE_SYSTEM_PROMPT_FALLBACK = [
-  "You are Chronicle's recursive summarizer for Stella.",
-  "You receive deduped on-screen text lines that the OCR sampler observed across {{horizon}} of screen activity.",
-  "Distill them into a short markdown block describing what the user was actively doing.",
-  "",
-  "Rules:",
-  "  - Do not quote raw OCR lines verbatim. Paraphrase and group.",
-  "  - Identify the dominant app(s)/contexts and any notable transitions.",
-  "  - Skip OS chrome, generic UI strings, and stale fragments.",
-  "  - 5-12 lines max. Use bullet points. No preamble. No closing remarks.",
-  "  - If the lines look meaningless, irrelevant, or insufficient signal, respond exactly with: NO_SIGNAL",
-].join("\n");
-
 export const buildChronicleSystemPrompt = (
   stellaDataDir: string | undefined,
   window: ChronicleSummaryWindow,
 ): string => {
   const horizon =
-    window === "10m"
-      ? "the last ~10 minutes"
-      : "the last ~6 hours";
+    window === "10m" ? "the last ~10 minutes" : "the last ~6 hours";
   const template = stellaDataDir
-    ? readHomePrompt(
-        stellaDataDir,
-        "chronicle-summarizer",
-        CHRONICLE_SYSTEM_PROMPT_FALLBACK,
-      )
-    : CHRONICLE_SYSTEM_PROMPT_FALLBACK;
+    ? (readHomePrompt(stellaDataDir, "chronicle-summarizer") ?? "")
+    : "";
   return template.replaceAll("{{horizon}}", horizon);
 };
 
@@ -320,7 +309,12 @@ const writeFileAtomic = async (
 };
 
 export type ChronicleSummaryResult =
-  | { wrote: true; window: ChronicleSummaryWindow; uniqueLines: number; outPath: string }
+  | {
+      wrote: true;
+      window: ChronicleSummaryWindow;
+      uniqueLines: number;
+      outPath: string;
+    }
   | {
       wrote: false;
       window: ChronicleSummaryWindow;

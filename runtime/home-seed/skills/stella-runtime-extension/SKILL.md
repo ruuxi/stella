@@ -18,7 +18,8 @@ tests, typecheck, lint, and code inspection instead.
 - Extension contracts: `runtime/kernel/extensions/types.ts`
 - Extension loader: `runtime/kernel/extensions/loader.ts`
 - Built-in extension: `runtime/extensions/stella-runtime/`
-- Built-in agent prompts: `runtime/extensions/stella-runtime/agents/*.md`
+- Built-in agent metadata: `runtime/extensions/stella-runtime/agent-metadata/*.md`
+- Canonical prompt bodies: sibling repo `stella-backend/prompts/stella-runtime/`
 - Built-in Stella hooks: `runtime/extensions/stella-runtime/hooks/*.hook.ts`
 - Minimal agent-extension example: `runtime/extensions/examples/subagent-reference/`
 - Parsed markdown agents: `runtime/kernel/agents/markdown-agent-loader.ts`
@@ -138,7 +139,7 @@ Providers implement `ProviderDefinition` from `runtime/kernel/extensions/types.t
 
 ## Prompt Changes
 
-Agent prompts live in `runtime/extensions/stella-runtime/agents/*.md`. Keep prompt changes small and outcome-first. Do not add tool schema reference sections; tool schemas are already attached by the runtime.
+Agent prompt bodies live in the sibling backend repo at `stella-backend/prompts/stella-runtime/agents/*.md`. Never edit runtime metadata to change a prompt. Keep prompt changes small and outcome-first. Do not add tool schema reference sections; tool schemas are already attached by the runtime.
 
 General-agent prompts should stay lean. Move detailed reusable procedure into `runtime/home-seed/skills/<skill-id>/SKILL.md` and have the prompt point to the skill by name.
 

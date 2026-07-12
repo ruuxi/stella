@@ -21,11 +21,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
-import { PERSONALITY_TEMPLATES } from "../../../../../runtime/contracts/personality.js";
-import {
-  MEMORY_REVIEW_SYSTEM_PROMPT_FALLBACK,
-  buildMemoryReviewSystemPrompt,
-} from "../../../../../runtime/kernel/agent-runtime/memory-review.js";
+import { buildMemoryReviewSystemPrompt } from "../../../../../runtime/kernel/agent-runtime/memory-review.js";
 import {
   reconcileSelectedPersonality,
   replacePersonalityIfHomeHashMatches,
@@ -35,24 +31,14 @@ import {
   reconcileRemotePromptManifest,
   type RemotePromptManifest,
 } from "../../../../../runtime/kernel/home/prompt-manifest-sync.js";
-import {
-  CHRONICLE_SYSTEM_PROMPT_FALLBACK,
-  buildChronicleSystemPrompt,
-} from "../../../../../runtime/kernel/memory/chronicle-summarizer.js";
+import { buildChronicleSystemPrompt } from "../../../../../runtime/kernel/memory/chronicle-summarizer.js";
 import {
   readOrSeedPersonality,
   writePersonality,
 } from "../../../../../runtime/kernel/personality/personality.js";
 import { setPersonalityVoiceId } from "../../../../../runtime/kernel/preferences/local-preferences.js";
-import {
-  DEFAULT_ORCHESTRATOR_PROMPT,
-  DEFAULT_SUBAGENT_PROMPT,
-  defaultPromptForAgentType,
-} from "../../../../../runtime/kernel/runner/shared.js";
-import {
-  THREAD_COMPACTION_SYSTEM_PROMPT_FALLBACK,
-  resolveThreadCompactionSystemPrompt,
-} from "../../../../../runtime/kernel/thread-runtime.js";
+import { defaultPromptForAgentType } from "../../../../../runtime/kernel/runner/shared.js";
+import { resolveThreadCompactionSystemPrompt } from "../../../../../runtime/kernel/thread-runtime.js";
 
 const roots = new Set<string>();
 const tempDir = async () => {
@@ -92,67 +78,38 @@ const manifest = (
 });
 
 describe("synced home prompt consumers", () => {
-  it("keeps every bundled markdown default identical to its in-code fallback", async () => {
-    const promptDir = path.resolve(
-      import.meta.dirname,
-      "../../../../../runtime/extensions/stella-runtime/prompts",
-    );
-    const cases: Array<[string, string]> = [
-      ["chronicle-summarizer", CHRONICLE_SYSTEM_PROMPT_FALLBACK],
-      ["memory-review", MEMORY_REVIEW_SYSTEM_PROMPT_FALLBACK],
-      ["thread-compaction", THREAD_COMPACTION_SYSTEM_PROMPT_FALLBACK],
-      ["fallback-orchestrator", DEFAULT_ORCHESTRATOR_PROMPT],
-      ["fallback-subagent", DEFAULT_SUBAGENT_PROMPT],
-      ["personality-stella", PERSONALITY_TEMPLATES.stella],
-      ["personality-professional", PERSONALITY_TEMPLATES.professional],
-    ];
-    for (const [id, fallback] of cases) {
-      await expect(
-        readFile(path.join(promptDir, `${id}.md`), "utf-8"),
-      ).resolves.toBe(`${fallback.trim()}\n`);
-    }
-  });
-
-  it("resolves Chronicle from home and preserves the exact offline fallback", async () => {
+  it("resolves Chronicle only from the synchronized home prompt", async () => {
     const home = await tempDir();
-    expect(buildChronicleSystemPrompt(undefined, "10m")).toBe(
-      CHRONICLE_SYSTEM_PROMPT_FALLBACK.replaceAll(
-        "{{horizon}}",
-        "the last ~10 minutes",
-      ),
-    );
+    expect(buildChronicleSystemPrompt(undefined, "10m")).toBe("");
+    expect(buildChronicleSystemPrompt(home, "10m")).toBe("");
     await writePrompt(home, "chronicle-summarizer", "Across {{horizon}}.");
     expect(buildChronicleSystemPrompt(home, "6h")).toBe(
       "Across the last ~6 hours.",
     );
   });
 
-  it("resolves memory review from home and falls back unchanged", async () => {
+  it("resolves memory review only from home", async () => {
     const home = await tempDir();
-    expect(buildMemoryReviewSystemPrompt()).toBe(
-      MEMORY_REVIEW_SYSTEM_PROMPT_FALLBACK,
-    );
+    expect(buildMemoryReviewSystemPrompt()).toBe("");
+    expect(buildMemoryReviewSystemPrompt(home)).toBe("");
     await writePrompt(home, "memory-review", "remote memory review");
     expect(buildMemoryReviewSystemPrompt(home)).toBe("remote memory review");
   });
 
-  it("resolves thread compaction from home and falls back unchanged", async () => {
+  it("resolves thread compaction only from home", async () => {
     const home = await tempDir();
-    expect(resolveThreadCompactionSystemPrompt()).toBe(
-      THREAD_COMPACTION_SYSTEM_PROMPT_FALLBACK,
-    );
+    expect(resolveThreadCompactionSystemPrompt()).toBe("");
+    expect(resolveThreadCompactionSystemPrompt(home)).toBe("");
     await writePrompt(home, "thread-compaction", "remote compaction");
     expect(resolveThreadCompactionSystemPrompt(home)).toBe("remote compaction");
   });
 
-  it("resolves both generic fallback prompts from home and offline constants", async () => {
+  it("resolves generic fallback prompts only from home", async () => {
     const home = await tempDir();
-    expect(defaultPromptForAgentType(AGENT_IDS.ORCHESTRATOR)).toBe(
-      DEFAULT_ORCHESTRATOR_PROMPT,
-    );
-    expect(defaultPromptForAgentType("unknown-agent")).toBe(
-      DEFAULT_SUBAGENT_PROMPT,
-    );
+    expect(defaultPromptForAgentType(AGENT_IDS.ORCHESTRATOR)).toBe("");
+    expect(defaultPromptForAgentType("unknown-agent")).toBe("");
+    expect(defaultPromptForAgentType(AGENT_IDS.ORCHESTRATOR, home)).toBe("");
+    expect(defaultPromptForAgentType("unknown-agent", home)).toBe("");
     await writePrompt(home, "fallback-orchestrator", "remote orchestrator");
     await writePrompt(home, "fallback-subagent", "remote subagent");
     expect(defaultPromptForAgentType(AGENT_IDS.ORCHESTRATOR, home)).toBe(
@@ -163,14 +120,15 @@ describe("synced home prompt consumers", () => {
     );
   });
 
-  it("resolves both personality preset templates from home and offline constants", async () => {
+  it("resolves personality preset templates only from home", async () => {
     const home = await tempDir();
-    expect(resolvePersonalityPresetContent(home, "stella")).toBe(
-      `${PERSONALITY_TEMPLATES.stella.trim()}\n`,
-    );
-    expect(resolvePersonalityPresetContent(home, "professional")).toBe(
-      `${PERSONALITY_TEMPLATES.professional.trim()}\n`,
-    );
+    expect(resolvePersonalityPresetContent(home, "stella")).toBe("");
+    expect(resolvePersonalityPresetContent(home, "professional")).toBe("");
+    expect(readOrSeedPersonality(home)).toBe("");
+    expect(writePersonality(home, "professional")).toBe("");
+    await expect(
+      readFile(path.join(home, "PERSONALITY.md"), "utf-8"),
+    ).rejects.toThrow();
     await writePrompt(home, "personality-stella", "remote Stella voice");
     await writePrompt(
       home,
@@ -269,33 +227,14 @@ describe("PERSONALITY.md sync tracking", () => {
     ]);
   });
 
-  it("updates an untouched pre-tracking in-code seed after its remote preset changes", async () => {
-    const home = await tempDir();
-    setPersonalityVoiceId(home, "stella");
-    await writeFile(
-      path.join(home, "PERSONALITY.md"),
-      `${PERSONALITY_TEMPLATES.stella.trim()}\n`,
-      "utf-8",
-    );
-    await writePrompt(home, "personality-stella", "new remote voice");
-
-    await reconcileSelectedPersonality(home, "remote-r2");
-
-    await expect(
-      readFile(path.join(home, "PERSONALITY.md"), "utf-8"),
-    ).resolves.toBe("new remote voice\n");
-    const tracked = JSON.parse(
-      await readFile(path.join(home, ".personality-manifest.json"), "utf-8"),
-    );
-    expect(tracked.entries.PERSONALITY).toEqual({
-      lastSyncedHash: sha256("new remote voice\n"),
-      sourceRevision: "remote-r2",
-      customized: false,
-    });
-  });
-
   it("recovers an uncustomized file when preset preference and metadata disagree", async () => {
     const home = await tempDir();
+    await writePrompt(home, "personality-stella", "Stella remote voice");
+    await writePrompt(
+      home,
+      "personality-professional",
+      "Professional remote voice",
+    );
     setPersonalityVoiceId(home, "stella");
     writePersonality(home, "stella");
     setPersonalityVoiceId(home, "professional");
@@ -304,7 +243,7 @@ describe("PERSONALITY.md sync tracking", () => {
 
     await expect(
       readFile(path.join(home, "PERSONALITY.md"), "utf-8"),
-    ).resolves.toBe(`${PERSONALITY_TEMPLATES.professional.trim()}\n`);
+    ).resolves.toBe("Professional remote voice\n");
   });
 
   it("does not replace a direct edit made after the untouched hash decision", async () => {

@@ -15,19 +15,12 @@ import { readHomePrompt } from "./prompts/home-prompts.js";
 const logger = createRuntimeLogger("thread-runtime");
 
 const THREAD_CHECKPOINT_MARKER = "[[THREAD_CHECKPOINT]]";
-export const THREAD_COMPACTION_SYSTEM_PROMPT_FALLBACK =
-  "Output ONLY the summary content.";
-
 export const resolveThreadCompactionSystemPrompt = (
   stellaDataDir?: string,
 ): string =>
   stellaDataDir
-    ? readHomePrompt(
-        stellaDataDir,
-        "thread-compaction",
-        THREAD_COMPACTION_SYSTEM_PROMPT_FALLBACK,
-      )
-    : THREAD_COMPACTION_SYSTEM_PROMPT_FALLBACK;
+    ? (readHomePrompt(stellaDataDir, "thread-compaction") ?? "")
+    : "";
 const THREAD_COMPACTION_RESERVE_TOKENS = 16_384;
 /**
  * Fraction of the model's real context window at which the orchestrator
@@ -78,9 +71,11 @@ const truncateWithSuffix = (
   value: string,
   maxChars: number,
   suffix = "...(truncated)",
-): string => (value.length <= maxChars ? value : `${value.slice(0, maxChars)}${suffix}`);
+): string =>
+  value.length <= maxChars ? value : `${value.slice(0, maxChars)}${suffix}`;
 
-const ellipsize = (value: string): string => truncateWithSuffix(value.trim(), MAX_BLOCK_CHARS);
+const ellipsize = (value: string): string =>
+  truncateWithSuffix(value.trim(), MAX_BLOCK_CHARS);
 
 const truncateForSummary = (value: string, maxChars: number): string =>
   value.length <= maxChars
@@ -110,9 +105,7 @@ const stringifyPayloadMessage = (
         ? payload.content
         : payload.content
             .map((block) =>
-              block.type === "text"
-                ? block.text
-                : `[Image: ${block.mimeType}]`,
+              block.type === "text" ? block.text : `[Image: ${block.mimeType}]`,
             )
             .join("\n");
     return content.trim() ? [`[User] ${content.trim()}`] : [];
@@ -158,9 +151,7 @@ const stringifyPayloadMessage = (
 
   const content = payload.content
     .map((block) =>
-      block.type === "text"
-        ? block.text
-        : `[Image: ${block.mimeType}]`,
+      block.type === "text" ? block.text : `[Image: ${block.mimeType}]`,
     )
     .join("\n")
     .trim();
@@ -175,7 +166,9 @@ const stringifyStoredMessage = (message: StoredThreadMessage): string[] => {
   }
   if (message.role === "toolResult") {
     const content = message.content.trim();
-    return content ? [`[Tool result] ${truncateForSummary(content, TOOL_RESULT_MAX_CHARS)}`] : [];
+    return content
+      ? [`[Tool result] ${truncateForSummary(content, TOOL_RESULT_MAX_CHARS)}`]
+      : [];
   }
   return [stringifyMessage(message as ThreadMessage)].filter(
     (entry) => entry.length > 0,
@@ -224,7 +217,8 @@ const estimatePayloadTokens = (
       tokens += Math.max(
         1,
         Math.ceil(
-          (block.name.length + JSON.stringify(block.arguments ?? {}).length) / 4,
+          (block.name.length + JSON.stringify(block.arguments ?? {}).length) /
+            4,
         ),
       );
     }
@@ -260,16 +254,22 @@ export const getCompactionTriggerTokens = (route: ResolvedLlmRoute): number =>
     Math.floor(getContextWindow(route) * THREAD_COMPACTION_TRIGGER_PCT),
   );
 
-export const getThreadTokenEstimate = (messages: StoredThreadMessage[]): number =>
-  messages.reduce((sum, message) => sum + estimateStoredMessageTokens(message), 0);
+export const getThreadTokenEstimate = (
+  messages: StoredThreadMessage[],
+): number =>
+  messages.reduce(
+    (sum, message) => sum + estimateStoredMessageTokens(message),
+    0,
+  );
 
 const isCompactionMessage = (message: StoredThreadMessage): boolean =>
-  message.role === "assistant" && parseThreadCheckpoint(message.content) !== null;
+  message.role === "assistant" &&
+  parseThreadCheckpoint(message.content) !== null;
 
 const hasToolCalls = (message: StoredThreadMessage): boolean =>
-  message.role === "assistant"
-  && message.payload?.role === "assistant"
-  && message.payload.content.some((block) => block.type === "toolCall");
+  message.role === "assistant" &&
+  message.payload?.role === "assistant" &&
+  message.payload.content.some((block) => block.type === "toolCall");
 
 const getToolCallIds = (message: StoredThreadMessage): Set<string> => {
   const ids = new Set<string>();
@@ -288,7 +288,10 @@ const getToolResultId = (message: StoredThreadMessage): string | undefined => {
   if (message.role !== "toolResult") {
     return undefined;
   }
-  if (message.payload?.role === "toolResult" && message.payload.toolCallId.trim()) {
+  if (
+    message.payload?.role === "toolResult" &&
+    message.payload.toolCallId.trim()
+  ) {
     return message.payload.toolCallId.trim();
   }
   return message.toolCallId?.trim();
@@ -316,8 +319,8 @@ const alignBoundaryForward = (
   const callIds = getToolCallIds(previous);
   let nextIndex = index;
   while (
-    nextIndex < messages.length
-    && isToolResultFor(messages[nextIndex]!, callIds)
+    nextIndex < messages.length &&
+    isToolResultFor(messages[nextIndex]!, callIds)
   ) {
     nextIndex += 1;
   }
@@ -363,7 +366,10 @@ const findTailStartIndexByTokenBudget = (
 
   for (let index = messages.length - 1; index >= headEnd; index -= 1) {
     const messageTokens = estimateStoredMessageTokens(messages[index]!);
-    if (accumulatedTokens + messageTokens > keepRecentTokens && tailStartIndex < messages.length) {
+    if (
+      accumulatedTokens + messageTokens > keepRecentTokens &&
+      tailStartIndex < messages.length
+    ) {
       break;
     }
     accumulatedTokens += messageTokens;
@@ -407,10 +413,12 @@ export const splitThreadMessagesForCompaction = (
     return null;
   }
 
-  const previousSummary =
-    messages
-      .map((message) => parseThreadCheckpoint(message.content)?.summary)
-      .find((summary): summary is string => typeof summary === "string" && summary.trim().length > 0);
+  const previousSummary = messages
+    .map((message) => parseThreadCheckpoint(message.content)?.summary)
+    .find(
+      (summary): summary is string =>
+        typeof summary === "string" && summary.trim().length > 0,
+    );
   const fromEntryId = middleMessages[0]?.entryId?.trim();
   const toEntryId = middleMessages[middleMessages.length - 1]?.entryId?.trim();
   if (!fromEntryId || !toEntryId) {
@@ -445,7 +453,9 @@ export const buildRuntimeThreadKey = (args: {
   return `${args.conversationId}::subagent::${args.agentType}::${threadKey}`;
 };
 
-export const parseThreadCheckpoint = (content: string): ThreadCheckpoint | null => {
+export const parseThreadCheckpoint = (
+  content: string,
+): ThreadCheckpoint | null => {
   const trimmed = content.trim();
   if (!trimmed.startsWith(THREAD_CHECKPOINT_MARKER)) {
     return null;
@@ -476,7 +486,9 @@ export const parseThreadCheckpoint = (content: string): ThreadCheckpoint | null 
   };
 };
 
-export const formatThreadCheckpointMessage = (checkpoint: ThreadCheckpoint): string =>
+export const formatThreadCheckpointMessage = (
+  checkpoint: ThreadCheckpoint,
+): string =>
   [
     THREAD_CHECKPOINT_MARKER,
     ...(checkpoint.previousThreadFile
@@ -503,7 +515,10 @@ const SUMMARY_INPUT_CHARS_PER_TOKEN = 4;
  * (the previous checkpoint summary already covers older ground) and notes
  * the elision.
  */
-const capSummaryConversation = (formatted: string, maxChars: number): string => {
+const capSummaryConversation = (
+  formatted: string,
+  maxChars: number,
+): string => {
   if (maxChars <= 0 || formatted.length <= maxChars) {
     return formatted;
   }

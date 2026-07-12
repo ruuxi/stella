@@ -125,7 +125,7 @@ describe("general agent tools", () => {
     const scriptPath = path.join(root, "answer.js");
     await writeFile(
       scriptPath,
-      '#!/usr/bin/env node\nprocess.stdout.write(String(7 * 6));\n',
+      "#!/usr/bin/env node\nprocess.stdout.write(String(7 * 6));\n",
       "utf-8",
     );
     await chmod(scriptPath, 0o700);
@@ -807,13 +807,13 @@ EOF`,
     }
   });
 
-  it("exposes persistent Computer Use through node_repl in the general agent allowlist", async () => {
-    const promptPath = path.join(
+  it("exposes persistent Computer Use through node_repl in the general agent metadata", async () => {
+    const metadataPath = path.join(
       repoRoot,
-      "runtime/extensions/stella-runtime/agents/general.md",
+      "runtime/extensions/stella-runtime/agent-metadata/general.md",
     );
-    const prompt = await readFile(promptPath, "utf-8");
-    const toolsLine = prompt
+    const metadata = await readFile(metadataPath, "utf-8");
+    const toolsLine = metadata
       .split(/\r?\n/)
       .find((line) => line.startsWith("tools: "));
 
@@ -822,8 +822,6 @@ EOF`,
     expect(toolsLine).not.toContain("computer_get_app_state");
     expect(toolsLine).not.toContain("computer_click");
     expect(toolsLine).toContain("node_repl");
-    expect(prompt).toContain("stella-computer");
-    expect(prompt).toContain("stella-connect");
   });
 
   it("RequestCredential delegates to the device callback", async () => {

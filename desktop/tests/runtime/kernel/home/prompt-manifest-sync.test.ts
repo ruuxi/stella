@@ -18,7 +18,6 @@ import { STELLA_PROMPT_IDS } from "../../../../../runtime/contracts/stella-promp
 import { stellaPromptEndpointFromSiteUrl } from "../../../../../runtime/contracts/stella-api.js";
 import { buildDreamSystemPrompt } from "../../../../../runtime/kernel/agent-runtime/dream-scheduler.js";
 import { loadParsedAgentsFromDir } from "../../../../../runtime/kernel/agents/markdown-agent-loader.js";
-import { reconcileBundledAgents } from "../../../../../runtime/kernel/home/agents-sync.js";
 import {
   StalePromptManifestError,
   applyPromptManifestIfCurrent,
@@ -423,7 +422,7 @@ describe("remote prompt startup sync", () => {
       fetchImpl: async () => new Response(JSON.stringify(intermediate)),
     });
     expect(result).toEqual({
-      source: "bundled-bootstrap",
+      source: "unavailable",
       manifest: null,
       endpoint,
     });
@@ -541,7 +540,7 @@ describe("remote prompt startup sync", () => {
       fetchImpl: async () => new Response(JSON.stringify(manifest(49))),
     });
     expect(result).toEqual({
-      source: "bundled-bootstrap",
+      source: "unavailable",
       manifest: null,
       endpoint: endpointA,
     });
@@ -699,7 +698,7 @@ describe("remote prompt startup sync", () => {
       fetchImpl: async () => new Response(JSON.stringify(manifest(0))),
     });
     expect(result).toEqual({
-      source: "bundled-bootstrap",
+      source: "unavailable",
       manifest: null,
       endpoint: endpoints[81],
     });
@@ -853,32 +852,6 @@ describe("remote prompt startup sync", () => {
     ).toBeNull();
   });
 
-  it("never rolls a remote prompt back to an older bundle while offline", async () => {
-    const home = await tempDir();
-    const bundled = await createBundledAgents();
-    const remote = manifest(2, {
-      "agents/orchestrator.md": "newer remote\n",
-    });
-    await reconcileRemotePromptManifest(remote, home, bundled);
-    await reconcileBundledAgents(bundled, path.join(home, "agents"), {
-      sourceRevision: "bundled-bootstrap",
-      seedMissingOnly: true,
-      removeObsolete: false,
-    });
-    const expected = `${agentFrontmatter("orchestrator")}newer remote\n`;
-    await expect(
-      readFile(path.join(home, "agents/orchestrator.md"), "utf-8"),
-    ).resolves.toBe(expected);
-    const tracked = JSON.parse(
-      await readFile(path.join(home, "agents/.bundled-manifest.json"), "utf-8"),
-    );
-    expect(tracked.entries.orchestrator).toEqual({
-      lastSyncedHash: hash(expected),
-      sourceRevision: remote.revision,
-      customized: false,
-    });
-  });
-
   it("routes the scheduled Dream consumer through the synced home prompt", async () => {
     const home = await tempDir();
     const bundled = await createBundledAgents();
@@ -887,32 +860,5 @@ describe("remote prompt startup sync", () => {
     });
     await reconcileRemotePromptManifest(remote, home, bundled);
     expect(buildDreamSystemPrompt(home)).toBe("remote dream prompt");
-  });
-
-  it("migrates legacy hash-only manifests without losing update eligibility", async () => {
-    const home = await tempDir();
-    const bundled = await tempDir();
-    await mkdir(path.join(home, "agents"), { recursive: true });
-    await writeFile(path.join(home, "agents/general.md"), "old", "utf-8");
-    await writeFile(path.join(bundled, "general.md"), "new", "utf-8");
-    await writeFile(
-      path.join(home, "agents/.bundled-manifest.json"),
-      JSON.stringify({ version: 1, entries: { general: hash("old") } }),
-      "utf-8",
-    );
-    await reconcileBundledAgents(bundled, path.join(home, "agents"));
-    await expect(
-      readFile(path.join(home, "agents/general.md"), "utf-8"),
-    ).resolves.toBe("new");
-    const migrated = JSON.parse(
-      await readFile(path.join(home, "agents/.bundled-manifest.json"), "utf-8"),
-    );
-    expect(migrated.version).toBe(2);
-    expect(migrated.entries.general).toEqual(
-      expect.objectContaining({
-        customized: false,
-        lastSyncedHash: hash("new"),
-      }),
-    );
   });
 });

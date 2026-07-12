@@ -20,7 +20,7 @@ import { createThreadSummariesRecordHook } from "./hooks/thread-summaries-record
  * Bundles every Stella-specific runtime behavior that used to live as
  * hardcoded calls inside the kernel:
  *
- *   - Agent prompt registration (markdown agents under `./agents/`)
+ *   - Agent registration from backend-synchronized home markdown
  *   - Self-mod baseline + detect-applied
  *   - Stale-user reminder
  *   - Dynamic memory reminder
@@ -35,10 +35,9 @@ import { createThreadSummariesRecordHook } from "./hooks/thread-summaries-record
  * selfModMonitor, store) supplied by the runtime at registration time.
  */
 const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
-  // Agent prompts are reconciled into `${stellaDataDir}/agents/` on startup
-  // (see `agents-sync.ts`), so the live, user-editable copies load from there.
-  // The bundled defaults in `agents.ts` remain the merge base, so the runtime
-  // still has every agent even before the first reconcile.
+  // Backend prompts are reconciled into `${stellaDataDir}/agents/` on startup,
+  // with local capability metadata attached by prompt-manifest-sync.ts. The
+  // live, user-editable copies load from there.
   for (const agent of loadParsedAgentsFromDir(
     path.join(services.stellaDataDir, "agents"),
   )) {

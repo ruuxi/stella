@@ -41,8 +41,8 @@ const composePersonalityContent = (
 
 /**
  * Read the persisted personality file, seeding it on first access from the
- * user's preset preference (or the Stella default) so the orchestrator always
- * has a personality to inject.
+ * backend-synchronized preset selected by the user. If prompt sync has not
+ * produced that preset yet, leave the file absent.
  */
 export const readOrSeedPersonality = (stellaDataDir: string): string => {
   const filePath = personalityFilePath(stellaDataDir);
@@ -57,6 +57,7 @@ export const readOrSeedPersonality = (stellaDataDir: string): string => {
 
   const selectedId = coercePersonalityId(getPersonalityVoiceId(stellaDataDir));
   const seeded = composePersonalityContent(stellaDataDir, selectedId);
+  if (!seeded) return "";
   try {
     writePersonalityTransaction(stellaDataDir, selectedId, seeded);
   } catch {
@@ -74,6 +75,7 @@ export const writePersonality = (
   id: PersonalityId,
 ): string => {
   const content = composePersonalityContent(stellaDataDir, id);
+  if (!content) return "";
   writePersonalityTransaction(stellaDataDir, id, content);
   return content.trim();
 };

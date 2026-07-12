@@ -7,7 +7,7 @@
  * <explore_findings>...</explore_findings> block.
  *
  * The Explore agent has only Read and Grep available. It is constrained by
- * its system prompt (runtime/extensions/stella-runtime/agents/explore.md) to
+ * its backend-synchronized system prompt (`~/.stella/agents/explore.md`) to
  * `~/.stella/` and to a strict JSON output shape.
  *
  * Failures are graceful: a 30-second timeout, a missing model route, or any

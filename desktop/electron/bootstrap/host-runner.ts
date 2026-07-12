@@ -68,7 +68,7 @@ const ensureStellaDataDirSeededOnce = (
     const attempt = ensureStellaDataDirSeeded(stellaAppDir, stellaDataDirPath, {
       promptSiteUrl,
     }).then((result) => {
-      if (promptEndpoint && result.promptResolution !== "bundled-bootstrap") {
+      if (promptEndpoint && result.promptResolution !== "unavailable") {
         lastConfiguredPromptEndpoint = promptEndpoint;
       }
     });

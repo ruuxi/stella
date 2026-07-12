@@ -61,7 +61,7 @@ type AppliedPromptStateFile = {
 type ReconciledPrompt = RemotePrompt;
 
 export type PromptManifestResolution = {
-  source: "fresh-remote" | "cached-remote" | "bundled-bootstrap";
+  source: "fresh-remote" | "cached-remote" | "unavailable";
   manifest: RemotePromptManifest | null;
   endpoint?: string;
 };
@@ -695,7 +695,7 @@ export const resolvePromptManifest = async (args: {
   const endpoint =
     configuredEndpoint ?? cached?.endpoint ?? initialApplied?.endpoint;
   if (!endpoint) {
-    return { source: "bundled-bootstrap", manifest: null };
+    return { source: "unavailable", manifest: null };
   }
   const applied =
     initialApplied?.endpoint === endpoint
@@ -731,7 +731,7 @@ export const resolvePromptManifest = async (args: {
     if (highWater && isRollback(manifest, highWater)) {
       return safeCached
         ? { source: "cached-remote", manifest: safeCached.manifest, endpoint }
-        : { source: "bundled-bootstrap", manifest: null, endpoint };
+        : { source: "unavailable", manifest: null, endpoint };
     }
 
     const nextCache: CachedPromptManifest = {
@@ -752,30 +752,30 @@ export const resolvePromptManifest = async (args: {
   } catch {
     return safeCached
       ? { source: "cached-remote", manifest: safeCached.manifest, endpoint }
-      : { source: "bundled-bootstrap", manifest: null, endpoint };
+      : { source: "unavailable", manifest: null, endpoint };
   } finally {
     clearTimeout(timeout);
   }
 };
 
-const readBundledAgentFrontmatter = async (
-  bundledAgentsDir: string,
+const readAgentMetadataFrontmatter = async (
+  agentMetadataDir: string,
   id: string,
 ): Promise<string> => {
   const raw = await fs.readFile(
-    path.join(bundledAgentsDir, `${id}.md`),
+    path.join(agentMetadataDir, `${id}.md`),
     "utf-8",
   );
   const match = raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
   if (!match) {
-    throw new Error(`Bundled agent ${id} is missing valid frontmatter`);
+    throw new Error(`Agent metadata ${id} is missing valid frontmatter`);
   }
   return match[0];
 };
 
 const resolveReconciledPrompts = async (
   manifest: RemotePromptManifest,
-  bundledAgentsDir: string,
+  agentMetadataDir: string,
 ): Promise<Map<"agents" | "prompts", Map<string, ReconciledPrompt>>> => {
   const byArea = new Map<"agents" | "prompts", Map<string, ReconciledPrompt>>([
     ["agents", new Map()],
@@ -786,7 +786,7 @@ const resolveReconciledPrompts = async (
     const id = prompt.id.slice(area.length + 1, -3);
     const content =
       area === "agents"
-        ? `${await readBundledAgentFrontmatter(bundledAgentsDir, id)}${prompt.content}`
+        ? `${await readAgentMetadataFrontmatter(agentMetadataDir, id)}${prompt.content}`
         : prompt.content;
     byArea.get(area)!.set(id, {
       ...prompt,
@@ -845,10 +845,10 @@ const createRemoteAdapter = (
 export const reconcileRemotePromptManifest = async (
   manifest: RemotePromptManifest,
   stellaDataDir: string,
-  bundledAgentsDir: string,
+  agentMetadataDir: string,
 ): Promise<BundledSyncReport[]> => {
   const reports: BundledSyncReport[] = [];
-  const byArea = await resolveReconciledPrompts(manifest, bundledAgentsDir);
+  const byArea = await resolveReconciledPrompts(manifest, agentMetadataDir);
   for (const area of ["agents", "prompts"] as const) {
     const entries = byArea.get(area)!;
     const sourceKey = `remote:${area}:${manifest.revision}`;

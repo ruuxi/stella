@@ -4,7 +4,6 @@ import { promises as fsp } from "node:fs";
 import path from "node:path";
 
 import {
-  PERSONALITY_TEMPLATES,
   coercePersonalityId,
   type PersonalityId,
 } from "../../contracts/personality.js";
@@ -26,6 +25,10 @@ const PERSONALITY_ENTRY_ID = "PERSONALITY";
 const PERSONALITY_FILENAME = "PERSONALITY.md";
 const LEGACY_PERSONALITY_REVISION = "bundled:legacy-personality";
 const MAX_RECONCILE_RETRIES = 3;
+const LEGACY_PERSONALITY_TEMPLATE_HASHES = new Set([
+  "77444ebcf52265fe96dad0664916d6c4cefdae58de5306ba3920ef6ecc7fa138",
+  "8d8d4e691c5152907cfc481e0388c6aec0e19ba5181eaf87e85e96ffd127094d",
+]);
 
 let intentionalWriteGeneration = 0;
 
@@ -37,14 +40,10 @@ const normalizeTemplate = (content: string): string => `${content.trim()}\n`;
 export const resolvePersonalityPresetContent = (
   stellaDataDir: string,
   id: PersonalityId,
-): string =>
-  normalizeTemplate(
-    readHomePrompt(
-      stellaDataDir,
-      `personality-${id}`,
-      PERSONALITY_TEMPLATES[id],
-    ),
-  );
+): string => {
+  const content = readHomePrompt(stellaDataDir, `personality-${id}`);
+  return content ? normalizeTemplate(content) : "";
+};
 
 const readPresetSourceRevision = (
   stellaDataDir: string,
@@ -62,9 +61,9 @@ const readPresetSourceRevision = (
     const revision = parsed.entries?.[`personality-${id}`]?.sourceRevision;
     return typeof revision === "string" && revision.trim()
       ? revision
-      : "bundled-bootstrap";
+      : "local-existing";
   } catch {
-    return "bundled-bootstrap";
+    return "local-existing";
   }
 };
 
@@ -183,9 +182,7 @@ const seedLegacyPersonalityMetadata = async (
   } catch {
     return;
   }
-  const legacyMatch = Object.values(PERSONALITY_TEMPLATES).some(
-    (template) => normalizeTemplate(template) === current,
-  );
+  const legacyMatch = LEGACY_PERSONALITY_TEMPLATE_HASHES.has(sha256(current));
   if (!legacyMatch) return;
 
   await ensurePrivateDir(stellaDataDir);

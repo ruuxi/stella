@@ -12,12 +12,17 @@ import type { App } from "electron";
  */
 
 /**
- * Bundled agent prompts live in the install tree's stella-runtime extension;
- * they're reconciled into `${stellaDataDir}/agents/`, which is what the runtime
- * loads (so users can edit prompts and shipped updates still flow through).
+ * Capability-bearing agent metadata stays in the install tree. Prompt bodies
+ * are backend-owned and are joined with this frontmatter during remote sync.
  */
-export const resolveBundledAgentsDir = (stellaAppDir: string): string =>
-  path.join(stellaAppDir, "runtime", "extensions", "stella-runtime", "agents");
+export const resolveBundledAgentMetadataDir = (stellaAppDir: string): string =>
+  path.join(
+    stellaAppDir,
+    "runtime",
+    "extensions",
+    "stella-runtime",
+    "agent-metadata",
+  );
 
 const __dirname = import.meta.dirname;
 

@@ -1,7 +1,7 @@
 /**
  * Fashion tool handlers.
  *
- * Pairs with the Fashion subagent (`runtime/extensions/stella-runtime/agents/fashion.md`)
+ * Pairs with the backend-owned Fashion subagent prompt.
  * and its control tools. Handlers wrap the `FashionToolApi` (which forwards to
  * Convex actions) and shape responses the model can reason about — searches collapse to a small list of
  * `{slot-friendly title, ids, price, imageUrl, merchantOrigin}` rows

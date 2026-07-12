@@ -45,7 +45,9 @@ const desktopDir = path.resolve(scriptDir, "..");
 const repoRootDir = path.resolve(desktopDir, "..");
 const outdir = "dist-electron";
 const nodeTarget = `node${process.versions.node.split(".")[0]}`;
-const runtimeStaticAssetRoots = ["runtime/extensions/stella-runtime/agents"];
+const runtimeStaticAssetRoots = [
+  "runtime/extensions/stella-runtime/agent-metadata",
+];
 const electronRuntimeEntryPoints = [
   "desktop/electron/main.ts",
   "runtime/kernel/cli/stella-computer.ts",
@@ -73,11 +75,7 @@ const fingerprintFilePath = path.join(
  * (see e.g. `desktop/electron/preload.ts`). `runtime/home-seed/` is seed
  * data, never bundled, and excluded so seeding churn doesn't trigger builds.
  */
-const bundleSourceRoots = [
-  "desktop/electron",
-  "desktop/src/shared",
-  "runtime",
-];
+const bundleSourceRoots = ["desktop/electron", "desktop/src/shared", "runtime"];
 const bundleSourceExcludedPrefixes = ["runtime/home-seed/"];
 const bundleConfigFiles = [
   "package.json",
@@ -187,7 +185,6 @@ const workerBannedInputs = [
   "runtime/kernel/home/stella-home.ts",
   "runtime/kernel/home/prompt-manifest-sync.ts",
   "runtime/kernel/home/skills-sync.ts",
-  "runtime/kernel/home/agents-sync.ts",
 ];
 const workerBannedInputPrefixes = ["desktop/electron/"];
 
@@ -257,11 +254,16 @@ export const buildElectronBundles = async () => {
   try {
     const optionsList = createBuildOptions();
     const results = await Promise.all(
-      optionsList.map((options) => runEsbuildBuild({ ...options, write: false })),
+      optionsList.map((options) =>
+        runEsbuildBuild({ ...options, write: false }),
+      ),
     );
-    const workerResult = results[
-      optionsList.findIndex((options) => options.entryPoints === workerEntryPoints)
-    ];
+    const workerResult =
+      results[
+        optionsList.findIndex(
+          (options) => options.entryPoints === workerEntryPoints,
+        )
+      ];
     assertWorkerBundleBoundary(workerResult.metafile);
     const changedOutputs = [];
     for (const result of results) {
@@ -520,7 +522,13 @@ const resolveBunBinary = () => {
  * reloads fast.
  */
 const smokeTestWorkerChunksUnderBun = () => {
-  const chunksDir = path.join(desktopDir, outdir, "runtime", "worker", "chunks");
+  const chunksDir = path.join(
+    desktopDir,
+    outdir,
+    "runtime",
+    "worker",
+    "chunks",
+  );
   let chunkFiles;
   try {
     chunkFiles = readdirSync(chunksDir).filter((f) => f.endsWith(".js"));

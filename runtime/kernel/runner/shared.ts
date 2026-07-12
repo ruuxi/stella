@@ -18,13 +18,6 @@ import { readHomePrompt } from "../prompts/home-prompts.js";
 export const DEFAULT_MAX_AGENT_DEPTH = 8;
 export const LOCAL_HISTORY_RESERVE_TOKENS = 16_384;
 export const MIN_LOCAL_HISTORY_TOKENS = 8_000;
-export const DEFAULT_ORCHESTRATOR_PROMPT =
-  "You are Stella's orchestrator. Coordinate specialized work and keep work non-blocking by default. " +
-  "For visual user-facing output, use image_gen and keep plain text mainly for acknowledgments, brief confirmations, and short replies. " +
-  "After using image_gen, keep any chat text to one short sentence unless the user explicitly asks for detailed text. " +
-  "Delegate arbitrary desktop-app and browser work to the General agent, which uses Stella's persistent node_repl Computer Use and browser runtimes.";
-export const DEFAULT_SUBAGENT_PROMPT =
-  "You are a Stella sub-agent. Execute delegated work directly, provide concise progress, and run tools safely.";
 export {
   LOCAL_CONTEXT_EVENT_TYPES,
   sanitizeConvexDeploymentUrl,
@@ -34,24 +27,15 @@ export {
 export const defaultPromptForAgentType = (
   agentType: string,
   stellaDataDir?: string,
-): string => {
-  if (isOrchestratorAgentType(agentType)) {
-    return stellaDataDir
-      ? readHomePrompt(
-          stellaDataDir,
-          "fallback-orchestrator",
-          DEFAULT_ORCHESTRATOR_PROMPT,
-        )
-      : DEFAULT_ORCHESTRATOR_PROMPT;
-  }
-  return stellaDataDir
-    ? readHomePrompt(
+): string =>
+  stellaDataDir
+    ? (readHomePrompt(
         stellaDataDir,
-        "fallback-subagent",
-        DEFAULT_SUBAGENT_PROMPT,
-      )
-    : DEFAULT_SUBAGENT_PROMPT;
-};
+        isOrchestratorAgentType(agentType)
+          ? "fallback-orchestrator"
+          : "fallback-subagent",
+      ) ?? "")
+    : "";
 
 export const readCoreMemory = (stellaDataDir: string): string | undefined => {
   const candidatePaths = [

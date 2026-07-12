@@ -1,14 +1,14 @@
 /**
  * Live read of a user-editable agent system prompt from `~/.stella/agents/`.
  *
- * Agent prompts are reconciled into `${stellaDataDir}/agents/<id>.md` at startup
- * (see `home/agents-sync.ts`) and that's what the extension loader registers.
+ * Backend prompts are reconciled into `${stellaDataDir}/agents/<id>.md` at
+ * startup and that's what the extension loader registers.
  * But the registered prompt is captured once at load time, so a later edit to
  * the markdown wouldn't take effect until a reload. `buildAgentContext` calls
  * this per turn to pick up edits live — gated by an mtime+size signature so an
  * unchanged file is never re-read or re-parsed (the body is served from a
  * module-level cache). Returns `undefined` when there's no home prompt for the
- * agent type, so callers fall back to the registered/bundled prompt.
+ * agent type.
  *
  * Only the prompt *body* is read live. Frontmatter (tools, model,
  * maxAgentDepth) still comes from the registered agent and takes effect on the

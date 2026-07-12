@@ -23,8 +23,8 @@ import { ensurePrivateDir } from "../shared/private-fs.js";
  *     authored) are ignored.
  *
  * The directory-vs-file mechanics are pluggable via {@link BundledEntryAdapter}
- * so skills (`skills-sync.ts`) and agent prompts (`agents-sync.ts`) share this
- * one algorithm.
+ * so skills and backend-synchronized prompt snapshots share this one
+ * algorithm.
  */
 
 const MANIFEST_VERSION = 2 as const;
