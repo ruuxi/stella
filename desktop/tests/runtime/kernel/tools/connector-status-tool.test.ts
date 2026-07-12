@@ -1,5 +1,5 @@
 import { mkdtempSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,9 +10,12 @@ import {
   recordConnectorDecline,
 } from "../../../../../runtime/kernel/connectors/connect-preferences.js";
 import {
+  buildNativeConnectorCatalog,
   enableNativeConnector,
   type NativeConnectorCatalogEntry,
 } from "../../../../../runtime/kernel/connectors/native-integrations.js";
+import { getNativeConnectorReadiness } from "../../../../../runtime/kernel/connectors/connection-status.js";
+import { setConnectorTokenStoreBroker } from "../../../../../runtime/kernel/connectors/oauth.js";
 import {
   createConnectorStatusTool,
   resetConnectorStatusCatalogMemo,
@@ -35,6 +38,7 @@ const makeRoot = () => {
 };
 
 afterEach(async () => {
+  setConnectorTokenStoreBroker(null);
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
@@ -153,6 +157,58 @@ describe("connector_status tool", () => {
       context,
     );
     expect(result.error).toContain("No Store connector matched");
+  });
+
+  it("requires a verified local OAuth token before reporting executable", async () => {
+    const root = makeRoot();
+    await mkdir(path.join(root, "connectors"), { recursive: true });
+    await writeFile(
+      path.join(root, "connectors/native-integrations.json"),
+      JSON.stringify({
+        version: 1,
+        integrations: { sentry: { enabled: true, updatedAt: Date.now() } },
+      }),
+    );
+    setConnectorTokenStoreBroker({
+      load: async () => null,
+      save: async () => undefined,
+      delete: async () => undefined,
+    });
+    const sentry = buildNativeConnectorCatalog().find(
+      (entry) => entry.id === "sentry",
+    )!;
+    const disconnected = await getNativeConnectorReadiness(root, sentry);
+    expect(disconnected).toMatchObject({
+      enabled: true,
+      authStatus: "not_logged_in",
+      accountVerified: false,
+      toolCount: 1,
+      executable: false,
+    });
+    const status = await makeTool(root).execute(
+      { connector: "sentry" },
+      context,
+    );
+    expect(status.details).toMatchObject({
+      providerStatus: "not_logged_in",
+      accountVerified: false,
+      executable: false,
+    });
+    expect(resultText(status)).not.toContain("Agents can inspect");
+    expect(resultText(status)).toContain("not ready");
+
+    resetConnectorStatusCatalogMemo();
+    setConnectorTokenStoreBroker({
+      load: async () => ({ accessToken: "test-token" }),
+      save: async () => undefined,
+      delete: async () => undefined,
+    });
+    const connected = await getNativeConnectorReadiness(root, sentry);
+    expect(connected).toMatchObject({
+      authStatus: "connected",
+      accountVerified: true,
+      executable: true,
+    });
   });
 
   it("reports timeout/dismiss outcomes without persisting a decline", async () => {

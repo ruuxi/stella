@@ -26,10 +26,9 @@ import {
   getConnectorDecline,
   recordConnectorDecline,
 } from "../../connectors/connect-preferences.js";
-import { getNativeConnectorConnectionState } from "../../connectors/connection-status.js";
+import { getNativeConnectorReadiness } from "../../connectors/connection-status.js";
 import { scoreConnectorMatch } from "../../connectors/discovery.js";
 import type { NativeConnectorCatalogEntry } from "../../connectors/native-integrations.js";
-import { getNativeConnectorTools } from "../../connectors/native-integrations.js";
 import type { ToolDefinition } from "../types.js";
 
 export const CONNECTOR_STATUS_TOOL_NAME = "connector_status";
@@ -220,12 +219,12 @@ export const createConnectorStatusTool = (
       };
     }
 
-    const state = await getNativeConnectorConnectionState(
+    const state = await getNativeConnectorReadiness(
       options.stellaDataDir,
       entry,
     );
-    const toolCount = getNativeConnectorTools(entry).length;
-    const executable = state.enabled && toolCount > 0;
+    const toolCount = state.toolCount;
+    const executable = state.executable;
     const diagnostics = {
       id: entry.id,
       catalogSource: catalog.sources[entry.id] ?? catalog.source,
@@ -263,8 +262,8 @@ export const createConnectorStatusTool = (
 
     if (!entry.connectable || !options.requestConnectorConnection) {
       return {
-        result: `${entry.name} exists in the catalog but cannot be connected from here${entry.connectable ? "" : " (its connect flow isn't available in this build)"}. Proceed via the browser/computer fallback; the user can look for it in the Store.`,
-        details: { id: entry.id, status: "not_connectable" },
+        result: `${entry.name} ${state.enabled ? "is locally enabled but does not have a verified provider credential" : "exists in the catalog"} and cannot be connected from here${entry.connectable ? "" : " (its connect flow isn't available in this build)"}. It is not ready to use; proceed via the browser/computer fallback or the Store.`,
+        details: { ...diagnostics, status: "not_connectable" },
       };
     }
 

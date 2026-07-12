@@ -227,6 +227,9 @@ export const resolveNativeConnectorCatalog = async (options: {
 
   const cached = await readCachedServerCatalog(options.stellaDataDir);
   if (cached) {
+    // Deliberately no TTL: offline execution and backend-only connector ids
+    // are more useful than silently changing provider semantics. A successful
+    // live fetch replaces this snapshot; malformed cache still fails closed.
     const entries = buildMergedConnectorCatalog(cached.entries);
     return {
       entries,

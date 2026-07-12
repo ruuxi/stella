@@ -9,18 +9,14 @@
 
 import { randomUUID } from "crypto";
 import { BrowserWindow, shell } from "electron";
-import {
-  buildNativeConnectorCatalog,
-  enableNativeConnector,
-  getNativeConnectorCatalogEntry,
-} from "../../../runtime/kernel/connectors/native-integrations.js";
+import { enableNativeConnector } from "../../../runtime/kernel/connectors/native-integrations.js";
 import { STELLA_BROWSER_EXTENSION_ID } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import { isStellaExtensionInstalled } from "./stella-browser-bridge-service.js";
 import type { WindowManagerTarget } from "../../../runtime/kernel/lifecycle-targets.js";
 import {
   ensureNativeCredential,
   loadConfiguredOAuthProviders,
-  loadServerNativeConnectorCatalog,
+  resolveDesktopNativeConnectorEntry,
   type NativeCredentialFlowOptions,
 } from "../ipc/native-integration-handlers.js";
 import type { ConnectorCredentialService } from "./connector-credential-service.js";
@@ -231,7 +227,10 @@ export class ConnectorConnectService {
     return settled;
   }
 
-  respond(payload: { requestId: string; action: "accept" | "decline" | "cancel" }): {
+  respond(payload: {
+    requestId: string;
+    action: "accept" | "decline" | "cancel";
+  }): {
     ok: boolean;
     error?: string;
   } {
@@ -241,7 +240,11 @@ export class ConnectorConnectService {
     }
     if (payload.action === "decline") {
       meta.oauthAbort.abort(new Error("Connection declined."));
-      this.settle(payload.requestId, { ok: false, reason: "declined" }, "declined");
+      this.settle(
+        payload.requestId,
+        { ok: false, reason: "declined" },
+        "declined",
+      );
       return { ok: true };
     }
     if (payload.action === "cancel") {
@@ -334,10 +337,10 @@ export class ConnectorConnectService {
       await ensureNativeCredential(flowOptions, stellaAppDir, meta.id);
       const configuredOAuthProviders =
         await loadConfiguredOAuthProviders(flowOptions);
-      const serverCatalog = await loadServerNativeConnectorCatalog(flowOptions);
-      const entry = getNativeConnectorCatalogEntry(
+      const { catalog, entry } = await resolveDesktopNativeConnectorEntry(
+        flowOptions,
+        stellaAppDir,
         meta.id,
-        buildNativeConnectorCatalog(serverCatalog ?? undefined),
       );
       if (!entry) {
         throw new Error(`Unknown integration: ${meta.id}`);
@@ -351,7 +354,7 @@ export class ConnectorConnectService {
           configuredExternalCallbackProviders:
             configuredOAuthProviders.externalCallback,
         },
-        serverCatalog ?? undefined,
+        catalog.entries,
       );
       this.settle(requestId, { ok: true, status: "connected" }, "connected");
     } catch (error) {

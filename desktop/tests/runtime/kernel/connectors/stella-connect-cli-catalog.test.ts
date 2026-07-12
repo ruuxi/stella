@@ -55,7 +55,7 @@ const enable = async (root: string, ids: string[]) => {
   );
 };
 
-const runCli = (root: string, ...args: string[]) =>
+const runCli = <T = Record<string, unknown>>(root: string, ...args: string[]) =>
   JSON.parse(
     execFileSync("bun", [cliPath, ...args], {
       cwd: repoRoot,
@@ -66,7 +66,7 @@ const runCli = (root: string, ...args: string[]) =>
       },
       encoding: "utf8",
     }),
-  ) as Record<string, unknown>;
+  ) as T;
 
 afterEach(async () => {
   resetConnectorStatusCatalogMemo();
@@ -94,15 +94,24 @@ describe("stella-connect shared native catalog resolution", () => {
       ["gmail", "GMAIL_RUN_ACTION"],
       ["notion", "NOTION_RUN_ACTION"],
     ]) {
-      const result = runCli(root, "tools", id);
-      expect(result).toMatchObject({
+      const result = runCli<Array<Record<string, unknown>>>(root, "tools", id);
+      expect(result).toEqual([expect.objectContaining({ name: tool })]);
+      const diagnostics = runCli(root, "tools-diagnostics", id);
+      expect(diagnostics).toMatchObject({
         catalogSource: "cache",
         provider: "backend-composio",
         toolCount: 1,
         executable: true,
       });
-      expect(result.tools).toEqual([expect.objectContaining({ name: tool })]);
+      expect(diagnostics.tools).toEqual([
+        expect.objectContaining({ name: tool }),
+      ]);
     }
+    expect(runCli(root, "request-connection", "outlook")).toMatchObject({
+      ok: true,
+      status: "already_connected",
+      id: "outlook",
+    });
   });
 
   it("keeps backend-only cached ids discoverable and imported MCP discovery intact", async () => {
@@ -174,7 +183,7 @@ describe("stella-connect shared native catalog resolution", () => {
       { connector: "outlook" },
       { conversationId: "c1", deviceId: "d1", requestId: "r1" },
     );
-    const cli = runCli(root, "tools", "outlook");
+    const cli = runCli(root, "tools-diagnostics", "outlook");
     expect(status.details).toMatchObject({
       catalogSource: cli.catalogSource,
       provider: cli.provider,
@@ -203,5 +212,51 @@ describe("stella-connect shared native catalog resolution", () => {
     });
     expect(String(result.result)).not.toContain("Proceed");
     expect(String(result.result)).toContain("not ready");
+  });
+
+  it("keeps native and imported MCP tools output as top-level arrays", async () => {
+    const root = await makeRoot();
+    const outlook = backendEntry("outlook", "Outlook", "OUTLOOK");
+    await writeCachedServerCatalog(root, [outlook]);
+    await enable(root, [outlook.id]);
+    expect(runCli(root, "tools", "outlook")).toEqual([
+      expect.objectContaining({ name: "OUTLOOK_RUN_ACTION" }),
+    ]);
+
+    const serverPath = path.join(root, "mcp-server.cjs");
+    await writeFile(
+      serverPath,
+      `const readline = require("node:readline");
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const request = JSON.parse(line);
+  if (request.id === undefined) return;
+  const result = request.method === "initialize"
+    ? { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "fixture", version: "1" } }
+    : request.method === "tools/list"
+      ? { tools: [{ name: "fixture.read", description: "Read fixture", inputSchema: { type: "object" } }] }
+      : {};
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }) + "\\n");
+});
+`,
+    );
+    await writeFile(
+      path.join(root, "connectors/commands.json"),
+      JSON.stringify({
+        commands: [
+          {
+            id: "fixture-mcp",
+            displayName: "Fixture MCP",
+            transport: "stdio",
+            command: process.execPath,
+            args: [serverPath],
+            auth: { type: "none" },
+          },
+        ],
+      }),
+    );
+    expect(runCli(root, "tools", "fixture-mcp")).toEqual([
+      expect.objectContaining({ name: "fixture.read" }),
+    ]);
   });
 });

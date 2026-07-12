@@ -7,7 +7,7 @@ import {
   resolveNativeConnectorCatalog,
   type NativeCatalogSource,
 } from "../connectors/catalog-cache.js";
-import { nativeConnectorAuthStatus as sharedNativeConnectorAuthStatus } from "../connectors/connection-status.js";
+import { getNativeConnectorReadiness } from "../connectors/connection-status.js";
 import {
   requestConnectorConnectionFromBridge,
   requestConnectorCredentialFromBridge,
@@ -433,7 +433,7 @@ const loadServerNativeCatalog = async () =>
     },
   });
 
-const nativeDiagnostics = (
+const nativeCatalogDiagnostics = (
   entry: NativeConnectorCatalogEntry,
   catalogSource: NativeCatalogSource,
 ) => {
@@ -442,7 +442,6 @@ const nativeDiagnostics = (
     catalogSource,
     provider: entry.provider,
     toolCount,
-    executable: toolCount > 0,
   };
 };
 
@@ -502,10 +501,6 @@ const connectorAuthStatus = async (auth: ConnectorCommandConfig["auth"]) => {
     ? "connected"
     : "not_logged_in";
 };
-
-const nativeConnectorAuthStatus = async (
-  entry: NonNullable<ReturnType<typeof getNativeConnectorCatalogEntry>>,
-) => sharedNativeConnectorAuthStatus(stellaAppDir, entry);
 
 const ensureNativeEnabled = async (
   id: string,
@@ -960,6 +955,7 @@ const HELP_TEXT = [
   "                                    until credentials land. Run `refresh-skill` after.",
   "  refresh-skill <id>                Re-probe a configured connector and rewrite its skill.",
   "  tools <id>                        List actions for a configured connector.",
+  "  tools-diagnostics <id>            List actions plus source/provider/readiness diagnostics.",
   "  catalog-actions <id>              List recovered native OAuth catalog action references.",
   "  call <id> <action-or-path> [--json '{}'] [--method GET] [--query-json '{}'] [--header-json '{}']",
   "                                    Invoke a connector action or REST path.",
@@ -995,14 +991,22 @@ const main = async () => {
         native: await Promise.all(
           native
             .filter((entry) => entry.enabled)
-            .map(async (entry) => ({
-              ...entry,
-              authStatus: await nativeConnectorAuthStatus(entry),
-              ...nativeDiagnostics(
+            .map(async (entry) => {
+              const readiness = await getNativeConnectorReadiness(
+                stellaAppDir,
                 entry,
-                catalogSources[entry.id] ?? catalogSource,
-              ),
-            })),
+              );
+              return {
+                ...entry,
+                authStatus: readiness.authStatus,
+                accountVerified: readiness.accountVerified,
+                executable: readiness.executable,
+                ...nativeCatalogDiagnostics(
+                  entry,
+                  catalogSources[entry.id] ?? catalogSource,
+                ),
+              };
+            }),
         ),
       });
       return;
@@ -1028,16 +1032,15 @@ const main = async () => {
         matches.map(async (match) => {
           let connected = false;
           let nativeEntry: NativeConnectorCatalogEntry | undefined;
+          let nativeReadiness:
+            | Awaited<ReturnType<typeof getNativeConnectorReadiness>>
+            | undefined;
           if (match.kind === "native") {
             nativeEntry = findNative(match.id, serverNativeCatalog);
-            const authStatus = nativeEntry
-              ? await nativeConnectorAuthStatus(nativeEntry)
-              : ("unsupported" as const);
-            connected =
-              match.enabled &&
-              authStatus === "connected" &&
-              !!nativeEntry &&
-              getNativeConnectorTools(nativeEntry).length > 0;
+            nativeReadiness = nativeEntry
+              ? await getNativeConnectorReadiness(stellaAppDir, nativeEntry)
+              : undefined;
+            connected = nativeReadiness?.executable ?? false;
           } else {
             const config =
               match.kind === "mcp"
@@ -1065,10 +1068,15 @@ const main = async () => {
             enabled: match.enabled,
             connected,
             ...(match.kind === "native" && nativeEntry
-              ? nativeDiagnostics(
-                  nativeEntry,
-                  catalogSources[nativeEntry.id] ?? catalogSource,
-                )
+              ? {
+                  ...nativeCatalogDiagnostics(
+                    nativeEntry,
+                    catalogSources[nativeEntry.id] ?? catalogSource,
+                  ),
+                  providerStatus: nativeReadiness?.authStatus,
+                  accountVerified: nativeReadiness?.accountVerified ?? false,
+                  executable: nativeReadiness?.executable ?? false,
+                }
               : {}),
             declined: match.declined,
             next,
@@ -1094,9 +1102,9 @@ const main = async () => {
       }
       if (!entry) return;
       const enabled = await isNativeConnectorEnabled(stellaAppDir, entry.id);
-      const authStatus = await nativeConnectorAuthStatus(entry);
+      const readiness = await getNativeConnectorReadiness(stellaAppDir, entry);
       const skillPath = `~/.stella/skills/${entry.id}/SKILL.md`;
-      if (enabled && authStatus === "connected") {
+      if (enabled && readiness.executable) {
         printJson({
           ok: true,
           status: "already_connected",
@@ -1195,14 +1203,22 @@ const main = async () => {
       );
       printJson(
         await Promise.all(
-          native.map(async (entry) => ({
-            ...entry,
-            authStatus: await nativeConnectorAuthStatus(entry),
-            ...nativeDiagnostics(
+          native.map(async (entry) => {
+            const readiness = await getNativeConnectorReadiness(
+              stellaAppDir,
               entry,
-              catalogSources[entry.id] ?? catalogSource,
-            ),
-          })),
+            );
+            return {
+              ...entry,
+              authStatus: readiness.authStatus,
+              accountVerified: readiness.accountVerified,
+              executable: readiness.executable,
+              ...nativeCatalogDiagnostics(
+                entry,
+                catalogSources[entry.id] ?? catalogSource,
+              ),
+            };
+          }),
         ),
       );
       return;
@@ -1236,12 +1252,38 @@ const main = async () => {
       if (native) {
         await ensureNativeEnabled(id, serverNativeCatalog);
         const tools = getNativeConnectorTools(native);
+        printJson(tools);
+        return;
+      }
+      const command = await findCommand(id);
+      if (!command) fail(`Connector command is not installed: ${id}`);
+      if (!command) return;
+      const tools = await withConnectorBridgeCleanup(command, () =>
+        withAuthRetry(() => listConnectorBridgeTools(stellaAppDir, command)),
+      );
+      printJson(tools);
+      return;
+    }
+    case "tools-diagnostics": {
+      const id = rest[0];
+      if (!id) fail("Usage: stella-connect tools-diagnostics <connector-id>");
+      const native = findNative(id, serverNativeCatalog);
+      if (native) {
+        await ensureNativeEnabled(id, serverNativeCatalog);
+        const readiness = await getNativeConnectorReadiness(
+          stellaAppDir,
+          native,
+        );
         printJson({
-          ...nativeDiagnostics(
+          ...nativeCatalogDiagnostics(
             native,
             catalogSources[native.id] ?? catalogSource,
           ),
-          tools,
+          providerStatus: readiness.authStatus,
+          accountVerified: readiness.accountVerified,
+          enabled: readiness.enabled,
+          executable: readiness.executable,
+          tools: getNativeConnectorTools(native),
         });
         return;
       }

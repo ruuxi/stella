@@ -7,6 +7,7 @@
  */
 
 import {
+  getNativeConnectorTools,
   isNativeConnectorEnabled,
   type NativeConnectorCatalogEntry,
 } from "./native-integrations.js";
@@ -52,6 +53,12 @@ export type NativeConnectorConnectionState = {
   accountVerified: boolean;
 };
 
+export type NativeConnectorReadiness = NativeConnectorConnectionState & {
+  toolCount: number;
+  /** The CLI has a dispatcher it can attempt with the current local state. */
+  executable: boolean;
+};
+
 export const getNativeConnectorConnectionState = async (
   stellaDataDir: string,
   entry: NativeConnectorCatalogEntry,
@@ -68,5 +75,26 @@ export const getNativeConnectorConnectionState = async (
       (authStatus === "connected" ||
         authStatus === "backend_managed_unverified"),
     accountVerified: authStatus === "connected",
+  };
+};
+
+/**
+ * Provider-aware operational readiness shared by status and CLI consumers.
+ * Backend execution is intentionally actionable without claiming the remote
+ * provider account was verified; the run endpoint remains the auth authority.
+ */
+export const getNativeConnectorReadiness = async (
+  stellaDataDir: string,
+  entry: NativeConnectorCatalogEntry,
+): Promise<NativeConnectorReadiness> => {
+  const state = await getNativeConnectorConnectionState(stellaDataDir, entry);
+  const toolCount = getNativeConnectorTools(entry).length;
+  const credentialReady =
+    state.authStatus === "connected" ||
+    state.authStatus === "backend_managed_unverified";
+  return {
+    ...state,
+    toolCount,
+    executable: state.enabled && toolCount > 0 && credentialReady,
   };
 };
