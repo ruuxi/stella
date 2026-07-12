@@ -1154,3 +1154,165 @@ describe("LocalAgentManager file records across send_input re-runs", () => {
     expect(finalSnapshot?.activeToolCount).toBe(0);
   });
 });
+
+describe("send_input follow-up description and run rebind", () => {
+  it("adopts the orchestrator follow-up description onto the thread", async () => {
+    // The folded Activity row is keyed per thread and titled by
+    // `description`. A follow-up re-tasks the thread, so every lifecycle
+    // event after the send_input must carry the follow-up's description —
+    // not the original spawn text frozen forever.
+    const events: AgentLifecycleEvent[] = [];
+    let runCount = 0;
+    let firstRunStarted: (() => void) | null = null;
+    const firstRunStartedPromise = new Promise<void>((resolve) => {
+      firstRunStarted = resolve;
+    });
+
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 3,
+      }),
+      runSubagent: async (args) => {
+        runCount += 1;
+        if (runCount === 1) {
+          firstRunStarted?.();
+          await new Promise<void>((resolve) => {
+            if (args.abortSignal.aborted) {
+              resolve();
+              return;
+            }
+            args.abortSignal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
+          });
+          return { runId: args.runId, result: "", interrupted: true };
+        }
+        return { runId: args.runId, result: `done-${runCount}` };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => {
+        events.push(event);
+      },
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-1",
+      description: "find the booked itinerary",
+      prompt: "find the booked itinerary",
+      agentType: AGENT_IDS.GENERAL,
+      rootRunId: "root-1",
+      storageMode: "local",
+    });
+    await firstRunStartedPromise;
+
+    await manager.sendAgentMessage(
+      task.threadId,
+      "search specifically for the forwarded itinerary email",
+      "orchestrator",
+      {
+        description: "search for the itinerary email",
+        rootRunId: "root-2",
+      },
+    );
+    await waitForAgentSettled(manager, task.threadId);
+
+    const followUpStarted = events.find(
+      (event) => event.type === "agent-started" && event.isFollowUp,
+    );
+    expect(followUpStarted).toMatchObject({
+      rootRunId: "root-2",
+      description: "search for the itinerary email",
+    });
+    const completion = events.find(
+      (event) => event.type === "agent-completed",
+    );
+    expect(completion).toMatchObject({
+      rootRunId: "root-2",
+      description: "search for the itinerary email",
+    });
+    // The updated description sticks on the thread snapshot too.
+    const snapshot = await manager.getAgent(task.threadId);
+    expect(snapshot?.description).toBe("search for the itinerary email");
+  });
+
+  it("evicts a task's stale live copy from other runs when it upserts under a new run", () => {
+    // A send_input follow-up rebinds the task to the caller's run, and the
+    // spawn run's live copy never receives a terminal event. Without
+    // eviction that frozen "running" copy pins the Activity row open after
+    // the follow-up completes under the new run.
+    let state = streamStoreReducer(initialStoreState, {
+      type: "run-started",
+      runId: "root-1",
+      conversationId: "conv-1",
+      userMessageId: "user-1",
+    });
+    const baseTask: TaskItem = {
+      id: "thread-1",
+      description: "find the booked itinerary",
+      agentType: AGENT_IDS.GENERAL,
+      status: "running",
+      anchorTurnId: "user-1",
+      startedAtMs: 1_000,
+      lastUpdatedAtMs: 1_000,
+    };
+    state = streamStoreReducer(state, {
+      type: "task-upsert",
+      runId: "root-1",
+      conversationId: "conv-1",
+      userMessageId: "user-1",
+      task: baseTask,
+    });
+    expect(state.tasksByRunId["root-1"]?.["thread-1"]?.status).toBe("running");
+
+    // Follow-up streams the task under the new run: running, then completed.
+    state = streamStoreReducer(state, {
+      type: "task-upsert",
+      runId: "root-2",
+      conversationId: "conv-1",
+      userMessageId: "user-2",
+      task: {
+        ...baseTask,
+        description: "search for the itinerary email",
+        statusText: "search for the itinerary email",
+        startedAtMs: 2_000,
+        lastUpdatedAtMs: 2_000,
+      },
+    });
+    // The spawn run's copy is gone the moment the task moves runs…
+    expect(state.tasksByRunId["root-1"]?.["thread-1"]).toBeUndefined();
+    // …and continuity fields carried over from the evicted copy.
+    expect(state.tasksByRunId["root-2"]?.["thread-1"]).toMatchObject({
+      status: "running",
+      description: "search for the itinerary email",
+      startedAtMs: 1_000,
+    });
+
+    state = streamStoreReducer(state, {
+      type: "task-upsert",
+      runId: "root-2",
+      conversationId: "conv-1",
+      userMessageId: "user-2",
+      task: {
+        ...baseTask,
+        description: "search for the itinerary email",
+        status: "completed",
+        startedAtMs: 2_000,
+        completedAtMs: 3_000,
+        lastUpdatedAtMs: 3_000,
+        outputPreview: "found it",
+      },
+    });
+    const liveCopies = Object.entries(state.tasksByRunId).flatMap(
+      ([, tasks]) => Object.values(tasks),
+    ) as TaskItem[];
+    expect(liveCopies).toHaveLength(1);
+    expect(liveCopies[0]?.status).toBe("completed");
+  });
+});

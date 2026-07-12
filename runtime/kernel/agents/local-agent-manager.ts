@@ -1735,6 +1735,13 @@ export class LocalAgentManager implements AgentToolApi {
       : text;
     const updateStatusText = formatTaskUpdateStatusText(updateStatusSource);
     const rootRunId = options?.rootRunId?.trim() || undefined;
+    // An orchestrator follow-up re-tasks the thread, so the thread adopts
+    // the follow-up's description. Everything keyed per-thread (the folded
+    // Activity row, snapshots, the persisted record) then reflects the
+    // latest instruction instead of the original spawn text — per-occurrence
+    // surfaces (the inline chat cards) keep their own titles via statusText.
+    const followUpDescription =
+      from === "orchestrator" ? options?.description?.trim() || undefined : undefined;
     const task = this.tasks.get(agentId);
     if (!task) {
       if (from !== "orchestrator") {
@@ -1769,6 +1776,9 @@ export class LocalAgentManager implements AgentToolApi {
       if (rootRunId) {
         resumedTask.rootRunId = rootRunId;
       }
+      if (followUpDescription) {
+        resumedTask.description = followUpDescription;
+      }
       resumedTask.messageLog.push({
         from,
         text: truncate(text, 500),
@@ -1798,6 +1808,9 @@ export class LocalAgentManager implements AgentToolApi {
       }
       if (rootRunId) {
         task.rootRunId = rootRunId;
+      }
+      if (followUpDescription) {
+        task.description = followUpDescription;
       }
       // Same re-activation as the persisted-record path above: the thread
       // row may have been evicted while this task sat terminal in memory.
@@ -1850,6 +1863,9 @@ export class LocalAgentManager implements AgentToolApi {
     if (from === "orchestrator") {
       if (rootRunId) {
         task.rootRunId = rootRunId;
+      }
+      if (followUpDescription) {
+        task.description = followUpDescription;
       }
       task.pendingStartStatusText = updateStatusText;
       task.recentActivity = [updateStatusText];
