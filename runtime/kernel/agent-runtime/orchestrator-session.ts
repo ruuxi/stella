@@ -238,6 +238,7 @@ export class OrchestratorSession extends PiSessionCore {
     opts.onExecutionSessionCreated?.({
       runId,
       threadKey: this.threadKey,
+      engine: "native",
       queueUserMessageId: runEvents.queueUserMessageId,
       agent,
     });

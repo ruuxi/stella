@@ -361,22 +361,35 @@ export const createOrchestratorController = (
           payload: message,
         });
       }
-      // UI-queued chat messages (`role: "user"`) wait for the entire
-      // current orchestrator run to complete — including the post-tool
-      // answer — before being injected. Using `"steer"` here would
-      // dequeue the message at the next turn boundary (after the
-      // preamble's tools), so the queued user_message would land
-      // BETWEEN the preamble and the post-tool assistant row instead
-      // of below it. `"followUp"` defers until `agent_end`, which
-      // matches the user-facing "queued messages flush after the
-      // current task finishes" expectation.
+      // UI-queued chat messages (`role: "user"`) on the NATIVE engine are
+      // injected as `"steer"` so the agent sees them at the next safe turn
+      // boundary (after the current step's tools) and can respond mid-run,
+      // instead of only after the whole task drains at `agent_end`. The
+      // trade-off is ordering: the queued message can land between the
+      // run's preamble and its post-tool answer rather than strictly below
+      // the finished answer — accepted in favor of responsiveness.
+      //
+      // External CLI engines (Claude Code, Codex) cannot inject mid-turn:
+      // their live agent buffers steer and followUp identically and drains
+      // only after the current turn completes. Keep `"followUp"` there so
+      // the semantics stay honest (delivery timing is post-turn either way).
       //
       // Hidden runtime-internal injections (system reminders,
-      // workspace-creation requests, etc.) keep `"steer"` so they
-      // still interrupt the live turn at the next safe boundary.
+      // workspace-creation requests, etc.) always use `"steer"` so they
+      // interrupt the live turn at the next safe boundary.
       const delivery: "steer" | "followUp" =
-        message.role === "user" ? "followUp" : "steer";
-      if (delivery === "followUp" && message.role === "user") {
+        message.role === "user"
+          ? args.session.engine === "native"
+            ? "steer"
+            : "followUp"
+          : "steer";
+      if (message.role === "user") {
+        // Mirror the message for abnormal-termination recovery regardless of
+        // delivery mode: a steered message queued but not yet delivered when
+        // the run dies is lost exactly like an undelivered follow-up. (If a
+        // steered message was already answered mid-run before the run later
+        // died, the flush may re-answer it — rare, and cheaper than dropping
+        // messages.)
         recordPendingFollowUpReply(args.session.conversationId, promptInput.text);
       }
       args.session.queueMessage(message, delivery);

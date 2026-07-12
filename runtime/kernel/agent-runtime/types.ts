@@ -158,6 +158,14 @@ export type RuntimeInterruptedEvent = {
 export type RuntimeExecutionSessionHandle = {
   runId: string;
   threadKey: string;
+  /**
+   * Which execution engine backs `agent`. The native agent-core loop delivers
+   * `steer` messages mid-run at the next safe turn boundary; external CLI
+   * engines (Claude Code, Codex) buffer both steer and followUp until the
+   * current turn completes, so mid-run `steer` delivery for user messages is
+   * only meaningful when this is `"native"`.
+   */
+  engine: "native" | "external";
   queueUserMessageId: (userMessageId: string, onStart?: () => void) => void;
   agent: {
     state: {

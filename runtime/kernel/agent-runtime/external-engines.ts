@@ -1216,6 +1216,7 @@ export const runExternalOrchestratorTurn = async (
     opts.onExecutionSessionCreated?.({
       runId: session.runId,
       threadKey: session.threadKey,
+      engine: "external",
       queueUserMessageId: session.runEvents.queueUserMessageId,
       agent: liveAgent.agent,
     });
