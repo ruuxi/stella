@@ -1125,7 +1125,8 @@ const main = async () => {
       if (
         readiness.toolCount === 0 ||
         !entry.connectable ||
-        (enabled && !readiness.executable)
+        (entry.provider !== "backend-composio" &&
+          entry.localExecution !== "production-ready")
       ) {
         exitStructured({
           ok: false,

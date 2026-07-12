@@ -278,7 +278,9 @@ describe("stella-connect shared native catalog resolution", () => {
         getStellaSiteAuth: async () => ({ ok: false, reason: "offline" }),
         requestConnectorConnection: async ({ id }) => {
           connectionRequests.push(id);
-          return { ok: false, reason: "declined" };
+          return id === "gmail"
+            ? { ok: true, status: "connected" }
+            : { ok: false, reason: "declined" };
         },
       },
     });
@@ -311,6 +313,21 @@ describe("stella-connect shared native catalog resolution", () => {
     expect(composio.exitCode).toBe(2);
     expect(composio.stdout).toMatchObject({ error: "declined", id: "notion" });
     expect(connectionRequests).toEqual(["notion"]);
+
+    await enable(root, ["gmail"]);
+    const gmail = await runCliAsync(
+      root,
+      socketPath,
+      "request-connection",
+      "gmail",
+    );
+    expect(gmail.exitCode).toBe(0);
+    expect(gmail.stdout).toMatchObject({
+      ok: true,
+      status: "connected",
+      id: "gmail",
+    });
+    expect(connectionRequests).toEqual(["notion", "gmail"]);
   });
 
   it("keeps native and imported MCP tools output as top-level arrays", async () => {

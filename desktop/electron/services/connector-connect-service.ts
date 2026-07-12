@@ -9,7 +9,11 @@
 
 import { randomUUID } from "crypto";
 import { BrowserWindow, shell } from "electron";
-import { enableNativeConnector } from "../../../runtime/kernel/connectors/native-integrations.js";
+import {
+  enableNativeConnector,
+  getNativeConnectorTools,
+  type NativeConnectorCatalogEntry,
+} from "../../../runtime/kernel/connectors/native-integrations.js";
 import { STELLA_BROWSER_EXTENSION_ID } from "../../../runtime/kernel/tools/stella-browser-bridge-config.js";
 import { isStellaExtensionInstalled } from "./stella-browser-bridge-service.js";
 import type { WindowManagerTarget } from "../../../runtime/kernel/lifecycle-targets.js";
@@ -62,6 +66,17 @@ const EXTENSION_FLOW_TIMEOUT_MS = 4 * 60 * 1000;
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+const isCanonicalConnectorConnectable = (
+  entry: NativeConnectorCatalogEntry | undefined,
+) =>
+  Boolean(
+    entry &&
+    entry.connectable &&
+    getNativeConnectorTools(entry).length > 0 &&
+    (entry.provider === "backend-composio" ||
+      entry.localExecution === "production-ready"),
+  );
+
 export class ConnectorConnectService {
   private readonly pending = new PendingRequestStore<ConnectorConnectOutcome>();
   private readonly meta = new Map<string, PendingConnectMeta>();
@@ -90,6 +105,17 @@ export class ConnectorConnectService {
     if (!stellaAppDir) {
       return { ok: false, reason: "unsupported" };
     }
+    const { entry } = await resolveDesktopNativeConnectorEntry(
+      {
+        getConvexAuthToken: this.options.getConvexAuthToken,
+        getConvexSiteUrl: this.options.getConvexSiteUrl,
+      },
+      stellaAppDir,
+      payload.id.trim().toLowerCase(),
+    );
+    if (!isCanonicalConnectorConnectable(entry)) {
+      return { ok: false, reason: "connector_unavailable" };
+    }
     const windowManager = this.options.windowManagerTarget.getWindowManager();
     const fullWindow = windowManager?.getFullWindow() ?? null;
     const targetWindows = fullWindow
@@ -101,8 +127,8 @@ export class ConnectorConnectService {
 
     const requestId = randomUUID();
     this.meta.set(requestId, {
-      id: payload.id,
-      name: payload.name,
+      id: entry!.id,
+      name: entry!.name,
       kind: "integration",
       state: "pending",
       ...(payload.offerId ? { offerId: payload.offerId } : {}),
@@ -112,11 +138,11 @@ export class ConnectorConnectService {
 
     const request: ConnectorConnectRequestPayload = {
       requestId,
-      id: payload.id,
-      name: payload.name,
-      description: payload.description,
-      iconUrl: payload.iconUrl,
-      category: payload.category,
+      id: entry!.id,
+      name: entry!.name,
+      description: entry!.description,
+      iconUrl: entry!.iconUrl,
+      category: entry!.category,
       reason: payload.reason,
       kind: "integration",
       ...(payload.conversationId
@@ -334,20 +360,22 @@ export class ConnectorConnectService {
         credentialService.requestDeviceOAuth(payload),
     };
     try {
-      await ensureNativeCredential(flowOptions, stellaAppDir, meta.id);
-      const configuredOAuthProviders =
-        await loadConfiguredOAuthProviders(flowOptions);
       const { catalog, entry } = await resolveDesktopNativeConnectorEntry(
         flowOptions,
         stellaAppDir,
         meta.id,
       );
-      if (!entry) {
-        throw new Error(`Unknown integration: ${meta.id}`);
+      if (!isCanonicalConnectorConnectable(entry)) {
+        throw new Error(
+          `${meta.name} is no longer available through an executable Store integration.`,
+        );
       }
+      await ensureNativeCredential(flowOptions, stellaAppDir, entry!.id);
+      const configuredOAuthProviders =
+        await loadConfiguredOAuthProviders(flowOptions);
       await enableNativeConnector(
         stellaAppDir,
-        meta.id,
+        entry!.id,
         "store",
         {
           configuredBackendProviders: configuredOAuthProviders.backend,
