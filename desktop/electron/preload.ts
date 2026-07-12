@@ -926,21 +926,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
           statusText?: string;
           reasoningText?: string;
         }>;
-        tasks: Array<{
-          runId: string;
-          agentId: string;
-          agentType?: string;
-          description?: string;
-          anchorTurnId?: string;
-          parentAgentId?: string;
-          status: TaskLifecycleStatus;
-          statusText?: string;
-          reasoningText?: string;
-          result?: string;
-          error?: string;
-          startedAtMs?: number;
-          completedAtMs?: number;
-        }>;
       }>,
     onStream: onIpc<{
       type:

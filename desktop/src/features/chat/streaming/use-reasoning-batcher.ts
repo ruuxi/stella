@@ -7,19 +7,16 @@
  * the underlying SSE.
  */
 import { useCallback, useEffect, useRef } from 'react'
-import type { StreamStoreAction } from './store'
+import { appendTaskReasoning } from './task-decoration-store'
 
 export type PendingReasoningEntry = {
   agentId: string
   conversationId: string
   runId?: string
-  userMessageId?: string
   chunk: string
 }
 
-export function useReasoningBatcher(
-  dispatch: (action: StreamStoreAction) => void,
-) {
+export function useReasoningBatcher() {
   const pendingReasoningChunksRef = useRef(
     new Map<string, PendingReasoningEntry>(),
   )
@@ -41,17 +38,10 @@ export function useReasoningBatcher(
         pending.delete(key)
       }
       for (const [, entry] of entries) {
-        dispatch({
-          type: 'agent-reasoning',
-          agentId: entry.agentId,
-          conversationId: entry.conversationId,
-          runId: entry.runId,
-          userMessageId: entry.userMessageId,
-          chunk: entry.chunk,
-        })
+        appendTaskReasoning(entry)
       }
     },
-    [dispatch],
+    [],
   )
 
   const queueAgentReasoningChunk = useCallback(

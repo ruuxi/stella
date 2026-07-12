@@ -19,6 +19,12 @@ import {
   streamStoreReducer,
 } from "@/features/chat/streaming/store";
 import {
+  __privateTaskDecorationStore,
+  appendTaskReasoning,
+  decorateTask,
+  getTaskDecoration,
+} from "@/features/chat/streaming/task-decoration-store";
+import {
   getInlineWorkingIndicatorActive,
   getWorkingIndicatorDisplayStatus,
 } from "@/features/chat/working-indicator-state";
@@ -1031,22 +1037,21 @@ describe("sensitive runtime event payloads", () => {
       expect(serialized).not.toContain(secret);
     }
 
-    let state = streamStoreReducer(initialStoreState, {
-      type: "task-decorate",
+    decorateTask({
       agentId: "agent-redaction",
       conversationId: "conversation-redaction",
       runId: "run-redaction",
       statusText: status.statusText,
     });
-    state = streamStoreReducer(state, {
-      type: "agent-reasoning",
+    appendTaskReasoning({
       agentId: "agent-redaction",
       conversationId: "conversation-redaction",
       runId: "run-redaction",
       chunk: reasoning.chunk,
     });
-    const decoration = state.taskDecorations["agent-redaction"];
+    const decoration = getTaskDecoration("agent-redaction");
     expect(decoration?.reasoningText).toContain("[REDACTED]");
     expect(decoration?.statusText).not.toContain("status-secret");
+    __privateTaskDecorationStore.resetForTests();
   });
 });

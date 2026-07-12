@@ -15,10 +15,6 @@ import {
   type AgentRunFinishOutcome,
   type AgentStreamEventType,
 } from "../../../runtime/contracts/agent-runtime.js";
-import {
-  reduceTaskSnapshot,
-  type ConversationTaskSnapshot,
-} from "./task-snapshot-reducer.js";
 import type { SelfModHmrState } from "../../../runtime/contracts/index.js";
 import { IPC_AGENT_ONE_SHOT_COMPLETION } from "../../src/shared/contracts/ipc-channels.js";
 import type {
@@ -156,7 +152,12 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
   const requestToRunId = new Map<string, string>();
   const terminalRunIds = new Set<string>();
   const activeRunByConversation = new Map<string, ActiveRunSnapshot>();
-  const tasksByRunId = new Map<string, Map<string, ConversationTaskSnapshot>>();
+  // Which agent threads are still running under each root run — the only
+  // thing the main process needs to know about tasks. Keeps run→owner /
+  // run→conversation routing alive (scheduleRunCleanup) while background
+  // agents outlive their spawning run; the renderer's task STATE comes from
+  // the runtime's thread-activity rows, not from here.
+  const runningAgentsByRunId = new Map<string, Set<string>>();
   const nextAgentEventSeq = createMonotonicSeqGenerator();
   const conversationEventBuffers = new Map<
     string,
@@ -235,36 +236,25 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
     return typeof runOwner === "number" ? runOwner : undefined;
   };
 
-  const upsertTaskSnapshot = (event: AgentEventPayload) => {
+  const trackRunningAgent = (event: AgentEventPayload) => {
     if (!event.agentId) return;
-
     const runId = event.rootRunId ?? event.runId;
-    const runTasks =
-      tasksByRunId.get(runId) ?? new Map<string, ConversationTaskSnapshot>();
-    const current = runTasks.get(event.agentId);
-
-    const next = reduceTaskSnapshot({
-      current,
-      event,
-      runId,
-      agentId: event.agentId,
-      nowMs: Date.now(),
-    });
-    if (!next) return;
-
-    runTasks.set(event.agentId, next);
-    tasksByRunId.set(runId, runTasks);
-    console.log(
-      JSON.stringify({
-        label: "[stella:working-indicator:ipc-task-snapshot]",
-        type: event.type,
-        runId,
-        agentId: event.agentId,
-        description: next.description,
-        status: next.status,
-        statusText: next.statusText,
-      }),
-    );
+    if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED) {
+      const running = runningAgentsByRunId.get(runId) ?? new Set<string>();
+      running.add(event.agentId);
+      runningAgentsByRunId.set(runId, running);
+      return;
+    }
+    if (
+      event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED ||
+      event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED ||
+      event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED
+    ) {
+      const running = runningAgentsByRunId.get(runId);
+      if (!running) return;
+      running.delete(event.agentId);
+      if (running.size === 0) runningAgentsByRunId.delete(runId);
+    }
   };
 
   const emitAgentEvent = (
@@ -294,9 +284,9 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
       if (activeRun?.runId === normalizedEvent.runId) {
         activeRunByConversation.delete(normalizedEvent.conversationId);
       }
-      tasksByRunId.delete(trackedRunId);
+      runningAgentsByRunId.delete(trackedRunId);
     } else {
-      upsertTaskSnapshot(normalizedEvent);
+      trackRunningAgent(normalizedEvent);
     }
 
     bufferConversationEvent(normalizedEvent.conversationId, normalizedEvent);
@@ -355,17 +345,15 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
 
   const scheduleRunCleanup = (runId: string, requestId?: string) => {
     setTimeout(() => {
-      const runTasks = tasksByRunId.get(runId);
-      const hasRunningTasks = Array.from(runTasks?.values() ?? []).some(
-        (task) => task.status === "running",
-      );
+      const hasRunningTasks =
+        (runningAgentsByRunId.get(runId)?.size ?? 0) > 0;
       if (hasRunningTasks) {
         scheduleRunCleanup(runId, requestId);
         return;
       }
       runOwners.delete(runId);
       runToConversationId.delete(runId);
-      tasksByRunId.delete(runId);
+      runningAgentsByRunId.delete(runId);
       terminalRunIds.delete(runId);
       const linkedRequestId = requestId ?? runToRequestId.get(runId);
       if (linkedRequestId) {
@@ -461,7 +449,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
         return {
           activeRun: null,
           events: [] as AgentEventPayload[],
-          tasks: [] as ConversationTaskSnapshot[],
         };
       }
       const buffer = conversationEventBuffers.get(conversationId);
@@ -705,14 +692,10 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
           },
         );
       }
-      const tasks = Array.from(tasksByRunId.entries())
-        .filter(([runId]) => runToConversationId.get(runId) === conversationId)
-        .flatMap(([, taskMap]) => Array.from(taskMap.values()));
       return {
         activeRun,
         events,
         hasMore: page.hasMore,
-        tasks,
       };
     },
   );

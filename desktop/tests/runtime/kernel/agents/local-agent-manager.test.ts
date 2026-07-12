@@ -15,11 +15,12 @@ import type {
   ToolContext,
   ToolResult,
 } from "../../../../../runtime/kernel/tools/types.js";
-import type { TaskItem } from "@/features/chat/lib/event-transforms";
 import {
-  initialStoreState,
-  streamStoreReducer,
-} from "@/features/chat/streaming/store";
+  __privateTaskDecorationStore,
+  clearTaskDecoration,
+  decorateTask,
+  getTaskDecoration,
+} from "@/features/chat/streaming/task-decoration-store";
 import { waitForAgentSettled } from "../../../helpers/agent.js";
 
 const sleep = (ms: number) =>
@@ -430,35 +431,23 @@ describe("LocalAgentManager Exec fs locking", () => {
     // Renderer side: the follow-up's stream events maintain only the
     // ephemeral decoration (keyed by thread, rebound to the current run),
     // and the completion clears it — no per-run task copies to leak.
-    let state = streamStoreReducer(initialStoreState, {
-      type: "run-started",
-      runId: "root-current",
-      conversationId: "conv-1",
-      userMessageId: "user-2",
-    });
     for (const event of resumedEvents) {
       if (!event.agentId) continue;
       if (event.type === "agent-completed") {
-        state = streamStoreReducer(state, {
-          type: "task-decoration-clear",
-          agentId: event.agentId,
-        });
+        clearTaskDecoration(event.agentId);
         continue;
       }
-      state = streamStoreReducer(state, {
-        type: "task-decorate",
+      decorateTask({
         agentId: event.agentId,
         conversationId: "conv-1",
         runId: event.rootRunId,
-        userMessageId: "user-2",
         statusText: event.statusText,
       });
-      expect(state.taskDecorations[event.agentId]?.runId).toBe(
-        "root-current",
-      );
+      expect(getTaskDecoration(event.agentId)?.runId).toBe("root-current");
     }
     // Completion left no lingering decoration behind.
-    expect(state.taskDecorations[task.threadId]).toBeUndefined();
+    expect(getTaskDecoration(task.threadId)).toBeUndefined();
+    __privateTaskDecorationStore.resetForTests();
   });
 
   it("emits an interjected turn's real finish immediately — no deferral, no audience split", async () => {
@@ -1240,33 +1229,28 @@ describe("send_input follow-up description and run rebind", () => {
     // keyed by thread: a rebind is an in-place update, and the terminal
     // stream event clears it. Authoritative status lives in the
     // thread-activity rows and never depends on this map.
-    let state = streamStoreReducer(initialStoreState, {
-      type: "task-decorate",
+    decorateTask({
       agentId: "thread-1",
       conversationId: "conv-1",
       runId: "root-1",
       statusText: "find the booked itinerary",
     });
-    expect(Object.keys(state.taskDecorations)).toEqual(["thread-1"]);
+    expect(getTaskDecoration("thread-1")?.runId).toBe("root-1");
 
     // Follow-up streams under the new run: same single entry, new runId.
-    state = streamStoreReducer(state, {
-      type: "task-decorate",
+    decorateTask({
       agentId: "thread-1",
       conversationId: "conv-1",
       runId: "root-2",
       statusText: "search for the itinerary email",
     });
-    expect(Object.keys(state.taskDecorations)).toEqual(["thread-1"]);
-    expect(state.taskDecorations["thread-1"]).toMatchObject({
+    expect(getTaskDecoration("thread-1")).toMatchObject({
       runId: "root-2",
       statusText: "search for the itinerary email",
     });
 
-    state = streamStoreReducer(state, {
-      type: "task-decoration-clear",
-      agentId: "thread-1",
-    });
-    expect(state.taskDecorations["thread-1"]).toBeUndefined();
+    clearTaskDecoration("thread-1");
+    expect(getTaskDecoration("thread-1")).toBeUndefined();
+    __privateTaskDecorationStore.resetForTests();
   });
 });

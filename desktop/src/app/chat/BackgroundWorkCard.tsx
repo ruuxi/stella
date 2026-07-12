@@ -24,11 +24,21 @@
  * (no live task context is needed — the card resolves "still working" from
  * the props threaded through the row).
  */
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { MessageSquarePlus, Send, X } from "@/ui/icons";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import type { TaskToolActivity } from "../../../../runtime/contracts/agent-runtime.js";
 import { friendlyInlineToolStatus } from "@/app/chat/friendly-tool-status";
+import {
+  getTaskDecoration,
+  subscribeTaskDecoration,
+} from "@/features/chat/streaming/task-decoration-store";
 import "./background-work-card.css";
 
 /** A thread with no completion signal that was spawned longer ago than this
@@ -187,6 +197,23 @@ export function BackgroundWorkCard({
     ],
   );
 
+  // Live status for a single-thread card: agent-progress ticks are
+  // ephemeral decoration (never persisted), so the working subtitle
+  // subscribes straight to this thread's decoration in the module store —
+  // one tick re-renders this card only, and it works on every surface
+  // (full chat, sidebar, mini) without threading props through the rows.
+  const liveThreadId = threadIds.length === 1 ? threadIds[0] : undefined;
+  const liveDecoration = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) =>
+        liveThreadId
+          ? subscribeTaskDecoration(liveThreadId, listener)
+          : () => {},
+      [liveThreadId],
+    ),
+    () => (liveThreadId ? getTaskDecoration(liveThreadId) : undefined),
+  );
+
   // While a thread reads as working only because it hasn't yet crossed the
   // stale threshold, arm a one-shot timer for that deadline so the card
   // settles itself even if no further signal ever arrives.
@@ -225,8 +252,14 @@ export function BackgroundWorkCard({
   // and a settled card keeps its plain historical label.
   const failed = (failedThreadIds?.length ?? 0) > 0;
   const showPaused = paused && !working && !failed;
-  const progressText = !multi ? progressTexts?.[threadIds[0]] : undefined;
-  const toolActivity = !multi ? toolActivities?.[threadIds[0]] : undefined;
+  // Live decoration wins over the (reload-only, historical) persisted
+  // progress props; both are absent for multi-thread tally cards.
+  const progressText = !multi
+    ? (liveDecoration?.statusText ?? progressTexts?.[threadIds[0]])
+    : undefined;
+  const toolActivity = !multi
+    ? (liveDecoration?.toolActivity ?? toolActivities?.[threadIds[0]])
+    : undefined;
   const subtitle = failed
     ? "Failed"
     : showPaused

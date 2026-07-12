@@ -6,8 +6,6 @@
  * data transition layer so the same shapes are usable from tests
  * without a React renderer.
  */
-import { normalizeTaskDisplayStatusText } from '@/features/chat/lib/event-transforms'
-import type { TaskToolActivity } from '../../../../../runtime/contracts/agent-runtime.js'
 import type { AttachmentRef } from './chat-types'
 
 export type RunRecord = {
@@ -42,31 +40,9 @@ export type RunRecord = {
   >
 }
 
-/**
- * Ephemeral, stream-fed decoration for one background-agent thread, keyed
- * by the thread's durable `agentId` — never by run. The authoritative
- * fields (status, description, timestamps, result) live in the
- * thread-activity rows fetched from the runtime's `runtime_agents` table;
- * a decoration only carries the high-frequency display extras the rows
- * don't persist. Cleared on the thread's terminal stream event; stale
- * entries are harmless (the merge ignores decoration for non-running
- * rows) and bounded by `MAX_TASK_DECORATIONS`.
- */
-export type TaskDecoration = {
-  agentId: string
-  conversationId: string
-  runId?: string
-  anchorTurnId?: string
-  statusText?: string
-  toolActivity?: TaskToolActivity
-  reasoningText?: string
-  lastUpdatedAtMs: number
-}
-
 export type StreamStoreState = {
   runsById: Record<string, RunRecord>
   activeRunIdByConversation: Record<string, string | null>
-  taskDecorations: Record<string, TaskDecoration>
   requestToRunId: Record<string, string>
 }
 
@@ -133,28 +109,7 @@ export type StreamStoreAction =
       outcome: 'completed' | 'error' | 'canceled'
     }
   | {
-      type: 'task-decorate'
-      agentId: string
-      conversationId: string
-      runId?: string
-      userMessageId?: string
-      statusText?: string
-      toolActivity?: TaskToolActivity
-    }
-  | {
-      type: 'agent-reasoning'
-      agentId: string
-      conversationId: string
-      runId?: string
-      userMessageId?: string
-      chunk: string
-    }
-  | {
-      type: 'task-decoration-clear'
-      agentId: string
-    }
-  | {
-      type: 'clear-conversation-decorations'
+      type: 'clear-conversation-run'
       conversationId: string
     }
   | {
@@ -166,36 +121,7 @@ export type StreamStoreAction =
 export const initialStoreState: StreamStoreState = {
   runsById: {},
   activeRunIdByConversation: {},
-  taskDecorations: {},
   requestToRunId: {},
-}
-
-export const MAX_AGENT_REASONING_CHARS = 8_000
-
-/** Terminal-clear normally keeps the map tiny; the cap only guards against
- *  threads whose terminal event streamed while the renderer wasn't looking
- *  (their stale decoration is already ignored by the merge). */
-export const MAX_TASK_DECORATIONS = 64
-
-const withDecoration = (
-  state: StreamStoreState,
-  next: TaskDecoration,
-): StreamStoreState => {
-  const taskDecorations = {
-    ...state.taskDecorations,
-    [next.agentId]: next,
-  }
-  const keys = Object.keys(taskDecorations)
-  if (keys.length > MAX_TASK_DECORATIONS) {
-    const oldest = keys.reduce((a, b) =>
-      (taskDecorations[a]?.lastUpdatedAtMs ?? 0) <=
-      (taskDecorations[b]?.lastUpdatedAtMs ?? 0)
-        ? a
-        : b,
-    )
-    delete taskDecorations[oldest]
-  }
-  return { ...state, taskDecorations }
 }
 
 const toToolCallKey = (args: {
@@ -492,68 +418,18 @@ export function streamStoreReducer(
             : state.activeRunIdByConversation,
       }
     }
-    case 'task-decorate': {
-      const existing = state.taskDecorations[action.agentId]
-      return withDecoration(state, {
-        agentId: action.agentId,
-        conversationId: action.conversationId,
-        runId: action.runId ?? existing?.runId,
-        anchorTurnId: action.userMessageId ?? existing?.anchorTurnId,
-        statusText:
-          normalizeTaskDisplayStatusText(action.statusText) ??
-          existing?.statusText,
-        toolActivity: action.toolActivity ?? existing?.toolActivity,
-        reasoningText: existing?.reasoningText,
-        lastUpdatedAtMs: Date.now(),
-      })
-    }
-    case 'agent-reasoning': {
-      if (!action.chunk) {
-        return state
-      }
-      const existing = state.taskDecorations[action.agentId]
-      const nextReasoningText = `${existing?.reasoningText ?? ''}${action.chunk}`
-      return withDecoration(state, {
-        agentId: action.agentId,
-        conversationId: action.conversationId,
-        runId: action.runId ?? existing?.runId,
-        anchorTurnId: existing?.anchorTurnId,
-        statusText: existing?.statusText,
-        toolActivity: existing?.toolActivity,
-        reasoningText:
-          nextReasoningText.length > MAX_AGENT_REASONING_CHARS
-            ? nextReasoningText.slice(-MAX_AGENT_REASONING_CHARS)
-            : nextReasoningText,
-        lastUpdatedAtMs: Date.now(),
-      })
-    }
-    case 'task-decoration-clear': {
-      if (!(action.agentId in state.taskDecorations)) {
-        return state
-      }
-      const taskDecorations = { ...state.taskDecorations }
-      delete taskDecorations[action.agentId]
-      return { ...state, taskDecorations }
-    }
-    case 'clear-conversation-decorations': {
-      const remaining = Object.fromEntries(
-        Object.entries(state.taskDecorations).filter(
-          ([, decoration]) =>
-            decoration.conversationId !== action.conversationId,
-        ),
-      )
+    case 'clear-conversation-run': {
       const activeRunId =
         state.activeRunIdByConversation[action.conversationId] ?? null
+      if (activeRunId === null) {
+        return state
+      }
       return {
         ...state,
-        taskDecorations: remaining,
-        activeRunIdByConversation:
-          activeRunId === null
-            ? state.activeRunIdByConversation
-            : {
-                ...state.activeRunIdByConversation,
-                [action.conversationId]: null,
-              },
+        activeRunIdByConversation: {
+          ...state.activeRunIdByConversation,
+          [action.conversationId]: null,
+        },
       }
     }
     case 'hydrate-conversation': {

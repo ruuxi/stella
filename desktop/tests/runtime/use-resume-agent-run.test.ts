@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { shouldRetainResumedStreamingState } from "../../src/features/chat/hooks/use-resume-agent-run";
 import {
-  initialStoreState,
-  streamStoreReducer,
-} from "../../src/features/chat/streaming/store";
+  __privateTaskDecorationStore,
+  clearConversationTaskDecorations,
+  decorateTask,
+  getTaskDecoration,
+} from "../../src/features/chat/streaming/task-decoration-store";
+
+afterEach(() => {
+  __privateTaskDecorationStore.resetForTests();
+});
 
 describe("shouldRetainResumedStreamingState", () => {
   it("drops stale resumed state when replay is exhausted and the run is gone", () => {
@@ -74,28 +80,23 @@ describe("shouldRetainResumedStreamingState", () => {
 });
 describe("stream resume cleanup", () => {
   it("clears the active conversation's task decorations, keeping other conversations", () => {
-    const withFirst = streamStoreReducer(initialStoreState, {
-      type: "task-decorate",
+    decorateTask({
       agentId: "agent-1",
       conversationId: "conv-1",
       runId: "run-1",
       statusText: "Inspecting stale footer",
     });
-    const withBoth = streamStoreReducer(withFirst, {
-      type: "task-decorate",
+    decorateTask({
       agentId: "agent-2",
       conversationId: "conv-2",
       runId: "run-2",
       statusText: "Keep this decoration",
     });
 
-    const cleaned = streamStoreReducer(withBoth, {
-      type: "clear-conversation-decorations",
-      conversationId: "conv-1",
-    });
+    clearConversationTaskDecorations("conv-1");
 
-    expect(cleaned.taskDecorations["agent-1"]).toBeUndefined();
-    expect(cleaned.taskDecorations["agent-2"]).toMatchObject({
+    expect(getTaskDecoration("agent-1")).toBeUndefined();
+    expect(getTaskDecoration("agent-2")).toMatchObject({
       conversationId: "conv-2",
       statusText: "Keep this decoration",
     });

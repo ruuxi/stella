@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { showToast } from '@/ui/toast'
 import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
 import {
@@ -7,6 +15,11 @@ import {
   streamStoreReducer,
 } from './store'
 import { useReasoningBatcher } from './use-reasoning-batcher'
+import {
+  clearConversationTaskDecorations,
+  getTaskDecorationsSnapshot,
+  subscribeTaskDecorations,
+} from './task-decoration-store'
 import { useStreamTextAnimation } from './use-stream-text-animation'
 import { useAgentEventHandler } from './use-agent-event-handler'
 import { useApplyResumeSnapshot } from './use-resume-snapshot'
@@ -344,7 +357,7 @@ export function useLocalAgentStream({
     activeRunIdByConversationRef.current = storeState.activeRunIdByConversation
   }, [storeState.activeRunIdByConversation])
 
-  const reasoning = useReasoningBatcher(dispatch)
+  const reasoning = useReasoningBatcher()
   const lifecycleCallbacks = useMemo(
     () => ({
       onRunStarted,
@@ -376,8 +389,9 @@ export function useLocalAgentStream({
     // still-draining text buffer so SQLite's full message appeared at once.
     const conversationId = activeConversationIdRef.current
     if (conversationId) {
+      clearConversationTaskDecorations(conversationId)
       dispatch({
-        type: 'clear-conversation-decorations',
+        type: 'clear-conversation-run',
         conversationId,
       })
     }
@@ -568,18 +582,23 @@ export function useLocalAgentStream({
   // Ephemeral per-thread stream decoration (statusText ticks, tool
   // activity, reasoning) for the active conversation, keyed by agentId.
   // The authoritative task rows come from `useThreadActivity`; callers
-  // overlay these via `buildActivityTasks`.
+  // overlay these via `buildActivityTasks`. Backed by the module-level
+  // decoration store, which inline chat cards also subscribe to per-agent.
+  const decorationsSnapshot = useSyncExternalStore(
+    subscribeTaskDecorations,
+    getTaskDecorationsSnapshot,
+  )
   const taskDecorations = useMemo(
     () =>
       activeConversationId
         ? Object.fromEntries(
-            Object.entries(storeState.taskDecorations).filter(
+            Object.entries(decorationsSnapshot).filter(
               ([, decoration]) =>
                 decoration.conversationId === activeConversationId,
             ),
           )
         : {},
-    [activeConversationId, storeState.taskDecorations],
+    [activeConversationId, decorationsSnapshot],
   )
 
   return {

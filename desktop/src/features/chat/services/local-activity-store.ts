@@ -5,9 +5,6 @@
  * `localChat:updated` notification with a `pendingRefetch` flag so updates
  * that fire mid-read don't get dropped.
  *
- * `latestMessageTimestampMs` rides with every snapshot so the task-
- * extraction logic can apply the stale-schedule auto-completion rule
- * without a second IPC.
  */
 import type {
   EventRecord,
@@ -20,13 +17,11 @@ const getLocalChatApi = () => window.electronAPI?.localChat ?? null;
 
 export type LocalActivityWindow = {
   activities: EventRecord[];
-  latestMessageTimestampMs: number | null;
 };
 
 const EMPTY_ACTIVITIES: EventRecord[] = [];
 const EMPTY_WINDOW: LocalActivityWindow = {
   activities: EMPTY_ACTIVITIES,
-  latestMessageTimestampMs: null,
 };
 
 export const listLocalActivity = async (
@@ -47,7 +42,6 @@ export const listLocalActivity = async (
   });
   return {
     activities: window.activities,
-    latestMessageTimestampMs: window.latestMessageTimestampMs,
   };
 };
 

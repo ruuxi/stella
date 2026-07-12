@@ -36,7 +36,6 @@ export type ChatColumnConversation = {
    */
   activity: {
     activities: EventRecord[];
-    latestMessageTimestampMs: number | null;
     hasOlder: boolean;
     isLoadingOlder: boolean;
     loadOlder: () => void;

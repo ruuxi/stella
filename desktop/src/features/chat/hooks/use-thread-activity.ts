@@ -4,14 +4,16 @@
  * table). One row per background-agent thread — status, description, and
  * timestamps are the runtime's current truth, refreshed on every
  * `localChat:threadActivityUpdated` push. No paging: the list is bounded by
- * thread count, not event history.
+ * thread count, not event history. Not storage-mode gated: `persistTask`
+ * writes `runtime_agents` rows regardless of the task's storage mode, so the
+ * rows exist (and this hook works) for cloud-mode conversations too.
  */
-import { useEffect, useMemo, useState } from "react";
-import { useChatStore } from "@/context/chat-store-context";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   subscribeToThreadActivity,
   type ThreadActivitySnapshot,
 } from "@/features/chat/services/thread-activity-store";
+import { showToast } from "@/ui/toast";
 import type { ThreadActivityRecord } from "../../../../../runtime/contracts/local-chat.js";
 
 const EMPTY_RECORDS: ThreadActivityRecord[] = [];
@@ -30,23 +32,22 @@ export type ConversationThreadActivity = {
 export const useThreadActivity = (
   conversationId?: string,
 ): ConversationThreadActivity => {
-  const { storageMode } = useChatStore();
-  const isLocalMode = storageMode === "local";
-
-  const visitKey = `${storageMode}:${conversationId ?? ""}`;
-  const visitToken = useMemo(() => Symbol(visitKey), [visitKey]);
+  const visitToken = useMemo(() => Symbol(conversationId ?? ""), [
+    conversationId,
+  ]);
 
   const [snapshotState, setSnapshotState] = useState<{
     visitToken: symbol;
     snapshot: ThreadActivitySnapshot;
   }>({ visitToken, snapshot: EMPTY_SNAPSHOT });
+  const lastErrorToastAtRef = useRef(0);
 
   useEffect(() => {
     setSnapshotState({ visitToken, snapshot: EMPTY_SNAPSHOT });
   }, [visitToken]);
 
   useEffect(() => {
-    if (!isLocalMode || !conversationId) {
+    if (!conversationId) {
       setSnapshotState({
         visitToken,
         snapshot: { records: EMPTY_RECORDS, hasLoaded: true, error: null },
@@ -59,13 +60,26 @@ export const useThreadActivity = (
       (snapshot) => {
         if (cancelled) return;
         setSnapshotState({ visitToken, snapshot });
+        if (!snapshot.error) return;
+        // The store keeps retrying on its own; just tell the user once in a
+        // while so a stuck-empty Activity list isn't a silent mystery.
+        const now = Date.now();
+        if (now - lastErrorToastAtRef.current > 10_000) {
+          lastErrorToastAtRef.current = now;
+          showToast({
+            title: "Couldn’t load activity",
+            description:
+              snapshot.error.message || "Stella will retry in a moment.",
+            variant: "error",
+          });
+        }
       },
     );
     return () => {
       cancelled = true;
       unsubscribe();
     };
-  }, [conversationId, isLocalMode, visitToken]);
+  }, [conversationId, visitToken]);
 
   const activeSnapshot =
     snapshotState.visitToken === visitToken
@@ -76,7 +90,6 @@ export const useThreadActivity = (
     records: activeSnapshot.records,
     isInitialLoading:
       Boolean(conversationId) &&
-      isLocalMode &&
       !activeSnapshot.hasLoaded &&
       activeSnapshot.records.length === 0,
   };

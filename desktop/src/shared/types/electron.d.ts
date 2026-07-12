@@ -688,21 +688,6 @@ export type ElectronAgentApi = {
       uiVisibility?: "visible" | "hidden";
     } | null;
     events: AgentStreamIpcEvent[];
-    tasks: Array<{
-      runId: string;
-      agentId: string;
-      agentType?: string;
-      description?: string;
-      anchorTurnId?: string;
-      parentAgentId?: string;
-      status: TaskLifecycleStatus;
-      statusText?: string;
-      reasoningText?: string;
-      result?: string;
-      error?: string;
-      startedAtMs?: number;
-      completedAtMs?: number;
-    }>;
   }>;
   onStream: (callback: (event: AgentStreamIpcEvent) => void) => () => void;
   onSelfModHmrState: (callback: (event: SelfModHmrState) => void) => () => void;
@@ -1591,7 +1576,6 @@ export type ElectronLocalChatApi = {
     beforeId?: string;
   }) => Promise<{
     activities: EventRecord[];
-    latestMessageTimestampMs: number | null;
   }>;
   /**
    * Authoritative Activity read: one row per background-agent thread,

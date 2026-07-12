@@ -2,12 +2,11 @@
  * Translates inbound `AgentStreamEvent`s into reducer actions + side
  * effects (toasts, per-slot overlay pushes, response target).
  *
- * Refs (`activeConversationIdRef`, `activeRunIdByConversationRef`,
- * `lastSeqByConversationRef`, `terminalRunIdsRef`,
- * `terminalTaskKeysRef`, `pendingRequestIdsRef`) and dispatch are
- * passed in so the hook can be composed with the rest of
+ * The dedup/ordering refs and dispatch are passed in (see the options
+ * type) so the hook can be composed with the rest of
  * `useLocalAgentStream` without duplicating the reducer's source of
- * truth. The slot-management callbacks (`beginStreamingRun`,
+ * truth. Per-thread task decoration writes go straight to the module
+ * `task-decoration-store`, not through the reducer. The slot-management callbacks (`beginStreamingRun`,
  * `acceptStreamChunk`, `finalizeMessageBoundary`,
  * `finalizeRunOnFinish`) own the in-memory
  * `streamingAssistants` overlay array — see `useLocalAgentStream` for
@@ -16,6 +15,10 @@
  */
 import { useCallback, type Dispatch, type MutableRefObject } from 'react'
 import { showToast } from '@/ui/toast'
+import {
+  clearTaskDecoration,
+  decorateTask,
+} from './task-decoration-store'
 import {
   AGENT_IDS,
   AGENT_RUN_FINISH_OUTCOMES,
@@ -35,7 +38,6 @@ type ReasoningQueueEntry = {
   agentId: string
   conversationId: string
   runId?: string
-  userMessageId?: string
   chunk: string
 }
 
@@ -458,10 +460,7 @@ export function useAgentEventHandler({
             event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED
           ) {
             discardPendingReasoningChunks(event.agentId)
-            dispatch({
-              type: 'task-decoration-clear',
-              agentId: event.agentId,
-            })
+            clearTaskDecoration(event.agentId)
             break
           }
 
@@ -473,7 +472,6 @@ export function useAgentEventHandler({
               agentId: event.agentId,
               conversationId,
               runId,
-              userMessageId: event.userMessageId,
               chunk: event.chunk,
             })
             break
@@ -484,19 +482,15 @@ export function useAgentEventHandler({
             // clean decoration — stale reasoning/status from the previous
             // attempt must not bleed into the new one.
             discardPendingReasoningChunks(event.agentId)
-            dispatch({
-              type: 'task-decoration-clear',
-              agentId: event.agentId,
-            })
+            clearTaskDecoration(event.agentId)
           }
 
           flushPendingReasoningChunks(event.agentId)
-          dispatch({
-            type: 'task-decorate',
+          decorateTask({
             agentId: event.agentId,
             conversationId,
             runId,
-            userMessageId: event.userMessageId,
+            anchorTurnId: event.userMessageId,
             statusText: event.statusText,
             toolActivity: event.toolActivity,
           })

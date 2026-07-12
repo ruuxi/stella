@@ -92,7 +92,6 @@ export function useFullShellChat({
 
   const {
     activities,
-    latestMessageTimestampMs,
     hasOlderActivity,
     isLoadingOlder: isLoadingOlderActivity,
     loadOlder: loadOlderActivity,
@@ -412,7 +411,6 @@ export function useFullShellChat({
       tasks,
       activity: {
         activities,
-        latestMessageTimestampMs,
         hasOlder: hasOlderActivity,
         isLoadingOlder: isLoadingOlderActivity,
         loadOlder: loadOlderActivity,
@@ -454,7 +452,6 @@ export function useFullShellChat({
       isLoadingOlderActivity,
       isLoadingOlderFiles,
       isLoadingOlderMessages,
-      latestMessageTimestampMs,
       tasks,
       loadOlderActivity,
       loadOlderFiles,

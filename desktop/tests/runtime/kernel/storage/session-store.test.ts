@@ -743,7 +743,7 @@ describe("session-store", () => {
     expect(messages.at(-1)?.payload?.text).toBe("user 4049");
   });
 
-  it("listActivity returns lifecycle events with the latest user/assistant timestamp", () => {
+  it("listActivity returns only lifecycle events", () => {
     const { store } = createTestContext();
     const conversationId = store.getOrCreateDefaultConversationId();
 
@@ -789,15 +789,13 @@ describe("session-store", () => {
       payload: { agentId: "general-1", result: "Done" },
     });
 
-    const { activities, latestMessageTimestampMs } =
-      store.listActivity(conversationId);
+    const { activities } = store.listActivity(conversationId);
 
     expect(activities.map((event) => event.type)).toEqual([
       "agent-started",
       "agent-progress",
       "agent-completed",
     ]);
-    expect(latestMessageTimestampMs).toBe(1_030);
   });
 
   it("listActivity pages older activity via beforeTimestampMs/beforeId", () => {
@@ -836,40 +834,6 @@ describe("session-store", () => {
     ).toEqual(["agent-0", "agent-1", "agent-2"]);
   });
 
-  it("listActivity returns latestMessageTimestampMs across the whole conversation, not just the activity window", () => {
-    const { store } = createTestContext();
-    const conversationId = store.getOrCreateDefaultConversationId();
-
-    store.appendEvent({
-      conversationId,
-      type: "agent-started",
-      timestamp: 1_000,
-      payload: {
-        agentId: "agent-1",
-        description: "early task",
-        agentType: "general",
-      },
-    });
-    store.appendEvent({
-      conversationId,
-      type: "user_message",
-      timestamp: 2_000,
-      payload: { text: "Newer turn" },
-    });
-    store.appendEvent({
-      conversationId,
-      type: "assistant_message",
-      timestamp: 2_500,
-      payload: { text: "Reply" },
-    });
-
-    const { activities, latestMessageTimestampMs } = store.listActivity(
-      conversationId,
-      { limit: 1 },
-    );
-    expect(activities).toHaveLength(1);
-    expect(latestMessageTimestampMs).toBe(2_500);
-  });
 
   it("listFiles returns only events whose payload carries fileChanges or producedFiles", () => {
     const { store } = createTestContext();

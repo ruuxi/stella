@@ -2242,22 +2242,13 @@ export class SessionStore {
    * `agent-completed` / `agent-failed` / `agent-canceled`) for the
    * conversation, ordered ASC by `(timestamp, _id)`.
    *
-   * Used by the activity surfaces (footer working indicator,
-   * `ChatHomeOverview` Now/Done/UpNext, `ActivityHistoryDialog`) so they
-   * no longer have to scan the full event stream looking for the handful
-   * of rows that actually drive task state.
-   *
-   * `latestMessageTimestampMs` is the timestamp of the most recent
-   * user/assistant message anywhere in the conversation (independent of
-   * the activity cap). The stale-schedule auto-completion path needs to
-   * know whether ANY user/assistant message arrived after a given task's
-   * `startedAtMs`; surfacing one number here keeps that check intact
-   * without dragging the message stream along.
+   * Task STATE no longer derives from these events (that's
+   * `listThreadActivity`); the remaining consumers are file-derived
+   * surfaces (per-agent file lists merge the `agent-completed` rollups)
+   * and the inline chat cards' per-occurrence history.
    *
    * Optional `beforeTimestampMs` / `beforeId` cursor returns strictly-
-   * older activity (used by `ActivityHistoryDialog` to page back through
-   * Completed history). `latestMessageTimestampMs` stays global to the
-   * conversation either way.
+   * older activity.
    */
   listActivity(
     conversationIdInput: string,
@@ -2317,22 +2308,7 @@ export class SessionStore {
 
     const activities = rows.map((row) => this.deserializeEventRow(row));
 
-    const latestRow = this.db
-      .prepare(
-        `
-      SELECT created_at AS timestamp
-      FROM message
-      WHERE session_id = ?
-        AND type IN ('user_message', 'assistant_message')
-      ORDER BY created_at DESC, id DESC
-      LIMIT 1
-    `,
-      )
-      .get(conversationId) as { timestamp?: unknown } | undefined;
-    const latestMessageTimestampMs =
-      typeof latestRow?.timestamp === "number" ? latestRow.timestamp : null;
-
-    return { activities, latestMessageTimestampMs };
+    return { activities };
   }
 
   /**

@@ -50,26 +50,17 @@ export type LocalChatMessageWindow = {
 };
 
 /**
- * Read shape backing `SessionStore.listActivity` — the agent-* lifecycle
- * events that drive the Now / Done / Up Next overview, footer working
- * indicator, and ActivityHistoryDialog. Kept separate from the message
- * stream so consumers that only care about task state never need to walk
- * the (much larger) raw event stream.
+ * Read shape backing `SessionStore.listActivity` — the persisted agent-*
+ * lifecycle events. Kept separate from the message stream so consumers
+ * never need to walk the (much larger) raw event stream.
  *
- * `activities` are ordered ASC by `(timestamp, _id)` so the renderer's
- * task projection logic (which folds forward) sees events in the same
- * order a flat replay would.
- *
- * `latestMessageTimestampMs` is the timestamp of the most recent
- * user/assistant message anywhere in the conversation. The stale-
- * schedule auto-completion path (see `extractTasksFromActivities`)
- * needs to know whether any user/assistant message arrived after a
- * given task's `startedAtMs` — a single global timestamp answers that
- * question without dragging the full message stream along.
+ * `activities` are ordered ASC by `(timestamp, _id)` so consumers see
+ * events in the same order a flat replay would. Task STATE no longer
+ * derives from these events (that's `listThreadActivity`); the remaining
+ * consumers are file-derived surfaces and the inline chat cards.
  */
 export type LocalChatActivityWindow = {
   activities: LocalChatEventRecord[];
-  latestMessageTimestampMs: number | null;
 };
 
 /**

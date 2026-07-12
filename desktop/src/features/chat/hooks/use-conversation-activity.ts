@@ -38,14 +38,13 @@ const LOCAL_ACTIVITY_LOAD_RETRY_MS = 300;
 const EMPTY_ACTIVITIES: EventRecord[] = [];
 
 const EMPTY_SNAPSHOT: LocalActivityWindowSnapshot = {
-  window: { activities: EMPTY_ACTIVITIES, latestMessageTimestampMs: null },
+  window: { activities: EMPTY_ACTIVITIES },
   hasLoaded: false,
   error: null,
 };
 
 export type ConversationActivityFeed = {
   activities: EventRecord[];
-  latestMessageTimestampMs: number | null;
   hasOlderActivity: boolean;
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
@@ -90,7 +89,6 @@ export const useConversationActivity = (
         snapshot: {
           window: {
             activities: EMPTY_ACTIVITIES,
-            latestMessageTimestampMs: null,
           },
           hasLoaded: true,
           error: null,
@@ -148,8 +146,6 @@ export const useConversationActivity = (
       : EMPTY_SNAPSHOT;
 
   const activities = activeSnapshot.window.activities;
-  const latestMessageTimestampMs =
-    activeSnapshot.window.latestMessageTimestampMs;
 
   const hasOlderActivity =
     activeSnapshot.hasLoaded && activities.length >= limit;
@@ -192,7 +188,6 @@ export const useConversationActivity = (
 
   return {
     activities,
-    latestMessageTimestampMs,
     hasOlderActivity,
     isLoadingOlder,
     isInitialLoading,
