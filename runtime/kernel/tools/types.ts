@@ -126,8 +126,10 @@ export type AgentToolRequest = {
    */
   model?: string;
   /**
-   * Per-spawn external-engine selection (`codex` / `claude-code`, optionally
-   * with a pinned engine-native model). Never persisted.
+   * Per-spawn engine selection. Plain model references pin `default` so a
+   * saved external-engine preference cannot override the requested model;
+   * `codex` / `claude-code` optionally carry a pinned engine-native model.
+   * Never persisted.
    */
   spawnEngine?: SpawnEngineSelection;
   toolWorkspaceRoot?: string;

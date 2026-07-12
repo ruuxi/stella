@@ -128,7 +128,7 @@ type RuntimeAgentRecord = {
   agentType: string;
   /** Per-spawn model override (plain model-reference string). */
   model?: string;
-  /** Per-spawn external-engine selection. */
+  /** Per-spawn engine selection, including `default` for plain model pins. */
   spawnEngine?: SpawnEngineSelection;
   toolWorkspaceRoot?: string;
   agentDepth: number;

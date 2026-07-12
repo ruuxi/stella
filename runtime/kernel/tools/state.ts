@@ -323,6 +323,9 @@ export const handleSpawnAgent = async (
         ...(modelSelection.kind === "model"
           ? { model: modelSelection.model }
           : {}),
+        ...(modelSelection.kind === "model"
+          ? { spawnEngine: { engine: "default" } as const }
+          : {}),
         ...(modelSelection.kind === "engine"
           ? { spawnEngine: modelSelection.engine }
           : {}),

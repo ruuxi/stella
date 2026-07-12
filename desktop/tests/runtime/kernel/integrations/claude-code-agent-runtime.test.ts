@@ -37,6 +37,26 @@ describe("Claude Code agent runtime selector", () => {
     ).toBe(false);
   });
 
+  it("lets an explicit Stella spawn override a saved Claude Code engine", () => {
+    const stellaDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-claude-engine-override-"),
+    );
+    try {
+      updateLocalModelPreferences(stellaDataDir, {
+        agentRuntimeEngine: "claude_code_local",
+      });
+      expect(
+        shouldUseClaudeCodeAgentRuntime({
+          stellaAppDir: stellaDataDir,
+          agentEngine: "default",
+          modelId: "stella/gpt-5.6-sol",
+        }),
+      ).toBe(false);
+    } finally {
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not treat Codex as the Claude Code runtime", () => {
     expect(
       shouldUseClaudeCodeAgentRuntime({

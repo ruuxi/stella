@@ -230,6 +230,7 @@ describe("LocalAgentManager Exec fs locking", () => {
       prompt: "do work",
       agentType: "general",
       model: "stella/light",
+      spawnEngine: { engine: "default" },
       storageMode: "local",
     });
     await waitForAgentSettled(manager, modelTask.threadId);
@@ -248,7 +249,7 @@ describe("LocalAgentManager Exec fs locking", () => {
       {
         agentType: "general",
         model: "stella/light",
-        spawnEngine: undefined,
+        spawnEngine: { engine: "default" },
       },
       {
         agentType: "general",

@@ -40,7 +40,10 @@ import {
   agentHasCapability,
   isLocalCliAgentId,
 } from "../../contracts/agent-runtime.js";
-import type { SpawnEngineSelection } from "../../contracts/agent-engine.js";
+import type {
+  AgentRuntimeEngine,
+  SpawnEngineSelection,
+} from "../../contracts/agent-engine.js";
 import type {
   PersistedRuntimeThreadPayload,
   RuntimeThreadMessage,
@@ -752,8 +755,9 @@ export type BuildAgentContextArgs = {
   runId: string;
   threadId?: string;
   /**
-   * Per-spawn external-engine selection (spawn_agent's `model` parameter).
-   * Overrides the preference-configured engine for this run only.
+   * Per-spawn engine selection (spawn_agent's `model` parameter). Plain model
+   * references carry `default`; explicit engine references carry the chosen
+   * external engine. Overrides the preference-configured engine for this run.
    */
   spawnEngine?: SpawnEngineSelection;
   toolWorkspaceRoot?: string;
@@ -764,6 +768,11 @@ export type BuildAgentContextArgs = {
     expectedChangedFiles?: string[];
   };
 } & ResolvedAgentModelRoute;
+
+export const resolveAgentEngineForRun = (
+  configuredEngine: AgentRuntimeEngine,
+  spawnEngine?: SpawnEngineSelection,
+): AgentRuntimeEngine => spawnEngine?.engine ?? configuredEngine;
 
 export const buildAgentContext = async (
   context: RunnerContext,
@@ -865,8 +874,10 @@ export const buildAgentContext = async (
         };
   // A per-spawn engine selection wins over the preference-configured engine
   // for this run only; saved preferences are never touched.
-  const agentEngine =
-    args.spawnEngine?.engine ?? getAgentRuntimeEngine(context.stellaDataDir);
+  const agentEngine = resolveAgentEngineForRun(
+    getAgentRuntimeEngine(context.stellaDataDir),
+    args.spawnEngine,
+  );
 
   const fileEditToolFamily = getFileEditToolFamily({
     agentType: args.agentType,

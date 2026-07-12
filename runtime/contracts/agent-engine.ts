@@ -18,14 +18,18 @@ const AGENT_RUNTIME_ENGINE_LABELS: Record<AgentRuntimeEngine, string> = {
 
 /**
  * Per-spawn engine selection carried by spawn_agent's optional `model`
- * parameter (`codex`, `codex/<model>`, `claude-code`, `claude-code/<model>`).
- * Scoped to a single spawned agent run — never persisted to preferences.
+ * parameter. Plain model references explicitly select `default` (the
+ * in-process Stella runtime); `codex[/<model>]` and
+ * `claude-code[/<model>]` select an external engine. Scoped to a single
+ * spawned agent run — never persisted to preferences.
  */
-export type SpawnEngineSelection = {
-  engine: Exclude<AgentRuntimeEngine, "default">;
-  /** Engine-native model id pinned for this run (e.g. `gpt-5.4-codex`, `opus`). */
-  model?: string;
-};
+export type SpawnEngineSelection =
+  | { engine: "default"; model?: never }
+  | {
+      engine: Exclude<AgentRuntimeEngine, "default">;
+      /** Engine-native model id pinned for this run (e.g. `gpt-5.4-codex`, `opus`). */
+      model?: string;
+    };
 
 export const isAgentRuntimeEngine = (
   value: unknown,

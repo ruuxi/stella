@@ -145,20 +145,24 @@ describe("state tools", () => {
     expect(result).toMatchObject({ result: { thread_id: "thread-1" } });
     expect(validated).toEqual(["openrouter/moonshotai/kimi-k2.5"]);
     expect(created[0]?.model).toBe("openrouter/moonshotai/kimi-k2.5");
-    expect(created[0]?.spawnEngine).toBeUndefined();
+    expect(created[0]?.spawnEngine).toEqual({ engine: "default" });
   });
 
-  it("forwards stella aliases as plain model overrides", async () => {
+  it("forces the Stella engine for an explicit Stella model pin", async () => {
     const { ctx, created } = createSpawnContext(() => {});
 
     await handleSpawnAgent(
       ctx,
-      { description: "Cheap task", prompt: "Do it.", model: "stella/light" },
+      {
+        description: "Sol task",
+        prompt: "Do it.",
+        model: "stella/gpt-5.6-sol",
+      },
       orchestratorToolContext,
     );
 
-    expect(created[0]?.model).toBe("stella/light");
-    expect(created[0]?.spawnEngine).toBeUndefined();
+    expect(created[0]?.model).toBe("stella/gpt-5.6-sol");
+    expect(created[0]?.spawnEngine).toEqual({ engine: "default" });
   });
 
   it("fails a plain model override when no validator is wired instead of dying mid-run", async () => {

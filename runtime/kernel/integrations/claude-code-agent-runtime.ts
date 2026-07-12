@@ -44,6 +44,13 @@ export const shouldUseClaudeCodeAgentRuntime = (args: {
   if (args.modelId && isClaudeCodeModel(args.modelId)) {
     return true;
   }
+  // A resolved per-run `default` engine is authoritative. In particular,
+  // plain spawn_agent model pins use it to override a saved Claude Code
+  // preference for that spawn. Only callers that omit agentEngine entirely
+  // should fall back to reading the persisted preference below.
+  if (args.agentEngine === "default") {
+    return false;
+  }
   const stellaAppDir = args.stellaAppDir?.trim();
   return stellaAppDir
     ? getAgentRuntimeEngine(stellaAppDir) === "claude_code_local"
