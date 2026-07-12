@@ -101,6 +101,25 @@ export const hashStellaAppDir = (stellaAppDir: string): string => {
 const windowsNamedPipePath = (name: string, rootHash: string): string =>
   `\\\\.\\pipe\\stella-${name}-${rootHash}`;
 
+export const createSecureCliBridgeEndpoint = (
+  paths: Pick<RuntimePaths, "rootDir" | "rootHash">,
+  options?: { platform?: NodeJS.Platform; nonce?: string },
+): string => {
+  const platform = options?.platform ?? process.platform;
+  const nonce = (
+    options?.nonce ?? crypto.randomBytes(16).toString("hex")
+  ).replace(/[^A-Za-z0-9_-]/gu, "");
+  if (nonce.length < 32) {
+    throw new Error(
+      "CLI bridge nonce must contain at least 128 bits of entropy.",
+    );
+  }
+  if (platform === "win32") {
+    return `\\\\.\\pipe\\stella-cli-bridge-${paths.rootHash}-${nonce}`;
+  }
+  return path.join(paths.rootDir, `cli-${nonce}`, "bridge.sock");
+};
+
 export const isWindowsNamedPipePath = (socketPath: string): boolean =>
   /^\\\\[.?]\\pipe\\/i.test(socketPath);
 

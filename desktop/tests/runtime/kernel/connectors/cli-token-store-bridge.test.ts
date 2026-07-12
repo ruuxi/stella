@@ -3,10 +3,7 @@ import { stat } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  requestConnectorTokenStoreFromBridge,
-  requestStellaSiteAuthFromBridge,
-} from "../../../../../runtime/kernel/connectors/cli-broker-client.js";
+import { requestConnectorTokenStoreFromBridge } from "../../../../../runtime/kernel/connectors/cli-broker-client.js";
 import { startCliBridgeServer } from "../../../../../runtime/worker/cli-bridge-server.js";
 import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
@@ -83,35 +80,5 @@ describe("stella-connect token-store bridge", () => {
       },
       { operation: "delete", tokenKeys: ["native-oauth:microsoft"] },
     ]);
-  });
-
-  it("requests a fresh Stella session without putting it in process arguments", async () => {
-    const root = tempDirs.create("stella-site-auth-bridge-");
-    const socketPath = path.join(root, "bridge.sock");
-    const refreshRequests: boolean[] = [];
-    const server = await startCliBridgeServer({
-      socketPath,
-      handlers: {
-        requestConnectorCredential: async () => ({ ok: true }),
-        getStellaSiteAuth: async ({ refresh }) => {
-          refreshRequests.push(refresh);
-          return {
-            ok: true,
-            baseUrl: "https://stella.test",
-            authToken: "synthetic-session-token",
-          };
-        },
-      },
-    });
-    servers.push(server);
-
-    await expect(
-      requestStellaSiteAuthFromBridge({ socketPath, refresh: true }),
-    ).resolves.toEqual({
-      ok: true,
-      baseUrl: "https://stella.test",
-      authToken: "synthetic-session-token",
-    });
-    expect(refreshRequests).toEqual([true]);
   });
 });

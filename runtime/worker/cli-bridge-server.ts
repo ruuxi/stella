@@ -7,18 +7,19 @@
  * of JSON, server closes. Request: `{ id, method, params }`. Response:
  * `{ id, result }` on success or `{ id, error: { message } }` on failure.
  *
- * Surface is intentionally narrow. The only method today is
- * `connector.requestCredential` which forwards to the host's connector
- * credential broker. New methods get added as separate handler entries —
+ * Surface is intentionally narrow. Connector backend actions are brokered as
+ * action-specific requests; the protocol never exposes Stella site auth or an
+ * arbitrary HTTP proxy. New methods get added as separate handler entries —
  * no introspection, no versioning, no streaming. If we ever need more
  * than this we should reconsider rather than grow the protocol here.
  */
 
-import { promises as fsPromises } from "node:fs";
+import { constants as fsConstants, promises as fsPromises } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import path from "node:path";
 import { runtimeIpcPathUsesFilesystem } from "./runtime-paths.js";
 import type {
+  BackendConnectorActionResult,
   ConnectorTokenStoreRequest,
   ConnectorTokenStoreResult,
 } from "../kernel/connectors/cli-broker-client.js";
@@ -104,15 +105,12 @@ export type CliBridgeHandlers = {
         reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
       }
   >;
-  getStellaSiteAuth?: (options: {
-    refresh: boolean;
-  }) =>
-    | Promise<
-        | { ok: true; baseUrl: string; authToken: string }
-        | { ok: false; reason: string }
-      >
-    | { ok: true; baseUrl: string; authToken: string }
-    | { ok: false; reason: string };
+  runBackendConnectorAction?: (params: {
+    connectorId: string;
+    action: string;
+    input: Record<string, unknown>;
+    requestId?: string;
+  }) => Promise<BackendConnectorActionResult>;
   requestConnectorTokenStore?: (
     request: ConnectorTokenStoreRequest,
   ) => Promise<ConnectorTokenStoreResult>;
@@ -224,16 +222,52 @@ const dispatch = async (
   handlers: CliBridgeHandlers,
 ): Promise<unknown> => {
   switch (method) {
-    case "stella.getSiteAuth": {
-      if (!handlers.getStellaSiteAuth) {
+    case "connector.runBackendAction": {
+      if (!handlers.runBackendConnectorAction) {
         return { ok: false, reason: "unsupported" };
       }
-      const refresh = Boolean(
-        params &&
-        typeof params === "object" &&
-        (params as { refresh?: unknown }).refresh === true,
-      );
-      return await handlers.getStellaSiteAuth({ refresh });
+      const record =
+        params && typeof params === "object" && !Array.isArray(params)
+          ? (params as Record<string, unknown>)
+          : {};
+      const allowedKeys = new Set([
+        "connectorId",
+        "action",
+        "input",
+        "requestId",
+      ]);
+      if (Object.keys(record).some((key) => !allowedKeys.has(key))) {
+        throw new Error(
+          "connector.runBackendAction: arbitrary transport fields are not allowed",
+        );
+      }
+      const connectorId =
+        typeof record.connectorId === "string"
+          ? record.connectorId.trim().toLowerCase()
+          : "";
+      const action =
+        typeof record.action === "string" ? record.action.trim() : "";
+      const input =
+        record.input &&
+        typeof record.input === "object" &&
+        !Array.isArray(record.input)
+          ? (record.input as Record<string, unknown>)
+          : null;
+      const requestId =
+        typeof record.requestId === "string" && record.requestId.trim()
+          ? record.requestId.trim()
+          : undefined;
+      if (!connectorId || !action || !input) {
+        throw new Error(
+          "connector.runBackendAction: connectorId, action, and object input are required",
+        );
+      }
+      return await handlers.runBackendConnectorAction({
+        connectorId,
+        action,
+        input,
+        ...(requestId ? { requestId } : {}),
+      });
     }
     case "connector.tokenStore": {
       if (!handlers.requestConnectorTokenStore) {
@@ -515,11 +549,64 @@ export const startCliBridgeServer = async ({
   log?: (message: string, error?: unknown) => void;
 }): Promise<CliBridgeServer> => {
   const usesFilesystem = runtimeIpcPathUsesFilesystem(socketPath);
+  if (!usesFilesystem) {
+    throw new Error(
+      "cli-bridge: secure current-user named-pipe ACLs are unavailable in this runtime",
+    );
+  }
+  const socketDir = path.dirname(socketPath);
   if (usesFilesystem) {
-    await fsPromises.mkdir(path.dirname(socketPath), { recursive: true });
-    // Stale socket files from a crashed prior worker (or a leftover from a
-    // graceful shutdown that didn't run) would block listen() with EADDRINUSE.
-    await fsPromises.unlink(socketPath).catch(() => undefined);
+    await fsPromises.mkdir(socketDir, { recursive: true, mode: 0o700 });
+    const currentUid =
+      typeof process.getuid === "function" ? process.getuid() : null;
+    const initialDirectoryStat = await fsPromises.lstat(socketDir);
+    if (
+      initialDirectoryStat.isSymbolicLink() ||
+      !initialDirectoryStat.isDirectory() ||
+      (currentUid !== null && initialDirectoryStat.uid !== currentUid)
+    ) {
+      throw new Error(
+        "cli-bridge: socket directory is not private and owned by the current user",
+      );
+    }
+    const directoryHandle = await fsPromises.open(
+      socketDir,
+      fsConstants.O_RDONLY |
+        (fsConstants.O_DIRECTORY ?? 0) |
+        (fsConstants.O_NOFOLLOW ?? 0),
+    );
+    let directoryStat;
+    try {
+      await directoryHandle.chmod(0o700);
+      directoryStat = await directoryHandle.stat();
+    } finally {
+      await directoryHandle.close();
+    }
+    if (
+      !directoryStat.isDirectory() ||
+      (currentUid !== null && directoryStat.uid !== currentUid) ||
+      (directoryStat.mode & 0o077) !== 0
+    ) {
+      throw new Error(
+        "cli-bridge: socket directory is not private and owned by the current user",
+      );
+    }
+    const staleStat = await fsPromises.lstat(socketPath).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    });
+    if (staleStat) {
+      if (
+        staleStat.isSymbolicLink() ||
+        !staleStat.isSocket() ||
+        (currentUid !== null && staleStat.uid !== currentUid)
+      ) {
+        throw new Error(
+          "cli-bridge: refusing to replace an unsafe stale socket path",
+        );
+      }
+      await fsPromises.unlink(socketPath);
+    }
   }
 
   // Track live connections so `stop()` can tear them down rather than
@@ -530,9 +617,14 @@ export const startCliBridgeServer = async ({
   // accepting new connections — it does not interrupt existing ones.
   const activeSockets = new Set<Socket>();
 
-  const server: Server = createServer((socket) =>
-    handleConnection(socket, handlers, log, activeSockets),
-  );
+  let acceptingRequests = false;
+  const server: Server = createServer((socket) => {
+    if (!acceptingRequests) {
+      socket.destroy();
+      return;
+    }
+    handleConnection(socket, handlers, log, activeSockets);
+  });
   server.on("error", (error) => {
     log("server error", error);
   });
@@ -551,16 +643,25 @@ export const startCliBridgeServer = async ({
     server.listen(socketPath);
   });
 
-  if (usesFilesystem) {
-    // 0o600 — readable/writable only by the owning user, matching the main
-    // runtime socket's policy (`runtime/worker/transport.ts`). This path
-    // pops the credential dialog and writes connector tokens on the user's
-    // behalf, so anything weaker would let a same-host but different-uid
-    // process trigger arbitrary credential prompts. `.catch(() => undefined)`
-    // mirrors the main socket — on platforms where `chmod` on a unix socket
-    // is a no-op (rare, but POSIX leaves it to the implementation), we'd
-    // rather keep serving than refuse to start.
-    await fsPromises.chmod(socketPath, 0o600).catch(() => undefined);
+  try {
+    await fsPromises.chmod(socketPath, 0o600);
+    const socketStat = await fsPromises.lstat(socketPath);
+    const currentUid =
+      typeof process.getuid === "function" ? process.getuid() : null;
+    if (
+      socketStat.isSymbolicLink() ||
+      !socketStat.isSocket() ||
+      (currentUid !== null && socketStat.uid !== currentUid) ||
+      (socketStat.mode & 0o177) !== 0
+    ) {
+      throw new Error("cli-bridge: socket permissions could not be secured");
+    }
+    acceptingRequests = true;
+  } catch (error) {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await fsPromises.unlink(socketPath).catch(() => undefined);
+    await fsPromises.rmdir(socketDir).catch(() => undefined);
+    throw error;
   }
 
   return {
@@ -581,7 +682,10 @@ export const startCliBridgeServer = async ({
         activeSockets.clear();
         server.close(() => {
           if (usesFilesystem) {
-            void fsPromises.unlink(socketPath).catch(() => undefined);
+            void fsPromises
+              .unlink(socketPath)
+              .catch(() => undefined)
+              .then(() => fsPromises.rmdir(socketDir).catch(() => undefined));
           }
           resolve();
         });

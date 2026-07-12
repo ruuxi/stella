@@ -45,6 +45,8 @@ const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_CODEX_TURN_TOOL_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
 const CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS = 750;
 export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
+/** Cheap model reserved for automatic utility work, not explicit agent spawns. */
+export const CODEX_UTILITY_MODEL = "gpt-5.6-luna";
 const execFileAsync = promisify(execFile);
 
 type JsonRpcId = number | string;
@@ -859,11 +861,13 @@ class CodexAppServerClient {
   private readonly requestHandlers = new Set<CodexServerRequestHandler>();
   private readonly closeHandlers = new Set<(error: Error) => void>();
 
-  constructor() {
+  constructor(cliBridgeSocketPath?: string) {
     const executablePath = resolveExternalCliPath("codex");
     this.child = spawn(executablePath, ["app-server", "--listen", "stdio://"], {
       stdio: "pipe",
-      env: buildExternalCliChildEnv(executablePath),
+      env: buildExternalCliChildEnv(executablePath, process.env, {
+        ...(cliBridgeSocketPath ? { cliBridgeSocketPath } : {}),
+      }),
     });
     const lines = readline.createInterface({ input: this.child.stdout });
     lines.on("line", (line) => this.handleLine(line));
@@ -1090,22 +1094,29 @@ class CodexAppServerClient {
   }
 }
 
-const createInitializedCodexClient =
-  async (): Promise<CodexAppServerClient> => {
-    const client = new CodexAppServerClient();
-    try {
-      await client.initialize();
-      return client;
-    } catch (error) {
-      client.close();
-      throw error;
-    }
-  };
+const createInitializedCodexClient = async (
+  cliBridgeSocketPath?: string,
+): Promise<CodexAppServerClient> => {
+  const client = new CodexAppServerClient(cliBridgeSocketPath);
+  try {
+    await client.initialize();
+    return client;
+  } catch (error) {
+    client.close();
+    throw error;
+  }
+};
 
 let sharedCodexClientPromise: Promise<CodexAppServerClient> | null = null;
 let sharedCodexClient: CodexAppServerClient | null = null;
+let sharedCodexBridgePath: string | undefined;
 
-const getSharedCodexClient = async (): Promise<CodexAppServerClient> => {
+const getSharedCodexClient = async (
+  cliBridgeSocketPath?: string,
+): Promise<CodexAppServerClient> => {
+  if (sharedCodexBridgePath !== cliBridgeSocketPath) {
+    shutdownCodexAppServerRuntime();
+  }
   if (sharedCodexClient && !sharedCodexClient.isClosed()) {
     return sharedCodexClient;
   }
@@ -1113,29 +1124,41 @@ const getSharedCodexClient = async (): Promise<CodexAppServerClient> => {
     return sharedCodexClientPromise;
   }
 
-  sharedCodexClientPromise = createInitializedCodexClient()
+  sharedCodexBridgePath = cliBridgeSocketPath;
+  const pending = createInitializedCodexClient(cliBridgeSocketPath)
     .then((client) => {
+      if (
+        sharedCodexClientPromise !== pending ||
+        sharedCodexBridgePath !== cliBridgeSocketPath
+      ) {
+        client.close();
+        throw new Error("Codex app-server launch configuration changed.");
+      }
       sharedCodexClient = client;
       client.onClose(() => {
         if (sharedCodexClient === client) {
           sharedCodexClient = null;
           sharedCodexClientPromise = null;
+          sharedCodexBridgePath = undefined;
         }
       });
       return client;
     })
     .catch((error) => {
-      sharedCodexClientPromise = null;
+      if (sharedCodexClientPromise === pending) {
+        sharedCodexClientPromise = null;
+      }
       throw error;
     });
-
-  return sharedCodexClientPromise;
+  sharedCodexClientPromise = pending;
+  return pending;
 };
 
 export const shutdownCodexAppServerRuntime = (): void => {
   const client = sharedCodexClient;
   sharedCodexClient = null;
   sharedCodexClientPromise = null;
+  sharedCodexBridgePath = undefined;
   client?.close();
 };
 
@@ -1267,9 +1290,12 @@ export const runCodexAgentTurn = async (request: {
   cwd?: string;
   stellaDataDir?: string;
   stellaAppDir?: string;
+  cliBridgeSocketPath?: string;
   stellaModel?: string;
   /** Per-spawn engine-native model pin (`codex/<model>`); never persisted. */
   modelOverride?: string;
+  /** Automatic utility pass: fixed cheap model and low effort. */
+  utility?: boolean;
   attachments?: RuntimeAttachmentRef[];
   abortSignal?: AbortSignal;
   onStatus?: (status: string) => void;
@@ -1294,11 +1320,15 @@ export const runCodexAgentTurn = async (request: {
 }): Promise<CodexAgentTurnResult> => {
   const emitStatus = (status: string) =>
     request.onStatus?.(redactSensitiveText(status));
-  const { model, reasoningEffort } = getCodexRuntimePreferences(
+  const runtimePreferences = getCodexRuntimePreferences(
     request.stellaDataDir,
     request.stellaModel,
-    request.modelOverride,
+    request.utility ? CODEX_UTILITY_MODEL : request.modelOverride,
   );
+  const model = runtimePreferences.model;
+  const reasoningEffort = request.utility
+    ? "low"
+    : runtimePreferences.reasoningEffort;
   const { input, cleanupDir } = buildCodexUserInput({
     runId: request.runId,
     prompt: request.prompt,
@@ -1332,8 +1362,8 @@ export const runCodexAgentTurn = async (request: {
   let scheduleCompletionGrace: (() => void) | undefined;
 
   const client = request.reuseAppServer
-    ? await getSharedCodexClient()
-    : await createInitializedCodexClient();
+    ? await getSharedCodexClient(request.cliBridgeSocketPath)
+    : await createInitializedCodexClient(request.cliBridgeSocketPath);
   let removeNotificationHandler: (() => void) | undefined;
   let removeRequestHandler: (() => void) | undefined;
   let removeCloseHandler: (() => void) | undefined;

@@ -741,6 +741,9 @@ const runClaudeHostedTurn = async (args: {
     persistedSessionId,
     modelId: claudeCodeModelId,
     stellaAppDir: args.opts.stellaAppDir,
+    ...(args.opts.cliBridgeSocketPath
+      ? { cliBridgeSocketPath: args.opts.cliBridgeSocketPath }
+      : {}),
     ...(vanilla ? { vanilla } : {}),
     ...(claudeCodeEffortLevel ? { effortLevel: claudeCodeEffortLevel } : {}),
     prompt,
@@ -793,6 +796,9 @@ const runClaudeHostedTurn = async (args: {
       persistedSessionId: finalResult.sessionId,
       modelId: claudeCodeModelId,
       stellaAppDir: args.opts.stellaAppDir,
+      ...(args.opts.cliBridgeSocketPath
+        ? { cliBridgeSocketPath: args.opts.cliBridgeSocketPath }
+        : {}),
       ...(vanilla ? { vanilla } : {}),
       ...(claudeCodeEffortLevel ? { effortLevel: claudeCodeEffortLevel } : {}),
       prompt: queuedPrompt,
@@ -1065,6 +1071,9 @@ const runCodexHostedTurn = async (args: {
     cwd: localCliCwd,
     stellaDataDir: args.opts.stellaDataDir,
     stellaAppDir: args.opts.stellaAppDir,
+    ...(args.opts.cliBridgeSocketPath
+      ? { cliBridgeSocketPath: args.opts.cliBridgeSocketPath }
+      : {}),
     stellaModel: args.opts.agentContext.model,
     // Per-spawn codex model pin (spawn_agent `model: codex/<model>`).
     ...(args.opts.agentContext.spawnEngine?.engine === "codex_cli" &&
@@ -1116,6 +1125,9 @@ const runCodexHostedTurn = async (args: {
       cwd: localCliCwd,
       stellaDataDir: args.opts.stellaDataDir,
       stellaAppDir: args.opts.stellaAppDir,
+      ...(args.opts.cliBridgeSocketPath
+        ? { cliBridgeSocketPath: args.opts.cliBridgeSocketPath }
+        : {}),
       stellaModel: args.opts.agentContext.model,
       ...(args.opts.agentContext.spawnEngine?.engine === "codex_cli" &&
       args.opts.agentContext.spawnEngine.model

@@ -979,6 +979,12 @@ const buildShellEnv = (
       ? { STELLA_CLI_BRIDGE_SOCK: options.cliBridgeSocketPath }
       : {}),
   };
+  // Connector actions authenticate through the worker broker. Never inherit
+  // legacy raw Stella bearer variables into shell or agent processes.
+  delete mergedEnv.STELLA_SITE_AUTH_TOKEN;
+  delete mergedEnv.STELLA_NATIVE_OAUTH_BACKEND_AUTH_TOKEN;
+  delete mergedEnv.STELLA_LLM_PROXY_TOKEN;
+  delete mergedEnv.STELLA_AUTH_TOKEN;
 
   const shellShimDirs = [options?.nodeShimDir, options?.windowsCliShimDir]
     .filter((value): value is string => Boolean(value))

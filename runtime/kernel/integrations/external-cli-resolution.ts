@@ -213,8 +213,17 @@ export const resolveExternalCliPath = (
 export const buildExternalCliChildEnv = (
   executablePath: string,
   env: NodeJS.ProcessEnv = process.env,
+  options?: { cliBridgeSocketPath?: string },
 ): NodeJS.ProcessEnv => {
   const childEnv: NodeJS.ProcessEnv = { ...env };
+  delete childEnv.STELLA_CLI_BRIDGE_SOCK;
+  delete childEnv.STELLA_SITE_AUTH_TOKEN;
+  delete childEnv.STELLA_NATIVE_OAUTH_BACKEND_AUTH_TOKEN;
+  delete childEnv.STELLA_LLM_PROXY_TOKEN;
+  delete childEnv.STELLA_AUTH_TOKEN;
+  if (options?.cliBridgeSocketPath) {
+    childEnv.STELLA_CLI_BRIDGE_SOCK = options.cliBridgeSocketPath;
+  }
   const pathKey =
     Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
   const homeDir = resolveHomeDir(env);

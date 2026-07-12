@@ -220,6 +220,8 @@ export type BaseRunOptions = {
   ) => Promise<ToolResult>;
   deviceId: string;
   stellaDataDir: string;
+  /** Private action-broker endpoint injected only into connector-capable children. */
+  cliBridgeSocketPath?: string;
   resolvedLlm: ResolvedLlmRoute;
   store: RuntimeStore;
   abortSignal?: AbortSignal;

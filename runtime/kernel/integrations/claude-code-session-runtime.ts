@@ -399,6 +399,7 @@ type ClaudeCodeTurnRequest = {
    * behind aliases like `default`.
    */
   stellaAppDir?: string;
+  cliBridgeSocketPath?: string;
   attachments?: RuntimeAttachmentRef[];
   tools: ToolMetadata[];
   executeTool: (
@@ -1703,6 +1704,7 @@ class ClaudeCodeSessionRuntime {
       effectiveSystemPrompt.trim(),
       request.autoCompactWindowTokens ?? null,
       request.autoCompactTriggerPct ?? null,
+      request.cliBridgeSocketPath ?? "",
     ]);
   }
 
@@ -1786,7 +1788,11 @@ class ClaudeCodeSessionRuntime {
 
     const executablePath = resolveExternalCliPath("claude");
     const effortLevel = request.effortLevel?.trim();
-    const childEnv = buildExternalCliChildEnv(executablePath);
+    const childEnv = buildExternalCliChildEnv(executablePath, process.env, {
+      ...(request.cliBridgeSocketPath
+        ? { cliBridgeSocketPath: request.cliBridgeSocketPath }
+        : {}),
+    });
     if (effortLevel) {
       childEnv.CLAUDE_CODE_EFFORT_LEVEL = effortLevel;
     }

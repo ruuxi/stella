@@ -11,10 +11,11 @@ import { getNativeConnectorReadiness } from "../connectors/connection-status.js"
 import {
   requestConnectorConnectionFromBridge,
   requestConnectorCredentialFromBridge,
+  requestBackendConnectorActionFromBridge,
   requestConnectorTokenStoreFromBridge,
-  requestStellaSiteAuthFromBridge,
   type ConnectorConnectionResult,
   type ConnectorCredentialResult,
+  type BackendConnectorActionResult,
 } from "../connectors/cli-broker-client.js";
 import {
   clearConnectorDecline,
@@ -400,39 +401,9 @@ const withConnectorBridgeCleanup = async <T>(
 // `toBackendComposioEntry` moved to `../connectors/catalog-cache.js` so the
 // connector keyword index and the `connector_status` tool share the parser.
 
-const loadStellaSiteAuth = async (options: { refresh?: boolean } = {}) => {
-  const envBaseUrl =
-    process.env.STELLA_CONVEX_SITE_URL?.trim() ||
-    process.env.STELLA_SITE_URL?.trim() ||
-    "";
-  const envAuthToken =
-    process.env.STELLA_NATIVE_OAUTH_BACKEND_AUTH_TOKEN?.trim() ||
-    process.env.STELLA_SITE_AUTH_TOKEN?.trim() ||
-    "";
-  if (!options.refresh && envBaseUrl && envAuthToken) {
-    return { ok: true as const, baseUrl: envBaseUrl, authToken: envAuthToken };
-  }
-  const socketPath = process.env.STELLA_CLI_BRIDGE_SOCK;
-  if (!socketPath) return { ok: false as const, reason: "no_bridge" };
-  return await requestStellaSiteAuthFromBridge({
-    socketPath,
-    refresh: options.refresh === true,
-    timeoutMs: options.refresh ? 20_000 : 5_000,
-  }).catch((error) => ({
-    ok: false as const,
-    reason: (error as Error).message || "bridge_unavailable",
-  }));
-};
-
 const loadServerNativeCatalog = async () =>
   resolveNativeConnectorCatalog({
     stellaDataDir: stellaAppDir,
-    getStellaSiteAuth: async () => {
-      const siteAuth = await loadStellaSiteAuth();
-      return siteAuth.ok
-        ? { baseUrl: siteAuth.baseUrl, authToken: siteAuth.authToken }
-        : null;
-    },
   });
 
 const nativeCatalogDiagnostics = (
@@ -452,61 +423,34 @@ const callBackendNativeIntegration = async (
   action: string,
   input: Record<string, unknown>,
 ) => {
-  let siteAuth = await loadStellaSiteAuth();
-  if (!siteAuth.ok) {
-    siteAuth = await loadStellaSiteAuth({ refresh: true });
-  }
-  const connectedSiteAuth = siteAuth.ok
-    ? siteAuth
-    : fail("Sign in to Stella before using this integration.");
-  let activeAuth = {
-    baseUrl: connectedSiteAuth.baseUrl,
-    authToken: connectedSiteAuth.authToken,
-  };
-  const run = async (auth: { baseUrl: string; authToken: string }) =>
-    await fetch(
-      `${auth.baseUrl.replace(/\/+$/u, "")}/api/native-integrations/run`,
-      {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-          authorization: `Bearer ${auth.authToken}`,
-        },
-        body: JSON.stringify({ id, action, input }),
-      },
-    );
-  let response = await run(activeAuth);
-  if (response.status === 401 || response.status === 403) {
-    const refreshed = await loadStellaSiteAuth({ refresh: true });
-    const refreshedSiteAuth = refreshed.ok
-      ? refreshed
-      : fail(
-          "Stella sign-in expired. Sign in again before using this integration.",
-        );
-    activeAuth = {
-      baseUrl: refreshedSiteAuth.baseUrl,
-      authToken: refreshedSiteAuth.authToken,
-    };
-    response = await run(activeAuth);
-    if (response.status === 401 || response.status === 403) {
-      fail(
-        "Stella sign-in could not be refreshed. Sign in again before using this integration.",
-      );
-    }
-  }
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      payload &&
-      typeof payload === "object" &&
-      "error" in payload &&
-      typeof payload.error === "string"
-        ? payload.error
-        : `Integration action failed (${response.status}).`;
-    fail(message);
-  }
-  return payload;
+  const socketPath =
+    process.env.STELLA_CLI_BRIDGE_SOCK?.trim() ||
+    fail("Sign in to Stella before using this integration.");
+  const result: BackendConnectorActionResult =
+    await requestBackendConnectorActionFromBridge({
+      socketPath,
+      connectorId: id,
+      action,
+      input,
+    }).catch(() => ({
+      ok: false as const,
+      reason: "bridge_unavailable",
+      message: "The Stella connector broker is unavailable.",
+    }));
+  if (result.ok) return result.result;
+  const diagnosticSuffix = result.status
+    ? ` (status ${result.status}${result.requestId ? `, request ${result.requestId}` : ""})`
+    : "";
+  fail(
+    `${
+      result.message ??
+      (result.reason === "not_signed_in"
+        ? "Sign in to Stella before using this integration."
+        : result.reason === "auth_expired"
+          ? "Stella sign-in expired. Sign in again before using this integration."
+          : "The Stella connector broker could not run this action.")
+    }${diagnosticSuffix}`,
+  );
 };
 
 const findNative = (
@@ -553,6 +497,39 @@ const callNativeConnector = async (
   },
   catalogOverride?: NativeConnectorCatalogOverride,
 ) => {
+  const locallyEnabled = await isNativeConnectorEnabled(stellaAppDir, id);
+  const locallyResolved = findNative(id, catalogOverride);
+  // A freshly authenticated desktop may have a live authoritative Store
+  // entry before the child has a disk cache. Do not reinterpret bundled
+  // metadata as executable, but allow the trusted broker to resolve and
+  // authorize the canonical backend identity for an already-enabled id.
+  if (
+    locallyEnabled &&
+    process.env.STELLA_CLI_BRIDGE_SOCK?.trim() &&
+    (!locallyResolved ||
+      (locallyResolved.provider !== "backend-composio" &&
+        locallyResolved.localExecution !== "production-ready"))
+  ) {
+    const runAction = backendIntegrationRunToolName(id);
+    if (action === runAction) {
+      const nestedAction = args.body.action;
+      const nestedActionName =
+        typeof nestedAction === "string" && nestedAction.trim()
+          ? nestedAction.trim()
+          : fail(`${runAction} requires an action string.`);
+      const nestedArgs = args.body.arguments;
+      return await callBackendNativeIntegration(
+        id,
+        nestedActionName,
+        nestedArgs &&
+          typeof nestedArgs === "object" &&
+          !Array.isArray(nestedArgs)
+          ? (nestedArgs as Record<string, unknown>)
+          : {},
+      );
+    }
+    return await callBackendNativeIntegration(id, action, args.body);
+  }
   const entry = await ensureNativeEnabled(id, catalogOverride);
   if (!entry) return null;
   if (

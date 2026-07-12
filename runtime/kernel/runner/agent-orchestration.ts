@@ -550,6 +550,9 @@ export const createAgentOrchestration = (
           deviceId: context.deviceId,
           modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
           stellaDataDir: context.stellaDataDir,
+          ...(context.cliBridgeSocketPath
+            ? { cliBridgeSocketPath: context.cliBridgeSocketPath }
+            : {}),
         }));
       const runnerCallbacks =
         (rootRunId ? context.state.runCallbacksByRunId.get(rootRunId) : null) ??
@@ -1380,6 +1383,9 @@ export const createAgentOrchestration = (
                 }),
                 deviceId: context.deviceId,
                 stellaDataDir: context.stellaDataDir,
+                ...(context.cliBridgeSocketPath
+                  ? { cliBridgeSocketPath: context.cliBridgeSocketPath }
+                  : {}),
                 resolvedLlm: oneShotResolvedLlm,
                 store: context.runtimeStore,
                 suppressCompletionSideEffects: true,

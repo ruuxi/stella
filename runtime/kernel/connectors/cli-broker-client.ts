@@ -19,9 +19,22 @@ export type ConnectorCredentialResult =
   | { ok: true }
   | { ok: false; reason: "cancelled" | "timeout" | "unsupported" | string };
 
-export type StellaSiteAuthResult =
-  | { ok: true; baseUrl: string; authToken: string }
-  | { ok: false; reason: string };
+export type BackendConnectorActionResult =
+  | { ok: true; result: unknown }
+  | {
+      ok: false;
+      reason:
+        | "not_signed_in"
+        | "auth_expired"
+        | "connector_unavailable"
+        | "action_not_allowed"
+        | "backend_error"
+        | "bridge_unavailable"
+        | string;
+      status?: number;
+      message?: string;
+      requestId?: string;
+    };
 
 export type ConnectorTokenStoreRequest =
   | { operation: "load"; tokenKey: string }
@@ -249,42 +262,43 @@ export const requestConnectorConnectionFromBridge = async ({
   };
 };
 
-export const requestStellaSiteAuthFromBridge = async ({
+export const requestBackendConnectorActionFromBridge = async ({
   socketPath,
-  refresh = false,
-  timeoutMs = 5_000,
+  connectorId,
+  action,
+  input,
+  requestId,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
 }: {
   socketPath: string;
-  refresh?: boolean;
+  connectorId: string;
+  action: string;
+  input: Record<string, unknown>;
+  requestId?: string;
   timeoutMs?: number;
-}): Promise<StellaSiteAuthResult> => {
+}): Promise<BackendConnectorActionResult> => {
   const result = await sendRequest(
     socketPath,
-    "stella.getSiteAuth",
-    { refresh },
+    "connector.runBackendAction",
+    { connectorId, action, input, requestId },
     timeoutMs,
   );
   if (!result || typeof result !== "object") {
     return { ok: false, reason: "invalid_response" };
   }
   const record = result as Record<string, unknown>;
-  if (
-    record.ok === true &&
-    typeof record.baseUrl === "string" &&
-    typeof record.authToken === "string"
-  ) {
-    return {
-      ok: true,
-      baseUrl: record.baseUrl,
-      authToken: record.authToken,
-    };
-  }
+  if (record.ok === true) return { ok: true, result: record.result };
   return {
     ok: false,
     reason:
       typeof record.reason === "string" && record.reason
         ? record.reason
-        : "unavailable",
+        : "bridge_unavailable",
+    ...(typeof record.status === "number" ? { status: record.status } : {}),
+    ...(typeof record.message === "string" ? { message: record.message } : {}),
+    ...(typeof record.requestId === "string"
+      ? { requestId: record.requestId }
+      : {}),
   };
 };
 

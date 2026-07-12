@@ -275,7 +275,6 @@ describe("stella-connect shared native catalog resolution", () => {
           ok: false,
           reason: "unused",
         }),
-        getStellaSiteAuth: async () => ({ ok: false, reason: "offline" }),
         requestConnectorConnection: async ({ id }) => {
           connectionRequests.push(id);
           return id === "gmail"

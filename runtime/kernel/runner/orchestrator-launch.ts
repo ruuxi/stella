@@ -851,6 +851,9 @@ export const launchPreparedOrchestratorRun = (args: {
       toolExecutor,
       deviceId: context.deviceId,
       stellaDataDir: context.stellaDataDir,
+      ...(context.cliBridgeSocketPath
+        ? { cliBridgeSocketPath: context.cliBridgeSocketPath }
+        : {}),
       resolvedLlm: prepared.resolvedLlm,
       store: context.runtimeStore,
       abortSignal: prepared.abortController.signal,
