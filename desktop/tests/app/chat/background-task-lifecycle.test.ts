@@ -4,7 +4,10 @@ import {
   buildBackgroundTaskLifecycleIndex,
   resolveBackgroundTaskCardLifecycle,
 } from "@/features/chat/lib/background-task-lifecycle";
-import { getBackgroundWork } from "@/features/chat/hooks/use-event-rows";
+import {
+  getBackgroundWork,
+  projectAgentCompletionSections,
+} from "@/features/chat/hooks/use-event-rows";
 
 const event = (
   id: string,
@@ -225,6 +228,48 @@ describe("spawn-anchored background task lifecycle", () => {
     expect(
       followUpCard.index.startEventIdByLifecycleEventId.get("done-follow-up"),
     ).toBe("start-follow-up");
+
+    // Completion cards are projected at their own timeline anchors, using
+    // exact completion/start identity rather than mutating either start card.
+    expect(
+      projectAgentCompletionSections([originalDone], originalCard.index),
+    ).toMatchObject([
+      {
+        startEventId: "start-original",
+        completionEventId: "done-original",
+        title: "Build the dossier",
+      },
+    ]);
+    expect(
+      projectAgentCompletionSections([followUpDone], followUpCard.index),
+    ).toMatchObject([
+      {
+        startEventId: "start-follow-up",
+        completionEventId: "done-follow-up",
+        title: "Correct the arrival date",
+      },
+    ]);
+  });
+
+  it("deduplicates replay copies at the completion anchor by event id", () => {
+    const start = started({
+      id: "start-replay",
+      at: 100,
+      agentId: "writer",
+      rootRunId: "run-replay",
+      description: "Write summary",
+    });
+    const done = completed({
+      id: "done-replay",
+      at: 200,
+      agentId: "writer",
+      rootRunId: "run-replay",
+    });
+    const index = buildBackgroundTaskLifecycleIndex([start, done, { ...done }]);
+
+    expect(
+      projectAgentCompletionSections([done, { ...done }], index),
+    ).toHaveLength(1);
   });
 
   it("uses the start event, not rootRunId, when one root run sends two follow-ups", () => {

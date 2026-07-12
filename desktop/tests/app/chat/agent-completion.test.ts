@@ -572,6 +572,27 @@ describe("dedupeAgentCompletionRows — SQLite/stream handoff", () => {
     expect((rows[1] as AssistantRowViewModel).agentCompletion).toBeDefined();
   });
 
+  it("keeps same-timestamp runs distinct when completion event ids differ", () => {
+    const firstSection = {
+      ...section("a1", 60, ["/out/v1.md"]),
+      completionEventId: "done-first",
+    };
+    const secondSection = {
+      ...section("a1", 60, ["/out/v2.md"]),
+      completionEventId: "done-second",
+    };
+    const rows: EventRowViewModel[] = [
+      completionRow("assistant-1", [firstSection]),
+      completionRow("assistant-2", [secondSection]),
+    ];
+    const dropped = new Set<number>();
+    dedupeAgentCompletionRows(rows, dropped);
+
+    expect(dropped.size).toBe(0);
+    expect((rows[0] as AssistantRowViewModel).agentCompletion).toBeDefined();
+    expect((rows[1] as AssistantRowViewModel).agentCompletion).toBeDefined();
+  });
+
   it("strips only the duplicated section on a multi-agent row", () => {
     const shared = section("a1", 42, ["/out/report.md"]);
     const earlier = completionRow("assistant-1", [

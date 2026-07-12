@@ -532,17 +532,8 @@ export const AssistantMessageRow = memo(
     const hasBackgroundWork = Boolean(
       row.backgroundWork && row.backgroundWork.threadIds.length > 0,
     );
-    const backgroundWorkCompleted = Boolean(
-      row.backgroundWork &&
-      row.backgroundWork.threadIds.length > 0 &&
-      row.backgroundWork.completedThreadIds.length ===
-        row.backgroundWork.threadIds.length &&
-      row.backgroundWork.completionSections?.length,
-    );
     const hasAgentCompletion = Boolean(
-      !hasBackgroundWork &&
-      row.agentCompletion &&
-      row.agentCompletion.sections.length > 0,
+      row.agentCompletion && row.agentCompletion.sections.length > 0,
     );
     // The in-flight call is owned by the footer WorkingIndicator; the trace
     // counts only settled calls (the group is undefined until the first one
@@ -596,12 +587,7 @@ export const AssistantMessageRow = memo(
           {hasToolActivity && row.toolActivity && (
             <ToolActivityTrace group={row.toolActivity} traceKey={row.id} />
           )}
-          {backgroundWorkCompleted && row.backgroundWork ? (
-            <AgentCompletionCard
-              sections={row.backgroundWork.completionSections ?? []}
-              cardId={row.backgroundWork.cardId}
-            />
-          ) : hasBackgroundWork && row.backgroundWork ? (
+          {hasBackgroundWork && row.backgroundWork ? (
             <BackgroundWorkCard
               threadIds={row.backgroundWork.threadIds}
               completedThreadIds={row.backgroundWork.completedThreadIds}

@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import type { EventRecord } from "@/features/chat/lib/event-transforms";
 import type { MessagePayload } from "@/features/chat/lib/event-transforms";
 import {
+  isAgentCompletedEvent,
   isAgentStartedEvent,
   isAssistantMessage,
   isUserMessage,
@@ -21,6 +22,7 @@ import {
   resolveBackgroundTaskCardLifecycle,
   type BackgroundTaskLifecycleIndex,
 } from "@/features/chat/lib/background-task-lifecycle";
+import type { AgentCompletionSection } from "@/features/chat/lib/agent-completion";
 import { deriveTurnWebSearchResults } from "@/features/chat/lib/derive-turn-web-search";
 import { deriveTurnMapArtifacts } from "@/features/chat/lib/derive-turn-map-artifacts";
 import { deriveToolActivity } from "@/features/chat/lib/tool-activity";
@@ -344,25 +346,20 @@ export const dedupeAgentCompletionRows = (
   rows: EventRowViewModel[],
   droppedRowIndices: Set<number>,
 ): void => {
-  const completionKey = (agentId: string, completedAtMs: number) =>
-    `${agentId}\u001f${completedAtMs}`;
+  const completionKey = (section: AgentCompletionSection) =>
+    section.completionEventId ??
+    `${section.agentId}\u001f${section.completedAtMs}`;
   const latestCompletionOwner = new Map<string, number>();
   rows.forEach((row, index) => {
     if (row.kind !== "assistant" || !row.agentCompletion) return;
     for (const section of row.agentCompletion.sections) {
-      latestCompletionOwner.set(
-        completionKey(section.agentId, section.completedAtMs),
-        index,
-      );
+      latestCompletionOwner.set(completionKey(section), index);
     }
   });
   rows.forEach((row, index) => {
     if (row.kind !== "assistant" || !row.agentCompletion) return;
     const surviving = row.agentCompletion.sections.filter(
-      (section) =>
-        latestCompletionOwner.get(
-          completionKey(section.agentId, section.completedAtMs),
-        ) === index,
+      (section) => latestCompletionOwner.get(completionKey(section)) === index,
     );
     if (surviving.length === row.agentCompletion.sections.length) return;
     if (surviving.length > 0) {
@@ -378,6 +375,28 @@ export const dedupeAgentCompletionRows = (
       droppedRowIndices.add(index);
     }
   });
+};
+
+/** Resolve completion events on one timeline row through their exact start. */
+export const projectAgentCompletionSections = (
+  toolEvents: readonly EventRecord[],
+  lifecycleIndex: BackgroundTaskLifecycleIndex,
+  agentId?: string,
+): AgentCompletionSection[] => {
+  const sections = new Map<string, AgentCompletionSection>();
+  for (const event of toolEvents) {
+    if (!isAgentCompletedEvent(event)) continue;
+    const startEventId = lifecycleIndex.startEventIdByLifecycleEventId.get(
+      event._id,
+    );
+    const section = startEventId
+      ? lifecycleIndex.byStartEventId.get(startEventId)?.completion
+      : undefined;
+    if (!section) continue;
+    if (agentId !== undefined && section.agentId !== agentId) continue;
+    sections.set(section.completionEventId ?? event._id, section);
+  }
+  return [...sections.values()];
 };
 
 const isImageOnlyInlineRow = (row: AssistantRowViewModel): boolean =>
@@ -736,6 +755,18 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const officePreviewRef = getOfficePreviewRef(toolEvents);
         const voiceSession = payload?.metadata?.voiceSession;
         const backgroundWork = buildBackgroundWork(toolEvents);
+        const terminalNoticeAgentId =
+          responseTarget?.type === "agent_terminal_notice" &&
+          responseTarget.terminalState === "completed"
+            ? responseTarget.agentId
+            : undefined;
+        const agentCompletionSections = terminalNoticeAgentId
+          ? projectAgentCompletionSections(
+              toolEvents,
+              lifecycleIndex,
+              terminalNoticeAgentId,
+            )
+          : [];
         const toolActivity = deriveToolActivity(toolEvents);
         const isStreamingOverlay =
           message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX) &&
@@ -783,20 +814,24 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
           ...(scheduleReceipt ? { scheduleReceipt } : {}),
           ...(voiceSession ? { voiceSession } : {}),
           ...(backgroundWork ? { backgroundWork } : {}),
+          ...(agentCompletionSections.length > 0
+            ? { agentCompletion: { sections: agentCompletionSections } }
+            : {}),
           ...(showInlineArtifacts && toolActivity ? { toolActivity } : {}),
         };
         produced.push(row);
       }
 
       // Cache the projection for reuse on the next delta, EXCEPT rows that
-      // carry a background-work card: those are mutated by the dedup pass
+      // carry an agent activity card: those are mutated by the dedup passes
       // below and depend on per-frame cross-row lifecycle state, so they must be rebuilt
       // each frame. Everything else is a pure function of the (stable)
       // message identity + dev flag.
       const hasAgentActivityCard = produced.some(
         (producedRow) =>
           producedRow.kind === "assistant" &&
-          Boolean(producedRow.backgroundWork),
+          (Boolean(producedRow.backgroundWork) ||
+            (producedRow.agentCompletion?.sections.length ?? 0) > 0),
       );
       if (hasAgentActivityCard) {
         cacheByMessage.delete(message);

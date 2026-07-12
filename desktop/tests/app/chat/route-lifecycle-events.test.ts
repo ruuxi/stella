@@ -40,6 +40,105 @@ const followUpMidStream = event({
 });
 
 describe("routeLifecycleEvents", () => {
+  it("moves completion from its earlier chronological anchor to the matching terminal-notice response", () => {
+    const state = createLifecycleRoutingState();
+    const completion = event({
+      _id: "completed-writer",
+      type: "agent-completed",
+      timestamp: 350,
+      payload: { agentId: "writer", rootRunId: "run-writer" },
+    });
+    const user = message({
+      _id: "u-terminal",
+      timestamp: 100,
+      type: "user_message",
+      toolEvents: [completion],
+    });
+    const priorResponse = message({
+      _id: "stream-overlay:u-terminal:1",
+      timestamp: 300,
+      type: "assistant_message",
+      payload: {
+        text: "I asked the agent to handle it.",
+        userMessageId: "u-terminal",
+        metadata: {
+          runtime: {
+            isStreaming: true,
+            responseTarget: { type: "user_turn" },
+          },
+        },
+      },
+      toolEvents: [],
+    });
+
+    const beforeNotice = routeLifecycleEvents([user, priorResponse], state);
+    expect(beforeNotice[1]!.toolEvents.map((item) => item._id)).toEqual([
+      "completed-writer",
+    ]);
+
+    const persistedPrior = message({
+      _id: "assistant-prior",
+      timestamp: 400,
+      type: "assistant_message",
+      payload: {
+        text: "I asked the agent to handle it.",
+        userMessageId: "u-terminal",
+        metadata: { runtime: { streamStartedAtMs: 300 } },
+      },
+      toolEvents: [completion],
+    });
+    const terminalResponse = message({
+      _id: "stream-overlay:u-terminal:2",
+      timestamp: 500,
+      type: "assistant_message",
+      payload: {
+        text: "The workflow design update is complete.",
+        userMessageId: "u-terminal",
+        metadata: {
+          runtime: {
+            isStreaming: true,
+            responseTarget: {
+              type: "agent_terminal_notice",
+              agentId: "writer",
+              terminalState: "completed",
+            },
+          },
+        },
+      },
+      toolEvents: [],
+    });
+    const hiddenTerminalPrompt = message({
+      _id: "hidden-terminal-prompt",
+      timestamp: 450,
+      type: "user_message",
+      payload: {
+        text: "[Agent completed]",
+        metadata: { ui: { visibility: "hidden" } },
+      },
+      toolEvents: [],
+    });
+
+    const withNotice = routeLifecycleEvents(
+      [
+        message({
+          _id: "u-terminal",
+          timestamp: 100,
+          type: "user_message",
+          toolEvents: [],
+        }),
+        persistedPrior,
+        hiddenTerminalPrompt,
+        terminalResponse,
+      ],
+      state,
+    );
+
+    expect(withNotice[1]!.toolEvents).toEqual([]);
+    expect(withNotice[3]!.toolEvents.map((item) => item._id)).toEqual([
+      "completed-writer",
+    ]);
+  });
+
   it("routes a mid-stream lifecycle event below the streaming text and keeps pre-stream events above it", () => {
     // Rahul's sequence, live: finished card painted first (user anchor),
     // orchestrator text streaming below it (overlay first chunk at t=300),
@@ -368,7 +467,10 @@ describe("routeLifecycleEvents", () => {
 
     // Gap frame: overlay cleared, twin not delivered yet. The card falls
     // back to the user anchor for this frame only.
-    const gapFrame = routeLifecycleEvents([userRow([midStreamCompleted])], state);
+    const gapFrame = routeLifecycleEvents(
+      [userRow([midStreamCompleted])],
+      state,
+    );
     expect(gapFrame[0]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
 
     // Twin frame: the persisted twin occupies the overlay's slot — the
@@ -495,7 +597,10 @@ describe("routeLifecycleEvents", () => {
     // Segment 1 aborts: overlay gone, nothing persisted.
     routeLifecycleEvents([userRow()], state);
     // Segment 2 streams in the same slot, starting AFTER the event.
-    const retryFrame = routeLifecycleEvents([userRow(), overlayRow(600)], state);
+    const retryFrame = routeLifecycleEvents(
+      [userRow(), overlayRow(600)],
+      state,
+    );
 
     expect(retryFrame[0]!.toolEvents.map((e) => e._id)).toEqual(["c-mid"]);
     expect(retryFrame[1]!.toolEvents).toEqual([]);

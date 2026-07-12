@@ -158,16 +158,16 @@ export type AssistantRowViewModel = {
     rootRunIdsByThread: Record<string, string>;
     terminalEventIdsByThread?: Record<string, string>;
     cardId: string;
-    /** Run-scoped done payload folded back from matching completion events. */
+    /** Run-scoped done payload used for lifecycle correlation. The completion
+     * card itself is projected separately at the completion timeline anchor. */
     completionSections?: AgentCompletionSection[];
     groupKey?: string;
     label?: string;
   };
   /**
-   * Legacy loose completion attachment retained for compatibility with custom
-   * rows. The standard conversation projection never populates it: delegated
-   * completion lives in `backgroundWork.completionSections` on the matching
-   * spawn-anchored card.
+   * Append-only completion attachment at the row where `agent-completed` was
+   * routed. The matching background-work receipt remains at its start anchor
+   * and settles without changing card type.
    */
   agentCompletion?: {
     sections: AgentCompletionSection[];
