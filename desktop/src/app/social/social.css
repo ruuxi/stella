@@ -3,13 +3,19 @@
    ============================================ */
 
 @keyframes socialFadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .social-view {
   --social-serif: var(--font-family-display);
-  --social-mono: var(--font-family-mono, 'IBM Plex Mono', monospace);
+  --social-mono: var(--font-family-mono, "IBM Plex Mono", monospace);
 
   display: flex;
   flex-direction: row;
@@ -65,7 +71,9 @@
   border: none;
   color: var(--text-weak);
   cursor: default;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .social-sidebar-action:hover {
@@ -408,7 +416,9 @@
   font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
   flex-shrink: 0;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .social-stella-pill:hover:not(:disabled) {
@@ -518,7 +528,9 @@
   color: var(--text-strong);
   font-size: var(--font-size-sm);
   font-weight: var(--weight-medium);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .social-session-button:hover:not(:disabled) {
@@ -696,8 +708,11 @@
   font-size: var(--font-size-xs);
   font-weight: var(--weight-medium);
   letter-spacing: -0.005em;
-  transition: border-color 0.15s ease, background 0.15s ease,
-    color 0.15s ease, transform 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
 }
 
 .social-stella-arm-button:hover {
@@ -743,7 +758,9 @@
   border: 1px solid var(--border-base);
   border-radius: 22px;
   padding: 4px 6px 4px 16px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease,
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
     background 0.2s ease;
 }
 
@@ -831,7 +848,9 @@
   border: none;
   color: var(--text-strong);
   cursor: default;
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
 }
 
 .social-composer-send:disabled {
@@ -1395,7 +1414,9 @@ button.social-invite-card:focus-visible {
   color: var(--text-strong);
   cursor: default;
   margin-top: 4px;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .social-no-rooms-action:hover {
@@ -1406,4 +1427,61 @@ button.social-invite-card:focus-visible {
 .social-no-rooms-action:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+/* ================================================================
+   Mobile WebView overrides
+   Active when data-platform="mobile" is set on <html> by the
+   mobile bridge shim. One pane at a time: the room list fills the
+   screen, and opening a room swaps in the conversation (the
+   `data-room-open` attribute on .social-view tracks this).
+   ================================================================ */
+
+[data-platform="mobile"] .social-sidebar {
+  width: 100%;
+  border-right: none;
+}
+
+[data-platform="mobile"] .social-view[data-room-open="true"] .social-sidebar {
+  display: none;
+}
+
+[data-platform="mobile"]
+  .social-view:not([data-room-open="true"])
+  .social-chat-pane {
+  display: none;
+}
+
+/* Back button in the conversation header — desktop keeps both panes
+   visible, so it only exists on mobile. */
+.social-chat-back {
+  display: none;
+}
+
+[data-platform="mobile"] .social-chat-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-base);
+}
+
+[data-platform="mobile"] .social-chat-back:active {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+/* 44px-ish touch targets for the header actions. */
+[data-platform="mobile"] .social-sidebar-action {
+  width: 40px;
+  height: 40px;
+}
+
+[data-platform="mobile"] .social-profile-edit-actions .social-sidebar-action {
+  width: auto;
 }

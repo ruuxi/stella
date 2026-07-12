@@ -19,7 +19,7 @@ import {
 import { SocialComposer } from "./SocialComposer";
 import type { SocialRoomSummary } from "./hooks/use-social-rooms";
 import type { SocialProfile } from "./hooks/use-social-profile";
-import { MessageSquare } from "@/ui/icons";
+import { ChevronLeft, MessageSquare } from "@/ui/icons";
 import { AddonShareCard } from "@/features/store/AddonShareCard";
 import { SocialInviteCard } from "./SocialInviteCard";
 import { parseSocialInviteLink } from "./invite-links";
@@ -27,6 +27,8 @@ import { parseSocialInviteLink } from "./invite-links";
 type SocialChatPaneProps = {
   roomId: string;
   currentOwnerId: string;
+  /** Mobile: returns to the room list (the back button is CSS-hidden on desktop). */
+  onBack?: () => void;
 };
 
 type MessageDoc = {
@@ -81,6 +83,7 @@ function getProfileForOwner(
 export function SocialChatPane({
   roomId,
   currentOwnerId,
+  onBack,
 }: SocialChatPaneProps) {
   const roomData = useQuery(api.social.rooms.getRoom, {
     roomId,
@@ -471,6 +474,17 @@ export function SocialChatPane({
   return (
     <div className="social-chat-pane">
       <div className="social-chat-header">
+        {onBack ? (
+          <button
+            type="button"
+            className="social-chat-back"
+            aria-label="Back to conversations"
+            title="Back"
+            onClick={onBack}
+          >
+            <ChevronLeft size={20} />
+          </button>
+        ) : null}
         <div className="social-chat-header-info">
           <div className="social-chat-header-name">{displayName}</div>
           {roomData.memberProfiles.length > 2 && (

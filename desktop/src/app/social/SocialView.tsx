@@ -6,7 +6,10 @@ import { showToast } from "@/ui/toast";
 import { getSocialActionErrorMessage } from "./social-errors";
 import { useSocialBadges } from "./hooks/use-social-badges";
 import { useSocialProfile } from "./hooks/use-social-profile";
-import { useSocialRooms, type SocialRoomSummary } from "./hooks/use-social-rooms";
+import {
+  useSocialRooms,
+  type SocialRoomSummary,
+} from "./hooks/use-social-rooms";
 import { getSocialRoomDisplayName } from "./room-display";
 import {
   preloadSocialChatPane,
@@ -67,7 +70,9 @@ function getRoomAvatar(
 ): { fallback: string; src?: string } {
   switch (room.room.kind) {
     case "dm": {
-      const other = room.memberProfiles.find((member) => member.ownerId !== currentOwnerId);
+      const other = room.memberProfiles.find(
+        (member) => member.ownerId !== currentOwnerId,
+      );
       return {
         fallback: other?.username ?? "?",
         src: other?.avatarUrl,
@@ -109,7 +114,10 @@ export function SocialView({ onSignIn }: SocialViewProps) {
   useEffect(() => {
     if (isSignedIn && !profile) {
       void ensureProfile().catch((error) => {
-        console.debug("[social] Skipped profile ensure during auth transition:", error);
+        console.debug(
+          "[social] Skipped profile ensure during auth transition:",
+          error,
+        );
       });
     }
   }, [isSignedIn, profile, ensureProfile]);
@@ -261,7 +269,12 @@ export function SocialView({ onSignIn }: SocialViewProps) {
   const currentOwnerId = profile?.ownerId ?? "";
 
   return (
-    <div className="social-view">
+    // `data-room-open` drives the mobile one-pane-at-a-time layout: the
+    // room list and the conversation swap instead of sitting side by side.
+    <div
+      className="social-view"
+      data-room-open={activeRoomId ? "true" : undefined}
+    >
       <div className="social-sidebar">
         <div className="social-sidebar-header">
           <span className="social-sidebar-title">Messages</span>
@@ -285,7 +298,10 @@ export function SocialView({ onSignIn }: SocialViewProps) {
             >
               <Users size={18} />
               {incomingFriendRequestCount > 0 && (
-                <span className="social-sidebar-action-badge" aria-hidden="true">
+                <span
+                  className="social-sidebar-action-badge"
+                  aria-hidden="true"
+                >
                   {incomingFriendRequestCount > 99
                     ? "99+"
                     : incomingFriendRequestCount}
@@ -441,9 +457,7 @@ export function SocialView({ onSignIn }: SocialViewProps) {
                   <span
                     className="social-profile-tag"
                     title={
-                      tagCopied
-                        ? "Copied!"
-                        : "Click to copy your username"
+                      tagCopied ? "Copied!" : "Click to copy your username"
                     }
                     onClick={handleCopyTag}
                   >
@@ -493,17 +507,26 @@ export function SocialView({ onSignIn }: SocialViewProps) {
           <SocialChatPane
             roomId={activeRoomId}
             currentOwnerId={currentOwnerId}
+            onBack={() => setActiveRoomId(null)}
           />
         </Suspense>
       ) : (
         <div className="social-chat-pane">
           <div className="social-empty-state">
-            <div style={{ width: 200, height: 150, opacity: 0.8, marginBottom: -10 }}>
+            <div
+              style={{
+                width: 200,
+                height: 150,
+                opacity: 0.8,
+                marginBottom: -10,
+              }}
+            >
               <CollaborationIllustration />
             </div>
             <div className="social-empty-title">Your messages</div>
             <div className="social-empty-subtitle">
-              Pick a conversation from the left, or start a new one with a friend.
+              Pick a conversation from the left, or start a new one with a
+              friend.
             </div>
           </div>
         </div>
