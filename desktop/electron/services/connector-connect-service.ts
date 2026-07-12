@@ -22,6 +22,7 @@ import {
   loadConfiguredOAuthProviders,
   resolveDesktopNativeConnectorEntry,
   type NativeCredentialFlowOptions,
+  type ResolvedNativeCredentialTarget,
 } from "../ipc/native-integration-handlers.js";
 import type { ConnectorCredentialService } from "./connector-credential-service.js";
 import type {
@@ -44,6 +45,8 @@ type PendingConnectMeta = {
   state: "pending" | "connecting";
   /** Worker-generated handle for turn-abort cancellation. */
   offerId?: string;
+  /** Service-derived semantic identity; callers never supply this value. */
+  canonicalFingerprint?: string;
   oauthAbort: AbortController;
   windows: BrowserWindow[];
 };
@@ -77,6 +80,25 @@ const isCanonicalConnectorConnectable = (
       entry.localExecution === "production-ready"),
   );
 
+const connectorIdentityFingerprint = (
+  target: ResolvedNativeCredentialTarget,
+) => {
+  const { entry, catalog } = target;
+  return JSON.stringify({
+    id: entry.id,
+    catalogSource: catalog.sources[entry.id] ?? catalog.source,
+    provider: entry.provider,
+    backendToolkit: entry.backendConnector?.toolkit ?? null,
+    localExecution: entry.localExecution ?? null,
+    toolPrefix: entry.toolPrefix ?? null,
+    tools: getNativeConnectorTools(entry).map((tool) => tool.name),
+    connectable: entry.connectable,
+    auth: [...entry.auth],
+    catalogToolCount: entry.catalogToolCount,
+    oauthConfig: entry.oauthConfig ?? null,
+  });
+};
+
 export class ConnectorConnectService {
   private readonly pending = new PendingRequestStore<ConnectorConnectOutcome>();
   private readonly meta = new Map<string, PendingConnectMeta>();
@@ -105,7 +127,7 @@ export class ConnectorConnectService {
     if (!stellaAppDir) {
       return { ok: false, reason: "unsupported" };
     }
-    const { entry } = await resolveDesktopNativeConnectorEntry(
+    const target = await resolveDesktopNativeConnectorEntry(
       {
         getConvexAuthToken: this.options.getConvexAuthToken,
         getConvexSiteUrl: this.options.getConvexSiteUrl,
@@ -113,6 +135,7 @@ export class ConnectorConnectService {
       stellaAppDir,
       payload.id.trim().toLowerCase(),
     );
+    const { entry } = target;
     if (!isCanonicalConnectorConnectable(entry)) {
       return { ok: false, reason: "connector_unavailable" };
     }
@@ -132,6 +155,10 @@ export class ConnectorConnectService {
       kind: "integration",
       state: "pending",
       ...(payload.offerId ? { offerId: payload.offerId } : {}),
+      canonicalFingerprint: connectorIdentityFingerprint({
+        catalog: target.catalog,
+        entry: entry!,
+      }),
       oauthAbort: new AbortController(),
       windows: targetWindows,
     });
@@ -360,17 +387,33 @@ export class ConnectorConnectService {
         credentialService.requestDeviceOAuth(payload),
     };
     try {
-      const { catalog, entry } = await resolveDesktopNativeConnectorEntry(
+      const target = await resolveDesktopNativeConnectorEntry(
         flowOptions,
         stellaAppDir,
         meta.id,
       );
+      const { catalog, entry } = target;
       if (!isCanonicalConnectorConnectable(entry)) {
         throw new Error(
           `${meta.name} is no longer available through an executable Store integration.`,
         );
       }
-      await ensureNativeCredential(flowOptions, stellaAppDir, entry!.id);
+      const acceptedTarget = { catalog, entry: entry! };
+      if (
+        !meta.canonicalFingerprint ||
+        connectorIdentityFingerprint(acceptedTarget) !==
+          meta.canonicalFingerprint
+      ) {
+        throw new Error(
+          `${meta.name} connector changed while the card was open. Retry the connection.`,
+        );
+      }
+      await ensureNativeCredential(
+        flowOptions,
+        stellaAppDir,
+        entry!.id,
+        acceptedTarget,
+      );
       const configuredOAuthProviders =
         await loadConfiguredOAuthProviders(flowOptions);
       await enableNativeConnector(

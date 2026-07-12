@@ -156,6 +156,54 @@ describe("ConnectorConnectService canonical guards", () => {
     expect(credentialService.requestDeviceOAuth).not.toHaveBeenCalled();
   });
 
+  it("blocks a same-id backend Gmail to bundled Google Workspace provider swap", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-service-"));
+    roots.push(root);
+    await writeCachedServerCatalog(root, [backendEntry("gmail", "Gmail")]);
+    const { service, credentialService } = makeService(root);
+
+    const outcome = service.requestConnection({ id: "gmail", name: "Gmail" });
+    await waitFor(() => send.mock.calls.length === 1);
+    const card = send.mock.calls[0]![1] as { requestId: string };
+    await unlink(path.join(root, "connectors/catalog-cache.json"));
+    service.respond({ requestId: card.requestId, action: "accept" });
+
+    await expect(outcome).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("connector changed"),
+    });
+    expect(credentialService.requestPreregisteredOAuth).not.toHaveBeenCalled();
+    expect(
+      credentialService.requestExternalOAuthApproval,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("blocks a same-provider backend toolkit semantic change", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-service-"));
+    roots.push(root);
+    await writeCachedServerCatalog(root, [backendEntry("notion", "Notion")]);
+    const { service, credentialService } = makeService(root);
+
+    const outcome = service.requestConnection({ id: "notion", name: "Notion" });
+    await waitFor(() => send.mock.calls.length === 1);
+    const card = send.mock.calls[0]![1] as { requestId: string };
+    await writeCachedServerCatalog(root, [
+      {
+        ...backendEntry("notion", "Notion"),
+        backendConnector: { type: "composio", toolkit: "NOTION_V2" },
+      },
+    ]);
+    service.respond({ requestId: card.requestId, action: "accept" });
+
+    await expect(outcome).resolves.toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("connector changed"),
+    });
+    expect(
+      credentialService.requestExternalOAuthApproval,
+    ).not.toHaveBeenCalled();
+  });
+
   it("reconnects enabled Gmail with a missing token and restores executable readiness", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "stella-connect-service-"));
     roots.push(root);
@@ -166,19 +214,17 @@ describe("ConnectorConnectService canonical guards", () => {
       save: async () => undefined,
       delete: async () => undefined,
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL | Request) => {
-        const value = String(url);
-        if (value.endsWith("/api/native-oauth/providers")) {
-          return new Response(
-            JSON.stringify({ providers: [{ id: "google-workspace" }] }),
-            { status: 200 },
-          );
-        }
-        return new Response("offline", { status: 503 });
-      }),
-    );
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const value = String(url);
+      if (value.endsWith("/api/native-oauth/providers")) {
+        return new Response(
+          JSON.stringify({ providers: [{ id: "google-workspace" }] }),
+          { status: 200 },
+        );
+      }
+      return new Response("offline", { status: 503 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
     const { service, credentialService } = makeService(root, true);
     credentialService.requestPreregisteredOAuth.mockImplementation(async () => {
       token = { accessToken: "restored-token" };
@@ -192,6 +238,11 @@ describe("ConnectorConnectService canonical guards", () => {
     service.respond({ requestId: card.requestId, action: "accept" });
     await expect(outcome).resolves.toEqual({ ok: true, status: "connected" });
     expect(credentialService.requestPreregisteredOAuth).toHaveBeenCalledOnce();
+    expect(
+      fetchMock.mock.calls.filter(([url]) =>
+        String(url).endsWith("/api/native-integrations/catalog"),
+      ),
+    ).toHaveLength(2);
 
     const gmail = buildNativeConnectorCatalog().find(
       (entry) => entry.id === "gmail",

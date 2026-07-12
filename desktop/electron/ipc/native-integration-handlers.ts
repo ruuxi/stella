@@ -6,6 +6,7 @@ import {
   getNativeConnectorCatalogEntry,
   getNativeConnectorOAuthConfig,
   listNativeConnectors,
+  type NativeConnectorCatalogEntry,
 } from "../../../runtime/kernel/connectors/native-integrations.js";
 import {
   resolveNativeConnectorCatalog,
@@ -239,17 +240,25 @@ export const resolveDesktopNativeConnectorEntry = async (
   };
 };
 
+export type ResolvedNativeCredentialTarget = {
+  catalog: ResolvedNativeCatalog;
+  entry: NativeConnectorCatalogEntry;
+};
+
 export const ensureNativeCredential = async (
   options: NativeCredentialFlowOptions,
   stellaAppDir: string,
   id: string,
+  acceptedTarget?: ResolvedNativeCredentialTarget,
 ) => {
   const configuredOAuthProviders = await loadConfiguredOAuthProviders(options);
-  const { entry } = await resolveDesktopNativeConnectorEntry(
-    options,
-    stellaAppDir,
-    id,
-  );
+  const entry = acceptedTarget
+    ? acceptedTarget.entry
+    : (await resolveDesktopNativeConnectorEntry(options, stellaAppDir, id))
+        .entry;
+  if (acceptedTarget && acceptedTarget.entry.id !== id) {
+    throw new Error("Accepted connector snapshot does not match the request.");
+  }
   if (entry?.provider === "google-workspace") {
     if (await loadConnectorAccessToken(stellaAppDir, "google-workspace"))
       return;
