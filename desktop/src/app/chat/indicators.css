@@ -125,6 +125,10 @@
   background: transparent;
   border: none;
   padding: 0;
+  /* The wrapper's `inline-indicator-in` already animates the entrance;
+   * the pill's own `stream-fade-in` would stack on top of it and read
+   * as a doubled entrance. */
+  animation: none;
 }
 
 /* Grow-out + fade exit. Short and prompt — once the assistant starts
