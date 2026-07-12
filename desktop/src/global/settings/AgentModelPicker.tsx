@@ -19,7 +19,11 @@ import {
 import { Select } from "@/ui/select";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { useCodexModelCatalog } from "@/global/settings/hooks/use-codex-model-catalog";
-import { EnginePickerPill } from "@/global/settings/EnginePickerPill";
+import { BrandIcon } from "@/ui/brand-icon";
+import {
+  compareProviderRailOrder,
+  getLlmProviderEntry,
+} from "@/global/settings/lib/llm-providers";
 import { getStellaDisplayName } from "@/global/settings/lib/model-catalog";
 import {
   buildModelDefaultsMap,
@@ -102,14 +106,25 @@ const IMAGE_TARGET = "__image__";
 const VOICE_TARGET = "__voice__";
 const ENGINE_PENDING_TARGET = "__engine__";
 
-const ENGINE_OPTIONS: ReadonlyArray<{
-  id: ModelPickerEngine;
-  label: string;
-}> = [
-  { id: "default", label: "Stella" },
-  { id: "codex_cli", label: "ChatGPT" },
-  { id: "claude_code_local", label: "Claude Code" },
-];
+/**
+ * Which source a dual-source brand routes through. `app` is the subscription
+ * runtime (ChatGPT via Codex CLI, Claude Code via the local CLI); `api` is
+ * the BYOK API-key provider running on Stella's own runtime. The brand icon
+ * in the rail always means "whose models" — this toggle picks the account
+ * and engine behind them.
+ */
+type BrandSource = "app" | "api";
+
+/** Map a saved model override to the brand it belongs to in the icon rail. */
+function brandOfModelValue(value: string): string {
+  if (!value || value.startsWith("stella/")) return "stella";
+  if (value.startsWith("codex-cli/") || value.startsWith("openai-codex/")) {
+    return "openai";
+  }
+  if (value.startsWith("claude-code/")) return "anthropic";
+  const slash = value.indexOf("/");
+  return slash > 0 ? value.slice(0, slash) : "stella";
+}
 
 /**
  * The Assistant tab in the sidebar picker writes to both the orchestrator
@@ -298,9 +313,15 @@ export function AgentModelPicker({
   const [chatGptRoutedNotice, setChatGptRoutedNotice] = useState<string | null>(
     null,
   );
-  const [draftEngine, setDraftEngine] = useState<ModelPickerEngine | null>(
+  // Icon-rail navigation state. `null` means "derive from preferences":
+  // the committed engine (ChatGPT/Claude Code) or the active override's
+  // provider decides which brand panel shows when the picker opens.
+  const [activeBrandRaw, setActiveBrandRaw] = useState<string | null>(null);
+  const [openaiSourceRaw, setOpenaiSourceRaw] = useState<BrandSource | null>(
     null,
   );
+  const [anthropicSourceRaw, setAnthropicSourceRaw] =
+    useState<BrandSource | null>(null);
 
   // Mirror state writes into the module-level cache so re-mounting the
   // picker (Radix unmounts popover content on close) shows the last
@@ -385,20 +406,8 @@ export function AgentModelPicker({
     }
   }, [claudeCodeModelsLoading]);
 
-  useEffect(() => {
-    if (
-      preferences?.agentRuntimeEngine === "claude_code_local" &&
-      claudeCodeModels === null &&
-      !claudeCodeModelsLoading
-    ) {
-      void loadClaudeCodeModels();
-    }
-  }, [
-    claudeCodeModels,
-    claudeCodeModelsLoading,
-    loadClaudeCodeModels,
-    preferences?.agentRuntimeEngine,
-  ]);
+  // (The Claude Code model-list load is triggered below, once the active
+  // brand/source panel is derived.)
 
   const modelDefaults = useMemo<ModelDefaultEntry[] | undefined>(() => {
     if (!preferences) return undefined;
@@ -479,8 +488,7 @@ export function AgentModelPicker({
   }, [chatGptCatalogSettled, chatGptModels, selectedChatGptModel]);
   const selectedClaudeCodeModel =
     preferences?.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL;
-  const selectedEngine =
-    draftEngine ?? preferences?.agentRuntimeEngine ?? "default";
+  const committedEngine = preferences?.agentRuntimeEngine ?? "default";
   const oauthPendingRef = useRef(false);
   const migrationAttemptedRef = useRef<string | null>(null);
 
@@ -493,24 +501,8 @@ export function AgentModelPicker({
     [credentials.cancelOAuth],
   );
 
-  useEffect(() => {
-    if (preferences?.agentRuntimeEngine !== "codex_cli") return;
-    let cancelled = false;
-    void credentials.validateOAuth(OPENAI_CODEX_PROVIDER).then((result) => {
-      if (!cancelled) {
-        setChatGptConnection(
-          result.connected
-            ? "connected"
-            : result.needsReauth
-              ? "needs-reauth"
-              : "disconnected",
-        );
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [credentials.validateOAuth, preferences?.agentRuntimeEngine]);
+  // (The ChatGPT connection check is triggered below, once the active
+  // brand/source panel is derived.)
 
   useEffect(() => {
     if (
@@ -618,6 +610,102 @@ export function AgentModelPicker({
   const activeProviderSetting = activeImage || activeVoice;
 
   /**
+   * Brand icon rail: one entry per catalog provider that has models, with
+   * `openai-codex` folded into OpenAI (it's the same brand through the
+   * ChatGPT subscription). Stella, OpenAI, and Anthropic always show even
+   * with an empty catalog so their engine/connect flows stay reachable.
+   */
+  const railBrands = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const group of groups) {
+      if (group.models.length === 0) continue;
+      const key =
+        group.provider === OPENAI_CODEX_PROVIDER ? "openai" : group.provider;
+      if (!labels.has(key)) labels.set(key, group.providerName);
+    }
+    for (const key of ["stella", "openai", "anthropic"]) {
+      if (!labels.has(key)) {
+        labels.set(key, getLlmProviderEntry(key)?.label ?? key);
+      }
+    }
+    return Array.from(labels, ([key, label]) => ({ key, label })).sort(
+      (a, b) => compareProviderRailOrder(a.key, b.key, a.label, b.label),
+    );
+  }, [groups]);
+
+  /** Saved model override for the active tab (assistant reads orchestrator
+   * with general as fallback, same as `current` below). */
+  const activeModelValue = activeAssistant
+    ? (overrides.orchestrator ?? overrides.general ?? "")
+    : (overrides[activeAgent] ?? "");
+
+  const derivedBrand =
+    committedEngine === "codex_cli"
+      ? "openai"
+      : committedEngine === "claude_code_local"
+        ? "anthropic"
+        : brandOfModelValue(activeModelValue);
+  const activeBrand = activeBrandRaw ?? derivedBrand;
+  // Subscription source is the default; the API-key source is derived only
+  // from an actual API-provider override so re-opening the picker lands on
+  // whatever the user last committed.
+  const openaiSource =
+    openaiSourceRaw ??
+    (committedEngine !== "codex_cli" && activeModelValue.startsWith("openai/")
+      ? "api"
+      : "app");
+  const anthropicSource =
+    anthropicSourceRaw ??
+    (committedEngine !== "claude_code_local" &&
+    activeModelValue.startsWith("anthropic/")
+      ? "api"
+      : "app");
+  const showChatGptPanel =
+    !activeProviderSetting && activeBrand === "openai" && openaiSource === "app";
+  const showClaudeCodePanel =
+    !activeProviderSetting &&
+    activeBrand === "anthropic" &&
+    anthropicSource === "app";
+
+  useEffect(() => {
+    if (
+      (showClaudeCodePanel || committedEngine === "claude_code_local") &&
+      claudeCodeModels === null &&
+      !claudeCodeModelsLoading
+    ) {
+      void loadClaudeCodeModels();
+    }
+  }, [
+    claudeCodeModels,
+    claudeCodeModelsLoading,
+    committedEngine,
+    loadClaudeCodeModels,
+    showClaudeCodePanel,
+  ]);
+
+  // Check the ChatGPT OAuth session whenever its panel is on screen (so the
+  // connect notice is accurate before any commit), and always while the
+  // committed engine is ChatGPT (the auto-migration effect depends on it).
+  useEffect(() => {
+    if (!showChatGptPanel && committedEngine !== "codex_cli") return;
+    let cancelled = false;
+    void credentials.validateOAuth(OPENAI_CODEX_PROVIDER).then((result) => {
+      if (!cancelled) {
+        setChatGptConnection(
+          result.connected
+            ? "connected"
+            : result.needsReauth
+              ? "needs-reauth"
+              : "disconnected",
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [committedEngine, credentials.validateOAuth, showChatGptPanel]);
+
+  /**
    * The sidebar Assistant tab writes to both orchestrator and general (and
    * reads from orchestrator with general as a fallback). Settings always
    * writes to a single agent key — even orchestrator and general are
@@ -631,9 +719,23 @@ export function AgentModelPicker({
   const handleSelect = useCallback(
     async (value: string) => {
       if (!preferences || pendingAgent) return;
-      const previousOverrides = { ...preferences.modelOverrides };
+      // Picking any model outside the engine panels routes back through
+      // Stella's own runtime, so a committed ChatGPT/Claude Code engine is
+      // reverted in the same write (selection implies engine).
+      const engineRevertPatch =
+        preferences.agentRuntimeEngine !== "default"
+          ? ({
+              ...buildEngineRoutingPatch(preferences, "default"),
+              ...buildEngineTransitionReasoningPatch(preferences, "default"),
+            } as Partial<LocalModelPreferences>)
+          : null;
+      if (engineRevertPatch) migrationAttemptedRef.current = null;
+      const basePreferences = engineRevertPatch
+        ? { ...preferences, ...engineRevertPatch }
+        : preferences;
+      const previousOverrides = { ...basePreferences.modelOverrides };
       const previousPropagated = [
-        ...(preferences.assistantPropagatedAgents ?? []),
+        ...(basePreferences.assistantPropagatedAgents ?? []),
       ];
       const nextOverrides = { ...previousOverrides };
       let nextPropagated: string[] = previousPropagated;
@@ -696,20 +798,20 @@ export function AgentModelPicker({
       }
 
       setPendingAgent(activeAgent);
+      // After the (possible) engine revert the effective engine is always
+      // "default", so the Stella conversation mirror syncs unconditionally.
       const nextStellaConversationModelOverrides = {
-        ...(preferences.stellaConversationModelOverrides ?? {}),
+        ...(basePreferences.stellaConversationModelOverrides ?? {}),
       };
-      if (preferences.agentRuntimeEngine === "default") {
-        for (const key of ASSISTANT_AGENT_KEYS) {
-          if (nextOverrides[key]) {
-            nextStellaConversationModelOverrides[key] = nextOverrides[key];
-          } else {
-            delete nextStellaConversationModelOverrides[key];
-          }
+      for (const key of ASSISTANT_AGENT_KEYS) {
+        if (nextOverrides[key]) {
+          nextStellaConversationModelOverrides[key] = nextOverrides[key];
+        } else {
+          delete nextStellaConversationModelOverrides[key];
         }
       }
       setPreferences({
-        ...preferences,
+        ...basePreferences,
         modelOverrides: nextOverrides,
         assistantPropagatedAgents: nextPropagated,
         stellaConversationModelOverrides: nextStellaConversationModelOverrides,
@@ -717,6 +819,7 @@ export function AgentModelPicker({
       try {
         const saved =
           await window.electronAPI?.system?.setLocalModelPreferences?.({
+            ...(engineRevertPatch ?? {}),
             modelOverrides: nextOverrides,
             assistantPropagatedAgents: nextPropagated,
             stellaConversationModelOverrides:
@@ -735,17 +838,9 @@ export function AgentModelPicker({
         // selection is allowed and no toast is needed.
         onSelected?.();
       } catch (caught) {
-        setPreferences((current) =>
-          current
-            ? {
-                ...current,
-                modelOverrides: previousOverrides,
-                assistantPropagatedAgents: previousPropagated,
-                stellaConversationModelOverrides:
-                  preferences.stellaConversationModelOverrides,
-              }
-            : current,
-        );
+        // Full restore: the optimistic write may have included an engine
+        // revert, so partial rollbacks would leave mixed state.
+        setPreferences(preferences);
         setError(
           caught instanceof Error
             ? caught.message
@@ -852,12 +947,6 @@ export function AgentModelPicker({
         return true;
       } catch (caught) {
         oauthPendingRef.current = false;
-        if (
-          caught instanceof Error &&
-          caught.message.toLowerCase().includes("cancel")
-        ) {
-          setDraftEngine(null);
-        }
         setPreferences(previous);
         setError(
           caught instanceof Error && caught.message.trim()
@@ -883,51 +972,17 @@ export function AgentModelPicker({
     ],
   );
 
-  const handleEngineChange = useCallback(
-    async (engine: ModelPickerEngine) => {
-      if (!preferences) return;
-      if (engine === selectedEngine) {
-        setDraftEngine(null);
-        return;
-      }
-      setDraftEngine(engine);
-      if (engine === "claude_code_local" && claudeCodeModels === null) {
-        void loadClaudeCodeModels();
-      }
-      await commitEngineSelection(
-        engine,
-        engine === "codex_cli"
-          ? selectedChatGptModel
-          : engine === "claude_code_local"
-            ? selectedClaudeCodeModel
-            : undefined,
-      );
-      setDraftEngine(null);
-    },
-    [
-      claudeCodeModels,
-      commitEngineSelection,
-      loadClaudeCodeModels,
-      preferences,
-      selectedEngine,
-      selectedChatGptModel,
-      selectedClaudeCodeModel,
-    ],
-  );
-
   const handleEngineModelSelect = useCallback(
-    async (modelId: string) => {
+    async (engine: ModelPickerEngine, modelId: string) => {
       if (!preferences) return;
-      // Selecting a row from the model list is an explicit user pick.
-      const saved = await commitEngineSelection(selectedEngine, modelId, {
+      // Selecting a row from an engine panel is an explicit user pick and
+      // commits that engine (selection implies engine).
+      const saved = await commitEngineSelection(engine, modelId, {
         explicit: true,
       });
-      if (saved) {
-        setDraftEngine(null);
-        onSelected?.();
-      }
+      if (saved) onSelected?.();
     },
-    [commitEngineSelection, onSelected, preferences, selectedEngine],
+    [commitEngineSelection, onSelected, preferences],
   );
 
   const handleImageProviderSelect = useCallback(
@@ -1235,9 +1290,9 @@ export function AgentModelPicker({
   }, [claudeCodeModels, selectedClaudeCodeModel]);
 
   const currentReasoningEffort =
-    selectedEngine === "codex_cli"
+    committedEngine === "codex_cli"
       ? (preferences?.codexReasoningEffort ?? "default")
-      : selectedEngine === "claude_code_local"
+      : committedEngine === "claude_code_local"
         ? (preferences?.claudeCodeReasoningEffort ?? "default")
         : activeAssistant
           ? (preferences?.reasoningEfforts?.orchestrator ??
@@ -1279,7 +1334,13 @@ export function AgentModelPicker({
       aria-selected={isActive}
       className="agent-model-picker-toggle-btn"
       data-active={isActive || undefined}
-      onClick={() => setActiveAgent(key)}
+      onClick={() => {
+        setActiveAgent(key);
+        // Each tab re-derives its brand/source from saved preferences.
+        setActiveBrandRaw(null);
+        setOpenaiSourceRaw(null);
+        setAnthropicSourceRaw(null);
+      }}
       disabled={pendingAgent !== null}
       title={title}
     >
@@ -1346,9 +1407,9 @@ export function AgentModelPicker({
           type="button"
           className="agent-model-picker-refresh"
           onClick={() => {
-            if (selectedEngine === "claude_code_local") {
+            if (showClaudeCodePanel) {
               void loadClaudeCodeModels();
-            } else if (selectedEngine === "codex_cli") {
+            } else if (showChatGptPanel) {
               migrationAttemptedRef.current = null;
               void codexCatalog.refresh();
             } else {
@@ -1362,12 +1423,12 @@ export function AgentModelPicker({
             codexCatalog.loading
           }
           title={
-            selectedEngine === "claude_code_local"
+            showClaudeCodePanel
               ? "Refresh Claude Code models"
               : "Refresh model catalog"
           }
           aria-label={
-            selectedEngine === "claude_code_local"
+            showClaudeCodePanel
               ? "Refresh Claude Code models"
               : "Refresh model catalog"
           }
@@ -1438,85 +1499,175 @@ export function AgentModelPicker({
               disabled={!preferences || pendingAgent !== null}
             />
           </>
-        ) : selectedEngine === "codex_cli" ? (
+        ) : (
           <>
-            {chatGptConnection === "disconnected" ||
-            chatGptConnection === "needs-reauth" ? (
-              <p className="agent-model-picker-connection">
-                {chatGptConnection === "needs-reauth"
-                  ? "ChatGPT needs to be reconnected."
-                  : "ChatGPT is disconnected."}{" "}
+            <div
+              className="agent-model-picker-brands"
+              role="tablist"
+              aria-label="Provider"
+            >
+              {railBrands.map((brand) => (
+                <button
+                  key={brand.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={brand.key === activeBrand}
+                  aria-label={brand.label}
+                  title={brand.label}
+                  className="agent-model-picker-brand"
+                  data-active={brand.key === activeBrand || undefined}
+                  onClick={() => setActiveBrandRaw(brand.key)}
+                  disabled={pendingAgent !== null}
+                >
+                  <BrandIcon brand={brand.key} size={17} />
+                </button>
+              ))}
+            </div>
+            {activeBrand === "openai" || activeBrand === "anthropic" ? (
+              <div
+                className="agent-model-picker-source"
+                role="tablist"
+                aria-label="Connection"
+              >
                 <button
                   type="button"
-                  disabled={pendingAgent !== null || codexCatalog.loading}
-                  onClick={() =>
-                    void commitEngineSelection(
-                      "codex_cli",
-                      selectedChatGptModel,
-                    )
+                  role="tab"
+                  aria-selected={
+                    (activeBrand === "openai"
+                      ? openaiSource
+                      : anthropicSource) === "app"
                   }
+                  data-active={
+                    (activeBrand === "openai"
+                      ? openaiSource
+                      : anthropicSource) === "app" || undefined
+                  }
+                  onClick={() =>
+                    activeBrand === "openai"
+                      ? setOpenaiSourceRaw("app")
+                      : setAnthropicSourceRaw("app")
+                  }
+                  disabled={pendingAgent !== null}
                 >
-                  Connect
+                  {activeBrand === "openai" ? "ChatGPT" : "Claude Code"}
                 </button>
-              </p>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={
+                    (activeBrand === "openai"
+                      ? openaiSource
+                      : anthropicSource) === "api"
+                  }
+                  data-active={
+                    (activeBrand === "openai"
+                      ? openaiSource
+                      : anthropicSource) === "api" || undefined
+                  }
+                  onClick={() =>
+                    activeBrand === "openai"
+                      ? setOpenaiSourceRaw("api")
+                      : setAnthropicSourceRaw("api")
+                  }
+                  disabled={pendingAgent !== null}
+                >
+                  API key
+                </button>
+              </div>
             ) : null}
-            {codexCatalog.error ? (
-              <p className="agent-model-picker-error" role="alert">
-                ChatGPT models could not be verified: {codexCatalog.error}
-              </p>
-            ) : codexCatalog.loading ? (
-              <p className="agent-model-picker-connection" role="status">
-                Verifying ChatGPT models…
-              </p>
-            ) : chatGptModels.length === 0 ? (
-              <p className="agent-model-picker-connection" role="status">
-                No models are currently available to both ChatGPT and Codex.
-              </p>
-            ) : selectedChatGptModelUnavailable ? (
-              <p className="agent-model-picker-connection" role="status">
-                The saved model is unavailable. Choose another model.
-              </p>
-            ) : chatGptRoutedNotice ? (
-              <p className="agent-model-picker-connection" role="status">
-                {chatGptRoutedNotice}
-              </p>
-            ) : null}
-            <EngineScopedModelList
-              engineLabel="ChatGPT"
-              models={chatGptModelsWithCurrent}
-              value={selectedChatGptModel}
-              onSelect={(modelId) => void handleEngineModelSelect(modelId)}
-              emptyMessage={null}
-              disabled={
-                !preferences ||
-                pendingAgent !== null ||
-                chatGptConnection !== "connected" ||
-                codexCatalog.loading ||
-                codexCatalog.models === null
-              }
-            />
+            {showChatGptPanel ? (
+              <>
+                {chatGptConnection === "disconnected" ||
+                chatGptConnection === "needs-reauth" ? (
+                  <p className="agent-model-picker-connection">
+                    {chatGptConnection === "needs-reauth"
+                      ? "ChatGPT needs to be reconnected."
+                      : "ChatGPT is disconnected."}{" "}
+                    <button
+                      type="button"
+                      disabled={pendingAgent !== null || codexCatalog.loading}
+                      onClick={() =>
+                        void commitEngineSelection(
+                          "codex_cli",
+                          selectedChatGptModel,
+                        )
+                      }
+                    >
+                      Connect
+                    </button>
+                  </p>
+                ) : null}
+                {codexCatalog.error ? (
+                  <p className="agent-model-picker-error" role="alert">
+                    ChatGPT models could not be verified: {codexCatalog.error}
+                  </p>
+                ) : codexCatalog.loading ? (
+                  <p className="agent-model-picker-connection" role="status">
+                    Verifying ChatGPT models…
+                  </p>
+                ) : chatGptModels.length === 0 ? (
+                  <p className="agent-model-picker-connection" role="status">
+                    No models are currently available to both ChatGPT and
+                    Codex.
+                  </p>
+                ) : selectedChatGptModelUnavailable ? (
+                  <p className="agent-model-picker-connection" role="status">
+                    The saved model is unavailable. Choose another model.
+                  </p>
+                ) : chatGptRoutedNotice ? (
+                  <p className="agent-model-picker-connection" role="status">
+                    {chatGptRoutedNotice}
+                  </p>
+                ) : null}
+                <EngineScopedModelList
+                  engineLabel="ChatGPT"
+                  models={chatGptModelsWithCurrent}
+                  value={
+                    committedEngine === "codex_cli" ? selectedChatGptModel : ""
+                  }
+                  onSelect={(modelId) =>
+                    void handleEngineModelSelect("codex_cli", modelId)
+                  }
+                  emptyMessage={null}
+                  disabled={
+                    !preferences ||
+                    pendingAgent !== null ||
+                    chatGptConnection !== "connected" ||
+                    codexCatalog.loading ||
+                    codexCatalog.models === null
+                  }
+                />
+              </>
+            ) : showClaudeCodePanel ? (
+              <EngineScopedModelList
+                engineLabel="Claude Code"
+                models={claudeCodeModelsWithCurrent}
+                value={
+                  committedEngine === "claude_code_local"
+                    ? selectedClaudeCodeModel
+                    : ""
+                }
+                onSelect={(modelId) =>
+                  void handleEngineModelSelect("claude_code_local", modelId)
+                }
+                loading={claudeCodeModelsLoading}
+                disabled={!preferences || pendingAgent !== null}
+              />
+            ) : (
+              <ProviderModelPanel
+                value={current}
+                defaultLabel={defaultLabel}
+                currentLabel={currentLabel}
+                groups={groups}
+                disabled={!ready || pendingAgent !== null}
+                restrictStellaPicks={restrictedStellaPicks}
+                restrictedPlanLabel={restrictedPlanLabel}
+                ariaLabel="Assistant model picker"
+                onSelect={handleSelect}
+                visibleProviders={[activeBrand]}
+              />
+            )}
           </>
-        ) : selectedEngine === "claude_code_local" ? (
-          <EngineScopedModelList
-            engineLabel="Claude Code"
-            models={claudeCodeModelsWithCurrent}
-            value={selectedClaudeCodeModel}
-            onSelect={(modelId) => void handleEngineModelSelect(modelId)}
-            loading={claudeCodeModelsLoading}
-            disabled={!preferences || pendingAgent !== null}
-          />
-        ) : (
-          <ProviderModelPanel
-            value={current}
-            defaultLabel={defaultLabel}
-            currentLabel={currentLabel}
-            groups={groups}
-            disabled={!ready || pendingAgent !== null}
-            restrictStellaPicks={restrictedStellaPicks}
-            restrictedPlanLabel={restrictedPlanLabel}
-            ariaLabel="Assistant model picker"
-            onSelect={handleSelect}
-          />
         )}
 
         {showChronicleStillOnStellaNotice ? (
@@ -1542,18 +1693,13 @@ export function AgentModelPicker({
 
       {activeProviderSetting ? null : (
         <div className="agent-model-picker-footer">
-          <EnginePickerPill
-            className="agent-model-picker-engine"
-            options={ENGINE_OPTIONS}
-            value={selectedEngine}
-            disabled={
-              !preferences ||
-              pendingAgent !== null ||
-              credentials.loading ||
-              codexCatalog.loading
-            }
-            onChange={(engine) => void handleEngineChange(engine)}
-          />
+          <span className="agent-model-picker-engine-note">
+            {committedEngine === "codex_cli"
+              ? "Runs via Codex CLI"
+              : committedEngine === "claude_code_local"
+                ? "Runs via Claude Code"
+                : "Runs on Stella"}
+          </span>
           <div className="agent-model-picker-reasoning">
             <span>Reasoning</span>
             <Select
@@ -1565,13 +1711,13 @@ export function AgentModelPicker({
               }}
               disabled={
                 pendingAgent !== null ||
-                (selectedEngine === "codex_cli" &&
+                (committedEngine === "codex_cli" &&
                   (chatGptConnection !== "connected" || codexCatalog.loading))
               }
               aria-label="Reasoning effort"
               options={REASONING_EFFORT_OPTIONS.filter(
                 (option) =>
-                  selectedEngine !== "claude_code_local" ||
+                  committedEngine !== "claude_code_local" ||
                   option.id !== "minimal",
               ).map((option) => ({
                 value: option.id,

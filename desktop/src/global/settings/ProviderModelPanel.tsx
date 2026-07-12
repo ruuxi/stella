@@ -8,6 +8,7 @@ import {
   Search,
   Star,
 } from "@/ui/icons";
+import { BrandIcon } from "@/ui/brand-icon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -417,6 +418,9 @@ export function ProviderModelPanel({
             data-on={connected || undefined}
             aria-hidden
           />
+          <span className="model-picker-group-icon" aria-hidden>
+            <BrandIcon brand={tab.key} size={13} />
+          </span>
           <span className="model-picker-group-label">{tab.label}</span>
           <span className="model-picker-group-rule" aria-hidden />
           {requiresAuth ? (

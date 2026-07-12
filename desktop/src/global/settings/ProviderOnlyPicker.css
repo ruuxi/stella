@@ -52,8 +52,23 @@
   cursor: default;
 }
 
+.provider-only-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 18px;
+  color: var(--text-weak);
+}
+
+.provider-only-row-main:hover .provider-only-row-icon,
+.provider-only-row[data-selected] .provider-only-row-icon {
+  color: var(--text-strong);
+}
+
 .provider-only-row-text {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 2px;
   min-width: 0;

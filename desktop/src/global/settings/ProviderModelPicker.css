@@ -78,6 +78,14 @@
   background: var(--success);
 }
 
+.model-picker-group-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-right: -2px;
+  color: var(--text-weak);
+}
+
 .model-picker-group-label {
   flex-shrink: 0;
   font-size: var(--font-size-xs);

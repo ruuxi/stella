@@ -69,20 +69,81 @@
   border-top: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
 }
 
-.agent-model-picker-engine {
-  display: inline-flex;
+/* Brand icon rail — one icon per provider brand; scrolls horizontally when
+ * the catalog carries more brands than fit the popover width. */
+.agent-model-picker-brands {
+  display: flex;
+  flex: none;
+  gap: 4px;
   min-width: 0;
-  padding: 3px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  margin-bottom: 8px;
+}
+
+.agent-model-picker-brands::-webkit-scrollbar {
+  display: none;
+}
+
+.agent-model-picker-brand {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-weak);
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.agent-model-picker-brand:hover:not(:disabled) {
+  color: var(--text-strong);
+  background: color-mix(in oklch, var(--text-strong) 6%, transparent);
+}
+
+.agent-model-picker-brand:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: 1px;
+}
+
+.agent-model-picker-brand[data-active] {
+  background: var(--background);
+  border-color: color-mix(in oklch, var(--border) 60%, transparent);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-subtle);
+}
+
+.agent-model-picker-brand:disabled {
+  opacity: 0.5;
+}
+
+/* Source toggle — shown for brands reachable through both a subscription
+ * runtime (ChatGPT / Claude Code) and an API key. */
+.agent-model-picker-source {
+  display: inline-flex;
+  align-self: flex-start;
+  flex: none;
   gap: 2px;
+  padding: 3px;
+  margin-bottom: 8px;
   border: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
   border-radius: var(--radius-full);
   background: color-mix(in oklch, var(--text-strong) 6%, transparent);
 }
 
-.agent-model-picker-engine button {
+.agent-model-picker-source button {
   appearance: none;
-  min-height: 26px;
-  padding: 3px 10px;
+  min-height: 24px;
+  padding: 2px 10px;
   border: 0;
   border-radius: var(--radius-full);
   background: transparent;
@@ -96,21 +157,29 @@
     color 120ms ease;
 }
 
-.agent-model-picker-engine button:hover:not(:disabled),
-.agent-model-picker-engine button:focus-visible {
+.agent-model-picker-source button:hover:not(:disabled),
+.agent-model-picker-source button:focus-visible {
   color: var(--text-strong);
-  outline: 2px solid var(--focus-ring, var(--accent));
-  outline-offset: 2px;
+  outline: none;
 }
 
-.agent-model-picker-engine button[data-active] {
+.agent-model-picker-source button[data-active] {
   background: var(--background);
   color: var(--text-strong);
   box-shadow: var(--shadow-subtle);
 }
 
-.agent-model-picker-engine button:disabled {
+.agent-model-picker-source button:disabled {
   opacity: 0.5;
+}
+
+.agent-model-picker-engine-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
 }
 
 .agent-model-picker-reasoning {
@@ -260,14 +329,5 @@
   .agent-model-picker-footer {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .agent-model-picker-engine {
-    width: 100%;
-  }
-
-  .agent-model-picker-engine button {
-    flex: 1 1 0;
-    padding-inline: 6px;
   }
 }

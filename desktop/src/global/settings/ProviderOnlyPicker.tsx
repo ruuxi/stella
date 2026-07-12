@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { Check, KeyRound, LogIn } from "@/ui/icons";
+import { BrandIcon } from "@/ui/brand-icon";
 import { Button } from "@/ui/button";
 import { TextField } from "@/ui/text-field";
 import {
@@ -162,6 +163,9 @@ export function ProviderOnlyPicker({
               onClick={() => handleRowClick(provider.key)}
               disabled={disabled}
             >
+              <span className="provider-only-row-icon" aria-hidden>
+                <BrandIcon brand={provider.key} size={16} />
+              </span>
               <span className="provider-only-row-text">
                 <span className="provider-only-row-name">{provider.label}</span>
                 {provider.description ? (
