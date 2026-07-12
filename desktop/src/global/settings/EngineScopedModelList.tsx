@@ -16,6 +16,8 @@ type EngineScopedModelListProps = {
   loading?: boolean;
   disabled?: boolean;
   emptyMessage?: string | null;
+  /** Hide the engine-name header when the surrounding UI already names it. */
+  hideHead?: boolean;
 };
 
 export function EngineScopedModelList({
@@ -26,15 +28,18 @@ export function EngineScopedModelList({
   loading = false,
   disabled = false,
   emptyMessage,
+  hideHead = false,
 }: EngineScopedModelListProps) {
   return (
     <div
       className="engine-scoped-model-list"
       aria-label={`${engineLabel} models`}
     >
-      <div className="engine-scoped-model-list__head">
-        <span>{engineLabel}</span>
-      </div>
+      {hideHead ? null : (
+        <div className="engine-scoped-model-list__head">
+          <span>{engineLabel}</span>
+        </div>
+      )}
       <div className="engine-scoped-model-list__rows">
         {loading && models.length === 0 ? (
           <p>Loading {engineLabel} models…</p>

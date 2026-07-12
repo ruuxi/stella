@@ -20,6 +20,7 @@ import { Select } from "@/ui/select";
 import { useModelCatalog } from "@/global/settings/hooks/use-model-catalog";
 import { useCodexModelCatalog } from "@/global/settings/hooks/use-codex-model-catalog";
 import { BrandIcon } from "@/ui/brand-icon";
+import { useEdgeFadeRef } from "@/shared/hooks/use-edge-fade";
 import {
   compareProviderRailOrder,
   getLlmProviderEntry,
@@ -313,6 +314,9 @@ export function AgentModelPicker({
   const [chatGptRoutedNotice, setChatGptRoutedNotice] = useState<string | null>(
     null,
   );
+  // Scroll-edge fade for the brand rail: `data-at-start` / `data-at-end`
+  // drive the tapered mask so the cut-off icon signals more to scroll.
+  const brandRailRef = useEdgeFadeRef<HTMLDivElement>();
   // Icon-rail navigation state. `null` means "derive from preferences":
   // the committed engine (ChatGPT/Claude Code) or the active override's
   // provider decides which brand panel shows when the picker opens.
@@ -486,6 +490,22 @@ export function AgentModelPicker({
       },
     ];
   }, [chatGptCatalogSettled, chatGptModels, selectedChatGptModel]);
+  // Even without a ChatGPT connection the static registry knows which
+  // OpenAI models the ChatGPT engine can route — show those instead of an
+  // empty wall. Picking one starts the OAuth flow.
+  const chatGptRegistryOptions = useMemo<EngineScopedModelOption[]>(
+    () =>
+      listChatGptCatalogModels(allModels).map((model) => ({
+        id: model.modelId,
+        label: model.name || model.modelId,
+        description: model.modelId,
+      })),
+    [allModels],
+  );
+  const chatGptDisplayModels =
+    chatGptModels.length > 0
+      ? chatGptModelsWithCurrent
+      : chatGptRegistryOptions;
   const selectedClaudeCodeModel =
     preferences?.claudeCodeModel || DEFAULT_CLAUDE_CODE_MODEL;
   const committedEngine = preferences?.agentRuntimeEngine ?? "default";
@@ -628,8 +648,8 @@ export function AgentModelPicker({
         labels.set(key, getLlmProviderEntry(key)?.label ?? key);
       }
     }
-    return Array.from(labels, ([key, label]) => ({ key, label })).sort(
-      (a, b) => compareProviderRailOrder(a.key, b.key, a.label, b.label),
+    return Array.from(labels, ([key, label]) => ({ key, label })).sort((a, b) =>
+      compareProviderRailOrder(a.key, b.key, a.label, b.label),
     );
   }, [groups]);
 
@@ -661,7 +681,9 @@ export function AgentModelPicker({
       ? "api"
       : "app");
   const showChatGptPanel =
-    !activeProviderSetting && activeBrand === "openai" && openaiSource === "app";
+    !activeProviderSetting &&
+    activeBrand === "openai" &&
+    openaiSource === "app";
   const showClaudeCodePanel =
     !activeProviderSetting &&
     activeBrand === "anthropic" &&
@@ -1269,6 +1291,16 @@ export function AgentModelPicker({
         ? getModelPickerDisplayLabel(current, modelNamesById)
         : defaultLabel
       : "Loading…";
+  /** Footer summary of what's committed right now (engine-aware). */
+  const footerModelLabel =
+    committedEngine === "codex_cli"
+      ? `ChatGPT · ${selectedChatGptModel}`
+      : committedEngine === "claude_code_local"
+        ? `Claude Code · ${
+            CLAUDE_CODE_ALIAS_LABELS[selectedClaudeCodeModel] ??
+            selectedClaudeCodeModel
+          }`
+        : currentLabel;
   const claudeCodeModelsWithCurrent = useMemo<EngineScopedModelOption[]>(() => {
     const models = claudeCodeModels ?? [];
     if (
@@ -1502,6 +1534,7 @@ export function AgentModelPicker({
         ) : (
           <>
             <div
+              ref={brandRailRef}
               className="agent-model-picker-brands"
               role="tablist"
               aria-label="Provider"
@@ -1605,12 +1638,12 @@ export function AgentModelPicker({
                   <p className="agent-model-picker-connection" role="status">
                     Verifying ChatGPT models…
                   </p>
-                ) : chatGptModels.length === 0 ? (
+                ) : chatGptDisplayModels.length === 0 ? (
                   <p className="agent-model-picker-connection" role="status">
-                    No models are currently available to both ChatGPT and
-                    Codex.
+                    No models are currently available to both ChatGPT and Codex.
                   </p>
-                ) : selectedChatGptModelUnavailable ? (
+                ) : chatGptConnection === "connected" &&
+                  selectedChatGptModelUnavailable ? (
                   <p className="agent-model-picker-connection" role="status">
                     The saved model is unavailable. Choose another model.
                   </p>
@@ -1621,7 +1654,8 @@ export function AgentModelPicker({
                 ) : null}
                 <EngineScopedModelList
                   engineLabel="ChatGPT"
-                  models={chatGptModelsWithCurrent}
+                  hideHead
+                  models={chatGptDisplayModels}
                   value={
                     committedEngine === "codex_cli" ? selectedChatGptModel : ""
                   }
@@ -1632,15 +1666,14 @@ export function AgentModelPicker({
                   disabled={
                     !preferences ||
                     pendingAgent !== null ||
-                    chatGptConnection !== "connected" ||
-                    codexCatalog.loading ||
-                    codexCatalog.models === null
+                    codexCatalog.loading
                   }
                 />
               </>
             ) : showClaudeCodePanel ? (
               <EngineScopedModelList
                 engineLabel="Claude Code"
+                hideHead
                 models={claudeCodeModelsWithCurrent}
                 value={
                   committedEngine === "claude_code_local"
@@ -1665,6 +1698,8 @@ export function AgentModelPicker({
                 ariaLabel="Assistant model picker"
                 onSelect={handleSelect}
                 visibleProviders={[activeBrand]}
+                hideSelectedTitle
+                hideProviderLabel
               />
             )}
           </>
@@ -1693,12 +1728,14 @@ export function AgentModelPicker({
 
       {activeProviderSetting ? null : (
         <div className="agent-model-picker-footer">
-          <span className="agent-model-picker-engine-note">
-            {committedEngine === "codex_cli"
-              ? "Runs via Codex CLI"
-              : committedEngine === "claude_code_local"
-                ? "Runs via Claude Code"
-                : "Runs on Stella"}
+          <span
+            className="agent-model-picker-engine-note"
+            title={footerModelLabel}
+          >
+            <BrandIcon brand={derivedBrand} size={13} />
+            <span className="agent-model-picker-engine-note-text">
+              {footerModelLabel}
+            </span>
           </span>
           <div className="agent-model-picker-reasoning">
             <span>Reasoning</span>

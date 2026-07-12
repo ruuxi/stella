@@ -9,7 +9,7 @@
    * and every engine panel flex-fills it. A floor-only min-height let each
    * panel's own sizing leak out, so the popover grew/shrank when switching
    * engines (ChatGPT's status notices stack above its list) or tabs. */
-  height: clamp(360px, 60vh, 480px);
+  height: clamp(440px, 70vh, 580px);
 }
 
 .agent-model-picker-body {
@@ -80,6 +80,33 @@
   overflow-y: hidden;
   scrollbar-width: none;
   margin-bottom: 8px;
+  /* Tapered scroll-edge fade (same pattern as the topbar tablist): the
+   * half-visible icon under the fade signals there's more to scroll.
+   * `useEdgeFade` drops each side's fade when that edge is reached. */
+  --brand-rail-fade-start: 28px;
+  --brand-rail-fade-end: 28px;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--brand-rail-fade-start),
+    #000 calc(100% - var(--brand-rail-fade-end)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--brand-rail-fade-start),
+    #000 calc(100% - var(--brand-rail-fade-end)),
+    transparent 100%
+  );
+}
+
+.agent-model-picker-brands[data-at-start="true"] {
+  --brand-rail-fade-start: 0px;
+}
+
+.agent-model-picker-brands[data-at-end="true"] {
+  --brand-rail-fade-end: 0px;
 }
 
 .agent-model-picker-brands::-webkit-scrollbar {
@@ -105,9 +132,19 @@
     border-color 120ms ease;
 }
 
+/* Inactive brands sit desaturated so the active (full-color) brand pops;
+ * hover previews the color. Neutral mono glyphs just get the usual
+ * text-weak → text-strong lift via `color`. */
+.agent-model-picker-brand:not([data-active]) {
+  filter: grayscale(1);
+  opacity: 0.75;
+}
+
 .agent-model-picker-brand:hover:not(:disabled) {
   color: var(--text-strong);
   background: color-mix(in oklch, var(--text-strong) 6%, transparent);
+  filter: none;
+  opacity: 1;
 }
 
 .agent-model-picker-brand:focus-visible {
@@ -174,12 +211,19 @@
 }
 
 .agent-model-picker-engine-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+}
+
+.agent-model-picker-engine-note-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-weak);
-  font-size: var(--font-size-xs);
 }
 
 .agent-model-picker-reasoning {

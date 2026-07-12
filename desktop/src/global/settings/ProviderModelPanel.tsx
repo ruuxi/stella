@@ -125,6 +125,12 @@ interface ProviderModelPanelProps {
   /** When true, only the Stella provider can be picked; other provider sections stay visible but disabled. */
   disableNonStellaProviders?: boolean;
   disabledProviderReason?: string;
+  /**
+   * Hide the provider icon + name in the section head. Used when the
+   * embedder already names the provider (the sidebar picker's brand rail);
+   * the connect / sign-out affordances stay.
+   */
+  hideProviderLabel?: boolean;
 }
 
 function buildProviderTabs(
@@ -168,6 +174,7 @@ export function ProviderModelPanel({
   hideSelectionCheck = false,
   disableNonStellaProviders = false,
   disabledProviderReason,
+  hideProviderLabel = false,
   visibleProviders,
   favoriteScope,
 }: ProviderModelPanelProps) {
@@ -397,6 +404,11 @@ export function ProviderModelPanel({
 
     const restrictThisStella = isStella && restrictStellaPicks;
     const showDefaultRow = !hideDefaultRow && isStella && !trimmedQuery;
+    // Models stay visible before the provider is connected; picking one
+    // opens the connect flow instead of selecting.
+    const handleRowPick = requiresAuth
+      ? () => toggleExpanded(expanded ? null : tab.key)
+      : handlePick;
 
     return (
       <div
@@ -418,10 +430,14 @@ export function ProviderModelPanel({
             data-on={connected || undefined}
             aria-hidden
           />
-          <span className="model-picker-group-icon" aria-hidden>
-            <BrandIcon brand={tab.key} size={13} />
-          </span>
-          <span className="model-picker-group-label">{tab.label}</span>
+          {hideProviderLabel ? null : (
+            <>
+              <span className="model-picker-group-icon" aria-hidden>
+                <BrandIcon brand={tab.key} size={13} />
+              </span>
+              <span className="model-picker-group-label">{tab.label}</span>
+            </>
+          )}
           <span className="model-picker-group-rule" aria-hidden />
           {requiresAuth ? (
             <button
@@ -480,192 +496,189 @@ export function ProviderModelPanel({
           )}
         </div>
 
-        {requiresAuth ? (
-          expanded ? (
-            <div className="model-picker-connect">
-              <p className="model-picker-connect-hint">{authDescription}</p>
-              {supportsOAuth ? (
-                <button
-                  type="button"
-                  className="model-picker-connect-oauth"
-                  onClick={() => handleLoginOAuth(tab.key)}
-                  disabled={oauthProvider === tab.key || sectionDisabled}
-                >
-                  <LogIn size={13} strokeWidth={1.75} aria-hidden />
-                  {oauthProvider === tab.key
-                    ? "Opening…"
-                    : `Sign in with ${tab.label}`}
-                </button>
-              ) : null}
-              {supportsApiKey ? (
-                <div className="model-picker-connect-field">
-                  <KeyRound size={13} strokeWidth={1.75} aria-hidden />
-                  <input
-                    type="password"
-                    placeholder={llmEntry?.placeholder ?? "API key"}
-                    value={draftKey}
-                    onChange={(e) => setDraftKey(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSaveKey(tab.key, tab.label);
-                    }}
-                    autoFocus={!supportsOAuth}
-                    disabled={sectionDisabled}
-                    aria-label={`${tab.label} API key`}
-                    spellCheck={false}
-                    autoComplete="off"
-                  />
-                  <button
-                    type="button"
-                    className="model-picker-connect-go"
-                    onClick={() => handleSaveKey(tab.key, tab.label)}
-                    disabled={
-                      !draftKey.trim() ||
-                      savingProvider === tab.key ||
-                      sectionDisabled
-                    }
-                  >
-                    {savingProvider === tab.key ? "Saving…" : "Save"}
-                  </button>
-                </div>
-              ) : null}
-              {authError ? (
-                <p className="model-picker-connect-error" role="alert">
-                  {authError}
-                </p>
-              ) : null}
-            </div>
-          ) : null
-        ) : (
-          <>
-            {isLocal && expanded ? (
-              <div className="model-picker-connect">
-                <p className="model-picker-connect-hint">
-                  Use any local OpenAI-compatible server. Ollama usually runs at
-                  the URL below.
-                </p>
-                <div className="model-picker-connect-field">
-                  <input
-                    placeholder={DEFAULT_LOCAL_BASE_URL}
-                    value={localBaseUrl}
-                    onChange={(e) => setLocalBaseUrl(e.target.value)}
-                    disabled={sectionDisabled}
-                    aria-label="Local server URL"
-                    spellCheck={false}
-                    autoComplete="off"
-                  />
-                </div>
-                <div className="model-picker-connect-field">
-                  <input
-                    placeholder="llama3.2"
-                    value={localModelId}
-                    onChange={(e) => setLocalModelId(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSubmitLocal();
-                    }}
-                    disabled={sectionDisabled}
-                    aria-label="Local model name"
-                    spellCheck={false}
-                    autoComplete="off"
-                  />
-                  <button
-                    type="button"
-                    className="model-picker-connect-go"
-                    onClick={handleSubmitLocal}
-                    disabled={!localModelId.trim() || sectionDisabled}
-                  >
-                    Use
-                  </button>
-                </div>
-              </div>
+        {requiresAuth && expanded ? (
+          <div className="model-picker-connect">
+            <p className="model-picker-connect-hint">{authDescription}</p>
+            {supportsOAuth ? (
+              <button
+                type="button"
+                className="model-picker-connect-oauth"
+                onClick={() => handleLoginOAuth(tab.key)}
+                disabled={oauthProvider === tab.key || sectionDisabled}
+              >
+                <LogIn size={13} strokeWidth={1.75} aria-hidden />
+                {oauthProvider === tab.key
+                  ? "Opening…"
+                  : `Sign in with ${tab.label}`}
+              </button>
             ) : null}
-
-            {isOpenRouter && expanded ? (
-              <div className="model-picker-connect">
-                <p className="model-picker-connect-hint">
-                  OpenRouter accepts any <code>vendor/model</code> id. Type one
-                  to use it directly.
-                </p>
-                <div className="model-picker-connect-field">
-                  <input
-                    placeholder="anthropic/claude-opus-4.7"
-                    value={openRouterCustomId}
-                    onChange={(e) => setOpenRouterCustomId(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSubmitOpenRouter();
-                    }}
-                    disabled={sectionDisabled}
-                    aria-label="OpenRouter model id"
-                    spellCheck={false}
-                    autoComplete="off"
-                  />
-                  <button
-                    type="button"
-                    className="model-picker-connect-go"
-                    onClick={handleSubmitOpenRouter}
-                    disabled={!openRouterCustomId.trim() || sectionDisabled}
-                  >
-                    Use
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="model-picker-models">
-              {showDefaultRow ? (
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={isDefaultSelected}
-                  className="model-picker-model model-picker-model--default"
-                  data-selected={isDefaultSelected || undefined}
-                  onClick={(event) =>
-                    handlePick(DEFAULT_TARGET, event.currentTarget)
-                  }
+            {supportsApiKey ? (
+              <div className="model-picker-connect-field">
+                <KeyRound size={13} strokeWidth={1.75} aria-hidden />
+                <input
+                  type="password"
+                  placeholder={llmEntry?.placeholder ?? "API key"}
+                  value={draftKey}
+                  onChange={(e) => setDraftKey(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveKey(tab.key, tab.label);
+                  }}
+                  autoFocus={!supportsOAuth}
                   disabled={sectionDisabled}
+                  aria-label={`${tab.label} API key`}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  className="model-picker-connect-go"
+                  onClick={() => handleSaveKey(tab.key, tab.label)}
+                  disabled={
+                    !draftKey.trim() ||
+                    savingProvider === tab.key ||
+                    sectionDisabled
+                  }
                 >
-                  <span className="model-picker-model-text">
-                    <span className="model-picker-model-name">
-                      {defaultLabel}
-                    </span>
-                  </span>
-                  {!hideSelectionCheck && isDefaultSelected ? (
-                    <Check size={13} className="model-picker-model-check" />
-                  ) : null}
+                  {savingProvider === tab.key ? "Saving…" : "Save"}
                 </button>
-              ) : null}
-              {models.map((model) => {
-                const selected = !isDefaultSelected && model.id === value;
-                const rowRestricted =
-                  restrictThisStella &&
-                  model.provider === STELLA_PROVIDER_KEY &&
-                  !selected &&
-                  model.allowedForAudience === false;
-                return (
-                  <ModelRow
-                    key={model.id}
-                    model={model}
-                    selected={selected}
-                    rowRestricted={rowRestricted}
-                    restrictedPlanLabel={restrictedPlanLabel ?? null}
-                    restrictedReason={
-                      rowRestricted && !restrictedPlanLabel
-                        ? (disabledProviderReason ?? null)
-                        : null
-                    }
-                    onPick={handlePick}
-                    disabled={sectionDisabled}
-                    favorite={favorites.includes(model.id)}
-                    showFavorite={Boolean(favoriteScope)}
-                    onToggleFavorite={toggleFavorite}
-                    reasoningEffort={reasoningEffort}
-                    onSelectReasoning={onSelectReasoning}
-                    hideSelectionCheck={hideSelectionCheck}
-                  />
-                );
-              })}
+              </div>
+            ) : null}
+            {authError ? (
+              <p className="model-picker-connect-error" role="alert">
+                {authError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+        <>
+          {isLocal && expanded ? (
+            <div className="model-picker-connect">
+              <p className="model-picker-connect-hint">
+                Use any local OpenAI-compatible server. Ollama usually runs at
+                the URL below.
+              </p>
+              <div className="model-picker-connect-field">
+                <input
+                  placeholder={DEFAULT_LOCAL_BASE_URL}
+                  value={localBaseUrl}
+                  onChange={(e) => setLocalBaseUrl(e.target.value)}
+                  disabled={sectionDisabled}
+                  aria-label="Local server URL"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="model-picker-connect-field">
+                <input
+                  placeholder="llama3.2"
+                  value={localModelId}
+                  onChange={(e) => setLocalModelId(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSubmitLocal();
+                  }}
+                  disabled={sectionDisabled}
+                  aria-label="Local model name"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  className="model-picker-connect-go"
+                  onClick={handleSubmitLocal}
+                  disabled={!localModelId.trim() || sectionDisabled}
+                >
+                  Use
+                </button>
+              </div>
             </div>
-          </>
-        )}
+          ) : null}
+
+          {isOpenRouter && expanded ? (
+            <div className="model-picker-connect">
+              <p className="model-picker-connect-hint">
+                OpenRouter accepts any <code>vendor/model</code> id. Type one to
+                use it directly.
+              </p>
+              <div className="model-picker-connect-field">
+                <input
+                  placeholder="anthropic/claude-opus-4.7"
+                  value={openRouterCustomId}
+                  onChange={(e) => setOpenRouterCustomId(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSubmitOpenRouter();
+                  }}
+                  disabled={sectionDisabled}
+                  aria-label="OpenRouter model id"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  className="model-picker-connect-go"
+                  onClick={handleSubmitOpenRouter}
+                  disabled={!openRouterCustomId.trim() || sectionDisabled}
+                >
+                  Use
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="model-picker-models">
+            {showDefaultRow ? (
+              <button
+                type="button"
+                role="option"
+                aria-selected={isDefaultSelected}
+                className="model-picker-model model-picker-model--default"
+                data-selected={isDefaultSelected || undefined}
+                onClick={(event) =>
+                  handlePick(DEFAULT_TARGET, event.currentTarget)
+                }
+                disabled={sectionDisabled}
+              >
+                <span className="model-picker-model-text">
+                  <span className="model-picker-model-name">
+                    {defaultLabel}
+                  </span>
+                </span>
+                {!hideSelectionCheck && isDefaultSelected ? (
+                  <Check size={13} className="model-picker-model-check" />
+                ) : null}
+              </button>
+            ) : null}
+            {models.map((model) => {
+              const selected = !isDefaultSelected && model.id === value;
+              const rowRestricted =
+                restrictThisStella &&
+                model.provider === STELLA_PROVIDER_KEY &&
+                !selected &&
+                model.allowedForAudience === false;
+              return (
+                <ModelRow
+                  key={model.id}
+                  model={model}
+                  selected={selected}
+                  rowRestricted={rowRestricted}
+                  restrictedPlanLabel={restrictedPlanLabel ?? null}
+                  restrictedReason={
+                    rowRestricted && !restrictedPlanLabel
+                      ? (disabledProviderReason ?? null)
+                      : null
+                  }
+                  onPick={handleRowPick}
+                  disabled={sectionDisabled}
+                  favorite={favorites.includes(model.id)}
+                  showFavorite={Boolean(favoriteScope)}
+                  onToggleFavorite={toggleFavorite}
+                  reasoningEffort={reasoningEffort}
+                  onSelectReasoning={onSelectReasoning}
+                  hideSelectionCheck={hideSelectionCheck}
+                />
+              );
+            })}
+          </div>
+        </>
       </div>
     );
   };
