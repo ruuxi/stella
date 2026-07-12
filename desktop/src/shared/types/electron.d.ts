@@ -1671,6 +1671,16 @@ export type ElectronLocalChatApi = {
     summariesByAgentId: Record<string, string[]>;
     entriesByAgentId?: Record<string, { text: string; atMs: number }[]>;
   }) => Promise<{ ok: true }>;
+  /**
+   * Mirror the renderer's per-thread mid-run statusText (task-decoration
+   * store) into the main-process snapshot behind the desktop→mobile sync:
+   * attached to running tasks on sync pages and broadcast to the phone as
+   * `localChat:taskDecorationUpdated`. Replaced wholesale per publish; only
+   * running threads are present.
+   */
+  publishTaskDecoration: (payload: {
+    statusTextByAgentId: Record<string, string>;
+  }) => Promise<{ ok: true }>;
   getSyncCheckpoint: (payload: {
     conversationId: string;
   }) => Promise<string | null>;

@@ -2230,6 +2230,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       summariesByAgentId: Record<string, string[]>;
       entriesByAgentId?: Record<string, { text: string; atMs: number }[]>;
     }) => ipcRenderer.invoke("localChat:publishReasoningSummaries", payload),
+    publishTaskDecoration: (payload: {
+      statusTextByAgentId: Record<string, string>;
+    }) => ipcRenderer.invoke("localChat:publishTaskDecoration", payload),
     getSyncCheckpoint: (payload: { conversationId: string }) =>
       ipcRenderer.invoke("localChat:getSyncCheckpoint", payload),
     setSyncCheckpoint: (payload: {

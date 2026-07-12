@@ -46,6 +46,18 @@ export type ThreadActivityUpdatedPayload = {
   conversationId: string;
 };
 
+/**
+ * Snapshot of the renderer's ephemeral per-thread decoration, mirrored to the
+ * mobile bridge so the phone's activity pill gets the same mid-run statusText
+ * ticks and reasoning phrases the desktop tray shows. Replaced wholesale on
+ * every publish; only currently-running threads are present. Never persisted —
+ * a reconnecting client gets the current snapshot attached to its sync page.
+ */
+export type TaskDecorationUpdatedPayload = {
+  statusTextByAgentId: Record<string, string>;
+  reasoningSummariesByAgentId: Record<string, string[]>;
+};
+
 export type ToolRequestPayload = {
   toolName: string;
   args?: Record<string, unknown>;

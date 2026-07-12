@@ -54,6 +54,11 @@ export const createBootstrapServices = (options: {
       }
       options.getMobileBroadcast()?.("localChat:updated", payload ?? null);
     },
+    // Mobile-only: desktop windows maintain their own decoration stores from
+    // the live stream; the bridge snapshot exists for the phone's benefit.
+    onTaskDecorationUpdated: (payload) => {
+      options.getMobileBroadcast()?.("localChat:taskDecorationUpdated", payload);
+    },
   });
   externalLinkService.setDevBuild(config.useDevServer);
   if (config.useDevServer) {

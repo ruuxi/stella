@@ -400,6 +400,115 @@ describe("local chat mobile artifacts", () => {
     expect(task?.reasoningSummaries).toBeUndefined();
   });
 
+  it("bridges live decoration statusText onto the running task", () => {
+    // `agent-progress` rows are no longer persisted, so a running task's
+    // current statusText only exists in the renderer's decoration snapshot —
+    // the serializer must prefer it over the folded spawn statusText.
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now,
+          payload: { text: "Working" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now,
+              type: "agent-started",
+              payload: {
+                agentId: "t1",
+                description: "Book flights",
+                statusText: "Starting up",
+              },
+            },
+          ],
+        }),
+      ],
+      20,
+      undefined,
+      undefined,
+      undefined,
+      new Map([["t1", "Comparing fares on the second site"]]),
+    );
+
+    const task = rows.find((row) => row.localMessageId === "a1")?.tasks?.[0];
+    expect(task).toMatchObject({
+      id: "t1",
+      status: "running",
+      statusText: "Comparing fares on the second site",
+    });
+  });
+
+  it("keeps the folded spawn statusText when no decoration is bridged", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now,
+          payload: { text: "Working" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now,
+              type: "agent-started",
+              payload: {
+                agentId: "t1",
+                description: "Book flights",
+                statusText: "Starting up",
+              },
+            },
+          ],
+        }),
+      ],
+      20,
+    );
+
+    const task = rows.find((row) => row.localMessageId === "a1")?.tasks?.[0];
+    expect(task).toMatchObject({
+      id: "t1",
+      status: "running",
+      statusText: "Starting up",
+    });
+  });
+
+  it("never decorates a terminal task with statusText", () => {
+    const now = Date.now();
+    const rows = buildMobileSyncMessages(
+      [
+        baseMessage({
+          _id: "a1",
+          timestamp: now,
+          payload: { text: "Working" },
+          toolEvents: [
+            {
+              _id: "as1",
+              timestamp: now,
+              type: "agent-started",
+              payload: { agentId: "t1", description: "Book flights" },
+            },
+            {
+              _id: "ac1",
+              timestamp: now + 100,
+              type: "agent-completed",
+              payload: { agentId: "t1" },
+            },
+          ],
+        }),
+      ],
+      20,
+      undefined,
+      undefined,
+      undefined,
+      new Map([["t1", "Stale tick from before the terminal"]]),
+    );
+
+    const task = rows.find((row) => row.localMessageId === "a1")?.tasks?.[0];
+    expect(task).toMatchObject({ id: "t1", status: "completed" });
+    expect(task?.statusText).toBeUndefined();
+  });
+
   it("scopes completion to each run so a reactivation card stays running", () => {
     const now = Date.now();
     const rows = buildMobileSyncMessages(

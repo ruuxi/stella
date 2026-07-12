@@ -438,6 +438,8 @@ export const IPC_LOCAL_CHAT_SET_SYNC_CHECKPOINT =
 export const IPC_LOCAL_CHAT_UPDATED = "localChat:updated" as const;
 export const IPC_LOCAL_CHAT_THREAD_ACTIVITY_UPDATED =
   "localChat:threadActivityUpdated" as const;
+export const IPC_LOCAL_CHAT_TASK_DECORATION_UPDATED =
+  "localChat:taskDecorationUpdated" as const;
 
 // ── Social Sessions ─────────────────────────────────────────────────────────
 

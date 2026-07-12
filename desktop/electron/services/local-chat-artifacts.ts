@@ -795,6 +795,7 @@ const buildMobileTasksById = (
   messages: readonly ArtifactMessageRecord[],
   nowMs: number,
   reasoningSummariesByAgentId?: ReadonlyMap<string, readonly string[]>,
+  statusTextByAgentId?: ReadonlyMap<string, string>,
 ): Map<string, MobileTask> => {
   const builds = new Map<string, TaskBuild>();
   for (const message of messages) {
@@ -872,13 +873,18 @@ const buildMobileTasksById = (
         ? "completed"
         : build.status;
     const reasoningSummaries = reasoningSummariesByAgentId?.get(build.id);
+    // Live decoration beats the folded spawn text: `agent-progress` ticks are
+    // no longer persisted, so mid-run statusText only exists in the renderer's
+    // decoration snapshot mirrored via `publishTaskDecoration`.
+    const statusText =
+      status === "running"
+        ? statusTextByAgentId?.get(build.id) || build.statusText
+        : undefined;
     tasks.set(build.id, {
       id: build.id,
       title: build.title,
       status,
-      ...(status === "running" && build.statusText
-        ? { statusText: build.statusText }
-        : {}),
+      ...(statusText ? { statusText } : {}),
       createdAt: build.createdAt,
       ...(build.completedAt !== undefined
         ? { completedAt: build.completedAt }
@@ -1153,6 +1159,7 @@ export const buildMobileSyncMessages = (
   options?: MobileArtifactOptions,
   reasoningSummariesByAgentId?: ReadonlyMap<string, readonly string[]>,
   taskContextMessages: readonly ArtifactMessageRecord[] = messages,
+  statusTextByAgentId?: ReadonlyMap<string, string>,
 ): LocalChatSyncMessageWithArtifacts[] => {
   const rows: LocalChatSyncMessageWithArtifacts[] = [];
   // Terminal state is scoped per run (see deriveAgentWorkPayload); precompute
@@ -1163,6 +1170,7 @@ export const buildMobileSyncMessages = (
     taskContextMessages,
     nowMs,
     reasoningSummariesByAgentId,
+    statusTextByAgentId,
   );
   // Completion files resolve across the whole context so a fire-and-forget
   // agent completing on a later row still files onto its spawning row's card.
@@ -1245,6 +1253,7 @@ export const buildMobileSyncMessagesPage = (
   options?: MobileArtifactOptions,
   reasoningSummariesByAgentId?: ReadonlyMap<string, readonly string[]>,
   taskContextMessages: readonly ArtifactMessageRecord[] = messages,
+  statusTextByAgentId?: ReadonlyMap<string, string>,
 ): LocalChatMobileSyncResult => {
   const messagesWithTaskAnchors = withTaskAnchorMessages(
     messages,
@@ -1261,6 +1270,7 @@ export const buildMobileSyncMessagesPage = (
       options,
       reasoningSummariesByAgentId,
       taskContextMessages,
+      statusTextByAgentId,
     ),
     cursor: cursorForNewestSourceRecord(cursorSource),
   };

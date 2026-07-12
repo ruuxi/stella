@@ -348,6 +348,25 @@ export const registerLocalChatHandlers = (
   );
 
   ipcMain.handle(
+    "localChat:publishTaskDecoration",
+    async (
+      event,
+      payload: {
+        statusTextByAgentId?: Record<string, string>;
+      },
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:publishTaskDecoration",
+        (client) =>
+          client.setTaskDecoration({
+            statusTextByAgentId: payload?.statusTextByAgentId ?? {},
+          }),
+      ),
+  );
+
+  ipcMain.handle(
     "localChat:getSyncCheckpoint",
     async (
       event,

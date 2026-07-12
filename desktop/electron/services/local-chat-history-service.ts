@@ -19,6 +19,7 @@ import type {
 } from "../../../runtime/kernel/storage/shared.js";
 import type {
   LocalChatUpdatedPayload,
+  TaskDecorationUpdatedPayload,
   ThreadActivityRecord,
 } from "../../../runtime/contracts/local-chat.js";
 import {
@@ -32,6 +33,12 @@ import {
 type LocalChatHistoryServiceOptions = {
   stellaAppDir: string;
   onUpdated?: (payload: LocalChatUpdatedPayload | null) => void;
+  /**
+   * Fired when the mirrored task decoration (statusText / reasoning
+   * summaries) changes. Wired to a mobile-only broadcast — desktop windows
+   * maintain their own decoration stores from the live stream.
+   */
+  onTaskDecorationUpdated?: (payload: TaskDecorationUpdatedPayload) => void;
 };
 
 type FirstReportPayload = {
@@ -132,6 +139,9 @@ export class LocalChatHistoryService {
   private readonly onUpdated?: (
     payload: LocalChatUpdatedPayload | null,
   ) => void;
+  private readonly onTaskDecorationUpdated?: (
+    payload: TaskDecorationUpdatedPayload,
+  ) => void;
   private resetInProgress = false;
   /**
    * Latest per-agent reasoning summaries mirrored from the renderer's
@@ -143,10 +153,21 @@ export class LocalChatHistoryService {
    * publish; only the currently-running agents are present.
    */
   private reasoningSummariesByAgent = new Map<string, string[]>();
+  /**
+   * Latest per-agent mid-run statusText mirrored from the renderer's
+   * task-decoration store via `publishTaskDecoration`. Same lifecycle as the
+   * reasoning summaries above: in-memory only, replaced wholesale per publish,
+   * present only for running threads (the renderer clears a thread's
+   * decoration on its terminal stream event).
+   */
+  private statusTextByAgent = new Map<string, string>();
+  /** Last decoration payload serialization, so repeat publishes don't re-broadcast. */
+  private lastTaskDecorationSerialized = "";
 
   constructor(options: LocalChatHistoryServiceOptions) {
     this.stellaAppDir = options.stellaAppDir;
     this.onUpdated = options.onUpdated;
+    this.onTaskDecorationUpdated = options.onTaskDecorationUpdated;
     this.open();
   }
 
@@ -433,7 +454,50 @@ export class LocalChatHistoryService {
         );
       }
     }
+    this.emitTaskDecorationUpdated();
     return { ok: true };
+  }
+
+  /**
+   * Mirror the renderer's per-thread mid-run statusText (the task-decoration
+   * store) into the in-memory snapshot the mobile sync serializer reads.
+   * Progress ticks are no longer persisted as message rows, so this mirror is
+   * the only bridge-side source of a running task's current statusText.
+   */
+  setTaskDecoration(args: {
+    statusTextByAgentId: Record<string, string>;
+  }): { ok: true } {
+    const next = new Map<string, string>();
+    for (const [rawAgentId, rawText] of Object.entries(
+      args.statusTextByAgentId ?? {},
+    )) {
+      const agentId = typeof rawAgentId === "string" ? rawAgentId.trim() : "";
+      const text = typeof rawText === "string" ? rawText.trim() : "";
+      if (agentId && text) next.set(agentId, text);
+    }
+    this.statusTextByAgent = next;
+    this.emitTaskDecorationUpdated();
+    return { ok: true };
+  }
+
+  /**
+   * Push the combined decoration snapshot (statusText + reasoning summaries)
+   * to the mobile bridge so the phone's activity pill updates mid-run without
+   * a persisted event to resync from. Deduped against the last broadcast —
+   * reasoning-chunk publishes that don't change either map stay silent.
+   */
+  private emitTaskDecorationUpdated(): void {
+    if (!this.onTaskDecorationUpdated) return;
+    const payload: TaskDecorationUpdatedPayload = {
+      statusTextByAgentId: Object.fromEntries(this.statusTextByAgent),
+      reasoningSummariesByAgentId: Object.fromEntries(
+        this.reasoningSummariesByAgent,
+      ),
+    };
+    const serialized = JSON.stringify(payload);
+    if (serialized === this.lastTaskDecorationSerialized) return;
+    this.lastTaskDecorationSerialized = serialized;
+    this.onTaskDecorationUpdated(payload);
   }
 
   listSyncMessages(args: {
@@ -452,6 +516,8 @@ export class LocalChatHistoryService {
         includeDeveloperArtifacts: args.includeDeveloperArtifacts === true,
       },
       this.reasoningSummariesByAgent,
+      messages,
+      this.statusTextByAgent,
     );
   }
 
@@ -506,6 +572,7 @@ export class LocalChatHistoryService {
         artifactOptions,
         this.reasoningSummariesByAgent,
         taskContextMessages,
+        this.statusTextByAgent,
       );
     }
 
@@ -518,6 +585,8 @@ export class LocalChatHistoryService {
       messages,
       artifactOptions,
       this.reasoningSummariesByAgent,
+      messages,
+      this.statusTextByAgent,
     );
   }
 
