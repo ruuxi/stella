@@ -288,3 +288,45 @@
   justify-content: center;
   align-items: center;
 }
+
+/* ── Mobile WebView (~390px) ─────────────────────────────────────
+   Active when the mobile bridge shim tags <html>. */
+
+[data-platform="mobile"] .apps-screen {
+  padding: 16px;
+  gap: 1rem;
+}
+
+[data-platform="mobile"] .apps-screen__title {
+  font-size: 2.25rem;
+}
+
+/* Search takes the full first row; sort + create share the second. */
+[data-platform="mobile"] .apps-screen__search {
+  flex-basis: 100%;
+  max-width: none;
+}
+
+[data-platform="mobile"] .apps-screen__search-input,
+[data-platform="mobile"] .apps-screen__sort {
+  height: 44px;
+}
+
+[data-platform="mobile"] .apps-screen__grid {
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+
+[data-platform="mobile"] .apps-card__link {
+  min-height: 96px;
+}
+
+[data-platform="mobile"] .apps-screen__empty {
+  padding: 24px 16px;
+}
+
+[data-platform="mobile"] .apps-screen__empty-illustration {
+  width: min(380px, 100%);
+  height: auto;
+  aspect-ratio: 4 / 3;
+}

@@ -175,6 +175,17 @@ export function EmbeddedWebsiteView({
     return <div className="embedded-website-view" aria-hidden="true" />;
   }
 
+  // Mobile WebView: Electron's <webview> tag doesn't exist in a plain
+  // browser context, so embed as an <iframe>. The theme still rides the
+  // URL params; live theme pushes and the desktop preload bridge don't
+  // apply (the site degrades to its public web behavior).
+  if (
+    typeof document !== "undefined" &&
+    document.documentElement.getAttribute("data-platform") === "mobile"
+  ) {
+    return <iframe className="embedded-website-view" src={src} title="Store" />;
+  }
+
   return (
     <webview
       ref={(element) => {

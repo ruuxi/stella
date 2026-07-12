@@ -380,6 +380,11 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
   invoke("store.installRelease", IPC_STORE_INSTALL_FROM_BLUEPRINT),
   invoke("store.uninstallPackage", IPC_STORE_UNINSTALL),
 
+  // Store page: the mobile WebView renders the stella.sh Store in an
+  // <iframe> (Electron <webview> doesn't exist there) and only needs the
+  // baseUrl from this config; partition/preloadUrl are ignored.
+  invoke("storeWeb.getEmbedConfig", "storeWeb:getEmbedConfig"),
+
   // One-RTT connect: conversation id + developer flag + message delta +
   // feature list in a single invoke (see registerMobileHelloHandlers).
   invoke("mobile.hello", "mobile:hello"),
