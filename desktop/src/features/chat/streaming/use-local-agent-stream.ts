@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { isActivityFeedTask } from '@/features/chat/lib/event-transforms'
 import { showToast } from '@/ui/toast'
 import { useResumeAgentRun } from '../hooks/use-resume-agent-run'
 import {
@@ -9,7 +8,6 @@ import {
 } from './store'
 import { useReasoningBatcher } from './use-reasoning-batcher'
 import { useStreamTextAnimation } from './use-stream-text-animation'
-import { useTaskRemovalTimers } from './use-task-removal-timers'
 import { useAgentEventHandler } from './use-agent-event-handler'
 import { useApplyResumeSnapshot } from './use-resume-snapshot'
 import type {
@@ -34,9 +32,6 @@ import {
   isStellaLimitOrAuthReason,
   resolveStellaProviderErrorToast,
 } from './stella-provider-error-toast'
-
-// Re-export for callers/tests that still import the helper from here.
-export { reconcileTerminalTaskKeysFromResumeTasks } from './store'
 
 type UseLocalAgentStreamOptions = {
   activeConversationId: string | null
@@ -106,12 +101,6 @@ export function useLocalAgentStream({
   const resumeSeqByConversationRef = useRef(new Map<string, number>())
   const seenSourceEventKeysRef = useRef(new Set<string>())
   const terminalRunIdsRef = useRef(new Set<string>())
-  // Tracks per-run agent IDs that have reached a terminal lifecycle state.
-  // Mirrors the persisted-event guard in `extractTasksFromEvents` so that
-  // late `agent-progress` events arriving after `agent-completed` /
-  // `agent-failed` / `agent-canceled` cannot flip a finished task back to
-  // "running" — which would otherwise pin a phantom "Working … Task" chip.
-  const terminalTaskKeysRef = useRef(new Set<string>())
   const pendingRequestIdsRef = useRef(new Set<string>())
   /**
    * Active slot index per `userMessageId` for the in-flight run. The
@@ -355,7 +344,6 @@ export function useLocalAgentStream({
     activeRunIdByConversationRef.current = storeState.activeRunIdByConversation
   }, [storeState.activeRunIdByConversation])
 
-  const timers = useTaskRemovalTimers(dispatch)
   const reasoning = useReasoningBatcher(dispatch)
   const lifecycleCallbacks = useMemo(
     () => ({
@@ -387,18 +375,10 @@ export function useLocalAgentStream({
     // restarted the resume effect, and its no-active-run cleanup discarded a
     // still-draining text buffer so SQLite's full message appeared at once.
     const conversationId = activeConversationIdRef.current
-    const runId = conversationId
-      ? (activeRunIdByConversationRef.current[conversationId] ?? null)
-      : null
     if (conversationId) {
       dispatch({
-        type: 'clear-conversation-tasks',
+        type: 'clear-conversation-decorations',
         conversationId,
-      })
-    } else if (runId) {
-      dispatch({
-        type: 'clear-run-tasks',
-        runId,
       })
     }
   }, [discardStreamText])
@@ -412,7 +392,6 @@ export function useLocalAgentStream({
       resumeSeqByConversationRef,
       seenSourceEventKeysRef,
       terminalRunIdsRef,
-      terminalTaskKeysRef,
       pendingRequestIdsRef,
     },
     streaming: {
@@ -422,7 +401,6 @@ export function useLocalAgentStream({
       finalizeMessageBoundary,
       finalizeRunOnFinish,
     },
-    timers,
     reasoning,
     lifecycle: lifecycleCallbacks,
   })
@@ -442,12 +420,10 @@ export function useLocalAgentStream({
     dispatch,
     refs: {
       activeConversationIdRef,
-      terminalTaskKeysRef,
     },
     streaming: {
       setPendingUserMessageId,
     },
-    timers,
   })
 
   useResumeAgentRun({
@@ -589,37 +565,25 @@ export function useLocalAgentStream({
     window.electronAPI.agent.cancelChat(activeRunId)
   }, [activeRunId])
 
-  const conversationTasks = activeConversationId
-    ? Object.entries(storeState.tasksByRunId)
-        .filter(
-          ([runId]) =>
-            storeState.runsById[runId]?.conversationId === activeConversationId,
-        )
-        .flatMap(([runId, taskMap]) => {
-          const anchorTurnId = storeState.runsById[runId]?.userMessageId
-          // Orchestrator-internal helper agents (schedule specialists, …)
-          // are execution detail — never user-facing activity rows.
-          return Object.values(taskMap)
-            .filter(isActivityFeedTask)
-            .map((task) => ({
-              ...task,
-              // Stamp the owning run id (live task-upserts don't carry it).
-              // Picking a task in the workspace strip turns it into a
-              // ChatContext.activity via `taskToActivityContext`, whose
-              // `runId` is emitted as `run-id="…"` in the agent prompt
-              // context (runtime/kernel/chat-prompt-context), so a still-live
-              // task needs it before it has been persisted.
-              runId: task.runId ?? runId,
-              anchorTurnId: task.anchorTurnId ?? anchorTurnId ?? undefined,
-            }))
-        })
-    : []
-  const liveTasks = conversationTasks.sort(
-    (a, b) => a.startedAtMs - b.startedAtMs,
+  // Ephemeral per-thread stream decoration (statusText ticks, tool
+  // activity, reasoning) for the active conversation, keyed by agentId.
+  // The authoritative task rows come from `useThreadActivity`; callers
+  // overlay these via `buildActivityTasks`.
+  const taskDecorations = useMemo(
+    () =>
+      activeConversationId
+        ? Object.fromEntries(
+            Object.entries(storeState.taskDecorations).filter(
+              ([, decoration]) =>
+                decoration.conversationId === activeConversationId,
+            ),
+          )
+        : {},
+    [activeConversationId, storeState.taskDecorations],
   )
 
   return {
-    liveTasks,
+    taskDecorations,
     runtimeStatusText,
     markAssistantResponseTextStarted,
     activeToolCallId,

@@ -12,6 +12,8 @@ import type { AgentStreamEvent } from "../../../../runtime/contracts/agent-strea
 import type {
   EventRecord,
   LocalChatUpdatedPayload,
+  ThreadActivityRecord,
+  ThreadActivityUpdatedPayload,
   MessageRecord,
 } from "../../../../runtime/contracts/local-chat.js";
 import type { TaskLifecycleStatus } from "../../../../runtime/contracts/agent-runtime.js";
@@ -1591,6 +1593,14 @@ export type ElectronLocalChatApi = {
     activities: EventRecord[];
     latestMessageTimestampMs: number | null;
   }>;
+  /**
+   * Authoritative Activity read: one row per background-agent thread,
+   * projected straight from the runtime's `runtime_agents` table. Paired
+   * with `onThreadActivityUpdated` for refetch-on-write.
+   */
+  listThreadActivity: (payload: {
+    conversationId: string;
+  }) => Promise<ThreadActivityRecord[]>;
   listFiles: (payload: {
     conversationId: string;
     limit?: number;
@@ -1687,6 +1697,9 @@ export type ElectronLocalChatApi = {
   }) => Promise<{ ok: boolean }>;
   onUpdated: (
     callback: (payload: LocalChatUpdatedPayload | null) => void,
+  ) => () => void;
+  onThreadActivityUpdated: (
+    callback: (payload: ThreadActivityUpdatedPayload) => void,
   ) => () => void;
 };
 

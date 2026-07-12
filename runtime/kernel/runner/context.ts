@@ -413,6 +413,7 @@ export const createRunnerContext = ({
   getAppBrowserContext,
   listLocalChatEvents,
   appendLocalChatEvent,
+  notifyThreadActivityUpdated,
   getDefaultConversationId,
 }: StellaHostRunnerOptions): RunnerContext => {
   const envProxyBaseUrl = sanitizeStellaBase(
@@ -661,6 +662,7 @@ export const createRunnerContext = ({
     runtimeStore,
     listLocalChatEvents,
     appendLocalChatEvent,
+    notifyThreadActivityUpdated,
     getDefaultConversationId,
     paths: {
       extensionsPath: path.join(stellaAppDir, "runtime", "extensions"),

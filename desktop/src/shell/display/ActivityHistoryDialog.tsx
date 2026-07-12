@@ -10,12 +10,11 @@
  *      the derived dataset has hundreds of rows, only the visible window
  *      is mounted to the DOM.
  *
- *   2. The Completed section grows the activity window
- *      (`useConversationActivity` → `localChat:listActivity`) and the
- *      Recent files section grows the files window
- *      (`useConversationFiles` → `localChat:listFiles`) when the user
- *      reaches the end of the currently loaded list, so neither has to
- *      load every conversation event up front to surface its rows.
+ *   2. The Completed section renders the conversation's task rows
+ *      directly (bounded by thread count — no paging); the Recent files
+ *      section grows the files window (`useConversationFiles` →
+ *      `localChat:listFiles`) when the user reaches the end of the
+ *      currently loaded list.
  *
  * Schedules are always fetched live as a small bounded list and don't
  * need pagination.
@@ -29,7 +28,6 @@ import {
 } from "@legendapp/list/react";
 import { Dialog } from "@/ui/dialog";
 import {
-  extractTasksFromActivities,
   getTaskDisplayText,
   getTaskGroupStatusText,
   groupActivityTasks,
@@ -108,17 +106,11 @@ export type ActivityHistoryDialogProps = {
   onOpenChange: (open: boolean) => void;
   section: ActivityHistorySection;
   /**
-   * Agent-lifecycle activity events (from `useConversationActivity`).
-   * The "done" section reads from these so the dialog can scroll back
-   * through completed task history without pulling the full event log.
+   * The conversation's task list (authoritative thread rows + live
+   * decoration, via `buildActivityTasks`). One row per thread and bounded
+   * by thread count, so the "done" section needs no paging.
    */
-  activities: ReadonlyArray<EventRecord>;
-  latestMessageTimestampMs: number | null;
-  /** Grow the activity window — called when the dialog hits the end of
-   *  the currently loaded Done list. */
-  onLoadMoreActivity: () => void;
-  hasMoreActivity: boolean;
-  isLoadingMoreActivity: boolean;
+  tasks: ReadonlyArray<TaskItem>;
   /**
    * File-carrying events (from `useConversationFiles`). The "files"
    * section dedupes these via `deriveConversationFiles`; `loadOlder`
@@ -141,11 +133,7 @@ export function ActivityHistoryDialog({
   open,
   onOpenChange,
   section,
-  activities,
-  latestMessageTimestampMs,
-  onLoadMoreActivity,
-  hasMoreActivity,
-  isLoadingMoreActivity,
+  tasks,
   fileEvents,
   onLoadMoreFiles,
   hasMoreFiles,
@@ -170,16 +158,14 @@ export function ActivityHistoryDialog({
 
   const doneTasks = useMemo<TaskItem[]>(() => {
     if (section !== "done") return [];
-    return extractTasksFromActivities([...activities], {
-      latestMessageTimestampMs,
-    })
+    return tasks
       .filter((task) => task.status !== "running")
       .sort((a, b) => {
         const aTime = a.completedAtMs ?? a.lastUpdatedAtMs ?? a.startedAtMs;
         const bTime = b.completedAtMs ?? b.lastUpdatedAtMs ?? b.startedAtMs;
         return bTime - aTime;
       });
-  }, [activities, latestMessageTimestampMs, section]);
+  }, [tasks, section]);
 
   const files = useMemo<ActivityHistoryFile[]>(() => {
     if (section !== "files") return [];
@@ -224,9 +210,6 @@ export function ActivityHistoryDialog({
           rows.push({ kind: "done", task: member, grouped: true });
         }
       }
-      if (hasMoreActivity || isLoadingMoreActivity) {
-        rows.push({ kind: "loading", id: "pager-loading" });
-      }
       return rows;
     }
     if (section === "upNext") {
@@ -244,9 +227,7 @@ export function ActivityHistoryDialog({
     filteredDone,
     filteredFiles,
     filteredSchedules,
-    hasMoreActivity,
     hasMoreFiles,
-    isLoadingMoreActivity,
     isLoadingMoreFiles,
     section,
   ]);
@@ -404,11 +385,7 @@ export function ActivityHistoryDialog({
                 estimatedItemSize={36}
                 recycleItems
                 onEndReached={
-                  section === "done"
-                    ? onLoadMoreActivity
-                    : section === "files"
-                      ? onLoadMoreFiles
-                      : undefined
+                  section === "files" ? onLoadMoreFiles : undefined
                 }
                 onEndReachedThreshold={0.6}
                 style={{ height: "100%", width: "100%" }}

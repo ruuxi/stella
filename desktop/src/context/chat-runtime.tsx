@@ -44,16 +44,14 @@ export function ChatRuntimeProvider({
   // the chat surface displays.
   usePetStatusBroadcast({
     messages,
-    liveTasks: runtime.conversation.streaming.liveTasks,
+    tasks: runtime.conversation.tasks,
     runtimeStatusText: runtime.conversation.streaming.runtimeStatusText ?? '',
     isStreaming: runtime.conversation.isStreaming,
     pendingUserMessageId: runtime.conversation.pendingUserMessageId ?? null,
   })
 
   // Generate rolling 3-7 word progress summaries for each active sub-agent.
-  useAgentProgressSummaryEngine(
-    runtime.conversation.streaming.liveTasks ?? [],
-  )
+  useAgentProgressSummaryEngine(runtime.conversation.tasks)
 
   return (
     <ChatRuntimeContext.Provider value={runtime}>

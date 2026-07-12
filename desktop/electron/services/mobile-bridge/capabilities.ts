@@ -55,6 +55,8 @@ import {
   IPC_LOCAL_CHAT_SET_SYNC_CHECKPOINT,
   IPC_LOCAL_CHAT_SYNC_MESSAGES,
   IPC_LOCAL_CHAT_UPDATED,
+  IPC_LOCAL_CHAT_THREAD_ACTIVITY_UPDATED,
+  IPC_LOCAL_CHAT_LIST_THREAD_ACTIVITY,
   IPC_LLM_CREDENTIALS_DELETE,
   IPC_LLM_CREDENTIALS_DELETE_OAUTH,
   IPC_LLM_CREDENTIALS_LIST,
@@ -393,6 +395,7 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
   invoke("localChat.listMessages", IPC_LOCAL_CHAT_LIST_MESSAGES),
   invoke("localChat.listMessagesBefore", IPC_LOCAL_CHAT_LIST_MESSAGES_BEFORE),
   invoke("localChat.listActivity", IPC_LOCAL_CHAT_LIST_ACTIVITY),
+  invoke("localChat.listThreadActivity", IPC_LOCAL_CHAT_LIST_THREAD_ACTIVITY),
   invoke("localChat.listFiles", IPC_LOCAL_CHAT_LIST_FILES),
   invoke("localChat.getEventCount", IPC_LOCAL_CHAT_GET_EVENT_COUNT),
   invoke("localChat.persistDiscoveryWelcome", IPC_LOCAL_CHAT_PERSIST_WELCOME),
@@ -401,6 +404,10 @@ export const MOBILE_BRIDGE_CAPABILITIES = [
   invoke("localChat.getSyncCheckpoint", IPC_LOCAL_CHAT_GET_SYNC_CHECKPOINT),
   invoke("localChat.setSyncCheckpoint", IPC_LOCAL_CHAT_SET_SYNC_CHECKPOINT),
   event("localChat.onUpdated", IPC_LOCAL_CHAT_UPDATED),
+  event(
+    "localChat.onThreadActivityUpdated",
+    IPC_LOCAL_CHAT_THREAD_ACTIVITY_UPDATED,
+  ),
 
   invoke("socialSessions.create", IPC_SOCIAL_SESSIONS_CREATE),
   invoke("socialSessions.updateStatus", IPC_SOCIAL_SESSIONS_UPDATE_STATUS),

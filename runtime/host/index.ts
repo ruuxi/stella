@@ -27,7 +27,10 @@ import type {
   LocalHeartbeatUpsertInput,
 } from "../kernel/shared/scheduling.js";
 import type { DiscoveryKnowledgeSeedPayload } from "../contracts/discovery.js";
-import type { LocalChatUpdatedPayload } from "../contracts/local-chat.js";
+import type {
+  LocalChatUpdatedPayload,
+  ThreadActivityUpdatedPayload,
+} from "../contracts/local-chat.js";
 import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import { AGENT_STREAM_EVENT_TYPES } from "../contracts/agent-runtime.js";
 import { resolveConnectorFollowupAction } from "./connector-followup.js";
@@ -115,6 +118,7 @@ type RuntimeHostEvents = {
   "voice-agent-event": RuntimeVoiceAgentEventPayload;
   "voice-self-mod-hmr-state": RuntimeVoiceHmrStatePayload;
   "local-chat-updated": LocalChatUpdatedPayload | null;
+  "thread-activity-updated": ThreadActivityUpdatedPayload;
   "schedule-updated": void;
 };
 
@@ -3880,6 +3884,15 @@ export class StellaRuntimeHost {
         const payload = params as LocalChatUpdatedPayload | null;
         this.handleLocalChatUpdateForConnectorFollowup(payload);
         this.events.emit("local-chat-updated", payload);
+      },
+    );
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.THREAD_ACTIVITY_UPDATED,
+      (params) => {
+        this.events.emit(
+          "thread-activity-updated",
+          params as ThreadActivityUpdatedPayload,
+        );
       },
     );
     peer.registerNotificationHandler(

@@ -1,9 +1,5 @@
 import { cn } from "@/shared/lib/utils";
 import { useDeferredChatMessages } from "@/features/chat/hooks/use-deferred-chat-messages";
-import type {
-  EventRecord,
-  TaskItem,
-} from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import type { ChatColumnScroll } from "@/features/chat/chat-column-types";
@@ -39,15 +35,6 @@ type CompactConversationSurfaceProps = {
   queuedUserMessages?: QueuedUserMessage[];
   /** Reveals a hover "X" on each queued bubble to cancel + restore its text. */
   onCancelQueued?: (message: QueuedUserMessage) => void;
-  liveTasks?: TaskItem[];
-  /**
-   * Persisted agent-lifecycle activity + latest-message timestamp for the
-   * conversation. Accepted for interface parity with the full-chat surface
-   * (like `isStreaming` / `runtimeStatusText` above); the compact surface
-   * does not derive anything from them directly.
-   */
-  activities?: EventRecord[];
-  latestMessageTimestampMs?: number | null;
   /** Working/agent indicator rendered below the last assistant message. */
   indicator?: InlineWorkingIndicatorMountProps;
   hasOlderMessages?: boolean;

@@ -1476,3 +1476,124 @@ describe("session-store", () => {
     });
   });
 });
+
+describe("thread activity rows", () => {
+  it("projects one authoritative row per thread, joined with group fields", () => {
+    const { db, store } = createTestContext();
+    store.saveAgentRecord({
+      threadId: "research-flights",
+      conversationId: "conv-1",
+      agentType: "general",
+      description: "Research flights",
+      agentDepth: 0,
+      status: "running",
+      rootRunId: "root-1",
+      startedAt: 1_000,
+      completedAt: null,
+      updatedAt: 1_500,
+    });
+    store.saveAgentRecord({
+      threadId: "book-hotel",
+      conversationId: "conv-1",
+      agentType: "general",
+      description: "Book the hotel",
+      agentDepth: 0,
+      status: "completed",
+      rootRunId: "root-2",
+      startedAt: 2_000,
+      completedAt: 3_000,
+      result: "Booked the Marriott",
+      updatedAt: 3_000,
+    });
+    // Group fields ride the thread registry, joined by thread id.
+    db.prepare(
+      `INSERT INTO runtime_threads (
+         thread_key, conversation_id, agent_type, name, status,
+         created_at, last_used_at, group_key, group_label
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "book-hotel",
+      "conv-1",
+      "general",
+      "Book the hotel",
+      "active",
+      2_000,
+      3_000,
+      "grp-trip",
+      "Plan the trip",
+    );
+    // Other conversations stay out of the projection.
+    store.saveAgentRecord({
+      threadId: "other-thread",
+      conversationId: "conv-2",
+      agentType: "general",
+      description: "Other work",
+      agentDepth: 0,
+      status: "running",
+      startedAt: 500,
+      completedAt: null,
+      updatedAt: 500,
+    });
+
+    const rows = store.listThreadActivity("conv-1");
+    expect(rows.map((row) => row.threadId)).toEqual([
+      "research-flights",
+      "book-hotel",
+    ]);
+    expect(rows[0]).toMatchObject({
+      status: "running",
+      description: "Research flights",
+      rootRunId: "root-1",
+      startedAt: 1_000,
+    });
+    expect(rows[1]).toMatchObject({
+      status: "completed",
+      completedAt: 3_000,
+      result: "Booked the Marriott",
+      groupKey: "grp-trip",
+      groupLabel: "Plan the trip",
+    });
+  });
+
+  it("reflects the latest upsert — a follow-up's re-description and rebind win", () => {
+    const { store } = createTestContext();
+    const base = {
+      threadId: "research-flights",
+      conversationId: "conv-1",
+      agentType: "general",
+      description: "Research flights",
+      agentDepth: 0,
+      status: "running" as const,
+      rootRunId: "root-1",
+      startedAt: 1_000,
+      completedAt: null,
+      updatedAt: 1_000,
+    };
+    store.saveAgentRecord(base);
+    store.saveAgentRecord({
+      ...base,
+      description: "Search for the itinerary email",
+      rootRunId: "root-2",
+      updatedAt: 2_000,
+    });
+    store.saveAgentRecord({
+      ...base,
+      description: "Search for the itinerary email",
+      rootRunId: "root-2",
+      status: "completed",
+      completedAt: 3_000,
+      result: "Found it",
+      updatedAt: 3_000,
+    });
+
+    const rows = store.listThreadActivity("conv-1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      description: "Search for the itinerary email",
+      rootRunId: "root-2",
+      status: "completed",
+      completedAt: 3_000,
+      result: "Found it",
+    });
+  });
+});

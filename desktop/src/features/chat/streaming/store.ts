@@ -6,18 +6,8 @@
  * data transition layer so the same shapes are usable from tests
  * without a React renderer.
  */
-import {
-  fallbackTaskDescription,
-  isFallbackTaskDescription,
-  isGenericTaskDescription,
-  normalizeTaskDisplayStatusText,
-  type TaskItem,
-} from '@/features/chat/lib/event-transforms'
-import {
-  AGENT_IDS,
-  isTerminalTaskLifecycleStatus,
-  type TaskLifecycleStatus,
-} from '../../../../../runtime/contracts/agent-runtime.js'
+import { normalizeTaskDisplayStatusText } from '@/features/chat/lib/event-transforms'
+import type { TaskToolActivity } from '../../../../../runtime/contracts/agent-runtime.js'
 import type { AttachmentRef } from './chat-types'
 
 export type RunRecord = {
@@ -52,10 +42,31 @@ export type RunRecord = {
   >
 }
 
+/**
+ * Ephemeral, stream-fed decoration for one background-agent thread, keyed
+ * by the thread's durable `agentId` — never by run. The authoritative
+ * fields (status, description, timestamps, result) live in the
+ * thread-activity rows fetched from the runtime's `runtime_agents` table;
+ * a decoration only carries the high-frequency display extras the rows
+ * don't persist. Cleared on the thread's terminal stream event; stale
+ * entries are harmless (the merge ignores decoration for non-running
+ * rows) and bounded by `MAX_TASK_DECORATIONS`.
+ */
+export type TaskDecoration = {
+  agentId: string
+  conversationId: string
+  runId?: string
+  anchorTurnId?: string
+  statusText?: string
+  toolActivity?: TaskToolActivity
+  reasoningText?: string
+  lastUpdatedAtMs: number
+}
+
 export type StreamStoreState = {
   runsById: Record<string, RunRecord>
   activeRunIdByConversation: Record<string, string | null>
-  tasksByRunId: Record<string, Record<string, TaskItem>>
+  taskDecorations: Record<string, TaskDecoration>
   requestToRunId: Record<string, string>
 }
 
@@ -66,26 +77,6 @@ export type ActiveRunSnapshot = {
   userMessageId?: string
   uiVisibility?: 'visible' | 'hidden'
 } | null
-
-export type ResumeTaskSnapshot = {
-  runId: string
-  agentId: string
-  agentType?: string
-  description?: string
-  anchorTurnId?: string
-  parentAgentId?: string
-  status: TaskLifecycleStatus
-  statusText?: string
-  reasoningText?: string
-  result?: string
-  error?: string
-  groupKey?: string
-  groupLabel?: string
-  // Real lifecycle timestamps stamped at event receipt in the main process.
-  // Optional only for snapshots persisted before these fields existed.
-  startedAtMs?: number
-  completedAtMs?: number
-}
 
 export type StreamStoreAction =
   | {
@@ -142,52 +133,70 @@ export type StreamStoreAction =
       outcome: 'completed' | 'error' | 'canceled'
     }
   | {
-      type: 'task-upsert'
-      runId: string
+      type: 'task-decorate'
+      agentId: string
       conversationId: string
+      runId?: string
       userMessageId?: string
-      task: TaskItem
+      statusText?: string
+      toolActivity?: TaskToolActivity
     }
   | {
       type: 'agent-reasoning'
-      runId: string
-      conversationId: string
-      userMessageId?: string
       agentId: string
-      description?: string
+      conversationId: string
+      runId?: string
+      userMessageId?: string
       chunk: string
     }
   | {
-      type: 'task-remove'
-      runId: string
+      type: 'task-decoration-clear'
       agentId: string
     }
   | {
-      type: 'clear-run-tasks'
-      runId: string
-    }
-  | {
-      type: 'clear-conversation-tasks'
+      type: 'clear-conversation-decorations'
       conversationId: string
     }
   | {
       type: 'hydrate-conversation'
       conversationId: string
       activeRun: ActiveRunSnapshot
-      tasks: TaskItem[]
     }
 
 export const initialStoreState: StreamStoreState = {
   runsById: {},
   activeRunIdByConversation: {},
-  tasksByRunId: {},
+  taskDecorations: {},
   requestToRunId: {},
 }
 
 export const MAX_AGENT_REASONING_CHARS = 8_000
 
-export const toRunTaskId = (runId: string, agentId: string) =>
-  `${runId}:${agentId}`
+/** Terminal-clear normally keeps the map tiny; the cap only guards against
+ *  threads whose terminal event streamed while the renderer wasn't looking
+ *  (their stale decoration is already ignored by the merge). */
+export const MAX_TASK_DECORATIONS = 64
+
+const withDecoration = (
+  state: StreamStoreState,
+  next: TaskDecoration,
+): StreamStoreState => {
+  const taskDecorations = {
+    ...state.taskDecorations,
+    [next.agentId]: next,
+  }
+  const keys = Object.keys(taskDecorations)
+  if (keys.length > MAX_TASK_DECORATIONS) {
+    const oldest = keys.reduce((a, b) =>
+      (taskDecorations[a]?.lastUpdatedAtMs ?? 0) <=
+      (taskDecorations[b]?.lastUpdatedAtMs ?? 0)
+        ? a
+        : b,
+    )
+    delete taskDecorations[oldest]
+  }
+  return { ...state, taskDecorations }
+}
 
 const toToolCallKey = (args: {
   runId: string
@@ -468,15 +477,12 @@ export function streamStoreReducer(
       })
       const activeRunId =
         state.activeRunIdByConversation[action.conversationId] ?? null
-      const nextTasksByRunId = { ...state.tasksByRunId }
-      delete nextTasksByRunId[action.runId]
       return {
         ...state,
         runsById: {
           ...state.runsById,
           [action.runId]: nextRun,
         },
-        tasksByRunId: nextTasksByRunId,
         activeRunIdByConversation:
           activeRunId === action.runId
             ? {
@@ -486,223 +492,74 @@ export function streamStoreReducer(
             : state.activeRunIdByConversation,
       }
     }
-    case 'task-upsert': {
-      const runRecord = state.runsById[action.runId]
-      const runTasks = state.tasksByRunId[action.runId] ?? {}
-      // A task lives under exactly one run: lifecycle events always carry
-      // the task's CURRENT rootRunId, so when a send_input follow-up
-      // rebinds a running task to the caller's run, any copy still parked
-      // under another run is a stale snapshot. Evict it — a frozen
-      // "running" copy left under the spawn run never receives a terminal
-      // event (the completion streams under the new run) and would win the
-      // footer merge forever, pinning the Activity row open after the
-      // follow-up completes.
-      let evictedCopy: TaskItem | undefined
-      let baseTasksByRunId = state.tasksByRunId
-      for (const [runId, tasks] of Object.entries(state.tasksByRunId)) {
-        if (runId === action.runId || !(action.task.id in tasks)) {
-          continue
-        }
-        if (baseTasksByRunId === state.tasksByRunId) {
-          baseTasksByRunId = { ...state.tasksByRunId }
-        }
-        const remaining = { ...tasks }
-        evictedCopy = evictedCopy ?? remaining[action.task.id]
-        delete remaining[action.task.id]
-        baseTasksByRunId[runId] = remaining
-      }
-      // The evicted copy still seeds continuity fields (description,
-      // startedAtMs) so the row doesn't reset when the task moves runs.
-      const existing = runTasks[action.task.id] ?? evictedCopy
-      const nextDescription =
-        isFallbackTaskDescription(action.task.description, action.task.id) &&
-        existing?.description &&
-        !isFallbackTaskDescription(existing.description, action.task.id)
-          ? existing.description
-          : action.task.description
-      const nextTask: TaskItem = {
-        ...action.task,
-        description: nextDescription,
-        anchorTurnId: action.task.anchorTurnId ?? existing?.anchorTurnId,
-        groupKey: action.task.groupKey ?? existing?.groupKey,
-        groupLabel: action.task.groupLabel ?? existing?.groupLabel,
-        startedAtMs: existing?.startedAtMs ?? action.task.startedAtMs,
+    case 'task-decorate': {
+      const existing = state.taskDecorations[action.agentId]
+      return withDecoration(state, {
+        agentId: action.agentId,
+        conversationId: action.conversationId,
+        runId: action.runId ?? existing?.runId,
+        anchorTurnId: action.userMessageId ?? existing?.anchorTurnId,
         statusText:
-          action.task.status === 'running'
-            ? (normalizeTaskDisplayStatusText(action.task.statusText) ??
-              normalizeTaskDisplayStatusText(existing?.statusText) ??
-              (isGenericTaskDescription(nextDescription)
-                ? undefined
-                : nextDescription))
-            : undefined,
-        toolActivity:
-          action.task.status === 'running'
-            ? (action.task.toolActivity ?? existing?.toolActivity)
-            : undefined,
-        reasoningText:
-          typeof action.task.reasoningText === 'string'
-            ? action.task.reasoningText
-            : existing?.reasoningText,
-        outputPreview:
-          action.task.status === 'running'
-            ? undefined
-            : action.task.outputPreview,
-      }
-      return {
-        ...state,
-        runsById: runRecord
-          ? state.runsById
-          : {
-              ...state.runsById,
-              [action.runId]: createEmptyRunRecord({
-                runId: action.runId,
-                conversationId: action.conversationId,
-                userMessageId: action.userMessageId,
-                uiVisibility: 'hidden',
-              }),
-            },
-        tasksByRunId: {
-          ...baseTasksByRunId,
-          [action.runId]: {
-            ...runTasks,
-            [action.task.id]: nextTask,
-          },
-        },
-      }
+          normalizeTaskDisplayStatusText(action.statusText) ??
+          existing?.statusText,
+        toolActivity: action.toolActivity ?? existing?.toolActivity,
+        reasoningText: existing?.reasoningText,
+        lastUpdatedAtMs: Date.now(),
+      })
     }
     case 'agent-reasoning': {
-      const runRecord = state.runsById[action.runId]
-      const runTasks = state.tasksByRunId[action.runId] ?? {}
-      const existing = runTasks[action.agentId]
       if (!action.chunk) {
         return state
       }
+      const existing = state.taskDecorations[action.agentId]
       const nextReasoningText = `${existing?.reasoningText ?? ''}${action.chunk}`
-      const storedReasoningText =
-        nextReasoningText.length > MAX_AGENT_REASONING_CHARS
-          ? nextReasoningText.slice(-MAX_AGENT_REASONING_CHARS)
-          : nextReasoningText
-      const nowMs = Date.now()
-      return {
-        ...state,
-        runsById: runRecord
-          ? state.runsById
-          : {
-              ...state.runsById,
-              [action.runId]: createEmptyRunRecord({
-                runId: action.runId,
-                conversationId: action.conversationId,
-                userMessageId: action.userMessageId,
-                uiVisibility: 'hidden',
-              }),
-            },
-        tasksByRunId: {
-          ...state.tasksByRunId,
-          [action.runId]: {
-            ...runTasks,
-            [action.agentId]: {
-              ...(existing ?? {
-                id: action.agentId,
-                description:
-                  action.description ??
-                  fallbackTaskDescription(action.agentId),
-                agentType: AGENT_IDS.GENERAL,
-                status: 'running',
-                anchorTurnId: runRecord?.userMessageId,
-                startedAtMs: nowMs,
-                lastUpdatedAtMs: nowMs,
-              }),
-              // A reasoning event carrying the spawn description upgrades a
-              // placeholder created before the description was known.
-              ...(existing &&
-              action.description &&
-              isFallbackTaskDescription(existing.description, action.agentId)
-                ? { description: action.description }
-                : {}),
-              reasoningText: storedReasoningText,
-              lastUpdatedAtMs: nowMs,
-            },
-          },
-        },
-      }
+      return withDecoration(state, {
+        agentId: action.agentId,
+        conversationId: action.conversationId,
+        runId: action.runId ?? existing?.runId,
+        anchorTurnId: existing?.anchorTurnId,
+        statusText: existing?.statusText,
+        toolActivity: existing?.toolActivity,
+        reasoningText:
+          nextReasoningText.length > MAX_AGENT_REASONING_CHARS
+            ? nextReasoningText.slice(-MAX_AGENT_REASONING_CHARS)
+            : nextReasoningText,
+        lastUpdatedAtMs: Date.now(),
+      })
     }
-    case 'task-remove': {
-      const runTasks = state.tasksByRunId[action.runId]
-      if (!runTasks || !(action.agentId in runTasks)) {
+    case 'task-decoration-clear': {
+      if (!(action.agentId in state.taskDecorations)) {
         return state
       }
-      const nextRunTasks = { ...runTasks }
-      delete nextRunTasks[action.agentId]
-      return {
-        ...state,
-        tasksByRunId: {
-          ...state.tasksByRunId,
-          [action.runId]: nextRunTasks,
-        },
-      }
+      const taskDecorations = { ...state.taskDecorations }
+      delete taskDecorations[action.agentId]
+      return { ...state, taskDecorations }
     }
-    case 'clear-run-tasks': {
-      if (!(action.runId in state.tasksByRunId)) {
-        return state
-      }
-      const nextTasksByRunId = { ...state.tasksByRunId }
-      delete nextTasksByRunId[action.runId]
-      return {
-        ...state,
-        tasksByRunId: nextTasksByRunId,
-      }
-    }
-    case 'clear-conversation-tasks': {
-      const nextTasksByRunId = Object.fromEntries(
-        Object.entries(state.tasksByRunId).filter(([runId]) => {
-          const runRecord = state.runsById[runId]
-          return runRecord?.conversationId !== action.conversationId
-        }),
+    case 'clear-conversation-decorations': {
+      const remaining = Object.fromEntries(
+        Object.entries(state.taskDecorations).filter(
+          ([, decoration]) =>
+            decoration.conversationId !== action.conversationId,
+        ),
       )
       const activeRunId =
         state.activeRunIdByConversation[action.conversationId] ?? null
-      const nextActiveRunIdByConversation =
-        activeRunId === null
-          ? state.activeRunIdByConversation
-          : {
-              ...state.activeRunIdByConversation,
-              [action.conversationId]: null,
-            }
       return {
         ...state,
-        tasksByRunId: nextTasksByRunId,
-        activeRunIdByConversation: nextActiveRunIdByConversation,
+        taskDecorations: remaining,
+        activeRunIdByConversation:
+          activeRunId === null
+            ? state.activeRunIdByConversation
+            : {
+                ...state.activeRunIdByConversation,
+                [action.conversationId]: null,
+              },
       }
     }
     case 'hydrate-conversation': {
-      const nextRunsById = { ...state.runsById }
-      const nextTasksByRunId = Object.fromEntries(
-        Object.entries(state.tasksByRunId).filter(([runId]) => {
-          const runRecord = state.runsById[runId]
-          return runRecord?.conversationId !== action.conversationId
-        }),
-      )
-      for (const task of action.tasks) {
-        // Hydrate tasks always come from resume snapshots which carry runId;
-        // skip any oddballs that don't, since they can't be bucketed by run.
-        const runId = task.runId
-        if (!runId) continue
-        nextRunsById[runId] = nextRunsById[runId] ?? {
-          ...createEmptyRunRecord({
-            runId,
-            conversationId: action.conversationId,
-          }),
-        }
-        nextTasksByRunId[runId] = {
-          ...(nextTasksByRunId[runId] ?? {}),
-          [task.id]: task,
-        }
-      }
       if (!action.activeRun) {
         return {
           ...state,
-          runsById: nextRunsById,
-          tasksByRunId: nextTasksByRunId,
           activeRunIdByConversation: {
             ...state.activeRunIdByConversation,
             [action.conversationId]: null,
@@ -710,14 +567,10 @@ export function streamStoreReducer(
         }
       }
       const runId = action.activeRun.runId
-      const taskMap = {
-        ...(nextTasksByRunId[runId] ?? {}),
-        ...Object.fromEntries(action.tasks.map((task) => [task.id, task])),
-      }
       return {
         ...state,
         runsById: {
-          ...nextRunsById,
+          ...state.runsById,
           [runId]: {
             ...createEmptyRunRecord({
               runId,
@@ -738,10 +591,6 @@ export function streamStoreReducer(
               [action.activeRun.requestId]: runId,
             }
           : state.requestToRunId,
-        tasksByRunId: {
-          ...nextTasksByRunId,
-          [runId]: taskMap,
-        },
       }
     }
     default:
@@ -768,63 +617,3 @@ export function attachmentsForStartChat(
     })
   return mapped.length ? mapped : undefined
 }
-
-export const reconcileTerminalTaskKeysFromResumeTasks = (args: {
-  currentKeys: ReadonlySet<string>
-  tasks: Array<{
-    runId: string
-    agentId: string
-    status: TaskLifecycleStatus
-  }>
-}): Set<string> => {
-  const nextKeys = new Set(args.currentKeys)
-  for (const task of args.tasks) {
-    const taskKey = toRunTaskId(task.runId, task.agentId)
-    if (isTerminalTaskLifecycleStatus(task.status)) {
-      nextKeys.add(taskKey)
-    } else {
-      nextKeys.delete(taskKey)
-    }
-  }
-  return nextKeys
-}
-
-export const toTaskFromResumeSnapshot = (
-  snapshot: ResumeTaskSnapshot,
-  nowMs: number,
-): TaskItem => ({
-  id: snapshot.agentId,
-  runId: snapshot.runId,
-  hydratedFromResumeSnapshot: true,
-  description:
-    snapshot.description ?? fallbackTaskDescription(snapshot.agentId),
-  agentType: snapshot.agentType || AGENT_IDS.GENERAL,
-  status:
-    snapshot.status === 'completed'
-      ? 'completed'
-      : snapshot.status === 'error'
-        ? 'error'
-        : snapshot.status === 'canceled'
-          ? 'canceled'
-          : 'running',
-  anchorTurnId: snapshot.anchorTurnId,
-  parentAgentId: snapshot.parentAgentId,
-  statusText: snapshot.statusText,
-  // Prefer the snapshot's real timestamps: fabricating `nowMs` here made a
-  // re-hydrated finished task look freshly started/completed, which both
-  // tripped the revive rule in mergeFooterTasks and collapsed the done-row
-  // sort into id order (every row got the same synthetic stamp). `nowMs` is
-  // only a fallback for snapshots that predate the timestamp fields.
-  startedAtMs: snapshot.startedAtMs ?? nowMs,
-  completedAtMs:
-    snapshot.status === 'completed' ||
-    snapshot.status === 'error' ||
-    snapshot.status === 'canceled'
-      ? (snapshot.completedAtMs ?? nowMs)
-      : undefined,
-  lastUpdatedAtMs: nowMs,
-  outputPreview: snapshot.result ?? snapshot.error,
-  reasoningText: snapshot.reasoningText,
-  groupKey: snapshot.groupKey,
-  groupLabel: snapshot.groupLabel,
-})

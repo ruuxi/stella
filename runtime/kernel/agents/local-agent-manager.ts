@@ -764,6 +764,7 @@ export class LocalAgentManager implements AgentToolApi {
         ? { selfModMetadata: task.selfModMetadata }
         : {}),
       status: task.status === "pending" ? "running" : task.status,
+      ...(task.rootRunId ? { rootRunId: task.rootRunId } : {}),
       startedAt: task.startedAt,
       completedAt: task.completedAt,
       ...(typeof task.result === "string" ? { result: task.result } : {}),

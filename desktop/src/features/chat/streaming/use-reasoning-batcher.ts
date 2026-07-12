@@ -2,19 +2,18 @@
  * rAF-coalesced reasoning chunks for the local agent stream.
  *
  * Inbound `agent-reasoning` events arrive at sub-frame frequency; this
- * hook accumulates them per `(runId, agentId)` and flushes once per
+ * hook accumulates them per thread (`agentId`) and flushes once per
  * animation frame so the reducer doesn't spin on every keystroke from
  * the underlying SSE.
  */
 import { useCallback, useEffect, useRef } from 'react'
-import { toRunTaskId, type StreamStoreAction } from './store'
+import type { StreamStoreAction } from './store'
 
 export type PendingReasoningEntry = {
-  runId: string
-  conversationId: string
-  userMessageId?: string
   agentId: string
-  description?: string
+  conversationId: string
+  runId?: string
+  userMessageId?: string
   chunk: string
 }
 
@@ -27,11 +26,11 @@ export function useReasoningBatcher(
   const reasoningFrameRef = useRef<number | null>(null)
 
   const flushPendingReasoningChunks = useCallback(
-    (onlyKey?: string) => {
+    (onlyAgentId?: string) => {
       const pending = pendingReasoningChunksRef.current
-      const entries = onlyKey
-        ? pending.has(onlyKey)
-          ? [[onlyKey, pending.get(onlyKey)!] as const]
+      const entries = onlyAgentId
+        ? pending.has(onlyAgentId)
+          ? [[onlyAgentId, pending.get(onlyAgentId)!] as const]
           : []
         : [...pending.entries()]
       if (entries.length === 0) {
@@ -44,11 +43,10 @@ export function useReasoningBatcher(
       for (const [, entry] of entries) {
         dispatch({
           type: 'agent-reasoning',
-          runId: entry.runId,
-          conversationId: entry.conversationId,
-          userMessageId: entry.userMessageId,
           agentId: entry.agentId,
-          description: entry.description,
+          conversationId: entry.conversationId,
+          runId: entry.runId,
+          userMessageId: entry.userMessageId,
           chunk: entry.chunk,
         })
       }
@@ -58,11 +56,9 @@ export function useReasoningBatcher(
 
   const queueAgentReasoningChunk = useCallback(
     (entry: PendingReasoningEntry) => {
-      const key = toRunTaskId(entry.runId, entry.agentId)
-      const current = pendingReasoningChunksRef.current.get(key)
-      pendingReasoningChunksRef.current.set(key, {
+      const current = pendingReasoningChunksRef.current.get(entry.agentId)
+      pendingReasoningChunksRef.current.set(entry.agentId, {
         ...entry,
-        description: entry.description ?? current?.description,
         chunk: `${current?.chunk ?? ''}${entry.chunk}`,
       })
 
@@ -77,12 +73,9 @@ export function useReasoningBatcher(
     [flushPendingReasoningChunks],
   )
 
-  const discardPendingReasoningChunks = useCallback(
-    (runId: string, agentId: string) => {
-      pendingReasoningChunksRef.current.delete(toRunTaskId(runId, agentId))
-    },
-    [],
-  )
+  const discardPendingReasoningChunks = useCallback((agentId: string) => {
+    pendingReasoningChunksRef.current.delete(agentId)
+  }, [])
 
   useEffect(() => {
     return () => {

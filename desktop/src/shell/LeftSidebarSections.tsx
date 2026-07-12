@@ -48,10 +48,8 @@ import {
 import {
   EMPTY_FIRST_SEEN_ORDER,
   activityRowKey,
-  extractTasksFromActivities,
   getTaskGroupStatusText,
   groupActivityTasks,
-  mergeFooterTasks,
   orderByFirstSeen,
   pruneGroupExpandOverrides,
   shouldShowTaskReasoningSummaries,
@@ -97,7 +95,6 @@ const SECTION_CAPS = {
 // set made a common query mount hundreds of rows at once. The history dialogs
 // remain the escape hatch for longer result sets.
 const SEARCH_CAPS = { activity: 40, files: 40, schedule: 30, store: 30 };
-const EMPTY_TASKS: TaskItem[] = [];
 const EMPTY_FILES: ReadonlyArray<ConversationFileEntry> = [];
 /** Most-recent reasoning summaries shown under an expanded agent. */
 const AGENT_SUMMARY_CAP = 3;
@@ -621,7 +618,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
 
   const conversationId = state.conversationId;
   const activity = chat.conversation.activity;
-  const liveTasks = chat.conversation.streaming.liveTasks ?? EMPTY_TASKS;
+  const allTasks = chat.conversation.tasks;
   const filesFeed = chat.conversation.files;
   const schedules = useConversationSchedules(conversationId);
   const storeState = useStoreSidePanelState();
@@ -756,13 +753,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     setExpandOverrides(new Map(Object.entries(snapshot.taskOverrides)));
     setGroupExpandOverrides(new Map(Object.entries(snapshot.groupOverrides)));
   }
-
-  const allTasks = useMemo(() => {
-    const persisted = extractTasksFromActivities(activity.activities, {
-      latestMessageTimestampMs: activity.latestMessageTimestampMs,
-    });
-    return mergeFooterTasks(persisted, liveTasks);
-  }, [activity.activities, activity.latestMessageTimestampMs, liveTasks]);
 
   // Roll the seen-running sets forward in a memo (same idempotent-mutation
   // pattern as `runningOrderRef`) so they're current before any row computes
@@ -1179,11 +1169,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
           if (!next) setHistorySection(null);
         }}
         section={historySection ?? "done"}
-        activities={activity.activities}
-        latestMessageTimestampMs={activity.latestMessageTimestampMs}
-        onLoadMoreActivity={activity.loadOlder}
-        hasMoreActivity={activity.hasOlder}
-        isLoadingMoreActivity={activity.isLoadingOlder}
+        tasks={allTasks}
         fileEvents={filesFeed.files}
         onLoadMoreFiles={filesFeed.loadOlder}
         hasMoreFiles={filesFeed.hasOlder}

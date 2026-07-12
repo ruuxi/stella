@@ -7,7 +7,10 @@ import type {
   StellaReleaseArtifactRef,
 } from "../../runtime/contracts/index.js";
 import type { TaskLifecycleStatus } from "../../runtime/contracts/agent-runtime.js";
-import type { LocalChatUpdatedPayload } from "../../runtime/contracts/local-chat.js";
+import type {
+  LocalChatUpdatedPayload,
+  ThreadActivityUpdatedPayload,
+} from "../../runtime/contracts/local-chat.js";
 import type { RadialTriggerCode } from "../src/shared/lib/radial-trigger.js";
 import type { MiniDoubleTapModifier } from "../src/shared/lib/mini-double-tap.js";
 import type { MorphTimingSettings } from "../src/shared/contracts/morph-timing.js";
@@ -2215,6 +2218,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       beforeTimestampMs?: number;
       beforeId?: string;
     }) => ipcRenderer.invoke("localChat:listActivity", payload),
+    listThreadActivity: (payload: { conversationId: string }) =>
+      ipcRenderer.invoke("localChat:listThreadActivity", payload),
     listFiles: (payload: {
       conversationId: string;
       limit?: number;
@@ -2248,6 +2253,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       localMessageId: string;
     }) => ipcRenderer.invoke("localChat:setSyncCheckpoint", payload),
     onUpdated: onIpc<LocalChatUpdatedPayload | null>("localChat:updated"),
+    onThreadActivityUpdated: onIpc<ThreadActivityUpdatedPayload>(
+      "localChat:threadActivityUpdated",
+    ),
   },
 
   socialSessions: {

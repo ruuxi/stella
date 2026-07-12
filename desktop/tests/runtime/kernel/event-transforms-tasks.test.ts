@@ -1,26 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
   EMPTY_FIRST_SEEN_ORDER,
+  TASK_COMPLETION_INDICATOR_MS,
   activityRowKey,
+  buildActivityTasks,
   fallbackTaskDescription,
   isActivityFeedTask,
-  isFallbackTaskDescription,
   extractStepsFromEvents,
-  extractTasksFromActivities,
-  extractTasksFromEvents,
   getTaskDisplayText,
   getTaskGroupStatusText,
-  getFooterTasksFromEvents,
   groupActivityTasks,
-  mergeFooterTasks,
   orderByFirstSeen,
   pruneGroupExpandOverrides,
+  selectFreshActivityTasks,
   shouldShowTaskReasoningSummaries,
   updateSeenRunningGroupKeys,
   updateSeenRunningTaskIds,
   type EventRecord,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
+import type { ThreadActivityRecord } from "../../../../runtime/contracts/local-chat.js";
 import {
   buildInlineWorkingIndicatorProps,
   getInlineWorkingIndicatorActive,
@@ -51,29 +50,6 @@ describe("internal helper agent exclusion", () => {
     expect(isActivityFeedTask({ agentType: "orchestrator" })).toBe(false);
   });
 
-  it("drops schedule-specialist lifecycle events from extracted activity tasks", () => {
-    // The Schedule tool spawns an internal `schedule` sub-agent
-    // (thread-NNN) while the orchestrator is busy — it must never render
-    // as a user-facing activity row.
-    const events = [
-      event("1", 100, "agent-started", {
-        agentId: "thread-177",
-        description: "Apply local scheduling changes",
-        agentType: "schedule",
-      }),
-      event("2", 150, "agent-started", {
-        agentId: "compare-flight-prices",
-        description: "Compare flight prices",
-        agentType: "general",
-      }),
-      event("3", 200, "agent-completed", {
-        agentId: "thread-177",
-        result: "done",
-      }),
-    ];
-    const tasks = extractTasksFromEvents(events);
-    expect(tasks.map((task) => task.id)).toEqual(["compare-flight-prices"]);
-  });
 });
 
 describe("fallbackTaskDescription", () => {
@@ -111,564 +87,8 @@ describe("fallbackTaskDescription", () => {
     expect(fallbackTaskDescription("research")).toBe("Research");
   });
 
-  it("marks generic and id-derived labels as fallback, real ones not", () => {
-    expect(isFallbackTaskDescription("Task", "fix-the-bug")).toBe(true);
-    expect(isFallbackTaskDescription("Fix the bug", "fix-the-bug")).toBe(true);
-    expect(
-      isFallbackTaskDescription("Fix the sidebar labeling bug", "fix-the-bug"),
-    ).toBe(false);
-  });
 });
 
-describe("extractTasksFromEvents", () => {
-  it("keeps redacted task tool activity and gives distinct commands distinct summary signatures", () => {
-    const firstActivity = {
-      toolCallId: "call-1",
-      toolName: "exec_command",
-      label: "Running command",
-      argsHint: '{"cmd":"git status"}',
-      state: "started" as const,
-    };
-    const secondActivity = {
-      ...firstActivity,
-      toolCallId: "call-2",
-      argsHint: '{"cmd":"git diff"}',
-    };
-    const events = [
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Inspect repository",
-        agentType: "general",
-      }),
-      event("2", 200, "agent-progress", {
-        agentId: "task-1",
-        statusText: "Running command",
-        toolActivity: firstActivity,
-      }),
-    ];
-
-    const [firstTask] = extractTasksFromEvents(events);
-    const secondTask: TaskItem = {
-      ...firstTask,
-      toolActivity: secondActivity,
-    };
-
-    expect(firstTask.toolActivity).toEqual(firstActivity);
-    expect(buildAgentProgressSignature(firstTask)).not.toBe(
-      buildAgentProgressSignature(secondTask),
-    );
-  });
-
-  it("treats agent-canceled as terminal even if a stale agent-progress arrives later", () => {
-    // Race recreated by pause_agent: the orchestrator cancels the task while
-    // the subagent's agent loop is still iterating tool calls, so a few
-    // `agent-progress` lifecycle events get persisted *after* the
-    // `agent-canceled` event. Without the terminal guard those late
-    // progresses flip the task back to "running" and pin a phantom
-    // "Working … Task" indicator in the footer.
-    const events = [
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Open Spotify",
-        agentType: "general",
-      }),
-      event("2", 200, "agent-canceled", {
-        agentId: "task-1",
-        error: "Paused by orchestrator.",
-      }),
-      event("3", 250, "agent-progress", {
-        agentId: "task-1",
-        statusText: "Running read",
-      }),
-      event("4", 260, "agent-progress", {
-        agentId: "task-1",
-        statusText: "Running write",
-      }),
-    ];
-
-    const [task] = extractTasksFromEvents(events);
-    expect(task.status).toBe("canceled");
-    expect(task.outputPreview).toBe("Paused by orchestrator.");
-
-    const footer = getFooterTasksFromEvents(events, { nowMs: 1_000 });
-    expect(footer).toEqual([]);
-  });
-
-  it("revives a canceled task when send_input emits a fresh agent-started", () => {
-    // send_input is the legitimate way to bring a paused task back to
-    // running — it resets the status to pending and the manager emits a
-    // brand-new `agent-started`. The terminal guard must clear so the
-    // revived task actually shows up in the footer again.
-    const events = [
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Open Spotify",
-        agentType: "general",
-      }),
-      event("2", 200, "agent-canceled", {
-        agentId: "task-1",
-        error: "Paused by orchestrator.",
-      }),
-      event("3", 300, "agent-started", {
-        agentId: "task-1",
-        description: "Open Spotify",
-        agentType: "general",
-      }),
-      event("4", 350, "agent-progress", {
-        agentId: "task-1",
-        statusText: "Running read",
-      }),
-    ];
-
-    const [task] = extractTasksFromEvents(events);
-    expect(task.status).toBe("running");
-    expect(task.statusText).toBe("Reading");
-    expect(task.description).toBe("Open Spotify");
-  });
-
-  it("revives a completed task when send_input emits a fresh agent-started", () => {
-    const events = [
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Inspect settings",
-        agentType: "general",
-      }),
-      event("2", 200, "agent-completed", {
-        agentId: "task-1",
-        result: "Done",
-      }),
-      event("3", 300, "agent-started", {
-        agentId: "task-1",
-        description: "Inspect settings",
-        agentType: "general",
-        statusText: "Check one more path",
-        isFollowUp: true,
-      }),
-      event("4", 350, "agent-progress", {
-        agentId: "task-1",
-        statusText: "Running read",
-      }),
-    ];
-
-    const [task] = extractTasksFromEvents(events);
-    expect(task.status).toBe("running");
-    expect(task.completedAtMs).toBeUndefined();
-    expect(task.statusText).toBe("Reading");
-    expect(shouldShowTaskReasoningSummaries(task)).toBe(true);
-  });
-
-  it("marks a resumed completed task finished at the follow-up completion", () => {
-    const events = [
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Inspect settings",
-        agentType: "general",
-      }),
-      event("2", 200, "agent-completed", {
-        agentId: "task-1",
-        result: "First pass done",
-      }),
-      event("3", 300, "agent-started", {
-        agentId: "task-1",
-        description: "Inspect settings",
-        agentType: "general",
-        statusText: "Check one more path",
-        isFollowUp: true,
-      }),
-      event("4", 400, "agent-completed", {
-        agentId: "task-1",
-        result: "Follow-up done",
-      }),
-    ];
-
-    const [task] = extractTasksFromEvents(events);
-    expect(task.status).toBe("completed");
-    expect(task.completedAtMs).toBe(400);
-    expect(task.outputPreview).toBe("Follow-up done");
-    expect(shouldShowTaskReasoningSummaries(task)).toBe(false);
-  });
-
-  it("uses send_input description text as the running task display text", () => {
-    const events = [
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Open Spotify",
-        agentType: "general",
-      }),
-      event("2", 200, "agent-progress", {
-        agentId: "task-1",
-        statusText: "Switch to the playlist tab",
-      }),
-    ];
-
-    const [task] = extractTasksFromEvents(events);
-    expect(task.status).toBe("running");
-    expect(task.statusText).toBe("Switch to the playlist tab");
-    expect(getTaskDisplayText(task)).toBe("Switch to the playlist tab");
-  });
-
-  it("humanizes raw tool status text", () => {
-    const events = [
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Open Spotify",
-        agentType: "general",
-        statusText: "Running web",
-      }),
-    ];
-
-    const [task] = extractTasksFromEvents(events);
-    expect(task.statusText).toBe("Searching");
-    expect(getTaskDisplayText(task)).toBe("Searching");
-  });
-
-  it("does not treat task descriptions as shared working indicator status", () => {
-    const footerTasks = getFooterTasksFromEvents([
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Research a current web-backed question",
-        agentType: "general",
-      }),
-    ]);
-
-    expect(footerTasks).toHaveLength(1);
-    expect(getRunningTaskIndicatorText(footerTasks[0]!)).toBeUndefined();
-  });
-
-  it("humanizes running agent tool progress for task-based status surfaces", () => {
-    const footerTasks = getFooterTasksFromEvents([
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Research a current web-backed question",
-        agentType: "general",
-      }),
-      event("2", 150, "agent-progress", {
-        agentId: "task-1",
-        statusText: "Running web",
-      }),
-    ]);
-
-    expect(footerTasks).toHaveLength(1);
-    expect(getRunningTaskIndicatorText(footerTasks[0]!)).toBe("Searching");
-    expect(
-      getWorkingIndicatorDisplayStatus({
-        tasks: footerTasks,
-      }),
-    ).toBe("Searching");
-  });
-
-  it("ignores agent-progress that arrives after agent-completed", () => {
-    const events = [
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Summarize PR",
-        agentType: "general",
-      }),
-      event("2", 200, "agent-completed", {
-        agentId: "task-1",
-        result: "Done",
-      }),
-      event("3", 250, "agent-progress", {
-        agentId: "task-1",
-        statusText: "Running write",
-      }),
-    ];
-
-    const [task] = extractTasksFromEvents(events);
-    expect(task.status).toBe("completed");
-    expect(task.outputPreview).toBe("Done");
-  });
-
-  it("does not infer task cancellation from the desktop app session", () => {
-    const events = [
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Inspect settings",
-        agentType: "general",
-      }),
-      event("2", 150, "agent-progress", {
-        agentId: "task-1",
-        statusText: "Reading files",
-      }),
-    ];
-
-    // Regression: the Electron app can restart/reconnect while its detached
-    // runtime worker and task keep running. The removed selector option used
-    // to turn both rows into `canceled` solely because their last event was
-    // older than the desktop process. Cast the old call shape deliberately so
-    // this test fails against the pre-fix implementation.
-    const legacySelector = extractTasksFromEvents as (
-      records: EventRecord[],
-      options: { appSessionStartedAtMs: number },
-    ) => TaskItem[];
-    const [task] = legacySelector(events, { appSessionStartedAtMs: 1_000 });
-
-    expect(task.status).toBe("running");
-    expect(task.outputPreview).toBeUndefined();
-  });
-
-  it("keeps two authoritative rows running across foreground busy toggles, reorder, and reconnect", () => {
-    const rawActivity = [
-      event("alpha-start", 100, "agent-started", {
-        agentId: "alpha",
-        agentType: "general",
-        description: "Alpha task",
-        rootRunId: "run-background-alpha",
-      }),
-      event("beta-start", 200, "agent-started", {
-        agentId: "beta",
-        agentType: "general",
-        description: "Beta task",
-        rootRunId: "run-background-beta",
-      }),
-    ];
-    const legacySelector = extractTasksFromActivities as (
-      records: EventRecord[],
-      options: { appSessionStartedAtMs: number },
-    ) => TaskItem[];
-    const persisted = legacySelector(rawActivity, {
-      appSessionStartedAtMs: 1_000,
-    });
-    const statuses = (tasks: TaskItem[]) =>
-      Object.fromEntries(tasks.map((item) => [item.id, item.status]));
-
-    // Idle: fresh live observations exist for both background task runs.
-    const idle = mergeFooterTasks(
-      persisted,
-      persisted.map((item) => ({
-        ...item,
-        hydratedFromResumeSnapshot: false,
-      })),
-    );
-    // Foreground busy/reconnect: the same tasks are replay-hydrated while a
-    // different orchestrator run is active. Their own lifecycle did not move.
-    const busy = mergeFooterTasks(
-      persisted,
-      persisted.map((item) => ({
-        ...item,
-        hydratedFromResumeSnapshot: true,
-      })),
-    );
-    const idleAgain = mergeFooterTasks(persisted, []);
-
-    expect(statuses(idle)).toEqual({ alpha: "running", beta: "running" });
-    expect(statuses(busy)).toEqual({ alpha: "running", beta: "running" });
-    expect(statuses(idleAgain)).toEqual({
-      alpha: "running",
-      beta: "running",
-    });
-    expect(persisted.map((item) => item.runId)).toEqual([
-      "run-background-alpha",
-      "run-background-beta",
-    ]);
-
-    const firstRows = groupActivityTasks(busy);
-    const firstOrder = orderByFirstSeen(
-      firstRows,
-      activityRowKey,
-      EMPTY_FIRST_SEEN_ORDER,
-      true,
-    );
-    expect(firstOrder.ordered.map(activityRowKey)).toEqual([
-      "task:beta",
-      "task:alpha",
-    ]);
-
-    const reorderedActivity = [
-      ...rawActivity,
-      event("gamma-start", 300, "agent-started", {
-        agentId: "gamma",
-        agentType: "general",
-        description: "Gamma task",
-        rootRunId: "run-foreground",
-      }),
-    ];
-    const reorderedRows = groupActivityTasks(
-      extractTasksFromActivities(reorderedActivity),
-    );
-    const afterPrepend = orderByFirstSeen(
-      reorderedRows,
-      activityRowKey,
-      firstOrder.state,
-      true,
-    );
-    expect(afterPrepend.ordered.map(activityRowKey)).toEqual([
-      "task:gamma",
-      "task:beta",
-      "task:alpha",
-    ]);
-    expect(statuses(busy)).toEqual({ alpha: "running", beta: "running" });
-
-    // A reconnect gives the renderer new event/object identities, but row
-    // keys, task run ownership, and statuses remain identical.
-    const reconnected = extractTasksFromActivities(
-      structuredClone(rawActivity),
-    );
-    expect(
-      reconnected.map((item) => ({
-        id: item.id,
-        runId: item.runId,
-        status: item.status,
-      })),
-    ).toEqual([
-      {
-        id: "alpha",
-        runId: "run-background-alpha",
-        status: "running",
-      },
-      {
-        id: "beta",
-        runId: "run-background-beta",
-        status: "running",
-      },
-    ]);
-  });
-
-  it("reconciles restart outcomes monotonically without blanket-pausing rows", () => {
-    const restartedActivity = [
-      event("running-start", 100, "agent-started", {
-        agentId: "still-running",
-        agentType: "general",
-        description: "Still running",
-        rootRunId: "run-running",
-        groupKey: "grp-restart",
-        groupLabel: "Restart checks",
-      }),
-      event("completed-start", 110, "agent-started", {
-        agentId: "completed-while-away",
-        agentType: "general",
-        description: "Completed while away",
-        rootRunId: "run-completed",
-        groupKey: "grp-restart",
-        groupLabel: "Restart checks",
-      }),
-      event("completed-end", 210, "agent-completed", {
-        agentId: "completed-while-away",
-        rootRunId: "run-completed",
-        result: "Finished while the desktop was down",
-        groupKey: "grp-restart",
-        groupLabel: "Restart checks",
-      }),
-      event("paused-start", 120, "agent-started", {
-        agentId: "paused-while-away",
-        agentType: "general",
-        description: "Paused while away",
-        rootRunId: "run-paused",
-      }),
-      event("paused-end", 220, "agent-canceled", {
-        agentId: "paused-while-away",
-        rootRunId: "run-paused",
-        error: "Paused by orchestrator.",
-      }),
-      event("failed-start", 130, "agent-started", {
-        agentId: "failed-while-away",
-        agentType: "general",
-        description: "Failed while away",
-        rootRunId: "run-failed",
-      }),
-      event("failed-end", 230, "agent-failed", {
-        agentId: "failed-while-away",
-        rootRunId: "run-failed",
-        error: "Provider failed",
-      }),
-    ].sort((a, b) => a.timestamp - b.timestamp);
-
-    // This is the delayed/unavailable-runtime case: only durable activity is
-    // available provisionally. It must preserve the one genuinely-running
-    // row rather than blanket-reset every pre-restart task to paused.
-    const tasks = extractTasksFromActivities(restartedActivity);
-    expect(
-      Object.fromEntries(tasks.map((item) => [item.id, item.status])),
-    ).toEqual({
-      "still-running": "running",
-      "completed-while-away": "completed",
-      "paused-while-away": "canceled",
-      "failed-while-away": "error",
-    });
-    expect(groupActivityTasks(tasks)[0]).toMatchObject({
-      kind: "group",
-      group: {
-        groupKey: "grp-restart",
-        status: "running",
-        totalCount: 2,
-      },
-    });
-
-    // A true runtime-worker restart emits an authoritative canceled event for
-    // orphaned work. Appending that event settles only the affected row.
-    const afterWorkerRestart = extractTasksFromActivities([
-      ...restartedActivity,
-      event("running-orphaned", 300, "agent-canceled", {
-        agentId: "still-running",
-        error: "Canceled because Stella restarted before the agent finished.",
-        groupKey: "grp-restart",
-        groupLabel: "Restart checks",
-      }),
-    ]);
-    expect(
-      afterWorkerRestart.find((item) => item.id === "still-running")?.status,
-    ).toBe("canceled");
-    expect(
-      afterWorkerRestart.find((item) => item.id === "completed-while-away")
-        ?.status,
-    ).toBe("completed");
-  });
-
-  it("ignores duplicate old-run terminal replay after a newer run starts", () => {
-    const tasks = extractTasksFromActivities([
-      event("old-start", 100, "agent-started", {
-        agentId: "thread-1",
-        agentType: "general",
-        description: "Thread 1",
-        rootRunId: "run-old",
-      }),
-      event("old-complete", 200, "agent-completed", {
-        agentId: "thread-1",
-        rootRunId: "run-old",
-        result: "Old result",
-      }),
-      event("new-start", 300, "agent-started", {
-        agentId: "thread-1",
-        agentType: "general",
-        description: "Thread 1",
-        rootRunId: "run-new",
-        isFollowUp: true,
-      }),
-      // Duplicate/out-of-order replay from the prior execution. Root-run
-      // identity prevents it from terminalizing the newer live execution.
-      event("old-complete-replay", 400, "agent-completed", {
-        agentId: "thread-1",
-        rootRunId: "run-old",
-        result: "Old result",
-      }),
-    ]);
-
-    expect(tasks).toHaveLength(1);
-    expect(tasks[0]).toMatchObject({
-      id: "thread-1",
-      runId: "run-new",
-      status: "running",
-    });
-  });
-
-  it("preserves progress text when a later started event has no status", () => {
-    const events = [
-      event("1", 100, "agent-progress", {
-        agentId: "task-1",
-        statusText: "Reading files",
-      }),
-      event("2", 150, "agent-started", {
-        agentId: "task-1",
-        description: "Inspect settings",
-        agentType: "general",
-      }),
-    ];
-
-    const [task] = extractTasksFromEvents(events);
-    expect(task.description).toBe("Inspect settings");
-    expect(task.statusText).toBe("Reading files");
-  });
-});
 
 describe("work-group folding", () => {
   const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
@@ -680,33 +100,6 @@ describe("work-group folding", () => {
     ...overrides,
   });
 
-  it("threads groupKey/groupLabel from persisted lifecycle payloads onto tasks", () => {
-    const tasks = extractTasksFromEvents([
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Compare flights",
-        agentType: "general",
-        groupKey: "grp-1",
-        groupLabel: "Plan the trip",
-      }),
-      event("2", 150, "agent-started", {
-        agentId: "task-2",
-        description: "Compare hotels",
-        agentType: "general",
-        groupKey: "grp-1",
-        groupLabel: "Plan the trip",
-      }),
-      event("3", 200, "agent-completed", {
-        agentId: "task-1",
-        result: "Done",
-        groupKey: "grp-1",
-        groupLabel: "Plan the trip",
-      }),
-    ]);
-
-    expect(tasks.map((t) => t.groupKey)).toEqual(["grp-1", "grp-1"]);
-    expect(tasks[0]?.groupLabel).toBe("Plan the trip");
-  });
 
   it("collapses two members of one group into a single header row", () => {
     const rows = groupActivityTasks([
@@ -820,25 +213,6 @@ describe("work-group folding", () => {
     expect(getTaskGroupStatusText(failedGroup!)).toBe("2 tasks");
   });
 
-  it("keeps the persisted group membership when live tasks lack group fields", () => {
-    const persistedTasks = extractTasksFromEvents([
-      event("1", 100, "agent-started", {
-        agentId: "task-1",
-        description: "Compare flights",
-        agentType: "general",
-        groupKey: "grp-1",
-        groupLabel: "Plan the trip",
-      }),
-    ]);
-
-    // Resume-snapshot live tasks carry no group fields.
-    const [merged] = mergeFooterTasks(persistedTasks, [
-      task({ id: "task-1", description: "Compare flights", runId: "run-1" }),
-    ]);
-
-    expect(merged?.groupKey).toBe("grp-1");
-    expect(merged?.groupLabel).toBe("Plan the trip");
-  });
 });
 
 describe("extractStepsFromEvents", () => {
@@ -861,387 +235,6 @@ describe("extractStepsFromEvents", () => {
   });
 });
 
-describe("mergeFooterTasks", () => {
-  it("does not let stale live state revive a terminal persisted task", () => {
-    const merged = mergeFooterTasks(
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "completed",
-          startedAtMs: 100,
-          completedAtMs: 200,
-          lastUpdatedAtMs: 200,
-          outputPreview: "Done",
-        },
-      ],
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "running",
-          startedAtMs: 100,
-          lastUpdatedAtMs: 250,
-          statusText: "Running write",
-        },
-      ],
-    );
-
-    expect(merged[0]?.status).toBe("completed");
-    expect(merged[0]?.outputPreview).toBe("Done");
-  });
-
-  it("lets a newer live send_input run revive a completed persisted task", () => {
-    const merged = mergeFooterTasks(
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "completed",
-          startedAtMs: 100,
-          completedAtMs: 200,
-          lastUpdatedAtMs: 200,
-          outputPreview: "Done",
-        },
-      ],
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "running",
-          runId: "run-2",
-          startedAtMs: 300,
-          lastUpdatedAtMs: 350,
-          statusText: "Running read",
-        },
-      ],
-    );
-
-    expect(merged[0]?.status).toBe("running");
-    expect(merged[0]?.completedAtMs).toBeUndefined();
-    expect(merged[0]?.outputPreview).toBeUndefined();
-    expect(getTaskDisplayText(merged[0]!)).toBe("Reading");
-    expect(shouldShowTaskReasoningSummaries(merged[0]!)).toBe(true);
-  });
-
-  it("keeps a run-scoped live task visible even when its preserved start predates the terminal row", () => {
-    const merged = mergeFooterTasks(
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "completed",
-          startedAtMs: 100,
-          completedAtMs: 500,
-          lastUpdatedAtMs: 500,
-          outputPreview: "Done",
-        },
-      ],
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "running",
-          runId: "run-follow-up",
-          startedAtMs: 100,
-          lastUpdatedAtMs: 600,
-          statusText: "Running read",
-        },
-      ],
-    );
-
-    expect(merged[0]?.status).toBe("running");
-    expect(merged[0]?.completedAtMs).toBeUndefined();
-    expect(merged[0]?.outputPreview).toBeUndefined();
-    expect(getTaskDisplayText(merged[0]!)).toBe("Reading");
-  });
-
-  it("clears a persisted error state when the same thread is live again", () => {
-    const merged = mergeFooterTasks(
-      [
-        {
-          id: "task-1",
-          description: "Debug payment form",
-          agentType: "general",
-          status: "error",
-          startedAtMs: 100,
-          completedAtMs: 400,
-          lastUpdatedAtMs: 400,
-          outputPreview: "Tool failed",
-        },
-      ],
-      [
-        {
-          id: "task-1",
-          description: "Debug payment form",
-          agentType: "general",
-          status: "running",
-          runId: "run-retry",
-          startedAtMs: 100,
-          lastUpdatedAtMs: 450,
-          statusText: "Running write",
-        },
-      ],
-    );
-
-    expect(merged[0]?.status).toBe("running");
-    expect(merged[0]?.completedAtMs).toBeUndefined();
-    expect(merged[0]?.outputPreview).toBeUndefined();
-    expect(shouldShowTaskReasoningSummaries(merged[0]!)).toBe(true);
-  });
-
-  it("keeps a still-running thread visible when a stale live terminal overlay races the busy orchestrator", () => {
-    // Repro of the sidebar bug: while the orchestrator is busy/streaming, a
-    // stale live overlay reported the in-flight thread as terminal
-    // (completed) even though the reload-safe persisted lifecycle still had
-    // it running. `{ ...persisted, ...live }` let the live terminal status
-    // win, so the row dropped out of the running list until the run went
-    // idle and the overlay cleared. The persisted running truth must win.
-    const persisted: TaskItem[] = [
-      {
-        id: "task-1",
-        description: "Long background task",
-        agentType: "general",
-        status: "running",
-        startedAtMs: 100,
-        lastUpdatedAtMs: 900,
-        statusText: "Working",
-      },
-    ];
-    const staleLiveTerminal: TaskItem[] = [
-      {
-        id: "task-1",
-        description: "Long background task",
-        agentType: "general",
-        status: "completed",
-        runId: "run-prev",
-        startedAtMs: 100,
-        completedAtMs: 500,
-        lastUpdatedAtMs: 500,
-        outputPreview: "Stale done",
-      },
-    ];
-
-    const merged = mergeFooterTasks(persisted, staleLiveTerminal);
-    expect(merged[0]?.status).toBe("running");
-    expect(merged[0]?.completedAtMs).toBeUndefined();
-    expect(merged[0]?.outputPreview).toBeUndefined();
-
-    // Mirror the sidebar's running/done split: the thread must land in the
-    // running list (always visible), not the capped done list.
-    const rows = groupActivityTasks(merged);
-    const rowStatus = (row: (typeof rows)[number]) =>
-      row.kind === "task" ? row.task.status : row.group.status;
-    const running = rows.filter((row) => rowStatus(row) === "running");
-    const done = rows.filter((row) => rowStatus(row) !== "running");
-    expect(running).toHaveLength(1);
-    expect(done).toHaveLength(0);
-  });
-
-  it("still lets a genuine completion terminalize once the persisted feed agrees", () => {
-    // Guard against over-correcting: when the persisted lifecycle has also
-    // recorded the terminal event, the row settles to done as before.
-    const merged = mergeFooterTasks(
-      [
-        {
-          id: "task-1",
-          description: "Long background task",
-          agentType: "general",
-          status: "completed",
-          startedAtMs: 100,
-          completedAtMs: 900,
-          lastUpdatedAtMs: 900,
-          outputPreview: "Done",
-        },
-      ],
-      [
-        {
-          id: "task-1",
-          description: "Long background task",
-          agentType: "general",
-          status: "completed",
-          runId: "run-1",
-          startedAtMs: 100,
-          completedAtMs: 900,
-          lastUpdatedAtMs: 900,
-          outputPreview: "Done",
-        },
-      ],
-    );
-    expect(merged[0]?.status).toBe("completed");
-    expect(merged[0]?.completedAtMs).toBe(900);
-  });
-
-  it("does not let resume snapshots revive completed persisted tasks", () => {
-    const merged = mergeFooterTasks(
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "completed",
-          startedAtMs: 100,
-          completedAtMs: 200,
-          lastUpdatedAtMs: 200,
-          outputPreview: "Done",
-        },
-      ],
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "running",
-          runId: "run-1",
-          hydratedFromResumeSnapshot: true,
-          startedAtMs: 1_000,
-          lastUpdatedAtMs: 1_000,
-          statusText: "Running read",
-        },
-      ],
-    );
-
-    expect(merged[0]?.status).toBe("completed");
-    expect(merged[0]?.completedAtMs).toBe(200);
-    expect(merged[0]?.outputPreview).toBe("Done");
-    expect(shouldShowTaskReasoningSummaries(merged[0]!)).toBe(false);
-  });
-
-  it("does not let a hydrated terminal snapshot's timestamps beat the persisted ones", () => {
-    // Regression: snapshots without real timestamps hydrate with synthetic
-    // "now" stamps; letting those overwrite the persisted row bumped every
-    // settled task to the same fresh instant and reordered the done list on
-    // each re-hydration (message send / stream reconnect).
-    const merged = mergeFooterTasks(
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "completed",
-          startedAtMs: 100,
-          completedAtMs: 200,
-          lastUpdatedAtMs: 200,
-          outputPreview: "Done",
-        },
-      ],
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "completed",
-          runId: "run-1",
-          hydratedFromResumeSnapshot: true,
-          startedAtMs: 1_000,
-          completedAtMs: 1_000,
-          lastUpdatedAtMs: 1_000,
-          outputPreview: "Done",
-        },
-      ],
-    );
-
-    expect(merged[0]?.status).toBe("completed");
-    expect(merged[0]?.startedAtMs).toBe(100);
-    expect(merged[0]?.completedAtMs).toBe(200);
-  });
-
-  it("keeps a live non-hydrated task's own timestamps when merging", () => {
-    const merged = mergeFooterTasks(
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "completed",
-          startedAtMs: 100,
-          completedAtMs: 200,
-          lastUpdatedAtMs: 200,
-          outputPreview: "Done",
-        },
-      ],
-      [
-        {
-          id: "task-1",
-          description: "Summarize PR",
-          agentType: "general",
-          status: "completed",
-          runId: "run-2",
-          startedAtMs: 300,
-          completedAtMs: 400,
-          lastUpdatedAtMs: 400,
-          outputPreview: "Done again",
-        },
-      ],
-    );
-
-    expect(merged[0]?.startedAtMs).toBe(300);
-    expect(merged[0]?.completedAtMs).toBe(400);
-  });
-
-  it("preserves persisted status text when live state only has a generic placeholder", () => {
-    const persistedTasks = extractTasksFromEvents([
-      event("1", 100, "agent-started", {
-        agentId: "agent-1",
-        description: "Build Tic Tac Toe app in Stella",
-        agentType: "general",
-        statusText: "Build Tic Tac Toe app in Stella",
-      }),
-    ]);
-
-    const [task] = mergeFooterTasks(persistedTasks, [
-      {
-        id: "agent-1",
-        description: "Task",
-        agentType: "general",
-        status: "running",
-        startedAtMs: 100,
-        lastUpdatedAtMs: 200,
-      },
-    ]);
-
-    expect(task?.description).toBe("Build Tic Tac Toe app in Stella");
-    expect(task?.statusText).toBe("Build Tic Tac Toe app in Stella");
-    expect(getTaskDisplayText(task!)).toBe("Build Tic Tac Toe app in Stella");
-  });
-
-  it("keeps a richer persisted description over a live id-derived fallback", () => {
-    const [task] = mergeFooterTasks(
-      [
-        {
-          id: "fix-the-bug",
-          description: "Fix the flaky teardown race in the fixture suite",
-          agentType: "general",
-          status: "running",
-          startedAtMs: 100,
-          lastUpdatedAtMs: 200,
-        },
-      ],
-      [
-        {
-          id: "fix-the-bug",
-          // Merely the de-slugged id — not a real spawn description; it
-          // must not clobber the persisted one.
-          description: "Fix the bug",
-          agentType: "general",
-          status: "running",
-          startedAtMs: 100,
-          lastUpdatedAtMs: 250,
-        },
-      ],
-    );
-
-    expect(task?.description).toBe(
-      "Fix the flaky teardown race in the fixture suite",
-    );
-  });
-});
 
 describe("pruneGroupExpandOverrides", () => {
   const member = (id: string, groupKey?: string): TaskItem => ({
@@ -1552,5 +545,148 @@ describe("seen-running expansion stickiness", () => {
       task({ id: "b1", status: "completed" }),
     ]);
     expect(gone.has("g1")).toBe(false);
+  });
+});
+
+describe("buildActivityTasks", () => {
+  const record = (
+    overrides: Partial<ThreadActivityRecord> = {},
+  ): ThreadActivityRecord => ({
+    threadId: "research-flights",
+    conversationId: "conv-1",
+    agentType: "general",
+    description: "Research flights",
+    status: "running",
+    startedAt: 1_000,
+    updatedAt: 1_500,
+    ...overrides,
+  });
+
+  it("maps authoritative rows and overlays decoration only on running rows", () => {
+    const tasks = buildActivityTasks(
+      [
+        record(),
+        record({
+          threadId: "book-hotel",
+          description: "Book the hotel",
+          status: "completed",
+          rootRunId: "root-2",
+          startedAt: 2_000,
+          completedAt: 3_000,
+          updatedAt: 3_000,
+          result: "Booked the Marriott",
+        }),
+      ],
+      {
+        "research-flights": {
+          statusText: "Comparing fares",
+          reasoningText: "checking SAS…",
+        },
+        // Decoration for a terminal row must be ignored entirely — a stale
+        // "running" leftover can never re-open a finished thread.
+        "book-hotel": { statusText: "still working" },
+      },
+    );
+
+    expect(tasks).toHaveLength(2);
+    const [running, done] = tasks;
+    expect(running).toMatchObject({
+      id: "research-flights",
+      status: "running",
+      description: "Research flights",
+      statusText: "Comparing fares",
+      reasoningText: "checking SAS…",
+    });
+    expect(done).toMatchObject({
+      id: "book-hotel",
+      status: "completed",
+      description: "Book the hotel",
+      runId: "root-2",
+      completedAtMs: 3_000,
+      outputPreview: "Booked the Marriott",
+    });
+    expect(done?.statusText).toBeUndefined();
+    expect(done?.reasoningText).toBeUndefined();
+  });
+
+  it("shows the row's own description: a send_input follow-up that re-described the thread just shows the new text", () => {
+    // The regression this architecture removes: the folded sidebar row kept
+    // the original spawn description after a follow-up. Rows carry the
+    // runtime's current description, so there is nothing to reconcile.
+    const tasks = buildActivityTasks([
+      record({ description: "Search for the itinerary email" }),
+    ]);
+    expect(tasks[0]?.description).toBe("Search for the itinerary email");
+  });
+
+  it("falls back to the description as statusText for running rows without decoration", () => {
+    const tasks = buildActivityTasks([record()]);
+    expect(tasks[0]?.statusText).toBe("Research flights");
+  });
+
+  it("excludes orchestrator-internal helper agents", () => {
+    const tasks = buildActivityTasks([
+      record({ threadId: "helper", agentType: "schedule" }),
+      record(),
+    ]);
+    expect(tasks.map((task) => task.id)).toEqual(["research-flights"]);
+  });
+
+  it("surfaces the error text as the preview for failed rows", () => {
+    const tasks = buildActivityTasks([
+      record({
+        status: "error",
+        completedAt: 2_000,
+        updatedAt: 2_000,
+        error: "Mailbox unreachable",
+      }),
+    ]);
+    expect(tasks[0]).toMatchObject({
+      status: "error",
+      outputPreview: "Mailbox unreachable",
+    });
+  });
+
+  it("orders by started time with id tie-break", () => {
+    const tasks = buildActivityTasks([
+      record({ threadId: "b-second", startedAt: 2_000 }),
+      record({ threadId: "a-first", startedAt: 1_000 }),
+      record({ threadId: "a-also-second", startedAt: 2_000 }),
+    ]);
+    expect(tasks.map((task) => task.id)).toEqual([
+      "a-first",
+      "a-also-second",
+      "b-second",
+    ]);
+  });
+});
+
+describe("selectFreshActivityTasks", () => {
+  const task = (overrides: Partial<TaskItem>): TaskItem => ({
+    id: "t",
+    description: "Task",
+    agentType: "general",
+    status: "running",
+    startedAtMs: 0,
+    lastUpdatedAtMs: 0,
+    ...overrides,
+  });
+
+  it("keeps running rows and recently-finished rows, drops old history", () => {
+    const nowMs = 100_000;
+    const fresh = selectFreshActivityTasks(
+      [
+        task({ id: "running" }),
+        task({
+          id: "just-done",
+          status: "completed",
+          completedAtMs: nowMs - TASK_COMPLETION_INDICATOR_MS + 500,
+        }),
+        task({ id: "old-done", status: "completed", completedAtMs: 1_000 }),
+        task({ id: "old-error", status: "error", completedAtMs: 2_000 }),
+      ],
+      nowMs,
+    );
+    expect(fresh.map((entry) => entry.id)).toEqual(["running", "just-done"]);
   });
 });

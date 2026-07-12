@@ -15,18 +15,13 @@
  * with persisted SQLite-backed messages.
  */
 import { useCallback, type Dispatch, type MutableRefObject } from 'react'
-import {
-  fallbackTaskDescription,
-  normalizeTaskDisplayStatusText,
-  TASK_COMPLETION_INDICATOR_MS,
-} from '@/features/chat/lib/event-transforms'
 import { showToast } from '@/ui/toast'
 import {
   AGENT_IDS,
   AGENT_RUN_FINISH_OUTCOMES,
   AGENT_STREAM_EVENT_TYPES,
 } from '../../../../../runtime/contracts/agent-runtime.js'
-import { toRunTaskId, type StreamStoreAction } from './store'
+import type { StreamStoreAction } from './store'
 import {
   isStellaLimitOrAuthReason,
   resolveStellaProviderErrorToast,
@@ -37,11 +32,10 @@ import type {
 } from './streaming-types'
 
 type ReasoningQueueEntry = {
-  runId: string
-  conversationId: string
-  userMessageId?: string
   agentId: string
-  description?: string
+  conversationId: string
+  runId?: string
+  userMessageId?: string
   chunk: string
 }
 
@@ -54,7 +48,6 @@ type UseAgentEventHandlerOptions = {
     >
     lastSeqByConversationRef: MutableRefObject<Map<string, number>>
     terminalRunIdsRef: MutableRefObject<Set<string>>
-    terminalTaskKeysRef: MutableRefObject<Set<string>>
     pendingRequestIdsRef: MutableRefObject<Set<string>>
     resumeSeqByConversationRef: MutableRefObject<Map<string, number>>
     seenSourceEventKeysRef: MutableRefObject<Set<string>>
@@ -90,18 +83,10 @@ type UseAgentEventHandlerOptions = {
     }) => void
     finalizeRunOnFinish: (args: { runId: string }) => void
   }
-  timers: {
-    scheduleTaskRemoval: (
-      runId: string,
-      agentId: string,
-      delayMs: number,
-    ) => void
-    clearScheduledTaskRemoval: (runId: string, agentId: string) => void
-  }
   reasoning: {
     queueAgentReasoningChunk: (entry: ReasoningQueueEntry) => void
-    flushPendingReasoningChunks: (onlyKey?: string) => void
-    discardPendingReasoningChunks: (runId: string, agentId: string) => void
+    flushPendingReasoningChunks: (onlyAgentId?: string) => void
+    discardPendingReasoningChunks: (agentId: string) => void
   }
   lifecycle?: {
     onRunStarted?: (event: {
@@ -154,7 +139,6 @@ export function useAgentEventHandler({
   dispatch,
   refs,
   streaming,
-  timers,
   reasoning,
   lifecycle,
 }: UseAgentEventHandlerOptions) {
@@ -165,7 +149,6 @@ export function useAgentEventHandler({
     resumeSeqByConversationRef,
     seenSourceEventKeysRef,
     terminalRunIdsRef,
-    terminalTaskKeysRef,
     pendingRequestIdsRef,
   } = refs
   const {
@@ -175,7 +158,6 @@ export function useAgentEventHandler({
     finalizeMessageBoundary,
     finalizeRunOnFinish,
   } = streaming
-  const { scheduleTaskRemoval, clearScheduledTaskRemoval } = timers
   const {
     queueAgentReasoningChunk,
     flushPendingReasoningChunks,
@@ -231,14 +213,6 @@ export function useAgentEventHandler({
           return
         }
         terminalRunIdsRef.current.add(event.runId)
-        // Drop terminal-task entries scoped to this run so the set doesn't
-        // grow unbounded across the session.
-        const runIdPrefix = `${event.runId}:`
-        for (const key of terminalTaskKeysRef.current) {
-          if (key.startsWith(runIdPrefix)) {
-            terminalTaskKeysRef.current.delete(key)
-          }
-        }
         dispatch({
           type: 'run-finished',
           runId: event.runId,
@@ -461,34 +435,34 @@ export function useAgentEventHandler({
         case AGENT_STREAM_EVENT_TYPES.AGENT_FAILED:
         case AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED: {
           const runId = event.rootRunId ?? event.runId
-          if (!runId || !event.agentId) {
+          if (!event.agentId) {
             return
           }
-          dispatch({
-            type: 'tool-activity-observed',
-            runId,
-          })
+          if (runId) {
+            dispatch({
+              type: 'tool-activity-observed',
+              runId,
+            })
+          }
 
-          // Drop late progress/reasoning events for tasks that already
-          // reached a terminal state. Only a fresh AGENT_STARTED may revive
-          // a terminal task (mirrors the persisted-event guard in
-          // extractTasksFromEvents).
-          const taskKey = toRunTaskId(runId, event.agentId)
-          const isStarted =
-            event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED
-          const isTerminal =
+          // Authoritative thread state (status, description, timestamps,
+          // result) rides the thread-activity rows pushed from the
+          // runtime's `runtime_agents` table. Stream events only maintain
+          // the ephemeral per-thread decoration — statusText ticks, tool
+          // activity, reasoning — keyed by the durable agentId, never by
+          // run. Terminal events clear the decoration; the row itself
+          // turns terminal via the authoritative push.
+          if (
             event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED ||
             event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED ||
             event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED
-          if (
-            terminalTaskKeysRef.current.has(taskKey) &&
-            !isStarted &&
-            !isTerminal
           ) {
-            return
-          }
-          if (isStarted) {
-            terminalTaskKeysRef.current.delete(taskKey)
+            discardPendingReasoningChunks(event.agentId)
+            dispatch({
+              type: 'task-decoration-clear',
+              agentId: event.agentId,
+            })
+            break
           }
 
           if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_REASONING) {
@@ -496,82 +470,36 @@ export function useAgentEventHandler({
               return
             }
             queueAgentReasoningChunk({
-              runId,
-              conversationId,
-              userMessageId: event.userMessageId,
               agentId: event.agentId,
-              description: event.description,
+              conversationId,
+              runId,
+              userMessageId: event.userMessageId,
               chunk: event.chunk,
             })
             break
           }
 
-          clearScheduledTaskRemoval(runId, event.agentId)
-          const nowMs = Date.now()
-          if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED) {
-            discardPendingReasoningChunks(runId, event.agentId)
-            terminalTaskKeysRef.current.add(taskKey)
+          if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED) {
+            // A fresh start (spawn or send_input re-activation) begins a
+            // clean decoration — stale reasoning/status from the previous
+            // attempt must not bleed into the new one.
+            discardPendingReasoningChunks(event.agentId)
             dispatch({
-              type: 'task-remove',
-              runId,
+              type: 'task-decoration-clear',
               agentId: event.agentId,
             })
-            return
-          }
-          if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED) {
-            discardPendingReasoningChunks(runId, event.agentId)
-            terminalTaskKeysRef.current.add(taskKey)
-            dispatch({
-              type: 'task-remove',
-              runId,
-              agentId: event.agentId,
-            })
-            return
           }
 
-          flushPendingReasoningChunks(taskKey)
+          flushPendingReasoningChunks(event.agentId)
           dispatch({
-            type: 'task-upsert',
-            runId,
+            type: 'task-decorate',
+            agentId: event.agentId,
             conversationId,
+            runId,
             userMessageId: event.userMessageId,
-            task: {
-              id: event.agentId,
-              description:
-                event.description ?? fallbackTaskDescription(event.agentId),
-              agentType: event.agentType || AGENT_IDS.GENERAL,
-              status:
-                event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED
-                  ? 'completed'
-                  : 'running',
-              anchorTurnId: event.userMessageId,
-              parentAgentId: event.parentAgentId,
-              groupKey: event.groupKey,
-              groupLabel: event.groupLabel,
-              statusText: normalizeTaskDisplayStatusText(event.statusText),
-              toolActivity: event.toolActivity,
-              reasoningText:
-                event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED
-                  ? ''
-                  : undefined,
-              startedAtMs: nowMs,
-              completedAtMs:
-                event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED
-                  ? nowMs
-                  : undefined,
-              lastUpdatedAtMs: nowMs,
-              outputPreview: event.result,
-            },
+            statusText: event.statusText,
+            toolActivity: event.toolActivity,
           })
-
-          if (event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED) {
-            terminalTaskKeysRef.current.add(taskKey)
-            scheduleTaskRemoval(
-              runId,
-              event.agentId,
-              TASK_COMPLETION_INDICATOR_MS,
-            )
-          }
           break
         }
         case AGENT_STREAM_EVENT_TYPES.TOOL_START: {
@@ -610,7 +538,6 @@ export function useAgentEventHandler({
       activeConversationIdRef,
       activeRunIdByConversationRef,
       beginStreamingRun,
-      clearScheduledTaskRemoval,
       discardPendingReasoningChunks,
       dispatch,
       finalizeMessageBoundary,
@@ -622,10 +549,8 @@ export function useAgentEventHandler({
       queueAgentReasoningChunk,
       resumeSeqByConversationRef,
       seenSourceEventKeysRef,
-      scheduleTaskRemoval,
       setPendingUserMessageId,
       terminalRunIdsRef,
-      terminalTaskKeysRef,
     ],
   )
 }

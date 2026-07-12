@@ -1122,10 +1122,12 @@ describe("agent orchestration self-mod HMR tracking", () => {
     });
     const rootToolStart = vi.fn();
     const rootToolEnd = vi.fn();
+    const rootAgentEvent = vi.fn();
     context.state.runCallbacksByRunId.set("root-tool-activity", {
       onStream: vi.fn(),
       onToolStart: rootToolStart,
       onToolEnd: rootToolEnd,
+      onAgentEvent: rootAgentEvent,
       onError: vi.fn(),
       onEnd: vi.fn(),
     });
@@ -1148,11 +1150,14 @@ describe("agent orchestration self-mod HMR tracking", () => {
     });
     await waitForAgentStatus(context.state.localAgentManager, threadId);
 
-    const progressPayloads = context.appendLocalChatEvent.mock.calls
+    // Progress ticks are ephemeral decoration: they stream to the run's
+    // renderer callbacks but are never persisted as message rows (thread
+    // state lives in runtime_agents; persisting every tick grew the
+    // message table without bound).
+    const streamedProgress = rootAgentEvent.mock.calls
       .map(([event]) => event)
-      .filter((event) => event.type === "agent-progress")
-      .map((event) => event.payload);
-    expect(progressPayloads).toEqual(
+      .filter((event) => event.type === "agent-progress");
+    expect(streamedProgress).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           toolActivity: expect.objectContaining({
@@ -1170,6 +1175,10 @@ describe("agent orchestration self-mod HMR tracking", () => {
         }),
       ]),
     );
+    const persistedProgress = context.appendLocalChatEvent.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.type === "agent-progress");
+    expect(persistedProgress).toEqual([]);
     expect(rootToolStart).toHaveBeenCalledTimes(1);
     expect(rootToolEnd).toHaveBeenCalledTimes(1);
   });

@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useReducer, useRef } from "react";
 import type {
   PetOverlayState,
   PetOverlayStatus,
 } from "@/shared/contracts/pet";
 import {
   getEventText,
+  selectFreshActivityTasks,
+  TASK_COMPLETION_INDICATOR_MS,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import { filterMessagesForUiDisplay } from "@/features/chat/lib/message-display";
@@ -123,7 +125,8 @@ const getWorkingPhrase = (seed: string): string => {
 
 type UsePetStatusBroadcastInput = {
   messages: MessageRecord[] | null | undefined;
-  liveTasks: TaskItem[] | null | undefined;
+  /** Full conversation task list (durable rows + live decoration). */
+  tasks: TaskItem[] | null | undefined;
   runtimeStatusText: string;
   isStreaming: boolean;
   pendingUserMessageId: string | null | undefined;
@@ -140,7 +143,7 @@ type UsePetStatusBroadcastInput = {
  */
 export const usePetStatusBroadcast = ({
   messages,
-  liveTasks,
+  tasks,
   runtimeStatusText,
   isStreaming,
   pendingUserMessageId,
@@ -148,6 +151,24 @@ export const usePetStatusBroadcast = ({
   const lastSeenAssistantMessageIdRef = useRef<string | null>(
     readLastSeenPetAssistantMessageId(),
   );
+
+  // Rows are durable history now, so "just finished" is a time window, not
+  // a presence signal. Re-derive after the completion beat elapses so the
+  // pet settles back to idle without waiting for the next unrelated render.
+  const [freshTick, bumpFreshTick] = useReducer((n: number) => n + 1, 0);
+  const liveTasks = useMemo(
+    () => selectFreshActivityTasks(tasks ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- freshTick re-runs the time-window filter.
+    [tasks, freshTick],
+  );
+  useEffect(() => {
+    if (!liveTasks.some((task) => task.status !== "running")) return;
+    const timer = window.setTimeout(
+      bumpFreshTick,
+      TASK_COMPLETION_INDICATOR_MS + 50,
+    );
+    return () => window.clearTimeout(timer);
+  }, [liveTasks]);
 
   const latestAssistant = useMemo(
     () => (isStreaming ? null : latestAssistantMessage(messages)),

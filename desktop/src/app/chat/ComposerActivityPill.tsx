@@ -34,7 +34,6 @@ import { AlertCircle, Check, Search } from "@/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import { useChatRuntime } from "@/context/use-chat-runtime";
-import { useMergedBackgroundTasks } from "@/features/chat/hooks/use-merged-background-tasks";
 import {
   isActivityFeedTask,
   type TaskItem,
@@ -95,9 +94,9 @@ function useActivityPillState(tasks: TaskItem[]): {
   state: PillState;
   runningCount: number;
 } {
-  // `useMergedBackgroundTasks` inputs are already activity-feed filtered,
-  // but re-assert it here so the pill can never tally an internal helper
-  // agent the sidebar's Activity section would hide.
+  // `conversation.tasks` is already activity-feed filtered, but re-assert
+  // it here so the pill can never tally an internal helper agent the
+  // sidebar's Activity section would hide.
   const runningTasks = useMemo(
     () =>
       tasks.filter(
@@ -318,12 +317,7 @@ export const ComposerActivityPill = memo(function ComposerActivityPill() {
   const sidebarDocked = useLeftSidebarDocked();
   const reduceMotion = useReducedMotion();
   const chat = useChatRuntime();
-  const tasks = useMergedBackgroundTasks({
-    activities: chat.conversation.activity.activities,
-    liveTasks: chat.conversation.streaming.liveTasks,
-    latestMessageTimestampMs:
-      chat.conversation.activity.latestMessageTimestampMs,
-  });
+  const tasks = chat.conversation.tasks;
 
   const { state, runningCount } = useActivityPillState(tasks);
   const displayedState = getDisplayedActivityPillState(state, sidebarDocked);

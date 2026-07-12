@@ -50,10 +50,6 @@ function ChatDisplayTab({
       openRequest={openRequest}
       wideLayout={panelExpanded}
       messages={messages}
-      activities={chat.conversation.activity.activities}
-      latestMessageTimestampMs={
-        chat.conversation.activity.latestMessageTimestampMs
-      }
       isStreaming={chat.conversation.isStreaming}
       isStreamingResponseText={
         chat.conversation.streaming.isStreamingResponseText
@@ -68,7 +64,6 @@ function ChatDisplayTab({
       removeQueuedUserMessage={
         chat.conversation.streaming.removeQueuedUserMessage
       }
-      liveTasks={chat.conversation.streaming.liveTasks}
       hasOlderMessages={chat.conversation.hasOlderMessages}
       isLoadingOlder={chat.conversation.isLoadingOlder}
       isInitialLoading={chat.conversation.isInitialLoading}

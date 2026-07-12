@@ -224,6 +224,9 @@ export type StellaHostRunnerOptions = {
     maxItems: number,
   ) => LocalContextEvent[];
   appendLocalChatEvent?: (args: LocalChatAppendEventArgs) => void;
+  /** Fired after every `runtime_agents` write so the renderer's
+   *  thread-activity store can refetch the conversation's rows. */
+  notifyThreadActivityUpdated?: (conversationId: string) => void;
   getDefaultConversationId?: () => string;
 };
 
@@ -428,6 +431,7 @@ export type RunnerContext = {
   runtimeStore: RuntimeStore;
   listLocalChatEvents?: StellaHostRunnerOptions["listLocalChatEvents"];
   appendLocalChatEvent?: StellaHostRunnerOptions["appendLocalChatEvent"];
+  notifyThreadActivityUpdated?: StellaHostRunnerOptions["notifyThreadActivityUpdated"];
   getDefaultConversationId?: StellaHostRunnerOptions["getDefaultConversationId"];
   paths: RunnerPaths;
   state: RunnerState;

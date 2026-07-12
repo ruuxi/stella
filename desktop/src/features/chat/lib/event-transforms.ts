@@ -1,6 +1,5 @@
 import {
   AGENT_IDS,
-  isTerminalTaskLifecycleStatus,
   type TaskLifecycleStatus,
   type TaskToolActivity,
 } from '../../../../../runtime/contracts/agent-runtime.js'
@@ -15,6 +14,7 @@ import type {
   EventRecord,
   MessageMetadata,
   MessagePayload,
+  ThreadActivityRecord,
   ToolRequestPayload,
   ToolResultPayload,
 } from '../../../../../runtime/contracts/local-chat.js'
@@ -110,14 +110,8 @@ export type TaskItem = {
   description: string
   agentType: string
   status: TaskLifecycleStatus
-  /** Root run that owns the latest task lifecycle. New persisted lifecycle
-   *  events carry it; legacy persisted events may not. */
+  /** Root run that owns the thread's latest lifecycle. */
   runId?: string
-  /** True when the task came from a reconnect/reload resume snapshot, not
-   *  from a freshly observed lifecycle stream event. Snapshot timestamps are
-   *  synthetic renderer receipt times, so they cannot prove that a terminal
-   *  persisted task really restarted. */
-  hydratedFromResumeSnapshot?: boolean
   anchorTurnId?: string
   parentAgentId?: string
   /** Work group this task's agent thread was spawned into. Tasks sharing
@@ -135,6 +129,83 @@ export type TaskItem = {
 }
 
 export const TASK_COMPLETION_INDICATOR_MS = 3000
+
+/**
+ * Ephemeral stream-fed extras for a running thread, keyed by thread id.
+ * Structurally matches the streaming store's `TaskDecoration` (defined
+ * there to avoid an import cycle). Decoration never carries authoritative
+ * fields — status, description, and timestamps come only from the
+ * thread-activity rows.
+ */
+export type TaskLiveDecoration = {
+  runId?: string
+  anchorTurnId?: string
+  statusText?: string
+  toolActivity?: TaskToolActivity
+  reasoningText?: string
+}
+
+/**
+ * Tasks that should drive "is Stella working right now" surfaces: running
+ * rows plus terminals fresh enough to still deserve a completion beat.
+ * The full task list is durable history (rows persist forever), so
+ * presence-driven consumers (pet mood, transient chips) select from this
+ * instead — an hour-old error row must not read as "Stella just failed".
+ */
+export function selectFreshActivityTasks(
+  tasks: readonly TaskItem[],
+  nowMs = Date.now(),
+): TaskItem[] {
+  return tasks.filter(
+    (task) =>
+      task.status === 'running' ||
+      (typeof task.completedAtMs === 'number' &&
+        nowMs - task.completedAtMs <= TASK_COMPLETION_INDICATOR_MS),
+  )
+}
+
+/**
+ * The Activity task list: authoritative thread rows (from the runtime's
+ * `runtime_agents` table via `useThreadActivity`) overlaid with the live
+ * stream decoration for still-running threads. No reconciliation — the two
+ * sources own disjoint fields, so a stale decoration can never flip a
+ * row's status or title, and a terminal row ignores decoration entirely.
+ */
+export function buildActivityTasks(
+  records: readonly ThreadActivityRecord[],
+  decorations?: Record<string, TaskLiveDecoration>,
+): TaskItem[] {
+  return records
+    .filter((record) => isActivityFeedTask({ agentType: record.agentType }))
+    .map((record) => {
+      const running = record.status === 'running'
+      const decoration = running ? decorations?.[record.threadId] : undefined
+      return {
+        id: record.threadId,
+        description: record.description,
+        agentType: record.agentType,
+        status: record.status,
+        runId: decoration?.runId ?? record.rootRunId,
+        anchorTurnId: decoration?.anchorTurnId,
+        parentAgentId: record.parentAgentId,
+        groupKey: record.groupKey,
+        groupLabel: record.groupLabel,
+        statusText: running
+          ? (normalizeTaskDisplayStatusText(decoration?.statusText) ??
+            (isGenericTaskDescription(record.description)
+              ? undefined
+              : record.description))
+          : undefined,
+        toolActivity: running ? decoration?.toolActivity : undefined,
+        reasoningText: running ? decoration?.reasoningText : undefined,
+        startedAtMs: record.startedAt,
+        completedAtMs: running ? undefined : record.completedAt,
+        lastUpdatedAtMs: record.updatedAt,
+        outputPreview: running ? undefined : (record.result ?? record.error),
+      }
+    })
+    .sort((a, b) => a.startedAtMs - b.startedAtMs || a.id.localeCompare(b.id))
+}
 
 const STANDALONE_STATUS_TEXT = new Set(['Pausing'])
 const GENERIC_TASK_DESCRIPTION_PATTERN = /^(task|agent|work|help|do this|follow up)$/i
@@ -187,18 +258,6 @@ export function isActivityFeedTask(
   task: Pick<TaskItem, 'agentType'>,
 ): boolean {
   return task.agentType === AGENT_IDS.GENERAL
-}
-
-/** True when a description is the generic placeholder or merely the
- *  de-slugged id — i.e. it should lose to any real spawn description. */
-export function isFallbackTaskDescription(
-  description: string | undefined,
-  agentId: string | undefined,
-): boolean {
-  return (
-    isGenericTaskDescription(description) ||
-    description?.trim() === fallbackTaskDescription(agentId)
-  )
 }
 
 export function isStandaloneTaskStatusText(
@@ -422,278 +481,6 @@ export function getCurrentRunningTool(
     (s) => s.status === 'running',
   )
   return running ? { tool: running.tool, id: running.id } : undefined
-}
-
-// Extract tasks from events
-export function extractTasksFromEvents(events: EventRecord[]): TaskItem[] {
-  let latestMessageTimestampMs: number | null = null
-  for (const event of events) {
-    if (!isUserMessage(event) && !isAssistantMessage(event)) continue
-    if (
-      latestMessageTimestampMs === null ||
-      event.timestamp > latestMessageTimestampMs
-    ) {
-      latestMessageTimestampMs = event.timestamp
-    }
-  }
-  return extractTasksFromActivities(events, {
-    latestMessageTimestampMs,
-  })
-}
-
-/**
- * Reduce a stream of agent-* lifecycle events into `TaskItem`s. Same
- * folding logic the prior `extractTasksFromEvents` did inline, factored
- * so the activity stream (`useConversationActivity`) can feed task state
- * without dragging the full message/event stream along just to compute
- * the stale-schedule auto-completion.
- *
- * Non-activity events in `activities` are ignored, so callers that have
- * the raw event stream can pass it through unchanged — the cheap path is
- * to pass only the lifecycle events. (`latestMessageTimestampMs` is
- * accepted for caller compatibility; it only drove the auto-completion of
- * stale schedule-specialist rows, which are now excluded entirely by the
- * general-agents-only activity filter.)
- */
-export function extractTasksFromActivities(
-  activities: EventRecord[],
-  _options?: {
-    latestMessageTimestampMs?: number | null
-  },
-): TaskItem[] {
-  const tasksById = new Map<string, TaskItem>()
-
-  const ensureTask = (
-    agentId: string,
-    timestamp: number,
-    overrides?: Partial<TaskItem>,
-  ): TaskItem => {
-    const previous = tasksById.get(agentId)
-    return {
-      id: agentId,
-      description: previous?.description ?? fallbackTaskDescription(agentId),
-      agentType: previous?.agentType ?? 'general',
-      status: previous?.status ?? 'running',
-      runId: previous?.runId,
-      parentAgentId: previous?.parentAgentId,
-      groupKey: previous?.groupKey,
-      groupLabel: previous?.groupLabel,
-      statusText: normalizeTaskDisplayStatusText(previous?.statusText),
-      toolActivity: previous?.toolActivity,
-      startedAtMs: previous?.startedAtMs ?? timestamp,
-      completedAtMs: previous?.completedAtMs,
-      lastUpdatedAtMs: previous?.lastUpdatedAtMs ?? timestamp,
-      outputPreview: previous?.outputPreview,
-      ...overrides,
-    }
-  }
-
-  // Every lifecycle event type carries the group fields (the runner
-  // enriches them centrally), so any event may upgrade a task from
-  // ungrouped to grouped — but a group-less event never clears them.
-  const groupOverrides = (
-    payload: AgentLifecycleGroupFields,
-  ): Partial<TaskItem> =>
-    payload.groupKey
-      ? {
-          groupKey: payload.groupKey,
-          ...(payload.groupLabel ? { groupLabel: payload.groupLabel } : {}),
-        }
-      : {}
-
-  const runOverrides = (
-    payload: AgentLifecycleGroupFields,
-  ): Partial<TaskItem> =>
-    payload.rootRunId ? { runId: payload.rootRunId } : {}
-
-  const isDifferentKnownRun = (
-    previous: TaskItem | undefined,
-    payload: AgentLifecycleGroupFields,
-  ): boolean =>
-    Boolean(
-      previous?.runId &&
-        payload.rootRunId &&
-        previous.runId !== payload.rootRunId,
-    )
-
-  // Once a task reaches a terminal state, only a fresh `agent-started`
-  // (send_input re-activation) may revive it. This guards against in-flight
-  // `agent-progress` events that race with `agent-canceled` and would
-  // otherwise flip the task back to "running" — the renderer treats that
-  // resurrected task as live and pins a phantom "Working … Task" chip in
-  // the footer.
-  const terminalTaskIds = new Set<string>()
-
-  for (const event of activities) {
-    if (isAgentStartedEvent(event)) {
-      const previous = tasksById.get(event.payload.agentId)
-      tasksById.set(event.payload.agentId, {
-        id: event.payload.agentId,
-        description: event.payload.description,
-        agentType: event.payload.agentType,
-        status: 'running',
-        runId: event.payload.rootRunId ?? previous?.runId,
-        parentAgentId: event.payload.parentAgentId,
-        groupKey: event.payload.groupKey ?? previous?.groupKey,
-        groupLabel: event.payload.groupLabel ?? previous?.groupLabel,
-        statusText:
-          normalizeTaskDisplayStatusText(event.payload.statusText) ??
-          normalizeTaskDisplayStatusText(previous?.statusText) ??
-          (isGenericTaskDescription(event.payload.description)
-            ? undefined
-            : event.payload.description),
-        startedAtMs: event.timestamp,
-        completedAtMs: undefined,
-        lastUpdatedAtMs: event.timestamp,
-        outputPreview: undefined,
-      })
-      terminalTaskIds.delete(event.payload.agentId)
-      continue
-    }
-
-    if (isAgentProgressEvent(event)) {
-      if (terminalTaskIds.has(event.payload.agentId)) {
-        continue
-      }
-      const previous = tasksById.get(event.payload.agentId)
-      tasksById.set(
-        event.payload.agentId,
-        ensureTask(event.payload.agentId, event.timestamp, {
-          status: 'running',
-          statusText:
-            normalizeTaskDisplayStatusText(event.payload.statusText) ??
-            normalizeTaskDisplayStatusText(previous?.statusText),
-          toolActivity: event.payload.toolActivity ?? previous?.toolActivity,
-          completedAtMs: undefined,
-          lastUpdatedAtMs: event.timestamp,
-          outputPreview: undefined,
-          ...runOverrides(event.payload),
-          ...groupOverrides(event.payload),
-        }),
-      )
-      continue
-    }
-
-    if (isAgentCompletedEvent(event)) {
-      const previous = tasksById.get(event.payload.agentId)
-      if (isDifferentKnownRun(previous, event.payload)) {
-        continue
-      }
-      tasksById.set(
-        event.payload.agentId,
-        ensureTask(event.payload.agentId, event.timestamp, {
-          status: 'completed',
-          statusText: undefined,
-          toolActivity: undefined,
-          completedAtMs: event.timestamp,
-          lastUpdatedAtMs: event.timestamp,
-          outputPreview: event.payload.result,
-          ...runOverrides(event.payload),
-          ...groupOverrides(event.payload),
-        }),
-      )
-      terminalTaskIds.add(event.payload.agentId)
-      continue
-    }
-
-    if (isAgentFailedEvent(event)) {
-      const previous = tasksById.get(event.payload.agentId)
-      if (isDifferentKnownRun(previous, event.payload)) {
-        continue
-      }
-      tasksById.set(
-        event.payload.agentId,
-        ensureTask(event.payload.agentId, event.timestamp, {
-          status: 'error',
-          statusText: undefined,
-          toolActivity: undefined,
-          completedAtMs: event.timestamp,
-          lastUpdatedAtMs: event.timestamp,
-          outputPreview: event.payload.error,
-          ...runOverrides(event.payload),
-          ...groupOverrides(event.payload),
-        }),
-      )
-      terminalTaskIds.add(event.payload.agentId)
-      continue
-    }
-
-    if (isAgentCanceledEvent(event)) {
-      const previous = tasksById.get(event.payload.agentId)
-      if (isDifferentKnownRun(previous, event.payload)) {
-        continue
-      }
-      tasksById.set(
-        event.payload.agentId,
-        ensureTask(event.payload.agentId, event.timestamp, {
-          status: 'canceled',
-          statusText: undefined,
-          toolActivity: undefined,
-          completedAtMs: event.timestamp,
-          lastUpdatedAtMs: event.timestamp,
-          outputPreview: event.payload.error ?? 'Canceled',
-          ...runOverrides(event.payload),
-          ...groupOverrides(event.payload),
-        }),
-      )
-      terminalTaskIds.add(event.payload.agentId)
-    }
-  }
-
-  return [...tasksById.values()]
-    // Internal helper agents (schedule specialists, etc.) are not user
-    // work — keep them out of every activity-derived task list.
-    .filter(isActivityFeedTask)
-    .sort((a, b) => a.startedAtMs - b.startedAtMs)
-}
-
-const sortFooterTasks = (tasks: TaskItem[]): TaskItem[] =>
-  [...tasks].sort((a, b) => {
-    const aCompleted = a.status === 'completed'
-    const bCompleted = b.status === 'completed'
-    if (aCompleted !== bCompleted) {
-      return aCompleted ? 1 : -1
-    }
-    // Tie-break on the stable `id` so same-timestamp tasks keep a fixed
-    // order instead of swapping when this re-runs against a re-merged list.
-    return a.startedAtMs - b.startedAtMs || a.id.localeCompare(b.id)
-  })
-
-export function getFooterTasksFromEvents(
-  events: EventRecord[],
-  options?: {
-    nowMs?: number
-    completionIndicatorMs?: number
-  },
-): TaskItem[] {
-  const tasks = extractTasksFromEvents(events)
-  return getFooterTasksFromTasks(tasks, options)
-}
-
-export function getFooterTasksFromTasks(
-  tasks: TaskItem[],
-  options?: {
-    nowMs?: number
-    completionIndicatorMs?: number
-  },
-): TaskItem[] {
-  const nowMs = options?.nowMs ?? Date.now()
-  const completionIndicatorMs =
-    options?.completionIndicatorMs ?? TASK_COMPLETION_INDICATOR_MS
-  return sortFooterTasks(
-    tasks.filter((task) => {
-      if (task.status === 'running') {
-        return true
-      }
-      if (task.status !== 'completed') {
-        return false
-      }
-      if (typeof task.completedAtMs !== 'number') {
-        return false
-      }
-      return nowMs - task.completedAtMs <= completionIndicatorMs
-    }),
-  )
 }
 
 /**
@@ -987,102 +774,3 @@ export function getTaskGroupStatusText(group: TaskGroup): string {
   return group.totalCount === 1 ? '1 task' : `${group.totalCount} tasks`
 }
 
-export function mergeFooterTasks(
-  persistedTasks: TaskItem[],
-  liveTasks?: TaskItem[],
-): TaskItem[] {
-  if (!liveTasks || liveTasks.length === 0) {
-    return sortFooterTasks(persistedTasks)
-  }
-
-  const mergedById = new Map<string, TaskItem>()
-
-  for (const task of persistedTasks) {
-    mergedById.set(task.id, task)
-  }
-
-  for (const task of liveTasks) {
-    const persistedTask = mergedById.get(task.id)
-    // Replay-hydrated snapshots and anonymous live copies may be stale, so
-    // keep terminal persisted state in those cases. A run-scoped live task is
-    // a fresh stream observation and must re-open the row even if the task's
-    // original thread start timestamp predates the old terminal event.
-    if (
-      persistedTask &&
-      isTerminalTaskLifecycleStatus(persistedTask.status) &&
-      !isTerminalTaskLifecycleStatus(task.status) &&
-      (task.hydratedFromResumeSnapshot ||
-        (!task.runId &&
-          (typeof persistedTask.completedAtMs !== 'number' ||
-            task.startedAtMs <= persistedTask.completedAtMs)))
-    ) {
-      continue
-    }
-    // A still-running persisted thread must not be demoted to a terminal
-    // row by a live overlay. The persisted lifecycle is the reload-safe
-    // truth: if the runtime had really ended this thread it would have
-    // persisted an `agent-completed`/`-failed`/`-canceled` event and the
-    // persisted status would be terminal too. So while the persisted row
-    // still reads `running`, a terminal live copy is a stale overlay — e.g.
-    // a lingering completed/replayed entry that races the in-flight run
-    // WHILE THE ORCHESTRATOR IS BUSY — and letting `...task` overwrite the
-    // status silently dropped the active thread out of the running list
-    // until the run went idle and the stale overlay cleared. Keep the row
-    // running (and terminal-only fields empty) so it stays visible; a
-    // genuine completion terminalizes it the moment the persisted feed
-    // catches up and both sources agree. The inverse — a live *running*
-    // copy reopening a terminal persisted row — is handled by the
-    // revival guard above.
-    const keepPersistedRunning =
-      persistedTask !== undefined &&
-      persistedTask.status === 'running' &&
-      isTerminalTaskLifecycleStatus(task.status)
-    const nextTask =
-      persistedTask
-        ? {
-            ...persistedTask,
-            ...task,
-            status: keepPersistedRunning ? 'running' : task.status,
-            // A live task can carry a fallback label that is merely the
-            // de-slugged id ("Fix the bug" from `fix-the-bug`) — that must
-            // not overwrite a richer persisted spawn description, so compare
-            // with the fallback-aware check rather than generic-only.
-            description:
-              isFallbackTaskDescription(task.description, task.id) &&
-              !isFallbackTaskDescription(
-                persistedTask.description,
-                persistedTask.id,
-              )
-                ? persistedTask.description
-                : task.description,
-            statusText:
-              normalizeTaskDisplayStatusText(task.statusText) ??
-              normalizeTaskDisplayStatusText(persistedTask.statusText),
-            // A hydrated snapshot's timestamps can be synthetic (renderer
-            // receipt time, for snapshots predating real stamps) — never let
-            // them beat the persisted row's real ones, or every re-hydration
-            // bumps settled rows to "just now" and reorders the done list.
-            startedAtMs: task.hydratedFromResumeSnapshot
-              ? persistedTask.startedAtMs
-              : task.startedAtMs,
-            completedAtMs:
-              task.status === 'running' || keepPersistedRunning
-                ? undefined
-                : task.hydratedFromResumeSnapshot
-                  ? (persistedTask.completedAtMs ?? task.completedAtMs)
-                  : (task.completedAtMs ?? persistedTask.completedAtMs),
-            outputPreview:
-              task.status === 'running' || keepPersistedRunning
-                ? undefined
-                : (task.outputPreview ?? persistedTask.outputPreview),
-            // Live tasks hydrated from resume snapshots don't carry group
-            // fields; never let them clear the persisted group membership.
-            groupKey: task.groupKey ?? persistedTask.groupKey,
-            groupLabel: task.groupLabel ?? persistedTask.groupLabel,
-          }
-        : task
-    mergedById.set(task.id, nextTask)
-  }
-
-  return sortFooterTasks([...mergedById.values()])
-}

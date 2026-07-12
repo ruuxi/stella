@@ -62,6 +62,7 @@ export type BootstrapState = {
   > | null;
   isQuitting: boolean;
   localChatUpdateUnsubscribe: (() => void) | null;
+  threadActivityUpdateUnsubscribe: (() => void) | null;
   overlayController: OverlayWindowController | null;
   petController: PetWindowController | null;
   /** Disposer returned by `registerPetHandlers`. Stored on the
@@ -184,6 +185,17 @@ export const broadcastLocalChatUpdated = (
   broadcastToWindowsAndMobile(context, "localChat:updated", payload ?? null);
 };
 
+export const broadcastThreadActivityUpdated = (
+  context: BootstrapContext,
+  payload: import("../../../runtime/contracts/local-chat.js").ThreadActivityUpdatedPayload,
+) => {
+  broadcastToWindowsAndMobile(
+    context,
+    "localChat:threadActivityUpdated",
+    payload,
+  );
+};
+
 export const broadcastScheduleUpdated = (context: BootstrapContext) => {
   broadcastToWindowsAndMobile(context, "schedule:updated");
 };
@@ -208,6 +220,7 @@ export const createBootstrapContext = (
     hmrTransitionController: null,
     isQuitting: false,
     localChatUpdateUnsubscribe: null,
+    threadActivityUpdateUnsubscribe: null,
     overlayController: null,
     petController: null,
     petHandlersDispose: null,

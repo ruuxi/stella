@@ -2,34 +2,22 @@
  * Hydrates the in-memory stream store from a runtime resume snapshot.
  *
  * The runtime owns lifecycle truth; on conversation switch / reload we
- * apply its `(activeRun, tasks[])` snapshot once via this hook before
- * resuming live event consumption in `use-agent-event-handler`.
+ * apply its `activeRun` snapshot once via this hook before resuming live
+ * event consumption in `use-agent-event-handler`. Task state needs no
+ * hydration here: the authoritative thread-activity rows are fetched
+ * straight from the runtime's `runtime_agents` table by
+ * `useThreadActivity`, and stream decorations rebuild from live events.
  */
 import { useCallback, type Dispatch, type MutableRefObject } from 'react'
-import { TASK_COMPLETION_INDICATOR_MS } from '@/features/chat/lib/event-transforms'
-import {
-  reconcileTerminalTaskKeysFromResumeTasks,
-  toTaskFromResumeSnapshot,
-  type ActiveRunSnapshot,
-  type ResumeTaskSnapshot,
-  type StreamStoreAction,
-} from './store'
+import type { ActiveRunSnapshot, StreamStoreAction } from './store'
 
 type UseResumeSnapshotOptions = {
   dispatch: Dispatch<StreamStoreAction>
   refs: {
     activeConversationIdRef: MutableRefObject<string | null>
-    terminalTaskKeysRef: MutableRefObject<Set<string>>
   }
   streaming: {
     setPendingUserMessageId: Dispatch<React.SetStateAction<string | null>>
-  }
-  timers: {
-    scheduleTaskRemoval: (
-      runId: string,
-      agentId: string,
-      delayMs: number,
-    ) => void
   }
 }
 
@@ -37,32 +25,17 @@ export function useApplyResumeSnapshot({
   dispatch,
   refs,
   streaming,
-  timers,
 }: UseResumeSnapshotOptions) {
-  const { activeConversationIdRef, terminalTaskKeysRef } = refs
+  const { activeConversationIdRef } = refs
   const { setPendingUserMessageId } = streaming
-  const { scheduleTaskRemoval } = timers
 
   return useCallback(
-    (args: {
-      conversationId: string
-      activeRun: ActiveRunSnapshot
-      tasks: ResumeTaskSnapshot[]
-    }) => {
-      const nowMs = Date.now()
-      terminalTaskKeysRef.current = reconcileTerminalTaskKeysFromResumeTasks({
-        currentKeys: terminalTaskKeysRef.current,
-        tasks: args.tasks,
-      })
-      const taskItems = args.tasks.map((task) =>
-        toTaskFromResumeSnapshot(task, nowMs),
-      )
+    (args: { conversationId: string; activeRun: ActiveRunSnapshot }) => {
       dispatch({
         type: 'hydrate-conversation',
         conversationId: args.conversationId,
         activeRun:
           args.activeRun?.uiVisibility === 'hidden' ? null : args.activeRun,
-        tasks: taskItems,
       })
       if (args.conversationId === activeConversationIdRef.current) {
         setPendingUserMessageId(
@@ -71,22 +44,7 @@ export function useApplyResumeSnapshot({
             : (args.activeRun?.userMessageId ?? null),
         )
       }
-      for (const task of args.tasks) {
-        if (task.status === 'completed') {
-          scheduleTaskRemoval(
-            task.runId,
-            task.agentId,
-            TASK_COMPLETION_INDICATOR_MS,
-          )
-        }
-      }
     },
-    [
-      activeConversationIdRef,
-      dispatch,
-      scheduleTaskRemoval,
-      setPendingUserMessageId,
-      terminalTaskKeysRef,
-    ],
+    [activeConversationIdRef, dispatch, setPendingUserMessageId],
   )
 }

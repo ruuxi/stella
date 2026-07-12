@@ -1,4 +1,5 @@
 import type { TaskLifecycleStatus } from "../../contracts/agent-runtime.js";
+import type { ThreadActivityRecord } from "../../contracts/local-chat.js";
 import {
   MAX_ACTIVE_RUNTIME_THREADS,
   MAX_GROUP_MEMBER_THREADS,
@@ -115,6 +116,8 @@ export type PersistedAgentRecord = {
     expectedChangedFiles?: string[];
   };
   status: TaskLifecycleStatus;
+  /** Root run that owns the thread's latest lifecycle (send_input rebinds it). */
+  rootRunId?: string;
   startedAt: number;
   completedAt: number | null;
   result?: string;
@@ -3882,9 +3885,10 @@ export class SessionStore {
         completed_at,
         result,
         error,
-        updated_at
+        updated_at,
+        root_run_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
@@ -3898,7 +3902,8 @@ export class SessionStore {
         completed_at = excluded.completed_at,
         result = excluded.result,
         error = excluded.error,
-        updated_at = excluded.updated_at
+        updated_at = excluded.updated_at,
+        root_run_id = excluded.root_run_id
     `,
       )
       .run(
@@ -3916,6 +3921,7 @@ export class SessionStore {
         record.result ?? null,
         record.error ?? null,
         record.updatedAt,
+        record.rootRunId ?? null,
       );
   }
 
@@ -4003,7 +4009,8 @@ export class SessionStore {
         completed_at,
         result,
         error,
-        updated_at
+        updated_at,
+        root_run_id
       FROM runtime_agents
       WHERE thread_id = ?
       LIMIT 1
@@ -4025,6 +4032,7 @@ export class SessionStore {
           result: string | null;
           error: string | null;
           updated_at: number;
+          root_run_id: string | null;
         }
       | undefined;
     if (!row) {
@@ -4045,6 +4053,7 @@ export class SessionStore {
       ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
       ...(selfModMetadata ? { selfModMetadata } : {}),
       status: row.status,
+      ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
       startedAt: row.started_at,
       completedAt: row.completed_at,
       ...(row.result ? { result: row.result } : {}),
@@ -4073,7 +4082,8 @@ export class SessionStore {
         completed_at,
         result,
         error,
-        updated_at
+        updated_at,
+        root_run_id
       FROM runtime_agents
       WHERE status = ?
       ORDER BY updated_at DESC, thread_id ASC
@@ -4094,6 +4104,7 @@ export class SessionStore {
       result: string | null;
       error: string | null;
       updated_at: number;
+      root_run_id: string | null;
     }>;
 
     return rows.map((row) => {
@@ -4112,6 +4123,7 @@ export class SessionStore {
         ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
         ...(selfModMetadata ? { selfModMetadata } : {}),
         status: row.status,
+        ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
         startedAt: row.started_at,
         completedAt: row.completed_at,
         ...(row.result ? { result: row.result } : {}),
@@ -4119,6 +4131,73 @@ export class SessionStore {
         updatedAt: row.updated_at,
       };
     });
+  }
+
+  /**
+   * Authoritative Activity read: one row per background-agent thread in the
+   * conversation, straight from `runtime_agents` (the single writer is the
+   * LocalAgentManager's `persistTask`), joined with the thread registry's
+   * group fields. Ordered oldest-started first — the renderer sorts for
+   * display. Truncated result/error previews keep the wire payload small;
+   * the full result still rides the completion chat card.
+   */
+  listThreadActivity(conversationId: string): ThreadActivityRecord[] {
+    const rows = this.db
+      .prepare(
+        `
+      SELECT
+        a.thread_id,
+        a.conversation_id,
+        a.agent_type,
+        a.description,
+        a.status,
+        a.parent_agent_id,
+        a.started_at,
+        a.completed_at,
+        substr(a.result, 1, 2000) AS result,
+        substr(a.error, 1, 2000) AS error,
+        a.updated_at,
+        a.root_run_id,
+        t.group_key,
+        t.group_label
+      FROM runtime_agents a
+      LEFT JOIN runtime_threads t ON t.thread_key = a.thread_id
+      WHERE a.conversation_id = ?
+      ORDER BY a.started_at ASC, a.thread_id ASC
+    `,
+      )
+      .all(conversationId) as Array<{
+      thread_id: string;
+      conversation_id: string;
+      agent_type: string;
+      description: string;
+      status: ThreadActivityRecord["status"];
+      parent_agent_id: string | null;
+      started_at: number;
+      completed_at: number | null;
+      result: string | null;
+      error: string | null;
+      updated_at: number;
+      root_run_id: string | null;
+      group_key: string | null;
+      group_label: string | null;
+    }>;
+    return rows.map((row) => ({
+      threadId: row.thread_id,
+      conversationId: row.conversation_id,
+      agentType: row.agent_type,
+      description: row.description,
+      status: row.status,
+      ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
+      ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
+      ...(row.group_key ? { groupKey: row.group_key } : {}),
+      ...(row.group_label ? { groupLabel: row.group_label } : {}),
+      startedAt: row.started_at,
+      ...(row.completed_at == null ? {} : { completedAt: row.completed_at }),
+      ...(row.result ? { result: row.result } : {}),
+      ...(row.error ? { error: row.error } : {}),
+      updatedAt: row.updated_at,
+    }));
   }
 
   getOrchestratorReminderState(conversationId: string): {

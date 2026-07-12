@@ -183,6 +183,25 @@ export const registerLocalChatHandlers = (
   );
 
   ipcMain.handle(
+    "localChat:listThreadActivity",
+    async (
+      event,
+      payload: {
+        conversationId?: string;
+      },
+    ) =>
+      await withLocalChatClient(
+        options,
+        event,
+        "localChat:listThreadActivity",
+        (client) =>
+          client.listThreadActivity({
+            conversationId: payload?.conversationId ?? "",
+          }),
+      ),
+  );
+
+  ipcMain.handle(
     "localChat:listFiles",
     async (
       event,

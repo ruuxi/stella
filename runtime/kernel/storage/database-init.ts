@@ -237,9 +237,15 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       completed_at INTEGER,
       result TEXT,
       error TEXT,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      root_run_id TEXT
     );
   `);
+  try {
+    db.exec("ALTER TABLE runtime_agents ADD COLUMN root_run_id TEXT;");
+  } catch {
+    // Column already exists.
+  }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_runtime_agents_conversation_updated
     ON runtime_agents(conversation_id, updated_at, thread_id);

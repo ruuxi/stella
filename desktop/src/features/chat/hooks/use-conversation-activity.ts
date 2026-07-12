@@ -2,9 +2,10 @@
  * Hook over the agent-lifecycle activity stream for a conversation
  * (`localChat:listActivity` IPC, backed by `SessionStore.listActivity`).
  * Returns the raw activity events plus the latest user/assistant message
- * timestamp the storage layer surfaces alongside them — the two inputs
- * `extractTasksFromActivities` needs to project Now / Done / Up Next
- * state without touching the message stream.
+ * timestamp the storage layer surfaces alongside them. Task STATE no longer
+ * derives from these events (that's `useThreadActivity`); the remaining
+ * consumers are file-derived surfaces, which merge the `agent-completed`
+ * file rollups with the files window.
  *
  * Window growth is purely activity-count based. Activity events are
  * sparse relative to messages (a handful per turn) so the cap can be

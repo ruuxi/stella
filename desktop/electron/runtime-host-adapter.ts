@@ -1134,6 +1134,14 @@ export class RuntimeHostAdapter {
     return this.host.on("local-chat-updated", listener);
   }
 
+  onThreadActivityUpdated(
+    listener: (
+      payload: import("../../runtime/contracts/local-chat.js").ThreadActivityUpdatedPayload,
+    ) => void,
+  ) {
+    return this.host.on("thread-activity-updated", listener);
+  }
+
   createSocialSession(payload: { roomId: string; workspaceLabel?: string }) {
     return this.host.createSocialSession(payload);
   }

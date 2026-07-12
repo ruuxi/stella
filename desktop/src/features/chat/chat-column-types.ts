@@ -20,16 +20,19 @@ import type { ChatContext } from "@/shared/types/electron";
  */
 export type ChatColumnConversation = {
   /**
-   * Agent-lifecycle activity for the conversation. Fed by
-   * `useConversationActivity` in local mode and a `displayEvents` filter
-   * in cloud mode. Footer working indicator and ActivityHistoryDialog read
-   * from this rather
-   * than scanning `events`.
-   *
-   * `latestMessageTimestampMs` is the latest user/assistant timestamp
-   * anywhere in the conversation — passed alongside `activities` so
-   * `extractTasksFromActivities` can apply the stale-schedule auto-
-   * completion rule without the message stream.
+   * The conversation's background-agent tasks: authoritative thread rows
+   * (runtime `runtime_agents` table via `useThreadActivity`) overlaid with
+   * live stream decoration by `buildActivityTasks`. Every task surface —
+   * Activity sidebar, composer pill, Now/Done sections, working indicator,
+   * mobile bridge — reads this single list; nothing folds lifecycle events
+   * into state anymore.
+   */
+  tasks: TaskItem[];
+  /**
+   * Agent-lifecycle activity events for the conversation. Fed by
+   * `useConversationActivity` in local mode. Only file-derived surfaces
+   * read this now (per-agent file lists merge the `agent-completed` file
+   * rollups with the files window) — task state comes from `tasks`.
    */
   activity: {
     activities: EventRecord[];
@@ -70,7 +73,6 @@ export type ChatColumnConversation = {
      * surface pairs it with restoring the bubble's text to its own composer.
      */
     removeQueuedUserMessage: (messageId: string) => void;
-    liveTasks?: TaskItem[];
   };
   history: {
     hasOlderMessages: boolean;

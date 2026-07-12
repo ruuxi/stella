@@ -17,7 +17,10 @@ import type {
   LocalChatMessageWindow,
   SqliteDatabase,
 } from "../../../runtime/kernel/storage/shared.js";
-import type { LocalChatUpdatedPayload } from "../../../runtime/contracts/local-chat.js";
+import type {
+  LocalChatUpdatedPayload,
+  ThreadActivityRecord,
+} from "../../../runtime/contracts/local-chat.js";
 import {
   buildMobileSyncMessagesPage,
   buildMobileSyncMessages,
@@ -259,6 +262,12 @@ export class LocalChatHistoryService {
       beforeTimestampMs: args.beforeTimestampMs,
       beforeId: args.beforeId,
     });
+  }
+
+  listThreadActivity(args: {
+    conversationId: string;
+  }): ThreadActivityRecord[] {
+    return this.getStore().listThreadActivity(args.conversationId);
   }
 
   listFiles(args: {

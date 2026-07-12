@@ -1,8 +1,5 @@
 import { useEffect, type MutableRefObject } from "react";
-import {
-  AGENT_STREAM_EVENT_TYPES,
-  type TaskLifecycleStatus,
-} from "../../../../../runtime/contracts/agent-runtime.js";
+import { AGENT_STREAM_EVENT_TYPES } from "../../../../../runtime/contracts/agent-runtime.js";
 import type { AgentStreamEvent } from "../streaming/streaming-types";
 
 type ActiveRunSnapshot = {
@@ -35,20 +32,6 @@ export const shouldRetainResumedStreamingState = (args: {
   );
 };
 
-type TaskSnapshot = {
-  runId: string;
-  agentId: string;
-  agentType?: string;
-  description?: string;
-  anchorTurnId?: string;
-  parentAgentId?: string;
-  status: TaskLifecycleStatus;
-  statusText?: string;
-  reasoningText?: string;
-  result?: string;
-  error?: string;
-};
-
 interface ResumeRefs {
   resumeSeqByConversationRef: MutableRefObject<Map<string, number>>;
 }
@@ -58,7 +41,6 @@ interface ResumeActions {
   applyResumeSnapshot: (args: {
     conversationId: string;
     activeRun: ActiveRunSnapshot;
-    tasks: TaskSnapshot[];
   }) => void;
   handleAgentEvent: (event: AgentStreamEvent, source?: "live" | "replay") => void;
   /** Drop replay-hydrated stream buffers for turns that already finished. */
@@ -130,7 +112,6 @@ export function useResumeAgentRun({
         applyResumeSnapshot({
           conversationId: activeConversationId,
           activeRun: replay.activeRun,
-          tasks: replay.tasks,
         });
 
         for (const replayEvent of replay.events) {

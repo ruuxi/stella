@@ -193,7 +193,7 @@ export function useStreamingChatCore({
   )
 
   const {
-    liveTasks,
+    taskDecorations,
     runtimeStatusText,
     markAssistantResponseTextStarted,
     activeToolCallId,
@@ -591,7 +591,7 @@ export function useStreamingChatCore({
   )
 
   return {
-    liveTasks,
+    taskDecorations,
     optimisticEvents,
     queuedUserMessages,
     runtimeStatusText,

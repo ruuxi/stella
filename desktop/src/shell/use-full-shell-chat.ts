@@ -16,11 +16,15 @@ import { useConversationFiles } from "@/features/chat/hooks/use-conversation-fil
 import { useConversationMessages } from "@/features/chat/hooks/use-conversation-messages";
 import { useComposerMessageState } from "@/features/chat/hooks/use-composer-message-state";
 import { useStreamingChat } from "@/features/chat/hooks/use-streaming-chat";
+import { useThreadActivity } from "@/features/chat/hooks/use-thread-activity";
 import {
   useTraceEventMonitor,
   useTraceIpcListener,
 } from "@/platform/diagnostics/use-trace-listener";
-import { type EventRecord } from "@/features/chat/lib/event-transforms";
+import {
+  buildActivityTasks,
+  type EventRecord,
+} from "@/features/chat/lib/event-transforms";
 import { useUiState } from "@/context/ui-state";
 import { router } from "@/router";
 import { useCapturedChatContext } from "./use-captured-chat-context";
@@ -101,8 +105,12 @@ export function useFullShellChat({
     loadOlder: loadOlderFiles,
   } = useConversationFiles(activeConversationId ?? undefined);
 
+  const { records: threadActivityRecords } = useThreadActivity(
+    activeConversationId ?? undefined,
+  );
+
   const {
-    liveTasks,
+    taskDecorations,
     optimisticEvents,
     runtimeStatusText,
     activeToolCallId,
@@ -392,8 +400,16 @@ export function useFullShellChat({
     requireConversationId: true,
   });
 
+  // The single task list every activity surface renders: authoritative
+  // thread rows overlaid with live stream decoration. No event folding.
+  const tasks = useMemo(
+    () => buildActivityTasks(threadActivityRecords, taskDecorations),
+    [threadActivityRecords, taskDecorations],
+  );
+
   const chatColumnConversation = useMemo<ChatColumnConversation>(
     () => ({
+      tasks,
       activity: {
         activities,
         latestMessageTimestampMs,
@@ -419,7 +435,6 @@ export function useFullShellChat({
         pendingUserMessageId,
         queuedUserMessages,
         removeQueuedUserMessage,
-        liveTasks,
       },
       history: {
         hasOlderMessages,
@@ -440,7 +455,7 @@ export function useFullShellChat({
       isLoadingOlderFiles,
       isLoadingOlderMessages,
       latestMessageTimestampMs,
-      liveTasks,
+      tasks,
       loadOlderActivity,
       loadOlderFiles,
       pendingUserMessageId,

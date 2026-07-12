@@ -427,47 +427,38 @@ describe("LocalAgentManager Exec fs locking", () => {
       resumedEvents.every((event) => event.rootRunId === "root-current"),
     ).toBe(true);
 
+    // Renderer side: the follow-up's stream events maintain only the
+    // ephemeral decoration (keyed by thread, rebound to the current run),
+    // and the completion clears it — no per-run task copies to leak.
     let state = streamStoreReducer(initialStoreState, {
       type: "run-started",
       runId: "root-current",
       conversationId: "conv-1",
       userMessageId: "user-2",
     });
-    resumedEvents.forEach((event, index) => {
-      if (!event.agentId || !event.rootRunId) return;
+    for (const event of resumedEvents) {
+      if (!event.agentId) continue;
+      if (event.type === "agent-completed") {
+        state = streamStoreReducer(state, {
+          type: "task-decoration-clear",
+          agentId: event.agentId,
+        });
+        continue;
+      }
       state = streamStoreReducer(state, {
-        type: "tool-activity-observed",
-        runId: event.rootRunId,
-      });
-      const terminal = event.type === "agent-completed";
-      const nowMs = 1_000 + index;
-      state = streamStoreReducer(state, {
-        type: "task-upsert",
-        runId: event.rootRunId,
+        type: "task-decorate",
+        agentId: event.agentId,
         conversationId: "conv-1",
+        runId: event.rootRunId,
         userMessageId: "user-2",
-        task: {
-          id: event.agentId,
-          description: event.description ?? "Task",
-          agentType: event.agentType || AGENT_IDS.GENERAL,
-          status: terminal ? "completed" : "running",
-          anchorTurnId: "user-2",
-          parentAgentId: event.parentAgentId,
-          statusText: event.statusText,
-          startedAtMs: nowMs,
-          completedAtMs: terminal ? nowMs : undefined,
-          lastUpdatedAtMs: nowMs,
-          outputPreview: event.result,
-        },
+        statusText: event.statusText,
       });
-    });
-
-    const rootTasks = Object.values(
-      state.tasksByRunId["root-current"] ?? {},
-    ) as TaskItem[];
-    expect(rootTasks).toHaveLength(1);
-    expect(rootTasks[0]?.status).toBe("completed");
-    expect(rootTasks.filter((task) => task.status === "running")).toEqual([]);
+      expect(state.taskDecorations[event.agentId]?.runId).toBe(
+        "root-current",
+      );
+    }
+    // Completion left no lingering decoration behind.
+    expect(state.taskDecorations[task.threadId]).toBeUndefined();
   });
 
   it("emits an interjected turn's real finish immediately — no deferral, no audience split", async () => {
@@ -1242,77 +1233,40 @@ describe("send_input follow-up description and run rebind", () => {
     expect(snapshot?.description).toBe("search for the itinerary email");
   });
 
-  it("evicts a task's stale live copy from other runs when it upserts under a new run", () => {
-    // A send_input follow-up rebinds the task to the caller's run, and the
-    // spawn run's live copy never receives a terminal event. Without
-    // eviction that frozen "running" copy pins the Activity row open after
-    // the follow-up completes under the new run.
+  it("rebinds a thread's decoration to the follow-up's run without leaking per-run copies", () => {
+    // The old per-run task store leaked a frozen "running" copy under the
+    // spawn run when send_input rebound a thread to the caller's run —
+    // that copy pinned the Activity row open forever. Decorations are
+    // keyed by thread: a rebind is an in-place update, and the terminal
+    // stream event clears it. Authoritative status lives in the
+    // thread-activity rows and never depends on this map.
     let state = streamStoreReducer(initialStoreState, {
-      type: "run-started",
-      runId: "root-1",
+      type: "task-decorate",
+      agentId: "thread-1",
       conversationId: "conv-1",
-      userMessageId: "user-1",
-    });
-    const baseTask: TaskItem = {
-      id: "thread-1",
-      description: "find the booked itinerary",
-      agentType: AGENT_IDS.GENERAL,
-      status: "running",
-      anchorTurnId: "user-1",
-      startedAtMs: 1_000,
-      lastUpdatedAtMs: 1_000,
-    };
-    state = streamStoreReducer(state, {
-      type: "task-upsert",
       runId: "root-1",
-      conversationId: "conv-1",
-      userMessageId: "user-1",
-      task: baseTask,
+      statusText: "find the booked itinerary",
     });
-    expect(state.tasksByRunId["root-1"]?.["thread-1"]?.status).toBe("running");
+    expect(Object.keys(state.taskDecorations)).toEqual(["thread-1"]);
 
-    // Follow-up streams the task under the new run: running, then completed.
+    // Follow-up streams under the new run: same single entry, new runId.
     state = streamStoreReducer(state, {
-      type: "task-upsert",
-      runId: "root-2",
+      type: "task-decorate",
+      agentId: "thread-1",
       conversationId: "conv-1",
-      userMessageId: "user-2",
-      task: {
-        ...baseTask,
-        description: "search for the itinerary email",
-        statusText: "search for the itinerary email",
-        startedAtMs: 2_000,
-        lastUpdatedAtMs: 2_000,
-      },
+      runId: "root-2",
+      statusText: "search for the itinerary email",
     });
-    // The spawn run's copy is gone the moment the task moves runs…
-    expect(state.tasksByRunId["root-1"]?.["thread-1"]).toBeUndefined();
-    // …and continuity fields carried over from the evicted copy.
-    expect(state.tasksByRunId["root-2"]?.["thread-1"]).toMatchObject({
-      status: "running",
-      description: "search for the itinerary email",
-      startedAtMs: 1_000,
+    expect(Object.keys(state.taskDecorations)).toEqual(["thread-1"]);
+    expect(state.taskDecorations["thread-1"]).toMatchObject({
+      runId: "root-2",
+      statusText: "search for the itinerary email",
     });
 
     state = streamStoreReducer(state, {
-      type: "task-upsert",
-      runId: "root-2",
-      conversationId: "conv-1",
-      userMessageId: "user-2",
-      task: {
-        ...baseTask,
-        description: "search for the itinerary email",
-        status: "completed",
-        startedAtMs: 2_000,
-        completedAtMs: 3_000,
-        lastUpdatedAtMs: 3_000,
-        outputPreview: "found it",
-      },
+      type: "task-decoration-clear",
+      agentId: "thread-1",
     });
-    const liveCopies = Object.entries(state.tasksByRunId).flatMap(
-      ([, tasks]) => Object.values(tasks),
-    ) as TaskItem[];
-    expect(liveCopies).toHaveLength(1);
-    expect(liveCopies[0]?.status).toBe("completed");
+    expect(state.taskDecorations["thread-1"]).toBeUndefined();
   });
 });

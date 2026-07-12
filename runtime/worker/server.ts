@@ -1201,6 +1201,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         const event = chatStore.appendEvent(args);
         notifyLocalChatUpdated(peer, args.conversationId, event);
       },
+      notifyThreadActivityUpdated: (conversationId) => {
+        peer.notify(NOTIFICATION_NAMES.THREAD_ACTIVITY_UPDATED, {
+          conversationId,
+        });
+      },
       getDefaultConversationId: () =>
         chatStore.getOrCreateDefaultConversationId(),
       requestCredential: async (payload) =>

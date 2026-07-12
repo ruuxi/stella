@@ -353,6 +353,7 @@ export const NOTIFICATION_NAMES = {
   VOICE_AGENT_EVENT: "voice.agentEvent",
   VOICE_SELF_MOD_HMR_STATE: "voice.selfModHmrState",
   LOCAL_CHAT_UPDATED: "localChat.updated",
+  THREAD_ACTIVITY_UPDATED: "localChat.threadActivityUpdated",
   SCHEDULE_UPDATED: "schedule.updated",
   APPROVAL_REQUESTED: "approval.requested",
 } as const;

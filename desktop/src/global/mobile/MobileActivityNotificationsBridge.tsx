@@ -1,11 +1,7 @@
 import { useAction } from "convex/react";
 import { useEffect, useMemo, useRef } from "react";
 import { api } from "@/convex/api";
-import {
-  extractTasksFromActivities,
-  mergeFooterTasks,
-  type TaskItem,
-} from "@/features/chat/lib/event-transforms";
+import { type TaskItem } from "@/features/chat/lib/event-transforms";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useAuthSessionState } from "@/global/auth/hooks/use-auth-session-state";
 import { AGENT_IDS } from "../../../../runtime/contracts/agent-runtime.js";
@@ -33,23 +29,10 @@ export function MobileActivityNotificationsBridge() {
   const mountedAtMsRef = useRef(Date.now());
   const recordsRef = useRef<Map<string, TaskNotificationRecord>>(new Map());
 
-  const allTasks = useMemo(() => {
-    const persisted = extractTasksFromActivities(
-      chat.conversation.activity.activities,
-      {
-        latestMessageTimestampMs:
-          chat.conversation.activity.latestMessageTimestampMs,
-      },
-    );
-    return mergeFooterTasks(
-      persisted,
-      chat.conversation.streaming.liveTasks ?? [],
-    ).filter(shouldNotifyForTask);
-  }, [
-    chat.conversation.activity.activities,
-    chat.conversation.activity.latestMessageTimestampMs,
-    chat.conversation.streaming.liveTasks,
-  ]);
+  const allTasks = useMemo(
+    () => chat.conversation.tasks.filter(shouldNotifyForTask),
+    [chat.conversation.tasks],
+  );
 
   useEffect(() => {
     const send = (kind: ActivityNotificationKind) => {

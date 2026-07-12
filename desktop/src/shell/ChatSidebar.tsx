@@ -39,10 +39,6 @@ import {
   ScreenshotPreviewOverlay,
 } from "@/app/chat/ScreenshotPreview";
 import type { ChatContext } from "@/shared/types/electron";
-import type {
-  EventRecord,
-  TaskItem,
-} from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../runtime/contracts/local-chat.js";
 import type { QueuedUserMessage } from "@/features/chat/hooks/use-streaming-chat";
 import { restoreQueuedTextToComposer } from "@/features/chat/hooks/queued-user-messages";
@@ -92,13 +88,6 @@ interface ChatPanelTabProps {
   variant?: "mini" | "sidebar";
   messages: MessageRecord[];
   conversationId?: string | null;
-  /**
-   * Persisted agent-lifecycle activity + the latest message timestamp,
-   * merged with `liveTasks` in CompactConversationSurface to back the
-   * inline background-work cards (reload-safe terminal status).
-   */
-  activities: EventRecord[];
-  latestMessageTimestampMs: number | null;
   isStreaming: boolean;
   /** True once the in-flight run has streamed any visible assistant text. */
   isStreamingResponseText?: boolean;
@@ -111,7 +100,6 @@ interface ChatPanelTabProps {
   queuedUserMessages?: QueuedUserMessage[];
   /** Removes a still-queued follow-up from the shared send queue by id. */
   removeQueuedUserMessage?: (messageId: string) => void;
-  liveTasks?: TaskItem[];
   hasOlderMessages: boolean;
   isLoadingOlder: boolean;
   isInitialLoading: boolean;
@@ -133,8 +121,6 @@ export function ChatPanelTab({
   wideLayout = false,
   messages,
   conversationId,
-  activities,
-  latestMessageTimestampMs,
   isStreaming,
   isStreamingResponseText,
   runtimeStatusText,
@@ -145,7 +131,6 @@ export function ChatPanelTab({
   pendingUserMessageId,
   queuedUserMessages,
   removeQueuedUserMessage,
-  liveTasks,
   hasOlderMessages,
   isLoadingOlder,
   isInitialLoading,
@@ -515,9 +500,6 @@ export function ChatPanelTab({
               onCancelQueued={
                 removeQueuedUserMessage ? handleCancelQueued : undefined
               }
-              liveTasks={liveTasks}
-              activities={activities}
-              latestMessageTimestampMs={latestMessageTimestampMs}
               indicator={indicatorProps}
               hasOlderMessages={hasOlderMessages}
               isLoadingOlder={isLoadingOlder}

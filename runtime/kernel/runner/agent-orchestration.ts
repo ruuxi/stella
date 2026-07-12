@@ -411,7 +411,13 @@ export const createAgentOrchestration = (
     // while the deferred `display-only` replay skips the hidden
     // orchestrator follow-up that already went out.
     if (event.audience !== "orchestrator-only") {
-      appendAgentLifecycleChatEvent(context, event);
+      // Progress ticks are ephemeral decoration: they stream to the renderer
+      // below but are never persisted — thread state lives in
+      // `runtime_agents` (see `listThreadActivity`), and persisting every
+      // tick grew the message table without bound.
+      if (event.type !== "agent-progress") {
+        appendAgentLifecycleChatEvent(context, event);
+      }
       if (event.rootRunId) {
         context.state.runCallbacksByRunId
           .get(event.rootRunId)
@@ -1469,7 +1475,12 @@ export const createAgentOrchestration = (
     completeCloudAgentRecord: async () => {},
     getCloudAgentRecord: async () => null,
     cancelCloudAgentRecord: async () => ({ canceled: false }),
-    saveAgentRecord: (record) => context.runtimeStore.saveAgentRecord?.(record),
+    saveAgentRecord: (record) => {
+      context.runtimeStore.saveAgentRecord?.(record);
+      // Every thread transition funnels through here — this push is what
+      // keeps the renderer's authoritative Activity store current.
+      context.notifyThreadActivityUpdated?.(record.conversationId);
+    },
     getAgentRecord: (threadId) =>
       context.runtimeStore.getAgentRecord?.(threadId) ?? null,
     listAgentRecordsByStatus: (status) =>
