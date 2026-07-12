@@ -15,6 +15,34 @@ const composioEntry: NativeConnectorCatalogEntry = {
   description: "Outlook",
   connectable: true,
   backendConnector: { type: "composio", toolkit: "OUTLOOK" },
+  actions: [
+    {
+      name: "OUTLOOK_SEND_EMAIL",
+      inputSchema: {
+        type: "object",
+        properties: {
+          to: { type: "string" },
+          body: { type: "string" },
+        },
+        required: ["to", "body"],
+        additionalProperties: true,
+      },
+    },
+    {
+      name: "OUTLOOK_QUERY_EMAILS",
+      inputSchema: {
+        type: "object",
+        additionalProperties: true,
+      },
+    },
+    {
+      name: "OUTLOOK_DELETE_EMAIL",
+      inputSchema: {
+        type: "object",
+        additionalProperties: true,
+      },
+    },
+  ],
 };
 
 const catalog = (entry = composioEntry): ResolvedNativeCatalog => ({

@@ -802,6 +802,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       temperature?: number;
       fallbackAgentTypes?: string[];
       model?: string;
+      reasoningEffort?: "none" | "low" | "medium" | "high";
+      utility?: boolean;
       sessionKey?: string;
       closeSession?: boolean;
       sessionIdleTtlMs?: number;

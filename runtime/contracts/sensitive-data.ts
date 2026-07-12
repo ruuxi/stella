@@ -152,11 +152,12 @@ export const sanitizeSensitiveData = (
   seen.add(value);
 
   if (value instanceof Error) {
+    const errorWithCause = value as Error & { cause?: unknown };
     const output: Record<string, unknown> = {
       message: redactSensitiveText(value.message),
       ...(value.stack ? { stack: redactSensitiveText(value.stack) } : {}),
-      ...(value.cause !== undefined
-        ? { cause: sanitizeSensitiveData(value.cause, depth + 1, seen) }
+      ...(errorWithCause.cause !== undefined
+        ? { cause: sanitizeSensitiveData(errorWithCause.cause, depth + 1, seen) }
         : {}),
     };
     for (const [key, entry] of Object.entries(
