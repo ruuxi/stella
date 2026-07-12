@@ -19,14 +19,23 @@ import { TextShimmer } from "./TextShimmer";
 interface SwapTextProps {
   text: string;
   active?: boolean;
+  /** Let a parent-owned entrance animation reveal the initial text as part of
+   * one atomic surface, while preserving animated swaps after it changes. */
+  animateInitial?: boolean;
   className?: string;
 }
 
 const SWAP_DURATION_MS = 240;
 
-export function SwapText({ text, active = true, className }: SwapTextProps) {
+export function SwapText({
+  text,
+  active = true,
+  animateInitial = true,
+  className,
+}: SwapTextProps) {
   const [current, setCurrent] = useState(text);
   const [previous, setPrevious] = useState<string | null>(null);
+  const [hasChanged, setHasChanged] = useState(false);
   const lastTextRef = useRef(text);
   const timeoutRef = useRef<number | null>(null);
 
@@ -36,6 +45,7 @@ export function SwapText({ text, active = true, className }: SwapTextProps) {
     }
     setPrevious(lastTextRef.current);
     setCurrent(text);
+    setHasChanged(true);
     lastTextRef.current = text;
 
     if (timeoutRef.current !== null) {
@@ -67,7 +77,7 @@ export function SwapText({ text, active = true, className }: SwapTextProps) {
       )}
       <span
         key={`in:${current}`}
-        className="swap-text__layer swap-text__layer--in"
+        className={`swap-text__layer swap-text__layer--in${!animateInitial && !hasChanged ? " swap-text__layer--initial-static" : ""}`}
       >
         <TextShimmer text={current} active={active} />
       </span>

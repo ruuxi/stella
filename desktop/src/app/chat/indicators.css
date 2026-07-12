@@ -46,19 +46,37 @@
   animation: swap-text-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Some surfaces animate their whole container on mount. Keep the initial
+ * text in that single entrance while retaining SwapText for later updates. */
+.swap-text__layer--initial-static {
+  animation: none;
+}
+
 .swap-text__layer--out {
   animation: swap-text-out 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
   pointer-events: none;
 }
 
 @keyframes swap-text-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes swap-text-out {
-  from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(-4px); }
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 /* Inline working indicator — Claude-style. Rendered as a keyed `ChatTimeline`

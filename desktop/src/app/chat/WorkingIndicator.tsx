@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useUiState } from "@/context/ui-state";
 import { useWindowFocus } from "@/shared/hooks/use-window-focus";
 import { useWindowType } from "@/shared/hooks/use-window-type";
@@ -35,14 +34,6 @@ export function WorkingIndicator({
   const windowFocused = useWindowFocus();
   const animationPaused = !windowFocused || state.window !== windowType;
 
-  // Defer StellaAnimation mount so WebGL shader compilation doesn't block
-  // the first streaming frames. The text status renders immediately.
-  const [animReady, setAnimReady] = useState(false);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setAnimReady(true));
-    return () => cancelAnimationFrame(id);
-  }, []);
-
   const displayStatus = getWorkingIndicatorDisplayStatus({
     status,
     toolName,
@@ -54,20 +45,19 @@ export function WorkingIndicator({
     <div className={cn("working-indicator", className)}>
       <div className="indicator-stella">
         <div className="indicator-stella-scale">
-          {animReady && (
-            <StellaAnimation
-              width={20}
-              height={20}
-              maxDpr={1}
-              frameSkip={2}
-              paused={animationPaused}
-            />
-          )}
+          <StellaAnimation
+            width={20}
+            height={20}
+            maxDpr={1}
+            frameSkip={2}
+            paused={animationPaused}
+          />
         </div>
       </div>
       <SwapText
         text={displayStatus}
         active
+        animateInitial={false}
         className="working-status"
       />
     </div>
