@@ -33,6 +33,18 @@ describe("settings model catalog", () => {
     expect(models.every((model) => model.id.startsWith("stella/"))).toBe(false);
   });
 
+  it("keeps Grok 4.5 visible across the renderer/runtime registry boundary", () => {
+    expect(
+      listLocalCatalogModels().find((model) => model.id === "grok/grok-4.5"),
+    ).toMatchObject({
+      modelId: "grok-4.5",
+      name: "Grok 4.5",
+      provider: "grok",
+      contextWindow: 500_000,
+      reasoning: true,
+    });
+  });
+
   it("normalizes Stella backend rows and keeps Stella-specific models first when merging", () => {
     const stellaModels = normalizeStellaCatalogModels([
       {

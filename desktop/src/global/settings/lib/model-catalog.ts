@@ -202,9 +202,27 @@ export function listLocalCatalogModels(): CatalogModel[] {
       reasoning: false,
     },
   ];
+  // Grok's live model discovery runs in the runtime worker, while this
+  // catalog is assembled in the renderer from its own static registry. Keep
+  // the current Grok model visible here; the worker still owns live discovery
+  // and the transport metadata used when the model is selected.
+  const grokCatalogModels: CatalogModel[] = [
+    {
+      id: "grok/grok-4.5",
+      modelId: "grok-4.5",
+      name: "Grok 4.5",
+      provider: "grok",
+      providerName: getProviderDisplayName("grok"),
+      source: "local",
+      contextWindow: 500_000,
+      input: ["text"],
+      reasoning: true,
+    },
+  ];
 
   return [
     ...localUrlModels,
+    ...grokCatalogModels,
     ...getAllModels()
       .filter(
         (model) =>
