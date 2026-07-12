@@ -387,7 +387,8 @@ export type RuntimeAuthRefreshSource =
   | "heartbeat"
   | "subscription"
   | "register"
-  | "stella_provider";
+  | "stella_provider"
+  | "connector";
 
 export type HostRuntimeAuthRefreshParams = {
   source: RuntimeAuthRefreshSource;

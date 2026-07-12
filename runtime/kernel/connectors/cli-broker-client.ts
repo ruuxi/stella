@@ -148,12 +148,12 @@ export const requestConnectorCredentialFromBridge = async ({
     callbackUrl?: string;
     callbackId?: string;
     callbackMode?: "local" | "external";
-      scopeSeparator?: string;
-      usesPkce?: boolean;
-      authorizationRedirectParam?: string;
-      authorizationParams?: Record<string, string>;
-      tokenRedirectParam?: string;
-      tokenAuth?: "body" | "basic";
+    scopeSeparator?: string;
+    usesPkce?: boolean;
+    authorizationRedirectParam?: string;
+    authorizationParams?: Record<string, string>;
+    tokenRedirectParam?: string;
+    tokenAuth?: "body" | "basic";
     tokenExchange?: {
       type: "backend";
       provider: string;
@@ -234,7 +234,10 @@ export const requestConnectorConnectionFromBridge = async ({
   if (record.ok === true) {
     return {
       ok: true,
-      status: record.status === "already_connected" ? "already_connected" : "connected",
+      status:
+        record.status === "already_connected"
+          ? "already_connected"
+          : "connected",
     };
   }
   return {
@@ -248,15 +251,17 @@ export const requestConnectorConnectionFromBridge = async ({
 
 export const requestStellaSiteAuthFromBridge = async ({
   socketPath,
+  refresh = false,
   timeoutMs = 5_000,
 }: {
   socketPath: string;
+  refresh?: boolean;
   timeoutMs?: number;
 }): Promise<StellaSiteAuthResult> => {
   const result = await sendRequest(
     socketPath,
     "stella.getSiteAuth",
-    {},
+    { refresh },
     timeoutMs,
   );
   if (!result || typeof result !== "object") {

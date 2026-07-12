@@ -104,7 +104,9 @@ export type CliBridgeHandlers = {
         reason: "declined" | "cancelled" | "timeout" | "unsupported" | string;
       }
   >;
-  getStellaSiteAuth?: () =>
+  getStellaSiteAuth?: (options: {
+    refresh: boolean;
+  }) =>
     | Promise<
         | { ok: true; baseUrl: string; authToken: string }
         | { ok: false; reason: string }
@@ -226,7 +228,12 @@ const dispatch = async (
       if (!handlers.getStellaSiteAuth) {
         return { ok: false, reason: "unsupported" };
       }
-      return await handlers.getStellaSiteAuth();
+      const refresh = Boolean(
+        params &&
+        typeof params === "object" &&
+        (params as { refresh?: unknown }).refresh === true,
+      );
+      return await handlers.getStellaSiteAuth({ refresh });
     }
     case "connector.tokenStore": {
       if (!handlers.requestConnectorTokenStore) {
@@ -293,7 +300,9 @@ const dispatch = async (
           : {};
       const kind = typeof record.kind === "string" ? record.kind : "";
       if (kind !== "accessibility" && kind !== "screen") {
-        throw new Error("system.requestPermission: unsupported permission kind");
+        throw new Error(
+          "system.requestPermission: unsupported permission kind",
+        );
       }
       return await handlers.requestDesktopPermission({ kind });
     }
@@ -349,8 +358,7 @@ const dispatch = async (
                 >,
               ).filter(
                 (entry): entry is [string, string] =>
-                  typeof entry[0] === "string" &&
-                  typeof entry[1] === "string",
+                  typeof entry[0] === "string" && typeof entry[1] === "string",
               ),
             )
           : null;

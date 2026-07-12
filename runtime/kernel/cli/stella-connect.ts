@@ -400,7 +400,7 @@ const withConnectorBridgeCleanup = async <T>(
 // `toBackendComposioEntry` moved to `../connectors/catalog-cache.js` so the
 // connector keyword index and the `connector_status` tool share the parser.
 
-const loadStellaSiteAuth = async () => {
+const loadStellaSiteAuth = async (options: { refresh?: boolean } = {}) => {
   const envBaseUrl =
     process.env.STELLA_CONVEX_SITE_URL?.trim() ||
     process.env.STELLA_SITE_URL?.trim() ||
@@ -409,17 +409,19 @@ const loadStellaSiteAuth = async () => {
     process.env.STELLA_NATIVE_OAUTH_BACKEND_AUTH_TOKEN?.trim() ||
     process.env.STELLA_SITE_AUTH_TOKEN?.trim() ||
     "";
-  if (envBaseUrl && envAuthToken) {
+  if (!options.refresh && envBaseUrl && envAuthToken) {
     return { ok: true as const, baseUrl: envBaseUrl, authToken: envAuthToken };
   }
   const socketPath = process.env.STELLA_CLI_BRIDGE_SOCK;
   if (!socketPath) return { ok: false as const, reason: "no_bridge" };
-  return await requestStellaSiteAuthFromBridge({ socketPath }).catch(
-    (error) => ({
-      ok: false as const,
-      reason: (error as Error).message || "bridge_unavailable",
-    }),
-  );
+  return await requestStellaSiteAuthFromBridge({
+    socketPath,
+    refresh: options.refresh === true,
+    timeoutMs: options.refresh ? 20_000 : 5_000,
+  }).catch((error) => ({
+    ok: false as const,
+    reason: (error as Error).message || "bridge_unavailable",
+  }));
 };
 
 const loadServerNativeCatalog = async () =>
@@ -450,25 +452,49 @@ const callBackendNativeIntegration = async (
   action: string,
   input: Record<string, unknown>,
 ) => {
-  const siteAuth = await loadStellaSiteAuth();
+  let siteAuth = await loadStellaSiteAuth();
   if (!siteAuth.ok) {
-    fail("Sign in to Stella before using this integration.");
+    siteAuth = await loadStellaSiteAuth({ refresh: true });
   }
-  const connectedSiteAuth = siteAuth as {
-    ok: true;
-    baseUrl: string;
-    authToken: string;
+  const connectedSiteAuth = siteAuth.ok
+    ? siteAuth
+    : fail("Sign in to Stella before using this integration.");
+  let activeAuth = {
+    baseUrl: connectedSiteAuth.baseUrl,
+    authToken: connectedSiteAuth.authToken,
   };
-  const siteBaseUrl = connectedSiteAuth.baseUrl.replace(/\/+$/u, "");
-  const response = await fetch(`${siteBaseUrl}/api/native-integrations/run`, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      authorization: `Bearer ${connectedSiteAuth.authToken}`,
-    },
-    body: JSON.stringify({ id, action, input }),
-  });
+  const run = async (auth: { baseUrl: string; authToken: string }) =>
+    await fetch(
+      `${auth.baseUrl.replace(/\/+$/u, "")}/api/native-integrations/run`,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          authorization: `Bearer ${auth.authToken}`,
+        },
+        body: JSON.stringify({ id, action, input }),
+      },
+    );
+  let response = await run(activeAuth);
+  if (response.status === 401 || response.status === 403) {
+    const refreshed = await loadStellaSiteAuth({ refresh: true });
+    const refreshedSiteAuth = refreshed.ok
+      ? refreshed
+      : fail(
+          "Stella sign-in expired. Sign in again before using this integration.",
+        );
+    activeAuth = {
+      baseUrl: refreshedSiteAuth.baseUrl,
+      authToken: refreshedSiteAuth.authToken,
+    };
+    response = await run(activeAuth);
+    if (response.status === 401 || response.status === 403) {
+      fail(
+        "Stella sign-in could not be refreshed. Sign in again before using this integration.",
+      );
+    }
+  }
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const message =

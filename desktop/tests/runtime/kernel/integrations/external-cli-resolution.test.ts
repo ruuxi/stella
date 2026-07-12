@@ -33,6 +33,7 @@ const trackedEnvNames = [
   "STELLA_FAKE_CODEX_LOG",
   "STELLA_FAKE_CLAUDE_LOG",
   "STELLA_FAKE_AUTH_MARKER",
+  "STELLA_CLI_BRIDGE_SOCK",
 ] as const;
 
 const originalEnv = Object.fromEntries(
@@ -106,6 +107,7 @@ describe("external CLI resolution", () => {
       HOME: home,
       PATH: originalPath,
       ANTHROPIC_API_KEY: "preserved-auth",
+      STELLA_CLI_BRIDGE_SOCK: "/tmp/stella-owner-only.sock",
     });
     const pathEntries = env.PATH?.split(path.delimiter);
 
@@ -115,6 +117,7 @@ describe("external CLI resolution", () => {
       originalPath,
     ]);
     expect(env.ANTHROPIC_API_KEY).toBe("preserved-auth");
+    expect(env.STELLA_CLI_BRIDGE_SOCK).toBe("/tmp/stella-owner-only.sock");
     fs.rmSync(root, { recursive: true, force: true });
   });
 

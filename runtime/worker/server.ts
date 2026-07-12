@@ -613,6 +613,12 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.pendingSelfModApplies.clear();
   state.runEventLog?.stop();
   state.runEventLog = null;
+  if (
+    state.cliBridgeServer?.socketPath &&
+    process.env.STELLA_CLI_BRIDGE_SOCK === state.cliBridgeServer.socketPath
+  ) {
+    delete process.env.STELLA_CLI_BRIDGE_SOCK;
+  }
   await state.cliBridgeServer?.stop().catch(() => undefined);
   state.cliBridgeServer = null;
   state.db?.close();
@@ -651,9 +657,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     typeof import("../kernel/agent-runtime/one-shot-completion.js")
   > | null = null;
   const loadOneShotCompletion = () =>
-    (oneShotCompletionModule ??= import(
-      "../kernel/agent-runtime/one-shot-completion.js"
-    ));
+    (oneShotCompletionModule ??=
+      import("../kernel/agent-runtime/one-shot-completion.js"));
   let chatPromptContextModule: Promise<
     typeof import("../kernel/chat-prompt-context.js")
   > | null = null;
@@ -710,11 +715,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const pendingApplyPinned = selfMod.hasPendingApplyBatches();
     return Boolean(
       state.runner?.getActiveOrchestratorRun() ||
-        (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
-        requestPinned ||
-        pendingApplyPinned ||
-        socialPinned ||
-        voicePinned,
+      (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
+      requestPinned ||
+      pendingApplyPinned ||
+      socialPinned ||
+      voicePinned,
     );
   };
 
@@ -1138,7 +1143,36 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 };
               }
             },
-            getStellaSiteAuth: () => {
+            getStellaSiteAuth: async ({ refresh }) => {
+              if (refresh) {
+                try {
+                  const result = (await peer.request(
+                    METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH,
+                    { source: "connector" },
+                    { retryOnDisconnect: true },
+                  )) as {
+                    authenticated: boolean;
+                    token: string | null;
+                    hasConnectedAccount: boolean;
+                  };
+                  if (state.init) {
+                    state.init = {
+                      ...state.init,
+                      authToken: result.authenticated ? result.token : null,
+                      hasConnectedAccount: result.hasConnectedAccount,
+                    };
+                    state.runner?.setAuthToken(state.init.authToken);
+                    state.runner?.setHasConnectedAccount(
+                      state.init.hasConnectedAccount,
+                    );
+                  }
+                } catch (error) {
+                  return {
+                    ok: false,
+                    reason: (error as Error).message || "refresh_failed",
+                  };
+                }
+              }
               const baseUrl =
                 state.init?.convexSiteUrl?.trim() ?? init.convexSiteUrl?.trim();
               const authToken =
@@ -1171,6 +1205,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           return;
         }
         state.cliBridgeServer = cliBridgeServer;
+        process.env.STELLA_CLI_BRIDGE_SOCK = cliBridgeServer.socketPath;
       } catch (error) {
         console.warn(
           "[cli-bridge] Failed to start CLI bridge server:",
