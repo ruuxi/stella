@@ -227,7 +227,7 @@ describe("external CLI resolution", () => {
         "    type: 'result',",
         "    session_id: 'gui-session',",
         "    is_error: false,",
-        "    structured_output: { type: 'final', message: 'claude started' },",
+        "    result: 'claude started',",
         "    usage: { input_tokens: 1, output_tokens: 1 },",
         "  }) + '\\n');",
         "  buffer = '';",

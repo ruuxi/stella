@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AgentMessage } from "../../../../../runtime/kernel/agent-core/types.js";
 import {
   buildKnownMemoryContext,
-  buildMemoryReviewSystemPrompt,
   buildMemoryReviewTranscript,
   buildMemoryReviewUserPrompt,
   maxMessageTimestamp,
@@ -25,17 +24,6 @@ const asRuntimeStore = (store: DreamInboxStore): RuntimeStore =>
   ({ dreamInboxStore: store }) as unknown as RuntimeStore;
 
 afterEach(() => testContexts.cleanup());
-
-describe("buildMemoryReviewSystemPrompt", () => {
-  it("gates on conversational continuity and excludes restating agent work", () => {
-    const prompt = buildMemoryReviewSystemPrompt();
-
-    expect(prompt).toContain("would the user be surprised Stella forgot this?");
-    expect(prompt).toContain("working on, planning, or thinking through");
-    expect(prompt).toContain("never restate agent task results here");
-    expect(prompt).toContain("Output JSON only");
-  });
-});
 
 describe("buildMemoryReviewTranscript", () => {
   it("keeps Orchestrator user and assistant text while dropping tool outputs", () => {

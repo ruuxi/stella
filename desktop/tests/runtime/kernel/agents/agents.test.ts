@@ -8,35 +8,22 @@ import {
 import type { ParsedAgent } from "../../../../../runtime/kernel/agents/types.js";
 
 describe("agents", () => {
-  it("loads bundled core agents directly from checked-in definitions", () => {
+  it("does not load roster agents from checked-in prompt definitions", () => {
     const agents = loadBundledAgents();
 
-    expect(agents.map((agent) => agent.id)).toEqual([
-      AGENT_IDS.ORCHESTRATOR,
-      AGENT_IDS.SCHEDULE,
-      AGENT_IDS.GENERAL,
-    ]);
+    expect(agents).toEqual([]);
   });
 
   it("does not use the internal fallback for roster agents", () => {
     expect(getBundledCoreAgentFallback(AGENT_IDS.ORCHESTRATOR)).toBeUndefined();
   });
 
-  it("keeps bundled core agents when extensions register only custom agents", () => {
+  it("uses extension agents without injecting a bundled roster", () => {
     const agents = mergeBundledAndExtensionAgents([
       makeAgent({ id: "scout", agentTypes: ["scout"] }),
     ]);
 
-    expect(agents.map((agent) => agent.id)).toEqual([
-      AGENT_IDS.ORCHESTRATOR,
-      AGENT_IDS.SCHEDULE,
-      AGENT_IDS.GENERAL,
-      "scout",
-    ]);
-    expect(
-      agents.find((agent) => agent.id === AGENT_IDS.ORCHESTRATOR)
-        ?.toolsAllowlist,
-    ).toContain("spawn_agent");
+    expect(agents.map((agent) => agent.id)).toEqual(["scout"]);
   });
 
   it("lets extension agents override bundled agents by id", () => {
