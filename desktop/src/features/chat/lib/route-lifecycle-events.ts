@@ -17,11 +17,8 @@
  * the streamed segment persists — already-painted rows visibly
  * reorder mid-turn.
  *
- * The default rule here is arrival order, applied on the merged display list
- * (persisted messages + streaming overlays). `agent-completed` has one
- * semantic exception: once its matching `agent_terminal_notice` response is
- * present, it anchors there so the completion card renders after that
- * orchestrator response rather than at the raw lifecycle packet:
+ * The rule here is arrival order, applied on the merged display list
+ * (persisted messages + streaming overlays):
  *
  *   - Every assistant anchor has a *stream start* time: the overlay's
  *     first-chunk timestamp while streaming, and the persisted row's
@@ -112,35 +109,6 @@ const getStreamStartedAtMs = (message: MessageRecord): number | undefined => {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
-};
-
-const getTerminalNoticeTarget = (
-  message: MessageRecord,
-): { agentId: string; terminalState: string } | undefined => {
-  const target = (
-    message.payload as
-      | {
-          metadata?: {
-            runtime?: {
-              responseTarget?: {
-                type?: unknown;
-                agentId?: unknown;
-                terminalState?: unknown;
-              };
-            };
-          };
-        }
-      | undefined
-  )?.metadata?.runtime?.responseTarget;
-  if (
-    target?.type !== "agent_terminal_notice" ||
-    typeof target.agentId !== "string" ||
-    target.agentId.length === 0 ||
-    typeof target.terminalState !== "string"
-  ) {
-    return undefined;
-  }
-  return { agentId: target.agentId, terminalState: target.terminalState };
 };
 
 type Anchor = {
@@ -255,31 +223,6 @@ export const routeLifecycleEvents = (
       source: TurnEntry,
       event: EventRecord,
     ): TurnEntry => {
-      // A completion card belongs after the orchestrator's response to the
-      // hidden terminal notice, not wherever the raw agent-completed packet
-      // first happened to be grouped. The response target is the durable
-      // semantic join. Prefer the earliest matching response at/after this
-      // completion so repeated runs of one durable agent stay distinct.
-      if (event.type === "agent-completed") {
-        const agentId = (event.payload as { agentId?: unknown } | undefined)
-          ?.agentId;
-        if (typeof agentId === "string" && agentId.length > 0) {
-          const matchingTerminalResponses = entries.filter((entry) => {
-            const target = getTerminalNoticeTarget(entry.message);
-            return (
-              target?.agentId === agentId &&
-              target.terminalState === "completed"
-            );
-          });
-          const terminalTarget = matchingTerminalResponses.find(
-            (entry) => entry.message.timestamp >= event.timestamp,
-          );
-          if (terminalTarget) {
-            state.sticky.set(event._id, terminalTarget.anchor.key);
-            return terminalTarget;
-          }
-        }
-      }
       let stickyKey = state.sticky.get(event._id);
       if (stickyKey !== undefined) {
         const pinned = anchorsByKey.get(stickyKey);
@@ -432,63 +375,6 @@ export const routeLifecycleEvents = (
     });
   }
   flushTurn();
-
-  // The hidden lifecycle prompt can create a new logical message turn, while
-  // its visible terminal-notice assistant still belongs to the completion
-  // that preceded that boundary. The per-turn routing above intentionally
-  // cannot cross user-message boundaries, so finish the semantic join across
-  // the full merged timeline here. Projection suppresses completion cards on
-  // non-terminal rows, which means the event may remain available to settle
-  // its start card while it waits for this response without painting early.
-  const eventsAtIndex = (index: number): EventRecord[] =>
-    routedEventsByIndex.get(index) ?? messages[index]!.toolEvents;
-  const terminalTargetIndicesByAgent = new Map<string, number[]>();
-  for (let index = 0; index < messages.length; index += 1) {
-    const message = messages[index]!;
-    if (
-      message.type !== "assistant_message" ||
-      isUiHiddenChatMessagePayload(message.payload ?? null)
-    ) {
-      continue;
-    }
-    const target = getTerminalNoticeTarget(message);
-    if (!target || target.terminalState !== "completed") continue;
-    const indices = terminalTargetIndicesByAgent.get(target.agentId) ?? [];
-    indices.push(index);
-    terminalTargetIndicesByAgent.set(target.agentId, indices);
-  }
-
-  const completionsById = new Map<string, EventRecord>();
-  for (let index = 0; index < messages.length; index += 1) {
-    for (const event of eventsAtIndex(index)) {
-      if (event.type === "agent-completed") {
-        completionsById.set(event._id, event);
-      }
-    }
-  }
-  for (const event of completionsById.values()) {
-    const agentId = (event.payload as { agentId?: unknown } | undefined)
-      ?.agentId;
-    if (typeof agentId !== "string" || agentId.length === 0) continue;
-    const targetIndex = terminalTargetIndicesByAgent
-      .get(agentId)
-      ?.find((index) => messages[index]!.timestamp >= event.timestamp);
-    if (targetIndex === undefined) continue;
-
-    for (let index = 0; index < messages.length; index += 1) {
-      if (index === targetIndex) continue;
-      const current = eventsAtIndex(index);
-      if (!current.some((candidate) => candidate._id === event._id)) continue;
-      routedEventsByIndex.set(
-        index,
-        current.filter((candidate) => candidate._id !== event._id),
-      );
-    }
-    const targetEvents = eventsAtIndex(targetIndex);
-    if (!targetEvents.some((candidate) => candidate._id === event._id)) {
-      routedEventsByIndex.set(targetIndex, [...targetEvents, event]);
-    }
-  }
 
   if (routedEventsByIndex.size === 0) return messages;
 

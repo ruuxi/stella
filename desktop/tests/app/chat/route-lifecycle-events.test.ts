@@ -40,7 +40,7 @@ const followUpMidStream = event({
 });
 
 describe("routeLifecycleEvents", () => {
-  it("moves completion from its earlier chronological anchor to the matching terminal-notice response", () => {
+  it("keeps completion at its arrival-order anchor when a later terminal-notice response appears", () => {
     const state = createLifecycleRoutingState();
     const completion = event({
       _id: "completed-writer",
@@ -133,10 +133,10 @@ describe("routeLifecycleEvents", () => {
       state,
     );
 
-    expect(withNotice[1]!.toolEvents).toEqual([]);
-    expect(withNotice[3]!.toolEvents.map((item) => item._id)).toEqual([
+    expect(withNotice[1]!.toolEvents.map((item) => item._id)).toEqual([
       "completed-writer",
     ]);
+    expect(withNotice[3]!.toolEvents).toEqual([]);
   });
 
   it("routes a mid-stream lifecycle event below the streaming text and keeps pre-stream events above it", () => {

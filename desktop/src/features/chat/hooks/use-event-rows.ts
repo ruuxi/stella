@@ -755,18 +755,10 @@ export function useEventRows(opts: UseEventRowsOptions): UseEventRowsResult {
         const officePreviewRef = getOfficePreviewRef(toolEvents);
         const voiceSession = payload?.metadata?.voiceSession;
         const backgroundWork = buildBackgroundWork(toolEvents);
-        const terminalNoticeAgentId =
-          responseTarget?.type === "agent_terminal_notice" &&
-          responseTarget.terminalState === "completed"
-            ? responseTarget.agentId
-            : undefined;
-        const agentCompletionSections = terminalNoticeAgentId
-          ? projectAgentCompletionSections(
-              toolEvents,
-              lifecycleIndex,
-              terminalNoticeAgentId,
-            )
-          : [];
+        const agentCompletionSections = projectAgentCompletionSections(
+          toolEvents,
+          lifecycleIndex,
+        );
         const toolActivity = deriveToolActivity(toolEvents);
         const isStreamingOverlay =
           message._id.startsWith(STREAMING_OVERLAY_ID_PREFIX) &&
