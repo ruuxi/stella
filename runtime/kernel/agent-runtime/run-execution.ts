@@ -34,11 +34,11 @@ type RuntimeExecutableAgent = {
 const DEFAULT_AGENT_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 // Ceiling while tool calls are in flight. Deliberately above the agent-core
-// per-tool inactivity bound (30 min) so the tool-level cancellation — which
+// per-tool inactivity bound (10 min) so the tool-level cancellation — which
 // fails only the tool and lets the agent continue — always wins when tool
 // tracking is intact. This run-killing backstop fires only when tracking
 // leaked (e.g. a lost tool_execution_end).
-const DEFAULT_AGENT_TOOL_IDLE_TIMEOUT_MS = 45 * 60 * 1000;
+const DEFAULT_AGENT_TOOL_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
 
 const configuredTimeoutMs = (
   envName: string,

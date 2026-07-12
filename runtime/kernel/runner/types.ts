@@ -263,9 +263,6 @@ export type ActiveOrchestratorSession = RuntimeExecutionSessionHandle & {
   conversationId: string;
   agentType: string;
   uiVisibility: "visible" | "hidden";
-  /** When this run's execution session was created; drives the queued
-   *  user-message followUp→steer promotion for long-lived runs. */
-  startedAtMs: number;
   queueCallbackSwitch: (callbacks: AgentCallbacks) => void;
   queueMessage: (message: AgentMessage, delivery: "steer" | "followUp") => void;
 };

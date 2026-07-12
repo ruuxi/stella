@@ -606,10 +606,14 @@ async function prepareToolCall(
  * Tools that emit no `onUpdate` progress for this long are cancelled and
  * reported to the model as an error tool result; the agent loop keeps
  * running. Progress resets the clock, so a long-running tool survives as
- * long as it shows signs of life. Override via
- * `AgentLoopConfig.toolInactivityTimeoutMs`; <= 0 disables the bound.
+ * long as it shows signs of life. Ten minutes of TOTAL silence almost
+ * always means stuck — and because only the tool dies (the agent gets the
+ * error and can retry), a rare false positive is cheap, so the bound errs
+ * tight rather than leaving a wedged tool holding the turn for half an
+ * hour. Override via `AgentLoopConfig.toolInactivityTimeoutMs`; <= 0
+ * disables the bound.
  */
-export const DEFAULT_TOOL_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+export const DEFAULT_TOOL_INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 
 export async function executePreparedToolCall(
 	prepared: PreparedToolCall,

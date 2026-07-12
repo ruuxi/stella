@@ -19,6 +19,7 @@ import type {
 import {
   assistantScrollFollowKey,
   linkStreamingAssistantCanonicalMessage,
+  reconcileStreamingAssistantCanonicalMessage,
   streamingAssistantOverlayId,
 } from './streaming-types'
 import {
@@ -266,6 +267,7 @@ export function useLocalAgentStream({
       runId: string
       userMessageId: string | null
       canonicalMessageId?: string
+      canonicalText?: string
     }) => {
       const currentIndex = args.userMessageId
         ? (nextSlotIndexByUserMessageIdRef.current.get(args.userMessageId) ?? 1)
@@ -275,7 +277,24 @@ export function useLocalAgentStream({
         lockStreamSlot,
       )
       if (args.userMessageId && currentIndex !== null) {
-        if (args.canonicalMessageId) {
+        if (args.canonicalText !== undefined) {
+          const slotId = streamingAssistantOverlayId(
+            args.userMessageId,
+            currentIndex,
+          )
+          // Prevent a late animation frame from restoring a discarded delta.
+          discardStreamText((entry) => entry.slotId === slotId)
+          setStreamingAssistants((current) =>
+            reconcileStreamingAssistantCanonicalMessage(current, {
+              userMessageId: args.userMessageId!,
+              indexInTurn: currentIndex,
+              ...(args.canonicalMessageId
+                ? { canonicalMessageId: args.canonicalMessageId }
+                : {}),
+              canonicalText: args.canonicalText!,
+            }),
+          )
+        } else if (args.canonicalMessageId) {
           setStreamingAssistants((current) =>
             linkStreamingAssistantCanonicalMessage(current, {
               userMessageId: args.userMessageId!,
@@ -294,7 +313,7 @@ export function useLocalAgentStream({
         )
       }
     },
-    [finishStreamText, lockStreamSlot],
+    [discardStreamText, finishStreamText, lockStreamSlot],
   )
 
   /**

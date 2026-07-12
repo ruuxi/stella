@@ -39,7 +39,10 @@ const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 // Ceiling while confirmed turn work (native command / Stella tool) is in
 // flight. A native command that never leaves inProgress, or a Stella tool
 // whose bookkeeping leaked, would otherwise disarm the watchdog forever.
-const DEFAULT_CODEX_TURN_TOOL_IDLE_TIMEOUT_MS = 45 * 60 * 1000;
+// (Bridged Stella tools are separately bounded at 10 min by
+// executeToolWithInactivityBound; this only backstops native commands and
+// leaked tracking.)
+const DEFAULT_CODEX_TURN_TOOL_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
 const CODEX_AGENT_MESSAGE_COMPLETION_GRACE_MS = 750;
 export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
 const execFileAsync = promisify(execFile);

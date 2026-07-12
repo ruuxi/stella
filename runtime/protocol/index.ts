@@ -731,6 +731,7 @@ export type RuntimeAgentEventPayload = {
         terminalState: "completed" | "failed" | "canceled";
       };
   assistantMessageEventId?: string;
+  assistantMessageText?: string;
 };
 
 export type RuntimeVoiceAgentEventPayload = {

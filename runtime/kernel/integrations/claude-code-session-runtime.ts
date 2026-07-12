@@ -106,7 +106,10 @@ const DEFAULT_STEP_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 // inside the CLI where we cannot cancel just the tool, so this is the only
 // bound on a turn whose tool never reports a result — long enough for real
 // silent work, finite so a wedged CLI can't hang the session forever.
-const DEFAULT_STEP_TOOL_IDLE_TIMEOUT_MS = 45 * 60 * 1000;
+// (Bridged Stella tools are separately bounded at 10 min by
+// executeToolWithInactivityBound; this only backstops native tools and
+// leaked tracking.)
+const DEFAULT_STEP_TOOL_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
 const CLAUDE_CODE_COMPACTING_TEXT = "Compacting context";
 const CLAUDE_CODE_RUNNING_TEXT = "Working";
 /**

@@ -86,6 +86,7 @@ type UseAgentEventHandlerOptions = {
       runId: string
       userMessageId: string | null
       canonicalMessageId?: string
+      canonicalText?: string
     }) => void
     finalizeRunOnFinish: (args: { runId: string }) => void
   }
@@ -393,6 +394,9 @@ export function useAgentEventHandler({
               userMessageId: event.userMessageId ?? null,
               ...(event.assistantMessageEventId
                 ? { canonicalMessageId: event.assistantMessageEventId }
+                : {}),
+              ...(event.assistantMessageText !== undefined
+                ? { canonicalText: event.assistantMessageText }
                 : {}),
             })
             // Preamble → tool-call handoff: if this finalized message ends

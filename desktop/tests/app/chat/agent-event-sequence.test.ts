@@ -5,6 +5,7 @@ import {
 } from '@/features/chat/streaming/use-agent-event-handler'
 import {
   linkStreamingAssistantCanonicalMessage,
+  reconcileStreamingAssistantCanonicalMessage,
   type StreamingAssistantOverlay,
 } from '@/features/chat/streaming/streaming-types'
 
@@ -67,5 +68,29 @@ describe('assistant optimistic/canonical linkage', () => {
       canonicalMessageId: 'assistant-msg-run-1-12',
     })
     expect(slot.canonicalMessageId).toBeUndefined()
+  })
+
+  it('replaces a ghost trailing delta with canonical finalized text', () => {
+    const source: StreamingAssistantOverlay[] = [{
+      _id: 'stream-overlay:u1:1',
+      userMessageId: 'u1',
+      indexInTurn: 1,
+      text: 'Clean answer.\n\ncourt',
+      timestamp: 100,
+      runId: 'run-1',
+    }]
+    const reconciled = reconcileStreamingAssistantCanonicalMessage(source, {
+      userMessageId: 'u1',
+      indexInTurn: 1,
+      canonicalMessageId: 'assistant-msg-run-1-14',
+      canonicalText: 'Clean answer.',
+    })
+
+    expect(reconciled[0]).toMatchObject({
+      text: 'Clean answer.',
+      locked: true,
+      canonicalMessageId: 'assistant-msg-run-1-14',
+    })
+    expect(source[0]!.text).toBe('Clean answer.\n\ncourt')
   })
 })

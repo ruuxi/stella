@@ -57,6 +57,8 @@ export type AgentStreamEvent = {
   responseTarget?: AgentResponseTarget;
   /** Canonical SQLite row persisted for an `ASSISTANT_MESSAGE` boundary. */
   assistantMessageEventId?: string;
+  /** Canonical text for the finalized message; provider deltas are optimistic. */
+  assistantMessageText?: string;
   /**
    * On an `ASSISTANT_MESSAGE` boundary: true when the message that just
    * finalized ends with a tool call, i.e. it is an interim/preamble message

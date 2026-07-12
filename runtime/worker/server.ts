@@ -318,6 +318,8 @@ type AgentEventPayload = {
   reason?: string;
   replacedByRunId?: string;
   responseTarget?: RuntimeAgentEventPayload["responseTarget"];
+  assistantMessageEventId?: string;
+  assistantMessageText?: string;
 };
 
 type WorkerState = {
@@ -1962,6 +1964,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
                 ...(assistantEventId
                   ? { assistantMessageEventId: assistantEventId }
                   : {}),
+                assistantMessageText: ev.text,
                 ...(ev.responseTarget
                   ? { responseTarget: ev.responseTarget }
                   : {}),

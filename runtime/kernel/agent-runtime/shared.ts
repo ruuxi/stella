@@ -482,7 +482,7 @@ export const createRuntimeAgent = (args: {
       messages: args.historySource,
     },
     sessionId: args.cacheSessionId ?? args.agentType,
-    // Per-tool inactivity bound (default 30 min in agent-core): a tool that
+    // Per-tool inactivity bound (default 10 min in agent-core): a tool that
     // goes fully silent is cancelled with an error tool result instead of
     // tripping the run-level idle watchdog and killing the whole agent.
     ...(Number.isFinite(toolInactivityParsed)

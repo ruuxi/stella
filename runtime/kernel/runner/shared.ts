@@ -31,38 +31,6 @@ export {
   sanitizeStellaBase,
 };
 
-/**
- * How a user chat message sent mid-run is delivered into the live agent.
- *
- * Young runs keep `followUp` so the queued message waits for the entire
- * current task — including the post-tool answer — and lands below it in the
- * thread. But a run that has already been going for the promotion window is
- * long-form work (supervising background agents, long benchmarks) whose
- * `agent_end` may be hours away; holding user messages hostage to it reads
- * as Stella being dead. Those runs deliver at the next safe turn boundary
- * instead (`steer`), trading message placement for an answer.
- */
-export const LIVE_USER_MESSAGE_STEER_AFTER_MS = 60 * 1000;
-
-export const resolveLiveUserMessageDelivery = (args: {
-  sessionStartedAtMs: number | undefined;
-  nowMs?: number;
-}): "steer" | "followUp" => {
-  if (!Number.isFinite(args.sessionStartedAtMs)) {
-    return "followUp";
-  }
-  const raw = process.env.STELLA_LIVE_USER_MESSAGE_STEER_AFTER_MS?.trim();
-  const parsed = raw ? Number(raw) : Number.NaN;
-  const promoteAfterMs =
-    Number.isFinite(parsed) && parsed >= 0
-      ? parsed
-      : LIVE_USER_MESSAGE_STEER_AFTER_MS;
-  const nowMs = args.nowMs ?? Date.now();
-  return nowMs - (args.sessionStartedAtMs as number) >= promoteAfterMs
-    ? "steer"
-    : "followUp";
-};
-
 export const defaultPromptForAgentType = (
   agentType: string,
   stellaDataDir?: string,

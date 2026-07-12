@@ -74,6 +74,42 @@ export const linkStreamingAssistantCanonicalMessage = (
   return next;
 };
 
+/** Replace optimistic streamed text with the provider's finalized text. */
+export const reconcileStreamingAssistantCanonicalMessage = (
+  overlays: StreamingAssistantOverlay[],
+  args: {
+    userMessageId: string;
+    indexInTurn: number;
+    canonicalMessageId?: string;
+    canonicalText: string;
+  },
+): StreamingAssistantOverlay[] => {
+  const index = overlays.findIndex(
+    (overlay) =>
+      overlay.userMessageId === args.userMessageId &&
+      overlay.indexInTurn === args.indexInTurn,
+  );
+  if (index < 0) return overlays;
+  const current = overlays[index]!;
+  const canonicalMessageId =
+    args.canonicalMessageId ?? current.canonicalMessageId;
+  if (
+    current.text === args.canonicalText &&
+    current.locked &&
+    current.canonicalMessageId === canonicalMessageId
+  ) {
+    return overlays;
+  }
+  const next = overlays.slice();
+  next[index] = {
+    ...current,
+    text: args.canonicalText,
+    locked: true,
+    ...(canonicalMessageId ? { canonicalMessageId } : {}),
+  };
+  return next;
+};
+
 /** Stable synthetic id used for both the overlay row and its React key. */
 export const streamingAssistantOverlayId = (
   userMessageId: string,

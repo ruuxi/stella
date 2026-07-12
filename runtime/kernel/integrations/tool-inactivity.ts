@@ -10,10 +10,14 @@ import type { ToolResult } from "../tools/types.js";
  * the field: a Recall call stalled on an unbounded network await held an
  * orchestrator turn — and with it the whole conversation — indefinitely).
  *
+ * Ten minutes of total tool silence almost always means stuck; since only
+ * the tool dies (the engine gets an error result and the turn continues),
+ * a rare false positive is cheap and the bound errs tight.
+ *
  * Shares `STELLA_TOOL_INACTIVITY_TIMEOUT_MS` with the native path; <= 0
  * disables the bound.
  */
-export const DEFAULT_TOOL_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+export const DEFAULT_TOOL_INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 
 const configuredInactivityTimeoutMs = (): number => {
   const raw = process.env.STELLA_TOOL_INACTIVITY_TIMEOUT_MS?.trim();

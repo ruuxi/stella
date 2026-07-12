@@ -297,8 +297,8 @@ export const getPersistedAssistantSlots = (
 /**
  * Materialize a streaming overlay slot into a `MessageRecord` so it
  * slots into the timeline alongside persisted assistant messages.
- * When the matching persisted row exists, keep the live row's text and
- * synthetic id but borrow canonical persisted metadata/decorations.
+ * While streaming, keep the live text. Once locked, prefer canonical text too,
+ * so optimistic provider deltas cannot survive finalization.
  */
 export const overlayToMessageRecord = (
   overlay: StreamingAssistantOverlay,
@@ -310,7 +310,10 @@ export const overlayToMessageRecord = (
   type: "assistant_message",
   payload: {
     ...(persisted?.payload ?? {}),
-    text: overlay.text,
+    text:
+      overlay.locked && typeof persisted?.payload?.text === "string"
+        ? persisted.payload.text
+        : overlay.text,
     userMessageId: overlay.userMessageId,
     metadata: {
       ...((

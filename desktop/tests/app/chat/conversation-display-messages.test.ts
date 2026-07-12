@@ -74,7 +74,7 @@ describe("conversation display message merge", () => {
       "u1",
       "stream-overlay:u1:1",
     ]);
-    expect(merged[1]!.payload?.text).toBe("streamed text");
+    expect(merged[1]!.payload?.text).toBe("stored text");
     expect(merged[1]!.payload?.selfModApplied).toEqual({
       featureId: "f1",
       files: ["a.ts"],
@@ -95,7 +95,7 @@ describe("conversation display message merge", () => {
       }),
     );
 
-    expect(liveMessage.payload?.text).toBe("streamed text");
+    expect(liveMessage.payload?.text).toBe("stored text");
     expect(liveMessage.payload?.metadata).toMatchObject({
       runtime: {
         isStreaming: false,
