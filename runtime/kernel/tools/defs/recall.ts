@@ -33,10 +33,10 @@ export const createRecallTool = (
         type: "array",
         items: { type: "string" },
         description:
-          "Optional grep-like search hints for the durable memory ledger: 2-8 concrete terms from the user's wording, repo/module names, feature names, dates, file names, error text, or prior decision keywords. The recall agent will also search on its own.",
+          "Grep-like search terms: 2-8 concrete terms from the user's wording, repo/module names, feature names, dates, file names, error text, or prior decision keywords. These pre-run the memory, past-thread, and transcript searches before the recall agent starts, so pick terms that would appear in the thing you're looking for. The recall agent also reformulates and searches on its own.",
       },
     },
-    required: ["prompt"],
+    required: ["prompt", "memorySearchTerms"],
     additionalProperties: false,
   },
   execute: async (args, context, extras) => {
@@ -53,6 +53,12 @@ export const createRecallTool = (
           .map((term) => term.trim())
           .filter(Boolean)
       : undefined;
+    if (!memorySearchTerms?.length) {
+      return {
+        error:
+          "memorySearchTerms is required: pass 2-8 concrete grep-like terms (names, repo/module/feature words, dates, file names, error text) so the lookup can pre-run its searches.",
+      };
+    }
     const result = await options.contextProvider({
       conversationId: context.conversationId,
       requestId: context.requestId,
