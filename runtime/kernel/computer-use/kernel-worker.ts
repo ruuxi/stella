@@ -224,6 +224,11 @@ const nodeReplWorkerMain = async (
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
   >();
+  type ToolCallObservation = { observed: boolean };
+  type ToolCallSettlement =
+    | { ok: true }
+    | { ok: false; error: Error; observation: ToolCallObservation };
+  const pendingToolSettlements = new Set<Promise<ToolCallSettlement>>();
 
   const callSky = (method: SkyMethod, args: unknown[]): Promise<unknown> => {
     if (activeEvaluationId === null) {
@@ -329,7 +334,8 @@ const nodeReplWorkerMain = async (
       return Promise.reject(new Error("Too many pending tool calls."));
     }
     const callId = nextToolCallId++;
-    return new Promise((resolve, reject) => {
+    const observation: ToolCallObservation = { observed: false };
+    const call = new Promise<unknown>((resolve, reject) => {
       pendingToolCalls.set(callId, { resolve, reject });
       try {
         post({
@@ -343,6 +349,32 @@ const nodeReplWorkerMain = async (
         pendingToolCalls.delete(callId);
         reject(error instanceof Error ? error : new Error(String(error)));
       }
+    });
+    // Keep a handled settlement promise for every nested call. The user-facing
+    // promise remains unchanged, while evaluation can wait for calls the cell
+    // started without awaiting and surface their failures deterministically.
+    pendingToolSettlements.add(
+      call.then<ToolCallSettlement, ToolCallSettlement>(
+        () => ({ ok: true }),
+        (error: unknown) => ({
+          ok: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+          observation,
+        }),
+      ),
+    );
+    return new Proxy(call, {
+      get(target, property) {
+        const value = Reflect.get(target, property, target);
+        if (
+          property === "then" ||
+          property === "catch" ||
+          property === "finally"
+        ) {
+          observation.observed = true;
+        }
+        return typeof value === "function" ? value.bind(target) : value;
+      },
     });
   };
   const toolEntries = workerData.toolNames.map((toolName) => [
@@ -491,10 +523,28 @@ const nodeReplWorkerMain = async (
     pendingSkyCalls.clear();
     pendingBrowserCalls.clear();
     pendingToolCalls.clear();
+    pendingToolSettlements.clear();
     writes = null;
     writeBytes = 0;
     outputBuffer = "";
     outputErrorReject = undefined;
+  };
+
+  const drainPendingToolCalls = async () => {
+    let firstFailure: Error | undefined;
+    while (pendingToolSettlements.size > 0) {
+      const batch = [...pendingToolSettlements];
+      const settlements = await Promise.all(batch);
+      for (const settlement of batch) pendingToolSettlements.delete(settlement);
+      const failure = settlements.find(
+        (
+          settlement,
+        ): settlement is Extract<ToolCallSettlement, { ok: false }> =>
+          !settlement.ok && !settlement.observation.observed,
+      );
+      firstFailure ??= failure?.error;
+    }
+    if (firstFailure) throw firstFailure;
   };
 
   const evaluate = async (evaluationId: number, code: string) => {
@@ -534,6 +584,7 @@ const nodeReplWorkerMain = async (
           );
         });
       });
+      await drainPendingToolCalls();
       const lines = writes ?? [];
       if (rendered) lines.push(rendered);
       post({

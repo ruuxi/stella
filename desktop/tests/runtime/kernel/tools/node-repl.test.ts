@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import { NodeReplKernelRegistry } from "../../../../../runtime/kernel/computer-use/kernel.js";
@@ -103,6 +103,101 @@ describe("node_repl tool", () => {
     }
   });
 
+  it("drains unawaited nested tools before returning and preserves tracking", async () => {
+    let releaseNested!: () => void;
+    let markNestedStarted!: () => void;
+    const nestedStarted = new Promise<void>((resolve) => {
+      markNestedStarted = resolve;
+    });
+    const nestedGate = new Promise<void>((resolve) => {
+      releaseNested = resolve;
+    });
+    const onUpdate = vi.fn();
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: () => ({ request: async () => ({}) }),
+      executeTool: async (_name, _args, _context, _signal, update) => {
+        update?.({ result: "nested update" });
+        markNestedStarted();
+        await nestedGate;
+        return {
+          result: "edited",
+          fileChanges: [
+            { path: "/workspace/app.ts", kind: { type: "update" } },
+          ],
+          producedFiles: [
+            { path: "/workspace/report.pdf", kind: { type: "add" } },
+          ],
+        };
+      },
+    });
+    const tool = createNodeReplTool({ registry });
+    try {
+      let completed = false;
+      const evaluation = tool
+        .execute({ code: `tools.fake_tool({}); "cell complete"` }, context, {
+          onUpdate,
+        })
+        .then((result) => {
+          completed = true;
+          return result;
+        });
+
+      await nestedStarted;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(completed).toBe(false);
+      expect(onUpdate).toHaveBeenCalledWith({
+        result: "nested update",
+      });
+
+      releaseNested();
+      await expect(evaluation).resolves.toEqual({
+        result: "'cell complete'",
+        fileChanges: [{ path: "/workspace/app.ts", kind: { type: "update" } }],
+        producedFiles: [
+          { path: "/workspace/report.pdf", kind: { type: "add" } },
+        ],
+      });
+    } finally {
+      await registry.dispose();
+    }
+  });
+
+  it("fails the cell when an unawaited nested tool fails", async () => {
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: () => ({ request: async () => ({}) }),
+      executeTool: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        throw new Error("nested tool failed");
+      },
+    });
+    try {
+      await expect(
+        registry.evaluate(`tools.fake_tool({}); "premature success"`, context),
+      ).rejects.toThrow("nested tool failed");
+    } finally {
+      await registry.dispose();
+    }
+  });
+
+  it("does not fail the cell when a nested tool failure is caught", async () => {
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: () => ({ request: async () => ({}) }),
+      executeTool: async () => {
+        throw new Error("handled nested failure");
+      },
+    });
+    try {
+      await expect(
+        registry.evaluate(
+          `tools.fake_tool({}).catch(() => {}); "recovered"`,
+          context,
+        ),
+      ).resolves.toBe("'recovered'");
+    } finally {
+      await registry.dispose();
+    }
+  });
+
   it("aborts nested tools when the node_repl evaluation is cancelled", async () => {
     let nestedSignal: AbortSignal | undefined;
     let markNestedStarted!: () => void;
@@ -127,7 +222,7 @@ describe("node_repl tool", () => {
     try {
       const controller = new AbortController();
       const evaluation = registry.evaluate(
-        "await tools.fake_tool({})",
+        `tools.fake_tool({}); "must remain pending"`,
         context,
         { signal: controller.signal },
       );
