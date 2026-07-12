@@ -42,6 +42,7 @@
     "@google/genai": "^2.6.0",
     "@legendapp/list": "3.0.0",
     "@mistralai/mistralai": "^2.2.5",
+    "@modelcontextprotocol/sdk": "^1.25.2",
     "@noble/ciphers": "^2.1.1",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",

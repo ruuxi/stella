@@ -16,6 +16,7 @@ import type {
   FileChangeKind,
   FileChangeRecord,
 } from "../../contracts/file-changes.js";
+import { sanitizeSensitiveData } from "../../contracts/sensitive-data.js";
 import {
   CLAUDE_CODE_MODEL_ALIASES,
   formatClaudeCodeResolvedModel,
@@ -26,6 +27,11 @@ import {
   buildExternalCliChildEnv,
   resolveExternalCliPath,
 } from "./external-cli-resolution.js";
+import {
+  createClaudeCodeToolMcpHost,
+  type ClaudeCodeToolMcpActiveTurn,
+  type ClaudeCodeToolMcpHost,
+} from "./claude-code-tool-mcp-host.js";
 
 const CLAUDE_CODE_MODEL_PREFIX = "claude-code/";
 /**
@@ -99,7 +105,6 @@ const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
 const MAX_STDERR_CAPTURE = 4_000;
-const MAX_TOOL_RESULT_CHARS = 80_000;
 const DEFAULT_STEP_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_STEP_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 // Ceiling while native tool_use blocks are unresolved. Native tools run
@@ -124,18 +129,16 @@ const MAX_COMPACTIONS_PER_TURN = 3;
 const CLAUDE_CODE_COMPACTION_LOOP_MESSAGE =
   "Claude Code entered a compaction loop.";
 /**
- * Recovery budget for flaky step endings, shared across all structured steps
- * of one Stella turn. Covers two observed CLI failure shapes:
+ * Recovery budget for flaky step endings within one Stella turn. Covers two
+ * observed CLI failure shapes:
  *
  * - The CLI process ends (often cleanly, exit code 0) while a step prompt is
  *   still in flight, without ever emitting its `result` line. Recovery
  *   respawns the CLI and resends the same step prompt — `--resume` restores
  *   the on-disk transcript when one exists, and the missing-resume fallback
  *   reseeds from the checkpoint history otherwise.
- * - The step's `result` arrives but carries no usable payload (an empty
- *   result, or a decision JSON missing required fields — the CLI sometimes
- *   emits a truncated `StructuredOutput` like `{"type":"tool_request"}`).
- *   Recovery nudges the still-live session to restate the decision.
+ * - The step's `result` arrives without final text. Recovery nudges the
+ *   still-live session to restate the answer.
  *
  * Past the budget the turn fails to the caller with an actionable message.
  */
@@ -145,9 +148,24 @@ type ClaudeCodePromptImage = Awaited<
   ReturnType<typeof extractAttachImageBlocks>
 >["images"][number];
 
-export type ClaudeCodeToolResultPrompt = {
-  text: string;
-  images: ClaudeCodePromptImage[];
+type ClaudeCodeMcpCallRecord = {
+  toolCallId: string;
+  toolName: string;
+  status: "started" | "completed";
+  argsSummary: string;
+  outcomeSummary?: string;
+};
+
+const summarizeMcpLedgerValue = (value: unknown, maxChars: number): string => {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(sanitizeSensitiveData(value));
+  } catch {
+    serialized = "[unserializable]";
+  }
+  return serialized.length > maxChars
+    ? `${serialized.slice(0, maxChars)}...[truncated]`
+    : serialized;
 };
 
 /**
@@ -163,54 +181,64 @@ export class ClaudeCodeProcessEndedError extends Error {
    * non-mutating reconciliation prompt instead of replaying the step.
    */
   readonly fileChanges: FileChangeRecord[];
+  readonly mcpCalls: ClaudeCodeMcpCallRecord[];
 
   constructor(
     message: string,
     exitCode: number | null = null,
     fileChanges: FileChangeRecord[] = [],
+    mcpCalls: ClaudeCodeMcpCallRecord[] = [],
   ) {
     super(message);
     this.name = "ClaudeCodeProcessEndedError";
     this.exitCode = exitCode;
     this.fileChanges = fileChanges;
+    this.mcpCalls = mcpCalls;
   }
 }
 
 /**
- * The step completed but its `result` payload was unusable: empty result
- * text, or no parseable Stella decision (takeover mode).
+ * The step completed but its `result` payload contained no final text.
  */
 export class ClaudeCodeMalformedResultError extends Error {
-  readonly kind: "empty_result" | "invalid_decision";
+  readonly kind: "empty_result" | "result_error";
   /** Native-tool file writes observed on the failed step (vanilla mode). */
   readonly fileChanges: FileChangeRecord[];
+  readonly mcpCalls: ClaudeCodeMcpCallRecord[];
 
   constructor(
     message: string,
-    kind: "empty_result" | "invalid_decision",
+    kind: "empty_result" | "result_error",
     fileChanges: FileChangeRecord[] = [],
+    mcpCalls: ClaudeCodeMcpCallRecord[] = [],
   ) {
     super(message);
     this.name = "ClaudeCodeMalformedResultError";
     this.kind = kind;
     this.fileChanges = fileChanges;
+    this.mcpCalls = mcpCalls;
   }
 }
 
 /**
  * The CLI re-compacted past `MAX_COMPACTIONS_PER_TURN` within one Stella
- * turn. Handled inside `executeStructuredStepWithMode` (fresh-session
+ * turn. Handled inside `executeStepWithMode` (fresh-session
  * reseed), NOT by the step-recovery budget — a reseeded session that loops
  * again fails loudly. Carries the failed step's observed native file writes
  * so the reseed can reconcile instead of replaying them.
  */
 export class ClaudeCodeCompactionLoopError extends Error {
   readonly fileChanges: FileChangeRecord[];
+  readonly mcpCalls: ClaudeCodeMcpCallRecord[];
 
-  constructor(fileChanges: FileChangeRecord[] = []) {
+  constructor(
+    fileChanges: FileChangeRecord[] = [],
+    mcpCalls: ClaudeCodeMcpCallRecord[] = [],
+  ) {
     super(CLAUDE_CODE_COMPACTION_LOOP_MESSAGE);
     this.name = "ClaudeCodeCompactionLoopError";
     this.fileChanges = fileChanges;
+    this.mcpCalls = mcpCalls;
   }
 }
 
@@ -240,18 +268,34 @@ const asRecoverableStepError = (
  */
 const buildSideEffectReconciliationPrompt = (
   mutations: readonly FileChangeRecord[],
+  mcpCalls: readonly ClaudeCodeMcpCallRecord[] = [],
   referenceContext?: string,
 ): string => {
   const paths = [...new Set(mutations.map((change) => change.path))];
   return [
-    "The previous step was interrupted after some of its file operations had already been applied.",
+    "The previous step was interrupted after side-effecting work may already have been applied.",
+    mcpCalls.length > 0
+      ? [
+          "Stella tool calls already started before the interruption:",
+          ...mcpCalls.map((call) =>
+            [
+              `- ${call.toolName} (${call.toolCallId}, ${call.status})`,
+              `  arguments: ${call.argsSummary}`,
+              call.status === "completed"
+                ? `  completed outcome: ${call.outcomeSummary ?? "[no result]"}`
+                : "  outcome unknown; it may have applied before interruption",
+            ].join("\n"),
+          ),
+          "Some of these calls may have already completed even if Claude Code did not receive the result.",
+        ].join("\n")
+      : "",
     paths.length > 0
       ? [
           "File operations were already applied to:",
           ...paths.map((p) => `- ${p}`),
         ].join("\n")
       : "",
-    "Do NOT redo, repeat, or revert any file operations from that step.",
+    "Do NOT redo, repeat, or revert those tool calls or file operations.",
     "If you are unsure what was applied, inspect the current state of the affected files first.",
     referenceContext?.trim()
       ? [
@@ -265,16 +309,8 @@ const buildSideEffectReconciliationPrompt = (
     .join("\n\n");
 };
 
-const buildDecisionRetryPrompt = (vanilla: boolean): string =>
-  vanilla
-    ? "Your previous reply produced no result text. Provide your complete final answer to the pending request now."
-    : [
-        "Your previous reply did not contain a valid Stella decision payload, so it was discarded.",
-        "Respond with JSON only, in exactly one of these forms:",
-        '{"type":"tool_request","toolName":"<tool>","args":{...}} to run a Stella tool, or',
-        '{"type":"final","message":"<your complete answer>"} when you are done.',
-        "Restate your full next step or final answer now.",
-      ].join("\n");
+const buildResultRetryPrompt = (): string =>
+  "Your previous reply produced no result text. Provide your complete final answer to the pending request now.";
 
 const withStepRecoveryExhausted = (error: unknown): Error =>
   new Error(
@@ -302,17 +338,6 @@ type ClaudeCodeStatusChange = {
   state: "running" | "compacting" | "model-fallback";
   text: string;
 };
-
-export type ClaudeCodeDecision =
-  | {
-      type: "final";
-      message: string;
-    }
-  | {
-      type: "tool_request";
-      toolName: string;
-      args: Record<string, unknown>;
-    };
 
 export type ClaudeCodeTurnResult = {
   text: string;
@@ -360,7 +385,7 @@ type ClaudeCodeTurnRequest = {
    * Vanilla pass-through mode (per-spawn `model: claude-code` selection):
    * Claude Code keeps its own tool suite, MCP config, and system prompt — no
    * Stella tool bridge, no built-in-tool strip, no MCP override, no Stella
-   * system prompt, no structured decision schema. `tools`/`executeTool` are
+   * system prompt, and no Stella tool host. `tools`/`executeTool` are
    * ignored; the turn's natural result text is the final answer. It is not
    * a bare CLI invocation: the headless plumbing stays (stream-json I/O,
    * `--dangerously-skip-permissions`, compaction-status hook settings). The
@@ -406,21 +431,23 @@ type QueueJob = {
   reject: (reason?: unknown) => void;
 };
 
-type StructuredStepResult = {
-  action: ClaudeCodeDecision;
+type ClaudeCodeStepResult = {
+  message: string;
   sessionId: string;
   usage?: ClaudeUsage;
   /** Native-tool file writes observed during this step (vanilla mode). */
   fileChanges?: FileChangeRecord[];
 };
 
-type PendingStructuredPrompt = {
+type PendingClaudeCodePrompt = {
   request: ClaudeCodeTurnRequest;
-  resolve: (value: StructuredStepResult) => void;
+  resolve: (value: ClaudeCodeStepResult) => void;
   reject: (reason?: unknown) => void;
   emitStreamDelta: (event: Record<string, unknown>) => void;
   /** Accumulates native-tool file writes seen while this prompt streams. */
   fileChanges: FileChangeRecord[];
+  /** Native MCP calls that started while this prompt was in flight. */
+  mcpCalls: ClaudeCodeMcpCallRecord[];
   abortListener?: () => void;
   idleTimer?: ReturnType<typeof setTimeout>;
   hasOutput?: boolean;
@@ -432,7 +459,7 @@ type ClaudeCodeStreamingProcess = {
   stdoutBuffer: string;
   stderrText: string;
   finalSessionId: string;
-  pending: PendingStructuredPrompt[];
+  pending: PendingClaudeCodePrompt[];
   closed: boolean;
   /** True while the CLI is inside a compaction (PreCompact seen, no PostCompact yet). */
   compacting: boolean;
@@ -458,6 +485,14 @@ type SessionState = {
   queue: QueueJob[];
   artifactDir?: string;
   process?: ClaudeCodeStreamingProcess;
+  /** Private native-tool server reused for this CLI session/catalog. */
+  mcpHost?: ClaudeCodeToolMcpHost;
+  mcpToolCatalogKey?: string;
+  mcpConfigPath?: string;
+  /** Turn-scoped callbacks consulted lazily by the session MCP host. */
+  activeMcpTurn?: ClaudeCodeToolMcpActiveTurn;
+  /** A successful NoResponse tool call permits this native turn to end empty. */
+  allowEmptyNativeFinal?: boolean;
   /**
    * True once a model fallback has been surfaced for this session — either
    * our own fable fallback policy engaging or the CLI announcing a switch it
@@ -624,24 +659,6 @@ const materializeAttachments = (
   return notes;
 };
 
-const stringifyUnknown = (value: unknown): string => {
-  if (typeof value === "string") return value;
-  if (value == null) return "";
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-};
-
-const trimForPrompt = (
-  value: string,
-  maxChars = MAX_TOOL_RESULT_CHARS,
-): string =>
-  value.length > maxChars
-    ? `${value.slice(0, maxChars)}\n\n[Truncated by Stella]`
-    : value;
-
 const buildInitialPrompt = (
   session: SessionState,
   request: ClaudeCodeTurnRequest,
@@ -660,88 +677,14 @@ const buildInitialPrompt = (
     .join("\n\n");
 };
 
-export const buildToolResultPrompt = async (args: {
-  toolCallId: string;
-  toolName: string;
-  toolArgs: Record<string, unknown>;
-  toolResult: ToolResult;
-}): Promise<ClaudeCodeToolResultPrompt> => {
-  const rawResultText = stringifyUnknown(args.toolResult.result);
-  const { text: forwardedResultText, images } =
-    // The Claude Code engine runs on Anthropic; resize tool-result
-    // screenshots to Anthropic's high-resolution-tier caps (2576px).
-    await extractAttachImageBlocks(rawResultText, { provider: "anthropic" });
-  const serializedResult = trimForPrompt(
-    stringifyUnknown({
-      result: forwardedResultText || args.toolResult.result,
-      details: args.toolResult.details,
-      error: args.toolResult.error ?? null,
-      attachments:
-        images.length > 0
-          ? images.map((image, index) => ({
-              index: index + 1,
-              type: image.type,
-              mimeType: image.mimeType,
-              sizeBytes: Math.round((image.data.length * 3) / 4),
-            }))
-          : undefined,
-    }),
-  );
-  const text = [
-    "A Stella tool request has completed.",
-    `Tool call id: ${args.toolCallId}`,
-    `Tool name: ${args.toolName}`,
-    "Tool arguments:",
-    stringifyUnknown(args.toolArgs),
-    images.length > 0
-      ? [
-          "Tool result attachments:",
-          ...images.map(
-            (image, index) =>
-              `- Attachment ${index + 1}: ${image.mimeType}, ${Math.round((image.data.length * 3) / 4 / 1024)}KB`,
-          ),
-          "The text result below had Stella inline image markers resolved so the next decision can account for attached screenshot output.",
-        ].join("\n")
-      : "",
-    "Tool result:",
-    serializedResult,
-    "Decide the next step and respond with JSON only.",
-  ]
-    .filter((section) => section.trim().length > 0)
-    .join("\n\n");
-  return { text, images };
-};
-
-const CLAUDE_CODE_RESPONSE_SCHEMA = JSON.stringify({
-  type: "object",
-  properties: {
-    type: { type: "string", enum: ["final", "tool_request"] },
-    message: { type: "string" },
-    toolName: { type: "string" },
-    args: {
-      type: "object",
-      additionalProperties: true,
-    },
-  },
-  required: ["type"],
-  additionalProperties: false,
-});
-
-export const buildClaudeCodeToolRuntimePrompt = (
+export const buildClaudeCodeNativeToolRuntimePrompt = (
   systemPrompt: string | undefined,
-  tools: ToolMetadata[],
 ): string =>
   [
     systemPrompt?.trim() ?? "",
-    "Stella Claude Code runtime contract:",
-    "Claude Code built-in tools are disabled for this session. Only Stella-hosted tools are available.",
+    "Claude Code built-in tools are disabled for this session. Use the available Stella tools when needed and answer the user normally when finished.",
+    "If you successfully call NoResponse and have nothing else to say, finish without adding a user-visible response.",
     "Never mention MCP, missing Claude tools, or the raw tool protocol to the user.",
-    'Use `{\"type\":\"tool_request\",\"toolName\":\"...\",\"args\":{...}}` when you need a Stella tool.',
-    "When you are ready to answer the user, answer normally. Stella also accepts the schema final form if Claude Code emits structured output.",
-    'If you call `NoResponse` and do not need to say anything else, return `{\"type\":\"final\",\"message\":\"\"}` on the next turn.',
-    "Only request one tool at a time.",
-    "Available Stella tools:",
-    JSON.stringify(tools, null, 2),
   ]
     .filter((section) => section.trim().length > 0)
     .join("\n\n");
@@ -750,42 +693,6 @@ const asObject = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
-
-export const parseClaudeCodeDecision = (
-  value: unknown,
-): ClaudeCodeDecision | null => {
-  const record = asObject(value);
-  if (!record) return null;
-  if (record.type === "final" && typeof record.message === "string") {
-    return {
-      type: "final",
-      message: record.message,
-    };
-  }
-  if (
-    record.type === "tool_request" &&
-    typeof record.toolName === "string" &&
-    asObject(record.args)
-  ) {
-    return {
-      type: "tool_request",
-      toolName: record.toolName,
-      args: asObject(record.args) ?? {},
-    };
-  }
-  return null;
-};
-
-const mergeUsage = (
-  left: ClaudeUsage | undefined,
-  right: ClaudeUsage | undefined,
-): ClaudeUsage | undefined => {
-  if (!left && !right) return undefined;
-  return {
-    inputTokens: (left?.inputTokens ?? 0) + (right?.inputTokens ?? 0),
-    outputTokens: (left?.outputTokens ?? 0) + (right?.outputTokens ?? 0),
-  };
-};
 
 const parseStreamJsonLine = (line: string): Record<string, unknown> | null => {
   try {
@@ -880,11 +787,7 @@ const updateClaudeCodeNativeToolActivity = (
     if (!Array.isArray(content)) return;
     for (const raw of content) {
       const block = asObject(raw);
-      if (
-        block?.type === "tool_use" &&
-        block.name !== "StructuredOutput" &&
-        typeof block.id === "string"
-      ) {
+      if (block?.type === "tool_use" && typeof block.id === "string") {
         activeToolUseIds.add(block.id);
       } else if (
         block?.type === "tool_result" &&
@@ -902,11 +805,7 @@ const updateClaudeCodeNativeToolActivity = (
     const source = asObject(event.event);
     if (source?.type === "content_block_start") {
       const block = asObject(source.content_block);
-      if (
-        block?.type === "tool_use" &&
-        block.name !== "StructuredOutput" &&
-        typeof block.id === "string"
-      ) {
+      if (block?.type === "tool_use" && typeof block.id === "string") {
         activeToolUseIds.add(block.id);
       }
     }
@@ -930,199 +829,46 @@ const mergeFileChanges = (
   }
 };
 
-const JSON_STRING_ESCAPES: Record<string, string> = {
-  '"': '"',
-  "\\": "\\",
-  "/": "/",
-  b: "\b",
-  f: "\f",
-  n: "\n",
-  r: "\r",
-  t: "\t",
-};
-
-const isHighSurrogate = (char: string): boolean => {
-  const code = char.charCodeAt(0);
-  return code >= 0xd800 && code <= 0xdbff;
-};
-
-/**
- * Incrementally decodes the `message` string out of a streaming Claude Code
- * "final" decision payload (`{"type":"final","message":"..."}`). Claude Code
- * delivers that payload either as `StructuredOutput` tool-input JSON
- * (`input_json_delta`) or as plain text deltas that ARE the JSON — in both
- * cases the user-visible answer would otherwise not stream at all and pop in
- * whole at result time. Feed raw JSON fragments to `push`; it returns the
- * newly decoded message text (empty until the payload is known to be a final
- * message, and forever for any other payload shape, e.g. tool requests).
- *
- * Field order is tolerated: type-first payloads
- * (`{"type":"final","message":"..."}`) stream the message incrementally,
- * while message-first payloads (`{"message":"...","type":"final"}`) buffer
- * the message and emit it whole once the trailing `type` confirms the
- * payload is a final answer (emitting earlier could leak a tool request's
- * commentary).
- *
- * Decoding handles fragment boundaries that split JSON escape sequences
- * (`\n`, `\uXXXX`) and surrogate pairs: incomplete tails are held back until
- * the next fragment completes them.
- */
-export const createClaudeCodeFinalMessageDecoder = () => {
-  let raw = "";
-  let phase:
-    | "detect"
-    | "message"
-    | "buffered-message"
-    | "await-type"
-    | "done"
-    | "reject" = "detect";
-  /** Scan cursor into `raw` once inside the message string. */
-  let cursor = 0;
-  /** Held-back high surrogate awaiting its low half. */
-  let carry = "";
-  /** Decoded message held back until a trailing `type` confirms `final`. */
-  let buffered = "";
-
-  const FINAL_MESSAGE_PREFIX =
-    /^\s*\{\s*"type"\s*:\s*"final"\s*,\s*"message"\s*:\s*"/;
-  const TYPE_VALUE = /^\s*\{\s*"type"\s*:\s*"([^"]*)"/;
-  const MESSAGE_FIRST_PREFIX = /^\s*\{\s*"message"\s*:\s*"/;
-  const TRAILING_TYPE_VALUE = /"type"\s*:\s*"([^"]*)"/;
-
-  /** Decode string content from `cursor`; stops at the closing quote. */
-  const decodeStringChunk = (): { text: string; closed: boolean } => {
-    let out = "";
-    while (cursor < raw.length) {
-      const char = raw[cursor]!;
-      if (char === '"') {
-        return { text: out, closed: true };
+const mergeMcpCalls = (
+  target: ClaudeCodeMcpCallRecord[],
+  records: readonly ClaudeCodeMcpCallRecord[] | undefined,
+): void => {
+  for (const record of records ?? []) {
+    const existing = target.find(
+      (entry) => entry.toolCallId === record.toolCallId,
+    );
+    if (existing) {
+      if (record.status === "completed") {
+        existing.status = "completed";
+        existing.outcomeSummary = record.outcomeSummary;
       }
-      if (char === "\\") {
-        const escape = raw[cursor + 1];
-        if (escape === undefined) break; // wait for the rest of the escape
-        if (escape === "u") {
-          const hex = raw.slice(cursor + 2, cursor + 6);
-          if (hex.length < 4) break;
-          const code = Number.parseInt(hex, 16);
-          out += Number.isNaN(code) ? "" : String.fromCharCode(code);
-          cursor += 6;
-          continue;
-        }
-        out += JSON_STRING_ESCAPES[escape] ?? escape;
-        cursor += 2;
-        continue;
-      }
-      out += char;
-      cursor += 1;
+      continue;
     }
-    return { text: out, closed: false };
-  };
-
-  return {
-    push(fragment: string): string {
-      if (!fragment || phase === "done" || phase === "reject") return "";
-      raw += fragment;
-      if (phase === "detect") {
-        const typeMatch = TYPE_VALUE.exec(raw);
-        if (typeMatch && typeMatch[1] !== "final") {
-          phase = "reject";
-          raw = "";
-          return "";
-        }
-        const prefixMatch = FINAL_MESSAGE_PREFIX.exec(raw);
-        if (prefixMatch) {
-          cursor = prefixMatch[0].length;
-          phase = "message";
-        } else {
-          const messageFirstMatch = MESSAGE_FIRST_PREFIX.exec(raw);
-          if (!messageFirstMatch) return "";
-          cursor = messageFirstMatch[0].length;
-          phase = "buffered-message";
-        }
-      }
-      if (phase === "message") {
-        const { text, closed } = decodeStringChunk();
-        if (closed) {
-          phase = "done";
-        }
-        let out = carry + text;
-        carry = "";
-        // Never emit a dangling high surrogate; hold it for the low half.
-        const last = out.at(-1);
-        if (phase === "message" && last && isHighSurrogate(last)) {
-          carry = last;
-          out = out.slice(0, -1);
-        }
-        return out;
-      }
-      if (phase === "buffered-message") {
-        const { text, closed } = decodeStringChunk();
-        buffered += text;
-        if (!closed) return "";
-        cursor += 1; // past the closing quote
-        phase = "await-type";
-      }
-      // phase === "await-type": the message string closed before `type`
-      // arrived; wait for it to confirm the payload is a final answer.
-      const typeMatch = TRAILING_TYPE_VALUE.exec(raw.slice(cursor));
-      if (!typeMatch) return "";
-      if (typeMatch[1] === "final") {
-        phase = "done";
-        const out = buffered;
-        buffered = "";
-        return out;
-      }
-      phase = "reject";
-      buffered = "";
-      raw = "";
-      return "";
-    },
-  };
+    target.push({ ...record });
+  }
 };
 
-/**
- * Per-step stream emitter. Turns raw Claude Code stream-json events into the
- * user-visible text stream:
- *
- * - Natural assistant text deltas pass through, except when a step's visible
- *   text starts with `{`/`[` — that step IS a decision payload, so instead of
- *   suppressing it wholesale the final-message decoder streams its `message`
- *   field (tool requests still emit nothing).
- * - `StructuredOutput` tool-input deltas stream the decoded final `message`
- *   the same way — without this, tool-loop answers never stream and pop in
- *   whole at result time.
- * - Only the FIRST source to produce visible output owns the step: when
- *   Claude streams a natural-text answer and then restates it as structured
- *   output, the restatement stays silent instead of double-emitting.
- * - Message/text-block boundaries within a step (multiple assistant messages
- *   stream through one emitter, e.g. around vanilla-mode tool use) inject a
- *   paragraph break when the joined halves would otherwise fuse — Claude Code
- *   emits no separator between them, which used to concatenate the last word
- *   of one message with the first word of the next.
- */
 export const createClaudeCodeStreamEmitter = (
   onStream?: (chunk: string) => void,
 ) => {
-  let mode: "unknown" | "emit" | "suppress" = "unknown";
-  let pending = "";
-  let owner: "none" | "text" | "structured" = "none";
   let lastVisibleChar = "";
   let boundaryPending = false;
-  let structuredDecoder: ReturnType<
-    typeof createClaudeCodeFinalMessageDecoder
-  > | null = null;
-  let suppressedTextDecoder: ReturnType<
-    typeof createClaudeCodeFinalMessageDecoder
-  > | null = null;
-
-  const emitVisible = (source: "text" | "structured", text: string) => {
-    if (!text) return;
-    if (owner === "none") {
-      owner = source;
-    } else if (owner !== source) {
+  return (event: Record<string, unknown>) => {
+    if (event.type !== "stream_event") return;
+    const source = asObject(event.event) ?? event;
+    if (source.type === "message_start") {
+      boundaryPending = true;
       return;
     }
-    let out = text;
+    if (source.type === "content_block_start") {
+      if (asObject(source.content_block)?.type === "text") {
+        boundaryPending = true;
+      }
+      return;
+    }
+    const delta = getClaudeCodeTextDeltaFromStreamEvent(event);
+    if (!delta) return;
+    let out = delta;
     if (
       boundaryPending &&
       lastVisibleChar &&
@@ -1134,66 +880,6 @@ export const createClaudeCodeStreamEmitter = (
     boundaryPending = false;
     lastVisibleChar = out.at(-1) ?? lastVisibleChar;
     onStream?.(out);
-  };
-
-  return (event: Record<string, unknown>) => {
-    if (event.type !== "stream_event") return;
-    const source = asObject(event.event) ?? event;
-    if (source.type === "message_start") {
-      boundaryPending = true;
-      return;
-    }
-    if (source.type === "content_block_start") {
-      const block = asObject(source.content_block);
-      if (block?.type === "text") {
-        boundaryPending = true;
-      }
-      structuredDecoder =
-        block?.type === "tool_use" && block.name === "StructuredOutput"
-          ? createClaudeCodeFinalMessageDecoder()
-          : null;
-      return;
-    }
-    if (source.type === "content_block_delta") {
-      const rawDelta = asObject(source.delta);
-      if (
-        rawDelta?.type === "input_json_delta" &&
-        structuredDecoder &&
-        typeof rawDelta.partial_json === "string"
-      ) {
-        emitVisible(
-          "structured",
-          structuredDecoder.push(rawDelta.partial_json),
-        );
-        return;
-      }
-    }
-    const delta = getClaudeCodeTextDeltaFromStreamEvent(event);
-    if (!delta) return;
-    if (mode === "emit") {
-      emitVisible("text", delta);
-      return;
-    }
-    if (mode === "suppress") {
-      emitVisible("text", suppressedTextDecoder?.push(delta) ?? "");
-      return;
-    }
-    pending += delta;
-    const firstVisible = pending.trimStart().at(0);
-    if (!firstVisible) return;
-    if (firstVisible === "{" || firstVisible === "[") {
-      // The step's visible text is a decision payload. Don't paint the raw
-      // JSON — but if it turns out to be a "final" decision, stream its
-      // decoded `message` so the answer still reveals progressively.
-      mode = "suppress";
-      suppressedTextDecoder = createClaudeCodeFinalMessageDecoder();
-      emitVisible("text", suppressedTextDecoder.push(pending));
-      pending = "";
-      return;
-    }
-    mode = "emit";
-    emitVisible("text", pending);
-    pending = "";
   };
 };
 
@@ -1308,12 +994,35 @@ const cleanupSessionArtifacts = (session: SessionState) => {
   session.artifactDir = undefined;
 };
 
+const resetSessionMcpClients = (session: SessionState, reason: unknown) => {
+  void session.mcpHost?.resetClientSessions(reason).catch(() => {
+    // Process teardown must continue even if a stale transport resists close.
+  });
+};
+
 const cleanupSessionProcess = (session: SessionState) => {
   if (!session.process) {
     return;
   }
+  resetSessionMcpClients(
+    session,
+    new Error("Claude Code session process was closed."),
+  );
   killProcess(session.process.child);
   session.process = undefined;
+};
+
+const cleanupSessionMcpHost = (session: SessionState) => {
+  const host = session.mcpHost;
+  session.mcpHost = undefined;
+  session.mcpToolCatalogKey = undefined;
+  session.mcpConfigPath = undefined;
+  session.activeMcpTurn = undefined;
+  if (host) {
+    void host.close().catch(() => {
+      // The private loopback listener is best-effort cleanup on teardown.
+    });
+  }
 };
 
 const ensureSessionState = (
@@ -1338,6 +1047,7 @@ const ensureSessionState = (
       return existing;
     }
     cleanupSessionProcess(existing);
+    cleanupSessionMcpHost(existing);
     cleanupSessionArtifacts(existing);
     const replacement: SessionState = {
       sessionId: persistedSessionId ?? crypto.randomUUID(),
@@ -1436,6 +1146,7 @@ class ClaudeCodeSessionRuntime {
       this.activeProcesses.delete(sessionKey);
     }
     cleanupSessionProcess(session);
+    cleanupSessionMcpHost(session);
     cleanupSessionArtifacts(session);
     this.sessions.delete(sessionKey);
     this.closeWhenIdle.delete(sessionKey);
@@ -1448,6 +1159,7 @@ class ClaudeCodeSessionRuntime {
     this.activeProcesses.clear();
     for (const session of this.sessions.values()) {
       cleanupSessionProcess(session);
+      cleanupSessionMcpHost(session);
       cleanupSessionArtifacts(session);
     }
     this.sessions.clear();
@@ -1462,6 +1174,7 @@ class ClaudeCodeSessionRuntime {
       if (session.running || session.queue.length > 0) continue;
       if (now - session.lastUsedAt > SESSION_IDLE_TTL_MS) {
         cleanupSessionProcess(session);
+        cleanupSessionMcpHost(session);
         cleanupSessionArtifacts(session);
         this.sessions.delete(sessionKey);
       }
@@ -1499,12 +1212,10 @@ class ClaudeCodeSessionRuntime {
     // Stella runtime contract, no system-prompt override.
     const effectiveSystemPrompt = request.vanilla
       ? ""
-      : buildClaudeCodeToolRuntimePrompt(request.systemPrompt, request.tools);
-    let usage: ClaudeUsage | undefined;
+      : buildClaudeCodeNativeToolRuntimePrompt(request.systemPrompt);
     const turnFileChanges: FileChangeRecord[] = [];
     const turnFileChangeKeys = new Set<string>();
-    let nextPrompt = buildInitialPrompt(session, request);
-    let nextPromptImages: ClaudeCodePromptImage[] = [];
+    const prompt = buildInitialPrompt(session, request);
 
     // Every user message reattempts the configured model: a fallback from a
     // previous turn does not stick to the session. The next
@@ -1512,72 +1223,115 @@ class ClaudeCodeSessionRuntime {
     // the configured model with --resume.
     session.modelOverride = undefined;
     session.fableSafetyFailures = 0;
+    session.allowEmptyNativeFinal = false;
 
-    // The compaction loop breaker counts per Stella turn, across all
-    // structured steps of that turn.
+    // The compaction loop breaker counts per Stella turn.
     if (session.process) {
       session.process.compacting = false;
       session.process.compactionCount = 0;
     }
 
-    const recoveryBudget = { remaining: MAX_STEP_RECOVERIES_PER_TURN };
-    for (;;) {
-      const response = await this.executeStructuredStepWithRecovery(
+    if (!request.vanilla) {
+      session.activeMcpTurn = {
+        executeTool: async (
+          toolCallId,
+          toolName,
+          toolArgs,
+          toolSignal,
+          onUpdate,
+        ) => {
+          const pending = session.process?.pending[0];
+          const callRecord: ClaudeCodeMcpCallRecord = {
+            toolCallId,
+            toolName,
+            status: "started",
+            argsSummary: summarizeMcpLedgerValue(toolArgs, 4_000),
+          };
+          pending?.mcpCalls.push(callRecord);
+          const signal =
+            request.abortSignal && toolSignal
+              ? AbortSignal.any([request.abortSignal, toolSignal])
+              : (request.abortSignal ?? toolSignal);
+          const toolResult = await executeToolWithInactivityBound({
+            toolName,
+            signal,
+            run: (boundedSignal, onActivity) =>
+              request.executeTool(
+                toolCallId,
+                toolName,
+                toolArgs,
+                boundedSignal,
+                (update) => {
+                  onActivity();
+                  onUpdate?.(update);
+                  request.onToolUpdate?.({
+                    toolCallId,
+                    toolName,
+                    update,
+                  });
+                },
+              ),
+          });
+          callRecord.status = "completed";
+          callRecord.outcomeSummary = summarizeMcpLedgerValue(
+            {
+              result: toolResult.result,
+              details: toolResult.details,
+              error: toolResult.error,
+            },
+            6_000,
+          );
+          if (toolName === "NoResponse" && !toolResult.error) {
+            session.allowEmptyNativeFinal = true;
+          }
+          mergeFileChanges(
+            turnFileChanges,
+            turnFileChangeKeys,
+            toolResult.fileChanges,
+          );
+          if (pending) {
+            const pendingKeys = new Set(
+              pending.fileChanges.map(fileChangeDedupeKey),
+            );
+            mergeFileChanges(
+              pending.fileChanges,
+              pendingKeys,
+              toolResult.fileChanges,
+            );
+          }
+          return toolResult;
+        },
+      };
+    }
+
+    try {
+      const response = await this.executeStepWithRecovery(
         session,
         request,
         effectiveSystemPrompt,
-        nextPrompt,
-        nextPromptImages,
-        recoveryBudget,
+        prompt,
+        [],
+        { remaining: MAX_STEP_RECOVERIES_PER_TURN },
       );
-      usage = mergeUsage(usage, response.usage);
       mergeFileChanges(
         turnFileChanges,
         turnFileChangeKeys,
         response.fileChanges,
       );
-      if (response.action.type === "final") {
-        return {
-          text: response.action.message,
-          sessionId: response.sessionId,
-          usage,
-          ...(turnFileChanges.length > 0
-            ? { fileChanges: turnFileChanges }
-            : {}),
-        };
-      }
-      const toolName = response.action.toolName;
-      const toolArgs = response.action.args;
-      const toolCallId = crypto.randomUUID();
-      // Bridged Stella tools run outside the CLI, so the pending-prompt idle
-      // watchdog cannot see them; without this bound a tool that never
-      // settles holds the whole turn (and the conversation) open forever.
-      const toolResult = await executeToolWithInactivityBound({
-        toolName,
-        signal: request.abortSignal,
-        run: (signal, onActivity) =>
-          request.executeTool(toolCallId, toolName, toolArgs, signal, (update) => {
-            onActivity();
-            request.onToolUpdate?.({
-              toolCallId,
-              toolName,
-              update,
-            });
-          }),
-      });
-      const toolResultPrompt = await buildToolResultPrompt({
-        toolCallId,
-        toolName,
-        toolArgs,
-        toolResult,
-      });
-      nextPrompt = toolResultPrompt.text;
-      nextPromptImages = toolResultPrompt.images;
+      return {
+        text: response.message,
+        sessionId: response.sessionId,
+        usage: response.usage,
+        ...(turnFileChanges.length > 0 ? { fileChanges: turnFileChanges } : {}),
+      };
+    } finally {
+      session.activeMcpTurn = undefined;
+      session.allowEmptyNativeFinal = false;
     }
   }
 
   /**
-   * Run one structured step, absorbing recoverable CLI flakiness within the
+   * Run one Claude Code turn, absorbing recoverable CLI flakiness within the
    * turn's shared recovery budget:
    *
    * - `process_ended`: the CLI died (or exited cleanly) before delivering the
@@ -1586,35 +1340,36 @@ class ClaudeCodeSessionRuntime {
    *   to reseeding from `resumeFallbackPrompt`. If the failed attempt had
    *   already applied native file writes, the retry switches to a
    *   non-mutating reconciliation prompt so those edits are never replayed.
-   * - `malformed_result`: the CLI answered but the payload was unusable
-   *   (empty result / invalid decision JSON). The session process is still
-   *   alive with full context, so send a corrective nudge prompt instead.
+   * - `malformed_result`: the CLI answered without final text. The session
+   *   process is still alive with full context, so send a corrective nudge.
    *
    * Native file writes observed on failed attempts are merged into the
    * eventual step result so recoveries never drop artifacts. Aborted runs
    * never retry; exhausted budgets rethrow with an actionable message.
    */
-  private async executeStructuredStepWithRecovery(
+  private async executeStepWithRecovery(
     session: SessionState,
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
     prompt: string,
     promptImages: readonly ClaudeCodePromptImage[],
     recoveryBudget: { remaining: number },
-  ): Promise<StructuredStepResult> {
+  ): Promise<ClaudeCodeStepResult> {
     let currentPrompt = prompt;
     let currentPromptImages = promptImages;
     const failedAttemptFileChanges: FileChangeRecord[] = [];
     const failedAttemptFileChangeKeys = new Set<string>();
+    const failedAttemptMcpCalls: ClaudeCodeMcpCallRecord[] = [];
     for (;;) {
       try {
-        const result = await this.executeStructuredStep(
+        const result = await this.executeStep(
           session,
           request,
           effectiveSystemPrompt,
           currentPrompt,
           currentPromptImages,
           failedAttemptFileChanges,
+          failedAttemptMcpCalls,
         );
         if (failedAttemptFileChanges.length === 0) {
           return result;
@@ -1629,15 +1384,21 @@ class ClaudeCodeSessionRuntime {
         if (request.abortSignal?.aborted) {
           throw error;
         }
-        // Fable refusal/overload policy: retry the configured model, then
-        // fall back — resending the SAME prompt either way (a refused step
-        // produced no decision to preserve). Separate cap from the shared
-        // recovery budget: capped by SAFETY_ABORT_FABLE_ATTEMPTS plus one
-        // fallback per turn, so this cannot loop.
-        if (this.applyFableFallbackPolicy(session, request, error)) {
+        const recoverable = asRecoverableStepError(error);
+        const hasPossibleSideEffects = Boolean(
+          recoverable &&
+          (recoverable.fileChanges.length > 0 ||
+            recoverable.mcpCalls.length > 0),
+        );
+        // A normal refusal/overload can retry the configured model and then
+        // fall back. Once any tool call started, the same prompt is never
+        // replayed: even an aborted/errored call may already have committed.
+        if (
+          !hasPossibleSideEffects &&
+          this.applyFableFallbackPolicy(session, request, error)
+        ) {
           continue;
         }
-        const recoverable = asRecoverableStepError(error);
         if (!recoverable) {
           throw error;
         }
@@ -1646,6 +1407,7 @@ class ClaudeCodeSessionRuntime {
           failedAttemptFileChangeKeys,
           recoverable.fileChanges,
         );
+        mergeMcpCalls(failedAttemptMcpCalls, recoverable.mcpCalls);
         if (recoveryBudget.remaining <= 0) {
           throw withStepRecoveryExhausted(error);
         }
@@ -1656,15 +1418,24 @@ class ClaudeCodeSessionRuntime {
           // the respawned session must reconcile, not redo. (Bash-side writes
           // stay invisible to this guard — the stream only names file-tool
           // paths.)
-          if (failedAttemptFileChanges.length > 0) {
+          if (
+            failedAttemptFileChanges.length > 0 ||
+            failedAttemptMcpCalls.length > 0
+          ) {
             currentPrompt = buildSideEffectReconciliationPrompt(
               failedAttemptFileChanges,
+              failedAttemptMcpCalls,
             );
             currentPromptImages = [];
           }
           continue;
         }
-        currentPrompt = buildDecisionRetryPrompt(Boolean(request.vanilla));
+        currentPrompt = hasPossibleSideEffects
+          ? buildSideEffectReconciliationPrompt(
+              failedAttemptFileChanges,
+              failedAttemptMcpCalls,
+            )
+          : buildResultRetryPrompt();
         currentPromptImages = [];
       }
     }
@@ -1721,15 +1492,16 @@ class ClaudeCodeSessionRuntime {
     return true;
   }
 
-  private async executeStructuredStep(
+  private async executeStep(
     session: SessionState,
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
     prompt: string,
     promptImages: readonly ClaudeCodePromptImage[],
     observedMutations: readonly FileChangeRecord[] = [],
-  ): Promise<StructuredStepResult> {
-    return await this.executeStructuredStepWithMode(
+    observedMcpCalls: readonly ClaudeCodeMcpCallRecord[] = [],
+  ): Promise<ClaudeCodeStepResult> {
+    return await this.executeStepWithMode(
       session,
       request,
       effectiveSystemPrompt,
@@ -1738,6 +1510,7 @@ class ClaudeCodeSessionRuntime {
       true,
       promptImages,
       observedMutations,
+      observedMcpCalls,
     );
   }
 
@@ -1748,7 +1521,7 @@ class ClaudeCodeSessionRuntime {
    * prompt is the reconciliation prompt — never `resumeFallbackPrompt`,
    * whose history+request would replay the mutations on the fresh session.
    */
-  private async executeStructuredStepWithMode(
+  private async executeStepWithMode(
     session: SessionState,
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
@@ -1757,20 +1530,23 @@ class ClaudeCodeSessionRuntime {
     allowCompactionLoopRestart = true,
     promptImages: readonly ClaudeCodePromptImage[] = [],
     observedMutations: readonly FileChangeRecord[] = [],
-  ): Promise<StructuredStepResult> {
+    observedMcpCalls: readonly ClaudeCodeMcpCallRecord[] = [],
+  ): Promise<ClaudeCodeStepResult> {
     // Reseeded sessions have no transcript, so a mutation-guarded reseed
     // embeds the would-be seed prompt as reference-only context.
     const buildReseedPrompt = (
       mutations: readonly FileChangeRecord[],
+      mcpCalls: readonly ClaudeCodeMcpCallRecord[],
     ): string =>
-      mutations.length > 0
+      mutations.length > 0 || mcpCalls.length > 0
         ? buildSideEffectReconciliationPrompt(
             mutations,
+            mcpCalls,
             request.resumeFallbackPrompt ?? prompt,
           )
         : (request.resumeFallbackPrompt ?? prompt);
     try {
-      const processState = this.ensureStreamingProcess(
+      const processState = await this.ensureStreamingProcess(
         session,
         request,
         effectiveSystemPrompt,
@@ -1787,7 +1563,7 @@ class ClaudeCodeSessionRuntime {
       const message = normalizeErrorMessage(error);
       if (!useResume && isSessionAlreadyInUseError(message)) {
         this.resetStreamingProcess(request.sessionKey, session);
-        return await this.executeStructuredStepWithMode(
+        return await this.executeStepWithMode(
           session,
           request,
           effectiveSystemPrompt,
@@ -1796,6 +1572,7 @@ class ClaudeCodeSessionRuntime {
           allowCompactionLoopRestart,
           promptImages,
           observedMutations,
+          observedMcpCalls,
         );
       }
       if (useResume && isMissingResumeSessionError(message)) {
@@ -1803,15 +1580,16 @@ class ClaudeCodeSessionRuntime {
         session.sessionId = crypto.randomUUID();
         session.turnCount = 0;
         session.resumeReady = false;
-        return await this.executeStructuredStepWithMode(
+        return await this.executeStepWithMode(
           session,
           request,
           effectiveSystemPrompt,
-          buildReseedPrompt(observedMutations),
+          buildReseedPrompt(observedMutations, observedMcpCalls),
           false,
           allowCompactionLoopRestart,
           promptImages,
           observedMutations,
+          observedMcpCalls,
         );
       }
       if (
@@ -1829,19 +1607,22 @@ class ClaudeCodeSessionRuntime {
         const mutations = [...observedMutations];
         const mutationKeys = new Set(mutations.map(fileChangeDedupeKey));
         mergeFileChanges(mutations, mutationKeys, error.fileChanges);
+        const mcpCalls = [...observedMcpCalls];
+        mergeMcpCalls(mcpCalls, error.mcpCalls);
         this.resetStreamingProcess(request.sessionKey, session);
         session.sessionId = crypto.randomUUID();
         session.turnCount = 0;
         session.resumeReady = false;
-        const result = await this.executeStructuredStepWithMode(
+        const result = await this.executeStepWithMode(
           session,
           request,
           effectiveSystemPrompt,
-          buildReseedPrompt(mutations),
+          buildReseedPrompt(mutations, mcpCalls),
           false,
           false,
           promptImages,
           mutations,
+          mcpCalls,
         );
         if (error.fileChanges.length === 0) {
           return result;
@@ -1861,6 +1642,7 @@ class ClaudeCodeSessionRuntime {
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
     useResume: boolean,
+    mcpHost?: ClaudeCodeToolMcpHost,
   ): string[] {
     // A turn-scoped fallback override (fable exhausted its attempts) beats
     // the configured model; executeTurn clears it at every turn start.
@@ -1880,18 +1662,17 @@ class ClaudeCodeSessionRuntime {
       CLAUDE_CODE_HOOK_SETTINGS,
     ];
     if (!request.vanilla) {
-      // Stella takeover mode: strip Claude Code's own tools and MCP servers
-      // and route every tool call through the Stella bridge via the
-      // structured decision schema. Vanilla mode keeps Claude Code's own
-      // tools/config (though still headless: permissions-skip, stream-json,
-      // and hook settings above apply in both modes).
+      if (!mcpHost || !session.mcpConfigPath) {
+        throw new Error("Claude Code native tool host is unavailable.");
+      }
+      // Native takeover: Claude owns the tool loop. Its built-ins and all
+      // ambient/user MCP servers remain disabled; only this run-private,
+      // token-authenticated Stella server is visible.
       args.push(
         "--strict-mcp-config",
         "--mcp-config",
-        '{"mcpServers":{}}',
+        session.mcpConfigPath,
         "--disable-slash-commands",
-        "--json-schema",
-        CLAUDE_CODE_RESPONSE_SCHEMA,
         "--tools",
         "",
       );
@@ -1912,27 +1693,79 @@ class ClaudeCodeSessionRuntime {
     session: SessionState,
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
+    mcpHost?: ClaudeCodeToolMcpHost,
   ): string {
     return JSON.stringify([
       session.modelOverride ?? parseClaudeCodeModel(request.modelId) ?? "",
       request.effortLevel?.trim() ?? "",
       Boolean(request.vanilla),
+      mcpHost?.toolCatalogHash ?? "",
       effectiveSystemPrompt.trim(),
       request.autoCompactWindowTokens ?? null,
       request.autoCompactTriggerPct ?? null,
     ]);
   }
 
-  private ensureStreamingProcess(
+  private async ensureMcpHost(
+    session: SessionState,
+    request: ClaudeCodeTurnRequest,
+  ): Promise<ClaudeCodeToolMcpHost | undefined> {
+    if (request.vanilla) {
+      if (session.mcpHost) {
+        await session.mcpHost.close().catch(() => undefined);
+        session.mcpHost = undefined;
+        session.mcpToolCatalogKey = undefined;
+        session.mcpConfigPath = undefined;
+      }
+      return undefined;
+    }
+    const catalogKey = crypto
+      .createHash("sha256")
+      .update(JSON.stringify(request.tools))
+      .digest("hex");
+    if (session.mcpHost && session.mcpToolCatalogKey === catalogKey) {
+      return session.mcpHost;
+    }
+    // A process spawned against the old immutable catalog cannot be pointed
+    // at a replacement listener in place. Stop it before rotating the host;
+    // the caller resumes the same Claude conversation on the new process.
+    this.resetStreamingProcess(request.sessionKey, session);
+    if (session.mcpHost) {
+      await session.mcpHost.close().catch(() => undefined);
+    }
+    session.mcpHost = await createClaudeCodeToolMcpHost({
+      tools: request.tools,
+      getActiveTurn: () => session.activeMcpTurn,
+    });
+    session.mcpToolCatalogKey = catalogKey;
+    session.mcpConfigPath = path.join(
+      ensureArtifactDir(session),
+      "claude-code-mcp.json",
+    );
+    fs.writeFileSync(
+      session.mcpConfigPath,
+      JSON.stringify({
+        mcpServers: { stella: session.mcpHost.mcpServerConfig },
+      }),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    // writeFile's mode does not tighten an existing path after host rotation.
+    fs.chmodSync(session.mcpConfigPath, 0o600);
+    return session.mcpHost;
+  }
+
+  private async ensureStreamingProcess(
     session: SessionState,
     request: ClaudeCodeTurnRequest,
     effectiveSystemPrompt: string,
     useResume: boolean,
-  ): ClaudeCodeStreamingProcess {
+  ): Promise<ClaudeCodeStreamingProcess> {
+    const mcpHost = await this.ensureMcpHost(session, request);
     const launchConfig = this.buildProcessLaunchConfig(
       session,
       request,
       effectiveSystemPrompt,
+      mcpHost,
     );
     if (session.process && !session.process.closed) {
       if (session.process.launchConfig === launchConfig) {
@@ -1980,6 +1813,7 @@ class ClaudeCodeSessionRuntime {
         request,
         effectiveSystemPrompt,
         useResume,
+        mcpHost,
       ),
       {
         stdio: ["pipe", "pipe", "pipe"],
@@ -2107,11 +1941,13 @@ class ClaudeCodeSessionRuntime {
           }
           this.detachAbortListener(completed);
           try {
-            const stepResult = this.parseStructuredResultPayload(
+            const stepResult = this.parseResultPayload(
               session,
               parsedLine,
               processState.stderrText,
-              Boolean(completed.request.vanilla),
+              Boolean(
+                !completed.request.vanilla && session.allowEmptyNativeFinal,
+              ),
             );
             completed.resolve(
               completed.fileChanges.length > 0
@@ -2126,6 +1962,9 @@ class ClaudeCodeSessionRuntime {
               completed.fileChanges.length > 0
             ) {
               error.fileChanges.push(...completed.fileChanges);
+            }
+            if (error instanceof ClaudeCodeMalformedResultError) {
+              mergeMcpCalls(error.mcpCalls, completed.mcpCalls);
             }
             completed.reject(error);
           }
@@ -2156,7 +1995,9 @@ class ClaudeCodeSessionRuntime {
         `Failed to start Claude Code: ${normalizeErrorMessage(error)}`,
       );
       processState.closed = true;
-      if (session.process === processState) {
+      const ownsSessionProcess = session.process === processState;
+      if (ownsSessionProcess) {
+        resetSessionMcpClients(session, wrapped);
         session.process = undefined;
       }
       // A restart may already have registered a replacement child under this
@@ -2166,14 +2007,26 @@ class ClaudeCodeSessionRuntime {
       }
       for (const pending of processState.pending.splice(0)) {
         this.detachAbortListener(pending);
-        pending.reject(wrapped);
+        pending.reject(
+          new ClaudeCodeProcessEndedError(
+            wrapped.message,
+            null,
+            pending.fileChanges,
+            pending.mcpCalls,
+          ),
+        );
       }
     });
 
     child.once("close", (code) => {
       consumeStdout(true);
       processState.closed = true;
-      if (session.process === processState) {
+      const ownsSessionProcess = session.process === processState;
+      if (ownsSessionProcess) {
+        resetSessionMcpClients(
+          session,
+          new Error("Claude Code process exited."),
+        );
         session.process = undefined;
       }
       // A restart may already have registered a replacement child under this
@@ -2193,6 +2046,7 @@ class ClaudeCodeSessionRuntime {
                 message,
                 code,
                 pending.fileChanges,
+                pending.mcpCalls,
               ),
         );
       }
@@ -2207,22 +2061,30 @@ class ClaudeCodeSessionRuntime {
     request: ClaudeCodeTurnRequest,
     prompt: string,
     promptImages: readonly ClaudeCodePromptImage[] = [],
-  ): Promise<StructuredStepResult> {
+  ): Promise<ClaudeCodeStepResult> {
     if (processState.closed || processState.child.stdin.destroyed) {
       throw new ClaudeCodeProcessEndedError("Claude Code stream is closed.");
     }
-    return await new Promise<StructuredStepResult>((resolve, reject) => {
-      const pending: PendingStructuredPrompt = {
+    return await new Promise<ClaudeCodeStepResult>((resolve, reject) => {
+      const pending: PendingClaudeCodePrompt = {
         request,
         resolve,
         reject,
         emitStreamDelta: createClaudeCodeStreamEmitter(request.onStream),
         fileChanges: [],
+        mcpCalls: [],
         activeNativeToolUseIds: new Set(),
       };
       this.refreshPendingIdleTimer(processState, pending);
       if (request.abortSignal) {
-        pending.abortListener = () => abortProcess(processState.child);
+        pending.abortListener = () => {
+          resetSessionMcpClients(
+            session,
+            request.abortSignal?.reason ??
+              new Error("Claude Code run aborted."),
+          );
+          abortProcess(processState.child);
+        };
         if (request.abortSignal.aborted) {
           pending.abortListener();
         } else {
@@ -2274,13 +2136,14 @@ class ClaudeCodeSessionRuntime {
             `Failed to write Claude Code prompt: ${normalizeErrorMessage(error)}`,
             null,
             pending.fileChanges,
+            pending.mcpCalls,
           ),
         );
       });
     });
   }
 
-  private detachAbortListener(pending: PendingStructuredPrompt): void {
+  private detachAbortListener(pending: PendingClaudeCodePrompt): void {
     if (pending.idleTimer) {
       clearTimeout(pending.idleTimer);
       pending.idleTimer = undefined;
@@ -2295,7 +2158,7 @@ class ClaudeCodeSessionRuntime {
 
   private refreshPendingIdleTimer(
     processState: ClaudeCodeStreamingProcess,
-    pending: PendingStructuredPrompt,
+    pending: PendingClaudeCodePrompt,
   ): void {
     if (pending.idleTimer) {
       clearTimeout(pending.idleTimer);
@@ -2340,12 +2203,12 @@ class ClaudeCodeSessionRuntime {
     pending.idleTimer.unref?.();
   }
 
-  private parseStructuredResultPayload(
+  private parseResultPayload(
     session: SessionState,
     parsed: Record<string, unknown>,
     stderrText: string,
-    vanilla = false,
-  ): StructuredStepResult {
+    allowEmptyFinal = false,
+  ): ClaudeCodeStepResult {
     let resultError: string | undefined;
     if (parsed.is_error === true) {
       const parsedError =
@@ -2357,7 +2220,7 @@ class ClaudeCodeSessionRuntime {
       resultError = parsedError || "Claude Code reported an error.";
     }
     if (resultError) {
-      throw new Error(resultError);
+      throw new ClaudeCodeMalformedResultError(resultError, "result_error");
     }
     const usageRaw = parsed.usage as Record<string, unknown> | undefined;
     const inputTokens = asNumber(
@@ -2370,70 +2233,18 @@ class ClaudeCodeSessionRuntime {
       inputTokens !== undefined || outputTokens !== undefined
         ? { inputTokens, outputTokens }
         : undefined;
-    if (vanilla) {
-      // No decision schema in vanilla mode — the result text IS the final
-      // answer, even when it happens to look like JSON. An empty result is
-      // an error, not a silent empty success.
-      const message =
-        typeof parsed.result === "string" ? parsed.result.trim() : "";
-      if (!message) {
-        throw new ClaudeCodeMalformedResultError(
-          stderrText.trim() || "Claude Code returned an empty result.",
-          "empty_result",
-        );
-      }
-      session.turnCount += 1;
-      session.lastUsedAt = Date.now();
-      return {
-        action: {
-          type: "final",
-          message,
-        },
-        sessionId: session.sessionId,
-        usage,
-      };
-    }
-    const decision =
-      parseClaudeCodeDecision(parsed.structured_output) ??
-      (typeof parsed.result === "string"
-        ? parseClaudeCodeDecision(
-            (() => {
-              try {
-                return JSON.parse(parsed.result) as unknown;
-              } catch {
-                return null;
-              }
-            })(),
-          )
-        : null);
-    const naturalResult =
+    const message =
       typeof parsed.result === "string" ? parsed.result.trim() : "";
-    if (!decision && naturalResult && !naturalResult.startsWith("{")) {
-      session.turnCount += 1;
-      session.lastUsedAt = Date.now();
-      return {
-        action: {
-          type: "final",
-          message: naturalResult,
-        },
-        sessionId: session.sessionId,
-        usage,
-      };
-    }
-    if (!decision) {
-      const stderrMessage = stderrText.trim();
+    if (!message && !allowEmptyFinal) {
       throw new ClaudeCodeMalformedResultError(
-        stderrMessage ||
-          "Claude Code returned an invalid Stella decision payload.",
-        "invalid_decision",
+        stderrText.trim() || "Claude Code returned an empty result.",
+        "empty_result",
       );
     }
-
     session.turnCount += 1;
     session.lastUsedAt = Date.now();
-
     return {
-      action: decision,
+      message,
       sessionId: session.sessionId,
       usage,
     };
@@ -2441,7 +2252,7 @@ class ClaudeCodeSessionRuntime {
 
   /**
    * Kill a session process stuck in a compaction loop and fail its in-flight
-   * prompts with a recognizable error so `executeStructuredStepWithMode` can
+   * prompts with a recognizable error so `executeStepWithMode` can
    * restart the turn on a fresh session seeded from the checkpoint history.
    */
   private failCompactionLoop(
@@ -2457,13 +2268,19 @@ class ClaudeCodeSessionRuntime {
       this.activeProcesses.delete(sessionKey);
     }
     const failed = processState.pending.splice(0);
+    resetSessionMcpClients(session, new ClaudeCodeCompactionLoopError());
     killProcess(processState.child);
     for (const pending of failed) {
       this.detachAbortListener(pending);
       // Typed and file-change-aware: the reseed path must know which native
       // writes this step already applied so it reconciles instead of
       // replaying them, and reports them on the eventual result.
-      pending.reject(new ClaudeCodeCompactionLoopError(pending.fileChanges));
+      pending.reject(
+        new ClaudeCodeCompactionLoopError(
+          pending.fileChanges,
+          pending.mcpCalls,
+        ),
+      );
     }
   }
 
@@ -2475,6 +2292,10 @@ class ClaudeCodeSessionRuntime {
       return;
     }
     const child = session.process.child;
+    resetSessionMcpClients(
+      session,
+      new Error("Claude Code process is restarting."),
+    );
     killProcess(child);
     session.process = undefined;
     if (this.activeProcesses.get(sessionKey) === child) {
