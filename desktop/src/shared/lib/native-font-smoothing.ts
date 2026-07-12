@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { uiState } from "@/platform/ui-state";
 
 const NATIVE_FONT_SMOOTHING_KEY = "stella-native-font-smoothing";
@@ -47,17 +47,21 @@ export const setNativeFontSmoothingEnabled = (enabled: boolean) => {
 };
 
 export const useNativeFontSmoothingEnabled = (): boolean => {
-  const [enabled, setEnabled] = useState(getNativeFontSmoothingEnabled);
-
-  useEffect(() => {
-    const sync = () => setEnabled(getNativeFontSmoothingEnabled());
-    window.addEventListener("storage", sync);
-    window.addEventListener(NATIVE_FONT_SMOOTHING_CHANGED_EVENT, sync);
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    window.addEventListener("storage", onStoreChange);
+    window.addEventListener(NATIVE_FONT_SMOOTHING_CHANGED_EVENT, onStoreChange);
     return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener(NATIVE_FONT_SMOOTHING_CHANGED_EVENT, sync);
+      window.removeEventListener("storage", onStoreChange);
+      window.removeEventListener(
+        NATIVE_FONT_SMOOTHING_CHANGED_EVENT,
+        onStoreChange,
+      );
     };
   }, []);
 
-  return enabled;
+  return useSyncExternalStore(
+    subscribe,
+    getNativeFontSmoothingEnabled,
+    () => true,
+  );
 };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "@/ui/icons";
 import type { DiscoveryCategory } from "../../../../runtime/contracts/discovery.js";
 import {
@@ -166,6 +166,17 @@ export const OnboardingStep1 = ({
     showEnginePhase,
     showMigrationPhase,
   ]);
+  const discoverySelectionsRef = useRef(false);
+  const initialNotificationSentRef = useRef(false);
+  const handlePhaseChange = useCallback(
+    (nextPhase: Phase) => {
+      onSelectionChange?.(
+        nextPhase === "browser" && discoverySelectionsRef.current,
+      );
+      onPhaseChange?.(nextPhase);
+    },
+    [onPhaseChange, onSelectionChange],
+  );
   const {
     phase,
     leaving,
@@ -180,7 +191,7 @@ export const OnboardingStep1 = ({
     onComplete,
     onEnterSplit,
     onInteract,
-    onPhaseChange,
+    onPhaseChange: handlePhaseChange,
     skippedPhases,
   });
 
@@ -191,6 +202,16 @@ export const OnboardingStep1 = ({
     onSelectionChange,
     phase,
   });
+  discoverySelectionsRef.current = discovery.hasSelections;
+
+  // Transitions notify their owner in the initiating transaction. The
+  // initial phase has no initiating event, so mount is the one legitimate
+  // lifecycle synchronization.
+  useEffect(() => {
+    if (initialNotificationSentRef.current) return;
+    initialNotificationSentRef.current = true;
+    handlePhaseChange(initialPhase);
+  }, [handlePhaseChange, initialPhase]);
 
   const appearance = useOnboardingAppearance();
   const handleMemoryContinue = useOnboardingMemory(nextSplitStep);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { uiState } from "@/platform/ui-state";
 import { Switch } from "@/ui/switch";
 import { Select } from "@/ui/select";
@@ -38,7 +38,7 @@ export function AudioTab() {
   const [micEnabled, setMicEnabled] = useState(() => isMicrophoneEnabled());
   const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
   const [dictationSuperFast, setDictationSuperFast] = useState(() =>
-    isDictationSuperFastEnabled(),
+    isMicrophoneEnabled() && isDictationSuperFastEnabled(),
   );
   const [enhanceDictation, setEnhanceDictation] = useState(() =>
     isDictationEnhanceEnabled(),
@@ -65,6 +65,7 @@ export function AudioTab() {
   const [microphoneStatus, setMicrophoneStatus] =
     useState<MicrophonePermissionStatus>("unknown");
   const microphoneRecovery = useMicrophoneRecovery();
+  const micTransactionRef = useRef(0);
 
   const syncPermissionStatus = useCallback(async () => {
     const result = await window.electronAPI?.system.getPermissionStatus?.();
@@ -92,15 +93,33 @@ export function AudioTab() {
   }, [t]);
 
   useEffect(() => {
-    void syncPermissionStatus();
-  }, [syncPermissionStatus]);
+    let cancelled = false;
+    void (async () => {
+      await syncPermissionStatus();
+      if (cancelled) return;
+      if (isMicrophoneEnabled()) {
+        await loadDevices();
+      } else if (isDictationSuperFastEnabled()) {
+        setDictationSuperFastPreference(false);
+        void setDictationSuperFastModeEnabled(false).catch(() => undefined);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadDevices, syncPermissionStatus]);
 
   useEffect(() => {
     let cancelled = false;
     void window.electronAPI?.system
       ?.getWakeWordEnabled?.()
       .then((enabled) => {
-        if (!cancelled) setWakeWordEnabled(enabled);
+        if (cancelled) return;
+        const nextEnabled = isMicrophoneEnabled() && enabled;
+        setWakeWordEnabled(nextEnabled);
+        if (enabled && !nextEnabled) {
+          void window.electronAPI?.system?.setWakeWordEnabled?.(false);
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -128,58 +147,63 @@ export function AudioTab() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!micEnabled) {
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      await syncPermissionStatus();
-      if (!cancelled) {
-        await loadDevices();
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [micEnabled, loadDevices, syncPermissionStatus]);
-
   const handleMicToggle = useCallback(
     (checked: boolean) => {
+      const transaction = ++micTransactionRef.current;
       const microphoneDenied =
         platform === "darwin" && microphoneStatus === "denied";
 
       setMicEnabled(checked);
       uiState.setItem(MIC_ENABLED_KEY, checked ? "true" : "false");
 
-      if (checked) {
-        void (async () => {
-          if (microphoneDenied) {
-            setPermissionError(t("settings.audio.errors.micDeniedReset"));
-            setMicEnabled(false);
-            uiState.setItem(MIC_ENABLED_KEY, "false");
-            return;
-          }
-
-          try {
-            await requestBrowserMicrophoneAccess();
-            await syncPermissionStatus();
-            await loadDevices();
-          } catch {
-            const permissionStatus = await syncPermissionStatus();
-            setPermissionError(
-              permissionStatus?.microphoneStatus === "denied"
-                ? t("settings.audio.errors.micDeniedReset")
-                : t("settings.audio.errors.micDenied"),
-            );
-            setMicEnabled(false);
-            uiState.setItem(MIC_ENABLED_KEY, "false");
-          }
-        })();
+      if (!checked) {
+        if (dictationSuperFast) {
+          setDictationSuperFast(false);
+          setDictationSuperFastPreference(false);
+          void setDictationSuperFastModeEnabled(false).catch(() => undefined);
+        }
+        if (wakeWordEnabled) {
+          setWakeWordEnabled(false);
+          void window.electronAPI?.system?.setWakeWordEnabled?.(false);
+        }
+        return;
       }
+
+      void (async () => {
+        if (microphoneDenied) {
+          setPermissionError(t("settings.audio.errors.micDeniedReset"));
+          setMicEnabled(false);
+          uiState.setItem(MIC_ENABLED_KEY, "false");
+          return;
+        }
+
+        try {
+          await requestBrowserMicrophoneAccess();
+          await syncPermissionStatus();
+          if (micTransactionRef.current !== transaction) return;
+          await loadDevices();
+        } catch {
+          const permissionStatus = await syncPermissionStatus();
+          if (micTransactionRef.current !== transaction) return;
+          setPermissionError(
+            permissionStatus?.microphoneStatus === "denied"
+              ? t("settings.audio.errors.micDeniedReset")
+              : t("settings.audio.errors.micDenied"),
+          );
+          setMicEnabled(false);
+          uiState.setItem(MIC_ENABLED_KEY, "false");
+        }
+      })();
     },
-    [loadDevices, microphoneStatus, platform, syncPermissionStatus, t],
+    [
+      dictationSuperFast,
+      loadDevices,
+      microphoneStatus,
+      platform,
+      syncPermissionStatus,
+      t,
+      wakeWordEnabled,
+    ],
   );
 
   const handleDictationSuperFastToggle = useCallback((checked: boolean) => {
@@ -241,22 +265,6 @@ export function AudioTab() {
       cancelled = true;
     };
   }, [localDictationSupported, t]);
-
-  useEffect(() => {
-    if (!micEnabled && dictationSuperFast) {
-      handleDictationSuperFastToggle(false);
-      return;
-    }
-    if (micEnabled && dictationSuperFast) {
-      void setDictationSuperFastModeEnabled(true).catch(() => undefined);
-    }
-  }, [dictationSuperFast, handleDictationSuperFastToggle, micEnabled]);
-
-  useEffect(() => {
-    if (!micEnabled && wakeWordEnabled) {
-      handleWakeWordToggle(false);
-    }
-  }, [micEnabled, wakeWordEnabled, handleWakeWordToggle]);
 
   const handleMicChange = useCallback((deviceId: string) => {
     setSelectedMicId(deviceId);

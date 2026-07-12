@@ -99,18 +99,12 @@ const PetBubbleMessage = ({ message }: { message: string }) => {
     active: 0,
   }));
 
-  useEffect(() => {
-    setBubble((current) => {
-      if (current.slots[current.active] === message) return current;
-      const nextActive: 0 | 1 = current.active === 0 ? 1 : 0;
-      const nextSlots: [string, string] = [...current.slots] as [
-        string,
-        string,
-      ];
-      nextSlots[nextActive] = message;
-      return { slots: nextSlots, active: nextActive };
-    });
-  }, [message]);
+  if (slots[active] !== message) {
+    const nextActive: 0 | 1 = active === 0 ? 1 : 0;
+    const nextSlots: [string, string] = [...slots] as [string, string];
+    nextSlots[nextActive] = message;
+    setBubble({ slots: nextSlots, active: nextActive });
+  }
 
   return (
     <div className="pet-overlay-bubble-message">

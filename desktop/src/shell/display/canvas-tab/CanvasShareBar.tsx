@@ -11,7 +11,7 @@
  * (e.g. the mini window, which has no Convex provider), so the sandboxed
  * canvas renderer never reaches for Convex outside a provider.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Copy, Globe, LoaderCircle, Trash2 } from "@/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { showToast } from "@/ui/toast";
@@ -134,20 +134,24 @@ const SharedLinksPanel = () => {
   const [error, setError] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!share) return;
+    const generation = ++loadGenerationRef.current;
     setError(false);
     try {
-      setLinks(await share.listMine());
+      const nextLinks = await share.listMine();
+      if (generation === loadGenerationRef.current) setLinks(nextLinks);
     } catch {
-      setError(true);
+      if (generation === loadGenerationRef.current) setError(true);
     }
   }, [share]);
 
   // Reload whenever the panel mounts or a publish/revoke bumps `version`.
   useEffect(() => {
     void load();
+    return () => { loadGenerationRef.current += 1; };
   }, [load, version]);
 
   const onCopy = useCallback(async (link: SharedCanvasLink) => {

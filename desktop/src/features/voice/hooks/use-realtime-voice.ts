@@ -36,8 +36,7 @@ export const shouldPersistVoiceTranscriptToHistory = (
   VoiceSessionEvent,
   { type: "user-transcript" | "assistant-transcript" }
 > =>
-  (event.type === "user-transcript" ||
-    event.type === "assistant-transcript") &&
+  (event.type === "user-transcript" || event.type === "assistant-transcript") &&
   event.isFinal &&
   event.text.trim().length > 0;
 
@@ -456,20 +455,9 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
       return;
     }
 
-    void api.voice
-      .getRuntimeState()
-      .then((snapshot) => {
-        micLevelRef.current = snapshot.micLevel;
-        outputLevelRef.current = snapshot.outputLevel;
-        setRuntimeState(snapshot);
-      })
-      .catch(() => {
-        micLevelRef.current = DEFAULT_RUNTIME_STATE.micLevel;
-        outputLevelRef.current = DEFAULT_RUNTIME_STATE.outputLevel;
-        setRuntimeState(DEFAULT_RUNTIME_STATE);
-      });
-
+    let receivedLiveSnapshot = false;
     const unsubscribe = api.voice.onRuntimeState((snapshot) => {
+      receivedLiveSnapshot = true;
       micLevelRef.current = snapshot.micLevel;
       outputLevelRef.current = snapshot.outputLevel;
       setRuntimeState((previous) => {
@@ -484,6 +472,21 @@ export function useRealtimeVoice(): UseRealtimeVoiceResult {
         return snapshot;
       });
     });
+
+    void api.voice
+      .getRuntimeState()
+      .then((snapshot) => {
+        if (receivedLiveSnapshot) return;
+        micLevelRef.current = snapshot.micLevel;
+        outputLevelRef.current = snapshot.outputLevel;
+        setRuntimeState(snapshot);
+      })
+      .catch(() => {
+        if (receivedLiveSnapshot) return;
+        micLevelRef.current = DEFAULT_RUNTIME_STATE.micLevel;
+        outputLevelRef.current = DEFAULT_RUNTIME_STATE.outputLevel;
+        setRuntimeState(DEFAULT_RUNTIME_STATE);
+      });
 
     return () => {
       unsubscribe();

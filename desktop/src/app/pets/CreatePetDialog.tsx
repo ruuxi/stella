@@ -73,8 +73,11 @@ const buildPetId = (): string => {
 
 const isMediaJobSnapshot = (
   value: unknown,
-): value is { status?: string; output?: unknown; error?: { message?: string } } =>
-  Boolean(value) && typeof value === "object";
+): value is {
+  status?: string;
+  output?: unknown;
+  error?: { message?: string };
+} => Boolean(value) && typeof value === "object";
 
 export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
   const { createPet } = useUserPetMutations();
@@ -84,12 +87,13 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
   const [prompt, setPrompt] = useState("");
   const [visibility, setVisibility] = useState<UserPetVisibility>("private");
   const [submitting, setSubmitting] = useState(false);
-  const [previewState, setPreviewState] =
-    useState<PetAnimationState>("idle");
+  const [previewState, setPreviewState] = useState<PetAnimationState>("idle");
 
   const objectUrlsRef = useRef<string[]>([]);
+  const generationRef = useRef(0);
   useEffect(
     () => () => {
+      generationRef.current += 1;
       for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
       objectUrlsRef.current = [];
     },
@@ -97,6 +101,7 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
   );
 
   const resetTransient = useCallback(() => {
+    generationRef.current += 1;
     for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
     objectUrlsRef.current = [];
     setState({ ...EMPTY });
@@ -130,8 +135,18 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
         return;
       }
       void (async () => {
+        const generation = generationRef.current;
         try {
           const processed = await processUserPetAtlasImage(url);
+          if (
+            generation !== generationRef.current ||
+            currentJobId !== state.jobId
+          ) {
+            URL.revokeObjectURL(processed.objectUrl);
+            if (processed.preview)
+              URL.revokeObjectURL(processed.preview.objectUrl);
+            return;
+          }
           for (const u of objectUrlsRef.current) URL.revokeObjectURL(u);
           objectUrlsRef.current = [processed.objectUrl];
           if (processed.preview) {
@@ -144,11 +159,13 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
             error: null,
           });
         } catch (err) {
+          if (generation !== generationRef.current) return;
           setState({
             jobId: currentJobId,
             blob: null,
             busy: false,
-            error: err instanceof Error ? err.message : "Couldn't process atlas",
+            error:
+              err instanceof Error ? err.message : "Couldn't process atlas",
           });
         }
       })();
@@ -184,6 +201,8 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
       });
       return;
     }
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
     for (const u of objectUrlsRef.current) URL.revokeObjectURL(u);
     objectUrlsRef.current = [];
     processedJobsRef.current = new Set();
@@ -193,6 +212,7 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
         name: "",
         description: trimmedPrompt,
       });
+      if (generation !== generationRef.current) return;
       // Pet atlas generation runs entirely inside this dialog; suppress
       // the global media materializer so the raw PNG never registers as a
       // workspace media item.
@@ -204,6 +224,7 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
         error: null,
       });
     } catch (err) {
+      if (generation !== generationRef.current) return;
       const message =
         err instanceof Error ? err.message : "Couldn't start generation";
       setState({ jobId: null, blob: null, busy: false, error: message });
@@ -288,8 +309,8 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
   const generateLabel = state.busy
     ? "Generating…"
     : ready
-    ? "Regenerate"
-    : "Generate";
+      ? "Regenerate"
+      : "Generate";
   const hasDraft =
     prompt.trim().length > 0 ||
     state.jobId !== null ||
@@ -321,10 +342,10 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
               state.blob
                 ? "ready"
                 : state.busy
-                ? "busy"
-                : state.error
-                ? "error"
-                : "empty"
+                  ? "busy"
+                  : state.error
+                    ? "error"
+                    : "empty"
             }
           >
             {state.blob ? (
@@ -340,8 +361,8 @@ export function CreatePetDialog({ open, onOpenChange }: CreatePetDialogProps) {
                   {state.busy
                     ? "Painting your pet…"
                     : state.error
-                    ? state.error
-                    : "Your pet appears here"}
+                      ? state.error
+                      : "Your pet appears here"}
                 </span>
               </div>
             )}

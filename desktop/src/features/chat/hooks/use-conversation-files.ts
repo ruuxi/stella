@@ -74,10 +74,6 @@ export const useConversationFiles = (
   const [localRetryTick, setLocalRetryTick] = useState(0);
 
   useEffect(() => {
-    setSnapshotState({ visitToken, snapshot: EMPTY_SNAPSHOT });
-  }, [visitToken]);
-
-  useEffect(() => {
     if (!isLocalMode || !conversationId) {
       setSnapshotState({
         visitToken,
@@ -140,11 +136,9 @@ export const useConversationFiles = (
 
   const files = activeSnapshot.window.files;
 
-  const hasOlderFiles =
-    activeSnapshot.hasLoaded && files.length >= limit;
+  const hasOlderFiles = activeSnapshot.hasLoaded && files.length >= limit;
 
-  const isLoadingOlder =
-    pendingLimit !== null && files.length < pendingLimit;
+  const isLoadingOlder = pendingLimit !== null && files.length < pendingLimit;
 
   useEffect(() => {
     if (pendingLimit === null) return;
@@ -155,12 +149,7 @@ export const useConversationFiles = (
     if (activeSnapshot.hasLoaded && !hasOlderFiles) {
       setPendingLimit(null);
     }
-  }, [
-    activeSnapshot.hasLoaded,
-    files.length,
-    hasOlderFiles,
-    pendingLimit,
-  ]);
+  }, [activeSnapshot.hasLoaded, files.length, hasOlderFiles, pendingLimit]);
 
   const loadOlder = useCallback(() => {
     if (!conversationId || !isLocalMode) return;

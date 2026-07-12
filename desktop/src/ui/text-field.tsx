@@ -60,7 +60,7 @@ export const TextField = React.forwardRef<
     ? (props.value ?? props.defaultValue)
     : undefined;
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (!multiline) {
       return;
     }

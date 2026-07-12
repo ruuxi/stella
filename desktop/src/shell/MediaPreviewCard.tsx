@@ -296,7 +296,7 @@ const AudioCard = ({
         {isMissing ? (
           <div className="display-media__missing">File no longer available.</div>
         ) : (
-          <AudioPlayer src={file?.url ?? null} />
+          <AudioPlayer key={file?.url ?? "audio-loading"} src={file?.url ?? null} />
         )}
         <div className="display-media__audio-name">{filenameOf(filePath)}</div>
       </div>

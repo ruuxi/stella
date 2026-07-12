@@ -238,6 +238,7 @@ export function EngineTabContent() {
   const [status, setStatus] = useState<Status | null>(null);
   const [mediaTab, setMediaTab] = useState<MediaTab>("agents");
   const credentials = useLlmCredentials();
+  const validateOAuth = credentials.validateOAuth;
   const codexCatalog = useCodexModelCatalog();
   const [chatGptConnection, setChatGptConnection] = useState<
     "checking" | "connected" | "disconnected" | "needs-reauth"
@@ -394,7 +395,7 @@ export function EngineTabContent() {
   useEffect(() => {
     if (selectedEngine !== "codex_cli") return;
     let cancelled = false;
-    void credentials.validateOAuth(OPENAI_CODEX_PROVIDER).then((result) => {
+    void validateOAuth(OPENAI_CODEX_PROVIDER).then((result) => {
       if (!cancelled) {
         setChatGptConnection(
           result.connected
@@ -408,7 +409,7 @@ export function EngineTabContent() {
     return () => {
       cancelled = true;
     };
-  }, [credentials.validateOAuth, selectedEngine]);
+  }, [selectedEngine, validateOAuth]);
 
   useEffect(() => {
     if (
@@ -577,6 +578,7 @@ export function EngineTabContent() {
     [
       chatGptConnection,
       codexCatalog.error,
+      codexCatalog.loading,
       codexCatalog.models,
       credentials,
       engineCatalogModels,

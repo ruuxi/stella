@@ -59,9 +59,16 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     useState<DiscoveryWelcomeStatus>("idle");
   const synthesizedRef = useRef(false);
   const synthesizingRef = useRef(false);
+  const discoveryJobRef = useRef(0);
 
   const handleDiscoveryConfirm = useCallback(
     (categories: DiscoveryCategory[]) => {
+      // A new confirmation supersedes every in-flight discovery operation.
+      // Async work cannot be aborted at the IPC boundary, so generation
+      // identity prevents an older run from publishing into a newer flow.
+      discoveryJobRef.current += 1;
+      synthesizedRef.current = false;
+      synthesizingRef.current = false;
       const nextCategories = withBrowserDiscoveryCategory(categories);
       setDiscoveryCategories(nextCategories);
       setWelcomeStatus(nextCategories.length > 0 ? "preparing" : "ready");
@@ -97,6 +104,8 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
     }
     synthesizingRef.current = true;
     setWelcomeStatus("preparing");
+    const jobId = ++discoveryJobRef.current;
+    const isCurrentJob = () => discoveryJobRef.current === jobId;
 
     const run = async () => {
       let completed = false;
@@ -107,6 +116,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           window.electronAPI?.discovery.checkKnowledgeExists?.() ??
             Promise.resolve(false),
         ]);
+        if (!isCurrentJob()) return;
         if (coreMemoryExists && discoveryKnowledgeExists) {
           completed = true;
           synthesizedRef.current = true;
@@ -130,6 +140,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
           selectedBrowser,
           selectedProfile,
         });
+        if (!isCurrentJob()) return;
 
         if (!result) {
           reportDiscoveryFailure("Signal collection returned no result.");
@@ -161,6 +172,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
             includeWelcomeHtml: false,
           },
         );
+        if (!isCurrentJob()) return;
         if (!synthesisResult.coreMemory) {
           reportDiscoveryFailure(
             "Core memory synthesis returned an empty result.",
@@ -205,6 +217,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
                 error: "Knowledge write IPC is unavailable.",
               }),
         ]);
+        if (!isCurrentJob()) return;
 
         if (!coreMemoryWrite?.ok || !knowledgeWrite?.ok) {
           reportDiscoveryFailure("Failed to save discovery memory.", {
@@ -216,6 +229,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
 
         if (synthesisResult.welcomeMessage) {
           try {
+            if (!isCurrentJob()) return;
             await window.electronAPI?.localChat.persistDiscoveryWelcome?.({
               conversationId: activeConversationId,
               message: synthesisResult.welcomeMessage,
@@ -229,6 +243,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         }
 
         completed = true;
+        if (!isCurrentJob()) return;
         synthesizedRef.current = true;
         setWelcomeStatus("ready");
 
@@ -239,6 +254,7 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
               : await generateWelcomeHtml(synthesisResult.coreMemory, {
                   includeAuth: hasConnectedAccount,
                 });
+            if (!isCurrentJob()) return;
             const firstReport = buildOnboardingFirstReport(
               htmlResult.welcomeHtml,
             );
@@ -256,17 +272,27 @@ export function useDiscoveryFlow({ conversationId }: UseDiscoveryFlowOptions) {
         };
         void persistWelcomeHtml();
       } catch (error) {
-        reportDiscoveryFailure("Discovery failed unexpectedly.", error);
-      } finally {
-        if (!completed) {
-          synthesizedRef.current = true;
-          setWelcomeStatus("ready");
+        if (isCurrentJob()) {
+          reportDiscoveryFailure("Discovery failed unexpectedly.", error);
         }
-        synthesizingRef.current = false;
+      } finally {
+        if (isCurrentJob()) {
+          if (!completed) {
+            synthesizedRef.current = true;
+            setWelcomeStatus("ready");
+          }
+          synthesizingRef.current = false;
+        }
       }
     };
 
     void run();
+    return () => {
+      if (discoveryJobRef.current === jobId) {
+        discoveryJobRef.current += 1;
+        synthesizingRef.current = false;
+      }
+    };
   }, [discoveryCategories, hasConnectedAccount, activeConversationId]);
 
   return {

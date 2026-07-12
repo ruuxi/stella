@@ -58,11 +58,17 @@ type Props = {
  * the first send after a cold load (especially when ConversationEvents
  * mounts for the first time on home→chat).
  */
-function useOneShotIds(ids: readonly string[], durationMs: number): Set<string> {
+function useOneShotIds(
+  ids: readonly string[],
+  durationMs: number,
+): Set<string> {
   const key = useMemo(() => [...new Set(ids)].sort().join("\n"), [ids]);
   const [tick, setTick] = useState(0);
 
   const active = useMemo(() => {
+    // `tick` is an explicit clock revision: the timeout below advances it to
+    // expire IDs even when the input list itself has not changed.
+    void tick;
     const now = performance.now();
     const set = new Set<string>();
     for (const id of key ? key.split("\n") : []) {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const LONG_PROMPT_CHARS = 100;
 
@@ -6,7 +6,6 @@ export const HeroPrompt = ({ text }: { text: string }) => {
   const [expanded, setExpanded] = useState(false);
   const isLong = text.length > LONG_PROMPT_CHARS;
 
-  useEffect(() => setExpanded(false), [text]);
 
   if (!isLong) {
     return <p className="media-tab__hero-prompt">{text}</p>;

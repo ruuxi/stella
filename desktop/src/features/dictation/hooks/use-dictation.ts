@@ -136,25 +136,11 @@ export const useDictation = ({
    */
   const warmedRef = useRef(false);
 
-  useEffect(() => {
-    messageRef.current = message;
-  }, [message]);
-
-  useEffect(() => {
-    setMessageRef.current = setMessage;
-  }, [setMessage]);
-
-  useEffect(() => {
-    onErrorRef.current = onError;
-  }, [onError]);
-
-  useEffect(() => {
-    onTranscriptCommittedRef.current = onTranscriptCommitted;
-  }, [onTranscriptCommitted]);
-
-  useEffect(() => {
-    onCommitRef.current = onCommit;
-  }, [onCommit]);
+  messageRef.current = message;
+  setMessageRef.current = setMessage;
+  onErrorRef.current = onError;
+  onTranscriptCommittedRef.current = onTranscriptCommitted;
+  onCommitRef.current = onCommit;
 
   const fireCommitIfPending = useCallback(() => {
     if (!sendAfterCommitRef.current) return;
@@ -172,9 +158,7 @@ export const useDictation = ({
     });
   }, []);
 
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+  stateRef.current = state;
 
   // While listening, tick a 4-Hz timer for the visible mm:ss display.
   // The initial 0:00 paint is set in `start()` before the session begins
@@ -210,116 +194,124 @@ export const useDictation = ({
     });
   }, []);
 
-  const start = useCallback(async (source: "button" | "shortcut") => {
-    if (sessionRef.current) return;
-    if (disabled) return;
-    // Perf: warm the local model before recording. Idempotent via warmedRef so
-    // it only does work once per hook lifecycle (warm-then-transcribe path).
-    if (!warmedRef.current) {
-      warmedRef.current = true;
-      void warmLocalDictationModel().catch(() => undefined);
-      if (isDictationSuperFastEnabled()) {
-        void ensureDictationSuperFastWarm().catch(() => undefined);
+  const start = useCallback(
+    async (source: "button" | "shortcut") => {
+      if (sessionRef.current) return;
+      if (disabled) return;
+      // Perf: warm the local model before recording. Idempotent via warmedRef so
+      // it only does work once per hook lifecycle (warm-then-transcribe path).
+      if (!warmedRef.current) {
+        warmedRef.current = true;
+        void warmLocalDictationModel().catch(() => undefined);
+        if (isDictationSuperFastEnabled()) {
+          void ensureDictationSuperFastWarm().catch(() => undefined);
+        }
       }
-    }
-    const session = new InworldDictationSession();
-    sessionRef.current = session;
-    baseTextRef.current = messageRef.current;
-    setError(null);
-    setLevels([]);
-    setElapsedMs(0);
-    setShowControls(source === "button");
-    setShowRecordingBar(source === "button");
+      const session = new InworldDictationSession();
+      sessionRef.current = session;
+      baseTextRef.current = messageRef.current;
+      setError(null);
+      setLevels([]);
+      setElapsedMs(0);
+      setShowControls(source === "button");
+      setShowRecordingBar(source === "button");
 
-    try {
-      await session.start({
-        onStateChange: (next, errMessage) => {
-          setState(next);
-          window.electronAPI?.dictation?.activeChanged({
-            active: next === "listening" || next === "transcribing",
-          });
-          if (next === "error" && errMessage) {
-            console.warn(
-              "[dictation] session entered error state:",
-              errMessage,
-            );
-            setError(errMessage);
-            // Surface a toast so a failed dictation isn't silent. Local
-            // (Parakeet) transcription falls back to the managed API, which
-            // needs the user signed in — when that returns 401/unauthorized the
-            // user previously got zero feedback and assumed dictation was just
-            // broken. Detect the auth case and route it to the sign-in toast;
-            // everything else (mic permission, pipeline, transcription
-            // failures) gets a generic "didn't work" so the user still knows
-            // something happened.
-            const normalized = errMessage.toLowerCase();
-            const needsSignIn =
-              /\b401\b|\b403\b|unauthor|unauthenticated|sign[\s-]?in|not signed in/.test(
-                normalized,
+      try {
+        await session.start({
+          onStateChange: (next, errMessage) => {
+            setState(next);
+            window.electronAPI?.dictation?.activeChanged({
+              active: next === "listening" || next === "transcribing",
+            });
+            if (next === "error" && errMessage) {
+              console.warn(
+                "[dictation] session entered error state:",
+                errMessage,
               );
-            if (needsSignIn) {
+              setError(errMessage);
+              // Surface a toast so a failed dictation isn't silent. Local
+              // (Parakeet) transcription falls back to the managed API, which
+              // needs the user signed in — when that returns 401/unauthorized the
+              // user previously got zero feedback and assumed dictation was just
+              // broken. Detect the auth case and route it to the sign-in toast;
+              // everything else (mic permission, pipeline, transcription
+              // failures) gets a generic "didn't work" so the user still knows
+              // something happened.
+              const normalized = errMessage.toLowerCase();
+              const needsSignIn =
+                /\b401\b|\b403\b|unauthor|unauthenticated|sign[\s-]?in|not signed in/.test(
+                  normalized,
+                );
+              if (needsSignIn) {
+                showToast({
+                  title: "Sign in to use dictation",
+                  description:
+                    "Dictation needs you signed in to Stella when on-device transcription isn't available. Sign in to keep going.",
+                  variant: "error",
+                  duration: 8000,
+                  action: SIGN_IN_TOAST_ACTION,
+                });
+              } else {
+                showToast({
+                  title: "Dictation didn't work",
+                  description:
+                    "Stella couldn't transcribe that. Please try again.",
+                  variant: "error",
+                });
+              }
+              onErrorRef.current?.(errMessage);
+            }
+            if (next === "idle" || next === "error") {
+              sessionRef.current = null;
+              setLevels([]);
+              setShowControls(false);
+              setShowRecordingBar(false);
+              // For success paths the inworld session emits `idle` before
+              // `onFinalTranscript`; defer to a microtask so commit fires
+              // after the transcript has been appended. For no-audio /
+              // error paths, no transcript ever arrives so we still fire.
+              queueMicrotask(fireCommitIfPending);
+            }
+          },
+          onFinalTranscript: (transcript, meta) => {
+            const next = joinTranscriptOntoBase(
+              baseTextRef.current,
+              transcript,
+            );
+            setMessageRef.current(next);
+            onTranscriptCommittedRef.current?.();
+            if (meta?.partial) {
+              // Some segments of a long dictation failed; the recovered text is
+              // already in the composer, so flag that it may be incomplete
+              // rather than letting the user assume it captured everything.
               showToast({
-                title: "Sign in to use dictation",
+                title: "Part of your dictation was transcribed",
                 description:
-                  "Dictation needs you signed in to Stella when on-device transcription isn't available. Sign in to keep going.",
+                  "Some of the recording couldn't be transcribed, so the inserted text may be incomplete.",
                 variant: "error",
                 duration: 8000,
-                action: SIGN_IN_TOAST_ACTION,
-              });
-            } else {
-              showToast({
-                title: "Dictation didn't work",
-                description:
-                  "Stella couldn't transcribe that. Please try again.",
-                variant: "error",
               });
             }
-            onErrorRef.current?.(errMessage);
-          }
-          if (next === "idle" || next === "error") {
-            sessionRef.current = null;
-            setLevels([]);
-            setShowControls(false);
-            setShowRecordingBar(false);
-            // For success paths the inworld session emits `idle` before
-            // `onFinalTranscript`; defer to a microtask so commit fires
-            // after the transcript has been appended. For no-audio /
-            // error paths, no transcript ever arrives so we still fire.
-            queueMicrotask(fireCommitIfPending);
-          }
-        },
-        onFinalTranscript: (transcript, meta) => {
-          const next = joinTranscriptOntoBase(baseTextRef.current, transcript);
-          setMessageRef.current(next);
-          onTranscriptCommittedRef.current?.();
-          if (meta?.partial) {
-            // Some segments of a long dictation failed; the recovered text is
-            // already in the composer, so flag that it may be incomplete
-            // rather than letting the user assume it captured everything.
-            showToast({
-              title: "Part of your dictation was transcribed",
-              description:
-                "Some of the recording couldn't be transcribed, so the inserted text may be incomplete.",
-              variant: "error",
-              duration: 8000,
-            });
-          }
-        },
-        onLevel: (level) => {
-          setLevels((prev) => appendRollingLevel(prev, level, MAX_LEVEL_BARS));
-        },
-      });
-    } catch (err) {
-      const errMessage = (err as Error).message;
-      setError(errMessage);
-      onErrorRef.current?.(errMessage);
-      window.electronAPI?.dictation?.activeChanged({ active: false });
-      sessionRef.current = null;
-      setLevels([]);
-      setShowControls(false);
-      setShowRecordingBar(false);
-    }
-  }, [disabled]);
+          },
+          onLevel: (level) => {
+            setLevels((prev) =>
+              appendRollingLevel(prev, level, MAX_LEVEL_BARS),
+            );
+          },
+        });
+      } catch (err) {
+        const errMessage = (err as Error).message;
+        setError(errMessage);
+        onErrorRef.current?.(errMessage);
+        window.electronAPI?.dictation?.activeChanged({ active: false });
+        sessionRef.current = null;
+        setLevels([]);
+        setShowControls(false);
+        setShowRecordingBar(false);
+      }
+    },
+    [disabled, fireCommitIfPending],
+  );
 
   const toggle = useCallback(() => {
     const current = stateRef.current;

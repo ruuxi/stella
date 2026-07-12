@@ -37,11 +37,6 @@ export const MediaActionBar = ({
   const disarmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filePath = useMemo(() => filePathsForItem(item)[0] ?? null, [item]);
 
-  useEffect(() => {
-    setArmed(false);
-    if (disarmTimer.current) clearTimeout(disarmTimer.current);
-  }, [item.id]);
-
   useEffect(
     () => () => {
       if (disarmTimer.current) clearTimeout(disarmTimer.current);

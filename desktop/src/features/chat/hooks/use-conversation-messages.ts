@@ -68,9 +68,7 @@ const WINDOW_DECAY_CHECK_INTERVAL_MS = 5_000;
  */
 const chatAtRestProbes = new Set<() => boolean>();
 
-export const registerChatAtRestProbe = (
-  probe: () => boolean,
-): (() => void) => {
+export const registerChatAtRestProbe = (probe: () => boolean): (() => void) => {
   chatAtRestProbes.add(probe);
   return () => {
     chatAtRestProbes.delete(probe);
@@ -110,11 +108,11 @@ export const useConversationMessages = (
   const visitKey = `${storageMode}:${conversationId ?? ""}`;
   const visitToken = useMemo(() => Symbol(visitKey), [visitKey]);
 
-  const [maxVisibleMessages, setMaxVisibleMessages] = useState(
-    MESSAGE_PAGE_SIZE,
-  );
-  const [pendingMaxVisibleMessages, setPendingMaxVisibleMessages] =
-    useState<number | null>(null);
+  const [maxVisibleMessages, setMaxVisibleMessages] =
+    useState(MESSAGE_PAGE_SIZE);
+  const [pendingMaxVisibleMessages, setPendingMaxVisibleMessages] = useState<
+    number | null
+  >(null);
   // Synchronous request lock shared by every mounted chat surface. React
   // state does not update until the next render, so full chat + sidebar could
   // otherwise both accept the same cursor/window bump in one event turn.
@@ -136,10 +134,6 @@ export const useConversationMessages = (
   });
   const lastLocalLoadToastAtRef = useRef(0);
   const [localRetryTick, setLocalRetryTick] = useState(0);
-
-  useEffect(() => {
-    setSnapshotState({ visitToken, snapshot: EMPTY_SNAPSHOT });
-  }, [visitToken]);
 
   useEffect(() => {
     if (!isLocalMode || !conversationId) {
@@ -218,9 +212,7 @@ export const useConversationMessages = (
     () => stabilizeMessageList(liveMessages, stableMessagesRef.current),
     [liveMessages],
   );
-  useEffect(() => {
-    stableMessagesRef.current = stableMessagesState;
-  }, [stableMessagesState]);
+  stableMessagesRef.current = stableMessagesState;
   const messages = stableMessagesState.result;
   const visibleMessageCount = activeSnapshot.window.visibleMessageCount;
 

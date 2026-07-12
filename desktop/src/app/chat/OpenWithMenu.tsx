@@ -40,25 +40,30 @@ export const OpenWithMenu = ({
   variant?: "button" | "plus";
 }) => {
   const [open, setOpen] = useState(false);
-  const [openers, setOpeners] = useState<Opener[] | null>(null);
+  const [openerResult, setOpenerResult] = useState<{
+    filePath: string;
+    openers: Opener[];
+  } | null>(null);
+  const openers =
+    openerResult?.filePath === filePath ? openerResult.openers : null;
 
   useEffect(() => {
     if (!open || openers) return;
     let cancelled = false;
     const api = window.electronAPI?.system;
     if (!api?.listExternalOpeners) {
-      setOpeners([]);
+      setOpenerResult({ filePath, openers: [] });
       return;
     }
     void api
       .listExternalOpeners(filePath)
       .then((result) => {
         if (cancelled) return;
-        setOpeners(result?.openers ?? []);
+        setOpenerResult({ filePath, openers: result?.openers ?? [] });
       })
       .catch(() => {
         if (cancelled) return;
-        setOpeners([]);
+        setOpenerResult({ filePath, openers: [] });
       });
     return () => {
       cancelled = true;

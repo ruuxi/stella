@@ -32,19 +32,16 @@ export type ConversationThreadActivity = {
 export const useThreadActivity = (
   conversationId?: string,
 ): ConversationThreadActivity => {
-  const visitToken = useMemo(() => Symbol(conversationId ?? ""), [
-    conversationId,
-  ]);
+  const visitToken = useMemo(
+    () => Symbol(conversationId ?? ""),
+    [conversationId],
+  );
 
   const [snapshotState, setSnapshotState] = useState<{
     visitToken: symbol;
     snapshot: ThreadActivitySnapshot;
   }>({ visitToken, snapshot: EMPTY_SNAPSHOT });
   const lastErrorToastAtRef = useRef(0);
-
-  useEffect(() => {
-    setSnapshotState({ visitToken, snapshot: EMPTY_SNAPSHOT });
-  }, [visitToken]);
 
   useEffect(() => {
     if (!conversationId) {

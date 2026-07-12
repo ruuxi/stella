@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { ChatContext } from "@/shared/types/electron";
 
@@ -6,25 +6,23 @@ export function useScreenshotPreview(chatContext: ChatContext | null) {
   const [index, setIndex] = useState<number | null>(null);
 
   const screenshot =
-    index !== null
-      ? chatContext?.regionScreenshots?.[index] ?? null
-      : null;
-
-  // Clear index if the screenshot array shrinks or gets cleared externally
-  useEffect(() => {
-    if (!screenshot) setIndex(null);
-  }, [screenshot]);
+    index !== null ? (chatContext?.regionScreenshots?.[index] ?? null) : null;
+  const effectiveIndex = screenshot ? index : null;
 
   useEffect(() => {
-    if (index === null) return;
+    if (effectiveIndex === null) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setIndex(null);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [index]);
+  }, [effectiveIndex]);
 
-  return { screenshot, previewIndex: index, setPreviewIndex: setIndex };
+  const setPreviewIndex = useCallback((next: number | null) => {
+    setIndex(next);
+  }, []);
+
+  return { screenshot, previewIndex: effectiveIndex, setPreviewIndex };
 }
 
 export function ScreenshotPreviewOverlay({

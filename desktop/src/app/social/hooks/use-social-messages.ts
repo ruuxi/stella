@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useMutation, usePaginatedQuery } from "convex/react";
 import { api } from "@/convex/api";
 
@@ -37,32 +37,35 @@ export function useSocialMessages(roomId: string, currentOwnerId: string) {
   // to be the newest). Tracking a small array of in-flight sends in
   // React state and merging them into the rendered list is simpler and
   // independent of Convex's internal pagination shape.
-  const [pendingSends, setPendingSends] = useState<SocialMessage[]>([]);
+  const [pendingState, setPendingState] = useState<{
+    roomId: string;
+    messages: SocialMessage[];
+  }>({ roomId, messages: [] });
   const clientIdRef = useRef(0);
 
   // Reconciliation: as the real page receives the message we sent
   // (matched by `clientMessageId`), drop the corresponding pending
   // entry so the timeline doesn't double-render the row.
-  useEffect(() => {
-    if (pendingSends.length === 0) return;
-    const realClientIds = new Set<string>();
-    for (const message of realMessages) {
-      if (message.clientMessageId) realClientIds.add(message.clientMessageId);
-    }
-    setPendingSends((prev) =>
-      prev.filter(
-        (entry) =>
-          !entry.clientMessageId || !realClientIds.has(entry.clientMessageId),
+  const realClientIds = useMemo(
+    () =>
+      new Set(
+        realMessages.flatMap((message) =>
+          message.clientMessageId ? [message.clientMessageId] : [],
+        ),
       ),
-    );
-  }, [pendingSends.length, realMessages]);
-
-  // Reset pending sends when switching rooms — a stale optimistic
-  // entry from the previous room would otherwise leak into the new
-  // timeline (different `roomId`, but the same hook instance).
-  useEffect(() => {
-    setPendingSends([]);
-  }, [roomId]);
+    [realMessages],
+  );
+  const pendingSends = useMemo(
+    () =>
+      pendingState.roomId === roomId
+        ? pendingState.messages.filter(
+            (entry) =>
+              !entry.clientMessageId ||
+              !realClientIds.has(entry.clientMessageId),
+          )
+        : [],
+    [pendingState, realClientIds, roomId],
+  );
 
   const messages = useMemo<SocialMessage[]>(
     () =>
@@ -93,17 +96,34 @@ export function useSocialMessages(roomId: string, currentOwnerId: string) {
         moderationStatus: "pending",
         createdAt: now,
       };
-      setPendingSends((prev) => [...prev, pending]);
+      setPendingState((previous) => ({
+        roomId,
+        messages: [
+          ...(previous.roomId === roomId ? previous.messages : []).filter(
+            (entry) =>
+              !entry.clientMessageId ||
+              !realClientIds.has(entry.clientMessageId),
+          ),
+          pending,
+        ],
+      }));
       try {
         await sendMutation({ roomId, body: trimmed, clientMessageId });
       } catch (error) {
-        setPendingSends((prev) =>
-          prev.filter((entry) => entry._id !== optimisticId),
+        setPendingState((previous) =>
+          previous.roomId !== roomId
+            ? previous
+            : {
+                roomId,
+                messages: previous.messages.filter(
+                  (entry) => entry._id !== optimisticId,
+                ),
+              },
         );
         throw error;
       }
     },
-    [roomId, currentOwnerId, sendMutation],
+    [roomId, currentOwnerId, realClientIds, sendMutation],
   );
 
   const loadOlder = useCallback(() => {

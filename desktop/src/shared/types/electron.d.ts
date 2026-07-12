@@ -16,7 +16,6 @@ import type {
   ThreadActivityUpdatedPayload,
   MessageRecord,
 } from "../../../../runtime/contracts/local-chat.js";
-import type { TaskLifecycleStatus } from "../../../../runtime/contracts/agent-runtime.js";
 import type { RealtimeVoicePreferences } from "../../../../runtime/contracts/local-preferences";
 import type { MorphVisualTiming } from "../contracts/morph-timing";
 import type {

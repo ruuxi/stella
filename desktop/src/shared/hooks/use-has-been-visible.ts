@@ -14,15 +14,13 @@ export const useHasBeenVisible = (
   ref: RefObject<HTMLElement | null>,
   rootMargin = "200px",
 ): boolean => {
-  const [seen, setSeen] = useState(false);
+  const [seen, setSeen] = useState(
+    () => typeof IntersectionObserver === "undefined",
+  );
   useEffect(() => {
     if (seen) return;
     const node = ref.current;
     if (!node) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setSeen(true);
-      return;
-    }
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {

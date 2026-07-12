@@ -121,9 +121,24 @@ export function useCapturedChatContext(options?: UseCapturedChatContextOptions) 
     const electronApi = getElectronApi()
     if (!electronApi) return
 
+    let disposed = false
+    let receivedLiveUpdate = false
+    const unsubscribe = electronApi.capture.onContext((payload) => {
+      if (disposed) return
+      receivedLiveUpdate = true
+      const update = (payload as ChatContextUpdate | null) ?? null
+      const context = normalizeChatContext(update?.context ?? null)
+      chatContextRef.current = context
+      selectedTextRef.current = context?.selectedText ?? null
+      setChatContextState(context)
+      setSelectedTextState(context?.selectedText ?? null)
+      onContextUpdate?.(update, electronApi)
+    })
+
     electronApi.capture
       .getContext()
       .then((context) => {
+        if (disposed || receivedLiveUpdate) return
         const normalizedContext = normalizeChatContext(context)
         chatContextRef.current = normalizedContext
         selectedTextRef.current = normalizedContext?.selectedText ?? null
@@ -134,18 +149,8 @@ export function useCapturedChatContext(options?: UseCapturedChatContextOptions) 
         console.warn('Failed to load chat context', error)
       })
 
-    const unsubscribe = electronApi.capture.onContext((payload) => {
-      const update = (payload as ChatContextUpdate | null) ?? null
-      const context = normalizeChatContext(update?.context ?? null)
-
-      chatContextRef.current = context
-      selectedTextRef.current = context?.selectedText ?? null
-      setChatContextState(context)
-      setSelectedTextState(context?.selectedText ?? null)
-      onContextUpdate?.(update, electronApi)
-    })
-
     return () => {
+      disposed = true
       unsubscribe?.()
     }
   }, [onContextUpdate])

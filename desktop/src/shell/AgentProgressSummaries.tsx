@@ -30,6 +30,7 @@ export function AgentProgressSummaries({
   // Briefly keep just-dropped (oldest) entries mounted so they can animate out.
   const [leaving, setLeaving] = useState<ProgressSummary[]>([]);
   const prevRef = useRef<ReadonlyArray<ProgressSummary>>(summaries);
+  const removalTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
     const prev = prevRef.current;
@@ -37,14 +38,24 @@ export function AgentProgressSummaries({
     const currentIds = new Set(summaries.map((entry) => entry.id));
     const removed = prev.filter((entry) => !currentIds.has(entry.id));
     if (removed.length === 0) return;
-    setLeaving((current) => [...current, ...removed]);
-    const timer = setTimeout(() => {
-      setLeaving((current) =>
-        current.filter((entry) => !removed.some((r) => r.id === entry.id)),
-      );
-    }, EXIT_ANIMATION_MS);
-    return () => clearTimeout(timer);
+    setLeaving((current) => {
+      const ids = new Set(current.map((entry) => entry.id));
+      return [...current, ...removed.filter((entry) => !ids.has(entry.id))];
+    });
+    for (const entry of removed) {
+      if (removalTimersRef.current.has(entry.id)) continue;
+      const timer = setTimeout(() => {
+        removalTimersRef.current.delete(entry.id);
+        setLeaving((current) => current.filter((item) => item.id !== entry.id));
+      }, EXIT_ANIMATION_MS);
+      removalTimersRef.current.set(entry.id, timer);
+    }
   }, [summaries]);
+
+  useEffect(() => () => {
+    for (const timer of removalTimersRef.current.values()) clearTimeout(timer);
+    removalTimersRef.current.clear();
+  }, []);
 
   // Newest at the top so the latest status is always in view; capped to the
   // N most-recent when `max` is set.

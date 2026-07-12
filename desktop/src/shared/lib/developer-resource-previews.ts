@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { uiState } from "@/platform/ui-state";
 
-const DEVELOPER_RESOURCE_PREVIEWS_KEY =
-  "stella-developer-resource-previews";
+const DEVELOPER_RESOURCE_PREVIEWS_KEY = "stella-developer-resource-previews";
 
 const DEVELOPER_RESOURCE_PREVIEWS_CHANGED_EVENT =
   "stella:developer-resource-previews-changed";
@@ -22,17 +21,24 @@ export const setDeveloperResourcePreviewsEnabled = (enabled: boolean) => {
 };
 
 export const useDeveloperResourcePreviewsEnabled = (): boolean => {
-  const [enabled, setEnabled] = useState(getDeveloperResourcePreviewsEnabled);
-
-  useEffect(() => {
-    const sync = () => setEnabled(getDeveloperResourcePreviewsEnabled());
-    window.addEventListener("storage", sync);
-    window.addEventListener(DEVELOPER_RESOURCE_PREVIEWS_CHANGED_EVENT, sync);
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    window.addEventListener("storage", onStoreChange);
+    window.addEventListener(
+      DEVELOPER_RESOURCE_PREVIEWS_CHANGED_EVENT,
+      onStoreChange,
+    );
     return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener(DEVELOPER_RESOURCE_PREVIEWS_CHANGED_EVENT, sync);
+      window.removeEventListener("storage", onStoreChange);
+      window.removeEventListener(
+        DEVELOPER_RESOURCE_PREVIEWS_CHANGED_EVENT,
+        onStoreChange,
+      );
     };
   }, []);
 
-  return enabled;
+  return useSyncExternalStore(
+    subscribe,
+    getDeveloperResourcePreviewsEnabled,
+    () => false,
+  );
 };

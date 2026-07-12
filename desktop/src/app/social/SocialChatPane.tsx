@@ -124,7 +124,7 @@ export function SocialChatPane({
   }, [lastMessageId, latestMessageAt, lastReadAt, markRead, roomId]);
   const socialSessionsApi = window.electronAPI?.socialSessions;
 
-  const [sessionLookupId, setSessionLookupId] = useState<string | null>(null);
+  const sessionLookupId = roomData?.room.stellaSessionId ?? null;
   const {
     sessionSummary,
     turns,
@@ -134,31 +134,13 @@ export function SocialChatPane({
   } = useSocialSession(sessionLookupId);
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [isUpdatingSession, setIsUpdatingSession] = useState(false);
-  const [armedForStella, setArmedForStella] = useState(false);
-
-  useEffect(() => {
-    setSessionLookupId(null);
-    setArmedForStella(false);
-  }, [roomId]);
-
-  useEffect(() => {
-    if (!roomData?.room.stellaSessionId) {
-      return;
-    }
-    setSessionLookupId(roomData.room.stellaSessionId);
-  }, [roomData?.room.stellaSessionId]);
+  const [armedState, setArmedState] = useState({ roomId, armed: false });
 
   const activeSession = sessionSummary?.session ?? null;
   const isHost = sessionSummary?.isHost === true;
   const sessionIsLive = activeSession?.status === "active";
-  const stellaArmed = armedForStella && sessionIsLive;
-
-  // Disarm whenever the session can no longer accept Stella turns.
-  useEffect(() => {
-    if (armedForStella && !sessionIsLive) {
-      setArmedForStella(false);
-    }
-  }, [armedForStella, sessionIsLive]);
+  const stellaArmed =
+    armedState.roomId === roomId && armedState.armed && sessionIsLive;
 
   // Unified timeline: chat messages + every Stella turn projected into two
   // synthetic rows (the user's prompt as a regular message, then Stella's
@@ -455,7 +437,7 @@ export function SocialChatPane({
             prompt: body,
             clientTurnId: `social-stella-${Date.now()}`,
           });
-          setArmedForStella(false);
+          setArmedState({ roomId, armed: false });
         } catch (error) {
           showToast({
             variant: "error",
@@ -479,7 +461,7 @@ export function SocialChatPane({
         });
       }
     },
-    [activeSession, sendMessage, socialSessionsApi, stellaArmed],
+    [activeSession, roomId, sendMessage, socialSessionsApi, stellaArmed],
   );
 
   if (!roomData) {
@@ -632,7 +614,12 @@ export function SocialChatPane({
             type="button"
             className="social-stella-arm-button"
             data-active={stellaArmed || undefined}
-            onClick={() => setArmedForStella((v) => !v)}
+            onClick={() =>
+              setArmedState((previous) => ({
+                roomId,
+                armed: previous.roomId === roomId ? !previous.armed : true,
+              }))
+            }
             title={
               stellaArmed
                 ? "Send the next message as a normal chat message"

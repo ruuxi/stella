@@ -1,16 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMPTY_FIRST_SEEN_ORDER,
   TASK_COMPLETION_INDICATOR_MS,
-  activityRowKey,
   buildActivityTasks,
   fallbackTaskDescription,
   isActivityFeedTask,
   extractStepsFromEvents,
-  getTaskDisplayText,
   getTaskGroupStatusText,
   groupActivityTasks,
-  orderByFirstSeen,
   pruneGroupExpandOverrides,
   selectFreshActivityTasks,
   shouldShowTaskReasoningSummaries,
@@ -24,11 +20,8 @@ import {
   buildInlineWorkingIndicatorProps,
   getInlineWorkingIndicatorActive,
   getInlineWorkingIndicatorExitDelayMs,
-  getRunningTaskIndicatorText,
-  getWorkingIndicatorDisplayStatus,
   shouldTreatResumedAnswerAsStarted,
 } from "@/features/chat/working-indicator-state";
-import { buildAgentProgressSignature } from "@/features/chat/use-agent-progress-summary-engine";
 
 const event = (
   id: string,
@@ -49,7 +42,6 @@ describe("internal helper agent exclusion", () => {
     expect(isActivityFeedTask({ agentType: "dream" })).toBe(false);
     expect(isActivityFeedTask({ agentType: "orchestrator" })).toBe(false);
   });
-
 });
 
 describe("fallbackTaskDescription", () => {
@@ -86,9 +78,7 @@ describe("fallbackTaskDescription", () => {
   it("still de-slugs meaningful single-word ids", () => {
     expect(fallbackTaskDescription("research")).toBe("Research");
   });
-
 });
-
 
 describe("work-group folding", () => {
   const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
@@ -99,7 +89,6 @@ describe("work-group folding", () => {
     lastUpdatedAtMs: 100,
     ...overrides,
   });
-
 
   it("collapses two members of one group into a single header row", () => {
     const rows = groupActivityTasks([
@@ -212,7 +201,6 @@ describe("work-group folding", () => {
     expect(failedGroup?.status).toBe("error");
     expect(getTaskGroupStatusText(failedGroup!)).toBe("2 tasks");
   });
-
 });
 
 describe("extractStepsFromEvents", () => {
@@ -234,7 +222,6 @@ describe("extractStepsFromEvents", () => {
     expect(steps.map((step) => step.status)).toEqual(["running", "running"]);
   });
 });
-
 
 describe("pruneGroupExpandOverrides", () => {
   const member = (id: string, groupKey?: string): TaskItem => ({

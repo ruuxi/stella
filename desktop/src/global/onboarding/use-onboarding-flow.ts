@@ -69,22 +69,11 @@ export function useOnboardingFlow({
   }, []);
 
   useEffect(() => {
-    onPhaseChange?.(phase);
-  }, [onPhaseChange, phase]);
-
-  useEffect(() => {
-    const splitIndex = SPLIT_STEP_ORDER.indexOf(phase);
-    if (splitIndex >= 0) {
-      setMaxVisitedSplitStepIndex((current) => Math.max(current, splitIndex));
-    }
-  }, [phase]);
-
-  useEffect(() => {
     if (
       typeof window === "undefined" ||
       typeof window.matchMedia !== "function"
     ) {
-      return;
+      return clearTransitionTimeout;
     }
 
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -96,27 +85,51 @@ export function useOnboardingFlow({
     mediaQuery.addEventListener("change", updatePreference);
     return () => {
       mediaQuery.removeEventListener("change", updatePreference);
+      clearTransitionTimeout();
     };
-  }, []);
+  }, [clearTransitionTimeout]);
 
   const transitionTo = useCallback(
     (next: Phase) => {
       clearTransitionTimeout();
 
-      if (prefersReducedMotion) {
+      const commitTransition = () => {
+        if (next === "complete") {
+          setLeaving(false);
+          setPhase("done");
+          onPhaseChange?.("done");
+          onComplete();
+          return;
+        }
+
+        const splitIndex = SPLIT_STEP_ORDER.indexOf(next);
+        if (splitIndex >= 0) {
+          setMaxVisitedSplitStepIndex((current) =>
+            Math.max(current, splitIndex),
+          );
+        }
         setLeaving(false);
         setPhase(next);
+        onPhaseChange?.(next);
+      };
+
+      if (prefersReducedMotion) {
+        commitTransition();
         return;
       }
 
       setLeaving(true);
       timeoutRef.current = setTimeout(() => {
-        setLeaving(false);
-        setPhase(next);
+        commitTransition();
         timeoutRef.current = null;
       }, FADE_OUT_MS + FADE_GAP_MS);
     },
-    [clearTransitionTimeout, prefersReducedMotion],
+    [
+      clearTransitionTimeout,
+      onComplete,
+      onPhaseChange,
+      prefersReducedMotion,
+    ],
   );
 
   useEffect(() => {
@@ -132,18 +145,6 @@ export function useOnboardingFlow({
       clearTimeout(timeoutId);
     };
   }, [phase]);
-
-  useEffect(() => {
-    if (phase === "complete") {
-      clearTransitionTimeout();
-      setPhase("done");
-      onComplete();
-    }
-
-    return clearTransitionTimeout;
-  }, [clearTransitionTimeout, onComplete, phase]);
-
-  useEffect(() => clearTransitionTimeout, [clearTransitionTimeout]);
 
   const nextSplitStep = useCallback(() => {
     const index = SPLIT_STEP_ORDER.indexOf(phase);

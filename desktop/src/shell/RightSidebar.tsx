@@ -54,7 +54,6 @@ export interface RightSidebarHandle {
 }
 
 type RightSidebarProps = {
-  onOpenChange?: (open: boolean) => void;
   portalTarget?: Element | null;
 };
 
@@ -154,7 +153,7 @@ const DeferredDisplayContent = ({ render }: { render: () => ReactNode }) => {
 export const RightSidebar = forwardRef<
   RightSidebarHandle,
   RightSidebarProps
->(function RightSidebar({ onOpenChange, portalTarget }, ref) {
+>(function RightSidebar({ portalTarget }, ref) {
   const panelOpen = useDisplayPanelOpen();
   const panelExpanded = useDisplayPanelExpanded();
   const activeTab = useActiveDisplayTab();
@@ -218,10 +217,6 @@ export const RightSidebar = forwardRef<
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [panelOpen]);
-
-  useEffect(() => {
-    onOpenChange?.(panelOpen);
-  }, [panelOpen, onOpenChange]);
 
   useLayoutEffect(() => {
     let frame = 0;

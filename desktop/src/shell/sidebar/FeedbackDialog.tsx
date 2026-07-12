@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { Button } from "@/ui/button";
@@ -64,13 +64,6 @@ export const FeedbackDialog = ({
 
   // Reset transient state every time the dialog closes so the next open
   // starts from a clean textarea regardless of which trigger opened it.
-  useEffect(() => {
-    if (!open) {
-      setText("");
-      setSubmitting(false);
-    }
-  }, [open]);
-
   const handleSubmit = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed || submitting) return;

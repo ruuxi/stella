@@ -146,8 +146,6 @@ export function RegionCapture({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [captureApi, clearSelection, clearWindowPreview, isWindowAttach]);
 
-  useEffect(() => clearWindowPreview, [clearWindowPreview]);
-
   useEffect(() => {
     if (!vacuum || !canvasRef.current) return;
     const { clickPoint, bounds, thumbnail } = vacuum;

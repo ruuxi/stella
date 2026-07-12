@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ArrowUp, ChevronUp, Folder } from "@/ui/icons";
 import { DropOverlay } from "@/app/chat/DropOverlay";
 import { updateComposerTextareaExpansion } from "@/shared/hooks/use-animated-composer-shell";
@@ -37,15 +37,17 @@ export const MediaTabContent = ({
   items: ReadonlyArray<MediaTabItem>;
   selectedItemId?: string;
 }) => {
-  const [items, setItems] = useState<ReadonlyArray<MediaTabItem>>(incomingItems);
-  useEffect(() => {
-    setItems(incomingItems);
-  }, [incomingItems]);
+  const [localItems, setLocalItems] = useState<{ source: ReadonlyArray<MediaTabItem>; value: ReadonlyArray<MediaTabItem> }>(() => ({ source: incomingItems, value: incomingItems }));
+  const items = localItems.source === incomingItems ? localItems.value : incomingItems;
   const railItems = useMemo(() => [...items].reverse(), [items]);
 
-  const [selectedId, setSelectedId] = useState<string | null>(
-    selectedItemId ?? items.at(-1)?.id ?? null,
-  );
+  const [selection, setSelection] = useState(() => ({ sourceId: selectedItemId, selectedId: selectedItemId ?? items.at(-1)?.id ?? null }));
+  const setSelectedId = useCallback((value: string | null | ((current: string | null) => string | null)) => {
+    setSelection((current) => {
+      const currentId = current.sourceId === selectedItemId ? current.selectedId : selectedItemId ?? null;
+      return { sourceId: selectedItemId, selectedId: typeof value === "function" ? value(currentId) : value };
+    });
+  }, [selectedItemId]);
   const [prompt, setPrompt] = useState("");
   const [actionId, setActionId] = useState<MediaActionId>("text_to_image");
   const [attachedItemId, setAttachedItemId] = useState<string | null>(null);
@@ -58,45 +60,19 @@ export const MediaTabContent = ({
   const dragCounterRef = useRef(0);
   const { submitting, submit } = useMediaGeneration();
 
-  useEffect(() => {
-    if (selectedItemId && items.some((item) => item.id === selectedItemId)) {
-      setSelectedId(selectedItemId);
-    }
-  }, [items, selectedItemId]);
-
-  useEffect(() => {
-    if (items.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-    if (selectedId == null || !items.some((item) => item.id === selectedId)) {
-      setSelectedId(items.at(-1)?.id ?? null);
-    }
-  }, [items, selectedId]);
-
-  useEffect(() => {
-    if (prompt === "") {
-      setComposerExpanded(false);
-      return;
-    }
-    requestAnimationFrame(() => {
-      updateComposerTextareaExpansion(
-        promptInputRef.current,
-        setComposerExpanded,
-      );
-    });
-  }, [prompt]);
+  const requestedSelectedId = selection.sourceId === selectedItemId ? selection.selectedId : selectedItemId ?? null;
+  const effectiveSelectedId = requestedSelectedId && items.some((item) => item.id === requestedSelectedId) ? requestedSelectedId : items.at(-1)?.id ?? null;
 
   const selectedItem =
-    selectedId != null
-      ? items.find((item) => item.id === selectedId) ?? null
+    effectiveSelectedId != null
+      ? items.find((item) => item.id === effectiveSelectedId) ?? null
       : null;
 
   const handleDeleteItem = useCallback((id: string) => {
-    setItems(removeGeneratedMediaItem(id));
+    setLocalItems({ source: incomingItems, value: removeGeneratedMediaItem(id) });
     setSelectedId((current) => (current === id ? null : current));
     setAttachedItemId((current) => (current === id ? null : current));
-  }, []);
+  }, [incomingItems, setSelectedId]);
 
   const handlePickFile = useCallback(() => {
     fileInputRef.current?.click();
@@ -205,11 +181,6 @@ export const MediaTabContent = ({
     visibleActions.find((action) => action.id === actionId) ??
     visibleActions[0] ??
     MEDIA_ACTIONS[0];
-  useEffect(() => {
-    if (!visibleActions.some((action) => action.id === actionId)) {
-      setActionId(visibleActions[0]?.id ?? "text_to_image");
-    }
-  }, [actionId, visibleActions]);
 
   const compatibleAttachedItem =
     attachedItem &&
@@ -241,6 +212,7 @@ export const MediaTabContent = ({
         ...(source ? { source } : {}),
       });
       setPrompt("");
+      setComposerExpanded(false);
       if (attachedItemId) setAttachedItemId(null);
     } catch {
       // submitMediaJob already toasted; nothing to do here.
@@ -261,9 +233,7 @@ export const MediaTabContent = ({
     [railItems, trayVisible],
   );
 
-  useEffect(() => {
-    if (!hasOverflowItems && expanded) setExpanded(false);
-  }, [hasOverflowItems, expanded]);
+  const historyExpanded = expanded && hasOverflowItems;
 
   const handleToggleExpand = useCallback(() => {
     setExpanded((open) => {
@@ -288,7 +258,7 @@ export const MediaTabContent = ({
   const handleSelectExpanded = useCallback((id: string) => {
     setSelectedId(id);
     setExpanded(false);
-  }, []);
+  }, [setSelectedId]);
 
   return (
     <div
@@ -321,13 +291,14 @@ export const MediaTabContent = ({
                   aria-label="Item actions"
                 >
                   <MediaActionBar
+                    key={selectedItem.id}
                     item={selectedItem}
                     onDelete={() => handleDeleteItem(selectedItem.id)}
                   />
                 </div>
               </div>
               {selectedItem.prompt ? (
-                <HeroPrompt text={selectedItem.prompt} />
+                <HeroPrompt key={selectedItem.id} text={selectedItem.prompt} />
               ) : null}
             </div>
             <div className="media-tab__hero-preview">
@@ -356,10 +327,10 @@ export const MediaTabContent = ({
       <div className="media-tab__footer">
       <div
         className={`media-tab__history${
-          expanded ? " media-tab__history--expanded" : ""
+          historyExpanded ? " media-tab__history--expanded" : ""
         }`}
       >
-        {expanded ? (
+        {historyExpanded ? (
           <div
             className="media-tab__history-scroll"
             onScroll={handleHistoryScroll}
@@ -427,12 +398,12 @@ export const MediaTabContent = ({
           <button
             type="button"
             className={`media-tab__history-toggle${
-              expanded ? " media-tab__history-toggle--open" : ""
+              historyExpanded ? " media-tab__history-toggle--open" : ""
             }`}
             onClick={handleToggleExpand}
-            aria-expanded={expanded}
-            aria-label={expanded ? "Hide all media" : "Show all media"}
-            title={expanded ? "Hide all media" : "Show all media"}
+            aria-expanded={historyExpanded}
+            aria-label={historyExpanded ? "Hide all media" : "Show all media"}
+            title={historyExpanded ? "Hide all media" : "Show all media"}
           >
             <ChevronUp size={16} strokeWidth={2.2} />
           </button>

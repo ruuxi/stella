@@ -34,8 +34,14 @@ type LoadStatus = "loading" | "ready" | "error";
 const RESIZE_DEBOUNCE_MS = 100;
 
 export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
-  const [status, setStatus] = useState<LoadStatus>("loading");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  return (
+    <PdfViewerCardContent key={filePath} filePath={filePath} title={title} />
+  );
+}
+
+function PdfViewerCardContent({ filePath, title }: PdfViewerCardProps) {
+  const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const { bytes, error: fileError } = useDisplayFileBytes(
     filePath,
     "PDF viewer requires the Electron host runtime.",
@@ -47,19 +53,8 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
   const resizeTimerRef = useRef<number | null>(null);
   const lastWidthRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    setStatus("loading");
-    setErrorMessage(null);
-    setNumPages(0);
-    setCurrentPage(1);
-  }, [filePath]);
-
-  useEffect(() => {
-    if (fileError) {
-      setStatus("error");
-      setErrorMessage(fileError);
-    }
-  }, [fileError]);
+  const status: LoadStatus = fileError ? "error" : loadStatus;
+  const errorMessage = fileError ?? loadErrorMessage;
 
   // Track container width so PDF pages render at the right resolution.
   useLayoutEffect(() => {
@@ -99,14 +94,14 @@ export function PdfViewerCard({ filePath, title }: PdfViewerCardProps) {
   const handleLoadSuccess = useCallback(
     ({ numPages }: { numPages: number }) => {
       setNumPages(Math.max(numPages, 1));
-      setStatus("ready");
+      setLoadStatus("ready");
     },
     [],
   );
 
   const handleLoadError = useCallback((error: Error) => {
-    setStatus("error");
-    setErrorMessage(error.message || "Failed to load PDF.");
+    setLoadStatus("error");
+    setLoadErrorMessage(error.message || "Failed to load PDF.");
   }, []);
 
   const documentFile = useMemo(() => (bytes ? { data: bytes } : null), [bytes]);

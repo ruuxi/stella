@@ -200,6 +200,7 @@ export function ChatPanelTab({
     onLoadOlder,
     surface: "compact",
   });
+  const { scrollToBottom: scrollSidebarToBottom } = sidebarScroll;
 
   useEffect(() => {
     if (
@@ -212,7 +213,7 @@ export function ChatPanelTab({
     }
     const restoredConversationId = conversationId;
     const frame = window.requestAnimationFrame(() => {
-      sidebarScroll.scrollToBottom("instant");
+      scrollSidebarToBottom("instant");
       restoredConversationScrollRef.current = restoredConversationId;
     });
     return () => window.cancelAnimationFrame(frame);
@@ -220,7 +221,7 @@ export function ChatPanelTab({
     conversationId,
     isInitialLoading,
     messages.length,
-    sidebarScroll.scrollToBottom,
+    scrollSidebarToBottom,
   ]);
 
   const assistantReplyPeek = useAssistantReplyPeek({

@@ -59,13 +59,11 @@ export const useSelectedPet = (
 ): BuiltInPet | null => {
   const { cacheScope } = useAuthSessionState();
   const bundled = useMemo(() => findBundled(selectedPetId), [selectedPetId]);
-  const [cached, setCached] = useState<BuiltInPet | null>(() =>
-    selectedPetId ? getCachedPetById(selectedPetId) : null,
-  );
-
-  useEffect(() => {
-    setCached(selectedPetId ? getCachedPetById(selectedPetId) : null);
-  }, [selectedPetId]);
+  const [cachedRecord, setCachedRecord] = useState<{ id: string | null; pet: BuiltInPet | null }>(() => ({
+    id: selectedPetId ?? null,
+    pet: selectedPetId ? getCachedPetById(selectedPetId) : null,
+  }));
+  const cached = cachedRecord.id === (selectedPetId ?? null) ? cachedRecord.pet : selectedPetId ? getCachedPetById(selectedPetId) : null;
 
   // Cross-window cache sync — if another renderer (the pets app, the
   // sidebar, …) hydrates a fresh pet record, mirror it into the
@@ -73,7 +71,7 @@ export const useSelectedPet = (
   useEffect(() => {
     const handler = (event: StorageEvent) => {
       if (event.key !== PET_BY_ID_STORAGE_KEY) return;
-      setCached(selectedPetId ? getCachedPetById(selectedPetId) : null);
+      setCachedRecord({ id: selectedPetId ?? null, pet: selectedPetId ? getCachedPetById(selectedPetId) : null });
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
@@ -110,8 +108,8 @@ export const useSelectedPet = (
     const normalized = record ?? normalizeUserPet(userPet);
     if (!normalized) return;
     writeCachedPetById(normalized);
-    setCached(normalized);
-  }, [remote, userPet]);
+    if (normalized.id === selectedPetId) setCachedRecord({ id: selectedPetId ?? null, pet: normalized });
+  }, [remote, selectedPetId, userPet]);
 
   if (bundled) return bundled;
   if (cached) return cached;

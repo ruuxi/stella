@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { uiState } from "@/platform/ui-state";
 
 export type ReduceMotionPreference = "system" | "on" | "off";
@@ -21,7 +21,9 @@ const readReduceMotionPreference = (): ReduceMotionPreference => {
 
 const systemPrefersReducedMotion = (): boolean => {
   if (typeof window === "undefined") return false;
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  return (
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
+  );
 };
 
 const resolveReduceMotion = (preference: ReduceMotionPreference): boolean => {
@@ -69,21 +71,23 @@ export const setReduceMotionPreference = (
 };
 
 export const useInterfacePreferences = () => {
-  const [reduceMotion, setReduceMotionState] = useState(
-    getReduceMotionPreference,
-  );
-
-  useEffect(() => {
-    const sync = () => {
-      setReduceMotionState(getReduceMotionPreference());
-    };
-    window.addEventListener("storage", sync);
-    window.addEventListener(INTERFACE_PREFERENCES_CHANGED_EVENT, sync);
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    window.addEventListener("storage", onStoreChange);
+    window.addEventListener(INTERFACE_PREFERENCES_CHANGED_EVENT, onStoreChange);
     return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener(INTERFACE_PREFERENCES_CHANGED_EVENT, sync);
+      window.removeEventListener("storage", onStoreChange);
+      window.removeEventListener(
+        INTERFACE_PREFERENCES_CHANGED_EVENT,
+        onStoreChange,
+      );
     };
   }, []);
+
+  const reduceMotion = useSyncExternalStore(
+    subscribe,
+    getReduceMotionPreference,
+    () => "system",
+  );
 
   return { reduceMotion };
 };

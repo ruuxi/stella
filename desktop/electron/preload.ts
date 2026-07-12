@@ -6,7 +6,6 @@ import type {
   SelfModHmrState,
   StellaReleaseArtifactRef,
 } from "../../runtime/contracts/index.js";
-import type { TaskLifecycleStatus } from "../../runtime/contracts/agent-runtime.js";
 import type {
   LocalChatUpdatedPayload,
   ThreadActivityUpdatedPayload,

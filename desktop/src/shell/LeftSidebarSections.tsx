@@ -102,9 +102,7 @@ const AGENT_SUMMARY_CAP = 3;
 const AGENT_FILE_CAP = 5;
 
 const activityRowText = (row: ActivityRow): string =>
-  row.kind === "task"
-    ? row.task.description
-    : row.group.label;
+  row.kind === "task" ? row.task.description : row.group.label;
 
 // ── Row enter / exit / reorder motion ───────────────────────────────
 //
@@ -377,52 +375,54 @@ const TaskRow = memo(function TaskRow({
                   max={AGENT_SUMMARY_CAP}
                 />
               ) : null}
-          {hasFiles ? (
-            <ul className="chat-workspace-strip__list chat-workspace-strip__task-files">
-              {visibleFiles.map((file) => (
-                <li
-                  key={file.path}
-                  className="chat-workspace-strip__row"
-                  title={file.path}
-                >
-                  <button
-                    type="button"
-                    className="chat-workspace-strip__file-button"
-                    onClick={() => onOpenFile(file)}
-                  >
-                    <DisplayTabIcon
-                      kind={displayTabKindForPayload(file.payload)}
-                      size={15}
-                    />
-                    <span className="chat-workspace-strip__file-name">
-                      {basenameOf(file.path)}
-                    </span>
-                  </button>
-                </li>
-              ))}
-              {filesCapped ? (
-                <li className="chat-workspace-strip__row">
-                  <button
-                    type="button"
-                    className="chat-workspace-strip__file-button chat-workspace-strip__files-toggle"
-                    onClick={() => setShowAllFiles((value) => !value)}
-                    aria-expanded={showAllFiles}
-                  >
-                    <ChevronDown
-                      size={13}
-                      strokeWidth={2}
-                      aria-hidden="true"
-                      className="chat-workspace-strip__files-toggle-chevron"
-                      data-expanded={showAllFiles ? "true" : undefined}
-                    />
-                    <span className="chat-workspace-strip__file-name">
-                      {showAllFiles ? "Show less" : `View all (${files.length})`}
-                    </span>
-                  </button>
-                </li>
+              {hasFiles ? (
+                <ul className="chat-workspace-strip__list chat-workspace-strip__task-files">
+                  {visibleFiles.map((file) => (
+                    <li
+                      key={file.path}
+                      className="chat-workspace-strip__row"
+                      title={file.path}
+                    >
+                      <button
+                        type="button"
+                        className="chat-workspace-strip__file-button"
+                        onClick={() => onOpenFile(file)}
+                      >
+                        <DisplayTabIcon
+                          kind={displayTabKindForPayload(file.payload)}
+                          size={15}
+                        />
+                        <span className="chat-workspace-strip__file-name">
+                          {basenameOf(file.path)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {filesCapped ? (
+                    <li className="chat-workspace-strip__row">
+                      <button
+                        type="button"
+                        className="chat-workspace-strip__file-button chat-workspace-strip__files-toggle"
+                        onClick={() => setShowAllFiles((value) => !value)}
+                        aria-expanded={showAllFiles}
+                      >
+                        <ChevronDown
+                          size={13}
+                          strokeWidth={2}
+                          aria-hidden="true"
+                          className="chat-workspace-strip__files-toggle-chevron"
+                          data-expanded={showAllFiles ? "true" : undefined}
+                        />
+                        <span className="chat-workspace-strip__file-name">
+                          {showAllFiles
+                            ? "Show less"
+                            : `View all (${files.length})`}
+                        </span>
+                      </button>
+                    </li>
+                  ) : null}
+                </ul>
               ) : null}
-            </ul>
-          ) : null}
             </div>
           ) : null}
         </div>
@@ -620,6 +620,16 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   const activity = chat.conversation.activity;
   const allTasks = chat.conversation.tasks;
   const filesFeed = chat.conversation.files;
+  const {
+    hasOlder: activityHasOlder,
+    isLoadingOlder: activityIsLoadingOlder,
+    loadOlder: loadOlderActivity,
+  } = activity;
+  const {
+    hasOlder: filesHaveOlder,
+    isLoadingOlder: filesAreLoadingOlder,
+    loadOlder: loadOlderFiles,
+  } = filesFeed;
   const schedules = useConversationSchedules(conversationId);
   const storeState = useStoreSidePanelState();
 
@@ -636,23 +646,13 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   // hasOlder/loading, which re-runs the effect until the feed is drained.
   useEffect(() => {
     if (!searching) return;
-    if (activity.hasOlder && !activity.isLoadingOlder) activity.loadOlder();
-  }, [
-    searching,
-    activity.hasOlder,
-    activity.isLoadingOlder,
-    activity.loadOlder,
-  ]);
+    if (activityHasOlder && !activityIsLoadingOlder) loadOlderActivity();
+  }, [searching, activityHasOlder, activityIsLoadingOlder, loadOlderActivity]);
 
   useEffect(() => {
     if (!searching) return;
-    if (filesFeed.hasOlder && !filesFeed.isLoadingOlder) filesFeed.loadOlder();
-  }, [
-    searching,
-    filesFeed.hasOlder,
-    filesFeed.isLoadingOlder,
-    filesFeed.loadOlder,
-  ]);
+    if (filesHaveOlder && !filesAreLoadingOlder) loadOlderFiles();
+  }, [searching, filesHaveOlder, filesAreLoadingOlder, loadOlderFiles]);
 
   useEffect(() => {
     if (!searching) return;
@@ -691,16 +691,13 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
         seenRunningGroupsRef.current.has(group.groupKey)),
     [groupExpandOverrides],
   );
-  const toggleGroup = useCallback(
-    (groupKey: string, nextExpanded: boolean) => {
-      setGroupExpandOverrides((prev) => {
-        const next = new Map(prev);
-        next.set(groupKey, nextExpanded);
-        return next;
-      });
-    },
-    [],
-  );
+  const toggleGroup = useCallback((groupKey: string, nextExpanded: boolean) => {
+    setGroupExpandOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(groupKey, nextExpanded);
+      return next;
+    });
+  }, []);
   // Per-agent expand/collapse: an expanded activity row reveals that
   // agent's recent reasoning summaries and the files it produced.
   //
@@ -720,8 +717,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
       const override = expandOverrides.get(task.id);
       return (
         override ??
-        (task.status === "running" ||
-          seenRunningTasksRef.current.has(task.id))
+        (task.status === "running" || seenRunningTasksRef.current.has(task.id))
       );
     },
     [expandOverrides],
@@ -783,7 +779,9 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   // keeps the user's explicit choice for when it regrows.
   useEffect(() => {
     if (allTasks.length === 0) return;
-    setGroupExpandOverrides((prev) => pruneGroupExpandOverrides(prev, allTasks));
+    setGroupExpandOverrides((prev) =>
+      pruneGroupExpandOverrides(prev, allTasks),
+    );
   }, [allTasks]);
 
   // Persist the expansion state so a relaunch (which restores this
@@ -856,9 +854,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     // frozen indices.
     runningOrderRef.current = state;
     const visible = matchingActivityKeys
-      ? ordered.filter((row) =>
-          matchingActivityKeys.has(activityRowKey(row)),
-        )
+      ? ordered.filter((row) => matchingActivityKeys.has(activityRowKey(row)))
       : ordered;
     // Never cap the running list — every active/running thread stays visible
     // regardless of the orchestrator's busy/idle state. While the orchestrator

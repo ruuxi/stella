@@ -305,6 +305,8 @@ export function AgentModelPicker({
   >(null);
   const [claudeCodeModelsLoading, setClaudeCodeModelsLoading] = useState(false);
   const credentials = useLlmCredentials();
+  const cancelOAuth = credentials.cancelOAuth;
+  const validateOAuth = credentials.validateOAuth;
   const codexCatalog = useCodexModelCatalog();
   const [chatGptConnection, setChatGptConnection] = useState<
     "checking" | "connected" | "disconnected" | "needs-reauth"
@@ -515,10 +517,10 @@ export function AgentModelPicker({
   useEffect(
     () => () => {
       if (oauthPendingRef.current) {
-        void credentials.cancelOAuth(OPENAI_CODEX_PROVIDER);
+        void cancelOAuth(OPENAI_CODEX_PROVIDER);
       }
     },
-    [credentials.cancelOAuth],
+    [cancelOAuth],
   );
 
   // (The ChatGPT connection check is triggered below, once the active
@@ -711,7 +713,7 @@ export function AgentModelPicker({
   useEffect(() => {
     if (!showChatGptPanel && committedEngine !== "codex_cli") return;
     let cancelled = false;
-    void credentials.validateOAuth(OPENAI_CODEX_PROVIDER).then((result) => {
+    void validateOAuth(OPENAI_CODEX_PROVIDER).then((result) => {
       if (!cancelled) {
         setChatGptConnection(
           result.connected
@@ -725,7 +727,7 @@ export function AgentModelPicker({
     return () => {
       cancelled = true;
     };
-  }, [committedEngine, credentials.validateOAuth, showChatGptPanel]);
+  }, [committedEngine, showChatGptPanel, validateOAuth]);
 
   /**
    * The sidebar Assistant tab writes to both orchestrator and general (and

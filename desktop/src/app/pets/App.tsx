@@ -309,10 +309,6 @@ function PetDetailsDialog({
 }: PetDetailsDialogProps) {
   const [mainState, setMainState] = useState<PetAnimationState>("idle");
 
-  useEffect(() => {
-    setMainState("idle");
-  }, [pet.id]);
-
   const primaryLabel =
     state === "selected" ? "Selected" : state === "installed" ? "Select" : "Get";
 
@@ -1205,6 +1201,7 @@ export const PetsApp = () => {
       ) : null}
       {detailsTarget ? (
         <PetDetailsDialog
+          key={detailsTarget.id}
           pet={detailsTarget}
           state={
             detailsTarget.id === selectedPetId

@@ -25,7 +25,7 @@ type PersistentCacheEntry<T> = {
   data: T;
 };
 
-const readPersistentEntry = <T,>(key: string): T | undefined => {
+const readPersistentEntry = <T>(key: string): T | undefined => {
   const raw = uiState.getItem(key);
   if (!raw) return undefined;
   try {
@@ -41,7 +41,7 @@ const readPersistentEntry = <T,>(key: string): T | undefined => {
   }
 };
 
-const writePersistentEntry = <T,>(
+const writePersistentEntry = <T>(
   key: string,
   data: T,
   ttlMs: number,
@@ -112,12 +112,9 @@ export function useConvexOneShot<Query extends FunctionReference<"query">>(
 
   useEffect(() => {
     const currentArgs = argsRef.current;
-    if (currentArgs === "skip") {
-      setEntry((prev) =>
-        prev.token === fetchToken ? prev : { token: fetchToken, data: undefined },
-      );
-      return;
-    }
+    // The returned value is already gated by `entry.token === fetchToken`, so
+    // a skipped query reads as loading without a follow-up state reset.
+    if (currentArgs === "skip") return;
     let cancelled = false;
     void convex
       .query(queryRef.current, currentArgs as FunctionArgs<Query>)
@@ -213,12 +210,7 @@ export function usePersistentConvexOneShot<
       .then((result) => {
         if (cancelled) return;
         const data = result as FunctionReturnType<Query>;
-        writePersistentEntry(
-          cacheKey,
-          data,
-          options.ttlMs,
-          maxSerializedBytes,
-        );
+        writePersistentEntry(cacheKey, data, options.ttlMs, maxSerializedBytes);
         setEntry({ cacheKey, fetchToken, data });
       })
       .catch(() => {

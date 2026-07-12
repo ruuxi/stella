@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/api";
 import { useConvexOneShot } from "@/shared/lib/use-convex-one-shot";
@@ -68,7 +68,10 @@ function ShareDialogInner({
   onClose,
   onShared,
 }: ShareDialogProps) {
-  const myPackages = useConvexOneShot(api.data.store_packages.listMyPackages, {});
+  const myPackages = useConvexOneShot(
+    api.data.store_packages.listMyPackages,
+    {},
+  );
   const { communities } = useSocialCommunities();
   const { friends } = useSocialFriends();
   const { profile, ensureProfile } = useSocialProfile();
@@ -81,7 +84,6 @@ function ShareDialogInner({
   );
 
   const [destination, setDestination] = useState<ShareDestination | null>(null);
-  const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<StoreCategory | "">("");
   const [asUpdate, setAsUpdate] = useState(false);
@@ -108,20 +110,13 @@ function ShareDialogInner({
 
   const selectedFeatureName =
     sourceFeatures.length === 1 ? sourceFeatures[0]!.name : "";
+  const [displayName, setDisplayName] = useState(selectedFeatureName);
 
-  // Seed the form from the selected feature once per mount (the dialog
-  // unmounts on close, so a fresh selection reseeds naturally).
-  useEffect(() => {
-    setDisplayName(selectedFeatureName);
-  }, [selectedFeatureName]);
-
-  // Reset destination-specific choices when the user goes back and picks
-  // the other destination — a package that can take instant circle
-  // updates cannot take store updates and vice versa.
-  useEffect(() => {
+  const selectDestination = (next: ShareDestination | null) => {
+    setDestination(next);
     setAsUpdate(false);
     setUpdatePackageId("");
-  }, [destination]);
+  };
 
   const ownedPackages = (myPackages ?? []) as Array<{
     packageId: string;
@@ -352,14 +347,14 @@ function ShareDialogInner({
           {destination === null ? (
             <>
               <p className="share-destination-lede">
-                Where should this go? Sharing sends runnable code, so pick
-                the audience you mean.
+                Where should this go? Sharing sends runnable code, so pick the
+                audience you mean.
               </p>
               <div className="share-destination-options">
                 <button
                   type="button"
                   className="share-destination-option"
-                  onClick={() => setDestination("circle")}
+                  onClick={() => selectDestination("circle")}
                 >
                   <span className="share-destination-option-icon">
                     <Users size={20} />
@@ -369,15 +364,15 @@ function ShareDialogInner({
                       A friend or community
                     </span>
                     <span className="share-destination-option-desc">
-                      Instant. Goes straight to people you trust as a share
-                      card in chat — no review, never listed publicly.
+                      Instant. Goes straight to people you trust as a share card
+                      in chat — no review, never listed publicly.
                     </span>
                   </span>
                 </button>
                 <button
                   type="button"
                   className="share-destination-option"
-                  onClick={() => setDestination("store")}
+                  onClick={() => selectDestination("store")}
                 >
                   <span className="share-destination-option-icon">
                     <Store size={20} />
@@ -493,8 +488,8 @@ function ShareDialogInner({
                   </span>
                   {communities.length === 0 && friends.length === 0 ? (
                     <p className="share-recipient-empty">
-                      No friends or communities yet — add some from the
-                      Messages page first.
+                      No friends or communities yet — add some from the Messages
+                      page first.
                     </p>
                   ) : (
                     <div className="share-recipient-list">
@@ -511,9 +506,7 @@ function ShareDialogInner({
                             onClick={() => toggleRecipient(key)}
                           >
                             <Avatar fallback={name} size="small" />
-                            <span className="share-recipient-name">
-                              {name}
-                            </span>
+                            <span className="share-recipient-name">{name}</span>
                             <span className="share-recipient-tag">
                               Community
                             </span>
@@ -574,7 +567,7 @@ function ShareDialogInner({
               <button
                 type="button"
                 className="pill-btn"
-                onClick={() => setDestination(null)}
+                onClick={() => selectDestination(null)}
                 disabled={submitting}
               >
                 Back

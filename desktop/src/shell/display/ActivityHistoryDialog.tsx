@@ -20,7 +20,7 @@
  * need pagination.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Search, X } from "@/ui/icons";
 import {
   LegendList,
@@ -144,15 +144,10 @@ export function ActivityHistoryDialog({
   onOpenSchedule,
   onOpenFile,
 }: ActivityHistoryDialogProps) {
-  const [query, setQuery] = useState("");
-
-  // Reset search whenever the dialog opens or the section changes — a
-  // stale query for "files" sticking around after opening "Completed"
-  // reads as a bug. LegendList resets its own scroll on data change.
-  useEffect(() => {
-    if (!open) return;
-    setQuery("");
-  }, [open, section]);
+  const queryScope = open ? section : null;
+  const [queryState, setQueryState] = useState({ scope: queryScope, value: "" });
+  const query = queryState.scope === queryScope ? queryState.value : "";
+  const setQuery = (value: string) => setQueryState({ scope: queryScope, value });
 
   const needle = query.trim().toLowerCase();
 

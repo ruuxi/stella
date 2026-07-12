@@ -97,11 +97,5 @@ export function MobileActivityNotificationsBridge() {
     }
   }, [allTasks, hasConnectedAccount, sendActivityNotification]);
 
-  useEffect(() => {
-    return () => {
-      recordsRef.current.clear();
-    };
-  }, []);
-
   return null;
 }

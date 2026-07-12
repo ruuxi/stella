@@ -86,9 +86,7 @@ function ComposerImpl({
   } = useScreenshotPreview(chatContext);
 
   const onSendRef = useRef(onSend);
-  useEffect(() => {
-    onSendRef.current = onSend;
-  }, [onSend]);
+  onSendRef.current = onSend;
 
   const dictation = useDictation({
     message,

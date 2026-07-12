@@ -4,7 +4,7 @@
  * `<audio controls>` element.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Pause, Play } from "@/ui/icons";
 
 const formatTime = (seconds: number): string => {
@@ -25,12 +25,6 @@ export const AudioPlayer = ({ src }: { src: string | null }) => {
   // Reset transport state when the source swaps so the player can stay
   // mounted across selection changes instead of remounting (which would
   // flash the surface). The <audio> element reloads on src change.
-  useEffect(() => {
-    setPlaying(false);
-    setCurrent(0);
-    setDuration(0);
-  }, [src]);
-
   const progress = duration > 0 ? Math.min(1, current / duration) : 0;
   const remaining = Math.max(0, duration - current);
   const disabled = !src;

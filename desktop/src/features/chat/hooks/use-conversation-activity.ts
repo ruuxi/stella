@@ -79,10 +79,6 @@ export const useConversationActivity = (
   const [localRetryTick, setLocalRetryTick] = useState(0);
 
   useEffect(() => {
-    setSnapshotState({ visitToken, snapshot: EMPTY_SNAPSHOT });
-  }, [visitToken]);
-
-  useEffect(() => {
     if (!isLocalMode || !conversationId) {
       setSnapshotState({
         visitToken,

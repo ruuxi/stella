@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ChevronRight,
@@ -114,6 +114,9 @@ export function ThirdPartyMigrationWizard({
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const refreshGenerationRef = useRef(0);
+  const importGenerationRef = useRef(0);
+  const selectedPreviewKeyRef = useRef<string | null>(null);
 
   const selectedPreview = useMemo(
     () =>
@@ -133,6 +136,7 @@ export function ThirdPartyMigrationWizard({
   ];
 
   const refresh = useCallback(async () => {
+    const generation = ++refreshGenerationRef.current;
     const migrationApi = window.electronAPI?.migration;
     if (!migrationApi?.detectSources) {
       setError("Import is unavailable in this window.");
@@ -144,36 +148,42 @@ export function ThirdPartyMigrationWizard({
     setError(null);
     try {
       const nextPreviews = await migrationApi.detectSources();
+      if (refreshGenerationRef.current !== generation) return;
       setPreviews(nextPreviews);
       const firstFound = nextPreviews.find((preview) => preview.found) ?? null;
-      setSelectedPreviewKey((current) => {
-        if (
-          current &&
-          nextPreviews.some((preview) => previewKey(preview) === current)
-        ) {
-          return current;
-        }
-        return firstFound ? previewKey(firstFound) : null;
-      });
+      const currentKey = selectedPreviewKeyRef.current;
+      const nextKey =
+        currentKey &&
+        nextPreviews.some((preview) => previewKey(preview) === currentKey)
+          ? currentKey
+          : firstFound
+            ? previewKey(firstFound)
+            : null;
+      const nextPreview =
+        nextPreviews.find((preview) => previewKey(preview) === nextKey) ?? null;
+      selectedPreviewKeyRef.current = nextKey;
+      setSelectedPreviewKey(nextKey);
+      setSelection(createSelection(nextPreview));
+      setReport(null);
     } catch (nextError) {
+      if (refreshGenerationRef.current !== generation) return;
       setError(
         nextError instanceof Error
           ? nextError.message
           : "Failed to check for imports.",
       );
     } finally {
-      setLoading(false);
+      if (refreshGenerationRef.current === generation) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void refresh();
+    return () => {
+      refreshGenerationRef.current += 1;
+      importGenerationRef.current += 1;
+    };
   }, [refresh]);
-
-  useEffect(() => {
-    setSelection(createSelection(selectedPreview));
-    setReport(null);
-  }, [selectedPreview]);
 
   useEffect(() => {
     if (!hideWhenEmpty || loading || foundPreviews.length > 0) return;
@@ -187,6 +197,20 @@ export function ThirdPartyMigrationWizard({
     }));
   }, []);
 
+  const selectPreview = useCallback(
+    (preview: ThirdPartyMigrationPreview) => {
+      importGenerationRef.current += 1;
+      const nextKey = previewKey(preview);
+      selectedPreviewKeyRef.current = nextKey;
+      setSelectedPreviewKey(nextKey);
+      setSelection(createSelection(preview));
+      setReport(null);
+      setError(null);
+      setRunning(false);
+    },
+    [],
+  );
+
   const runImport = useCallback(async () => {
     if (!selectedPreview) return;
     const migrationApi = window.electronAPI?.migration;
@@ -195,6 +219,7 @@ export function ThirdPartyMigrationWizard({
       return;
     }
 
+    const generation = ++importGenerationRef.current;
     setRunning(true);
     setError(null);
     try {
@@ -203,6 +228,7 @@ export function ThirdPartyMigrationWizard({
         sourceRoot: selectedPreview.sourceRoot,
         selection,
       });
+      if (importGenerationRef.current !== generation) return;
       setReport(nextReport);
       onImported?.(nextReport);
       showToast({
@@ -210,6 +236,7 @@ export function ThirdPartyMigrationWizard({
         description: "A migration report is ready.",
       });
     } catch (nextError) {
+      if (importGenerationRef.current !== generation) return;
       const message =
         nextError instanceof Error ? nextError.message : "Import failed.";
       setError(message);
@@ -219,7 +246,7 @@ export function ThirdPartyMigrationWizard({
         variant: "error",
       });
     } finally {
-      setRunning(false);
+      if (importGenerationRef.current === generation) setRunning(false);
     }
   }, [onImported, selectedPreview, selection]);
 
@@ -281,7 +308,7 @@ export function ThirdPartyMigrationWizard({
                 data-active={
                   selectedPreviewKey === previewKey(preview) || undefined
                 }
-                onClick={() => setSelectedPreviewKey(previewKey(preview))}
+                onClick={() => selectPreview(preview)}
               >
                 <span className="migration-source-card__name">
                   Import from {SOURCE_COPY[preview.source]}

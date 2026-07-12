@@ -71,25 +71,6 @@ export function useOnboardingDiscovery({
   );
 
   useEffect(() => {
-    // Only signal selection state while we're actually on the browser
-    // phase. Previously this fired on every category-toggle change (and
-    // on every mount) regardless of phase, which spammed the parent's
-    // `setHasDiscoverySelections` setter and caused the overlay tree to
-    // re-render through `useOnboardingOverlay` for unrelated phases.
-    if (phase !== "browser") {
-      // Leaving the browser phase: reset the elevated-creature flag so
-      // Stella glides back to its parked split position instead of
-      // staying lifted into the now-empty mock slot above the next
-      // phase's copy.
-      onSelectionChange?.(false);
-      return;
-    }
-    const hasAny =
-      Object.values(categoryStates).some((value) => value) || browserEnabled;
-    onSelectionChange?.(hasAny);
-  }, [browserEnabled, categoryStates, onSelectionChange, phase]);
-
-  useEffect(() => {
     if (!browserEnabled || detectedBrowser) {
       return;
     }
@@ -218,6 +199,11 @@ export function useOnboardingDiscovery({
       const nextCategoryStates = { ...categoryStates, [id]: !wasEnabled };
       setCategoryStates(nextCategoryStates);
       setShowNoneWarning(false);
+      if (phase === "browser") {
+        onSelectionChange?.(
+          Object.values(nextCategoryStates).some(Boolean) || browserEnabled,
+        );
+      }
 
       if (!wasEnabled) {
         setActiveMockId(id);
@@ -229,13 +215,24 @@ export function useOnboardingDiscovery({
         );
       }
     },
-    [activeMockId, browserEnabled, categoryStates],
+    [
+      activeMockId,
+      browserEnabled,
+      categoryStates,
+      onSelectionChange,
+      phase,
+    ],
   );
 
   const toggleBrowser = useCallback(() => {
     const wasEnabled = browserEnabled;
     setBrowserEnabled((current) => !current);
     setShowNoneWarning(false);
+    if (phase === "browser") {
+      onSelectionChange?.(
+        !wasEnabled || Object.values(categoryStates).some(Boolean),
+      );
+    }
 
     if (wasEnabled) {
       setSelectedBrowser(null);
@@ -249,7 +246,13 @@ export function useOnboardingDiscovery({
     }
 
     setActiveMockId("browser");
-  }, [activeMockId, browserEnabled, categoryStates]);
+  }, [
+    activeMockId,
+    browserEnabled,
+    categoryStates,
+    onSelectionChange,
+    phase,
+  ]);
 
   const selectBrowser = useCallback((browserId: BrowserId) => {
     setAvailableProfiles([]);
@@ -257,11 +260,15 @@ export function useOnboardingDiscovery({
     setSelectedBrowser(browserId);
   }, []);
 
+  const hasSelections =
+    Object.values(categoryStates).some(Boolean) || browserEnabled;
+
   return {
     activeMockId,
     availableProfiles,
     browserEnabled,
     categoryStates,
+    hasSelections,
     selectedBrowser,
     selectedProfile,
     showNoneWarning,

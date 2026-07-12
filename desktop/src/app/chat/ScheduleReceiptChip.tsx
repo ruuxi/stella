@@ -51,9 +51,9 @@ export function ScheduleReceiptChip({
   summary?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now);
   // Computed once on mount + on `open` toggles only — no ticker. The chip
   // is a static receipt; the live next-run countdown lives in the dialog.
-  const nowMs = useMemo(() => Date.now(), [open]);
   const { primary, meta } = useMemo(
     () => labelFor(affected, nowMs),
     [affected, nowMs],
@@ -66,7 +66,10 @@ export function ScheduleReceiptChip({
       <button
         type="button"
         className="schedule-receipt-chip"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setNowMs(Date.now());
+          setOpen(true);
+        }}
       >
         <span className="schedule-receipt-chip__icon" aria-hidden="true">
           <Clock size={13} strokeWidth={1.5} />
@@ -76,7 +79,10 @@ export function ScheduleReceiptChip({
       </button>
       <ScheduleDetailsDialog
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setNowMs(Date.now());
+          setOpen(nextOpen);
+        }}
         affected={affected}
         summary={summary}
       />

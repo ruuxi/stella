@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { uiState } from "@/platform/ui-state";
 import { BUNDLED_PETS } from "@/shell/pet/bundled-pets";
 
@@ -27,19 +27,22 @@ const safeRead = (): Set<string> => {
 
 const safeWrite = (set: Set<string>): void => {
   if (typeof window === "undefined") return;
-  uiState.setItem(
-    STORAGE_KEY,
-    JSON.stringify(Array.from(set)),
-  );
+  uiState.setItem(STORAGE_KEY, JSON.stringify(Array.from(set)));
 };
 
 export const isBundledPetId = (petId: string): boolean =>
   BUNDLED_PETS.some((pet) => pet.id === petId);
 
 const CHANGE_EVENT = "stella:pet-installs:changed";
+let installedSnapshot: Set<string> | null = null;
+const EMPTY_SERVER_SNAPSHOT = new Set<string>();
+
+const getInstalledSnapshot = (): Set<string> =>
+  (installedSnapshot ??= safeRead());
 
 const dispatchChange = () => {
   if (typeof window === "undefined") return;
+  installedSnapshot = safeRead();
   window.dispatchEvent(new Event(CHANGE_EVENT));
 };
 
@@ -71,21 +74,26 @@ export const useInstalledPets = (): {
   install: (petId: string) => void;
   uninstall: (petId: string) => void;
 } => {
-  const [installed, setInstalled] = useState<Set<string>>(() => safeRead());
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const refresh = () => setInstalled(safeRead());
-    const storageHandler = (event: StorageEvent) => {
-      if (event.key === STORAGE_KEY) refresh();
-    };
-    window.addEventListener(CHANGE_EVENT, refresh);
-    window.addEventListener("storage", storageHandler);
-    return () => {
-      window.removeEventListener(CHANGE_EVENT, refresh);
-      window.removeEventListener("storage", storageHandler);
-    };
-  }, []);
+  const installed = useSyncExternalStore(
+    (notify) => {
+      if (typeof window === "undefined") return () => undefined;
+      const refresh = () => {
+        installedSnapshot = safeRead();
+        notify();
+      };
+      const storageHandler = (event: StorageEvent) => {
+        if (event.key === STORAGE_KEY) refresh();
+      };
+      window.addEventListener(CHANGE_EVENT, refresh);
+      window.addEventListener("storage", storageHandler);
+      return () => {
+        window.removeEventListener(CHANGE_EVENT, refresh);
+        window.removeEventListener("storage", storageHandler);
+      };
+    },
+    getInstalledSnapshot,
+    () => EMPTY_SERVER_SNAPSHOT,
+  );
 
   const isInstalled = useCallback(
     (petId: string) => isBundledPetId(petId) || installed.has(petId),

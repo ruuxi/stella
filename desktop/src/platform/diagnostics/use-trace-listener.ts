@@ -142,9 +142,9 @@ export function useTraceEventMonitor(enabled: boolean, events: EventRecord[]) {
   const seenIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!enabled) return;
-
     const seen = seenIdsRef.current;
+    if (events.length === 0) seen.clear();
+    if (!enabled) return;
 
     for (const event of events) {
       if (seen.has(event._id)) continue;
@@ -159,7 +159,12 @@ export function useTraceEventMonitor(enabled: boolean, events: EventRecord[]) {
 
       if (isAgentStartedEvent(event)) {
         const p = event.payload;
-        traceTaskStarted(p.agentId, p.agentType, p.description, p.parentAgentId);
+        traceTaskStarted(
+          p.agentId,
+          p.agentType,
+          p.description,
+          p.parentAgentId,
+        );
         continue;
       }
 
@@ -225,11 +230,4 @@ export function useTraceEventMonitor(enabled: boolean, events: EventRecord[]) {
       }
     }
   }, [enabled, events]);
-
-  // Reset seen set when events array shrinks (new conversation)
-  useEffect(() => {
-    if (events.length === 0) {
-      seenIdsRef.current.clear();
-    }
-  }, [events.length]);
 }
