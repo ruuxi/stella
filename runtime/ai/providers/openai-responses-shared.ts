@@ -581,7 +581,7 @@ export async function processResponsesStream<TApi extends Api>(
 				currentBlock = null;
 				stream.push({ type: "toolcall_end", contentIndex: blockIndex(), toolCall, partial: output });
 			}
-		} else if (event.type === "response.completed") {
+		} else if (event.type === "response.completed" || event.type === "response.incomplete") {
 			const response = event.response;
 			if (response?.id) {
 				output.responseId = response.id;

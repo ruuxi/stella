@@ -182,6 +182,35 @@ describe("bounded event-stream connection recovery", () => {
     expect(resume).toHaveBeenCalledTimes(1);
   });
 
+  it("resumes from a cursor learned during connect before the first event", async () => {
+    vi.useFakeTimers();
+    let initialState: { runId: string; cursor: number } | undefined;
+    const connect = vi.fn(async () => {
+      initialState = { runId: "relay_zero_event", cursor: 0 };
+      return source([socketClosed()]);
+    });
+    const resume = vi.fn(() =>
+      source([{ sequence: 1, type: "done", runId: "relay_zero_event" }]),
+    );
+
+    const result = collect(
+      makeStream({
+        connect,
+        resume,
+        getInitialResumeState: () => initialState,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(250);
+
+    await expect(result).resolves.toEqual([
+      { sequence: 1, type: "done", runId: "relay_zero_event" },
+    ]);
+    expect(connect).toHaveBeenCalledOnce();
+    expect(resume).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "relay_zero_event", cursor: 0 }),
+    );
+  });
+
   it("ends the reconnect deadline once a resumed stream delivers new data", async () => {
     vi.useFakeTimers();
     const result = collect(
@@ -193,7 +222,12 @@ describe("bounded event-stream connection recovery", () => {
           ]),
         resume: ({ runId }) =>
           (async function* () {
-            yield { sequence: 2, type: "delta", runId, value: "B" } as TestEvent;
+            yield {
+              sequence: 2,
+              type: "delta",
+              runId,
+              value: "B",
+            } as TestEvent;
             await new Promise((resolve) => setTimeout(resolve, 1_500));
             yield { sequence: 3, type: "done", runId } as TestEvent;
           })(),

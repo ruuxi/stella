@@ -429,6 +429,189 @@ describe("OpenAI Responses socket fault injection", () => {
     expect(JSON.parse(requests[0]!.body).store).toBe(false);
   });
 
+  it("uses GET starting_after=0 when the relay body ends before event one", async () => {
+    const relayRequestId = "relay_zero_event";
+    const methods: string[] = [];
+    let upstreamExecutions = 0;
+    const server = http.createServer(async (request, response) => {
+      methods.push(request.method ?? "");
+      for await (const _chunk of request) {
+        // Drain request bodies.
+      }
+      if (request.method === "POST") {
+        upstreamExecutions += 1;
+        response.writeHead(200, {
+          "content-type": "text/event-stream",
+          "x-stella-relay-resume": "1",
+          "x-stella-relay-request-id": relayRequestId,
+          connection: "close",
+        });
+        response.flushHeaders();
+        setTimeout(() => response.destroy(), 20);
+        return;
+      }
+      expect(request.url).toContain(
+        `/v1/responses/${relayRequestId}?stream=true&starting_after=0`,
+      );
+      response.writeHead(200, {
+        "content-type": "text/event-stream",
+        "x-stella-relay-resume": "1",
+        "x-stella-relay-request-id": relayRequestId,
+      });
+      response.end(
+        sse([
+          {
+            type: "response.completed",
+            sequence_number: 0,
+            stella_relay_sequence: 1,
+            response: completedResponse("resp_zero_event"),
+          },
+        ]) + "data: [DONE]\n\n",
+      );
+    });
+    servers.add(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const model: Model<"openai-responses"> = {
+      id: "stella/openai/test-model",
+      name: "Zero-event relay model",
+      api: "openai-responses",
+      provider: "openai",
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8_000,
+      maxTokens: 1_000,
+    };
+
+    const result = await streamOpenAIResponses(
+      model,
+      { messages: [{ role: "user", content: "hello", timestamp: 0 }] },
+      { apiKey: "test" },
+    ).result();
+
+    expect(result.stopReason).toBe("stop");
+    expect(methods).toEqual(["POST", "GET"]);
+    expect(upstreamExecutions).toBe(1);
+  });
+
+  it("cancels a managed relay request even when aborted before response headers", async () => {
+    const methods: string[] = [];
+    let relayRequestId: string | undefined;
+    let releasePost!: () => void;
+    const postBlocked = new Promise<void>((resolve) => {
+      releasePost = resolve;
+    });
+    let resolveDelete!: () => void;
+    const deleted = new Promise<void>((resolve) => {
+      resolveDelete = resolve;
+    });
+    const server = http.createServer(async (request, response) => {
+      methods.push(request.method ?? "");
+      if (request.method === "DELETE") {
+        expect(request.url).toBe(
+          `/api/stella/relay/responses/${relayRequestId}`,
+        );
+        response.writeHead(204);
+        response.end();
+        resolveDelete();
+        releasePost();
+        return;
+      }
+      relayRequestId = request.headers["x-stella-relay-request-id"] as
+        | string
+        | undefined;
+      for await (const _chunk of request) {
+        // Drain request bodies.
+      }
+      await postBlocked;
+      response.destroy();
+    });
+    servers.add(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const controller = new AbortController();
+    const model: Model<"openai-responses"> = {
+      id: "stella/openai/test-model",
+      name: "Pre-header cancellation model",
+      api: "openai-responses",
+      provider: "openai",
+      baseUrl: `http://127.0.0.1:${port}/api/stella/relay`,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8_000,
+      maxTokens: 1_000,
+    };
+
+    const stream = streamOpenAIResponses(
+      model,
+      { messages: [{ role: "user", content: "hello", timestamp: 0 }] },
+      { apiKey: "test", signal: controller.signal },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    controller.abort("user canceled before headers");
+    const result = await stream.result();
+    await deleted;
+
+    expect(result.stopReason).toBe("aborted");
+    expect(relayRequestId).toMatch(/^stella-relay-/);
+    expect(methods).toEqual(["POST", "DELETE"]);
+  });
+
+  it("treats response.incomplete as terminal and maps max output to length", async () => {
+    const server = http.createServer(async (request, response) => {
+      for await (const _chunk of request) {
+        // Drain request bodies.
+      }
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(
+        sse([
+          {
+            type: "response.incomplete",
+            sequence_number: 0,
+            response: {
+              ...completedResponse("resp_incomplete"),
+              status: "incomplete",
+              incomplete_details: { reason: "max_output_tokens" },
+            },
+          },
+        ]) + "data: [DONE]\n\n",
+      );
+    });
+    servers.add(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const model: Model<"openai-responses"> = {
+      id: "test-model",
+      name: "Incomplete model",
+      api: "openai-responses",
+      provider: "openai",
+      baseUrl: `http://127.0.0.1:${port}/v1`,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8_000,
+      maxTokens: 1_000,
+    };
+
+    const result = await streamOpenAIResponses(
+      model,
+      { messages: [{ role: "user", content: "hello", timestamp: 0 }] },
+      { apiKey: "test" },
+    ).result();
+
+    expect(result.stopReason).toBe("length");
+    expect(result.responseId).toBe("resp_incomplete");
+  });
+
   it("surfaces an expired relay cursor without replaying the original POST", async () => {
     let posts = 0;
     let gets = 0;

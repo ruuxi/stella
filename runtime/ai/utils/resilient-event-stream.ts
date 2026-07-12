@@ -13,6 +13,7 @@ export type StreamReconnectInfo = {
 export type ResilientEventStreamOptions<T> = {
 	connect: (signal?: AbortSignal) => AsyncIterable<T> | Promise<AsyncIterable<T>>;
 	resume?: (args: { runId: string; cursor: number; signal?: AbortSignal }) => AsyncIterable<T> | Promise<AsyncIterable<T>>;
+	getInitialResumeState?: () => { runId: string; cursor: number } | undefined;
 	getRunId: (event: T) => string | undefined;
 	getSequence: (event: T) => number | undefined;
 	isTerminal: (event: T) => boolean;
@@ -129,11 +130,11 @@ const retryDelay = (args: {
 /**
  * Reconnect an event stream without replaying application work.
  *
- * Before the first event, `connect` may be called again (the owning adapter
- * must make that request idempotent). After events arrive, this helper only
- * invokes `resume` with the durable run id and sequence cursor. If either is
- * unavailable it holds the stream open for the grace window, preserving the
- * partial response, and then fails instead of reissuing the request.
+	 * Before the first event, an adapter can seed a durable run id and cursor from
+	 * response headers; body failure then resumes instead of replaying `connect`.
+	 * Without seeded state, pre-header failures may call an idempotent `connect`
+	 * again. After events arrive this helper only invokes `resume`. If no durable
+	 * state exists it preserves the partial response and fails without replay.
  */
 export async function* resilientEventStream<T>(options: ResilientEventStreamOptions<T>): AsyncGenerator<T, void, void> {
 	const deadlineMs = options.deadlineMs ?? DEFAULT_DEADLINE_MS;
@@ -178,6 +179,14 @@ export async function* resilientEventStream<T>(options: ResilientEventStreamOpti
 								...(linked.signal ? { signal: linked.signal } : {}),
 							})
 						: await options.connect(linked.signal);
+				const initialResumeState =
+					nextConnection === "connect" && runId === undefined && cursor === undefined
+						? options.getInitialResumeState?.()
+						: undefined;
+				if (initialResumeState) {
+					runId = initialResumeState.runId;
+					cursor = initialResumeState.cursor;
+				}
 				let terminal = false;
 				for await (const event of source) {
 					if (options.signal?.aborted) throw abortError(options.signal);
@@ -206,7 +215,7 @@ export async function* resilientEventStream<T>(options: ResilientEventStreamOpti
 						attempts: reconnectAttempts,
 						elapsedMs: Math.max(0, now() - reconnectStartedAt!),
 						partialResponse: receivedEvent,
-						resumable: receivedEvent && Boolean(options.resume) && Boolean(runId) && cursor !== undefined,
+						resumable: Boolean(options.resume) && Boolean(runId) && cursor !== undefined,
 					});
 				}
 				if (!isRetryable(error)) throw error;
@@ -223,7 +232,7 @@ export async function* resilientEventStream<T>(options: ResilientEventStreamOpti
 				linked.cleanup();
 			}
 
-			const canResume = receivedEvent && Boolean(options.resume) && Boolean(runId) && cursor !== undefined;
+			const canResume = Boolean(options.resume) && Boolean(runId) && cursor !== undefined;
 			const canReconnect = !receivedEvent || canResume;
 			nextConnection = canResume ? "resume" : "connect";
 			if (!canReconnect) {
