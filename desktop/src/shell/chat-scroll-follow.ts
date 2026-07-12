@@ -50,6 +50,32 @@ export const notifyAssistantScrollFollowLayoutChange = (): void => {
   notify()
 }
 
+const growthSubscribers = new Set<ScrollFollowSubscriber>()
+
+/**
+ * Inline content outside the streaming text grew — an agent spawn/completion
+ * card mounted in a row. Unlike `notifyAssistantScrollFollowLayoutChange`,
+ * this fires even with no active follow key: agent completion cards land
+ * after the run settled (background agent finished while the chat is idle),
+ * and the viewport should still keep them in frame when the user is parked
+ * at the bottom. Subscribers decide how (streaming rows keep the keyed
+ * follow; idle surfaces settle toward the new end).
+ */
+export const notifyChatContentGrowth = (): void => {
+  for (const subscriber of growthSubscribers) {
+    subscriber()
+  }
+}
+
+export const subscribeChatContentGrowth = (
+  subscriber: ScrollFollowSubscriber,
+): (() => void) => {
+  growthSubscribers.add(subscriber)
+  return () => {
+    growthSubscribers.delete(subscriber)
+  }
+}
+
 export const subscribeAssistantScrollFollow = (
   subscriber: ScrollFollowSubscriber,
 ): (() => void) => {

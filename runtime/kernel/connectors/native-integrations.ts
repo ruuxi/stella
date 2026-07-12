@@ -49,6 +49,8 @@ export type NativeConnectorCatalogEntry = {
     type: "composio";
     toolkit: string;
   };
+  /** Authoritative executable action map supplied by the Store catalog. */
+  actions?: readonly NativeConnectorCatalogAction[];
   oauthConfig?: NativeOAuthProviderConfig;
   oauthSetupGroup?: {
     id: string;
@@ -298,11 +300,6 @@ export const getNativeConnectorOAuthConfig = (
 const getOAuthCatalogProvider = (id: string) =>
   getOAuthProviderCatalog().find((entry) => entry.id === id);
 
-const normalizeOAuthCatalogToolName = (tool: OAuthCatalogTool) => {
-  const raw = tool.title?.trim() || tool.name.trim();
-  return raw || "Unnamed action";
-};
-
 const schemaTypeLabel = (schema: unknown): string => {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) return "";
   const record = schema as Record<string, unknown>;
@@ -382,9 +379,12 @@ export const getNativeConnectorCatalogActions = (
     entry.provider === "oauth-catalog" ||
     entry.provider === "backend-composio"
   ) {
+    if (entry.provider === "backend-composio") {
+      return [...(entry.actions ?? [])];
+    }
     if (entry.oauthConfig) return [];
     return (getOAuthCatalogProvider(entry.id)?.tools ?? []).map((tool) => ({
-      name: normalizeOAuthCatalogToolName(tool),
+      name: tool.name.trim(),
       ...(tool.title ? { title: tool.title } : {}),
       ...(tool.description ? { description: tool.description } : {}),
       ...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}),

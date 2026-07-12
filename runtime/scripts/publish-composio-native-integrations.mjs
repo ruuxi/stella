@@ -104,8 +104,7 @@ const API_KEY_ONLY = new Set([
 ]);
 
 const shouldPublish = (entry) =>
-  !BACKEND_OWNED.has(entry.id) &&
-  !API_KEY_ONLY.has(entry.id);
+  !BACKEND_OWNED.has(entry.id) && !API_KEY_ONLY.has(entry.id);
 
 const toRow = (entry) => ({
   id: entry.id,
@@ -114,6 +113,7 @@ const toRow = (entry) => ({
   category: entry.category,
   auth: ["OAUTH2"],
   catalogToolCount: entry.catalogToolCount,
+  actions: entry.tools,
   description: entry.description,
   sourceUrl: entry.sourceUrl,
   iconUrl: `https://logos.composio.dev/api/${entry.id}`,
@@ -185,8 +185,7 @@ if (!apply) {
       {
         count: rows.length,
         first: rows.slice(0, 5).map((row) => row.id),
-        hint:
-          "Set STELLA_CONVEX_SITE_URL and STELLA_ADMIN_TOKEN, then pass --apply to publish.",
+        hint: "Set STELLA_CONVEX_SITE_URL and STELLA_ADMIN_TOKEN, then pass --apply to publish.",
       },
       null,
       2,
@@ -203,19 +202,24 @@ if (!siteUrl || !adminToken) {
 }
 
 for (const row of rows) {
-  const response = await fetch(`${siteUrl}/api/admin/native-integrations/upsert`, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      authorization: `Bearer ${adminToken}`,
+  const response = await fetch(
+    `${siteUrl}/api/admin/native-integrations/upsert`,
+    {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify(row),
     },
-    body: JSON.stringify(row),
-  });
+  );
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`${row.id}: ${response.status} ${text.slice(0, 500)}`);
   }
 }
 
-process.stdout.write(`${JSON.stringify({ published: rows.length }, null, 2)}\n`);
+process.stdout.write(
+  `${JSON.stringify({ published: rows.length }, null, 2)}\n`,
+);

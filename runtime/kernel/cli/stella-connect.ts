@@ -12,7 +12,6 @@ import {
   requestConnectorConnectionFromBridge,
   requestConnectorCredentialFromBridge,
   requestBackendConnectorActionFromBridge,
-  requestConnectorTokenStoreFromBridge,
   type ConnectorConnectionResult,
   type ConnectorCredentialResult,
   type BackendConnectorActionResult,
@@ -39,7 +38,6 @@ import {
   deleteConnectorAccessTokens,
   loadConnectorAccessToken,
   loadConnectorTokenPayload,
-  setConnectorTokenStoreBroker,
 } from "../connectors/oauth.js";
 import {
   getNativeOAuthProviderConfig,
@@ -68,42 +66,6 @@ import { resolveStatePath } from "./shared.js";
 
 const stateRoot = path.resolve(resolveStatePath());
 const stellaAppDir = stateRoot;
-
-if (process.env.ELECTRON_RUN_AS_NODE === "1") {
-  const requestTokenStore = async (
-    request: Parameters<
-      typeof requestConnectorTokenStoreFromBridge
-    >[0]["request"],
-  ) => {
-    const socketPath = process.env.STELLA_CLI_BRIDGE_SOCK?.trim();
-    if (!socketPath) {
-      throw new Error(
-        "stella-connect protected storage requires the desktop CLI bridge.",
-      );
-    }
-    const result = await requestConnectorTokenStoreFromBridge({
-      socketPath,
-      request,
-    });
-    if (!result.ok) {
-      throw new Error(`stella-connect protected storage: ${result.reason}`);
-    }
-    return result;
-  };
-
-  setConnectorTokenStoreBroker({
-    load: async (tokenKey) => {
-      const result = await requestTokenStore({ operation: "load", tokenKey });
-      return result.payload ?? null;
-    },
-    save: async (tokenKey, payload) => {
-      await requestTokenStore({ operation: "save", tokenKey, payload });
-    },
-    delete: async (tokenKeys) => {
-      await requestTokenStore({ operation: "delete", tokenKeys });
-    },
-  });
-}
 
 const printJson = (value: unknown) => {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
@@ -425,7 +387,11 @@ const callBackendNativeIntegration = async (
 ) => {
   const socketPath =
     process.env.STELLA_CLI_BRIDGE_SOCK?.trim() ||
-    fail("Sign in to Stella before using this integration.");
+    fail(
+      process.platform === "win32"
+        ? "Secure connector action brokering is unavailable on Windows."
+        : "The Stella connector action broker is unavailable.",
+    );
   const result: BackendConnectorActionResult =
     await requestBackendConnectorActionFromBridge({
       socketPath,

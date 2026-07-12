@@ -9,7 +9,8 @@ const AUTH_HEADER_RE =
 const BEARER_RE = /\b(Bearer)\s+[A-Za-z0-9\-._~+/]+=*\b/gi;
 const BASIC_RE = /\b(Basic)\s+[A-Za-z0-9+/=]+\b/gi;
 const COOKIE_INLINE_RE = /\b(cookie|set-cookie)\s*:\s*([^\n\r;]+)/gi;
-const JWT_RE = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
+const JWT_RE =
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
 // Bare AWS access key IDs (AKIA/ASIA prefix + 16 base32 chars).
 const AWS_ACCESS_KEY_RE = /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g;
 // Labeled-prose AWS secret access keys, e.g. `AWS Secret Access Key: <40 chars>`.
@@ -83,7 +84,9 @@ const splitKeyTokens = (key: string): string[] =>
 
 const keyLooksSensitive = (key: string): boolean => {
   if (
-    splitKeyTokens(key).some((token) => SECRET_KEY_TOKENS.has(token.toLowerCase()))
+    splitKeyTokens(key).some((token) =>
+      SECRET_KEY_TOKENS.has(token.toLowerCase()),
+    )
   ) {
     return true;
   }
@@ -152,6 +155,9 @@ export const sanitizeSensitiveData = (
     const output: Record<string, unknown> = {
       message: redactSensitiveText(value.message),
       ...(value.stack ? { stack: redactSensitiveText(value.stack) } : {}),
+      ...(value.cause !== undefined
+        ? { cause: sanitizeSensitiveData(value.cause, depth + 1, seen) }
+        : {}),
     };
     for (const [key, entry] of Object.entries(
       value as unknown as Record<string, unknown>,

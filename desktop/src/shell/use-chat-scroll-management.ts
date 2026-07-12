@@ -33,6 +33,7 @@ import {
   clearAssistantScrollFollow,
   getAssistantScrollFollowKey,
   subscribeAssistantScrollFollow,
+  subscribeChatContentGrowth,
 } from '@/shell/chat-scroll-follow'
 import { registerChatAtRestProbe } from '@/features/chat/hooks/use-conversation-messages'
 import {
@@ -1040,12 +1041,18 @@ export function useChatScrollManagement({
             revealElement.getAttribute('data-reveal-visible-bottom'),
           )
           if (Number.isFinite(frontier)) {
+            const revealRect = revealElement.getBoundingClientRect()
             const revealBottom =
-              revealElement.getBoundingClientRect().top -
-              containerRect.top +
-              attached.scrollTop +
-              frontier
-            rowBottom = Math.min(rowBottom, revealBottom)
+              revealRect.top - containerRect.top + attached.scrollTop + frontier
+            // The mask hides only the wrapper's own unrevealed tail. Content
+            // mounted BELOW the wrapper (agent spawn cards, inline strips) is
+            // fully visible at its layout position, so clamp to the frontier
+            // only while the wrapper is the row's last visible content —
+            // otherwise the clamp would hold the viewport above a card the
+            // user should be following.
+            if (rowRect.bottom <= revealRect.bottom + 1) {
+              rowBottom = Math.min(rowBottom, revealBottom)
+            }
           }
         }
         const desiredScrollTop = Math.max(
@@ -1089,6 +1096,61 @@ export function useChatScrollManagement({
         followAssistantRowRaf = requestAnimationFrame(() => {
           followAssistantRowRaf = 0
           followActiveAssistantRow()
+        })
+      }
+
+      /**
+       * Follow content growth outside a streaming run — an agent completion
+       * card mounting (or the spawn card settling into its taller completed
+       * form) after the run ended, while the user is parked at the bottom.
+       * There is no follow key and no `.event-row--streaming` row in this
+       * state, so the keyed assistant follow can't handle it; instead settle
+       * toward the new end of content (the trailing footer's top), the same
+       * reading position a stream-follow would have landed on.
+       */
+      const followIdleContentGrowth = () => {
+        if (!attached || !followRef.current) return
+        // A run may have started between the notify and this frame — the
+        // keyed follow owns the motion then.
+        if (getAssistantScrollFollowKey()) {
+          followActiveAssistantRow()
+          return
+        }
+        const trailing = attached.querySelector<HTMLElement>(
+          '.event-list-trailing-region',
+        )
+        const containerRect = attached.getBoundingClientRect()
+        const contentBottom = trailing
+          ? trailing.getBoundingClientRect().top -
+            containerRect.top +
+            attached.scrollTop
+          : attached.scrollHeight
+        const target = Math.max(
+          0,
+          contentBottom - attached.clientHeight + FOLLOW_BREATHING_PX,
+        )
+        const distFromTarget = target - attached.scrollTop
+        if (distFromTarget <= 0) return
+        // The follow latch alone isn't enough of a gate here: it also stays
+        // armed while the user is pinned near the top of a taller-than-
+        // viewport reply. Only chase idle growth when the user is effectively
+        // at the end — either Legend still reports at-end (scroll events
+        // don't fire on pure content growth, so this reflects the pre-growth
+        // position) or the reading target is within half a viewport.
+        if (
+          !isAtBottomRef.current &&
+          distFromTarget > attached.clientHeight / 2
+        ) {
+          return
+        }
+        setTarget(target, { gentle: true })
+      }
+      let idleGrowthRaf = 0
+      const scheduleFollowIdleContentGrowth = () => {
+        if (idleGrowthRaf) return
+        idleGrowthRaf = requestAnimationFrame(() => {
+          idleGrowthRaf = 0
+          followIdleContentGrowth()
         })
       }
 
@@ -1224,6 +1286,18 @@ export function useChatScrollManagement({
         scheduleFollowActiveAssistantRow()
       })
 
+      // Agent card mounts route through their own channel (not the keyed
+      // follow notify) because they must fire even when no follow key is
+      // active — see `notifyChatContentGrowth`.
+      const unsubscribeGrowth = subscribeChatContentGrowth(() => {
+        if (!followRef.current) return
+        if (getAssistantScrollFollowKey()) {
+          scheduleFollowActiveAssistantRow()
+          return
+        }
+        scheduleFollowIdleContentGrowth()
+      })
+
       // NOTE: We intentionally do NOT re-pin scrollTop on container *width*
       // changes (the display/sidebar panel sliding open/closed over 460ms).
       // Earlier versions re-ran `scrollToEnd`, or wrote `scrollTop` directly,
@@ -1242,6 +1316,11 @@ export function useChatScrollManagement({
       cleanup = () => {
         if (!attached) return
         unsubscribeFollow()
+        unsubscribeGrowth()
+        if (idleGrowthRaf) {
+          cancelAnimationFrame(idleGrowthRaf)
+          idleGrowthRaf = 0
+        }
         attached.removeEventListener('wheel', handleWheel)
         attached.removeEventListener('touchstart', handleTouchStart)
         attached.removeEventListener('touchmove', handleTouchMove)

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import AjvModule from "ajv";
 
 import {
   resolveNativeConnectorCatalog,
@@ -10,6 +11,10 @@ import {
   isNativeConnectorEnabled,
 } from "../kernel/connectors/native-integrations.js";
 import type { BackendConnectorActionResult } from "../kernel/connectors/cli-broker-client.js";
+import {
+  redactSensitiveText,
+  sanitizeSensitiveData,
+} from "../contracts/sensitive-data.js";
 
 type SiteAuth = { baseUrl: string; authToken: string };
 
@@ -23,6 +28,8 @@ export type BackendConnectorActionBrokerOptions = {
 };
 
 const MAX_INPUT_DEPTH = 20;
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const ACTION_TIMEOUT_MS = 30_000;
 const SAFE_ACTION = /^[A-Z][A-Z0-9_]{1,127}$/u;
 const SAFE_REQUEST_ID = /^[A-Za-z0-9._:-]{1,128}$/u;
 
@@ -51,54 +58,77 @@ const isPlainJsonValue = (value: unknown, depth = 0): boolean => {
   );
 };
 
-const jwtExpiresSoon = (token: string, now = Date.now()): boolean => {
+const jwtStatus = (
+  token: string,
+  now = Date.now(),
+): "opaque" | "valid" | "expired" | "malformed" => {
   const parts = token.split(".");
-  if (parts.length !== 3) return false;
+  if (parts.length !== 3) return "opaque";
   try {
     const payload = JSON.parse(
       Buffer.from(parts[1]!, "base64url").toString("utf8"),
     ) as { exp?: unknown };
-    return (
-      typeof payload.exp === "number" && payload.exp * 1000 <= now + 30_000
-    );
+    if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
+      return "malformed";
+    }
+    return payload.exp * 1000 <= now + 30_000 ? "expired" : "valid";
   } catch {
-    return false;
+    return "malformed";
   }
 };
 
-const sanitizeText = (value: unknown, fallback: string): string => {
-  if (typeof value !== "string" || !value.trim()) return fallback;
-  return value
-    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/giu, "Bearer [REDACTED]")
-    .replace(
-      /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/gu,
-      "[REDACTED]",
-    )
-    .replace(
-      /\b(?:auth|access|refresh)[_-]?token\s*[:=]\s*[^\s,;]+/giu,
-      "token=[REDACTED]",
-    )
-    .slice(0, 1_000);
+const Ajv =
+  (AjvModule as unknown as { default?: typeof AjvModule }).default ?? AjvModule;
+const ajv = new Ajv({ allErrors: true, strict: false, coerceTypes: false });
+
+const validateActionInput = (
+  schema: Record<string, unknown> | undefined,
+  input: Record<string, unknown>,
+): string | null => {
+  if (!schema || !isPlainJsonValue(schema))
+    return "Action schema is unavailable.";
+  try {
+    const validate = ajv.compile(schema);
+    if (validate(input)) return null;
+    return `Action input failed schema validation: ${(validate.errors ?? [])
+      .slice(0, 8)
+      .map(
+        (error) =>
+          `${error.instancePath || "/"} ${error.message ?? "is invalid"}`,
+      )
+      .join("; ")}`;
+  } catch {
+    return "Action schema is invalid.";
+  }
 };
 
-const SENSITIVE_RESULT_KEY =
-  /^(?:authorization|cookie|set-cookie|authToken|accessToken|refreshToken|idToken|auth_token|access_token|refresh_token|id_token)$/iu;
-
-const sanitizeResult = (value: unknown, depth = 0): unknown => {
-  if (depth > MAX_INPUT_DEPTH) return "[TRUNCATED]";
-  if (typeof value === "string") return sanitizeText(value, "");
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeResult(item, depth + 1));
+const readBoundedJson = async (response: Response): Promise<unknown> => {
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) {
+    throw new Error("response_too_large");
   }
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, item]) => [
-      key,
-      SENSITIVE_RESULT_KEY.test(key)
-        ? "[REDACTED]"
-        : sanitizeResult(item, depth + 1),
-    ]),
-  );
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_RESPONSE_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("response_too_large");
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  if (bytes.byteLength === 0) return null;
+  return JSON.parse(new TextDecoder().decode(bytes));
 };
 
 const requestIdFromResponse = (response: Response, fallback: string) => {
@@ -114,6 +144,7 @@ export const createBackendConnectorActionBroker =
     action: string;
     input: Record<string, unknown>;
     requestId?: string;
+    signal?: AbortSignal;
   }): Promise<BackendConnectorActionResult> => {
     const connectorId = params.connectorId.trim().toLowerCase();
     const action = params.action.trim();
@@ -135,7 +166,8 @@ export const createBackendConnectorActionBroker =
     }
 
     let auth = options.getSiteAuth();
-    if (!auth || jwtExpiresSoon(auth.authToken)) {
+    const initialStatus = auth ? jwtStatus(auth.authToken) : "expired";
+    if (!auth || initialStatus === "expired" || initialStatus === "malformed") {
       auth = await options.refreshSiteAuth();
     }
     if (!auth?.baseUrl.trim() || !auth.authToken.trim()) {
@@ -143,6 +175,15 @@ export const createBackendConnectorActionBroker =
         ok: false,
         reason: "not_signed_in",
         message: "Sign in to Stella before using this integration.",
+        requestId,
+      };
+    }
+    const refreshedStatus = jwtStatus(auth.authToken);
+    if (refreshedStatus === "expired" || refreshedStatus === "malformed") {
+      return {
+        ok: false,
+        reason: "auth_expired",
+        message: "Stella sign-in refresh did not return a usable session.",
         requestId,
       };
     }
@@ -174,7 +215,10 @@ export const createBackendConnectorActionBroker =
         requestId,
       };
     }
-    if (!action.startsWith(`${toolkit}_`)) {
+    const canonicalAction = entry.actions?.find(
+      (candidate) => candidate.name === action,
+    );
+    if (!canonicalAction || !action.startsWith(`${toolkit}_`)) {
       return {
         ok: false,
         reason: "action_not_allowed",
@@ -182,8 +226,27 @@ export const createBackendConnectorActionBroker =
         requestId,
       };
     }
+    const schemaError = validateActionInput(
+      canonicalAction.inputSchema,
+      params.input,
+    );
+    if (schemaError) {
+      return {
+        ok: false,
+        reason: "action_not_allowed",
+        message: redactSensitiveText(schemaError),
+        requestId,
+      };
+    }
 
     let response: Response;
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort("timeout"),
+      ACTION_TIMEOUT_MS,
+    );
+    const abort = () => controller.abort(params.signal?.reason ?? "cancelled");
+    params.signal?.addEventListener("abort", abort, { once: true });
     try {
       response = await (options.fetchImpl ?? fetch)(
         `${auth.baseUrl.replace(/\/+$/u, "")}/api/native-integrations/run`,
@@ -200,19 +263,45 @@ export const createBackendConnectorActionBroker =
             action,
             input: params.input,
           }),
+          signal: controller.signal,
         },
       );
-    } catch {
+    } catch (error) {
+      clearTimeout(timeout);
+      params.signal?.removeEventListener("abort", abort);
       return {
         ok: false,
         reason: "backend_error",
-        message: "The connector service could not be reached.",
+        message: controller.signal.aborted
+          ? "The connector action was cancelled or timed out."
+          : redactSensitiveText(
+              error instanceof Error
+                ? error.message
+                : "The connector service could not be reached.",
+            ),
         requestId,
       };
     }
 
     const responseRequestId = requestIdFromResponse(response, requestId);
-    const payload = await response.json().catch(() => null);
+    let payload: unknown;
+    try {
+      payload = await readBoundedJson(response);
+    } catch (error) {
+      return {
+        ok: false,
+        reason: "backend_error",
+        status: response.status,
+        message:
+          (error as Error).message === "response_too_large"
+            ? "Connector response exceeded the safe size limit."
+            : "Connector response was not valid JSON.",
+        requestId: responseRequestId,
+      };
+    } finally {
+      clearTimeout(timeout);
+      params.signal?.removeEventListener("abort", abort);
+    }
     if (!response.ok) {
       const backendMessage =
         payload && typeof payload === "object" && !Array.isArray(payload)
@@ -222,21 +311,22 @@ export const createBackendConnectorActionBroker =
         ok: false,
         reason: response.status === 401 ? "auth_expired" : "backend_error",
         status: response.status,
-        message: sanitizeText(
-          backendMessage,
-          response.status === 401
-            ? "Stella sign-in expired. Sign in again before using this integration."
-            : `Integration action failed (${response.status}).`,
+        message: redactSensitiveText(
+          typeof backendMessage === "string" && backendMessage.trim()
+            ? backendMessage.slice(0, 1_000)
+            : response.status === 401
+              ? "Stella sign-in expired. Sign in again before using this integration."
+              : `Integration action failed (${response.status}).`,
         ),
         requestId: responseRequestId,
       };
     }
-    return { ok: true, result: sanitizeResult(payload) };
+    return { ok: true, result: sanitizeSensitiveData(payload) };
   };
 
 export const __test = {
   isPlainJsonValue,
-  jwtExpiresSoon,
-  sanitizeText,
-  sanitizeResult,
+  jwtStatus,
+  validateActionInput,
+  readBoundedJson,
 };

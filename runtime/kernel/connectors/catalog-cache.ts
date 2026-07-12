@@ -66,6 +66,35 @@ const readStringArray = (value: unknown): string[] | undefined => {
   return entries.length > 0 ? entries : undefined;
 };
 
+const readActions = (value: unknown) => {
+  if (!Array.isArray(value)) return undefined;
+  const actions = value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    if (!/^[A-Z][A-Z0-9_]{1,127}$/u.test(name)) return [];
+    const inputSchema =
+      record.inputSchema &&
+      typeof record.inputSchema === "object" &&
+      !Array.isArray(record.inputSchema)
+        ? (record.inputSchema as Record<string, unknown>)
+        : undefined;
+    return [
+      {
+        name,
+        ...(typeof record.title === "string" && record.title.trim()
+          ? { title: record.title.trim() }
+          : {}),
+        ...(typeof record.description === "string" && record.description.trim()
+          ? { description: record.description.trim() }
+          : {}),
+        ...(inputSchema ? { inputSchema } : {}),
+      },
+    ];
+  });
+  return actions.length > 0 ? actions : undefined;
+};
+
 /**
  * Parse one backend catalog record into a `backend-composio` catalog
  * entry. Shared by the CLI, the `connector_status` tool, and the disk
@@ -116,6 +145,9 @@ export const toBackendComposioEntry = (
       type: "composio",
       toolkit,
     },
+    ...(readActions(record.actions ?? record.tools)
+      ? { actions: readActions(record.actions ?? record.tools) }
+      : {}),
   };
 };
 

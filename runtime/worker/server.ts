@@ -105,6 +105,7 @@ import { fileChange } from "../contracts/file-changes.js";
 import { prepareStoredLocalChatPayload } from "../kernel/storage/local-chat-payload.js";
 import { collectAllSignals } from "../discovery/collect-all.js";
 import { sweepStaleConnectorBridgeProcesses } from "../kernel/connectors/process-registry.js";
+import { setConnectorTokenStoreBroker } from "../kernel/connectors/oauth.js";
 import {
   collectBrowserData,
   formatBrowserDataForSynthesis,
@@ -127,7 +128,10 @@ import {
   resolveRuntimePaths,
 } from "./runtime-paths.js";
 import { createBackendConnectorActionBroker } from "./backend-connector-action-broker.js";
-import { afterRequiredCliBridgeReady } from "./required-cli-bridge.js";
+import {
+  afterRequiredCliBridgeReady,
+  connectorActionBrokerAvailability,
+} from "./required-cli-bridge.js";
 import {
   detectSelfModAppliedSince,
   getGitHead,
@@ -620,6 +624,7 @@ const stopWorkerServices = async (state: WorkerState) => {
   state.runEventLog = null;
   await state.cliBridgeServer?.stop().catch(() => undefined);
   state.cliBridgeServer = null;
+  setConnectorTokenStoreBroker(null);
   state.db?.close();
   state.db = null;
 };
@@ -656,8 +661,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     typeof import("../kernel/agent-runtime/one-shot-completion.js")
   > | null = null;
   const loadOneShotCompletion = () =>
-    (oneShotCompletionModule ??=
-      import("../kernel/agent-runtime/one-shot-completion.js"));
+    (oneShotCompletionModule ??= import(
+      "../kernel/agent-runtime/one-shot-completion.js"
+    ));
   let chatPromptContextModule: Promise<
     typeof import("../kernel/chat-prompt-context.js")
   > | null = null;
@@ -714,11 +720,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     const pendingApplyPinned = selfMod.hasPendingApplyBatches();
     return Boolean(
       state.runner?.getActiveOrchestratorRun() ||
-      (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
-      requestPinned ||
-      pendingApplyPinned ||
-      socialPinned ||
-      voicePinned,
+        (state.runner?.getActiveAgentCount() ?? 0) > 0 ||
+        requestPinned ||
+        pendingApplyPinned ||
+        socialPinned ||
+        voicePinned,
     );
   };
 
@@ -1051,7 +1057,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     }
     await selfMod.restorePending(storeModService.listPendingEnvelopes());
     const bridgePaths = resolveRuntimePaths(init.stellaAppDir);
-    const cliBridgeSocketPath = createSecureCliBridgeEndpoint(bridgePaths);
+    const brokerAvailability = connectorActionBrokerAvailability(
+      process.platform,
+    );
+    const cliBridgeSocketPath = brokerAvailability.supported
+      ? createSecureCliBridgeEndpoint(bridgePaths)
+      : undefined;
 
     const runEventLogStartupBackfill = () => {
       if (state.runEventLog !== runEventLog) return;
@@ -1077,6 +1088,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
 
     const startCliBridge = async () => {
       if (state.db !== db) return;
+      if (!brokerAvailability.supported || !cliBridgeSocketPath) {
+        console.warn(
+          `[cli-bridge] ${"reason" in brokerAvailability ? brokerAvailability.reason : "Connector action broker is unavailable."}`,
+        );
+        return;
+      }
       const refreshSiteAuth = async () => {
         const result = (await peer.request(
           METHOD_NAMES.HOST_RUNTIME_AUTH_REFRESH,
@@ -1115,6 +1132,39 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           }
         },
       });
+      // Protected connector credentials stay on the trusted worker↔desktop
+      // channel. The agent-visible CLI socket never exposes these operations.
+      setConnectorTokenStoreBroker({
+        load: async (tokenKey) => {
+          const result = await peer.request<{
+            ok: boolean;
+            payload?:
+              | import("../kernel/connectors/oauth.js").ConnectorTokenPayload
+              | null;
+            reason?: string;
+          }>(METHOD_NAMES.HOST_CONNECTOR_TOKEN_STORE_REQUEST, {
+            operation: "load",
+            tokenKey,
+          });
+          if (!result.ok) throw new Error(result.reason ?? "token_load_failed");
+          return result.payload ?? null;
+        },
+        save: async (tokenKey, payload) => {
+          const result = await peer.request<{ ok: boolean; reason?: string }>(
+            METHOD_NAMES.HOST_CONNECTOR_TOKEN_STORE_REQUEST,
+            { operation: "save", tokenKey, payload },
+          );
+          if (!result.ok) throw new Error(result.reason ?? "token_save_failed");
+        },
+        delete: async (tokenKeys) => {
+          const result = await peer.request<{ ok: boolean; reason?: string }>(
+            METHOD_NAMES.HOST_CONNECTOR_TOKEN_STORE_REQUEST,
+            { operation: "delete", tokenKeys },
+          );
+          if (!result.ok)
+            throw new Error(result.reason ?? "token_delete_failed");
+        },
+      });
       const cliBridgeServer = await startCliBridgeServer({
         socketPath: cliBridgeSocketPath,
         log: (message, error) => {
@@ -1126,20 +1176,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         },
         handlers: {
           runBackendConnectorAction,
-          requestConnectorTokenStore: async (params) => {
-            try {
-              return await peer.request(
-                METHOD_NAMES.HOST_CONNECTOR_TOKEN_STORE_REQUEST,
-                params,
-                { retryOnDisconnect: true },
-              );
-            } catch (error) {
-              return {
-                ok: false as const,
-                reason: (error as Error).message || "host_unreachable",
-              };
-            }
-          },
           requestConnectorCredential: async (params) => {
             try {
               return await peer.request<
@@ -1409,7 +1445,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       // The bridge listens in post-ready startup. Advertise the stable socket
       // path up front so shells spawned after the bridge comes online can call
       // back into the host without rebuilding the runner.
-      cliBridgeSocketPath,
+      ...(cliBridgeSocketPath ? { cliBridgeSocketPath } : {}),
     };
 
     // Build the runner in the background instead of on the worker-ready path:

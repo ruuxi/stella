@@ -27,10 +27,12 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   useSyncExternalStore,
 } from "react";
+import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
 import { MessageSquarePlus, Send, X } from "@/ui/icons";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import type { TaskToolActivity } from "../../../../runtime/contracts/agent-runtime.js";
@@ -213,6 +215,14 @@ export function BackgroundWorkCard({
     ),
     () => (liveThreadId ? getTaskDecoration(liveThreadId) : undefined),
   );
+
+  // The card mounting grows its row outside the streaming-text notify path
+  // (a spawn lands as a tool event, not a text chunk) — tell the scroll
+  // surfaces so auto-follow keeps the card in frame. See
+  // `notifyChatContentGrowth`.
+  useLayoutEffect(() => {
+    notifyChatContentGrowth();
+  }, []);
 
   // While a thread reads as working only because it hasn't yet crossed the
   // stale threshold, arm a one-shot timer for that deadline so the card

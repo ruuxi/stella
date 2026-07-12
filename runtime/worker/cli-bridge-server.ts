@@ -18,11 +18,7 @@ import { constants as fsConstants, promises as fsPromises } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import path from "node:path";
 import { runtimeIpcPathUsesFilesystem } from "./runtime-paths.js";
-import type {
-  BackendConnectorActionResult,
-  ConnectorTokenStoreRequest,
-  ConnectorTokenStoreResult,
-} from "../kernel/connectors/cli-broker-client.js";
+import type { BackendConnectorActionResult } from "../kernel/connectors/cli-broker-client.js";
 
 type RequestMessage = {
   id?: string | number;
@@ -110,10 +106,8 @@ export type CliBridgeHandlers = {
     action: string;
     input: Record<string, unknown>;
     requestId?: string;
+    signal?: AbortSignal;
   }) => Promise<BackendConnectorActionResult>;
-  requestConnectorTokenStore?: (
-    request: ConnectorTokenStoreRequest,
-  ) => Promise<ConnectorTokenStoreResult>;
   requestDesktopPermission?: (params: {
     kind: "accessibility" | "screen";
   }) =>
@@ -144,8 +138,12 @@ const handleConnection = (
   log: (message: string, error?: unknown) => void,
   activeSockets: Set<Socket>,
 ) => {
+  const connectionAbort = new AbortController();
   activeSockets.add(socket);
-  socket.on("close", () => activeSockets.delete(socket));
+  socket.on("close", () => {
+    activeSockets.delete(socket);
+    connectionAbort.abort("cli_disconnected");
+  });
 
   let buffer = "";
   let resolved = false;
@@ -202,7 +200,12 @@ const handleConnection = (
 
     void (async () => {
       try {
-        const result = await dispatch(method, request.params, handlers);
+        const result = await dispatch(
+          method,
+          request.params,
+          handlers,
+          connectionAbort.signal,
+        );
         writeResponse(socket, { id, result });
       } catch (error) {
         const message = (error as Error).message ?? "cli-bridge: handler threw";
@@ -220,6 +223,7 @@ const dispatch = async (
   method: string,
   params: unknown,
   handlers: CliBridgeHandlers,
+  signal?: AbortSignal,
 ): Promise<unknown> => {
   switch (method) {
     case "connector.runBackendAction": {
@@ -267,62 +271,8 @@ const dispatch = async (
         action,
         input,
         ...(requestId ? { requestId } : {}),
+        ...(signal ? { signal } : {}),
       });
-    }
-    case "connector.tokenStore": {
-      if (!handlers.requestConnectorTokenStore) {
-        return { ok: false, reason: "unsupported" };
-      }
-      const record =
-        params && typeof params === "object"
-          ? (params as Record<string, unknown>)
-          : {};
-      const operation = record.operation;
-      if (operation === "load") {
-        const tokenKey =
-          typeof record.tokenKey === "string" ? record.tokenKey.trim() : "";
-        if (!tokenKey) {
-          throw new Error("connector.tokenStore: tokenKey is required");
-        }
-        return await handlers.requestConnectorTokenStore({
-          operation,
-          tokenKey,
-        });
-      }
-      if (operation === "save") {
-        const tokenKey =
-          typeof record.tokenKey === "string" ? record.tokenKey.trim() : "";
-        if (
-          !tokenKey ||
-          !record.payload ||
-          typeof record.payload !== "object"
-        ) {
-          throw new Error(
-            "connector.tokenStore: tokenKey and payload are required",
-          );
-        }
-        return await handlers.requestConnectorTokenStore({
-          operation,
-          tokenKey,
-          payload: record.payload as Extract<
-            ConnectorTokenStoreRequest,
-            { operation: "save" }
-          >["payload"],
-        });
-      }
-      if (operation === "delete") {
-        const tokenKeys = Array.isArray(record.tokenKeys)
-          ? record.tokenKeys.filter(
-              (value): value is string =>
-                typeof value === "string" && Boolean(value.trim()),
-            )
-          : [];
-        return await handlers.requestConnectorTokenStore({
-          operation,
-          tokenKeys,
-        });
-      }
-      throw new Error("connector.tokenStore: unsupported operation");
     }
     case "system.requestPermission": {
       if (!handlers.requestDesktopPermission) {

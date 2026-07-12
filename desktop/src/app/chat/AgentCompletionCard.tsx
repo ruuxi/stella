@@ -17,7 +17,8 @@
  *     header + its own pills per agent, never merged into one flat list.
  *   - At most 5 pills per section, then an animated "+N more" expand/collapse.
  */
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
+import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
 import { Check, ChevronDown } from "@/ui/icons";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
@@ -156,6 +157,13 @@ export function AgentCompletionCard({
   sections: AgentCompletionSection[];
   cardId?: string;
 }) {
+  // The completion card usually replaces the (shorter) spawn card after the
+  // run has settled — no stream text notify fires, so tell the scroll
+  // surfaces about the growth ourselves. See `notifyChatContentGrowth`.
+  useLayoutEffect(() => {
+    notifyChatContentGrowth();
+  }, []);
+
   // Every completion renders — a fileless agent still finished its task, so
   // the card must not depend on produced files (files only enrich it).
   const visible = sections;

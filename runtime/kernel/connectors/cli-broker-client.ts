@@ -13,7 +13,6 @@
  */
 
 import { connect, type Socket } from "node:net";
-import type { ConnectorTokenPayload } from "./oauth.js";
 
 export type ConnectorCredentialResult =
   | { ok: true }
@@ -35,15 +34,6 @@ export type BackendConnectorActionResult =
       message?: string;
       requestId?: string;
     };
-
-export type ConnectorTokenStoreRequest =
-  | { operation: "load"; tokenKey: string }
-  | { operation: "save"; tokenKey: string; payload: ConnectorTokenPayload }
-  | { operation: "delete"; tokenKeys: string[] };
-
-export type ConnectorTokenStoreResult =
-  | { ok: true; payload?: ConnectorTokenPayload | null }
-  | { ok: false; reason: string };
 
 export type DesktopPermissionRequestResult =
   | { ok: true; granted: boolean; alreadyGranted: boolean }
@@ -299,47 +289,6 @@ export const requestBackendConnectorActionFromBridge = async ({
     ...(typeof record.requestId === "string"
       ? { requestId: record.requestId }
       : {}),
-  };
-};
-
-export const requestConnectorTokenStoreFromBridge = async ({
-  socketPath,
-  request,
-  timeoutMs = 15_000,
-}: {
-  socketPath: string;
-  request: ConnectorTokenStoreRequest;
-  timeoutMs?: number;
-}): Promise<ConnectorTokenStoreResult> => {
-  const result = await sendRequest(
-    socketPath,
-    "connector.tokenStore",
-    request,
-    timeoutMs,
-  );
-  if (!result || typeof result !== "object") {
-    return { ok: false, reason: "invalid_response" };
-  }
-  const record = result as Record<string, unknown>;
-  if (record.ok === true) {
-    return {
-      ok: true,
-      ...(request.operation === "load"
-        ? {
-            payload:
-              record.payload && typeof record.payload === "object"
-                ? (record.payload as ConnectorTokenPayload)
-                : null,
-          }
-        : {}),
-    };
-  }
-  return {
-    ok: false,
-    reason:
-      typeof record.reason === "string" && record.reason
-        ? record.reason
-        : "unknown",
   };
 };
 
