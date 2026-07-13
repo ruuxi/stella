@@ -163,6 +163,14 @@ describe("isWorkerRestartRelevantPath", () => {
     expect(isWorkerRestartRelevantPath("runtime/protocol/jsonl/peer.ts")).toBe(true);
   });
 
+  it("flags shipped agent metadata so applied capability updates restart the worker", () => {
+    expect(
+      isWorkerRestartRelevantPath(
+        "runtime/extensions/stella-runtime/agent-metadata/orchestrator.md",
+      ),
+    ).toBe(true);
+  });
+
   it("does not flag desktop/* paths", () => {
     expect(isWorkerRestartRelevantPath("desktop/src/app.tsx")).toBe(false);
   });

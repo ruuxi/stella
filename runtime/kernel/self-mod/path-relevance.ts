@@ -282,6 +282,12 @@ export const isWorkerRestartRelevantPath = (repoRelativePath: string): boolean =
   ) {
     return true;
   }
+  // Agent metadata is loaded into the worker's extension registry at startup.
+  // An applied update must restart the worker so long-lived conversations do
+  // not retain the previous capability allowlist (for example, spawn_manager).
+  if (normalized.startsWith("runtime/extensions/stella-runtime/agent-metadata/")) {
+    return true;
+  }
   return false;
 };
 
