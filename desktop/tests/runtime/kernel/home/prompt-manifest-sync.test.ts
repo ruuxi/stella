@@ -417,7 +417,10 @@ describe("remote prompt startup sync", () => {
       "pause_agent",
     ]);
     expect(fallbackManager?.systemPrompt).toContain(
-      "Every review round must use a brand-new reviewer agent",
+      "The orchestrator's prompt is your plan and goal",
+    );
+    expect(fallbackManager?.systemPrompt).toContain(
+      "brand-new fresh-context reviewer for every review round",
     );
     await expect(
       readFile(path.join(home, "agents/general.md"), "utf-8"),
