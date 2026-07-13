@@ -348,6 +348,17 @@
   white-space: nowrap;
 }
 
+.chat-workspace-strip__task-output-preview {
+  margin: 2px 0 0 23px;
+  overflow: hidden;
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .chat-workspace-strip__group-status {
   flex-shrink: 1;
   max-width: 45%;

@@ -186,6 +186,13 @@ const shouldUseClaudeCodeRuntime = (opts: BaseRunOptions): boolean => {
   });
 };
 
+export const willRunExternalSubagentEngine = (opts: BaseRunOptions): boolean =>
+  shouldUseClaudeCodeRuntime(opts) ||
+  shouldUseCodexAgentRuntime({
+    agentType: opts.agentType,
+    agentEngine: opts.agentContext.agentEngine,
+  });
+
 export const selectExternalOrchestratorEngine = (
   opts: BaseRunOptions,
 ): ExternalOrchestratorEngine | null => {

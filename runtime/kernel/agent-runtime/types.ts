@@ -199,6 +199,8 @@ export type BaseRunOptions = {
   userMessageId: string;
   uiVisibility?: "visible" | "hidden";
   agentType: string;
+  /** Managed children cannot use unmediated engines to modify Stella. */
+  managerOwned?: boolean;
   userPrompt: string;
   promptMessages?: RuntimePromptMessage[];
   attachments?: RuntimeAttachmentRef[];

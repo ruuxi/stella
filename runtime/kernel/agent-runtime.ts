@@ -2,7 +2,9 @@ import {
   shutdownExternalEngineIntegrations,
   runExternalOrchestratorTurn,
   runExternalSubagentTurn,
+  willRunExternalSubagentEngine,
 } from "./agent-runtime/external-engines.js";
+import { ManagerOwnedSelfModError } from "./agents/manager-self-mod-policy.js";
 import { OrchestratorSession } from "./agent-runtime/orchestrator-session.js";
 import { SubagentSession } from "./agent-runtime/subagent-session.js";
 import { DEFAULT_MAX_TURNS } from "./agent-runtime/shared.js";
@@ -51,6 +53,9 @@ export async function runOrchestratorTurn(
 export async function runSubagentTask(
   opts: SubagentRunOptions,
 ): Promise<SubagentRunResult> {
+  if (opts.managerOwned && willRunExternalSubagentEngine(opts)) {
+    throw new ManagerOwnedSelfModError();
+  }
   const integratedResult = await runExternalSubagentTurn(opts);
   if (integratedResult) {
     return integratedResult;

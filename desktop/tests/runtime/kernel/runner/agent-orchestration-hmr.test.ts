@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
+import { MANAGER_OWNED_SELF_MOD_ERROR_CODE } from "../../../../../runtime/kernel/agents/manager-self-mod-policy.js";
 import { createAgentOrchestration } from "../../../../../runtime/kernel/runner/agent-orchestration.js";
 import { createSelfModHmrController } from "../../../../../runtime/kernel/self-mod/hmr.js";
 import type { PersistedAgentRecord } from "../../../../../runtime/kernel/storage/runtime-store.js";
@@ -56,6 +57,7 @@ type MockRuntimeState = {
   onFirstWrite?: () => void;
   hungAttemptGate?: Promise<void>;
   onHungResourcesReady?: () => void;
+  lastToolResult?: ToolResult;
 };
 
 const mockRuntime: MockRuntimeState = {
@@ -350,6 +352,7 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
         fileChanges: result.fileChanges,
         producedFiles: result.producedFiles,
       });
+      runtime.lastToolResult = result;
       return {
         runId: "subagent-run",
         result: result.error ? "" : "done",
@@ -375,6 +378,7 @@ afterEach(async () => {
   mockRuntime.onFirstWrite = undefined;
   mockRuntime.hungAttemptGate = undefined;
   mockRuntime.onHungResourcesReady = undefined;
+  mockRuntime.lastToolResult = undefined;
   vi.clearAllMocks();
 });
 
@@ -574,6 +578,83 @@ describe("agent orchestration self-mod HMR tracking", () => {
       "export const value = 'after';\n",
     );
     expect(applyContent).toBe("export const value = 'after';\n");
+    expect(context.selfModLifecycle.beginRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks manager-owned children from entering Stella self-mod", async () => {
+    const root = await makeTempRoot();
+    const filePath = path.join(root, "desktop/src/foo.tsx");
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, "export const value = 'before';\n");
+    mockRuntime.root = root;
+    mockRuntime.mode = "apply_patch";
+    mockRuntime.patch = [
+      "*** Begin Patch",
+      `*** Update File: ${filePath}`,
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'after';",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
+
+    const controller = {
+      beginRun: vi.fn(),
+      recordWrite: vi.fn(),
+      beginShellMutationGuard: vi.fn(async () => true),
+      endShellMutationGuard: vi.fn(async () => true),
+      hasRun: vi.fn(() => false),
+    };
+    const context = createTestContext(root, controller);
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+    context.runtimeStore.saveAgentRecord({
+      threadId: "manager-thread",
+      conversationId: "conversation-1",
+      agentType: AGENT_IDS.MANAGER,
+      description: "Coordinate work",
+      agentDepth: 1,
+      status: "running",
+      attemptGeneration: 1,
+      startedAt: 1,
+      completedAt: null,
+      updatedAt: 1,
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "edit Stella under manager",
+      prompt: "edit Stella",
+      agentType: AGENT_IDS.GENERAL,
+      parentAgentId: "manager-thread",
+      storageMode: "local",
+    });
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot.status).toBe("error");
+    expect(mockRuntime.lastToolResult).toMatchObject({
+      details: { code: MANAGER_OWNED_SELF_MOD_ERROR_CODE },
+    });
+    expect(mockRuntime.lastToolResult?.error).toContain(
+      "directly from the orchestrator",
+    );
+    expect(controller.beginRun).not.toHaveBeenCalled();
+    expect(context.selfModLifecycle.beginRun).not.toHaveBeenCalled();
+    expect(await readFile(filePath, "utf-8")).toBe(
+      "export const value = 'before';\n",
+    );
   });
 
   it("does not start the shell mutation guard for known read-only exec commands", async () => {

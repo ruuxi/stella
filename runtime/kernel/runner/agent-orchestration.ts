@@ -16,9 +16,17 @@ import { runExplore } from "../agent-runtime/explore.js";
 import { resolveOrchestratorThreadKey } from "../thread-runtime.js";
 import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
 import { LocalAgentManager } from "../agents/local-agent-manager.js";
+import {
+  ManagerOwnedSelfModError,
+  isPathInsideStella,
+  managerOwnedSelfModToolError,
+} from "../agents/manager-self-mod-policy.js";
 import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
 import { isKnownSafeCommand } from "../tools/safe-commands.js";
-import { resolveToolPath } from "../tools/path-inference.js";
+import {
+  inferShellMentionedPaths,
+  resolveToolPath,
+} from "../tools/path-inference.js";
 import type {
   AgentToolRequest,
   ToolContext,
@@ -245,6 +253,44 @@ const parallelContainsGuardedShellCommand = (
       entry.toolName === "exec_command" &&
       !isReadOnlyShellCommand(entry.parameters),
   );
+
+const managerOwnedToolWouldMutateStella = (
+  toolName: string,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): boolean => {
+  const stellaAppDir = context.stellaAppDir;
+  if (!stellaAppDir) return false;
+
+  if (toolName === "multi_tool_use_parallel") {
+    return getParallelToolEntries(args).some((entry) =>
+      managerOwnedToolWouldMutateStella(
+        entry.toolName,
+        entry.parameters,
+        context,
+      ),
+    );
+  }
+
+  const inferredWrites = inferPreWritePaths(toolName, args, context);
+  if (
+    inferredWrites.some((candidate) =>
+      isPathInsideStella(candidate, stellaAppDir),
+    )
+  ) {
+    return true;
+  }
+
+  if (toolName !== "exec_command" || isReadOnlyShellCommand(args)) {
+    return false;
+  }
+  const commandWorkdir =
+    resolveToolPath(".", args, context) ?? path.resolve(stellaAppDir);
+  if (isPathInsideStella(commandWorkdir, stellaAppDir)) return true;
+  return inferShellMentionedPaths(args, context).some((candidate) =>
+    isPathInsideStella(candidate, stellaAppDir),
+  );
+};
 
 const getParallelRunningShellSessions = (result: ToolResult): string[] => {
   const details = result.details;
@@ -572,6 +618,7 @@ export const createAgentOrchestration = (
       selfModMetadata,
       selfModRunId,
       selfModFeature,
+      isManagerOwned,
       onSelfModRunStarted,
       onSelfModRunClosed,
       onAttemptCleanupReady,
@@ -590,7 +637,9 @@ export const createAgentOrchestration = (
         selfModMetadata,
       });
       const shouldAttachSelfModLifecycle =
-        Boolean(effectiveSelfModMetadata) && Boolean(context.selfModLifecycle);
+        Boolean(effectiveSelfModMetadata) &&
+        Boolean(context.selfModLifecycle) &&
+        !isManagerOwned?.();
 
       const site = {
         baseUrl: context.state.convexSiteUrl,
@@ -831,6 +880,16 @@ export const createAgentOrchestration = (
         signal?: AbortSignal,
         onUpdate?: (update: ToolResult) => void,
       ): Promise<ToolResult> => {
+        const toolContext = {
+          ...ctx,
+          stellaAppDir: ctx.stellaAppDir ?? context.stellaAppDir,
+        };
+        if (
+          isManagerOwned?.() &&
+          managerOwnedToolWouldMutateStella(toolName, args, toolContext)
+        ) {
+          return managerOwnedSelfModToolError();
+        }
         const isShellCommand = toolName === "exec_command";
         const shouldGuardShellCommand =
           isShellCommand && !isReadOnlyShellCommand(args);
@@ -1030,6 +1089,16 @@ export const createAgentOrchestration = (
           : { released: false, heldResources };
       };
 
+      // Ownership may change after the initial lifecycle decision but before
+      // acquisition. Fence that adoption race at the exact begin boundary.
+      if (
+        shouldAttachSelfModLifecycle &&
+        !isContinuingSelfModRun &&
+        isManagerOwned?.()
+      ) {
+        throw new ManagerOwnedSelfModError();
+      }
+
       // Register before HMR/lifecycle acquisition. If beginRun wedges after
       // partially acquiring contention, reload, or Store ownership, takeover
       // can cancel the captured OLD id immediately and retry until acknowledged.
@@ -1121,6 +1190,7 @@ export const createAgentOrchestration = (
           agentId,
           rootRunId,
           agentType,
+          managerOwned: Boolean(isManagerOwned?.()),
           userPrompt: composedUserPrompt,
           selfModMetadata: effectiveSelfModMetadata,
           agentContext,

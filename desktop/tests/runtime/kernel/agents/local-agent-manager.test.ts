@@ -270,6 +270,79 @@ describe("manager agent orchestration", () => {
     expect(managerPrompts[2]).toContain("newly persisted managed-child event");
     expect(upstreamManagerResults).toEqual(["Final adopted-thread report."]);
   });
+
+  it("rejects adoption while the target owns an active self-mod run", async () => {
+    let releaseManager!: () => void;
+    const managerGate = new Promise<void>((resolve) => {
+      releaseManager = resolve;
+    });
+    let releaseChild!: () => void;
+    const childGate = new Promise<void>((resolve) => {
+      releaseChild = resolve;
+    });
+    let markSelfModReady!: () => void;
+    const selfModReady = new Promise<void>((resolve) => {
+      markSelfModReady = resolve;
+    });
+    const manager = new LocalAgentManager({
+      maxConcurrent: 2,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 2,
+      }),
+      runSubagent: async (args) => {
+        if (args.agentType === AGENT_IDS.MANAGER) {
+          await managerGate;
+          return { runId: args.runId, result: "Manager done." };
+        }
+        args.onAttemptCleanupReady?.({
+          selfModRunId: "active-self-mod-run",
+          forceRelease: async () => ({ released: true }),
+        });
+        markSelfModReady();
+        await childGate;
+        args.onSelfModRunClosed?.("active-self-mod-run");
+        return { runId: args.runId, result: "Child done." };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conv-active-self-mod",
+      description: "Coordinate work",
+      prompt: "Coordinate work.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const existingTask = await manager.createAgent({
+      conversationId: "conv-active-self-mod",
+      description: "Direct Stella edit",
+      prompt: "Edit Stella directly.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await selfModReady;
+
+    await expect(
+      manager.adoptAgent(existingTask.threadId, managerTask.threadId),
+    ).resolves.toEqual({
+      adopted: false,
+      reason:
+        "A thread with an active Stella self-mod run cannot be adopted by a manager; wait for the run to close or pause it first.",
+    });
+
+    releaseChild();
+    releaseManager();
+    await waitForAgentSettled(manager, existingTask.threadId);
+    await waitForAgentSettled(manager, managerTask.threadId);
+  });
 });
 
 describe("LocalAgentManager Exec fs locking", () => {

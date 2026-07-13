@@ -488,6 +488,8 @@ type LocalAgentManagerOpts = {
      * per-step features keyed by ephemeral agent ids.
      */
     selfModFeature?: { featureId: string; featureTitle: string };
+    /** Dynamic ownership check used to fence manager children from self-mod. */
+    isManagerOwned?: () => boolean;
     onSelfModRunStarted?: (runId: string) => void;
     onSelfModRunClosed?: (runId: string) => void;
     onAttemptCleanupReady?: (cleanup: {
@@ -707,6 +709,8 @@ export const DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_RETRY_MS = 1_000;
 type InFlightAttempt = {
   generation: number;
   promise: Promise<void>;
+  /** Set before the first awaited self-mod acquire; cleared with the attempt. */
+  selfModRunId?: string;
   forceRelease?: () => Promise<{
     released: boolean;
     heldResources?: string[];
@@ -1047,6 +1051,16 @@ export class LocalAgentManager implements AgentToolApi {
       return {
         adopted: false,
         reason: "Managers cannot adopt other managers.",
+      };
+    }
+    if (
+      this.tasks.get(threadId)?.activeSelfModRunId ||
+      this.inFlightAttempts.get(threadId)?.selfModRunId
+    ) {
+      return {
+        adopted: false,
+        reason:
+          "A thread with an active Stella self-mod run cannot be adopted by a manager; wait for the run to close or pause it first.",
       };
     }
     if (target.conversationId !== manager.conversationId) {
@@ -1632,6 +1646,10 @@ export class LocalAgentManager implements AgentToolApi {
         enableRemoteTools: true,
         abortSignal: attempt.controller.signal,
         selfModMetadata: task.selfModMetadata,
+        isManagerOwned: () =>
+          Boolean(
+            task.parentAgentId && this.isManagerThread(task.parentAgentId),
+          ),
         ...(task.activeSelfModRunId
           ? { selfModRunId: task.activeSelfModRunId }
           : {}),
@@ -1648,6 +1666,12 @@ export class LocalAgentManager implements AgentToolApi {
         onAttemptCleanupReady: (cleanup) => {
           const activeAttempt = this.inFlightAttempts.get(task.threadId);
           if (activeAttempt?.generation === attempt.generation) {
+            if (cleanup.selfModRunId) {
+              // Mark ownership before the first awaited HMR/lifecycle acquire.
+              // Adoption must reject throughout partially-acquired startup,
+              // not only after beginRun has fully acknowledged.
+              activeAttempt.selfModRunId = cleanup.selfModRunId;
+            }
             activeAttempt.forceRelease = cleanup.forceRelease;
             return;
           }
