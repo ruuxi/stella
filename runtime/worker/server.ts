@@ -150,10 +150,6 @@ import {
   type SelfModHmrController,
 } from "../kernel/self-mod/hmr.js";
 import {
-  expireUnreconstructableAgentCleanups,
-  reconcilePersistedAgentCleanups,
-} from "./persisted-cleanup-reconciliation.js";
-import {
   createSelfModCoordinator,
   recordSelfModRevertNotice,
   type PendingSelfModApply,
@@ -351,7 +347,6 @@ type WorkerState = {
   runnerReadyPromise: Promise<RuntimeRunner> | null;
   deviceId: string | null;
   selfModHmrController: SelfModHmrController | null;
-  pendingCleanupExpiryTimer: ReturnType<typeof setTimeout> | null;
   pendingSelfModApplies: Map<string, PendingSelfModApply>;
   /**
    * Persistent ring buffer for streaming run events. Every event we emit
@@ -596,10 +591,6 @@ const materializeImageAttachments = async (
 };
 
 const stopWorkerServices = async (state: WorkerState) => {
-  if (state.pendingCleanupExpiryTimer) {
-    clearTimeout(state.pendingCleanupExpiryTimer);
-    state.pendingCleanupExpiryTimer = null;
-  }
   state.socialSessionService?.stop();
   state.socialSessionService = null;
   state.voiceService = null;
@@ -652,7 +643,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     runnerReadyPromise: null,
     deviceId: null,
     selfModHmrController: null,
-    pendingCleanupExpiryTimer: null,
     pendingSelfModApplies: new Map(),
     runEventLog: null,
     cliBridgeServer: null,
@@ -1040,33 +1030,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       repoRoot: init.stellaAppDir,
     });
     state.selfModHmrController = selfModHmrController;
-
-    const notifyCleanupActivityUpdated = (conversationId: string) => {
-      peer.notify(NOTIFICATION_NAMES.THREAD_ACTIVITY_UPDATED, {
-        conversationId,
-      });
-    };
-    const schedulePendingCleanupExpiry = (): void => {
-      if (state.pendingCleanupExpiryTimer) {
-        clearTimeout(state.pendingCleanupExpiryTimer);
-        state.pendingCleanupExpiryTimer = null;
-      }
-      const expiresAt = runtimeStore.getNextPendingAgentCleanupExpiryAt();
-      if (expiresAt == null) return;
-      state.pendingCleanupExpiryTimer = setTimeout(
-        () => {
-          state.pendingCleanupExpiryTimer = null;
-          if (state.runtimeStore !== runtimeStore) return;
-          expireUnreconstructableAgentCleanups({
-            runtimeStore,
-            notifyThreadActivityUpdated: notifyCleanupActivityUpdated,
-          });
-          schedulePendingCleanupExpiry();
-        },
-        Math.max(1, expiresAt - Date.now()),
-      );
-      state.pendingCleanupExpiryTimer.unref?.();
-    };
 
     state.db = db;
     state.chatStore = chatStore;
@@ -1572,13 +1535,12 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
           // These post-ready warmups do not gate connector-capable child launch.
           await Promise.allSettled([
             (async () => runEventLogStartupBackfill())(),
-            reconcilePersistedAgentCleanups({
-              controller: selfModHmrController,
-              runtimeStore,
-              notifyThreadActivityUpdated: notifyCleanupActivityUpdated,
-            }).then((resourcesVerifiedFree) => {
-              if (!resourcesVerifiedFree) schedulePendingCleanupExpiry();
-              return resourcesVerifiedFree;
+            selfModHmrController.forceResumeAll().catch((error) => {
+              console.warn(
+                "[self-mod-hmr] Failed to clear stale Vite state during worker initialization:",
+                (error as Error).message,
+              );
+              return false;
             }),
             (async () => {
               const builtRunner = await runnerReadyPromise.catch(() => null);

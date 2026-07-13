@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   AGENT_ORPHANED_RESTART_CANCEL_REASON,
@@ -270,132 +270,9 @@ describe("manager agent orchestration", () => {
     expect(managerPrompts[2]).toContain("newly persisted managed-child event");
     expect(upstreamManagerResults).toEqual(["Final adopted-thread report."]);
   });
-
-  it("rejects adoption while the target owns an active self-mod run", async () => {
-    let releaseManager!: () => void;
-    const managerGate = new Promise<void>((resolve) => {
-      releaseManager = resolve;
-    });
-    let releaseChild!: () => void;
-    const childGate = new Promise<void>((resolve) => {
-      releaseChild = resolve;
-    });
-    let markSelfModReady!: () => void;
-    const selfModReady = new Promise<void>((resolve) => {
-      markSelfModReady = resolve;
-    });
-    const manager = new LocalAgentManager({
-      maxConcurrent: 2,
-      fetchAgentContext: async () => ({
-        systemPrompt: "",
-        dynamicContext: "",
-        maxAgentDepth: 2,
-      }),
-      runSubagent: async (args) => {
-        if (args.agentType === AGENT_IDS.MANAGER) {
-          await managerGate;
-          return { runId: args.runId, result: "Manager done." };
-        }
-        args.onAttemptCleanupReady?.({
-          selfModRunId: "active-self-mod-run",
-          forceRelease: async () => ({ released: true }),
-        });
-        markSelfModReady();
-        await childGate;
-        args.onSelfModRunClosed?.("active-self-mod-run");
-        return { runId: args.runId, result: "Child done." };
-      },
-      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
-      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
-      completeCloudAgentRecord: async () => undefined,
-      getCloudAgentRecord: async () => null,
-      cancelCloudAgentRecord: async () => ({ canceled: false }),
-    });
-
-    const managerTask = await manager.createAgent({
-      conversationId: "conv-active-self-mod",
-      description: "Coordinate work",
-      prompt: "Coordinate work.",
-      agentType: AGENT_IDS.MANAGER,
-      agentDepth: 1,
-      storageMode: "local",
-    });
-    const existingTask = await manager.createAgent({
-      conversationId: "conv-active-self-mod",
-      description: "Direct Stella edit",
-      prompt: "Edit Stella directly.",
-      agentType: AGENT_IDS.GENERAL,
-      agentDepth: 1,
-      storageMode: "local",
-    });
-    await selfModReady;
-
-    await expect(
-      manager.adoptAgent(existingTask.threadId, managerTask.threadId),
-    ).resolves.toEqual({
-      adopted: false,
-      reason:
-        "A thread with an active Stella self-mod run cannot be adopted by a manager; wait for the run to close or pause it first.",
-    });
-
-    releaseChild();
-    releaseManager();
-    await waitForAgentSettled(manager, existingTask.threadId);
-    await waitForAgentSettled(manager, managerTask.threadId);
-  });
 });
 
 describe("LocalAgentManager Exec fs locking", () => {
-  it("loudly reports durable unresolved cleanup records after worker restart", () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    new LocalAgentManager({
-      maxConcurrent: 1,
-      fetchAgentContext: async () => ({
-        systemPrompt: "",
-        dynamicContext: "",
-        maxAgentDepth: 1,
-      }),
-      runSubagent: async (args) => ({ runId: args.runId, result: "unused" }),
-      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
-      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
-      completeCloudAgentRecord: async () => undefined,
-      getCloudAgentRecord: async () => null,
-      cancelCloudAgentRecord: async () => ({ canceled: false }),
-      listAgentRecordsByStatus: () => [],
-      listAgentRecordsWithPendingCleanup: () => [
-        {
-          threadId: "cleanup-survivor",
-          conversationId: "conv-cleanup",
-          agentType: "general",
-          description: "Cleanup survivor",
-          agentDepth: 0,
-          status: "completed",
-          attemptGeneration: 7,
-          pendingCleanup: {
-            attemptGeneration: 6,
-            diagnostic: "old HMR lease is still held",
-            recordedAt: 123,
-          },
-          startedAt: 1,
-          completedAt: 2,
-          updatedAt: 3,
-        },
-      ],
-    });
-
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Unresolved resource cleanup survived worker restart for cleanup-survivor attempt 6",
-      ),
-    );
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "runtime force-resume reconciliation is required",
-      ),
-    );
-    errorSpy.mockRestore();
-  });
-
   it("cancels persisted running agents left behind by a previous worker", () => {
     const savedRecords: Parameters<
       NonNullable<

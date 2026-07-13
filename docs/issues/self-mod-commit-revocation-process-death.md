@@ -1,29 +1,30 @@
 # Self-mod commit revocation is not atomic across third writers and worker death
 
 Status: deferred platform issue
-Severity: P1 outside the managed-child v1 scope cut
+Severity: P1 outside the managed-child prompt-guidance scope
 
 ## Problem
 
-The self-mod finalizer checks run ownership before starting `git commit`, but the asynchronous commit and its ref update are not atomically coupled to that ownership. The cross-process commit lock is advisory: it reclaims a lock when the recorded PID dies, and after a 400 ms acquisition budget it deliberately proceeds without the file lock. A pre-commit hook can therefore outlive the worker that spawned Git and update `HEAD` after ownership has been revoked.
+The self-mod finalizer removes the active run before its asynchronous dirty scan and Git commit. A later cancellation therefore has no run handle to revoke, and the commit path has no cancellation token to revalidate at the ref update. The cross-process commit lock is also advisory: it reclaims a lock when the recorded PID dies, and after a 400 ms acquisition budget it deliberately proceeds without the file lock. A pre-commit hook can therefore outlive the worker that spawned Git and update `HEAD` after logical ownership has moved on.
 
 Relevant code:
 
-- `runtime/kernel/self-mod/git/commit.ts` (`commitGitMessage`, ownership check and post-commit rollback)
+- `runtime/kernel/self-mod/store-mod-service.ts` (`finalizeSelfModRun`, early active-run removal)
+- `runtime/kernel/self-mod/git/commit.ts` (`commitGitMessage`, asynchronous Git execution without a revocation token)
 - `runtime/kernel/self-mod/git/commit-lock.ts` (`FILE_LOCK_TIMEOUT_MS`, stale-PID reclamation, unlocked fallback)
 - `runtime/kernel/self-mod/git/exec.ts` (Git child execution and ref-lock retries)
 
-## Reproduction A: third writer defeats rollback CAS
+## Reproduction A: ownership changes while Git is inside a hook
 
-1. Initialize a repository with one seed commit and dirty `stale.txt`.
-2. Call `commitGitMessage` for `stale.txt` with a `shouldCommit` callback.
-3. Let the initial ownership check return true so the stale commit advances `HEAD`.
-4. During the post-commit ownership check, create a third commit with `git commit-tree` and advance `HEAD` to it with `git update-ref`.
-5. Return false from `shouldCommit` so the stale finalizer attempts rollback.
+1. Initialize a repository with one seed commit and a pre-commit hook that waits on a release file.
+2. Begin an old self-mod run, write a tracked file, and start finalization.
+3. Wait until Git enters the hook; the finalizer has already removed the old run from `activeRuns`.
+4. Cancel the old run, begin a replacement run, and change the file again. Optionally advance `HEAD` with a third writer while the hook remains blocked.
+5. Release the hook.
 
-Observed: rollback's compare-and-swap fails with `cannot lock ref`, while the third commit retains the stale commit as its parent. The stale commit remains in reachable history with the canceled identity.
+Observed: the old finalizer can commit after cancellation, including content now owned by the replacement, under the old run's trailers. A third writer can also become part of the resulting history because ownership is not checked at the ref-update boundary.
 
-Expected: revocation prevents the stale commit from becoming reachable, or a failed rollback leaves the repository in a loudly quarantined state that cannot be mistaken for a valid self-mod result.
+Expected: revocation prevents the stale finalizer from updating `HEAD`; replacement-owned content remains available for the replacement run.
 
 ## Reproduction B: orphan Git child commits after worker death
 

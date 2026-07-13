@@ -201,9 +201,7 @@ export function buildActivityTasks(
         startedAtMs: record.startedAt,
         completedAtMs: running ? undefined : record.completedAt,
         lastUpdatedAtMs: record.updatedAt,
-        outputPreview:
-          record.cleanupDiagnostic ??
-          (running ? undefined : (record.result ?? record.error)),
+        outputPreview: running ? undefined : (record.result ?? record.error),
       }
     })
     .sort((a, b) => a.startedAtMs - b.startedAtMs || a.id.localeCompare(b.id))

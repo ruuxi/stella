@@ -1,10 +1,4 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -47,9 +41,7 @@ describe("self-mod HMR controller", () => {
           {
             runId: "run-a",
             paths: ["desktop/src/foo.tsx"],
-            files: [
-              { path: "desktop/src/foo.tsx", content: "export const a = 1" },
-            ],
+            files: [{ path: "desktop/src/foo.tsx", content: "export const a = 1" }],
             runtimeRestartRelevantPaths: [],
             processRestartRelevantPaths: [],
             restartRelevantPaths: [],
@@ -482,183 +474,6 @@ describe("self-mod HMR controller", () => {
     }
   });
 
-  it("sends a stable lease id on retriable shell-guard acquire and release", async () => {
-    const originalFetch = globalThis.fetch;
-    const requests: Array<{ url: string; body: unknown }> = [];
-    globalThis.fetch = vi.fn(async (input, init) => {
-      requests.push({
-        url: String(input),
-        body: init?.body ? JSON.parse(String(init.body)) : null,
-      });
-      return new Response(JSON.stringify({ ok: true, changedPaths: [] }), {
-        status: 200,
-      });
-    }) as typeof fetch;
-    const controller = createSelfModHmrController({
-      enabled: true,
-      getDevServerUrl: () => "http://127.0.0.1:57314",
-      repoRoot: makeTempRoot(),
-    });
-
-    try {
-      await expect(
-        controller.beginShellMutationGuard("lease-retry-a"),
-      ).resolves.toBe(true);
-      await expect(
-        controller.endShellMutationGuard("lease-retry-a"),
-      ).resolves.toEqual({ ok: true, changedPaths: [] });
-      expect(requests).toEqual([
-        {
-          url: expect.stringContaining("/begin-shell-mutation"),
-          body: { leaseId: "lease-retry-a" },
-        },
-        {
-          url: expect.stringContaining("/end-shell-mutation"),
-          body: { leaseId: "lease-retry-a" },
-        },
-      ]);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("does not acknowledge run cancellation when client-update release is rejected", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn(async (input) => {
-      const url = String(input);
-      const ok = !url.endsWith("/release-client-updates");
-      return new Response(JSON.stringify({ ok }), { status: 200 });
-    }) as typeof fetch;
-    const controller = createSelfModHmrController({
-      enabled: true,
-      getDevServerUrl: () => "http://127.0.0.1:57314",
-      repoRoot: makeTempRoot(),
-    });
-
-    try {
-      await controller.beginRun("run-release-rejected");
-      await expect(controller.cancel("run-release-rejected")).rejects.toThrow(
-        "Failed to release Vite client update pause",
-      );
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("keeps canceled path ownership pending until untrack-paths affirmatively acknowledges", async () => {
-    const originalFetch = globalThis.fetch;
-    const root = makeTempRoot();
-    const filePath = path.join(root, "desktop/src/pinned.tsx");
-    mkdirSync(path.dirname(filePath), { recursive: true });
-    writeFileSync(filePath, "export const pinned = true;\n");
-    let pinnedPaths = 0;
-    let untrackAttempts = 0;
-    globalThis.fetch = vi.fn(async (input) => {
-      const url = String(input);
-      if (url.endsWith("/track-paths")) {
-        pinnedPaths += 1;
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
-      }
-      if (url.endsWith("/untrack-paths")) {
-        untrackAttempts += 1;
-        if (untrackAttempts === 1) {
-          return new Response(JSON.stringify({ ok: false }), { status: 200 });
-        }
-        pinnedPaths -= 1;
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
-      }
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
-    }) as typeof fetch;
-    const controller = createSelfModHmrController({
-      enabled: true,
-      getDevServerUrl: () => "http://127.0.0.1:57314",
-      repoRoot: root,
-    });
-
-    try {
-      await controller.beginRun("run-untrack-retry");
-      await controller.recordWrite("run-untrack-retry", [filePath]);
-      expect(pinnedPaths).toBe(1);
-      await expect(controller.cancel("run-untrack-retry")).rejects.toThrow(
-        "Failed to untrack Vite paths",
-      );
-      expect(pinnedPaths).toBe(1);
-      expect(controller.hasRun("run-untrack-retry")).toBe(true);
-
-      await expect(controller.cancel("run-untrack-retry")).resolves.toEqual(
-        expect.objectContaining({
-          releasedPaths: ["desktop/src/pinned.tsx"],
-        }),
-      );
-      expect(untrackAttempts).toBe(2);
-      expect(pinnedPaths).toBe(0);
-      expect(controller.hasRun("run-untrack-retry")).toBe(false);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("keeps a replacement pin when a stale cancellation retry untracks the old owner", async () => {
-    const originalFetch = globalThis.fetch;
-    const root = makeTempRoot();
-    const filePath = path.join(root, "desktop/src/replacement-owned.tsx");
-    mkdirSync(path.dirname(filePath), { recursive: true });
-    writeFileSync(filePath, "export const owner = 'replacement';\n");
-    const pathOwners = new Map<string, Set<string>>();
-    let oldUntrackAttempts = 0;
-    globalThis.fetch = vi.fn(async (input, init) => {
-      const url = String(input);
-      const body = init?.body
-        ? (JSON.parse(String(init.body)) as {
-            runId?: string;
-            paths?: string[];
-          })
-        : {};
-      if (url.endsWith("/track-paths")) {
-        for (const trackedPath of body.paths ?? []) {
-          const owners = pathOwners.get(trackedPath) ?? new Set<string>();
-          owners.add(body.runId ?? "");
-          pathOwners.set(trackedPath, owners);
-        }
-      }
-      if (url.endsWith("/untrack-paths")) {
-        if (body.runId === "old-run" && oldUntrackAttempts++ === 0) {
-          return new Response(JSON.stringify({ ok: false }), { status: 200 });
-        }
-        for (const trackedPath of body.paths ?? []) {
-          pathOwners.get(trackedPath)?.delete(body.runId ?? "");
-        }
-      }
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
-    }) as typeof fetch;
-    const controller = createSelfModHmrController({
-      enabled: true,
-      getDevServerUrl: () => "http://127.0.0.1:57314",
-      repoRoot: root,
-    });
-
-    try {
-      await controller.beginRun("old-run");
-      await controller.recordWrite("old-run", [filePath]);
-      await expect(controller.cancel("old-run")).rejects.toThrow(
-        "Failed to untrack Vite paths",
-      );
-
-      await controller.beginRun("replacement-run");
-      await controller.recordWrite("replacement-run", [filePath]);
-      expect(pathOwners.get("desktop/src/replacement-owned.tsx")).toEqual(
-        new Set(["old-run", "replacement-run"]),
-      );
-
-      await controller.cancel("old-run");
-      expect(pathOwners.get("desktop/src/replacement-owned.tsx")).toEqual(
-        new Set(["replacement-run"]),
-      );
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
   it("discards only Vite-trackable paths after a failed apply", async () => {
     const originalFetch = globalThis.fetch;
     let body: unknown = null;
@@ -689,9 +504,7 @@ describe("self-mod HMR controller", () => {
           },
         ]),
       ).resolves.toBe(true);
-      expect(body).toEqual({
-        runs: [{ runId: "run-a", paths: ["desktop/src/foo.tsx"] }],
-      });
+      expect(body).toEqual({ paths: ["desktop/src/foo.tsx"] });
     } finally {
       globalThis.fetch = originalFetch;
     }

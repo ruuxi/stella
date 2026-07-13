@@ -129,49 +129,6 @@ export type ActivityHistoryDialogProps = {
   onOpenFile: (entry: ActivityHistoryFile) => void;
 };
 
-export function CompletedActivityTaskRow({
-  task,
-  grouped = false,
-  onSelectTask,
-}: {
-  task: TaskItem;
-  grouped?: boolean;
-  onSelectTask?: (task: TaskItem) => void;
-}) {
-  const label = taskLabel(task);
-  const outputPreview = task.outputPreview?.trim();
-  return (
-    <div
-      className={`activity-history-dialog__row${
-        grouped ? " activity-history-dialog__row--grouped" : ""
-      }`}
-      data-status={task.status}
-    >
-      <button
-        type="button"
-        className="activity-history-dialog__row-button"
-        onClick={() => onSelectTask?.(task)}
-        aria-label={`Use ${label || "activity"} as context`}
-      >
-        <span className="activity-history-dialog__row-copy">
-          <span className="activity-history-dialog__row-text">{label}</span>
-          {outputPreview ? (
-            <span
-              className="activity-history-dialog__row-output-preview"
-              role="status"
-            >
-              {outputPreview}
-            </span>
-          ) : null}
-        </span>
-        <span className="activity-history-dialog__row-meta">
-          {taskBadge(task)}
-        </span>
-      </button>
-    </div>
-  );
-}
-
 export function ActivityHistoryDialog({
   open,
   onOpenChange,
@@ -283,12 +240,27 @@ export function ActivityHistoryDialog({
 
   const renderItem = ({ item }: LegendListRenderItemProps<ListItem>) => {
     if (item.kind === "done") {
+      const { task } = item;
+      const label = taskLabel(task);
       return (
-        <CompletedActivityTaskRow
-          task={item.task}
-          grouped={item.grouped}
-          onSelectTask={onSelectTask}
-        />
+        <div
+          className={`activity-history-dialog__row${
+            item.grouped ? " activity-history-dialog__row--grouped" : ""
+          }`}
+          data-status={task.status}
+        >
+          <button
+            type="button"
+            className="activity-history-dialog__row-button"
+            onClick={() => onSelectTask?.(task)}
+            aria-label={`Use ${label || "activity"} as context`}
+          >
+            <span className="activity-history-dialog__row-text">{label}</span>
+            <span className="activity-history-dialog__row-meta">
+              {taskBadge(task)}
+            </span>
+          </button>
+        </div>
       );
     }
     if (item.kind === "doneGroup") {

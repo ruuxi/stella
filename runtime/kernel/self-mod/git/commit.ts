@@ -66,19 +66,10 @@ const hasStagedChanges = async (repoRoot: string): Promise<boolean> => {
   );
 };
 
-const requireGitHead = async (repoRoot: string): Promise<string> => {
-  const head = await getGitHead(repoRoot);
-  if (!head) {
-    throw new Error("Self-mod commit requires a repository with an existing HEAD.");
-  }
-  return head;
-};
-
 const commitPathScopedChanges = async (
   repoRoot: string,
   paths: string[],
   commitArgs: string[],
-  shouldCommit?: () => boolean,
 ): Promise<string | null> => {
   if (paths.length === 0) return null;
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "stella-git-index-"));
@@ -103,29 +94,11 @@ const commitPathScopedChanges = async (
       );
     }
 
-    if (shouldCommit && !shouldCommit()) {
-      return null;
-    }
-    const previousHead = await requireGitHead(repoRoot);
     await runGitWithEnv(repoRoot, commitArgs, env);
-    const committedHead = await requireGitHead(repoRoot);
-    if (shouldCommit && !shouldCommit()) {
-      // Hooks execute inside `git commit`, after our last synchronous ownership
-      // check but before the ref update. A cancellation in that window must
-      // revoke the new commit atomically. The expected-old CAS refuses to move
-      // HEAD if any other writer escaped the repository lock.
-      await runGit(repoRoot, [
-        "update-ref",
-        "HEAD",
-        previousHead,
-        committedHead,
-      ]);
-      return null;
-    }
     // The temporary index produced the commit; refresh only these paths in the
     // real index so unrelated staged user changes remain untouched.
     await runGit(repoRoot, ["reset", "-q", "--", ...paths]);
-    return committedHead;
+    return await getGitHead(repoRoot);
   } finally {
     await fs
       .rm(tempDir, { recursive: true, force: true })
@@ -191,13 +164,6 @@ export type GitMessageCommitArgs = {
    * swept into an agent-authored commit while still including new files.
    */
   paths?: string[];
-  /**
-   * Last-moment ownership check, evaluated inside the repository commit lock
-   * after the isolated index is prepared and immediately before `git commit`.
-   * A canceled self-mod finalizer uses this to prevent a stale async finalize
-   * from committing newer work under its old identity.
-   */
-  shouldCommit?: () => boolean;
 };
 
 const SUBJECT_MAX_LENGTH = 72;
@@ -263,29 +229,10 @@ export const commitGitMessage = async (
   // the lock; only the commit + HEAD read need the critical section.
   return await withRepoCommitLock(args.repoRoot, async () => {
     if (paths.length > 0) {
-      return await commitPathScopedChanges(
-        args.repoRoot,
-        paths,
-        commitArgs,
-        args.shouldCommit,
-      );
+      return await commitPathScopedChanges(args.repoRoot, paths, commitArgs);
     }
 
-    if (args.shouldCommit && !args.shouldCommit()) {
-      return null;
-    }
-    const previousHead = await requireGitHead(args.repoRoot);
     await runGit(args.repoRoot, commitArgs);
-    const committedHead = await requireGitHead(args.repoRoot);
-    if (args.shouldCommit && !args.shouldCommit()) {
-      await runGit(args.repoRoot, [
-        "update-ref",
-        "HEAD",
-        previousHead,
-        committedHead,
-      ]);
-      return null;
-    }
-    return committedHead;
+    return await getGitHead(args.repoRoot);
   });
 };

@@ -31,7 +31,6 @@
  */
 
 import path from "path";
-import { AGENT_PENDING_CLEANUP_EXPIRY_MS } from "./cleanup-policy.js";
 import type {
   TaskToolActivity,
   TaskLifecycleStatus,
@@ -172,8 +171,6 @@ type RuntimeAgentRecord = {
   managerReportRequested?: boolean;
   /** Monotonic ownership token for mutable executeTask attempts. */
   attemptGeneration: number;
-  /** Durable marker while abandoned resources remain unacknowledged. */
-  pendingCleanup?: PersistedAgentRecord["pendingCleanup"];
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
   recentActivity: string[];
   /**
@@ -436,10 +433,6 @@ type LocalAgentManagerOpts = {
   maxConcurrent?: number;
   /** Bounded ownership handoff for an aborted attempt that never settles. */
   attemptTeardownTimeoutMs?: number;
-  /** Bounded force-release wait before a replacement attempt takes ownership. */
-  attemptResourceCleanupTimeoutMs?: number;
-  /** Initial background retry delay for timed-out attempt cleanup. */
-  attemptResourceCleanupRetryMs?: number;
   getMaxConcurrent?: () => number;
   resolveTaskThread?: (args: {
     conversationId: string;
@@ -488,17 +481,8 @@ type LocalAgentManagerOpts = {
      * per-step features keyed by ephemeral agent ids.
      */
     selfModFeature?: { featureId: string; featureTitle: string };
-    /** Dynamic ownership check used to fence manager children from self-mod. */
-    isManagerOwned?: () => boolean;
     onSelfModRunStarted?: (runId: string) => void;
     onSelfModRunClosed?: (runId: string) => void;
-    onAttemptCleanupReady?: (cleanup: {
-      selfModRunId?: string;
-      forceRelease: () => Promise<{
-        released: boolean;
-        heldResources?: string[];
-      }>;
-    }) => void;
     shouldContinueSelfModLifecycleAfterInterrupt?: () => boolean;
     /**
      * Long-lived session bound to the durable subagent threadId. The
@@ -569,7 +553,6 @@ type LocalAgentManagerOpts = {
   listAgentRecordsByStatus?: (
     status: TaskLifecycleStatus,
   ) => PersistedAgentRecord[];
-  listAgentRecordsWithPendingCleanup?: () => PersistedAgentRecord[];
   listActiveThreads?: (conversationId: string) => RuntimeThreadRecord[];
 };
 
@@ -703,24 +686,6 @@ export const AGENT_ORPHANED_RESTART_CANCEL_REASON =
 // otherwise replace the user-facing reply with an empty silence.
 export const AGENT_PAUSE_CANCEL_REASON = "Paused by orchestrator.";
 export const DEFAULT_AGENT_ATTEMPT_TEARDOWN_TIMEOUT_MS = 5_000;
-export const DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_TIMEOUT_MS = 2_000;
-export const DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_RETRY_MS = 1_000;
-
-type InFlightAttempt = {
-  generation: number;
-  promise: Promise<void>;
-  /** Set before the first awaited self-mod acquire; cleared with the attempt. */
-  selfModRunId?: string;
-  forceRelease?: () => Promise<{
-    released: boolean;
-    heldResources?: string[];
-  }>;
-  cleanupFlight?: Promise<{
-    released: boolean;
-    heldResources?: string[];
-  }>;
-  takeoverStarted?: boolean;
-};
 
 const logWorkingIndicatorTrace = (
   label: string,
@@ -735,7 +700,10 @@ export class LocalAgentManager implements AgentToolApi {
   private readonly tasks = new Map<string, RuntimeAgentRecord>();
   private readonly pendingQueue: string[] = [];
   private runningCount = 0;
-  private readonly inFlightAttempts = new Map<string, InFlightAttempt>();
+  private readonly inFlightAttempts = new Map<
+    string,
+    { generation: number; promise: Promise<void> }
+  >();
   private readonly attemptTakeoverTimers = new Map<
     string,
     {
@@ -743,10 +711,6 @@ export class LocalAgentManager implements AgentToolApi {
       promise: Promise<void>;
       timer: ReturnType<typeof setTimeout>;
     }
-  >();
-  private readonly attemptCleanupRetryTimers = new Map<
-    string,
-    ReturnType<typeof setTimeout>
   >();
   private readonly cancelCascadeInProgress = new Set<string>();
   private readonly activeFsLocks: FsLock[] = [];
@@ -766,17 +730,6 @@ export class LocalAgentManager implements AgentToolApi {
     this.opts = opts;
     this.defaultMaxConcurrent = Math.max(1, opts.maxConcurrent ?? 3);
     this.cancelOrphanedPersistedAgents();
-    this.reportPersistedPendingCleanups();
-  }
-
-  private reportPersistedPendingCleanups(): void {
-    for (const record of this.opts.listAgentRecordsWithPendingCleanup?.() ??
-      []) {
-      if (!record.pendingCleanup) continue;
-      console.error(
-        `[agents] Unresolved resource cleanup survived worker restart for ${record.threadId} attempt ${record.pendingCleanup.attemptGeneration}: ${record.pendingCleanup.diagnostic} The process-local release handle is gone; runtime force-resume reconciliation is required.`,
-      );
-    }
   }
 
   private cancelOrphanedPersistedAgents(): void {
@@ -870,7 +823,6 @@ export class LocalAgentManager implements AgentToolApi {
         : {}),
       status: task.status === "pending" ? "running" : task.status,
       attemptGeneration: task.attemptGeneration,
-      ...(task.pendingCleanup ? { pendingCleanup: task.pendingCleanup } : {}),
       ...(task.rootRunId ? { rootRunId: task.rootRunId } : {}),
       startedAt: task.startedAt,
       completedAt: task.completedAt,
@@ -1053,16 +1005,6 @@ export class LocalAgentManager implements AgentToolApi {
         reason: "Managers cannot adopt other managers.",
       };
     }
-    if (
-      this.tasks.get(threadId)?.activeSelfModRunId ||
-      this.inFlightAttempts.get(threadId)?.selfModRunId
-    ) {
-      return {
-        adopted: false,
-        reason:
-          "A thread with an active Stella self-mod run cannot be adopted by a manager; wait for the run to close or pause it first.",
-      };
-    }
     if (target.conversationId !== manager.conversationId) {
       return {
         adopted: false,
@@ -1193,7 +1135,6 @@ export class LocalAgentManager implements AgentToolApi {
       attemptGeneration: Number.isFinite(record.attemptGeneration)
         ? Math.max(0, Math.floor(record.attemptGeneration))
         : 0,
-      pendingCleanup: record.pendingCleanup,
     };
   }
 
@@ -1254,7 +1195,7 @@ export class LocalAgentManager implements AgentToolApi {
 
   private scheduleAttemptTakeover(
     task: RuntimeAgentRecord,
-    activeAttempt: InFlightAttempt,
+    activeAttempt: { generation: number; promise: Promise<void> },
   ): void {
     const existing = this.attemptTakeoverTimers.get(task.threadId);
     if (
@@ -1288,10 +1229,14 @@ export class LocalAgentManager implements AgentToolApi {
         return;
       }
 
+      // The old promise may never settle (for example a bridge/tool that
+      // ignored abort). Release its scheduler slot and remove its ownership
+      // record. Generation/controller checks fence every later callback and
+      // state write from that promise if it eventually returns.
       this.attemptTakeoverTimers.delete(task.threadId);
-      if (inFlight.takeoverStarted) return;
-      inFlight.takeoverStarted = true;
-      void this.forceReleaseAndTakeOver(task, inFlight);
+      this.inFlightAttempts.delete(task.threadId);
+      this.runningCount = Math.max(0, this.runningCount - 1);
+      this.tryStartNext();
     }, timeoutMs);
     timer.unref?.();
     this.attemptTakeoverTimers.set(task.threadId, {
@@ -1299,163 +1244,6 @@ export class LocalAgentManager implements AgentToolApi {
       promise: activeAttempt.promise,
       timer,
     });
-  }
-
-  private async forceReleaseAndTakeOver(
-    task: RuntimeAgentRecord,
-    activeAttempt: InFlightAttempt,
-  ): Promise<void> {
-    const cleanup = await this.runBoundedAttemptCleanup(activeAttempt);
-    if (!cleanup.released) {
-      this.recordAttemptCleanupDiagnostic(task, activeAttempt, cleanup.reason);
-      this.scheduleAttemptCleanupRetry(task, activeAttempt, 0);
-    } else {
-      this.clearAttemptCleanupDiagnostic(task);
-    }
-
-    const inFlight = this.inFlightAttempts.get(task.threadId);
-    if (
-      inFlight !== activeAttempt ||
-      inFlight.generation !== activeAttempt.generation ||
-      inFlight.promise !== activeAttempt.promise ||
-      task.status !== "pending" ||
-      task.attemptGeneration === activeAttempt.generation
-    ) {
-      return;
-    }
-
-    // Cleanup either completed or is now durably diagnosed and retried in
-    // the background. Generation/controller checks fence every later state
-    // write from the abandoned promise while the replacement proceeds.
-    this.inFlightAttempts.delete(task.threadId);
-    this.runningCount = Math.max(0, this.runningCount - 1);
-    this.tryStartNext();
-  }
-
-  private async runBoundedAttemptCleanup(
-    activeAttempt: InFlightAttempt,
-  ): Promise<{
-    released: boolean;
-    reason?: string;
-  }> {
-    if (!activeAttempt.forceRelease) return { released: true };
-    let cleanupFlight = activeAttempt.cleanupFlight;
-    if (!cleanupFlight) {
-      cleanupFlight = Promise.resolve().then(() =>
-        activeAttempt.forceRelease!(),
-      );
-      activeAttempt.cleanupFlight = cleanupFlight;
-      void cleanupFlight.then(
-        () => {
-          if (activeAttempt.cleanupFlight === cleanupFlight) {
-            activeAttempt.cleanupFlight = undefined;
-          }
-        },
-        () => {
-          if (activeAttempt.cleanupFlight === cleanupFlight) {
-            activeAttempt.cleanupFlight = undefined;
-          }
-        },
-      );
-    }
-    const cleanupTimeoutMs = Math.max(
-      1,
-      this.opts.attemptResourceCleanupTimeoutMs ??
-        DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_TIMEOUT_MS,
-    );
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    try {
-      return await Promise.race([
-        cleanupFlight.then(
-          (result) =>
-            result.released
-              ? { released: true }
-              : {
-                  released: false,
-                  reason: `cleanup acknowledged held resources: ${(result.heldResources ?? ["unknown"]).join(", ")}`,
-                },
-          (error) => ({
-            released: false,
-            reason: `cleanup failed: ${(error as Error).message}`,
-          }),
-        ),
-        new Promise<{ released: false; reason: string }>((resolve) => {
-          timeout = setTimeout(
-            () =>
-              resolve({
-                released: false,
-                reason: `cleanup timed out after ${cleanupTimeoutMs}ms`,
-              }),
-            cleanupTimeoutMs,
-          );
-          timeout.unref?.();
-        }),
-      ]);
-    } finally {
-      if (timeout) clearTimeout(timeout);
-    }
-  }
-
-  private recordAttemptCleanupDiagnostic(
-    task: RuntimeAgentRecord,
-    activeAttempt: InFlightAttempt,
-    reason = "cleanup did not acknowledge release",
-  ): void {
-    const diagnostic = `Superseded attempt ${activeAttempt.generation} still has resources pending release: ${reason}. Background cleanup retries are active.`;
-    console.error(`[agents] ${task.threadId}: ${diagnostic}`);
-    task.pendingCleanup = {
-      attemptGeneration: activeAttempt.generation,
-      diagnostic,
-      recordedAt: Date.now(),
-      expiresAt: Date.now() + AGENT_PENDING_CLEANUP_EXPIRY_MS,
-    };
-    task.error = diagnostic;
-    task.recentActivity = [truncate(diagnostic, 500)];
-    this.persistTask(task);
-  }
-
-  private clearAttemptCleanupDiagnostic(task: RuntimeAgentRecord): void {
-    const diagnostic = task.pendingCleanup?.diagnostic;
-    if (!diagnostic) return;
-    task.pendingCleanup = undefined;
-    if (task.error === diagnostic) task.error = undefined;
-    this.persistTask(task);
-  }
-
-  private scheduleAttemptCleanupRetry(
-    task: RuntimeAgentRecord,
-    activeAttempt: InFlightAttempt,
-    retryCount: number,
-  ): void {
-    if (!activeAttempt.forceRelease) return;
-    const key = `${task.threadId}:${activeAttempt.generation}`;
-    if (this.attemptCleanupRetryTimers.has(key)) return;
-    const initialDelayMs = Math.max(
-      1,
-      this.opts.attemptResourceCleanupRetryMs ??
-        DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_RETRY_MS,
-    );
-    const delayMs = Math.min(
-      initialDelayMs * 2 ** Math.min(retryCount, 5),
-      30_000,
-    );
-    const timer = setTimeout(() => {
-      this.attemptCleanupRetryTimers.delete(key);
-      void this.runBoundedAttemptCleanup(activeAttempt).then((cleanup) => {
-        if (cleanup.released) {
-          this.clearAttemptCleanupDiagnostic(task);
-          return;
-        }
-        this.recordAttemptCleanupDiagnostic(
-          task,
-          activeAttempt,
-          cleanup.reason,
-        );
-        this.scheduleAttemptCleanupRetry(task, activeAttempt, retryCount + 1);
-      });
-    }, delayMs);
-    timer.unref?.();
-    this.attemptCleanupRetryTimers.set(key, timer);
   }
 
   private tryStartNext(): void {
@@ -1646,10 +1434,6 @@ export class LocalAgentManager implements AgentToolApi {
         enableRemoteTools: true,
         abortSignal: attempt.controller.signal,
         selfModMetadata: task.selfModMetadata,
-        isManagerOwned: () =>
-          Boolean(
-            task.parentAgentId && this.isManagerThread(task.parentAgentId),
-          ),
         ...(task.activeSelfModRunId
           ? { selfModRunId: task.activeSelfModRunId }
           : {}),
@@ -1662,28 +1446,6 @@ export class LocalAgentManager implements AgentToolApi {
           if (task.activeSelfModRunId === runId) {
             task.activeSelfModRunId = undefined;
           }
-        },
-        onAttemptCleanupReady: (cleanup) => {
-          const activeAttempt = this.inFlightAttempts.get(task.threadId);
-          if (activeAttempt?.generation === attempt.generation) {
-            if (cleanup.selfModRunId) {
-              // Mark ownership before the first awaited HMR/lifecycle acquire.
-              // Adoption must reject throughout partially-acquired startup,
-              // not only after beginRun has fully acknowledged.
-              activeAttempt.selfModRunId = cleanup.selfModRunId;
-            }
-            activeAttempt.forceRelease = cleanup.forceRelease;
-            return;
-          }
-          // Registration can race a zero/very-short takeover deadline. If
-          // ownership has already moved on, close this abandoned attempt's
-          // resources immediately; its own finally may never run.
-          void cleanup.forceRelease().catch((error) => {
-            console.warn(
-              "[agents] failed to release late-registered attempt resources:",
-              (error as Error).message,
-            );
-          });
         },
         shouldContinueSelfModLifecycleAfterInterrupt: () =>
           isCurrentAttempt() && this.shouldDeliverFollowUp(task),
@@ -2374,10 +2136,6 @@ export class LocalAgentManager implements AgentToolApi {
       clearTimeout(pending.timer);
     }
     this.attemptTakeoverTimers.clear();
-    for (const timer of this.attemptCleanupRetryTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.attemptCleanupRetryTimers.clear();
     for (const task of this.tasks.values()) {
       if (task.status !== "pending" && task.status !== "running") {
         continue;

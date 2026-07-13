@@ -37,25 +37,6 @@ const selfModRequestContext = new AsyncLocalStorage<{
 }>()
 
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
-export const MAX_RELEASED_SHELL_MUTATION_LEASE_TOMBSTONES = 8_192
-
-export const rememberReleasedShellMutationLease = (
-  tombstones: Set<string>,
-  leaseId: string,
-  maxEntries = MAX_RELEASED_SHELL_MUTATION_LEASE_TOMBSTONES,
-) => {
-  if (!leaseId) return
-  // Set insertion order gives us a tiny LRU: refresh repeat releases, then
-  // evict the oldest ids once the late-ack window reaches its hard bound.
-  tombstones.delete(leaseId)
-  tombstones.add(leaseId)
-  const boundedMax = Math.max(1, Math.floor(maxEntries))
-  while (tombstones.size > boundedMax) {
-    const oldest = tombstones.values().next().value
-    if (typeof oldest !== 'string') break
-    tombstones.delete(oldest)
-  }
-}
 const STELLA_REPO_ROOT = path.resolve(__dirname, '..', '..')
 const SELF_MOD_HMR_MODE_ENV = 'STELLA_SELF_MOD_HMR_MODE'
 
@@ -67,40 +48,8 @@ type ApplyPayload = {
     forceClientFullReload?: unknown
   }
 }
-type TrackPayload = { runId?: unknown; paths?: unknown }
-type DiscardPayload = {
-  runs?: Array<{ runId?: unknown; paths?: unknown }>
-}
+type TrackPayload = { paths?: unknown }
 type PausePayload = { runId?: unknown; runIds?: unknown }
-
-export const addSelfModPathOwner = (
-  ownersByPath: Map<string, Set<string>>,
-  absPath: string,
-  ownerId: string,
-): boolean => {
-  let owners = ownersByPath.get(absPath)
-  if (!owners) {
-    owners = new Set()
-    ownersByPath.set(absPath, owners)
-  }
-  const wasUnowned = owners.size === 0
-  owners.add(ownerId)
-  return wasUnowned
-}
-
-export const removeSelfModPathOwner = (
-  ownersByPath: Map<string, Set<string>>,
-  absPath: string,
-  ownerId?: string,
-): boolean => {
-  if (ownerId) {
-    const owners = ownersByPath.get(absPath)
-    if (!owners?.delete(ownerId)) return false
-    if (owners.size > 0) return false
-  }
-  ownersByPath.delete(absPath)
-  return true
-}
 
 export const resolveSelfModHmrAbsolutePath = (repoRelative: string): string | null => {
   if (typeof repoRelative !== 'string' || repoRelative.length === 0) return null
@@ -370,10 +319,10 @@ const collectShellSnapshotFiles = (): string[] => {
  *                          their current disk contents into a held run's apply.
  *
  * Endpoints exposed under /__stella/self-mod/hmr:
- *   - POST /track-paths    { runId, paths: string[] }  (repo-relative posix)
- *   - POST /untrack-paths  { runId, paths: string[] }
+ *   - POST /track-paths    { paths: string[] }  (repo-relative posix)
+ *   - POST /untrack-paths  { paths: string[] }
  *   - POST /apply          { runs: [{ runId, files: [{ path, content }] }] }
- *   - POST /discard        { runs: [{ runId, paths }] }  (drop failed-owner pins)
+ *   - POST /discard        { paths: string[] }  (drop pins/overlays for failed apply)
  *   - POST /begin-shell-mutation, /end-shell-mutation
  *   - POST /force-resume   (clear all state; emergency)
  *   - GET  /status         (debug introspection)
@@ -382,7 +331,6 @@ export function selfModHmrControl(): Plugin {
   const parkClientUpdates = shouldParkSelfModHmrClientUpdates()
   const pausedRunIds = new Set<string>()
   const inFlightPaths = new Set<string>()
-  const pathOwnersByPath = new Map<string, Set<string>>()
   const prePeriodSnapshot = new Map<string, string>()
   const appliedOverlay = new Map<string, { content: string; mtime: number }>()
   const shellSnapshotPaths = new Set<string>()
@@ -443,8 +391,6 @@ export function selfModHmrControl(): Plugin {
     hostOwnedSwapDeactivateTimer.unref?.()
   }
   let shellMutationDepth = 0
-  const shellMutationLeaseIds = new Set<string>()
-  const releasedShellMutationLeaseIds = new Set<string>()
 
   const hasOwnedClientUpdatePause = () =>
     pausedRunIds.size > 0 || shellMutationDepth > 0
@@ -465,11 +411,8 @@ export function selfModHmrControl(): Plugin {
     }
   }
 
-  const SHELL_SNAPSHOT_OWNER = 'stella:shell-snapshot'
-  const SHELL_PROMOTED_OWNER = 'stella:shell-promoted'
-
-  const trackPath = (absPath: string, ownerId: string) => {
-    if (!addSelfModPathOwner(pathOwnersByPath, absPath, ownerId)) return
+  const trackPath = (absPath: string) => {
+    if (inFlightPaths.has(absPath)) return
     inFlightPaths.add(absPath)
     if (!prePeriodSnapshot.has(absPath)) {
       // Snapshot may be stale relative to the writer's current state, but
@@ -478,15 +421,14 @@ export function selfModHmrControl(): Plugin {
     }
   }
 
-  const untrackPath = (absPath: string, ownerId?: string) => {
-    if (!removeSelfModPathOwner(pathOwnersByPath, absPath, ownerId)) return
+  const untrackPath = (absPath: string) => {
     inFlightPaths.delete(absPath)
     prePeriodSnapshot.delete(absPath)
   }
 
   const trackShellSnapshotPath = (absPath: string) => {
     if (inFlightPaths.has(absPath)) return
-    trackPath(absPath, SHELL_SNAPSHOT_OWNER)
+    trackPath(absPath)
     shellSnapshotPaths.add(absPath)
   }
 
@@ -502,7 +444,7 @@ export function selfModHmrControl(): Plugin {
         continue
       }
       shellSnapshotPaths.delete(absPath)
-      trackPath(absPath, SHELL_PROMOTED_OWNER)
+      trackPath(absPath)
       promoted.push(repoRelative)
     }
     return promoted
@@ -510,7 +452,7 @@ export function selfModHmrControl(): Plugin {
 
   const releaseShellSnapshotPaths = () => {
     for (const absPath of shellSnapshotPaths) {
-      untrackPath(absPath, SHELL_SNAPSHOT_OWNER)
+      untrackPath(absPath)
     }
     shellSnapshotPaths.clear()
   }
@@ -518,7 +460,6 @@ export function selfModHmrControl(): Plugin {
   const clearAllState = () => {
     pausedRunIds.clear()
     inFlightPaths.clear()
-    pathOwnersByPath.clear()
     prePeriodSnapshot.clear()
     appliedOverlay.clear()
     shellSnapshotPaths.clear()
@@ -820,7 +761,7 @@ export function selfModHmrControl(): Plugin {
           releaseRuns([run.runId])
           for (const file of run.files) {
             const absPath = file.absPath
-            untrackPath(absPath, run.runId)
+            untrackPath(absPath)
             const diskReconciled = reconcileAppliedOverlayFileToDisk(file)
             if (file.deleted) {
               appliedOverlay.set(absPath, { content: DELETED_OVERLAY_MODULE, mtime: Date.now() })
@@ -1029,11 +970,6 @@ export function selfModHmrControl(): Plugin {
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/track-paths`) {
           const payload = (await readJsonBody(req)) as TrackPayload
           const paths = collectStringArray(payload.paths)
-          const runId = typeof payload.runId === 'string' ? payload.runId : ''
-          if (!runId) {
-            sendJson(400, { ok: false, error: 'runId is required' })
-            return
-          }
           let tracked = 0
           for (const rel of paths) {
             const abs = resolveSelfModHmrAbsolutePath(rel)
@@ -1042,10 +978,8 @@ export function selfModHmrControl(): Plugin {
             // A real run owner has now claimed this path. Keep it in-flight
             // until /apply or /untrack-paths, rather than releasing it with
             // the temporary shell snapshot set.
-            trackPath(abs, runId)
             shellSnapshotPaths.delete(abs)
-            untrackPath(abs, SHELL_SNAPSHOT_OWNER)
-            untrackPath(abs, SHELL_PROMOTED_OWNER)
+            trackPath(abs)
             tracked += 1
           }
           sendJson(200, { ok: true, tracked, inFlightPaths: inFlightPaths.size })
@@ -1055,17 +989,12 @@ export function selfModHmrControl(): Plugin {
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/untrack-paths`) {
           const payload = (await readJsonBody(req)) as TrackPayload
           const paths = collectStringArray(payload.paths)
-          const runId = typeof payload.runId === 'string' ? payload.runId : ''
-          if (!runId) {
-            sendJson(400, { ok: false, error: 'runId is required' })
-            return
-          }
           let untracked = 0
           for (const rel of paths) {
             const abs = resolveSelfModHmrAbsolutePath(rel)
             if (!abs) continue
             if (!isViteTrackableAbsolutePath(abs)) continue
-            untrackPath(abs, runId)
+            untrackPath(abs)
             untracked += 1
           }
           sendJson(200, { ok: true, untracked, inFlightPaths: inFlightPaths.size })
@@ -1131,20 +1060,17 @@ export function selfModHmrControl(): Plugin {
         }
 
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/discard`) {
-          const payload = (await readJsonBody(req)) as DiscardPayload
-          const runs = Array.isArray(payload.runs) ? payload.runs : []
+          const payload = (await readJsonBody(req)) as TrackPayload
+          const paths = collectStringArray(payload.paths)
           let discarded = 0
-          for (const run of runs) {
-            const runId = typeof run.runId === 'string' ? run.runId : ''
-            if (!runId) continue
-            for (const rel of collectStringArray(run.paths)) {
-              const abs = resolveSelfModHmrAbsolutePath(rel)
-              if (!abs) continue
-              if (!isViteTrackableAbsolutePath(abs)) continue
-              untrackPath(abs, runId)
-              appliedOverlay.delete(abs)
-              discarded += 1
-            }
+          for (const rel of paths) {
+            const abs = resolveSelfModHmrAbsolutePath(rel)
+            if (!abs) continue
+            if (!isViteTrackableAbsolutePath(abs)) continue
+            untrackPath(abs)
+            shellSnapshotPaths.delete(abs)
+            appliedOverlay.delete(abs)
+            discarded += 1
           }
           sendJson(200, {
             ok: true,
@@ -1156,44 +1082,17 @@ export function selfModHmrControl(): Plugin {
         }
 
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/begin-shell-mutation`) {
-          const payload = await readJsonBody(req)
-          const leaseId = typeof payload.leaseId === 'string' ? payload.leaseId : ''
-          if (leaseId && releasedShellMutationLeaseIds.has(leaseId)) {
-            sendJson(200, { ok: false, shellMutationDepth, alreadyReleased: true })
-            return
-          }
-          if (leaseId && shellMutationLeaseIds.has(leaseId)) {
-            sendJson(200, { ok: true, shellMutationDepth, alreadyAcquired: true })
-            return
-          }
           if (shellMutationDepth === 0) {
             for (const absPath of collectShellSnapshotFiles()) {
               trackShellSnapshotPath(absPath)
             }
           }
           shellMutationDepth += 1
-          if (leaseId) shellMutationLeaseIds.add(leaseId)
           sendJson(200, { ok: true, shellMutationDepth })
           return
         }
 
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/end-shell-mutation`) {
-          const payload = await readJsonBody(req)
-          const leaseId = typeof payload.leaseId === 'string' ? payload.leaseId : ''
-          if (leaseId && !shellMutationLeaseIds.has(leaseId)) {
-            rememberReleasedShellMutationLease(releasedShellMutationLeaseIds, leaseId)
-            sendJson(200, {
-              ok: true,
-              shellMutationDepth,
-              alreadyReleased: true,
-              changedPaths: [],
-            })
-            return
-          }
-          if (leaseId) {
-            shellMutationLeaseIds.delete(leaseId)
-            rememberReleasedShellMutationLease(releasedShellMutationLeaseIds, leaseId)
-          }
           shellMutationDepth = Math.max(0, shellMutationDepth - 1)
           let changedPaths: string[] = []
           if (shellMutationDepth === 0) {
@@ -1220,8 +1119,6 @@ export function selfModHmrControl(): Plugin {
             shellMutationDepth > 0
           clearAllState()
           shellMutationDepth = 0
-          shellMutationLeaseIds.clear()
-          releasedShellMutationLeaseIds.clear()
           if (shouldReload) {
             sendClientMessage({ type: 'full-reload', path: '*' })
           }

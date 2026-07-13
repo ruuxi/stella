@@ -557,6 +557,47 @@ describe("state tools", () => {
     });
   });
 
+  it("allows manager-owned General agents on every external engine", async () => {
+    const { ctx, created } = createSpawnContext();
+    const managerContext = {
+      conversationId: "conversation-1",
+      deviceId: "device-1",
+      requestId: "request-manager",
+      agentType: AGENT_IDS.MANAGER,
+      agentId: "manager-1",
+      agentDepth: 1,
+      maxAgentDepth: 2,
+    } as const;
+
+    await handleSpawnAgent(
+      ctx,
+      { description: "Codex task", prompt: "Do it.", model: "codex" },
+      managerContext,
+    );
+    await handleSpawnAgent(
+      ctx,
+      {
+        description: "Claude Code task",
+        prompt: "Do it.",
+        model: "claude-code/opus",
+      },
+      managerContext,
+    );
+
+    expect(created).toMatchObject([
+      {
+        agentType: AGENT_IDS.GENERAL,
+        parentAgentId: "manager-1",
+        spawnEngine: { engine: "codex_cli" },
+      },
+      {
+        agentType: AGENT_IDS.GENERAL,
+        parentAgentId: "manager-1",
+        spawnEngine: { engine: "claude_code_local", model: "opus" },
+      },
+    ]);
+  });
+
   it("creates a manager thread on the configured default with prompt as its only input", async () => {
     const { ctx, created } = createSpawnContext();
     const result = await handleSpawnManager(

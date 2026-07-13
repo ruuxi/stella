@@ -118,14 +118,6 @@ export type PersistedAgentRecord = {
   status: TaskLifecycleStatus;
   /** Persisted ownership epoch so lifecycle ids remain unique after restart. */
   attemptGeneration: number;
-  /** Durable marker for abandoned resources whose cleanup was not acknowledged. */
-  pendingCleanup?: {
-    attemptGeneration: number;
-    diagnostic: string;
-    recordedAt: number;
-    expiresAt?: number;
-    expiredAt?: number;
-  };
   /** Root run that owns the thread's latest lifecycle (send_input rebinds it). */
   rootRunId?: string;
   startedAt: number;
@@ -4163,10 +4155,9 @@ export class SessionStore {
         error,
         updated_at,
         root_run_id,
-        attempt_generation,
-        pending_cleanup_json
+        attempt_generation
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
@@ -4182,8 +4173,7 @@ export class SessionStore {
         error = excluded.error,
         updated_at = excluded.updated_at,
         root_run_id = excluded.root_run_id,
-        attempt_generation = excluded.attempt_generation,
-        pending_cleanup_json = excluded.pending_cleanup_json
+        attempt_generation = excluded.attempt_generation
     `,
       )
       .run(
@@ -4203,7 +4193,6 @@ export class SessionStore {
         record.updatedAt,
         record.rootRunId ?? null,
         record.attemptGeneration ?? 0,
-        toJsonValueString(record.pendingCleanup) ?? null,
       );
   }
 
@@ -4293,8 +4282,7 @@ export class SessionStore {
         error,
         updated_at,
         root_run_id,
-        attempt_generation,
-        pending_cleanup_json
+        attempt_generation
       FROM runtime_agents
       WHERE thread_id = ?
       LIMIT 1
@@ -4318,7 +4306,6 @@ export class SessionStore {
           updated_at: number;
           root_run_id: string | null;
           attempt_generation: number;
-          pending_cleanup_json: string | null;
         }
       | undefined;
     if (!row) {
@@ -4327,9 +4314,6 @@ export class SessionStore {
     const selfModMetadata = parseJsonValue<
       PersistedAgentRecord["selfModMetadata"]
     >(row.self_mod_metadata_json);
-    const pendingCleanup = parseJsonValue<
-      PersistedAgentRecord["pendingCleanup"]
-    >(row.pending_cleanup_json);
     return {
       threadId: row.thread_id,
       conversationId: row.conversation_id,
@@ -4343,7 +4327,6 @@ export class SessionStore {
       ...(selfModMetadata ? { selfModMetadata } : {}),
       status: row.status,
       attemptGeneration: row.attempt_generation,
-      ...(pendingCleanup ? { pendingCleanup } : {}),
       ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
       startedAt: row.started_at,
       completedAt: row.completed_at,
@@ -4375,8 +4358,7 @@ export class SessionStore {
         error,
         updated_at,
         root_run_id,
-        attempt_generation,
-        pending_cleanup_json
+        attempt_generation
       FROM runtime_agents
       WHERE status = ?
       ORDER BY updated_at DESC, thread_id ASC
@@ -4399,16 +4381,12 @@ export class SessionStore {
       updated_at: number;
       root_run_id: string | null;
       attempt_generation: number;
-      pending_cleanup_json: string | null;
     }>;
 
     return rows.map((row) => {
       const selfModMetadata = parseJsonValue<
         PersistedAgentRecord["selfModMetadata"]
       >(row.self_mod_metadata_json);
-      const pendingCleanup = parseJsonValue<
-        PersistedAgentRecord["pendingCleanup"]
-      >(row.pending_cleanup_json);
       return {
         threadId: row.thread_id,
         conversationId: row.conversation_id,
@@ -4422,7 +4400,6 @@ export class SessionStore {
         ...(selfModMetadata ? { selfModMetadata } : {}),
         status: row.status,
         attemptGeneration: row.attempt_generation,
-        ...(pendingCleanup ? { pendingCleanup } : {}),
         ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
         startedAt: row.started_at,
         completedAt: row.completed_at,
@@ -4431,92 +4408,6 @@ export class SessionStore {
         updatedAt: row.updated_at,
       };
     });
-  }
-
-  listAgentRecordsWithPendingCleanup(): PersistedAgentRecord[] {
-    const rows = this.db
-      .prepare(
-        `SELECT thread_id FROM runtime_agents
-         WHERE pending_cleanup_json IS NOT NULL
-         ORDER BY updated_at DESC, thread_id ASC`,
-      )
-      .all() as Array<{ thread_id: string }>;
-    return rows.flatMap((row) => {
-      const record = this.getAgentRecord(row.thread_id);
-      return record ? [record] : [];
-    });
-  }
-
-  /**
-   * Reconcile durable cleanup diagnostics after the worker's global HMR and
-   * mutation-guard reset. Verified-free resources clear the diagnostic. If
-   * resources cannot be verified, an old process-local cleanup record expires
-   * into a final persistent error rather than retrying forever or vanishing
-   * into startup logs.
-   */
-  reconcilePendingAgentCleanupRecords(args: {
-    resourcesVerifiedFree: boolean;
-    now?: number;
-    expiryMs: number;
-  }): {
-    clearedConversationIds: string[];
-    expiredConversationIds: string[];
-  } {
-    const now = args.now ?? Date.now();
-    const clearedConversationIds = new Set<string>();
-    const expiredConversationIds = new Set<string>();
-    for (const record of this.listAgentRecordsWithPendingCleanup()) {
-      const pending = record.pendingCleanup;
-      if (!pending) continue;
-      if (args.resourcesVerifiedFree) {
-        this.saveAgentRecord({
-          ...record,
-          pendingCleanup: undefined,
-          ...(record.error === pending.diagnostic ? { error: undefined } : {}),
-          updatedAt: now,
-        });
-        clearedConversationIds.add(record.conversationId);
-        continue;
-      }
-      const expiresAt = pending.expiresAt ?? pending.recordedAt + args.expiryMs;
-      if (pending.expiresAt == null && now < expiresAt) {
-        this.saveAgentRecord({
-          ...record,
-          pendingCleanup: { ...pending, expiresAt },
-        });
-        continue;
-      }
-      if (pending.expiredAt || now < expiresAt) continue;
-      const diagnostic = `Resource cleanup could not be verified after worker restart. Manual restart may be required; automatic retries expired at ${new Date(now).toISOString()}.`;
-      this.saveAgentRecord({
-        ...record,
-        pendingCleanup: {
-          ...pending,
-          diagnostic,
-          expiresAt,
-          expiredAt: now,
-        },
-        error: diagnostic,
-        updatedAt: now,
-      });
-      expiredConversationIds.add(record.conversationId);
-    }
-    return {
-      clearedConversationIds: [...clearedConversationIds],
-      expiredConversationIds: [...expiredConversationIds],
-    };
-  }
-
-  getNextPendingAgentCleanupExpiryAt(): number | null {
-    let next: number | null = null;
-    for (const record of this.listAgentRecordsWithPendingCleanup()) {
-      const pending = record.pendingCleanup;
-      if (!pending || pending.expiredAt) continue;
-      const expiresAt = pending.expiresAt;
-      if (expiresAt == null) continue;
-      next = next == null ? expiresAt : Math.min(next, expiresAt);
-    }
-    return next;
   }
 
   /**
@@ -4542,7 +4433,6 @@ export class SessionStore {
         a.completed_at,
         substr(a.result, 1, 2000) AS result,
         substr(a.error, 1, 2000) AS error,
-        a.pending_cleanup_json,
         a.updated_at,
         a.root_run_id,
         t.group_key,
@@ -4564,36 +4454,27 @@ export class SessionStore {
       completed_at: number | null;
       result: string | null;
       error: string | null;
-      pending_cleanup_json: string | null;
       updated_at: number;
       root_run_id: string | null;
       group_key: string | null;
       group_label: string | null;
     }>;
-    return rows.map((row) => {
-      const pendingCleanup = parseJsonValue<
-        PersistedAgentRecord["pendingCleanup"]
-      >(row.pending_cleanup_json);
-      return {
-        threadId: row.thread_id,
-        conversationId: row.conversation_id,
-        agentType: row.agent_type,
-        description: row.description,
-        status: row.status,
-        ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
-        ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
-        ...(row.group_key ? { groupKey: row.group_key } : {}),
-        ...(row.group_label ? { groupLabel: row.group_label } : {}),
-        startedAt: row.started_at,
-        ...(row.completed_at == null ? {} : { completedAt: row.completed_at }),
-        ...(row.result ? { result: row.result } : {}),
-        ...(row.error ? { error: row.error } : {}),
-        ...(pendingCleanup?.diagnostic
-          ? { cleanupDiagnostic: pendingCleanup.diagnostic }
-          : {}),
-        updatedAt: row.updated_at,
-      };
-    });
+    return rows.map((row) => ({
+      threadId: row.thread_id,
+      conversationId: row.conversation_id,
+      agentType: row.agent_type,
+      description: row.description,
+      status: row.status,
+      ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
+      ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
+      ...(row.group_key ? { groupKey: row.group_key } : {}),
+      ...(row.group_label ? { groupLabel: row.group_label } : {}),
+      startedAt: row.started_at,
+      ...(row.completed_at == null ? {} : { completedAt: row.completed_at }),
+      ...(row.result ? { result: row.result } : {}),
+      ...(row.error ? { error: row.error } : {}),
+      updatedAt: row.updated_at,
+    }));
   }
 
   getOrchestratorReminderState(conversationId: string): {

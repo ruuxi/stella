@@ -168,28 +168,11 @@
 
 .activity-history-dialog__row-text {
   flex: 1;
-  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-strong);
-}
-
-.activity-history-dialog__row-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.activity-history-dialog__row-output-preview {
-  display: -webkit-box;
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--text-weak);
-  font-size: var(--font-size-xs);
-  line-height: 1.4;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .activity-history-dialog__row-meta {

@@ -276,7 +276,7 @@ const taskToActivityContext = (
   lastUpdatedAtMs: task.lastUpdatedAtMs,
 });
 
-export const TaskRow = memo(function TaskRow({
+const TaskRow = memo(function TaskRow({
   task,
   expanded,
   onToggle,
@@ -357,11 +357,6 @@ export const TaskRow = memo(function TaskRow({
           <MessageSquarePlus size={14} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>
-      {task.outputPreview?.trim() ? (
-        <p className="chat-workspace-strip__task-output-preview" role="status">
-          {task.outputPreview.trim()}
-        </p>
-      ) : null}
       {/* Always mounted so both the user toggle and the first summary/file
           arriving animate open — grid-rows 0fr↔1fr, same pattern as the
           section header collapse. `inert` keeps the hidden detail out of the

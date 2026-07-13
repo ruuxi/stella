@@ -39,8 +39,6 @@ export type ThreadActivityRecord = {
   completedAt?: number;
   result?: string;
   error?: string;
-  /** Persistent resource-cleanup failure; takes display precedence over result. */
-  cleanupDiagnostic?: string;
   updatedAt: number;
 };
 
