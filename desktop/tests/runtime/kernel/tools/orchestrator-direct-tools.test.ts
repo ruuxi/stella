@@ -12,6 +12,7 @@ import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/share
 import { createToolHost } from "../../../../../runtime/kernel/tools/host.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
 import { getRuntimeToolMetadata } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
+import { loadParsedAgentsFromDir } from "../../../../../runtime/kernel/agents/markdown-agent-loader.js";
 import { loadStellaRuntimeAgents } from "../../../../../runtime/extensions/stella-runtime/index.js";
 
 type TestHostContext = {
@@ -111,6 +112,22 @@ const makeToolContext = (agentType: string): ToolContext => ({
 });
 
 describe("orchestrator direct tool surface", () => {
+  it("keeps orchestrator capabilities readable by the pre-metadata-only loader", () => {
+    const agents = loadParsedAgentsFromDir(
+      path.join(repoRoot, "runtime/extensions/stella-runtime/agent-metadata"),
+    );
+    const orchestrator = agents.find((agent) => agent.id === "orchestrator");
+
+    expect(orchestrator?.toolsAllowlist).toEqual(
+      expect.arrayContaining([
+        "spawn_agent",
+        "spawn_manager",
+        "send_input",
+        "pause_agent",
+      ]),
+    );
+  });
+
   it("overlays shipped capability metadata onto customized home prompt bodies", async () => {
     const { host, rootPath } = await createTestHost();
     const agentsDir = path.join(rootPath, "agents");
