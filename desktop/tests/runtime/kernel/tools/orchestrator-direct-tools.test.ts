@@ -156,10 +156,7 @@ describe("orchestrator direct tool surface", () => {
 
     const agents = loadStellaRuntimeAgents(
       rootPath,
-      path.join(
-        repoRoot,
-        "runtime/extensions/stella-runtime/agent-metadata",
-      ),
+      path.join(repoRoot, "runtime/extensions/stella-runtime/agent-metadata"),
     );
     const advertisedToolNames = (agentType: string) => {
       const agent = agents.find((candidate) => candidate.id === agentType);
