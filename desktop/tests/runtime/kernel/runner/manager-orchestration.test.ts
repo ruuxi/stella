@@ -28,6 +28,9 @@ type MockRunArgs = {
   agentType: string;
   userPrompt: string;
   abortSignal?: AbortSignal;
+  agentContext?: {
+    threadHistory?: Array<{ content: string }>;
+  };
 };
 
 const runMock = vi.hoisted(() => ({
@@ -84,6 +87,21 @@ const waitForAbort = async (signal?: AbortSignal): Promise<void> => {
   );
 };
 
+const historyText = (args: MockRunArgs): string =>
+  (args.agentContext?.threadHistory ?? [])
+    .map((message) => message.content)
+    .join("\n");
+
+const hasInFlightAttempt = (
+  manager: LocalAgentManager,
+  threadId: string,
+): boolean =>
+  (
+    manager as unknown as {
+      inFlightAttempts: Map<string, unknown>;
+    }
+  ).inFlightAttempts.has(threadId);
+
 const createHarness = (): Harness => {
   const rootPath = path.join(
     os.tmpdir(),
@@ -125,10 +143,13 @@ const createHarness = (): Harness => {
     },
   } as unknown as RunnerContext;
   createAgentOrchestration(context, {
-    buildAgentContext: async () => ({
+    buildAgentContext: async ({ threadId }) => ({
       systemPrompt: "",
       dynamicContext: "",
       maxAgentDepth: 2,
+      // Mirrors buildAgentContext's real non-orchestrator history hydration.
+      // Keeping this wired to SessionStore is what exposes replay duplicates.
+      threadHistory: store.loadThreadMessages(threadId),
       resolvedLlm: {
         model: { id: "test-model", provider: "openai" },
       },
@@ -173,8 +194,10 @@ describe("manager orchestration production routing", () => {
       releaseChild = resolve;
     });
     const managerPrompts: string[] = [];
+    const managerRuns: MockRunArgs[] = [];
     runMock.handler = async (args) => {
       if (args.agentType === AGENT_IDS.MANAGER) {
+        managerRuns.push(args);
         managerPrompts.push(args.userPrompt);
         if (managerPrompts.length === 1) {
           await managerFirstGate;
@@ -262,7 +285,8 @@ describe("manager orchestration production routing", () => {
         (await manager.getAgent(managerTask.threadId))?.status ?? "",
       ),
     );
-    expect(managerPrompts[2]).toContain("Child finished cleanly.");
+    expect(managerPrompts[2]).toContain("newly persisted managed-child event");
+    expect(historyText(managerRuns[2]!)).toContain("Child finished cleanly.");
     expect(
       appendedEvents.some(
         (event) =>
@@ -288,8 +312,10 @@ describe("manager orchestration production routing", () => {
       releaseManagerFirst = resolve;
     });
     const managerPrompts: string[] = [];
+    const managerRuns: MockRunArgs[] = [];
     runMock.handler = async (args) => {
       if (args.agentType === AGENT_IDS.MANAGER) {
+        managerRuns.push(args);
         managerPrompts.push(args.userPrompt);
         if (managerPrompts.length === 1) {
           await managerFirstGate;
@@ -337,15 +363,18 @@ describe("manager orchestration production routing", () => {
         opts: { onAgentEvent?: (event: AgentLifecycleEvent) => void };
       }
     ).opts.onAgentEvent!;
-    productionEventHandler({
+    const lateCompletion: AgentLifecycleEvent = {
       type: "agent-completed",
       conversationId: "conversation-pause",
+      eventId: "late-child-completion-1",
       agentId: childTask.threadId,
       agentType: AGENT_IDS.GENERAL,
       description: "Long child",
       parentAgentId: managerTask.threadId,
       result: "Late child completion.",
-    });
+    };
+    productionEventHandler(lateCompletion);
+    productionEventHandler(lateCompletion);
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(managerPrompts).toHaveLength(1);
@@ -365,13 +394,201 @@ describe("manager orchestration production routing", () => {
       { deliveryKind: "external-input" },
     );
     await waitUntil(() => managerPrompts.length === 2);
-    expect(managerPrompts[1]).toContain("Late child completion.");
+    expect(managerPrompts[1]).toContain("Resume and report the queued result.");
+    expect(managerPrompts[1]).not.toContain("Late child completion.");
+    expect(
+      historyText(managerRuns[1]!).match(/Late child completion\./g),
+    ).toHaveLength(1);
     await waitUntil(
       async () =>
         (await manager.getAgent(managerTask.threadId))?.status === "completed",
     );
     expect((await manager.getAgent(childTask.threadId))?.status).toBe(
       "canceled",
+    );
+  });
+
+  it("atomically rejects spawn during manager pause and cancels transitive descendants", async () => {
+    const { manager } = createHarness();
+    runMock.handler = async (args) => {
+      await waitForAbort(args.abortSignal);
+      return { runId: `paused-${args.agentId}`, result: "", interrupted: true };
+    };
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conversation-atomic-pause",
+      description: "Atomic pause manager",
+      prompt: "Coordinate descendants.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const childTask = await manager.createAgent({
+      conversationId: "conversation-atomic-pause",
+      description: "Legacy child",
+      prompt: "Keep working.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+    const descendantTask = await manager.createAgent({
+      conversationId: "conversation-atomic-pause",
+      description: "Legacy descendant",
+      prompt: "Keep working below the child.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 3,
+      parentAgentId: childTask.threadId,
+      storageMode: "local",
+    });
+
+    const pausePromise = manager.cancelAgent(
+      managerTask.threadId,
+      AGENT_PAUSE_CANCEL_REASON,
+    );
+    await expect(
+      manager.createAgent({
+        conversationId: "conversation-atomic-pause",
+        description: "Late child",
+        prompt: "Spawn while pause is cascading.",
+        agentType: AGENT_IDS.GENERAL,
+        agentDepth: 2,
+        parentAgentId: managerTask.threadId,
+        storageMode: "local",
+      }),
+    ).rejects.toThrow(/parent thread .* paused or finished/i);
+    await pausePromise;
+
+    expect((await manager.getAgent(childTask.threadId))?.status).toBe(
+      "canceled",
+    );
+    expect((await manager.getAgent(descendantTask.threadId))?.status).toBe(
+      "canceled",
+    );
+  });
+
+  it("does not start a resumed attempt until the paused attempt tears down or let it overwrite final state", async () => {
+    const { manager, appendedEvents } = createHarness();
+    let releaseOldAttempt!: () => void;
+    const oldAttemptGate = new Promise<void>((resolve) => {
+      releaseOldAttempt = resolve;
+    });
+    const managerRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      managerRuns.push(args);
+      if (managerRuns.length === 1) {
+        await oldAttemptGate;
+        return {
+          runId: "stale-paused-attempt",
+          result: "Stale canceled result.",
+          interrupted: true,
+        };
+      }
+      return { runId: "resumed-attempt", result: "Resumed final result." };
+    };
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conversation-overlap",
+      description: "Pause resume overlap",
+      prompt: "Wait until paused.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await waitUntil(() => managerRuns.length === 1);
+    await manager.cancelAgent(managerTask.threadId, AGENT_PAUSE_CANCEL_REASON);
+    await manager.sendAgentMessage(
+      managerTask.threadId,
+      "Resume now and finish.",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(managerRuns).toHaveLength(1);
+    releaseOldAttempt();
+    await waitUntil(() => managerRuns.length === 2);
+    expect(managerRuns[1]?.userPrompt).toContain("Resume now and finish.");
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(managerTask.threadId))?.status === "completed",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await manager.getAgent(managerTask.threadId)).toMatchObject({
+      status: "completed",
+      result: "Resumed final result.",
+    });
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string }).agentId ===
+            managerTask.threadId,
+      ),
+    ).toHaveLength(1);
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-canceled" &&
+          (event.payload as { agentId?: string }).agentId ===
+            managerTask.threadId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("wakes a parked manager when its last child is paused directly", async () => {
+    const { manager } = createHarness();
+    let releaseManager!: () => void;
+    const managerGate = new Promise<void>((resolve) => {
+      releaseManager = resolve;
+    });
+    const managerRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      if (args.agentType === AGENT_IDS.MANAGER) {
+        managerRuns.push(args);
+        if (managerRuns.length === 1) {
+          await managerGate;
+          return { runId: "manager-park", result: "Waiting for child." };
+        }
+        return { runId: "manager-woke", result: "Handled paused child." };
+      }
+      await waitForAbort(args.abortSignal);
+      return { runId: "child-direct-pause", result: "", interrupted: true };
+    };
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conversation-child-pause",
+      description: "Handle child pause",
+      prompt: "Wait for the only child.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const childTask = await manager.createAgent({
+      conversationId: "conversation-child-pause",
+      description: "Only child",
+      prompt: "Keep working.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+    releaseManager();
+    await waitUntil(() => managerRuns.length === 1);
+    await waitUntil(() => !hasInFlightAttempt(manager, managerTask.threadId));
+
+    await manager.cancelAgent(childTask.threadId, AGENT_PAUSE_CANCEL_REASON);
+    await waitUntil(() => managerRuns.length === 2);
+    expect(managerRuns[1]?.userPrompt).toContain(
+      "newly persisted managed-child event",
+    );
+    expect(historyText(managerRuns[1]!)).toContain("[Managed child paused]");
+    expect(historyText(managerRuns[1]!)).toContain(
+      "A managed child was paused by the user",
+    );
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(managerTask.threadId))?.status === "completed",
     );
   });
 

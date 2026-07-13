@@ -82,6 +82,31 @@ const collectProducedFiles = (
   }
 };
 
+const hasPersistedManagerEvent = (
+  context: RunnerContext,
+  managerThreadId: string,
+  eventId: string | undefined,
+): boolean => {
+  if (!eventId) return false;
+  const loadThreadMessages = context.runtimeStore.loadThreadMessages;
+  if (typeof loadThreadMessages !== "function") return false;
+  const marker = `event_id: ${eventId}`;
+  const containsMarkerLine = (value: string) =>
+    value.split(/\r?\n/).some((line) => line.trim() === marker);
+  return loadThreadMessages
+    .call(context.runtimeStore, managerThreadId)
+    .some((message) => {
+      if (message.customMessage?.customType !== "runtime.task_lifecycle") {
+        return false;
+      }
+      const content = message.customMessage.content;
+      if (typeof content === "string") return containsMarkerLine(content);
+      return content.some(
+        (entry) => entry.type === "text" && containsMarkerLine(entry.text),
+      );
+    });
+};
+
 /**
  * Pulls the absolute paths a tool actually wrote to from its `fileChanges` /
  * `producedFiles` records (commit 95f74a28). The contention tracker needs
@@ -454,6 +479,9 @@ export const createAgentOrchestration = (
       // Managed child reports live in the manager's durable thread and wake
       // that manager directly. They never enter the top-level orchestrator's
       // history, callbacks, or hidden follow-up stream.
+      if (hasPersistedManagerEvent(context, managerParentId, event.eventId)) {
+        return;
+      }
       persistThreadCustomMessage(context.runtimeStore, {
         threadKey: managerParentId,
         customType: "runtime.task_lifecycle",

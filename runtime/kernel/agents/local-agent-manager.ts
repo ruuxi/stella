@@ -169,8 +169,8 @@ type RuntimeAgentRecord = {
   waitingForManagedChildren?: boolean;
   /** A direct status/steering input should return an interim report upstream. */
   managerReportRequested?: boolean;
-  /** Child reports received while a manager is paused; delivered on user resume. */
-  deferredManagerEvents: string[];
+  /** Monotonic ownership token for mutable executeTask attempts. */
+  attemptGeneration: number;
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
   recentActivity: string[];
   /**
@@ -282,6 +282,8 @@ export type AgentLifecycleEvent = {
     | "agent-message"
     | "agent-progress";
   conversationId: string;
+  /** Stable identity used to deduplicate durable manager-event routing. */
+  eventId?: string;
   rootRunId?: string;
   userMessageId?: string;
   agentId: string;
@@ -695,6 +697,10 @@ export class LocalAgentManager implements AgentToolApi {
   private readonly tasks = new Map<string, RuntimeAgentRecord>();
   private readonly pendingQueue: string[] = [];
   private runningCount = 0;
+  private readonly inFlightAttempts = new Map<
+    string,
+    { generation: number; promise: Promise<void> }
+  >();
   private readonly cancelCascadeInProgress = new Set<string>();
   private readonly activeFsLocks: FsLock[] = [];
   private readonly fsLockWaiters: Array<() => void> = [];
@@ -850,18 +856,33 @@ export class LocalAgentManager implements AgentToolApi {
     };
   }
 
-  /** True while at least one adopted/spawned child still has work in flight. */
+  private isDescendantOf(threadId: string, ancestorThreadId: string): boolean {
+    const visited = new Set<string>();
+    let cursor = this.getAgentState(threadId)?.parentAgentId;
+    while (cursor) {
+      if (cursor === ancestorThreadId) return true;
+      if (visited.has(cursor)) return false;
+      visited.add(cursor);
+      cursor = this.getAgentState(cursor)?.parentAgentId;
+    }
+    return false;
+  }
+
+  /** True while at least one adopted/spawned descendant has work in flight. */
   private hasActiveManagedChildren(managerThreadId: string): boolean {
     for (const task of this.tasks.values()) {
       if (
-        task.parentAgentId === managerThreadId &&
+        task.threadId !== managerThreadId &&
+        this.isDescendantOf(task.threadId, managerThreadId) &&
         (task.status === "pending" || task.status === "running")
       ) {
         return true;
       }
     }
     return (this.opts.listAgentRecordsByStatus?.("running") ?? []).some(
-      (record) => record.parentAgentId === managerThreadId,
+      (record) =>
+        record.threadId !== managerThreadId &&
+        this.isDescendantOf(record.threadId, managerThreadId),
     );
   }
 
@@ -886,6 +907,48 @@ export class LocalAgentManager implements AgentToolApi {
     return (
       task?.status === "canceled" && task.error === AGENT_PAUSE_CANCEL_REASON
     );
+  }
+
+  private isActiveAgentState(
+    task: RuntimeAgentRecord | PersistedAgentRecord | null,
+  ): boolean {
+    return task?.status === "pending" || task?.status === "running";
+  }
+
+  private lifecycleEventId(
+    task: RuntimeAgentRecord,
+    type:
+      | "agent-message"
+      | "agent-completed"
+      | "agent-failed"
+      | "agent-canceled",
+  ): string {
+    return `${task.threadId}:${task.attemptGeneration}:${type}`;
+  }
+
+  private assertActiveParentChain(request: AgentToolRequest): void {
+    if (!request.parentAgentId) return;
+    const visited = new Set<string>();
+    let cursor: string | undefined = request.parentAgentId;
+    while (cursor) {
+      if (visited.has(cursor)) {
+        throw new Error("Cannot create a child under a cyclic parent chain.");
+      }
+      visited.add(cursor);
+      const parent = this.getAgentState(cursor);
+      if (!parent) {
+        throw new Error(`Parent thread not found: ${cursor}`);
+      }
+      if (parent.conversationId !== request.conversationId) {
+        throw new Error("Cannot create a child in another conversation.");
+      }
+      if (!this.isActiveAgentState(parent)) {
+        throw new Error(
+          `Cannot create a child because parent thread ${cursor} is paused or finished.`,
+        );
+      }
+      cursor = parent.parentAgentId;
+    }
   }
 
   private wouldCreateParentCycle(
@@ -988,6 +1051,9 @@ export class LocalAgentManager implements AgentToolApi {
     task: RuntimeAgentRecord,
     prompt: string,
   ): void {
+    // Invalidate any older executeTask still unwinding after an abort. It may
+    // finish later, but it no longer owns this thread's mutable state.
+    task.attemptGeneration += 1;
     task.prompt = prompt;
     task.status = "pending";
     task.startedAt = Date.now();
@@ -996,6 +1062,8 @@ export class LocalAgentManager implements AgentToolApi {
     task.error = undefined;
     task.progressBuffer = "";
     task.recentActivity = [`Continuing thread: ${truncate(prompt, 200)}`];
+    task.lastActivityAt = Date.now();
+    task.activeToolCount = 0;
     task.toSubagentQueue.length = 0;
     task.toOrchestratorQueue.length = 0;
     task.controller = new AbortController();
@@ -1045,7 +1113,7 @@ export class LocalAgentManager implements AgentToolApi {
       pendingStartIsFollowUp: true,
       waitingForManagedChildren: false,
       managerReportRequested: false,
-      deferredManagerEvents: [],
+      attemptGeneration: 0,
     };
   }
 
@@ -1099,15 +1167,29 @@ export class LocalAgentManager implements AgentToolApi {
         this.defaultMaxConcurrent,
       ),
     );
-    while (this.runningCount < maxConcurrent && this.pendingQueue.length > 0) {
+    let remainingCandidates = this.pendingQueue.length;
+    while (
+      this.runningCount < maxConcurrent &&
+      this.pendingQueue.length > 0 &&
+      remainingCandidates > 0
+    ) {
       const threadId = this.pendingQueue.shift();
       if (!threadId) break;
+      remainingCandidates -= 1;
       const task = this.tasks.get(threadId);
       if (!task || task.status !== "pending") {
         continue;
       }
+      if (this.inFlightAttempts.has(threadId)) {
+        // A canceled/interrupted attempt still owns teardown for this thread.
+        // Keep the resume queued; its predecessor's finally block retries it.
+        this.pendingQueue.push(threadId);
+        continue;
+      }
       this.runningCount += 1;
       task.status = "running";
+      const generation = ++task.attemptGeneration;
+      const controller = task.controller;
       const startStatusText = task.pendingStartStatusText ?? task.description;
       const startIsFollowUp = task.pendingStartIsFollowUp ?? false;
       task.pendingStartStatusText = undefined;
@@ -1131,12 +1213,22 @@ export class LocalAgentManager implements AgentToolApi {
         description: task.description,
         statusText: startStatusText,
       });
-      void this.executeTask(task)
-        .catch(() => undefined)
-        .finally(() => {
+      const execution = this.executeTask(task, {
+        generation,
+        controller,
+      }).catch(() => undefined);
+      this.inFlightAttempts.set(threadId, { generation, promise: execution });
+      void execution.finally(() => {
+        const activeAttempt = this.inFlightAttempts.get(threadId);
+        if (
+          activeAttempt?.generation === generation &&
+          activeAttempt.promise === execution
+        ) {
+          this.inFlightAttempts.delete(threadId);
           this.runningCount = Math.max(0, this.runningCount - 1);
           this.tryStartNext();
-        });
+        }
+      });
     }
   }
 
@@ -1176,7 +1268,13 @@ export class LocalAgentManager implements AgentToolApi {
     });
   }
 
-  private async executeTask(task: RuntimeAgentRecord): Promise<void> {
+  private async executeTask(
+    task: RuntimeAgentRecord,
+    attempt: { generation: number; controller: AbortController },
+  ): Promise<void> {
+    const isCurrentAttempt = () =>
+      task.attemptGeneration === attempt.generation &&
+      task.controller === attempt.controller;
     try {
       const runId = `run:${task.threadId}:${++this.nextId}`;
       const context = await this.opts.fetchAgentContext({
@@ -1194,6 +1292,7 @@ export class LocalAgentManager implements AgentToolApi {
           : {}),
         selfModMetadata: task.selfModMetadata,
       });
+      if (!isCurrentAttempt()) return;
 
       context.maxAgentDepth =
         typeof task.maxAgentDepth === "number"
@@ -1231,23 +1330,29 @@ export class LocalAgentManager implements AgentToolApi {
         subagentSession,
         persistToConvex: task.storageMode === "cloud",
         enableRemoteTools: true,
-        abortSignal: task.controller.signal,
+        abortSignal: attempt.controller.signal,
         selfModMetadata: task.selfModMetadata,
         ...(task.activeSelfModRunId
           ? { selfModRunId: task.activeSelfModRunId }
           : {}),
         onSelfModRunStarted: (runId) => {
+          if (!isCurrentAttempt()) return;
           task.activeSelfModRunId = runId;
         },
         onSelfModRunClosed: (runId) => {
+          if (!isCurrentAttempt()) return;
           if (task.activeSelfModRunId === runId) {
             task.activeSelfModRunId = undefined;
           }
         },
         shouldContinueSelfModLifecycleAfterInterrupt: () =>
-          this.shouldDeliverFollowUp(task),
+          isCurrentAttempt() && this.shouldDeliverFollowUp(task),
         onProgress: (chunk) => {
-          if (task.controller.signal.aborted || task.status === "canceled")
+          if (
+            !isCurrentAttempt() ||
+            attempt.controller.signal.aborted ||
+            task.status === "canceled"
+          )
             return;
           if (typeof chunk !== "string" || !chunk) return;
           task.progressBuffer += chunk;
@@ -1267,7 +1372,11 @@ export class LocalAgentManager implements AgentToolApi {
           // those would otherwise leak `agent-progress` lifecycle events
           // after `agent-canceled`, leaving a phantom "Working … Task" chip
           // in the footer that re-adds the task to the live UI state.
-          if (task.controller.signal.aborted || task.status === "canceled") {
+          if (
+            !isCurrentAttempt() ||
+            attempt.controller.signal.aborted ||
+            task.status === "canceled"
+          ) {
             return;
           }
           const statusText = ev.statusText ?? `Running ${ev.toolName}`;
@@ -1304,7 +1413,11 @@ export class LocalAgentManager implements AgentToolApi {
           );
         },
         onToolEnd: (ev) => {
-          if (task.controller.signal.aborted || task.status === "canceled") {
+          if (
+            !isCurrentAttempt() ||
+            attempt.controller.signal.aborted ||
+            task.status === "canceled"
+          ) {
             return;
           }
           task.lastActivityAt = Date.now();
@@ -1324,6 +1437,14 @@ export class LocalAgentManager implements AgentToolApi {
           });
         },
         toolExecutor: async (toolName, toolArgs, toolContext, signal) => {
+          const canFinishInterruptedTool = () =>
+            this.shouldDeliverFollowUp(task);
+          if (
+            !isCurrentAttempt() ||
+            (attempt.controller.signal.aborted && !canFinishInterruptedTool())
+          ) {
+            return { error: "Agent attempt was superseded." };
+          }
           if (
             task.storageMode === "cloud" &&
             isSpawnAgentTool(toolName) &&
@@ -1349,6 +1470,12 @@ export class LocalAgentManager implements AgentToolApi {
           }
           const release = await this.acquireFsLock(task.threadId, lockKey);
           try {
+            if (
+              !isCurrentAttempt() ||
+              (attempt.controller.signal.aborted && !canFinishInterruptedTool())
+            ) {
+              return { error: "Agent attempt was superseded." };
+            }
             return await this.opts.toolExecutor(
               toolName,
               toolArgs,
@@ -1368,8 +1495,12 @@ export class LocalAgentManager implements AgentToolApi {
       try {
         result = await this.opts.runSubagent(runSubagentArgs);
       } finally {
-        task.activeToolCount = 0;
+        if (isCurrentAttempt()) {
+          task.activeToolCount = 0;
+        }
       }
+
+      if (!isCurrentAttempt()) return;
 
       task.completedAt = Date.now();
       // Bank this run's collected file records immediately, before any
@@ -1390,7 +1521,10 @@ export class LocalAgentManager implements AgentToolApi {
         // the same session. The dispatch at the end of this method calls
         // `deliverFollowUpAsNextTurn`; status stays in its current state
         // so the dispatch can read `interruptedForFollowUp`.
-      } else if (task.controller.signal.aborted || task.status === "canceled") {
+      } else if (
+        attempt.controller.signal.aborted ||
+        task.status === "canceled"
+      ) {
         task.status = "canceled";
         task.error = task.error ?? "Canceled";
       } else if (result.interrupted) {
@@ -1411,11 +1545,12 @@ export class LocalAgentManager implements AgentToolApi {
         task.producedFiles = task.bankedProducedFiles;
       }
     } catch (error) {
+      if (!isCurrentAttempt()) return;
       task.completedAt = Date.now();
       if (this.shouldDeliverFollowUp(task)) {
         // `send_input` aborted the current `runSubagent` on purpose; see
         // comment above.
-      } else if (task.controller.signal.aborted) {
+      } else if (attempt.controller.signal.aborted) {
         task.status = "canceled";
         task.error = task.error ?? "Canceled";
       } else {
@@ -1423,6 +1558,8 @@ export class LocalAgentManager implements AgentToolApi {
         task.error = (error as Error).message ?? "Task failed";
       }
     }
+
+    if (!isCurrentAttempt()) return;
 
     if (
       this.shouldDeliverFollowUp(task) ||
@@ -1444,6 +1581,7 @@ export class LocalAgentManager implements AgentToolApi {
         this.opts.onAgentEvent?.({
           type: "agent-message",
           conversationId: task.conversationId,
+          eventId: this.lifecycleEventId(task, "agent-message"),
           rootRunId: task.rootRunId,
           agentId: task.threadId,
           agentType: task.agentType,
@@ -1491,6 +1629,7 @@ export class LocalAgentManager implements AgentToolApi {
         const completedEvent: AgentLifecycleEvent = {
           type: "agent-completed",
           conversationId: task.conversationId,
+          eventId: this.lifecycleEventId(task, "agent-completed"),
           rootRunId: task.rootRunId,
           agentId: task.threadId,
           agentType: task.agentType,
@@ -1529,6 +1668,7 @@ export class LocalAgentManager implements AgentToolApi {
         this.opts.onAgentEvent?.({
           type: "agent-failed",
           conversationId: task.conversationId,
+          eventId: this.lifecycleEventId(task, "agent-failed"),
           rootRunId: task.rootRunId,
           agentId: task.threadId,
           agentType: task.agentType,
@@ -1540,6 +1680,7 @@ export class LocalAgentManager implements AgentToolApi {
         this.opts.onAgentEvent?.({
           type: "agent-canceled",
           conversationId: task.conversationId,
+          eventId: this.lifecycleEventId(task, "agent-canceled"),
           rootRunId: task.rootRunId,
           agentId: task.threadId,
           agentType: task.agentType,
@@ -1583,6 +1724,7 @@ export class LocalAgentManager implements AgentToolApi {
     threadId: string;
     activeThreads?: RuntimeThreadRecord[];
   }> {
+    this.assertActiveParentChain(request);
     const controller = new AbortController();
     const resolvedThread =
       this.opts.resolveTaskThread?.({
@@ -1634,7 +1776,7 @@ export class LocalAgentManager implements AgentToolApi {
       terminalEventEmitted: false,
       waitingForManagedChildren: false,
       managerReportRequested: false,
-      deferredManagerEvents: [],
+      attemptGeneration: 0,
     };
     logWorkingIndicatorTrace("[stella:working-indicator:create-agent]", {
       threadId,
@@ -1669,6 +1811,10 @@ export class LocalAgentManager implements AgentToolApi {
         });
     }
 
+    // Re-check immediately before publication. Today the setup above is
+    // synchronous, but keeping the invariant at the commit point closes the
+    // spawn-during-pause race if thread/cloud setup later gains an await.
+    this.assertActiveParentChain(request);
     this.enqueueTask(task);
     return {
       threadId: task.threadId,
@@ -1774,11 +1920,14 @@ export class LocalAgentManager implements AgentToolApi {
    * already-persisted members are covered too; cancelAgent is a no-op
    * for members that already reached a terminal status.
    */
-  private listActiveManagedChildThreadIds(managerThreadId: string): string[] {
+  private listActiveManagedDescendantThreadIds(
+    managerThreadId: string,
+  ): string[] {
     const threadIds = new Set<string>();
     for (const task of this.tasks.values()) {
       if (
-        task.parentAgentId === managerThreadId &&
+        task.threadId !== managerThreadId &&
+        this.isDescendantOf(task.threadId, managerThreadId) &&
         (task.status === "pending" || task.status === "running")
       ) {
         threadIds.add(task.threadId);
@@ -1786,7 +1935,10 @@ export class LocalAgentManager implements AgentToolApi {
     }
     for (const record of this.opts.listAgentRecordsByStatus?.("running") ??
       []) {
-      if (record.parentAgentId === managerThreadId) {
+      if (
+        record.threadId !== managerThreadId &&
+        this.isDescendantOf(record.threadId, managerThreadId)
+      ) {
         threadIds.add(record.threadId);
       }
     }
@@ -1802,7 +1954,7 @@ export class LocalAgentManager implements AgentToolApi {
     if (this.cancelCascadeInProgress.has(managerThreadId)) return;
     this.cancelCascadeInProgress.add(managerThreadId);
     try {
-      for (const childThreadId of this.listActiveManagedChildThreadIds(
+      for (const childThreadId of this.listActiveManagedDescendantThreadIds(
         managerThreadId,
       )) {
         await this.cancelAgent(childThreadId, reason);
@@ -1948,6 +2100,7 @@ export class LocalAgentManager implements AgentToolApi {
         this.opts.onAgentEvent?.({
           type: "agent-canceled",
           conversationId: local.conversationId,
+          eventId: this.lifecycleEventId(local, "agent-canceled"),
           rootRunId: local.rootRunId,
           agentId: local.threadId,
           agentType: local.agentType,
@@ -2012,6 +2165,10 @@ export class LocalAgentManager implements AgentToolApi {
       from === "orchestrator"
         ? options?.description?.trim() || undefined
         : undefined;
+    const isManagerEvent = options?.deliveryKind === "manager-event";
+    const deliveredInput = isManagerEvent
+      ? "Review the newly persisted managed-child event in this thread and continue the instructed process."
+      : text;
     const task = this.tasks.get(agentId);
     if (!task) {
       if (from !== "orchestrator") {
@@ -2030,7 +2187,7 @@ export class LocalAgentManager implements AgentToolApi {
         };
       }
       if (
-        options?.deliveryKind === "manager-event" &&
+        isManagerEvent &&
         persisted.agentType === AGENT_IDS.MANAGER &&
         (persisted.status === "completed" ||
           persisted.status === "error" ||
@@ -2079,29 +2236,21 @@ export class LocalAgentManager implements AgentToolApi {
       this.enqueueTask(resumedTask);
       return { delivered: true };
     }
+    if (isManagerEvent && task.agentType === AGENT_IDS.MANAGER) {
+      // The orchestration layer persisted the event before calling us. Make
+      // that durable row the only report source; a live session refreshes it
+      // at the next turn instead of receiving a duplicate prompt copy.
+      this.subagentSessions.get(agentId)?.notifyHistoryChanged();
+    }
     if (
-      options?.deliveryKind === "manager-event" &&
+      isManagerEvent &&
       task.agentType === AGENT_IDS.MANAGER &&
       (task.status === "completed" ||
         task.status === "error" ||
         task.status === "canceled")
     ) {
-      task.deferredManagerEvents.push(text);
-      if (
-        task.deferredManagerEvents.length > LocalAgentManager.MAX_QUEUE_MESSAGES
-      ) {
-        task.deferredManagerEvents.splice(
-          0,
-          task.deferredManagerEvents.length -
-            LocalAgentManager.MAX_QUEUE_MESSAGES,
-        );
-      }
-      task.messageLog.push({
-        from,
-        text: truncate(text, 500),
-        timestamp: Date.now(),
-      });
-      this.persistTask(task);
+      // Paused/finished managers stay terminal. Their next explicit
+      // send_input rebuilds context from the persisted event exactly once.
       return { delivered: true };
     }
     if (options?.parentAgentId) {
@@ -2114,7 +2263,7 @@ export class LocalAgentManager implements AgentToolApi {
       task.managerReportRequested = true;
     }
     if (task.waitingForManagedChildren && task.status === "pending") {
-      task.toSubagentQueue.push(text);
+      task.toSubagentQueue.push(deliveredInput);
       task.messageLog.push({
         from,
         text: truncate(text, 500),
@@ -2160,10 +2309,7 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: task.agentType,
         threadId: task.threadId,
       });
-      const deferredManagerEvents = [...task.deferredManagerEvents];
       this.resetTaskForNextAttempt(task, text);
-      task.toSubagentQueue.push(...deferredManagerEvents);
-      task.deferredManagerEvents.length = 0;
       task.pendingStartStatusText = updateStatusText;
       // Re-activating a terminal thread is a `send_input` follow-up.
       task.pendingStartIsFollowUp = true;
@@ -2184,7 +2330,7 @@ export class LocalAgentManager implements AgentToolApi {
 
     const targetQueue =
       from === "orchestrator" ? task.toSubagentQueue : task.toOrchestratorQueue;
-    targetQueue.push(text);
+    targetQueue.push(deliveredInput);
     if (targetQueue.length > LocalAgentManager.MAX_QUEUE_MESSAGES) {
       targetQueue.splice(
         0,

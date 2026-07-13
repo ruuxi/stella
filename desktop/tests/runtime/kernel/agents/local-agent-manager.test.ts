@@ -140,7 +140,7 @@ describe("manager agent orchestration", () => {
     await waitForAgentSettled(manager, managerTask.threadId);
 
     expect(managerPrompts).toHaveLength(2);
-    expect(managerPrompts[1]).toContain("Child passed verification.");
+    expect(managerPrompts[1]).toContain("newly persisted managed-child event");
     expect(
       upstreamTerminalEvents.some(
         (event) => event.agentId === childTask.threadId,
@@ -267,7 +267,7 @@ describe("manager agent orchestration", () => {
     releaseChild();
     await waitForAgentSettled(manager, existingTask.threadId);
     await waitForAgentSettled(manager, managerTask.threadId);
-    expect(managerPrompts[2]).toContain("Adopted thread finished clean.");
+    expect(managerPrompts[2]).toContain("newly persisted managed-child event");
     expect(upstreamManagerResults).toEqual(["Final adopted-thread report."]);
   });
 });

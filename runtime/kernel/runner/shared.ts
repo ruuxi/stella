@@ -104,6 +104,10 @@ export const buildAgentEventPrompt = (
   }
 
   const lines: string[] = [];
+  const isUserPausedManagedChild =
+    event.type === "agent-canceled" &&
+    event.error === AGENT_PAUSE_CANCEL_REASON &&
+    options?.recipient === "manager";
   if (event.type === "agent-message") {
     lines.push("[Agent update]");
     if (event.description) {
@@ -115,12 +119,17 @@ export const buildAgentEventPrompt = (
       lines.push(`description: ${event.description}`);
     }
   } else if (event.type === "agent-canceled") {
-    lines.push("[Task canceled]");
+    lines.push(
+      isUserPausedManagedChild ? "[Managed child paused]" : "[Task canceled]",
+    );
   } else {
     lines.push("[Task failed]");
   }
 
   if (event.agentId) lines.push(`thread_id: ${event.agentId}`);
+  if (event.eventId && options?.recipient === "manager") {
+    lines.push(`event_id: ${event.eventId}`);
+  }
   if (event.agentType) lines.push(`agent_type: ${event.agentType}`);
   if (
     event.type !== "agent-message" &&
@@ -132,7 +141,8 @@ export const buildAgentEventPrompt = (
   if (
     event.type === "agent-canceled" &&
     (event.error === AGENT_SHUTDOWN_CANCEL_REASON ||
-      event.error === AGENT_PAUSE_CANCEL_REASON)
+      (event.error === AGENT_PAUSE_CANCEL_REASON &&
+        options?.recipient !== "manager"))
   ) {
     return null;
   }
@@ -196,7 +206,9 @@ export const buildAgentEventPrompt = (
   if (options?.recipient === "manager") {
     return [
       "<system_reminder>",
-      "A managed child reached a terminal state. This report is for process coordination, not an automatic upstream update. Continue the instructed process and follow the manager reporting rules.",
+      isUserPausedManagedChild
+        ? "A managed child was paused by the user. Reassess the process now: wait, respawn, or report according to the instructions. Do not remain parked waiting for that child."
+        : "A managed child reached a terminal state. This report is for process coordination, not an automatic upstream update. Continue the instructed process and follow the manager reporting rules.",
       "</system_reminder>",
       "",
       ...lines,
