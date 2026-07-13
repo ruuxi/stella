@@ -36,7 +36,6 @@ const parseOptionalNumber = (value: unknown): number | undefined => {
 const normalizeAgent = (
   filePath: string,
   raw: string,
-  allowMetadataOnly = false,
 ): ParsedAgent | null => {
   const { metadata, body } = extractFrontmatter(raw);
   const id = path.basename(filePath, path.extname(filePath)).trim();
@@ -50,7 +49,7 @@ const normalizeAgent = (
       ? metadata.description.trim()
       : "";
   const systemPrompt = body.trim();
-  if (!id || !description || (!systemPrompt && !allowMetadataOnly)) {
+  if (!id || !description || !systemPrompt) {
     return null;
   }
 
@@ -76,7 +75,6 @@ const normalizeAgent = (
 
 export const loadParsedAgentsFromDir = (
   dir: string | URL,
-  options: { allowMetadataOnly?: boolean } = {},
 ): ParsedAgent[] => {
   // Convert `file://` URLs to a native filesystem path with `fileURLToPath`,
   // not `URL.pathname`. On Windows `.pathname` is `/C:/Users/.../agents/`
@@ -99,11 +97,7 @@ export const loadParsedAgentsFromDir = (
     const filePath = path.join(rootDir, entry.name);
     try {
       const content = fs.readFileSync(filePath, "utf8");
-      const parsed = normalizeAgent(
-        filePath,
-        content,
-        options.allowMetadataOnly === true,
-      );
+      const parsed = normalizeAgent(filePath, content);
       if (parsed) {
         agents.push(parsed);
       }

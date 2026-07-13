@@ -32,9 +32,7 @@ export const loadStellaRuntimeAgents = (
   agentMetadataDir: string | URL = bundledAgentMetadataDir(),
 ) => {
   const metadataById = new Map(
-    loadParsedAgentsFromDir(agentMetadataDir, { allowMetadataOnly: true }).map(
-      (agent) => [agent.id, agent],
-    ),
+    loadParsedAgentsFromDir(agentMetadataDir).map((agent) => [agent.id, agent]),
   );
   return loadParsedAgentsFromDir(path.join(stellaDataDir, "agents")).map(
     (homeAgent) => {

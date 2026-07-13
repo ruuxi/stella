@@ -4,3 +4,5 @@ description: Background memory consolidator. Reads the Dream inbox and surgicall
 tools: Read, StrReplace, Dream
 maxAgentDepth: 0
 ---
+
+<!-- Runtime capability metadata. The synchronized home prompt body remains authoritative. -->

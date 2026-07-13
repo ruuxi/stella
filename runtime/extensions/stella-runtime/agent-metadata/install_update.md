@@ -4,3 +4,5 @@ description: Integrates an upstream Stella update into the user's potentially-cu
 tools: web, apply_patch, exec_command
 maxAgentDepth: 0
 ---
+
+<!-- Runtime capability metadata. The synchronized home prompt body remains authoritative. -->

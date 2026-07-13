@@ -21,6 +21,30 @@ const AGENT_MD = [
 ].join("\n");
 
 describe("loadParsedAgentsFromDir", () => {
+  it("loads every shipped capability record through the standard agent markdown contract", () => {
+    const agents = loadParsedAgentsFromDir(
+      new URL(
+        "../../../../../runtime/extensions/stella-runtime/agent-metadata/",
+        import.meta.url,
+      ),
+    );
+
+    expect(agents.map((agent) => agent.id).sort()).toEqual(
+      [
+        "dream",
+        "explore",
+        "fashion",
+        "general",
+        "install_update",
+        "manager",
+        "orchestrator",
+        "schedule",
+        "social_session",
+      ].sort(),
+    );
+    expect(agents.every((agent) => agent.systemPrompt.length > 0)).toBe(true);
+  });
+
   it("loads the bundled manager fallback with only agent-management tools", () => {
     const agents = loadParsedAgentsFromDir(
       new URL(

@@ -4,3 +4,5 @@ description: Builds outfits for the Fashion tab. Searches the global Shopify cat
 tools: image_gen, view_image, multi_tool_use_parallel, FashionGetContext, FashionSearchProducts, FashionGetProductDetails, FashionCreateOutfit, FashionMarkOutfitReady, FashionMarkOutfitFailed
 maxAgentDepth: 1
 ---
+
+<!-- Runtime capability metadata. The synchronized home prompt body remains authoritative. -->

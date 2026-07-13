@@ -5,4 +5,4 @@ tools: html, image_gen, view_image, web, map, tool_search, Read, Recall, Remembe
 maxAgentDepth: 1
 ---
 
-<!-- Capability metadata only. The runtime preserves the synchronized home prompt body. -->
+<!-- Runtime capability metadata. The synchronized home prompt body remains authoritative. -->
