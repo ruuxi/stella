@@ -8,6 +8,7 @@ import {
   MAX_THREAD_SEARCH_RESULTS,
   RECALL_BUDGET_EXHAUSTED_TEXT,
   RECALL_EMPTY_BRIEF_TEXT,
+  RECALL_NO_OUTPUT_TEXT,
   RECALL_SYSTEM_PROMPT,
   RECALL_TOOL_RUNTIME_SYSTEM_PROMPT,
   buildContextLookupUserPrompt,
@@ -816,6 +817,94 @@ describe("runRecall", () => {
     const out = await runRecall(await makeRunArgs(rootPath));
     expect(out).toBe("Nothing relevant found.");
     expect(completions).toHaveBeenCalledTimes(2);
+  });
+
+  const assistantFailure = (
+    stopReason: "error" | "aborted",
+    errorMessage?: string,
+  ): AssistantMessage =>
+    ({
+      role: "assistant",
+      content: [],
+      stopReason,
+      ...(errorMessage ? { errorMessage } : {}),
+      timestamp: Date.now(),
+    }) as unknown as AssistantMessage;
+
+  it("retries a transport-failed completion and returns the recovered brief", async () => {
+    const { rootPath, db } = await createRoot();
+    db.close();
+    const completions = vi.mocked(completeSimple);
+    completions.mockReset();
+    completions
+      .mockResolvedValueOnce(
+        assistantFailure(
+          "error",
+          "Connection recovery failed: unexpected EOF (stream ended before a terminal event)",
+        ),
+      )
+      .mockResolvedValueOnce(
+        assistantText("connector-discovery-take-2 is active."),
+      );
+
+    const out = await runRecall(await makeRunArgs(rootPath));
+
+    expect(out).toBe("connector-discovery-take-2 is active.");
+    expect(completions).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after bounded transport retries and returns the lookup-failure text", async () => {
+    const { rootPath, db } = await createRoot();
+    db.close();
+    const completions = vi.mocked(completeSimple);
+    completions.mockReset();
+    completions.mockResolvedValue(
+      assistantFailure("error", "relay stream reset by peer"),
+    );
+
+    const out = await runRecall(await makeRunArgs(rootPath));
+
+    expect(out).toBe(RECALL_NO_OUTPUT_TEXT);
+    // First attempt plus the bounded retries — never an unbounded loop.
+    expect(completions).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry an aborted completion", async () => {
+    const { rootPath, db } = await createRoot();
+    db.close();
+    const completions = vi.mocked(completeSimple);
+    completions.mockReset();
+    completions.mockResolvedValue(assistantFailure("aborted"));
+
+    const out = await runRecall(await makeRunArgs(rootPath));
+
+    expect(out).toBe(RECALL_NO_OUTPUT_TEXT);
+    expect(completions).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a transport failure mid-lookup after a successful tool round", async () => {
+    const { rootPath, db } = await createRoot();
+    db.close();
+    const completions = vi.mocked(completeSimple);
+    completions.mockReset();
+    completions
+      .mockResolvedValueOnce(
+        assistantToolCalls([
+          {
+            name: "search_threads",
+            arguments: { query: "connector discovery" },
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(assistantFailure("error", "unexpected EOF"))
+      .mockResolvedValueOnce(
+        assistantText("connector-discovery-take-2 is paused."),
+      );
+
+    const out = await runRecall(await makeRunArgs(rootPath));
+
+    expect(out).toBe("connector-discovery-take-2 is paused.");
+    expect(completions).toHaveBeenCalledTimes(3);
   });
 
   it("returns a distinct failure text for an empty brief instead of a fake no-match", async () => {

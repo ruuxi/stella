@@ -37,6 +37,15 @@ const MAX_CONTEXT_OUTPUT_TOKENS = 1_500;
 const EAGER_MEMORY_FILE_CHAR_BUDGET = 4_000;
 /** Tool-call ROUNDS (a round may carry several parallel searches). */
 const MAX_RECALL_STEPS = 4;
+/**
+ * Transport-failure retries per model completion (attempts = retries + 1).
+ * A recall completion is a read-only lookup, so replaying the identical
+ * request is side-effect free; relay streams dropping mid-flight otherwise
+ * fail the whole lookup on the first hiccup (observed in the field as runs
+ * of "Recall failed: the model produced no usable output").
+ */
+const MAX_RECALL_MODEL_ERROR_RETRIES = 2;
+const RECALL_MODEL_ERROR_RETRY_BASE_DELAY_MS = 400;
 // Sized so a full search observation (a page of ranked results, the top
 // several message hits carrying their surrounding-exchange lines) survives
 // untruncated; at 6k the exchange blocks pushed the tail results off.
@@ -242,6 +251,25 @@ const previewForTrace = (value: string, maxChars = 300): string => {
     ? collapsed
     : `${collapsed.slice(0, maxChars)}…`;
 };
+
+/** Signal-aware backoff sleep; resolves early (without throwing) on abort. */
+const sleepForRetry = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    timer.unref?.();
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 
 const truncate = (value: string, maxChars: number): string =>
   value.length <= maxChars
@@ -1187,21 +1215,56 @@ export const runRecall = async (args: {
       },
     );
 
+  // Transport failures (the relay dropping a stream) surface as stopReason
+  // "error"; retry those a bounded number of times before failing the
+  // lookup. "aborted" is the caller's own signal and is never retried.
+  const completeWithRetry = async (): Promise<AssistantMessage> => {
+    let response = await complete();
+    for (
+      let attempt = 1;
+      response.stopReason === "error" &&
+      attempt <= MAX_RECALL_MODEL_ERROR_RETRIES &&
+      !args.signal?.aborted;
+      attempt += 1
+    ) {
+      logRecallTrace("[stella:recall:step]", {
+        conversationId: args.conversationId,
+        step: searchStep,
+        action: "model-error-retry",
+        attempt,
+        ...(response.errorMessage
+          ? { error: previewForTrace(response.errorMessage, 200) }
+          : {}),
+      });
+      await sleepForRetry(
+        RECALL_MODEL_ERROR_RETRY_BASE_DELAY_MS * attempt,
+        args.signal,
+      );
+      if (args.signal?.aborted) break;
+      response = await complete();
+    }
+    return response;
+  };
+
   let toolRounds = 0;
   let rejectedNothingFound = false;
   // Terminates: every iteration either returns, spends a tool round
   // (bounded by MAX_RECALL_STEPS then force-answered), or fires the
   // one-time rejection.
   for (;;) {
-    const response = await complete();
+    const response = await completeWithRetry();
     if (response.stopReason === "error" || response.stopReason === "aborted") {
       logRecallTrace("[stella:recall:step]", {
         conversationId: args.conversationId,
         step: searchStep,
         action: "model-error",
         stopReason: response.stopReason,
-        ...(verbose && response.errorMessage
-          ? { error: previewForTrace(response.errorMessage) }
+        // The transport/provider error is structural diagnostics, not user
+        // content — always trace it, or a run of failures is undiagnosable
+        // from runtime.log (the exact gap that hid the July 2026 relay
+        // outage behind a generic "no usable output").
+        ...(response.errorMessage
+          ? { error: previewForTrace(response.errorMessage, 200) }
           : {}),
       });
       return finish("model-error", RECALL_NO_OUTPUT_TEXT);
@@ -1264,7 +1327,7 @@ export const runRecall = async (args: {
           "You are out of search steps. Reply now with the final concise brief (plain text) summarizing what you found. Do not call tools.",
         ),
       );
-      const final = await complete();
+      const final = await completeWithRetry();
       const brief = readAssistantText(final).trim();
       return finish(
         brief ? "forced-answer" : "budget-exhausted",
