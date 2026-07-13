@@ -7,7 +7,6 @@ import {
   getModelOverride,
 } from "../preferences/local-preferences.js";
 import { runSubagentTask, shutdownSubagentRuntimes } from "../agent-runtime.js";
-import { willRunExternalSubagentEngine } from "../agent-runtime/external-engines.js";
 import { createAgentLifecycleResponseTarget } from "../agent-runtime/response-target.js";
 import { persistThreadCustomMessage } from "../agent-runtime/thread-memory.js";
 import { runExplore } from "../agent-runtime/explore.js";
@@ -39,8 +38,6 @@ import {
   buildCommitSubjectPrompt,
   sanitizeAuthoredCommitSubject,
 } from "../self-mod/feature-namer.js";
-import type { MediatedWriteCapture } from "../self-mod/logical-change-set.js";
-import { acquireSelfModMutationLock } from "../self-mod/mutation-lock.js";
 
 const collectFileChanges = (
   target: FileChangeRecord[],
@@ -459,13 +456,7 @@ export const createAgentOrchestration = (
   context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaDataDir),
-    resolveTaskThread: ({
-      conversationId,
-      agentType,
-      threadId,
-      nameHint,
-      group,
-    }) => {
+    resolveTaskThread: ({ conversationId, agentType, threadId, nameHint, group }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
       }
@@ -629,28 +620,9 @@ export const createAgentOrchestration = (
       const pendingToolWriteRecords: Promise<void>[] = [];
       const guardedShellSessionLeases = new Map<string, string>();
       const guardedShellLeaseSessions = new Map<string, Set<string>>();
-      const guardedShellLogicalCaptures = new Map<
-        string,
-        MediatedWriteCapture
-      >();
-      const shellLeaseMutationReleases = new Map<string, () => void>();
-      const shellLeaseHasHmrGuard = new Set<string>();
-      // Extra authored paths to attribute to a lease's logical capture when it
-      // is finished (e.g. files an external-engine turn created during the
-      // lease, which are absent from the capture's pre-turn snapshot).
-      const shellLeaseAdditionalPaths = new Map<string, string[]>();
-      const consumeLeaseAdditionalPaths = (
-        leaseId: string,
-      ): string[] | undefined => {
-        const paths = shellLeaseAdditionalPaths.get(leaseId);
-        shellLeaseAdditionalPaths.delete(leaseId);
-        return paths && paths.length > 0 ? paths : undefined;
-      };
       let subagentInterrupted = false;
 
-      const endShellMutationGuard = async (
-        logicalCapture?: MediatedWriteCapture,
-      ) => {
+      const endShellMutationGuard = async () => {
         const result = await context.selfModHmrController
           ?.endShellMutationGuard()
           .catch((error) => {
@@ -660,17 +632,15 @@ export const createAgentOrchestration = (
             );
             return null;
           });
-        const changedAbsolutePaths =
-          result?.ok && result.changedPaths.length > 0
-            ? result.changedPaths.map((repoRelativePath) =>
+        if (result?.ok && result.changedPaths.length > 0) {
+          try {
+            await recordWritePaths(
+              result.changedPaths.map((repoRelativePath) =>
                 context.stellaAppDir
                   ? `${context.stellaAppDir}/${repoRelativePath}`
                   : repoRelativePath,
-              )
-            : [];
-        if (changedAbsolutePaths.length > 0) {
-          try {
-            await recordWritePaths(changedAbsolutePaths);
+              ),
+            );
           } catch (error) {
             console.warn(
               "[self-mod-hmr] failed to record suppressed shell updates:",
@@ -678,45 +648,14 @@ export const createAgentOrchestration = (
             );
           }
         }
-        if (logicalCapture) {
-          await context.selfModLifecycle?.finishMediatedWrite?.({
-            capture: logicalCapture,
-            additionalPaths: changedAbsolutePaths,
-          });
-        }
       };
 
       const releaseGuardedShellSessions = async () => {
-        const leaseIds = [...guardedShellLeaseSessions.keys()];
+        const leaseCount = guardedShellLeaseSessions.size;
         guardedShellSessionLeases.clear();
         guardedShellLeaseSessions.clear();
-        // Detach EVERY mutation-release callback up front, then invoke them all
-        // in a finally that wraps capture/HMR finalization. The repo mutation
-        // lock is non-reentrant, so a throw from finishMediatedWrite
-        // (FS/Git I/O) must never strand it — and because the leases are
-        // already removed from tracking here, no later path could retry the
-        // release.
-        const pendingReleases = leaseIds.map((leaseId) => {
-          const release = shellLeaseMutationReleases.get(leaseId);
-          shellLeaseMutationReleases.delete(leaseId);
-          return release;
-        });
-        try {
-          for (const leaseId of leaseIds) {
-            const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
-            guardedShellLogicalCaptures.delete(leaseId);
-            const additionalPaths = consumeLeaseAdditionalPaths(leaseId);
-            if (shellLeaseHasHmrGuard.delete(leaseId)) {
-              await endShellMutationGuard(logicalCapture);
-            } else if (logicalCapture) {
-              await context.selfModLifecycle?.finishMediatedWrite?.({
-                capture: logicalCapture,
-                ...(additionalPaths ? { additionalPaths } : {}),
-              });
-            }
-          }
-        } finally {
-          for (const release of pendingReleases) release?.();
+        for (let i = 0; i < leaseCount; i += 1) {
+          await endShellMutationGuard();
         }
       };
 
@@ -733,37 +672,12 @@ export const createAgentOrchestration = (
         );
       };
 
-      const retainShellGuardLease = (
-        sessionIds: string[],
-        logicalCapture?: MediatedWriteCapture | null,
-        mutationRelease?: (() => void) | null,
-        hasHmrGuard = false,
-      ): string | null => {
+      const retainShellGuardLease = (sessionIds: string[]) => {
         const uniqueSessionIds = [...new Set(sessionIds)].filter(Boolean);
-        if (uniqueSessionIds.length === 0) return null;
+        if (uniqueSessionIds.length === 0) return false;
         const leaseId = crypto.randomUUID();
         guardedShellLeaseSessions.set(leaseId, new Set(uniqueSessionIds));
-        if (logicalCapture) {
-          guardedShellLogicalCaptures.set(leaseId, logicalCapture);
-        }
-        if (mutationRelease) {
-          shellLeaseMutationReleases.set(leaseId, mutationRelease);
-        }
-        if (hasHmrGuard) shellLeaseHasHmrGuard.add(leaseId);
         for (const sessionId of uniqueSessionIds) {
-          guardedShellSessionLeases.set(sessionId, leaseId);
-        }
-        return leaseId;
-      };
-
-      const attachSessionsToShellLease = (
-        leaseId: string,
-        sessionIds: string[],
-      ): boolean => {
-        const sessions = guardedShellLeaseSessions.get(leaseId);
-        if (!sessions) return false;
-        for (const sessionId of new Set(sessionIds.filter(Boolean))) {
-          sessions.add(sessionId);
           guardedShellSessionLeases.set(sessionId, leaseId);
         }
         return true;
@@ -778,28 +692,7 @@ export const createAgentOrchestration = (
         sessions.delete(sessionId);
         if (sessions.size > 0) return;
         guardedShellLeaseSessions.delete(leaseId);
-        const logicalCapture = guardedShellLogicalCaptures.get(leaseId);
-        guardedShellLogicalCaptures.delete(leaseId);
-        const additionalPaths = consumeLeaseAdditionalPaths(leaseId);
-        const hasHmrGuard = shellLeaseHasHmrGuard.delete(leaseId);
-        // Detach the mutation-release callback BEFORE any awaited capture/HMR
-        // finalization and invoke it unconditionally in a finally. The lock is
-        // non-reentrant and the lease is already removed from tracking, so a
-        // throw from finishMediatedWrite must never leak it.
-        const releaseMutationLock = shellLeaseMutationReleases.get(leaseId);
-        shellLeaseMutationReleases.delete(leaseId);
-        try {
-          if (hasHmrGuard) {
-            await endShellMutationGuard(logicalCapture);
-          } else if (logicalCapture) {
-            await context.selfModLifecycle?.finishMediatedWrite?.({
-              capture: logicalCapture,
-              ...(additionalPaths ? { additionalPaths } : {}),
-            });
-          }
-        } finally {
-          releaseMutationLock?.();
-        }
+        await endShellMutationGuard();
       };
 
       const recordWritePaths = async (
@@ -858,32 +751,8 @@ export const createAgentOrchestration = (
           isShellPoll && shellSessionId
             ? guardedShellSessionLeases.has(shellSessionId)
             : false;
-        const existingShellLeaseId =
-          isGuardedShellPoll && shellSessionId
-            ? guardedShellSessionLeases.get(shellSessionId)
-            : undefined;
-        const activeShellLeaseId =
-          existingShellLeaseId ?? guardedShellLeaseSessions.keys().next().value;
-        let mutationRelease: (() => void) | null = activeShellLeaseId
-          ? null
-          : await acquireSelfModMutationLock(
-              context.stellaAppDir ?? process.cwd(),
-              crypto.randomUUID(),
-            );
-        let mutationLockTransferred = Boolean(activeShellLeaseId);
         let shellGuardActive = false;
-        let logicalWriteCapture: Awaited<
-          ReturnType<
-            NonNullable<
-              NonNullable<typeof context.selfModLifecycle>["beginMediatedWrite"]
-            >
-          >
-        > = null;
-        let logicalWriteCaptureFinished = false;
-        let nestedLeaseCapture: MediatedWriteCapture | null = null;
-        let nestedLeaseCaptureFinished = false;
         if (
-          !activeShellLeaseId &&
           (shouldGuardShellCommand || isParallelWithGuardedShellCommands) &&
           shouldAttachSelfModLifecycle
         ) {
@@ -899,8 +768,6 @@ export const createAgentOrchestration = (
               }),
           );
           if (!shellGuardActive && agentType !== AGENT_IDS.INSTALL_UPDATE) {
-            mutationRelease?.();
-            mutationRelease = null;
             return {
               error:
                 "Self-mod HMR shell guard failed before running a mutating shell command.",
@@ -914,28 +781,6 @@ export const createAgentOrchestration = (
         }
         try {
           const preWritePaths = inferPreWritePaths(toolName, args, ctx);
-          if (activeShellLeaseId) {
-            logicalWriteCapture = activeShellLeaseId
-              ? (guardedShellLogicalCaptures.get(activeShellLeaseId) ?? null)
-              : null;
-            logicalWriteCaptureFinished = true;
-            if (preWritePaths.length > 0 && shouldAttachSelfModLifecycle) {
-              nestedLeaseCapture =
-                (await context.selfModLifecycle?.beginMediatedWrite?.({
-                  runId: lifecycleRunId,
-                  paths: preWritePaths,
-                  captureAll: false,
-                })) ?? null;
-            }
-          } else if (shouldAttachSelfModLifecycle) {
-            logicalWriteCapture =
-              (await context.selfModLifecycle?.beginMediatedWrite?.({
-                runId: lifecycleRunId,
-                paths: preWritePaths,
-                captureAll:
-                  shouldGuardShellCommand || isParallelWithGuardedShellCommands,
-              })) ?? null;
-          }
           if (preWritePaths.length > 0) {
             try {
               await recordWritePaths(preWritePaths, { captureSnapshot: false });
@@ -956,10 +801,6 @@ export const createAgentOrchestration = (
             signal,
             onUpdate,
           );
-          const postWritePaths = [
-            ...collectWrittenPaths(result.fileChanges),
-            ...collectWrittenPaths(result.producedFiles),
-          ];
           if (
             isShellCommand ||
             isParallelWithShellCommands ||
@@ -982,40 +823,19 @@ export const createAgentOrchestration = (
               touchedShellSessions.add(sessionId);
             }
           }
-          if (isShellCommand && shellState?.running && shellState.sessionId) {
-            if (activeShellLeaseId) {
-              attachSessionsToShellLease(activeShellLeaseId, [
-                shellState.sessionId,
-              ]);
-            } else if (
-              retainShellGuardLease(
-                [shellState.sessionId],
-                logicalWriteCapture,
-                mutationRelease,
-                shellGuardActive,
-              )
-            ) {
+          if (
+            isShellCommand &&
+            shellGuardActive &&
+            shellState?.running &&
+            shellState.sessionId
+          ) {
+            if (retainShellGuardLease([shellState.sessionId])) {
               shellGuardActive = false;
-              logicalWriteCaptureFinished = true;
-              mutationLockTransferred = true;
-              mutationRelease = null;
             }
-          } else if (isParallelWithShellCommands) {
+          } else if (isParallelWithShellCommands && shellGuardActive) {
             const runningSessionIds = getParallelRunningShellSessions(result);
-            if (activeShellLeaseId) {
-              attachSessionsToShellLease(activeShellLeaseId, runningSessionIds);
-            } else if (
-              retainShellGuardLease(
-                runningSessionIds,
-                logicalWriteCapture,
-                mutationRelease,
-                shellGuardActive,
-              )
-            ) {
+            if (retainShellGuardLease(runningSessionIds)) {
               shellGuardActive = false;
-              logicalWriteCaptureFinished = true;
-              mutationLockTransferred = true;
-              mutationRelease = null;
             }
           } else if (
             isGuardedShellPoll &&
@@ -1024,89 +844,14 @@ export const createAgentOrchestration = (
           ) {
             await releaseShellSessionGuard(shellSessionId);
           }
-          if (logicalWriteCapture && !logicalWriteCaptureFinished) {
-            await context.selfModLifecycle?.finishMediatedWrite?.({
-              capture: logicalWriteCapture,
-              additionalPaths: postWritePaths,
-            });
-            logicalWriteCaptureFinished = true;
-          }
-          if (nestedLeaseCapture && !nestedLeaseCaptureFinished) {
-            await context.selfModLifecycle?.finishMediatedWrite?.({
-              capture: nestedLeaseCapture,
-              additionalPaths: postWritePaths,
-            });
-            nestedLeaseCaptureFinished = true;
-          }
           return result;
         } finally {
-          if (nestedLeaseCapture && !nestedLeaseCaptureFinished) {
-            await context.selfModLifecycle?.finishMediatedWrite?.({
-              capture: nestedLeaseCapture,
-            });
-          }
-          if (logicalWriteCapture && !logicalWriteCaptureFinished) {
-            await context.selfModLifecycle?.finishMediatedWrite?.({
-              capture: logicalWriteCapture,
-            });
-          }
           if (shellGuardActive) {
             await endShellMutationGuard();
           }
-          if (!mutationLockTransferred) mutationRelease?.();
         }
       };
-      const willUseExternalEngine =
-        shouldAttachSelfModLifecycle &&
-        willRunExternalSubagentEngine({
-          agentType,
-          ...(agentContext.agentEngine
-            ? { agentEngine: agentContext.agentEngine }
-            : {}),
-          ...(agentContext.model ? { model: agentContext.model } : {}),
-          ...(resolvedLlm.model?.id
-            ? { resolvedModelId: resolvedLlm.model.id }
-            : {}),
-          ...(context.stellaAppDir
-            ? { stellaAppDir: context.stellaAppDir }
-            : {}),
-        });
-      // External-engine turns (Codex / Claude Code) run under
-      // danger-full-access and mutate the shared working tree DIRECTLY, outside
-      // the per-tool mediated-write path. Hold ONE self-mod mutation lease plus
-      // an all-repo logical capture around the ENTIRE turn so it is serialized
-      // against every other run and its writes are attributed to this run only.
-      // Registering it as a guard lease also makes any nested Stella tool call
-      // routed back through hmrAwareToolExecutor reuse this lease instead of
-      // re-acquiring the (non-reentrant) lock, avoiding self-deadlock.
-      let externalEngineLeaseId: string | null = null;
-      let externalEngineLeaseSessionId: string | null = null;
       try {
-        if (willUseExternalEngine) {
-          const externalMutationRelease = await acquireSelfModMutationLock(
-            context.stellaAppDir ?? process.cwd(),
-            crypto.randomUUID(),
-          );
-          externalEngineLeaseSessionId = `external-engine:${crypto.randomUUID()}`;
-          externalEngineLeaseId = retainShellGuardLease(
-            [externalEngineLeaseSessionId],
-            null,
-            externalMutationRelease,
-            false,
-          );
-          const externalCapture =
-            (await context.selfModLifecycle?.beginMediatedWrite?.({
-              runId: lifecycleRunId,
-              paths: [],
-              captureAll: true,
-            })) ?? null;
-          if (externalEngineLeaseId && externalCapture) {
-            guardedShellLogicalCaptures.set(
-              externalEngineLeaseId,
-              externalCapture,
-            );
-          }
-        }
         const result = await runSubagentTask({
           conversationId,
           userMessageId,
@@ -1282,55 +1027,6 @@ export const createAgentOrchestration = (
               producedFiles: result.producedFiles,
             }),
           );
-        }
-        // Close the external-engine turn's mutation lease: attribute the files
-        // it created (absent from the pre-turn snapshot) via additionalPaths,
-        // finish the logical capture, and release the lock. On the error path
-        // this is handled by releaseGuardedShellSessions in the finally.
-        if (externalEngineLeaseId && externalEngineLeaseSessionId) {
-          // The logical capture already computes THIS run's authored delta
-          // (before/after under the lease). Reuse it as the SINGLE SOURCE OF
-          // TRUTH for the HMR path set too, so the run never records
-          // pre-existing dirt or another run's earlier writes — only the files
-          // it actually created/modified/deleted. External engines (e.g. Claude
-          // Code) never report Bash-side writes, and the capture delta captures
-          // them regardless. Runs under the STILL-HELD mutation lock.
-          const externalCapture = externalEngineLeaseId
-            ? (guardedShellLogicalCaptures.get(externalEngineLeaseId) ?? null)
-            : null;
-          const externalChangedPaths = externalCapture
-            ? await (
-                context.selfModLifecycle?.changedPathsForCapture?.({
-                  capture: externalCapture,
-                }) ?? Promise.resolve([] as string[])
-              ).catch((error: unknown) => {
-                console.warn(
-                  "[self-mod] failed to compute external-turn changed paths:",
-                  (error as Error).message,
-                );
-                return [] as string[];
-              })
-            : [
-                ...new Set([
-                  ...collectWrittenPaths(result.fileChanges),
-                  ...collectWrittenPaths(result.producedFiles),
-                ]),
-              ];
-          if (externalChangedPaths.length > 0) {
-            shellLeaseAdditionalPaths.set(
-              externalEngineLeaseId,
-              externalChangedPaths,
-            );
-            await recordWritePaths(externalChangedPaths).catch((error) => {
-              console.warn(
-                "[self-mod-hmr] failed to record external-turn changes:",
-                (error as Error).message,
-              );
-            });
-          }
-          await releaseShellSessionGuard(externalEngineLeaseSessionId);
-          externalEngineLeaseId = null;
-          externalEngineLeaseSessionId = null;
         }
         return result;
       } finally {

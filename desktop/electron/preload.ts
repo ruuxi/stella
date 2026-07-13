@@ -918,7 +918,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
             commitHash: string;
             files: string[];
             batchIndex: number;
-            status?: "pending" | "applied" | "discarded";
+            status?: "pending" | "applied";
           };
           agentId?: string;
           description?: string;
@@ -972,7 +972,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
         commitHash: string;
         files: string[];
         batchIndex: number;
-        status?: "pending" | "applied" | "discarded";
+        status?: "pending" | "applied";
       };
       agentId?: string;
       description?: string;
@@ -997,9 +997,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }>("runtime:availability"),
     selfModApply: (commitHash?: string) =>
       ipcRenderer.invoke("selfmod:apply", { commitHash }),
-    selfModApplyAll: () => ipcRenderer.invoke("selfmod:applyAll"),
-    selfModDiscardPending: (commitHash?: string) =>
-      ipcRenderer.invoke("selfmod:discardPending", { commitHash }),
     selfModRevert: (commitHash?: string, steps?: number) =>
       ipcRenderer.invoke("selfmod:revert", { commitHash, steps }),
     getCrashRecoveryStatus: () =>

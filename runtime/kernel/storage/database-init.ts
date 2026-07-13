@@ -825,20 +825,6 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       consumed_by_origin_thread INTEGER NOT NULL DEFAULT 0
     );
   `);
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS self_mod_pending_change_sets (
-      change_set_id TEXT PRIMARY KEY,
-      repo_root TEXT NOT NULL,
-      payload_json TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-  `);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_self_mod_pending_repo_created
-    ON self_mod_pending_change_sets(repo_root, created_at);
-  `);
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_self_mod_reverts_pending_orchestrator
     ON self_mod_reverts(conversation_id, consumed_by_orchestrator, reverted_at);

@@ -12,12 +12,6 @@ import {
 } from "./exec.js";
 import { withRepoCommitLock } from "./commit-lock.js";
 import { getGitHead } from "./log.js";
-import type { LogicalFileState } from "../logical-change-set.js";
-
-export type ExactGitFileState = {
-  path: string;
-  state: LogicalFileState;
-};
 
 /**
  * Dependency manifest/lock files that should follow the changes the
@@ -72,19 +66,6 @@ const hasStagedChanges = async (repoRoot: string): Promise<boolean> => {
   );
 };
 
-const gitEntryIdentity = (raw: string | Buffer): string => {
-  const value = toTrimmedString(raw);
-  const match = value.match(/^(\d{6})\s+(?:blob\s+)?([0-9a-f]{40,64})/);
-  return match ? `${match[1]}:${match[2]}` : "";
-};
-
-class GitHeadMovedError extends Error {
-  constructor() {
-    super("Git HEAD moved during exact self-mod commit.");
-    this.name = "GitHeadMovedError";
-  }
-}
-
 const commitPathScopedChanges = async (
   repoRoot: string,
   paths: string[],
@@ -118,166 +99,6 @@ const commitPathScopedChanges = async (
     // real index so unrelated staged user changes remain untouched.
     await runGit(repoRoot, ["reset", "-q", "--", ...paths]);
     return await getGitHead(repoRoot);
-  } finally {
-    await fs
-      .rm(tempDir, { recursive: true, force: true })
-      .catch(() => undefined);
-  }
-};
-
-export const readGitHeadFileState = async (
-  repoRoot: string,
-  repoRelativePath: string,
-): Promise<LogicalFileState> => {
-  const entry = await runGitStatus(
-    repoRoot,
-    ["ls-tree", "-z", "HEAD", "--", repoRelativePath],
-    { encoding: "buffer" },
-  );
-  if (entry.exitCode !== 0 || Buffer.from(entry.stdout).length === 0) {
-    return { kind: "missing" };
-  }
-  const header =
-    Buffer.from(entry.stdout).toString("utf8").split("\0")[0] ?? "";
-  const match = header.match(
-    /^(100644|100755|120000)\s+blob\s+([0-9a-f]{40,64})\t/,
-  );
-  if (!match) return { kind: "missing" };
-  const mode = match[1] as "100644" | "100755" | "120000";
-  const object = await runGitStatus(repoRoot, ["cat-file", "blob", match[2]!], {
-    encoding: "buffer",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (object.exitCode !== 0) throw new Error("Failed to read HEAD blob.");
-  const bytes = Buffer.from(object.stdout);
-  const candidateText = bytes.toString("utf8");
-  const text =
-    !bytes.includes(0) && Buffer.from(candidateText, "utf8").equals(bytes)
-      ? candidateText
-      : undefined;
-  return {
-    kind: mode === "120000" ? "symlink" : "blob",
-    mode,
-    contentBase64: bytes.toString("base64"),
-    ...(mode !== "120000" && text !== undefined ? { text } : {}),
-  };
-};
-
-const commitExactFileStates = async (
-  repoRoot: string,
-  files: ExactGitFileState[],
-  commitArgs: string[],
-): Promise<string | null> => {
-  if (files.length === 0) return null;
-  const expectedHead = await getGitHead(repoRoot);
-  if (!expectedHead) throw new Error("Exact self-mod commit requires HEAD.");
-  const originalIndexEntries = new Map<string, string>();
-  const originalHeadEntries = new Map<string, string>();
-  for (const file of files) {
-    const [indexEntry, headEntry] = await Promise.all([
-      runGitStatus(repoRoot, ["ls-files", "--stage", "--", file.path]),
-      runGitStatus(repoRoot, ["ls-tree", expectedHead, "--", file.path]),
-    ]);
-    originalIndexEntries.set(file.path, gitEntryIdentity(indexEntry.stdout));
-    originalHeadEntries.set(file.path, gitEntryIdentity(headEntry.stdout));
-  }
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "stella-git-index-"));
-  const indexPath = path.join(tempDir, "index");
-  const env = { GIT_INDEX_FILE: indexPath };
-  const nextEntries = new Map<string, { mode: string; blob: string } | null>();
-  try {
-    await runGitWithEnv(repoRoot, ["read-tree", expectedHead], env);
-    for (const [index, file] of files.entries()) {
-      if (file.state.kind === "missing") {
-        await runGitWithEnvStatus(
-          repoRoot,
-          ["update-index", "--force-remove", "--", file.path],
-          env,
-        );
-        nextEntries.set(file.path, null);
-        continue;
-      }
-      const blobFile = path.join(tempDir, `blob-${index}`);
-      await fs.writeFile(
-        blobFile,
-        Buffer.from(file.state.contentBase64, "base64"),
-      );
-      const blob = await runGitWithEnv(
-        repoRoot,
-        ["hash-object", "-w", blobFile],
-        env,
-      );
-      await runGitWithEnv(
-        repoRoot,
-        [
-          "update-index",
-          "--add",
-          "--cacheinfo",
-          `${file.state.mode},${blob},${file.path}`,
-        ],
-        env,
-      );
-      nextEntries.set(file.path, { mode: file.state.mode, blob });
-    }
-    const diff = await runGitWithEnvStatus(
-      repoRoot,
-      ["diff", "--cached", "--quiet"],
-      env,
-    );
-    if (diff.exitCode === 0) return null;
-    if (diff.exitCode !== 1) {
-      throw new Error(
-        diff.stderr || diff.stdout || "Exact self-mod diff failed.",
-      );
-    }
-    const tree = await runGitWithEnv(repoRoot, ["write-tree"], env);
-    const commitHash = await runGitWithEnv(
-      repoRoot,
-      ["commit-tree", tree, "-p", expectedHead, ...commitArgs.slice(1)],
-      env,
-    );
-    const updateRef = await runGitStatus(repoRoot, [
-      "update-ref",
-      "HEAD",
-      commitHash,
-      expectedHead,
-    ]);
-    if (updateRef.exitCode !== 0) throw new GitHeadMovedError();
-
-    // Advance only clean real-index entries. Any entry that differed from the
-    // old HEAD was user-staged and must remain byte-for-byte untouched.
-    for (const file of files) {
-      const currentIndexEntry = await runGitStatus(repoRoot, [
-        "ls-files",
-        "--stage",
-        "--",
-        file.path,
-      ]);
-      if (
-        originalIndexEntries.get(file.path) !==
-          originalHeadEntries.get(file.path) ||
-        gitEntryIdentity(currentIndexEntry.stdout) !==
-          originalIndexEntries.get(file.path)
-      ) {
-        continue;
-      }
-      const next = nextEntries.get(file.path);
-      if (!next) {
-        await runGitWithEnvStatus(
-          repoRoot,
-          ["update-index", "--force-remove", "--", file.path],
-          {},
-        );
-      } else {
-        await runGit(repoRoot, [
-          "update-index",
-          "--add",
-          "--cacheinfo",
-          `${next.mode},${next.blob},${file.path}`,
-        ]);
-      }
-    }
-    return commitHash;
   } finally {
     await fs
       .rm(tempDir, { recursive: true, force: true })
@@ -343,8 +164,6 @@ export type GitMessageCommitArgs = {
    * swept into an agent-authored commit while still including new files.
    */
   paths?: string[];
-  /** Exact merged states to commit instead of reading shared working-tree bytes. */
-  files?: ExactGitFileState[] | (() => Promise<ExactGitFileState[]>);
 };
 
 const SUBJECT_MAX_LENGTH = 72;
@@ -377,11 +196,7 @@ export const commitGitMessage = async (
 ): Promise<string | null> => {
   await assertGitRepository(args.repoRoot);
   const paths = normalizePathspecs(args.paths);
-  if (
-    !args.files &&
-    paths.length === 0 &&
-    !(await hasStagedChanges(args.repoRoot))
-  ) {
+  if (paths.length === 0 && !(await hasStagedChanges(args.repoRoot))) {
     return null;
   }
 
@@ -413,19 +228,6 @@ export const commitGitMessage = async (
   // ref lock. The staged-changes checks above are read-only and safe outside
   // the lock; only the commit + HEAD read need the critical section.
   return await withRepoCommitLock(args.repoRoot, async () => {
-    if (args.files) {
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        const files =
-          typeof args.files === "function" ? await args.files() : args.files;
-        try {
-          return await commitExactFileStates(args.repoRoot, files, commitArgs);
-        } catch (error) {
-          if (!(error instanceof GitHeadMovedError) || attempt === 2)
-            throw error;
-        }
-      }
-      throw new Error("Exact self-mod commit retry exhausted.");
-    }
     if (paths.length > 0) {
       return await commitPathScopedChanges(args.repoRoot, paths, commitArgs);
     }

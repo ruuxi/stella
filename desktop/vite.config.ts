@@ -371,12 +371,7 @@ export default defineConfig({
     // self-mod HMR calls, so silently rolling to 57315 would split the UI and
     // worker across different assumptions.
     host: '127.0.0.1',
-    // Harness override: a dev worktree can run alongside the primary dev
-    // instance (which owns 57314) by exporting STELLA_DEV_PORT. Defaults to
-    // 57314 so the primary install is unaffected. The dev-server-url plugin
-    // above derives .vite-dev-url from the actual bound address, so Electron
-    // and the runtime worker follow whatever port we bind here.
-    port: Number(process.env.STELLA_DEV_PORT) || 57314,
+    port: 57314,
     strictPort: true,
     forwardConsole: true,
     // Vite's red overlay is replaced by the renderer-side CrashSurface (see

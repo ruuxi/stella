@@ -2982,24 +2982,6 @@ export class StellaRuntimeHost {
     );
   }
 
-  async applyAllSelfModCommits() {
-    return await this.requestWorker<RuntimeSelfModApplyResult[]>(
-      METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_APPLY_ALL,
-      undefined,
-      { ensureWorker: true, recordActivity: true },
-    );
-  }
-
-  async discardPendingSelfModCommit(payload: { commitHash?: string }) {
-    return await this.requestWorker<{
-      discarded: boolean;
-      commitHash?: string;
-    }>(METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_DISCARD_PENDING, payload, {
-      ensureWorker: true,
-      recordActivity: true,
-    });
-  }
-
   async getCrashRecoveryStatus() {
     return await this.requestWorker<RuntimeCrashRecoveryStatus>(
       METHOD_NAMES.INTERNAL_WORKER_SELF_MOD_CRASH_RECOVERY_STATUS,
@@ -3073,9 +3055,7 @@ export class StellaRuntimeHost {
 
   async coreMemoryExists() {
     const { coreMemoryExists } = await import("../discovery/browser-data.js");
-    return await coreMemoryExists(
-      this.options.initializeParams.stellaDataDirPath,
-    );
+    return await coreMemoryExists(this.options.initializeParams.stellaDataDirPath);
   }
 
   async discoveryKnowledgeExists() {
@@ -3169,7 +3149,7 @@ export class StellaRuntimeHost {
               },
             ),
           getActiveOrchestratorRun: async () => await this.getActiveRun(),
-        }),
+          }),
       },
       // Pop a native banner whenever a scheduled fire delivers a message.
       // Routed through the same Electron handler the runtime uses for
@@ -3672,52 +3652,50 @@ export class StellaRuntimeHost {
         }
         await this.withMorphTransitionInFlight(() =>
           runHmrTransition({
-            runIds,
-            stateRunIds: Array.isArray(payload.stateRunIds)
-              ? payload.stateRunIds.filter((runId) => typeof runId === "string")
-              : runIds,
-            requiresFullReload: Boolean(payload.requiresFullReload),
-            requiresRuntimeRestart: Boolean(payload.requiresRuntimeRestart),
-            requiresProcessRestart: Boolean(payload.requiresProcessRestart),
-            applyBatch: async (options) => {
-              const result = await this.requestWorker<{
-                ok?: boolean;
-                reason?: string;
-                requiresClientFullReload?: boolean;
-              }>(
-                METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR,
-                {
-                  transitionId: payload.transitionId,
-                  runIds,
-                  ...(options ? { options } : {}),
-                },
-                { ensureWorker: false, recordActivity: true },
+          runIds,
+          stateRunIds: Array.isArray(payload.stateRunIds)
+            ? payload.stateRunIds.filter((runId) => typeof runId === "string")
+            : runIds,
+          requiresFullReload: Boolean(payload.requiresFullReload),
+          requiresRuntimeRestart: Boolean(payload.requiresRuntimeRestart),
+          requiresProcessRestart: Boolean(payload.requiresProcessRestart),
+          applyBatch: async (options) => {
+            const result = await this.requestWorker<{
+              ok?: boolean;
+              reason?: string;
+              requiresClientFullReload?: boolean;
+            }>(
+              METHOD_NAMES.INTERNAL_WORKER_RESUME_HMR,
+              {
+                transitionId: payload.transitionId,
+                runIds,
+                ...(options ? { options } : {}),
+              },
+              { ensureWorker: false, recordActivity: true },
+            );
+            if (result?.ok === false) {
+              throw new Error(
+                `Self-mod HMR apply failed${result.reason ? `: ${result.reason}` : ""}`,
               );
-              if (result?.ok === false) {
-                throw new Error(
-                  `Self-mod HMR apply failed${result.reason ? `: ${result.reason}` : ""}`,
-                );
-              }
-              return {
-                requiresClientFullReload:
-                  result?.requiresClientFullReload === true,
-              };
-            },
-            reportState: async (state) => {
-              const stateRunIds = Array.isArray(payload.stateRunIds)
-                ? payload.stateRunIds.filter(
-                    (runId) => typeof runId === "string",
-                  )
-                : runIds;
-              const emitRunIds = stateRunIds.length > 0 ? stateRunIds : runIds;
-              for (const runId of new Set(emitRunIds)) {
-                this.events.emit("run-self-mod-hmr-state", {
-                  runId,
-                  state,
-                });
-              }
-            },
-          }),
+            }
+            return {
+              requiresClientFullReload:
+                result?.requiresClientFullReload === true,
+            };
+          },
+          reportState: async (state) => {
+            const stateRunIds = Array.isArray(payload.stateRunIds)
+              ? payload.stateRunIds.filter((runId) => typeof runId === "string")
+              : runIds;
+            const emitRunIds = stateRunIds.length > 0 ? stateRunIds : runIds;
+            for (const runId of new Set(emitRunIds)) {
+              this.events.emit("run-self-mod-hmr-state", {
+                runId,
+                state,
+              });
+            }
+          },
+        }),
         );
         // Runtime-relevant apply with no dev watcher running (packaged /
         // prod): nothing else will restart the worker for this change, so

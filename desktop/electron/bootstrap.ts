@@ -71,24 +71,6 @@ const configureDevKeychainBehavior = () => {
   app.commandLine.appendSwitch('password-store', 'basic')
 }
 
-const configureDevRemoteDebugging = () => {
-  if (!isDev) {
-    return
-  }
-  const port = process.env.STELLA_REMOTE_DEBUG_PORT?.trim()
-  if (!port || !/^\d+$/.test(port)) {
-    return
-  }
-  // Harness hook: expose a Chromium remote-debugging endpoint so a background
-  // agent can attach via CDP (stella-browser) and drive/observe this instance.
-  // Off unless STELLA_REMOTE_DEBUG_PORT is set, so the primary dev install is
-  // unaffected. Bind loopback-only and allow local CDP clients that send an
-  // Origin header (some send `null`/localhost).
-  app.commandLine.appendSwitch('remote-debugging-port', port)
-  app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1')
-  app.commandLine.appendSwitch('remote-allow-origins', '*')
-}
-
 const startLocalCrashReporter = () => {
   try {
     crashReporter.start({
@@ -124,7 +106,6 @@ export const bootstrapMainProcess = () => {
   }
   installDevBrokenPipeGuards()
   configureDevKeychainBehavior()
-  configureDevRemoteDebugging()
   configureDevUserDataPath()
   startLocalCrashReporter()
   // Stella ships its own chrome (custom top bar, custom window controls on

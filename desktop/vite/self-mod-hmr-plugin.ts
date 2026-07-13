@@ -5,14 +5,14 @@
  * the runtime worker drives over /__stella/self-mod/hmr. Extracted from
  * vite.config.ts; the config simply mounts `selfModHmrControl()`.
  */
-import { AsyncLocalStorage } from 'node:async_hooks'
-import fs from 'fs'
-import path from 'path'
-import type { Plugin } from 'vite'
+import { AsyncLocalStorage } from "node:async_hooks"
+import fs from "fs"
+import path from "path"
+import type { Plugin } from "vite"
 import {
   isViteTrackablePath,
   normalizeContentionPath,
-} from '../../runtime/kernel/self-mod/path-relevance.js'
+} from "../../runtime/kernel/self-mod/path-relevance.js"
 
 /**
  * Per-request flag that bypasses the self-mod pre-period snapshot for
@@ -37,15 +37,10 @@ const selfModRequestContext = new AsyncLocalStorage<{
 }>()
 
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
-const DEFAULT_STELLA_REPO_ROOT = path.resolve(__dirname, '..', '..')
+const STELLA_REPO_ROOT = path.resolve(__dirname, '..', '..')
 const SELF_MOD_HMR_MODE_ENV = 'STELLA_SELF_MOD_HMR_MODE'
 
-type ApplyRunPayload = {
-  runId?: unknown
-  paths?: unknown
-  files?: unknown
-  protocolVersion?: unknown
-}
+type ApplyRunPayload = { runId?: unknown; paths?: unknown; files?: unknown }
 type ApplyPayload = {
   runs?: ApplyRunPayload[]
   options?: {
@@ -53,23 +48,18 @@ type ApplyPayload = {
     forceClientFullReload?: unknown
   }
 }
-type TrackPayload = { paths?: unknown; preservePaths?: unknown }
+type TrackPayload = { paths?: unknown }
 type PausePayload = { runId?: unknown; runIds?: unknown }
 
-export const resolveSelfModHmrAbsolutePath = (
-  repoRelative: string,
-  repoRoot = DEFAULT_STELLA_REPO_ROOT,
-): string | null => {
+export const resolveSelfModHmrAbsolutePath = (repoRelative: string): string | null => {
   if (typeof repoRelative !== 'string' || repoRelative.length === 0) return null
   if (path.isAbsolute(repoRelative)) return null
   if (repoRelative.includes('\0')) return null
-  const resolved = path.resolve(repoRoot, repoRelative)
-  const relative = path.relative(repoRoot, resolved)
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
-    return null
+  const resolved = path.resolve(STELLA_REPO_ROOT, repoRelative)
+  const relative = path.relative(STELLA_REPO_ROOT, resolved)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null
   return resolved.replace(/\\/g, '/')
 }
-
 const stripIdSuffix = (id: string): string => {
   const queryIdx = id.indexOf('?')
   const hashIdx = id.indexOf('#')
@@ -79,28 +69,14 @@ const stripIdSuffix = (id: string): string => {
   return id.slice(0, end)
 }
 
-const canonicalFsPath = (candidate: string): string => {
-  const normalized = candidate.replace(/\\/g, '/')
-  try {
-    return fs.realpathSync.native(normalized).replace(/\\/g, '/')
-  } catch {
-    try {
-      const parent = fs.realpathSync.native(path.dirname(normalized))
-      return path.join(parent, path.basename(normalized)).replace(/\\/g, '/')
-    } catch {
-      return normalized
-    }
-  }
-}
-
 const normalizeIdKey = (id: string): string => {
   const stripped = stripIdSuffix(id).replace(/\\/g, '/')
   // Vite sometimes prefixes resolved fs paths with `/@fs/`; strip it so the
   // overlay key matches whichever form the worker reports (always absolute).
   if (stripped.startsWith('/@fs/')) {
-    return canonicalFsPath(stripped.slice('/@fs'.length))
+    return stripped.slice('/@fs'.length)
   }
-  return path.isAbsolute(stripped) ? canonicalFsPath(stripped) : stripped
+  return stripped
 }
 
 const SELF_MOD_OVERLAY_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs']
@@ -112,11 +88,8 @@ const SELF_MOD_OVERLAY_INDEX_FILES = [
   'index.mjs',
 ]
 
-const isViteTrackableAbsolutePath = (
-  absPath: string,
-  repoRoot = DEFAULT_STELLA_REPO_ROOT,
-): boolean => {
-  const repoRelative = normalizeContentionPath(absPath, repoRoot)
+const isViteTrackableAbsolutePath = (absPath: string): boolean => {
+  const repoRelative = normalizeContentionPath(absPath, STELLA_REPO_ROOT)
   return repoRelative != null && isViteTrackablePath(repoRelative)
 }
 
@@ -128,7 +101,6 @@ export const resolveSelfModOverlayImportPath = (
   source: string,
   importer: string | undefined,
   hasOverlayPath: (absPath: string) => boolean,
-  repoRoot = DEFAULT_STELLA_REPO_ROOT,
 ): string | null => {
   if (!source || source.includes('\0')) return null
   if (!importer || source.startsWith('\0')) return null
@@ -150,14 +122,12 @@ export const resolveSelfModOverlayImportPath = (
       candidates.add(`${normalizedBase}${ext}`)
     }
     for (const indexFile of SELF_MOD_OVERLAY_INDEX_FILES) {
-      candidates.add(
-        path.resolve(normalizedBase, indexFile).replace(/\\/g, '/'),
-      )
+      candidates.add(path.resolve(normalizedBase, indexFile).replace(/\\/g, '/'))
     }
   }
 
   for (const candidate of candidates) {
-    if (!isViteTrackableAbsolutePath(candidate, repoRoot)) continue
+    if (!isViteTrackableAbsolutePath(candidate)) continue
     if (hasOverlayPath(candidate)) return candidate
   }
   return null
@@ -181,6 +151,39 @@ const readDiskOrEmpty = (absPath: string): string => {
     // deleted; treat as empty so load() can return a stable, non-throwing
     // module body until apply lands.
     return ''
+  }
+}
+
+const reconcileAppliedOverlayFileToDisk = (file: {
+  absPath: string
+  content: string | null
+  deleted: boolean
+}): boolean => {
+  if (file.deleted) {
+    try {
+      fs.rmSync(file.absPath, { force: true })
+      return true
+    } catch (error) {
+      console.warn(
+        '[self-mod-hmr] Failed to delete applied overlay file:',
+        file.absPath,
+        (error as Error).message,
+      )
+      return false
+    }
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(file.absPath), { recursive: true })
+    fs.writeFileSync(file.absPath, file.content ?? '', 'utf-8')
+    return true
+  } catch (error) {
+    console.warn(
+      '[self-mod-hmr] Failed to write applied overlay file:',
+      file.absPath,
+      (error as Error).message,
+    )
+    return false
   }
 }
 
@@ -216,9 +219,11 @@ const isAuthorizedSelfModRequest = (
   )
 }
 
-const DELETED_OVERLAY_MODULE =
-  'throw new Error("This module was deleted by Stella self-mod.");\n'
+const DELETED_OVERLAY_MODULE = 'throw new Error("This module was deleted by Stella self-mod.");\n'
 
+const SHELL_SNAPSHOT_ROOTS = [
+  path.resolve(STELLA_REPO_ROOT, 'desktop', 'src'),
+]
 const SHELL_SNAPSHOT_EXPLICIT_FILES = [
   'desktop/index.html',
   'desktop/mini.html',
@@ -253,25 +258,21 @@ const SHELL_SNAPSHOT_EXCLUDED_SUFFIXES = new Set([
   '.zip',
 ])
 
-const isShellSnapshotCandidate = (
-  absPath: string,
-  repoRoot: string,
-): boolean => {
+const isShellSnapshotCandidate = (absPath: string): boolean => {
   const lower = absPath.toLowerCase()
   for (const suffix of SHELL_SNAPSHOT_EXCLUDED_SUFFIXES) {
     if (lower.endsWith(suffix)) return false
   }
-  const repoRelative = normalizeContentionPath(absPath, repoRoot)
+  const repoRelative = normalizeContentionPath(absPath, STELLA_REPO_ROOT)
   return repoRelative != null && isViteTrackablePath(repoRelative)
 }
 
-const collectShellSnapshotFiles = (repoRoot: string): string[] => {
+const collectShellSnapshotFiles = (): string[] => {
   const out: string[] = []
   const seen = new Set<string>()
   const pushCandidate = (absPath: string) => {
     const normalized = path.resolve(absPath).replace(/\\/g, '/')
-    if (seen.has(normalized) || !isShellSnapshotCandidate(normalized, repoRoot))
-      return
+    if (seen.has(normalized) || !isShellSnapshotCandidate(normalized)) return
     seen.add(normalized)
     out.push(normalized)
   }
@@ -287,19 +288,16 @@ const collectShellSnapshotFiles = (repoRoot: string): string[] => {
       if (entry.isDirectory()) {
         if (SHELL_SNAPSHOT_EXCLUDED_DIRS.has(entry.name)) continue
         visit(absPath)
-      } else if (
-        entry.isFile() &&
-        isShellSnapshotCandidate(absPath, repoRoot)
-      ) {
+      } else if (entry.isFile() && isShellSnapshotCandidate(absPath)) {
         pushCandidate(absPath)
       }
     }
   }
-  for (const root of [path.resolve(repoRoot, 'desktop', 'src')]) {
+  for (const root of SHELL_SNAPSHOT_ROOTS) {
     visit(root)
   }
   for (const relPath of SHELL_SNAPSHOT_EXPLICIT_FILES) {
-    pushCandidate(path.resolve(repoRoot, relPath))
+    pushCandidate(path.resolve(STELLA_REPO_ROOT, relPath))
   }
   return out
 }
@@ -329,15 +327,7 @@ const collectShellSnapshotFiles = (repoRoot: string): string[] => {
  *   - POST /force-resume   (clear all state; emergency)
  *   - GET  /status         (debug introspection)
  */
-export function selfModHmrControl(options?: {
-  repoRoot?: string
-  /** Test-only probe invoked while the selected overlay is still installed. */
-  onOverlayReady?: (repoRelativePaths: string[]) => Promise<void>
-}): Plugin {
-  const repoRoot = canonicalFsPath(
-    path.resolve(options?.repoRoot ?? DEFAULT_STELLA_REPO_ROOT),
-  )
-  const onOverlayReady = options?.onOverlayReady
+export function selfModHmrControl(): Plugin {
   const parkClientUpdates = shouldParkSelfModHmrClientUpdates()
   const pausedRunIds = new Set<string>()
   const inFlightPaths = new Set<string>()
@@ -445,17 +435,12 @@ export function selfModHmrControl(options?: {
   const promoteSuppressedShellUpdatePaths = (): string[] => {
     const promoted: string[] = []
     for (const absPath of suppressedHotUpdatePaths) {
-      if (!isViteTrackableAbsolutePath(absPath, repoRoot)) continue
-      const repoRelative = normalizeContentionPath(absPath, repoRoot)
+      if (!isViteTrackableAbsolutePath(absPath)) continue
+      const repoRelative = normalizeContentionPath(absPath, STELLA_REPO_ROOT)
       if (!repoRelative) continue
       const beforeShellMutation = prePeriodSnapshot.get(absPath)
       const afterShellMutation = readDiskOrEmpty(absPath)
-      if (
-        !shouldPromoteSuppressedShellUpdatePath(
-          beforeShellMutation,
-          afterShellMutation,
-        )
-      ) {
+      if (!shouldPromoteSuppressedShellUpdatePath(beforeShellMutation, afterShellMutation)) {
         continue
       }
       shellSnapshotPaths.delete(absPath)
@@ -521,9 +506,7 @@ export function selfModHmrControl(options?: {
     return type === 'update' || type === 'prune' || type === 'full-reload'
   }
 
-  const withClientUpdateRelease = async <T>(
-    fn: () => Promise<T>,
-  ): Promise<T> => {
+  const withClientUpdateRelease = async <T,>(fn: () => Promise<T>): Promise<T> => {
     clientUpdateReleaseDepth += 1
     try {
       return await fn()
@@ -540,7 +523,6 @@ export function selfModHmrControl(options?: {
         source,
         importer,
         (absPath) => appliedOverlay.has(absPath) || inFlightPaths.has(absPath),
-        repoRoot,
       )
     },
     load(id) {
@@ -569,9 +551,10 @@ export function selfModHmrControl(options?: {
     },
     transformIndexHtml(html, ctx) {
       const key = normalizeIdKey(
-        ctx.filename ?? path.resolve(repoRoot, 'desktop', 'index.html'),
+        ctx.filename ??
+          path.resolve(STELLA_REPO_ROOT, 'desktop', 'index.html'),
       )
-      if (!isViteTrackableAbsolutePath(key, repoRoot)) return html
+      if (!isViteTrackableAbsolutePath(key)) return html
       const requestContext = selfModRequestContext.getStore()
       if (requestContext?.bypassSelfModOverlay) {
         if (appliedOverlay.has(key) || inFlightPaths.has(key)) {
@@ -711,48 +694,24 @@ export function selfModHmrControl(options?: {
 
       const collectApplyFiles = (
         run: ApplyRunPayload,
-      ): Array<{
-        absPath: string
-        content: string | null
-        deleted: boolean
-      }> => {
+      ): Array<{ absPath: string; content: string | null; deleted: boolean }> => {
         if (!Array.isArray(run.files)) return []
-        const out: Array<{
-          absPath: string
-          content: string | null
-          deleted: boolean
-        }> = []
+        const out: Array<{ absPath: string; content: string | null; deleted: boolean }> = []
         for (const entry of run.files) {
           if (!entry || typeof entry !== 'object') continue
-          const file = entry as {
-            path?: unknown
-            content?: unknown
-            deleted?: unknown
-            state?: unknown
-          }
+          const file = entry as { path?: unknown; content?: unknown; deleted?: unknown }
           if (typeof file.path !== 'string') continue
-          const state =
-            file.state && typeof file.state === 'object'
-              ? (file.state as {
-                  kind?: unknown
-                  text?: unknown
-                })
-              : null
-          const deleted = file.deleted === true || state?.kind === 'missing'
-          const content =
-            typeof file.content === 'string'
-              ? file.content
-              : state?.kind === 'blob' && typeof state.text === 'string'
-                ? state.text
-                : null
-          if (!deleted && content == null) continue
-          const absPath = resolveSelfModHmrAbsolutePath(file.path, repoRoot)
-          if (!absPath) continue
-          if (!isViteTrackableAbsolutePath(absPath, repoRoot)) continue
-          out.push({
+          if (
+            file.deleted !== true &&
+            typeof file.content !== 'string'
+          ) continue
+            const absPath = resolveSelfModHmrAbsolutePath(file.path)
+            if (!absPath) continue
+            if (!isViteTrackableAbsolutePath(absPath)) continue
+            out.push({
             absPath,
-            content,
-            deleted,
+            content: typeof file.content === 'string' ? file.content : null,
+            deleted: file.deleted === true,
           })
         }
         return out
@@ -761,11 +720,7 @@ export function selfModHmrControl(options?: {
       const applyBatch = async (
         runs: Array<{
           runId: string
-          files: Array<{
-            absPath: string
-            content: string | null
-            deleted: boolean
-          }>
+          files: Array<{ absPath: string; content: string | null; deleted: boolean }>
         }>,
         options?: {
           suppressClientFullReload?: boolean
@@ -777,188 +732,173 @@ export function selfModHmrControl(options?: {
         requiresClientFullReload: boolean
       }> =>
         withClientUpdateRelease(async () => {
-          clientFullReloadRequestedDuringApply = false
-          let reloadedModules = 0
-          let appliedPaths = 0
-          const suppressClientFullReload =
-            options?.suppressClientFullReload === true
-          const forceClientFullReload = options?.forceClientFullReload === true
-          const modulesToReload: import('vite').ModuleNode[] = []
-          const seenModules = new Set<import('vite').ModuleNode>()
-          const appliedOverlayPaths = new Set<string>()
-          // Synthetic watcher events to dispatch after the per-file overlay
-          // bookkeeping. Routing through `server.watcher.emit(...)` runs Vite's
-          // native pipeline -- `pluginContainer.watchChange`, importGlob's
-          // `hotUpdate({type:'create'|'delete'})` (which finds glob importers
-          // like `Sidebar.tsx`), `updateModules` (proper invalidation +
-          // importer walking), React-Refresh, and the right WS message
-          // (`update` for HMR-able, `full-reload` otherwise). Without this,
-          // the importGlob plugin never learns about a newly-added file and
-          // Sidebar.tsx keeps its pre-add glob expansion until full relaunch.
-          const watcherEvents: Array<{
-            event: 'add' | 'change' | 'unlink'
-            absPath: string
-          }> = []
-          let hasNewFileForGlobInvalidation = false
+        clientFullReloadRequestedDuringApply = false
+        let reloadedModules = 0
+        let appliedPaths = 0
+        const suppressClientFullReload =
+          options?.suppressClientFullReload === true
+        const forceClientFullReload =
+          options?.forceClientFullReload === true
+        const modulesToReload: import('vite').ModuleNode[] = []
+        const seenModules = new Set<import('vite').ModuleNode>()
+        const appliedOverlayPaths = new Set<string>()
+        // Synthetic watcher events to dispatch after the per-file overlay
+        // bookkeeping. Routing through `server.watcher.emit(...)` runs Vite's
+        // native pipeline -- `pluginContainer.watchChange`, importGlob's
+        // `hotUpdate({type:'create'|'delete'})` (which finds glob importers
+        // like `Sidebar.tsx`), `updateModules` (proper invalidation +
+        // importer walking), React-Refresh, and the right WS message
+        // (`update` for HMR-able, `full-reload` otherwise). Without this,
+        // the importGlob plugin never learns about a newly-added file and
+        // Sidebar.tsx keeps its pre-add glob expansion until full relaunch.
+        const watcherEvents: Array<{
+          event: 'add' | 'change' | 'unlink'
+          absPath: string
+        }> = []
+        let hasNewFileForGlobInvalidation = false
 
-          for (const run of runs) {
-            releaseRuns([run.runId])
-            for (const file of run.files) {
-              const absPath = file.absPath
-              untrackPath(absPath)
-              if (file.deleted) {
-                appliedOverlay.set(absPath, {
-                  content: DELETED_OVERLAY_MODULE,
-                  mtime: Date.now(),
-                })
-              } else {
-                appliedOverlay.set(absPath, {
-                  content: file.content ?? '',
-                  mtime: Date.now(),
-                })
-              }
-              // Overlay only: shared disk remains the live union of every
-              // active/pending run. Writing the selected snapshot here would
-              // silently erase another run's still-unapplied bytes.
+        for (const run of runs) {
+          releaseRuns([run.runId])
+          for (const file of run.files) {
+            const absPath = file.absPath
+            untrackPath(absPath)
+            const diskReconciled = reconcileAppliedOverlayFileToDisk(file)
+            if (file.deleted) {
+              appliedOverlay.set(absPath, { content: DELETED_OVERLAY_MODULE, mtime: Date.now() })
+            } else {
+              appliedOverlay.set(absPath, { content: file.content ?? '', mtime: Date.now() })
+            }
+            if (diskReconciled) {
               appliedOverlayPaths.add(absPath)
-              appliedPaths += 1
+            }
+            appliedPaths += 1
 
-              const mods = server.moduleGraph.getModulesByFile(absPath)
-              const hadExistingModules = !!mods && mods.size > 0
-              if (!hadExistingModules) {
-                if (!file.deleted) hasNewFileForGlobInvalidation = true
-              } else {
-                for (const mod of mods) {
-                  if (seenModules.has(mod)) continue
-                  seenModules.add(mod)
-                  modulesToReload.push(mod)
-                }
-              }
-              if (file.deleted) {
-                watcherEvents.push({ event: 'unlink', absPath })
-              } else {
-                watcherEvents.push({
-                  event: hadExistingModules ? 'change' : 'add',
-                  absPath,
-                })
+            const mods = server.moduleGraph.getModulesByFile(absPath)
+            const hadExistingModules = !!mods && mods.size > 0
+            if (!hadExistingModules) {
+              if (!file.deleted) hasNewFileForGlobInvalidation = true
+            } else {
+              for (const mod of mods) {
+                if (seenModules.has(mod)) continue
+                seenModules.add(mod)
+                modulesToReload.push(mod)
               }
             }
+            if (file.deleted) {
+              watcherEvents.push({ event: 'unlink', absPath })
+            } else {
+              watcherEvents.push({
+                event: hadExistingModules ? 'change' : 'add',
+                absPath,
+              })
+            }
           }
+        }
 
-          // Belt-and-suspenders for the new-file glob case. The watcher emit
-          // below should make this redundant in practice, but the synthetic
-          // event chain is fire-and-forget and the renderer reload may race
-          // it -- `invalidateAll` guarantees the next renderer fetch always
-          // re-transforms glob importers fresh.
-          if (hasNewFileForGlobInvalidation) {
-            server.moduleGraph.invalidateAll()
-          }
+        // Belt-and-suspenders for the new-file glob case. The watcher emit
+        // below should make this redundant in practice, but the synthetic
+        // event chain is fire-and-forget and the renderer reload may race
+        // it -- `invalidateAll` guarantees the next renderer fetch always
+        // re-transforms glob importers fresh.
+        if (hasNewFileForGlobInvalidation) {
+          server.moduleGraph.invalidateAll()
+        }
 
-          // Invalidate the module graph synchronously so follow-up reloads see
-          // fresh state. When the host is already performing a covered full
-          // reload, do not call reloadModule: Vite may emit its own client
-          // full-reload before the host's covered reloadIgnoringCache call.
-          const invalidateSeen = new Set<import('vite').ModuleNode>()
-          const invalidationTimestamp = Date.now()
-          for (const mod of modulesToReload) {
-            server.moduleGraph.invalidateModule(
-              mod,
-              invalidateSeen,
-              invalidationTimestamp,
-              true,
+        // Invalidate the module graph synchronously so follow-up reloads see
+        // fresh state. When the host is already performing a covered full
+        // reload, do not call reloadModule: Vite may emit its own client
+        // full-reload before the host's covered reloadIgnoringCache call.
+        const invalidateSeen = new Set<import('vite').ModuleNode>()
+        const invalidationTimestamp = Date.now()
+        for (const mod of modulesToReload) {
+          server.moduleGraph.invalidateModule(
+            mod,
+            invalidateSeen,
+            invalidationTimestamp,
+            true,
+          )
+        }
+
+        // Dispatch synthetic watcher events so Vite's native pipeline runs
+        // (importGlob hotUpdate, React-Refresh, proper WS messages). The
+        // bypass set lets our own `handleHotUpdate` skip the pause gate for
+        // these specific paths -- without it, concurrent runs that haven't
+        // finalized yet would force a full-reload through the suppression
+        // path. The set is also cleared on a 5s timeout as a leak guard in
+        // case a listener never fires.
+        const emittedKeys: string[] = []
+        for (const { event, absPath } of watcherEvents) {
+          const key = normalizeIdKey(absPath)
+          recentlyEmittedSyntheticPaths.add(key)
+          emittedKeys.push(key)
+          try {
+            server.watcher.emit(event, absPath)
+          } catch (error) {
+            recentlyEmittedSyntheticPaths.delete(key)
+            console.warn(
+              '[self-mod-hmr] watcher emit failed:',
+              (error as Error).message,
             )
           }
-
-          // Dispatch synthetic watcher events so Vite's native pipeline runs
-          // (importGlob hotUpdate, React-Refresh, proper WS messages). The
-          // bypass set lets our own `handleHotUpdate` skip the pause gate for
-          // these specific paths -- without it, concurrent runs that haven't
-          // finalized yet would force a full-reload through the suppression
-          // path. The set is also cleared on a 5s timeout as a leak guard in
-          // case a listener never fires.
-          const emittedKeys: string[] = []
-          for (const { event, absPath } of watcherEvents) {
-            const key = normalizeIdKey(absPath)
-            recentlyEmittedSyntheticPaths.add(key)
-            emittedKeys.push(key)
-            try {
-              server.watcher.emit(event, absPath)
-            } catch (error) {
+        }
+        if (emittedKeys.length > 0) {
+          setTimeout(() => {
+            for (const key of emittedKeys) {
               recentlyEmittedSyntheticPaths.delete(key)
-              console.warn(
-                '[self-mod-hmr] watcher emit failed:',
+            }
+          }, 5_000).unref?.()
+        }
+
+        if (suppressClientFullReload) {
+          for (const absPath of appliedOverlayPaths) {
+            appliedOverlay.delete(absPath)
+          }
+          // The host performs its own covered reload after this response —
+          // drop any full-reload the async watcher pipeline emits for this
+          // apply (it escapes both suppression gates otherwise and
+          // raw-reloads the renderer a second time). Window closes when the
+          // covered reload's fresh client connects (+grace); see
+          // `openHostOwnedSwapWindow`.
+          openHostOwnedSwapWindow()
+          return {
+            appliedPaths,
+            reloadedModules,
+            requiresClientFullReload: clientFullReloadRequestedDuringApply,
+          }
+        }
+
+        let reloadFailed = false
+        try {
+          for (const mod of modulesToReload) {
+            try {
+              await server.reloadModule(mod)
+              reloadedModules += 1
+            } catch (error) {
+              console.error(
+                '[self-mod-hmr] Failed to reload module after apply:',
                 (error as Error).message,
               )
-            }
-          }
-          if (emittedKeys.length > 0) {
-            setTimeout(() => {
-              for (const key of emittedKeys) {
-                recentlyEmittedSyntheticPaths.delete(key)
-              }
-            }, 5_000).unref?.()
-          }
-
-          if (onOverlayReady) {
-            await onOverlayReady(
-              runs.flatMap((run) =>
-                run.files.map((file) =>
-                  path.relative(repoRoot, file.absPath).replace(/\\/g, '/'),
-                ),
-              ),
-            )
-          }
-
-          if (suppressClientFullReload) {
-            for (const absPath of appliedOverlayPaths) {
-              appliedOverlay.delete(absPath)
-            }
-            // The host performs its own covered reload after this response —
-            // drop any full-reload the async watcher pipeline emits for this
-            // apply (it escapes both suppression gates otherwise and
-            // raw-reloads the renderer a second time). Window closes when the
-            // covered reload's fresh client connects (+grace); see
-            // `openHostOwnedSwapWindow`.
-            openHostOwnedSwapWindow()
-            return {
-              appliedPaths,
-              reloadedModules,
-              requiresClientFullReload: clientFullReloadRequestedDuringApply,
+              reloadFailed = true
+              break
             }
           }
 
-          let reloadFailed = false
-          try {
-            for (const mod of modulesToReload) {
-              try {
-                await server.reloadModule(mod)
-                reloadedModules += 1
-              } catch (error) {
-                console.error(
-                  '[self-mod-hmr] Failed to reload module after apply:',
-                  (error as Error).message,
-                )
-                reloadFailed = true
-                break
-              }
-            }
-
-            if (forceClientFullReload || reloadFailed) {
-              server.ws.send({ type: 'full-reload', path: '*' })
-            }
-            return {
-              appliedPaths,
-              reloadedModules,
-              requiresClientFullReload:
-                forceClientFullReload ||
-                reloadFailed ||
-                clientFullReloadRequestedDuringApply,
-            }
-          } finally {
-            for (const absPath of appliedOverlayPaths) {
-              appliedOverlay.delete(absPath)
-            }
+          if (forceClientFullReload || reloadFailed) {
+            server.ws.send({ type: 'full-reload', path: '*' })
           }
+          return {
+            appliedPaths,
+            reloadedModules,
+            requiresClientFullReload:
+              forceClientFullReload ||
+              reloadFailed ||
+              clientFullReloadRequestedDuringApply,
+          }
+        } finally {
+          for (const absPath of appliedOverlayPaths) {
+            appliedOverlay.delete(absPath)
+          }
+        }
         })
 
       server.middlewares.use(async (req, res, next) => {
@@ -966,10 +906,7 @@ export function selfModHmrControl(options?: {
           return next()
         }
 
-        const sendJson = (
-          statusCode: number,
-          payload: Record<string, unknown>,
-        ) => {
+        const sendJson = (statusCode: number, payload: Record<string, unknown>) => {
           res.statusCode = statusCode
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(payload))
@@ -981,10 +918,7 @@ export function selfModHmrControl(options?: {
           return
         }
 
-        if (
-          req.method === 'GET' &&
-          urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/status`
-        ) {
+        if (req.method === 'GET' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/status`) {
           sendJson(200, {
             ok: true,
             paused: isClientUpdatePaused() || inFlightPaths.size > 0,
@@ -1000,10 +934,7 @@ export function selfModHmrControl(options?: {
           return
         }
 
-        if (
-          req.method === 'POST' &&
-          urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/pause-client-updates`
-        ) {
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/pause-client-updates`) {
           const payload = (await readJsonBody(req)) as PausePayload
           const runId = typeof payload.runId === 'string' ? payload.runId : ''
           if (!runId) {
@@ -1019,10 +950,7 @@ export function selfModHmrControl(options?: {
           return
         }
 
-        if (
-          req.method === 'POST' &&
-          urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/release-client-updates`
-        ) {
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/release-client-updates`) {
           const payload = (await readJsonBody(req)) as PausePayload
           const runIds = collectStringArray(payload.runIds)
           if (runIds.length === 0) {
@@ -1039,17 +967,14 @@ export function selfModHmrControl(options?: {
           return
         }
 
-        if (
-          req.method === 'POST' &&
-          urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/track-paths`
-        ) {
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/track-paths`) {
           const payload = (await readJsonBody(req)) as TrackPayload
           const paths = collectStringArray(payload.paths)
           let tracked = 0
           for (const rel of paths) {
-            const abs = resolveSelfModHmrAbsolutePath(rel, repoRoot)
+            const abs = resolveSelfModHmrAbsolutePath(rel)
             if (!abs) continue
-            if (!isViteTrackableAbsolutePath(abs, repoRoot)) continue
+            if (!isViteTrackableAbsolutePath(abs)) continue
             // A real run owner has now claimed this path. Keep it in-flight
             // until /apply or /untrack-paths, rather than releasing it with
             // the temporary shell snapshot set.
@@ -1057,81 +982,46 @@ export function selfModHmrControl(options?: {
             trackPath(abs)
             tracked += 1
           }
-          sendJson(200, {
-            ok: true,
-            tracked,
-            inFlightPaths: inFlightPaths.size,
-          })
+          sendJson(200, { ok: true, tracked, inFlightPaths: inFlightPaths.size })
           return
         }
 
-        if (
-          req.method === 'POST' &&
-          urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/untrack-paths`
-        ) {
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/untrack-paths`) {
           const payload = (await readJsonBody(req)) as TrackPayload
           const paths = collectStringArray(payload.paths)
           let untracked = 0
           for (const rel of paths) {
-            const abs = resolveSelfModHmrAbsolutePath(rel, repoRoot)
+            const abs = resolveSelfModHmrAbsolutePath(rel)
             if (!abs) continue
-            if (!isViteTrackableAbsolutePath(abs, repoRoot)) continue
+            if (!isViteTrackableAbsolutePath(abs)) continue
             untrackPath(abs)
             untracked += 1
           }
-          sendJson(200, {
-            ok: true,
-            untracked,
-            inFlightPaths: inFlightPaths.size,
-          })
+          sendJson(200, { ok: true, untracked, inFlightPaths: inFlightPaths.size })
           return
         }
 
-        if (
-          req.method === 'POST' &&
-          urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/apply`
-        ) {
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/apply`) {
           const payload = (await readJsonBody(req)) as ApplyPayload
           const runs: Array<{
             runId: string
-            files: Array<{
-              absPath: string
-              content: string | null
-              deleted: boolean
-            }>
+            files: Array<{ absPath: string; content: string | null; deleted: boolean }>
           }> = []
-          let invalidVersionedBatch = false
           if (Array.isArray(payload.runs)) {
             for (const run of payload.runs) {
               if (!run || typeof run !== 'object') continue
               const runId = typeof run.runId === 'string' ? run.runId : ''
               if (runId.length === 0) continue
               let files = collectApplyFiles(run)
-              if (run.protocolVersion === 2) {
-                const expectedPaths = collectStringArray(run.paths)
-                  .map((rel) => resolveSelfModHmrAbsolutePath(rel, repoRoot))
-                  .filter(
-                    (absPath): absPath is string =>
-                      absPath != null &&
-                      isViteTrackableAbsolutePath(absPath, repoRoot),
-                  )
-                const actualPaths = new Set(files.map((file) => file.absPath))
-                if (
-                  expectedPaths.some((absPath) => !actualPaths.has(absPath))
-                ) {
-                  invalidVersionedBatch = true
-                  break
-                }
-              } else if (files.length === 0) {
+              if (files.length === 0) {
                 // Backward-compatible fallback for older workers. Newer
                 // workers send file content captured at finalize time so a
                 // cancelled overlapping run cannot leak its current disk
                 // contents into a held run's apply.
                 files = collectStringArray(run.paths)
                   .map((rel) => {
-                    const absPath = resolveSelfModHmrAbsolutePath(rel, repoRoot)
-                    return absPath &&
-                      isViteTrackableAbsolutePath(absPath, repoRoot)
+                    const absPath = resolveSelfModHmrAbsolutePath(rel)
+                    return absPath && isViteTrackableAbsolutePath(absPath)
                       ? {
                           absPath,
                           content: readDiskOrEmpty(absPath),
@@ -1140,24 +1030,16 @@ export function selfModHmrControl(options?: {
                       : null
                   })
                   .filter(
-                    (
-                      file,
-                    ): file is {
+                    (file): file is {
                       absPath: string
                       content: string
                       deleted: boolean
-                    } => file != null,
+                    } =>
+                      file != null,
                   )
               }
               runs.push({ runId, files })
             }
-          }
-          if (invalidVersionedBatch) {
-            sendJson(400, {
-              ok: false,
-              error: 'Incomplete versioned self-mod apply batch.',
-            })
-            return
           }
           const result = await applyBatch(runs, {
             suppressClientFullReload:
@@ -1177,23 +1059,14 @@ export function selfModHmrControl(options?: {
           return
         }
 
-        if (
-          req.method === 'POST' &&
-          urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/discard`
-        ) {
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/discard`) {
           const payload = (await readJsonBody(req)) as TrackPayload
           const paths = collectStringArray(payload.paths)
-          const preservePaths = new Set(
-            collectStringArray(payload.preservePaths)
-              .map((rel) => resolveSelfModHmrAbsolutePath(rel, repoRoot))
-              .filter((absPath): absPath is string => absPath != null),
-          )
           let discarded = 0
           for (const rel of paths) {
-            const abs = resolveSelfModHmrAbsolutePath(rel, repoRoot)
+            const abs = resolveSelfModHmrAbsolutePath(rel)
             if (!abs) continue
-            if (!isViteTrackableAbsolutePath(abs, repoRoot)) continue
-            if (preservePaths.has(abs)) continue
+            if (!isViteTrackableAbsolutePath(abs)) continue
             untrackPath(abs)
             shellSnapshotPaths.delete(abs)
             appliedOverlay.delete(abs)
@@ -1208,12 +1081,9 @@ export function selfModHmrControl(options?: {
           return
         }
 
-        if (
-          req.method === 'POST' &&
-          urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/begin-shell-mutation`
-        ) {
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/begin-shell-mutation`) {
           if (shellMutationDepth === 0) {
-            for (const absPath of collectShellSnapshotFiles(repoRoot)) {
+            for (const absPath of collectShellSnapshotFiles()) {
               trackShellSnapshotPath(absPath)
             }
           }
@@ -1222,10 +1092,7 @@ export function selfModHmrControl(options?: {
           return
         }
 
-        if (
-          req.method === 'POST' &&
-          urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/end-shell-mutation`
-        ) {
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/end-shell-mutation`) {
           shellMutationDepth = Math.max(0, shellMutationDepth - 1)
           let changedPaths: string[] = []
           if (shellMutationDepth === 0) {
@@ -1242,10 +1109,7 @@ export function selfModHmrControl(options?: {
           return
         }
 
-        if (
-          req.method === 'POST' &&
-          urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/force-resume`
-        ) {
+        if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/force-resume`) {
           const shouldReload =
             pausedRunIds.size > 0 ||
             inFlightPaths.size > 0 ||
@@ -1278,6 +1142,7 @@ export function selfModHmrControl(options?: {
         // run. Consume the bypass entry so any later real disk write goes
         // back through the standard suppression path.
         recentlyEmittedSyntheticPaths.delete(key)
+        if (appliedOverlay.has(key)) appliedOverlay.delete(key)
         return undefined
       }
       if (isClientUpdatePaused()) {
@@ -1295,7 +1160,7 @@ export function selfModHmrControl(options?: {
         // pipeline drives all visible HMR for tracked paths.
         return []
       }
-      if (appliedOverlay.has(key) && clientUpdateReleaseDepth === 0) {
+      if (appliedOverlay.has(key)) {
         // A normal user/dev edit outside the self-mod apply pipeline should
         // take control again. Otherwise load() would keep serving the last
         // applied overlay content and make the file appear stuck.

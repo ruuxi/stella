@@ -24,10 +24,7 @@ import {
   createSelfModHmrController,
   type SelfModHmrController,
 } from "../../../../runtime/kernel/self-mod/hmr.js";
-import {
-  getGitHead,
-  listGitDirtyFiles,
-} from "../../../../runtime/kernel/self-mod/git/log.js";
+import { getGitHead, listGitDirtyFiles } from "../../../../runtime/kernel/self-mod/git/log.js";
 import {
   createSelfModCoordinator,
   type PendingSelfModApply,
@@ -90,7 +87,7 @@ const createHarness = async (): Promise<Harness> => {
   const requests: RecordedRequest[] = [];
   const peer: WorkerPeerLike = {
     notify: () => {},
-    request: async <TResult>(method: string, params?: unknown) => {
+    request: async <TResult,>(method: string, params?: unknown) => {
       requests.push({ method, params });
       return {} as TResult;
     },
@@ -173,12 +170,8 @@ const runAgentSelfMod = async (
   relPath: string,
   content: string,
   conversationId: string,
-  mode:
-    | "author"
-    | "install"
-    | "update"
-    | "uninstall"
-    | "desktop-update" = "author",
+  mode: "author" | "install" | "update" | "uninstall" | "desktop-update" =
+    "author",
 ) => {
   // The orchestration layer registers the run with the HMR controller
   // before any writes; the coordinator lifecycle snapshots the git
@@ -192,17 +185,8 @@ const runAgentSelfMod = async (
     conversationId,
     mode,
   });
-  const absolutePath = path.join(h.repoRoot, relPath);
-  const capture = await h.coordinator.lifecycle.beginMediatedWrite({
-    runId,
-    paths: [absolutePath],
-  });
-  await h.controller.recordWrite(runId, [absolutePath], {
-    captureSnapshot: false,
-  });
   await writeRepoFile(h, relPath, content);
-  await h.coordinator.lifecycle.finishMediatedWrite({ capture });
-  await h.controller.recordWrite(runId, [absolutePath]);
+  await h.controller.recordWrite(runId, [path.join(h.repoRoot, relPath)]);
   await h.coordinator.lifecycle.finalizeRun({
     runId,
     taskDescription: `Task ${runId}`,
@@ -228,15 +212,15 @@ describe("self-mod coordinator", () => {
       "conv-1",
     );
 
-    // Finalize freezes a logical selector without moving applied HEAD.
+    // Commit landed on disk…
     const head = (await getGitHead(h.repoRoot))!;
-    expect(git(h.repoRoot, ["show", "-s", "--format=%s", head]).trim()).toBe(
-      "Initial seed",
+    expect(git(h.repoRoot, ["show", "-s", "--format=%B", head])).toContain(
+      "Stella-Conversation: conv-1",
     );
-    const [selector] = [...h.pendingApplies.keys()];
-    expect(selector).toMatch(/^selfmod-/);
-    const pending = h.pendingApplies.get(selector!)!;
-    expect(pending.commitHash).toBe(selector);
+    // …and the apply is parked behind the pending card, keyed by commit.
+    expect([...h.pendingApplies.keys()]).toEqual([head]);
+    const pending = h.pendingApplies.get(head)!;
+    expect(pending.commitHash).toBe(head);
     expect(pending.conversationId).toBe("conv-1");
     expect(pending.files).toEqual(["desktop/src/feature.tsx"]);
     // No morph transition was raised and the reload pause is still held.
@@ -262,8 +246,9 @@ describe("self-mod coordinator", () => {
     expect(h.pendingApplies.size).toBe(0);
     const transitions = methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION);
     expect(transitions).toHaveLength(1);
-    const transitionId = (transitions[0]!.params as { transitionId: string })
-      .transitionId;
+    const transitionId = (
+      transitions[0]!.params as { transitionId: string }
+    ).transitionId;
     const resume = await h.coordinator.resumeTransition({ transitionId });
     expect(resume).toEqual({ ok: true, requiresClientFullReload: false });
     expect(resumedRunIds(h)).toEqual(["run-install"]);
@@ -278,18 +263,23 @@ describe("self-mod coordinator", () => {
       "install-update-conversation",
       "desktop-update",
     );
-    expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(1);
+    expect(
+      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION),
+    ).toHaveLength(1);
 
-    const result = await h.coordinator.externalLifecycle.finishExternalSelfMod({
-      runId: "run-desktop-update",
-      succeeded: true,
-    });
+    const result =
+      await h.coordinator.externalLifecycle.finishExternalSelfMod({
+        runId: "run-desktop-update",
+        succeeded: true,
+      });
 
     expect(result).toEqual({ ok: true, transitioned: true });
-    expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(1);
+    expect(
+      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION),
+    ).toHaveLength(1);
   });
 
-  it("clicking Update selects only that pending run", async () => {
+  it("clicking Update drains pending applies through one morph transition and resumes reload pauses", async () => {
     await runAgentSelfMod(
       h,
       "run-1",
@@ -297,7 +287,7 @@ describe("self-mod coordinator", () => {
       "export const one = 1;\n",
       "conv-1",
     );
-    const firstSelector = [...h.pendingApplies.keys()][0]!;
+    const firstHead = (await getGitHead(h.repoRoot))!;
     await runAgentSelfMod(
       h,
       "run-2",
@@ -305,36 +295,31 @@ describe("self-mod coordinator", () => {
       "export const two = 2;\n",
       "conv-1",
     );
-    const secondSelector = [...h.pendingApplies.keys()].find(
-      (selector) => selector !== firstSelector,
-    )!;
+    const secondHead = (await getGitHead(h.repoRoot))!;
     expect(h.pendingApplies.size).toBe(2);
 
     const applyResult = await h.coordinator.applyPendingWithMorph({
-      commitHash: secondSelector,
+      commitHash: secondHead,
     });
-    expect(applyResult.applied).toBe(true);
-    expect(applyResult.commitHash).toMatch(/^[0-9a-f]{40}$/);
-    // Only the selected pending entry drains.
+    expect(applyResult).toEqual({ commitHash: secondHead, applied: true });
+    // Both pending entries drained into ONE merged transition.
     const transitions = methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION);
     expect(transitions).toHaveLength(1);
-    expect([...h.pendingApplies.keys()]).toEqual([firstSelector]);
+    expect(h.pendingApplies.size).toBe(0);
     expect(h.statusPatches).toEqual([
-      {
-        conversationId: "conv-1",
-        commitHash: secondSelector,
-        status: "applied",
-      },
+      { conversationId: "conv-1", commitHash: firstHead, status: "applied" },
+      { conversationId: "conv-1", commitHash: secondHead, status: "applied" },
     ]);
     expect(h.coordinator.hasPendingApplyBatches()).toBe(true);
 
     // Host raised the cover and calls back; the worker applies + releases.
-    const transitionId = (transitions[0]!.params as { transitionId: string })
-      .transitionId;
+    const transitionId = (
+      transitions[0]!.params as { transitionId: string }
+    ).transitionId;
     const resume = await h.coordinator.resumeTransition({ transitionId });
     expect(resume).toEqual({ ok: true, requiresClientFullReload: false });
     expect(h.coordinator.hasPendingApplyBatches()).toBe(false);
-    expect(new Set(resumedRunIds(h))).toEqual(new Set(["run-2"]));
+    expect(new Set(resumedRunIds(h))).toEqual(new Set(["run-1", "run-2"]));
   });
 
   it("a stale resumeTransition releases the host-echoed reload pauses", async () => {
@@ -354,12 +339,9 @@ describe("self-mod coordinator", () => {
       "export const undo = 1;\n",
       "conv-undo",
     );
-    const selector = [...h.pendingApplies.keys()][0]!;
+    const head = (await getGitHead(h.repoRoot))!;
     // Adopt the pending change first (the user clicked Update earlier).
-    const applied = await h.coordinator.applyPendingWithMorph({
-      commitHash: selector,
-    });
-    const head = applied.commitHash!;
+    await h.coordinator.applyPendingWithMorph({ commitHash: head });
     const adoptTransition = (
       methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)[0]!.params as {
         transitionId: string;

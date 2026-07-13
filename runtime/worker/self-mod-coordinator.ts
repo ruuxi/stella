@@ -38,74 +38,23 @@ import {
 } from "../kernel/self-mod/hmr.js";
 import type {
   CommitMessageProvider,
-  StartupDiscardCleanupResult,
   StoreModService,
 } from "../kernel/self-mod/store-mod-service.js";
 import {
-  MAX_PENDING_CHANGE_SETS,
-  type StartupDiscardCandidate,
-} from "../kernel/self-mod/store-mod-service.js";
-import type {
-  LogicalFileConflict,
-  MediatedWriteCapture,
-} from "../kernel/self-mod/logical-change-set.js";
-import {
   getLastSelfModCommitHash,
   listFilesForCommit,
+  listGitCommitsBySelector,
 } from "../kernel/self-mod/git/log.js";
-import { readGitHeadFileState } from "../kernel/self-mod/git/commit.js";
 import { revertSelfModCommit } from "../kernel/self-mod/git/revert.js";
 import type { RuntimeStore } from "../kernel/storage/runtime-store.js";
 import type { WorkerPeerLike } from "./peer-broker.js";
 
 export type PendingSelfModApply = {
   commitHash: string;
-  changeSetId: string;
-  runId: string;
   applyResult: ApplyResult;
   conversationId: string;
   files: string[];
   assistantMessageEventId?: string;
-};
-
-export type PendingSelfModCardPayload = {
-  commitHash: string;
-  changeSetId: string;
-  runId: string;
-  files: string[];
-  batchIndex: number;
-  status: "pending";
-};
-
-export const attachPendingSelfModCards = (args: {
-  pending: Map<string, PendingSelfModApply>;
-  conversationId: string;
-  append: (payload: PendingSelfModCardPayload) => string;
-  persist: (pending: PendingSelfModApply) => void;
-}): string[] => {
-  const attached: string[] = [];
-  for (const [commitHash, pending] of args.pending) {
-    if (
-      pending.conversationId !== args.conversationId ||
-      pending.assistantMessageEventId
-    ) {
-      continue;
-    }
-    const eventId = args.append({
-      commitHash,
-      changeSetId: pending.changeSetId,
-      runId: pending.runId,
-      files: pending.files,
-      batchIndex: 0,
-      status: "pending",
-    });
-    // Assignment and persistence happen only after append returns, so a
-    // failed durable write remains eligible for the next turn.
-    pending.assistantMessageEventId = eventId;
-    args.persist(pending);
-    attached.push(eventId);
-  }
-  return attached;
 };
 
 /**
@@ -125,11 +74,7 @@ type PendingApplyBatch = {
 
 export type ResumeTransitionResult =
   | { ok: true; requiresClientFullReload: boolean }
-  | {
-      ok: false;
-      reason: "unknown-transition" | "apply-failed" | "reconstruction-conflict";
-      conflicts?: LogicalFileConflict[];
-    };
+  | { ok: false; reason: "unknown-transition" | "apply-failed" };
 
 type SelfModApplyMode =
   | "author"
@@ -162,18 +107,6 @@ export type SelfModLifecycle = {
     commitMessageProvider?: CommitMessageProvider;
   }) => Promise<void>;
   cancelRun: (runId: string) => Promise<void>;
-  beginMediatedWrite: (args: {
-    runId: string;
-    paths: string[];
-    captureAll?: boolean;
-  }) => Promise<MediatedWriteCapture | null>;
-  finishMediatedWrite: (args: {
-    capture: MediatedWriteCapture | null;
-    additionalPaths?: string[];
-  }) => Promise<void>;
-  changedPathsForCapture: (args: {
-    capture: MediatedWriteCapture | null;
-  }) => Promise<string[]>;
 };
 
 export type ExternalSelfModLifecycle = {
@@ -197,16 +130,6 @@ export type SelfModCoordinator = {
   applyPendingWithMorph: (args: {
     commitHash?: string;
   }) => Promise<RuntimeSelfModApplyResult>;
-  applyAllPendingWithMorph: () => Promise<RuntimeSelfModApplyResult[]>;
-  discardPending: (args: { commitHash?: string }) => Promise<{
-    discarded: boolean;
-    commitHash?: string;
-    conflicts?: LogicalFileConflict[];
-  }>;
-  restorePending: (envelopes: unknown[]) => Promise<void>;
-  cleanupStartupDiscardCandidates: (
-    candidates: StartupDiscardCandidate[],
-  ) => Promise<StartupDiscardCleanupResult>;
   resumeTransition: (payload: {
     transitionId?: string;
     runIds?: string[];
@@ -228,10 +151,32 @@ export type SelfModCoordinatorDeps = {
     conversationId: string;
     eventId?: string;
     commitHash: string;
-    status: "pending" | "applied" | "discarded";
-    replacementCommitHash?: string;
+    status: "pending" | "applied";
   }) => void;
 };
+
+// Combine several deferred apply batches into a single transition so a
+// cumulative "Update" raises one morph cover and triggers one worker restart
+// (rather than one per pending change). `results` must be in commit order:
+// later entries' runs apply last, so they win for any overlapping path.
+const mergePendingApplyResults = (results: ApplyResult[]): ApplyResult => ({
+  appliedRuns: results.flatMap((result) => result.appliedRuns),
+  restartRelevantRunIds: [
+    ...new Set(results.flatMap((result) => result.restartRelevantRunIds)),
+  ],
+  hasRestartRelevantPaths: results.some(
+    (result) => result.hasRestartRelevantPaths,
+  ),
+  hasRuntimeRestartRelevantPaths: results.some(
+    (result) => result.hasRuntimeRestartRelevantPaths,
+  ),
+  hasProcessRestartRelevantPaths: results.some(
+    (result) => result.hasProcessRestartRelevantPaths,
+  ),
+  hasFullReloadRelevantPaths: results.some(
+    (result) => result.hasFullReloadRelevantPaths,
+  ),
+});
 
 const asTrimmedString = (value: unknown): string =>
   typeof value === "string" ? value.trim() : "";
@@ -292,11 +237,11 @@ export const createSelfModCoordinator = (
   const releaseRuntimeReloadFor = async (
     runIds: string[],
     options?: { allowDeferredReload?: boolean },
-  ): Promise<boolean> => {
-    const results = await Promise.all(
+  ) => {
+    await Promise.all(
       runIds.map(async (runId) => {
         try {
-          const response = await peer.request<{ ok?: unknown }>(
+          await peer.request(
             METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME,
             {
               runId,
@@ -304,17 +249,14 @@ export const createSelfModCoordinator = (
             },
             { retryOnDisconnect: true },
           );
-          return response?.ok === true;
         } catch (error) {
           console.warn(
             "[self-mod-reload] Failed to resume host runtime reloads:",
             (error as Error).message,
           );
-          return false;
         }
       }),
     );
-    return results.every(Boolean);
   };
 
   const releasePendingApplyBatches = async (reason: string) => {
@@ -341,15 +283,8 @@ export const createSelfModCoordinator = (
   ) => {
     const controller = getController();
     if (!controller) return;
-    const preservePaths = [
-      ...new Set(
-        [...getPendingSelfModApplies().values()].flatMap((pending) =>
-          pending.applyResult.appliedRuns.flatMap((run) => run.paths),
-        ),
-      ),
-    ];
     const discarded = await controller
-      .discard(applyResult.appliedRuns, { preservePaths })
+      .discard(applyResult.appliedRuns)
       .catch((error) => {
         console.warn(
           `[self-mod-hmr] Failed to discard Vite self-mod state after ${reason}:`,
@@ -397,11 +332,8 @@ export const createSelfModCoordinator = (
         ),
       ),
     ];
-    const {
-      requiresFullReload,
-      requiresRuntimeRestart,
-      requiresProcessRestart,
-    } = deriveApplyTransitionRequirements(applyResult);
+    const { requiresFullReload, requiresRuntimeRestart, requiresProcessRestart } =
+      deriveApplyTransitionRequirements(applyResult);
     pendingApplyBatches.set(transitionId, {
       applyResult,
       requiresFullReload,
@@ -475,19 +407,6 @@ export const createSelfModCoordinator = (
       releaseNumber,
       mode,
     }) => {
-      const storeModService = getStoreModService();
-      if (!storeModService) {
-        throw new Error("Store mod service is not available.");
-      }
-      for (const changeSetId of storeModService.listExpiredPendingChangeSetIds?.() ??
-        []) {
-        const discarded = await discardPending({ commitHash: changeSetId });
-        if (!discarded.discarded) {
-          throw new Error(
-            `Expired self-mod change set could not be reconstructed safely: ${changeSetId}`,
-          );
-        }
-      }
       selfModRunRootIds.set(runId, rootRunId ?? runId);
       selfModRunApplyModes.set(runId, mode);
       await peer
@@ -500,6 +419,10 @@ export const createSelfModCoordinator = (
             (error as Error).message,
           );
         });
+      const storeModService = getStoreModService();
+      if (!storeModService) {
+        throw new Error("Store mod service is not available.");
+      }
       await storeModService.beginSelfModRun({
         runId,
         taskDescription,
@@ -553,11 +476,7 @@ export const createSelfModCoordinator = (
         return;
       }
 
-      const applyMode = selfModRunApplyModes.get(runId);
-      const decision =
-        applyMode === "author"
-          ? controller.finalizeIsolated(runId)
-          : controller.finalize(runId);
+      const decision = controller.finalize(runId);
       if (decision.appliedRuns.length === 0) {
         if (!controller.hasRun(runId)) {
           // The run finalized with no tracked source writes. There is
@@ -579,24 +498,14 @@ export const createSelfModCoordinator = (
       // (install/update/uninstall/desktop-update) has no chat surface
       // to host a card — their conversations are background threads —
       // so they auto-apply under the morph cover instead.
+      const applyMode = selfModRunApplyModes.get(runId);
       if (finalized?.commitHash && applyMode === "author") {
-        const pending: PendingSelfModApply = {
+        getPendingSelfModApplies().set(finalized.commitHash, {
           commitHash: finalized.commitHash,
-          changeSetId: finalized.commitHash,
-          runId,
           applyResult: decision,
           conversationId: conversationId ?? "",
           files: finalized.files,
-        };
-        getPendingSelfModApplies().set(finalized.commitHash, pending);
-        storeModService?.persistPendingEnvelope(finalized.commitHash, pending);
-        const overflow =
-          storeModService
-            ?.listPendingChangeSetIds()
-            .slice(0, -MAX_PENDING_CHANGE_SETS) ?? [];
-        for (const expiredSelector of overflow) {
-          await discardPending({ commitHash: expiredSelector });
-        }
+        });
         return;
       }
       await dispatchApplyBatch(decision);
@@ -620,21 +529,6 @@ export const createSelfModCoordinator = (
       dropRunBookkeeping([runId]);
       await dispatchApplyBatch(cancelResult);
     },
-
-    beginMediatedWrite: async ({ runId, paths, captureAll }) =>
-      (await getStoreModService()?.beginMediatedWrite(runId, paths, {
-        captureAll,
-      })) ?? null,
-
-    finishMediatedWrite: async ({ capture, additionalPaths }) => {
-      await getStoreModService()?.finishMediatedWrite(
-        capture,
-        additionalPaths ?? [],
-      );
-    },
-
-    changedPathsForCapture: async ({ capture }) =>
-      (await getStoreModService()?.changedPathsForCapture(capture)) ?? [],
   };
 
   const externalLifecycle: ExternalSelfModLifecycle = {
@@ -659,7 +553,9 @@ export const createSelfModCoordinator = (
       try {
         await controller.beginRun(runId);
         const absolutePaths = paths.map((filePath) =>
-          path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath),
+          path.isAbsolute(filePath)
+            ? filePath
+            : path.join(repoRoot, filePath),
         );
         if (absolutePaths.length > 0) {
           externalSelfModPathsByRun.set(runId, absolutePaths);
@@ -864,10 +760,14 @@ export const createSelfModCoordinator = (
       return result;
     } catch (err) {
       if (runRegisteredWithHmr) {
-        await controller.releaseRuns([syntheticRunId]).catch(() => undefined);
+        await controller
+          .releaseRuns([syntheticRunId])
+          .catch(() => undefined);
       }
       if (runtimeReloadPaused) {
-        await releaseRuntimeReloadFor([syntheticRunId]).catch(() => undefined);
+        await releaseRuntimeReloadFor([syntheticRunId]).catch(
+          () => undefined,
+        );
       }
       selfModRunRootIds.delete(syntheticRunId);
       throw err;
@@ -883,247 +783,67 @@ export const createSelfModCoordinator = (
     if (!resolvedCommitHash) {
       throw new Error("Self-mod commit hash is required.");
     }
-    if (!getRepoRoot()) {
+    const repoRoot = getRepoRoot();
+    if (!repoRoot) {
       throw new Error("Worker has not been initialized.");
     }
+    const controller = getController();
+    // Clicking "Update" brings Stella fully up to date: git is linear and the
+    // disk already holds the combined state, so drain every pending change in
+    // commit order, merge them into a single transition (one morph cover, one
+    // worker restart, all reload pauses released together), and flip every
+    // pending card to "applied". `Map` preserves insertion order, which
+    // matches commit order here.
     const pendingSelfModApplies = getPendingSelfModApplies();
-    const entry = pendingSelfModApplies.get(resolvedCommitHash);
+    const entries = [...pendingSelfModApplies.values()];
 
-    if (!entry) {
+    if (entries.length === 0) {
+      // Stash lost (e.g. the worker restarted since staging). The committed
+      // change is already on disk; adopt it with a clean reload and a
+      // best-effort status patch.
+      await controller?.forceResumeAll().catch((error) => {
+        console.warn(
+          "[self-mod-hmr] Failed to resume deferred self-mod state after apply miss:",
+          (error as Error).message,
+        );
+      });
+      const [summary] = await listGitCommitsBySelector(
+        repoRoot,
+        { commitHashes: [resolvedCommitHash] },
+        4_000,
+      ).catch(() => []);
+      if (summary?.conversationId) {
+        patchSelfModApplyStatus({
+          conversationId: summary.conversationId,
+          commitHash: resolvedCommitHash,
+          status: "applied",
+        });
+      }
       return {
         commitHash: resolvedCommitHash,
         applied: false,
         message: "Pending self-mod apply was not found.",
       };
     }
-    const prepared =
-      await getStoreModService()?.applyPreparedAuthorChange(resolvedCommitHash);
-    if (!prepared) {
-      return {
-        commitHash: resolvedCommitHash,
-        applied: false,
-        message: "Pending logical self-mod change set was not found.",
-      };
+
+    for (const entry of entries) {
+      pendingSelfModApplies.delete(entry.commitHash);
     }
-    if (prepared.status === "conflicts") {
-      return {
-        commitHash: resolvedCommitHash,
-        applied: false,
-        message: "Self-mod apply requires conflict resolution.",
-        conflicts: prepared.conflicts,
-      };
-    }
-    pendingSelfModApplies.delete(entry.commitHash);
-    const mergedByPath = new Map(
-      prepared.selectedFiles.map((file) => [file.path, file]),
+    await dispatchApplyBatch(
+      mergePendingApplyResults(entries.map((entry) => entry.applyResult)),
     );
-    const repoRoot = getRepoRoot();
-    const appliedRuns = await Promise.all(
-      entry.applyResult.appliedRuns.map(async (run) => ({
-        ...run,
-        files: await Promise.all(
-          run.paths.map(async (filePath) => {
-            const file = mergedByPath.get(filePath);
-            return {
-              path: filePath,
-              state:
-                file?.state ??
-                (repoRoot
-                  ? await readGitHeadFileState(repoRoot, filePath)
-                  : { kind: "missing" as const }),
-            };
-          }),
-        ),
-      })),
-    );
-    const selectedApplyResult: ApplyResult = {
-      ...entry.applyResult,
-      appliedRuns,
-    };
-    if (prepared.files.length > 0) {
-      await dispatchApplyBatch(selectedApplyResult);
-    } else {
-      await releaseRuntimeReloadFor(entry.applyResult.restartRelevantRunIds);
-      dropRunBookkeeping(entry.applyResult.restartRelevantRunIds);
+    for (const entry of entries) {
+      patchSelfModApplyStatus({
+        conversationId: entry.conversationId,
+        eventId: entry.assistantMessageEventId,
+        commitHash: entry.commitHash,
+        status: "applied",
+      });
     }
-    patchSelfModApplyStatus({
-      conversationId: entry.conversationId,
-      eventId: entry.assistantMessageEventId,
-      commitHash: entry.commitHash,
-      replacementCommitHash: prepared.commitHash ?? undefined,
-      status: "applied",
-    });
     return {
-      commitHash: prepared.commitHash ?? resolvedCommitHash,
+      commitHash: resolvedCommitHash,
       applied: true,
     };
-  };
-
-  const discardPending = async ({
-    commitHash,
-  }: {
-    commitHash?: string;
-  }): Promise<{
-    discarded: boolean;
-    commitHash?: string;
-    conflicts?: LogicalFileConflict[];
-  }> => {
-    const selector = commitHash?.trim();
-    if (!selector) return { discarded: false };
-    const pending = getPendingSelfModApplies().get(selector);
-    if (!pending) return { discarded: false, commitHash: selector };
-
-    // Removing a logical layer must also remove its bytes from the shared
-    // tree while retaining every other active/pending layer.
-    const service = getStoreModService();
-    if (!service) return { discarded: false, commitHash: selector };
-    const reconstruction = await service.discardPreparedAuthorChangeAtomically(
-      selector,
-      pending.files,
-    );
-    if (reconstruction.status === "conflicts") {
-      return {
-        discarded: false,
-        commitHash: selector,
-        conflicts: reconstruction.conflicts,
-      };
-    }
-    if (!reconstruction.discarded) {
-      return { discarded: false, commitHash: selector };
-    }
-
-    getPendingSelfModApplies().delete(selector);
-    await discardFailedApplyState(pending.applyResult, "pending discard");
-    await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds);
-    dropRunBookkeeping(pending.applyResult.restartRelevantRunIds);
-    patchSelfModApplyStatus({
-      conversationId: pending.conversationId,
-      eventId: pending.assistantMessageEventId,
-      commitHash: pending.commitHash,
-      status: "discarded",
-    });
-    return { discarded: true, commitHash: selector };
-  };
-
-  const restorePending = async (envelopes: unknown[]): Promise<void> => {
-    const controller = getController();
-    const repoRoot = getRepoRoot();
-    if (!controller || !repoRoot) return;
-    for (const raw of envelopes) {
-      if (!raw || typeof raw !== "object") continue;
-      const pending = raw as PendingSelfModApply;
-      if (
-        !pending.changeSetId ||
-        !pending.runId ||
-        !Array.isArray(pending.files)
-      ) {
-        continue;
-      }
-      await peer
-        .request(METHOD_NAMES.HOST_RUNTIME_RELOAD_PAUSE, {
-          runId: pending.runId,
-        })
-        .catch(() => undefined);
-      await controller.beginRun(pending.runId);
-      const paths = pending.applyResult
-        ? pending.applyResult.appliedRuns.flatMap((run) => run.paths)
-        : pending.files;
-      if (paths.length > 0) {
-        await controller.recordWrite(
-          pending.runId,
-          paths.map((filePath) => path.join(repoRoot, filePath)),
-          { captureSnapshot: false },
-        );
-      }
-      const restoredDecision = controller.finalizeIsolated(pending.runId);
-      const restored: PendingSelfModApply = {
-        ...pending,
-        commitHash: pending.commitHash ?? pending.changeSetId,
-        conversationId: pending.conversationId ?? "",
-        applyResult: restoredDecision,
-      };
-      if (restored.applyResult.appliedRuns.length === 0) continue;
-      getPendingSelfModApplies().set(restored.changeSetId, restored);
-      selfModRunRootIds.set(restored.runId, restored.runId);
-      selfModRunApplyModes.set(restored.runId, "author");
-      getStoreModService()?.persistPendingEnvelope(
-        restored.changeSetId,
-        restored,
-      );
-    }
-  };
-
-  const cleanupStartupDiscardCandidates = async (
-    candidates: StartupDiscardCandidate[],
-  ): Promise<StartupDiscardCleanupResult> => {
-    if (candidates.length === 0) {
-      return {
-        status: "applied",
-        completedChangeSetIds: [],
-        retryChangeSetIds: [],
-      };
-    }
-    const service = getStoreModService();
-    if (!service) throw new Error("Store mod service is not available.");
-
-    const controller = getController();
-    const retainedPaths = service.listPendingEnvelopes().flatMap((raw) => {
-      if (!raw || typeof raw !== "object") return [];
-      const files = (raw as { files?: unknown }).files;
-      return Array.isArray(files)
-        ? files.filter((file): file is string => typeof file === "string")
-        : [];
-    });
-    const cleanup = await service.cleanupStartupDiscardCandidatesAtomically(
-      candidates,
-      async (candidate) => {
-        const envelope =
-          candidate.envelope && typeof candidate.envelope === "object"
-            ? (candidate.envelope as Partial<PendingSelfModApply>)
-            : null;
-        const appliedRuns = envelope?.applyResult?.appliedRuns ?? [
-          {
-            runId: candidate.runId,
-            paths: candidate.files,
-            files: [],
-            runtimeRestartRelevantPaths: [],
-            processRestartRelevantPaths: [],
-            restartRelevantPaths: [],
-            fullReloadRelevantPaths: [],
-          },
-        ];
-        const viteDiscarded = controller
-          ? await controller
-              .discard(appliedRuns, { preservePaths: retainedPaths })
-              .catch(() => false)
-          : false;
-        const viteReleased = controller
-          ? await controller.releaseRuns([candidate.runId]).catch(() => false)
-          : false;
-        const reloadReleased = await releaseRuntimeReloadFor([candidate.runId]);
-        return viteDiscarded && viteReleased && reloadReleased;
-      },
-    );
-    if (cleanup.status === "conflicts") return cleanup;
-
-    const completedIds = new Set(cleanup.completedChangeSetIds);
-    for (const candidate of candidates) {
-      if (!completedIds.has(candidate.changeSetId)) continue;
-      const envelope =
-        candidate.envelope && typeof candidate.envelope === "object"
-          ? (candidate.envelope as Partial<PendingSelfModApply>)
-          : null;
-      dropRunBookkeeping([candidate.runId]);
-      if (envelope?.conversationId && envelope.commitHash) {
-        patchSelfModApplyStatus({
-          conversationId: envelope.conversationId,
-          eventId: envelope.assistantMessageEventId,
-          commitHash: envelope.commitHash,
-          status: "discarded",
-        });
-      }
-    }
-    return cleanup;
   };
 
   const resumeTransition = async (payload: {
@@ -1152,23 +872,14 @@ export const createSelfModCoordinator = (
     }
     const controller = getController();
     if (pending.requiresProcessRestart) {
-      // A process restart reloads from the shared tree, not the Vite overlay.
-      // Rebuild that tree from the newly-applied HEAD plus every other active
-      // or pending logical delta so the restart sees X without erasing Y.
-      const reconstruction = await getStoreModService()?.materializeLiveTree(
-        pending.applyResult.appliedRuns.flatMap((run) => run.paths),
-      );
-      if (reconstruction?.status === "conflicts") {
-        return {
-          ok: false,
-          reason: "reconstruction-conflict",
-          conflicts: reconstruction.conflicts,
-        };
+      const discarded = controller
+        ? await controller.discard(pending.applyResult.appliedRuns)
+        : false;
+      if (!discarded) {
+        console.warn(
+          "[self-mod-hmr] Failed to discard Vite state before process restart.",
+        );
       }
-      await discardFailedApplyState(
-        pending.applyResult,
-        "process restart reconstruction",
-      );
       pendingApplyBatches.delete(transitionId);
       await releaseRuntimeReloadFor(pending.applyResult.restartRelevantRunIds, {
         allowDeferredReload: false,
@@ -1227,17 +938,6 @@ export const createSelfModCoordinator = (
     externalLifecycle,
     revertWithMorph,
     applyPendingWithMorph,
-    discardPending,
-    cleanupStartupDiscardCandidates,
-    restorePending,
-    applyAllPendingWithMorph: async () => {
-      const selectors = [...getPendingSelfModApplies().keys()];
-      const results: RuntimeSelfModApplyResult[] = [];
-      for (const selector of selectors) {
-        results.push(await applyPendingWithMorph({ commitHash: selector }));
-      }
-      return results;
-    },
     resumeTransition,
     releasePendingApplyBatches,
     hasPendingApplyBatches: () => pendingApplyBatches.size > 0,
