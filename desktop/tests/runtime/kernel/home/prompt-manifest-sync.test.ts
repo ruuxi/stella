@@ -421,6 +421,8 @@ describe("remote prompt startup sync", () => {
     expect(fallbackPrompt).toMatch(/\bcontinuity\b/i);
     expect(fallbackPrompt).toMatch(/\bfresh independent context\b/i);
     expect(fallbackPrompt).toMatch(/orchestrator(?:'s)? instructions/i);
+    expect(fallbackPrompt).toContain("[Milestone]");
+    expect(fallbackPrompt).toMatch(/do not emit milestones by default/i);
     await expect(
       readFile(path.join(home, "agents/general.md"), "utf-8"),
     ).resolves.toBe(`${agentFrontmatter("general")}legacy general\n`);

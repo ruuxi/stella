@@ -45,6 +45,11 @@ describe("loadParsedAgentsFromDir", () => {
     expect(prompt).toMatch(/\bfresh independent context\b/i);
     expect(prompt).toMatch(/orchestrator(?:'s)? instructions/i);
     expect(prompt).not.toMatch(/brand-new[\s-]+(?:fresh-context )?reviewer/i);
+    expect(prompt).toMatch(/explicitly requests[\s\S]*milestone or interim/i);
+    expect(prompt).toContain("[Milestone]");
+    expect(prompt).toMatch(/do not emit milestones by default/i);
+    expect(prompt).toMatch(/direct answers to status requests[\s\S]*prefix/i);
+    expect(prompt).toMatch(/otherwise keep intermediate child reports internal/i);
   });
 
   it("loads agents when given a directory string path", () => {

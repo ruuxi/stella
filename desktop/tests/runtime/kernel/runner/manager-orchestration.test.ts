@@ -323,6 +323,188 @@ describe("manager orchestration production routing", () => {
     ).toHaveLength(1);
   });
 
+  it("publishes an instructed sentinel-prefixed milestone without completing the manager", async () => {
+    const { manager, store, appendedEvents, sentMessages } = createHarness();
+    let releaseManagerFirst!: () => void;
+    const managerFirstGate = new Promise<void>((resolve) => {
+      releaseManagerFirst = resolve;
+    });
+    let releaseChild!: () => void;
+    const childGate = new Promise<void>((resolve) => {
+      releaseChild = resolve;
+    });
+    const managerPrompts: string[] = [];
+    runMock.handler = async (args) => {
+      if (args.agentType === AGENT_IDS.MANAGER) {
+        managerPrompts.push(args.userPrompt);
+        if (managerPrompts.length === 1) {
+          await managerFirstGate;
+          return {
+            runId: "manager-milestone-1",
+            result: "[Milestone] Stage one is complete; continuing stage two.",
+          };
+        }
+        return {
+          runId: "manager-milestone-2",
+          result: "Final consolidated stage report.",
+        };
+      }
+      await childGate;
+      return { runId: "child-stage-2", result: "Stage two is complete." };
+    };
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conversation-milestone",
+      description: "Coordinate staged reporting",
+      prompt: "Run the stages. Report after each stage, then continue.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await manager.createAgent({
+      conversationId: "conversation-milestone",
+      description: "Run stage two",
+      prompt: "Complete stage two.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+    releaseManagerFirst();
+
+    await waitUntil(() =>
+      sentMessages.some(
+        (message) =>
+          message.customType === "runtime.task_update" &&
+          message.text.includes("[Milestone] Stage one is complete"),
+      ),
+    );
+    expect(managerPrompts[0]).toContain(
+      "Report after each stage, then continue.",
+    );
+    expect(
+      sentMessages.find((message) =>
+        message.text.includes("[Milestone] Stage one is complete"),
+      ),
+    ).toMatchObject({
+      customType: "runtime.task_update",
+      responseTarget: {
+        type: "agent_turn",
+        agentId: managerTask.threadId,
+      },
+    });
+    expect((await manager.getAgent(managerTask.threadId))?.status).toBe(
+      "running",
+    );
+    expect(store.getAgentRecord(managerTask.threadId)?.status).toBe("running");
+    expect(
+      appendedEvents.some(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string })?.agentId ===
+            managerTask.threadId,
+      ),
+    ).toBe(false);
+
+    releaseChild();
+    await waitUntil(async () =>
+      ["completed", "error", "canceled"].includes(
+        (await manager.getAgent(managerTask.threadId))?.status ?? "",
+      ),
+    );
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string })?.agentId ===
+            managerTask.threadId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("internalizes unsolicited non-sentinel manager output while children remain active", async () => {
+    const { manager, store, appendedEvents, sentMessages } = createHarness();
+    let releaseManagerFirst!: () => void;
+    const managerFirstGate = new Promise<void>((resolve) => {
+      releaseManagerFirst = resolve;
+    });
+    let releaseChild!: () => void;
+    const childGate = new Promise<void>((resolve) => {
+      releaseChild = resolve;
+    });
+    const managerPrompts: string[] = [];
+    runMock.handler = async (args) => {
+      if (args.agentType === AGENT_IDS.MANAGER) {
+        managerPrompts.push(args.userPrompt);
+        if (managerPrompts.length === 1) {
+          await managerFirstGate;
+          return {
+            runId: "manager-internal-1",
+            result: "Stage one is complete; continuing internally.",
+          };
+        }
+        return {
+          runId: "manager-internal-2",
+          result: "Final consolidated internal report.",
+        };
+      }
+      await childGate;
+      return { runId: "child-internal-2", result: "Remaining work complete." };
+    };
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conversation-internal",
+      description: "Coordinate internal stages",
+      prompt: "Coordinate all stages and report only when the work settles.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await manager.createAgent({
+      conversationId: "conversation-internal",
+      description: "Run remaining work",
+      prompt: "Complete the remaining work.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+    releaseManagerFirst();
+
+    await waitUntil(
+      () =>
+        managerPrompts.length === 1 &&
+        !hasInFlightAttempt(manager, managerTask.threadId),
+    );
+    expect(
+      sentMessages.some((message) =>
+        message.text.includes("Stage one is complete; continuing internally."),
+      ),
+    ).toBe(false);
+    expect((await manager.getAgent(managerTask.threadId))?.status).toBe(
+      "running",
+    );
+    expect(store.getAgentRecord(managerTask.threadId)?.status).toBe("running");
+    expect(store.getAgentRecord(managerTask.threadId)?.result).toBeUndefined();
+    expect(
+      appendedEvents.some(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string })?.agentId ===
+            managerTask.threadId,
+      ),
+    ).toBe(false);
+
+    releaseChild();
+    await waitUntil(async () =>
+      ["completed", "error", "canceled"].includes(
+        (await manager.getAgent(managerTask.threadId))?.status ?? "",
+      ),
+    );
+  });
+
   it("cascade-pauses children and never resurrects a paused manager on a late completion", async () => {
     const { manager, store, sentMessages } = createHarness();
     let releaseManagerFirst!: () => void;
