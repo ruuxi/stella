@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   AGENT_ORPHANED_RESTART_CANCEL_REASON,
+  isManagerStatusRequest,
   LocalAgentManager,
   sanitizeTaskToolArgsHint,
 } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
@@ -43,6 +44,29 @@ describe("task tool activity sanitization", () => {
     expect(hint).not.toContain("url-secret");
     expect(hint).not.toContain("debug");
     expect(hint).not.toContain("hidden");
+  });
+});
+
+describe("manager status request classification", () => {
+  it.each([
+    "Status?",
+    "Give me a status update, then continue.",
+    "Can you share a progress report?",
+    "What's the current status?",
+    "How is the work going?",
+    "Where do we stand?",
+    "Is the process still running?",
+  ])("recognizes a direct status poke: %s", (message) => {
+    expect(isManagerStatusRequest(message)).toBe(true);
+  });
+
+  it.each([
+    "Continue the planned process and finish it.",
+    "Resume and report the queued result.",
+    "Start stage two now.",
+    "Update the status field to done.",
+  ])("does not classify steering as a status poke: %s", (message) => {
+    expect(isManagerStatusRequest(message)).toBe(false);
   });
 });
 

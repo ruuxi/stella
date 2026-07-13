@@ -165,10 +165,12 @@ type RuntimeAgentRecord = {
   /** Resolves when the cloud task record has been created (or rejected). */
   cloudCreatePromise?: Promise<void>;
   parentAgentId?: string;
-  /** Parked manager whose next turn begins when a managed report arrives. */
+  /** Parked manager whose next turn begins when a managed report or input arrives. */
   waitingForManagedChildren?: boolean;
   /** A direct status/steering input should return an interim report upstream. */
   managerReportRequested?: boolean;
+  /** The current Manager turn is answering a direct status request. */
+  managerStatusRequested?: boolean;
   /** Monotonic ownership token for mutable executeTask attempts. */
   attemptGeneration: number;
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
@@ -687,6 +689,22 @@ export const AGENT_ORPHANED_RESTART_CANCEL_REASON =
 export const AGENT_PAUSE_CANCEL_REASON = "Paused by orchestrator.";
 export const DEFAULT_AGENT_ATTEMPT_TEARDOWN_TIMEOUT_MS = 5_000;
 
+export const isManagerStatusRequest = (message: string): boolean => {
+  const text = message.trim().toLowerCase();
+  if (!text) return false;
+  return [
+    /^(?:please\s+)?(?:give|send|provide|share|show|tell)\b.{0,80}\b(?:status|progress)(?:\s+(?:update|report))?\b/,
+    /^(?:can|could|would) (?:i|you)(?: please)?\b.{0,80}\b(?:status|progress)(?:\s+(?:update|report))?\b/,
+    /^(?:what(?:'s| is)|how(?:'s| is)) (?:the )?(?:current )?(?:status|progress)\b/,
+    /^(?:status|progress)(?:\s+(?:update|report))?\s*[?.!]*$/,
+    /\bhow(?:'s| is) (?:it|this|things|the (?:work|task|process)) going\b/,
+    /\bwhere (?:do we|do things|does (?:it|this|the (?:work|task|process))) stand\b/,
+    /\bwhat (?:are you|is (?:it|this|the (?:work|task|process))) doing (?:now|currently)\b/,
+    /\b(?:is|are) (?:it|this|you|the (?:work|task|process)) still (?:running|working|going|in progress)\b/,
+    /\bdid (?:it|this|the (?:work|task|process)) (?:crash|stall|hang|finish|complete)\b/,
+  ].some((pattern) => pattern.test(text));
+};
+
 const logWorkingIndicatorTrace = (
   label: string,
   payload: Record<string, unknown>,
@@ -787,20 +805,32 @@ export class LocalAgentManager implements AgentToolApi {
     const updateBlock = updates
       .map((text, index) => `${index + 1}. ${text}`)
       .join("\n");
+    const isManagerStatusTurn =
+      task.agentType === AGENT_IDS.MANAGER && task.managerStatusRequested;
+    const updateInstruction = isManagerStatusTurn
+      ? "Answer the status request for this turn, then yield. Preserve the underlying process and do not treat this status response as its completion; the runtime will keep the Manager active and resumable. Newer updates override conflicting earlier instructions."
+      : "Apply the orchestrator's message according to its intent. If it asks a question, requests status, or asks for a report, answer that request and then stop; do not continue the underlying task. If it gives new or changed work instructions, apply them and continue the task. Newer updates override conflicting earlier instructions.";
     if (task.turnCount === 0) {
       return [
         task.prompt,
         "Task updates from orchestrator:",
         updateBlock,
-        "Apply the orchestrator's message according to its intent. If it asks a question, requests status, or asks for a report, answer that request and then stop; do not continue the underlying task. If it gives new or changed work instructions, apply them and continue the task. Newer updates override conflicting earlier instructions.",
+        updateInstruction,
       ].join("\n\n");
     }
 
-    return [
-      "Task update from orchestrator:",
-      updateBlock,
-      "Your previous turn was paused so you can apply this update now. Follow the orchestrator's message according to its intent: if it asks a question, requests status, or asks for a report, answer that request and then stop; do not continue the underlying task. If it gives new or changed work instructions, apply them and continue the task. Newer updates override conflicting earlier instructions.",
-    ].join("\n\n");
+    return isManagerStatusTurn
+      ? [
+          "Task update from orchestrator:",
+          updateBlock,
+          "Your previous turn was paused so you can apply this update now.",
+          updateInstruction,
+        ].join("\n\n")
+      : [
+          "Task update from orchestrator:",
+          updateBlock,
+          "Your previous turn was paused so you can apply this update now. Follow the orchestrator's message according to its intent: if it asks a question, requests status, or asks for a report, answer that request and then stop; do not continue the underlying task. If it gives new or changed work instructions, apply them and continue the task. Newer updates override conflicting earlier instructions.",
+        ].join("\n\n");
   }
 
   private shouldDeliverFollowUp(task: RuntimeAgentRecord): boolean {
@@ -1087,6 +1117,8 @@ export class LocalAgentManager implements AgentToolApi {
     // (`sendAgentMessage` / `deliverFollowUpAsNextTurn`) re-set it right after.
     task.pendingStartIsFollowUp = undefined;
     task.waitingForManagedChildren = false;
+    task.managerReportRequested = false;
+    task.managerStatusRequested = false;
     if (!options?.preserveSelfModRun) {
       // A terminal pause/cancel closes the prior run in the runner's finally
       // path. The resumed ownership epoch must begin a new run rather than
@@ -1132,6 +1164,7 @@ export class LocalAgentManager implements AgentToolApi {
       pendingStartIsFollowUp: true,
       waitingForManagedChildren: false,
       managerReportRequested: false,
+      managerStatusRequested: false,
       attemptGeneration: Number.isFinite(record.attemptGeneration)
         ? Math.max(0, Math.floor(record.attemptGeneration))
         : 0,
@@ -1164,8 +1197,12 @@ export class LocalAgentManager implements AgentToolApi {
    */
   private deliverFollowUpAsNextTurn(task: RuntimeAgentRecord): void {
     const pendingStartStatusText = task.pendingStartStatusText;
+    const managerReportRequested = task.managerReportRequested;
+    const managerStatusRequested = task.managerStatusRequested;
     const prompt = this.buildTaskPrompt(task);
     this.resetTaskForNextAttempt(task, prompt, { preserveSelfModRun: true });
+    task.managerReportRequested = managerReportRequested;
+    task.managerStatusRequested = managerStatusRequested;
     // The superseded turn's boundary emitted no completion event (the
     // dispatch short-circuits into this delivery before the lifecycle
     // emit) — an interjection extends ongoing work, so only the continued
@@ -1671,14 +1708,18 @@ export class LocalAgentManager implements AgentToolApi {
       return;
     }
 
+    const managerStatusRequested = task.managerStatusRequested === true;
+    const managerMilestoneReported =
+      task.result?.trimStart().startsWith("[Milestone]") === true;
     if (
       task.agentType === AGENT_IDS.MANAGER &&
       task.status === "completed" &&
-      this.hasActiveManagedChildren(task.threadId)
+      (managerStatusRequested ||
+        managerMilestoneReported ||
+        this.hasActiveManagedChildren(task.threadId))
     ) {
       const shouldReportInterim =
-        task.managerReportRequested === true ||
-        task.result?.trimStart().startsWith("[Milestone]") === true;
+        task.managerReportRequested === true || managerMilestoneReported;
       if (shouldReportInterim) {
         this.opts.onAgentEvent?.({
           type: "agent-message",
@@ -1692,9 +1733,9 @@ export class LocalAgentManager implements AgentToolApi {
           result: task.result,
         });
       }
-      // A manager turn ending while children remain is a wait boundary, not
-      // completion. Keep its long-lived session and wake it when the next
-      // child report (or direct send_input) arrives.
+      // An explicitly interim Manager turn, or a turn ending while children
+      // remain, is a wait boundary rather than completion. Keep its long-lived
+      // session and wake it on the next child report or direct send_input.
       task.status = "pending";
       task.completedAt = null;
       task.result = undefined;
@@ -1702,6 +1743,7 @@ export class LocalAgentManager implements AgentToolApi {
       task.controller = new AbortController();
       task.waitingForManagedChildren = true;
       task.managerReportRequested = false;
+      task.managerStatusRequested = false;
       task.terminalEventEmitted = false;
       this.persistTask(task);
       return;
@@ -1878,6 +1920,7 @@ export class LocalAgentManager implements AgentToolApi {
       terminalEventEmitted: false,
       waitingForManagedChildren: false,
       managerReportRequested: false,
+      managerStatusRequested: false,
       attemptGeneration: 0,
     };
     logWorkingIndicatorTrace("[stella:working-indicator:create-agent]", {
@@ -2325,12 +2368,14 @@ export class LocalAgentManager implements AgentToolApi {
       if (options?.parentAgentId) {
         resumedTask.parentAgentId = options.parentAgentId;
       }
-      if (
+      resumedTask.managerStatusRequested =
         resumedTask.agentType === AGENT_IDS.MANAGER &&
-        options?.deliveryKind === "external-input"
-      ) {
-        resumedTask.managerReportRequested = true;
-      }
+        persisted.status === "running" &&
+        options?.deliveryKind === "external-input" &&
+        isManagerStatusRequest(text);
+      resumedTask.managerReportRequested =
+        resumedTask.agentType === AGENT_IDS.MANAGER &&
+        options?.deliveryKind === "external-input";
       if (followUpDescription) {
         resumedTask.description = followUpDescription;
       }
@@ -2367,6 +2412,9 @@ export class LocalAgentManager implements AgentToolApi {
       options?.deliveryKind === "external-input"
     ) {
       task.managerReportRequested = true;
+      if (task.status === "pending" || task.status === "running") {
+        task.managerStatusRequested = isManagerStatusRequest(text);
+      }
     }
     if (task.waitingForManagedChildren && task.status === "pending") {
       task.toSubagentQueue.push(deliveredInput);

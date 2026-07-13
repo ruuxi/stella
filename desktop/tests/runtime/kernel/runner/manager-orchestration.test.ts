@@ -224,7 +224,13 @@ describe("manager orchestration production routing", () => {
         if (managerPrompts.length === 2) {
           return { runId: "manager-2", result: "Status: child still running." };
         }
-        return { runId: "manager-3", result: "Final consolidated report." };
+        if (managerPrompts.length === 3) {
+          return {
+            runId: "manager-3",
+            result: "Steering acknowledged; child still running.",
+          };
+        }
+        return { runId: "manager-4", result: "Final consolidated report." };
       }
       await childGate;
       return { runId: "child-1", result: "Child finished cleanly." };
@@ -271,6 +277,9 @@ describe("manager orchestration production routing", () => {
       },
     });
     expect(interim?.text).toContain("Status: child still running.");
+    expect(managerPrompts[1]).toContain(
+      "do not treat this status response as its completion",
+    );
     expect((await manager.getAgent(managerTask.threadId))?.status).toBe(
       "running",
     );
@@ -297,14 +306,40 @@ describe("manager orchestration production routing", () => {
       ),
     ).toBe(false);
 
+    await manager.sendAgentMessage(
+      managerTask.threadId,
+      "Prioritize the child's verification, then finish normally.",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+    await waitUntil(() =>
+      sentMessages.some((message) =>
+        message.text.includes("Steering acknowledged; child still running."),
+      ),
+    );
+    expect(managerPrompts[2]).not.toContain(
+      "do not treat this status response as its completion",
+    );
+    expect((await manager.getAgent(managerTask.threadId))?.status).toBe(
+      "running",
+    );
+    expect(
+      appendedEvents.some(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string })?.agentId ===
+            managerTask.threadId,
+      ),
+    ).toBe(false);
+
     releaseChild();
     await waitUntil(async () =>
       ["completed", "error", "canceled"].includes(
         (await manager.getAgent(managerTask.threadId))?.status ?? "",
       ),
     );
-    expect(managerPrompts[2]).toContain("newly persisted managed-child event");
-    expect(historyText(managerRuns[2]!)).toContain("Child finished cleanly.");
+    expect(managerPrompts[3]).toContain("newly persisted managed-child event");
+    expect(historyText(managerRuns[3]!)).toContain("Child finished cleanly.");
     expect(
       appendedEvents.some(
         (event) =>
@@ -321,6 +356,266 @@ describe("manager orchestration production routing", () => {
             managerTask.threadId,
       ),
     ).toHaveLength(1);
+    expect(managerRuns).toHaveLength(4);
+  });
+
+  it("keeps a status poke before the first child non-terminal and resumes exactly once", async () => {
+    const { manager, store, appendedEvents, sentMessages } = createHarness();
+    const managerRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      managerRuns.push(args);
+      if (managerRuns.length === 1) {
+        await waitForAbort(args.abortSignal);
+        return { runId: "planning-interrupted", result: "", interrupted: true };
+      }
+      if (managerRuns.length === 2) {
+        return {
+          runId: "planning-status",
+          result: "Status: planning is underway; no child has started yet.",
+        };
+      }
+      return {
+        runId: "planning-final",
+        result: "Planning resumed and the process finished.",
+      };
+    };
+
+    const task = await manager.createAgent({
+      conversationId: "conversation-planning-status",
+      description: "Plan managed work",
+      prompt: "Plan the process before spawning the first child.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await waitUntil(() => managerRuns.length === 1);
+    await manager.sendAgentMessage(
+      task.threadId,
+      "How is the work going?",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+    await waitUntil(() =>
+      sentMessages.some((message) =>
+        message.text.includes("planning is underway; no child has started"),
+      ),
+    );
+
+    expect(managerRuns[1]?.userPrompt).toContain("How is the work going?");
+    expect(managerRuns[1]?.userPrompt).toContain(
+      "do not treat this status response as its completion",
+    );
+    expect((await manager.getAgent(task.threadId))?.status).toBe("running");
+    expect(store.getAgentRecord(task.threadId)?.status).toBe("running");
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string })?.agentId === task.threadId,
+      ),
+    ).toHaveLength(0);
+
+    await manager.sendAgentMessage(
+      task.threadId,
+      "Continue the planned process and finish it.",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(task.threadId))?.status === "completed",
+    );
+    expect(managerRuns).toHaveLength(3);
+    expect(managerRuns[2]?.userPrompt).toContain(
+      "Continue the planned process and finish it.",
+    );
+    expect(managerRuns[2]?.userPrompt).not.toContain(
+      "do not treat this status response as its completion",
+    );
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string })?.agentId === task.threadId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("keeps a between-stage status poke non-terminal with no active child", async () => {
+    const { manager, store, appendedEvents, sentMessages } = createHarness();
+    let releaseManagerFirst!: () => void;
+    const managerFirstGate = new Promise<void>((resolve) => {
+      releaseManagerFirst = resolve;
+    });
+    let releaseStageOne!: () => void;
+    const stageOneGate = new Promise<void>((resolve) => {
+      releaseStageOne = resolve;
+    });
+    const managerRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      if (args.agentType !== AGENT_IDS.MANAGER) {
+        await stageOneGate;
+        return { runId: "stage-one", result: "Stage one finished." };
+      }
+      managerRuns.push(args);
+      if (managerRuns.length === 1) {
+        await managerFirstGate;
+        return {
+          runId: "between-stage-wait",
+          result: "Waiting for stage one.",
+        };
+      }
+      if (managerRuns.length === 2) {
+        await waitForAbort(args.abortSignal);
+        return {
+          runId: "between-stage-interrupted",
+          result: "",
+          interrupted: true,
+        };
+      }
+      if (managerRuns.length === 3) {
+        return {
+          runId: "between-stage-status",
+          result: "Status: stage one finished; stage two has not started.",
+        };
+      }
+      return {
+        runId: "between-stage-final",
+        result: "Stage two completed and the process settled.",
+      };
+    };
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conversation-between-stage",
+      description: "Coordinate two stages",
+      prompt: "Run stage one, then stage two, then report.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await manager.createAgent({
+      conversationId: "conversation-between-stage",
+      description: "Run stage one",
+      prompt: "Complete stage one.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+    releaseManagerFirst();
+    await waitUntil(
+      () =>
+        managerRuns.length === 1 &&
+        !hasInFlightAttempt(manager, managerTask.threadId),
+    );
+    releaseStageOne();
+    await waitUntil(() => managerRuns.length === 2);
+    await manager.sendAgentMessage(
+      managerTask.threadId,
+      "Where do we stand?",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+    await waitUntil(() =>
+      sentMessages.some((message) =>
+        message.text.includes("stage one finished; stage two has not started"),
+      ),
+    );
+
+    expect(managerRuns[2]?.userPrompt).toContain("Where do we stand?");
+    expect((await manager.getAgent(managerTask.threadId))?.status).toBe(
+      "running",
+    );
+    expect(store.getAgentRecord(managerTask.threadId)?.status).toBe("running");
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string })?.agentId ===
+            managerTask.threadId,
+      ),
+    ).toHaveLength(0);
+
+    await manager.sendAgentMessage(
+      managerTask.threadId,
+      "Continue with stage two and finish.",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(managerTask.threadId))?.status === "completed",
+    );
+    expect(managerRuns).toHaveLength(4);
+    expect(managerRuns[3]?.userPrompt).toContain(
+      "Continue with stage two and finish.",
+    );
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string })?.agentId ===
+            managerTask.threadId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("keeps post-completion status input on the existing terminal follow-up path", async () => {
+    const { manager, appendedEvents, sentMessages } = createHarness();
+    const managerRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      managerRuns.push(args);
+      return managerRuns.length === 1
+        ? { runId: "terminal-first", result: "Original process complete." }
+        : {
+            runId: "terminal-status-follow-up",
+            result: "Status: the original process was already complete.",
+          };
+    };
+
+    const task = await manager.createAgent({
+      conversationId: "conversation-terminal-status",
+      description: "Complete managed work",
+      prompt: "Complete the managed work now.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(task.threadId))?.status === "completed",
+    );
+    await manager.sendAgentMessage(
+      task.threadId,
+      "Give me a status update.",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+    await waitUntil(() => managerRuns.length === 2);
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(task.threadId))?.status === "completed",
+    );
+
+    expect(managerRuns[1]?.userPrompt).toContain("Give me a status update.");
+    expect(managerRuns[1]?.userPrompt).not.toContain(
+      "do not treat this status response as its completion",
+    );
+    expect(
+      sentMessages.some(
+        (message) =>
+          message.customType === "runtime.task_update" &&
+          message.text.includes("already complete"),
+      ),
+    ).toBe(false);
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string })?.agentId === task.threadId,
+      ),
+    ).toHaveLength(2);
   });
 
   it("publishes an instructed sentinel-prefixed milestone without completing the manager", async () => {
