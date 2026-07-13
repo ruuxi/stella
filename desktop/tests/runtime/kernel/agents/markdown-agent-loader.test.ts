@@ -38,9 +38,13 @@ describe("loadParsedAgentsFromDir", () => {
     expect(
       manager?.systemPrompt.startsWith("You are Stella's Manager agent"),
     ).toBe(true);
-    expect(manager?.systemPrompt).toContain(
-      "Every review round must use a brand-new reviewer agent",
-    );
+    const prompt = manager?.systemPrompt ?? "";
+    expect(prompt).toMatch(/\bdynamic\b[\s\S]*\bprocess supervisor\b/i);
+    expect(prompt).toMatch(/\bopen-ended\b/i);
+    expect(prompt).toMatch(/\bcontinuity\b/i);
+    expect(prompt).toMatch(/\bfresh independent context\b/i);
+    expect(prompt).toMatch(/orchestrator(?:'s)? instructions/i);
+    expect(prompt).not.toMatch(/brand-new[\s-]+(?:fresh-context )?reviewer/i);
   });
 
   it("loads agents when given a directory string path", () => {

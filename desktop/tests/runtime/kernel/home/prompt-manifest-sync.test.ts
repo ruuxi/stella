@@ -411,17 +411,16 @@ describe("remote prompt startup sync", () => {
     const fallbackManager = loadParsedAgentsFromDir(
       path.join(home, "agents"),
     ).find((agent) => agent.id === "manager");
+    const fallbackPrompt = fallbackManager?.systemPrompt ?? "";
     expect(fallbackManager?.toolsAllowlist).toEqual([
       "spawn_agent",
       "send_input",
       "pause_agent",
     ]);
-    expect(fallbackManager?.systemPrompt).toContain(
-      "The orchestrator's prompt is your plan and goal",
-    );
-    expect(fallbackManager?.systemPrompt).toContain(
-      "brand-new fresh-context reviewer for every review round",
-    );
+    expect(fallbackPrompt).toMatch(/\bopen-ended\b/i);
+    expect(fallbackPrompt).toMatch(/\bcontinuity\b/i);
+    expect(fallbackPrompt).toMatch(/\bfresh independent context\b/i);
+    expect(fallbackPrompt).toMatch(/orchestrator(?:'s)? instructions/i);
     await expect(
       readFile(path.join(home, "agents/general.md"), "utf-8"),
     ).resolves.toBe(`${agentFrontmatter("general")}legacy general\n`);
