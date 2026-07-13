@@ -170,6 +170,16 @@ describe("orchestrator direct tool surface", () => {
         "One short, user-friendly sentence summarizing what this work is about.",
     });
     expect(
+      Object.keys(
+        (sendInputTool?.parameters.properties as Record<string, unknown>) ?? {},
+      ),
+    ).toEqual(["thread_id", "description", "message"]);
+    expect(sendInputTool?.parameters.required).toEqual([
+      "thread_id",
+      "description",
+      "message",
+    ]);
+    expect(
       sendInputTool?.parameters.required as string[] | undefined,
     ).toContain("description");
 
