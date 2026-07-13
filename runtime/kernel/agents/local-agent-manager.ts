@@ -169,6 +169,8 @@ type RuntimeAgentRecord = {
   waitingForManagedChildren?: boolean;
   /** A direct status/steering input should return an interim report upstream. */
   managerReportRequested?: boolean;
+  /** Child reports received while a manager is paused; delivered on user resume. */
+  deferredManagerEvents: string[];
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
   recentActivity: string[];
   /**
@@ -277,6 +279,7 @@ export type AgentLifecycleEvent = {
     | "agent-completed"
     | "agent-failed"
     | "agent-canceled"
+    | "agent-message"
     | "agent-progress";
   conversationId: string;
   rootRunId?: string;
@@ -692,6 +695,7 @@ export class LocalAgentManager implements AgentToolApi {
   private readonly tasks = new Map<string, RuntimeAgentRecord>();
   private readonly pendingQueue: string[] = [];
   private runningCount = 0;
+  private readonly cancelCascadeInProgress = new Set<string>();
   private readonly activeFsLocks: FsLock[] = [];
   private readonly fsLockWaiters: Array<() => void> = [];
   /**
@@ -868,25 +872,112 @@ export class LocalAgentManager implements AgentToolApi {
     );
   }
 
+  private getAgentState(
+    threadId: string,
+  ): RuntimeAgentRecord | PersistedAgentRecord | null {
+    return (
+      this.tasks.get(threadId) ?? this.opts.getAgentRecord?.(threadId) ?? null
+    );
+  }
+
+  private isExplicitlyPaused(
+    task: RuntimeAgentRecord | PersistedAgentRecord | null,
+  ): boolean {
+    return (
+      task?.status === "canceled" && task.error === AGENT_PAUSE_CANCEL_REASON
+    );
+  }
+
+  private wouldCreateParentCycle(
+    threadId: string,
+    parentAgentId: string,
+  ): boolean {
+    const visited = new Set<string>();
+    let cursor: string | undefined = parentAgentId;
+    while (cursor) {
+      if (cursor === threadId) return true;
+      if (visited.has(cursor)) return true;
+      visited.add(cursor);
+      cursor = this.getAgentState(cursor)?.parentAgentId;
+    }
+    return false;
+  }
+
   async adoptAgent(
     threadId: string,
     parentAgentId: string,
   ): Promise<{ adopted: boolean; reason?: string }> {
-    if (!this.isManagerThread(parentAgentId)) {
+    if (threadId === parentAgentId) {
+      return { adopted: false, reason: "A manager cannot adopt itself." };
+    }
+    const manager = this.getAgentState(parentAgentId);
+    if (!manager || manager.agentType !== AGENT_IDS.MANAGER) {
       return { adopted: false, reason: `Manager not found: ${parentAgentId}` };
     }
+    if (manager.status !== "pending" && manager.status !== "running") {
+      return {
+        adopted: false,
+        reason: "A paused or finished manager cannot adopt threads.",
+      };
+    }
+    const target = this.getAgentState(threadId);
+    if (!target) {
+      return { adopted: false, reason: `Thread not found: ${threadId}` };
+    }
+    if (target.agentType === AGENT_IDS.MANAGER) {
+      return {
+        adopted: false,
+        reason: "Managers cannot adopt other managers.",
+      };
+    }
+    if (target.conversationId !== manager.conversationId) {
+      return {
+        adopted: false,
+        reason: "A manager cannot adopt a thread from another conversation.",
+      };
+    }
+    if (this.wouldCreateParentCycle(threadId, parentAgentId)) {
+      return {
+        adopted: false,
+        reason: "Adoption would create a parent cycle.",
+      };
+    }
+
+    const existingParentId = target.parentAgentId;
+    if (existingParentId === parentAgentId) {
+      return { adopted: true };
+    }
+    if (existingParentId) {
+      const existingParent = this.getAgentState(existingParentId);
+      if (
+        !this.isExplicitlyPaused(existingParent) ||
+        !this.isExplicitlyPaused(target)
+      ) {
+        return {
+          adopted: false,
+          reason: `Thread is already owned by manager ${existingParentId}; pause that manager before transferring ownership.`,
+        };
+      }
+    } else if (
+      target.status === "completed" ||
+      target.status === "error" ||
+      target.status === "canceled"
+    ) {
+      return {
+        adopted: false,
+        reason:
+          "A terminal thread cannot be adopted after its completion was routed.",
+      };
+    }
+
     const task = this.tasks.get(threadId);
     if (task) {
       task.parentAgentId = parentAgentId;
       this.persistTask(task);
       return { adopted: true };
     }
-    const record = this.opts.getAgentRecord?.(threadId);
-    if (!record) {
-      return { adopted: false, reason: `Thread not found: ${threadId}` };
-    }
     this.opts.saveAgentRecord?.({
-      ...record,
+      ...(target as PersistedAgentRecord),
       parentAgentId,
       updatedAt: Date.now(),
     });
@@ -954,6 +1045,7 @@ export class LocalAgentManager implements AgentToolApi {
       pendingStartIsFollowUp: true,
       waitingForManagedChildren: false,
       managerReportRequested: false,
+      deferredManagerEvents: [],
     };
   }
 
@@ -1350,7 +1442,7 @@ export class LocalAgentManager implements AgentToolApi {
         task.result?.trimStart().startsWith("[Milestone]") === true;
       if (shouldReportInterim) {
         this.opts.onAgentEvent?.({
-          type: "agent-completed",
+          type: "agent-message",
           conversationId: task.conversationId,
           rootRunId: task.rootRunId,
           agentId: task.threadId,
@@ -1542,6 +1634,7 @@ export class LocalAgentManager implements AgentToolApi {
       terminalEventEmitted: false,
       waitingForManagedChildren: false,
       managerReportRequested: false,
+      deferredManagerEvents: [],
     };
     logWorkingIndicatorTrace("[stella:working-indicator:create-agent]", {
       threadId,
@@ -1681,6 +1774,44 @@ export class LocalAgentManager implements AgentToolApi {
    * already-persisted members are covered too; cancelAgent is a no-op
    * for members that already reached a terminal status.
    */
+  private listActiveManagedChildThreadIds(managerThreadId: string): string[] {
+    const threadIds = new Set<string>();
+    for (const task of this.tasks.values()) {
+      if (
+        task.parentAgentId === managerThreadId &&
+        (task.status === "pending" || task.status === "running")
+      ) {
+        threadIds.add(task.threadId);
+      }
+    }
+    for (const record of this.opts.listAgentRecordsByStatus?.("running") ??
+      []) {
+      if (record.parentAgentId === managerThreadId) {
+        threadIds.add(record.threadId);
+      }
+    }
+    return [...threadIds];
+  }
+
+  private async cascadeCancelManagedChildren(
+    managerThreadId: string,
+    reason?: string,
+  ): Promise<void> {
+    // Old persisted data may contain manager cycles from before adoption was
+    // guarded. Keep pause durable without recursively walking such a cycle.
+    if (this.cancelCascadeInProgress.has(managerThreadId)) return;
+    this.cancelCascadeInProgress.add(managerThreadId);
+    try {
+      for (const childThreadId of this.listActiveManagedChildThreadIds(
+        managerThreadId,
+      )) {
+        await this.cancelAgent(childThreadId, reason);
+      }
+    } finally {
+      this.cancelCascadeInProgress.delete(managerThreadId);
+    }
+  }
+
   async cancelGroup(
     groupKey: string,
     reason?: string,
@@ -1766,6 +1897,9 @@ export class LocalAgentManager implements AgentToolApi {
         local.status === "error" ||
         local.status === "canceled"
       ) {
+        if (local.agentType === AGENT_IDS.MANAGER) {
+          await this.cascadeCancelManagedChildren(agentId, reason);
+        }
         return { canceled: true };
       }
       const previousStatus = local.status;
@@ -1824,6 +1958,9 @@ export class LocalAgentManager implements AgentToolApi {
         local.terminalEventEmitted = true;
       }
       this.persistTask(local);
+      if (local.agentType === AGENT_IDS.MANAGER) {
+        await this.cascadeCancelManagedChildren(agentId, local.error);
+      }
       if (local.storageMode === "cloud" && local.cloudAgentId) {
         await this.opts.cancelCloudAgentRecord(local.cloudAgentId, local.error);
       }
@@ -1839,6 +1976,9 @@ export class LocalAgentManager implements AgentToolApi {
           error: reason ?? "Canceled",
           updatedAt: Date.now(),
         });
+      }
+      if (persisted.agentType === AGENT_IDS.MANAGER) {
+        await this.cascadeCancelManagedChildren(agentId, reason ?? "Canceled");
       }
       return { canceled: true };
     }
@@ -1889,6 +2029,19 @@ export class LocalAgentManager implements AgentToolApi {
           reason: `${agentId} is a workflow and cannot take send_input. Start a new workflow (or spawn_agent) for follow-up work.`,
         };
       }
+      if (
+        options?.deliveryKind === "manager-event" &&
+        persisted.agentType === AGENT_IDS.MANAGER &&
+        (persisted.status === "completed" ||
+          persisted.status === "error" ||
+          persisted.status === "canceled")
+      ) {
+        // The orchestration layer already persisted this child report into
+        // the manager thread. Internal events may wake a waiting manager, but
+        // they must never resurrect one the user paused or that already
+        // finished. A later external send_input rehydrates the durable report.
+        return { delivered: true };
+      }
       // Re-activate the durable thread row (and its whole group) so the
       // resumed work re-enters the active slot budget and reappears under
       // "Other Threads" — without this, an evicted thread keeps running
@@ -1924,6 +2077,31 @@ export class LocalAgentManager implements AgentToolApi {
         timestamp: Date.now(),
       });
       this.enqueueTask(resumedTask);
+      return { delivered: true };
+    }
+    if (
+      options?.deliveryKind === "manager-event" &&
+      task.agentType === AGENT_IDS.MANAGER &&
+      (task.status === "completed" ||
+        task.status === "error" ||
+        task.status === "canceled")
+    ) {
+      task.deferredManagerEvents.push(text);
+      if (
+        task.deferredManagerEvents.length > LocalAgentManager.MAX_QUEUE_MESSAGES
+      ) {
+        task.deferredManagerEvents.splice(
+          0,
+          task.deferredManagerEvents.length -
+            LocalAgentManager.MAX_QUEUE_MESSAGES,
+        );
+      }
+      task.messageLog.push({
+        from,
+        text: truncate(text, 500),
+        timestamp: Date.now(),
+      });
+      this.persistTask(task);
       return { delivered: true };
     }
     if (options?.parentAgentId) {
@@ -1982,7 +2160,10 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: task.agentType,
         threadId: task.threadId,
       });
+      const deferredManagerEvents = [...task.deferredManagerEvents];
       this.resetTaskForNextAttempt(task, text);
+      task.toSubagentQueue.push(...deferredManagerEvents);
+      task.deferredManagerEvents.length = 0;
       task.pendingStartStatusText = updateStatusText;
       // Re-activating a terminal thread is a `send_input` follow-up.
       task.pendingStartIsFollowUp = true;

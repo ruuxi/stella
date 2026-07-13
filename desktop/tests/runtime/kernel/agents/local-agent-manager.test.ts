@@ -156,6 +156,7 @@ describe("manager agent orchestration", () => {
   });
 
   it("adopts an existing thread and answers a mid-flight status poke without abandoning the work", async () => {
+    const upstreamManagerMessages: string[] = [];
     const upstreamManagerResults: string[] = [];
     const managerPrompts: string[] = [];
     let releaseManagerFirst!: () => void;
@@ -209,6 +210,12 @@ describe("manager agent orchestration", () => {
           return;
         }
         if (
+          event.type === "agent-message" &&
+          event.agentType === AGENT_IDS.MANAGER
+        ) {
+          upstreamManagerMessages.push(event.result ?? "");
+        }
+        if (
           event.type === "agent-completed" &&
           event.agentType === AGENT_IDS.MANAGER
         ) {
@@ -249,21 +256,19 @@ describe("manager agent orchestration", () => {
       "orchestrator",
       { deliveryKind: "external-input" },
     );
-    while (upstreamManagerResults.length < 1) {
+    while (upstreamManagerMessages.length < 1) {
       await sleep(5);
     }
-    expect(upstreamManagerResults).toEqual([
+    expect(upstreamManagerMessages).toEqual([
       "Status: adopted verification is still running.",
     ]);
+    expect(upstreamManagerResults).toEqual([]);
 
     releaseChild();
     await waitForAgentSettled(manager, existingTask.threadId);
     await waitForAgentSettled(manager, managerTask.threadId);
     expect(managerPrompts[2]).toContain("Adopted thread finished clean.");
-    expect(upstreamManagerResults).toEqual([
-      "Status: adopted verification is still running.",
-      "Final adopted-thread report.",
-    ]);
+    expect(upstreamManagerResults).toEqual(["Final adopted-thread report."]);
   });
 });
 

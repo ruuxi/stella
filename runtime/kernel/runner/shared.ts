@@ -95,6 +95,7 @@ export const buildAgentEventPrompt = (
   options?: { recipient?: "orchestrator" | "manager" },
 ): string | null => {
   if (
+    event.type !== "agent-message" &&
     event.type !== "agent-completed" &&
     event.type !== "agent-failed" &&
     event.type !== "agent-canceled"
@@ -103,7 +104,12 @@ export const buildAgentEventPrompt = (
   }
 
   const lines: string[] = [];
-  if (event.type === "agent-completed") {
+  if (event.type === "agent-message") {
+    lines.push("[Agent update]");
+    if (event.description) {
+      lines.push(`description: ${event.description}`);
+    }
+  } else if (event.type === "agent-completed") {
     lines.push("[Agent completed]");
     if (event.description) {
       lines.push(`description: ${event.description}`);
@@ -116,7 +122,11 @@ export const buildAgentEventPrompt = (
 
   if (event.agentId) lines.push(`thread_id: ${event.agentId}`);
   if (event.agentType) lines.push(`agent_type: ${event.agentType}`);
-  if (event.type !== "agent-completed" && event.description) {
+  if (
+    event.type !== "agent-message" &&
+    event.type !== "agent-completed" &&
+    event.description
+  ) {
     lines.push(`description: ${event.description}`);
   }
   if (
@@ -132,6 +142,9 @@ export const buildAgentEventPrompt = (
     // end-of-task report (the "what changed / outcome / blockers" section),
     // which makes the orchestrator relay false "done" summaries to the user.
     lines.push(`result: ${event.result}`);
+  }
+  if (event.type === "agent-message" && event.result) {
+    lines.push(`message: ${event.result}`);
   }
   if (event.type === "agent-completed" && event.fileChanges?.length) {
     lines.push("explicit file changes:");
@@ -184,6 +197,15 @@ export const buildAgentEventPrompt = (
     return [
       "<system_reminder>",
       "A managed child reached a terminal state. This report is for process coordination, not an automatic upstream update. Continue the instructed process and follow the manager reporting rules.",
+      "</system_reminder>",
+      "",
+      ...lines,
+    ].join("\n");
+  }
+  if (event.type === "agent-message") {
+    return [
+      "<system_reminder>",
+      "A running manager sent a non-terminal update. Relay the update to the user without treating the manager or its work as completed.",
       "</system_reminder>",
       "",
       ...lines,

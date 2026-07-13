@@ -324,6 +324,13 @@ const buildLifecycleEventPayload = (
           : {}),
         ...groupFields,
       };
+    case "agent-message":
+      return {
+        agentId: event.agentId,
+        ...runFields,
+        result: event.result ?? "",
+        ...(event.description ? { description: event.description } : {}),
+      };
     case "agent-failed":
     case "agent-canceled":
       return {
@@ -425,7 +432,7 @@ export const createAgentOrchestration = (
       // below but are never persisted — thread state lives in
       // `runtime_agents` (see `listThreadActivity`), and persisting every
       // tick grew the message table without bound.
-      if (event.type !== "agent-progress") {
+      if (event.type !== "agent-progress" && event.type !== "agent-message") {
         appendAgentLifecycleChatEvent(context, event);
       }
       if (event.rootRunId) {
@@ -464,9 +471,12 @@ export const createAgentOrchestration = (
     }
     // The follow-up below is in-memory delivery for the active orchestrator
     // session; this row is the durable record read by the next history rebuild.
+    const isInterimMessage = event.type === "agent-message";
     persistThreadCustomMessage(context.runtimeStore, {
       threadKey: resolveOrchestratorThreadKey(event.conversationId),
-      customType: "runtime.task_lifecycle",
+      customType: isInterimMessage
+        ? "runtime.task_update"
+        : "runtime.task_lifecycle",
       content: [{ type: "text", text: userPrompt }],
       display: false,
       timestamp: Date.now(),
@@ -478,7 +488,9 @@ export const createAgentOrchestration = (
       agentType: AGENT_IDS.ORCHESTRATOR,
       deliverAs: "followUp",
       callbackRunId: event.rootRunId,
-      customType: "runtime.task_lifecycle",
+      customType: isInterimMessage
+        ? "runtime.task_update"
+        : "runtime.task_lifecycle",
       display: false,
       responseTarget: createAgentLifecycleResponseTarget({
         agentId: event.agentId,

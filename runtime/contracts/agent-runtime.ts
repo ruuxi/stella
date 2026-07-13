@@ -413,6 +413,8 @@ export const AGENT_STREAM_EVENT_TYPES = {
   TOOL_END: "tool-end",
   AGENT_STARTED: "agent-started",
   AGENT_PROGRESS: "agent-progress",
+  /** Non-terminal manager report; not part of task lifecycle persistence. */
+  AGENT_MESSAGE: "agent-message",
   AGENT_COMPLETED: "agent-completed",
   AGENT_FAILED: "agent-failed",
   AGENT_CANCELED: "agent-canceled",

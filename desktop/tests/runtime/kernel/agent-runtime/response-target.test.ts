@@ -93,6 +93,18 @@ describe("task lifecycle response targets", () => {
     });
   });
 
+  it("keeps interim manager messages non-terminal", () => {
+    expect(
+      createAgentLifecycleResponseTarget({
+        agentId: "manager-1",
+        eventType: "agent-message",
+      }),
+    ).toEqual({
+      type: "agent_turn",
+      agentId: "manager-1",
+    });
+  });
+
   it("routes failed and canceled task follow-ups back into the task turn", () => {
     expect(
       createAgentLifecycleResponseTarget({

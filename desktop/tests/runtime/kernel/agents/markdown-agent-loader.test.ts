@@ -35,6 +35,9 @@ describe("loadParsedAgentsFromDir", () => {
       "pause_agent",
     ]);
     expect(manager?.maxAgentDepth).toBe(2);
+    expect(
+      manager?.systemPrompt.startsWith("You are Stella's Manager agent"),
+    ).toBe(true);
     expect(manager?.systemPrompt).toContain(
       "Every review round must use a brand-new reviewer agent",
     );
