@@ -6,6 +6,14 @@ export const MAX_NODE_REPL_PROTOCOL_MESSAGE_BYTES = 4 * 1024 * 1024;
 export const MAX_NODE_REPL_PENDING_SKY_CALLS = 64;
 export const MAX_NODE_REPL_PENDING_BROWSER_CALLS = 64;
 export const MAX_NODE_REPL_PENDING_TOOL_CALLS = 64;
+/**
+ * How long an evaluation waits, after the cell's own code finishes, for
+ * nested `tools.*` calls the cell started without awaiting. A nested call
+ * that never settles (wedged bridge, dead transport) must fail the
+ * evaluation with a diagnosis instead of holding the tool call open until
+ * the whole-kernel eval timeout kills the REPL (or forever).
+ */
+export const DEFAULT_NODE_REPL_TOOL_DRAIN_TIMEOUT_MS = 60_000;
 
 export type SkyMethod = keyof SkyClient;
 export type BrowserMethod = "command" | "chain";
@@ -25,6 +33,7 @@ export type NodeReplWorkerData = {
   maxPendingSkyCalls: number;
   maxPendingBrowserCalls: number;
   maxPendingToolCalls: number;
+  maxToolDrainWaitMs: number;
   toolNames: string[];
 };
 

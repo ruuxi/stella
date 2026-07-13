@@ -237,6 +237,63 @@ describe("node_repl tool", () => {
     }
   });
 
+  it("fails in bounded time with a diagnosis when an unawaited nested tool never settles, keeping the kernel alive", async () => {
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: () => ({ request: async () => ({}) }),
+      // Never settles: simulates a nested call wedged on a dead transport.
+      executeTool: () => new Promise(() => {}),
+      toolDrainTimeoutMs: 250,
+    });
+    try {
+      const startedAt = Date.now();
+      await expect(
+        registry.evaluate(
+          `var probe = 41; tools.fake_tool({}); "cell done"`,
+          context,
+        ),
+      ).rejects.toThrow(
+        /never settled within 250ms: tools\.fake_tool/,
+      );
+      expect(Date.now() - startedAt).toBeLessThan(5_000);
+      // The drain timeout must not kill the kernel: REPL state survives.
+      await expect(registry.evaluate(`probe + 1`, context)).resolves.toBe(
+        "42",
+      );
+    } finally {
+      await registry.dispose();
+    }
+  });
+
+  it("rejects with the eval timeout instead of hanging when an awaited browser call and its dispose never settle", async () => {
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: () => ({ request: async () => ({}) }),
+      // Wedged bridge: commands and teardown never settle (observed with a
+      // hung Brave extension bridge on 2026-07-12).
+      browserSessionFactory: () =>
+        ({
+          command: () => new Promise(() => {}),
+          chain: () => new Promise(() => {}),
+          dispose: () => new Promise(() => {}),
+        }) as never,
+      evalTimeoutMs: 300,
+      disposeTimeoutMs: 200,
+    });
+    try {
+      const startedAt = Date.now();
+      await expect(
+        registry.evaluate(`await browser.tabs.list()`, context),
+      ).rejects.toThrow("Node REPL timed out after 300ms.");
+      expect(Date.now() - startedAt).toBeLessThan(5_000);
+      // The wedged kernel was dropped; a follow-up evaluate gets a fresh
+      // kernel instead of queueing behind the dead one.
+      await expect(
+        registry.evaluate(`1 + 1`, context, { timeoutMs: 2_000 }),
+      ).resolves.toBe("2");
+    } finally {
+      await registry.dispose();
+    }
+  });
+
   it("hoists nested tool file tracking onto the node_repl result", async () => {
     const registry = new NodeReplKernelRegistry({
       sessionFactory: () => ({ request: async () => ({}) }),

@@ -32,6 +32,7 @@ import {
 import { createNodeReplWorkerSource } from "./kernel-worker.js";
 import type { ComputerUseSession } from "./session.js";
 import {
+  DEFAULT_NODE_REPL_TOOL_DRAIN_TIMEOUT_MS,
   MAX_NODE_REPL_CODE_BYTES,
   MAX_NODE_REPL_OUTPUT_BYTES,
   MAX_NODE_REPL_PENDING_BROWSER_CALLS,
@@ -48,6 +49,16 @@ import {
 const DEFAULT_EVAL_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 4 * 60 * 60_000;
+/**
+ * Upper bound on kernel/session teardown awaited inside the evaluate error
+ * path. Disposal can touch the browser bridge (close_owner) and the
+ * computer-use session daemon; if either is wedged, an unbounded await here
+ * holds the evaluation's own timeout rejection hostage and the node_repl
+ * tool call never returns (observed 2026-07-12: a hung Brave extension
+ * bridge turned a 5-minute eval timeout into an indefinite tool hang).
+ * Teardown keeps running in the background past this bound.
+ */
+const DEFAULT_KERNEL_DISPOSE_TIMEOUT_MS = 10_000;
 
 export type NodeReplMetadata = Readonly<{
   cwd: string;
@@ -71,6 +82,13 @@ export type NodeReplKernelManagerOptions = {
   evalTimeoutMs?: number;
   commandTimeoutMs?: number;
   idleTimeoutMs?: number;
+  /**
+   * Bounded settlement deadline for nested `tools.*` calls a cell started
+   * without awaiting (see `DEFAULT_NODE_REPL_TOOL_DRAIN_TIMEOUT_MS`).
+   */
+  toolDrainTimeoutMs?: number;
+  /** Bound on teardown awaited in the evaluate error path (tests only). */
+  disposeTimeoutMs?: number;
   executeTool?: (
     toolName: string,
     args: Record<string, unknown>,
@@ -321,6 +339,7 @@ class NodeReplKernel {
         | "evalTimeoutMs"
         | "commandTimeoutMs"
         | "idleTimeoutMs"
+        | "toolDrainTimeoutMs"
       >
     > & {
       authorizeApp?: AuthorizeApp;
@@ -367,6 +386,7 @@ class NodeReplKernel {
       maxPendingSkyCalls: MAX_NODE_REPL_PENDING_SKY_CALLS,
       maxPendingBrowserCalls: MAX_NODE_REPL_PENDING_BROWSER_CALLS,
       maxPendingToolCalls: MAX_NODE_REPL_PENDING_TOOL_CALLS,
+      maxToolDrainWaitMs: options.toolDrainTimeoutMs,
       toolNames: options.toolNames,
     };
     this.worker = createNodeReplTransport(
@@ -1050,6 +1070,8 @@ export class NodeReplKernelRegistry {
   private readonly evalTimeoutMs: number;
   private readonly commandTimeoutMs: number;
   private readonly idleTimeoutMs: number;
+  private readonly toolDrainTimeoutMs: number;
+  private readonly disposeTimeoutMs: number;
   private readonly browserSessionFactory: (
     options: BrowserSessionOptions,
   ) => BrowserSessionClient;
@@ -1059,6 +1081,10 @@ export class NodeReplKernelRegistry {
     this.commandTimeoutMs =
       options.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.toolDrainTimeoutMs =
+      options.toolDrainTimeoutMs ?? DEFAULT_NODE_REPL_TOOL_DRAIN_TIMEOUT_MS;
+    this.disposeTimeoutMs =
+      options.disposeTimeoutMs ?? DEFAULT_KERNEL_DISPOSE_TIMEOUT_MS;
     this.browserSessionFactory =
       options.browserSessionFactory ?? createBrowserSession;
   }
@@ -1099,6 +1125,7 @@ export class NodeReplKernelRegistry {
         evalTimeoutMs: this.evalTimeoutMs,
         commandTimeoutMs: this.commandTimeoutMs,
         idleTimeoutMs: this.idleTimeoutMs,
+        toolDrainTimeoutMs: this.toolDrainTimeoutMs,
         onIdle: (candidate) => void this.disposeKernel(id, candidate),
       });
       this.kernels.set(id, kernel);
@@ -1148,9 +1175,23 @@ export class NodeReplKernelRegistry {
       }
     }
     if (this.kernels.get(id) === kernel) this.kernels.delete(id);
-    return Promise.allSettled([kernelClose, sessionCleanup]).then(
+    const teardown = Promise.allSettled([kernelClose, sessionCleanup]).then(
       () => undefined,
     );
+    // Never let a wedged teardown (hung browser bridge dispose, stuck
+    // session daemon) block the caller: `evaluate` awaits this before
+    // rethrowing a KernelTerminatedError, so an unbounded wait here would
+    // swallow the eval timeout and hang the node_repl tool call forever.
+    // The registry entry is already deleted, so a follow-up evaluate gets a
+    // fresh kernel while teardown finishes in the background.
+    let deadline: NodeJS.Timeout | undefined;
+    return Promise.race([
+      teardown,
+      new Promise<void>((resolve) => {
+        deadline = setTimeout(resolve, this.disposeTimeoutMs);
+        deadline.unref?.();
+      }),
+    ]).finally(() => clearTimeout(deadline));
   }
 }
 

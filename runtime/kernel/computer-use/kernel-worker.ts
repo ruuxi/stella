@@ -222,7 +222,11 @@ const nodeReplWorkerMain = async (
   >();
   const pendingToolCalls = new Map<
     number,
-    { resolve: (value: unknown) => void; reject: (error: Error) => void }
+    {
+      toolName: string;
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+    }
   >();
   type ToolCallObservation = { observed: boolean };
   type ToolCallSettlement =
@@ -336,7 +340,7 @@ const nodeReplWorkerMain = async (
     const callId = nextToolCallId++;
     const observation: ToolCallObservation = { observed: false };
     const call = new Promise<unknown>((resolve, reject) => {
-      pendingToolCalls.set(callId, { resolve, reject });
+      pendingToolCalls.set(callId, { toolName, resolve, reject });
       try {
         post({
           type: "tool-call",
@@ -532,9 +536,53 @@ const nodeReplWorkerMain = async (
 
   const drainPendingToolCalls = async () => {
     let firstFailure: Error | undefined;
+    // Bounded settlement deadline. A nested call the cell started without
+    // awaiting can be wedged on a transport that never responds; waiting
+    // unboundedly would hold the whole node_repl tool call open until the
+    // parent's eval timeout kills the kernel (losing REPL state) — or
+    // forever if that rejection is itself blocked. Fail the evaluation with
+    // a diagnosis instead; the kernel stays alive and reusable. The literal
+    // fallback must stay inline: this function is serialized with
+    // `toString()` into the worker source.
+    const drainWaitMs =
+      Number.isFinite(workerData.maxToolDrainWaitMs) &&
+      workerData.maxToolDrainWaitMs > 0
+        ? workerData.maxToolDrainWaitMs
+        : 60_000;
+    const deadlineAt = Date.now() + drainWaitMs;
     while (pendingToolSettlements.size > 0) {
       const batch = [...pendingToolSettlements];
-      const settlements = await Promise.all(batch);
+      const remainingMs = deadlineAt - Date.now();
+      let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+      let settlements =
+        remainingMs > 0
+          ? await Promise.race([
+              Promise.all(batch),
+              new Promise<null>((resolve) => {
+                deadlineTimer = setTimeout(() => resolve(null), remainingMs);
+                deadlineTimer.unref?.();
+              }),
+            ]).finally(() => clearTimeout(deadlineTimer))
+          : null;
+      if (settlements === null) {
+        const unsettled = [
+          ...new Set(
+            [...pendingToolCalls.values()].map(
+              (pending) => `tools.${pending.toolName}`,
+            ),
+          ),
+        ];
+        if (unsettled.length > 0) {
+          const timeoutError = new Error(
+            `node_repl finished evaluating, but ${unsettled.length} nested tool call(s) started by this cell never settled within ${drainWaitMs}ms: ${unsettled.join(", ")}. The unsettled call(s) were abandoned. Await nested tools.* promises inside the cell so failures and results surface deterministically.`,
+          );
+          timeoutError.name = "NodeReplDrainTimeoutError";
+          throw timeoutError;
+        }
+        // Every underlying call already settled (the deadline raced a
+        // microtask); collecting the batch now cannot block.
+        settlements = await Promise.all(batch);
+      }
       for (const settlement of batch) pendingToolSettlements.delete(settlement);
       const failure = settlements.find(
         (
