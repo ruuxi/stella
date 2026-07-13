@@ -1,8 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Model } from "../../../../runtime/ai/types.js";
+import {
+  getStellaVerbatimUpstreamModel,
+  isOpenEndedGatewayProvider,
+  isOpenEndedModelReference,
+} from "../../../../runtime/kernel/model-routing-matching.js";
 
 const credentials = new Map<string, string>();
 const oauthCredentials = new Set<string>();
+
+describe("open-ended model routing classification", () => {
+  it("shares gateway and Stella pass-through acceptance with spawn parsing", () => {
+    expect(isOpenEndedGatewayProvider("openrouter")).toBe(true);
+    expect(isOpenEndedGatewayProvider("vercel-ai-gateway")).toBe(true);
+    expect(isOpenEndedModelReference("openrouter/vendor/model:free")).toBe(
+      true,
+    );
+    expect(
+      isOpenEndedModelReference("stella/openrouter/vendor/model:high"),
+    ).toBe(true);
+    expect(isOpenEndedModelReference("stella/standard:high")).toBe(false);
+    expect(
+      getStellaVerbatimUpstreamModel(
+        "stella/openrouter/arcee-ai/trinity-large-preview:free",
+      ),
+    ).toBe("openrouter/arcee-ai/trinity-large-preview:free");
+  });
+});
 
 vi.mock("../../../../runtime/kernel/storage/llm-credentials.js", () => ({
   getLocalLlmCredential: (_stellaAppDir: string, provider: string) =>

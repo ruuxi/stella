@@ -194,6 +194,41 @@ describe("state tools", () => {
     }
   });
 
+  it("preserves colon-bearing open-ended gateway references verbatim", async () => {
+    const references = [
+      "stella/openrouter/arcee-ai/trinity-large-preview:free",
+      "openrouter/vendor/future-model:free",
+      "stella/openrouter/x:high",
+    ];
+    for (const modelReference of references) {
+      expect(parseSpawnAgentModel(modelReference)).toEqual({
+        kind: "model",
+        model: modelReference,
+      });
+    }
+
+    const validated: string[] = [];
+    const { ctx, created } = createSpawnContext((modelName) => {
+      validated.push(modelName);
+    });
+    for (const model of references) {
+      await handleSpawnAgent(
+        ctx,
+        { description: "Gateway task", prompt: "Do it.", model },
+        orchestratorToolContext,
+      );
+    }
+    expect(validated).toEqual(references);
+    expect(created).toHaveLength(references.length);
+    for (const [index, model] of references.entries()) {
+      expect(created[index]).toMatchObject({
+        model,
+        spawnEngine: { engine: "default" },
+      });
+      expect(created[index]?.spawnReasoningEffort).toBeUndefined();
+    }
+  });
+
   it("parses effort suffixes after all model and engine forms", () => {
     const knownModel = (candidate: string) => candidate === "stella/grok-4.5";
     expect(parseSpawnAgentModel("stella/grok-4.5:medium", knownModel)).toEqual({

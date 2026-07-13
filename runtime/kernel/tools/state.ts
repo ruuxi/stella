@@ -23,6 +23,7 @@ import type {
   SpawnReasoningEffort,
 } from "../../contracts/agent-engine.js";
 import { isRegisteredModelReference } from "../../ai/models.js";
+import { isOpenEndedModelReference } from "../model-routing-matching.js";
 
 export type StateContext = {
   stateRoot: string;
@@ -110,7 +111,7 @@ const splitSpawnReasoningSuffix = (
 
 const invalidSpawnReasoningSuffix = (suffix: string): Error =>
   new Error(
-    `Invalid spawn_agent model reasoning suffix ":${suffix}". Expected one of :low, :medium, :high, or :xhigh.`,
+    `Invalid spawn_agent model reasoning suffix ":${suffix}". Expected one of :low, :medium, :high, or :xhigh. Open-ended gateway references keep colons verbatim; use default:<effort>, codex[/<model>]:<effort>, or claude-code[/<model>]:<effort> for unambiguous effort control.`,
   );
 
 /**
@@ -133,7 +134,8 @@ export const parseSpawnAgentModel = (
   // Registered full model references win over suffix interpretation.
   // This preserves legitimate ids such as `...:thinking`, `...:free`, and
   // even a future registered model whose id literally ends in `:high`.
-  const fullReferenceIsModel = isRegisteredModelReference(raw);
+  const fullReferenceIsModel =
+    isRegisteredModelReference(raw) || isOpenEndedModelReference(raw);
   const suffixParts = splitSpawnReasoningSuffix(raw);
   let modelReference = raw;
   let reasoningEffort: SpawnReasoningEffort | undefined;

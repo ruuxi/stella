@@ -33,6 +33,38 @@ export const parseModelReference = (
 export const uniqueModelCandidates = (values: string[]): string[] =>
   Array.from(new Set(values.filter(Boolean)));
 
+const OPEN_ENDED_GATEWAY_PROVIDERS = new Set([
+  "openrouter",
+  "vercel-ai-gateway",
+]);
+
+/** Gateways whose provider owns an open-ended model-id namespace. */
+export const isOpenEndedGatewayProvider = (provider: string): boolean =>
+  OPEN_ENDED_GATEWAY_PROVIDERS.has(provider.trim().toLowerCase());
+
+/** Upstream id carried verbatim by a `stella/<provider>/<model>` reference. */
+export const getStellaVerbatimUpstreamModel = (
+  rawModel: string,
+): string | null => {
+  const parsed = parseModelReference(rawModel);
+  if (parsed?.provider !== "stella" || !parsed.modelId.includes("/")) {
+    return null;
+  }
+  return parsed.modelId;
+};
+
+/**
+ * References routing accepts verbatim instead of validating against a closed
+ * registry namespace. Colons in these references are always model-id data,
+ * never spawn-agent effort delimiters.
+ */
+export const isOpenEndedModelReference = (rawModel: string): boolean => {
+  const parsed = parseModelReference(rawModel);
+  if (!parsed) return false;
+  if (isOpenEndedGatewayProvider(parsed.provider)) return true;
+  return getStellaVerbatimUpstreamModel(rawModel) !== null;
+};
+
 const getRegistryModels = (registryProvider: string): Model<Api>[] => {
   const models = getModels(registryProvider as never) as Model<Api>[];
   return Array.isArray(models) ? models : [];

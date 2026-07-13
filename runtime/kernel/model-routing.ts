@@ -16,6 +16,7 @@ import {
 import { STELLA_DEFAULT_MODEL } from "../contracts/stella-api.js";
 import {
   findRegistryModel,
+  isOpenEndedGatewayProvider,
   parseModelReference,
   uniqueModelCandidates,
 } from "./model-routing-matching.js";
@@ -237,13 +238,7 @@ const getDirectProviderCandidates = (
  * Direct vendor providers (Anthropic, OpenAI, …) are intentionally excluded:
  * their id formats are quirk-specific (dashes, date suffixes) and encoded
  * precisely in the static registry, so synthesizing one risks a malformed id.
- */
-const SYNTHESIZABLE_GATEWAY_PROVIDERS = new Set<string>([
-  "openrouter",
-  "vercel-ai-gateway",
-]);
-
-/**
+ *
  * Build a routable model for `modelId` by cloning the gateway's registry
  * template — which carries the `api`, `baseUrl`, `headers`, and `compat`
  * needed to actually make the request, none of which models.dev provides.
@@ -273,7 +268,7 @@ const synthesizeGatewayModelFromTemplate = (
   registryProvider: string,
   modelId: string,
 ): Model<Api> | null => {
-  if (!SYNTHESIZABLE_GATEWAY_PROVIDERS.has(registryProvider)) return null;
+  if (!isOpenEndedGatewayProvider(registryProvider)) return null;
   const template = (getModels(registryProvider as never) as Model<Api>[])[0];
   if (!template) return null;
   return {

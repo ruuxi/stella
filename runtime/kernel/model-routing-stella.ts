@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import type { Api, Model } from "../ai/types.js";
 import {
   findRegistryModel,
+  getStellaVerbatimUpstreamModel,
   uniqueModelCandidates,
 } from "./model-routing-matching.js";
 import {
@@ -83,11 +84,8 @@ const fallbackResolvedModelForAlias = (modelId: string): string => {
     case STELLA_DEFAULT_MODEL:
       return "openrouter/x-ai/grok-4.5";
     default: {
-      const prefix = `${STELLA_PROVIDER}/`;
-      if (modelId.startsWith(prefix)) {
-        const upstream = modelId.slice(prefix.length);
-        if (upstream.includes("/")) return upstream;
-      }
+      const upstream = getStellaVerbatimUpstreamModel(modelId);
+      if (upstream) return upstream;
       return "openai/gpt-5.5";
     }
   }
