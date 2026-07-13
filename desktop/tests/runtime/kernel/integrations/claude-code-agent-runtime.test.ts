@@ -5,11 +5,29 @@ import { describe, expect, it } from "vitest";
 
 import {
   getClaudeCodeAgentModelId,
+  getClaudeCodeRuntimeEffortLevel,
   shouldUseClaudeCodeAgentRuntime,
 } from "../../../../../runtime/kernel/integrations/claude-code-agent-runtime.js";
 import { updateLocalModelPreferences } from "../../../../../runtime/kernel/preferences/local-preferences.js";
 
 describe("Claude Code agent runtime selector", () => {
+  it("uses a per-spawn effort without changing the saved Claude preference", () => {
+    const stellaDataDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-claude-effort-override-"),
+    );
+    try {
+      updateLocalModelPreferences(stellaDataDir, {
+        claudeCodeReasoningEffort: "low",
+      });
+      expect(getClaudeCodeRuntimeEffortLevel(stellaDataDir, "xhigh")).toBe(
+        "xhigh",
+      );
+      expect(getClaudeCodeRuntimeEffortLevel(stellaDataDir)).toBe("low");
+    } finally {
+      fs.rmSync(stellaDataDir, { recursive: true, force: true });
+    }
+  });
+
   it("uses Claude Code for any agent when the shared runtime engine is selected", () => {
     expect(
       shouldUseClaudeCodeAgentRuntime({
@@ -91,9 +109,9 @@ describe("Claude Code agent runtime selector", () => {
         getClaudeCodeAgentModelId(stellaDataDir, undefined, "general", "opus"),
       ).toBe("claude-code/opus");
       // The pin is per-run only — the saved preference still wins afterwards.
-      expect(getClaudeCodeAgentModelId(stellaDataDir, undefined, "general")).toBe(
-        "claude-code/sonnet",
-      );
+      expect(
+        getClaudeCodeAgentModelId(stellaDataDir, undefined, "general"),
+      ).toBe("claude-code/sonnet");
     } finally {
       fs.rmSync(stellaDataDir, { recursive: true, force: true });
     }

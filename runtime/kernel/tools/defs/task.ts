@@ -43,7 +43,7 @@ export const createAgentTools = (
         model: {
           type: "string",
           description:
-            "Optional model or engine for this one spawn. Omit (or pass `default`) to use the user's configured setup. A model reference (`stella/light`, `stella/max`, `anthropic/...`, `openrouter/<vendor>/<model>`) uses Stella's in-process engine even when Codex or Claude Code is selected globally. Use `codex` / `claude-code` for that engine's configured model, or `codex/<model>` / `claude-code/<model>` to pin one. Use ONLY when the user explicitly asked for it or has a recorded standing preference; when in doubt, omit.",
+            "Optional model or engine for this one spawn. Omit (or pass `default`) to use the user's configured setup. A model reference (`stella/light`, `stella/max`, `anthropic/...`, `openrouter/<vendor>/<model>`) uses Stella's in-process engine even when Codex or Claude Code is selected globally. Use `codex` / `claude-code` for that engine's configured model, or `codex/<model>` / `claude-code/<model>` to pin one. Any non-omitted form may add `:low`, `:medium`, `:high`, or `:xhigh` for a per-spawn reasoning override (for example `default:high`, `codex:xhigh`, or `stella/standard:medium`). Use ONLY when the user explicitly asked for it or has a recorded standing preference; when in doubt, omit.",
         },
         group: {
           type: "string",
@@ -70,7 +70,8 @@ export const createAgentTools = (
         },
         description: {
           type: "string",
-          description: "One short, user-friendly sentence summarizing what this work is about.",
+          description:
+            "One short, user-friendly sentence summarizing what this work is about.",
         },
         message: {
           type: "string",
@@ -92,11 +93,13 @@ export const createAgentTools = (
       properties: {
         thread_id: {
           type: "string",
-          description: "Durable thread id to pause, or a grp-… group id to pause every agent in that group.",
+          description:
+            "Durable thread id to pause, or a grp-… group id to pause every agent in that group.",
         },
         reason: {
           type: "string",
-          description: "Optional explanation for why the agent is being paused.",
+          description:
+            "Optional explanation for why the agent is being paused.",
         },
       },
       required: ["thread_id"],

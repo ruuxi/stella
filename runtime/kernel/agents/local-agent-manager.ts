@@ -59,6 +59,7 @@ import type { ReasoningEffort } from "../preferences/local-preferences.js";
 import type {
   AgentRuntimeEngine,
   SpawnEngineSelection,
+  SpawnReasoningEffort,
 } from "../../contracts/agent-engine.js";
 import type { RuntimeActiveRun } from "../../protocol/index.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
@@ -104,6 +105,8 @@ export type LocalAgentContext = {
    * and config, no Stella tool bridge or system-prompt override).
    */
   spawnEngine?: SpawnEngineSelection;
+  /** Per-spawn reasoning override; never persisted to user preferences. */
+  spawnReasoningEffort?: SpawnReasoningEffort;
   maxAgentConcurrency?: number;
 };
 
@@ -130,6 +133,8 @@ type RuntimeAgentRecord = {
   model?: string;
   /** Per-spawn engine selection, including `default` for plain model pins. */
   spawnEngine?: SpawnEngineSelection;
+  /** Per-spawn reasoning override; never persisted to user preferences. */
+  spawnReasoningEffort?: SpawnReasoningEffort;
   toolWorkspaceRoot?: string;
   agentDepth: number;
   maxAgentDepth?: number;
@@ -439,6 +444,7 @@ type LocalAgentManagerOpts = {
     threadId?: string;
     model?: string;
     spawnEngine?: SpawnEngineSelection;
+    spawnReasoningEffort?: SpawnReasoningEffort;
     toolWorkspaceRoot?: string;
     selfModMetadata?: AgentToolRequest["selfModMetadata"];
   }) => Promise<LocalAgentContext>;
@@ -1033,6 +1039,9 @@ export class LocalAgentManager implements AgentToolApi {
         threadId: task.threadId,
         ...(task.model ? { model: task.model } : {}),
         ...(task.spawnEngine ? { spawnEngine: task.spawnEngine } : {}),
+        ...(task.spawnReasoningEffort
+          ? { spawnReasoningEffort: task.spawnReasoningEffort }
+          : {}),
         ...(task.toolWorkspaceRoot
           ? { toolWorkspaceRoot: task.toolWorkspaceRoot }
           : {}),
@@ -1412,6 +1421,9 @@ export class LocalAgentManager implements AgentToolApi {
       agentType: request.agentType,
       ...(request.model ? { model: request.model } : {}),
       ...(request.spawnEngine ? { spawnEngine: request.spawnEngine } : {}),
+      ...(request.spawnReasoningEffort
+        ? { spawnReasoningEffort: request.spawnReasoningEffort }
+        : {}),
       ...(request.toolWorkspaceRoot
         ? { toolWorkspaceRoot: request.toolWorkspaceRoot }
         : {}),
@@ -1768,7 +1780,9 @@ export class LocalAgentManager implements AgentToolApi {
     // latest instruction instead of the original spawn text — per-occurrence
     // surfaces (the inline chat cards) keep their own titles via statusText.
     const followUpDescription =
-      from === "orchestrator" ? options?.description?.trim() || undefined : undefined;
+      from === "orchestrator"
+        ? options?.description?.trim() || undefined
+        : undefined;
     const task = this.tasks.get(agentId);
     if (!task) {
       if (from !== "orchestrator") {

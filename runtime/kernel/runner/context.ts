@@ -43,7 +43,10 @@ import {
 import type {
   AgentRuntimeEngine,
   SpawnEngineSelection,
+  SpawnReasoningEffort,
 } from "../../contracts/agent-engine.js";
+import { clampThinkingLevel } from "../../ai/models.js";
+import type { Model, Api } from "../../ai/types.js";
 import type {
   PersistedRuntimeThreadPayload,
   RuntimeThreadMessage,
@@ -760,6 +763,8 @@ export type BuildAgentContextArgs = {
    * external engine. Overrides the preference-configured engine for this run.
    */
   spawnEngine?: SpawnEngineSelection;
+  /** Per-spawn reasoning override from spawn_agent's model suffix. */
+  spawnReasoningEffort?: SpawnReasoningEffort;
   toolWorkspaceRoot?: string;
   selfModMetadata?: {
     packageId?: string;
@@ -773,6 +778,14 @@ export const resolveAgentEngineForRun = (
   configuredEngine: AgentRuntimeEngine,
   spawnEngine?: SpawnEngineSelection,
 ): AgentRuntimeEngine => spawnEngine?.engine ?? configuredEngine;
+
+export const resolveSpawnReasoningEffortForModel = (
+  model: Model<Api>,
+  requested: SpawnReasoningEffort,
+): Exclude<ReturnType<typeof clampThinkingLevel>, "off"> | undefined => {
+  const clamped = clampThinkingLevel(model, requested);
+  return clamped === "off" ? undefined : clamped;
+};
 
 export const buildAgentContext = async (
   context: RunnerContext,
@@ -878,6 +891,33 @@ export const buildAgentContext = async (
     getAgentRuntimeEngine(context.stellaDataDir),
     args.spawnEngine,
   );
+  const savedReasoningEffort = getReasoningEffort(
+    context.stellaDataDir,
+    args.agentType,
+  );
+  const spawnReasoningEffort = args.spawnReasoningEffort;
+  const effectiveReasoningEffort =
+    spawnReasoningEffort && agentEngine === "default"
+      ? resolveSpawnReasoningEffortForModel(
+          resolvedLlm.model,
+          spawnReasoningEffort,
+        )
+      : (spawnReasoningEffort ?? savedReasoningEffort);
+  if (spawnReasoningEffort && agentEngine === "default") {
+    if (!effectiveReasoningEffort) {
+      console.debug("[stella:spawn-reasoning] effort dropped", {
+        requested: spawnReasoningEffort,
+        model: resolvedLlm.model.id,
+        reason: "resolved model has no reasoning dial",
+      });
+    } else if (effectiveReasoningEffort !== spawnReasoningEffort) {
+      console.debug("[stella:spawn-reasoning] effort clamped", {
+        requested: spawnReasoningEffort,
+        effective: effectiveReasoningEffort,
+        model: resolvedLlm.model.id,
+      });
+    }
+  }
 
   const fileEditToolFamily = getFileEditToolFamily({
     agentType: args.agentType,
@@ -952,7 +992,7 @@ export const buildAgentContext = async (
     toolsAllowlist,
     model,
     resolvedLlm,
-    reasoningEffort: getReasoningEffort(context.stellaDataDir, args.agentType),
+    reasoningEffort: effectiveReasoningEffort,
     maxAgentDepth: agent?.maxAgentDepth ?? DEFAULT_MAX_AGENT_DEPTH,
     coreMemory: injectsCoreMemory
       ? readCoreMemory(context.stellaDataDir)
@@ -970,6 +1010,9 @@ export const buildAgentContext = async (
     activeThreadId: threadKey,
     agentEngine,
     ...(args.spawnEngine ? { spawnEngine: args.spawnEngine } : {}),
+    ...(args.spawnReasoningEffort
+      ? { spawnReasoningEffort: args.spawnReasoningEffort }
+      : {}),
     maxAgentConcurrency: isLocalCliAgentId(args.agentType)
       ? getMaxAgentConcurrency(context.stellaDataDir)
       : undefined,

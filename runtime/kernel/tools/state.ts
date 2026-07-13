@@ -20,6 +20,7 @@ import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type {
   AgentRuntimeEngine,
   SpawnEngineSelection,
+  SpawnReasoningEffort,
 } from "../../contracts/agent-engine.js";
 
 export type StateContext = {
@@ -56,24 +57,60 @@ const deriveAgentDescription = (
   if (!firstLine) {
     return description;
   }
-  return firstLine.length > 80 ? `${firstLine.slice(0, 77).trimEnd()}...` : firstLine;
+  return firstLine.length > 80
+    ? `${firstLine.slice(0, 77).trimEnd()}...`
+    : firstLine;
 };
 
-const logWorkingIndicatorTrace = (label: string, payload: Record<string, unknown>): void => {
+const logWorkingIndicatorTrace = (
+  label: string,
+  payload: Record<string, unknown>,
+): void => {
   process.stderr.write(`${JSON.stringify({ label, ...payload })}\n`);
 };
 
 /** Engine ids accepted in spawn_agent's `model` parameter. */
-const SPAWN_ENGINE_IDS: Record<string, Exclude<AgentRuntimeEngine, "default">> =
-  {
-    codex: "codex_cli",
-    "claude-code": "claude_code_local",
-  };
+const SPAWN_ENGINE_IDS: Record<
+  string,
+  Exclude<AgentRuntimeEngine, "default">
+> = {
+  codex: "codex_cli",
+  "claude-code": "claude_code_local",
+};
 
 export type SpawnModelSelection =
-  | { kind: "default" }
-  | { kind: "model"; model: string }
-  | { kind: "engine"; engine: SpawnEngineSelection };
+  | { kind: "default"; reasoningEffort?: SpawnReasoningEffort }
+  | { kind: "model"; model: string; reasoningEffort?: SpawnReasoningEffort }
+  | {
+      kind: "engine";
+      engine: SpawnEngineSelection;
+      reasoningEffort?: SpawnReasoningEffort;
+    };
+
+const SPAWN_REASONING_EFFORTS = new Set<SpawnReasoningEffort>([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+
+const parseSpawnReasoningSuffix = (
+  raw: string,
+): { model: string; reasoningEffort?: SpawnReasoningEffort } => {
+  const colon = raw.lastIndexOf(":");
+  if (colon === -1) return { model: raw };
+  const model = raw.slice(0, colon).trim();
+  const suffix = raw
+    .slice(colon + 1)
+    .trim()
+    .toLowerCase();
+  if (!model || !SPAWN_REASONING_EFFORTS.has(suffix as SpawnReasoningEffort)) {
+    throw new Error(
+      `Invalid spawn_agent model reasoning suffix ":${suffix}". Expected one of :low, :medium, :high, or :xhigh.`,
+    );
+  }
+  return { model, reasoningEffort: suffix as SpawnReasoningEffort };
+};
 
 /**
  * Parses spawn_agent's optional `model` parameter:
@@ -83,20 +120,38 @@ export type SpawnModelSelection =
  *   - `codex/<m>` / `claude-code/<m>`→ that engine with `<m>` pinned
  *   - anything else                  → plain model reference, resolved through
  *                                      the normal model-routing path
+ *
+ * Any non-omitted form may end in `:low`, `:medium`, `:high`, or `:xhigh`.
  */
 export const parseSpawnAgentModel = (value: unknown): SpawnModelSelection => {
   const raw = toOptionalString(value);
-  if (!raw || raw === "default") return { kind: "default" };
-  const slash = raw.indexOf("/");
+  if (!raw) return { kind: "default" };
+  const { model: modelReference, reasoningEffort } =
+    parseSpawnReasoningSuffix(raw);
+  if (modelReference === "default") {
+    return { kind: "default", ...(reasoningEffort ? { reasoningEffort } : {}) };
+  }
+  const slash = modelReference.indexOf("/");
   // Engine ids are matched case-insensitively so `Codex/gpt-x` selects the
   // engine instead of falling through to a confusing route error.
-  const head = (slash === -1 ? raw : raw.slice(0, slash)).toLowerCase();
+  const head = (
+    slash === -1 ? modelReference : modelReference.slice(0, slash)
+  ).toLowerCase();
   const engine = SPAWN_ENGINE_IDS[head];
   if (engine) {
-    const model = slash === -1 ? undefined : raw.slice(slash + 1).trim();
-    return { kind: "engine", engine: { engine, ...(model ? { model } : {}) } };
+    const model =
+      slash === -1 ? undefined : modelReference.slice(slash + 1).trim();
+    return {
+      kind: "engine",
+      engine: { engine, ...(model ? { model } : {}) },
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+    };
   }
-  return { kind: "model", model: raw };
+  return {
+    kind: "model",
+    model: modelReference,
+    ...(reasoningEffort ? { reasoningEffort } : {}),
+  };
 };
 
 const buildOtherThreadsResult = (
@@ -249,8 +304,7 @@ export const handleSpawnAgent = async (
 
   const agentType = AGENT_IDS.GENERAL;
   const parentAgentId =
-    toOptionalString(context.cloudAgentId) ??
-    toOptionalString(context.agentId);
+    toOptionalString(context.cloudAgentId) ?? toOptionalString(context.agentId);
   const storageMode = context.storageMode ?? "local";
   const parentAgentDepth = Math.max(0, context.agentDepth ?? 0);
   const nextAgentDepth = parentAgentDepth + 1;
@@ -271,7 +325,12 @@ export const handleSpawnAgent = async (
     };
   }
 
-  const modelSelection = parseSpawnAgentModel(args.model);
+  let modelSelection: SpawnModelSelection;
+  try {
+    modelSelection = parseSpawnAgentModel(args.model);
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
   if (modelSelection.kind === "model") {
     // Fail the spawn loudly on an unroutable model — never silently fall
     // back to the configured default. A host without a validator can't
@@ -329,6 +388,9 @@ export const handleSpawnAgent = async (
         ...(modelSelection.kind === "engine"
           ? { spawnEngine: modelSelection.engine }
           : {}),
+        ...(modelSelection.reasoningEffort
+          ? { spawnReasoningEffort: modelSelection.reasoningEffort }
+          : {}),
         rootRunId: context.rootRunId,
         agentDepth: nextAgentDepth,
         ...(typeof maxAgentDepth === "number" ? { maxAgentDepth } : {}),
@@ -353,7 +415,9 @@ export const handleSpawnAgent = async (
         ...(created.groupKey
           ? {
               group_id: created.groupKey,
-              ...(created.groupLabel ? { group_label: created.groupLabel } : {}),
+              ...(created.groupLabel
+                ? { group_label: created.groupLabel }
+                : {}),
               group_note:
                 "Reuse this exact group_id on sibling spawn_agent calls for the same request.",
             }

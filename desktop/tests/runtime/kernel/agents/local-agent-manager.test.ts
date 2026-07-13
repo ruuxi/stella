@@ -206,6 +206,7 @@ describe("LocalAgentManager Exec fs locking", () => {
           agentType: args.agentType,
           model: args.model,
           spawnEngine: args.spawnEngine,
+          spawnReasoningEffort: args.spawnReasoningEffort,
         });
         return {
           systemPrompt: "",
@@ -231,6 +232,7 @@ describe("LocalAgentManager Exec fs locking", () => {
       agentType: "general",
       model: "stella/light",
       spawnEngine: { engine: "default" },
+      spawnReasoningEffort: "high",
       storageMode: "local",
     });
     await waitForAgentSettled(manager, modelTask.threadId);
@@ -250,11 +252,13 @@ describe("LocalAgentManager Exec fs locking", () => {
         agentType: "general",
         model: "stella/light",
         spawnEngine: { engine: "default" },
+        spawnReasoningEffort: "high",
       },
       {
         agentType: "general",
         model: undefined,
         spawnEngine: { engine: "claude_code_local", model: "opus" },
+        spawnReasoningEffort: undefined,
       },
     ]);
   });
@@ -1211,9 +1215,7 @@ describe("send_input follow-up description and run rebind", () => {
       rootRunId: "root-2",
       description: "search for the itinerary email",
     });
-    const completion = events.find(
-      (event) => event.type === "agent-completed",
-    );
+    const completion = events.find((event) => event.type === "agent-completed");
     expect(completion).toMatchObject({
       rootRunId: "root-2",
       description: "search for the itinerary email",

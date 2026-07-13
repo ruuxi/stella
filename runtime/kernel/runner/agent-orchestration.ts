@@ -368,6 +368,8 @@ export const createAgentOrchestration = (
       model?: string;
       /** Per-spawn engine selection from spawn_agent's `model` parameter. */
       spawnEngine?: AgentToolRequest["spawnEngine"];
+      /** Per-spawn reasoning override from spawn_agent's model suffix. */
+      spawnReasoningEffort?: AgentToolRequest["spawnReasoningEffort"];
       selfModMetadata?: AgentToolRequest["selfModMetadata"];
     }) => Promise<LocalAgentContext>;
     sendMessage: (input: {
@@ -456,7 +458,13 @@ export const createAgentOrchestration = (
   context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaDataDir),
-    resolveTaskThread: ({ conversationId, agentType, threadId, nameHint, group }) => {
+    resolveTaskThread: ({
+      conversationId,
+      agentType,
+      threadId,
+      nameHint,
+      group,
+    }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
       }

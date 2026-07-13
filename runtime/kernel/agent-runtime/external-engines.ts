@@ -414,7 +414,6 @@ export const buildClaudeCodeTurnPrompts = (args: {
   };
 };
 
-
 const formatQueuedClaudeMessage = (
   entry: ExternalQueuedMessage,
   index: number,
@@ -684,6 +683,7 @@ const runClaudeHostedTurn = async (args: {
   });
   const claudeCodeEffortLevel = getClaudeCodeRuntimeEffortLevel(
     args.opts.stellaAppDir,
+    args.opts.agentContext.spawnReasoningEffort,
   );
 
   // Native-tool file writes (vanilla mode) accumulated across the main turn
@@ -749,12 +749,14 @@ const runClaudeHostedTurn = async (args: {
     // Queued follow-ups always continue the session the turn just ran on, so
     // the main prompt never re-sends history; a lost resume reseeds via the
     // fallback prompt.
-    const { prompt: queuedPrompt, resumeFallbackPrompt: queuedResumeFallbackPrompt } =
-      buildClaudeCodeTurnPrompts({
-        historyPromptMessage: queuedHistoryPromptMessage,
-        promptMessages: queuedPromptMessages,
-        hasPersistedSession: true,
-      });
+    const {
+      prompt: queuedPrompt,
+      resumeFallbackPrompt: queuedResumeFallbackPrompt,
+    } = buildClaudeCodeTurnPrompts({
+      historyPromptMessage: queuedHistoryPromptMessage,
+      promptMessages: queuedPromptMessages,
+      hasPersistedSession: true,
+    });
     finalResult = await runClaudeCodeTurn({
       runId,
       sessionKey,
@@ -1045,6 +1047,9 @@ const runCodexHostedTurn = async (args: {
     args.opts.agentContext.spawnEngine.model
       ? { modelOverride: args.opts.agentContext.spawnEngine.model }
       : {}),
+    ...(args.opts.agentContext.spawnReasoningEffort
+      ? { reasoningEffort: args.opts.agentContext.spawnReasoningEffort }
+      : {}),
     attachments: args.opts.attachments,
     abortSignal: args.opts.abortSignal,
     onStatus: (status) => {
@@ -1097,6 +1102,9 @@ const runCodexHostedTurn = async (args: {
       ...(args.opts.agentContext.spawnEngine?.engine === "codex_cli" &&
       args.opts.agentContext.spawnEngine.model
         ? { modelOverride: args.opts.agentContext.spawnEngine.model }
+        : {}),
+      ...(args.opts.agentContext.spawnReasoningEffort
+        ? { reasoningEffort: args.opts.agentContext.spawnReasoningEffort }
         : {}),
       attachments: queuedAttachments,
       abortSignal: args.opts.abortSignal,

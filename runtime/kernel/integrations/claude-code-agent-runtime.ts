@@ -15,7 +15,10 @@ import {
   loadLocalPreferences,
   type ReasoningEffort,
 } from "../preferences/local-preferences.js";
-import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
+import type {
+  AgentRuntimeEngine,
+  SpawnReasoningEffort,
+} from "../../contracts/agent-engine.js";
 import {
   resolveLocalCliCwd,
   textFromUnknown,
@@ -110,7 +113,11 @@ const CLAUDE_CODE_EFFORT_BY_REASONING: Record<
 
 export const getClaudeCodeRuntimeEffortLevel = (
   stellaAppDir?: string,
+  spawnOverride?: SpawnReasoningEffort,
 ): string | undefined => {
+  // A spawn suffix is authoritative for this run only and never writes the
+  // engine-wide preference or environment configuration.
+  if (spawnOverride) return CLAUDE_CODE_EFFORT_BY_REASONING[spawnOverride];
   const envOverride = process.env.CLAUDE_CODE_EFFORT_LEVEL?.trim();
   if (envOverride) return envOverride;
   const prefs = stellaAppDir ? loadLocalPreferences(stellaAppDir) : null;

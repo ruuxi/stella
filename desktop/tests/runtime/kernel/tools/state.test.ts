@@ -4,6 +4,7 @@ import {
   createStateContext,
   handleSendInput,
   handleSpawnAgent,
+  parseSpawnAgentModel,
 } from "../../../../../runtime/kernel/tools/state.js";
 import { AGENT_PAUSE_CANCEL_REASON } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type { AgentToolRequest } from "../../../../../runtime/kernel/tools/types.js";
@@ -124,6 +125,97 @@ describe("state tools", () => {
     expect(created[0]?.agentType).toBe(AGENT_IDS.GENERAL);
     expect(created[0]?.model).toBeUndefined();
     expect(created[0]?.spawnEngine).toBeUndefined();
+  });
+
+  it("keeps every no-suffix parse result byte-for-byte compatible", () => {
+    expect(parseSpawnAgentModel(undefined)).toEqual({ kind: "default" });
+    expect(parseSpawnAgentModel("default")).toEqual({ kind: "default" });
+    expect(parseSpawnAgentModel("stella/gpt-5.6-sol")).toEqual({
+      kind: "model",
+      model: "stella/gpt-5.6-sol",
+    });
+    expect(parseSpawnAgentModel("codex/gpt-5.6-luna")).toEqual({
+      kind: "engine",
+      engine: { engine: "codex_cli", model: "gpt-5.6-luna" },
+    });
+    expect(parseSpawnAgentModel("claude-code/claude-sonnet-5")).toEqual({
+      kind: "engine",
+      engine: {
+        engine: "claude_code_local",
+        model: "claude-sonnet-5",
+      },
+    });
+  });
+
+  it("parses effort suffixes after all model and engine forms", () => {
+    expect(parseSpawnAgentModel("stella/grok-4.5:medium")).toEqual({
+      kind: "model",
+      model: "stella/grok-4.5",
+      reasoningEffort: "medium",
+    });
+    expect(parseSpawnAgentModel("codex/gpt-5.6-sol:xhigh")).toEqual({
+      kind: "engine",
+      engine: { engine: "codex_cli", model: "gpt-5.6-sol" },
+      reasoningEffort: "xhigh",
+    });
+    expect(parseSpawnAgentModel("claude-code/claude-fable-5:high")).toEqual({
+      kind: "engine",
+      engine: {
+        engine: "claude_code_local",
+        model: "claude-fable-5",
+      },
+      reasoningEffort: "high",
+    });
+    expect(parseSpawnAgentModel("default:high")).toEqual({
+      kind: "default",
+      reasoningEffort: "high",
+    });
+    expect(parseSpawnAgentModel("codex:xhigh")).toEqual({
+      kind: "engine",
+      engine: { engine: "codex_cli" },
+      reasoningEffort: "xhigh",
+    });
+  });
+
+  it("rejects unknown or empty effort suffixes before creating a task", async () => {
+    const { ctx, created } = createSpawnContext(() => {});
+    for (const model of ["stella/grok-4.5:max", "codex:"]) {
+      const result = await handleSpawnAgent(
+        ctx,
+        { description: "Do work", prompt: "Do it.", model },
+        orchestratorToolContext,
+      );
+      expect(result).toEqual({
+        error: expect.stringContaining(
+          "Expected one of :low, :medium, :high, or :xhigh",
+        ),
+      });
+    }
+    expect(created).toHaveLength(0);
+  });
+
+  it("keeps effort scoped to only the spawn that requested it", async () => {
+    const { ctx, created } = createSpawnContext(() => {});
+    await handleSpawnAgent(
+      ctx,
+      {
+        description: "Reasoning task",
+        prompt: "Do it.",
+        model: "stella/grok-4.5:high",
+      },
+      orchestratorToolContext,
+    );
+    await handleSpawnAgent(
+      ctx,
+      {
+        description: "Normal task",
+        prompt: "Do it.",
+        model: "stella/grok-4.5",
+      },
+      orchestratorToolContext,
+    );
+    expect(created[0]?.spawnReasoningEffort).toBe("high");
+    expect(created[1]?.spawnReasoningEffort).toBeUndefined();
   });
 
   it("forwards a plain model override through validation", async () => {

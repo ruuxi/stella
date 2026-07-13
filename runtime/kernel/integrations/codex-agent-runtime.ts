@@ -12,7 +12,10 @@ import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { setupEnvironment } from "dugite";
-import type { AgentRuntimeEngine } from "../../contracts/agent-engine.js";
+import type {
+  AgentRuntimeEngine,
+  SpawnReasoningEffort,
+} from "../../contracts/agent-engine.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
 import { redactSensitiveText } from "../../contracts/sensitive-data.js";
@@ -284,6 +287,39 @@ export const sanitizeCodexCommandForActivity = (command: string): string =>
   redactSensitiveText(command);
 
 export type CodexAppServerModel = CodexModel;
+
+const CODEX_REASONING_EFFORT_ORDER: readonly CodexReasoningEffort[] = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+];
+
+export const clampCodexSpawnReasoningEffort = (
+  model: Pick<CodexModel, "supportedReasoningEfforts">,
+  requested: SpawnReasoningEffort,
+): CodexReasoningEffort | undefined => {
+  const supported = new Set(
+    model.supportedReasoningEfforts.map(
+      ({ reasoningEffort }) => reasoningEffort,
+    ),
+  );
+  if (supported.has(requested)) return requested;
+  const requestedIndex = CODEX_REASONING_EFFORT_ORDER.indexOf(requested);
+  for (
+    let distance = 1;
+    distance < CODEX_REASONING_EFFORT_ORDER.length;
+    distance += 1
+  ) {
+    const higher = CODEX_REASONING_EFFORT_ORDER[requestedIndex + distance];
+    if (higher && supported.has(higher)) return higher;
+    const lower = CODEX_REASONING_EFFORT_ORDER[requestedIndex - distance];
+    if (lower && supported.has(lower)) return lower;
+  }
+  return undefined;
+};
 
 export const shouldUseCodexAgentRuntime = (args: {
   agentType?: string;
@@ -1185,6 +1221,25 @@ export const listCodexAppServerModels = async (): Promise<{
   }
 };
 
+const requestCodexModels = async (
+  client: CodexAppServerClient,
+  includeHidden: boolean,
+): Promise<CodexModel[]> => {
+  const models: CodexModel[] = [];
+  let cursor: string | null = null;
+  do {
+    const response: CodexModelListResponse =
+      await client.request<CodexModelListResponse>("model/list", {
+        cursor,
+        limit: 100,
+        includeHidden,
+      });
+    models.push(...response.data);
+    cursor = response.nextCursor;
+  } while (cursor);
+  return models;
+};
+
 const startOrResumeCodexThread = async (args: {
   client: CodexAppServerClient;
   persistedSessionId?: string;
@@ -1294,6 +1349,8 @@ export const runCodexAgentTurn = async (request: {
   stellaModel?: string;
   /** Per-spawn engine-native model pin (`codex/<model>`); never persisted. */
   modelOverride?: string;
+  /** Per-spawn reasoning override; never persisted. */
+  reasoningEffort?: SpawnReasoningEffort;
   /** Automatic utility pass: fixed cheap model and low effort. */
   utility?: boolean;
   attachments?: RuntimeAttachmentRef[];
@@ -1326,9 +1383,9 @@ export const runCodexAgentTurn = async (request: {
     request.utility ? CODEX_UTILITY_MODEL : request.modelOverride,
   );
   const model = runtimePreferences.model;
-  const reasoningEffort = request.utility
+  let reasoningEffort: CodexReasoningEffort | undefined = request.utility
     ? "low"
-    : runtimePreferences.reasoningEffort;
+    : (request.reasoningEffort ?? runtimePreferences.reasoningEffort);
   const { input, cleanupDir } = buildCodexUserInput({
     runId: request.runId,
     prompt: request.prompt,
@@ -1364,6 +1421,39 @@ export const runCodexAgentTurn = async (request: {
   const client = request.reuseAppServer
     ? await getSharedCodexClient(request.cliBridgeSocketPath)
     : await createInitializedCodexClient(request.cliBridgeSocketPath);
+  if (request.reasoningEffort && !request.utility) {
+    try {
+      const models = await requestCodexModels(client, true);
+      const resolvedModel = models.find(
+        (candidate) => candidate.model === model || candidate.id === model,
+      );
+      reasoningEffort = resolvedModel
+        ? clampCodexSpawnReasoningEffort(resolvedModel, request.reasoningEffort)
+        : undefined;
+      if (!reasoningEffort) {
+        console.debug("[stella:spawn-reasoning] effort dropped", {
+          requested: request.reasoningEffort,
+          model,
+          reason: resolvedModel
+            ? "resolved Codex model has no reasoning dial"
+            : "resolved Codex model was absent from model/list",
+        });
+      } else if (reasoningEffort !== request.reasoningEffort) {
+        console.debug("[stella:spawn-reasoning] effort clamped", {
+          requested: request.reasoningEffort,
+          effective: reasoningEffort,
+          model,
+        });
+      }
+    } catch (error) {
+      reasoningEffort = undefined;
+      console.debug("[stella:spawn-reasoning] effort dropped", {
+        requested: request.reasoningEffort,
+        model,
+        reason: `Codex model/list unavailable: ${(error as Error).message}`,
+      });
+    }
+  }
   let removeNotificationHandler: (() => void) | undefined;
   let removeRequestHandler: (() => void) | undefined;
   let removeCloseHandler: (() => void) | undefined;
@@ -1510,9 +1600,7 @@ export const runCodexAgentTurn = async (request: {
             request.onCommandExecution?.({
               id: item.id,
               command: sanitizeCodexCommandForActivity(item.command),
-              ...(item.cwd
-                ? { cwd: redactSensitiveText(item.cwd) }
-                : {}),
+              ...(item.cwd ? { cwd: redactSensitiveText(item.cwd) } : {}),
               status: item.status,
               ...(item.exitCode !== undefined
                 ? { exitCode: item.exitCode }

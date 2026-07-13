@@ -3,7 +3,10 @@
  */
 
 import type { TaskLifecycleStatus } from "../../contracts/agent-runtime.js";
-import type { SpawnEngineSelection } from "../../contracts/agent-engine.js";
+import type {
+  SpawnEngineSelection,
+  SpawnReasoningEffort,
+} from "../../contracts/agent-engine.js";
 import type {
   FileChangeRecord,
   ProducedFileRecord,
@@ -132,6 +135,8 @@ export type AgentToolRequest = {
    * Never persisted.
    */
   spawnEngine?: SpawnEngineSelection;
+  /** Per-spawn reasoning override parsed from model's `:<effort>` suffix. */
+  spawnReasoningEffort?: SpawnReasoningEffort;
   toolWorkspaceRoot?: string;
   rootRunId?: string;
   agentDepth?: number;

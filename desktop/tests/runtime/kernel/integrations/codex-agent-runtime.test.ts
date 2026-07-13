@@ -10,6 +10,7 @@ import {
   buildCodexTurnStartParams,
   buildCodexUserInput,
   buildCodexPromptFromMessages,
+  clampCodexSpawnReasoningEffort,
   codexImagePathFromFileUrl,
   CODEX_LIGHT_MODEL,
   CODEX_UTILITY_MODEL,
@@ -33,6 +34,23 @@ import {
 describe("Codex agent runtime", () => {
   afterEach(() => {
     shutdownCodexAppServerRuntime();
+  });
+
+  it("clamps spawn effort against the Codex model/list surface", () => {
+    const model = {
+      supportedReasoningEfforts: ["medium", "high"].map((reasoningEffort) => ({
+        reasoningEffort,
+        description: "",
+      })),
+    } as Parameters<typeof clampCodexSpawnReasoningEffort>[0];
+    expect(clampCodexSpawnReasoningEffort(model, "low")).toBe("medium");
+    expect(clampCodexSpawnReasoningEffort(model, "xhigh")).toBe("high");
+  });
+
+  it("drops spawn effort when Codex reports no effort dial", () => {
+    expect(
+      clampCodexSpawnReasoningEffort({ supportedReasoningEfforts: [] }, "high"),
+    ).toBeUndefined();
   });
 
   it("routes only the General spawned agent to Codex when the shared engine is selected", () => {

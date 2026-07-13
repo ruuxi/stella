@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { resolveAgentEngineForRun } from "../../../../../runtime/kernel/runner/context.js";
+import type { Model } from "../../../../../runtime/ai/types.js";
+import {
+  resolveAgentEngineForRun,
+  resolveSpawnReasoningEffortForModel,
+} from "../../../../../runtime/kernel/runner/context.js";
 
 describe("spawn_agent engine precedence", () => {
   it("lets an explicit plain-model spawn override a saved Codex engine", () => {
-    expect(
-      resolveAgentEngineForRun("codex_cli", { engine: "default" }),
-    ).toBe("default");
+    expect(resolveAgentEngineForRun("codex_cli", { engine: "default" })).toBe(
+      "default",
+    );
   });
 
   it("lets an explicit plain-model spawn override a saved Claude Code engine", () => {
@@ -25,5 +29,33 @@ describe("spawn_agent engine precedence", () => {
         model: "opus",
       }),
     ).toBe("claude_code_local");
+  });
+});
+
+describe("spawn_agent Stella reasoning clamping", () => {
+  const model = (
+    reasoning: boolean,
+    thinkingLevelMap?: Model<any>["thinkingLevelMap"],
+  ) => ({ reasoning, thinkingLevelMap }) as Model<any>;
+
+  it("clamps to the nearest supported model effort", () => {
+    const mediumHighOnly = model(true, {
+      off: null,
+      minimal: null,
+      low: null,
+      xhigh: null,
+    });
+    expect(resolveSpawnReasoningEffortForModel(mediumHighOnly, "low")).toBe(
+      "medium",
+    );
+    expect(resolveSpawnReasoningEffortForModel(mediumHighOnly, "xhigh")).toBe(
+      "high",
+    );
+  });
+
+  it("drops a spawn effort when the resolved model has no dial", () => {
+    expect(
+      resolveSpawnReasoningEffortForModel(model(false), "high"),
+    ).toBeUndefined();
   });
 });
