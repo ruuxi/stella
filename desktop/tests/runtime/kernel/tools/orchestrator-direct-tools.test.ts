@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -11,6 +11,8 @@ import {
 import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/shared.js";
 import { createToolHost } from "../../../../../runtime/kernel/tools/host.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
+import { getRuntimeToolMetadata } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
+import { loadStellaRuntimeAgents } from "../../../../../runtime/extensions/stella-runtime/index.js";
 
 type TestHostContext = {
   rootPath: string;
@@ -22,6 +24,7 @@ type TestHostContext = {
 };
 
 const activeContexts = new Set<TestHostContext>();
+const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
 
 const createTestHost = async (
   validateSpawnModel?: (modelName: string) => void,
@@ -108,6 +111,92 @@ const makeToolContext = (agentType: string): ToolContext => ({
 });
 
 describe("orchestrator direct tool surface", () => {
+  it("overlays shipped capability metadata onto customized home prompt bodies", async () => {
+    const { host, rootPath } = await createTestHost();
+    const agentsDir = path.join(rootPath, "agents");
+    await mkdir(agentsDir, { recursive: true });
+    await Promise.all([
+      writeFile(
+        path.join(agentsDir, "orchestrator.md"),
+        [
+          "---",
+          "name: Customized Orchestrator",
+          "description: stale orchestrator metadata",
+          "tools: spawn_agent, send_input, pause_agent",
+          "maxAgentDepth: 1",
+          "---",
+          "My customized orchestrator prompt.",
+        ].join("\n"),
+      ),
+      writeFile(
+        path.join(agentsDir, "manager.md"),
+        [
+          "---",
+          "name: Customized Manager",
+          "description: overly broad manager metadata",
+          "tools: spawn_agent, spawn_manager, send_input, pause_agent",
+          "maxAgentDepth: 9",
+          "---",
+          "My customized manager prompt.",
+        ].join("\n"),
+      ),
+      writeFile(
+        path.join(agentsDir, "general.md"),
+        [
+          "---",
+          "name: Customized General",
+          "description: overly broad general metadata",
+          "tools: spawn_agent, spawn_manager, send_input, pause_agent",
+          "maxAgentDepth: 9",
+          "---",
+          "My customized general prompt.",
+        ].join("\n"),
+      ),
+    ]);
+
+    const agents = loadStellaRuntimeAgents(
+      rootPath,
+      path.join(
+        repoRoot,
+        "runtime/extensions/stella-runtime/agent-metadata",
+      ),
+    );
+    const advertisedToolNames = (agentType: string) => {
+      const agent = agents.find((candidate) => candidate.id === agentType);
+      expect(agent).toBeDefined();
+      return getRuntimeToolMetadata({
+        toolsAllowlist: agent?.toolsAllowlist,
+        toolCatalog: host.getToolCatalog(agentType),
+      }).map((tool) => tool.name);
+    };
+
+    expect(
+      agents.find((agent) => agent.id === "orchestrator")?.systemPrompt,
+    ).toBe("My customized orchestrator prompt.");
+    expect(advertisedToolNames("orchestrator")).toEqual(
+      expect.arrayContaining([
+        "spawn_agent",
+        "spawn_manager",
+        "send_input",
+        "pause_agent",
+      ]),
+    );
+    expect(advertisedToolNames("manager")).toEqual([
+      "spawn_agent",
+      "send_input",
+      "pause_agent",
+    ]);
+    const generalToolNames = advertisedToolNames("general");
+    for (const coordinationTool of [
+      "spawn_agent",
+      "spawn_manager",
+      "send_input",
+      "pause_agent",
+    ]) {
+      expect(generalToolNames).not.toContain(coordinationTool);
+    }
+  });
+
   it("shows direct coordination tools only to the orchestrator", async () => {
     const { host } = await createTestHost();
 

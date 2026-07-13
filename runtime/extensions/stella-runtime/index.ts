@@ -13,6 +13,50 @@ import { createRevertNoticeHook } from "./hooks/revert-notice.hook.js";
 import { createSelfModHooks } from "./hooks/self-mod.hook.js";
 import { createStaleUserReminderHook } from "./hooks/stale-user-reminder.hook.js";
 import { createThreadSummariesRecordHook } from "./hooks/thread-summaries-record.hook.js";
+import { resolveRuntimeSourceAsset } from "../../kernel/shared/runtime-paths.js";
+
+const bundledAgentMetadataDir = () =>
+  resolveRuntimeSourceAsset(
+    "runtime",
+    "extensions",
+    "stella-runtime",
+    "agent-metadata",
+  );
+
+/**
+ * Keep shipped capability metadata authoritative without overwriting a user's
+ * customized prompt body under `~/.stella/agents/`.
+ */
+export const loadStellaRuntimeAgents = (
+  stellaDataDir: string,
+  agentMetadataDir: string | URL = bundledAgentMetadataDir(),
+) => {
+  const metadataById = new Map(
+    loadParsedAgentsFromDir(agentMetadataDir, { allowMetadataOnly: true }).map(
+      (agent) => [agent.id, agent],
+    ),
+  );
+  return loadParsedAgentsFromDir(path.join(stellaDataDir, "agents")).map(
+    (homeAgent) => {
+      const metadata = metadataById.get(homeAgent.id);
+      if (!metadata) return homeAgent;
+      return {
+        id: metadata.id,
+        name: metadata.name,
+        description: metadata.description,
+        systemPrompt: homeAgent.systemPrompt,
+        agentTypes: metadata.agentTypes,
+        ...(metadata.toolsAllowlist
+          ? { toolsAllowlist: metadata.toolsAllowlist }
+          : {}),
+        ...(metadata.model ? { model: metadata.model } : {}),
+        ...(typeof metadata.maxAgentDepth === "number"
+          ? { maxAgentDepth: metadata.maxAgentDepth }
+          : {}),
+      };
+    },
+  );
+};
 
 /**
  * Stella's runtime extension.
@@ -35,12 +79,10 @@ import { createThreadSummariesRecordHook } from "./hooks/thread-summaries-record
  * selfModMonitor, store) supplied by the runtime at registration time.
  */
 const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
-  // Backend prompts are reconciled into `${stellaDataDir}/agents/` on startup,
-  // with local capability metadata attached by prompt-manifest-sync.ts. The
-  // live, user-editable copies load from there.
-  for (const agent of loadParsedAgentsFromDir(
-    path.join(services.stellaDataDir, "agents"),
-  )) {
+  // Prompt bodies remain live and user-editable under `~/.stella/agents/`.
+  // Shipped capability metadata comes from this runtime extension so a body
+  // customization cannot freeze an older tool allowlist across updates.
+  for (const agent of loadStellaRuntimeAgents(services.stellaDataDir)) {
     pi.registerAgent(agent);
   }
 
