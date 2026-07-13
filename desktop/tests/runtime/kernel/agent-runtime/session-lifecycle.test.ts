@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentMessage } from "../../../../../runtime/kernel/agent-core/types.js";
-import type { OrchestratorRunOptions } from "../../../../../runtime/kernel/agent-runtime/types.js";
+import type {
+  OrchestratorRunOptions,
+  SubagentRunOptions,
+} from "../../../../../runtime/kernel/agent-runtime/types.js";
 import { BackgroundCompactionScheduler } from "../../../../../runtime/kernel/agent-runtime/compaction-scheduler.js";
 import { OrchestratorSession } from "../../../../../runtime/kernel/agent-runtime/orchestrator-session.js";
+import { SubagentSession } from "../../../../../runtime/kernel/agent-runtime/subagent-session.js";
 import { createExternalOrchestratorRunSession } from "../../../../../runtime/kernel/agent-runtime/run-session.js";
 
 const executeRuntimeAgentPrompt = vi.fn();
@@ -101,7 +105,9 @@ describe("OrchestratorSession", () => {
     });
 
     await session.runTurn(createOptions({ runId: "run-1" }));
-    await session.runTurn(createOptions({ runId: "run-2", userPrompt: "Again" }));
+    await session.runTurn(
+      createOptions({ runId: "run-2", userPrompt: "Again" }),
+    );
 
     expect(seenAgents).toHaveLength(2);
     expect(seenAgents[1]).toBe(seenAgents[0]);
@@ -143,6 +149,99 @@ describe("OrchestratorSession", () => {
     expect(startMessages[0]).toContain("Initial persisted history");
     expect(startMessages[1]).toContain("Compacted checkpoint summary");
     expect(startMessages[1]).not.toContain("Initial persisted history");
+  });
+});
+
+describe("SubagentSession", () => {
+  beforeEach(() => {
+    executeRuntimeAgentPrompt.mockReset();
+  });
+
+  it("reloads a history event persisted while the first Agent is being created", async () => {
+    const session = new SubagentSession(
+      "manager-thread",
+      "conversation-1",
+      "manager",
+    );
+    let releaseAgentStart!: () => void;
+    const agentStartGate = new Promise<void>((resolve) => {
+      releaseAgentStart = resolve;
+    });
+    let agentStartEntered!: () => void;
+    const agentStartEnteredGate = new Promise<void>((resolve) => {
+      agentStartEntered = resolve;
+    });
+    const persistedHistory = [
+      {
+        role: "user",
+        content: "Stale snapshot before managed-child completion",
+        timestamp: 1,
+      },
+    ];
+    const store = {
+      recordRunEvent: vi.fn(),
+      appendThreadCustomMessage: vi.fn(),
+      loadThreadMessages: vi.fn(() => persistedHistory),
+    };
+    const hookEmitter = {
+      emitAll: vi.fn(async (event: string) => {
+        if (event === "before_agent_start") {
+          agentStartEntered();
+          await agentStartGate;
+        }
+        return [];
+      }),
+      emit: vi.fn(async () => undefined),
+    };
+    let executionHistory: string[] = [];
+    executeRuntimeAgentPrompt.mockImplementation(async ({ agent }) => {
+      executionHistory = textFromMessages(agent.state.messages);
+      return { finalText: "" };
+    });
+
+    const turn = session.runTurn({
+      runId: "manager-run-1",
+      conversationId: "conversation-1",
+      userMessageId: "manager-user-1",
+      agentId: "manager-thread",
+      agentType: "manager",
+      userPrompt: "Review the new child event.",
+      agentContext: {
+        systemPrompt: "Manager prompt",
+        dynamicContext: "",
+        maxAgentDepth: 2,
+        threadHistory: [...persistedHistory],
+      },
+      toolCatalog: [],
+      toolExecutor: vi.fn(async () => ({ result: "ok" })),
+      deviceId: "device-1",
+      stellaDataDir: "/tmp/stella",
+      stellaAppDir: "/tmp/stella",
+      resolvedLlm: {
+        model,
+        route: "direct-provider",
+        getApiKey: () => undefined,
+      },
+      store: store as never,
+      hookEmitter: hookEmitter as never,
+      callbacks: {},
+      compactionScheduler: new BackgroundCompactionScheduler(),
+    } satisfies SubagentRunOptions);
+
+    await agentStartEnteredGate;
+    persistedHistory.push({
+      role: "runtimeInternal",
+      content: "Child completed during manager session creation",
+      timestamp: 2,
+    });
+    session.notifyHistoryChanged();
+    releaseAgentStart();
+    await turn;
+
+    expect(store.loadThreadMessages).toHaveBeenCalledWith("manager-thread");
+    expect(executionHistory).toContain(
+      "Child completed during manager session creation",
+    );
   });
 });
 

@@ -90,20 +90,13 @@ const hasPersistedManagerEvent = (
   if (!eventId) return false;
   const loadThreadMessages = context.runtimeStore.loadThreadMessages;
   if (typeof loadThreadMessages !== "function") return false;
-  const marker = `event_id: ${eventId}`;
-  const containsMarkerLine = (value: string) =>
-    value.split(/\r?\n/).some((line) => line.trim() === marker);
   return loadThreadMessages
     .call(context.runtimeStore, managerThreadId)
     .some((message) => {
       if (message.customMessage?.customType !== "runtime.task_lifecycle") {
         return false;
       }
-      const content = message.customMessage.content;
-      if (typeof content === "string") return containsMarkerLine(content);
-      return content.some(
-        (entry) => entry.type === "text" && containsMarkerLine(entry.text),
-      );
+      return message.customMessage.eventId === eventId;
     });
 };
 
@@ -418,6 +411,8 @@ export const createAgentOrchestration = (
       customType?: string;
       display?: boolean;
     }) => Promise<void>;
+    /** Test/embedding override; production uses the manager's bounded default. */
+    attemptTeardownTimeoutMs?: number;
   },
 ) => {
   const handleAgentLifecycleEvent = (rawEvent: AgentLifecycleEvent) => {
@@ -488,6 +483,7 @@ export const createAgentOrchestration = (
         content: [{ type: "text", text: userPrompt }],
         display: false,
         timestamp: Date.now(),
+        ...(event.eventId ? { eventId: event.eventId } : {}),
       });
       void context.state.localAgentManager?.sendAgentMessage(
         managerParentId,
@@ -529,6 +525,9 @@ export const createAgentOrchestration = (
 
   context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
+    ...(deps.attemptTeardownTimeoutMs !== undefined
+      ? { attemptTeardownTimeoutMs: deps.attemptTeardownTimeoutMs }
+      : {}),
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaDataDir),
     resolveTaskThread: ({ conversationId, agentType, threadId, nameHint }) => {
       if (!isLocalCliAgentId(agentType)) {

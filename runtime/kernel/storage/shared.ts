@@ -178,6 +178,8 @@ export type RuntimeThreadCustomMessageEntry =
     customType: string;
     content: string | (TextContent | ImageContent)[];
     display: boolean;
+    /** Structured lifecycle dedup key; never inferred from message text. */
+    eventId?: string;
   };
 
 export type RuntimeThreadLabelEntry = RuntimeThreadSessionEntryBase & {
@@ -215,7 +217,7 @@ export type RuntimeThreadMessage = {
   payload?: PersistedRuntimeThreadPayload;
   customMessage?: Pick<
     RuntimeThreadCustomMessageEntry,
-    "customType" | "content" | "display"
+    "customType" | "content" | "display" | "eventId"
   >;
 };
 

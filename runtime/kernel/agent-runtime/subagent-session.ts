@@ -147,10 +147,15 @@ export class SubagentSession extends PiSessionCore {
         runId,
       },
     });
+    const effectiveAgentContext = this.refreshHistoryFromStoreIfNeeded(
+      opts.agentContext,
+      opts.store,
+      { threadId: this.threadId, runId },
+    );
 
     const containmentTurn = this.beginAbortContainmentTurn(
       agent,
-      opts.agentContext,
+      effectiveAgentContext,
       {
         threadId: this.threadId,
         runId,
@@ -194,7 +199,7 @@ export class SubagentSession extends PiSessionCore {
     };
     try {
       const promptMessages = await buildSubagentPromptMessages({
-        context: opts.agentContext,
+        context: effectiveAgentContext,
         userPrompt: prompt,
         promptMessages: opts.promptMessages,
         stellaDataDir: opts.stellaDataDir,

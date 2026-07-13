@@ -665,11 +665,19 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       result TEXT,
       error TEXT,
       updated_at INTEGER NOT NULL,
-      root_run_id TEXT
+      root_run_id TEXT,
+      attempt_generation INTEGER NOT NULL DEFAULT 0
     );
   `);
   try {
     db.exec("ALTER TABLE runtime_agents ADD COLUMN root_run_id TEXT;");
+  } catch {
+    // Column already exists.
+  }
+  try {
+    db.exec(
+      "ALTER TABLE runtime_agents ADD COLUMN attempt_generation INTEGER NOT NULL DEFAULT 0;",
+    );
   } catch {
     // Column already exists.
   }

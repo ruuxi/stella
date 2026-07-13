@@ -122,7 +122,7 @@ describe("task lifecycle deduping", () => {
     );
 
     expect(pausedPrompt).toContain("[Managed child paused]");
-    expect(pausedPrompt).toContain("event_id: child-1:2:agent-canceled");
+    expect(pausedPrompt).not.toContain("event_id:");
     expect(pausedPrompt).toContain(
       "Do not remain parked waiting for that child",
     );

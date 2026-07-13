@@ -431,6 +431,8 @@ const taskToolActivityFromEnd = (event: {
 
 type LocalAgentManagerOpts = {
   maxConcurrent?: number;
+  /** Bounded ownership handoff for an aborted attempt that never settles. */
+  attemptTeardownTimeoutMs?: number;
   getMaxConcurrent?: () => number;
   resolveTaskThread?: (args: {
     conversationId: string;
@@ -683,6 +685,7 @@ export const AGENT_ORPHANED_RESTART_CANCEL_REASON =
 // can suppress the hidden `[Task canceled]` follow-up turn that would
 // otherwise replace the user-facing reply with an empty silence.
 export const AGENT_PAUSE_CANCEL_REASON = "Paused by orchestrator.";
+export const DEFAULT_AGENT_ATTEMPT_TEARDOWN_TIMEOUT_MS = 5_000;
 
 const logWorkingIndicatorTrace = (
   label: string,
@@ -700,6 +703,14 @@ export class LocalAgentManager implements AgentToolApi {
   private readonly inFlightAttempts = new Map<
     string,
     { generation: number; promise: Promise<void> }
+  >();
+  private readonly attemptTakeoverTimers = new Map<
+    string,
+    {
+      generation: number;
+      promise: Promise<void>;
+      timer: ReturnType<typeof setTimeout>;
+    }
   >();
   private readonly cancelCascadeInProgress = new Set<string>();
   private readonly activeFsLocks: FsLock[] = [];
@@ -811,6 +822,7 @@ export class LocalAgentManager implements AgentToolApi {
         ? { selfModMetadata: task.selfModMetadata }
         : {}),
       status: task.status === "pending" ? "running" : task.status,
+      attemptGeneration: task.attemptGeneration,
       ...(task.rootRunId ? { rootRunId: task.rootRunId } : {}),
       startedAt: task.startedAt,
       completedAt: task.completedAt,
@@ -1050,6 +1062,7 @@ export class LocalAgentManager implements AgentToolApi {
   private resetTaskForNextAttempt(
     task: RuntimeAgentRecord,
     prompt: string,
+    options?: { preserveSelfModRun?: boolean },
   ): void {
     // Invalidate any older executeTask still unwinding after an abort. It may
     // finish later, but it no longer owns this thread's mutable state.
@@ -1074,6 +1087,12 @@ export class LocalAgentManager implements AgentToolApi {
     // (`sendAgentMessage` / `deliverFollowUpAsNextTurn`) re-set it right after.
     task.pendingStartIsFollowUp = undefined;
     task.waitingForManagedChildren = false;
+    if (!options?.preserveSelfModRun) {
+      // A terminal pause/cancel closes the prior run in the runner's finally
+      // path. The resumed ownership epoch must begin a new run rather than
+      // inheriting an id whose cancel/finalize already consumed its state.
+      task.activeSelfModRunId = undefined;
+    }
   }
 
   private hydrateTaskFromRecord(
@@ -1113,7 +1132,9 @@ export class LocalAgentManager implements AgentToolApi {
       pendingStartIsFollowUp: true,
       waitingForManagedChildren: false,
       managerReportRequested: false,
-      attemptGeneration: 0,
+      attemptGeneration: Number.isFinite(record.attemptGeneration)
+        ? Math.max(0, Math.floor(record.attemptGeneration))
+        : 0,
     };
   }
 
@@ -1144,7 +1165,7 @@ export class LocalAgentManager implements AgentToolApi {
   private deliverFollowUpAsNextTurn(task: RuntimeAgentRecord): void {
     const pendingStartStatusText = task.pendingStartStatusText;
     const prompt = this.buildTaskPrompt(task);
-    this.resetTaskForNextAttempt(task, prompt);
+    this.resetTaskForNextAttempt(task, prompt, { preserveSelfModRun: true });
     // The superseded turn's boundary emitted no completion event (the
     // dispatch short-circuits into this delivery before the lifecycle
     // emit) — an interjection extends ongoing work, so only the continued
@@ -1159,6 +1180,72 @@ export class LocalAgentManager implements AgentToolApi {
     this.persistTask(task);
   }
 
+  private clearAttemptTakeoverTimer(
+    threadId: string,
+    generation?: number,
+    promise?: Promise<void>,
+  ): void {
+    const pending = this.attemptTakeoverTimers.get(threadId);
+    if (!pending) return;
+    if (generation !== undefined && pending.generation !== generation) return;
+    if (promise !== undefined && pending.promise !== promise) return;
+    clearTimeout(pending.timer);
+    this.attemptTakeoverTimers.delete(threadId);
+  }
+
+  private scheduleAttemptTakeover(
+    task: RuntimeAgentRecord,
+    activeAttempt: { generation: number; promise: Promise<void> },
+  ): void {
+    const existing = this.attemptTakeoverTimers.get(task.threadId);
+    if (
+      existing?.generation === activeAttempt.generation &&
+      existing.promise === activeAttempt.promise
+    ) {
+      return;
+    }
+    this.clearAttemptTakeoverTimer(task.threadId);
+    const timeoutMs = Math.max(
+      1,
+      this.opts.attemptTeardownTimeoutMs ??
+        DEFAULT_AGENT_ATTEMPT_TEARDOWN_TIMEOUT_MS,
+    );
+    const timer = setTimeout(() => {
+      const inFlight = this.inFlightAttempts.get(task.threadId);
+      const takeover = this.attemptTakeoverTimers.get(task.threadId);
+      if (
+        inFlight?.generation !== activeAttempt.generation ||
+        inFlight.promise !== activeAttempt.promise ||
+        takeover?.generation !== activeAttempt.generation ||
+        takeover.promise !== activeAttempt.promise ||
+        task.status !== "pending" ||
+        task.attemptGeneration === activeAttempt.generation
+      ) {
+        this.clearAttemptTakeoverTimer(
+          task.threadId,
+          activeAttempt.generation,
+          activeAttempt.promise,
+        );
+        return;
+      }
+
+      // The old promise may never settle (for example a bridge/tool that
+      // ignored abort). Release its scheduler slot and remove its ownership
+      // record. Generation/controller checks fence every later callback and
+      // state write from that promise if it eventually returns.
+      this.attemptTakeoverTimers.delete(task.threadId);
+      this.inFlightAttempts.delete(task.threadId);
+      this.runningCount = Math.max(0, this.runningCount - 1);
+      this.tryStartNext();
+    }, timeoutMs);
+    timer.unref?.();
+    this.attemptTakeoverTimers.set(task.threadId, {
+      generation: activeAttempt.generation,
+      promise: activeAttempt.promise,
+      timer,
+    });
+  }
+
   private tryStartNext(): void {
     const maxConcurrent = Math.max(
       1,
@@ -1167,6 +1254,17 @@ export class LocalAgentManager implements AgentToolApi {
         this.defaultMaxConcurrent,
       ),
     );
+    // Schedule stale-attempt takeover independently of free global slots.
+    // With max concurrency 1, the hung predecessor itself occupies the only
+    // slot; waiting until the start loop runs would therefore deadlock before
+    // the teardown deadline was ever armed.
+    for (const threadId of this.pendingQueue) {
+      const task = this.tasks.get(threadId);
+      const activeAttempt = this.inFlightAttempts.get(threadId);
+      if (task?.status === "pending" && activeAttempt) {
+        this.scheduleAttemptTakeover(task, activeAttempt);
+      }
+    }
     let remainingCandidates = this.pendingQueue.length;
     while (
       this.runningCount < maxConcurrent &&
@@ -1180,10 +1278,13 @@ export class LocalAgentManager implements AgentToolApi {
       if (!task || task.status !== "pending") {
         continue;
       }
-      if (this.inFlightAttempts.has(threadId)) {
+      const activeAttempt = this.inFlightAttempts.get(threadId);
+      if (activeAttempt) {
         // A canceled/interrupted attempt still owns teardown for this thread.
-        // Keep the resume queued; its predecessor's finally block retries it.
+        // Keep the resume queued, but bound that ownership: an abort-ignoring
+        // promise is fenced and replaced after the teardown lease expires.
         this.pendingQueue.push(threadId);
+        this.scheduleAttemptTakeover(task, activeAttempt);
         continue;
       }
       this.runningCount += 1;
@@ -1224,6 +1325,7 @@ export class LocalAgentManager implements AgentToolApi {
           activeAttempt?.generation === generation &&
           activeAttempt.promise === execution
         ) {
+          this.clearAttemptTakeoverTimer(threadId, generation, execution);
           this.inFlightAttempts.delete(threadId);
           this.runningCount = Math.max(0, this.runningCount - 1);
           this.tryStartNext();
@@ -1277,6 +1379,16 @@ export class LocalAgentManager implements AgentToolApi {
       task.controller === attempt.controller;
     try {
       const runId = `run:${task.threadId}:${++this.nextId}`;
+      // Create the session before the context load. A managed-child report
+      // can persist while that async load (or prompt hooks) is in flight;
+      // the session then retains `notifyHistoryChanged()` even before its Pi
+      // Agent exists and reloads SQLite immediately after creation.
+      const subagentSession = getOrCreateSubagentSession(
+        this.subagentSessions,
+        task.threadId,
+        task.conversationId,
+        task.agentType,
+      );
       const context = await this.opts.fetchAgentContext({
         conversationId: task.conversationId,
         agentType: task.agentType,
@@ -1302,16 +1414,6 @@ export class LocalAgentManager implements AgentToolApi {
 
       const taskPrompt = this.buildTaskPrompt(task);
       task.turnCount += 1;
-
-      // Long-lived session for this durable threadId. First attempt builds
-      // the Pi `Agent`; restart-on-input attempts reuse it. Disposed when
-      // the task terminates (see end of `executeTask`).
-      const subagentSession = getOrCreateSubagentSession(
-        this.subagentSessions,
-        task.threadId,
-        task.conversationId,
-        task.agentType,
-      );
 
       const runSubagentArgs: Parameters<
         LocalAgentManagerOpts["runSubagent"]
@@ -2030,6 +2132,10 @@ export class LocalAgentManager implements AgentToolApi {
   }
 
   shutdown(reason = AGENT_SHUTDOWN_CANCEL_REASON): void {
+    for (const pending of this.attemptTakeoverTimers.values()) {
+      clearTimeout(pending.timer);
+    }
+    this.attemptTakeoverTimers.clear();
     for (const task of this.tasks.values()) {
       if (task.status !== "pending" && task.status !== "running") {
         continue;

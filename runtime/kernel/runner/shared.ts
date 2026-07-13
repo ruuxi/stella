@@ -127,9 +127,6 @@ export const buildAgentEventPrompt = (
   }
 
   if (event.agentId) lines.push(`thread_id: ${event.agentId}`);
-  if (event.eventId && options?.recipient === "manager") {
-    lines.push(`event_id: ${event.eventId}`);
-  }
   if (event.agentType) lines.push(`agent_type: ${event.agentType}`);
   if (
     event.type !== "agent-message" &&

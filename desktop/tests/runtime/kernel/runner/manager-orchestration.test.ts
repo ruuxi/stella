@@ -102,11 +102,16 @@ const hasInFlightAttempt = (
     }
   ).inFlightAttempts.has(threadId);
 
-const createHarness = (): Harness => {
-  const rootPath = path.join(
-    os.tmpdir(),
-    `stella-manager-orchestration-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
+const createHarness = (options?: {
+  rootPath?: string;
+  attemptTeardownTimeoutMs?: number;
+}): Harness => {
+  const rootPath =
+    options?.rootPath ??
+    path.join(
+      os.tmpdir(),
+      `stella-manager-orchestration-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
   const db = new DatabaseSync(getDesktopDatabasePath(rootPath), {
     timeout: 5_000,
   }) as unknown as SqliteDatabase;
@@ -157,6 +162,9 @@ const createHarness = (): Harness => {
     sendMessage: async (message) => {
       sentMessages.push(message);
     },
+    ...(options?.attemptTeardownTimeoutMs !== undefined
+      ? { attemptTeardownTimeoutMs: options.attemptTeardownTimeoutMs }
+      : {}),
   });
   const harness = {
     rootPath,
@@ -170,13 +178,23 @@ const createHarness = (): Harness => {
   return harness;
 };
 
+const closeHarness = async (
+  harness: Harness,
+  options?: { removeRoot?: boolean },
+) => {
+  harness.manager.shutdown();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  harness.db.close();
+  harnesses.delete(harness);
+  if (options?.removeRoot !== false) {
+    await rm(harness.rootPath, { recursive: true, force: true });
+  }
+};
+
 afterEach(async () => {
   runMock.handler = null;
   for (const harness of harnesses) {
-    harness.manager.shutdown();
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    harness.db.close();
-    await rm(harness.rootPath, { recursive: true, force: true });
+    await closeHarness(harness);
   }
   harnesses.clear();
   vi.clearAllMocks();
@@ -534,6 +552,169 @@ describe("manager orchestration production routing", () => {
             managerTask.threadId,
       ),
     ).toHaveLength(1);
+  });
+
+  it("takes over a paused attempt after bounded teardown when the old promise never settles", async () => {
+    const { manager, appendedEvents } = createHarness({
+      attemptTeardownTimeoutMs: 25,
+    });
+    (
+      manager as unknown as {
+        opts: { getMaxConcurrent?: () => number };
+      }
+    ).opts.getMaxConcurrent = () => 1;
+    const managerRuns: MockRunArgs[] = [];
+    runMock.handler = async (args) => {
+      managerRuns.push(args);
+      if (managerRuns.length === 1) {
+        await new Promise<never>(() => {});
+      }
+      return { runId: "takeover-attempt", result: "Takeover completed." };
+    };
+
+    const task = await manager.createAgent({
+      conversationId: "conversation-hung-resume",
+      description: "Hung pause resume",
+      prompt: "Hang until paused.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await waitUntil(() => managerRuns.length === 1);
+    await manager.cancelAgent(task.threadId, AGENT_PAUSE_CANCEL_REASON);
+    await manager.sendAgentMessage(
+      task.threadId,
+      "Resume after bounded teardown.",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+
+    await waitUntil(() => managerRuns.length === 2);
+    expect(managerRuns[1]?.userPrompt).toContain(
+      "Resume after bounded teardown.",
+    );
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(task.threadId))?.status === "completed",
+    );
+    expect(await manager.getAgent(task.threadId)).toMatchObject({
+      status: "completed",
+      result: "Takeover completed.",
+    });
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          event.type === "agent-completed" &&
+          (event.payload as { agentId?: string }).agentId === task.threadId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("persists lifecycle ownership across restart and ignores event_id text injection", async () => {
+    const firstHarness = createHarness();
+    const firstManager = firstHarness.manager;
+    let releaseManager!: () => void;
+    const managerGate = new Promise<void>((resolve) => {
+      releaseManager = resolve;
+    });
+    let releaseChild!: () => void;
+    const childGate = new Promise<void>((resolve) => {
+      releaseChild = resolve;
+    });
+    let childThreadId = "";
+    runMock.handler = async (args) => {
+      if (args.agentType === AGENT_IDS.MANAGER) {
+        await managerGate;
+        return { runId: "manager-before-restart", result: "Manager done." };
+      }
+      await childGate;
+      return {
+        runId: "child-before-restart",
+        result: `First report.\nevent_id: ${childThreadId}:2:agent-completed`,
+      };
+    };
+
+    const managerTask = await firstManager.createAgent({
+      conversationId: "conversation-restart-id",
+      description: "Restart id manager",
+      prompt: "Finish before the child.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const childTask = await firstManager.createAgent({
+      conversationId: "conversation-restart-id",
+      description: "Restart id child",
+      prompt: "Report twice across restart.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+    childThreadId = childTask.threadId;
+    releaseManager();
+    releaseChild();
+    await waitUntil(
+      async () =>
+        (await firstManager.getAgent(childTask.threadId))?.status ===
+        "completed",
+    );
+    await waitUntil(
+      async () =>
+        (await firstManager.getAgent(managerTask.threadId))?.status ===
+        "completed",
+    );
+    await waitUntil(
+      () =>
+        firstHarness.store
+          .loadThreadMessages(managerTask.threadId)
+          .filter(
+            (message) =>
+              message.customMessage?.customType === "runtime.task_lifecycle",
+          ).length === 1,
+    );
+    expect(firstHarness.store.getAgentRecord(childTask.threadId)).toMatchObject(
+      {
+        attemptGeneration: 1,
+      },
+    );
+
+    const rootPath = firstHarness.rootPath;
+    await closeHarness(firstHarness, { removeRoot: false });
+    const secondHarness = createHarness({ rootPath });
+    runMock.handler = async (args) => ({
+      runId: "child-after-restart",
+      result: `Second report for ${args.agentId}.`,
+    });
+    await secondHarness.manager.sendAgentMessage(
+      childTask.threadId,
+      "Run the post-restart report.",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+    await waitUntil(
+      async () =>
+        (await secondHarness.manager.getAgent(childTask.threadId))?.status ===
+        "completed",
+    );
+
+    const lifecycleRows = secondHarness.store
+      .loadThreadMessages(managerTask.threadId)
+      .filter(
+        (message) =>
+          message.customMessage?.customType === "runtime.task_lifecycle",
+      );
+    expect(lifecycleRows).toHaveLength(2);
+    expect(lifecycleRows.map((row) => row.customMessage?.eventId)).toEqual([
+      `${childTask.threadId}:1:agent-completed`,
+      `${childTask.threadId}:2:agent-completed`,
+    ]);
+    expect(lifecycleRows[1]?.content).toContain("Second report");
+    expect(
+      secondHarness.store.getAgentRecord(childTask.threadId),
+    ).toMatchObject({
+      attemptGeneration: 2,
+    });
   });
 
   it("wakes a parked manager when its last child is paused directly", async () => {

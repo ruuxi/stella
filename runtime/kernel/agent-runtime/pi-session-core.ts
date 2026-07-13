@@ -3,6 +3,7 @@ import type { Agent } from "../agent-core/agent.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { ResolvedLlmRoute } from "../model-routing.js";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
+import type { RuntimeStore } from "../storage/runtime-store.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import {
   buildSafetyAbortSwapRoute,
@@ -70,7 +71,6 @@ export class PiSessionCore {
    * Refresh at the next turn boundary so switching surfaces keeps context.
    */
   notifyHistoryChanged(): void {
-    if (!this.agent) return;
     this.pendingHistoryRefresh = true;
   }
 
@@ -91,6 +91,26 @@ export class PiSessionCore {
       historyLength: refreshed.length,
       ...logContext,
     });
+  }
+
+  /**
+   * Close the session-creation race: a writer can flag history after the
+   * caller loaded `agentContext`, but before the Pi Agent exists. Once the
+   * Agent has been created, reload SQLite and replace its message mirror
+   * before the provider turn begins.
+   */
+  protected refreshHistoryFromStoreIfNeeded(
+    agentContext: LocalAgentContext,
+    store: RuntimeStore,
+    logContext: SessionLogContext,
+  ): LocalAgentContext {
+    if (!this.pendingHistoryRefresh || !this.agent) return agentContext;
+    const refreshedContext: LocalAgentContext = {
+      ...agentContext,
+      threadHistory: store.loadThreadMessages(this.threadKey),
+    };
+    this.refreshHistoryIfNeeded(refreshedContext, logContext);
+    return refreshedContext;
   }
 
   /**

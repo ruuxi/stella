@@ -44,12 +44,14 @@ type MockRuntimeState = {
     | "tool_activity"
     | "interrupted"
     | "interrupt_after_apply_patch"
-    | "send_input_then_apply_patch";
+    | "send_input_then_apply_patch"
+    | "pause_resume_self_mod";
   patch: string;
   firstPatch?: string;
   root: string;
   runCount: number;
   onRunStart?: (runCount: number) => void;
+  onFirstWrite?: () => void;
 };
 
 const mockRuntime: MockRuntimeState = {
@@ -66,7 +68,8 @@ const mockRuntime: MockRuntimeState = {
     | "tool_activity"
     | "interrupted"
     | "interrupt_after_apply_patch"
-    | "send_input_then_apply_patch",
+    | "send_input_then_apply_patch"
+    | "pause_resume_self_mod",
   patch: "",
   root: "",
   runCount: 0,
@@ -146,7 +149,11 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
           result: "done",
         };
       }
-      if (runtime.mode === "send_input_then_apply_patch" && runCount === 1) {
+      if (
+        (runtime.mode === "send_input_then_apply_patch" ||
+          runtime.mode === "pause_resume_self_mod") &&
+        runCount === 1
+      ) {
         const result = await opts.toolExecutor(
           "apply_patch",
           { input: runtime.firstPatch ?? runtime.patch },
@@ -161,6 +168,7 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
           fileChanges: result.fileChanges,
           producedFiles: result.producedFiles,
         });
+        runtime.onFirstWrite?.();
         await new Promise<void>((resolve) => {
           if (opts.abortSignal?.aborted) {
             resolve();
@@ -207,7 +215,8 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
 
       const result =
         runtime.mode === "apply_patch" ||
-        runtime.mode === "send_input_then_apply_patch"
+        runtime.mode === "send_input_then_apply_patch" ||
+        runtime.mode === "pause_resume_self_mod"
           ? await opts.toolExecutor(
               "apply_patch",
               { input: runtime.patch },
@@ -324,6 +333,7 @@ afterEach(async () => {
   mockRuntime.runCount = 0;
   mockRuntime.firstPatch = undefined;
   mockRuntime.onRunStart = undefined;
+  mockRuntime.onFirstWrite = undefined;
   vi.clearAllMocks();
 });
 
@@ -970,6 +980,107 @@ describe("agent orchestration self-mod HMR tracking", () => {
     );
     expect(context.selfModLifecycle.cancelRun).not.toHaveBeenCalled();
     expect(context.selfModLifecycle.finalizeRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels the paused self-mod run and begins a fresh run on immediate resume", async () => {
+    const root = await makeTempRoot();
+    const srcDir = path.join(root, "desktop/src");
+    await mkdir(srcDir, { recursive: true });
+    const firstPath = path.join(srcDir, "paused.tsx");
+    const resumedPath = path.join(srcDir, "resumed.tsx");
+    await writeFile(firstPath, "export const value = 'before';\n");
+    await writeFile(resumedPath, "export const value = 'before';\n");
+    mockRuntime.root = root;
+    mockRuntime.mode = "pause_resume_self_mod";
+    mockRuntime.firstPatch = [
+      "*** Begin Patch",
+      `*** Update File: ${firstPath}`,
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'paused-write';",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    mockRuntime.patch = [
+      "*** Begin Patch",
+      `*** Update File: ${resumedPath}`,
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'resumed-write';",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
+    let firstWriteDone!: () => void;
+    const firstWriteGate = new Promise<void>((resolve) => {
+      firstWriteDone = resolve;
+    });
+    mockRuntime.onFirstWrite = firstWriteDone;
+
+    const controller = createSelfModHmrController({
+      enabled: false,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+    const appliedPaths: string[] = [];
+    const context = createTestContext(root, controller);
+    context.selfModLifecycle.beginRun = vi.fn();
+    context.selfModLifecycle.cancelRun = vi.fn(async (runId) => {
+      const result = await controller.cancel(runId);
+      appliedPaths.push(...result.appliedRuns.flatMap((run) => run.paths));
+    });
+    context.selfModLifecycle.finalizeRun = vi.fn(({ runId }) => {
+      const result = controller.finalize(runId);
+      appliedPaths.push(...result.appliedRuns.flatMap((run) => run.paths));
+    });
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "pause and resume self mod",
+      prompt: "apply both stages",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    await firstWriteGate;
+    await context.state.localAgentManager.cancelAgent(
+      threadId,
+      "Paused by orchestrator.",
+    );
+    await context.state.localAgentManager.sendAgentMessage(
+      threadId,
+      "Resume with a fresh self-mod lifecycle.",
+      "orchestrator",
+    );
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({ status: "completed" });
+    const begunRunIds = context.selfModLifecycle.beginRun.mock.calls.map(
+      ([args]) => args.runId,
+    );
+    const canceledRunIds = context.selfModLifecycle.cancelRun.mock.calls.map(
+      ([runId]) => runId,
+    );
+    const finalizedRunIds = context.selfModLifecycle.finalizeRun.mock.calls.map(
+      ([args]) => args.runId,
+    );
+    expect(begunRunIds).toHaveLength(2);
+    expect(new Set(begunRunIds).size).toBe(2);
+    expect(canceledRunIds).toEqual([begunRunIds[0]]);
+    expect(finalizedRunIds).toEqual([begunRunIds[1]]);
+    expect(appliedPaths).toEqual(["desktop/src/resumed.tsx"]);
   });
 
   it("kills still-running guarded shell sessions and still finalizes self-mod", async () => {

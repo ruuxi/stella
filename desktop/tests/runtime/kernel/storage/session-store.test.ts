@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -46,6 +46,51 @@ afterEach(async () => {
 });
 
 describe("session-store", () => {
+  it("migrates legacy agent rows with a zero ownership generation", async () => {
+    const rootPath = path.join(
+      os.tmpdir(),
+      `stella-session-store-legacy-agent-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    await mkdir(rootPath, { recursive: true });
+    const db = new DatabaseSync(getDesktopDatabasePath(rootPath), {
+      timeout: 5000,
+    }) as unknown as SqliteDatabase;
+    db.exec(`
+      CREATE TABLE runtime_agents (
+        thread_id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        agent_type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        agent_depth INTEGER NOT NULL,
+        max_agent_depth INTEGER,
+        parent_agent_id TEXT,
+        self_mod_metadata_json TEXT,
+        status TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        completed_at INTEGER,
+        result TEXT,
+        error TEXT,
+        updated_at INTEGER NOT NULL,
+        root_run_id TEXT
+      );
+      INSERT INTO runtime_agents (
+        thread_id, conversation_id, agent_type, description, agent_depth,
+        status, started_at, updated_at
+      ) VALUES (
+        'legacy-agent', 'legacy-conversation', 'general', 'Legacy row', 1,
+        'completed', 1, 2
+      );
+    `);
+    initializeDesktopDatabase(db);
+    const context = { rootPath, db, store: new SessionStore(db) };
+    activeContexts.add(context);
+
+    expect(context.store.getAgentRecord("legacy-agent")).toMatchObject({
+      threadId: "legacy-agent",
+      attemptGeneration: 0,
+    });
+  });
+
   it("starts a fresh default conversation without deleting old messages", () => {
     const { store } = createTestContext();
     const firstConversationId = store.getOrCreateDefaultConversationId();
@@ -833,7 +878,6 @@ describe("session-store", () => {
       older.map((event) => (event.payload as { agentId: string })?.agentId),
     ).toEqual(["agent-0", "agent-1", "agent-2"]);
   });
-
 
   it("listFiles returns only events whose payload carries fileChanges or producedFiles", () => {
     const { store } = createTestContext();

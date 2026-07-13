@@ -307,6 +307,7 @@ export const persistThreadCustomMessage = (
     content: RuntimeThreadCustomMessageEntry["content"];
     display?: boolean;
     timestamp?: number;
+    eventId?: string;
   },
 ): void => {
   store.appendThreadCustomMessage({
@@ -315,6 +316,7 @@ export const persistThreadCustomMessage = (
     customType: args.customType,
     content: args.content,
     display: args.display === true,
+    ...(args.eventId ? { eventId: args.eventId } : {}),
   });
 };
 

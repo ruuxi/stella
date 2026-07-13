@@ -116,6 +116,8 @@ export type PersistedAgentRecord = {
     expectedChangedFiles?: string[];
   };
   status: TaskLifecycleStatus;
+  /** Persisted ownership epoch so lifecycle ids remain unique after restart. */
+  attemptGeneration: number;
   /** Root run that owns the thread's latest lifecycle (send_input rebinds it). */
   rootRunId?: string;
   startedAt: number;
@@ -444,7 +446,7 @@ const payloadByteLength = (payload: PersistedRuntimeThreadPayload): number =>
 const customMessageByteLength = (
   message: Pick<
     RuntimeThreadCustomMessageEntry,
-    "customType" | "content" | "display"
+    "customType" | "content" | "display" | "eventId"
   >,
 ): number => rowSizeTextEncoder.encode(JSON.stringify(message)).byteLength;
 
@@ -609,11 +611,11 @@ const enforceThreadPayloadRowSizeLimit = (
 const enforceCustomMessageRowSizeLimit = (
   message: Pick<
     RuntimeThreadCustomMessageEntry,
-    "customType" | "content" | "display"
+    "customType" | "content" | "display" | "eventId"
   >,
 ): Pick<
   RuntimeThreadCustomMessageEntry,
-  "customType" | "content" | "display"
+  "customType" | "content" | "display" | "eventId"
 > => {
   if (customMessageByteLength(message) <= THREAD_ROW_MAX_BYTES) {
     return message;
@@ -741,6 +743,10 @@ const parseThreadSessionEntry = (
         typeof data?.customType === "string" ? data.customType.trim() : "";
       const content = (data as { content?: unknown } | null)?.content;
       const display = data?.display === true;
+      const eventId =
+        typeof data?.eventId === "string" && data.eventId.trim()
+          ? data.eventId.trim()
+          : undefined;
       if (!customType || !isUserContent(content)) {
         return null;
       }
@@ -752,6 +758,7 @@ const parseThreadSessionEntry = (
         customType,
         content,
         display,
+        ...(eventId ? { eventId } : {}),
       } satisfies RuntimeThreadCustomMessageEntry;
     }
     default:
@@ -787,6 +794,7 @@ const toThreadMessageRecord = (
         customType: entry.customType,
         content: entry.content,
         display: entry.display,
+        ...(entry.eventId ? { eventId: entry.eventId } : {}),
       },
     };
   }
@@ -2708,6 +2716,7 @@ export class SessionStore {
     customType: string;
     content: RuntimeThreadCustomMessageEntry["content"];
     display: boolean;
+    eventId?: string;
   }): void {
     const threadKey = normalizeRuntimeThreadId(message.threadKey);
     if (!threadKey) {
@@ -2721,6 +2730,7 @@ export class SessionStore {
       customType,
       content: message.content,
       display: message.display,
+      ...(message.eventId?.trim() ? { eventId: message.eventId.trim() } : {}),
     });
     const conversationId = this.getThreadConversationId(threadKey);
     this.withTransaction(() => {
@@ -2739,6 +2749,9 @@ export class SessionStore {
           customType: boundedMessage.customType,
           content: boundedMessage.content,
           display: boundedMessage.display,
+          ...(boundedMessage.eventId
+            ? { eventId: boundedMessage.eventId }
+            : {}),
         },
       });
       this.touchThread(threadKey);
@@ -4141,9 +4154,10 @@ export class SessionStore {
         result,
         error,
         updated_at,
-        root_run_id
+        root_run_id,
+        attempt_generation
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
@@ -4158,7 +4172,8 @@ export class SessionStore {
         result = excluded.result,
         error = excluded.error,
         updated_at = excluded.updated_at,
-        root_run_id = excluded.root_run_id
+        root_run_id = excluded.root_run_id,
+        attempt_generation = excluded.attempt_generation
     `,
       )
       .run(
@@ -4177,6 +4192,7 @@ export class SessionStore {
         record.error ?? null,
         record.updatedAt,
         record.rootRunId ?? null,
+        record.attemptGeneration ?? 0,
       );
   }
 
@@ -4265,7 +4281,8 @@ export class SessionStore {
         result,
         error,
         updated_at,
-        root_run_id
+        root_run_id,
+        attempt_generation
       FROM runtime_agents
       WHERE thread_id = ?
       LIMIT 1
@@ -4288,6 +4305,7 @@ export class SessionStore {
           error: string | null;
           updated_at: number;
           root_run_id: string | null;
+          attempt_generation: number;
         }
       | undefined;
     if (!row) {
@@ -4308,6 +4326,7 @@ export class SessionStore {
       ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
       ...(selfModMetadata ? { selfModMetadata } : {}),
       status: row.status,
+      attemptGeneration: row.attempt_generation,
       ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
       startedAt: row.started_at,
       completedAt: row.completed_at,
@@ -4338,7 +4357,8 @@ export class SessionStore {
         result,
         error,
         updated_at,
-        root_run_id
+        root_run_id,
+        attempt_generation
       FROM runtime_agents
       WHERE status = ?
       ORDER BY updated_at DESC, thread_id ASC
@@ -4360,6 +4380,7 @@ export class SessionStore {
       error: string | null;
       updated_at: number;
       root_run_id: string | null;
+      attempt_generation: number;
     }>;
 
     return rows.map((row) => {
@@ -4378,6 +4399,7 @@ export class SessionStore {
         ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
         ...(selfModMetadata ? { selfModMetadata } : {}),
         status: row.status,
+        attemptGeneration: row.attempt_generation,
         ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
         startedAt: row.started_at,
         completedAt: row.completed_at,
