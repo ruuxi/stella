@@ -1462,6 +1462,8 @@ export const createAgentOrchestration = (
       context.runtimeStore.getAgentRecord?.(threadId) ?? null,
     listAgentRecordsByStatus: (status) =>
       context.runtimeStore.listAgentRecordsByStatus?.(status) ?? [],
+    listAgentRecordsWithPendingCleanup: () =>
+      context.runtimeStore.listAgentRecordsWithPendingCleanup?.() ?? [],
   });
 
   const runBlockingLocalAgent = async (

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   AGENT_ORPHANED_RESTART_CANCEL_REASON,
@@ -273,6 +273,56 @@ describe("manager agent orchestration", () => {
 });
 
 describe("LocalAgentManager Exec fs locking", () => {
+  it("loudly reports durable unresolved cleanup records after worker restart", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      runSubagent: async (args) => ({ runId: args.runId, result: "unused" }),
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+      listAgentRecordsByStatus: () => [],
+      listAgentRecordsWithPendingCleanup: () => [
+        {
+          threadId: "cleanup-survivor",
+          conversationId: "conv-cleanup",
+          agentType: "general",
+          description: "Cleanup survivor",
+          agentDepth: 0,
+          status: "completed",
+          attemptGeneration: 7,
+          pendingCleanup: {
+            attemptGeneration: 6,
+            diagnostic: "old HMR lease is still held",
+            recordedAt: 123,
+          },
+          startedAt: 1,
+          completedAt: 2,
+          updatedAt: 3,
+        },
+      ],
+    });
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Unresolved resource cleanup survived worker restart for cleanup-survivor attempt 6",
+      ),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "runtime force-resume reconciliation is required",
+      ),
+    );
+    errorSpy.mockRestore();
+  });
+
   it("cancels persisted running agents left behind by a previous worker", () => {
     const savedRecords: Parameters<
       NonNullable<

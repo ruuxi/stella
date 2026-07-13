@@ -5,10 +5,7 @@ import type {
 } from "../../contracts/index.js";
 import { StoreModStore } from "../storage/store-mod-store.js";
 import { commitGitMessage, getStagedDiffPreview } from "./git/commit.js";
-import {
-  getGitCommitParent,
-  listGitDirtyFiles,
-} from "./git/log.js";
+import { getGitCommitParent, listGitDirtyFiles } from "./git/log.js";
 import { revertGitCommits } from "./git/revert.js";
 import { sanitizeStellaTrailerValue } from "./git/trailers.js";
 import { slugify } from "../shared/slug.js";
@@ -45,6 +42,8 @@ type SelfModApplyMode =
   | "desktop-update";
 
 type ActiveSelfModRun = {
+  generation: number;
+  canceled: boolean;
   baselineDirtyFiles: Set<string>;
   taskDescription: string;
   packageId?: string;
@@ -114,6 +113,7 @@ const sanitizeTrailerOrWarn = (
  */
 export class StoreModService {
   private readonly activeRuns = new Map<string, ActiveSelfModRun>();
+  private nextRunGeneration = 0;
   /**
    * Serialized queue for post-commit background work (source-history
    * recording). Chained so revisions record in commit order —
@@ -151,7 +151,11 @@ export class StoreModService {
     const packageId = trimOrUndefined(args.packageId);
     const releaseNumber = normalizeReleaseNumber(args.releaseNumber);
     const baselineDirtyFiles = new Set(await listGitDirtyFiles(this.repoRoot));
+    const previousRun = this.activeRuns.get(args.runId);
+    if (previousRun) previousRun.canceled = true;
     this.activeRuns.set(args.runId, {
+      generation: ++this.nextRunGeneration,
+      canceled: false,
       baselineDirtyFiles,
       taskDescription,
       ...(packageId ? { packageId } : {}),
@@ -161,7 +165,12 @@ export class StoreModService {
   }
 
   cancelSelfModRun(runId: string): void {
-    this.activeRuns.delete(runId);
+    const activeRun = this.activeRuns.get(runId);
+    if (!activeRun) return;
+    activeRun.canceled = true;
+    if (this.activeRuns.get(runId) === activeRun) {
+      this.activeRuns.delete(runId);
+    }
   }
 
   /**
@@ -225,170 +234,190 @@ export class StoreModService {
     commitMessageProvider?: CommitMessageProvider;
   }): Promise<FinalizedSelfModCommit | null> {
     const activeRun = this.activeRuns.get(args.runId);
-    this.activeRuns.delete(args.runId);
     if (!activeRun || !args.succeeded) {
+      if (activeRun && this.activeRuns.get(args.runId) === activeRun) {
+        this.activeRuns.delete(args.runId);
+      }
       return null;
     }
 
-    const currentDirtyFiles = normalizeFileList(
-      await listGitDirtyFiles(this.repoRoot),
-    );
-    if (currentDirtyFiles.length === 0) {
-      return null;
-    }
+    const stillOwnsRun = () => {
+      const currentRun = this.activeRuns.get(args.runId);
+      return (
+        !activeRun.canceled &&
+        currentRun === activeRun &&
+        currentRun.generation === activeRun.generation
+      );
+    };
 
-    const baselineDirty = activeRun.baselineDirtyFiles;
-    const blockedFiles: string[] = [];
-    const safeFiles: string[] = [];
-    for (const file of currentDirtyFiles) {
-      if (baselineDirty.has(file)) {
-        blockedFiles.push(file);
-      } else if (args.isPathOwnedByAnotherActiveRun?.(file)) {
-        blockedFiles.push(file);
-      } else {
-        safeFiles.push(file);
+    try {
+      const currentDirtyFiles = normalizeFileList(
+        await listGitDirtyFiles(this.repoRoot),
+      );
+      if (currentDirtyFiles.length === 0 || !stillOwnsRun()) {
+        return null;
       }
-    }
-    if (safeFiles.length === 0) {
-      return null;
-    }
 
-    const conversationTrailer = sanitizeTrailerOrWarn(
-      args.conversationId,
-      "Stella-Conversation",
-    );
-    const threadTrailer = sanitizeTrailerOrWarn(
-      args.threadKey,
-      "Stella-Thread",
-    );
-    const featureIdTrailer = sanitizeTrailerOrWarn(
-      args.featureId ?? args.threadKey,
-      "Stella-Feature-Id",
-    );
-    const featureTitle = trimOrUndefined(args.featureTitle);
-    // Trailer values cannot contain spaces (STELLA_TRAILER_VALUE_REGEX)
-    // and sanitizeTrailerOrWarn would silently drop a human phrase — the
-    // slug goes in the commit, the human form goes in the roster.
-    const featureTitleTrailer = sanitizeTrailerOrWarn(
-      featureTitle ? slugify(featureTitle) : undefined,
-      "Stella-Feature-Title",
-    );
-    const subject =
-      activeRun.applyMode === "author"
-        ? await this.deriveCommitSubject({
-            activeRun,
-            safeFiles,
-            conversationTrailer,
-            commitMessageProvider: args.commitMessageProvider,
-          })
-        : this.deriveInstallCommitSubject(activeRun);
-
-    const trailers: Record<string, string> = {};
-    if (conversationTrailer) {
-      trailers["Stella-Conversation"] = conversationTrailer;
-    }
-    if (threadTrailer) {
-      trailers["Stella-Thread"] = threadTrailer;
-    }
-    if (activeRun.applyMode === "author") {
-      if (featureIdTrailer) {
-        trailers["Stella-Feature-Id"] = featureIdTrailer;
-      }
-      if (featureTitleTrailer) {
-        trailers["Stella-Feature-Title"] = featureTitleTrailer;
-      }
-    }
-    if (activeRun.applyMode !== "author") {
-      if (activeRun.packageId) {
-        trailers["Stella-Package-Id"] = activeRun.packageId;
-      }
-      if (activeRun.releaseNumber != null) {
-        trailers["Stella-Release-Number"] = String(activeRun.releaseNumber);
-      }
-      if (activeRun.taskDescription) {
-        trailers["Stella-Task"] = activeRun.taskDescription;
-      }
-    }
-
-    const commitHash = await commitGitMessage({
-      repoRoot: this.repoRoot,
-      subject,
-      trailers,
-      paths: safeFiles,
-    });
-    if (!commitHash) {
-      return null;
-    }
-
-    if (activeRun.applyMode === "author") {
-      // Durable feature accounting is synchronous and deterministic —
-      // no LLM in the loop. The roster freezes the feature's name at
-      // its first commit and accrues commits forever; the snapshot the
-      // side panel reads is just the roster head, so names never churn
-      // and old features never fall off.
-      if (featureIdTrailer) {
-        try {
-          this.store.upsertFeatureRosterEntry({
-            featureId: featureIdTrailer,
-            name: featureTitle ?? activeRun.taskDescription,
-            ...(conversationTrailer
-              ? { conversationId: conversationTrailer }
-              : {}),
-            commitHash,
-          });
-          this.store.writeFeatureSnapshot(this.store.buildSnapshotFromRoster());
-        } catch (error) {
-          console.warn(
-            "[self-mod] feature roster update failed (continuing):",
-            (error as Error).message,
-          );
+      const baselineDirty = activeRun.baselineDirtyFiles;
+      const blockedFiles: string[] = [];
+      const safeFiles: string[] = [];
+      for (const file of currentDirtyFiles) {
+        if (baselineDirty.has(file)) {
+          blockedFiles.push(file);
+        } else if (args.isPathOwnedByAnotherActiveRun?.(file)) {
+          blockedFiles.push(file);
+        } else {
+          safeFiles.push(file);
         }
       }
-      // Source-history recording stays off the critical path: the
-      // worker's apply/morph (or pending "Update" card) only needs the
-      // commit hash.
-      this.enqueueBackgroundTask(async () => {
-        await this.recordSourceRevisionForCommit({
-          activeRun,
-          commitHash,
-          subject,
-          conversationTrailer,
-          featureId: featureIdTrailer,
-        }).catch((error) => {
-          console.warn(
-            "[self-mod] source history recording failed (continuing):",
-            (error as Error).message,
-          );
-        });
+      if (safeFiles.length === 0) {
+        return null;
+      }
+
+      const conversationTrailer = sanitizeTrailerOrWarn(
+        args.conversationId,
+        "Stella-Conversation",
+      );
+      const threadTrailer = sanitizeTrailerOrWarn(
+        args.threadKey,
+        "Stella-Thread",
+      );
+      const featureIdTrailer = sanitizeTrailerOrWarn(
+        args.featureId ?? args.threadKey,
+        "Stella-Feature-Id",
+      );
+      const featureTitle = trimOrUndefined(args.featureTitle);
+      // Trailer values cannot contain spaces (STELLA_TRAILER_VALUE_REGEX)
+      // and sanitizeTrailerOrWarn would silently drop a human phrase — the
+      // slug goes in the commit, the human form goes in the roster.
+      const featureTitleTrailer = sanitizeTrailerOrWarn(
+        featureTitle ? slugify(featureTitle) : undefined,
+        "Stella-Feature-Title",
+      );
+      const subject =
+        activeRun.applyMode === "author"
+          ? await this.deriveCommitSubject({
+              activeRun,
+              safeFiles,
+              conversationTrailer,
+              commitMessageProvider: args.commitMessageProvider,
+            })
+          : this.deriveInstallCommitSubject(activeRun);
+
+      const trailers: Record<string, string> = {};
+      if (conversationTrailer) {
+        trailers["Stella-Conversation"] = conversationTrailer;
+      }
+      if (threadTrailer) {
+        trailers["Stella-Thread"] = threadTrailer;
+      }
+      if (activeRun.applyMode === "author") {
+        if (featureIdTrailer) {
+          trailers["Stella-Feature-Id"] = featureIdTrailer;
+        }
+        if (featureTitleTrailer) {
+          trailers["Stella-Feature-Title"] = featureTitleTrailer;
+        }
+      }
+      if (activeRun.applyMode !== "author") {
+        if (activeRun.packageId) {
+          trailers["Stella-Package-Id"] = activeRun.packageId;
+        }
+        if (activeRun.releaseNumber != null) {
+          trailers["Stella-Release-Number"] = String(activeRun.releaseNumber);
+        }
+        if (activeRun.taskDescription) {
+          trailers["Stella-Task"] = activeRun.taskDescription;
+        }
+      }
+
+      const commitHash = await commitGitMessage({
+        repoRoot: this.repoRoot,
+        subject,
+        trailers,
+        paths: safeFiles,
+        shouldCommit: stillOwnsRun,
       });
+      if (!commitHash) {
+        return null;
+      }
+
+      if (activeRun.applyMode === "author") {
+        // Durable feature accounting is synchronous and deterministic —
+        // no LLM in the loop. The roster freezes the feature's name at
+        // its first commit and accrues commits forever; the snapshot the
+        // side panel reads is just the roster head, so names never churn
+        // and old features never fall off.
+        if (featureIdTrailer) {
+          try {
+            this.store.upsertFeatureRosterEntry({
+              featureId: featureIdTrailer,
+              name: featureTitle ?? activeRun.taskDescription,
+              ...(conversationTrailer
+                ? { conversationId: conversationTrailer }
+                : {}),
+              commitHash,
+            });
+            this.store.writeFeatureSnapshot(
+              this.store.buildSnapshotFromRoster(),
+            );
+          } catch (error) {
+            console.warn(
+              "[self-mod] feature roster update failed (continuing):",
+              (error as Error).message,
+            );
+          }
+        }
+        // Source-history recording stays off the critical path: the
+        // worker's apply/morph (or pending "Update" card) only needs the
+        // commit hash.
+        this.enqueueBackgroundTask(async () => {
+          await this.recordSourceRevisionForCommit({
+            activeRun,
+            commitHash,
+            subject,
+            conversationTrailer,
+            featureId: featureIdTrailer,
+          }).catch((error) => {
+            console.warn(
+              "[self-mod] source history recording failed (continuing):",
+              (error as Error).message,
+            );
+          });
+        });
+        return {
+          commitHash,
+          files: safeFiles,
+          blockedFiles,
+        };
+      }
+
+      // Store install/update/uninstall and desktop-update commits need the
+      // source revision id synchronously — it lands in the install ledger.
+      const sourceRevisionId = await this.recordSourceRevisionForCommit({
+        activeRun,
+        commitHash,
+        subject,
+        conversationTrailer,
+      }).catch((error) => {
+        console.warn(
+          "[self-mod] source history recording failed (continuing):",
+          (error as Error).message,
+        );
+        return null;
+      });
+
       return {
         commitHash,
         files: safeFiles,
         blockedFiles,
+        ...(sourceRevisionId ? { sourceRevisionId } : {}),
       };
+    } finally {
+      if (this.activeRuns.get(args.runId) === activeRun) {
+        this.activeRuns.delete(args.runId);
+      }
     }
-
-    // Store install/update/uninstall and desktop-update commits need the
-    // source revision id synchronously — it lands in the install ledger.
-    const sourceRevisionId = await this.recordSourceRevisionForCommit({
-      activeRun,
-      commitHash,
-      subject,
-      conversationTrailer,
-    }).catch((error) => {
-      console.warn(
-        "[self-mod] source history recording failed (continuing):",
-        (error as Error).message,
-      );
-      return null;
-    });
-
-    return {
-      commitHash,
-      files: safeFiles,
-      blockedFiles,
-      ...(sourceRevisionId ? { sourceRevisionId } : {}),
-    };
   }
 
   private async recordSourceRevisionForCommit(args: {

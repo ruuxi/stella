@@ -1486,6 +1486,45 @@ describe("session-store", () => {
 });
 
 describe("thread activity rows", () => {
+  it("persists, enumerates, and clears pending agent cleanup records", () => {
+    const { store } = createTestContext();
+    const base = {
+      threadId: "cleanup-thread",
+      conversationId: "conv-cleanup",
+      agentType: "general",
+      description: "Cleanup thread",
+      agentDepth: 0,
+      status: "completed" as const,
+      attemptGeneration: 4,
+      startedAt: 1_000,
+      completedAt: 2_000,
+      updatedAt: 2_000,
+    };
+    store.saveAgentRecord({
+      ...base,
+      pendingCleanup: {
+        attemptGeneration: 3,
+        diagnostic: "shell lease remains held",
+        recordedAt: 1_500,
+      },
+    });
+
+    expect(store.getAgentRecord(base.threadId)?.pendingCleanup).toEqual({
+      attemptGeneration: 3,
+      diagnostic: "shell lease remains held",
+      recordedAt: 1_500,
+    });
+    expect(
+      store
+        .listAgentRecordsWithPendingCleanup()
+        .map((record) => record.threadId),
+    ).toEqual([base.threadId]);
+
+    store.saveAgentRecord({ ...base, updatedAt: 3_000 });
+    expect(store.getAgentRecord(base.threadId)?.pendingCleanup).toBeUndefined();
+    expect(store.listAgentRecordsWithPendingCleanup()).toEqual([]);
+  });
+
   it("projects one authoritative row per thread, joined with group fields", () => {
     const { db, store } = createTestContext();
     store.saveAgentRecord({

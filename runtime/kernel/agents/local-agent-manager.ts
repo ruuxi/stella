@@ -171,8 +171,8 @@ type RuntimeAgentRecord = {
   managerReportRequested?: boolean;
   /** Monotonic ownership token for mutable executeTask attempts. */
   attemptGeneration: number;
-  /** Durable error-column diagnostic while abandoned resources remain held. */
-  resourceCleanupDiagnostic?: string;
+  /** Durable marker while abandoned resources remain unacknowledged. */
+  pendingCleanup?: PersistedAgentRecord["pendingCleanup"];
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
   recentActivity: string[];
   /**
@@ -566,6 +566,7 @@ type LocalAgentManagerOpts = {
   listAgentRecordsByStatus?: (
     status: TaskLifecycleStatus,
   ) => PersistedAgentRecord[];
+  listAgentRecordsWithPendingCleanup?: () => PersistedAgentRecord[];
   listActiveThreads?: (conversationId: string) => RuntimeThreadRecord[];
 };
 
@@ -709,6 +710,10 @@ type InFlightAttempt = {
     released: boolean;
     heldResources?: string[];
   }>;
+  cleanupFlight?: Promise<{
+    released: boolean;
+    heldResources?: string[];
+  }>;
   takeoverStarted?: boolean;
 };
 
@@ -756,6 +761,17 @@ export class LocalAgentManager implements AgentToolApi {
     this.opts = opts;
     this.defaultMaxConcurrent = Math.max(1, opts.maxConcurrent ?? 3);
     this.cancelOrphanedPersistedAgents();
+    this.reportPersistedPendingCleanups();
+  }
+
+  private reportPersistedPendingCleanups(): void {
+    for (const record of this.opts.listAgentRecordsWithPendingCleanup?.() ??
+      []) {
+      if (!record.pendingCleanup) continue;
+      console.error(
+        `[agents] Unresolved resource cleanup survived worker restart for ${record.threadId} attempt ${record.pendingCleanup.attemptGeneration}: ${record.pendingCleanup.diagnostic} The process-local release handle is gone; runtime force-resume reconciliation is required.`,
+      );
+    }
   }
 
   private cancelOrphanedPersistedAgents(): void {
@@ -849,6 +865,7 @@ export class LocalAgentManager implements AgentToolApi {
         : {}),
       status: task.status === "pending" ? "running" : task.status,
       attemptGeneration: task.attemptGeneration,
+      ...(task.pendingCleanup ? { pendingCleanup: task.pendingCleanup } : {}),
       ...(task.rootRunId ? { rootRunId: task.rootRunId } : {}),
       startedAt: task.startedAt,
       completedAt: task.completedAt,
@@ -1161,6 +1178,7 @@ export class LocalAgentManager implements AgentToolApi {
       attemptGeneration: Number.isFinite(record.attemptGeneration)
         ? Math.max(0, Math.floor(record.attemptGeneration))
         : 0,
+      pendingCleanup: record.pendingCleanup,
     };
   }
 
@@ -1306,6 +1324,25 @@ export class LocalAgentManager implements AgentToolApi {
     reason?: string;
   }> {
     if (!activeAttempt.forceRelease) return { released: true };
+    let cleanupFlight = activeAttempt.cleanupFlight;
+    if (!cleanupFlight) {
+      cleanupFlight = Promise.resolve().then(() =>
+        activeAttempt.forceRelease!(),
+      );
+      activeAttempt.cleanupFlight = cleanupFlight;
+      void cleanupFlight.then(
+        () => {
+          if (activeAttempt.cleanupFlight === cleanupFlight) {
+            activeAttempt.cleanupFlight = undefined;
+          }
+        },
+        () => {
+          if (activeAttempt.cleanupFlight === cleanupFlight) {
+            activeAttempt.cleanupFlight = undefined;
+          }
+        },
+      );
+    }
     const cleanupTimeoutMs = Math.max(
       1,
       this.opts.attemptResourceCleanupTimeoutMs ??
@@ -1314,21 +1351,19 @@ export class LocalAgentManager implements AgentToolApi {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
-        Promise.resolve()
-          .then(() => activeAttempt.forceRelease!())
-          .then(
-            (result) =>
-              result.released
-                ? { released: true }
-                : {
-                    released: false,
-                    reason: `cleanup acknowledged held resources: ${(result.heldResources ?? ["unknown"]).join(", ")}`,
-                  },
-            (error) => ({
-              released: false,
-              reason: `cleanup failed: ${(error as Error).message}`,
-            }),
-          ),
+        cleanupFlight.then(
+          (result) =>
+            result.released
+              ? { released: true }
+              : {
+                  released: false,
+                  reason: `cleanup acknowledged held resources: ${(result.heldResources ?? ["unknown"]).join(", ")}`,
+                },
+          (error) => ({
+            released: false,
+            reason: `cleanup failed: ${(error as Error).message}`,
+          }),
+        ),
         new Promise<{ released: false; reason: string }>((resolve) => {
           timeout = setTimeout(
             () =>
@@ -1353,16 +1388,20 @@ export class LocalAgentManager implements AgentToolApi {
   ): void {
     const diagnostic = `Superseded attempt ${activeAttempt.generation} still has resources pending release: ${reason}. Background cleanup retries are active.`;
     console.error(`[agents] ${task.threadId}: ${diagnostic}`);
-    task.resourceCleanupDiagnostic = diagnostic;
+    task.pendingCleanup = {
+      attemptGeneration: activeAttempt.generation,
+      diagnostic,
+      recordedAt: Date.now(),
+    };
     task.error = diagnostic;
     task.recentActivity = [truncate(diagnostic, 500)];
     this.persistTask(task);
   }
 
   private clearAttemptCleanupDiagnostic(task: RuntimeAgentRecord): void {
-    const diagnostic = task.resourceCleanupDiagnostic;
+    const diagnostic = task.pendingCleanup?.diagnostic;
     if (!diagnostic) return;
-    task.resourceCleanupDiagnostic = undefined;
+    task.pendingCleanup = undefined;
     if (task.error === diagnostic) task.error = undefined;
     this.persistTask(task);
   }

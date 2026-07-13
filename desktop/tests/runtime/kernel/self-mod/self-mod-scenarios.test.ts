@@ -18,9 +18,7 @@ import {
 import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/shared.js";
 import { StellaSourceHistoryStore } from "../../../../../runtime/kernel/storage/stella-source-history-store.js";
 import { StoreModStore } from "../../../../../runtime/kernel/storage/store-mod-store.js";
-import {
-  StoreModService,
-} from "../../../../../runtime/kernel/self-mod/store-mod-service.js";
+import { StoreModService } from "../../../../../runtime/kernel/self-mod/store-mod-service.js";
 import { createSelfModHmrController } from "../../../../../runtime/kernel/self-mod/hmr.js";
 import {
   detectSelfModAppliedSince,
@@ -184,10 +182,9 @@ describe("agent finalize", () => {
     });
 
     expect(finalized?.files).toEqual(["desktop/src/agent.tsx"]);
-    expect(finalized?.blockedFiles.sort()).toEqual([
-      "desktop/src/seed.tsx",
-      "notes.txt",
-    ].sort());
+    expect(finalized?.blockedFiles.sort()).toEqual(
+      ["desktop/src/seed.tsx", "notes.txt"].sort(),
+    );
     expect(commitFiles(h.repoRoot, finalized!.commitHash)).toEqual([
       "desktop/src/agent.tsx",
     ]);
@@ -217,11 +214,19 @@ describe("agent finalize", () => {
       taskDescription: "Run B",
     });
 
-    await writeRepoFile(h.repoRoot, "desktop/src/a.tsx", "export const a = 1;\n");
+    await writeRepoFile(
+      h.repoRoot,
+      "desktop/src/a.tsx",
+      "export const a = 1;\n",
+    );
     await controller.recordWrite("run-a", [
       path.join(h.repoRoot, "desktop/src/a.tsx"),
     ]);
-    await writeRepoFile(h.repoRoot, "desktop/src/b.tsx", "export const b = 1;\n");
+    await writeRepoFile(
+      h.repoRoot,
+      "desktop/src/b.tsx",
+      "export const b = 1;\n",
+    );
     await controller.recordWrite("run-b", [
       path.join(h.repoRoot, "desktop/src/b.tsx"),
     ]);
@@ -288,7 +293,77 @@ describe("agent finalize", () => {
 
     expect(finalized).toBeNull();
     expect(await getGitHead(h.repoRoot)).toBe(before);
-    expect(await listGitDirtyFiles(h.repoRoot)).toEqual(["desktop/src/tmp.tsx"]);
+    expect(await listGitDirtyFiles(h.repoRoot)).toEqual([
+      "desktop/src/tmp.tsx",
+    ]);
+  });
+
+  it("revokes a finalizer before the real git commit so replacement work keeps its identity", async () => {
+    const file = "desktop/src/seed.tsx";
+    const before = await getGitHead(h.repoRoot);
+    await h.service.beginSelfModRun({
+      runId: "old-run",
+      taskDescription: "Old attempt",
+    });
+    await writeRepoFile(h.repoRoot, file, "export const owner = 'old';\n");
+
+    let oldFinalizerReady!: () => void;
+    const oldFinalizerReadyGate = new Promise<void>((resolve) => {
+      oldFinalizerReady = resolve;
+    });
+    let releaseOldFinalizer!: () => void;
+    const oldFinalizerGate = new Promise<void>((resolve) => {
+      releaseOldFinalizer = resolve;
+    });
+    const oldFinalize = h.service.finalizeSelfModRun({
+      runId: "old-run",
+      succeeded: true,
+      conversationId: "old-conversation",
+      threadKey: "old-thread",
+      commitMessageProvider: async () => {
+        oldFinalizerReady();
+        await oldFinalizerGate;
+        return "Commit old attempt";
+      },
+    });
+    await oldFinalizerReadyGate;
+
+    h.service.cancelSelfModRun("old-run");
+    git(h.repoRoot, ["checkout", "--", file]);
+    await h.service.beginSelfModRun({
+      runId: "replacement-run",
+      taskDescription: "Replacement attempt",
+    });
+    await writeRepoFile(
+      h.repoRoot,
+      file,
+      "export const owner = 'replacement';\n",
+    );
+
+    releaseOldFinalizer();
+    expect(await oldFinalize).toBeNull();
+    expect(await getGitHead(h.repoRoot)).toBe(before);
+
+    const replacement = await h.service.finalizeSelfModRun({
+      runId: "replacement-run",
+      succeeded: true,
+      conversationId: "replacement-conversation",
+      threadKey: "replacement-thread",
+      commitMessageProvider: async () => "Commit replacement attempt",
+    });
+    expect(replacement?.files).toEqual([file]);
+    expect(await getGitHead(h.repoRoot)).toBe(replacement?.commitHash);
+    expect(
+      git(h.repoRoot, ["show", `${replacement!.commitHash}:${file}`]),
+    ).toBe("export const owner = 'replacement';");
+    const trailers = parseStellaCommitTrailers(
+      commitBody(h.repoRoot, replacement!.commitHash),
+    );
+    expect(trailers.conversationId).toBe("replacement-conversation");
+    expect(trailers.threadKey).toBe("replacement-thread");
+    expect(commitBody(h.repoRoot, replacement!.commitHash)).not.toContain(
+      "old-thread",
+    );
   });
 
   it("failed run (succeeded: false) commits nothing", async () => {
@@ -335,7 +410,12 @@ describe("agent finalize", () => {
       conversationId: "conv-s",
       commitMessageProvider: async () => "x".repeat(200),
     });
-    const subject = git(h.repoRoot, ["show", "-s", "--format=%s", long!.commitHash]);
+    const subject = git(h.repoRoot, [
+      "show",
+      "-s",
+      "--format=%s",
+      long!.commitHash,
+    ]);
     expect(subject.length).toBeLessThanOrEqual(72);
   });
 
@@ -588,8 +668,16 @@ describe("store uninstall", () => {
   };
 
   it("direct-reverts a clean tip install stack and clears the ledger", async () => {
-    const c1 = await makeInstallCommit("i1", "quiet-mode", "desktop/src/q1.tsx");
-    const c2 = await makeInstallCommit("i2", "quiet-mode", "desktop/src/q2.tsx");
+    const c1 = await makeInstallCommit(
+      "i1",
+      "quiet-mode",
+      "desktop/src/q1.tsx",
+    );
+    const c2 = await makeInstallCommit(
+      "i2",
+      "quiet-mode",
+      "desktop/src/q2.tsx",
+    );
     h.service.recordInstall({
       packageId: "quiet-mode",
       releaseNumber: 1,
@@ -618,7 +706,11 @@ describe("store uninstall", () => {
   });
 
   it("requires the agent fallback when the working tree is dirty", async () => {
-    const c1 = await makeInstallCommit("i-dirty", "noisy-mode", "desktop/src/n1.tsx");
+    const c1 = await makeInstallCommit(
+      "i-dirty",
+      "noisy-mode",
+      "desktop/src/n1.tsx",
+    );
     h.service.recordInstall({
       packageId: "noisy-mode",
       releaseNumber: 1,
@@ -635,7 +727,11 @@ describe("store uninstall", () => {
   });
 
   it("direct-reverts a buried install when later edits do not overlap", async () => {
-    const c1 = await makeInstallCommit("i-old", "old-mode", "desktop/src/o1.tsx");
+    const c1 = await makeInstallCommit(
+      "i-old",
+      "old-mode",
+      "desktop/src/o1.tsx",
+    );
     h.service.recordInstall({
       packageId: "old-mode",
       releaseNumber: 1,
@@ -676,7 +772,11 @@ describe("store uninstall", () => {
     // Reverting the same commit twice forces a mid-sequence conflict: the
     // first revert succeeds, the second tries to re-apply the inverse diff
     // onto already-reverted content.
-    await writeRepoFile(h.repoRoot, "desktop/src/seed.tsx", "export const seed = 2;\n");
+    await writeRepoFile(
+      h.repoRoot,
+      "desktop/src/seed.tsx",
+      "export const seed = 2;\n",
+    );
     git(h.repoRoot, ["add", "."]);
     git(h.repoRoot, ["commit", "-q", "-m", "Bump seed"]);
     const bump = (await getGitHead(h.repoRoot))!;
@@ -764,7 +864,11 @@ describe("commit listing and ordering", () => {
 
   it("marks recent self-mod commits tainted when their files are dirty again", async () => {
     await h.service.beginSelfModRun({ runId: "t1", taskDescription: "Taint" });
-    await writeRepoFile(h.repoRoot, "desktop/src/taint.tsx", "export const t = 1;\n");
+    await writeRepoFile(
+      h.repoRoot,
+      "desktop/src/taint.tsx",
+      "export const t = 1;\n",
+    );
     const finalized = await h.service.finalizeSelfModRun({
       runId: "t1",
       succeeded: true,
@@ -775,7 +879,11 @@ describe("commit listing and ordering", () => {
     expect(summaries[0]?.commitHash).toBe(finalized!.commitHash);
     expect(summaries[0]?.tainted).toBeUndefined();
 
-    await writeRepoFile(h.repoRoot, "desktop/src/taint.tsx", "export const t = 2;\n");
+    await writeRepoFile(
+      h.repoRoot,
+      "desktop/src/taint.tsx",
+      "export const t = 2;\n",
+    );
     summaries = await listRecentSelfModCommits(h.repoRoot, 5);
     expect(summaries[0]?.tainted).toBe(true);
     expect(summaries[0]?.taintedFiles).toEqual(["desktop/src/taint.tsx"]);
@@ -784,7 +892,11 @@ describe("commit listing and ordering", () => {
   it("orders shuffled linear commits topologically without walking unrelated history", async () => {
     const hashes: string[] = [];
     for (let index = 0; index < 4; index += 1) {
-      await writeRepoFile(h.repoRoot, `desktop/src/o-${index}.ts`, `// ${index}\n`);
+      await writeRepoFile(
+        h.repoRoot,
+        `desktop/src/o-${index}.ts`,
+        `// ${index}\n`,
+      );
       git(h.repoRoot, ["add", "."]);
       git(h.repoRoot, ["commit", "-q", "-m", `Ordered ${index}`]);
       hashes.push((await getGitHead(h.repoRoot))!);
@@ -856,8 +968,16 @@ describe("commit listing and ordering", () => {
 describe("readGitObjectsBatch", () => {
   it("reads base+next blobs for a commit in one batch, mapping missing paths to null", async () => {
     const h = await createHarness();
-    await writeRepoFile(h.repoRoot, "desktop/src/seed.tsx", "export const seed = 2;\n");
-    await writeRepoFile(h.repoRoot, "desktop/src/new.tsx", "export const fresh = 1;\n");
+    await writeRepoFile(
+      h.repoRoot,
+      "desktop/src/seed.tsx",
+      "export const seed = 2;\n",
+    );
+    await writeRepoFile(
+      h.repoRoot,
+      "desktop/src/new.tsx",
+      "export const fresh = 1;\n",
+    );
     git(h.repoRoot, ["add", "."]);
     git(h.repoRoot, ["commit", "-q", "-m", "Second commit"]);
     const head = (await getGitHead(h.repoRoot))!;
@@ -873,9 +993,9 @@ describe("readGitObjectsBatch", () => {
       ],
     });
 
-    expect(objects.get(`${parent}:desktop/src/seed.tsx`)?.toString("utf8")).toBe(
-      "export const seed = 1;\n",
-    );
+    expect(
+      objects.get(`${parent}:desktop/src/seed.tsx`)?.toString("utf8"),
+    ).toBe("export const seed = 1;\n");
     expect(objects.get(`${head}:desktop/src/seed.tsx`)?.toString("utf8")).toBe(
       "export const seed = 2;\n",
     );

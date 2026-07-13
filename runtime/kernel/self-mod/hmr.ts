@@ -395,6 +395,7 @@ export const createSelfModHmrController = (
   const tracker = createContentionTracker();
   const touchedPathsByRun = new Map<string, Set<string>>();
   const finalizedSnapshotsByRun = new Map<string, Map<string, string | null>>();
+  const pendingCancelResultsByRun = new Map<string, CancelResult>();
 
   const snapshotPathForRun = (
     runId: string,
@@ -452,14 +453,15 @@ export const createSelfModHmrController = (
     return released?.ok === true;
   };
 
-  const untrackPaths = async (paths: string[]): Promise<void> => {
-    if (paths.length === 0 || !options.enabled) return;
-    await postWithRetry({
+  const untrackPaths = async (paths: string[]): Promise<boolean> => {
+    if (paths.length === 0 || !options.enabled) return true;
+    const response = await postJsonWithRetry<{ ok?: boolean }>({
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/untrack-paths`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { paths },
     });
+    return response?.ok === true;
   };
 
   const sendApply = async (
@@ -495,12 +497,13 @@ export const createSelfModHmrController = (
       ),
     ];
     if (paths.length === 0) return true;
-    return await postWithRetry({
+    const response = await postJsonWithRetry<{ ok?: boolean }>({
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/discard`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { paths },
     });
+    return response?.ok === true;
   };
 
   const snapshotRun = (runId: string): void => {
@@ -597,7 +600,11 @@ export const createSelfModHmrController = (
           (repoRelativePath) =>
             tracker.getOwners(repoRelativePath).length === 0,
         );
-        await untrackPaths(unownedPaths);
+        if (!(await untrackPaths(unownedPaths))) {
+          throw new Error(
+            "Failed to untrack self-mod HMR paths after a late write.",
+          );
+        }
         return;
       }
       tracker.recordWrite(runId, newlyOwnedPaths);
@@ -625,11 +632,39 @@ export const createSelfModHmrController = (
     },
 
     async cancel(runId) {
+      const pendingResult = pendingCancelResultsByRun.get(runId);
+      if (pendingResult) {
+        if (!(await untrackPaths(pendingResult.releasedPaths))) {
+          throw new Error(
+            `Failed to untrack Vite paths for canceled self-mod run ${runId}.`,
+          );
+        }
+        const releasedClientUpdates = await releaseClientUpdates([runId]);
+        if (!releasedClientUpdates) {
+          throw new Error(
+            `Failed to release Vite client update pause for self-mod run ${runId}.`,
+          );
+        }
+        pendingCancelResultsByRun.delete(runId);
+        return pendingResult;
+      }
       dropRunState([runId]);
       const decision = tracker.cancel(runId);
       const result = finishApplyResult(decision);
+      const cancelResult: CancelResult = {
+        ...result,
+        releasedPaths: [...decision.releasedPaths],
+      };
+      // The tracker decision is irreversible. Retain its release payload
+      // until every external endpoint acknowledges, and make `hasRun()` keep
+      // lifecycle cleanup routed back here for bounded retries.
+      pendingCancelResultsByRun.set(runId, cancelResult);
       if (decision.releasedPaths.length > 0) {
-        await untrackPaths(decision.releasedPaths);
+        if (!(await untrackPaths(decision.releasedPaths))) {
+          throw new Error(
+            `Failed to untrack Vite paths for canceled self-mod run ${runId}.`,
+          );
+        }
       }
       const releasedClientUpdates = await releaseClientUpdates([runId]);
       if (!releasedClientUpdates) {
@@ -637,7 +672,8 @@ export const createSelfModHmrController = (
           `Failed to release Vite client update pause for self-mod run ${runId}.`,
         );
       }
-      return { ...result, releasedPaths: [...decision.releasedPaths] };
+      pendingCancelResultsByRun.delete(runId);
+      return cancelResult;
     },
 
     async apply(appliedRuns, applyOptions) {
@@ -701,12 +737,20 @@ export const createSelfModHmrController = (
       }
       touchedPathsByRun.clear();
       finalizedSnapshotsByRun.clear();
-      if (!options.enabled) return true;
-      return await postWithRetry({
+      if (!options.enabled) {
+        pendingCancelResultsByRun.clear();
+        return true;
+      }
+      const response = await postJsonWithRetry<{ ok?: boolean }>({
         getDevServerUrl: options.getDevServerUrl,
         path: `${HMR_ENDPOINT_BASE}/force-resume`,
         maxWaitMs: APPLY_MAX_WAIT_MS,
       });
+      if (response?.ok === true) {
+        pendingCancelResultsByRun.clear();
+        return true;
+      }
+      return false;
     },
 
     async getStatus() {
@@ -740,7 +784,7 @@ export const createSelfModHmrController = (
     },
 
     hasRun(runId) {
-      return tracker.hasRun(runId);
+      return tracker.hasRun(runId) || pendingCancelResultsByRun.has(runId);
     },
 
     getRunStatus(runId) {

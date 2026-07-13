@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import { createAgentOrchestration } from "../../../../../runtime/kernel/runner/agent-orchestration.js";
 import { createSelfModHmrController } from "../../../../../runtime/kernel/self-mod/hmr.js";
+import type { PersistedAgentRecord } from "../../../../../runtime/kernel/storage/runtime-store.js";
 import { handleApplyPatch } from "../../../../../runtime/kernel/tools/apply-patch.js";
 import {
   createShellState,
@@ -410,14 +411,21 @@ const waitUntil = async (predicate: () => boolean | Promise<boolean>) => {
 };
 
 const createTestContext = (root: string, hmrController: unknown) => {
+  const agentRecords = new Map<string, PersistedAgentRecord>();
   const runtimeStore = {
     resolveOrCreateActiveThread: () => ({
       threadId: "thread-1",
       reused: false,
     }),
     listActiveThreads: () => [],
-    saveAgentRecord: vi.fn(),
-    getAgentRecord: () => null,
+    saveAgentRecord: vi.fn((record: PersistedAgentRecord) => {
+      agentRecords.set(record.threadId, structuredClone(record));
+    }),
+    getAgentRecord: (threadId: string) => agentRecords.get(threadId) ?? null,
+    listAgentRecordsByStatus: (status: string) =>
+      [...agentRecords.values()].filter((record) => record.status === status),
+    listAgentRecordsWithPendingCleanup: () =>
+      [...agentRecords.values()].filter((record) => record.pendingCleanup),
   };
   return {
     stellaAppDir: root,
@@ -1291,7 +1299,8 @@ describe("agent orchestration self-mod HMR tracking", () => {
 
     let shellMutationDepth = 0;
     let endAttempts = 0;
-    const never = new Promise<never>(() => {});
+    let endInFlight = 0;
+    let maxEndInFlight = 0;
     const runStates = new Map<string, "active" | "canceled" | "finalized">();
     const controller = {
       beginRun: vi.fn(async (runId: string) => {
@@ -1304,9 +1313,18 @@ describe("agent orchestration self-mod HMR tracking", () => {
       }),
       endShellMutationGuard: vi.fn(async () => {
         endAttempts += 1;
-        if (endAttempts === 1) return await never;
-        shellMutationDepth -= 1;
-        return { ok: true, changedPaths: [] };
+        endInFlight += 1;
+        maxEndInFlight = Math.max(maxEndInFlight, endInFlight);
+        try {
+          if (endAttempts === 1) {
+            await new Promise((resolve) => setTimeout(resolve, 60));
+            return { ok: false, changedPaths: [] };
+          }
+          shellMutationDepth -= 1;
+          return { ok: true, changedPaths: [] };
+        } finally {
+          endInFlight -= 1;
+        }
       }),
       hasRun: vi.fn((runId: string) => runStates.get(runId) === "active"),
     };
@@ -1314,10 +1332,21 @@ describe("agent orchestration self-mod HMR tracking", () => {
     context.toolHost.killShell = vi.fn(async () => {});
     context.selfModLifecycle.beginRun = vi.fn();
     let cancelAttempts = 0;
+    let cancelInFlight = 0;
+    let maxCancelInFlight = 0;
     context.selfModLifecycle.cancelRun = vi.fn(async (runId: string) => {
       cancelAttempts += 1;
-      if (cancelAttempts === 1) return await never;
-      runStates.set(runId, "canceled");
+      cancelInFlight += 1;
+      maxCancelInFlight = Math.max(maxCancelInFlight, cancelInFlight);
+      try {
+        if (cancelAttempts === 1) {
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          throw new Error("first cancellation was not acknowledged");
+        }
+        runStates.set(runId, "canceled");
+      } finally {
+        cancelInFlight -= 1;
+      }
     });
     context.selfModLifecycle.finalizeRun = vi.fn(
       async ({ runId }: { runId: string }) => {
@@ -1334,7 +1363,7 @@ describe("agent orchestration self-mod HMR tracking", () => {
       sendMessage: async () => {},
       attemptTeardownTimeoutMs: 10,
       attemptResourceCleanupTimeoutMs: 15,
-      attemptResourceCleanupRetryMs: 100,
+      attemptResourceCleanupRetryMs: 5,
     });
 
     const { threadId } = await context.state.localAgentManager.createAgent({
@@ -1367,6 +1396,18 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("still has resources pending release"),
     );
+    expect(
+      context.runtimeStore.getAgentRecord(threadId)?.pendingCleanup,
+    ).toMatchObject({
+      attemptGeneration: 1,
+      diagnostic: expect.stringContaining("resources pending release"),
+      recordedAt: expect.any(Number),
+    });
+    expect(
+      context.runtimeStore
+        .listAgentRecordsWithPendingCleanup()
+        .map((record) => record.threadId),
+    ).toContain(threadId);
     expect(shellMutationDepth).toBe(1);
     expect(runStates.get(oldRunId)).toBe("active");
 
@@ -1379,7 +1420,12 @@ describe("agent orchestration self-mod HMR tracking", () => {
     );
     expect(runStates.get(oldRunId)).toBe("canceled");
     expect(shellMutationDepth).toBe(0);
+    expect(maxCancelInFlight).toBe(1);
+    expect(maxEndInFlight).toBe(1);
     expect(context.toolHost.killShell).toHaveBeenCalledTimes(1);
+    expect(
+      context.runtimeStore.getAgentRecord(threadId)?.pendingCleanup,
+    ).toBeUndefined();
 
     releaseHungAttempt();
     await new Promise((resolve) => setTimeout(resolve, 20));

@@ -37,6 +37,25 @@ const selfModRequestContext = new AsyncLocalStorage<{
 }>()
 
 const SELF_MOD_HMR_ENDPOINT_BASE = '/__stella/self-mod/hmr'
+export const MAX_RELEASED_SHELL_MUTATION_LEASE_TOMBSTONES = 8_192
+
+export const rememberReleasedShellMutationLease = (
+  tombstones: Set<string>,
+  leaseId: string,
+  maxEntries = MAX_RELEASED_SHELL_MUTATION_LEASE_TOMBSTONES,
+) => {
+  if (!leaseId) return
+  // Set insertion order gives us a tiny LRU: refresh repeat releases, then
+  // evict the oldest ids once the late-ack window reaches its hard bound.
+  tombstones.delete(leaseId)
+  tombstones.add(leaseId)
+  const boundedMax = Math.max(1, Math.floor(maxEntries))
+  while (tombstones.size > boundedMax) {
+    const oldest = tombstones.values().next().value
+    if (typeof oldest !== 'string') break
+    tombstones.delete(oldest)
+  }
+}
 const STELLA_REPO_ROOT = path.resolve(__dirname, '..', '..')
 const SELF_MOD_HMR_MODE_ENV = 'STELLA_SELF_MOD_HMR_MODE'
 
@@ -393,10 +412,6 @@ export function selfModHmrControl(): Plugin {
   let shellMutationDepth = 0
   const shellMutationLeaseIds = new Set<string>()
   const releasedShellMutationLeaseIds = new Set<string>()
-  const rememberReleasedShellMutationLease = (leaseId: string) => {
-    if (!leaseId) return
-    releasedShellMutationLeaseIds.add(leaseId)
-  }
 
   const hasOwnedClientUpdatePause = () =>
     pausedRunIds.size > 0 || shellMutationDepth > 0
@@ -1113,7 +1128,7 @@ export function selfModHmrControl(): Plugin {
           const payload = await readJsonBody(req)
           const leaseId = typeof payload.leaseId === 'string' ? payload.leaseId : ''
           if (leaseId && !shellMutationLeaseIds.has(leaseId)) {
-            rememberReleasedShellMutationLease(leaseId)
+            rememberReleasedShellMutationLease(releasedShellMutationLeaseIds, leaseId)
             sendJson(200, {
               ok: true,
               shellMutationDepth,
@@ -1124,7 +1139,7 @@ export function selfModHmrControl(): Plugin {
           }
           if (leaseId) {
             shellMutationLeaseIds.delete(leaseId)
-            rememberReleasedShellMutationLease(leaseId)
+            rememberReleasedShellMutationLease(releasedShellMutationLeaseIds, leaseId)
           }
           shellMutationDepth = Math.max(0, shellMutationDepth - 1)
           let changedPaths: string[] = []

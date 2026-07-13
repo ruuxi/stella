@@ -118,6 +118,12 @@ export type PersistedAgentRecord = {
   status: TaskLifecycleStatus;
   /** Persisted ownership epoch so lifecycle ids remain unique after restart. */
   attemptGeneration: number;
+  /** Durable marker for abandoned resources whose cleanup was not acknowledged. */
+  pendingCleanup?: {
+    attemptGeneration: number;
+    diagnostic: string;
+    recordedAt: number;
+  };
   /** Root run that owns the thread's latest lifecycle (send_input rebinds it). */
   rootRunId?: string;
   startedAt: number;
@@ -4155,9 +4161,10 @@ export class SessionStore {
         error,
         updated_at,
         root_run_id,
-        attempt_generation
+        attempt_generation,
+        pending_cleanup_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
@@ -4173,7 +4180,8 @@ export class SessionStore {
         error = excluded.error,
         updated_at = excluded.updated_at,
         root_run_id = excluded.root_run_id,
-        attempt_generation = excluded.attempt_generation
+        attempt_generation = excluded.attempt_generation,
+        pending_cleanup_json = excluded.pending_cleanup_json
     `,
       )
       .run(
@@ -4193,6 +4201,7 @@ export class SessionStore {
         record.updatedAt,
         record.rootRunId ?? null,
         record.attemptGeneration ?? 0,
+        toJsonValueString(record.pendingCleanup) ?? null,
       );
   }
 
@@ -4282,7 +4291,8 @@ export class SessionStore {
         error,
         updated_at,
         root_run_id,
-        attempt_generation
+        attempt_generation,
+        pending_cleanup_json
       FROM runtime_agents
       WHERE thread_id = ?
       LIMIT 1
@@ -4306,6 +4316,7 @@ export class SessionStore {
           updated_at: number;
           root_run_id: string | null;
           attempt_generation: number;
+          pending_cleanup_json: string | null;
         }
       | undefined;
     if (!row) {
@@ -4314,6 +4325,9 @@ export class SessionStore {
     const selfModMetadata = parseJsonValue<
       PersistedAgentRecord["selfModMetadata"]
     >(row.self_mod_metadata_json);
+    const pendingCleanup = parseJsonValue<
+      PersistedAgentRecord["pendingCleanup"]
+    >(row.pending_cleanup_json);
     return {
       threadId: row.thread_id,
       conversationId: row.conversation_id,
@@ -4327,6 +4341,7 @@ export class SessionStore {
       ...(selfModMetadata ? { selfModMetadata } : {}),
       status: row.status,
       attemptGeneration: row.attempt_generation,
+      ...(pendingCleanup ? { pendingCleanup } : {}),
       ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
       startedAt: row.started_at,
       completedAt: row.completed_at,
@@ -4358,7 +4373,8 @@ export class SessionStore {
         error,
         updated_at,
         root_run_id,
-        attempt_generation
+        attempt_generation,
+        pending_cleanup_json
       FROM runtime_agents
       WHERE status = ?
       ORDER BY updated_at DESC, thread_id ASC
@@ -4381,12 +4397,16 @@ export class SessionStore {
       updated_at: number;
       root_run_id: string | null;
       attempt_generation: number;
+      pending_cleanup_json: string | null;
     }>;
 
     return rows.map((row) => {
       const selfModMetadata = parseJsonValue<
         PersistedAgentRecord["selfModMetadata"]
       >(row.self_mod_metadata_json);
+      const pendingCleanup = parseJsonValue<
+        PersistedAgentRecord["pendingCleanup"]
+      >(row.pending_cleanup_json);
       return {
         threadId: row.thread_id,
         conversationId: row.conversation_id,
@@ -4400,6 +4420,7 @@ export class SessionStore {
         ...(selfModMetadata ? { selfModMetadata } : {}),
         status: row.status,
         attemptGeneration: row.attempt_generation,
+        ...(pendingCleanup ? { pendingCleanup } : {}),
         ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
         startedAt: row.started_at,
         completedAt: row.completed_at,
@@ -4407,6 +4428,20 @@ export class SessionStore {
         ...(row.error ? { error: row.error } : {}),
         updatedAt: row.updated_at,
       };
+    });
+  }
+
+  listAgentRecordsWithPendingCleanup(): PersistedAgentRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT thread_id FROM runtime_agents
+         WHERE pending_cleanup_json IS NOT NULL
+         ORDER BY updated_at DESC, thread_id ASC`,
+      )
+      .all() as Array<{ thread_id: string }>;
+    return rows.flatMap((row) => {
+      const record = this.getAgentRecord(row.thread_id);
+      return record ? [record] : [];
     });
   }
 

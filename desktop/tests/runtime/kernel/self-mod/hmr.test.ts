@@ -545,6 +545,59 @@ describe("self-mod HMR controller", () => {
     }
   });
 
+  it("keeps canceled path ownership pending until untrack-paths affirmatively acknowledges", async () => {
+    const originalFetch = globalThis.fetch;
+    const root = makeTempRoot();
+    const filePath = path.join(root, "desktop/src/pinned.tsx");
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, "export const pinned = true;\n");
+    let pinnedPaths = 0;
+    let untrackAttempts = 0;
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/track-paths")) {
+        pinnedPaths += 1;
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      if (url.endsWith("/untrack-paths")) {
+        untrackAttempts += 1;
+        if (untrackAttempts === 1) {
+          return new Response(JSON.stringify({ ok: false }), { status: 200 });
+        }
+        pinnedPaths -= 1;
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+    const controller = createSelfModHmrController({
+      enabled: true,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+
+    try {
+      await controller.beginRun("run-untrack-retry");
+      await controller.recordWrite("run-untrack-retry", [filePath]);
+      expect(pinnedPaths).toBe(1);
+      await expect(controller.cancel("run-untrack-retry")).rejects.toThrow(
+        "Failed to untrack Vite paths",
+      );
+      expect(pinnedPaths).toBe(1);
+      expect(controller.hasRun("run-untrack-retry")).toBe(true);
+
+      await expect(controller.cancel("run-untrack-retry")).resolves.toEqual(
+        expect.objectContaining({
+          releasedPaths: ["desktop/src/pinned.tsx"],
+        }),
+      );
+      expect(untrackAttempts).toBe(2);
+      expect(pinnedPaths).toBe(0);
+      expect(controller.hasRun("run-untrack-retry")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("discards only Vite-trackable paths after a failed apply", async () => {
     const originalFetch = globalThis.fetch;
     let body: unknown = null;

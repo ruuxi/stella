@@ -70,6 +70,7 @@ const commitPathScopedChanges = async (
   repoRoot: string,
   paths: string[],
   commitArgs: string[],
+  shouldCommit?: () => boolean,
 ): Promise<string | null> => {
   if (paths.length === 0) return null;
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "stella-git-index-"));
@@ -94,6 +95,9 @@ const commitPathScopedChanges = async (
       );
     }
 
+    if (shouldCommit && !shouldCommit()) {
+      return null;
+    }
     await runGitWithEnv(repoRoot, commitArgs, env);
     // The temporary index produced the commit; refresh only these paths in the
     // real index so unrelated staged user changes remain untouched.
@@ -164,6 +168,13 @@ export type GitMessageCommitArgs = {
    * swept into an agent-authored commit while still including new files.
    */
   paths?: string[];
+  /**
+   * Last-moment ownership check, evaluated inside the repository commit lock
+   * after the isolated index is prepared and immediately before `git commit`.
+   * A canceled self-mod finalizer uses this to prevent a stale async finalize
+   * from committing newer work under its old identity.
+   */
+  shouldCommit?: () => boolean;
 };
 
 const SUBJECT_MAX_LENGTH = 72;
@@ -229,9 +240,17 @@ export const commitGitMessage = async (
   // the lock; only the commit + HEAD read need the critical section.
   return await withRepoCommitLock(args.repoRoot, async () => {
     if (paths.length > 0) {
-      return await commitPathScopedChanges(args.repoRoot, paths, commitArgs);
+      return await commitPathScopedChanges(
+        args.repoRoot,
+        paths,
+        commitArgs,
+        args.shouldCommit,
+      );
     }
 
+    if (args.shouldCommit && !args.shouldCommit()) {
+      return null;
+    }
     await runGit(args.repoRoot, commitArgs);
     return await getGitHead(args.repoRoot);
   });
