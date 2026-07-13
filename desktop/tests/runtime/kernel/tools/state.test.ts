@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { MODELS } from "../../../../../runtime/ai/models.generated.js";
+import {
+  registerModel,
+  unregisterModel,
+} from "../../../../../runtime/ai/models.js";
+import type { Model } from "../../../../../runtime/ai/types.js";
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import {
   createStateContext,
@@ -8,6 +14,13 @@ import {
 } from "../../../../../runtime/kernel/tools/state.js";
 import { AGENT_PAUSE_CANCEL_REASON } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import type { AgentToolRequest } from "../../../../../runtime/kernel/tools/types.js";
+
+const COLON_BEARING_REGISTRY_REFERENCES = Object.entries(MODELS).flatMap(
+  ([registryProvider, models]) =>
+    Object.values(models as Record<string, { id: string }>)
+      .filter((model) => model.id.includes(":"))
+      .map((model) => `${registryProvider}/${model.id}`),
+);
 
 describe("state tools", () => {
   it("defaults spawn_agent to the general agent", async () => {
@@ -147,8 +160,43 @@ describe("state tools", () => {
     });
   });
 
+  it.each(COLON_BEARING_REGISTRY_REFERENCES)(
+    "preserves registered colon-bearing model reference %s",
+    (modelReference) => {
+      expect(parseSpawnAgentModel(modelReference)).toEqual({
+        kind: "model",
+        model: modelReference,
+      });
+    },
+  );
+
+  it("lets a registered model ending in an effort word win over suffix parsing", () => {
+    const modelReference = "spawn-test/future-model:high";
+    registerModel("spawn-test", {
+      id: "future-model:high",
+      name: "Future Model",
+      api: "openai-completions",
+      provider: "spawn-test",
+      baseUrl: "https://example.invalid",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 1,
+      maxTokens: 1,
+    } as Model<any>);
+    try {
+      expect(parseSpawnAgentModel(modelReference)).toEqual({
+        kind: "model",
+        model: modelReference,
+      });
+    } finally {
+      unregisterModel("spawn-test", "future-model:high");
+    }
+  });
+
   it("parses effort suffixes after all model and engine forms", () => {
-    expect(parseSpawnAgentModel("stella/grok-4.5:medium")).toEqual({
+    const knownModel = (candidate: string) => candidate === "stella/grok-4.5";
+    expect(parseSpawnAgentModel("stella/grok-4.5:medium", knownModel)).toEqual({
       kind: "model",
       model: "stella/grok-4.5",
       reasoningEffort: "medium",
@@ -178,7 +226,10 @@ describe("state tools", () => {
   });
 
   it("rejects unknown or empty effort suffixes before creating a task", async () => {
-    const { ctx, created } = createSpawnContext(() => {});
+    const { ctx, created } = createSpawnContext((modelName) => {
+      if (modelName === "stella/grok-4.5") return;
+      throw new Error(`Unknown model: ${modelName}`);
+    });
     for (const model of ["stella/grok-4.5:max", "codex:"]) {
       const result = await handleSpawnAgent(
         ctx,
@@ -195,7 +246,10 @@ describe("state tools", () => {
   });
 
   it("keeps effort scoped to only the spawn that requested it", async () => {
-    const { ctx, created } = createSpawnContext(() => {});
+    const { ctx, created } = createSpawnContext((modelName) => {
+      if (modelName === "stella/grok-4.5") return;
+      throw new Error(`Unknown model: ${modelName}`);
+    });
     await handleSpawnAgent(
       ctx,
       {

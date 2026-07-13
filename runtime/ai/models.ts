@@ -46,6 +46,27 @@ export function getAllModels(): Model<Api>[] {
 }
 
 /**
+ * Whether a user-facing model reference names an entry already present in the
+ * registry. Both the registry namespace and the model's provider namespace
+ * are accepted because routing supports both shapes.
+ */
+export function isRegisteredModelReference(rawReference: string): boolean {
+	const reference = rawReference.trim();
+	if (!reference) return false;
+	for (const [registryProvider, models] of modelRegistry) {
+		for (const model of models.values()) {
+			if (
+				reference === model.id ||
+				reference === `${registryProvider}/${model.id}` ||
+				reference === `${model.provider}/${model.id}`
+			)
+				return true;
+		}
+	}
+	return false;
+}
+
+/**
  * Register a model at runtime (e.g., from extensions).
  * If the provider doesn't exist in the registry, it is created.
  */

@@ -22,6 +22,7 @@ import type {
   SpawnEngineSelection,
   SpawnReasoningEffort,
 } from "../../contracts/agent-engine.js";
+import { isRegisteredModelReference } from "../../ai/models.js";
 
 export type StateContext = {
   stateRoot: string;
@@ -94,23 +95,23 @@ const SPAWN_REASONING_EFFORTS = new Set<SpawnReasoningEffort>([
   "xhigh",
 ]);
 
-const parseSpawnReasoningSuffix = (
+const splitSpawnReasoningSuffix = (
   raw: string,
-): { model: string; reasoningEffort?: SpawnReasoningEffort } => {
+): { model: string; suffix: string } | undefined => {
   const colon = raw.lastIndexOf(":");
-  if (colon === -1) return { model: raw };
+  if (colon === -1) return undefined;
   const model = raw.slice(0, colon).trim();
   const suffix = raw
     .slice(colon + 1)
     .trim()
     .toLowerCase();
-  if (!model || !SPAWN_REASONING_EFFORTS.has(suffix as SpawnReasoningEffort)) {
-    throw new Error(
-      `Invalid spawn_agent model reasoning suffix ":${suffix}". Expected one of :low, :medium, :high, or :xhigh.`,
-    );
-  }
-  return { model, reasoningEffort: suffix as SpawnReasoningEffort };
+  return { model, suffix };
 };
+
+const invalidSpawnReasoningSuffix = (suffix: string): Error =>
+  new Error(
+    `Invalid spawn_agent model reasoning suffix ":${suffix}". Expected one of :low, :medium, :high, or :xhigh.`,
+  );
 
 /**
  * Parses spawn_agent's optional `model` parameter:
@@ -123,11 +124,40 @@ const parseSpawnReasoningSuffix = (
  *
  * Any non-omitted form may end in `:low`, `:medium`, `:high`, or `:xhigh`.
  */
-export const parseSpawnAgentModel = (value: unknown): SpawnModelSelection => {
+export const parseSpawnAgentModel = (
+  value: unknown,
+  canResolveModel: (modelName: string) => boolean = () => false,
+): SpawnModelSelection => {
   const raw = toOptionalString(value);
   if (!raw) return { kind: "default" };
-  const { model: modelReference, reasoningEffort } =
-    parseSpawnReasoningSuffix(raw);
+  // Registered full model references win over suffix interpretation.
+  // This preserves legitimate ids such as `...:thinking`, `...:free`, and
+  // even a future registered model whose id literally ends in `:high`.
+  const fullReferenceIsModel = isRegisteredModelReference(raw);
+  const suffixParts = splitSpawnReasoningSuffix(raw);
+  let modelReference = raw;
+  let reasoningEffort: SpawnReasoningEffort | undefined;
+  if (!fullReferenceIsModel && suffixParts) {
+    const suffixIsEffort = SPAWN_REASONING_EFFORTS.has(
+      suffixParts.suffix as SpawnReasoningEffort,
+    );
+    const slash = suffixParts.model.indexOf("/");
+    const head = (
+      slash === -1 ? suffixParts.model : suffixParts.model.slice(0, slash)
+    ).toLowerCase();
+    const baseIsKnownForm =
+      suffixParts.model === "default" ||
+      Boolean(SPAWN_ENGINE_IDS[head]) ||
+      isRegisteredModelReference(suffixParts.model) ||
+      canResolveModel(suffixParts.model);
+    if (baseIsKnownForm && !suffixIsEffort) {
+      throw invalidSpawnReasoningSuffix(suffixParts.suffix);
+    }
+    if (baseIsKnownForm && suffixIsEffort) {
+      modelReference = suffixParts.model;
+      reasoningEffort = suffixParts.suffix as SpawnReasoningEffort;
+    }
+  }
   if (modelReference === "default") {
     return { kind: "default", ...(reasoningEffort ? { reasoningEffort } : {}) };
   }
@@ -327,7 +357,15 @@ export const handleSpawnAgent = async (
 
   let modelSelection: SpawnModelSelection;
   try {
-    modelSelection = parseSpawnAgentModel(args.model);
+    modelSelection = parseSpawnAgentModel(args.model, (modelName) => {
+      if (!ctx.validateSpawnModel) return false;
+      try {
+        ctx.validateSpawnModel(modelName);
+        return true;
+      } catch {
+        return false;
+      }
+    });
   } catch (error) {
     return { error: (error as Error).message };
   }

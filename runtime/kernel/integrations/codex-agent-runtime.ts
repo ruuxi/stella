@@ -37,6 +37,7 @@ const MAX_STDERR_CAPTURE = 8_000;
 const SIGTERM_TIMEOUT_MS = 1_500;
 const SIGKILL_TIMEOUT_MS = 4_000;
 const DEFAULT_CODEX_REQUEST_TIMEOUT_MS = 60 * 1000;
+const DEFAULT_CODEX_EFFORT_MODEL_LIST_TIMEOUT_MS = 2_000;
 const DEFAULT_CODEX_TURN_STARTUP_IDLE_TIMEOUT_MS = 15 * 1000;
 const DEFAULT_CODEX_TURN_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 // Ceiling while confirmed turn work (native command / Stella tool) is in
@@ -1240,6 +1241,39 @@ const requestCodexModels = async (
   return models;
 };
 
+const requestCodexModelsWithDeadline = async (
+  client: CodexAppServerClient,
+  includeHidden: boolean,
+): Promise<CodexModel[]> => {
+  const timeoutMs = Math.min(
+    5_000,
+    configuredTimeoutMs(
+      "STELLA_CODEX_EFFORT_MODEL_LIST_TIMEOUT_MS",
+      DEFAULT_CODEX_EFFORT_MODEL_LIST_TIMEOUT_MS,
+    ),
+  );
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      requestCodexModels(client, includeHidden),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `Codex effort model/list timed out after ${timeoutMs}ms.`,
+              ),
+            ),
+          timeoutMs,
+        );
+        timeout.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+};
+
 const startOrResumeCodexThread = async (args: {
   client: CodexAppServerClient;
   persistedSessionId?: string;
@@ -1423,7 +1457,7 @@ export const runCodexAgentTurn = async (request: {
     : await createInitializedCodexClient(request.cliBridgeSocketPath);
   if (request.reasoningEffort && !request.utility) {
     try {
-      const models = await requestCodexModels(client, true);
+      const models = await requestCodexModelsWithDeadline(client, true);
       const resolvedModel = models.find(
         (candidate) => candidate.model === model || candidate.id === model,
       );

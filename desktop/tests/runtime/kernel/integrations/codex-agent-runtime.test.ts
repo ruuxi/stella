@@ -508,6 +508,77 @@ describe("Codex agent runtime", () => {
     }
   });
 
+  it("drops a spawn effort quickly when model/list does not respond", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-slow-model-list-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    const capturePath = path.join(dir, "turn-start.json");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        'const readline = require("node:readline");',
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'model/list') return;",
+        "  if (message.method === 'thread/start') { send({ id: message.id, result: { thread: { id: 'thread-slow-model-list' } } }); return; }",
+        "  if (message.method === 'turn/start') {",
+        "    fs.writeFileSync(process.env.STELLA_TEST_CODEX_CAPTURE_PATH, JSON.stringify(message.params));",
+        "    const threadId = message.params.threadId;",
+        "    const turn = { id: 'turn-slow-model-list', status: 'inProgress' };",
+        "    send({ id: message.id, result: { turn } });",
+        "    send({ method: 'turn/started', params: { threadId, turn } });",
+        "    const completedTurn = { id: turn.id, status: 'completed' };",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'msg-slow-model-list', text: 'done' } } });",
+        "    send({ method: 'turn/completed', params: { threadId, turn: completedTurn } });",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    const previousEffortTimeout =
+      process.env.STELLA_CODEX_EFFORT_MODEL_LIST_TIMEOUT_MS;
+    const previousCapturePath = process.env.STELLA_TEST_CODEX_CAPTURE_PATH;
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    process.env.STELLA_CODEX_EFFORT_MODEL_LIST_TIMEOUT_MS = "25";
+    process.env.STELLA_TEST_CODEX_CAPTURE_PATH = capturePath;
+    try {
+      const startedAt = Date.now();
+      const result = await runCodexAgentTurn({
+        runId: "run-slow-model-list",
+        prompt: "hello",
+        reasoningEffort: "xhigh",
+      });
+      expect(Date.now() - startedAt).toBeLessThan(3_000);
+      expect(result.text).toBe("done");
+      expect(
+        JSON.parse(fs.readFileSync(capturePath, "utf8")),
+      ).not.toHaveProperty("effort");
+    } finally {
+      if (previousPath === undefined) delete process.env.STELLA_CODEX_CLI_PATH;
+      else process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      if (previousEffortTimeout === undefined) {
+        delete process.env.STELLA_CODEX_EFFORT_MODEL_LIST_TIMEOUT_MS;
+      } else {
+        process.env.STELLA_CODEX_EFFORT_MODEL_LIST_TIMEOUT_MS =
+          previousEffortTimeout;
+      }
+      if (previousCapturePath === undefined) {
+        delete process.env.STELLA_TEST_CODEX_CAPTURE_PATH;
+      } else {
+        process.env.STELLA_TEST_CODEX_CAPTURE_PATH = previousCapturePath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("settles when Codex completes the final assistant item before turn completion", async () => {
     const dir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-fake-codex-final-item-"),

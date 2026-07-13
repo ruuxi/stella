@@ -45,8 +45,8 @@ import type {
   SpawnEngineSelection,
   SpawnReasoningEffort,
 } from "../../contracts/agent-engine.js";
-import { clampThinkingLevel } from "../../ai/models.js";
-import type { Model, Api } from "../../ai/types.js";
+import { getSupportedThinkingLevels } from "../../ai/models.js";
+import type { Model, Api, ModelThinkingLevel } from "../../ai/types.js";
 import type {
   PersistedRuntimeThreadPayload,
   RuntimeThreadMessage,
@@ -782,9 +782,33 @@ export const resolveAgentEngineForRun = (
 export const resolveSpawnReasoningEffortForModel = (
   model: Model<Api>,
   requested: SpawnReasoningEffort,
-): Exclude<ReturnType<typeof clampThinkingLevel>, "off"> | undefined => {
-  const clamped = clampThinkingLevel(model, requested);
-  return clamped === "off" ? undefined : clamped;
+): Exclude<ModelThinkingLevel, "off"> | undefined => {
+  const effortOrder: readonly ModelThinkingLevel[] = [
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+  ];
+  const requestedIndex = effortOrder.indexOf(requested);
+  const supported = getSupportedThinkingLevels(model);
+  let nearest: ModelThinkingLevel | undefined;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const candidate of supported) {
+    const candidateIndex = effortOrder.indexOf(candidate);
+    if (candidateIndex === -1) continue;
+    const distance = Math.abs(candidateIndex - requestedIndex);
+    const nearestIndex = nearest ? effortOrder.indexOf(nearest) : -1;
+    if (
+      distance < nearestDistance ||
+      (distance === nearestDistance && candidateIndex > nearestIndex)
+    ) {
+      nearest = candidate;
+      nearestDistance = distance;
+    }
+  }
+  return nearest === "off" ? undefined : nearest;
 };
 
 export const buildAgentContext = async (

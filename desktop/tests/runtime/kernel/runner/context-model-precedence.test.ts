@@ -51,6 +51,30 @@ describe("spawn_agent Stella reasoning clamping", () => {
     expect(resolveSpawnReasoningEffortForModel(mediumHighOnly, "xhigh")).toBe(
       "high",
     );
+
+    const lowXhighOnly = model(true, {
+      off: null,
+      minimal: null,
+      medium: null,
+      high: null,
+      xhigh: "xhigh",
+    });
+    expect(resolveSpawnReasoningEffortForModel(lowXhighOnly, "medium")).toBe(
+      "low",
+    );
+    expect(resolveSpawnReasoningEffortForModel(lowXhighOnly, "high")).toBe(
+      "xhigh",
+    );
+
+    const lowHighOnly = model(true, {
+      off: null,
+      minimal: null,
+      medium: null,
+      xhigh: null,
+    });
+    expect(resolveSpawnReasoningEffortForModel(lowHighOnly, "medium")).toBe(
+      "high",
+    );
   });
 
   it("drops a spawn effort when the resolved model has no dial", () => {
