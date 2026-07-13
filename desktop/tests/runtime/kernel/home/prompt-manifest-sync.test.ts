@@ -394,6 +394,11 @@ describe("remote prompt startup sync", () => {
     const legacy = legacyManifest(1, {
       "agents/general.md": "legacy general\n",
     });
+    expect(
+      STELLA_PROMPT_IDS.filter(
+        (id) => !legacy.prompts.some((prompt) => prompt.id === id),
+      ),
+    ).toEqual(["agents/manager.md"]);
 
     const fresh = await resolvePromptManifest({
       stellaDataDir: home,
@@ -421,8 +426,19 @@ describe("remote prompt startup sync", () => {
     expect(fallbackPrompt).toMatch(/\bcontinuity\b/i);
     expect(fallbackPrompt).toMatch(/\bfresh independent context\b/i);
     expect(fallbackPrompt).toMatch(/orchestrator(?:'s)? instructions/i);
-    expect(fallbackPrompt).toContain("[Milestone]");
-    expect(fallbackPrompt).toMatch(/do not emit milestones by default/i);
+    const statusRule = fallbackPrompt
+      .split("\n")
+      .find((line) => line.includes("[Status]"));
+    expect(statusRule).toMatch(/status|update/i);
+    expect(statusRule).toMatch(/incoming|request|asks/i);
+    expect(statusRule).toMatch(/unfinished|active/i);
+    const milestoneRule = fallbackPrompt
+      .split("\n")
+      .find((line) => line.includes("[Milestone]"));
+    expect(milestoneRule).toMatch(/milestone|interim/i);
+    expect(milestoneRule).toMatch(/explicit|request/i);
+    expect(milestoneRule).toMatch(/conditional|only when/i);
+    expect(milestoneRule).toMatch(/otherwise|unsolicited|by default/i);
     await expect(
       readFile(path.join(home, "agents/general.md"), "utf-8"),
     ).resolves.toBe(`${agentFrontmatter("general")}legacy general\n`);
