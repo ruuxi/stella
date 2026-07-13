@@ -195,8 +195,16 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
 			const openaiStream = resilientEventStream<ResponseStreamEvent>({
 				connect,
 				resume,
+				// A managed relay client proposes the id before POST. Seed cursor 0
+				// even if an older backend omits capability headers: GET may fail
+				// closed, but the original POST is never replayed. New backends return
+				// the same id and serve the durable cursor.
 				getInitialResumeState: () =>
-					relayResumeCapable && relayRequestId ? { runId: relayRequestId, cursor: 0 } : undefined,
+					proposedRelayRequestId
+						? { runId: proposedRelayRequestId, cursor: 0 }
+						: relayResumeCapable && relayRequestId
+							? { runId: relayRequestId, cursor: 0 }
+							: undefined,
 				getRunId: (event) => {
 					if (relayResumeCapable) return relayRequestId;
 					return providerDurableResumeEnabled && "response" in event && event.response?.id

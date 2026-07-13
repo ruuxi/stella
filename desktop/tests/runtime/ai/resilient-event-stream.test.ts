@@ -211,6 +211,35 @@ describe("bounded event-stream connection recovery", () => {
     );
   });
 
+  it("uses a proposed cursor after a pre-header connect failure instead of replaying connect", async () => {
+    vi.useFakeTimers();
+    const connect = vi.fn(async () => {
+      throw socketClosed();
+    });
+    const resume = vi.fn(() =>
+      source([{ sequence: 1, type: "done", runId: "relay_proposed" }]),
+    );
+    const result = collect(
+      makeStream({
+        connect,
+        resume,
+        getInitialResumeState: () => ({
+          runId: "relay_proposed",
+          cursor: 0,
+        }),
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(250);
+
+    await expect(result).resolves.toEqual([
+      { sequence: 1, type: "done", runId: "relay_proposed" },
+    ]);
+    expect(connect).toHaveBeenCalledOnce();
+    expect(resume).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "relay_proposed", cursor: 0 }),
+    );
+  });
+
   it("ends the reconnect deadline once a resumed stream delivers new data", async () => {
     vi.useFakeTimers();
     const result = collect(

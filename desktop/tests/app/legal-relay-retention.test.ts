@@ -11,7 +11,7 @@ describe("relay recovery privacy disclosure", () => {
       expect(document).toContain("tool-call arguments");
       expect(document).toContain("1 MiB");
       expect(document).toContain("two minutes");
-      expect(document).toContain("fifteen minutes");
+      expect(document).toContain("ten minutes");
       expect(document).toContain("not end-to-end encrypted");
       expect(document).toContain("absolute physical-deletion");
     }

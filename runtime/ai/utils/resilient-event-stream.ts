@@ -155,6 +155,13 @@ export async function* resilientEventStream<T>(options: ResilientEventStreamOpti
 	let nextConnection: "connect" | "resume" = "connect";
 	let recoveryController: AbortController | undefined;
 	let recoveryDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
+	const captureInitialResumeState = () => {
+		if (runId !== undefined || cursor !== undefined) return;
+		const initialResumeState = options.getInitialResumeState?.();
+		if (!initialResumeState) return;
+		runId = initialResumeState.runId;
+		cursor = initialResumeState.cursor;
+	};
 	const clearRecoveryWindow = () => {
 		if (recoveryDeadlineTimer) clearTimeout(recoveryDeadlineTimer);
 		recoveryDeadlineTimer = undefined;
@@ -179,14 +186,7 @@ export async function* resilientEventStream<T>(options: ResilientEventStreamOpti
 								...(linked.signal ? { signal: linked.signal } : {}),
 							})
 						: await options.connect(linked.signal);
-				const initialResumeState =
-					nextConnection === "connect" && runId === undefined && cursor === undefined
-						? options.getInitialResumeState?.()
-						: undefined;
-				if (initialResumeState) {
-					runId = initialResumeState.runId;
-					cursor = initialResumeState.cursor;
-				}
+				if (nextConnection === "connect") captureInitialResumeState();
 				let terminal = false;
 				for await (const event of source) {
 					if (options.signal?.aborted) throw abortError(options.signal);
@@ -219,6 +219,10 @@ export async function* resilientEventStream<T>(options: ResilientEventStreamOpti
 					});
 				}
 				if (!isRetryable(error)) throw error;
+				// A client-proposed durable id may already have been reserved before
+				// response headers failed. Prefer its GET cursor over replaying POST,
+				// even when zero application events were observed.
+				if (nextConnection === "connect") captureInitialResumeState();
 				lastError = error;
 				if (reconnectStartedAt === undefined) {
 					reconnectStartedAt = now();

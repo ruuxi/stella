@@ -498,6 +498,64 @@ describe("OpenAI Responses socket fault injection", () => {
     expect(upstreamExecutions).toBe(1);
   });
 
+  it("fails closed through GET when an older managed relay omits capability headers", async () => {
+    const methods: string[] = [];
+    let proposedRelayRequestId: string | undefined;
+    const server = http.createServer(async (request, response) => {
+      methods.push(request.method ?? "");
+      for await (const _chunk of request) {
+        // Drain request bodies.
+      }
+      if (request.method === "POST") {
+        proposedRelayRequestId = request.headers[
+          "x-stella-relay-request-id"
+        ] as string | undefined;
+        response.writeHead(200, {
+          "content-type": "text/event-stream",
+          connection: "close",
+        });
+        response.flushHeaders();
+        setTimeout(() => response.destroy(), 20);
+        return;
+      }
+      expect(request.url).toBe(
+        `/api/stella/relay/responses/${proposedRelayRequestId}?stream=true&starting_after=0`,
+      );
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({ error: { message: "Resume unavailable" } }),
+      );
+    });
+    servers.add(server);
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const model: Model<"openai-responses"> = {
+      id: "stella/openai/test-model",
+      name: "Old managed relay model",
+      api: "openai-responses",
+      provider: "openai",
+      baseUrl: `http://127.0.0.1:${port}/api/stella/relay`,
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 8_000,
+      maxTokens: 1_000,
+    };
+
+    const result = await streamOpenAIResponses(
+      model,
+      { messages: [{ role: "user", content: "hello", timestamp: 0 }] },
+      { apiKey: "test" },
+    ).result();
+
+    expect(result.stopReason).toBe("error");
+    expect(result.errorMessage).toContain("Resume unavailable");
+    expect(proposedRelayRequestId).toMatch(/^stella-relay-/);
+    expect(methods).toEqual(["POST", "GET"]);
+  });
+
   it("cancels a managed relay request even when aborted before response headers", async () => {
     const methods: string[] = [];
     let relayRequestId: string | undefined;
