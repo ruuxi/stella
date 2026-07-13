@@ -119,7 +119,10 @@ export const estimateRuntimeTokens = (value: string): number => {
   return trimmed.length > 0 ? Math.max(1, Math.ceil(trimmed.length / 4)) : 0;
 };
 
-export const formatRuntimeThreadAge = (timestamp: number, now = Date.now()): string => {
+export const formatRuntimeThreadAge = (
+  timestamp: number,
+  now = Date.now(),
+): string => {
   const ageMs = Math.max(0, now - timestamp);
   if (ageMs < 60_000) return "just now";
   if (ageMs < 3_600_000) return `${Math.floor(ageMs / 60_000)}m ago`;
@@ -127,7 +130,10 @@ export const formatRuntimeThreadAge = (timestamp: number, now = Date.now()): str
   return `${Math.floor(ageMs / 86_400_000)}d ago`;
 };
 
-const formatPromptValue = (value: string | undefined, fallback: string): string => {
+const formatPromptValue = (
+  value: string | undefined,
+  fallback: string,
+): string => {
   const trimmed = value?.trim();
   return trimmed ? trimmed.replace(/\s+/g, " ").slice(0, 180) : fallback;
 };
@@ -223,5 +229,5 @@ export const buildActiveThreadsPrompt = (
     );
     return [header, ...lines].join("\n");
   });
-  return `# Other Threads\nDurable past and ongoing work, grouped when several threads serve one request. Each entry shows its live state: "active" means the agent is executing a turn right now; "paused" means idle but resumable. Any thread_id can be reused later with send_input, even after cancellation or completion. A group id (grp-…) works with pause_agent to stop the whole group, and with spawn_agent's \`group\` to add related work. Older work not listed here is searchable with Recall.\n${blocks.join("\n")}`;
+  return `# Other Threads\nDurable past and ongoing work. Older stored work may still appear under historical group headings. Each entry shows its live state: "active" means the agent is executing a turn right now; "paused" means idle but resumable. Any thread_id can be reused later with send_input, even after cancellation or completion. A historical group id (grp-…) still works with pause_agent to stop the whole group. Older work not listed here is searchable with Recall.\n${blocks.join("\n")}`;
 };

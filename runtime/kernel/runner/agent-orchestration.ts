@@ -406,13 +406,21 @@ export const createAgentOrchestration = (
         };
       }
     }
+    const managerParentId =
+      event.parentAgentId &&
+      (context.state.localAgentManager?.isManagerThread(event.parentAgentId) ||
+        context.runtimeStore.getAgentRecord?.(event.parentAgentId)
+          ?.agentType === AGENT_IDS.MANAGER)
+        ? event.parentAgentId
+        : undefined;
+    const isManagerOwned = Boolean(managerParentId);
     // Interjection-turn completions arrive twice (see
     // `AgentLifecycleEvent.audience`): `orchestrator-only` skips every
     // display surface (persisted activity row, renderer/run callbacks,
     // OS notification) so the task UI keeps reading "in progress",
     // while the deferred `display-only` replay skips the hidden
     // orchestrator follow-up that already went out.
-    if (event.audience !== "orchestrator-only") {
+    if (event.audience !== "orchestrator-only" && !isManagerOwned) {
       // Progress ticks are ephemeral decoration: they stream to the renderer
       // below but are never persisted — thread state lives in
       // `runtime_agents` (see `listThreadActivity`), and persisting every
@@ -429,8 +437,29 @@ export const createAgentOrchestration = (
     if (event.audience === "display-only") {
       return;
     }
-    const userPrompt = buildAgentEventPrompt(event);
+    const userPrompt = buildAgentEventPrompt(event, {
+      recipient: isManagerOwned ? "manager" : "orchestrator",
+    });
     if (!userPrompt) {
+      return;
+    }
+    if (managerParentId) {
+      // Managed child reports live in the manager's durable thread and wake
+      // that manager directly. They never enter the top-level orchestrator's
+      // history, callbacks, or hidden follow-up stream.
+      persistThreadCustomMessage(context.runtimeStore, {
+        threadKey: managerParentId,
+        customType: "runtime.task_lifecycle",
+        content: [{ type: "text", text: userPrompt }],
+        display: false,
+        timestamp: Date.now(),
+      });
+      void context.state.localAgentManager?.sendAgentMessage(
+        managerParentId,
+        userPrompt,
+        "orchestrator",
+        { deliveryKind: "manager-event" },
+      );
       return;
     }
     // The follow-up below is in-memory delivery for the active orchestrator
@@ -461,13 +490,7 @@ export const createAgentOrchestration = (
   context.state.localAgentManager = new LocalAgentManager({
     maxConcurrent: 24,
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaDataDir),
-    resolveTaskThread: ({
-      conversationId,
-      agentType,
-      threadId,
-      nameHint,
-      group,
-    }) => {
+    resolveTaskThread: ({ conversationId, agentType, threadId, nameHint }) => {
       if (!isLocalCliAgentId(agentType)) {
         return null;
       }
@@ -476,7 +499,6 @@ export const createAgentOrchestration = (
         agentType,
         threadId,
         ...(nameHint ? { nameHint } : {}),
-        ...(group ? { group } : {}),
       });
     },
     listActiveThreads: (conversationId) =>

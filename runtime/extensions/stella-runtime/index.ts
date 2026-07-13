@@ -1,5 +1,6 @@
 import path from "node:path";
 import { loadParsedAgentsFromDir } from "../../kernel/agents/markdown-agent-loader.js";
+import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type {
   ExtensionFactory,
   HookDefinition,
@@ -35,6 +36,14 @@ import { createThreadSummariesRecordHook } from "./hooks/thread-summaries-record
  * selfModMonitor, store) supplied by the runtime at registration time.
  */
 const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
+  // Runtime bootstrap until the paired backend prompt manifest publishes the
+  // manager. A synchronized home copy registers afterwards and replaces it.
+  const managerBootstrap = loadParsedAgentsFromDir(
+    new URL("./agent-metadata/", import.meta.url),
+  ).find((agent) => agent.id === AGENT_IDS.MANAGER);
+  if (managerBootstrap) {
+    pi.registerAgent(managerBootstrap);
+  }
   // Backend prompts are reconciled into `${stellaDataDir}/agents/` on startup,
   // with local capability metadata attached by prompt-manifest-sync.ts. The
   // live, user-editable copies load from there.

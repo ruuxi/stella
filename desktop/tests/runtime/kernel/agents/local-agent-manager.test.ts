@@ -22,6 +22,7 @@ import {
   getTaskDecoration,
 } from "@/features/chat/streaming/task-decoration-store";
 import { waitForAgentSettled } from "../../../helpers/agent.js";
+import { buildAgentEventPrompt } from "../../../../../runtime/kernel/runner/shared.js";
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -42,6 +43,227 @@ describe("task tool activity sanitization", () => {
     expect(hint).not.toContain("url-secret");
     expect(hint).not.toContain("debug");
     expect(hint).not.toContain("hidden");
+  });
+});
+
+describe("manager agent orchestration", () => {
+  it("parks while children run, routes child completion only to the manager, and emits one consolidated result", async () => {
+    const upstreamTerminalEvents: AgentLifecycleEvent[] = [];
+    const managerPrompts: string[] = [];
+    let releaseManagerFirst!: () => void;
+    const managerFirstGate = new Promise<void>((resolve) => {
+      releaseManagerFirst = resolve;
+    });
+    let releaseChild!: () => void;
+    const childGate = new Promise<void>((resolve) => {
+      releaseChild = resolve;
+    });
+    const manager = new LocalAgentManager({
+      maxConcurrent: 3,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 2,
+      }),
+      runSubagent: async (args) => {
+        if (args.agentType === AGENT_IDS.MANAGER) {
+          managerPrompts.push(args.taskPrompt);
+          if (managerPrompts.length === 1) {
+            await managerFirstGate;
+            return { runId: args.runId, result: "Waiting for child." };
+          }
+          return {
+            runId: args.runId,
+            result: "Consolidated: child passed verification.",
+          };
+        }
+        await childGate;
+        return { runId: args.runId, result: "Child passed verification." };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => {
+        if (
+          event.parentAgentId &&
+          manager.isManagerThread(event.parentAgentId)
+        ) {
+          const prompt = buildAgentEventPrompt(event, { recipient: "manager" });
+          if (prompt) {
+            void manager.sendAgentMessage(
+              event.parentAgentId,
+              prompt,
+              "orchestrator",
+              { deliveryKind: "manager-event" },
+            );
+          }
+          return;
+        }
+        if (
+          event.type === "agent-completed" ||
+          event.type === "agent-failed" ||
+          event.type === "agent-canceled"
+        ) {
+          upstreamTerminalEvents.push(event);
+        }
+      },
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conv-manager",
+      description: "Coordinate verification",
+      prompt: "Coordinate verification and report once.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const childTask = await manager.createAgent({
+      conversationId: "conv-manager",
+      description: "Verify claim",
+      prompt: "Verify the claim.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+
+    releaseManagerFirst();
+    await sleep(10);
+    expect((await manager.getAgent(managerTask.threadId))?.status).toBe(
+      "running",
+    );
+    releaseChild();
+    await waitForAgentSettled(manager, childTask.threadId);
+    await waitForAgentSettled(manager, managerTask.threadId);
+
+    expect(managerPrompts).toHaveLength(2);
+    expect(managerPrompts[1]).toContain("Child passed verification.");
+    expect(
+      upstreamTerminalEvents.some(
+        (event) => event.agentId === childTask.threadId,
+      ),
+    ).toBe(false);
+    expect(upstreamTerminalEvents).toEqual([
+      expect.objectContaining({
+        type: "agent-completed",
+        agentId: managerTask.threadId,
+        result: "Consolidated: child passed verification.",
+      }),
+    ]);
+  });
+
+  it("adopts an existing thread and answers a mid-flight status poke without abandoning the work", async () => {
+    const upstreamManagerResults: string[] = [];
+    const managerPrompts: string[] = [];
+    let releaseManagerFirst!: () => void;
+    const managerFirstGate = new Promise<void>((resolve) => {
+      releaseManagerFirst = resolve;
+    });
+    let releaseChild!: () => void;
+    const childGate = new Promise<void>((resolve) => {
+      releaseChild = resolve;
+    });
+    const manager = new LocalAgentManager({
+      maxConcurrent: 3,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 2,
+      }),
+      runSubagent: async (args) => {
+        if (args.agentType === AGENT_IDS.MANAGER) {
+          managerPrompts.push(args.taskPrompt);
+          if (managerPrompts.length === 1) {
+            await managerFirstGate;
+            return { runId: args.runId, result: "Waiting." };
+          }
+          if (managerPrompts.length === 2) {
+            return {
+              runId: args.runId,
+              result: "Status: adopted verification is still running.",
+            };
+          }
+          return { runId: args.runId, result: "Final adopted-thread report." };
+        }
+        await childGate;
+        return { runId: args.runId, result: "Adopted thread finished clean." };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => {
+        if (
+          event.parentAgentId &&
+          manager.isManagerThread(event.parentAgentId)
+        ) {
+          const prompt = buildAgentEventPrompt(event, { recipient: "manager" });
+          if (prompt) {
+            void manager.sendAgentMessage(
+              event.parentAgentId,
+              prompt,
+              "orchestrator",
+              { deliveryKind: "manager-event" },
+            );
+          }
+          return;
+        }
+        if (
+          event.type === "agent-completed" &&
+          event.agentType === AGENT_IDS.MANAGER
+        ) {
+          upstreamManagerResults.push(event.result ?? "");
+        }
+      },
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conv-adopt",
+      description: "Own existing verification",
+      prompt: "Adopt the named thread and finish the process.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const existingTask = await manager.createAgent({
+      conversationId: "conv-adopt",
+      description: "Existing verification",
+      prompt: "Run the existing verification.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await expect(
+      manager.adoptAgent(existingTask.threadId, managerTask.threadId),
+    ).resolves.toEqual({ adopted: true });
+
+    releaseManagerFirst();
+    await sleep(10);
+    await manager.sendAgentMessage(
+      managerTask.threadId,
+      "Give me a status update, then continue.",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+    while (upstreamManagerResults.length < 1) {
+      await sleep(5);
+    }
+    expect(upstreamManagerResults).toEqual([
+      "Status: adopted verification is still running.",
+    ]);
+
+    releaseChild();
+    await waitForAgentSettled(manager, existingTask.threadId);
+    await waitForAgentSettled(manager, managerTask.threadId);
+    expect(managerPrompts[2]).toContain("Adopted thread finished clean.");
+    expect(upstreamManagerResults).toEqual([
+      "Status: adopted verification is still running.",
+      "Final adopted-thread report.",
+    ]);
   });
 });
 

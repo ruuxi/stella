@@ -18,6 +18,19 @@ describe("orchestrator response target tracking", () => {
     });
   });
 
+  it("classifies a spawn_manager reply as its durable manager turn", () => {
+    const tracker = createOrchestratorResponseTargetTracker();
+
+    tracker.noteToolEnd("spawn_manager", {
+      result: { thread_id: "manager-1" },
+    });
+
+    expect(tracker.resolve()).toEqual({
+      type: "agent_turn",
+      agentId: "manager-1",
+    });
+  });
+
   it("classifies task follow-up tools by thread id", () => {
     const tracker = createOrchestratorResponseTargetTracker();
 

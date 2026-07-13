@@ -17,4 +17,9 @@ describe("agent runtime contracts", () => {
     expect(getLocalCliWorkingDirectory(AGENT_IDS.GENERAL)).toBe("frontend");
     expect(isLocalCliAgentId(AGENT_IDS.GENERAL)).toBe(true);
   });
+
+  it("runs the manager as a local conductor without a filesystem working directory", () => {
+    expect(getLocalCliWorkingDirectory(AGENT_IDS.MANAGER)).toBeNull();
+    expect(isLocalCliAgentId(AGENT_IDS.MANAGER)).toBe(true);
+  });
 });

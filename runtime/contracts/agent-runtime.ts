@@ -1,5 +1,6 @@
 export const AGENT_IDS = {
   ORCHESTRATOR: "orchestrator",
+  MANAGER: "manager",
   SCHEDULE: "schedule",
   FASHION: "fashion",
   GENERAL: "general",
@@ -113,6 +114,21 @@ const BUILTIN_AGENT_DEFINITIONS = [
       triggersMemoryReview: true,
       triggersSelfModDetection: true,
     },
+  },
+  {
+    id: AGENT_IDS.MANAGER,
+    name: "Manager",
+    description:
+      "Coordinates multi-agent work and reports consolidated results to the orchestrator.",
+    activityLabel: "Managing",
+    bundledCore: false,
+    runsAsSubagent: true,
+    includeInAgentRoster: false,
+    usesLocalCliRuntime: true,
+    promptRole: "subagent",
+    controlsSelfModHmr: false,
+    localCliWorkingDirectory: null,
+    modelSettings: null,
   },
   {
     id: AGENT_IDS.SCHEDULE,

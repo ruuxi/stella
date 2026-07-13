@@ -1,30 +1,32 @@
 /**
  * Sub-agent management tools for the orchestrator.
  *
- * Three sibling tools that all manipulate the durable agent thread surface:
- * `spawn_agent` (start a thread), `send_input` (deliver a follow-up to a
- * running thread, transparently re-hydrating a paused/completed thread when
- * needed), and `pause_agent` (cancel without losing the thread). All three
- * are orchestrator-only — gated declaratively via `agentTypes`, enforced by
- * both the catalog filter and the executeTool dispatcher in `tools/host.ts`.
+ * Four tools manipulate the durable agent thread surface: `spawn_agent`,
+ * `spawn_manager`, `send_input`, and `pause_agent`. Managers receive the
+ * existing agent-management tools but cannot create another manager.
  */
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import {
   handleSendInput,
   handleSpawnAgent,
+  handleSpawnManager,
   type StateContext,
 } from "../state.js";
 import type { ToolDefinition } from "../types.js";
 
 const ORCHESTRATOR_ONLY: readonly string[] = [AGENT_IDS.ORCHESTRATOR];
+const AGENT_MANAGERS: readonly string[] = [
+  AGENT_IDS.ORCHESTRATOR,
+  AGENT_IDS.MANAGER,
+];
 
 export const createAgentTools = (
   stateContext: StateContext,
 ): ToolDefinition[] => [
   {
     name: "spawn_agent",
-    agentTypes: ORCHESTRATOR_ONLY,
+    agentTypes: AGENT_MANAGERS,
     description:
       "Spawn a sub-agent for a well-scoped background task. Returns immediately with a durable `thread_id`; the agent is NOT finished yet.",
     parameters: {
@@ -45,11 +47,6 @@ export const createAgentTools = (
           description:
             "Optional model or engine for this one spawn. Omit (or pass `default`) to use the user's configured setup. A model reference (`stella/light`, `stella/max`, `anthropic/...`, `openrouter/<vendor>/<model>`) uses Stella's in-process engine even when Codex or Claude Code is selected globally. Use `codex` / `claude-code` for that engine's configured model, or `codex/<model>` / `claude-code/<model>` to pin one. Closed model/engine forms may add `:low`, `:medium`, `:high`, or `:xhigh` for a per-spawn reasoning override (for example `default:high`, `codex:xhigh`, or `stella/standard:medium`). Open-ended `openrouter/...`, `vercel-ai-gateway/...`, and `stella/<provider>/<model>` references keep colon segments verbatim, so effort suffixes are unavailable on those forms; use `default:<effort>` or an engine-native `codex...` / `claude-code...` form when unambiguous effort control is required. Use ONLY when the user explicitly asked for it or has a recorded standing preference; when in doubt, omit.",
         },
-        group: {
-          type: "string",
-          description:
-            "Only when this spawn is one of several agents serving the SAME request: a short 2-4 word label for the overall goal, identical across those sibling calls (or an existing grp-… id to add work to that group). A group holds at most 8 threads. Omit for standalone work — most spawns are standalone.",
-        },
       },
       required: ["description", "prompt"],
     },
@@ -57,8 +54,27 @@ export const createAgentTools = (
       handleSpawnAgent(stateContext, args, context),
   },
   {
-    name: "send_input",
+    name: "spawn_manager",
     agentTypes: ORCHESTRATOR_ONLY,
+    description:
+      "Spawn a manager agent to coordinate multi-agent work, loops, or adopted threads and return a consolidated report. Returns immediately with a durable `thread_id`; the manager is NOT finished yet.",
+    parameters: {
+      type: "object",
+      properties: {
+        prompt: {
+          type: "string",
+          description:
+            "Complete instructions for the manager, including the desired process, scope, constraints, and reporting expectations.",
+        },
+      },
+      required: ["prompt"],
+    },
+    execute: async (args, context) =>
+      handleSpawnManager(stateContext, args, context),
+  },
+  {
+    name: "send_input",
+    agentTypes: AGENT_MANAGERS,
     description:
       "Send a follow-up message to an existing sub-agent. The agent sees it right away. If you want the message to land after the agent has finished its current work, wait for the [Agent completed] event on that thread first.",
     parameters: {
@@ -85,7 +101,7 @@ export const createAgentTools = (
   },
   {
     name: "pause_agent",
-    agentTypes: ORCHESTRATOR_ONLY,
+    agentTypes: AGENT_MANAGERS,
     description:
       "Pause a running sub-agent, or a whole group of related agents at once by passing a grp-… group id. The same thread can be resumed later by calling send_input with its thread_id.",
     parameters: {

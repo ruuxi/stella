@@ -29,6 +29,7 @@ import {
 import { anyApi } from "convex/server";
 import type { LocalAgentContext } from "../agents/local-agent-manager.js";
 import { loadHomeAgentSystemPrompt } from "../agents/home-agent-prompt.js";
+import { loadRuntimeAgentGuidance } from "../agents/runtime-agent-guidance.js";
 import { renderSkillCatalogBlock } from "../shared/skill-catalog.js";
 import type {
   RunnerContext,
@@ -627,6 +628,15 @@ export const createRunnerContext = ({
           reason,
         );
       },
+      adoptAgent: async (agentId, parentAgentId) => {
+        if (!context.state.localAgentManager) {
+          return { adopted: false };
+        }
+        return await context.state.localAgentManager.adoptAgent(
+          agentId,
+          parentAgentId,
+        );
+      },
       sendAgentMessage: async (agentId, message, from, options) => {
         if (
           !context.state.localAgentManager ||
@@ -990,6 +1000,12 @@ export const buildAgentContext = async (
     // the deferred `connector_status` tool own the offer flow. Agents just
     // use already-connected integrations via their skills; no standing
     // integration guidance is injected here.
+  }
+  if (args.agentType === AGENT_IDS.ORCHESTRATOR) {
+    const runtimeGuidance = loadRuntimeAgentGuidance(args.agentType);
+    if (runtimeGuidance) {
+      dynamicContextSections.push(runtimeGuidance);
+    }
   }
   // Read the live prompt from `~/.stella/agents/` so edits take effect on the
   // next turn (mtime-gated — unchanged files are not re-read). Falls back to

@@ -240,8 +240,7 @@ export const handleSendInput = async (
 ): Promise<ToolResult> => {
   const threadId =
     toOptionalString(args.thread_id) ?? toOptionalString(context.agentId);
-  const sender: "orchestrator" | "subagent" =
-    context.agentType === "orchestrator" ? "orchestrator" : "subagent";
+  const isManager = context.agentType === AGENT_IDS.MANAGER;
   if (!ctx.agentApi?.sendAgentMessage) {
     return { error: "Agent input is not configured on this device." };
   }
@@ -257,13 +256,28 @@ export const handleSendInput = async (
     return { error: "description is required" };
   }
   const description = deriveAgentDescription(rawDescription, message);
+  const managerThreadId = isManager
+    ? (toOptionalString(context.agentId) ??
+      toOptionalString(context.cloudAgentId))
+    : undefined;
+  if (isManager && !managerThreadId) {
+    return { error: "Manager thread identity is unavailable." };
+  }
+  if (managerThreadId && ctx.agentApi.adoptAgent) {
+    const adoption = await ctx.agentApi.adoptAgent(threadId, managerThreadId);
+    if (!adoption.adopted) {
+      return { error: adoption.reason ?? `Thread not found: ${threadId}` };
+    }
+  }
   const delivered = await ctx.agentApi.sendAgentMessage(
     threadId,
     message,
-    sender,
+    "orchestrator",
     {
       description,
       ...(context.rootRunId ? { rootRunId: context.rootRunId } : {}),
+      ...(managerThreadId ? { parentAgentId: managerThreadId } : {}),
+      deliveryKind: "external-input",
     },
   );
   if (!delivered.delivered) {
@@ -293,6 +307,25 @@ export const handleSpawnAgent = async (
     // because it produced an empty assistant message that overwrote the
     // orchestrator's actual response to the pause request.
     if (ctx.agentApi) {
+      if (context.agentType === AGENT_IDS.MANAGER) {
+        const managerThreadId =
+          toOptionalString(context.agentId) ??
+          toOptionalString(context.cloudAgentId);
+        if (!managerThreadId) {
+          return { error: "Manager thread identity is unavailable." };
+        }
+        if (ctx.agentApi.adoptAgent) {
+          const adoption = await ctx.agentApi.adoptAgent(
+            explicitThreadId,
+            managerThreadId,
+          );
+          if (!adoption.adopted) {
+            return {
+              error: adoption.reason ?? `Thread not found: ${explicitThreadId}`,
+            };
+          }
+        }
+      }
       // Group ids and thread ids share one namespace (keys are minted
       // unique across both), so this routing can never hit both.
       if (
@@ -347,15 +380,22 @@ export const handleSpawnAgent = async (
 
   const agentType = AGENT_IDS.GENERAL;
   const parentAgentId =
-    toOptionalString(context.cloudAgentId) ?? toOptionalString(context.agentId);
+    context.agentType === AGENT_IDS.MANAGER
+      ? (toOptionalString(context.agentId) ??
+        toOptionalString(context.cloudAgentId))
+      : (toOptionalString(context.cloudAgentId) ??
+        toOptionalString(context.agentId));
   const storageMode = context.storageMode ?? "local";
   const parentAgentDepth = Math.max(0, context.agentDepth ?? 0);
   const nextAgentDepth = parentAgentDepth + 1;
   const maxAgentDepth = context.maxAgentDepth;
 
-  if (context.agentType !== AGENT_IDS.ORCHESTRATOR) {
+  if (
+    context.agentType !== AGENT_IDS.ORCHESTRATOR &&
+    context.agentType !== AGENT_IDS.MANAGER
+  ) {
     return {
-      error: "Only the orchestrator can create tasks.",
+      error: "Only the orchestrator or a manager can create tasks.",
     };
   }
 
@@ -365,6 +405,12 @@ export const handleSpawnAgent = async (
     return {
       error:
         "agent_type has been removed from spawn_agent. Every spawn runs the general agent; use the optional `model` parameter to pick a model or engine instead.",
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(args, "group")) {
+    return {
+      error:
+        "group has been removed from spawn_agent. Use spawn_manager to coordinate related multi-agent work.",
     };
   }
 
@@ -420,8 +466,6 @@ export const handleSpawnAgent = async (
     return { error: "description is required" };
   }
   const description = deriveAgentDescription(rawDescription, prompt);
-  const group = toOptionalString(args.group);
-
   if (ctx.agentApi) {
     logWorkingIndicatorTrace("[stella:working-indicator:spawn_agent]", {
       conversationId: context.conversationId,
@@ -453,7 +497,6 @@ export const handleSpawnAgent = async (
         agentDepth: nextAgentDepth,
         ...(typeof maxAgentDepth === "number" ? { maxAgentDepth } : {}),
         parentAgentId,
-        ...(group ? { group } : {}),
         storageMode,
       });
     } catch (error) {
@@ -470,16 +513,6 @@ export const handleSpawnAgent = async (
         created: true,
         running_in_background: true,
         follow_up_on_completion: true,
-        ...(created.groupKey
-          ? {
-              group_id: created.groupKey,
-              ...(created.groupLabel
-                ? { group_label: created.groupLabel }
-                : {}),
-              group_note:
-                "Reuse this exact group_id on sibling spawn_agent calls for the same request.",
-            }
-          : {}),
         note: "Task has started but is NOT finished yet. Wait for the completion event before telling the user it is done.",
         ...(otherThreads.length > 0 ? { other_threads: otherThreads } : {}),
       },
@@ -511,6 +544,60 @@ export const handleSpawnAgent = async (
       follow_up_on_completion: true,
       note: "Task has started but is NOT finished yet. Wait for the completion event before telling the user it is done.",
       ...(otherThreads.length > 0 ? { other_threads: otherThreads } : {}),
+    },
+  };
+};
+
+export const handleSpawnManager = async (
+  ctx: StateContext,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> => {
+  if (context.agentType !== AGENT_IDS.ORCHESTRATOR) {
+    return { error: "Only the orchestrator can create a manager." };
+  }
+  const prompt = toOptionalString(args.prompt);
+  if (!prompt) {
+    return { error: "prompt is required" };
+  }
+  const description = deriveAgentDescription("Task", prompt);
+  const storageMode = context.storageMode ?? "local";
+  if (ctx.agentApi) {
+    const created = await ctx.agentApi.createAgent({
+      conversationId: context.conversationId,
+      description,
+      prompt,
+      agentType: AGENT_IDS.MANAGER,
+      rootRunId: context.rootRunId,
+      agentDepth: 1,
+      storageMode,
+    });
+    return {
+      result: {
+        thread_id: created.threadId,
+        created: true,
+        running_in_background: true,
+        follow_up_on_completion: true,
+        note: "Manager has started but is NOT finished yet. Use send_input with this thread_id to steer it or ask for status, and wait for its consolidated report.",
+      },
+    };
+  }
+
+  const id = String(ctx.tasks.size + 1);
+  ctx.tasks.set(id, {
+    id,
+    description,
+    status: "running",
+    startedAt: Date.now(),
+    completedAt: null,
+  });
+  return {
+    result: {
+      thread_id: id,
+      created: true,
+      running_in_background: true,
+      follow_up_on_completion: true,
+      note: "Manager has started but is NOT finished yet. Use send_input with this thread_id to steer it or ask for status, and wait for its consolidated report.",
     },
   };
 };

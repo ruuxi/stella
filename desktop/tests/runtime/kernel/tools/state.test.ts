@@ -10,6 +10,7 @@ import {
   createStateContext,
   handleSendInput,
   handleSpawnAgent,
+  handleSpawnManager,
   parseSpawnAgentModel,
 } from "../../../../../runtime/kernel/tools/state.js";
 import { AGENT_PAUSE_CANCEL_REASON } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
@@ -510,11 +511,35 @@ describe("state tools", () => {
     expect(created).toHaveLength(0);
   });
 
-  it("rejects task creation from non-orchestrator agents", async () => {
-    const ctx = createStateContext("/tmp");
+  it("allows managers to create General agents and rejects deeper General nesting", async () => {
+    const { ctx, created } = createSpawnContext();
+
+    await expect(
+      handleSpawnAgent(
+        ctx,
+        { description: "Fresh review", prompt: "Review the current work." },
+        {
+          conversationId: "conversation-1",
+          deviceId: "device-1",
+          requestId: "request-manager",
+          agentType: AGENT_IDS.MANAGER,
+          agentId: "manager-1",
+          agentDepth: 1,
+          maxAgentDepth: 2,
+        },
+      ),
+    ).resolves.toMatchObject({ result: { thread_id: "thread-1" } });
+    expect(created[0]).toMatchObject({
+      agentType: AGENT_IDS.GENERAL,
+      parentAgentId: "manager-1",
+      agentDepth: 2,
+      maxAgentDepth: 2,
+    });
+
+    const generalCtx = createStateContext("/tmp");
 
     const result = await handleSpawnAgent(
-      ctx,
+      generalCtx,
       {
         description: "Do work",
         prompt: "Run it",
@@ -528,8 +553,52 @@ describe("state tools", () => {
     );
 
     expect(result).toEqual({
-      error: "Only the orchestrator can create tasks.",
+      error: "Only the orchestrator or a manager can create tasks.",
     });
+  });
+
+  it("creates a manager thread on the configured default with prompt as its only input", async () => {
+    const { ctx, created } = createSpawnContext();
+    const result = await handleSpawnManager(
+      ctx,
+      { prompt: "Run a build and fresh-review loop until clean." },
+      orchestratorToolContext,
+    );
+
+    expect(result).toMatchObject({
+      result: {
+        thread_id: "thread-1",
+        created: true,
+        running_in_background: true,
+      },
+    });
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({
+      prompt: "Run a build and fresh-review loop until clean.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+    });
+    expect(created[0]?.model).toBeUndefined();
+    expect(created[0]?.spawnEngine).toBeUndefined();
+  });
+
+  it("rejects the removed spawn_agent group argument", async () => {
+    const { ctx, created } = createSpawnContext();
+    await expect(
+      handleSpawnAgent(
+        ctx,
+        {
+          description: "Grouped task",
+          prompt: "Do it.",
+          group: "old group",
+        },
+        orchestratorToolContext,
+      ),
+    ).resolves.toEqual({
+      error:
+        "group has been removed from spawn_agent. Use spawn_manager to coordinate related multi-agent work.",
+    });
+    expect(created).toHaveLength(0);
   });
 
   it("replaces generic descriptions with prompt context", async () => {
@@ -607,7 +676,13 @@ describe("state tools", () => {
       threadId: string;
       message: string;
       from: string;
-      options: { description?: string; rootRunId?: string } | undefined;
+      options:
+        | {
+            description?: string;
+            rootRunId?: string;
+            deliveryKind?: "manager-event" | "external-input";
+          }
+        | undefined;
     }> = [];
     const ctx = createStateContext("/tmp", {
       createAgent: async () => ({ threadId: "thread-1" }),
@@ -648,10 +723,50 @@ describe("state tools", () => {
         message: "continue with the latest requirement",
         from: "orchestrator",
         options: {
+          deliveryKind: "external-input",
           description: "Apply latest requirement",
           rootRunId: "root-current",
         },
       },
+    ]);
+  });
+
+  it("adopts an existing thread when a manager uses send_input", async () => {
+    const calls: string[] = [];
+    const ctx = createStateContext("/tmp", {
+      createAgent: async () => ({ threadId: "unused" }),
+      getAgent: async () => null,
+      cancelAgent: async () => ({ canceled: false }),
+      adoptAgent: async (threadId, parentAgentId) => {
+        calls.push(`adopt:${threadId}:${parentAgentId}`);
+        return { adopted: true };
+      },
+      sendAgentMessage: async (threadId, _message, _from, options) => {
+        calls.push(`send:${threadId}:${options?.parentAgentId}`);
+        return { delivered: true };
+      },
+    });
+
+    await expect(
+      handleSendInput(
+        ctx,
+        {
+          thread_id: "existing-thread",
+          description: "Continue existing build",
+          message: "Take ownership and continue the build.",
+        },
+        {
+          conversationId: "conversation-1",
+          deviceId: "device-1",
+          requestId: "request-1",
+          agentType: AGENT_IDS.MANAGER,
+          agentId: "manager-thread",
+        },
+      ),
+    ).resolves.toMatchObject({ result: { delivered: true } });
+    expect(calls).toEqual([
+      "adopt:existing-thread:manager-thread",
+      "send:existing-thread:manager-thread",
     ]);
   });
 

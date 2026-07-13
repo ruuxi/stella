@@ -118,6 +118,7 @@ describe("orchestrator direct tool surface", () => {
     expect(orchestratorTools.has("Remember")).toBe(true);
     expect(orchestratorTools.has("search_threads")).toBe(false);
     expect(orchestratorTools.has("spawn_agent")).toBe(true);
+    expect(orchestratorTools.has("spawn_manager")).toBe(true);
     expect(orchestratorTools.has("send_input")).toBe(true);
     expect(orchestratorTools.has("pause_agent")).toBe(true);
     expect(orchestratorTools.has("import_source")).toBe(true);
@@ -139,14 +140,28 @@ describe("orchestrator direct tool surface", () => {
     const sendInputTool = host
       .getToolCatalog("orchestrator")
       .find((tool) => tool.name === "send_input");
+    const spawnManagerTool = host
+      .getToolCatalog("orchestrator")
+      .find((tool) => tool.name === "spawn_manager");
     const spawnAgentProperties = spawnAgentTool?.parameters.properties as
       | Record<string, unknown>
       | undefined;
     expect(spawnAgentProperties?.agent_type).toBeUndefined();
+    expect(spawnAgentProperties?.group).toBeUndefined();
     expect(spawnAgentProperties?.model).toMatchObject({ type: "string" });
     expect(
       spawnAgentTool?.parameters.required as string[] | undefined,
     ).not.toContain("model");
+    expect(spawnManagerTool?.parameters).toMatchObject({
+      properties: { prompt: { type: "string" } },
+      required: ["prompt"],
+    });
+    expect(
+      Object.keys(
+        (spawnManagerTool?.parameters.properties as Record<string, unknown>) ??
+          {},
+      ),
+    ).toEqual(["prompt"]);
     expect(
       (sendInputTool?.parameters.properties as Record<string, unknown>)
         .description,
@@ -154,14 +169,15 @@ describe("orchestrator direct tool surface", () => {
       description:
         "One short, user-friendly sentence summarizing what this work is about.",
     });
-    expect(sendInputTool?.parameters.required as string[] | undefined).toContain(
-      "description",
-    );
+    expect(
+      sendInputTool?.parameters.required as string[] | undefined,
+    ).toContain("description");
 
     const generalTools = new Set(
       host.getToolCatalog("general").map((tool) => tool.name),
     );
     expect(generalTools.has("spawn_agent")).toBe(false);
+    expect(generalTools.has("spawn_manager")).toBe(false);
     expect(generalTools.has("linq_send_message")).toBe(false);
     expect(generalTools.has("Display")).toBe(false);
     expect(generalTools.has("DisplayGuidelines")).toBe(false);
@@ -237,6 +253,31 @@ describe("orchestrator direct tool surface", () => {
     expect(fashionTools.has("FashionMarkOutfitReady")).toBe(true);
     expect(fashionTools.has("Fashion")).toBe(false);
     expect(fashionTools.has("image_gen")).toBe(true);
+  });
+
+  it("gives managers only agent-management tools and prevents deeper nesting", async () => {
+    const { host } = await createTestHost();
+    const managerCoordinationTools = host
+      .getToolCatalog("manager")
+      .filter((tool) =>
+        ["spawn_agent", "spawn_manager", "send_input", "pause_agent"].includes(
+          tool.name,
+        ),
+      )
+      .map((tool) => tool.name)
+      .sort();
+    expect(managerCoordinationTools).toEqual([
+      "pause_agent",
+      "send_input",
+      "spawn_agent",
+    ]);
+
+    const nestedResult = await host.executeTool(
+      "spawn_agent",
+      { description: "Nested work", prompt: "Should not run." },
+      makeToolContext("general"),
+    );
+    expect(nestedResult.error).toContain("only available");
   });
 
   it("keeps deferred Linq tools hidden unless explicitly requested by the runtime", async () => {
@@ -376,6 +417,25 @@ describe("orchestrator direct tool surface", () => {
     );
 
     expect(generalResult.error).toContain("only available to the orchestrator");
+  });
+
+  it("executes spawn_manager with the configured default", async () => {
+    const { host, createdTasks } = await createTestHost();
+    const result = await host.executeTool(
+      "spawn_manager",
+      { prompt: "Coordinate three checks and return one report." },
+      makeToolContext("orchestrator"),
+    );
+    expect(result).toMatchObject({
+      result: { thread_id: "thread-1", created: true },
+    });
+    expect(createdTasks).toEqual([
+      {
+        description: "Coordinate three checks and return one report.",
+        prompt: "Coordinate three checks and return one report.",
+        agentType: "manager",
+      },
+    ]);
   });
 
   it("fails spawn_agent loudly when the model override cannot be routed", async () => {

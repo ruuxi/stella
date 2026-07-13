@@ -92,6 +92,7 @@ const truncateAgentEventField = (value: string): string =>
 
 export const buildAgentEventPrompt = (
   event: AgentLifecycleEvent,
+  options?: { recipient?: "orchestrator" | "manager" },
 ): string | null => {
   if (
     event.type !== "agent-completed" &&
@@ -168,11 +169,26 @@ export const buildAgentEventPrompt = (
     lines.push(
       "agent_state: paused; this agent is not currently working. Use send_input to resume the same thread if follow-up work is needed.",
     );
-    lines.push(
-      "presentation: if the result is a report or substantial/dense information, present it as a canvas with the `html` tool — write the complete HTML document yourself from the result, and give the user only a short chat reply. For a quick answer or simple Q&A, reply directly in chat without `html`.",
-    );
+    if (options?.recipient === "manager") {
+      lines.push(
+        "routing: this is a managed child report. Continue the instructed process, including any next stage or fresh-review loop, and report upstream only according to your manager reporting rules.",
+      );
+    } else {
+      lines.push(
+        "presentation: if the result is a report or substantial/dense information, present it as a canvas with the `html` tool — write the complete HTML document yourself from the result, and give the user only a short chat reply. For a quick answer or simple Q&A, reply directly in chat without `html`.",
+      );
+    }
   }
 
+  if (options?.recipient === "manager") {
+    return [
+      "<system_reminder>",
+      "A managed child reached a terminal state. This report is for process coordination, not an automatic upstream update. Continue the instructed process and follow the manager reporting rules.",
+      "</system_reminder>",
+      "",
+      ...lines,
+    ].join("\n");
+  }
   return formatAgentTerminalStateSystemReminder(lines);
 };
 

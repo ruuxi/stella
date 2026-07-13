@@ -4,11 +4,13 @@ import type { RuntimeAgentEventPayload } from "../../protocol/index.js";
 // `thread_id`-shaped payloads.
 const TASK_TOOL_NAMES = new Set([
   "spawn_agent",
+  "spawn_manager",
   "send_input",
   "pause_agent",
 ]);
 
-const isSpawnAgentName = (toolName: string): boolean => toolName === "spawn_agent";
+const isSpawnName = (toolName: string): boolean =>
+  toolName === "spawn_agent" || toolName === "spawn_manager";
 
 const asRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -41,7 +43,7 @@ const getTaskIdFromToolDetails = (
   toolName: string,
   details: unknown,
 ): string | undefined => {
-  if (isSpawnAgentName(toolName)) {
+  if (isSpawnName(toolName)) {
     const record = asRecord(details);
     if (!record) {
       return undefined;
@@ -74,7 +76,8 @@ const collectTaskEventTaskIds = (details: unknown): string[] => {
       const toolName =
         typeof event.toolName === "string"
           ? event.toolName
-          : typeof event.binding === "string" && typeof event.method === "string"
+          : typeof event.binding === "string" &&
+              typeof event.method === "string"
             ? `${event.binding}.${event.method}`
             : "";
       if (!TASK_TOOL_NAMES.has(toolName)) continue;
@@ -91,8 +94,10 @@ const collectTaskEventTaskIds = (details: unknown): string[] => {
 
 const isExplicitTaskResponseTarget = (
   value: RuntimeAgentEventPayload["responseTarget"] | undefined,
-): value is Exclude<RuntimeAgentEventPayload["responseTarget"], { type: "user_turn" } | undefined> =>
-  Boolean(value && value.type !== "user_turn");
+): value is Exclude<
+  RuntimeAgentEventPayload["responseTarget"],
+  { type: "user_turn" } | undefined
+> => Boolean(value && value.type !== "user_turn");
 
 export type OrchestratorResponseTargetTracker = {
   noteToolStart: (toolName: string, args: unknown) => void;
@@ -130,7 +135,7 @@ export const createOrchestratorResponseTargetTracker = (
 
   return {
     noteToolStart: (toolName, args) => {
-      if (TASK_TOOL_NAMES.has(toolName) && !isSpawnAgentName(toolName)) {
+      if (TASK_TOOL_NAMES.has(toolName) && !isSpawnName(toolName)) {
         recordTaskId(getTaskIdFromArgsLike(args));
       }
     },

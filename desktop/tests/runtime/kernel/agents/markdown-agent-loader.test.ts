@@ -21,6 +21,25 @@ const AGENT_MD = [
 ].join("\n");
 
 describe("loadParsedAgentsFromDir", () => {
+  it("loads the manager bootstrap with only agent-management tools", () => {
+    const agents = loadParsedAgentsFromDir(
+      new URL(
+        "../../../../../runtime/extensions/stella-runtime/agent-metadata/",
+        import.meta.url,
+      ),
+    );
+    const manager = agents.find((agent) => agent.id === "manager");
+    expect(manager?.toolsAllowlist).toEqual([
+      "spawn_agent",
+      "send_input",
+      "pause_agent",
+    ]);
+    expect(manager?.maxAgentDepth).toBe(2);
+    expect(manager?.systemPrompt).toContain(
+      "Every review round must use a brand-new reviewer agent",
+    );
+  });
+
   it("loads agents when given a directory string path", () => {
     const dir = tempDirs.create("agent-loader-");
     writeFileSync(path.join(dir, "orchestrator.md"), AGENT_MD, "utf-8");

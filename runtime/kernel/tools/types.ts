@@ -143,12 +143,6 @@ export type AgentToolRequest = {
   maxAgentDepth?: number;
   parentAgentId?: string;
   threadId?: string;
-  /**
-   * Groups this spawn with sibling spawns serving the same request: an
-   * existing `grp-…` id, or a short label shared across the sibling
-   * calls. Grouped threads share one active-work slot.
-   */
-  group?: string;
   storageMode: "cloud" | "local";
   selfModMetadata?: {
     packageId?: string;
@@ -192,8 +186,6 @@ export type AgentToolApi = {
   createAgent: (request: AgentToolRequest) => Promise<{
     threadId: string;
     activeThreads?: RuntimeThreadRecord[];
-    groupKey?: string;
-    groupLabel?: string;
   }>;
   getAgent: (threadId: string) => Promise<AgentToolSnapshot | null>;
   cancelAgent: (
@@ -205,6 +197,11 @@ export type AgentToolApi = {
     groupKey: string,
     reason?: string,
   ) => Promise<{ canceled: boolean; canceledThreadIds: string[] }>;
+  /** Rebind an existing thread's completion routing to a manager thread. */
+  adoptAgent?: (
+    threadId: string,
+    parentAgentId: string,
+  ) => Promise<{ adopted: boolean; reason?: string }>;
   sendAgentMessage?: (
     threadId: string,
     message: string,
@@ -212,6 +209,10 @@ export type AgentToolApi = {
     options?: {
       description?: string;
       rootRunId?: string;
+      /** Manager thread that adopted and now owns completion routing. */
+      parentAgentId?: string;
+      /** Internal child report vs. direct orchestrator status/steering input. */
+      deliveryKind?: "manager-event" | "external-input";
     },
   ) => Promise<{ delivered: boolean; reason?: string }>;
   drainAgentMessages?: (
