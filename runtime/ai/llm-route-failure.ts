@@ -16,7 +16,12 @@ import { getProviderDisplayName } from "./provider-display.js";
 
 export type LlmRouteFailure =
   | { kind: "unsupported-provider"; provider: string; model: string }
-  | { kind: "unknown-model"; provider: string; model: string }
+  | {
+      kind: "unknown-model";
+      provider: string;
+      model: string;
+      suggestedModel?: string;
+    }
   | { kind: "missing-credential"; provider: string; model: string }
   | { kind: "no-stella-route" };
 
@@ -47,8 +52,17 @@ export const formatLlmRouteFailure = (failure: LlmRouteFailure): string => {
       const name = getProviderDisplayName(failure.provider);
       return `No usable API key for ${name} (selected model "${failure.model}"). Add or re-check your ${name} key in Settings → Model, or pick another model.${markerSuffix(failure.kind)}`;
     }
-    case "unknown-model":
-      return `Selected model "${failure.model}" is not available from ${getProviderDisplayName(failure.provider)}. Pick a different model in Settings → Model.${markerSuffix(failure.kind)}`;
+    case "unknown-model": {
+      if (!failure.suggestedModel) {
+        return `Selected model "${failure.model}" is not available from ${getProviderDisplayName(failure.provider)}. Pick a different model in Settings → Model.${markerSuffix(failure.kind)}`;
+      }
+      const engineName = failure.suggestedModel.startsWith("codex/")
+        ? "the Codex engine"
+        : failure.suggestedModel.startsWith("claude-code/")
+          ? "the Claude Code engine"
+          : "another engine";
+      return `Selected model "${failure.model}" is not available from ${getProviderDisplayName(failure.provider)}. It is served by ${engineName}; use "${failure.suggestedModel}" instead.${markerSuffix(failure.kind)}`;
+    }
     case "unsupported-provider":
       return `Unknown model provider "${failure.provider}" (selected model "${failure.model}"). Pick a different model in Settings → Model.${markerSuffix(failure.kind)}`;
     case "no-stella-route":

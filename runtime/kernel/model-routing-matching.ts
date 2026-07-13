@@ -100,6 +100,26 @@ export const isRegisteredBareStellaModelReference = (
   );
 };
 
+export const getEngineNativeStellaModelAlternative = (
+  rawModel: string,
+  reasoningEffort?: string,
+): string | undefined => {
+  const parsed = parseModelReference(rawModel);
+  if (!parsed || parsed.provider !== "stella" || parsed.modelId.includes("/")) {
+    return undefined;
+  }
+  const matches = findRegistryModelsById(parsed.modelId);
+  const engine = matches.some(
+    ({ registryProvider }) => registryProvider === "openai-codex",
+  )
+    ? "codex"
+    : matches.some(({ registryProvider }) => registryProvider === "anthropic")
+      ? "claude-code"
+      : undefined;
+  if (!engine) return undefined;
+  return `${engine}/${parsed.modelId}${reasoningEffort ? `:${reasoningEffort}` : ""}`;
+};
+
 export const findRegistryModel = (
   registryProvider: string,
   requestedCandidates: string[],

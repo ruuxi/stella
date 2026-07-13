@@ -3,6 +3,7 @@ import { shouldUseClaudeCodeAgentRuntime } from "../integrations/claude-code-age
 import {
   canResolveLlmRoute,
   resolveLlmRoute,
+  resolveLlmRouteForCatalogEnrichment,
   resolvedLlmSupportsCredentiallessCalls,
   type ResolvedLlmRoute,
 } from "../model-routing.js";
@@ -25,25 +26,29 @@ export const resolveRunnerLlmRoute = (
   context: RunnerContext,
   agentType: string,
   modelName: string | undefined,
+  reasoningEffort?: string,
 ): ResolvedLlmRoute =>
   resolveLlmRoute({
     stellaAppDir: context.stellaDataDir,
     modelName,
     agentType,
     site: createRunnerSiteConfig(context),
+    reasoningEffort,
   });
 
 export const resolveRunnerLlmRouteWithMetadata = async (
   context: RunnerContext,
   agentType: string,
   modelName: string | undefined,
+  reasoningEffort?: string,
 ): Promise<ResolvedLlmRoute> => {
   const site = createRunnerSiteConfig(context);
-  const route = resolveLlmRoute({
+  const route = resolveLlmRouteForCatalogEnrichment({
     stellaAppDir: context.stellaDataDir,
     modelName,
     agentType,
     site,
+    reasoningEffort,
   });
   return await withStellaModelCatalogMetadata({
     route,
@@ -52,6 +57,7 @@ export const resolveRunnerLlmRouteWithMetadata = async (
     deviceId: context.deviceId,
     modelCatalogUpdatedAt: context.state.modelCatalogUpdatedAt,
     stellaDataDir: context.stellaDataDir,
+    reasoningEffort,
   });
 };
 

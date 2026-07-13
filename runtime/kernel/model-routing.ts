@@ -16,6 +16,7 @@ import {
 import { STELLA_DEFAULT_MODEL } from "../contracts/stella-api.js";
 import {
   findRegistryModel,
+  getEngineNativeStellaModelAlternative,
   isOpenEndedGatewayProvider,
   parseModelReference,
   uniqueModelCandidates,
@@ -395,6 +396,8 @@ const resolveLlmRouteResult = (args: {
   modelName: string | undefined;
   agentType: string;
   site: StellaSiteConfig;
+  reasoningEffort?: string;
+  deferBareStellaModelFailure?: boolean;
 }): LlmRouteResolution => {
   const parsed = parseModelReference(args.modelName);
 
@@ -413,12 +416,30 @@ const resolveLlmRouteResult = (args: {
   // Explicit Stella prefix (`stella/<alias>` or `stella/<provider>/<model>`):
   // route through Stella with the original id intact.
   if (parsed.provider === STELLA_PROVIDER) {
-    const route = createStellaRoute({
+    let route = createStellaRoute({
       site: args.site,
       agentType: args.agentType,
       modelId: parsed.fullModelId,
     });
+    if (
+      !route &&
+      args.deferBareStellaModelFailure &&
+      !parsed.modelId.includes("/")
+    ) {
+      route = createStellaRoute({
+        site: args.site,
+        agentType: args.agentType,
+        modelId: parsed.fullModelId,
+        // Provisional only: the catalog-enrichment layer must replace this
+        // exact id or throw before the route can be used.
+        resolvedModelId: parsed.modelId,
+      });
+    }
     if (route) return { ok: true, route };
+    const suggestedModel = getEngineNativeStellaModelAlternative(
+      parsed.fullModelId,
+      args.reasoningEffort,
+    );
     return resolveOfflineStellaModelId(parsed.fullModelId) === null
       ? {
           ok: false,
@@ -426,6 +447,7 @@ const resolveLlmRouteResult = (args: {
             kind: "unknown-model",
             provider: STELLA_PROVIDER,
             model: parsed.fullModelId,
+            ...(suggestedModel ? { suggestedModel } : {}),
           },
         }
       : { ok: false, failure: { kind: "no-stella-route" } };
@@ -490,8 +512,29 @@ export const resolveLlmRoute = (args: {
   modelName: string | undefined;
   agentType: string;
   site: StellaSiteConfig;
+  reasoningEffort?: string;
 }): ResolvedLlmRoute => {
   const result = resolveLlmRouteResult(args);
+  if (result.ok) return result.route;
+  throw new Error(formatLlmRouteFailure(result.failure));
+};
+
+/**
+ * Allows a bare Stella id with no safe offline resolution to reach the async
+ * catalog layer. Callers must immediately pass the result to
+ * `withStellaModelCatalogMetadata`, which replaces it or fails closed.
+ */
+export const resolveLlmRouteForCatalogEnrichment = (args: {
+  stellaAppDir: string;
+  modelName: string | undefined;
+  agentType: string;
+  site: StellaSiteConfig;
+  reasoningEffort?: string;
+}): ResolvedLlmRoute => {
+  const result = resolveLlmRouteResult({
+    ...args,
+    deferBareStellaModelFailure: true,
+  });
   if (result.ok) return result.route;
   throw new Error(formatLlmRouteFailure(result.failure));
 };

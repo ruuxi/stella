@@ -23,6 +23,11 @@ vi.mock("../../../../../runtime/kernel/model-routing.js", () => ({
     route: "direct-provider",
     getApiKey: () => "test-key",
   })),
+  resolveLlmRouteForCatalogEnrichment: vi.fn(() => ({
+    model: { id: "test-model", provider: "test-provider" },
+    route: "direct-provider",
+    getApiKey: () => "test-key",
+  })),
 }));
 
 type MockRuntimeState = {

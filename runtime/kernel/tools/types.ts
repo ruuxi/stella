@@ -237,6 +237,10 @@ export type ToolHostOptions = {
    * cannot be resolved, so the spawn fails loudly instead of falling back.
    */
   validateSpawnModel?: (modelName: string) => void;
+  validateSpawnModelWithMetadata?: (
+    modelName: string,
+    reasoningEffort?: SpawnReasoningEffort,
+  ) => Promise<void>;
   scheduleApi?: ScheduleToolApi;
   fashionApi?: FashionToolApi;
   extensionTools?: import("../extensions/types.js").ToolDefinition[];

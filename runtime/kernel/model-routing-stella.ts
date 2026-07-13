@@ -8,6 +8,7 @@ import {
 } from "./model-routing-matching.js";
 import {
   STELLA_DEFAULT_MODEL,
+  STELLA_RELAY_PROVIDERS,
   STELLA_STANDARD_MODEL,
   stellaManagedRelayBaseUrlFromSiteUrl,
   type StellaRelayProvider,
@@ -39,6 +40,8 @@ export type StellaSiteConfig = {
 
 type ManagedGatewayProvider = StellaRelayProvider;
 
+const STELLA_REGISTRY_PROVIDERS = new Set<string>(STELLA_RELAY_PROVIDERS);
+
 const FIREWORKS_MODEL_PREFIXES = [
   "accounts/fireworks/models/",
   "accounts/fireworks/routers/",
@@ -63,6 +66,34 @@ export const inferManagedGatewayProviderFromModel = (
   return "openrouter";
 };
 
+export const resolveManagedStellaRegistryMatches = (
+  matches: ReturnType<typeof findRegistryModelsById>,
+): string | null => {
+  const eligibleMatches = matches.filter(({ registryProvider }) =>
+    STELLA_REGISTRY_PROVIDERS.has(registryProvider),
+  );
+  if (eligibleMatches.length === 0) return null;
+
+  const candidates = eligibleMatches.flatMap(({ registryProvider, model }) => {
+    switch (registryProvider) {
+      case "openai":
+      case "anthropic":
+      case "google":
+      case "openrouter":
+        return [`${registryProvider}/${model.id}`];
+      case "fireworks":
+        return model.id.startsWith("accounts/fireworks/") ? [model.id] : [];
+      default:
+        return [];
+    }
+  });
+  const uniqueCandidates = Array.from(new Set(candidates));
+  return candidates.length === eligibleMatches.length &&
+    uniqueCandidates.length === 1
+    ? uniqueCandidates[0]
+    : null;
+};
+
 const managedUpstreamForBareStellaModel = (
   bareModelId: string,
 ): string | null => {
@@ -73,25 +104,7 @@ const managedUpstreamForBareStellaModel = (
   // upstream instead of silently substituting another model family.
   if (matches.length === 0) return bareModelId;
 
-  const candidates = matches.flatMap(({ registryProvider, model }) => {
-    switch (registryProvider) {
-      case "openai":
-      case "anthropic":
-      case "google":
-      case "openrouter":
-        return [`${registryProvider}/${model.id}`];
-      case "fireworks":
-        return model.id.startsWith("accounts/fireworks/") ? [model.id] : [];
-      default:
-        // Registry-only engines such as openai-codex are not valid managed
-        // Stella relay providers. Callers must use their engine-native form.
-        return [];
-    }
-  });
-  const uniqueCandidates = Array.from(new Set(candidates));
-  return candidates.length === matches.length && uniqueCandidates.length === 1
-    ? uniqueCandidates[0]
-    : null;
+  return resolveManagedStellaRegistryMatches(matches);
 };
 
 export const resolveOfflineStellaModelId = (modelId: string): string | null => {

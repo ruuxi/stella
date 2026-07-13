@@ -495,6 +495,14 @@ export const createRunnerContext = ({
     validateSpawnModel: (modelName) => {
       resolveRunnerLlmRoute(context, AGENT_IDS.GENERAL, modelName);
     },
+    validateSpawnModelWithMetadata: async (modelName, reasoningEffort) => {
+      await resolveRunnerLlmRouteWithMetadata(
+        context,
+        AGENT_IDS.GENERAL,
+        modelName,
+        reasoningEffort,
+      );
+    },
     scheduleApi,
 
     fashionApi: resolvedFashionApi,

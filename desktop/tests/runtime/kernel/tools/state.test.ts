@@ -96,6 +96,7 @@ describe("state tools", () => {
 
   const createSpawnContext = (
     validateSpawnModel?: (modelName: string) => void,
+    validateSpawnModelWithMetadata?: Parameters<typeof createStateContext>[3],
   ) => {
     const created: AgentToolRequest[] = [];
     const ctx = createStateContext(
@@ -109,6 +110,7 @@ describe("state tools", () => {
         cancelAgent: async () => ({ canceled: false }),
       },
       validateSpawnModel,
+      validateSpawnModelWithMetadata,
     );
     return { ctx, created };
   };
@@ -305,6 +307,33 @@ describe("state tools", () => {
     );
     expect(created[0]?.spawnReasoningEffort).toBe("high");
     expect(created[1]?.spawnReasoningEffort).toBeUndefined();
+  });
+
+  it("passes the effort suffix to catalog-aware final validation", async () => {
+    const validated: Array<[string, string | undefined]> = [];
+    const { ctx, created } = createSpawnContext(
+      () => {},
+      async (modelName, reasoningEffort) => {
+        validated.push([modelName, reasoningEffort]);
+        throw new Error(
+          'Selected model is served by Codex; use "codex/gpt-5.6-sol:high" instead.',
+        );
+      },
+    );
+
+    const result = await handleSpawnAgent(
+      ctx,
+      {
+        description: "Sol task",
+        prompt: "Do it.",
+        model: "stella/gpt-5.6-sol:high",
+      },
+      orchestratorToolContext,
+    );
+
+    expect(validated).toEqual([["stella/gpt-5.6-sol", "high"]]);
+    expect(result.error).toContain('"codex/gpt-5.6-sol:high"');
+    expect(created).toHaveLength(0);
   });
 
   it("forwards a plain model override through validation", async () => {

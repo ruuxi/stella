@@ -3,7 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveLlmRoute } from "../../../../runtime/kernel/model-routing.js";
+import {
+  resolveLlmRoute,
+  resolveLlmRouteForCatalogEnrichment,
+} from "../../../../runtime/kernel/model-routing.js";
 import {
   invalidateStellaModelCatalogCache,
   withStellaModelCatalogMetadata,
@@ -107,6 +110,122 @@ describe("Stella model catalog metadata", () => {
         model: enriched.toolPolicyModel ?? enriched.model,
       }),
     ).toBe("apply_patch");
+  });
+
+  it("lets an explicit catalog upstream outrank an unavailable local namespace", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "stella/gpt-5.6-sol",
+                name: "GPT-5.6 Sol",
+                provider: "stella",
+                upstreamModel: "openai/gpt-5.6-sol",
+              },
+            ],
+            defaults: [],
+          }),
+          { status: 200 },
+        ),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const route = resolveLlmRouteForCatalogEnrichment({
+      stellaAppDir: "/tmp/stella",
+      modelName: "stella/gpt-5.6-sol",
+      agentType: "general",
+      site: site("token-catalog-override"),
+    });
+    const enriched = await withStellaModelCatalogMetadata({
+      route,
+      agentType: "general",
+      site: site("token-catalog-override"),
+      deviceId: "device-catalog-override",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(enriched.model.id).toBe("stella/gpt-5.6-sol");
+    expect(
+      (
+        enriched.model as typeof enriched.model & {
+          upstreamModelId?: string;
+        }
+      ).upstreamModelId,
+    ).toBe("gpt-5.6-sol");
+    expect(enriched.toolPolicyModel?.id).toBe("openai/gpt-5.6-sol");
+  });
+
+  it("resolves the backend gpt-5.5 selection through its catalog upstream", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "stella/gpt-5.5",
+                name: "GPT-5.5",
+                provider: "stella",
+                upstreamModel: "openai/gpt-5.5",
+              },
+            ],
+            defaults: [],
+          }),
+          { status: 200 },
+        ),
+    ) as typeof fetch;
+
+    const route = resolveLlmRouteForCatalogEnrichment({
+      stellaAppDir: "/tmp/stella",
+      modelName: "stella/gpt-5.5",
+      agentType: "general",
+      site: site("token-gpt-5.5"),
+    });
+    const enriched = await withStellaModelCatalogMetadata({
+      route,
+      agentType: "general",
+      site: site("token-gpt-5.5"),
+      deviceId: "device-gpt-5.5",
+    });
+
+    expect(enriched.toolPolicyModel?.id).toBe("openai/gpt-5.5");
+    expect(
+      (
+        enriched.model as typeof enriched.model & {
+          upstreamModelId?: string;
+        }
+      ).upstreamModelId,
+    ).toBe("gpt-5.5");
+  });
+
+  it("fails after one catalog lookup when no override can resolve the model", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: [], defaults: [] }), {
+          status: 200,
+        }),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const route = resolveLlmRouteForCatalogEnrichment({
+      stellaAppDir: "/tmp/stella",
+      modelName: "stella/gpt-5.6-sol",
+      agentType: "general",
+      site: site("token-catalog-miss"),
+      reasoningEffort: "high",
+    });
+
+    await expect(
+      withStellaModelCatalogMetadata({
+        route,
+        agentType: "general",
+        site: site("token-catalog-miss"),
+        deviceId: "device-catalog-miss",
+        reasoningEffort: "high",
+      }),
+    ).rejects.toThrow(/codex\/gpt-5\.6-sol:high/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("classifies explicit Stella passthrough ids without fetching catalog", async () => {

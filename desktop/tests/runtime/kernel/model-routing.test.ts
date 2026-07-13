@@ -82,19 +82,41 @@ vi.mock("../../../../runtime/ai/models.js", () => ({
   ],
   getAllModels: () => [
     model("openai", "gpt-5.1-codex"),
+    model("openai", "managed-with-engine-shadow"),
+    model("openai", "managed-provider-collision"),
     model("openai-codex", "gpt-5.4", "openai-codex-responses"),
+    model(
+      "openai-codex",
+      "managed-with-engine-shadow",
+      "openai-codex-responses",
+    ),
     model("anthropic", "claude-opus-4.6"),
+    model("anthropic", "managed-provider-collision"),
     OPENROUTER_TEMPLATE,
     model("vercel-ai-gateway", "openai/gpt-5.1-codex"),
   ],
   getModels: (provider: string) => {
     switch (provider) {
       case "openai":
-        return [model("openai", "gpt-5.1-codex")];
+        return [
+          model("openai", "gpt-5.1-codex"),
+          model("openai", "managed-with-engine-shadow"),
+          model("openai", "managed-provider-collision"),
+        ];
       case "openai-codex":
-        return [model("openai-codex", "gpt-5.4", "openai-codex-responses")];
+        return [
+          model("openai-codex", "gpt-5.4", "openai-codex-responses"),
+          model(
+            "openai-codex",
+            "managed-with-engine-shadow",
+            "openai-codex-responses",
+          ),
+        ];
       case "anthropic":
-        return [model("anthropic", "claude-opus-4.6")];
+        return [
+          model("anthropic", "claude-opus-4.6"),
+          model("anthropic", "managed-provider-collision"),
+        ];
       case "openrouter":
         return [OPENROUTER_TEMPLATE];
       case "vercel-ai-gateway":
@@ -194,6 +216,96 @@ describe("resolveLlmRoute", () => {
 
     expect(resolved.route).toBe("stella");
     expect(resolved.model.id).toBe("stella/designer");
+  });
+
+  it("ignores engine-native registry shadows when one managed provider matches", async () => {
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    const resolved = resolveLlmRoute({
+      stellaAppDir: "/tmp/stella",
+      modelName: "stella/managed-with-engine-shadow",
+      agentType: "general",
+      site,
+    });
+
+    expect(resolved.model.provider).toBe("openai");
+    expect(
+      (resolved.model as typeof resolved.model & { upstreamModelId?: string })
+        .upstreamModelId,
+    ).toBe("managed-with-engine-shadow");
+  });
+
+  it("fails deterministically for a genuine managed-provider collision", async () => {
+    const { resolveLlmRoute } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+
+    expect(() =>
+      resolveLlmRoute({
+        stellaAppDir: "/tmp/stella",
+        modelName: "stella/managed-provider-collision",
+        agentType: "general",
+        site,
+      }),
+    ).toThrow(/not available from stella/i);
+  });
+
+  it("lets catalog metadata resolve a genuine managed-provider collision", async () => {
+    const { resolveLlmRouteForCatalogEnrichment } = await import(
+      "../../../../runtime/kernel/model-routing.js"
+    );
+    const {
+      invalidateStellaModelCatalogCache,
+      withStellaModelCatalogMetadata,
+    } = await import("../../../../runtime/kernel/stella-model-catalog.js");
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "stella/managed-provider-collision",
+                name: "Managed collision",
+                provider: "stella",
+                upstreamModel: "anthropic/managed-provider-collision",
+              },
+            ],
+            defaults: [],
+          }),
+          { status: 200 },
+        ),
+    );
+    globalThis.fetch = fetchMock as typeof fetch;
+    try {
+      const route = resolveLlmRouteForCatalogEnrichment({
+        stellaAppDir: "/tmp/stella",
+        modelName: "stella/managed-provider-collision",
+        agentType: "general",
+        site,
+      });
+      const enriched = await withStellaModelCatalogMetadata({
+        route,
+        agentType: "general",
+        site,
+        deviceId: "device-managed-collision",
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(enriched.model.provider).toBe("anthropic");
+      expect(
+        (
+          enriched.model as typeof enriched.model & {
+            upstreamModelId?: string;
+          }
+        ).upstreamModelId,
+      ).toBe("managed-provider-collision");
+    } finally {
+      globalThis.fetch = originalFetch;
+      invalidateStellaModelCatalogCache();
+    }
   });
 
   it("refreshes near-expiry Stella tokens before model calls", async () => {

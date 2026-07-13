@@ -37,6 +37,11 @@ export type StateContext = {
    * standard route-failure message when the model cannot be resolved.
    */
   validateSpawnModel?: (modelName: string) => void;
+  /** Catalog-aware validation used for the final spawn decision. */
+  validateSpawnModelWithMetadata?: (
+    modelName: string,
+    reasoningEffort?: SpawnReasoningEffort,
+  ) => Promise<void>;
 };
 
 const toOptionalString = (value: unknown): string | undefined => {
@@ -219,11 +224,13 @@ export const createStateContext = (
   stateRoot: string,
   agentApi?: AgentToolApi,
   validateSpawnModel?: (modelName: string) => void,
+  validateSpawnModelWithMetadata?: StateContext["validateSpawnModelWithMetadata"],
 ): StateContext => ({
   stateRoot,
   tasks: new Map(),
   agentApi,
   validateSpawnModel,
+  validateSpawnModelWithMetadata,
 });
 
 export const handleSendInput = async (
@@ -379,13 +386,20 @@ export const handleSpawnAgent = async (
     // Fail the spawn loudly on an unroutable model — never silently fall
     // back to the configured default. A host without a validator can't
     // honor the override, which is also a loud failure, not a fallback.
-    if (!ctx.validateSpawnModel) {
+    if (!ctx.validateSpawnModel && !ctx.validateSpawnModelWithMetadata) {
       return {
         error: `Cannot honor model "${modelSelection.model}": model routing is not available in this runtime. Omit the model parameter to use the configured default.`,
       };
     }
     try {
-      ctx.validateSpawnModel(modelSelection.model);
+      if (ctx.validateSpawnModelWithMetadata) {
+        await ctx.validateSpawnModelWithMetadata(
+          modelSelection.model,
+          modelSelection.reasoningEffort,
+        );
+      } else {
+        ctx.validateSpawnModel?.(modelSelection.model);
+      }
     } catch (error) {
       return { error: (error as Error).message };
     }

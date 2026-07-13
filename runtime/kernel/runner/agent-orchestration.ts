@@ -1,6 +1,9 @@
 import crypto from "crypto";
 import path from "node:path";
-import { resolveLlmRoute } from "../model-routing.js";
+import {
+  resolveLlmRoute,
+  resolveLlmRouteForCatalogEnrichment,
+} from "../model-routing.js";
 import { withStellaModelCatalogMetadata } from "../stella-model-catalog.js";
 import {
   getMaxAgentConcurrency,
@@ -529,7 +532,7 @@ export const createAgentOrchestration = (
       const resolvedLlm =
         agentContext.resolvedLlm ??
         (await withStellaModelCatalogMetadata({
-          route: resolveLlmRoute({
+          route: resolveLlmRouteForCatalogEnrichment({
             // `resolveLlmRoute`'s `stellaAppDir` arg is the directory it reads
             // BYOK/local provider credentials from, which live under the data
             // dir (~/.stella), not the install/code tree. Every other runner
