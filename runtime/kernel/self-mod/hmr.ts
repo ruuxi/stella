@@ -139,11 +139,9 @@ export const deriveApplyTransitionRequirements = (
 const withTimeoutSignal = (timeoutMs: number): AbortSignal => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  controller.signal.addEventListener(
-    "abort",
-    () => clearTimeout(timer),
-    { once: true },
-  );
+  controller.signal.addEventListener("abort", () => clearTimeout(timer), {
+    once: true,
+  });
   return controller.signal;
 };
 
@@ -196,8 +194,7 @@ const postWithRetry = async (args: {
   path: string;
   maxWaitMs: number;
   body?: unknown;
-}): Promise<boolean> =>
-  (await postJsonWithRetry<unknown>(args)) !== null;
+}): Promise<boolean> => (await postJsonWithRetry<unknown>(args)) !== null;
 
 const partitionRestartPaths = (paths: string[]): string[] =>
   paths.filter(
@@ -365,8 +362,10 @@ export type SelfModHmrController = {
    */
   discard: (appliedRuns: AppliedRun[]) => Promise<boolean>;
   releaseRuns: (runIds: string[]) => Promise<boolean>;
-  beginShellMutationGuard: () => Promise<boolean>;
-  endShellMutationGuard: () => Promise<ShellMutationGuardEndResult>;
+  beginShellMutationGuard: (leaseId?: string) => Promise<boolean>;
+  endShellMutationGuard: (
+    leaseId?: string,
+  ) => Promise<ShellMutationGuardEndResult>;
   /**
    * Emergency: clear all tracker state and tell Vite to drop overlays.
    * Used from runtime initialization and after fatal errors so a stale
@@ -395,12 +394,12 @@ export const createSelfModHmrController = (
 ): SelfModHmrController => {
   const tracker = createContentionTracker();
   const touchedPathsByRun = new Map<string, Set<string>>();
-  const finalizedSnapshotsByRun = new Map<
-    string,
-    Map<string, string | null>
-  >();
+  const finalizedSnapshotsByRun = new Map<string, Map<string, string | null>>();
 
-  const snapshotPathForRun = (runId: string, repoRelativePath: string): void => {
+  const snapshotPathForRun = (
+    runId: string,
+    repoRelativePath: string,
+  ): void => {
     let snapshot = finalizedSnapshotsByRun.get(runId);
     if (!snapshot) {
       snapshot = new Map();
@@ -412,7 +411,7 @@ export const createSelfModHmrController = (
     );
     snapshot.set(
       repoRelativePath,
-      snapshotContent.deleted ? null : snapshotContent.content ?? "",
+      snapshotContent.deleted ? null : (snapshotContent.content ?? ""),
     );
   };
 
@@ -431,25 +430,26 @@ export const createSelfModHmrController = (
 
   const pauseClientUpdates = async (runId: string): Promise<void> => {
     if (!options.enabled) return;
-    const paused = await postWithRetry({
+    const paused = await postJsonWithRetry<{ ok?: boolean }>({
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/pause-client-updates`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { runId },
     });
-    if (!paused) {
+    if (paused?.ok !== true) {
       throw new Error("Failed to pause self-mod HMR client updates.");
     }
   };
 
   const releaseClientUpdates = async (runIds: string[]): Promise<boolean> => {
     if (runIds.length === 0 || !options.enabled) return true;
-    return await postWithRetry({
+    const released = await postJsonWithRetry<{ ok?: boolean }>({
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/release-client-updates`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { runIds },
     });
+    return released?.ok === true;
   };
 
   const untrackPaths = async (paths: string[]): Promise<void> => {
@@ -500,15 +500,6 @@ export const createSelfModHmrController = (
       path: `${HMR_ENDPOINT_BASE}/discard`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
       body: { paths },
-    });
-  };
-
-  const postGuard = async (path: string): Promise<boolean> => {
-    if (!options.enabled) return true;
-    return await postWithRetry({
-      getDevServerUrl: options.getDevServerUrl,
-      path,
-      maxWaitMs: TRACK_MAX_WAIT_MS,
     });
   };
 
@@ -570,13 +561,8 @@ export const createSelfModHmrController = (
         const key = toSelfModRelevantKey(absPath, options.repoRoot);
         if (key) repoRelative.push(key);
       }
-      const {
-        paths: expandedRepoRelative,
-        deferSnapshotPaths,
-      } = expandGeneratedDependentPaths(
-        options.repoRoot,
-        repoRelative,
-      );
+      const { paths: expandedRepoRelative, deferSnapshotPaths } =
+        expandGeneratedDependentPaths(options.repoRoot, repoRelative);
       if (expandedRepoRelative.length === 0) {
         return;
       }
@@ -608,7 +594,8 @@ export const createSelfModHmrController = (
       await trackPaths(viteTrackablePaths);
       if (tracker.getRunStatus(runId) !== "active") {
         const unownedPaths = viteTrackablePaths.filter(
-          (repoRelativePath) => tracker.getOwners(repoRelativePath).length === 0,
+          (repoRelativePath) =>
+            tracker.getOwners(repoRelativePath).length === 0,
         );
         await untrackPaths(unownedPaths);
         return;
@@ -644,7 +631,12 @@ export const createSelfModHmrController = (
       if (decision.releasedPaths.length > 0) {
         await untrackPaths(decision.releasedPaths);
       }
-      await releaseClientUpdates([runId]);
+      const releasedClientUpdates = await releaseClientUpdates([runId]);
+      if (!releasedClientUpdates) {
+        throw new Error(
+          `Failed to release Vite client update pause for self-mod run ${runId}.`,
+        );
+      }
       return { ...result, releasedPaths: [...decision.releasedPaths] };
     },
 
@@ -662,16 +654,25 @@ export const createSelfModHmrController = (
       return await releaseClientUpdates(runIds);
     },
 
-    async beginShellMutationGuard() {
-      return await postGuard(`${HMR_ENDPOINT_BASE}/begin-shell-mutation`);
+    async beginShellMutationGuard(leaseId) {
+      const response = await postJsonWithRetry<{ ok?: boolean }>({
+        getDevServerUrl: options.getDevServerUrl,
+        path: `${HMR_ENDPOINT_BASE}/begin-shell-mutation`,
+        maxWaitMs: TRACK_MAX_WAIT_MS,
+        ...(leaseId ? { body: { leaseId } } : {}),
+      });
+      return response?.ok === true;
     },
 
-    async endShellMutationGuard() {
+    async endShellMutationGuard(leaseId) {
       if (!options.enabled) return { ok: true, changedPaths: [] };
-      const response = await postJsonWithRetry<Partial<ShellMutationGuardEndResult>>({
+      const response = await postJsonWithRetry<
+        Partial<ShellMutationGuardEndResult>
+      >({
         getDevServerUrl: options.getDevServerUrl,
         path: `${HMR_ENDPOINT_BASE}/end-shell-mutation`,
         maxWaitMs: TRACK_MAX_WAIT_MS,
+        ...(leaseId ? { body: { leaseId } } : {}),
       });
       if (!response?.ok) {
         return { ok: false, changedPaths: [] };
@@ -749,9 +750,7 @@ export const createSelfModHmrController = (
     isPathOwnedByAnotherActiveRun(repoRelativePath, runId) {
       return tracker
         .getOwners(repoRelativePath)
-        .some(
-          (owner) => owner.runId !== runId && owner.status === "active",
-        );
+        .some((owner) => owner.runId !== runId && owner.status === "active");
     },
 
     __tracker: tracker,

@@ -401,6 +401,14 @@ const waitForAgentStatus = async (
   throw new Error("Timed out waiting for agent completion.");
 };
 
+const waitUntil = async (predicate: () => boolean | Promise<boolean>) => {
+  for (let i = 0; i < 200; i += 1) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("Timed out waiting for orchestration condition.");
+};
+
 const createTestContext = (root: string, hmrController: unknown) => {
   const runtimeStore = {
     resolveOrCreateActiveThread: () => ({
@@ -1250,6 +1258,317 @@ describe("agent orchestration self-mod HMR tracking", () => {
       status: "completed",
       result: "resumed after forced cleanup",
     });
+  });
+
+  it("persists a loud cleanup-timeout diagnostic and retries held resources until acknowledged", async () => {
+    const root = await makeTempRoot();
+    const filePath = path.join(root, "desktop/src/foo.tsx");
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, "export const value = 'before';\n");
+    mockRuntime.root = root;
+    mockRuntime.mode = "hung_takeover_self_mod";
+    mockRuntime.patch = [
+      "*** Begin Patch",
+      `*** Update File: ${filePath}`,
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'hung-write';",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    let releaseHungAttempt!: () => void;
+    mockRuntime.hungAttemptGate = new Promise<void>((resolve) => {
+      releaseHungAttempt = resolve;
+    });
+    let resourcesReady!: () => void;
+    const resourcesReadyGate = new Promise<void>((resolve) => {
+      resourcesReady = resolve;
+    });
+    mockRuntime.onHungResourcesReady = resourcesReady;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
+
+    let shellMutationDepth = 0;
+    let endAttempts = 0;
+    const never = new Promise<never>(() => {});
+    const runStates = new Map<string, "active" | "canceled" | "finalized">();
+    const controller = {
+      beginRun: vi.fn(async (runId: string) => {
+        runStates.set(runId, "active");
+      }),
+      recordWrite: vi.fn(),
+      beginShellMutationGuard: vi.fn(async () => {
+        shellMutationDepth += 1;
+        return true;
+      }),
+      endShellMutationGuard: vi.fn(async () => {
+        endAttempts += 1;
+        if (endAttempts === 1) return await never;
+        shellMutationDepth -= 1;
+        return { ok: true, changedPaths: [] };
+      }),
+      hasRun: vi.fn((runId: string) => runStates.get(runId) === "active"),
+    };
+    const context = createTestContext(root, controller);
+    context.toolHost.killShell = vi.fn(async () => {});
+    context.selfModLifecycle.beginRun = vi.fn();
+    let cancelAttempts = 0;
+    context.selfModLifecycle.cancelRun = vi.fn(async (runId: string) => {
+      cancelAttempts += 1;
+      if (cancelAttempts === 1) return await never;
+      runStates.set(runId, "canceled");
+    });
+    context.selfModLifecycle.finalizeRun = vi.fn(
+      async ({ runId }: { runId: string }) => {
+        runStates.set(runId, "finalized");
+      },
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+      attemptTeardownTimeoutMs: 10,
+      attemptResourceCleanupTimeoutMs: 15,
+      attemptResourceCleanupRetryMs: 100,
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-timeout-retry",
+      description: "retry timed out cleanup",
+      prompt: "write and hold resources",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    await resourcesReadyGate;
+    const oldRunId = context.selfModLifecycle.beginRun.mock.calls[0]?.[0]
+      .runId as string;
+    await context.state.localAgentManager.cancelAgent(
+      threadId,
+      "Paused by orchestrator.",
+    );
+    await context.state.localAgentManager.sendAgentMessage(
+      threadId,
+      "Resume while cleanup retries in the background.",
+      "orchestrator",
+    );
+    await waitForAgentStatus(context.state.localAgentManager, threadId);
+
+    expect(
+      await context.state.localAgentManager.getAgent(threadId),
+    ).toMatchObject({
+      status: "completed",
+      error: expect.stringContaining("still has resources pending release"),
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("still has resources pending release"),
+    );
+    expect(shellMutationDepth).toBe(1);
+    expect(runStates.get(oldRunId)).toBe("active");
+
+    await waitUntil(
+      async () =>
+        cancelAttempts >= 2 &&
+        endAttempts >= 2 &&
+        (await context.state.localAgentManager.getAgent(threadId))?.error ==
+          null,
+    );
+    expect(runStates.get(oldRunId)).toBe("canceled");
+    expect(shellMutationDepth).toBe(0);
+    expect(context.toolHost.killShell).toHaveBeenCalledTimes(1);
+
+    releaseHungAttempt();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(cancelAttempts).toBe(2);
+    expect(endAttempts).toBe(2);
+    errorSpy.mockRestore();
+  });
+
+  it("registers takeover cleanup before a hung self-mod lifecycle acquisition", async () => {
+    const root = await makeTempRoot();
+    mockRuntime.root = root;
+    mockRuntime.mode = "safe_shell";
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
+    let oldHmrAcquired!: () => void;
+    const oldHmrAcquiredGate = new Promise<void>((resolve) => {
+      oldHmrAcquired = resolve;
+    });
+    const never = new Promise<never>(() => {});
+    const runStates = new Map<string, "active" | "canceled" | "finalized">();
+    const controller = {
+      beginRun: vi.fn(async (runId: string) => {
+        runStates.set(runId, "active");
+      }),
+      recordWrite: vi.fn(),
+      beginShellMutationGuard: vi.fn(async () => true),
+      endShellMutationGuard: vi.fn(async () => ({
+        ok: true,
+        changedPaths: [],
+      })),
+      hasRun: vi.fn((runId: string) => runStates.get(runId) === "active"),
+    };
+    const context = createTestContext(root, controller);
+    let lifecycleBeginCount = 0;
+    context.selfModLifecycle.beginRun = vi.fn(async () => {
+      lifecycleBeginCount += 1;
+      if (lifecycleBeginCount === 1) {
+        oldHmrAcquired();
+        await never;
+      }
+    });
+    context.selfModLifecycle.cancelRun = vi.fn(async (runId: string) => {
+      runStates.set(runId, "canceled");
+    });
+    context.selfModLifecycle.finalizeRun = vi.fn(
+      async ({ runId }: { runId: string }) => {
+        runStates.set(runId, "finalized");
+      },
+    );
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+      attemptTeardownTimeoutMs: 10,
+      attemptResourceCleanupTimeoutMs: 30,
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-startup-takeover",
+      description: "take over lifecycle startup",
+      prompt: "start lifecycle",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    await oldHmrAcquiredGate;
+    const oldRunId = context.selfModLifecycle.beginRun.mock.calls[0]?.[0]
+      .runId as string;
+    await context.state.localAgentManager.cancelAgent(
+      threadId,
+      "Paused by orchestrator.",
+    );
+    await context.state.localAgentManager.sendAgentMessage(
+      threadId,
+      "Resume after canceling partial startup ownership.",
+      "orchestrator",
+    );
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({ status: "completed" });
+    expect(runStates.get(oldRunId)).toBe("canceled");
+    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledWith(oldRunId);
+    expect(controller.beginRun).toHaveBeenCalledTimes(2);
+    expect(context.selfModLifecycle.beginRun).toHaveBeenCalledTimes(2);
+    expect(
+      (await context.state.localAgentManager.getAgent(threadId))?.error,
+    ).toContain("resources pending release");
+    context.state.localAgentManager.shutdown();
+  });
+
+  it("force-cancels an old lifecycle whose successful finalize never settles", async () => {
+    const root = await makeTempRoot();
+    mockRuntime.root = root;
+    mockRuntime.mode = "safe_shell";
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
+    const runStates = new Map<string, "active" | "canceled" | "finalized">();
+    const controller = {
+      beginRun: vi.fn(async (runId: string) => {
+        runStates.set(runId, "active");
+      }),
+      recordWrite: vi.fn(),
+      beginShellMutationGuard: vi.fn(async () => true),
+      endShellMutationGuard: vi.fn(async () => ({
+        ok: true,
+        changedPaths: [],
+      })),
+      hasRun: vi.fn((runId: string) => runStates.get(runId) === "active"),
+    };
+    const context = createTestContext(root, controller);
+    context.selfModLifecycle.beginRun = vi.fn();
+    context.selfModLifecycle.cancelRun = vi.fn(async (runId: string) => {
+      runStates.set(runId, "canceled");
+    });
+    let releaseOldFinalize!: () => void;
+    const oldFinalizeGate = new Promise<void>((resolve) => {
+      releaseOldFinalize = resolve;
+    });
+    let oldFinalizeStarted!: () => void;
+    const oldFinalizeStartedGate = new Promise<void>((resolve) => {
+      oldFinalizeStarted = resolve;
+    });
+    let finalizeCount = 0;
+    context.selfModLifecycle.finalizeRun = vi.fn(
+      async ({ runId }: { runId: string }) => {
+        finalizeCount += 1;
+        if (finalizeCount === 1) {
+          oldFinalizeStarted();
+          await oldFinalizeGate;
+          return;
+        }
+        runStates.set(runId, "finalized");
+      },
+    );
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+      attemptTeardownTimeoutMs: 10,
+      attemptResourceCleanupTimeoutMs: 30,
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-finalize-takeover",
+      description: "take over hung finalize",
+      prompt: "finish successfully",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    await oldFinalizeStartedGate;
+    const oldRunId = context.selfModLifecycle.beginRun.mock.calls[0]?.[0]
+      .runId as string;
+    await context.state.localAgentManager.cancelAgent(
+      threadId,
+      "Paused by orchestrator.",
+    );
+    await context.state.localAgentManager.sendAgentMessage(
+      threadId,
+      "Resume after canceling the hung finalize.",
+      "orchestrator",
+    );
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({ status: "completed" });
+    expect(runStates.get(oldRunId)).toBe("canceled");
+    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
+    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledWith(oldRunId);
+    expect(context.selfModLifecycle.finalizeRun).toHaveBeenCalledTimes(2);
+
+    releaseOldFinalize();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
+    expect(runStates.get(oldRunId)).toBe("canceled");
+    expect(
+      await context.state.localAgentManager.getAgent(threadId),
+    ).toMatchObject({ status: "completed" });
   });
 
   it("kills still-running guarded shell sessions and still finalizes self-mod", async () => {

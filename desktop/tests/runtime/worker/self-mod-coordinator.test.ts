@@ -24,7 +24,10 @@ import {
   createSelfModHmrController,
   type SelfModHmrController,
 } from "../../../../runtime/kernel/self-mod/hmr.js";
-import { getGitHead, listGitDirtyFiles } from "../../../../runtime/kernel/self-mod/git/log.js";
+import {
+  getGitHead,
+  listGitDirtyFiles,
+} from "../../../../runtime/kernel/self-mod/git/log.js";
 import {
   createSelfModCoordinator,
   type PendingSelfModApply,
@@ -87,9 +90,9 @@ const createHarness = async (): Promise<Harness> => {
   const requests: RecordedRequest[] = [];
   const peer: WorkerPeerLike = {
     notify: () => {},
-    request: async <TResult,>(method: string, params?: unknown) => {
+    request: async <TResult>(method: string, params?: unknown) => {
       requests.push({ method, params });
-      return {} as TResult;
+      return { ok: true } as TResult;
     },
     registerRequestHandler: () => {},
     registerNotificationHandler: () => {},
@@ -170,8 +173,12 @@ const runAgentSelfMod = async (
   relPath: string,
   content: string,
   conversationId: string,
-  mode: "author" | "install" | "update" | "uninstall" | "desktop-update" =
-    "author",
+  mode:
+    | "author"
+    | "install"
+    | "update"
+    | "uninstall"
+    | "desktop-update" = "author",
 ) => {
   // The orchestration layer registers the run with the HMR controller
   // before any writes; the coordinator lifecycle snapshots the git
@@ -246,9 +253,8 @@ describe("self-mod coordinator", () => {
     expect(h.pendingApplies.size).toBe(0);
     const transitions = methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION);
     expect(transitions).toHaveLength(1);
-    const transitionId = (
-      transitions[0]!.params as { transitionId: string }
-    ).transitionId;
+    const transitionId = (transitions[0]!.params as { transitionId: string })
+      .transitionId;
     const resume = await h.coordinator.resumeTransition({ transitionId });
     expect(resume).toEqual({ ok: true, requiresClientFullReload: false });
     expect(resumedRunIds(h)).toEqual(["run-install"]);
@@ -263,20 +269,15 @@ describe("self-mod coordinator", () => {
       "install-update-conversation",
       "desktop-update",
     );
-    expect(
-      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION),
-    ).toHaveLength(1);
+    expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(1);
 
-    const result =
-      await h.coordinator.externalLifecycle.finishExternalSelfMod({
-        runId: "run-desktop-update",
-        succeeded: true,
-      });
+    const result = await h.coordinator.externalLifecycle.finishExternalSelfMod({
+      runId: "run-desktop-update",
+      succeeded: true,
+    });
 
     expect(result).toEqual({ ok: true, transitioned: true });
-    expect(
-      methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION),
-    ).toHaveLength(1);
+    expect(methodsOf(h, METHOD_NAMES.HOST_HMR_RUN_TRANSITION)).toHaveLength(1);
   });
 
   it("clicking Update drains pending applies through one morph transition and resumes reload pauses", async () => {
@@ -313,9 +314,8 @@ describe("self-mod coordinator", () => {
     expect(h.coordinator.hasPendingApplyBatches()).toBe(true);
 
     // Host raised the cover and calls back; the worker applies + releases.
-    const transitionId = (
-      transitions[0]!.params as { transitionId: string }
-    ).transitionId;
+    const transitionId = (transitions[0]!.params as { transitionId: string })
+      .transitionId;
     const resume = await h.coordinator.resumeTransition({ transitionId });
     expect(resume).toEqual({ ok: true, requiresClientFullReload: false });
     expect(h.coordinator.hasPendingApplyBatches()).toBe(false);

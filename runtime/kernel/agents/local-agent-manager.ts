@@ -171,6 +171,8 @@ type RuntimeAgentRecord = {
   managerReportRequested?: boolean;
   /** Monotonic ownership token for mutable executeTask attempts. */
   attemptGeneration: number;
+  /** Durable error-column diagnostic while abandoned resources remain held. */
+  resourceCleanupDiagnostic?: string;
   selfModMetadata?: AgentToolRequest["selfModMetadata"];
   recentActivity: string[];
   /**
@@ -435,6 +437,8 @@ type LocalAgentManagerOpts = {
   attemptTeardownTimeoutMs?: number;
   /** Bounded force-release wait before a replacement attempt takes ownership. */
   attemptResourceCleanupTimeoutMs?: number;
+  /** Initial background retry delay for timed-out attempt cleanup. */
+  attemptResourceCleanupRetryMs?: number;
   getMaxConcurrent?: () => number;
   resolveTaskThread?: (args: {
     conversationId: string;
@@ -487,7 +491,10 @@ type LocalAgentManagerOpts = {
     onSelfModRunClosed?: (runId: string) => void;
     onAttemptCleanupReady?: (cleanup: {
       selfModRunId?: string;
-      forceRelease: () => Promise<void>;
+      forceRelease: () => Promise<{
+        released: boolean;
+        heldResources?: string[];
+      }>;
     }) => void;
     shouldContinueSelfModLifecycleAfterInterrupt?: () => boolean;
     /**
@@ -693,11 +700,15 @@ export const AGENT_ORPHANED_RESTART_CANCEL_REASON =
 export const AGENT_PAUSE_CANCEL_REASON = "Paused by orchestrator.";
 export const DEFAULT_AGENT_ATTEMPT_TEARDOWN_TIMEOUT_MS = 5_000;
 export const DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_TIMEOUT_MS = 2_000;
+export const DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_RETRY_MS = 1_000;
 
 type InFlightAttempt = {
   generation: number;
   promise: Promise<void>;
-  forceRelease?: () => Promise<void>;
+  forceRelease?: () => Promise<{
+    released: boolean;
+    heldResources?: string[];
+  }>;
   takeoverStarted?: boolean;
 };
 
@@ -722,6 +733,10 @@ export class LocalAgentManager implements AgentToolApi {
       promise: Promise<void>;
       timer: ReturnType<typeof setTimeout>;
     }
+  >();
+  private readonly attemptCleanupRetryTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
   >();
   private readonly cancelCascadeInProgress = new Set<string>();
   private readonly activeFsLocks: FsLock[] = [];
@@ -1257,29 +1272,12 @@ export class LocalAgentManager implements AgentToolApi {
     task: RuntimeAgentRecord,
     activeAttempt: InFlightAttempt,
   ): Promise<void> {
-    const cleanupTimeoutMs = Math.max(
-      1,
-      this.opts.attemptResourceCleanupTimeoutMs ??
-        DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_TIMEOUT_MS,
-    );
-    if (activeAttempt.forceRelease) {
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      try {
-        await Promise.race([
-          Promise.resolve(activeAttempt.forceRelease()).catch((error) => {
-            console.warn(
-              "[agents] failed to force-release superseded attempt resources:",
-              (error as Error).message,
-            );
-          }),
-          new Promise<void>((resolve) => {
-            timeout = setTimeout(resolve, cleanupTimeoutMs);
-            timeout.unref?.();
-          }),
-        ]);
-      } finally {
-        if (timeout) clearTimeout(timeout);
-      }
+    const cleanup = await this.runBoundedAttemptCleanup(activeAttempt);
+    if (!cleanup.released) {
+      this.recordAttemptCleanupDiagnostic(task, activeAttempt, cleanup.reason);
+      this.scheduleAttemptCleanupRetry(task, activeAttempt, 0);
+    } else {
+      this.clearAttemptCleanupDiagnostic(task);
     }
 
     const inFlight = this.inFlightAttempts.get(task.threadId);
@@ -1293,13 +1291,116 @@ export class LocalAgentManager implements AgentToolApi {
       return;
     }
 
-    // The old promise may never settle (for example a bridge/tool that
-    // ignored abort). Its resources have now been released or the bounded
-    // cleanup lease has expired. Generation/controller checks fence every
-    // later callback and state write if the abandoned promise returns.
+    // Cleanup either completed or is now durably diagnosed and retried in
+    // the background. Generation/controller checks fence every later state
+    // write from the abandoned promise while the replacement proceeds.
     this.inFlightAttempts.delete(task.threadId);
     this.runningCount = Math.max(0, this.runningCount - 1);
     this.tryStartNext();
+  }
+
+  private async runBoundedAttemptCleanup(
+    activeAttempt: InFlightAttempt,
+  ): Promise<{
+    released: boolean;
+    reason?: string;
+  }> {
+    if (!activeAttempt.forceRelease) return { released: true };
+    const cleanupTimeoutMs = Math.max(
+      1,
+      this.opts.attemptResourceCleanupTimeoutMs ??
+        DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_TIMEOUT_MS,
+    );
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        Promise.resolve()
+          .then(() => activeAttempt.forceRelease!())
+          .then(
+            (result) =>
+              result.released
+                ? { released: true }
+                : {
+                    released: false,
+                    reason: `cleanup acknowledged held resources: ${(result.heldResources ?? ["unknown"]).join(", ")}`,
+                  },
+            (error) => ({
+              released: false,
+              reason: `cleanup failed: ${(error as Error).message}`,
+            }),
+          ),
+        new Promise<{ released: false; reason: string }>((resolve) => {
+          timeout = setTimeout(
+            () =>
+              resolve({
+                released: false,
+                reason: `cleanup timed out after ${cleanupTimeoutMs}ms`,
+              }),
+            cleanupTimeoutMs,
+          );
+          timeout.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
+  private recordAttemptCleanupDiagnostic(
+    task: RuntimeAgentRecord,
+    activeAttempt: InFlightAttempt,
+    reason = "cleanup did not acknowledge release",
+  ): void {
+    const diagnostic = `Superseded attempt ${activeAttempt.generation} still has resources pending release: ${reason}. Background cleanup retries are active.`;
+    console.error(`[agents] ${task.threadId}: ${diagnostic}`);
+    task.resourceCleanupDiagnostic = diagnostic;
+    task.error = diagnostic;
+    task.recentActivity = [truncate(diagnostic, 500)];
+    this.persistTask(task);
+  }
+
+  private clearAttemptCleanupDiagnostic(task: RuntimeAgentRecord): void {
+    const diagnostic = task.resourceCleanupDiagnostic;
+    if (!diagnostic) return;
+    task.resourceCleanupDiagnostic = undefined;
+    if (task.error === diagnostic) task.error = undefined;
+    this.persistTask(task);
+  }
+
+  private scheduleAttemptCleanupRetry(
+    task: RuntimeAgentRecord,
+    activeAttempt: InFlightAttempt,
+    retryCount: number,
+  ): void {
+    if (!activeAttempt.forceRelease) return;
+    const key = `${task.threadId}:${activeAttempt.generation}`;
+    if (this.attemptCleanupRetryTimers.has(key)) return;
+    const initialDelayMs = Math.max(
+      1,
+      this.opts.attemptResourceCleanupRetryMs ??
+        DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_RETRY_MS,
+    );
+    const delayMs = Math.min(
+      initialDelayMs * 2 ** Math.min(retryCount, 5),
+      30_000,
+    );
+    const timer = setTimeout(() => {
+      this.attemptCleanupRetryTimers.delete(key);
+      void this.runBoundedAttemptCleanup(activeAttempt).then((cleanup) => {
+        if (cleanup.released) {
+          this.clearAttemptCleanupDiagnostic(task);
+          return;
+        }
+        this.recordAttemptCleanupDiagnostic(
+          task,
+          activeAttempt,
+          cleanup.reason,
+        );
+        this.scheduleAttemptCleanupRetry(task, activeAttempt, retryCount + 1);
+      });
+    }, delayMs);
+    timer.unref?.();
+    this.attemptCleanupRetryTimers.set(key, timer);
   }
 
   private tryStartNext(): void {
@@ -2208,6 +2309,10 @@ export class LocalAgentManager implements AgentToolApi {
       clearTimeout(pending.timer);
     }
     this.attemptTakeoverTimers.clear();
+    for (const timer of this.attemptCleanupRetryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.attemptCleanupRetryTimers.clear();
     for (const task of this.tasks.values()) {
       if (task.status !== "pending" && task.status !== "running") {
         continue;

@@ -236,12 +236,12 @@ export const createSelfModCoordinator = (
 
   const releaseRuntimeReloadFor = async (
     runIds: string[],
-    options?: { allowDeferredReload?: boolean },
+    options?: { allowDeferredReload?: boolean; requireAck?: boolean },
   ) => {
     await Promise.all(
       runIds.map(async (runId) => {
         try {
-          await peer.request(
+          const response = await peer.request(
             METHOD_NAMES.HOST_RUNTIME_RELOAD_RESUME,
             {
               runId,
@@ -249,7 +249,16 @@ export const createSelfModCoordinator = (
             },
             { retryOnDisconnect: true },
           );
+          if (
+            options?.requireAck &&
+            (response as { ok?: boolean } | null)?.ok !== true
+          ) {
+            throw new Error(
+              `Host did not acknowledge runtime reload release for ${runId}.`,
+            );
+          }
         } catch (error) {
+          if (options?.requireAck) throw error;
           console.warn(
             "[self-mod-reload] Failed to resume host runtime reloads:",
             (error as Error).message,
@@ -332,8 +341,11 @@ export const createSelfModCoordinator = (
         ),
       ),
     ];
-    const { requiresFullReload, requiresRuntimeRestart, requiresProcessRestart } =
-      deriveApplyTransitionRequirements(applyResult);
+    const {
+      requiresFullReload,
+      requiresRuntimeRestart,
+      requiresProcessRestart,
+    } = deriveApplyTransitionRequirements(applyResult);
     pendingApplyBatches.set(transitionId, {
       applyResult,
       requiresFullReload,
@@ -388,13 +400,13 @@ export const createSelfModCoordinator = (
 
   const releaseRunCompletely = async (runId: string, logScope: string) => {
     const controller = getController();
-    await controller?.releaseRuns([runId]).catch((error) => {
-      console.warn(
-        `[${logScope}] Failed to release Vite client update pause:`,
-        (error as Error).message,
+    const releasedClientUpdates = await controller?.releaseRuns([runId]);
+    if (controller && releasedClientUpdates !== true) {
+      throw new Error(
+        `[${logScope}] Failed to release Vite client update pause for ${runId}.`,
       );
-    });
-    await releaseRuntimeReloadFor([runId]);
+    }
+    await releaseRuntimeReloadFor([runId], { requireAck: true });
     dropRunBookkeeping([runId]);
   };
 
@@ -525,7 +537,7 @@ export const createSelfModCoordinator = (
       // this run's pause separately (cancel is not part of the apply
       // batch — it discards its writes rather than apply them).
       const cancelResult = await controller.cancel(runId);
-      await releaseRuntimeReloadFor([runId]);
+      await releaseRuntimeReloadFor([runId], { requireAck: true });
       dropRunBookkeeping([runId]);
       await dispatchApplyBatch(cancelResult);
     },
@@ -553,9 +565,7 @@ export const createSelfModCoordinator = (
       try {
         await controller.beginRun(runId);
         const absolutePaths = paths.map((filePath) =>
-          path.isAbsolute(filePath)
-            ? filePath
-            : path.join(repoRoot, filePath),
+          path.isAbsolute(filePath) ? filePath : path.join(repoRoot, filePath),
         );
         if (absolutePaths.length > 0) {
           externalSelfModPathsByRun.set(runId, absolutePaths);
@@ -760,14 +770,10 @@ export const createSelfModCoordinator = (
       return result;
     } catch (err) {
       if (runRegisteredWithHmr) {
-        await controller
-          .releaseRuns([syntheticRunId])
-          .catch(() => undefined);
+        await controller.releaseRuns([syntheticRunId]).catch(() => undefined);
       }
       if (runtimeReloadPaused) {
-        await releaseRuntimeReloadFor([syntheticRunId]).catch(
-          () => undefined,
-        );
+        await releaseRuntimeReloadFor([syntheticRunId]).catch(() => undefined);
       }
       selfModRunRootIds.delete(syntheticRunId);
       throw err;

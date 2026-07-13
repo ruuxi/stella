@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -41,7 +47,9 @@ describe("self-mod HMR controller", () => {
           {
             runId: "run-a",
             paths: ["desktop/src/foo.tsx"],
-            files: [{ path: "desktop/src/foo.tsx", content: "export const a = 1" }],
+            files: [
+              { path: "desktop/src/foo.tsx", content: "export const a = 1" },
+            ],
             runtimeRestartRelevantPaths: [],
             processRestartRelevantPaths: [],
             restartRelevantPaths: [],
@@ -469,6 +477,69 @@ describe("self-mod HMR controller", () => {
         ok: true,
         changedPaths: ["desktop/src/routeTree.gen.ts"],
       });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("sends a stable lease id on retriable shell-guard acquire and release", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ url: string; body: unknown }> = [];
+    globalThis.fetch = vi.fn(async (input, init) => {
+      requests.push({
+        url: String(input),
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      });
+      return new Response(JSON.stringify({ ok: true, changedPaths: [] }), {
+        status: 200,
+      });
+    }) as typeof fetch;
+    const controller = createSelfModHmrController({
+      enabled: true,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: makeTempRoot(),
+    });
+
+    try {
+      await expect(
+        controller.beginShellMutationGuard("lease-retry-a"),
+      ).resolves.toBe(true);
+      await expect(
+        controller.endShellMutationGuard("lease-retry-a"),
+      ).resolves.toEqual({ ok: true, changedPaths: [] });
+      expect(requests).toEqual([
+        {
+          url: expect.stringContaining("/begin-shell-mutation"),
+          body: { leaseId: "lease-retry-a" },
+        },
+        {
+          url: expect.stringContaining("/end-shell-mutation"),
+          body: { leaseId: "lease-retry-a" },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not acknowledge run cancellation when client-update release is rejected", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input) => {
+      const url = String(input);
+      const ok = !url.endsWith("/release-client-updates");
+      return new Response(JSON.stringify({ ok }), { status: 200 });
+    }) as typeof fetch;
+    const controller = createSelfModHmrController({
+      enabled: true,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: makeTempRoot(),
+    });
+
+    try {
+      await controller.beginRun("run-release-rejected");
+      await expect(controller.cancel("run-release-rejected")).rejects.toThrow(
+        "Failed to release Vite client update pause",
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }

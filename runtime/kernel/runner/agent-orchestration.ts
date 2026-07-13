@@ -415,6 +415,8 @@ export const createAgentOrchestration = (
     attemptTeardownTimeoutMs?: number;
     /** Test/embedding override for force-releasing abandoned run resources. */
     attemptResourceCleanupTimeoutMs?: number;
+    /** Test/embedding override for persistent cleanup retry cadence. */
+    attemptResourceCleanupRetryMs?: number;
   },
 ) => {
   const handleAgentLifecycleEvent = (rawEvent: AgentLifecycleEvent) => {
@@ -535,6 +537,9 @@ export const createAgentOrchestration = (
           attemptResourceCleanupTimeoutMs: deps.attemptResourceCleanupTimeoutMs,
         }
       : {}),
+    ...(deps.attemptResourceCleanupRetryMs !== undefined
+      ? { attemptResourceCleanupRetryMs: deps.attemptResourceCleanupRetryMs }
+      : {}),
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaDataDir),
     resolveTaskThread: ({ conversationId, agentType, threadId, nameHint }) => {
       if (!isLocalCliAgentId(agentType)) {
@@ -630,45 +635,6 @@ export const createAgentOrchestration = (
         context.state.conversationCallbacks.get(conversationId) ??
         null;
 
-      if (shouldAttachSelfModLifecycle) {
-        // Register the run with the contention tracker before any writes can
-        // arrive. recordWrite is a no-op on unknown runs to avoid resurrecting
-        // already-finalized runs, so beginRun must precede writes.
-        if (!isContinuingSelfModRun) {
-          await context.selfModHmrController?.beginRun(lifecycleRunId);
-          const expectedWritePaths = resolveExpectedSelfModWritePaths(
-            effectiveSelfModMetadata,
-            context.stellaAppDir,
-          );
-          if (expectedWritePaths.length > 0) {
-            await Promise.resolve(
-              context.selfModHmrController?.recordWrite(
-                lifecycleRunId,
-                expectedWritePaths,
-                {
-                  captureSnapshot: false,
-                },
-              ),
-            ).catch((error) => {
-              console.warn(
-                "[self-mod-hmr] failed to pre-track expected self-mod update paths:",
-                (error as Error).message,
-              );
-            });
-          }
-          await Promise.resolve(
-            context.selfModLifecycle!.beginRun({
-              runId: lifecycleRunId,
-              ...(rootRunId ? { rootRunId } : {}),
-              taskDescription,
-              taskPrompt,
-              conversationId,
-              ...(effectiveSelfModMetadata ?? {}),
-            }),
-          );
-          onSelfModRunStarted?.(lifecycleRunId);
-        }
-      }
       let subagentSucceeded = false;
       const subagentFileChanges: FileChangeRecord[] = [];
       const subagentFileChangeKeys = new Set<string>();
@@ -684,18 +650,17 @@ export const createAgentOrchestration = (
       const guardedShellLeaseSessions = new Map<string, Set<string>>();
       const activeShellGuardLeases = new Set<string>();
       let subagentInterrupted = false;
-      let resourcesForceReleased = false;
-      let shellResourceCleanupPromise: Promise<void> | null = null;
-      let shellGuardCleanupPromise: Promise<void> | null = null;
-      let shellKillPromise: Promise<void> | null = null;
-      let shellCleanupSessionIds: string[] | null = null;
-      let shellCleanupLeaseIds: string[] | null = null;
-      let lifecycleDispositionClaimed = false;
-      let forceReleasePromise: Promise<void> | null = null;
+      let resourcesForceReleaseRequested = false;
+      let lifecycleReleaseCompleted = !shouldAttachSelfModLifecycle;
+      let lifecycleHandedOff = false;
+      let lifecycleCloseNotified = false;
+      let lifecycleAcquisitionPending =
+        shouldAttachSelfModLifecycle && !isContinuingSelfModRun;
+      let lifecycleFinalizationPending = false;
 
-      const endShellMutationGuard = async () => {
+      const endShellMutationGuard = async (leaseId: string) => {
         const result = await context.selfModHmrController
-          ?.endShellMutationGuard()
+          ?.endShellMutationGuard(leaseId)
           .catch((error) => {
             console.warn(
               "[self-mod-hmr] failed to end shell mutation guard:",
@@ -703,10 +668,19 @@ export const createAgentOrchestration = (
             );
             return null;
           });
-        if (result?.ok && result.changedPaths.length > 0) {
+        const released =
+          (result as unknown) === true ||
+          (result as { ok?: boolean } | null)?.ok === true;
+        if (!released) return false;
+        const changedPaths = Array.isArray(
+          (result as { changedPaths?: unknown } | null)?.changedPaths,
+        )
+          ? (result as { changedPaths: string[] }).changedPaths
+          : [];
+        if (changedPaths.length > 0) {
           try {
             await recordWritePaths(
-              result.changedPaths.map((repoRelativePath) =>
+              changedPaths.map((repoRelativePath) =>
                 context.stellaAppDir
                   ? `${context.stellaAppDir}/${repoRelativePath}`
                   : repoRelativePath,
@@ -719,21 +693,24 @@ export const createAgentOrchestration = (
             );
           }
         }
+        return true;
       };
 
       const endShellMutationGuardLease = async (leaseId: string) => {
-        // Delete before awaiting the controller so force-release and the
-        // abandoned attempt's eventual finally cannot decrement the same
-        // shellMutationDepth lease twice.
-        if (!activeShellGuardLeases.delete(leaseId)) return;
-        await endShellMutationGuard();
+        if (!activeShellGuardLeases.has(leaseId)) return true;
+        const released = await endShellMutationGuard(leaseId);
+        // Claim-on-success: a failed/hung acknowledgement remains owned and
+        // is visible to the next bounded cleanup retry. Lease ids make
+        // overlapping retries idempotent at the Vite endpoint.
+        if (released) activeShellGuardLeases.delete(leaseId);
+        return released;
       };
 
       const retainShellGuardLease = (leaseId: string, sessionIds: string[]) => {
         const uniqueSessionIds = [...new Set(sessionIds)].filter(Boolean);
         if (
           uniqueSessionIds.length === 0 ||
-          resourcesForceReleased ||
+          resourcesForceReleaseRequested ||
           !activeShellGuardLeases.has(leaseId)
         ) {
           return false;
@@ -748,64 +725,70 @@ export const createAgentOrchestration = (
       const releaseShellSessionGuard = async (sessionId: string) => {
         const leaseId = guardedShellSessionLeases.get(sessionId);
         if (!leaseId) return;
-        guardedShellSessionLeases.delete(sessionId);
         const sessions = guardedShellLeaseSessions.get(leaseId);
         if (!sessions) return;
-        sessions.delete(sessionId);
-        if (sessions.size > 0) return;
-        guardedShellLeaseSessions.delete(leaseId);
-        await endShellMutationGuardLease(leaseId);
+        if (sessions.size > 1) {
+          guardedShellSessionLeases.delete(sessionId);
+          sessions.delete(sessionId);
+          return;
+        }
+        if (await endShellMutationGuardLease(leaseId)) {
+          guardedShellSessionLeases.delete(sessionId);
+          guardedShellLeaseSessions.delete(leaseId);
+        }
       };
 
-      const snapshotShellResourcesOnce = () => {
-        if (shellCleanupSessionIds && shellCleanupLeaseIds) return;
-        shellCleanupSessionIds = [...guardedShellSessionLeases.keys()];
-        shellCleanupLeaseIds = [...activeShellGuardLeases];
-        guardedShellSessionLeases.clear();
-        guardedShellLeaseSessions.clear();
-      };
-
-      const killGuardedShellSessionsOnce = (): Promise<void> => {
-        snapshotShellResourcesOnce();
-        if (shellKillPromise) return shellKillPromise;
-        const sessionIds = shellCleanupSessionIds ?? [];
+      const killGuardedShellSessions = async (): Promise<void> => {
+        const sessionIds = [...guardedShellSessionLeases.keys()];
         if (sessionIds.length > 0) {
           console.warn(
             "[self-mod-hmr] mutating shell session still running at finalize; killing guarded shell sessions before self-mod apply.",
           );
         }
-        shellKillPromise = Promise.allSettled(
+        const results = await Promise.allSettled(
           sessionIds.map((sessionId) => context.toolHost.killShell(sessionId)),
-        ).then(() => undefined);
-        return shellKillPromise;
+        );
+        results.forEach((result, index) => {
+          if (result.status !== "fulfilled") return;
+          const sessionId = sessionIds[index];
+          if (!sessionId) return;
+          const leaseId = guardedShellSessionLeases.get(sessionId);
+          guardedShellSessionLeases.delete(sessionId);
+          if (!leaseId) return;
+          const sessions = guardedShellLeaseSessions.get(leaseId);
+          sessions?.delete(sessionId);
+          if (sessions?.size === 0) guardedShellLeaseSessions.delete(leaseId);
+        });
       };
 
-      const releaseShellGuardsOnce = (): Promise<void> => {
-        snapshotShellResourcesOnce();
-        if (shellGuardCleanupPromise) return shellGuardCleanupPromise;
-        shellGuardCleanupPromise = Promise.allSettled(
-          (shellCleanupLeaseIds ?? []).map((leaseId) =>
+      const releaseShellGuards = async (): Promise<void> => {
+        await Promise.allSettled(
+          [...activeShellGuardLeases].map((leaseId) =>
             endShellMutationGuardLease(leaseId),
           ),
-        ).then(() => undefined);
-        return shellGuardCleanupPromise;
+        );
       };
 
-      const releaseShellResourcesOnce = (force = false): Promise<void> => {
+      const releaseShellResources = async (
+        force = false,
+      ): Promise<string[]> => {
         if (force) {
-          // Force close cannot serialize guard release behind a wedged shell
-          // bridge. Both operations are individually exactly-once.
-          return Promise.allSettled([
-            killGuardedShellSessionsOnce(),
-            releaseShellGuardsOnce(),
-          ]).then(() => undefined);
+          await Promise.allSettled([
+            killGuardedShellSessions(),
+            releaseShellGuards(),
+          ]);
+        } else {
+          await killGuardedShellSessions();
+          await releaseShellGuards();
         }
-        if (shellResourceCleanupPromise) return shellResourceCleanupPromise;
-        shellResourceCleanupPromise = (async () => {
-          await killGuardedShellSessionsOnce();
-          await releaseShellGuardsOnce();
-        })();
-        return shellResourceCleanupPromise;
+        return [
+          ...[...guardedShellSessionLeases.keys()].map(
+            (sessionId) => `shell-session:${sessionId}`,
+          ),
+          ...[...activeShellGuardLeases].map(
+            (leaseId) => `shell-guard:${leaseId}`,
+          ),
+        ];
       };
 
       const recordWritePaths = async (
@@ -869,9 +852,11 @@ export const createAgentOrchestration = (
           (shouldGuardShellCommand || isParallelWithGuardedShellCommands) &&
           shouldAttachSelfModLifecycle
         ) {
+          shellGuardLeaseId = crypto.randomUUID();
+          activeShellGuardLeases.add(shellGuardLeaseId);
           const shellGuardActive = Boolean(
             await context.selfModHmrController
-              ?.beginShellMutationGuard()
+              ?.beginShellMutationGuard(shellGuardLeaseId)
               .catch((error) => {
                 console.warn(
                   "[self-mod-hmr] failed to begin shell mutation guard:",
@@ -880,16 +865,15 @@ export const createAgentOrchestration = (
                 return false;
               }),
           );
-          if (shellGuardActive) {
-            shellGuardLeaseId = crypto.randomUUID();
-            if (resourcesForceReleased) {
+          if (!shellGuardActive) {
+            activeShellGuardLeases.delete(shellGuardLeaseId);
+            shellGuardLeaseId = null;
+          } else if (shellGuardLeaseId) {
+            if (resourcesForceReleaseRequested) {
               // Force-release raced the guard acknowledgement. Balance this
               // late acquisition immediately and never enter the stale tool.
-              activeShellGuardLeases.add(shellGuardLeaseId);
               await endShellMutationGuardLease(shellGuardLeaseId);
               shellGuardLeaseId = null;
-            } else {
-              activeShellGuardLeases.add(shellGuardLeaseId);
             }
           }
           if (!shellGuardLeaseId && agentType !== AGENT_IDS.INSTALL_UPDATE) {
@@ -958,7 +942,7 @@ export const createAgentOrchestration = (
               retainShellGuardLease(shellGuardLeaseId, [shellState.sessionId])
             ) {
               shellGuardLeaseId = null;
-            } else if (resourcesForceReleased) {
+            } else if (resourcesForceReleaseRequested) {
               // The session was acknowledged after takeover snapshotted the
               // old attempt. It was never inserted into the retained-session
               // map, so terminate it here instead of letting it escape.
@@ -970,7 +954,7 @@ export const createAgentOrchestration = (
             const runningSessionIds = getParallelRunningShellSessions(result);
             if (retainShellGuardLease(shellGuardLeaseId, runningSessionIds)) {
               shellGuardLeaseId = null;
-            } else if (resourcesForceReleased) {
+            } else if (resourcesForceReleaseRequested) {
               await Promise.allSettled(
                 runningSessionIds.map((sessionId) =>
                   context.toolHost.killShell(sessionId),
@@ -992,43 +976,123 @@ export const createAgentOrchestration = (
         }
       };
 
-      const cancelSelfModLifecycleOnce = async (): Promise<void> => {
-        if (!shouldAttachSelfModLifecycle || lifecycleDispositionClaimed) {
-          return;
+      const notifySelfModRunClosedOnce = () => {
+        if (lifecycleCloseNotified) return;
+        lifecycleCloseNotified = true;
+        onSelfModRunClosed?.(lifecycleRunId);
+      };
+
+      const cancelSelfModLifecycleAttempt = async (): Promise<boolean> => {
+        if (!shouldAttachSelfModLifecycle || lifecycleHandedOff) return true;
+        if (lifecycleReleaseCompleted) return true;
+        if (typeof context.selfModLifecycle!.cancelRun !== "function") {
+          return false;
         }
-        lifecycleDispositionClaimed = true;
         try {
-          if (typeof context.selfModLifecycle!.cancelRun === "function") {
-            await Promise.resolve(
-              context.selfModLifecycle!.cancelRun(lifecycleRunId),
-            );
-          }
-        } finally {
-          onSelfModRunClosed?.(lifecycleRunId);
+          await Promise.resolve(
+            context.selfModLifecycle!.cancelRun(lifecycleRunId),
+          );
+          // Claim-on-success: a rejected or hung cancel stays retriable.
+          lifecycleReleaseCompleted = true;
+          lifecycleFinalizationPending = false;
+          notifySelfModRunClosedOnce();
+          return true;
+        } catch (error) {
+          console.error(
+            `[agents] failed to cancel superseded self-mod run ${lifecycleRunId}:`,
+            (error as Error).message,
+          );
+          return false;
         }
       };
 
-      const forceReleaseAttemptResources = (): Promise<void> => {
-        if (forceReleasePromise) return forceReleasePromise;
-        resourcesForceReleased = true;
-        // Start both ownership releases at once. In particular, a stuck shell
-        // kill must not serialize ahead of contention/HMR cancellation.
-        forceReleasePromise = Promise.allSettled([
-          releaseShellResourcesOnce(true),
-          cancelSelfModLifecycleOnce(),
-        ]).then(() => undefined);
-        return forceReleasePromise;
+      const forceReleaseAttemptResources = async (): Promise<{
+        released: boolean;
+        heldResources?: string[];
+      }> => {
+        resourcesForceReleaseRequested = true;
+        // Every call is a new attempt. A previous call may still be hung;
+        // lease/run ids make overlapping retries idempotent.
+        const [shellResources, lifecycleReleased] = await Promise.all([
+          releaseShellResources(true),
+          cancelSelfModLifecycleAttempt(),
+        ]);
+        const heldResources = [
+          ...shellResources,
+          ...(!lifecycleReleased ||
+          lifecycleAcquisitionPending ||
+          lifecycleFinalizationPending
+            ? [`self-mod-run:${lifecycleRunId}`]
+            : []),
+        ];
+        return heldResources.length === 0
+          ? { released: true }
+          : { released: false, heldResources };
       };
 
-      // The manager captures this handle before the model/tool loop begins.
-      // A timeout takeover can therefore close the OLD run id even after the
-      // task record has rotated to the resumed attempt's new lifecycle.
+      // Register before HMR/lifecycle acquisition. If beginRun wedges after
+      // partially acquiring contention, reload, or Store ownership, takeover
+      // can cancel the captured OLD id immediately and retry until acknowledged.
       onAttemptCleanupReady?.({
         ...(shouldAttachSelfModLifecycle
           ? { selfModRunId: lifecycleRunId }
           : {}),
         forceRelease: forceReleaseAttemptResources,
       });
+
+      if (shouldAttachSelfModLifecycle && !isContinuingSelfModRun) {
+        await context.selfModHmrController?.beginRun(lifecycleRunId);
+        // A takeover may have canceled while beginRun's host-pause request was
+        // still settling. Treat the late acknowledgement as newly-acquired
+        // ownership and close it again before any further startup step.
+        if (resourcesForceReleaseRequested) {
+          lifecycleAcquisitionPending = false;
+          lifecycleReleaseCompleted = false;
+          await cancelSelfModLifecycleAttempt();
+          return { runId, result: "", interrupted: true };
+        }
+        const expectedWritePaths = resolveExpectedSelfModWritePaths(
+          effectiveSelfModMetadata,
+          context.stellaAppDir,
+        );
+        if (expectedWritePaths.length > 0) {
+          await Promise.resolve(
+            context.selfModHmrController?.recordWrite(
+              lifecycleRunId,
+              expectedWritePaths,
+              { captureSnapshot: false },
+            ),
+          ).catch((error) => {
+            console.warn(
+              "[self-mod-hmr] failed to pre-track expected self-mod update paths:",
+              (error as Error).message,
+            );
+          });
+        }
+        if (resourcesForceReleaseRequested) {
+          lifecycleAcquisitionPending = false;
+          lifecycleReleaseCompleted = false;
+          await cancelSelfModLifecycleAttempt();
+          return { runId, result: "", interrupted: true };
+        }
+        await Promise.resolve(
+          context.selfModLifecycle!.beginRun({
+            runId: lifecycleRunId,
+            ...(rootRunId ? { rootRunId } : {}),
+            taskDescription,
+            taskPrompt,
+            conversationId,
+            ...(effectiveSelfModMetadata ?? {}),
+          }),
+        );
+        lifecycleAcquisitionPending = false;
+        lifecycleReleaseCompleted = false;
+        if (resourcesForceReleaseRequested) {
+          await cancelSelfModLifecycleAttempt();
+          return { runId, result: "", interrupted: true };
+        }
+        onSelfModRunStarted?.(lifecycleRunId);
+      }
 
       let exploreFindingsBlock = "";
       if (
@@ -1231,15 +1295,25 @@ export const createAgentOrchestration = (
         if (pendingToolWriteRecords.length > 0) {
           await Promise.allSettled(pendingToolWriteRecords);
         }
-        await releaseShellResourcesOnce();
-        if (shouldAttachSelfModLifecycle && !lifecycleDispositionClaimed) {
+        const normallyHeldShellResources = await releaseShellResources();
+        if (normallyHeldShellResources.length > 0) {
+          console.error(
+            "[agents] normal attempt teardown left shell resources held:",
+            normallyHeldShellResources.join(", "),
+          );
+        }
+        if (
+          shouldAttachSelfModLifecycle &&
+          !lifecycleReleaseCompleted &&
+          !lifecycleHandedOff
+        ) {
           // The finalize/cancel hooks below own the entire apply pipeline
           // (contention tracker drain, Vite overlay swap, runtime restart,
           // morph cover). The renderer no longer participates in the
           // resume-flush dance — it just observes self-mod-hmr state events
           // emitted by the worker server.
           if (subagentSucceeded) {
-            lifecycleDispositionClaimed = true;
+            lifecycleFinalizationPending = true;
             // Helper: spin up a one-shot LLM call with no tools and a
             // freshly-built agent context. Used for the commit-subject
             // namer and the rolling-window feature snapshot namer.
@@ -1325,21 +1399,31 @@ export const createAgentOrchestration = (
                 ? threadName
                 : taskDescription);
 
-            await Promise.resolve(
-              context.selfModLifecycle!.finalizeRun({
-                runId: lifecycleRunId,
-                ...(rootRunId ? { rootRunId } : {}),
-                taskDescription,
-                taskPrompt,
-                conversationId,
-                ...(agentId ? { threadKey: agentId } : {}),
-                ...(featureId ? { featureId } : {}),
-                ...(featureTitle ? { featureTitle } : {}),
-                succeeded: true,
-                commitMessageProvider,
-              }),
-            );
-            onSelfModRunClosed?.(lifecycleRunId);
+            try {
+              await Promise.resolve(
+                context.selfModLifecycle!.finalizeRun({
+                  runId: lifecycleRunId,
+                  ...(rootRunId ? { rootRunId } : {}),
+                  taskDescription,
+                  taskPrompt,
+                  conversationId,
+                  ...(agentId ? { threadKey: agentId } : {}),
+                  ...(featureId ? { featureId } : {}),
+                  ...(featureTitle ? { featureTitle } : {}),
+                  succeeded: true,
+                  commitMessageProvider,
+                }),
+              );
+            } catch (error) {
+              lifecycleFinalizationPending = false;
+              await cancelSelfModLifecycleAttempt();
+              throw error;
+            }
+            lifecycleFinalizationPending = false;
+            if (!lifecycleReleaseCompleted) {
+              lifecycleReleaseCompleted = true;
+              notifySelfModRunClosedOnce();
+            }
           } else if (
             subagentInterrupted &&
             shouldContinueSelfModLifecycleAfterInterrupt?.()
@@ -1347,9 +1431,9 @@ export const createAgentOrchestration = (
             // This interrupt is a continuation boundary, not terminal
             // cancellation. Keep the self-mod run open so writes before and
             // after the boundary apply as one batch when the task finishes.
-            lifecycleDispositionClaimed = true;
+            lifecycleHandedOff = true;
           } else {
-            await cancelSelfModLifecycleOnce();
+            await cancelSelfModLifecycleAttempt();
           }
         }
       }

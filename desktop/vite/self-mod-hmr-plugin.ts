@@ -391,6 +391,12 @@ export function selfModHmrControl(): Plugin {
     hostOwnedSwapDeactivateTimer.unref?.()
   }
   let shellMutationDepth = 0
+  const shellMutationLeaseIds = new Set<string>()
+  const releasedShellMutationLeaseIds = new Set<string>()
+  const rememberReleasedShellMutationLease = (leaseId: string) => {
+    if (!leaseId) return
+    releasedShellMutationLeaseIds.add(leaseId)
+  }
 
   const hasOwnedClientUpdatePause = () =>
     pausedRunIds.size > 0 || shellMutationDepth > 0
@@ -1082,17 +1088,44 @@ export function selfModHmrControl(): Plugin {
         }
 
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/begin-shell-mutation`) {
+          const payload = await readJsonBody(req)
+          const leaseId = typeof payload.leaseId === 'string' ? payload.leaseId : ''
+          if (leaseId && releasedShellMutationLeaseIds.has(leaseId)) {
+            sendJson(200, { ok: false, shellMutationDepth, alreadyReleased: true })
+            return
+          }
+          if (leaseId && shellMutationLeaseIds.has(leaseId)) {
+            sendJson(200, { ok: true, shellMutationDepth, alreadyAcquired: true })
+            return
+          }
           if (shellMutationDepth === 0) {
             for (const absPath of collectShellSnapshotFiles()) {
               trackShellSnapshotPath(absPath)
             }
           }
           shellMutationDepth += 1
+          if (leaseId) shellMutationLeaseIds.add(leaseId)
           sendJson(200, { ok: true, shellMutationDepth })
           return
         }
 
         if (req.method === 'POST' && urlPath === `${SELF_MOD_HMR_ENDPOINT_BASE}/end-shell-mutation`) {
+          const payload = await readJsonBody(req)
+          const leaseId = typeof payload.leaseId === 'string' ? payload.leaseId : ''
+          if (leaseId && !shellMutationLeaseIds.has(leaseId)) {
+            rememberReleasedShellMutationLease(leaseId)
+            sendJson(200, {
+              ok: true,
+              shellMutationDepth,
+              alreadyReleased: true,
+              changedPaths: [],
+            })
+            return
+          }
+          if (leaseId) {
+            shellMutationLeaseIds.delete(leaseId)
+            rememberReleasedShellMutationLease(leaseId)
+          }
           shellMutationDepth = Math.max(0, shellMutationDepth - 1)
           let changedPaths: string[] = []
           if (shellMutationDepth === 0) {
@@ -1119,6 +1152,8 @@ export function selfModHmrControl(): Plugin {
             shellMutationDepth > 0
           clearAllState()
           shellMutationDepth = 0
+          shellMutationLeaseIds.clear()
+          releasedShellMutationLeaseIds.clear()
           if (shouldReload) {
             sendClientMessage({ type: 'full-reload', path: '*' })
           }
