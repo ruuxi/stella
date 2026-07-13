@@ -433,6 +433,8 @@ type LocalAgentManagerOpts = {
   maxConcurrent?: number;
   /** Bounded ownership handoff for an aborted attempt that never settles. */
   attemptTeardownTimeoutMs?: number;
+  /** Bounded force-release wait before a replacement attempt takes ownership. */
+  attemptResourceCleanupTimeoutMs?: number;
   getMaxConcurrent?: () => number;
   resolveTaskThread?: (args: {
     conversationId: string;
@@ -483,6 +485,10 @@ type LocalAgentManagerOpts = {
     selfModFeature?: { featureId: string; featureTitle: string };
     onSelfModRunStarted?: (runId: string) => void;
     onSelfModRunClosed?: (runId: string) => void;
+    onAttemptCleanupReady?: (cleanup: {
+      selfModRunId?: string;
+      forceRelease: () => Promise<void>;
+    }) => void;
     shouldContinueSelfModLifecycleAfterInterrupt?: () => boolean;
     /**
      * Long-lived session bound to the durable subagent threadId. The
@@ -686,6 +692,14 @@ export const AGENT_ORPHANED_RESTART_CANCEL_REASON =
 // otherwise replace the user-facing reply with an empty silence.
 export const AGENT_PAUSE_CANCEL_REASON = "Paused by orchestrator.";
 export const DEFAULT_AGENT_ATTEMPT_TEARDOWN_TIMEOUT_MS = 5_000;
+export const DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_TIMEOUT_MS = 2_000;
+
+type InFlightAttempt = {
+  generation: number;
+  promise: Promise<void>;
+  forceRelease?: () => Promise<void>;
+  takeoverStarted?: boolean;
+};
 
 const logWorkingIndicatorTrace = (
   label: string,
@@ -700,10 +714,7 @@ export class LocalAgentManager implements AgentToolApi {
   private readonly tasks = new Map<string, RuntimeAgentRecord>();
   private readonly pendingQueue: string[] = [];
   private runningCount = 0;
-  private readonly inFlightAttempts = new Map<
-    string,
-    { generation: number; promise: Promise<void> }
-  >();
+  private readonly inFlightAttempts = new Map<string, InFlightAttempt>();
   private readonly attemptTakeoverTimers = new Map<
     string,
     {
@@ -1195,7 +1206,7 @@ export class LocalAgentManager implements AgentToolApi {
 
   private scheduleAttemptTakeover(
     task: RuntimeAgentRecord,
-    activeAttempt: { generation: number; promise: Promise<void> },
+    activeAttempt: InFlightAttempt,
   ): void {
     const existing = this.attemptTakeoverTimers.get(task.threadId);
     if (
@@ -1229,14 +1240,10 @@ export class LocalAgentManager implements AgentToolApi {
         return;
       }
 
-      // The old promise may never settle (for example a bridge/tool that
-      // ignored abort). Release its scheduler slot and remove its ownership
-      // record. Generation/controller checks fence every later callback and
-      // state write from that promise if it eventually returns.
       this.attemptTakeoverTimers.delete(task.threadId);
-      this.inFlightAttempts.delete(task.threadId);
-      this.runningCount = Math.max(0, this.runningCount - 1);
-      this.tryStartNext();
+      if (inFlight.takeoverStarted) return;
+      inFlight.takeoverStarted = true;
+      void this.forceReleaseAndTakeOver(task, inFlight);
     }, timeoutMs);
     timer.unref?.();
     this.attemptTakeoverTimers.set(task.threadId, {
@@ -1244,6 +1251,55 @@ export class LocalAgentManager implements AgentToolApi {
       promise: activeAttempt.promise,
       timer,
     });
+  }
+
+  private async forceReleaseAndTakeOver(
+    task: RuntimeAgentRecord,
+    activeAttempt: InFlightAttempt,
+  ): Promise<void> {
+    const cleanupTimeoutMs = Math.max(
+      1,
+      this.opts.attemptResourceCleanupTimeoutMs ??
+        DEFAULT_AGENT_ATTEMPT_RESOURCE_CLEANUP_TIMEOUT_MS,
+    );
+    if (activeAttempt.forceRelease) {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          Promise.resolve(activeAttempt.forceRelease()).catch((error) => {
+            console.warn(
+              "[agents] failed to force-release superseded attempt resources:",
+              (error as Error).message,
+            );
+          }),
+          new Promise<void>((resolve) => {
+            timeout = setTimeout(resolve, cleanupTimeoutMs);
+            timeout.unref?.();
+          }),
+        ]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+    }
+
+    const inFlight = this.inFlightAttempts.get(task.threadId);
+    if (
+      inFlight !== activeAttempt ||
+      inFlight.generation !== activeAttempt.generation ||
+      inFlight.promise !== activeAttempt.promise ||
+      task.status !== "pending" ||
+      task.attemptGeneration === activeAttempt.generation
+    ) {
+      return;
+    }
+
+    // The old promise may never settle (for example a bridge/tool that
+    // ignored abort). Its resources have now been released or the bounded
+    // cleanup lease has expired. Generation/controller checks fence every
+    // later callback and state write if the abandoned promise returns.
+    this.inFlightAttempts.delete(task.threadId);
+    this.runningCount = Math.max(0, this.runningCount - 1);
+    this.tryStartNext();
   }
 
   private tryStartNext(): void {
@@ -1446,6 +1502,22 @@ export class LocalAgentManager implements AgentToolApi {
           if (task.activeSelfModRunId === runId) {
             task.activeSelfModRunId = undefined;
           }
+        },
+        onAttemptCleanupReady: (cleanup) => {
+          const activeAttempt = this.inFlightAttempts.get(task.threadId);
+          if (activeAttempt?.generation === attempt.generation) {
+            activeAttempt.forceRelease = cleanup.forceRelease;
+            return;
+          }
+          // Registration can race a zero/very-short takeover deadline. If
+          // ownership has already moved on, close this abandoned attempt's
+          // resources immediately; its own finally may never run.
+          void cleanup.forceRelease().catch((error) => {
+            console.warn(
+              "[agents] failed to release late-registered attempt resources:",
+              (error as Error).message,
+            );
+          });
         },
         shouldContinueSelfModLifecycleAfterInterrupt: () =>
           isCurrentAttempt() && this.shouldDeliverFollowUp(task),

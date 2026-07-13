@@ -45,13 +45,16 @@ type MockRuntimeState = {
     | "interrupted"
     | "interrupt_after_apply_patch"
     | "send_input_then_apply_patch"
-    | "pause_resume_self_mod";
+    | "pause_resume_self_mod"
+    | "hung_takeover_self_mod";
   patch: string;
   firstPatch?: string;
   root: string;
   runCount: number;
   onRunStart?: (runCount: number) => void;
   onFirstWrite?: () => void;
+  hungAttemptGate?: Promise<void>;
+  onHungResourcesReady?: () => void;
 };
 
 const mockRuntime: MockRuntimeState = {
@@ -69,7 +72,8 @@ const mockRuntime: MockRuntimeState = {
     | "interrupted"
     | "interrupt_after_apply_patch"
     | "send_input_then_apply_patch"
-    | "pause_resume_self_mod",
+    | "pause_resume_self_mod"
+    | "hung_takeover_self_mod",
   patch: "",
   root: "",
   runCount: 0,
@@ -181,6 +185,40 @@ vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
         return {
           runId: "subagent-run-1",
           result: "",
+          interrupted: true,
+        };
+      }
+      if (runtime.mode === "hung_takeover_self_mod") {
+        if (runCount > 1) {
+          return {
+            runId: `subagent-run-${runCount}`,
+            result: "resumed after forced cleanup",
+          };
+        }
+        const patchResult = await opts.toolExecutor(
+          "apply_patch",
+          { input: runtime.patch },
+          context,
+        );
+        opts.callbacks?.onToolEnd?.({
+          runId: "subagent-run-hung",
+          seq: 1,
+          toolCallId: "tool-write",
+          toolName: "apply_patch",
+          resultPreview: patchResult.error ?? "ok",
+          fileChanges: patchResult.fileChanges,
+          producedFiles: patchResult.producedFiles,
+        });
+        await opts.toolExecutor(
+          "exec_command",
+          { cmd: "bun run dev --watch desktop/src/foo.tsx" },
+          context,
+        );
+        runtime.onHungResourcesReady?.();
+        await (runtime.hungAttemptGate ?? new Promise<never>(() => {}));
+        return {
+          runId: "subagent-run-hung",
+          result: "late abandoned result",
           interrupted: true,
         };
       }
@@ -334,6 +372,8 @@ afterEach(async () => {
   mockRuntime.firstPatch = undefined;
   mockRuntime.onRunStart = undefined;
   mockRuntime.onFirstWrite = undefined;
+  mockRuntime.hungAttemptGate = undefined;
+  mockRuntime.onHungResourcesReady = undefined;
   vi.clearAllMocks();
 });
 
@@ -405,7 +445,8 @@ const createTestContext = (root: string, hmrController: unknown) => {
         }
         if (
           toolName === "exec_command" &&
-          getMockRuntime().mode === "running_shell"
+          (getMockRuntime().mode === "running_shell" ||
+            getMockRuntime().mode === "hung_takeover_self_mod")
         ) {
           return Promise.resolve({
             result: "Shell ID: session-1",
@@ -1081,6 +1122,134 @@ describe("agent orchestration self-mod HMR tracking", () => {
     expect(canceledRunIds).toEqual([begunRunIds[0]]);
     expect(finalizedRunIds).toEqual([begunRunIds[1]]);
     expect(appliedPaths).toEqual(["desktop/src/resumed.tsx"]);
+  });
+
+  it("force-releases a hung attempt's self-mod run and shell guard before takeover, exactly once", async () => {
+    const root = await makeTempRoot();
+    const filePath = path.join(root, "desktop/src/foo.tsx");
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, "export const value = 'before';\n");
+    mockRuntime.root = root;
+    mockRuntime.mode = "hung_takeover_self_mod";
+    mockRuntime.patch = [
+      "*** Begin Patch",
+      `*** Update File: ${filePath}`,
+      "@@",
+      "-export const value = 'before';",
+      "+export const value = 'hung-write';",
+      "*** End Patch",
+      "",
+    ].join("\n");
+    let releaseHungAttempt!: () => void;
+    mockRuntime.hungAttemptGate = new Promise<void>((resolve) => {
+      releaseHungAttempt = resolve;
+    });
+    let resourcesReady!: () => void;
+    const resourcesReadyGate = new Promise<void>((resolve) => {
+      resourcesReady = resolve;
+    });
+    mockRuntime.onHungResourcesReady = resourcesReady;
+    (
+      globalThis as unknown as { __stellaOrchHmrMock?: MockRuntimeState }
+    ).__stellaOrchHmrMock = mockRuntime;
+
+    const runStates = new Map<string, "active" | "canceled" | "finalized">();
+    let shellMutationDepth = 0;
+    let clientUpdatesPaused = false;
+    const controller = {
+      beginRun: vi.fn(async (runId: string) => {
+        runStates.set(runId, "active");
+        clientUpdatesPaused = true;
+      }),
+      recordWrite: vi.fn(),
+      beginShellMutationGuard: vi.fn(async () => {
+        shellMutationDepth += 1;
+        return true;
+      }),
+      endShellMutationGuard: vi.fn(async () => {
+        shellMutationDepth -= 1;
+        return { ok: true, changedPaths: [] };
+      }),
+      hasRun: vi.fn((runId: string) => runStates.get(runId) === "active"),
+    };
+    const context = createTestContext(root, controller);
+    context.toolHost.killShell = vi.fn(async () => {});
+    context.selfModLifecycle.beginRun = vi.fn();
+    context.selfModLifecycle.cancelRun = vi.fn(async (runId: string) => {
+      runStates.set(runId, "canceled");
+      clientUpdatesPaused = false;
+    });
+    context.selfModLifecycle.finalizeRun = vi.fn(
+      async ({ runId }: { runId: string }) => {
+        runStates.set(runId, "finalized");
+        clientUpdatesPaused = false;
+      },
+    );
+    createAgentOrchestration(context, {
+      buildAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+      }),
+      sendMessage: async () => {},
+      attemptTeardownTimeoutMs: 20,
+      attemptResourceCleanupTimeoutMs: 50,
+    });
+
+    const { threadId } = await context.state.localAgentManager.createAgent({
+      conversationId: "conversation-1",
+      description: "take over hung self mod",
+      prompt: "write and start a watcher",
+      agentType: AGENT_IDS.GENERAL,
+      storageMode: "local",
+    });
+    await resourcesReadyGate;
+    const oldRunId = context.selfModLifecycle.beginRun.mock.calls[0]?.[0]
+      .runId as string;
+    expect(runStates.get(oldRunId)).toBe("active");
+    expect(shellMutationDepth).toBe(1);
+    expect(clientUpdatesPaused).toBe(true);
+
+    await context.state.localAgentManager.cancelAgent(
+      threadId,
+      "Paused by orchestrator.",
+    );
+    await context.state.localAgentManager.sendAgentMessage(
+      threadId,
+      "Resume after releasing the abandoned attempt.",
+      "orchestrator",
+    );
+    const snapshot = await waitForAgentStatus(
+      context.state.localAgentManager,
+      threadId,
+    );
+
+    expect(snapshot).toMatchObject({
+      status: "completed",
+      result: "resumed after forced cleanup",
+    });
+    expect(runStates.get(oldRunId)).toBe("canceled");
+    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
+    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledWith(oldRunId);
+    expect(context.toolHost.killShell).toHaveBeenCalledTimes(1);
+    expect(context.toolHost.killShell).toHaveBeenCalledWith("session-1");
+    expect(shellMutationDepth).toBe(0);
+    expect(clientUpdatesPaused).toBe(false);
+
+    // The abandoned tool eventually returns and runs its original finally.
+    // The shared cleanup claims make every close path a no-op on settlement.
+    releaseHungAttempt();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(context.selfModLifecycle.cancelRun).toHaveBeenCalledTimes(1);
+    expect(context.toolHost.killShell).toHaveBeenCalledTimes(1);
+    expect(controller.endShellMutationGuard).toHaveBeenCalledTimes(1);
+    expect(shellMutationDepth).toBe(0);
+    expect(
+      await context.state.localAgentManager.getAgent(threadId),
+    ).toMatchObject({
+      status: "completed",
+      result: "resumed after forced cleanup",
+    });
   });
 
   it("kills still-running guarded shell sessions and still finalizes self-mod", async () => {

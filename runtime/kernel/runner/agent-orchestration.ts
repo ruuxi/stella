@@ -413,6 +413,8 @@ export const createAgentOrchestration = (
     }) => Promise<void>;
     /** Test/embedding override; production uses the manager's bounded default. */
     attemptTeardownTimeoutMs?: number;
+    /** Test/embedding override for force-releasing abandoned run resources. */
+    attemptResourceCleanupTimeoutMs?: number;
   },
 ) => {
   const handleAgentLifecycleEvent = (rawEvent: AgentLifecycleEvent) => {
@@ -528,6 +530,11 @@ export const createAgentOrchestration = (
     ...(deps.attemptTeardownTimeoutMs !== undefined
       ? { attemptTeardownTimeoutMs: deps.attemptTeardownTimeoutMs }
       : {}),
+    ...(deps.attemptResourceCleanupTimeoutMs !== undefined
+      ? {
+          attemptResourceCleanupTimeoutMs: deps.attemptResourceCleanupTimeoutMs,
+        }
+      : {}),
     getMaxConcurrent: () => getMaxAgentConcurrency(context.stellaDataDir),
     resolveTaskThread: ({ conversationId, agentType, threadId, nameHint }) => {
       if (!isLocalCliAgentId(agentType)) {
@@ -562,6 +569,7 @@ export const createAgentOrchestration = (
       selfModFeature,
       onSelfModRunStarted,
       onSelfModRunClosed,
+      onAttemptCleanupReady,
       shouldContinueSelfModLifecycleAfterInterrupt,
       subagentSession,
       onProgress,
@@ -661,24 +669,6 @@ export const createAgentOrchestration = (
           onSelfModRunStarted?.(lifecycleRunId);
         }
       }
-      let exploreFindingsBlock = "";
-      if (
-        agentType === AGENT_IDS.GENERAL &&
-        (await shouldUseAutomaticSkillExplore(context.stellaDataDir))
-      ) {
-        exploreFindingsBlock = await runExplore({
-          context,
-          conversationId,
-          taskDescription,
-          taskPrompt,
-          signal: abortSignal,
-        });
-      }
-
-      const composedUserPrompt = exploreFindingsBlock
-        ? `${exploreFindingsBlock}\n\n${taskDescription}\n\n${taskPrompt}`
-        : `${taskDescription}\n\n${taskPrompt}`;
-
       let subagentSucceeded = false;
       const subagentFileChanges: FileChangeRecord[] = [];
       const subagentFileChangeKeys = new Set<string>();
@@ -692,7 +682,16 @@ export const createAgentOrchestration = (
       const pendingToolWriteRecords: Promise<void>[] = [];
       const guardedShellSessionLeases = new Map<string, string>();
       const guardedShellLeaseSessions = new Map<string, Set<string>>();
+      const activeShellGuardLeases = new Set<string>();
       let subagentInterrupted = false;
+      let resourcesForceReleased = false;
+      let shellResourceCleanupPromise: Promise<void> | null = null;
+      let shellGuardCleanupPromise: Promise<void> | null = null;
+      let shellKillPromise: Promise<void> | null = null;
+      let shellCleanupSessionIds: string[] | null = null;
+      let shellCleanupLeaseIds: string[] | null = null;
+      let lifecycleDispositionClaimed = false;
+      let forceReleasePromise: Promise<void> | null = null;
 
       const endShellMutationGuard = async () => {
         const result = await context.selfModHmrController
@@ -722,32 +721,23 @@ export const createAgentOrchestration = (
         }
       };
 
-      const releaseGuardedShellSessions = async () => {
-        const leaseCount = guardedShellLeaseSessions.size;
-        guardedShellSessionLeases.clear();
-        guardedShellLeaseSessions.clear();
-        for (let i = 0; i < leaseCount; i += 1) {
-          await endShellMutationGuard();
-        }
+      const endShellMutationGuardLease = async (leaseId: string) => {
+        // Delete before awaiting the controller so force-release and the
+        // abandoned attempt's eventual finally cannot decrement the same
+        // shellMutationDepth lease twice.
+        if (!activeShellGuardLeases.delete(leaseId)) return;
+        await endShellMutationGuard();
       };
 
-      const hasGuardedShellSessions = () => guardedShellLeaseSessions.size > 0;
-
-      const killGuardedShellSessions = async () => {
-        if (!hasGuardedShellSessions()) return;
-        const sessionIds = [...guardedShellSessionLeases.keys()];
-        console.warn(
-          "[self-mod-hmr] mutating shell session still running at finalize; killing guarded shell sessions before self-mod apply.",
-        );
-        await Promise.allSettled(
-          sessionIds.map((sessionId) => context.toolHost.killShell(sessionId)),
-        );
-      };
-
-      const retainShellGuardLease = (sessionIds: string[]) => {
+      const retainShellGuardLease = (leaseId: string, sessionIds: string[]) => {
         const uniqueSessionIds = [...new Set(sessionIds)].filter(Boolean);
-        if (uniqueSessionIds.length === 0) return false;
-        const leaseId = crypto.randomUUID();
+        if (
+          uniqueSessionIds.length === 0 ||
+          resourcesForceReleased ||
+          !activeShellGuardLeases.has(leaseId)
+        ) {
+          return false;
+        }
         guardedShellLeaseSessions.set(leaseId, new Set(uniqueSessionIds));
         for (const sessionId of uniqueSessionIds) {
           guardedShellSessionLeases.set(sessionId, leaseId);
@@ -764,7 +754,58 @@ export const createAgentOrchestration = (
         sessions.delete(sessionId);
         if (sessions.size > 0) return;
         guardedShellLeaseSessions.delete(leaseId);
-        await endShellMutationGuard();
+        await endShellMutationGuardLease(leaseId);
+      };
+
+      const snapshotShellResourcesOnce = () => {
+        if (shellCleanupSessionIds && shellCleanupLeaseIds) return;
+        shellCleanupSessionIds = [...guardedShellSessionLeases.keys()];
+        shellCleanupLeaseIds = [...activeShellGuardLeases];
+        guardedShellSessionLeases.clear();
+        guardedShellLeaseSessions.clear();
+      };
+
+      const killGuardedShellSessionsOnce = (): Promise<void> => {
+        snapshotShellResourcesOnce();
+        if (shellKillPromise) return shellKillPromise;
+        const sessionIds = shellCleanupSessionIds ?? [];
+        if (sessionIds.length > 0) {
+          console.warn(
+            "[self-mod-hmr] mutating shell session still running at finalize; killing guarded shell sessions before self-mod apply.",
+          );
+        }
+        shellKillPromise = Promise.allSettled(
+          sessionIds.map((sessionId) => context.toolHost.killShell(sessionId)),
+        ).then(() => undefined);
+        return shellKillPromise;
+      };
+
+      const releaseShellGuardsOnce = (): Promise<void> => {
+        snapshotShellResourcesOnce();
+        if (shellGuardCleanupPromise) return shellGuardCleanupPromise;
+        shellGuardCleanupPromise = Promise.allSettled(
+          (shellCleanupLeaseIds ?? []).map((leaseId) =>
+            endShellMutationGuardLease(leaseId),
+          ),
+        ).then(() => undefined);
+        return shellGuardCleanupPromise;
+      };
+
+      const releaseShellResourcesOnce = (force = false): Promise<void> => {
+        if (force) {
+          // Force close cannot serialize guard release behind a wedged shell
+          // bridge. Both operations are individually exactly-once.
+          return Promise.allSettled([
+            killGuardedShellSessionsOnce(),
+            releaseShellGuardsOnce(),
+          ]).then(() => undefined);
+        }
+        if (shellResourceCleanupPromise) return shellResourceCleanupPromise;
+        shellResourceCleanupPromise = (async () => {
+          await killGuardedShellSessionsOnce();
+          await releaseShellGuardsOnce();
+        })();
+        return shellResourceCleanupPromise;
       };
 
       const recordWritePaths = async (
@@ -823,12 +864,12 @@ export const createAgentOrchestration = (
           isShellPoll && shellSessionId
             ? guardedShellSessionLeases.has(shellSessionId)
             : false;
-        let shellGuardActive = false;
+        let shellGuardLeaseId: string | null = null;
         if (
           (shouldGuardShellCommand || isParallelWithGuardedShellCommands) &&
           shouldAttachSelfModLifecycle
         ) {
-          shellGuardActive = Boolean(
+          const shellGuardActive = Boolean(
             await context.selfModHmrController
               ?.beginShellMutationGuard()
               .catch((error) => {
@@ -839,13 +880,25 @@ export const createAgentOrchestration = (
                 return false;
               }),
           );
-          if (!shellGuardActive && agentType !== AGENT_IDS.INSTALL_UPDATE) {
+          if (shellGuardActive) {
+            shellGuardLeaseId = crypto.randomUUID();
+            if (resourcesForceReleased) {
+              // Force-release raced the guard acknowledgement. Balance this
+              // late acquisition immediately and never enter the stale tool.
+              activeShellGuardLeases.add(shellGuardLeaseId);
+              await endShellMutationGuardLease(shellGuardLeaseId);
+              shellGuardLeaseId = null;
+            } else {
+              activeShellGuardLeases.add(shellGuardLeaseId);
+            }
+          }
+          if (!shellGuardLeaseId && agentType !== AGENT_IDS.INSTALL_UPDATE) {
             return {
               error:
                 "Self-mod HMR shell guard failed before running a mutating shell command.",
             };
           }
-          if (!shellGuardActive) {
+          if (!shellGuardLeaseId) {
             console.warn(
               "[self-mod-hmr] shell mutation guard unavailable for install-update; running bounded update command without HMR guard.",
             );
@@ -897,17 +950,32 @@ export const createAgentOrchestration = (
           }
           if (
             isShellCommand &&
-            shellGuardActive &&
+            shellGuardLeaseId &&
             shellState?.running &&
             shellState.sessionId
           ) {
-            if (retainShellGuardLease([shellState.sessionId])) {
-              shellGuardActive = false;
+            if (
+              retainShellGuardLease(shellGuardLeaseId, [shellState.sessionId])
+            ) {
+              shellGuardLeaseId = null;
+            } else if (resourcesForceReleased) {
+              // The session was acknowledged after takeover snapshotted the
+              // old attempt. It was never inserted into the retained-session
+              // map, so terminate it here instead of letting it escape.
+              await Promise.resolve(
+                context.toolHost.killShell(shellState.sessionId),
+              ).catch(() => undefined);
             }
-          } else if (isParallelWithShellCommands && shellGuardActive) {
+          } else if (isParallelWithShellCommands && shellGuardLeaseId) {
             const runningSessionIds = getParallelRunningShellSessions(result);
-            if (retainShellGuardLease(runningSessionIds)) {
-              shellGuardActive = false;
+            if (retainShellGuardLease(shellGuardLeaseId, runningSessionIds)) {
+              shellGuardLeaseId = null;
+            } else if (resourcesForceReleased) {
+              await Promise.allSettled(
+                runningSessionIds.map((sessionId) =>
+                  context.toolHost.killShell(sessionId),
+                ),
+              );
             }
           } else if (
             isGuardedShellPoll &&
@@ -918,11 +986,68 @@ export const createAgentOrchestration = (
           }
           return result;
         } finally {
-          if (shellGuardActive) {
-            await endShellMutationGuard();
+          if (shellGuardLeaseId) {
+            await endShellMutationGuardLease(shellGuardLeaseId);
           }
         }
       };
+
+      const cancelSelfModLifecycleOnce = async (): Promise<void> => {
+        if (!shouldAttachSelfModLifecycle || lifecycleDispositionClaimed) {
+          return;
+        }
+        lifecycleDispositionClaimed = true;
+        try {
+          if (typeof context.selfModLifecycle!.cancelRun === "function") {
+            await Promise.resolve(
+              context.selfModLifecycle!.cancelRun(lifecycleRunId),
+            );
+          }
+        } finally {
+          onSelfModRunClosed?.(lifecycleRunId);
+        }
+      };
+
+      const forceReleaseAttemptResources = (): Promise<void> => {
+        if (forceReleasePromise) return forceReleasePromise;
+        resourcesForceReleased = true;
+        // Start both ownership releases at once. In particular, a stuck shell
+        // kill must not serialize ahead of contention/HMR cancellation.
+        forceReleasePromise = Promise.allSettled([
+          releaseShellResourcesOnce(true),
+          cancelSelfModLifecycleOnce(),
+        ]).then(() => undefined);
+        return forceReleasePromise;
+      };
+
+      // The manager captures this handle before the model/tool loop begins.
+      // A timeout takeover can therefore close the OLD run id even after the
+      // task record has rotated to the resumed attempt's new lifecycle.
+      onAttemptCleanupReady?.({
+        ...(shouldAttachSelfModLifecycle
+          ? { selfModRunId: lifecycleRunId }
+          : {}),
+        forceRelease: forceReleaseAttemptResources,
+      });
+
+      let exploreFindingsBlock = "";
+      if (
+        agentType === AGENT_IDS.GENERAL &&
+        (await shouldUseAutomaticSkillExplore(context.stellaDataDir))
+      ) {
+        exploreFindingsBlock = await runExplore({
+          context,
+          conversationId,
+          taskDescription,
+          taskPrompt,
+          signal: abortSignal,
+        });
+      }
+
+      const composedUserPrompt = exploreFindingsBlock
+        ? `${exploreFindingsBlock}\n\n${taskDescription}\n\n${taskPrompt}`
+        : `${taskDescription}\n\n${taskPrompt}`;
+
       try {
         const result = await runSubagentTask({
           conversationId,
@@ -1106,17 +1231,15 @@ export const createAgentOrchestration = (
         if (pendingToolWriteRecords.length > 0) {
           await Promise.allSettled(pendingToolWriteRecords);
         }
-        if (hasGuardedShellSessions()) {
-          await killGuardedShellSessions();
-        }
-        await releaseGuardedShellSessions();
-        if (shouldAttachSelfModLifecycle) {
+        await releaseShellResourcesOnce();
+        if (shouldAttachSelfModLifecycle && !lifecycleDispositionClaimed) {
           // The finalize/cancel hooks below own the entire apply pipeline
           // (contention tracker drain, Vite overlay swap, runtime restart,
           // morph cover). The renderer no longer participates in the
           // resume-flush dance — it just observes self-mod-hmr state events
           // emitted by the worker server.
           if (subagentSucceeded) {
+            lifecycleDispositionClaimed = true;
             // Helper: spin up a one-shot LLM call with no tools and a
             // freshly-built agent context. Used for the commit-subject
             // namer and the rolling-window feature snapshot namer.
@@ -1224,13 +1347,9 @@ export const createAgentOrchestration = (
             // This interrupt is a continuation boundary, not terminal
             // cancellation. Keep the self-mod run open so writes before and
             // after the boundary apply as one batch when the task finishes.
-          } else if (
-            typeof context.selfModLifecycle!.cancelRun === "function"
-          ) {
-            await Promise.resolve(
-              context.selfModLifecycle!.cancelRun(lifecycleRunId),
-            );
-            onSelfModRunClosed?.(lifecycleRunId);
+            lifecycleDispositionClaimed = true;
+          } else {
+            await cancelSelfModLifecycleOnce();
           }
         }
       }
