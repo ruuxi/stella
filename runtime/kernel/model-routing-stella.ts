@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import type { Api, Model } from "../ai/types.js";
 import {
   findRegistryModel,
+  findRegistryModelsById,
   getStellaVerbatimUpstreamModel,
   uniqueModelCandidates,
 } from "./model-routing-matching.js";
@@ -62,7 +63,38 @@ export const inferManagedGatewayProviderFromModel = (
   return "openrouter";
 };
 
-const fallbackResolvedModelForAlias = (modelId: string): string => {
+const managedUpstreamForBareStellaModel = (
+  bareModelId: string,
+): string | null => {
+  const matches = findRegistryModelsById(bareModelId);
+  // Opaque backend-owned aliases are not in the local registry. Preserve the
+  // exact id as a provisional route so catalog enrichment can resolve it; if
+  // the catalog is unavailable, the relay sees that exact id and fails loudly
+  // upstream instead of silently substituting another model family.
+  if (matches.length === 0) return bareModelId;
+
+  const candidates = matches.flatMap(({ registryProvider, model }) => {
+    switch (registryProvider) {
+      case "openai":
+      case "anthropic":
+      case "google":
+      case "openrouter":
+        return [`${registryProvider}/${model.id}`];
+      case "fireworks":
+        return model.id.startsWith("accounts/fireworks/") ? [model.id] : [];
+      default:
+        // Registry-only engines such as openai-codex are not valid managed
+        // Stella relay providers. Callers must use their engine-native form.
+        return [];
+    }
+  });
+  const uniqueCandidates = Array.from(new Set(candidates));
+  return candidates.length === matches.length && uniqueCandidates.length === 1
+    ? uniqueCandidates[0]
+    : null;
+};
+
+export const resolveOfflineStellaModelId = (modelId: string): string | null => {
   // Offline fallback for the per-mode upstream model when the server catalog
   // metadata is unavailable. Keep in sync with the backend `BASE_MODE_CONFIGS`
   // (convex/agent/model.ts) — the catalog is the source of truth at runtime.
@@ -86,7 +118,13 @@ const fallbackResolvedModelForAlias = (modelId: string): string => {
     default: {
       const upstream = getStellaVerbatimUpstreamModel(modelId);
       if (upstream) return upstream;
-      return "openai/gpt-5.5";
+      const barePrefix = `${STELLA_PROVIDER}/`;
+      if (modelId.startsWith(barePrefix)) {
+        return managedUpstreamForBareStellaModel(
+          modelId.slice(barePrefix.length),
+        );
+      }
+      return null;
     }
   }
 };
@@ -233,7 +271,8 @@ export const createStellaRoute = (args: {
   }
 
   const resolvedModelId =
-    args.resolvedModelId ?? fallbackResolvedModelForAlias(args.modelId);
+    args.resolvedModelId ?? resolveOfflineStellaModelId(args.modelId);
+  if (!resolvedModelId) return null;
   const relayProvider = inferManagedGatewayProviderFromModel(resolvedModelId);
 
   const refreshApiKey = async (): Promise<string | undefined> => {

@@ -22,6 +22,7 @@ import {
 } from "./model-routing-matching.js";
 import {
   createStellaRoute,
+  resolveOfflineStellaModelId,
   STELLA_PROVIDER,
   type StellaSiteConfig,
 } from "./model-routing-stella.js";
@@ -128,8 +129,10 @@ export const resolvedLlmSupportsCredentiallessCalls = (
   resolved.route === "direct-provider" &&
   resolved.model.baseUrl.trim().length > 0;
 
-const getCredential = (stellaAppDir: string, providerId: string): string | null =>
-  getLocalLlmCredential(stellaAppDir, providerId);
+const getCredential = (
+  stellaAppDir: string,
+  providerId: string,
+): string | null => getLocalLlmCredential(stellaAppDir, providerId);
 
 const hasLocalProviderAuth = (
   stellaAppDir: string,
@@ -415,8 +418,16 @@ const resolveLlmRouteResult = (args: {
       agentType: args.agentType,
       modelId: parsed.fullModelId,
     });
-    return route
-      ? { ok: true, route }
+    if (route) return { ok: true, route };
+    return resolveOfflineStellaModelId(parsed.fullModelId) === null
+      ? {
+          ok: false,
+          failure: {
+            kind: "unknown-model",
+            provider: STELLA_PROVIDER,
+            model: parsed.fullModelId,
+          },
+        }
       : { ok: false, failure: { kind: "no-stella-route" } };
   }
 

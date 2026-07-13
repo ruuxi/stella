@@ -23,7 +23,10 @@ import type {
   SpawnReasoningEffort,
 } from "../../contracts/agent-engine.js";
 import { isRegisteredModelReference } from "../../ai/models.js";
-import { isOpenEndedModelReference } from "../model-routing-matching.js";
+import {
+  isOpenEndedModelReference,
+  isRegisteredBareStellaModelReference,
+} from "../model-routing-matching.js";
 
 export type StateContext = {
   stateRoot: string;
@@ -151,6 +154,7 @@ export const parseSpawnAgentModel = (
       suffixParts.model === "default" ||
       Boolean(SPAWN_ENGINE_IDS[head]) ||
       isRegisteredModelReference(suffixParts.model) ||
+      isRegisteredBareStellaModelReference(suffixParts.model) ||
       canResolveModel(suffixParts.model);
     if (baseIsKnownForm && !suffixIsEffort) {
       throw invalidSpawnReasoningSuffix(suffixParts.suffix);

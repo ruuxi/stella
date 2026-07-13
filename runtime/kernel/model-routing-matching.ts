@@ -1,4 +1,4 @@
-import { getModels } from "../ai/models.js";
+import { getModelProviders, getModels } from "../ai/models.js";
 import type { Api, Model } from "../ai/types.js";
 
 export type ParsedModelReference = {
@@ -68,6 +68,36 @@ export const isOpenEndedModelReference = (rawModel: string): boolean => {
 const getRegistryModels = (registryProvider: string): Model<Api>[] => {
   const models = getModels(registryProvider as never) as Model<Api>[];
   return Array.isArray(models) ? models : [];
+};
+
+export type RegistryModelMatch = {
+  registryProvider: string;
+  model: Model<Api>;
+};
+
+/** Exact id matches across every live registry namespace. */
+export const findRegistryModelsById = (
+  modelId: string,
+): RegistryModelMatch[] => {
+  const requested = modelId.trim();
+  if (!requested) return [];
+  return getModelProviders().flatMap((registryProvider) =>
+    getRegistryModels(registryProvider)
+      .filter((model) => model.id === requested)
+      .map((model) => ({ registryProvider, model })),
+  );
+};
+
+/** A closed `stella/<bare-id>` reference backed by any registry namespace. */
+export const isRegisteredBareStellaModelReference = (
+  rawModel: string,
+): boolean => {
+  const parsed = parseModelReference(rawModel);
+  return Boolean(
+    parsed?.provider === "stella" &&
+      !parsed.modelId.includes("/") &&
+      findRegistryModelsById(parsed.modelId).length > 0,
+  );
 };
 
 export const findRegistryModel = (

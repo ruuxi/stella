@@ -73,6 +73,13 @@ const OPENROUTER_TEMPLATE = model(
 );
 
 vi.mock("../../../../runtime/ai/models.js", () => ({
+  getModelProviders: () => [
+    "openai",
+    "openai-codex",
+    "anthropic",
+    "openrouter",
+    "vercel-ai-gateway",
+  ],
   getAllModels: () => [
     model("openai", "gpt-5.1-codex"),
     model("openai-codex", "gpt-5.4", "openai-codex-responses"),

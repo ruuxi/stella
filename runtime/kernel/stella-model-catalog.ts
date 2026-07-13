@@ -10,6 +10,7 @@ import {
 } from "../contracts/stella-api.js";
 import { writePrivateFile } from "./shared/private-fs.js";
 import type { ResolvedLlmRoute } from "./model-routing.js";
+import { getStellaVerbatimUpstreamModel } from "./model-routing-matching.js";
 import {
   STELLA_PROVIDER,
   createStellaRoute,
@@ -379,15 +380,6 @@ const modelIdentityFromId = (modelId: string): ModelIdentity => {
   };
 };
 
-const resolvePassthroughStellaModel = (modelId: string): string | null => {
-  const prefix = `${STELLA_PROVIDER}/`;
-  if (!modelId.startsWith(prefix)) {
-    return null;
-  }
-  const upstream = modelId.slice(prefix.length);
-  return upstream.includes("/") ? upstream : null;
-};
-
 const resolveStellaModelAlias = async (args: {
   route: ResolvedLlmRoute;
   agentType: string;
@@ -401,7 +393,7 @@ const resolveStellaModelAlias = async (args: {
   }
 
   const modelId = args.route.model.id.trim();
-  const passthrough = resolvePassthroughStellaModel(modelId);
+  const passthrough = getStellaVerbatimUpstreamModel(modelId);
   if (passthrough) {
     return passthrough;
   }
