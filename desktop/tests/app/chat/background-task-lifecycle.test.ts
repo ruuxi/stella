@@ -22,6 +22,7 @@ const started = (args: {
   agentId: string;
   rootRunId: string;
   description: string;
+  agentType?: string;
   statusText?: string;
   isFollowUp?: boolean;
   groupKey?: string;
@@ -31,7 +32,7 @@ const started = (args: {
     agentId: args.agentId,
     rootRunId: args.rootRunId,
     description: args.description,
-    agentType: "general",
+    agentType: args.agentType ?? "general",
     statusText: args.statusText ?? args.description,
     ...(args.isFollowUp ? { isFollowUp: true } : {}),
     ...(args.groupKey ? { groupKey: args.groupKey } : {}),
@@ -70,6 +71,42 @@ const resolveCard = (starts: EventRecord[], allEvents: EventRecord[]) => {
 };
 
 describe("spawn-anchored background task lifecycle", () => {
+  it("settles a spawn_manager card through the shared completion lifecycle", () => {
+    const start = started({
+      id: "manager-start",
+      at: 100,
+      agentId: "manager-thread",
+      rootRunId: "manager-run",
+      description: "Coordinate the launch",
+      agentType: "manager",
+    });
+    const progress = event("manager-progress", 150, "agent-progress", {
+      agentId: "manager-thread",
+      rootRunId: "manager-run",
+      statusText: "Coordinating verification",
+    });
+    const done = completed({
+      id: "manager-done",
+      at: 200,
+      agentId: "manager-thread",
+      rootRunId: "manager-run",
+    });
+
+    const { resolved } = resolveCard([start], [start, progress, done]);
+    expect(resolved.completedThreadIds).toEqual(["manager-thread"]);
+    expect(resolved.progressTexts).toEqual({
+      "manager-thread": "Coordinating verification",
+    });
+    expect(resolved.completionSections).toMatchObject([
+      {
+        agentId: "manager-thread",
+        title: "Coordinate the launch",
+        startEventId: "manager-start",
+        completionEventId: "manager-done",
+      },
+    ]);
+  });
+
   it("deduplicates one completion projected by both live and canonical sources", () => {
     const start = started({
       id: "start-1",

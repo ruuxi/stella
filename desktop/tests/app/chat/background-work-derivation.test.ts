@@ -110,6 +110,35 @@ describe("getBackgroundWork spawn vs send_input follow-up", () => {
     expect(work).toBeUndefined();
   });
 
+  it("classifies a spawn_manager lifecycle start as inline background work", () => {
+    const work = getBackgroundWork([
+      started("manager-thread", "Coordinate the launch", {
+        agentType: "manager",
+        statusText: "Coordinate the launch",
+      }),
+    ]);
+    expect(work).toMatchObject({
+      threadIds: ["manager-thread"],
+      descriptions: { "manager-thread": "Coordinate the launch" },
+      followUpThreadIds: [],
+    });
+  });
+
+  it("classifies send_input to a manager as a follow-up card", () => {
+    const work = getBackgroundWork([
+      started("manager-thread", "Coordinate the launch", {
+        agentType: "manager",
+        statusText: "Add a final verification pass",
+        isFollowUp: true,
+      }),
+    ]);
+    expect(work).toMatchObject({
+      threadIds: ["manager-thread"],
+      followUpThreadIds: ["manager-thread"],
+      statusTexts: { "manager-thread": "Add a final verification pass" },
+    });
+  });
+
   it("returns separate cards for a spawn and follow-up within one turn", () => {
     const works = getBackgroundWorks([
       started("thread-a", "Spawned task", { statusText: "Spawned task" }),

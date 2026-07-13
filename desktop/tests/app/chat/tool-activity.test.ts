@@ -72,6 +72,16 @@ describe("deriveToolActivity orchestrator-only gating", () => {
     expect(group).toBeUndefined();
   });
 
+  it("keeps spawn_manager out of the generic tool trace", () => {
+    const group = deriveToolActivity([
+      req("r1", "spawn_manager", "orchestrator", {
+        prompt: "Coordinate the launch",
+      }),
+      res("r1", "spawn_manager", "orchestrator"),
+    ]);
+    expect(group).toBeUndefined();
+  });
+
   it("keeps only the orchestrator's calls in a mixed turn", () => {
     const group = deriveToolActivity([
       req("r1", "web", "orchestrator", { query: "x" }),

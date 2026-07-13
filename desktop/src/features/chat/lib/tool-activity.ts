@@ -78,6 +78,7 @@ export type ToolActivityGroup = {
 //     tool_request events, so the wrapper itself would just be noise.
 const EXCLUDED_TOOLS = new Set([
   "spawn_agent",
+  "spawn_manager",
   "send_input",
   "pause_agent",
   "resume_agent",

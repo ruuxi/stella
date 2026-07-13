@@ -8,7 +8,10 @@ import {
   isUserMessage,
 } from "@/features/chat/lib/event-transforms";
 import type { MessageRecord } from "../../../../../runtime/contracts/local-chat.js";
-import { isOrchestratorReservedBuiltinAgentId } from "../../../../../runtime/contracts/agent-runtime.js";
+import {
+  AGENT_IDS,
+  isOrchestratorReservedBuiltinAgentId,
+} from "../../../../../runtime/contracts/agent-runtime.js";
 import { isOfficePreviewRef } from "../../../../../runtime/contracts/office-preview.js";
 import type { ScheduleToolAffectedRef } from "../../../../../runtime/kernel/shared/scheduling";
 import { pickScheduleToolSummary } from "@/global/schedule/schedule-receipt-summary";
@@ -132,20 +135,16 @@ const asNonEmptyString = (value: unknown): string | undefined =>
  * and for agents spawned via `multi_tool_use_parallel`, and never fires for
  * a failed spawn (so no phantom card).
  *
- * Only user-facing *delegated* work earns a card: the `general` agent and
- * any custom user-installed subagent. This applies just the
- * reserved-builtin *denylist* half of `spawn_agent`'s acceptance check, not
- * its full validation — it does not also confirm the agent type is a
- * registered subagent. Orchestrator-reserved builtin agents (schedule,
- * fashion, explore, dream, chronicle, install_update, …) run behind tools
- * as internal/system helpers, so their `agent-started` events are filtered
- * out here via the same `isOrchestratorReservedBuiltinAgentId` predicate
- * that `spawn_agent` uses to reject reserved targets. A denylist (rather
- * than an allowlist of `general`) means legitimate custom subagents the
- * user kicked off still surface, while any future internal builtin is
- * excluded automatically. (Tool-internal one-shot helpers like
- * the HTML/canvas renderer and recall lookup never emit `agent-started`
- * events at all, so they can't produce a card regardless.)
+ * Only user-facing *delegated* work earns a card: `general`, the dedicated
+ * `manager` spawned by `spawn_manager`, and any custom user-installed
+ * subagent. Manager is the one intentional exception to the reserved-builtin
+ * denylist: unlike schedule/fashion/explore/dream/chronicle/install_update,
+ * it is a durable background thread created directly by the orchestrator and
+ * resumed through `send_input`. A denylist (rather than an allowlist of only
+ * known agent types) means legitimate custom subagents still surface while
+ * future internal builtins remain excluded automatically. Tool-internal
+ * one-shot helpers like HTML/canvas and Recall never emit `agent-started`, so
+ * they cannot produce a card regardless.
  */
 export const getBackgroundWork = (
   events: readonly EventRecord[],
@@ -186,11 +185,17 @@ export const getBackgroundWork = (
   let label: string | undefined;
   for (const event of events) {
     if (!isAgentStartedEvent(event)) continue;
-    // Skip internal/system agents invoked behind a tool (schedule, etc.):
-    // the inline card is only a "started here" receipt for user-facing
-    // delegated work. Mirrors `spawn_agent`'s own acceptance rule.
+    // Skip internal/system agents invoked behind a tool (schedule, etc.). A
+    // manager is reserved from direct `spawn_agent` targeting, but is still
+    // user-visible delegated work when created through `spawn_manager`.
     const agentType = asNonEmptyString(event.payload.agentType);
-    if (agentType && isOrchestratorReservedBuiltinAgentId(agentType)) continue;
+    if (
+      agentType &&
+      agentType !== AGENT_IDS.MANAGER &&
+      isOrchestratorReservedBuiltinAgentId(agentType)
+    ) {
+      continue;
+    }
     const agentId = asNonEmptyString(event.payload.agentId);
     if (!agentId) continue;
     if (!threadIds.includes(agentId)) threadIds.push(agentId);

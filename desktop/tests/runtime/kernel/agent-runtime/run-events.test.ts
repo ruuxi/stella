@@ -349,6 +349,19 @@ describe("subscribeRuntimeAgentEvents", () => {
     expect(spawnAgent.statusAfterToolEnd).toBeNull();
     expect(spawnAgent.displayStatus).toBe("On it");
 
+    const spawnManager = await runToolStatusIntegration("spawn_manager");
+    expect(spawnManager.rawStatusText).toBe("Running Spawn Manager");
+    expect(spawnManager.rawToolStartStatusText).toBe("Running Spawn Manager");
+    expect(spawnManager.rawToolEndName).toBe("spawn_manager");
+    expect(spawnManager.persistedToolEvent).toEqual(
+      expect.objectContaining({ type: "tool_start", toolName: "spawn_manager" }),
+    );
+    expect(spawnManager.activeBeforeTool).toBe(true);
+    expect(spawnManager.activeDuringTool).toBe(true);
+    expect(spawnManager.activeAfterToolBeforeAnswer).toBe(true);
+    expect(spawnManager.statusAfterToolEnd).toBeNull();
+    expect(spawnManager.displayStatus).toBe("On it");
+
     const sendInput = await runToolStatusIntegration("send_input");
     expect(sendInput.rawStatusText).toBe("Running Send Input");
     expect(sendInput.rawToolStartStatusText).toBe("Running Send Input");

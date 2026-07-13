@@ -35,6 +35,21 @@ describe("friendlyInlineToolStatus", () => {
     ).toBe("Command failed");
   });
 
+  it("keeps manager coordination tools out of raw inline status copy", () => {
+    expect(friendlyInlineToolStatus(activity("spawn_agent", "started"))).toBe(
+      "Starting background work",
+    );
+    expect(
+      friendlyInlineToolStatus(activity("spawn_manager", "completed")),
+    ).toBe("Started background work");
+    expect(friendlyInlineToolStatus(activity("send_input", "completed"))).toBe(
+      "Updated background work",
+    );
+    expect(friendlyInlineToolStatus(activity("pause_agent", "started"))).toBe(
+      "Pausing background work",
+    );
+  });
+
   it("humanizes unknown and namespaced tool names", () => {
     expect(
       friendlyInlineToolStatus(activity("custom__make_thing", "started")),
