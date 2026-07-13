@@ -416,6 +416,24 @@
   padding-left: 23px;
 }
 
+/* A Manager's owned agents reuse the legacy group-member list. Cancel the
+   detail block's own indent so the hierarchy lands on the same 23px rail as
+   a normal work group rather than drifting two levels right. */
+.chat-workspace-strip__task-detail > .chat-workspace-strip__group-members {
+  margin-left: -23px;
+}
+
+.chat-workspace-strip__manager-status {
+  margin: 0;
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
 .chat-workspace-strip__task-detail .chat-workspace-strip__task-progress {
   /* The detail block starts under the label. Pull only the reasoning rail
      back to the center of the 15px status-icon column; file rows retain the

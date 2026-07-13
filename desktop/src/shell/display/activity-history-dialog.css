@@ -163,7 +163,33 @@
 }
 
 .activity-history-dialog__row--grouped {
-  padding-left: 26px;
+  padding-left: calc(10px + var(--activity-depth, 1) * 16px);
+}
+
+.activity-history-dialog__row--hierarchy .activity-history-dialog__row-text {
+  font-weight: var(--weight-medium);
+}
+
+.activity-history-dialog__row-button--hierarchy {
+  align-items: flex-start;
+}
+
+.activity-history-dialog__row-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activity-history-dialog__row-summary {
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .activity-history-dialog__row-text {

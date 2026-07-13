@@ -6,6 +6,7 @@ import {
   isActivityFeedTask,
   extractStepsFromEvents,
   getTaskGroupStatusText,
+  getTaskHierarchyStatusText,
   groupActivityTasks,
   pruneGroupExpandOverrides,
   selectFreshActivityTasks,
@@ -36,8 +37,9 @@ const event = (
 });
 
 describe("internal helper agent exclusion", () => {
-  it("keeps only general agents in the activity feed", () => {
+  it("keeps delegated agents and managers in the activity feed", () => {
     expect(isActivityFeedTask({ agentType: "general" })).toBe(true);
+    expect(isActivityFeedTask({ agentType: "manager" })).toBe(true);
     expect(isActivityFeedTask({ agentType: "schedule" })).toBe(false);
     expect(isActivityFeedTask({ agentType: "dream" })).toBe(false);
     expect(isActivityFeedTask({ agentType: "orchestrator" })).toBe(false);
@@ -200,6 +202,130 @@ describe("work-group folding", () => {
       failed[0]!.kind === "group" ? failed[0].group : undefined;
     expect(failedGroup?.status).toBe("error");
     expect(getTaskGroupStatusText(failedGroup!)).toBe("2 tasks");
+  });
+});
+
+describe("manager ownership hierarchy", () => {
+  const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
+    description: "Task",
+    agentType: "general",
+    status: "running",
+    startedAtMs: 100,
+    lastUpdatedAtMs: 100,
+    ...overrides,
+  });
+
+  it("nests multiple owned agents under their manager without root duplicates", () => {
+    const rows = groupActivityTasks([
+      task({ id: "manager", agentType: "manager", description: "Coordinate" }),
+      task({ id: "research", parentAgentId: "manager" }),
+      task({ id: "draft", parentAgentId: "manager", status: "completed" }),
+      task({ id: "unrelated", description: "Independent" }),
+    ]);
+
+    expect(rows.map((row) => row.kind)).toEqual(["hierarchy", "task"]);
+    const hierarchy =
+      rows[0]!.kind === "hierarchy" ? rows[0].hierarchy : undefined;
+    expect(hierarchy?.owner.id).toBe("manager");
+    expect(
+      hierarchy?.children.map((row) =>
+        row.kind === "task" ? [row.task.id, row.task.status] : [row.kind],
+      ),
+    ).toEqual([
+      ["research", "running"],
+      ["draft", "completed"],
+    ]);
+    expect(hierarchy?.descendantCount).toBe(2);
+    expect(getTaskHierarchyStatusText(hierarchy!)).toBe("2 agents");
+    expect(
+      rows.some((row) => row.kind === "task" && row.task.id === "research"),
+    ).toBe(false);
+  });
+
+  it("moves an adopted agent beneath the manager from persisted ownership", () => {
+    const manager = task({ id: "manager", agentType: "manager" });
+    const nextManager = task({ id: "next-manager", agentType: "manager" });
+    const child = task({ id: "adopted" });
+    expect(
+      groupActivityTasks([manager, nextManager, child]).map((row) => row.kind),
+    ).toEqual(["task", "task", "task"]);
+
+    const adopted = groupActivityTasks([
+      manager,
+      nextManager,
+      { ...child, parentAgentId: manager.id, lastUpdatedAtMs: 200 },
+    ]);
+    expect(adopted).toHaveLength(2);
+    expect(adopted[0]?.kind).toBe("hierarchy");
+    if (adopted[0]?.kind === "hierarchy") {
+      expect(adopted[0].hierarchy.children[0]).toMatchObject({
+        kind: "task",
+        task: { id: "adopted" },
+      });
+    }
+
+    const reparented = groupActivityTasks([
+      manager,
+      nextManager,
+      { ...child, parentAgentId: nextManager.id, lastUpdatedAtMs: 300 },
+    ]);
+    expect(reparented.map((row) => row.kind)).toEqual(["task", "hierarchy"]);
+    if (reparented[1]?.kind === "hierarchy") {
+      expect(reparented[1].hierarchy).toMatchObject({
+        owner: { id: "next-manager" },
+        children: [{ kind: "task", task: { id: "adopted" } }],
+      });
+    }
+  });
+
+  it("preserves running, paused, completed, and recursive descendant state", () => {
+    const rows = groupActivityTasks([
+      task({
+        id: "manager",
+        agentType: "manager",
+        status: "completed",
+        completedAtMs: 500,
+        outputPreview: "Coordination complete",
+      }),
+      task({ id: "running", parentAgentId: "manager" }),
+      task({ id: "paused", parentAgentId: "manager", status: "canceled" }),
+      task({
+        id: "complete",
+        parentAgentId: "manager",
+        status: "completed",
+      }),
+      task({ id: "descendant", parentAgentId: "running", status: "error" }),
+    ]);
+
+    expect(rows).toHaveLength(1);
+    const hierarchy =
+      rows[0]!.kind === "hierarchy" ? rows[0].hierarchy : undefined;
+    expect(hierarchy?.owner).toMatchObject({
+      status: "completed",
+      outputPreview: "Coordination complete",
+    });
+    expect(hierarchy?.descendantCount).toBe(4);
+    expect(
+      hierarchy?.children.map((row) =>
+        row.kind === "hierarchy"
+          ? [row.hierarchy.owner.id, row.hierarchy.owner.status]
+          : row.kind === "task"
+            ? [row.task.id, row.task.status]
+            : [row.kind],
+      ),
+    ).toEqual([
+      ["running", "running"],
+      ["paused", "canceled"],
+      ["complete", "completed"],
+    ]);
+    const nested = hierarchy?.children[0];
+    expect(nested?.kind).toBe("hierarchy");
+    if (nested?.kind === "hierarchy") {
+      expect(nested.hierarchy.children[0]).toMatchObject({
+        kind: "task",
+        task: { id: "descendant", status: "error" },
+      });
+    }
   });
 });
 
@@ -444,17 +570,26 @@ describe("getInlineWorkingIndicatorExitDelayMs", () => {
 });
 
 describe("shouldShowTaskReasoningSummaries", () => {
-  it("shows summaries only while the agent is actively running", () => {
-    expect(shouldShowTaskReasoningSummaries({ status: "running" })).toBe(true);
+  it("shows summaries only while a non-manager agent is actively running", () => {
+    expect(
+      shouldShowTaskReasoningSummaries({
+        status: "running",
+        agentType: "general",
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowTaskReasoningSummaries({
+        status: "running",
+        agentType: "manager",
+      }),
+    ).toBe(false);
     // Once the agent stops, the summaries section collapses away — the row
     // stays expanded with its files, but live-narration phrases hide.
-    expect(shouldShowTaskReasoningSummaries({ status: "completed" })).toBe(
-      false,
-    );
-    expect(shouldShowTaskReasoningSummaries({ status: "error" })).toBe(false);
-    expect(shouldShowTaskReasoningSummaries({ status: "canceled" })).toBe(
-      false,
-    );
+    for (const status of ["completed", "error", "canceled"] as const) {
+      expect(
+        shouldShowTaskReasoningSummaries({ status, agentType: "general" }),
+      ).toBe(false);
+    }
   });
 });
 
@@ -617,6 +752,33 @@ describe("buildActivityTasks", () => {
       record(),
     ]);
     expect(tasks.map((task) => task.id)).toEqual(["research-flights"]);
+  });
+
+  it("includes managers and preserves persisted ownership fields", () => {
+    const tasks = buildActivityTasks([
+      record({
+        threadId: "manager",
+        agentType: "manager",
+        description: "Coordinate work",
+      }),
+      record({
+        threadId: "child",
+        parentAgentId: "manager",
+        groupKey: "legacy-group",
+        groupLabel: "Legacy group",
+      }),
+    ]);
+
+    expect(tasks.find((task) => task.id === "manager")).toMatchObject({
+      id: "manager",
+      agentType: "manager",
+    });
+    expect(tasks.find((task) => task.id === "child")).toMatchObject({
+      id: "child",
+      parentAgentId: "manager",
+      groupKey: "legacy-group",
+      groupLabel: "Legacy group",
+    });
   });
 
   it("surfaces the error text as the preview for failed rows", () => {

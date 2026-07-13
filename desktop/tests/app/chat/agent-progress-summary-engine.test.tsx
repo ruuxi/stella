@@ -144,4 +144,26 @@ describe("agent progress summary engine", () => {
       closeSession: true,
     });
   });
+
+  it("does not generate reasoning summaries for manager rows", async () => {
+    const oneShotCompletion = vi.fn();
+    Object.defineProperty(window, "electronAPI", {
+      configurable: true,
+      value: {
+        agent: { oneShotCompletion },
+        localChat: { publishReasoningSummaries: vi.fn() },
+      },
+    });
+
+    await act(async () => {
+      root.render(
+        <SummaryEngineHarness
+          tasks={[{ ...task("coordinating"), agentType: "manager" }]}
+        />,
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(oneShotCompletion).not.toHaveBeenCalled();
+  });
 });

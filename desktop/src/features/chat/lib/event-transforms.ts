@@ -248,16 +248,15 @@ export function fallbackTaskDescription(agentId: string | undefined): string {
 }
 
 /**
- * The user-facing activity feed shows the user's delegated work: GENERAL
- * agents spawned via `spawn_agent`. Orchestrator-internal helpers (schedule
- * specialists, recall lookups, and any future machinery agent types) are
- * execution detail — they must not surface as activity rows, and must not
- * burn progress-summary LLM calls.
+ * The user-facing activity feed shows durable delegated work: General agents
+ * plus Manager coordinators. Orchestrator-internal helpers (schedule
+ * specialists, recall lookups, and any future machinery agent types) remain
+ * execution detail and must not surface as activity rows.
  */
-export function isActivityFeedTask(
-  task: Pick<TaskItem, 'agentType'>,
-): boolean {
-  return task.agentType === AGENT_IDS.GENERAL
+export function isActivityFeedTask(task: Pick<TaskItem, 'agentType'>): boolean {
+  return (
+    task.agentType === AGENT_IDS.GENERAL || task.agentType === AGENT_IDS.MANAGER
+  )
 }
 
 export function isStandaloneTaskStatusText(
@@ -503,13 +502,71 @@ export type TaskGroup = {
   lastUpdatedAtMs: number
 }
 
+/**
+ * One persisted ownership tree rooted at a Manager (or any future nested
+ * owner). `parentAgentId` is the only edge source; labels/group names never
+ * participate in ownership. Child rows reuse the same ActivityRow model, so
+ * descendants and legacy groups can nest without a second visual language.
+ */
+export type TaskHierarchy = {
+  owner: TaskItem
+  children: ActivityRow[]
+  /** All descendants, excluding `owner`. */
+  descendantCount: number
+}
+
 export type ActivityRow =
   | { kind: 'task'; task: TaskItem }
   | { kind: 'group'; group: TaskGroup }
+  | { kind: 'hierarchy'; hierarchy: TaskHierarchy }
 
 /** Stable, namespaced identity shared by sorting state and React keys. */
 export const activityRowKey = (row: ActivityRow): string =>
-  row.kind === 'task' ? `task:${row.task.id}` : `group:${row.group.groupKey}`
+  row.kind === 'task'
+    ? `task:${row.task.id}`
+    : row.kind === 'group'
+      ? `group:${row.group.groupKey}`
+      : `hierarchy:${row.hierarchy.owner.id}`
+
+export const getActivityRowStatus = (row: ActivityRow): TaskLifecycleStatus =>
+  row.kind === 'task'
+    ? row.task.status
+    : row.kind === 'group'
+      ? row.group.status
+      : row.hierarchy.owner.status
+
+export const getActivityRowCompletedAtMs = (row: ActivityRow): number => {
+  const entry =
+    row.kind === 'task'
+      ? row.task
+      : row.kind === 'group'
+        ? row.group
+        : row.hierarchy.owner
+  return entry.completedAtMs ?? entry.lastUpdatedAtMs ?? entry.startedAtMs
+}
+
+/** Search text for a whole visible row, including nested owned descendants. */
+export const getActivityRowSearchText = (row: ActivityRow): string => {
+  if (row.kind === 'task') {
+    return [row.task.description, row.task.statusText, row.task.outputPreview]
+      .filter(Boolean)
+      .join(' ')
+  }
+  if (row.kind === 'group') {
+    return [
+      row.group.label,
+      ...row.group.members.map((member) => member.description),
+    ].join(' ')
+  }
+  return [
+    row.hierarchy.owner.description,
+    row.hierarchy.owner.statusText,
+    row.hierarchy.owner.outputPreview,
+    ...row.hierarchy.children.map(getActivityRowSearchText),
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
 
 const buildTaskGroup = (groupKey: string, members: TaskItem[]): TaskGroup => {
   const ordered = [...members].sort(
@@ -552,41 +609,103 @@ const buildTaskGroup = (groupKey: string, members: TaskItem[]): TaskGroup => {
 }
 
 /**
- * Collapse tasks sharing a `groupKey` into one `TaskGroup` row (emitted
- * at the first member's position in the input order). Ungrouped tasks
- * and singleton groups pass through as plain `task` rows, so legacy
- * events with no group fields produce exactly the same rows as before.
+ * Project the persisted task list into Activity rows.
+ *
+ * Ownership wins first: a task whose `parentAgentId` resolves to another
+ * visible task is removed from the root list and nested under that owner.
+ * This is what turns Manager + managed agents into one hierarchy, including
+ * adopted agents whose persisted parent changes later. Within each sibling
+ * level, leaf tasks still use the legacy `groupKey` collapse exactly as
+ * before. Missing parents stay top-level rather than disappearing.
  */
-export function groupActivityTasks(
-  tasks: readonly TaskItem[],
-): ActivityRow[] {
-  const membersByGroupKey = new Map<string, TaskItem[]>()
+export function groupActivityTasks(tasks: readonly TaskItem[]): ActivityRow[] {
+  const taskById = new Map(tasks.map((task) => [task.id, task]))
+  const childrenByParentId = new Map<string, TaskItem[]>()
+  const ownedTaskIds = new Set<string>()
   for (const task of tasks) {
-    if (!task.groupKey) continue
-    const members = membersByGroupKey.get(task.groupKey)
-    if (members) {
-      members.push(task)
-    } else {
-      membersByGroupKey.set(task.groupKey, [task])
-    }
+    const parentId = task.parentAgentId
+    if (!parentId || parentId === task.id || !taskById.has(parentId)) continue
+    const children = childrenByParentId.get(parentId)
+    if (children) children.push(task)
+    else childrenByParentId.set(parentId, [task])
+    ownedTaskIds.add(task.id)
   }
 
-  const rows: ActivityRow[] = []
-  const emittedGroupKeys = new Set<string>()
-  for (const task of tasks) {
-    const members = task.groupKey
-      ? membersByGroupKey.get(task.groupKey)
-      : undefined
-    if (!task.groupKey || !members || members.length < 2) {
-      rows.push({ kind: 'task', task })
-      continue
+  const visited = new Set<string>()
+  const buildRows = (
+    siblings: readonly TaskItem[],
+    ancestors: ReadonlySet<string>,
+  ): ActivityRow[] => {
+    const visibleChildren = (task: TaskItem): TaskItem[] =>
+      (childrenByParentId.get(task.id) ?? []).filter(
+        (child) => !ancestors.has(child.id) && child.id !== task.id,
+      )
+
+    // Legacy groups only collapse sibling leaves. An owning task remains the
+    // hierarchy header so its children cannot be hidden inside a group.
+    const membersByGroupKey = new Map<string, TaskItem[]>()
+    for (const task of siblings) {
+      if (!task.groupKey || visibleChildren(task).length > 0) continue
+      const members = membersByGroupKey.get(task.groupKey)
+      if (members) members.push(task)
+      else membersByGroupKey.set(task.groupKey, [task])
     }
-    if (emittedGroupKeys.has(task.groupKey)) continue
-    emittedGroupKeys.add(task.groupKey)
-    rows.push({ kind: 'group', group: buildTaskGroup(task.groupKey, members) })
+
+    const rows: ActivityRow[] = []
+    const emittedGroupKeys = new Set<string>()
+    for (const task of siblings) {
+      if (visited.has(task.id)) continue
+      const children = visibleChildren(task)
+      if (children.length > 0) {
+        visited.add(task.id)
+        const nextAncestors = new Set(ancestors)
+        nextAncestors.add(task.id)
+        const childRows = buildRows(children, nextAncestors)
+        rows.push({
+          kind: 'hierarchy',
+          hierarchy: {
+            owner: task,
+            children: childRows,
+            descendantCount: countActivityTasks(childRows),
+          },
+        })
+        continue
+      }
+
+      const members = task.groupKey
+        ? membersByGroupKey.get(task.groupKey)
+        : undefined
+      if (!task.groupKey || !members || members.length < 2) {
+        visited.add(task.id)
+        rows.push({ kind: 'task', task })
+        continue
+      }
+      if (emittedGroupKeys.has(task.groupKey)) continue
+      emittedGroupKeys.add(task.groupKey)
+      for (const member of members) visited.add(member.id)
+      rows.push({
+        kind: 'group',
+        group: buildTaskGroup(task.groupKey, members),
+      })
+    }
+    return rows
   }
+
+  const roots = tasks.filter((task) => !ownedTaskIds.has(task.id))
+  const rows = buildRows(roots, new Set())
+  // Corrupt/cyclic ownership must not make work disappear. Runtime rejects
+  // cycles, but old/imported rows still fail open as top-level activity.
+  const unvisited = tasks.filter((task) => !visited.has(task.id))
+  if (unvisited.length > 0) rows.push(...buildRows(unvisited, new Set()))
   return rows
 }
+
+const countActivityTasks = (rows: readonly ActivityRow[]): number =>
+  rows.reduce((total, row) => {
+    if (row.kind === 'task') return total + 1
+    if (row.kind === 'group') return total + row.group.members.length
+    return total + 1 + row.hierarchy.descendantCount
+  }, 0)
 
 /**
  * Prune group expand/collapse overrides whose group no longer has ANY member
@@ -631,9 +750,9 @@ export function pruneGroupExpandOverrides(
  * the (still-accumulated) summaries show again.
  */
 export function shouldShowTaskReasoningSummaries(
-  task: Pick<TaskItem, 'status'>,
+  task: Pick<TaskItem, 'status' | 'agentType'>,
 ): boolean {
-  return task.status === 'running'
+  return task.status === 'running' && task.agentType !== AGENT_IDS.MANAGER
 }
 
 /**
@@ -772,4 +891,10 @@ export function orderByFirstSeen<T>(
  */
 export function getTaskGroupStatusText(group: TaskGroup): string {
   return group.totalCount === 1 ? '1 task' : `${group.totalCount} tasks`
+}
+
+export function getTaskHierarchyStatusText(hierarchy: TaskHierarchy): string {
+  return hierarchy.descendantCount === 1
+    ? '1 agent'
+    : `${hierarchy.descendantCount} agents`
 }

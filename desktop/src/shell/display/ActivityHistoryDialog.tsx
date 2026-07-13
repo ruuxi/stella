@@ -20,7 +20,7 @@
  * need pagination.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { Search, X } from "@/ui/icons";
 import {
   LegendList,
@@ -30,11 +30,14 @@ import { Dialog } from "@/ui/dialog";
 import {
   getTaskDisplayText,
   getTaskGroupStatusText,
-  groupActivityTasks,
+  getTaskHierarchyStatusText,
   type EventRecord,
-  type TaskGroup,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
+import {
+  buildCompletedActivityList,
+  type CompletedActivityListItem,
+} from "./activity-history-model";
 import type { ScheduleEntry } from "@/global/schedule/use-conversation-schedules";
 import { formatNextRun } from "@/global/schedule/format-schedule";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
@@ -89,14 +92,11 @@ const taskBadge = (task: TaskItem): string => {
 const taskLabel = (task: TaskItem): string =>
   (getTaskDisplayText(task) || task.description || "").trim();
 
-type DoneListItem = { kind: "done"; task: TaskItem; grouped?: boolean };
-type DoneGroupListItem = { kind: "doneGroup"; group: TaskGroup };
 type UpNextListItem = { kind: "upNext"; entry: ScheduleEntry };
 type FilesListItem = { kind: "files"; entry: ActivityHistoryFile };
 type LoadingListItem = { kind: "loading"; id: string };
 type ListItem =
-  | DoneListItem
-  | DoneGroupListItem
+  | CompletedActivityListItem
   | UpNextListItem
   | FilesListItem
   | LoadingListItem;
@@ -151,30 +151,10 @@ export function ActivityHistoryDialog({
 
   const needle = query.trim().toLowerCase();
 
-  const doneTasks = useMemo<TaskItem[]>(() => {
-    if (section !== "done") return [];
-    return tasks
-      .filter((task) => task.status !== "running")
-      .sort((a, b) => {
-        const aTime = a.completedAtMs ?? a.lastUpdatedAtMs ?? a.startedAtMs;
-        const bTime = b.completedAtMs ?? b.lastUpdatedAtMs ?? b.startedAtMs;
-        return bTime - aTime;
-      });
-  }, [tasks, section]);
-
   const files = useMemo<ActivityHistoryFile[]>(() => {
     if (section !== "files") return [];
     return deriveConversationFiles(fileEvents);
   }, [fileEvents, section]);
-
-  const filteredDone = useMemo(() => {
-    if (!needle) return doneTasks;
-    return doneTasks.filter(
-      (task) =>
-        taskLabel(task).toLowerCase().includes(needle) ||
-        (task.groupLabel ?? "").toLowerCase().includes(needle),
-    );
-  }, [doneTasks, needle]);
 
   const filteredSchedules = useMemo(() => {
     if (!needle) return schedules;
@@ -192,20 +172,7 @@ export function ActivityHistoryDialog({
 
   const listItems = useMemo<ListItem[]>(() => {
     if (section === "done") {
-      // Members of the same work group nest under one group entry
-      // (always expanded here); ungrouped/legacy tasks stay flat rows.
-      const rows: ListItem[] = [];
-      for (const row of groupActivityTasks(filteredDone)) {
-        if (row.kind === "task") {
-          rows.push({ kind: "done", task: row.task });
-          continue;
-        }
-        rows.push({ kind: "doneGroup", group: row.group });
-        for (const member of row.group.members) {
-          rows.push({ kind: "done", task: member, grouped: true });
-        }
-      }
-      return rows;
+      return buildCompletedActivityList(tasks, needle);
     }
     if (section === "upNext") {
       return filteredSchedules.map((entry) => ({ kind: "upNext", entry }));
@@ -219,17 +186,18 @@ export function ActivityHistoryDialog({
     }
     return rows;
   }, [
-    filteredDone,
     filteredFiles,
     filteredSchedules,
     hasMoreFiles,
     isLoadingMoreFiles,
+    needle,
     section,
+    tasks,
   ]);
 
   const totalForSection =
     section === "done"
-      ? doneTasks.length
+      ? tasks.filter((task) => task.status !== "running").length
       : section === "upNext"
         ? schedules.length
         : files.length;
@@ -242,12 +210,17 @@ export function ActivityHistoryDialog({
     if (item.kind === "done") {
       const { task } = item;
       const label = taskLabel(task);
+      const nestedStyle =
+        item.depth > 0
+          ? ({ "--activity-depth": item.depth } as CSSProperties)
+          : undefined;
       return (
         <div
           className={`activity-history-dialog__row${
-            item.grouped ? " activity-history-dialog__row--grouped" : ""
+            item.depth > 0 ? " activity-history-dialog__row--grouped" : ""
           }`}
           data-status={task.status}
+          style={nestedStyle}
         >
           <button
             type="button"
@@ -265,10 +238,17 @@ export function ActivityHistoryDialog({
     }
     if (item.kind === "doneGroup") {
       const { group } = item;
+      const nestedStyle =
+        item.depth > 0
+          ? ({ "--activity-depth": item.depth } as CSSProperties)
+          : undefined;
       return (
         <div
-          className="activity-history-dialog__row activity-history-dialog__row--group"
+          className={`activity-history-dialog__row activity-history-dialog__row--group${
+            item.depth > 0 ? " activity-history-dialog__row--grouped" : ""
+          }`}
           data-status={group.status}
+          style={nestedStyle}
         >
           <span className="activity-history-dialog__row-text">
             {group.label.trim()}
@@ -276,6 +256,43 @@ export function ActivityHistoryDialog({
           <span className="activity-history-dialog__row-meta">
             {getTaskGroupStatusText(group)}
           </span>
+        </div>
+      );
+    }
+    if (item.kind === "doneHierarchy") {
+      const { hierarchy } = item;
+      const owner = hierarchy.owner;
+      const label = taskLabel(owner);
+      const nestedStyle =
+        item.depth > 0
+          ? ({ "--activity-depth": item.depth } as CSSProperties)
+          : undefined;
+      return (
+        <div
+          className={`activity-history-dialog__row activity-history-dialog__row--hierarchy${
+            item.depth > 0 ? " activity-history-dialog__row--grouped" : ""
+          }`}
+          data-status={owner.status}
+          style={nestedStyle}
+        >
+          <button
+            type="button"
+            className="activity-history-dialog__row-button activity-history-dialog__row-button--hierarchy"
+            onClick={() => onSelectTask?.(owner)}
+            aria-label={`Use ${label || "manager activity"} as context`}
+          >
+            <span className="activity-history-dialog__row-main">
+              <span className="activity-history-dialog__row-text">{label}</span>
+              {owner.outputPreview?.trim() ? (
+                <span className="activity-history-dialog__row-summary">
+                  {owner.outputPreview.trim()}
+                </span>
+              ) : null}
+            </span>
+            <span className="activity-history-dialog__row-meta">
+              {getTaskHierarchyStatusText(hierarchy)} · {taskBadge(owner)}
+            </span>
+          </button>
         </div>
       );
     }
@@ -398,7 +415,9 @@ const keyExtractor = (item: ListItem): string => {
     case "done":
       return `done:${item.task.id}`;
     case "doneGroup":
-      return `done-group:${item.group.groupKey}`;
+      return `done-group:${item.depth}:${item.group.groupKey}`;
+    case "doneHierarchy":
+      return `done-hierarchy:${item.hierarchy.owner.id}`;
     case "upNext":
       return `up:${item.entry.kind}:${item.entry.id}`;
     case "files":

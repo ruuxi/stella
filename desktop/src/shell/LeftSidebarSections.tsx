@@ -48,7 +48,11 @@ import {
 import {
   EMPTY_FIRST_SEEN_ORDER,
   activityRowKey,
+  getActivityRowCompletedAtMs,
+  getActivityRowSearchText,
+  getActivityRowStatus,
   getTaskGroupStatusText,
+  getTaskHierarchyStatusText,
   groupActivityTasks,
   orderByFirstSeen,
   pruneGroupExpandOverrides,
@@ -60,6 +64,7 @@ import {
   type TaskGroup,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
+import { AGENT_IDS } from "../../../runtime/contracts/agent-runtime.js";
 import {
   deriveConversationFiles,
   type ConversationFileEntry,
@@ -102,7 +107,7 @@ const AGENT_SUMMARY_CAP = 3;
 const AGENT_FILE_CAP = 5;
 
 const activityRowText = (row: ActivityRow): string =>
-  row.kind === "task" ? row.task.description : row.group.label;
+  getActivityRowSearchText(row);
 
 // ── Row enter / exit / reorder motion ───────────────────────────────
 //
@@ -284,6 +289,8 @@ const TaskRow = memo(function TaskRow({
   files,
   onOpenFile,
   orderIndex,
+  metaText,
+  childContent,
 }: {
   task: TaskItem;
   expanded: boolean;
@@ -294,6 +301,10 @@ const TaskRow = memo(function TaskRow({
   onOpenFile: (entry: ConversationFileEntry) => void;
   /** Position in the host list; drives reorder FLIP measurement. */
   orderIndex: number;
+  /** Stable supporting text, used by Manager ownership headers. */
+  metaText?: string;
+  /** Persisted child ownership hierarchy, rendered before files. */
+  childContent?: ReactNode;
 }) {
   const motionProps = useActivityRowMotionProps(orderIndex);
   // Sidebar and tray rows identify the delegated thread. Live tool state is
@@ -309,11 +320,22 @@ const TaskRow = memo(function TaskRow({
   // only.
   const hasSummaries =
     summaries.length > 0 && shouldShowTaskReasoningSummaries(task);
+  const managerDetail =
+    task.agentType === AGENT_IDS.MANAGER
+      ? task.status === "running"
+        ? task.statusText?.trim() &&
+          task.statusText.trim() !== task.description.trim()
+          ? task.statusText.trim()
+          : undefined
+        : task.outputPreview?.trim() || undefined
+      : undefined;
   const hasFiles = files.length > 0;
   const filesCapped = files.length > AGENT_FILE_CAP;
   const visibleFiles =
     filesCapped && !showAllFiles ? files.slice(0, AGENT_FILE_CAP) : files;
-  const hasDetail = hasSummaries || hasFiles;
+  const hasChildContent = Boolean(childContent);
+  const hasDetail =
+    hasChildContent || Boolean(managerDetail) || hasSummaries || hasFiles;
   const detailOpen = expanded && hasDetail;
   return (
     <motion.li
@@ -346,6 +368,11 @@ const TaskRow = memo(function TaskRow({
               label
             )}
           </span>
+          {metaText ? (
+            <span className="chat-workspace-strip__row-meta chat-workspace-strip__group-status">
+              {metaText}
+            </span>
+          ) : null}
         </button>
         <button
           type="button"
@@ -369,12 +396,18 @@ const TaskRow = memo(function TaskRow({
         <div className="chat-workspace-strip__task-collapse-clip">
           {hasDetail ? (
             <div className="chat-workspace-strip__task-detail">
+              {managerDetail ? (
+                <p className="chat-workspace-strip__manager-status">
+                  {managerDetail}
+                </p>
+              ) : null}
               {hasSummaries ? (
                 <AgentProgressSummaries
                   agentId={task.id}
                   max={AGENT_SUMMARY_CAP}
                 />
               ) : null}
+              {childContent}
               {hasFiles ? (
                 <ul className="chat-workspace-strip__list chat-workspace-strip__task-files">
                   {visibleFiles.map((file) => (
@@ -525,6 +558,7 @@ const TasksList = memo(function TasksList({
   onToggleGroup,
   agentFiles,
   onOpenFile,
+  nested = false,
 }: {
   rows: ReadonlyArray<ActivityRow>;
   isTaskExpanded: (task: TaskItem) => boolean;
@@ -534,9 +568,14 @@ const TasksList = memo(function TasksList({
   onToggleGroup: (groupKey: string, nextExpanded: boolean) => void;
   agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
   onOpenFile: (entry: ConversationFileEntry) => void;
+  nested?: boolean;
 }) {
   return (
-    <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks">
+    <ul
+      className={`chat-workspace-strip__list chat-workspace-strip__list--tasks${
+        nested ? " chat-workspace-strip__group-members" : ""
+      }`}
+    >
       {/* `initial={false}` keeps the first paint of an already-populated
           list static — only rows that appear/leave/move afterwards animate. */}
       <AnimatePresence initial={false}>
@@ -552,7 +591,7 @@ const TasksList = memo(function TasksList({
               onOpenFile={onOpenFile}
               orderIndex={index}
             />
-          ) : (
+          ) : row.kind === "group" ? (
             <GroupRow
               key={activityRowKey(row)}
               group={row.group}
@@ -565,20 +604,37 @@ const TasksList = memo(function TasksList({
               onOpenFile={onOpenFile}
               orderIndex={index}
             />
+          ) : (
+            <TaskRow
+              key={activityRowKey(row)}
+              task={row.hierarchy.owner}
+              expanded={isTaskExpanded(row.hierarchy.owner)}
+              onToggle={onToggleTask}
+              onSelect={onSelectTask}
+              files={agentFiles.get(row.hierarchy.owner.id) ?? EMPTY_FILES}
+              onOpenFile={onOpenFile}
+              orderIndex={index}
+              metaText={getTaskHierarchyStatusText(row.hierarchy)}
+              childContent={
+                <TasksList
+                  rows={row.hierarchy.children}
+                  isTaskExpanded={isTaskExpanded}
+                  onToggleTask={onToggleTask}
+                  onSelectTask={onSelectTask}
+                  isGroupExpanded={isGroupExpanded}
+                  onToggleGroup={onToggleGroup}
+                  agentFiles={agentFiles}
+                  onOpenFile={onOpenFile}
+                  nested
+                />
+              }
+            />
           ),
         )}
       </AnimatePresence>
     </ul>
   );
 });
-
-const activityRowStatus = (row: ActivityRow): TaskItem["status"] =>
-  row.kind === "task" ? row.task.status : row.group.status;
-
-const activityRowCompletedAtMs = (row: ActivityRow): number => {
-  const entry = row.kind === "task" ? row.task : row.group;
-  return entry.completedAtMs ?? entry.lastUpdatedAtMs ?? entry.startedAtMs;
-};
 
 const scheduleEntryToAffectedRef = (
   entry: ScheduleEntry,
@@ -841,7 +897,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   const runningOrderRef = useRef<FirstSeenOrder>(EMPTY_FIRST_SEEN_ORDER);
   const runningRows = useMemo(() => {
     const running = groupedRows.filter(
-      (row) => activityRowStatus(row) === "running",
+      (row) => getActivityRowStatus(row) === "running",
     );
     const { ordered, state } = orderByFirstSeen(
       running,
@@ -870,10 +926,10 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   const doneRows = useMemo(
     () =>
       [...activityRows]
-        .filter((row) => activityRowStatus(row) !== "running")
+        .filter((row) => getActivityRowStatus(row) !== "running")
         .sort(
           (a, b) =>
-            activityRowCompletedAtMs(b) - activityRowCompletedAtMs(a) ||
+            getActivityRowCompletedAtMs(b) - getActivityRowCompletedAtMs(a) ||
             activityRowKey(a).localeCompare(activityRowKey(b)),
         ),
     [activityRows],

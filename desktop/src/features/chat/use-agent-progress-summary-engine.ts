@@ -21,6 +21,7 @@ import {
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import { agentProgressSummaryStore } from "@/features/chat/agent-progress-summary-store";
+import { AGENT_IDS } from "../../../../runtime/contracts/agent-runtime.js";
 import { redactSensitiveText } from "../../../../runtime/contracts/sensitive-data.js";
 
 const FIRST_DELAY_MS = 10_000;
@@ -227,10 +228,16 @@ export function useAgentProgressSummaryEngine(
   const runningIdsKey = useMemo(
     () =>
       liveTasks
-        // Belt-and-braces: only user-facing activity rows earn summary
-        // ticks; internal helper agents must never burn LLM calls here
-        // even if a caller passes an unfiltered task list.
-        .filter((task) => task.status === "running" && isActivityFeedTask(task))
+        // Managers use their live child hierarchy as the useful progress
+        // signal, not generated prose. Only leaf user-facing agents earn
+        // summary ticks; internal helpers and Manager coordinators must not
+        // burn LLM calls here even if a caller passes an unfiltered list.
+        .filter(
+          (task) =>
+            task.status === "running" &&
+            task.agentType !== AGENT_IDS.MANAGER &&
+            isActivityFeedTask(task),
+        )
         .map((task) => task.id)
         .sort()
         .join("\u0000"),
