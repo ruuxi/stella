@@ -86,6 +86,7 @@ type SelfModApplyMode =
 export type SelfModLifecycle = {
   beginRun: (args: {
     runId: string;
+    threadKey?: string;
     rootRunId?: string;
     taskDescription: string;
     taskPrompt: string;
@@ -413,6 +414,7 @@ export const createSelfModCoordinator = (
   const lifecycle: SelfModLifecycle = {
     beginRun: async ({
       runId,
+      threadKey,
       rootRunId,
       taskDescription,
       packageId,
@@ -437,6 +439,7 @@ export const createSelfModCoordinator = (
       }
       await storeModService.beginSelfModRun({
         runId,
+        ...(threadKey ? { ownershipKey: threadKey } : {}),
         taskDescription,
         ...(packageId ? { packageId } : {}),
         ...(releaseNumber == null ? {} : { releaseNumber }),

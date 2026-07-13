@@ -1078,6 +1078,7 @@ export const createAgentOrchestration = (
         await Promise.resolve(
           context.selfModLifecycle!.beginRun({
             runId: lifecycleRunId,
+            threadKey: agentId,
             ...(rootRunId ? { rootRunId } : {}),
             taskDescription,
             taskPrompt,

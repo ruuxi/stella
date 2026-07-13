@@ -31,6 +31,7 @@
  */
 
 import path from "path";
+import { AGENT_PENDING_CLEANUP_EXPIRY_MS } from "./cleanup-policy.js";
 import type {
   TaskToolActivity,
   TaskLifecycleStatus,
@@ -1392,6 +1393,7 @@ export class LocalAgentManager implements AgentToolApi {
       attemptGeneration: activeAttempt.generation,
       diagnostic,
       recordedAt: Date.now(),
+      expiresAt: Date.now() + AGENT_PENDING_CLEANUP_EXPIRY_MS,
     };
     task.error = diagnostic;
     task.recentActivity = [truncate(diagnostic, 500)];

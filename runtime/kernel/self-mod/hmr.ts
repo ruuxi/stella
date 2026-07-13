@@ -416,13 +416,13 @@ export const createSelfModHmrController = (
     );
   };
 
-  const trackPaths = async (paths: string[]): Promise<void> => {
+  const trackPaths = async (runId: string, paths: string[]): Promise<void> => {
     if (paths.length === 0 || !options.enabled) return;
     const tracked = await postWithRetry({
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/track-paths`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
-      body: { paths },
+      body: { runId, paths },
     });
     if (!tracked) {
       throw new Error("Failed to pin self-mod HMR paths before write.");
@@ -453,13 +453,16 @@ export const createSelfModHmrController = (
     return released?.ok === true;
   };
 
-  const untrackPaths = async (paths: string[]): Promise<boolean> => {
+  const untrackPaths = async (
+    runId: string,
+    paths: string[],
+  ): Promise<boolean> => {
     if (paths.length === 0 || !options.enabled) return true;
     const response = await postJsonWithRetry<{ ok?: boolean }>({
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/untrack-paths`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
-      body: { paths },
+      body: { runId, paths },
     });
     return response?.ok === true;
   };
@@ -487,21 +490,18 @@ export const createSelfModHmrController = (
 
   const sendDiscard = async (appliedRuns: AppliedRun[]): Promise<boolean> => {
     if (appliedRuns.length === 0 || !options.enabled) return true;
-    const paths = [
-      ...new Set(
-        appliedRuns.flatMap((run) =>
-          run.paths.filter((repoRelativePath) =>
-            isViteTrackablePath(repoRelativePath),
-          ),
-        ),
-      ),
-    ];
-    if (paths.length === 0) return true;
+    const runs = appliedRuns
+      .map((run) => ({
+        runId: run.runId,
+        paths: run.paths.filter(isViteTrackablePath),
+      }))
+      .filter((run) => run.paths.length > 0);
+    if (runs.length === 0) return true;
     const response = await postJsonWithRetry<{ ok?: boolean }>({
       getDevServerUrl: options.getDevServerUrl,
       path: `${HMR_ENDPOINT_BASE}/discard`,
       maxWaitMs: TRACK_MAX_WAIT_MS,
-      body: { paths },
+      body: { runs },
     });
     return response?.ok === true;
   };
@@ -594,13 +594,13 @@ export const createSelfModHmrController = (
         (repoRelativePath) => !alreadyOwnedPaths.includes(repoRelativePath),
       );
       const viteTrackablePaths = newlyOwnedPaths.filter(isViteTrackablePath);
-      await trackPaths(viteTrackablePaths);
+      await trackPaths(runId, viteTrackablePaths);
       if (tracker.getRunStatus(runId) !== "active") {
         const unownedPaths = viteTrackablePaths.filter(
           (repoRelativePath) =>
             tracker.getOwners(repoRelativePath).length === 0,
         );
-        if (!(await untrackPaths(unownedPaths))) {
+        if (!(await untrackPaths(runId, unownedPaths))) {
           throw new Error(
             "Failed to untrack self-mod HMR paths after a late write.",
           );
@@ -634,7 +634,7 @@ export const createSelfModHmrController = (
     async cancel(runId) {
       const pendingResult = pendingCancelResultsByRun.get(runId);
       if (pendingResult) {
-        if (!(await untrackPaths(pendingResult.releasedPaths))) {
+        if (!(await untrackPaths(runId, pendingResult.releasedPaths))) {
           throw new Error(
             `Failed to untrack Vite paths for canceled self-mod run ${runId}.`,
           );
@@ -660,7 +660,7 @@ export const createSelfModHmrController = (
       // lifecycle cleanup routed back here for bounded retries.
       pendingCancelResultsByRun.set(runId, cancelResult);
       if (decision.releasedPaths.length > 0) {
-        if (!(await untrackPaths(decision.releasedPaths))) {
+        if (!(await untrackPaths(runId, decision.releasedPaths))) {
           throw new Error(
             `Failed to untrack Vite paths for canceled self-mod run ${runId}.`,
           );

@@ -634,6 +634,18 @@ describe("buildActivityTasks", () => {
     });
   });
 
+  it("does not let a completed result mask an unresolved cleanup diagnostic", () => {
+    const tasks = buildActivityTasks([
+      record({
+        status: "completed",
+        completedAt: 2_000,
+        result: "Work completed",
+        cleanupDiagnostic: "HMR resources still need cleanup",
+      }),
+    ]);
+    expect(tasks[0]?.outputPreview).toBe("HMR resources still need cleanup");
+  });
+
   it("orders by started time with id tie-break", () => {
     const tasks = buildActivityTasks([
       record({ threadId: "b-second", startedAt: 2_000 }),

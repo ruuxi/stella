@@ -631,6 +631,7 @@ export const launchPreparedOrchestratorRun = (args: {
       await Promise.resolve(
         context.selfModLifecycle!.beginRun({
           runId: prepared.runId,
+          threadKey: prepared.conversationId,
           taskDescription: "Install Stella update",
           taskPrompt: prepared.userPrompt,
           conversationId: prepared.conversationId,

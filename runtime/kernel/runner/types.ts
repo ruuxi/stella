@@ -75,6 +75,7 @@ export type StellaHostRunnerOptions = {
   selfModLifecycle?: {
     beginRun: (args: {
       runId: string;
+      threadKey?: string;
       rootRunId?: string;
       taskDescription: string;
       taskPrompt: string;

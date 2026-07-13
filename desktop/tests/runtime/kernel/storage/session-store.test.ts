@@ -1525,6 +1525,72 @@ describe("thread activity rows", () => {
     expect(store.listAgentRecordsWithPendingCleanup()).toEqual([]);
   });
 
+  it("clears pending cleanup only after verified startup release and expires unreconstructable records loudly", () => {
+    const { store } = createTestContext();
+    const base = {
+      threadId: "cleanup-reconcile",
+      conversationId: "conv-cleanup-reconcile",
+      agentType: "general",
+      description: "Cleanup reconcile",
+      agentDepth: 0,
+      status: "completed" as const,
+      attemptGeneration: 8,
+      startedAt: 1_000,
+      completedAt: 2_000,
+      result: "Agent completed successfully",
+      updatedAt: 2_000,
+    };
+    store.saveAgentRecord({
+      ...base,
+      error: "old cleanup diagnostic",
+      pendingCleanup: {
+        attemptGeneration: 7,
+        diagnostic: "old cleanup diagnostic",
+        recordedAt: 1_500,
+      },
+    });
+
+    expect(
+      store.reconcilePendingAgentCleanupRecords({
+        resourcesVerifiedFree: false,
+        now: 2_000,
+        expiryMs: 1_000,
+      }),
+    ).toEqual({ clearedConversationIds: [], expiredConversationIds: [] });
+    expect(
+      store.getAgentRecord(base.threadId)?.pendingCleanup?.expiresAt,
+    ).toBe(2_500);
+    expect(store.getNextPendingAgentCleanupExpiryAt()).toBe(2_500);
+    expect(
+      store.reconcilePendingAgentCleanupRecords({
+        resourcesVerifiedFree: false,
+        now: 3_000,
+        expiryMs: 1_000,
+      }),
+    ).toEqual({
+      clearedConversationIds: [],
+      expiredConversationIds: [base.conversationId],
+    });
+    const expired = store.listThreadActivity(base.conversationId)[0];
+    expect(expired?.result).toBe("Agent completed successfully");
+    expect(expired?.cleanupDiagnostic).toContain("automatic retries expired");
+
+    expect(
+      store.reconcilePendingAgentCleanupRecords({
+        resourcesVerifiedFree: true,
+        now: 4_000,
+        expiryMs: 1_000,
+      }),
+    ).toEqual({
+      clearedConversationIds: [base.conversationId],
+      expiredConversationIds: [],
+    });
+    expect(store.getAgentRecord(base.threadId)?.pendingCleanup).toBeUndefined();
+    expect(
+      store.listThreadActivity(base.conversationId)[0]?.cleanupDiagnostic,
+    ).toBeUndefined();
+  });
+
   it("projects one authoritative row per thread, joined with group fields", () => {
     const { db, store } = createTestContext();
     store.saveAgentRecord({

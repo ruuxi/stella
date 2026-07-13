@@ -201,7 +201,9 @@ export function buildActivityTasks(
         startedAtMs: record.startedAt,
         completedAtMs: running ? undefined : record.completedAt,
         lastUpdatedAtMs: record.updatedAt,
-        outputPreview: running ? undefined : (record.result ?? record.error),
+        outputPreview:
+          record.cleanupDiagnostic ??
+          (running ? undefined : (record.result ?? record.error)),
       }
     })
     .sort((a, b) => a.startedAtMs - b.startedAtMs || a.id.localeCompare(b.id))
@@ -773,4 +775,3 @@ export function orderByFirstSeen<T>(
 export function getTaskGroupStatusText(group: TaskGroup): string {
   return group.totalCount === 1 ? '1 task' : `${group.totalCount} tasks`
 }
-

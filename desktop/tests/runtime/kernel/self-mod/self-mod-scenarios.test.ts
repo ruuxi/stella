@@ -6,7 +6,14 @@
  * and chronological ordering.
  */
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -102,6 +109,21 @@ const writeRepoFile = async (
 ) => {
   await mkdir(path.dirname(path.join(repoRoot, relPath)), { recursive: true });
   await writeFile(path.join(repoRoot, relPath), content, "utf8");
+};
+
+const waitForPath = async (filePath: string): Promise<void> => {
+  const deadline = Date.now() + 5_000;
+  for (;;) {
+    try {
+      await readFile(filePath);
+      return;
+    } catch {
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for ${filePath}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
 };
 
 const commitBody = (repoRoot: string, hash: string): string =>
@@ -298,40 +320,38 @@ describe("agent finalize", () => {
     ]);
   });
 
-  it("revokes a finalizer before the real git commit so replacement work keeps its identity", async () => {
+  it("revokes a finalizer held inside a pre-commit hook and hands its dirty paths to the replacement", async () => {
     const file = "desktop/src/seed.tsx";
     const before = await getGitHead(h.repoRoot);
+    const hookPath = path.join(h.repoRoot, ".git/hooks/pre-commit");
+    const hookStarted = path.join(h.repoRoot, ".git/hook-started");
+    const hookRelease = path.join(h.repoRoot, ".git/hook-release");
+    await writeFile(
+      hookPath,
+      `#!/bin/sh\ntouch .git/hook-started\nwhile [ ! -f .git/hook-release ]; do sleep 0.02; done\n`,
+      "utf8",
+    );
+    await chmod(hookPath, 0o755);
     await h.service.beginSelfModRun({
       runId: "old-run",
+      ownershipKey: "thread-owner",
       taskDescription: "Old attempt",
     });
     await writeRepoFile(h.repoRoot, file, "export const owner = 'old';\n");
 
-    let oldFinalizerReady!: () => void;
-    const oldFinalizerReadyGate = new Promise<void>((resolve) => {
-      oldFinalizerReady = resolve;
-    });
-    let releaseOldFinalizer!: () => void;
-    const oldFinalizerGate = new Promise<void>((resolve) => {
-      releaseOldFinalizer = resolve;
-    });
     const oldFinalize = h.service.finalizeSelfModRun({
       runId: "old-run",
       succeeded: true,
       conversationId: "old-conversation",
       threadKey: "old-thread",
-      commitMessageProvider: async () => {
-        oldFinalizerReady();
-        await oldFinalizerGate;
-        return "Commit old attempt";
-      },
+      commitMessageProvider: async () => "Commit old attempt",
     });
-    await oldFinalizerReadyGate;
+    await waitForPath(hookStarted);
 
     h.service.cancelSelfModRun("old-run");
-    git(h.repoRoot, ["checkout", "--", file]);
     await h.service.beginSelfModRun({
       runId: "replacement-run",
+      ownershipKey: "thread-owner",
       taskDescription: "Replacement attempt",
     });
     await writeRepoFile(
@@ -340,9 +360,10 @@ describe("agent finalize", () => {
       "export const owner = 'replacement';\n",
     );
 
-    releaseOldFinalizer();
+    await writeFile(hookRelease, "release\n", "utf8");
     expect(await oldFinalize).toBeNull();
     expect(await getGitHead(h.repoRoot)).toBe(before);
+    await rm(hookPath, { force: true });
 
     const replacement = await h.service.finalizeSelfModRun({
       runId: "replacement-run",

@@ -44,6 +44,7 @@ type SelfModApplyMode =
 type ActiveSelfModRun = {
   generation: number;
   canceled: boolean;
+  ownershipKey: string;
   baselineDirtyFiles: Set<string>;
   taskDescription: string;
   packageId?: string;
@@ -113,6 +114,8 @@ const sanitizeTrailerOrWarn = (
  */
 export class StoreModService {
   private readonly activeRuns = new Map<string, ActiveSelfModRun>();
+  /** Baseline user dirt retained when one attempt hands its worktree to its replacement. */
+  private readonly canceledBaselinesByOwner = new Map<string, Set<string>>();
   private nextRunGeneration = 0;
   /**
    * Serialized queue for post-commit background work (source-history
@@ -142,6 +145,7 @@ export class StoreModService {
 
   async beginSelfModRun(args: {
     runId: string;
+    ownershipKey?: string;
     taskDescription: string;
     packageId?: string;
     releaseNumber?: number;
@@ -150,12 +154,21 @@ export class StoreModService {
     const taskDescription = args.taskDescription.trim() || "Self mod update";
     const packageId = trimOrUndefined(args.packageId);
     const releaseNumber = normalizeReleaseNumber(args.releaseNumber);
-    const baselineDirtyFiles = new Set(await listGitDirtyFiles(this.repoRoot));
+    const ownershipKey = args.ownershipKey?.trim() || args.runId;
+    const currentDirtyFiles = new Set(await listGitDirtyFiles(this.repoRoot));
+    const handedOffBaseline = this.canceledBaselinesByOwner.get(ownershipKey);
+    const baselineDirtyFiles = handedOffBaseline
+      ? new Set(
+          [...currentDirtyFiles].filter((file) => handedOffBaseline.has(file)),
+        )
+      : currentDirtyFiles;
+    this.canceledBaselinesByOwner.delete(ownershipKey);
     const previousRun = this.activeRuns.get(args.runId);
     if (previousRun) previousRun.canceled = true;
     this.activeRuns.set(args.runId, {
       generation: ++this.nextRunGeneration,
       canceled: false,
+      ownershipKey,
       baselineDirtyFiles,
       taskDescription,
       ...(packageId ? { packageId } : {}),
@@ -168,6 +181,15 @@ export class StoreModService {
     const activeRun = this.activeRuns.get(runId);
     if (!activeRun) return;
     activeRun.canceled = true;
+    // A replacement with the same logical owner must inherit the canceled
+    // attempt's dirty paths as owned work, while preserving only the original
+    // user-dirty baseline as blocked. This makes pre-commit revocation leave a
+    // committable worktree instead of turning the old attempt's files into
+    // permanent baseline dirt.
+    this.canceledBaselinesByOwner.set(
+      activeRun.ownershipKey,
+      new Set(activeRun.baselineDirtyFiles),
+    );
     if (this.activeRuns.get(runId) === activeRun) {
       this.activeRuns.delete(runId);
     }

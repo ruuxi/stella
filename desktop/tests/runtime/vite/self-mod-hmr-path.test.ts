@@ -3,12 +3,33 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  addSelfModPathOwner,
   rememberReleasedShellMutationLease,
+  removeSelfModPathOwner,
   resolveSelfModHmrAbsolutePath,
   resolveSelfModOverlayImportPath,
   shouldPromoteSuppressedShellUpdatePath,
   shouldParkSelfModHmrClientUpdates,
 } from "../../../vite/self-mod-hmr-plugin";
+
+describe("self-mod HMR path ownership", () => {
+  it("makes a stale old-owner untrack a no-op after a replacement re-tracks", () => {
+    const owners = new Map<string, Set<string>>();
+    const filePath = "/repo/desktop/src/pinned.tsx";
+    expect(addSelfModPathOwner(owners, filePath, "old-run")).toBe(true);
+    expect(addSelfModPathOwner(owners, filePath, "replacement-run")).toBe(
+      false,
+    );
+    expect(removeSelfModPathOwner(owners, filePath, "old-run")).toBe(false);
+    expect(owners.get(filePath)).toEqual(new Set(["replacement-run"]));
+    expect(removeSelfModPathOwner(owners, filePath, "old-run")).toBe(false);
+    expect(owners.get(filePath)).toEqual(new Set(["replacement-run"]));
+    expect(removeSelfModPathOwner(owners, filePath, "replacement-run")).toBe(
+      true,
+    );
+    expect(owners.has(filePath)).toBe(false);
+  });
+});
 
 describe("released shell mutation lease tombstones", () => {
   it("keeps a bounded LRU window for late acknowledgments", () => {

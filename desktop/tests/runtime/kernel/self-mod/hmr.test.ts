@@ -598,6 +598,67 @@ describe("self-mod HMR controller", () => {
     }
   });
 
+  it("keeps a replacement pin when a stale cancellation retry untracks the old owner", async () => {
+    const originalFetch = globalThis.fetch;
+    const root = makeTempRoot();
+    const filePath = path.join(root, "desktop/src/replacement-owned.tsx");
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, "export const owner = 'replacement';\n");
+    const pathOwners = new Map<string, Set<string>>();
+    let oldUntrackAttempts = 0;
+    globalThis.fetch = vi.fn(async (input, init) => {
+      const url = String(input);
+      const body = init?.body
+        ? (JSON.parse(String(init.body)) as {
+            runId?: string;
+            paths?: string[];
+          })
+        : {};
+      if (url.endsWith("/track-paths")) {
+        for (const trackedPath of body.paths ?? []) {
+          const owners = pathOwners.get(trackedPath) ?? new Set<string>();
+          owners.add(body.runId ?? "");
+          pathOwners.set(trackedPath, owners);
+        }
+      }
+      if (url.endsWith("/untrack-paths")) {
+        if (body.runId === "old-run" && oldUntrackAttempts++ === 0) {
+          return new Response(JSON.stringify({ ok: false }), { status: 200 });
+        }
+        for (const trackedPath of body.paths ?? []) {
+          pathOwners.get(trackedPath)?.delete(body.runId ?? "");
+        }
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+    const controller = createSelfModHmrController({
+      enabled: true,
+      getDevServerUrl: () => "http://127.0.0.1:57314",
+      repoRoot: root,
+    });
+
+    try {
+      await controller.beginRun("old-run");
+      await controller.recordWrite("old-run", [filePath]);
+      await expect(controller.cancel("old-run")).rejects.toThrow(
+        "Failed to untrack Vite paths",
+      );
+
+      await controller.beginRun("replacement-run");
+      await controller.recordWrite("replacement-run", [filePath]);
+      expect(pathOwners.get("desktop/src/replacement-owned.tsx")).toEqual(
+        new Set(["old-run", "replacement-run"]),
+      );
+
+      await controller.cancel("old-run");
+      expect(pathOwners.get("desktop/src/replacement-owned.tsx")).toEqual(
+        new Set(["replacement-run"]),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("discards only Vite-trackable paths after a failed apply", async () => {
     const originalFetch = globalThis.fetch;
     let body: unknown = null;
@@ -628,7 +689,9 @@ describe("self-mod HMR controller", () => {
           },
         ]),
       ).resolves.toBe(true);
-      expect(body).toEqual({ paths: ["desktop/src/foo.tsx"] });
+      expect(body).toEqual({
+        runs: [{ runId: "run-a", paths: ["desktop/src/foo.tsx"] }],
+      });
     } finally {
       globalThis.fetch = originalFetch;
     }
