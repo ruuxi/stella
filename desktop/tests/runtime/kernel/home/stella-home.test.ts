@@ -31,6 +31,13 @@ describe("ensureStellaDataDirSeeded", () => {
     });
     await mkdir(path.join(seedRoot, "outputs"), { recursive: true });
     await mkdir(path.join(seedRoot, "memories"), { recursive: true });
+    await mkdir(
+      path.join(
+        stellaAppDir,
+        "runtime/extensions/stella-runtime/agent-metadata",
+      ),
+      { recursive: true },
+    );
     await writeFile(path.join(seedRoot, "DREAM.md"), "seed dream");
     await writeFile(
       path.join(seedRoot, "skills", "stella-desktop", "SKILL.md"),
@@ -39,8 +46,20 @@ describe("ensureStellaDataDirSeeded", () => {
     await writeFile(path.join(seedRoot, "outputs", "README.md"), "outputs");
     await writeFile(path.join(seedRoot, "preferences.json"), "{}");
     await writeFile(path.join(seedRoot, "memories", "MEMORY.md"), "old memory");
+    await writeFile(
+      path.join(
+        stellaAppDir,
+        "runtime/extensions/stella-runtime/agent-metadata/manager.md",
+      ),
+      "---\nname: Manager\ndescription: manager\ntools: spawn_agent, send_input, pause_agent\nmaxAgentDepth: 2\n---\n\nbundled manager\n",
+    );
 
-    await ensureStellaDataDirSeeded(stellaAppDir, stellaDataDir);
+    const result = await ensureStellaDataDirSeeded(stellaAppDir, stellaDataDir);
+
+    expect(result.promptResolution).toBe("unavailable");
+    await expect(
+      readFile(path.join(stellaDataDir, "agents", "manager.md"), "utf-8"),
+    ).resolves.toContain("bundled manager");
 
     await expect(
       readFile(path.join(stellaDataDir, "registry.md"), "utf-8"),

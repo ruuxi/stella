@@ -21,7 +21,7 @@ const AGENT_MD = [
 ].join("\n");
 
 describe("loadParsedAgentsFromDir", () => {
-  it("loads the manager bootstrap with only agent-management tools", () => {
+  it("loads the bundled manager fallback with only agent-management tools", () => {
     const agents = loadParsedAgentsFromDir(
       new URL(
         "../../../../../runtime/extensions/stella-runtime/agent-metadata/",

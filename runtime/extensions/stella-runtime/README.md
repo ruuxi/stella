@@ -5,7 +5,7 @@ This is Stella's built-in Pi-style runtime extension.
 ## What lives here
 
 - `index.ts`: registers backend-synchronized agent definitions from `~/.stella/agents`
-- `agent-metadata/*.md`: local capability metadata joined to backend-owned prompt bodies during sync, plus capability-local guidance and the manager bootstrap prompt
+- `agent-metadata/*.md`: local capability metadata joined to backend-owned prompt bodies during sync; `manager.md` also carries the transitional bundled default used only when a prompt manifest predates Manager
 
 ## Why it exists
 
