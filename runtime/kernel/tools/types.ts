@@ -4,6 +4,7 @@
 
 import type { TaskLifecycleStatus } from "../../contracts/agent-runtime.js";
 import type {
+  AgentModelConfigSnapshot,
   SpawnEngineSelection,
   SpawnReasoningEffort,
 } from "../../contracts/agent-engine.js";
@@ -35,6 +36,8 @@ export type ToolContext = {
   cloudAgentId?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
+  /** Effective Orchestrator route inherited by spawn_manager. */
+  modelConfigSnapshot?: AgentModelConfigSnapshot;
   allowedToolNames?: string[];
   connectorDeliveryTarget?: {
     requestId: string;
@@ -137,6 +140,8 @@ export type AgentToolRequest = {
   spawnEngine?: SpawnEngineSelection;
   /** Per-spawn reasoning override parsed from model's `:<effort>` suffix. */
   spawnReasoningEffort?: SpawnReasoningEffort;
+  /** Durable effective route inherited by a Manager from its Orchestrator. */
+  modelConfigSnapshot?: AgentModelConfigSnapshot;
   toolWorkspaceRoot?: string;
   rootRunId?: string;
   agentDepth?: number;
@@ -213,6 +218,8 @@ export type AgentToolApi = {
       parentAgentId?: string;
       /** Internal child report vs. direct orchestrator status/steering input. */
       deliveryKind?: "manager-event" | "external-input";
+      /** Current Orchestrator route, used only to heal legacy Manager rows. */
+      modelConfigSnapshot?: AgentModelConfigSnapshot;
     },
   ) => Promise<{ delivered: boolean; reason?: string }>;
   drainAgentMessages?: (

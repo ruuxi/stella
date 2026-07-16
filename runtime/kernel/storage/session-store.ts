@@ -1,3 +1,4 @@
+import type { AgentModelConfigSnapshot } from "../../contracts/agent-engine.js";
 import type { TaskLifecycleStatus } from "../../contracts/agent-runtime.js";
 import type { ThreadActivityRecord } from "../../contracts/local-chat.js";
 import {
@@ -115,6 +116,7 @@ export type PersistedAgentRecord = {
     mode?: "author" | "install" | "update" | "uninstall" | "desktop-update";
     expectedChangedFiles?: string[];
   };
+  modelConfigSnapshot?: AgentModelConfigSnapshot;
   status: TaskLifecycleStatus;
   /** Persisted ownership epoch so lifecycle ids remain unique after restart. */
   attemptGeneration: number;
@@ -4148,6 +4150,7 @@ export class SessionStore {
         max_agent_depth,
         parent_agent_id,
         self_mod_metadata_json,
+        model_config_json,
         status,
         started_at,
         completed_at,
@@ -4157,7 +4160,7 @@ export class SessionStore {
         root_run_id,
         attempt_generation
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
@@ -4166,6 +4169,7 @@ export class SessionStore {
         max_agent_depth = excluded.max_agent_depth,
         parent_agent_id = excluded.parent_agent_id,
         self_mod_metadata_json = excluded.self_mod_metadata_json,
+        model_config_json = excluded.model_config_json,
         status = excluded.status,
         started_at = excluded.started_at,
         completed_at = excluded.completed_at,
@@ -4185,6 +4189,7 @@ export class SessionStore {
         record.maxAgentDepth ?? null,
         record.parentAgentId ?? null,
         toJsonValueString(record.selfModMetadata) ?? null,
+        toJsonValueString(record.modelConfigSnapshot) ?? null,
         record.status,
         record.startedAt,
         record.completedAt ?? null,
@@ -4275,6 +4280,7 @@ export class SessionStore {
         max_agent_depth,
         parent_agent_id,
         self_mod_metadata_json,
+        model_config_json,
         status,
         started_at,
         completed_at,
@@ -4298,6 +4304,7 @@ export class SessionStore {
           max_agent_depth: number | null;
           parent_agent_id: string | null;
           self_mod_metadata_json: string | null;
+          model_config_json: string | null;
           status: PersistedAgentRecord["status"];
           started_at: number;
           completed_at: number | null;
@@ -4314,6 +4321,9 @@ export class SessionStore {
     const selfModMetadata = parseJsonValue<
       PersistedAgentRecord["selfModMetadata"]
     >(row.self_mod_metadata_json);
+    const modelConfigSnapshot = parseJsonValue<
+      PersistedAgentRecord["modelConfigSnapshot"]
+    >(row.model_config_json);
     return {
       threadId: row.thread_id,
       conversationId: row.conversation_id,
@@ -4325,6 +4335,7 @@ export class SessionStore {
         : { maxAgentDepth: row.max_agent_depth }),
       ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
       ...(selfModMetadata ? { selfModMetadata } : {}),
+      ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
       status: row.status,
       attemptGeneration: row.attempt_generation,
       ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
@@ -4351,6 +4362,7 @@ export class SessionStore {
         max_agent_depth,
         parent_agent_id,
         self_mod_metadata_json,
+        model_config_json,
         status,
         started_at,
         completed_at,
@@ -4373,6 +4385,7 @@ export class SessionStore {
       max_agent_depth: number | null;
       parent_agent_id: string | null;
       self_mod_metadata_json: string | null;
+      model_config_json: string | null;
       status: PersistedAgentRecord["status"];
       started_at: number;
       completed_at: number | null;
@@ -4387,6 +4400,9 @@ export class SessionStore {
       const selfModMetadata = parseJsonValue<
         PersistedAgentRecord["selfModMetadata"]
       >(row.self_mod_metadata_json);
+      const modelConfigSnapshot = parseJsonValue<
+        PersistedAgentRecord["modelConfigSnapshot"]
+      >(row.model_config_json);
       return {
         threadId: row.thread_id,
         conversationId: row.conversation_id,
@@ -4398,6 +4414,7 @@ export class SessionStore {
           : { maxAgentDepth: row.max_agent_depth }),
         ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
         ...(selfModMetadata ? { selfModMetadata } : {}),
+        ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
         status: row.status,
         attemptGeneration: row.attempt_generation,
         ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),

@@ -277,6 +277,10 @@ export const handleSendInput = async (
       description,
       ...(context.rootRunId ? { rootRunId: context.rootRunId } : {}),
       ...(managerThreadId ? { parentAgentId: managerThreadId } : {}),
+      ...(context.agentType === AGENT_IDS.ORCHESTRATOR &&
+      context.modelConfigSnapshot
+        ? { modelConfigSnapshot: context.modelConfigSnapshot }
+        : {}),
       deliveryKind: "external-input",
     },
   );
@@ -563,11 +567,18 @@ export const handleSpawnManager = async (
   const description = deriveAgentDescription("Task", prompt);
   const storageMode = context.storageMode ?? "local";
   if (ctx.agentApi) {
+    if (!context.modelConfigSnapshot) {
+      return {
+        error:
+          "The Orchestrator's resolved model configuration is unavailable; the Manager was not started.",
+      };
+    }
     const created = await ctx.agentApi.createAgent({
       conversationId: context.conversationId,
       description,
       prompt,
       agentType: AGENT_IDS.MANAGER,
+      modelConfigSnapshot: context.modelConfigSnapshot,
       rootRunId: context.rootRunId,
       agentDepth: 1,
       storageMode,

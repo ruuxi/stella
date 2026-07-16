@@ -13,8 +13,8 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { setupEnvironment } from "dugite";
 import type {
+  AgentModelReasoningEffort,
   AgentRuntimeEngine,
-  SpawnReasoningEffort,
 } from "../../contracts/agent-engine.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { FileChangeRecord } from "../../contracts/file-changes.js";
@@ -300,7 +300,7 @@ const CODEX_REASONING_EFFORT_ORDER: readonly CodexReasoningEffort[] = [
 
 export const clampCodexSpawnReasoningEffort = (
   model: Pick<CodexModel, "supportedReasoningEfforts">,
-  requested: SpawnReasoningEffort,
+  requested: AgentModelReasoningEffort,
 ): CodexReasoningEffort | undefined => {
   const supported = new Set(
     model.supportedReasoningEfforts.map(
@@ -1384,7 +1384,9 @@ export const runCodexAgentTurn = async (request: {
   /** Per-spawn engine-native model pin (`codex/<model>`); never persisted. */
   modelOverride?: string;
   /** Per-spawn reasoning override; never persisted. */
-  reasoningEffort?: SpawnReasoningEffort;
+  reasoningEffort?: AgentModelReasoningEffort;
+  /** True when the effort was captured from an already-resolved parent turn. */
+  reasoningEffortResolved?: boolean;
   /** Automatic utility pass: fixed cheap model and low effort. */
   utility?: boolean;
   attachments?: RuntimeAttachmentRef[];
@@ -1455,7 +1457,11 @@ export const runCodexAgentTurn = async (request: {
   const client = request.reuseAppServer
     ? await getSharedCodexClient(request.cliBridgeSocketPath)
     : await createInitializedCodexClient(request.cliBridgeSocketPath);
-  if (request.reasoningEffort && !request.utility) {
+  if (
+    request.reasoningEffort &&
+    !request.reasoningEffortResolved &&
+    !request.utility
+  ) {
     try {
       const models = await requestCodexModelsWithDeadline(client, true);
       const resolvedModel = models.find(

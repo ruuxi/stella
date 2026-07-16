@@ -7,6 +7,27 @@ export const DEFAULT_CODEX_MODEL = "gpt-5.6-sol";
 /** Reasoning levels accepted by spawn_agent's optional model suffix. */
 export type SpawnReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
+/** Effective reasoning setting captured from a running agent turn. */
+export type AgentModelReasoningEffort =
+  | "none"
+  | "minimal"
+  | SpawnReasoningEffort;
+
+/**
+ * Serializable snapshot of the effective model configuration for a turn.
+ * Manager threads persist this so every resume uses the spawning
+ * Orchestrator's engine/model instead of resolving an independent Manager
+ * default.
+ */
+export type AgentModelConfigSnapshot = {
+  engine: AgentRuntimeEngine;
+  /** Exact in-process route used for model metadata and native execution. */
+  routeModel: string;
+  /** Exact engine-native model when an external engine owns execution. */
+  engineModel?: string;
+  reasoningEffort?: AgentModelReasoningEffort;
+};
+
 export const AGENT_RUNTIME_ENGINES: readonly AgentRuntimeEngine[] = [
   "default",
   "claude_code_local",

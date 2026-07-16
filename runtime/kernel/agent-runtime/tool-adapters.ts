@@ -4,6 +4,7 @@ import type { AgentTool } from "../agent-core/types.js";
 import type { HookEmitter } from "../extensions/hook-emitter.js";
 import type { TextContent } from "../../ai/types.js";
 import { DEVICE_TOOL_NAMES } from "../tools/schemas.js";
+import type { AgentModelConfigSnapshot } from "../../contracts/agent-engine.js";
 import type {
   ToolContext,
   ToolMetadata,
@@ -487,6 +488,7 @@ type RuntimeToolContextArgs = {
   toolWorkspaceRoot?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
+  modelConfigSnapshot?: AgentModelConfigSnapshot;
   allowedToolNames?: string[];
   connectorDeliveryTarget?: {
     requestId: string;
@@ -517,6 +519,9 @@ export const buildRuntimeToolContext = (
     : {}),
   ...(typeof args.maxAgentDepth === "number"
     ? { maxAgentDepth: args.maxAgentDepth }
+    : {}),
+  ...(args.modelConfigSnapshot
+    ? { modelConfigSnapshot: args.modelConfigSnapshot }
     : {}),
   ...(Array.isArray(args.allowedToolNames) && args.allowedToolNames.length > 0
     ? { allowedToolNames: args.allowedToolNames }
@@ -616,6 +621,7 @@ export const createPiTools = (opts: {
   toolWorkspaceRoot?: string;
   agentDepth?: number;
   maxAgentDepth?: number;
+  modelConfigSnapshot?: AgentModelConfigSnapshot;
   connectorDeliveryTarget?: {
     requestId: string;
     conversationId: string;
@@ -756,6 +762,7 @@ export const createPiTools = (opts: {
           toolWorkspaceRoot: opts.toolWorkspaceRoot,
           agentDepth: opts.agentDepth,
           maxAgentDepth: opts.maxAgentDepth,
+          modelConfigSnapshot: opts.modelConfigSnapshot,
           connectorDeliveryTarget: opts.connectorDeliveryTarget,
           allowedToolNames: [...activeToolNames],
           store: opts.store,

@@ -544,7 +544,11 @@ const runClaudeHostedTurn = async (args: {
     args.opts.stellaAppDir,
     args.opts.agentContext.model,
     args.opts.agentType,
-    vanilla ? spawnEngine?.model : undefined,
+    args.opts.agentContext.modelConfigSnapshot?.engine === "claude_code_local"
+      ? args.opts.agentContext.modelConfigSnapshot.engineModel
+      : vanilla
+        ? spawnEngine?.model
+        : undefined,
   );
   const emitToolUpdateStatus = (update: {
     result?: unknown;
@@ -637,6 +641,7 @@ const runClaudeHostedTurn = async (args: {
       toolWorkspaceRoot: args.opts.toolWorkspaceRoot,
       agentDepth: args.opts.agentContext.agentDepth ?? 0,
       maxAgentDepth: args.opts.agentContext.maxAgentDepth,
+      modelConfigSnapshot: args.opts.agentContext.modelConfigSnapshot,
       connectorDeliveryTarget: args.opts.connectorDeliveryTarget,
       allowedToolNames: args.opts.agentContext.toolsAllowlist,
       store: args.opts.store,
@@ -683,7 +688,9 @@ const runClaudeHostedTurn = async (args: {
   });
   const claudeCodeEffortLevel = getClaudeCodeRuntimeEffortLevel(
     args.opts.stellaAppDir,
-    args.opts.agentContext.spawnReasoningEffort,
+    args.opts.agentContext.modelConfigSnapshot?.engine === "claude_code_local"
+      ? args.opts.agentContext.modelConfigSnapshot.reasoningEffort
+      : args.opts.agentContext.spawnReasoningEffort,
   );
 
   // Native-tool file writes (vanilla mode) accumulated across the main turn
@@ -944,6 +951,7 @@ const runCodexHostedTurn = async (args: {
       toolWorkspaceRoot: args.opts.toolWorkspaceRoot,
       agentDepth: args.opts.agentContext.agentDepth ?? 0,
       maxAgentDepth: args.opts.agentContext.maxAgentDepth,
+      modelConfigSnapshot: args.opts.agentContext.modelConfigSnapshot,
       connectorDeliveryTarget: args.opts.connectorDeliveryTarget,
       allowedToolNames: args.opts.agentContext.toolsAllowlist,
       store: args.opts.store,
@@ -1029,6 +1037,18 @@ const runCodexHostedTurn = async (args: {
   const prompt = buildCodexPromptFromMessages({
     promptMessages: args.promptMessages,
   });
+  const inheritedCodexConfig =
+    args.opts.agentContext.modelConfigSnapshot?.engine === "codex_cli"
+      ? args.opts.agentContext.modelConfigSnapshot
+      : undefined;
+  const codexModelOverride =
+    inheritedCodexConfig?.engineModel ??
+    (args.opts.agentContext.spawnEngine?.engine === "codex_cli"
+      ? args.opts.agentContext.spawnEngine.model
+      : undefined);
+  const codexReasoningEffort =
+    inheritedCodexConfig?.reasoningEffort ??
+    args.opts.agentContext.spawnReasoningEffort;
   let finalResult = await runCodexAgentTurn({
     runId,
     sessionKey,
@@ -1042,13 +1062,13 @@ const runCodexHostedTurn = async (args: {
       ? { cliBridgeSocketPath: args.opts.cliBridgeSocketPath }
       : {}),
     stellaModel: args.opts.agentContext.model,
-    // Per-spawn codex model pin (spawn_agent `model: codex/<model>`).
-    ...(args.opts.agentContext.spawnEngine?.engine === "codex_cli" &&
-    args.opts.agentContext.spawnEngine.model
-      ? { modelOverride: args.opts.agentContext.spawnEngine.model }
-      : {}),
-    ...(args.opts.agentContext.spawnReasoningEffort
-      ? { reasoningEffort: args.opts.agentContext.spawnReasoningEffort }
+    // Exact inherited Manager route or per-spawn Codex pin.
+    ...(codexModelOverride ? { modelOverride: codexModelOverride } : {}),
+    ...(codexReasoningEffort
+      ? {
+          reasoningEffort: codexReasoningEffort,
+          ...(inheritedCodexConfig ? { reasoningEffortResolved: true } : {}),
+        }
       : {}),
     attachments: args.opts.attachments,
     abortSignal: args.opts.abortSignal,
@@ -1099,12 +1119,12 @@ const runCodexHostedTurn = async (args: {
         ? { cliBridgeSocketPath: args.opts.cliBridgeSocketPath }
         : {}),
       stellaModel: args.opts.agentContext.model,
-      ...(args.opts.agentContext.spawnEngine?.engine === "codex_cli" &&
-      args.opts.agentContext.spawnEngine.model
-        ? { modelOverride: args.opts.agentContext.spawnEngine.model }
-        : {}),
-      ...(args.opts.agentContext.spawnReasoningEffort
-        ? { reasoningEffort: args.opts.agentContext.spawnReasoningEffort }
+      ...(codexModelOverride ? { modelOverride: codexModelOverride } : {}),
+      ...(codexReasoningEffort
+        ? {
+            reasoningEffort: codexReasoningEffort,
+            ...(inheritedCodexConfig ? { reasoningEffortResolved: true } : {}),
+          }
         : {}),
       attachments: queuedAttachments,
       abortSignal: args.opts.abortSignal,

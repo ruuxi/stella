@@ -14,6 +14,7 @@ import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
 import { getRuntimeToolMetadata } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
 import { loadParsedAgentsFromDir } from "../../../../../runtime/kernel/agents/markdown-agent-loader.js";
 import { loadStellaRuntimeAgents } from "../../../../../runtime/extensions/stella-runtime/index.js";
+import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 
 type TestHostContext = {
   rootPath: string;
@@ -56,6 +57,9 @@ const createTestHost = async (
           agentType: request.agentType,
           ...(request.model ? { model: request.model } : {}),
           ...(request.spawnEngine ? { spawnEngine: request.spawnEngine } : {}),
+          ...(request.modelConfigSnapshot
+            ? { modelConfigSnapshot: request.modelConfigSnapshot }
+            : {}),
         });
         return { threadId: `thread-${createdTasks.length}` };
       },
@@ -109,6 +113,15 @@ const makeToolContext = (agentType: string): ToolContext => ({
   requestId: "req-1",
   agentType,
   storageMode: "local",
+  ...(agentType === AGENT_IDS.ORCHESTRATOR
+    ? {
+        modelConfigSnapshot: {
+          engine: "default" as const,
+          routeModel: "stella/openai/gpt-5.6-sol",
+          reasoningEffort: "high" as const,
+        },
+      }
+    : {}),
 });
 
 describe("orchestrator direct tool surface", () => {
@@ -547,6 +560,11 @@ describe("orchestrator direct tool surface", () => {
         description: "Coordinate three checks and return one report.",
         prompt: "Coordinate three checks and return one report.",
         agentType: "manager",
+        modelConfigSnapshot: {
+          engine: "default",
+          routeModel: "stella/openai/gpt-5.6-sol",
+          reasoningEffort: "high",
+        },
       },
     ]);
   });

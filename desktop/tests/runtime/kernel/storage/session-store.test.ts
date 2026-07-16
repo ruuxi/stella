@@ -89,6 +89,42 @@ describe("session-store", () => {
       threadId: "legacy-agent",
       attemptGeneration: 0,
     });
+    const columns = db
+      .prepare("PRAGMA table_info(runtime_agents)")
+      .all() as Array<{
+      name: string;
+    }>;
+    expect(columns.map((column) => column.name)).toContain("model_config_json");
+  });
+
+  it("round-trips a Manager's inherited model configuration", () => {
+    const { store } = createTestContext();
+    const modelConfigSnapshot = {
+      engine: "codex_cli" as const,
+      routeModel: "stella/openai/gpt-5.6-sol",
+      engineModel: "gpt-5.6-codex",
+      reasoningEffort: "high" as const,
+    };
+    store.saveAgentRecord({
+      threadId: "manager-model-route",
+      conversationId: "conversation-model-route",
+      agentType: "manager",
+      description: "Coordinate work",
+      agentDepth: 1,
+      status: "completed",
+      attemptGeneration: 2,
+      startedAt: 1,
+      completedAt: 2,
+      updatedAt: 2,
+      modelConfigSnapshot,
+    });
+
+    expect(
+      store.getAgentRecord("manager-model-route")?.modelConfigSnapshot,
+    ).toEqual(modelConfigSnapshot);
+    expect(
+      store.listAgentRecordsByStatus("completed")[0]?.modelConfigSnapshot,
+    ).toEqual(modelConfigSnapshot);
   });
 
   it("starts a fresh default conversation without deleting old messages", () => {

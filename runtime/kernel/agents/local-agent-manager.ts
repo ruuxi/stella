@@ -58,6 +58,7 @@ import type {
 import type { RuntimeThreadRecord } from "../runtime-threads.js";
 import type { ReasoningEffort } from "../preferences/local-preferences.js";
 import type {
+  AgentModelConfigSnapshot,
   AgentRuntimeEngine,
   SpawnEngineSelection,
   SpawnReasoningEffort,
@@ -79,6 +80,8 @@ export type LocalAgentContext = {
   toolsAllowlist?: string[];
   model?: string;
   resolvedLlm?: ResolvedLlmRoute;
+  /** Durable effective Orchestrator route used by Manager threads. */
+  modelConfigSnapshot?: AgentModelConfigSnapshot;
   reasoningEffort?: ReasoningEffort;
   agentDepth?: number;
   maxAgentDepth: number;
@@ -136,6 +139,7 @@ type RuntimeAgentRecord = {
   spawnEngine?: SpawnEngineSelection;
   /** Per-spawn reasoning override; never persisted to user preferences. */
   spawnReasoningEffort?: SpawnReasoningEffort;
+  modelConfigSnapshot?: AgentModelConfigSnapshot;
   toolWorkspaceRoot?: string;
   agentDepth: number;
   maxAgentDepth?: number;
@@ -458,6 +462,7 @@ type LocalAgentManagerOpts = {
     model?: string;
     spawnEngine?: SpawnEngineSelection;
     spawnReasoningEffort?: SpawnReasoningEffort;
+    modelConfigSnapshot?: AgentModelConfigSnapshot;
     toolWorkspaceRoot?: string;
     selfModMetadata?: AgentToolRequest["selfModMetadata"];
   }) => Promise<LocalAgentContext>;
@@ -834,6 +839,9 @@ export class LocalAgentManager implements AgentToolApi {
       ...(task.selfModMetadata
         ? { selfModMetadata: task.selfModMetadata }
         : {}),
+      ...(task.modelConfigSnapshot
+        ? { modelConfigSnapshot: task.modelConfigSnapshot }
+        : {}),
       status: task.status === "pending" ? "running" : task.status,
       attemptGeneration: task.attemptGeneration,
       ...(task.rootRunId ? { rootRunId: task.rootRunId } : {}),
@@ -1130,6 +1138,7 @@ export class LocalAgentManager implements AgentToolApi {
       storageMode: "local",
       parentAgentId: record.parentAgentId,
       selfModMetadata: record.selfModMetadata,
+      modelConfigSnapshot: record.modelConfigSnapshot,
       activeSelfModRunId: undefined,
       recentActivity: [`Continuing thread: ${truncate(prompt, 200)}`],
       lastActivityAt: Date.now(),
@@ -1418,6 +1427,9 @@ export class LocalAgentManager implements AgentToolApi {
         ...(task.spawnEngine ? { spawnEngine: task.spawnEngine } : {}),
         ...(task.spawnReasoningEffort
           ? { spawnReasoningEffort: task.spawnReasoningEffort }
+          : {}),
+        ...(task.modelConfigSnapshot
+          ? { modelConfigSnapshot: task.modelConfigSnapshot }
           : {}),
         ...(task.toolWorkspaceRoot
           ? { toolWorkspaceRoot: task.toolWorkspaceRoot }
@@ -1882,6 +1894,9 @@ export class LocalAgentManager implements AgentToolApi {
       ...(request.spawnReasoningEffort
         ? { spawnReasoningEffort: request.spawnReasoningEffort }
         : {}),
+      ...(request.modelConfigSnapshot
+        ? { modelConfigSnapshot: request.modelConfigSnapshot }
+        : {}),
       ...(request.toolWorkspaceRoot
         ? { toolWorkspaceRoot: request.toolWorkspaceRoot }
         : {}),
@@ -2286,6 +2301,7 @@ export class LocalAgentManager implements AgentToolApi {
       rootRunId?: string;
       parentAgentId?: string;
       deliveryKind?: "manager-event" | "external-input";
+      modelConfigSnapshot?: AgentModelConfigSnapshot;
     },
   ): Promise<{ delivered: boolean; reason?: string }> {
     const text = message.trim();
@@ -2352,6 +2368,13 @@ export class LocalAgentManager implements AgentToolApi {
         text,
         updateStatusText,
       );
+      if (
+        resumedTask.agentType === AGENT_IDS.MANAGER &&
+        !resumedTask.modelConfigSnapshot &&
+        options?.modelConfigSnapshot
+      ) {
+        resumedTask.modelConfigSnapshot = options.modelConfigSnapshot;
+      }
       if (rootRunId) {
         resumedTask.rootRunId = rootRunId;
       }
@@ -2397,6 +2420,13 @@ export class LocalAgentManager implements AgentToolApi {
     }
     if (options?.parentAgentId) {
       task.parentAgentId = options.parentAgentId;
+    }
+    if (
+      task.agentType === AGENT_IDS.MANAGER &&
+      !task.modelConfigSnapshot &&
+      options?.modelConfigSnapshot
+    ) {
+      task.modelConfigSnapshot = options.modelConfigSnapshot;
     }
     if (
       task.agentType === AGENT_IDS.MANAGER &&

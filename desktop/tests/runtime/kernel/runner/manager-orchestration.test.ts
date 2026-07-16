@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -12,6 +12,11 @@ import {
   type LocalAgentManager,
 } from "../../../../../runtime/kernel/agents/local-agent-manager.js";
 import { createAgentOrchestration } from "../../../../../runtime/kernel/runner/agent-orchestration.js";
+import {
+  handleSendInput,
+  handleSpawnManager,
+} from "../../../../../runtime/kernel/tools/state.js";
+import type { AgentModelConfigSnapshot } from "../../../../../runtime/contracts/agent-engine.js";
 import type { RunnerContext } from "../../../../../runtime/kernel/runner/types.js";
 import {
   getDesktopDatabasePath,
@@ -68,6 +73,7 @@ type Harness = {
   manager: LocalAgentManager;
   appendedEvents: LocalChatAppendEventArgs[];
   sentMessages: SentMessage[];
+  fetchedModelConfigs: Array<AgentModelConfigSnapshot | undefined>;
 };
 
 const harnesses = new Set<Harness>();
@@ -119,6 +125,7 @@ const createHarness = (options?: {
   const store = new SessionStore(db);
   const appendedEvents: LocalChatAppendEventArgs[] = [];
   const sentMessages: SentMessage[] = [];
+  const fetchedModelConfigs: Array<AgentModelConfigSnapshot | undefined> = [];
   const context = {
     stellaAppDir: rootPath,
     stellaDataDir: rootPath,
@@ -148,17 +155,20 @@ const createHarness = (options?: {
     },
   } as unknown as RunnerContext;
   createAgentOrchestration(context, {
-    buildAgentContext: async ({ threadId }) => ({
-      systemPrompt: "",
-      dynamicContext: "",
-      maxAgentDepth: 2,
-      // Mirrors buildAgentContext's real non-orchestrator history hydration.
-      // Keeping this wired to SessionStore is what exposes replay duplicates.
-      threadHistory: store.loadThreadMessages(threadId),
-      resolvedLlm: {
-        model: { id: "test-model", provider: "openai" },
-      },
-    }),
+    buildAgentContext: async ({ threadId, modelConfigSnapshot }) => {
+      fetchedModelConfigs.push(modelConfigSnapshot);
+      return {
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 2,
+        // Mirrors buildAgentContext's real non-orchestrator history hydration.
+        // Keeping this wired to SessionStore is what exposes replay duplicates.
+        threadHistory: store.loadThreadMessages(threadId),
+        resolvedLlm: {
+          model: { id: "test-model", provider: "openai" },
+        },
+      };
+    },
     sendMessage: async (message) => {
       sentMessages.push(message);
     },
@@ -173,6 +183,7 @@ const createHarness = (options?: {
     manager: context.state.localAgentManager!,
     appendedEvents,
     sentMessages,
+    fetchedModelConfigs,
   };
   harnesses.add(harness);
   return harness;
@@ -201,6 +212,105 @@ afterEach(async () => {
 });
 
 describe("manager orchestration production routing", () => {
+  it("starts spawn_manager with the spawning Orchestrator model snapshot in a customized existing home", async () => {
+    let harness = createHarness();
+    await mkdir(path.join(harness.rootPath, "agents"), { recursive: true });
+    const customizedPrompt = "My customized orchestrator prompt stays intact.";
+    await writeFile(
+      path.join(harness.rootPath, "agents", "orchestrator.md"),
+      customizedPrompt,
+      "utf8",
+    );
+    runMock.handler = async (args) => {
+      expect(args.agentType).toBe(AGENT_IDS.MANAGER);
+      return {
+        runId: "manager-first-turn",
+        result: "Consolidated first-turn report.",
+      };
+    };
+    const snapshot: AgentModelConfigSnapshot = {
+      engine: "default",
+      routeModel: "stella/openai/gpt-5.6-sol",
+      reasoningEffort: "high",
+    };
+
+    const result = await handleSpawnManager(
+      {
+        stateRoot: harness.rootPath,
+        tasks: new Map(),
+        agentApi: harness.manager,
+      },
+      { prompt: "Coordinate one verification and report." },
+      {
+        conversationId: "conversation-model-inheritance",
+        deviceId: "device-manager-test",
+        requestId: "spawn-manager-1",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+        storageMode: "local",
+        modelConfigSnapshot: snapshot,
+      },
+    );
+
+    const threadId = (result.result as { thread_id: string }).thread_id;
+    await waitUntil(
+      async () =>
+        (await harness.manager.getAgent(threadId))?.status === "completed",
+    );
+    expect(harness.fetchedModelConfigs).toContainEqual(snapshot);
+    expect(harness.store.getAgentRecord(threadId)?.modelConfigSnapshot).toEqual(
+      snapshot,
+    );
+    expect(
+      await readFile(
+        path.join(harness.rootPath, "agents", "orchestrator.md"),
+        "utf8",
+      ),
+    ).toBe(customizedPrompt);
+
+    // Simulate a Manager row created by the pre-snapshot build. Its first
+    // explicit send_input after update inherits the current Orchestrator
+    // route, then persists it for every later resume.
+    harness.db
+      .prepare(
+        "UPDATE runtime_agents SET model_config_json = NULL WHERE thread_id = ?",
+      )
+      .run(threadId);
+    await closeHarness(harness, { removeRoot: false });
+    harness = createHarness({ rootPath: harness.rootPath });
+    runMock.handler = async () => ({
+      runId: "manager-resumed-turn",
+      result: "Resumed on the inherited route.",
+    });
+    await handleSendInput(
+      {
+        stateRoot: harness.rootPath,
+        tasks: new Map(),
+        agentApi: harness.manager,
+      },
+      {
+        thread_id: threadId,
+        description: "Resume manager",
+        message: "Resume and confirm the final state.",
+      },
+      {
+        conversationId: "conversation-model-inheritance",
+        deviceId: "device-manager-test",
+        requestId: "resume-manager-1",
+        agentType: AGENT_IDS.ORCHESTRATOR,
+        storageMode: "local",
+        modelConfigSnapshot: snapshot,
+      },
+    );
+    await waitUntil(
+      async () =>
+        (await harness.manager.getAgent(threadId))?.status === "completed",
+    );
+    expect(harness.fetchedModelConfigs).toContainEqual(snapshot);
+    expect(harness.store.getAgentRecord(threadId)?.modelConfigSnapshot).toEqual(
+      snapshot,
+    );
+  });
+
   it("routes child completion exclusively to the manager and keeps a status answer non-terminal", async () => {
     const { manager, store, appendedEvents, sentMessages } = createHarness();
     let releaseManagerFirst!: () => void;

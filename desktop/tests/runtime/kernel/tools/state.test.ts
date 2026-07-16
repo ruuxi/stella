@@ -121,6 +121,11 @@ describe("state tools", () => {
     deviceId: "device-1",
     requestId: "request-1",
     agentType: AGENT_IDS.ORCHESTRATOR,
+    modelConfigSnapshot: {
+      engine: "default" as const,
+      routeModel: "stella/openai/gpt-5.6-sol",
+      reasoningEffort: "high" as const,
+    },
   };
 
   it("treats `model: default` exactly like an omitted model", async () => {
@@ -621,6 +626,9 @@ describe("state tools", () => {
     });
     expect(created[0]?.model).toBeUndefined();
     expect(created[0]?.spawnEngine).toBeUndefined();
+    expect(created[0]?.modelConfigSnapshot).toEqual(
+      orchestratorToolContext.modelConfigSnapshot,
+    );
   });
 
   it("rejects the removed spawn_agent group argument", async () => {

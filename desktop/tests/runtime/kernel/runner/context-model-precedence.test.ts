@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Model } from "../../../../../runtime/ai/types.js";
 import {
+  captureEffectiveModelConfig,
   resolveAgentEngineForRun,
   resolveSpawnReasoningEffortForModel,
 } from "../../../../../runtime/kernel/runner/context.js";
+import type { ResolvedLlmRoute } from "../../../../../runtime/kernel/model-routing.js";
 
 describe("spawn_agent engine precedence", () => {
   it("lets an explicit plain-model spawn override a saved Codex engine", () => {
@@ -81,5 +83,75 @@ describe("spawn_agent Stella reasoning clamping", () => {
     expect(
       resolveSpawnReasoningEffortForModel(model(false), "high"),
     ).toBeUndefined();
+  });
+});
+
+describe("spawn_manager model inheritance snapshots", () => {
+  const stellaRoute = (id: string): ResolvedLlmRoute =>
+    ({
+      model: { id, provider: "stella" },
+      route: "stella",
+      getApiKey: () => "test-key",
+    }) as ResolvedLlmRoute;
+
+  it("pins an explicit Stella Orchestrator turn to its resolved model and effort", () => {
+    expect(
+      captureEffectiveModelConfig({
+        stellaDataDir: "/tmp/stella-manager-inheritance",
+        engine: "default",
+        configuredModel: "stella/max",
+        resolvedLlm: stellaRoute("openai/gpt-5.6-sol"),
+        reasoningEffort: "xhigh",
+      }),
+    ).toEqual({
+      engine: "default",
+      routeModel: "stella/openai/gpt-5.6-sol",
+      reasoningEffort: "xhigh",
+    });
+  });
+
+  it("pins the concrete model selected by a saved/default Orchestrator route", () => {
+    const resolvedDefault = stellaRoute("default");
+    (
+      resolvedDefault.model as ResolvedLlmRoute["model"] & {
+        upstreamModelId?: string;
+      }
+    ).upstreamModelId = "muse-spark-1.1";
+    resolvedDefault.toolPolicyModel = {
+      id: "meta/muse-spark-1.1",
+      provider: "meta",
+      api: "openai-completions",
+      name: "Muse Spark 1.1",
+    };
+    expect(
+      captureEffectiveModelConfig({
+        stellaDataDir: "/tmp/stella-manager-inheritance",
+        engine: "default",
+        resolvedLlm: resolvedDefault,
+        reasoningEffort: "low",
+      }),
+    ).toEqual({
+      engine: "default",
+      routeModel: "stella/meta/muse-spark-1.1",
+      reasoningEffort: "low",
+    });
+  });
+
+  it("pins an explicit Codex Orchestrator engine model and effort", () => {
+    expect(
+      captureEffectiveModelConfig({
+        stellaDataDir: "/tmp/stella-manager-inheritance",
+        engine: "codex_cli",
+        configuredModel: "stella/standard",
+        engineModelOverride: "gpt-5.6-codex",
+        resolvedLlm: stellaRoute("meta/muse-spark-1.1"),
+        reasoningEffort: "high",
+      }),
+    ).toEqual({
+      engine: "codex_cli",
+      routeModel: "stella/meta/muse-spark-1.1",
+      engineModel: "gpt-5.6-codex",
+      reasoningEffort: "high",
+    });
   });
 });

@@ -13,11 +13,10 @@ import {
   getAgentRuntimeEngine,
   getModelOverride,
   loadLocalPreferences,
-  type ReasoningEffort,
 } from "../preferences/local-preferences.js";
 import type {
+  AgentModelReasoningEffort,
   AgentRuntimeEngine,
-  SpawnReasoningEffort,
 } from "../../contracts/agent-engine.js";
 import {
   resolveLocalCliCwd,
@@ -101,7 +100,7 @@ export const getClaudeCodeAgentModelId = (
  * Claude Code has no "minimal" tier, so it folds into "low".
  */
 const CLAUDE_CODE_EFFORT_BY_REASONING: Record<
-  Exclude<ReasoningEffort, "default">,
+  Exclude<AgentModelReasoningEffort, "none">,
   string
 > = {
   minimal: "low",
@@ -113,10 +112,11 @@ const CLAUDE_CODE_EFFORT_BY_REASONING: Record<
 
 export const getClaudeCodeRuntimeEffortLevel = (
   stellaAppDir?: string,
-  spawnOverride?: SpawnReasoningEffort,
+  spawnOverride?: AgentModelReasoningEffort,
 ): string | undefined => {
   // A spawn suffix is authoritative for this run only and never writes the
   // engine-wide preference or environment configuration.
+  if (spawnOverride === "none") return undefined;
   if (spawnOverride) return CLAUDE_CODE_EFFORT_BY_REASONING[spawnOverride];
   const envOverride = process.env.CLAUDE_CODE_EFFORT_LEVEL?.trim();
   if (envOverride) return envOverride;

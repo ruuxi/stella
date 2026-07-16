@@ -188,7 +188,14 @@ export const createStellaHostRunner = (
     const resolved = await resolveAgentModelRoute(
       context,
       args.agentType,
-      "model" in args ? args.model : undefined,
+      "modelConfigSnapshot" in args && args.modelConfigSnapshot
+        ? args.modelConfigSnapshot.routeModel
+        : "model" in args
+          ? args.model
+          : undefined,
+      "modelConfigSnapshot" in args && args.modelConfigSnapshot
+        ? AGENT_IDS.ORCHESTRATOR
+        : args.agentType,
     );
     return await buildAgentContext(context, {
       ...args,
