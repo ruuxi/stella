@@ -50,6 +50,7 @@ export type AgentStreamEvent = {
   parentAgentId?: string;
   result?: string;
   statusText?: string;
+  attemptGeneration?: number;
   toolActivity?: TaskToolActivity;
   outcome?: AgentRunFinishOutcome;
   reason?: string;

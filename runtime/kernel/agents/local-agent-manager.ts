@@ -311,6 +311,9 @@ export type AgentLifecycleEvent = {
   /** Stable identity used to deduplicate durable manager-event routing. */
   eventId?: string;
   rootRunId?: string;
+  /** Durable execution epoch. Present on `agent-started` so a reused thread's
+   * authored updates can be attributed to the exact inline-card occurrence. */
+  attemptGeneration?: number;
   userMessageId?: string;
   agentId: string;
   agentType: string;
@@ -785,6 +788,7 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: record.agentType,
         description: record.description,
         parentAgentId: record.parentAgentId,
+        attemptGeneration: record.attemptGeneration,
         error,
         audience: "display-only",
       });
@@ -1411,6 +1415,7 @@ export class LocalAgentManager implements AgentToolApi {
           agentType: task.agentType,
           description: task.description,
           parentAgentId: task.parentAgentId,
+          attemptGeneration: generation,
           ...(startStatusText ? { statusText: startStatusText } : {}),
           ...(startIsFollowUp ? { isFollowUp: true } : {}),
         });
@@ -1622,6 +1627,7 @@ export class LocalAgentManager implements AgentToolApi {
             agentType: task.agentType,
             description: task.description,
             parentAgentId: task.parentAgentId,
+            attemptGeneration: attempt.generation,
             statusText,
             toolActivity,
           });
@@ -1656,6 +1662,7 @@ export class LocalAgentManager implements AgentToolApi {
             agentType: task.agentType,
             description: task.description,
             parentAgentId: task.parentAgentId,
+            attemptGeneration: attempt.generation,
             statusText: toolActivity.label,
             toolActivity,
           });
@@ -1843,6 +1850,7 @@ export class LocalAgentManager implements AgentToolApi {
           agentType: task.agentType,
           description: task.description,
           parentAgentId: task.parentAgentId,
+          attemptGeneration: task.attemptGeneration,
           result: task.result,
         });
       }
@@ -1891,6 +1899,7 @@ export class LocalAgentManager implements AgentToolApi {
           agentType: task.agentType,
           description: task.description,
           parentAgentId: task.parentAgentId,
+          attemptGeneration: task.attemptGeneration,
           result: task.result,
           ...(task.fileChanges?.length
             ? { fileChanges: task.fileChanges }
@@ -1930,6 +1939,7 @@ export class LocalAgentManager implements AgentToolApi {
           agentType: task.agentType,
           description: task.description,
           parentAgentId: task.parentAgentId,
+          attemptGeneration: task.attemptGeneration,
           error: task.error,
         });
       } else if (task.status === "canceled") {
@@ -1942,6 +1952,7 @@ export class LocalAgentManager implements AgentToolApi {
           agentType: task.agentType,
           description: task.description,
           parentAgentId: task.parentAgentId,
+          attemptGeneration: task.attemptGeneration,
           error: task.error,
         });
       }
@@ -2336,6 +2347,7 @@ export class LocalAgentManager implements AgentToolApi {
         agentType: local.agentType,
         description: local.description,
         parentAgentId: local.parentAgentId,
+        attemptGeneration: local.attemptGeneration,
         statusText: "Pausing",
       });
       local.controller.abort(new Error(local.error));
@@ -2373,6 +2385,7 @@ export class LocalAgentManager implements AgentToolApi {
           agentType: local.agentType,
           description: local.description,
           parentAgentId: local.parentAgentId,
+          attemptGeneration: local.attemptGeneration,
           error: local.error,
         });
         local.terminalEventEmitted = true;
@@ -2621,6 +2634,7 @@ export class LocalAgentManager implements AgentToolApi {
           agentType: task.agentType,
           description: task.description,
           parentAgentId: task.parentAgentId,
+          attemptGeneration: task.attemptGeneration,
           statusText: updateStatusText,
         });
       }
@@ -2677,6 +2691,7 @@ export class LocalAgentManager implements AgentToolApi {
           agentType: task.agentType,
           description: task.description,
           parentAgentId: task.parentAgentId,
+          attemptGeneration: task.attemptGeneration,
           statusText: updateStatusText,
         });
       }

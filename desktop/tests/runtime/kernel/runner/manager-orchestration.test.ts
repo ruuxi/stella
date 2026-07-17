@@ -667,16 +667,27 @@ describe("manager orchestration production routing", () => {
     expect(rootLifecycle).toEqual([
       expect.objectContaining({
         type: "agent-started",
-        payload: expect.objectContaining({ agentId: managerTask.threadId }),
+        payload: expect.objectContaining({
+          agentId: managerTask.threadId,
+          attemptGeneration: expect.any(Number),
+        }),
       }),
       expect.objectContaining({
         type: "agent-completed",
         payload: expect.objectContaining({
           agentId: managerTask.threadId,
+          attemptGeneration: expect.any(Number),
           result: "Consolidated manager response after both children.",
         }),
       }),
     ]);
+    expect(
+      (rootLifecycle[1]?.payload as { attemptGeneration?: number })
+        .attemptGeneration,
+    ).toBeGreaterThanOrEqual(
+      (rootLifecycle[0]?.payload as { attemptGeneration?: number })
+        .attemptGeneration ?? 0,
+    );
     expect(JSON.stringify(appendedEvents)).not.toContain("A managed child");
     expect(JSON.stringify(appendedEvents)).not.toContain(firstChild.threadId);
     expect(JSON.stringify(appendedEvents)).not.toContain(secondChild.threadId);

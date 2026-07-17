@@ -249,6 +249,12 @@ const backgroundWorkEqual = (
       return false;
     }
     if (
+      (a.attemptGenerationsByThread?.[threadId] ?? null) !==
+      (b.attemptGenerationsByThread?.[threadId] ?? null)
+    ) {
+      return false;
+    }
+    if (
       (a.rootRunIdsByThread[threadId] ?? null) !==
       (b.rootRunIdsByThread[threadId] ?? null)
     ) {
@@ -370,7 +376,9 @@ const mapArtifactsEqual = (
     // Artifacts are immutable once persisted; id + marker count + polyline
     // identity is enough to detect a different payload on the same slot.
     if (a[i].map.markers.length !== b[i].map.markers.length) return false;
-    if ((a[i].map.route?.polyline ?? null) !== (b[i].map.route?.polyline ?? null))
+    if (
+      (a[i].map.route?.polyline ?? null) !== (b[i].map.route?.polyline ?? null)
+    )
       return false;
   }
   return true;

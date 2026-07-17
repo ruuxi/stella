@@ -73,6 +73,7 @@ type AgentEventPayload = {
   parentAgentId?: string;
   result?: string;
   statusText?: string;
+  attemptGeneration?: number;
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;
@@ -661,6 +662,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   result: ev.result,
                   error: ev.error,
                   statusText: ev.statusText,
+                  attemptGeneration: ev.attemptGeneration,
                   groupKey: ev.groupKey,
                   groupLabel: ev.groupLabel,
                 },
@@ -1024,6 +1026,7 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   result: ev.result,
                   error: ev.error,
                   statusText: ev.statusText,
+                  attemptGeneration: ev.attemptGeneration,
                   groupKey: ev.groupKey,
                   groupLabel: ev.groupLabel,
                 },

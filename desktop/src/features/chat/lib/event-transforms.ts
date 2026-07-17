@@ -62,6 +62,9 @@ type AgentLifecycleGroupFields = {
    * call `send_input` on the same thread more than once. Timeline cards use
    * the matching persisted `agent-started` event id. */
   rootRunId?: string
+  /** Durable execution epoch for a reused thread. New lifecycle events carry
+   *  this on starts, progress, and terminal packets; legacy rows omit it. */
+  attemptGeneration?: number
   groupKey?: string
   groupLabel?: string
 }

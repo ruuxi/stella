@@ -23,16 +23,23 @@ const started = (
     isFollowUp?: boolean;
     agentType?: string;
     timestamp?: number;
+    id?: string;
+    attemptGeneration?: number;
+    rootRunId?: string;
   } = {},
 ): EventRecord =>
   ({
-    _id: `started:${agentId}:${opts.timestamp ?? 1}`,
+    _id: opts.id ?? `started:${agentId}:${opts.timestamp ?? 1}`,
     timestamp: opts.timestamp ?? 1,
     type: "agent-started",
     payload: {
       agentId,
       description,
       agentType: opts.agentType ?? "general",
+      ...(opts.attemptGeneration !== undefined
+        ? { attemptGeneration: opts.attemptGeneration }
+        : {}),
+      ...(opts.rootRunId ? { rootRunId: opts.rootRunId } : {}),
       ...(opts.statusText !== undefined ? { statusText: opts.statusText } : {}),
       ...(opts.isFollowUp ? { isFollowUp: true } : {}),
     },
@@ -136,6 +143,47 @@ describe("getBackgroundWork spawn vs send_input follow-up", () => {
       threadIds: ["manager-thread"],
       followUpThreadIds: ["manager-thread"],
       statusTexts: { "manager-thread": "Add a final verification pass" },
+    });
+  });
+
+  it("captures the durable attempt and root run of the exact start occurrence", () => {
+    const work = getBackgroundWork([
+      started("thread-a", "Resume exact work", {
+        timestamp: 500,
+        attemptGeneration: 7,
+        rootRunId: "root-run-7",
+        isFollowUp: true,
+      }),
+    ]);
+    expect(work?.attemptGenerationsByThread).toEqual({ "thread-a": 7 });
+    expect(work?.rootRunIdsByThread).toEqual({
+      "thread-a": "root-run-7",
+    });
+  });
+
+  it("selects the newer generation when same-millisecond event ids sort backward", () => {
+    const work = getBackgroundWork([
+      started("thread-a", "Current attempt", {
+        timestamp: 500,
+        id: "a-current-start",
+        attemptGeneration: 12,
+        rootRunId: "current-root",
+        isFollowUp: true,
+      }),
+      started("thread-a", "Prior attempt", {
+        timestamp: 500,
+        id: "z-prior-start",
+        attemptGeneration: 11,
+        rootRunId: "prior-root",
+      }),
+    ]);
+
+    expect(work?.startEventIdsByThread).toEqual({
+      "thread-a": "a-current-start",
+    });
+    expect(work?.attemptGenerationsByThread).toEqual({ "thread-a": 12 });
+    expect(work?.rootRunIdsByThread).toEqual({
+      "thread-a": "current-root",
     });
   });
 

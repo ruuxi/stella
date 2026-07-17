@@ -146,6 +146,7 @@ export function BackgroundWorkCard({
   followUpThreadIds,
   cardId,
   startEventIdsByThread,
+  attemptGenerationsByThread,
   rootRunIdsByThread,
   terminalEventIdsByThread,
   label,
@@ -174,6 +175,7 @@ export function BackgroundWorkCard({
   followUpThreadIds?: string[];
   cardId: string;
   startEventIdsByThread: Record<string, string>;
+  attemptGenerationsByThread?: Record<string, number>;
   rootRunIdsByThread?: Record<string, string>;
   terminalEventIdsByThread?: Record<string, string>;
   label?: string;
@@ -263,15 +265,27 @@ export function BackgroundWorkCard({
 
   const latestAuthoredMessage = useMemo(() => {
     let latest: { text: string; at: number } | undefined;
+    const superseded = new Set(supersededThreadIds ?? []);
     for (const threadId of threadIds) {
+      // A later `agent-started` owns the thread's current activity projection.
+      // Never let that resumed attempt rewrite this historical card.
+      if (superseded.has(threadId)) continue;
       const record = threadActivity.find(
         (entry) => entry.threadId === threadId,
       );
       const at = record?.assistantMessagesUpdatedAt ?? 0;
       const currentAttemptStartedAt = spawnedAtMs?.[threadId] ?? 0;
+      const cardAttempt = attemptGenerationsByThread?.[threadId];
+      const recordAttempt = record?.attemptGeneration;
+      const sameDurableAttempt =
+        cardAttempt === undefined || cardAttempt === recordAttempt;
+      const cardRootRunId = rootRunIdsByThread?.[threadId];
+      const sameRootRun = !cardRootRunId || cardRootRunId === record?.rootRunId;
       const text = record?.assistantMessages?.at(-1)?.trim();
       if (
         text &&
+        sameDurableAttempt &&
+        sameRootRun &&
         at >= currentAttemptStartedAt &&
         (!latest || at > latest.at)
       ) {
@@ -279,7 +293,14 @@ export function BackgroundWorkCard({
       }
     }
     return latest?.text;
-  }, [spawnedAtMs, threadActivity, threadIds]);
+  }, [
+    attemptGenerationsByThread,
+    rootRunIdsByThread,
+    spawnedAtMs,
+    supersededThreadIds,
+    threadActivity,
+    threadIds,
+  ]);
   if (threadIds.length === 0) return null;
   const title = latestAuthoredMessage ?? lifecycleTitle;
 

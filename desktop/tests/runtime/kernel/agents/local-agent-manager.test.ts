@@ -711,6 +711,7 @@ describe("LocalAgentManager Exec fs locking", () => {
       );
     expect(spawnStarted).toBeDefined();
     expect(spawnStarted?.isFollowUp).toBeUndefined();
+    expect(spawnStarted?.attemptGeneration).toBe(1);
 
     const resumedEvents = events.slice(eventOffset);
     // The send_input re-activation IS explicitly flagged a follow-up, and
@@ -723,6 +724,7 @@ describe("LocalAgentManager Exec fs locking", () => {
           agentId: task.threadId,
           statusText: "Resume current Nvidia web research",
           isFollowUp: true,
+          attemptGeneration: expect.any(Number),
         }),
         expect.objectContaining({
           type: "agent-completed",
@@ -735,6 +737,18 @@ describe("LocalAgentManager Exec fs locking", () => {
     expect(
       resumedEvents.every((event) => event.rootRunId === "root-current"),
     ).toBe(true);
+    const resumedStart = resumedEvents.find(
+      (event) => event.type === "agent-started",
+    );
+    const resumedTerminal = resumedEvents.find(
+      (event) => event.type === "agent-completed",
+    );
+    expect(resumedStart?.attemptGeneration).toBeGreaterThan(
+      spawnStarted?.attemptGeneration ?? 0,
+    );
+    expect(resumedTerminal?.attemptGeneration).toBe(
+      resumedStart?.attemptGeneration,
+    );
 
     // Renderer side: the follow-up's stream events maintain only the
     // ephemeral decoration (keyed by thread, rebound to the current run),

@@ -739,6 +739,7 @@ export type RuntimeAgentEventPayload = {
   parentAgentId?: string;
   result?: string;
   statusText?: string;
+  attemptGeneration?: number;
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;

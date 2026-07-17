@@ -603,6 +603,9 @@ export const AssistantMessageRow = memo(
               label={row.backgroundWork.label}
               cardId={row.backgroundWork.cardId}
               startEventIdsByThread={row.backgroundWork.startEventIdsByThread}
+              attemptGenerationsByThread={
+                row.backgroundWork.attemptGenerationsByThread
+              }
               rootRunIdsByThread={row.backgroundWork.rootRunIdsByThread}
               terminalEventIdsByThread={
                 row.backgroundWork.terminalEventIdsByThread

@@ -30,7 +30,9 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
               agentType: "general",
               description: "Inspect durable routing",
               status: "running",
-              startedAt: 2_000,
+              attemptGeneration: 2,
+              rootRunId: "root-attempt-2",
+              startedAt: 1_000,
               updatedAt: 3_000,
               assistantMessages: ["I traced the durable routing boundary."],
               assistantMessagesUpdatedAt: 3_000,
@@ -100,5 +102,52 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
       agentType: "general",
       title: "Inspect durable routing",
     });
+  });
+
+  it("never projects a resumed attempt's authored text onto its superseded card", async () => {
+    await act(async () => {
+      root.render(
+        <BackgroundWorkCard
+          threadIds={["agent-thread-1"]}
+          supersededThreadIds={["agent-thread-1"]}
+          spawnedAtMs={{ "agent-thread-1": 1_000 }}
+          descriptions={{ "agent-thread-1": "First attempt" }}
+          cardId="attempt-1-card"
+          startEventIdsByThread={{ "agent-thread-1": "start-attempt-1" }}
+          attemptGenerationsByThread={{ "agent-thread-1": 1 }}
+          rootRunIdsByThread={{ "agent-thread-1": "root-attempt-1" }}
+          conversationId="conversation-1"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("First attempt");
+    expect(container.textContent).not.toContain(
+      "I traced the durable routing boundary.",
+    );
+
+    await act(async () => {
+      root.render(
+        <BackgroundWorkCard
+          threadIds={["agent-thread-1"]}
+          spawnedAtMs={{ "agent-thread-1": 1_000 }}
+          descriptions={{ "agent-thread-1": "Resumed attempt" }}
+          cardId="attempt-2-card"
+          startEventIdsByThread={{ "agent-thread-1": "start-attempt-2" }}
+          attemptGenerationsByThread={{ "agent-thread-1": 2 }}
+          rootRunIdsByThread={{ "agent-thread-1": "root-attempt-2" }}
+          conversationId="conversation-1"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain(
+      "I traced the durable routing boundary.",
+    );
+    expect(container.textContent).toContain("Resumed attempt");
   });
 });

@@ -27,6 +27,7 @@ const started = (args: {
   isFollowUp?: boolean;
   groupKey?: string;
   groupLabel?: string;
+  attemptGeneration?: number;
 }): EventRecord =>
   event(args.id, args.at, "agent-started", {
     agentId: args.agentId,
@@ -34,6 +35,9 @@ const started = (args: {
     description: args.description,
     agentType: args.agentType ?? "general",
     statusText: args.statusText ?? args.description,
+    ...(args.attemptGeneration === undefined
+      ? {}
+      : { attemptGeneration: args.attemptGeneration }),
     ...(args.isFollowUp ? { isFollowUp: true } : {}),
     ...(args.groupKey ? { groupKey: args.groupKey } : {}),
     ...(args.groupLabel ? { groupLabel: args.groupLabel } : {}),
@@ -45,10 +49,14 @@ const completed = (args: {
   agentId: string;
   rootRunId: string;
   file?: string;
+  attemptGeneration?: number;
 }): EventRecord =>
   event(args.id, args.at, "agent-completed", {
     agentId: args.agentId,
     rootRunId: args.rootRunId,
+    ...(args.attemptGeneration === undefined
+      ? {}
+      : { attemptGeneration: args.attemptGeneration }),
     result: "Done",
     ...(args.file
       ? { producedFiles: [{ path: args.file, kind: { type: "add" } }] }
@@ -344,6 +352,100 @@ describe("spawn-anchored background task lifecycle", () => {
     });
     expect(index.startEventIdByLifecycleEventId.get("done-stop")).toBe(
       "start-stop",
+    );
+  });
+
+  it("binds equal-timestamp reversed-id terminals by durable attempt generation", () => {
+    const first = started({
+      id: "z-start-old",
+      at: 500,
+      agentId: "same-ms-thread",
+      rootRunId: "same-root",
+      description: "First attempt",
+      attemptGeneration: 11,
+    });
+    const firstDone = completed({
+      id: "a-terminal-old",
+      at: 500,
+      agentId: "same-ms-thread",
+      rootRunId: "same-root",
+      attemptGeneration: 11,
+    });
+    const resumed = started({
+      id: "a-start-current",
+      at: 500,
+      agentId: "same-ms-thread",
+      rootRunId: "same-root",
+      description: "Current attempt",
+      statusText: "Resume current attempt",
+      isFollowUp: true,
+      attemptGeneration: 12,
+    });
+    const resumedFailed = event("b-terminal-current", 500, "agent-failed", {
+      agentId: "same-ms-thread",
+      rootRunId: "same-root",
+      attemptGeneration: 12,
+      error: "current attempt failed",
+    });
+
+    // Reverse the durable reload input and choose ids whose lexical ordering
+    // would put the old terminal before its start and the old start after the
+    // resumed start. Generation must remain the ownership authority.
+    const index = buildBackgroundTaskLifecycleIndex([
+      resumedFailed,
+      resumed,
+      firstDone,
+      first,
+    ]);
+
+    expect(index.byStartEventId.get("z-start-old")).toMatchObject({
+      attemptGeneration: 11,
+      status: "completed",
+      terminalEventId: "a-terminal-old",
+    });
+    expect(index.byStartEventId.get("a-start-current")).toMatchObject({
+      attemptGeneration: 12,
+      status: "failed",
+      terminalEventId: "b-terminal-current",
+      errorText: "current attempt failed",
+    });
+    expect(index.startEventIdByLifecycleEventId.get("a-terminal-old")).toBe(
+      "z-start-old",
+    );
+    expect(index.startEventIdByLifecycleEventId.get("b-terminal-current")).toBe(
+      "a-start-current",
+    );
+  });
+
+  it("settles a visible Manager card from a later internal attempt generation", () => {
+    const visibleStart = started({
+      id: "manager-visible-start",
+      at: 900,
+      agentId: "manager-same-ms",
+      rootRunId: "manager-root",
+      description: "Coordinate the fleet",
+      agentType: "manager",
+      attemptGeneration: 3,
+    });
+    const consolidated = completed({
+      id: "manager-final",
+      at: 900,
+      agentId: "manager-same-ms",
+      rootRunId: "manager-root",
+      attemptGeneration: 7,
+    });
+
+    const { resolved, index } = resolveCard(
+      [visibleStart],
+      [consolidated, visibleStart],
+    );
+
+    expect(resolved.completedThreadIds).toEqual(["manager-same-ms"]);
+    expect(resolved.terminalEventIdsByThread["manager-same-ms"]).toBe(
+      "manager-final",
+    );
+    expect(index.startEventIdByLifecycleEventId.get("manager-final")).toBe(
+      "manager-visible-start",
     );
   });
 

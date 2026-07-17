@@ -344,6 +344,9 @@ export class RuntimeHostAdapter {
             ...(event.result ? { result: event.result } : {}),
             ...(event.error ? { error: event.error } : {}),
             ...(event.statusText ? { statusText: event.statusText } : {}),
+            ...(typeof event.attemptGeneration === "number"
+              ? { attemptGeneration: event.attemptGeneration }
+              : {}),
             ...(event.groupKey ? { groupKey: event.groupKey } : {}),
             ...(event.groupLabel ? { groupLabel: event.groupLabel } : {}),
           });
@@ -915,6 +918,9 @@ export class RuntimeHostAdapter {
               ...(event.result ? { result: event.result } : {}),
               ...(event.error ? { error: event.error } : {}),
               ...(event.statusText ? { statusText: event.statusText } : {}),
+              ...(typeof event.attemptGeneration === "number"
+                ? { attemptGeneration: event.attemptGeneration }
+                : {}),
               ...(event.groupKey ? { groupKey: event.groupKey } : {}),
               ...(event.groupLabel ? { groupLabel: event.groupLabel } : {}),
             });

@@ -317,6 +317,9 @@ const buildLifecycleEventPayload = (
         ...runFields,
         description: event.description,
         agentType: event.agentType,
+        ...(typeof event.attemptGeneration === "number"
+          ? { attemptGeneration: event.attemptGeneration }
+          : {}),
         ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
         ...(event.statusText ? { statusText: event.statusText } : {}),
         // Persist the spawn-vs-follow-up discriminator so the inline
@@ -333,6 +336,9 @@ const buildLifecycleEventPayload = (
       return {
         agentId: event.agentId,
         ...runFields,
+        ...(typeof event.attemptGeneration === "number"
+          ? { attemptGeneration: event.attemptGeneration }
+          : {}),
         result: event.result ?? "",
         ...(event.fileChanges?.length
           ? { fileChanges: event.fileChanges }
@@ -346,6 +352,9 @@ const buildLifecycleEventPayload = (
       return {
         agentId: event.agentId,
         ...runFields,
+        ...(typeof event.attemptGeneration === "number"
+          ? { attemptGeneration: event.attemptGeneration }
+          : {}),
         result: event.result ?? "",
         ...(event.description ? { description: event.description } : {}),
       };
@@ -354,6 +363,9 @@ const buildLifecycleEventPayload = (
       return {
         agentId: event.agentId,
         ...runFields,
+        ...(typeof event.attemptGeneration === "number"
+          ? { attemptGeneration: event.attemptGeneration }
+          : {}),
         ...(event.error ? { error: event.error } : {}),
         ...groupFields,
       };
@@ -361,6 +373,9 @@ const buildLifecycleEventPayload = (
       return {
         agentId: event.agentId,
         ...runFields,
+        ...(typeof event.attemptGeneration === "number"
+          ? { attemptGeneration: event.attemptGeneration }
+          : {}),
         statusText: event.statusText,
         ...(event.toolActivity ? { toolActivity: event.toolActivity } : {}),
         ...(event.description ? { description: event.description } : {}),

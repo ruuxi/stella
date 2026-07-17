@@ -322,6 +322,7 @@ type AgentEventPayload = {
   parentAgentId?: string;
   result?: string;
   statusText?: string;
+  attemptGeneration?: number;
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;
@@ -2317,6 +2318,7 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               result: ev.result,
               error: ev.error,
               statusText: ev.statusText,
+              attemptGeneration: ev.attemptGeneration,
               ...(ev.toolActivity ? { toolActivity: ev.toolActivity } : {}),
               ...(ev.groupKey ? { groupKey: ev.groupKey } : {}),
               ...(ev.groupLabel ? { groupLabel: ev.groupLabel } : {}),

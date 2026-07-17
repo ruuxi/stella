@@ -927,6 +927,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
           parentAgentId?: string;
           result?: string;
           statusText?: string;
+          attemptGeneration?: number;
           reasoningText?: string;
         }>;
       }>,
@@ -981,6 +982,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       parentAgentId?: string;
       result?: string;
       statusText?: string;
+      attemptGeneration?: number;
       reasoningText?: string;
     }>("agent:event"),
     onSelfModHmrState: onIpc<SelfModHmrState>("agent:selfModHmrState"),
