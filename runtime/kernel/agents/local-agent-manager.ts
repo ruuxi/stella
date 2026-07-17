@@ -849,6 +849,22 @@ export class LocalAgentManager implements AgentToolApi {
     return task.interruptedForFollowUp && task.status !== "canceled";
   }
 
+  private assignModelConfigSnapshotIfMissing(
+    task: RuntimeAgentRecord,
+    snapshot: AgentModelConfigSnapshot | undefined,
+  ): void {
+    // model_config_json is a nullable migration-added DB column, so Manager
+    // tasks created before that migration may legitimately resume without a
+    // snapshot. Backfill those tasks from the current Orchestrator options.
+    if (
+      task.agentType === AGENT_IDS.MANAGER &&
+      !task.modelConfigSnapshot &&
+      snapshot
+    ) {
+      task.modelConfigSnapshot = snapshot;
+    }
+  }
+
   private persistTask(task: RuntimeAgentRecord): void {
     this.opts.saveAgentRecord?.({
       threadId: task.threadId,
@@ -2507,13 +2523,10 @@ export class LocalAgentManager implements AgentToolApi {
         updateStatusText,
       );
       resumedTask.pendingStartIsManagerCoordination = isManagerEvent;
-      if (
-        resumedTask.agentType === AGENT_IDS.MANAGER &&
-        !resumedTask.modelConfigSnapshot &&
-        options?.modelConfigSnapshot
-      ) {
-        resumedTask.modelConfigSnapshot = options.modelConfigSnapshot;
-      }
+      this.assignModelConfigSnapshotIfMissing(
+        resumedTask,
+        options?.modelConfigSnapshot,
+      );
       if (rootRunId) {
         resumedTask.rootRunId = rootRunId;
       }
@@ -2552,13 +2565,10 @@ export class LocalAgentManager implements AgentToolApi {
     if (options?.parentAgentId) {
       task.parentAgentId = options.parentAgentId;
     }
-    if (
-      task.agentType === AGENT_IDS.MANAGER &&
-      !task.modelConfigSnapshot &&
-      options?.modelConfigSnapshot
-    ) {
-      task.modelConfigSnapshot = options.modelConfigSnapshot;
-    }
+    this.assignModelConfigSnapshotIfMissing(
+      task,
+      options?.modelConfigSnapshot,
+    );
     applyManagerTurnOrigin(task);
     if (task.waitingForManagedChildren && task.status === "pending") {
       task.toSubagentQueue.push(deliveredInput);
