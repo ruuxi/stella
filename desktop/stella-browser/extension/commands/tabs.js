@@ -254,12 +254,9 @@ export async function authorizeOwnerLease(command) {
   const issuedAt = command?.ownerLeaseIssuedAt;
 
   if (leaseId == null && issuedAt == null) {
-    if (current) {
-      throw new Error(
-        `Browser protocol mismatch for owner "${ownerId}": this command has no owner lease. Update Stella and the Stella Browser extension to 1.2.6 or newer.`,
-      );
-    }
-    return { ownerId, lease: null };
+    throw new Error(
+      `Browser protocol mismatch for owner "${ownerId}": this command has no owner lease. Update Stella and the Stella Browser extension to 1.2.6 or newer.`,
+    );
   }
   if (typeof leaseId !== "string" || !leaseId.trim()) {
     throw new Error("ownerLeaseId must be a non-empty string");

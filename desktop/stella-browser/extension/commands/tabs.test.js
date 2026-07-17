@@ -368,6 +368,17 @@ test('replacement lease fences stale cleanup from an older kernel', async () => 
   assert.deepEqual(listed.data.tabs.map((tab) => tab.tabId), [owned.data.tabId]);
 });
 
+test('protocol 2 owner commands always reject missing lease fields', async () => {
+  await assert.rejects(
+    authorizeOwnerLease({
+      id: 'legacy-owner-command',
+      action: 'close_owner',
+      ownerId: 'legacy-owner',
+    }),
+    /protocol mismatch.*no owner lease.*1\.2\.6/i,
+  );
+});
+
 test('in-flight tab close rechecks its lease after replacement', async () => {
   const firstLease = {
     id: 'in-flight-first',
