@@ -958,6 +958,44 @@ describe("ModelRuntime", () => {
     }
   });
 
+  it("drops a malformed cached catalog entry before it can override a builtin id", async () => {
+    const stellaDataDir = await makeTempDir();
+    const builtin = new ModelRuntime().getModels("xai")[0];
+    if (!builtin) throw new Error("Expected an xAI builtin model");
+    await writeFile(
+      path.join(stellaDataDir, "models-store.json"),
+      JSON.stringify({
+        xai: {
+          models: [
+            validRemoteCatalogModel({
+              id: builtin.id,
+              name: "Malformed Cached Override",
+              cost: { input: "NaN", output: 2, cacheRead: 0, cacheWrite: 0 },
+            }),
+          ],
+          checkedAt: Date.now(),
+        },
+      }),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const runtime = new ModelRuntime();
+      await runtime.initialize({ stellaDataDir, allowNetwork: false });
+
+      expect(runtime.getModel("xai", builtin.id)).toEqual(builtin);
+      expect(warn).toHaveBeenCalledWith(
+        "[stella:model-runtime] Dropping invalid remote catalog entry",
+        expect.objectContaining({
+          providerId: "xai",
+          source: "cache",
+          modelId: builtin.id,
+        }),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("drops and logs remote catalog entries missing api", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {

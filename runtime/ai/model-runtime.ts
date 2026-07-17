@@ -85,6 +85,38 @@ const cloneModel = (model: Model<Api>): Model<Api> => structuredClone(model);
 const modelMap = (models: readonly Model<Api>[]): Map<string, Model<Api>> =>
   new Map(models.map((model) => [model.id, cloneModel(model)]));
 
+const validateRemoteCatalogModels = (
+  providerId: string,
+  entries: readonly unknown[],
+  source: "cache" | "network",
+): Model<Api>[] => {
+  const models: Model<Api>[] = [];
+  for (const [entryIndex, entry] of entries.entries()) {
+    if (!isRemoteCatalogModel(entry)) {
+      const modelId =
+        entry &&
+        typeof entry === "object" &&
+        "id" in entry &&
+        typeof entry.id === "string"
+          ? entry.id
+          : undefined;
+      console.warn(
+        "[stella:model-runtime] Dropping invalid remote catalog entry",
+        {
+          providerId,
+          source,
+          entryIndex,
+          ...(modelId ? { modelId } : {}),
+          errors: getRemoteCatalogModelValidationErrors(entry),
+        },
+      );
+      continue;
+    }
+    models.push({ ...entry, provider: providerId });
+  }
+  return models;
+};
+
 export const mergeModelHeaders = (
   base: Record<string, string> | undefined,
   override: Record<string, string> | undefined,
@@ -296,15 +328,30 @@ export class ModelRuntime {
     try {
       const parsed = JSON.parse(
         fs.readFileSync(this.storePath, "utf8"),
-      ) as StoredCatalogs;
+      ) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return;
+      }
       for (const [providerId, entry] of Object.entries(parsed)) {
-        if (!entry || !Array.isArray(entry.models)) continue;
+        if (
+          !entry ||
+          typeof entry !== "object" ||
+          !("models" in entry) ||
+          !Array.isArray(entry.models)
+        ) {
+          continue;
+        }
+        const checkedAt =
+          "checkedAt" in entry && typeof entry.checkedAt === "number"
+            ? entry.checkedAt
+            : undefined;
         this.dynamicCatalogs.set(providerId, {
-          models: entry.models.map((model) => ({
-            ...model,
-            provider: providerId,
-          })),
-          checkedAt: entry.checkedAt,
+          models: validateRemoteCatalogModels(
+            providerId,
+            entry.models,
+            "cache",
+          ),
+          checkedAt,
         });
       }
     } catch {
@@ -533,29 +580,7 @@ export class ModelRuntime {
     if (!Array.isArray(entries)) {
       throw new Error(`Invalid model catalog for ${providerId}`);
     }
-    const models: Model<Api>[] = [];
-    for (const [entryIndex, entry] of entries.entries()) {
-      if (!isRemoteCatalogModel(entry)) {
-        const modelId =
-          entry &&
-          typeof entry === "object" &&
-          "id" in entry &&
-          typeof entry.id === "string"
-            ? entry.id
-            : undefined;
-        console.warn(
-          "[stella:model-runtime] Dropping invalid remote catalog entry",
-          {
-            providerId,
-            entryIndex,
-            ...(modelId ? { modelId } : {}),
-            errors: getRemoteCatalogModelValidationErrors(entry),
-          },
-        );
-        continue;
-      }
-      models.push({ ...entry, provider: providerId });
-    }
+    const models = validateRemoteCatalogModels(providerId, entries, "network");
     this.dynamicCatalogs.set(providerId, { models, checkedAt });
   }
 
