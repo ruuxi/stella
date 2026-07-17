@@ -19,9 +19,12 @@
  */
 import { useLayoutEffect, useState } from "react";
 import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
-import { Check, ChevronDown } from "@/ui/icons";
+import { Check, ChevronDown, MessageSquare } from "@/ui/icons";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
-import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
+import {
+  openAgentThreadTab,
+  openDisplayPayloadTab,
+} from "@/features/workspace-display/open-payload";
 import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
 import {
   basenameOf,
@@ -65,9 +68,11 @@ const FilePill = ({ entry }: { entry: ConversationFileEntry }) => {
 const CompletionSection = ({
   section,
   showHeader,
+  conversationId,
 }: {
   section: AgentCompletionSection;
   showHeader: boolean;
+  conversationId: string;
 }) => {
   const [expanded, setExpanded] = useState(false);
   const total = section.files.length;
@@ -89,6 +94,7 @@ const CompletionSection = ({
           <span className="agent-completion-card__section-title">
             {section.title}
           </span>
+          <ThreadChatButton section={section} conversationId={conversationId} />
         </div>
       ) : null}
       {total > 0 ? (
@@ -150,12 +156,39 @@ const CompletionSection = ({
   );
 };
 
+const ThreadChatButton = ({
+  section,
+  conversationId,
+}: {
+  section: AgentCompletionSection;
+  conversationId: string;
+}) => (
+  <button
+    type="button"
+    className="agent-completion-card__chat"
+    onClick={() =>
+      openAgentThreadTab({
+        threadId: section.agentId,
+        conversationId,
+        agentType: section.agentType ?? "Agent",
+        title: section.title,
+      })
+    }
+    aria-label={`Open read-only chat for ${section.title}`}
+    title="Open read-only chat"
+  >
+    <MessageSquare size={14} strokeWidth={1.8} aria-hidden="true" />
+  </button>
+);
+
 export function AgentCompletionCard({
   sections,
   cardId,
+  conversationId,
 }: {
   sections: AgentCompletionSection[];
   cardId?: string;
+  conversationId: string;
 }) {
   // The completion card usually replaces the (shorter) spawn card after the
   // run has settled — no stream text notify fires, so tell the scroll
@@ -201,6 +234,10 @@ export function AgentCompletionCard({
           <span className="agent-completion-card__title">
             {visible[0]!.title}
           </span>
+          <ThreadChatButton
+            section={visible[0]!}
+            conversationId={conversationId}
+          />
         </div>
       ) : null}
       {visible.map((section) => (
@@ -208,6 +245,7 @@ export function AgentCompletionCard({
           key={section.startEventId ?? section.agentId}
           section={section}
           showHeader={multi}
+          conversationId={conversationId}
         />
       ))}
     </div>

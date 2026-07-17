@@ -35,7 +35,7 @@ vi.mock("../../../src/shell/display/tab-content.tsx", () => ({
   MediaTabContent: () => null,
 }));
 
-const { payloadToTabSpec } = await import(
+const { createAgentThreadTabSpec, payloadToTabSpec } = await import(
   "../../../src/shell/display/payload-to-tab-spec"
 );
 const { getSelectedCanvasHtmlId } = await import(
@@ -43,6 +43,34 @@ const { getSelectedCanvasHtmlId } = await import(
 );
 
 describe("payloadToTabSpec", () => {
+  it("creates a stable exact-thread read-only chat tab", () => {
+    const spec = createAgentThreadTabSpec({
+      threadId: "manager-thread-7",
+      conversationId: "conversation-4",
+      agentType: "manager",
+      title: "Coordinate verification",
+    });
+    const element = spec.render() as {
+      props: { threadId: string; conversationId: string; agentType: string };
+    };
+
+    expect(spec).toMatchObject({
+      id: "agent-thread:manager-thread-7",
+      kind: "chat",
+      title: "Coordinate verification",
+      metadata: {
+        kind: "agent-thread",
+        threadId: "manager-thread-7",
+        conversationId: "conversation-4",
+      },
+    });
+    expect(element.props).toMatchObject({
+      threadId: "manager-thread-7",
+      conversationId: "conversation-4",
+      agentType: "manager",
+    });
+  });
+
   it("keeps docx office previews as office-document tabs", () => {
     const payload: DisplayPayload = {
       kind: "office",

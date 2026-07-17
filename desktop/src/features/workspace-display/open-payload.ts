@@ -9,6 +9,14 @@ import type { DisplayTabSpec, OpenTabOptions } from "./types";
 type WorkspaceDisplayPayloadAdapter = {
   payloadToTabSpec: (payload: DisplayTabPayload) => DisplayTabSpec;
   createSourceDiffTabSpec: () => DisplayTabSpec;
+  createAgentThreadTabSpec: (args: AgentThreadTabArgs) => DisplayTabSpec;
+};
+
+export type AgentThreadTabArgs = {
+  threadId: string;
+  conversationId: string;
+  agentType: string;
+  title: string;
 };
 
 let adapter: WorkspaceDisplayPayloadAdapter | null = null;
@@ -21,7 +29,9 @@ export const registerWorkspaceDisplayPayloadAdapter = (
 
 const getAdapter = (): WorkspaceDisplayPayloadAdapter => {
   if (!adapter) {
-    throw new Error("Workspace display payload adapter has not been registered.");
+    throw new Error(
+      "Workspace display payload adapter has not been registered.",
+    );
   }
   return adapter;
 };
@@ -36,6 +46,10 @@ export const openDisplayPayloadTab = (
   opts?: OpenTabOptions,
 ): void => {
   displayTabs.openTab(getAdapter().payloadToTabSpec(payload), opts);
+};
+
+export const openAgentThreadTab = (args: AgentThreadTabArgs): void => {
+  displayTabs.openTab(getAdapter().createAgentThreadTabSpec(args));
 };
 
 export const openSourceDiffBatch = (batch: SourceDiffBatch): void => {

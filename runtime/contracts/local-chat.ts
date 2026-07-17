@@ -75,6 +75,21 @@ export type ThreadActivityUpdatedPayload = {
   assistantUpdate?: ThreadActivityAssistantUpdate;
 };
 
+/** Bounded, read-only projection of one agent thread's persisted transcript. */
+export type AgentThreadMessageRecord = {
+  entryId?: string;
+  timestamp: number;
+  role: "user" | "assistant" | "toolResult" | "runtimeInternal";
+  content: string;
+  toolCallId?: string;
+  customMessage?: {
+    customType: string;
+    content: string | unknown[];
+    display: boolean;
+    eventId?: string;
+  };
+};
+
 /**
  * Snapshot of the renderer's ephemeral per-thread status decoration, mirrored
  * to the mobile bridge so the phone's activity pill gets the same mid-run

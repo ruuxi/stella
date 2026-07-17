@@ -20,9 +20,8 @@ import {
   CircleDot,
   AlertCircle,
   ChevronDown,
-  MessageSquarePlus,
+  MessageSquare,
 } from "@/ui/icons";
-import type { ChatContext } from "@/shared/types/electron";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import {
@@ -75,7 +74,10 @@ import {
   mergeAgentFileEvents,
 } from "@/features/workspace-display/agent-files";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
-import { openDisplayPayloadTab } from "@/features/workspace-display/open-payload";
+import {
+  openAgentThreadTab,
+  openDisplayPayloadTab,
+} from "@/features/workspace-display/open-payload";
 import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
 import { basenameOf } from "@/features/workspace-display/path-to-viewer";
 import {
@@ -263,23 +265,6 @@ function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
   }
 }
 
-/** Chip payload for referencing an activity thread from the composer. */
-const taskToActivityContext = (
-  task: TaskItem,
-): NonNullable<ChatContext["activity"]> => ({
-  id: task.id,
-  label: task.description.trim() || "Activity",
-  agentType: task.agentType,
-  status: task.status,
-  ...(task.runId ? { runId: task.runId } : {}),
-  ...(task.anchorTurnId ? { anchorTurnId: task.anchorTurnId } : {}),
-  startedAtMs: task.startedAtMs,
-  ...(typeof task.completedAtMs === "number"
-    ? { completedAtMs: task.completedAtMs }
-    : {}),
-  lastUpdatedAtMs: task.lastUpdatedAtMs,
-});
-
 const TaskRow = memo(function TaskRow({
   task,
   expanded,
@@ -294,7 +279,7 @@ const TaskRow = memo(function TaskRow({
   task: TaskItem;
   expanded: boolean;
   onToggle: (taskId: string, nextExpanded: boolean) => void;
-  /** Attach this activity as a composer context chip. */
+  /** Open this exact agent thread in the read-only workspace chat. */
   onSelect: (task: TaskItem) => void;
   files: ReadonlyArray<ConversationFileEntry>;
   onOpenFile: (entry: ConversationFileEntry) => void;
@@ -375,10 +360,10 @@ const TaskRow = memo(function TaskRow({
           type="button"
           className="chat-workspace-strip__task-attach"
           onClick={() => onSelect(task)}
-          aria-label={`Reference ${label || "activity"} in chat`}
-          title="Reference in chat"
+          aria-label={`Open read-only chat for ${label || "activity"}`}
+          title="Open read-only chat"
         >
-          <MessageSquarePlus size={14} strokeWidth={2} aria-hidden="true" />
+          <MessageSquare size={14} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>
       {/* Always mounted so both the user toggle and the first summary/file
@@ -1046,24 +1031,20 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     [onNavigate],
   );
 
-  // Attach the activity as a composer context chip (one at a time — the
-  // `activity` slot on ChatContext) so the thread can be referenced in the
-  // next message, then hand focus to the composer.
+  // Exact thread identity is the durable viewer key. Opening Activity chat
+  // never mutates composer context and never navigates the root transcript.
   const handleSelectTask = useCallback(
     (task: TaskItem) => {
-      chat.composer.setChatContext((prev) => ({
-        ...(prev ?? {
-          window: null,
-          browserUrl: null,
-          selectedText: null,
-          regionScreenshots: [],
-        }),
-        activity: taskToActivityContext(task),
-      }));
-      chat.composer.requestFocus?.();
+      if (!conversationId) return;
+      openAgentThreadTab({
+        threadId: task.id,
+        conversationId,
+        agentType: task.agentType,
+        title: task.description.trim() || task.agentType || "Agent thread",
+      });
       onNavigate?.();
     },
-    [chat.composer, onNavigate],
+    [conversationId, onNavigate],
   );
 
   if (!hasActivity && !hasFiles && !hasSchedule && !hasStore) {

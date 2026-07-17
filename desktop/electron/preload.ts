@@ -2212,6 +2212,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     }) => ipcRenderer.invoke("localChat:listActivity", payload),
     listThreadActivity: (payload: { conversationId: string }) =>
       ipcRenderer.invoke("localChat:listThreadActivity", payload),
+    listAgentThreadMessages: (payload: { threadId: string; limit?: number }) =>
+      ipcRenderer.invoke("localChat:listAgentThreadMessages", payload),
     listFiles: (payload: {
       conversationId: string;
       limit?: number;

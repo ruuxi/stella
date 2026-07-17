@@ -1,0 +1,122 @@
+.agent-thread-chat {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  color: var(--text-base);
+  background: var(--surface-base);
+}
+
+.agent-thread-chat__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.agent-thread-chat__eyebrow,
+.agent-thread-chat__agent,
+.agent-thread-chat__role,
+.agent-thread-chat__readonly {
+  font-size: var(--font-size-xs);
+  color: var(--text-weak);
+}
+
+.agent-thread-chat__agent {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-thread-chat__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.agent-thread-chat__messages {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-thread-chat__message {
+  min-width: 0;
+}
+
+.agent-thread-chat__role {
+  display: block;
+  margin: 0 0 4px 2px;
+}
+
+.agent-thread-chat__body {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.agent-thread-chat__message[data-role="assistant"] .agent-thread-chat__body {
+  border-color: transparent;
+  background: transparent;
+  padding-inline: 2px;
+  white-space: normal;
+}
+
+.agent-thread-chat__message[data-role="toolResult"] .agent-thread-chat__body,
+.agent-thread-chat__message[data-role="runtimeInternal"]
+  .agent-thread-chat__body {
+  color: var(--text-weak);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+}
+
+.agent-thread-chat__state {
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-weak);
+  text-align: center;
+}
+
+.agent-thread-chat__state button {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 9px;
+  color: var(--text-base);
+  background: var(--card);
+}
+
+.agent-thread-chat__readonly {
+  flex: 0 0 auto;
+  padding: 9px 16px 11px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .agent-thread-chat__scroll {
+    padding: 12px;
+  }
+
+  .agent-thread-chat__readonly {
+    text-align: left;
+  }
+}

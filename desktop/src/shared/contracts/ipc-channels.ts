@@ -68,8 +68,7 @@ export const IPC_REGION_CLICK = "region:click" as const;
 export const IPC_REGION_GET_WINDOW_CAPTURE = "region:getWindowCapture" as const;
 export const IPC_REGION_CANCEL = "region:cancel" as const;
 export const IPC_CAPTURE_PAGE_DATA_URL = "capture:pageDataUrl" as const;
-export const IPC_CAPTURE_REGION_FAILED =
-  "capture:regionCaptureFailed" as const;
+export const IPC_CAPTURE_REGION_FAILED = "capture:regionCaptureFailed" as const;
 
 // ── Radial ──────────────────────────────────────────────────────────────────
 
@@ -382,8 +381,7 @@ export const IPC_SCHEDULE_UPDATED = "schedule:updated" as const;
 
 export const IPC_STORE_READ_FEATURE_SNAPSHOT =
   "store:readFeatureSnapshot" as const;
-export const IPC_STORE_LIST_FEATURE_ROSTER =
-  "store:listFeatureRoster" as const;
+export const IPC_STORE_LIST_FEATURE_ROSTER = "store:listFeatureRoster" as const;
 export const IPC_STORE_LIST_PACKAGES = "store:listPackages" as const;
 export const IPC_STORE_GET_PACKAGE = "store:getPackage" as const;
 export const IPC_STORE_LIST_RELEASES = "store:listReleases" as const;
@@ -426,6 +424,8 @@ export const IPC_LOCAL_CHAT_LIST_MESSAGES_BEFORE =
 export const IPC_LOCAL_CHAT_LIST_ACTIVITY = "localChat:listActivity" as const;
 export const IPC_LOCAL_CHAT_LIST_THREAD_ACTIVITY =
   "localChat:listThreadActivity" as const;
+export const IPC_LOCAL_CHAT_LIST_AGENT_THREAD_MESSAGES =
+  "localChat:listAgentThreadMessages" as const;
 export const IPC_LOCAL_CHAT_LIST_FILES = "localChat:listFiles" as const;
 export const IPC_LOCAL_CHAT_GET_EVENT_COUNT =
   "localChat:getEventCount" as const;

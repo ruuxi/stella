@@ -34,7 +34,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
-import { MessageSquarePlus, Send, X } from "@/ui/icons";
+import { Check, MessageSquare, Send, X } from "@/ui/icons";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import type { TaskToolActivity } from "../../../../runtime/contracts/agent-runtime.js";
 import { friendlyInlineToolStatus } from "@/app/chat/friendly-tool-status";
@@ -42,6 +42,8 @@ import {
   getTaskDecoration,
   subscribeTaskDecoration,
 } from "@/features/chat/streaming/task-decoration-store";
+import { useThreadActivity } from "@/features/chat/hooks/use-thread-activity";
+import { openAgentThreadTab } from "@/features/workspace-display/open-payload";
 import "./background-work-card.css";
 
 /** A thread with no completion signal that was spawned longer ago than this
@@ -147,6 +149,7 @@ export function BackgroundWorkCard({
   rootRunIdsByThread,
   terminalEventIdsByThread,
   label,
+  conversationId,
 }: {
   threadIds: string[];
   /** Reload-safe subset whose `agent-completed` event has landed — used to
@@ -174,6 +177,7 @@ export function BackgroundWorkCard({
   rootRunIdsByThread?: Record<string, string>;
   terminalEventIdsByThread?: Record<string, string>;
   label?: string;
+  conversationId: string;
 }) {
   // Bumped by the stale-deadline timer so the working check re-evaluates its
   // time-based branch on its own rather than waiting for an unrelated render.
@@ -216,6 +220,7 @@ export function BackgroundWorkCard({
     ),
     () => (liveThreadId ? getTaskDecoration(liveThreadId) : undefined),
   );
+  const { records: threadActivity } = useThreadActivity(conversationId);
 
   // The card mounting grows its row outside the streaming-text notify path
   // (a spawn lands as a tool event, not a text chunk) — tell the scroll
@@ -235,8 +240,6 @@ export function BackgroundWorkCard({
     return () => window.clearTimeout(timer);
   }, [nextStaleDeadlineMs]);
 
-  if (threadIds.length === 0) return null;
-
   const resolved = resolveDescriptions(threadIds, descriptions ?? {});
   const multi = threadIds.length > 1;
 
@@ -252,11 +255,33 @@ export function BackgroundWorkCard({
 
   // Several threads in one turn collapse to a plain count instead of cycling
   // through descriptions — a single task shows its own description.
-  const title = isFollowUp
+  const lifecycleTitle = isFollowUp
     ? statusTexts?.[followUpId] || resolved[0] || label?.trim() || "Follow-up"
     : multi
       ? label?.trim() || resolved[0] || `${threadIds.length} tasks`
       : resolved[0] || label?.trim() || "Background work";
+
+  const latestAuthoredMessage = useMemo(() => {
+    let latest: { text: string; at: number } | undefined;
+    for (const threadId of threadIds) {
+      const record = threadActivity.find(
+        (entry) => entry.threadId === threadId,
+      );
+      const at = record?.assistantMessagesUpdatedAt ?? 0;
+      const currentAttemptStartedAt = spawnedAtMs?.[threadId] ?? 0;
+      const text = record?.assistantMessages?.at(-1)?.trim();
+      if (
+        text &&
+        at >= currentAttemptStartedAt &&
+        (!latest || at > latest.at)
+      ) {
+        latest = { text, at };
+      }
+    }
+    return latest?.text;
+  }, [spawnedAtMs, threadActivity, threadIds]);
+  if (threadIds.length === 0) return null;
+  const title = latestAuthoredMessage ?? lifecycleTitle;
 
   // "Paused" only replaces the ACTIVE presentation: while any covered thread
   // is still genuinely working the card keeps its shimmer + normal subtitle,
@@ -271,17 +296,22 @@ export function BackgroundWorkCard({
   const toolActivity = !multi
     ? (liveDecoration?.toolActivity ?? toolActivities?.[threadIds[0]])
     : undefined;
-  const subtitle = failed
+  const lifecycleSubtitle = failed
     ? "Failed"
     : showPaused
       ? "Paused"
       : working && toolActivity
         ? friendlyInlineToolStatus(toolActivity)
-      : working && progressText && progressText !== title
-        ? progressText
-        : isFollowUp
-          ? "Follow-up sent"
-          : "Started in background";
+        : working && progressText && progressText !== title
+          ? progressText
+          : isFollowUp
+            ? "Follow-up sent"
+            : "Started in background";
+  const subtitle = latestAuthoredMessage
+    ? working
+      ? `Working · ${lifecycleTitle}`
+      : lifecycleTitle
+    : lifecycleSubtitle;
   const startEventIds = threadIds
     .map((id) => startEventIdsByThread[id])
     .filter(Boolean);
@@ -308,7 +338,7 @@ export function BackgroundWorkCard({
         {failed ? (
           <X size={16} strokeWidth={1.75} />
         ) : isFollowUp ? (
-          <MessageSquarePlus size={16} strokeWidth={1.75} />
+          <Check size={16} strokeWidth={1.75} />
         ) : (
           <Send size={16} strokeWidth={1.75} />
         )}
@@ -322,6 +352,32 @@ export function BackgroundWorkCard({
           )}
         </span>
         <span className="background-work-card__subtitle">{subtitle}</span>
+      </span>
+      <span className="background-work-card__actions">
+        {threadIds.map((threadId) => (
+          <button
+            key={threadId}
+            type="button"
+            className="background-work-card__chat"
+            onClick={() =>
+              openAgentThreadTab({
+                threadId,
+                conversationId,
+                agentType:
+                  threadActivity.find((record) => record.threadId === threadId)
+                    ?.agentType ?? "Agent",
+                title:
+                  descriptions?.[threadId]?.trim() ||
+                  label?.trim() ||
+                  "Agent thread",
+              })
+            }
+            aria-label={`Open read-only chat for ${descriptions?.[threadId]?.trim() || "agent"}`}
+            title="Open read-only chat"
+          >
+            <MessageSquare size={14} strokeWidth={1.8} aria-hidden="true" />
+          </button>
+        ))}
       </span>
     </div>
   );

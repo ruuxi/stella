@@ -160,7 +160,9 @@ export class LocalChatHistoryService {
   }
 
   private open(): void {
-    const db = openNodeSqliteDatabase(getDesktopDatabasePath(this.stellaAppDir));
+    const db = openNodeSqliteDatabase(
+      getDesktopDatabasePath(this.stellaAppDir),
+    );
     initializeDesktopDatabase(db);
     this.db = db;
     this.store = new SessionStore(db);
@@ -262,12 +264,14 @@ export class LocalChatHistoryService {
     afterId: string;
     maxVisibleMessages?: number;
   }): LocalChatMessageWindow {
-    const { messages, visibleMessageCount } =
-      this.getStore().listMessagesAfter(args.conversationId, {
+    const { messages, visibleMessageCount } = this.getStore().listMessagesAfter(
+      args.conversationId,
+      {
         afterTimestampMs: args.afterTimestampMs,
         afterId: args.afterId,
         maxVisibleMessages: args.maxVisibleMessages,
-      });
+      },
+    );
     return { messages, visibleMessageCount };
   }
 
@@ -284,10 +288,26 @@ export class LocalChatHistoryService {
     });
   }
 
-  listThreadActivity(args: {
-    conversationId: string;
-  }): ThreadActivityRecord[] {
+  listThreadActivity(args: { conversationId: string }): ThreadActivityRecord[] {
     return this.getStore().listThreadActivity(args.conversationId);
+  }
+
+  listAgentThreadMessages(args: { threadId: string; limit?: number }) {
+    const threadId = args.threadId.trim();
+    if (!threadId) throw new Error("threadId is required.");
+    const limit = Math.min(300, Math.max(1, Math.floor(args.limit ?? 200)));
+    return this.getStore()
+      .loadThreadMessages(threadId, limit)
+      .map((message) => ({
+        ...(message.entryId ? { entryId: message.entryId } : {}),
+        timestamp: message.timestamp,
+        role: message.role,
+        content: message.content,
+        ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
+        ...(message.customMessage
+          ? { customMessage: message.customMessage }
+          : {}),
+      }));
   }
 
   listFiles(args: {
@@ -321,7 +341,11 @@ export class LocalChatHistoryService {
     eventId: string;
     type?: string;
   }): boolean {
-    return this.getStore().hasEvent(args.conversationId, args.eventId, args.type);
+    return this.getStore().hasEvent(
+      args.conversationId,
+      args.eventId,
+      args.type,
+    );
   }
 
   hasEventId(args: { eventId: string; type?: string }): boolean {
@@ -417,9 +441,9 @@ export class LocalChatHistoryService {
    * Progress ticks are no longer persisted as message rows, so this mirror is
    * the only bridge-side source of a running task's current statusText.
    */
-  setTaskDecoration(args: {
-    statusTextByAgentId: Record<string, string>;
-  }): { ok: true } {
+  setTaskDecoration(args: { statusTextByAgentId: Record<string, string> }): {
+    ok: true;
+  } {
     const next = new Map<string, string>();
     for (const [rawAgentId, rawText] of Object.entries(
       args.statusTextByAgentId ?? {},

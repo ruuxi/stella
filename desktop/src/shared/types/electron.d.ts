@@ -10,6 +10,7 @@ import type { UiState, WindowMode } from "./ui";
 import type { Theme } from "@/shared/theme/themes/types";
 import type { AgentStreamEvent } from "../../../../runtime/contracts/agent-stream.js";
 import type {
+  AgentThreadMessageRecord,
   EventRecord,
   LocalChatUpdatedPayload,
   ThreadActivityRecord,
@@ -1591,6 +1592,11 @@ export type ElectronLocalChatApi = {
   listThreadActivity: (payload: {
     conversationId: string;
   }) => Promise<ThreadActivityRecord[]>;
+  /** Exact persisted transcript for a background-agent thread. Read-only. */
+  listAgentThreadMessages: (payload: {
+    threadId: string;
+    limit?: number;
+  }) => Promise<AgentThreadMessageRecord[]>;
   listFiles: (payload: {
     conversationId: string;
     limit?: number;

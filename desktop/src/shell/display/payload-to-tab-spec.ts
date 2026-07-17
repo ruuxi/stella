@@ -28,6 +28,7 @@ import {
   TrashTabContent,
 } from "./tab-content";
 import { CanvasTabContent } from "./canvas-tab/CanvasTabContent";
+import { AgentThreadChatTab } from "./AgentThreadChatTab";
 import {
   addCanvasHtmlItem,
   setSelectedCanvasHtmlId,
@@ -35,7 +36,10 @@ import {
 import type { DisplayTabSpec } from "@/features/workspace-display/types";
 import { kindForPath } from "@/features/workspace-display/path-to-viewer";
 import { SOURCE_DIFF_TAB_ID } from "@/features/workspace-display/source-diff-batches";
-import { registerWorkspaceDisplayPayloadAdapter } from "@/features/workspace-display/open-payload";
+import {
+  registerWorkspaceDisplayPayloadAdapter,
+  type AgentThreadTabArgs,
+} from "@/features/workspace-display/open-payload";
 
 export const CANVAS_HTML_TAB_ID = "canvas:html";
 
@@ -86,7 +90,9 @@ const loadGeneratedMediaItems = (): GeneratedMediaItem[] => {
       uiState.getItem(GENERATED_MEDIA_ITEMS_KEY) || "[]",
     );
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isGeneratedMediaItem).slice(-GENERATED_MEDIA_ITEMS_CAP);
+    return parsed
+      .filter(isGeneratedMediaItem)
+      .slice(-GENERATED_MEDIA_ITEMS_CAP);
   } catch {
     return [];
   }
@@ -364,7 +370,28 @@ export const payloadToTabSpec = (
   }
 };
 
+export const createAgentThreadTabSpec = (
+  args: AgentThreadTabArgs,
+): DisplayTabSpec => ({
+  id: `agent-thread:${args.threadId}`,
+  kind: "chat",
+  title: args.title,
+  tooltip: `${args.agentType} · read-only`,
+  metadata: {
+    kind: "agent-thread",
+    threadId: args.threadId,
+    conversationId: args.conversationId,
+  },
+  render: () =>
+    createElement(AgentThreadChatTab, {
+      threadId: args.threadId,
+      conversationId: args.conversationId,
+      agentType: args.agentType,
+    }),
+});
+
 registerWorkspaceDisplayPayloadAdapter({
   payloadToTabSpec,
   createSourceDiffTabSpec,
+  createAgentThreadTabSpec,
 });

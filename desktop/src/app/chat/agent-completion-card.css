@@ -43,11 +43,34 @@
 }
 
 .agent-completion-card__title {
+  flex: 1 1 auto;
   font-weight: var(--weight-medium);
   color: var(--text-strong);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.agent-completion-card__chat {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 7px;
+  color: var(--text-weak);
+  background: transparent;
+  cursor: default;
+}
+
+.agent-completion-card__chat:hover,
+.agent-completion-card__chat:focus-visible {
+  outline: none;
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
 /* Fileless completion: a compact, muted result excerpt stands in for the
@@ -104,7 +127,9 @@
 /* Bold = a modest weight bump WITHIN the muted tone, not a jump back to
    full-contrast foreground. `[data-streamdown="strong"]` is what actually
    renders; `strong`/`b` kept for raw-HTML / future renderer output. */
-.agent-completion-card__summary .markdown :is(strong, b, [data-streamdown="strong"]) {
+.agent-completion-card__summary
+  .markdown
+  :is(strong, b, [data-streamdown="strong"]) {
   color: var(--text-weak);
   font-weight: var(--weight-medium);
 }
@@ -127,7 +152,9 @@
    `--surface-inset`, slightly smaller so mono glyphs don't shout. Explicit
    color/size (not `inherit`/em) so a host-level hijack of the markdown
    root can't re-brighten the chips. */
-.agent-completion-card__summary .markdown :is(:not(pre) > code, [data-streamdown="inline-code"]) {
+.agent-completion-card__summary
+  .markdown
+  :is(:not(pre) > code, [data-streamdown="inline-code"]) {
   color: var(--text-weak);
   font-weight: var(--weight-regular);
   font-size: var(--font-size-xs);
@@ -190,6 +217,7 @@
 }
 
 .agent-completion-card__section-title {
+  flex: 1 1 auto;
   font-weight: var(--weight-medium);
   color: var(--text-strong);
   font-size: var(--font-size-sm);

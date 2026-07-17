@@ -41,6 +41,7 @@ import { isDeclaredOutputPath } from "@/features/workspace-display/path-to-viewe
  *  own header + own pills. */
 export type AgentCompletionSection = {
   agentId: string;
+  agentType?: string;
   title: string;
   /** Canonical lifecycle/card diagnostics. Optional for legacy callers that
    * derive a loose section without a matching start event. */
@@ -312,6 +313,7 @@ export function buildAgentCompletionSections(
     const summary = summaryByAgent.get(agentId);
     sections.push({
       agentId,
+      ...(meta?.agentType ? { agentType: meta.agentType } : {}),
       title,
       completedAtMs: completedAtByAgent.get(agentId) ?? 0,
       ...(completionEventIdByAgent.get(agentId)

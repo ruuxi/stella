@@ -607,10 +607,14 @@ export const AssistantMessageRow = memo(
               terminalEventIdsByThread={
                 row.backgroundWork.terminalEventIdsByThread
               }
+              conversationId={conversationId ?? ""}
             />
           ) : null}
           {hasAgentCompletion && row.agentCompletion && (
-            <AgentCompletionCard sections={row.agentCompletion.sections} />
+            <AgentCompletionCard
+              sections={row.agentCompletion.sections}
+              conversationId={conversationId ?? ""}
+            />
           )}
           {hasWebSearchResults && row.webSearchResults && (
             <WebSearchResultsStrip results={row.webSearchResults} />
