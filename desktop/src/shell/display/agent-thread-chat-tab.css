@@ -20,8 +20,7 @@
 
 .agent-thread-chat__eyebrow,
 .agent-thread-chat__agent,
-.agent-thread-chat__role,
-.agent-thread-chat__readonly {
+.agent-thread-chat__role {
   font-size: var(--font-size-xs);
   color: var(--text-weak);
 }
@@ -34,10 +33,64 @@
 }
 
 .agent-thread-chat__scroll {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 16px;
+}
+
+.agent-thread-chat__refresh-error {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-base);
+  background: color-mix(in oklch, var(--destructive) 7%, var(--surface-base));
+  font-size: var(--font-size-xs);
+}
+
+.agent-thread-chat__refresh-error span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-thread-chat__refresh-error button,
+.agent-thread-chat__new-messages {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-base);
+  background: var(--card);
+  cursor: default;
+}
+
+.agent-thread-chat__refresh-error button {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+}
+
+.agent-thread-chat__refresh-error button:hover,
+.agent-thread-chat__refresh-error button:focus-visible,
+.agent-thread-chat__new-messages:hover,
+.agent-thread-chat__new-messages:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklch, var(--foreground) 22%, var(--border));
+  background: color-mix(in oklch, var(--foreground) 5%, var(--card));
+}
+
+.agent-thread-chat__refresh-error button:focus-visible,
+.agent-thread-chat__new-messages:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--surface-base),
+    0 0 0 4px var(--ring);
+}
+
+.agent-thread-chat__refresh-error button:disabled {
+  opacity: 0.55;
 }
 
 .agent-thread-chat__messages {
@@ -48,6 +101,18 @@
   margin: 0 auto;
   padding: 0;
   list-style: none;
+}
+
+.agent-thread-chat__new-messages {
+  position: sticky;
+  bottom: 2px;
+  display: block;
+  min-height: 32px;
+  margin: 12px auto 0;
+  padding: 6px 12px;
+  box-shadow: var(--shadow-sm);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .agent-thread-chat__message {
@@ -104,19 +169,20 @@
   background: var(--card);
 }
 
-.agent-thread-chat__readonly {
-  flex: 0 0 auto;
-  padding: 9px 16px 11px;
-  border-top: 1px solid var(--border);
-  text-align: center;
+.agent-thread-chat__announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (max-width: 560px) {
   .agent-thread-chat__scroll {
     padding: 12px;
-  }
-
-  .agent-thread-chat__readonly {
-    text-align: left;
   }
 }
