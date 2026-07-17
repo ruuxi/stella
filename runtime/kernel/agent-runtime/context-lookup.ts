@@ -70,13 +70,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const LIVE_STATUS_WINDOW_MS = DAY_MS;
 const LIVE_STATUS_MAX_THREADS = 60;
 
-/** Latest live progress phrases surfaced per ACTIVE thread. */
-const MAX_LIVE_PROGRESS_SUMMARIES = 3;
+/** Latest agent-authored updates surfaced per ACTIVE thread. */
+const MAX_LIVE_AGENT_MESSAGES = 3;
 
 type ContextLookupStore = Pick<
   RuntimeStore,
   | "listThreadsForRecallIndex"
-  | "listAgentProgressSummaries"
+  | "listAgentAssistantMessages"
   | "searchThreads"
   | "searchTranscripts"
   | "listTranscriptNeighbors"
@@ -95,7 +95,7 @@ const RECALL_SEARCH_THREADS_DESCRIPTION = `Keyword-search every delegated agent 
 const RECALL_PROMPT_SHARED_GUIDANCE = [
   "THE CONTEXT BELOW WAS PRE-SEEDED. # Memory Search Results, # Agent Thread Search Results, and # Transcript Search Results were already run from the lookup's search terms before you started — treat them as your first search round, and answer directly from them when they suffice. They are ONE keyword angle, though: a miss there is not proof of absence.",
   "",
-  "For any question about work, a task, or a thread's status ('is X still running?', 'did it crash?', 'what did the Y agent do?'): candidates live in # Agent Thread Search Results (matched threads, newest first, each with last-active date/time and final result/error excerpts) and # Live Thread Status (the threads executing a turn RIGHT NOW, with timestamped live-progress phrases). Any thread not in the live tail is paused (idle but resumable); there is no 'dead' state. Match candidates on meaning, not exact wording, and OPEN YOUR BRIEF BY QUOTING the candidate thread_id(s), then answer from the entries, the live tail, and the current time (e.g. 'thread X is active; as of 3:04 PM it was searching documentation for rate limits'). Quote the error excerpt when a run errored. Do not guess at status. If the pre-seeded thread results miss, run search_threads with different concrete terms before concluding the work doesn't exist.",
+  "For any question about work, a task, or a thread's status ('is X still running?', 'did it crash?', 'what did the Y agent do?'): candidates live in # Agent Thread Search Results (matched threads, newest first, each with last-active date/time and final result/error excerpts) and # Live Thread Status (the threads executing a turn RIGHT NOW, with recent agent-authored assistant messages). Any thread not in the live tail is paused (idle but resumable); there is no 'dead' state. Match candidates on meaning, not exact wording, and OPEN YOUR BRIEF BY QUOTING the candidate thread_id(s), then answer from the entries, the live tail, and the current time. Quote the error excerpt when a run errored. Do not guess at status. If the pre-seeded thread results miss, run search_threads with different concrete terms before concluding the work doesn't exist.",
   "",
   'Transcript hits are things actually said in chat — dated snippets in chronological order; these answer episodic questions ("did I ever mention X", "where did we go") that never became a task or memory note. The most relevant hits include a \'surrounding exchange\' — the messages sent right before/after. Treat those exchanges as PRIMARY evidence and reconstruct what happened from them: a user asking where to go, getting an address, then sending en-route messages means they took that trip at that time, even though no message states it outright. Later retellings are NOT evidence of absence — especially Stella\'s own earlier "I have no record of that" replies, which may be the exact failure this lookup exists to fix; when primary messages imply the event, trust them over any later claim that nothing was recorded. For "first/last time X happened" questions: enumerate EVERY dated candidate event you can establish from the hits, then answer with the earliest/latest — never skip an older episode because a newer one is more vividly confirmed; include the enumeration in the brief so the orchestrator can see the timeline.',
   "",
@@ -548,14 +548,12 @@ const formatClockTime = (timestamp: number): string =>
   });
 
 /**
- * Live-progress lines for one thread: the latest timestamped progress
- * phrases the UI's progress-summary engine generated for the agent, read
- * from the persisted per-agent ring buffer. Only rendered for threads that
- * are ACTIVE right now — a paused/finished thread's last phrases describe
- * work that already stopped and would read as live status.
+ * Live-update lines for one thread: recent assistant text authored by the
+ * agent itself and already persisted in its runtime transcript. Only rendered
+ * for threads that are ACTIVE right now.
  */
-const formatThreadLiveProgressLines = (
-  store: Pick<ContextLookupStore, "listAgentProgressSummaries">,
+const formatThreadLiveUpdateLines = (
+  store: Pick<ContextLookupStore, "listAgentAssistantMessages">,
   thread: { threadId: string; agentStatus?: unknown },
 ): string[] => {
   if (
@@ -567,16 +565,16 @@ const formatThreadLiveProgressLines = (
   }
   let entries: Array<{ text: string; atMs: number }>;
   try {
-    entries = store.listAgentProgressSummaries(
+    entries = store.listAgentAssistantMessages(
       thread.threadId,
-      MAX_LIVE_PROGRESS_SUMMARIES,
+      MAX_LIVE_AGENT_MESSAGES,
     );
   } catch {
     return [];
   }
   if (entries.length === 0) return [];
   return [
-    "  live progress (newest last):",
+    "  agent updates (newest last):",
     ...entries.map(
       (entry) =>
         `    - [${formatClockTime(entry.atMs)}] ${sanitizeToolVisibleText(
@@ -612,7 +610,7 @@ const collapseWhitespace = (value: string): string =>
 export const formatThreadSearchResults = (
   store: Pick<
     ContextLookupStore,
-    "searchThreads" | "listAgentProgressSummaries" | "listThreadResultExcerpts"
+    "searchThreads" | "listAgentAssistantMessages" | "listThreadResultExcerpts"
   >,
   conversationId: string,
   query: string | undefined,
@@ -682,7 +680,7 @@ export const formatThreadSearchResults = (
         `  error: ${sanitizeToolVisibleText(collapseWhitespace(excerpt.errorExcerpt))}`,
       );
     }
-    lines.push(...formatThreadLiveProgressLines(store, thread));
+    lines.push(...formatThreadLiveUpdateLines(store, thread));
     return lines.join("\n");
   });
   return ["[newest → oldest by last activity]", ...rendered].join("\n");
@@ -833,13 +831,13 @@ export const formatTranscriptSearchResults = (
 
 /**
  * The volatile "# Live Thread Status" tail: only the threads executing a
- * turn right now, with their latest timestamped progress phrases. Any other
+ * turn right now, with their latest agent-authored assistant messages. Any other
  * thread is paused (idle but resumable).
  */
 export const formatLiveThreadStatus = (
   store: Pick<
     ContextLookupStore,
-    "listThreadsForRecallIndex" | "listAgentProgressSummaries"
+    "listThreadsForRecallIndex" | "listAgentAssistantMessages"
   >,
   now = Date.now(),
 ): string => {
@@ -857,7 +855,7 @@ export const formatLiveThreadStatus = (
     .map((thread) =>
       [
         `- ${thread.threadId} (${formatRuntimeThreadStatusSuffix(thread, now)})`,
-        ...formatThreadLiveProgressLines(store, thread),
+        ...formatThreadLiveUpdateLines(store, thread),
       ].join("\n"),
     )
     .join("\n");
@@ -920,7 +918,7 @@ export const buildContextLookupUserPrompt = async (args: {
     transcriptSearchResults,
     "",
     "# Current Time",
-    // Anchors the whole lookup to "now": thread status, live-progress
+    // Anchors the whole lookup to "now": thread status, live agent updates,
     // timestamps, and recency phrases are all relative to this moment.
     formatDateTimeReminder(Date.now()),
     "",
@@ -931,7 +929,7 @@ export const buildContextLookupUserPrompt = async (args: {
     formatLatestLocalContext(args.localEvents),
     "",
     "# Live Thread Status",
-    "Threads executing a turn RIGHT NOW, with their latest timestamped progress phrases. Any other thread is paused (idle but resumable) as of the current time above.",
+    "Threads executing a turn RIGHT NOW, with their latest agent-authored assistant messages. Any other thread is paused (idle but resumable) as of the current time above.",
     liveStatus,
     "",
     "# Chronicle Context",

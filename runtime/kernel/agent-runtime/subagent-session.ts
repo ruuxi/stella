@@ -233,6 +233,9 @@ export class SubagentSession extends PiSessionCore {
         threadStore: opts.store,
         threadKey: this.threadKey,
         conversationId: opts.conversationId,
+        ...(typeof opts.agentContext.attemptGeneration === "number"
+          ? { attemptGeneration: opts.agentContext.attemptGeneration }
+          : {}),
         ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
       };
       let execution = await executeRuntimeAgentPrompt(executionArgs);

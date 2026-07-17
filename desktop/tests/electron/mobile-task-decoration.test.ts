@@ -109,7 +109,6 @@ describe("mobile task decoration bridge", () => {
     expect(onTaskDecorationUpdated).toHaveBeenCalledTimes(1);
     expect(onTaskDecorationUpdated).toHaveBeenLastCalledWith({
       statusTextByAgentId: { "agent-1": "Comparing fares" },
-      reasoningSummariesByAgentId: {},
     });
 
     // Identical republish: silent.
@@ -118,22 +117,11 @@ describe("mobile task decoration bridge", () => {
     });
     expect(onTaskDecorationUpdated).toHaveBeenCalledTimes(1);
 
-    // Reasoning summaries ride the same broadcast.
-    service.setReasoningSummaries({
-      summariesByAgentId: { "agent-1": ["reading options"] },
-    });
-    expect(onTaskDecorationUpdated).toHaveBeenCalledTimes(2);
-    expect(onTaskDecorationUpdated).toHaveBeenLastCalledWith({
-      statusTextByAgentId: { "agent-1": "Comparing fares" },
-      reasoningSummariesByAgentId: { "agent-1": ["reading options"] },
-    });
-
     // A cleared snapshot still broadcasts (the phone must drop stale ticks).
     service.setTaskDecoration({ statusTextByAgentId: {} });
-    expect(onTaskDecorationUpdated).toHaveBeenCalledTimes(3);
+    expect(onTaskDecorationUpdated).toHaveBeenCalledTimes(2);
     expect(onTaskDecorationUpdated).toHaveBeenLastCalledWith({
       statusTextByAgentId: {},
-      reasoningSummariesByAgentId: { "agent-1": ["reading options"] },
     });
   });
 
@@ -150,7 +138,6 @@ describe("mobile task decoration bridge", () => {
     });
     expect(onTaskDecorationUpdated).toHaveBeenLastCalledWith({
       statusTextByAgentId: { "agent-1": "Comparing fares" },
-      reasoningSummariesByAgentId: {},
     });
   });
 });

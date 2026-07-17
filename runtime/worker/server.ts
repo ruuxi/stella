@@ -1026,7 +1026,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
     state.init = init;
 
     const db = createDesktopDatabase(init.stellaDataDirPath);
-    const chatStore = new ChatStore(db);
+    const chatStore = new ChatStore(db, {
+      onThreadAssistantUpdate: (payload) => {
+        peer.notify(NOTIFICATION_NAMES.THREAD_ACTIVITY_UPDATED, payload);
+      },
+    });
     const runtimeStore = chatStore as RuntimeStore;
     const storeModStore = new StoreModStore(db);
     const sourceHistoryStore = new StellaSourceHistoryStore(db);

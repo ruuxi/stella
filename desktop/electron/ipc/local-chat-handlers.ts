@@ -322,32 +322,6 @@ export const registerLocalChatHandlers = (
   );
 
   ipcMain.handle(
-    "localChat:publishReasoningSummaries",
-    async (
-      event,
-      payload: {
-        summariesByAgentId?: Record<string, readonly string[]>;
-        entriesByAgentId?: Record<
-          string,
-          readonly { text: string; atMs: number }[]
-        >;
-      },
-    ) =>
-      await withLocalChatClient(
-        options,
-        event,
-        "localChat:publishReasoningSummaries",
-        (client) =>
-          client.setReasoningSummaries({
-            summariesByAgentId: payload?.summariesByAgentId ?? {},
-            ...(payload?.entriesByAgentId
-              ? { entriesByAgentId: payload.entriesByAgentId }
-              : {}),
-          }),
-      ),
-  );
-
-  ipcMain.handle(
     "localChat:publishTaskDecoration",
     async (
       event,

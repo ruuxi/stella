@@ -30,6 +30,8 @@ export type ThreadActivityRecord = {
   agentType: string;
   description: string;
   status: "running" | "completed" | "error" | "canceled";
+  /** Durable attempt epoch for reused threads. */
+  attemptGeneration?: number;
   /** Root run that owns the thread's latest lifecycle. */
   rootRunId?: string;
   parentAgentId?: string;
@@ -39,23 +41,48 @@ export type ThreadActivityRecord = {
   completedAt?: number;
   result?: string;
   error?: string;
+  /** Recent text authored by this agent, oldest to newest. This is projected
+   * from the existing runtime thread transcript and never model-generated. */
+  assistantMessages?: string[];
+  /** Timestamp of the newest assistant message included in the bounded
+   * projection. Lets clients reject stale in-flight list responses. */
+  assistantMessagesUpdatedAt?: number;
   updatedAt: number;
+};
+
+/**
+ * Bounded replacement for the retired generated-summary stream. Emitted only
+ * after a complete, persisted interim assistant message lands for the current
+ * attempt of a visible running task. `reasoningSummaries` deliberately mirrors
+ * the authored messages for older mobile clients; current clients use the
+ * accurately named `assistantMessages` field.
+ */
+export type ThreadActivityAssistantUpdate = {
+  threadId: string;
+  assistantMessages: string[];
+  /** Legacy mobile wire alias. Contains authored messages, never summaries. */
+  reasoningSummaries: string[];
+  latestMessage: string;
+  atMs: number;
+  attemptGeneration: number;
+  rootRunId?: string;
 };
 
 export type ThreadActivityUpdatedPayload = {
   conversationId: string;
+  /** Present for incremental authored-message delivery; absent for ordinary
+   * lifecycle-only invalidations. */
+  assistantUpdate?: ThreadActivityAssistantUpdate;
 };
 
 /**
- * Snapshot of the renderer's ephemeral per-thread decoration, mirrored to the
- * mobile bridge so the phone's activity pill gets the same mid-run statusText
- * ticks and reasoning phrases the desktop tray shows. Replaced wholesale on
- * every publish; only currently-running threads are present. Never persisted —
- * a reconnecting client gets the current snapshot attached to its sync page.
+ * Snapshot of the renderer's ephemeral per-thread status decoration, mirrored
+ * to the mobile bridge so the phone's activity pill gets the same mid-run
+ * statusText ticks the desktop tray shows. Replaced wholesale on every
+ * publish; only currently-running threads are present.
  */
 export type TaskDecorationUpdatedPayload = {
   statusTextByAgentId: Record<string, string>;
-  reasoningSummariesByAgentId: Record<string, string[]>;
 };
 
 export type ToolRequestPayload = {

@@ -113,6 +113,7 @@ export const executeRuntimeAgentPrompt = async (args: {
   threadKey?: string;
   conversationId?: string;
   uiVisibility?: "visible" | "hidden";
+  attemptGeneration?: number;
   /**
    * Resume the agent loop from its existing in-memory context instead of
    * appending a new prompt. Used by the safety model-swap retry: the failed
@@ -206,6 +207,9 @@ export const executeRuntimeAgentPrompt = async (args: {
     threadKey: args.threadKey,
     ...(args.conversationId ? { conversationId: args.conversationId } : {}),
     ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
+    ...(typeof args.attemptGeneration === "number"
+      ? { attemptGeneration: args.attemptGeneration }
+      : {}),
   });
 
   try {

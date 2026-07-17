@@ -16,15 +16,12 @@ import { useConversationFiles } from "@/features/chat/hooks/use-conversation-fil
 import { useConversationMessages } from "@/features/chat/hooks/use-conversation-messages";
 import { useComposerMessageState } from "@/features/chat/hooks/use-composer-message-state";
 import { useStreamingChat } from "@/features/chat/hooks/use-streaming-chat";
-import { useThreadActivity } from "@/features/chat/hooks/use-thread-activity";
+import { useActivityTasks } from "@/features/chat/hooks/use-thread-activity";
 import {
   useTraceEventMonitor,
   useTraceIpcListener,
 } from "@/platform/diagnostics/use-trace-listener";
-import {
-  buildActivityTasks,
-  type EventRecord,
-} from "@/features/chat/lib/event-transforms";
+import type { EventRecord } from "@/features/chat/lib/event-transforms";
 import { useUiState } from "@/context/ui-state";
 import { router } from "@/router";
 import { useCapturedChatContext } from "./use-captured-chat-context";
@@ -103,10 +100,6 @@ export function useFullShellChat({
     isLoadingOlder: isLoadingOlderFiles,
     loadOlder: loadOlderFiles,
   } = useConversationFiles(activeConversationId ?? undefined);
-
-  const { records: threadActivityRecords } = useThreadActivity(
-    activeConversationId ?? undefined,
-  );
 
   const {
     taskDecorations,
@@ -401,9 +394,9 @@ export function useFullShellChat({
 
   // The single task list every activity surface renders: authoritative
   // thread rows overlaid with live stream decoration. No event folding.
-  const tasks = useMemo(
-    () => buildActivityTasks(threadActivityRecords, taskDecorations),
-    [threadActivityRecords, taskDecorations],
+  const tasks = useActivityTasks(
+    activeConversationId ?? undefined,
+    taskDecorations,
   );
 
   const chatColumnConversation = useMemo<ChatColumnConversation>(

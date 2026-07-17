@@ -155,6 +155,76 @@ describe("manager agent orchestration", () => {
     ]);
   });
 
+  it("does not project an internal child-report wake while a manager is active", async () => {
+    const events: AgentLifecycleEvent[] = [];
+    let markFirstRunStarted!: () => void;
+    const firstRunStarted = new Promise<void>((resolve) => {
+      markFirstRunStarted = resolve;
+    });
+    let managerRunCount = 0;
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 2,
+      }),
+      runSubagent: async (args) => {
+        managerRunCount += 1;
+        if (managerRunCount === 1) {
+          markFirstRunStarted();
+          await new Promise<void>((resolve) =>
+            args.abortSignal.addEventListener("abort", () => resolve(), {
+              once: true,
+            }),
+          );
+          return { runId: args.runId, result: "", interrupted: true };
+        }
+        return {
+          runId: args.runId,
+          result: "Manager final response after the child report.",
+        };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => events.push(event),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conv-active-manager",
+      description: "Coordinate active child reports",
+      prompt: "Coordinate and report once.",
+      agentType: AGENT_IDS.MANAGER,
+      rootRunId: "root-active-manager",
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await firstRunStarted;
+    await manager.sendAgentMessage(
+      managerTask.threadId,
+      "<system_reminder>A managed child reached a terminal state.</system_reminder>",
+      "orchestrator",
+      { deliveryKind: "manager-event" },
+    );
+    await waitForAgentSettled(manager, managerTask.threadId);
+
+    expect(managerRunCount).toBe(2);
+    expect(events.map((event) => event.type)).toEqual([
+      "agent-started",
+      "agent-completed",
+    ]);
+    expect(JSON.stringify(events)).not.toContain("A managed child");
+    expect(events[1]).toEqual(
+      expect.objectContaining({
+        agentId: managerTask.threadId,
+        result: "Manager final response after the child report.",
+      }),
+    );
+  });
+
   it("adopts an existing thread and answers a mid-flight status poke without abandoning the work", async () => {
     const upstreamManagerMessages: string[] = [];
     const upstreamManagerResults: string[] = [];

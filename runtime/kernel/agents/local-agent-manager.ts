@@ -112,6 +112,8 @@ export type LocalAgentContext = {
   /** Per-spawn reasoning override; never persisted to user preferences. */
   spawnReasoningEffort?: SpawnReasoningEffort;
   maxAgentConcurrency?: number;
+  /** Durable attempt epoch for transcript writes on a reused agent thread. */
+  attemptGeneration?: number;
 };
 
 export type LocalAgentStatus = "pending" | TaskLifecycleStatus;
@@ -240,6 +242,14 @@ type RuntimeAgentRecord = {
    * reads as a spawn.
    */
   pendingStartIsFollowUp?: boolean;
+  /**
+   * The next turn was queued solely because a managed-child lifecycle report
+   * was persisted into a Manager thread. The Manager still re-enters and the
+   * authoritative runtime_agents row still moves to running, but this
+   * internal coordination boundary must not look like a new top-level
+   * send_input occurrence in the root transcript.
+   */
+  pendingStartIsManagerCoordination?: boolean;
 };
 
 const formatTaskUpdateStatusText = (text: string): string =>
@@ -1107,6 +1117,7 @@ export class LocalAgentManager implements AgentToolApi {
     // Cleared here so a bare reset reads as a spawn; the follow-up callers
     // (`sendAgentMessage` / `deliverFollowUpAsNextTurn`) re-set it right after.
     task.pendingStartIsFollowUp = undefined;
+    task.pendingStartIsManagerCoordination = undefined;
     task.waitingForManagedChildren = false;
     task.managerReportRequested = false;
     task.managerTurnStartedFromTerminal = false;
@@ -1154,6 +1165,7 @@ export class LocalAgentManager implements AgentToolApi {
       // Resuming an evicted/persisted thread is always a `send_input`
       // follow-up (this helper is only reached from that path).
       pendingStartIsFollowUp: true,
+      pendingStartIsManagerCoordination: false,
       waitingForManagedChildren: false,
       managerReportRequested: false,
       managerTurnStartedFromTerminal: false,
@@ -1191,6 +1203,8 @@ export class LocalAgentManager implements AgentToolApi {
     const pendingStartStatusText = task.pendingStartStatusText;
     const managerReportRequested = task.managerReportRequested;
     const managerTurnStartedFromTerminal = task.managerTurnStartedFromTerminal;
+    const pendingStartIsManagerCoordination =
+      task.pendingStartIsManagerCoordination;
     const prompt = this.buildTaskPrompt(task);
     this.resetTaskForNextAttempt(task, prompt, { preserveSelfModRun: true });
     task.managerReportRequested = managerReportRequested;
@@ -1202,6 +1216,7 @@ export class LocalAgentManager implements AgentToolApi {
     task.pendingStartStatusText = pendingStartStatusText;
     // Interjected in-flight work is a `send_input` follow-up, not a spawn.
     task.pendingStartIsFollowUp = true;
+    task.pendingStartIsManagerCoordination = pendingStartIsManagerCoordination;
     task.recentActivity = [
       pendingStartStatusText ?? "Applying task update from orchestrator.",
     ];
@@ -1322,27 +1337,42 @@ export class LocalAgentManager implements AgentToolApi {
       const controller = task.controller;
       const startStatusText = task.pendingStartStatusText ?? task.description;
       const startIsFollowUp = task.pendingStartIsFollowUp ?? false;
+      const startIsManagerCoordination =
+        task.pendingStartIsManagerCoordination ?? false;
       task.pendingStartStatusText = undefined;
       task.pendingStartIsFollowUp = undefined;
+      task.pendingStartIsManagerCoordination = undefined;
       this.persistTask(task);
-      this.opts.onAgentEvent?.({
-        type: "agent-started",
-        conversationId: task.conversationId,
-        rootRunId: task.rootRunId,
-        agentId: task.threadId,
-        agentType: task.agentType,
-        description: task.description,
-        parentAgentId: task.parentAgentId,
-        ...(startStatusText ? { statusText: startStatusText } : {}),
-        ...(startIsFollowUp ? { isFollowUp: true } : {}),
-      });
-      logWorkingIndicatorTrace("[stella:working-indicator:agent-started]", {
-        threadId: task.threadId,
-        conversationId: task.conversationId,
-        rootRunId: task.rootRunId,
-        description: task.description,
-        statusText: startStatusText,
-      });
+      if (!startIsManagerCoordination) {
+        this.opts.onAgentEvent?.({
+          type: "agent-started",
+          conversationId: task.conversationId,
+          rootRunId: task.rootRunId,
+          agentId: task.threadId,
+          agentType: task.agentType,
+          description: task.description,
+          parentAgentId: task.parentAgentId,
+          ...(startStatusText ? { statusText: startStatusText } : {}),
+          ...(startIsFollowUp ? { isFollowUp: true } : {}),
+        });
+        logWorkingIndicatorTrace("[stella:working-indicator:agent-started]", {
+          threadId: task.threadId,
+          conversationId: task.conversationId,
+          rootRunId: task.rootRunId,
+          description: task.description,
+          statusText: startStatusText,
+        });
+      } else {
+        logWorkingIndicatorTrace(
+          "[stella:working-indicator:manager-coordination-resumed]",
+          {
+            threadId: task.threadId,
+            conversationId: task.conversationId,
+            rootRunId: task.rootRunId,
+            description: task.description,
+          },
+        );
+      }
       const execution = this.executeTask(task, {
         generation,
         controller,
@@ -1443,6 +1473,7 @@ export class LocalAgentManager implements AgentToolApi {
           ? Math.min(context.maxAgentDepth, task.maxAgentDepth)
           : context.maxAgentDepth;
       context.agentDepth = task.agentDepth;
+      context.attemptGeneration = attempt.generation;
 
       const taskPrompt = this.buildTaskPrompt(task);
       task.turnCount += 1;
@@ -2215,6 +2246,7 @@ export class LocalAgentManager implements AgentToolApi {
       local.interruptedForFollowUp = false;
       local.pendingStartStatusText = undefined;
       local.pendingStartIsFollowUp = undefined;
+      local.pendingStartIsManagerCoordination = undefined;
       this.opts.onAgentEvent?.({
         type: "agent-progress",
         conversationId: local.conversationId,
@@ -2368,6 +2400,7 @@ export class LocalAgentManager implements AgentToolApi {
         text,
         updateStatusText,
       );
+      resumedTask.pendingStartIsManagerCoordination = isManagerEvent;
       if (
         resumedTask.agentType === AGENT_IDS.MANAGER &&
         !resumedTask.modelConfigSnapshot &&
@@ -2444,6 +2477,12 @@ export class LocalAgentManager implements AgentToolApi {
       task.waitingForManagedChildren = false;
       task.pendingStartStatusText = updateStatusText;
       task.pendingStartIsFollowUp = true;
+      if (
+        !isManagerEvent ||
+        task.pendingStartIsManagerCoordination === undefined
+      ) {
+        task.pendingStartIsManagerCoordination = isManagerEvent;
+      }
       this.pendingQueue.unshift(task.threadId);
       this.persistTask(task);
       this.tryStartNext();
@@ -2488,17 +2527,25 @@ export class LocalAgentManager implements AgentToolApi {
       task.pendingStartStatusText = updateStatusText;
       // Re-activating a terminal thread is a `send_input` follow-up.
       task.pendingStartIsFollowUp = true;
+      if (
+        !isManagerEvent ||
+        task.pendingStartIsManagerCoordination === undefined
+      ) {
+        task.pendingStartIsManagerCoordination = isManagerEvent;
+      }
       task.recentActivity = [updateStatusText];
-      this.opts.onAgentEvent?.({
-        type: "agent-progress",
-        conversationId: task.conversationId,
-        rootRunId: task.rootRunId,
-        agentId: task.threadId,
-        agentType: task.agentType,
-        description: task.description,
-        parentAgentId: task.parentAgentId,
-        statusText: updateStatusText,
-      });
+      if (!isManagerEvent) {
+        this.opts.onAgentEvent?.({
+          type: "agent-progress",
+          conversationId: task.conversationId,
+          rootRunId: task.rootRunId,
+          agentId: task.threadId,
+          agentType: task.agentType,
+          description: task.description,
+          parentAgentId: task.parentAgentId,
+          statusText: updateStatusText,
+        });
+      }
       this.enqueueTask(task);
       return { delivered: true };
     }
@@ -2533,17 +2580,28 @@ export class LocalAgentManager implements AgentToolApi {
         task.description = followUpDescription;
       }
       task.pendingStartStatusText = updateStatusText;
+      // A user/Manager-authored send_input owns the visible follow-up even if
+      // a child report races into the same queued turn. Internal coordination
+      // can suppress a start only while it is the sole reason for re-entry.
+      if (
+        !isManagerEvent ||
+        task.pendingStartIsManagerCoordination === undefined
+      ) {
+        task.pendingStartIsManagerCoordination = isManagerEvent;
+      }
       task.recentActivity = [updateStatusText];
-      this.opts.onAgentEvent?.({
-        type: "agent-progress",
-        conversationId: task.conversationId,
-        rootRunId: task.rootRunId,
-        agentId: task.threadId,
-        agentType: task.agentType,
-        description: task.description,
-        parentAgentId: task.parentAgentId,
-        statusText: updateStatusText,
-      });
+      if (!isManagerEvent) {
+        this.opts.onAgentEvent?.({
+          type: "agent-progress",
+          conversationId: task.conversationId,
+          rootRunId: task.rootRunId,
+          agentId: task.threadId,
+          agentType: task.agentType,
+          description: task.description,
+          parentAgentId: task.parentAgentId,
+          statusText: updateStatusText,
+        });
+      }
 
       if (task.status === "running" && !task.controller.signal.aborted) {
         // The follow-up is already in `toSubagentQueue` above. Aborting the

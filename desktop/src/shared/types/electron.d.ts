@@ -1628,7 +1628,8 @@ export type ElectronLocalChatApi = {
         statusText?: string;
         createdAt: number;
         completedAt?: number;
-        reasoningSummaries?: string[];
+        assistantMessages: string[];
+        reasoningSummaries: string[];
       }>;
     }>
   >;
@@ -1660,24 +1661,11 @@ export type ElectronLocalChatApi = {
         statusText?: string;
         createdAt: number;
         completedAt?: number;
-        reasoningSummaries?: string[];
+        assistantMessages: string[];
+        reasoningSummaries: string[];
       }>;
     }>;
   }>;
-  /**
-   * Mirror the renderer's generated per-agent progress summaries (the short
-   * reasoning phrases shown under each active agent in the desktop activity
-   * tray) into the main-process snapshot the desktop→mobile sync serializer
-   * reads. The summaries ride each task as `reasoningSummaries` so mobile's
-   * activity tray shows the same text. The optional timestamped
-   * `entriesByAgentId` copies are additionally persisted to the shared SQLite
-   * store so the runtime's Recall agent can report what a running agent was
-   * doing as of a specific moment without interrupting it.
-   */
-  publishReasoningSummaries: (payload: {
-    summariesByAgentId: Record<string, string[]>;
-    entriesByAgentId?: Record<string, { text: string; atMs: number }[]>;
-  }) => Promise<{ ok: true }>;
   /**
    * Mirror the renderer's per-thread mid-run statusText (task-decoration
    * store) into the main-process snapshot behind the desktop→mobile sync:

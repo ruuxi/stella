@@ -2234,10 +2234,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       maxMessages?: number;
       includeDeveloperArtifacts?: boolean;
     }) => ipcRenderer.invoke("localChat:syncMessages", payload),
-    publishReasoningSummaries: (payload: {
-      summariesByAgentId: Record<string, string[]>;
-      entriesByAgentId?: Record<string, { text: string; atMs: number }[]>;
-    }) => ipcRenderer.invoke("localChat:publishReasoningSummaries", payload),
     publishTaskDecoration: (payload: {
       statusTextByAgentId: Record<string, string>;
     }) => ipcRenderer.invoke("localChat:publishTaskDecoration", payload),

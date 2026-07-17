@@ -1,6 +1,13 @@
 import type { AgentModelConfigSnapshot } from "../../contracts/agent-engine.js";
-import type { TaskLifecycleStatus } from "../../contracts/agent-runtime.js";
-import type { ThreadActivityRecord } from "../../contracts/local-chat.js";
+import {
+  AGENT_IDS,
+  type TaskLifecycleStatus,
+} from "../../contracts/agent-runtime.js";
+import type {
+  ThreadActivityAssistantUpdate,
+  ThreadActivityRecord,
+  ThreadActivityUpdatedPayload,
+} from "../../contracts/local-chat.js";
 import {
   MAX_ACTIVE_RUNTIME_THREADS,
   MAX_GROUP_MEMBER_THREADS,
@@ -64,6 +71,23 @@ const CUTOFF_SCAN_CEILING = 4000;
 const CUTOFF_SCAN_BATCH_MIN = 128;
 const CUTOFF_SCAN_BATCH_MAX = 512;
 
+/** Hard storage/transport envelope for authored Activity updates. */
+export const AGENT_ASSISTANT_UPDATE_LIMITS = {
+  activeThreads: 16,
+  messagesPerThread: 3,
+  messageChars: 1_200,
+  messageBytes: 4_096,
+  threadChars: 3_600,
+  threadBytes: 12_288,
+  totalChars: 7_200,
+  totalBytes: 16_384,
+  scanRowsPerMessage: 8,
+} as const;
+
+type SessionStoreOptions = {
+  onThreadAssistantUpdate?: (payload: ThreadActivityUpdatedPayload) => void;
+};
+
 type VisibleScanRow = {
   timestamp: number | null;
   id: string | null;
@@ -98,9 +122,6 @@ type ThreadSessionEntryRow = {
   createdAt: number;
   dataJson: string | null;
 };
-
-/** Renderer keeps ≤5 phrases per agent; persistence mirrors that cap. */
-export const MAX_PERSISTED_PROGRESS_SUMMARIES_PER_AGENT = 5;
 
 export type PersistedAgentRecord = {
   threadId: string;
@@ -362,6 +383,40 @@ const previewFromAssistantPayload = (
     })
     .join("\n\n")
     .trim();
+
+const authoredTextFromAssistantPayload = (
+  payload: Extract<PersistedRuntimeThreadPayload, { role: "assistant" }>,
+): string =>
+  payload.content
+    .flatMap((block) =>
+      block.type === "text" && block.text.trim() ? [block.text] : [],
+    )
+    .join("\n\n")
+    .trim();
+
+/** Final answers are already represented by the task terminal result. Only a
+ * completed assistant turn that hands off to a tool is a live authored update. */
+const activityUpdateTextFromAssistantPayload = (
+  payload: Extract<PersistedRuntimeThreadPayload, { role: "assistant" }>,
+): string =>
+  payload.stopReason === "toolUse"
+    ? authoredTextFromAssistantPayload(payload)
+    : "";
+
+const truncateAuthoredUpdate = (
+  value: string,
+  maxChars: number = AGENT_ASSISTANT_UPDATE_LIMITS.messageChars,
+  maxBytes: number = AGENT_ASSISTANT_UPDATE_LIMITS.messageBytes,
+): string => {
+  const codePoints = [...value.trim()];
+  let end = Math.min(codePoints.length, Math.max(0, maxChars));
+  while (end > 0) {
+    const candidate = codePoints.slice(0, end).join("");
+    if (Buffer.byteLength(candidate, "utf8") <= maxBytes) return candidate;
+    end -= 1;
+  }
+  return "";
+};
 
 const previewFromPayload = (payload: PersistedRuntimeThreadPayload): string => {
   if (payload.role === "assistant") {
@@ -938,7 +993,10 @@ const buildThreadMessagesFromEntries = (
 export class SessionStore {
   private dreamInboxStoreInstance: DreamInboxStore | null = null;
 
-  constructor(private readonly db: SqliteDatabase) {}
+  constructor(
+    private readonly db: SqliteDatabase,
+    private readonly options: SessionStoreOptions = {},
+  ) {}
 
   /**
    * Lazily-constructed singleton DreamInboxStore — the unified queue of
@@ -2710,6 +2768,12 @@ export class SessionStore {
       });
       this.touchThread(threadKey);
     });
+    if (
+      payload.role === "assistant" &&
+      activityUpdateTextFromAssistantPayload(payload)
+    ) {
+      this.emitThreadAssistantUpdate(threadKey, message.timestamp);
+    }
   }
 
   appendThreadCustomMessage(message: {
@@ -4201,70 +4265,283 @@ export class SessionStore {
       );
   }
 
-  /**
-   * Mirror the renderer's rolling per-agent progress-summary phrases into
-   * SQLite so runtime consumers (Recall) can report what a running agent is
-   * doing right now. Ring-buffer semantics: each publish replaces an agent's
-   * rows wholesale with its newest phrases (the renderer already caps the
-   * list). Agents absent from the publish keep their previous rows — Recall
-   * only surfaces summaries for threads that are live, so stale rows for
-   * finished agents are inert.
-   */
-  replaceAgentProgressSummaries(
-    summariesByAgentId: Record<
-      string,
-      readonly { text: string; atMs: number }[]
-    >,
-  ): void {
-    const deleteStmt = this.db.prepare(
-      `DELETE FROM agent_progress_summaries WHERE agent_id = ?`,
-    );
-    const insertStmt = this.db.prepare(
-      `INSERT INTO agent_progress_summaries (agent_id, text, created_at) VALUES (?, ?, ?)`,
-    );
-    for (const [rawAgentId, rawList] of Object.entries(
-      summariesByAgentId ?? {},
-    )) {
-      const agentId = rawAgentId.trim();
-      if (!agentId || !Array.isArray(rawList)) continue;
-      const entries = rawList
-        .filter(
-          (entry): entry is { text: string; atMs: number } =>
-            !!entry &&
-            typeof entry.text === "string" &&
-            entry.text.trim().length > 0 &&
-            typeof entry.atMs === "number" &&
-            Number.isFinite(entry.atMs),
-        )
-        .slice(-MAX_PERSISTED_PROGRESS_SUMMARIES_PER_AGENT);
-      deleteStmt.run(agentId);
-      for (const entry of entries) {
-        insertStmt.run(agentId, entry.text.trim(), Math.floor(entry.atMs));
-      }
-    }
-  }
-
-  /** Newest-last recent progress phrases for one agent (runtime thread id). */
-  listAgentProgressSummaries(
-    agentId: string,
-    limit = 3,
-  ): Array<{ text: string; atMs: number }> {
+  private listAgentAssistantMessagesByThread(
+    targetsInput: readonly {
+      threadId: string;
+      startedAt: number;
+      attemptGeneration: number;
+    }[],
+    limit = AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread,
+  ): Map<string, Array<{ text: string; atMs: number }>> {
+    const seen = new Set<string>();
+    const targets = targetsInput
+      .flatMap((target) => {
+        const threadId = target.threadId.trim();
+        if (!threadId || seen.has(threadId)) return [];
+        seen.add(threadId);
+        return [
+          {
+            threadId,
+            startedAt: Math.max(0, Math.floor(target.startedAt)),
+            attemptGeneration: Math.max(
+              0,
+              Math.floor(target.attemptGeneration),
+            ),
+          },
+        ];
+      })
+      .slice(0, AGENT_ASSISTANT_UPDATE_LIMITS.activeThreads);
+    if (targets.length === 0) return new Map();
     const cappedLimit = Math.max(
       1,
-      Math.min(MAX_PERSISTED_PROGRESS_SUMMARIES_PER_AGENT, Math.floor(limit)),
+      Math.min(
+        AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread,
+        Math.floor(limit),
+      ),
     );
+    // Scan past tool-only assistant entries, but never beyond this strict
+    // per-thread row envelope. Only complete tool-handoff messages from the
+    // current attempt qualify; final answers stay on the terminal result.
+    const scanLimit =
+      cappedLimit * AGENT_ASSISTANT_UPDATE_LIMITS.scanRowsPerMessage;
+    const targetValues = targets.map(() => "(?, ?, ?, ?)").join(", ");
+    const targetParams = targets.flatMap((target, index) => [
+      target.threadId,
+      target.startedAt,
+      target.attemptGeneration,
+      index,
+    ]);
     const rows = this.db
       .prepare(
         `
-      SELECT text, created_at AS atMs
-      FROM agent_progress_summaries
-      WHERE agent_id = ?
-      ORDER BY created_at DESC, id DESC
-      LIMIT ?
+      WITH targets(threadId, startedAt, attemptGeneration, targetOrder) AS (
+        VALUES ${targetValues}
+      ), ranked AS (
+        SELECT
+          entries.thread_key AS threadId,
+          entries.created_at AS atMs,
+          entries.entry_id AS entryId,
+          entries.data_json AS dataJson,
+          targets.targetOrder AS targetOrder,
+          ROW_NUMBER() OVER (
+            PARTITION BY entries.thread_key
+            ORDER BY entries.created_at DESC, entries.entry_id DESC
+          ) AS messageRank
+        FROM runtime_thread_entries entries
+        INNER JOIN targets ON targets.threadId = entries.thread_key
+        WHERE entries.created_at >= targets.startedAt
+          AND entries.entry_type = 'message'
+          AND json_extract(entries.data_json, '$.message.role') = 'assistant'
+          AND json_extract(entries.data_json, '$.message.stopReason') = 'toolUse'
+          AND json_extract(entries.data_json, '$.message.stellaAttemptGeneration') = targets.attemptGeneration
+      )
+      SELECT threadId, atMs, entryId, dataJson, targetOrder
+      FROM ranked
+      WHERE messageRank <= ?
+      ORDER BY targetOrder ASC, atMs ASC, entryId ASC
     `,
       )
-      .all(agentId, cappedLimit) as Array<{ text: string; atMs: number }>;
-    return rows.reverse();
+      .all(...targetParams, scanLimit) as Array<{
+      threadId: string;
+      atMs: number;
+      entryId: string;
+      dataJson: string | null;
+      targetOrder: number;
+    }>;
+    const candidates = new Map<string, Array<{ text: string; atMs: number }>>();
+    for (const row of rows) {
+      let payload: PersistedRuntimeThreadPayload | undefined;
+      try {
+        const parsed = JSON.parse(row.dataJson ?? "null") as {
+          message?: PersistedRuntimeThreadPayload;
+        } | null;
+        payload = parsed?.message;
+      } catch {
+        continue;
+      }
+      if (payload?.role !== "assistant") continue;
+      const text = truncateAuthoredUpdate(
+        activityUpdateTextFromAssistantPayload(payload),
+        AGENT_ASSISTANT_UPDATE_LIMITS.messageChars,
+        AGENT_ASSISTANT_UPDATE_LIMITS.messageBytes,
+      );
+      if (!text) continue;
+      const bucket = candidates.get(row.threadId);
+      const entry = { text, atMs: row.atMs };
+      if (bucket) bucket.push(entry);
+      else candidates.set(row.threadId, [entry]);
+    }
+
+    const newestFirstByThread = new Map<
+      string,
+      Array<{ text: string; atMs: number }>
+    >();
+    for (const target of targets) {
+      const newestFirst = (candidates.get(target.threadId) ?? [])
+        .slice(-cappedLimit)
+        .reverse();
+      if (newestFirst.length > 0) {
+        newestFirstByThread.set(target.threadId, newestFirst);
+      }
+    }
+
+    const selectedNewestFirst = new Map<
+      string,
+      Array<{ text: string; atMs: number }>
+    >();
+    const consumedByThread = new Map<
+      string,
+      { chars: number; bytes: number }
+    >();
+    let remainingChars = AGENT_ASSISTANT_UPDATE_LIMITS.totalChars;
+    let remainingBytes = AGENT_ASSISTANT_UPDATE_LIMITS.totalBytes;
+    const eligibleTargets = targets.filter((target) =>
+      newestFirstByThread.has(target.threadId),
+    );
+
+    // Give every visible thread a fair slice for its newest message before
+    // any one thread can spend the aggregate budget on older updates.
+    for (let index = 0; index < eligibleTargets.length; index += 1) {
+      const target = eligibleTargets[index]!;
+      const entry = newestFirstByThread.get(target.threadId)?.[0];
+      if (!entry || remainingChars <= 0 || remainingBytes <= 0) continue;
+      const targetsRemaining = eligibleTargets.length - index;
+      const fairChars = Math.max(
+        1,
+        Math.floor(remainingChars / targetsRemaining),
+      );
+      const fairBytes = Math.max(
+        1,
+        Math.floor(remainingBytes / targetsRemaining),
+      );
+      const text = truncateAuthoredUpdate(
+        entry.text,
+        Math.min(
+          AGENT_ASSISTANT_UPDATE_LIMITS.messageChars,
+          AGENT_ASSISTANT_UPDATE_LIMITS.threadChars,
+          fairChars,
+        ),
+        Math.min(
+          AGENT_ASSISTANT_UPDATE_LIMITS.messageBytes,
+          AGENT_ASSISTANT_UPDATE_LIMITS.threadBytes,
+          fairBytes,
+        ),
+      );
+      if (!text) continue;
+      selectedNewestFirst.set(target.threadId, [{ ...entry, text }]);
+      const chars = [...text].length;
+      const bytes = Buffer.byteLength(text, "utf8");
+      consumedByThread.set(target.threadId, { chars, bytes });
+      remainingChars -= chars;
+      remainingBytes -= bytes;
+    }
+
+    // Spend any remainder round-robin, still newest-first within each thread.
+    // Chronological order is restored only after selection is complete.
+    for (let messageIndex = 1; messageIndex < cappedLimit; messageIndex += 1) {
+      for (const target of eligibleTargets) {
+        if (remainingChars <= 0 || remainingBytes <= 0) break;
+        const entry = newestFirstByThread.get(target.threadId)?.[messageIndex];
+        if (!entry) continue;
+        const consumed = consumedByThread.get(target.threadId) ?? {
+          chars: 0,
+          bytes: 0,
+        };
+        const remainingThreadChars =
+          AGENT_ASSISTANT_UPDATE_LIMITS.threadChars - consumed.chars;
+        const remainingThreadBytes =
+          AGENT_ASSISTANT_UPDATE_LIMITS.threadBytes - consumed.bytes;
+        if (remainingThreadChars <= 0 || remainingThreadBytes <= 0) continue;
+        const text = truncateAuthoredUpdate(
+          entry.text,
+          Math.min(
+            AGENT_ASSISTANT_UPDATE_LIMITS.messageChars,
+            remainingThreadChars,
+            remainingChars,
+          ),
+          Math.min(
+            AGENT_ASSISTANT_UPDATE_LIMITS.messageBytes,
+            remainingThreadBytes,
+            remainingBytes,
+          ),
+        );
+        if (!text) continue;
+        const selected = selectedNewestFirst.get(target.threadId) ?? [];
+        selected.push({ ...entry, text });
+        selectedNewestFirst.set(target.threadId, selected);
+        const chars = [...text].length;
+        const bytes = Buffer.byteLength(text, "utf8");
+        consumedByThread.set(target.threadId, {
+          chars: consumed.chars + chars,
+          bytes: consumed.bytes + bytes,
+        });
+        remainingChars -= chars;
+        remainingBytes -= bytes;
+      }
+    }
+
+    const byThread = new Map<string, Array<{ text: string; atMs: number }>>();
+    for (const target of targets) {
+      const selected = selectedNewestFirst.get(target.threadId);
+      if (selected?.length) byThread.set(target.threadId, selected.reverse());
+    }
+    return byThread;
+  }
+
+  /** Current-attempt interim assistant text, oldest to newest. */
+  listAgentAssistantMessages(
+    agentId: string,
+    limit = AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread,
+  ): Array<{ text: string; atMs: number }> {
+    const record = this.getAgentRecord(agentId.trim());
+    if (
+      !record ||
+      record.status !== "running" ||
+      record.agentType !== AGENT_IDS.GENERAL
+    )
+      return [];
+    return (
+      this.listAgentAssistantMessagesByThread(
+        [
+          {
+            threadId: record.threadId,
+            startedAt: record.startedAt,
+            attemptGeneration: record.attemptGeneration,
+          },
+        ],
+        limit,
+      ).get(record.threadId) ?? []
+    );
+  }
+
+  private emitThreadAssistantUpdate(threadId: string, atMs: number): void {
+    if (!this.options.onThreadAssistantUpdate) return;
+    const record = this.getAgentRecord(threadId);
+    if (
+      !record ||
+      record.status !== "running" ||
+      record.agentType !== AGENT_IDS.GENERAL ||
+      atMs < record.startedAt
+    ) {
+      return;
+    }
+    const entries = this.listAgentAssistantMessages(record.threadId);
+    const latest = entries[entries.length - 1];
+    if (!latest) return;
+    const assistantMessages = entries.map((entry) => entry.text);
+    const assistantUpdate: ThreadActivityAssistantUpdate = {
+      threadId: record.threadId,
+      assistantMessages,
+      reasoningSummaries: [...assistantMessages],
+      latestMessage: latest.text,
+      atMs: latest.atMs,
+      attemptGeneration: record.attemptGeneration,
+      ...(record.rootRunId ? { rootRunId: record.rootRunId } : {}),
+    };
+    this.options.onThreadAssistantUpdate({
+      conversationId: record.conversationId,
+      assistantUpdate,
+    });
   }
 
   getAgentRecord(threadId: string): PersistedAgentRecord | null {
@@ -4445,6 +4722,7 @@ export class SessionStore {
         a.agent_type,
         a.description,
         a.status,
+        a.attempt_generation,
         a.parent_agent_id,
         a.started_at,
         a.completed_at,
@@ -4466,6 +4744,7 @@ export class SessionStore {
       agent_type: string;
       description: string;
       status: ThreadActivityRecord["status"];
+      attempt_generation: number;
       parent_agent_id: string | null;
       started_at: number;
       completed_at: number | null;
@@ -4476,22 +4755,55 @@ export class SessionStore {
       group_key: string | null;
       group_label: string | null;
     }>;
-    return rows.map((row) => ({
-      threadId: row.thread_id,
-      conversationId: row.conversation_id,
-      agentType: row.agent_type,
-      description: row.description,
-      status: row.status,
-      ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
-      ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
-      ...(row.group_key ? { groupKey: row.group_key } : {}),
-      ...(row.group_label ? { groupLabel: row.group_label } : {}),
-      startedAt: row.started_at,
-      ...(row.completed_at == null ? {} : { completedAt: row.completed_at }),
-      ...(row.result ? { result: row.result } : {}),
-      ...(row.error ? { error: row.error } : {}),
-      updatedAt: row.updated_at,
-    }));
+    const assistantTargets = rows
+      .filter(
+        (row) =>
+          row.status === "running" && row.agent_type === AGENT_IDS.GENERAL,
+      )
+      .sort(
+        (a, b) =>
+          b.updated_at - a.updated_at || a.thread_id.localeCompare(b.thread_id),
+      )
+      .slice(0, AGENT_ASSISTANT_UPDATE_LIMITS.activeThreads)
+      .map((row) => ({
+        threadId: row.thread_id,
+        startedAt: row.started_at,
+        attemptGeneration: row.attempt_generation,
+      }));
+    const assistantMessagesByThread = this.listAgentAssistantMessagesByThread(
+      assistantTargets,
+      AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread,
+    );
+    return rows.map((row) => {
+      const assistantEntries = assistantMessagesByThread.get(row.thread_id);
+      const latestAssistantEntry =
+        assistantEntries?.[assistantEntries.length - 1];
+      return {
+        threadId: row.thread_id,
+        conversationId: row.conversation_id,
+        agentType: row.agent_type,
+        description: row.description,
+        status: row.status,
+        attemptGeneration: row.attempt_generation,
+        ...(row.root_run_id ? { rootRunId: row.root_run_id } : {}),
+        ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
+        ...(row.group_key ? { groupKey: row.group_key } : {}),
+        ...(row.group_label ? { groupLabel: row.group_label } : {}),
+        startedAt: row.started_at,
+        ...(row.completed_at == null ? {} : { completedAt: row.completed_at }),
+        ...(row.result ? { result: row.result } : {}),
+        ...(row.error ? { error: row.error } : {}),
+        ...(assistantEntries
+          ? {
+              assistantMessages: assistantEntries.map((entry) => entry.text),
+              ...(latestAssistantEntry
+                ? { assistantMessagesUpdatedAt: latestAssistantEntry.atMs }
+                : {}),
+            }
+          : {}),
+        updatedAt: row.updated_at,
+      };
+    });
   }
 
   getOrchestratorReminderState(conversationId: string): {

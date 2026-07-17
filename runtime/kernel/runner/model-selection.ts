@@ -62,10 +62,7 @@ export const resolveRunnerLlmRouteWithMetadata = async (
 };
 
 /**
- * Cheap pinned model for internal utility passes (Recall). Same pin the
- * renderer's progress-summary engine uses (`stella/light` — DeepSeek V4
- * Flash via the managed relay; the Claude Code engine maps it to its own
- * light model downstream).
+ * Cheap pinned model for internal utility passes such as Recall.
  */
 export const RUNNER_UTILITY_PINNED_MODEL = "stella/light";
 

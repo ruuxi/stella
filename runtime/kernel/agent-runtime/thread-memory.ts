@@ -285,17 +285,29 @@ export const persistThreadPayloadMessage = (
   args: {
     threadKey: string;
     payload: PersistedRuntimeThreadPayload;
+    runId?: string;
+    attemptGeneration?: number;
   },
 ): void => {
-  const preview = buildThreadMessagePreview(args.payload);
+  const payload =
+    args.payload.role === "assistant"
+      ? ({
+          ...args.payload,
+          ...(args.runId ? { stellaRunId: args.runId } : {}),
+          ...(typeof args.attemptGeneration === "number"
+            ? { stellaAttemptGeneration: args.attemptGeneration }
+            : {}),
+        } as PersistedRuntimeThreadPayload)
+      : args.payload;
+  const preview = buildThreadMessagePreview(payload);
   const toolCallId =
-    args.payload.role === "toolResult" ? args.payload.toolCallId : undefined;
+    payload.role === "toolResult" ? payload.toolCallId : undefined;
   appendThreadMessage(store, {
     threadKey: args.threadKey,
-    role: args.payload.role,
+    role: payload.role,
     content: preview,
     ...(toolCallId ? { toolCallId } : {}),
-    payload: args.payload,
+    payload,
   });
 };
 

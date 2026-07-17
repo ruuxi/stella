@@ -15,6 +15,10 @@ import {
 } from "@/features/chat/services/thread-activity-store";
 import { showToast } from "@/ui/toast";
 import type { ThreadActivityRecord } from "../../../../../runtime/contracts/local-chat.js";
+import {
+  buildActivityTasks,
+  type TaskLiveDecoration,
+} from "@/features/chat/lib/event-transforms";
 
 const EMPTY_RECORDS: ThreadActivityRecord[] = [];
 
@@ -90,4 +94,18 @@ export const useThreadActivity = (
       !activeSnapshot.hasLoaded &&
       activeSnapshot.records.length === 0,
   };
+};
+
+/** Exact Activity projection consumed by the full chat runtime. Keeping the
+ * mounted storage subscription and task transform together gives tests the
+ * same zero-cost path that production renders. */
+export const useActivityTasks = (
+  conversationId?: string,
+  decorations?: Record<string, TaskLiveDecoration>,
+) => {
+  const { records } = useThreadActivity(conversationId);
+  return useMemo(
+    () => buildActivityTasks(records, decorations),
+    [records, decorations],
+  );
 };

@@ -73,6 +73,7 @@ type Harness = {
   manager: LocalAgentManager;
   appendedEvents: LocalChatAppendEventArgs[];
   sentMessages: SentMessage[];
+  streamedAgentEvents: AgentLifecycleEvent[];
   fetchedModelConfigs: Array<AgentModelConfigSnapshot | undefined>;
 };
 
@@ -125,6 +126,7 @@ const createHarness = (options?: {
   const store = new SessionStore(db);
   const appendedEvents: LocalChatAppendEventArgs[] = [];
   const sentMessages: SentMessage[] = [];
+  const streamedAgentEvents: AgentLifecycleEvent[] = [];
   const fetchedModelConfigs: Array<AgentModelConfigSnapshot | undefined> = [];
   const context = {
     stellaAppDir: rootPath,
@@ -138,7 +140,16 @@ const createHarness = (options?: {
     notifyThreadActivityUpdated: vi.fn(),
     state: {
       localAgentManager: null,
-      runCallbacksByRunId: new Map(),
+      runCallbacksByRunId: new Map([
+        [
+          "root-filter-run",
+          {
+            onAgentEvent: (event: AgentLifecycleEvent) => {
+              streamedAgentEvents.push(event);
+            },
+          },
+        ],
+      ]),
       conversationCallbacks: new Map(),
       convexSiteUrl: null,
       authToken: null,
@@ -183,6 +194,7 @@ const createHarness = (options?: {
     manager: context.state.localAgentManager!,
     appendedEvents,
     sentMessages,
+    streamedAgentEvents,
     fetchedModelConfigs,
   };
   harnesses.add(harness);
@@ -469,6 +481,247 @@ describe("manager orchestration production routing", () => {
       ),
     ).toHaveLength(1);
     expect(managerRuns).toHaveLength(4);
+  });
+
+  it("keeps managed-child starts, follow-ups, and terminal reminders out of the root transcript", async () => {
+    const {
+      manager,
+      store,
+      appendedEvents,
+      sentMessages,
+      streamedAgentEvents,
+    } = createHarness();
+    let releaseManagerFirst!: () => void;
+    const managerFirstGate = new Promise<void>((resolve) => {
+      releaseManagerFirst = resolve;
+    });
+    let releaseFirstChild!: () => void;
+    const firstChildGate = new Promise<void>((resolve) => {
+      releaseFirstChild = resolve;
+    });
+    let releaseFirstChildFollowUp!: () => void;
+    const firstChildFollowUpGate = new Promise<void>((resolve) => {
+      releaseFirstChildFollowUp = resolve;
+    });
+    let releaseSecondChild!: () => void;
+    const secondChildGate = new Promise<void>((resolve) => {
+      releaseSecondChild = resolve;
+    });
+    const managerRuns: MockRunArgs[] = [];
+    const childRunCounts = new Map<string, number>();
+
+    runMock.handler = async (args) => {
+      if (args.agentType === AGENT_IDS.MANAGER) {
+        managerRuns.push(args);
+        if (managerRuns.length === 1) {
+          await managerFirstGate;
+          return {
+            runId: "manager-wait",
+            result: "Waiting for both children.",
+          };
+        }
+        if (managerRuns.length === 2) {
+          return {
+            runId: "manager-first-child",
+            result: "[Milestone] First child reported; requesting a recheck.",
+          };
+        }
+        if (managerRuns.length === 3) {
+          return {
+            runId: "manager-first-child-recheck",
+            result: "[Status] Recheck received; second child is still running.",
+          };
+        }
+        return {
+          runId: "manager-final",
+          result: "Consolidated manager response after both children.",
+        };
+      }
+
+      const agentId = args.agentId ?? "missing-child";
+      const runCount = (childRunCounts.get(agentId) ?? 0) + 1;
+      childRunCounts.set(agentId, runCount);
+      if (agentId.includes("first-child")) {
+        if (runCount === 1) {
+          await firstChildGate;
+          return {
+            runId: "first-child",
+            result: "First child private result.",
+          };
+        }
+        await firstChildFollowUpGate;
+        return {
+          runId: "first-child-follow-up",
+          result: "First child private follow-up result.",
+        };
+      }
+      if (agentId.includes("second-child")) {
+        await secondChildGate;
+        return {
+          runId: "second-child",
+          result: "Second child private result.",
+        };
+      }
+      return { runId: "standalone", result: "Standalone direct result." };
+    };
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conversation-root-filter",
+      description: "Coordinate two private children",
+      prompt: "Coordinate both children and return one consolidated response.",
+      agentType: AGENT_IDS.MANAGER,
+      rootRunId: "root-filter-run",
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const firstChild = await manager.createAgent({
+      conversationId: "conversation-root-filter",
+      description: "First child verification",
+      prompt: "Run the first verification.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+    const secondChild = await manager.createAgent({
+      conversationId: "conversation-root-filter",
+      description: "Second child verification",
+      prompt: "Run the second verification.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+
+    releaseManagerFirst();
+    releaseFirstChild();
+    await waitUntil(() =>
+      sentMessages.some((message) =>
+        message.text.includes("First child reported; requesting a recheck."),
+      ),
+    );
+
+    await handleSendInput(
+      {
+        stateRoot: "/tmp",
+        tasks: new Map(),
+        agentApi: manager,
+      },
+      {
+        thread_id: firstChild.threadId,
+        description: "Recheck first child",
+        message: "Recheck the first result before consolidation.",
+      },
+      {
+        conversationId: "conversation-root-filter",
+        deviceId: "device-manager-test",
+        requestId: "manager-child-follow-up",
+        agentType: AGENT_IDS.MANAGER,
+        agentId: managerTask.threadId,
+        storageMode: "local",
+      },
+    );
+    releaseFirstChildFollowUp();
+    await waitUntil(() =>
+      sentMessages.some((message) =>
+        message.text.includes(
+          "Recheck received; second child is still running.",
+        ),
+      ),
+    );
+    releaseSecondChild();
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(managerTask.threadId))?.status === "completed",
+    );
+
+    const rootLifecycle = appendedEvents.filter((event) =>
+      [
+        "agent-started",
+        "agent-completed",
+        "agent-failed",
+        "agent-canceled",
+      ].includes(event.type),
+    );
+    expect(rootLifecycle).toEqual([
+      expect.objectContaining({
+        type: "agent-started",
+        payload: expect.objectContaining({ agentId: managerTask.threadId }),
+      }),
+      expect.objectContaining({
+        type: "agent-completed",
+        payload: expect.objectContaining({
+          agentId: managerTask.threadId,
+          result: "Consolidated manager response after both children.",
+        }),
+      }),
+    ]);
+    expect(JSON.stringify(appendedEvents)).not.toContain("A managed child");
+    expect(JSON.stringify(appendedEvents)).not.toContain(firstChild.threadId);
+    expect(JSON.stringify(appendedEvents)).not.toContain(secondChild.threadId);
+    expect(
+      streamedAgentEvents.filter(
+        (event) =>
+          event.type === "agent-started" &&
+          event.agentId === managerTask.threadId,
+      ),
+    ).toHaveLength(1);
+    expect(JSON.stringify(streamedAgentEvents)).not.toContain(
+      "A managed child",
+    );
+    expect(
+      sentMessages.some((message) =>
+        message.text.includes("First child private result."),
+      ),
+    ).toBe(false);
+    expect(
+      sentMessages.some((message) =>
+        message.text.includes("Second child private result."),
+      ),
+    ).toBe(false);
+
+    const managerHistory = store
+      .loadThreadMessages(managerTask.threadId)
+      .map((message) => message.content)
+      .join("\n");
+    expect(managerHistory).toContain("First child private result.");
+    expect(managerHistory).toContain("First child private follow-up result.");
+    expect(managerHistory).toContain("Second child private result.");
+    const activityIds = store
+      .listThreadActivity("conversation-root-filter")
+      .map((record) => record.threadId);
+    expect(activityIds).toEqual(
+      expect.arrayContaining([
+        managerTask.threadId,
+        firstChild.threadId,
+        secondChild.threadId,
+      ]),
+    );
+
+    const standalone = await manager.createAgent({
+      conversationId: "conversation-root-filter",
+      description: "Standalone direct verification",
+      prompt: "Run directly for the orchestrator.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(standalone.threadId))?.status === "completed",
+    );
+    expect(
+      appendedEvents.filter(
+        (event) =>
+          (event.payload as { agentId?: string }).agentId ===
+          standalone.threadId,
+      ),
+    ).toEqual([
+      expect.objectContaining({ type: "agent-started" }),
+      expect.objectContaining({ type: "agent-completed" }),
+    ]);
   });
 
   it.each([

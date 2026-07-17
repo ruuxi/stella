@@ -3,7 +3,6 @@ import { useFullShellChat } from '@/shell/use-full-shell-chat'
 import { ChatRuntimeContext } from '@/context/chat-runtime-context'
 import { ChatMessagesContext } from '@/context/chat-messages-context'
 import { usePetStatusBroadcast } from '@/shell/pet/use-pet-status-broadcast'
-import { useAgentProgressSummaryEngine } from '@/features/chat/use-agent-progress-summary-engine'
 import { useTaskDecorationPublisher } from '@/features/chat/streaming/use-task-decoration-publisher'
 import { isTraceDiagnosticsEnabled } from '@/platform/diagnostics/trace-store'
 
@@ -50,9 +49,6 @@ export function ChatRuntimeProvider({
     isStreaming: runtime.conversation.isStreaming,
     pendingUserMessageId: runtime.conversation.pendingUserMessageId ?? null,
   })
-
-  // Generate rolling 3-7 word progress summaries for each active sub-agent.
-  useAgentProgressSummaryEngine(runtime.conversation.tasks)
 
   // Mirror mid-run statusText ticks to main for the desktop→mobile bridge.
   useTaskDecorationPublisher()

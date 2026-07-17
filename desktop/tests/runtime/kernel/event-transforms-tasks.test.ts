@@ -10,7 +10,7 @@ import {
   groupActivityTasks,
   pruneGroupExpandOverrides,
   selectFreshActivityTasks,
-  shouldShowTaskReasoningSummaries,
+  getTaskAgentUpdates,
   updateSeenRunningGroupKeys,
   updateSeenRunningTaskIds,
   type EventRecord,
@@ -569,26 +569,34 @@ describe("getInlineWorkingIndicatorExitDelayMs", () => {
   });
 });
 
-describe("shouldShowTaskReasoningSummaries", () => {
-  it("shows summaries only while a non-manager agent is actively running", () => {
+describe("getTaskAgentUpdates", () => {
+  it("uses verbatim assistant messages only while a non-manager agent is running", () => {
+    const assistantMessages = [
+      "I checked the exact route.\nNo rewrite was needed.",
+      "The focused tests now pass.",
+    ];
     expect(
-      shouldShowTaskReasoningSummaries({
+      getTaskAgentUpdates({
         status: "running",
         agentType: "general",
+        assistantMessages,
       }),
-    ).toBe(true);
+    ).toEqual(assistantMessages);
     expect(
-      shouldShowTaskReasoningSummaries({
+      getTaskAgentUpdates({
         status: "running",
         agentType: "manager",
+        assistantMessages,
       }),
-    ).toBe(false);
-    // Once the agent stops, the summaries section collapses away — the row
-    // stays expanded with its files, but live-narration phrases hide.
+    ).toEqual([]);
     for (const status of ["completed", "error", "canceled"] as const) {
       expect(
-        shouldShowTaskReasoningSummaries({ status, agentType: "general" }),
-      ).toBe(false);
+        getTaskAgentUpdates({
+          status,
+          agentType: "general",
+          assistantMessages,
+        }),
+      ).toEqual([]);
     }
   });
 });
@@ -744,6 +752,12 @@ describe("buildActivityTasks", () => {
   it("falls back to the description as statusText for running rows without decoration", () => {
     const tasks = buildActivityTasks([record()]);
     expect(tasks[0]?.statusText).toBe("Research flights");
+  });
+
+  it("projects agent-authored assistant messages without rewriting them", () => {
+    const assistantMessages = ["First line\n\nSecond paragraph."];
+    const tasks = buildActivityTasks([record({ assistantMessages })]);
+    expect(tasks[0]?.assistantMessages).toEqual(assistantMessages);
   });
 
   it("excludes orchestrator-internal helper agents", () => {

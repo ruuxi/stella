@@ -126,6 +126,7 @@ export type TaskItem = {
   completedAtMs?: number
   lastUpdatedAtMs: number
   outputPreview?: string
+  assistantMessages?: string[]
 }
 
 export const TASK_COMPLETION_INDICATOR_MS = 3000
@@ -202,6 +203,7 @@ export function buildActivityTasks(
         completedAtMs: running ? undefined : record.completedAt,
         lastUpdatedAtMs: record.updatedAt,
         outputPreview: running ? undefined : (record.result ?? record.error),
+        assistantMessages: record.assistantMessages,
       }
     })
     .sort((a, b) => a.startedAtMs - b.startedAtMs || a.id.localeCompare(b.id))
@@ -739,20 +741,13 @@ export function pruneGroupExpandOverrides(
   return next
 }
 
-/**
- * Whether an activity row should render its rolling reasoning/progress
- * summaries. Summaries narrate what the agent is doing RIGHT NOW, so they
- * only display while it's actually working; once the agent stops (finished,
- * failed, canceled) they collapse away and the row keeps just the files —
- * per Rahul: "it's correct to collapse the reasoning summaries specifically
- * and no longer show them when not active. but the files should still
- * display." A `send_input` re-activation flips the task back to running and
- * the (still-accumulated) summaries show again.
- */
-export function shouldShowTaskReasoningSummaries(
-  task: Pick<TaskItem, 'status' | 'agentType'>,
-): boolean {
-  return task.status === 'running' && task.agentType !== AGENT_IDS.MANAGER
+/** Agent-authored updates replace the old generated live-summary ticker. */
+export function getTaskAgentUpdates(
+  task: Pick<TaskItem, 'status' | 'agentType' | 'assistantMessages'>,
+): readonly string[] {
+  if (task.status !== 'running' || task.agentType === AGENT_IDS.MANAGER)
+    return []
+  return task.assistantMessages ?? []
 }
 
 /**

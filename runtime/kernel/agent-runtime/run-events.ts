@@ -462,6 +462,7 @@ export const subscribeRuntimeAgentEvents = ({
   threadKey,
   conversationId,
   uiVisibility,
+  attemptGeneration,
 }: {
   agent: RuntimeAgentLike;
   runId: string;
@@ -475,6 +476,7 @@ export const subscribeRuntimeAgentEvents = ({
   threadKey?: string;
   conversationId?: string;
   uiVisibility?: "visible" | "hidden";
+  attemptGeneration?: number;
 }) => {
   // Stable run-level fields shared by every hook payload from this subscription.
   const hookContext = buildHookRuntimeContext({
@@ -520,6 +522,10 @@ export const subscribeRuntimeAgentEvents = ({
           persistThreadPayloadMessage(threadStore, {
             threadKey,
             payload,
+            runId,
+            ...(typeof attemptGeneration === "number"
+              ? { attemptGeneration }
+              : {}),
           });
         }
       }

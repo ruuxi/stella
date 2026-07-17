@@ -56,7 +56,7 @@ import {
   groupActivityTasks,
   orderByFirstSeen,
   pruneGroupExpandOverrides,
-  shouldShowTaskReasoningSummaries,
+  getTaskAgentUpdates,
   updateSeenRunningGroupKeys,
   updateSeenRunningTaskIds,
   type ActivityRow,
@@ -85,8 +85,7 @@ import {
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/scheduling";
 import { TextShimmer } from "@/app/chat/TextShimmer";
-import { AgentProgressSummaries } from "@/shell/AgentProgressSummaries";
-import { useAgentProgressSummaries } from "@/features/chat/agent-progress-summary-store";
+import { AgentAssistantUpdates } from "@/shell/AgentAssistantUpdates";
 import "@/app/chat/chat-workspace-strip.css";
 
 // Default per-section caps. The compact strip shows a small preview; the
@@ -101,8 +100,8 @@ const SECTION_CAPS = {
 // remain the escape hatch for longer result sets.
 const SEARCH_CAPS = { activity: 40, files: 40, schedule: 30, store: 30 };
 const EMPTY_FILES: ReadonlyArray<ConversationFileEntry> = [];
-/** Most-recent reasoning summaries shown under an expanded agent. */
-const AGENT_SUMMARY_CAP = 3;
+/** Most-recent agent-authored messages shown under an expanded agent. */
+const AGENT_UPDATE_CAP = 3;
 /** File rows shown under an expanded agent before "View all (N)" kicks in. */
 const AGENT_FILE_CAP = 5;
 
@@ -311,15 +310,13 @@ const TaskRow = memo(function TaskRow({
   // intentionally reserved for the inline chat card, so it cannot replace
   // the stable description here or leak into activity search.
   const label = task.description.trim();
-  const summaries = useAgentProgressSummaries(task.id);
+  const agentUpdates = getTaskAgentUpdates(task);
   // Per-session only; resets when the row unmounts, which is fine.
   const [showAllFiles, setShowAllFiles] = useState(false);
-  // Summaries narrate live work — display them only while the agent is
-  // active. They stay accumulated in the store, so a send_input
-  // re-activation brings them straight back; a finished row shows files
-  // only.
-  const hasSummaries =
-    summaries.length > 0 && shouldShowTaskReasoningSummaries(task);
+  // Agent-authored assistant messages replace the generated progress-summary
+  // ticker. They display only while the thread is active, matching the old
+  // live-update surface without scheduling any extra inference.
+  const hasAgentUpdates = agentUpdates.length > 0;
   const managerDetail =
     task.agentType === AGENT_IDS.MANAGER
       ? task.status === "running"
@@ -335,7 +332,7 @@ const TaskRow = memo(function TaskRow({
     filesCapped && !showAllFiles ? files.slice(0, AGENT_FILE_CAP) : files;
   const hasChildContent = Boolean(childContent);
   const hasDetail =
-    hasChildContent || Boolean(managerDetail) || hasSummaries || hasFiles;
+    hasChildContent || Boolean(managerDetail) || hasAgentUpdates || hasFiles;
   const detailOpen = expanded && hasDetail;
   return (
     <motion.li
@@ -401,10 +398,10 @@ const TaskRow = memo(function TaskRow({
                   {managerDetail}
                 </p>
               ) : null}
-              {hasSummaries ? (
-                <AgentProgressSummaries
-                  agentId={task.id}
-                  max={AGENT_SUMMARY_CAP}
+              {hasAgentUpdates ? (
+                <AgentAssistantUpdates
+                  messages={agentUpdates}
+                  max={AGENT_UPDATE_CAP}
                 />
               ) : null}
               {childContent}
@@ -755,7 +752,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     });
   }, []);
   // Per-agent expand/collapse: an expanded activity row reveals that
-  // agent's recent reasoning summaries and the files it produced.
+  // agent's recent assistant messages and the files it produced.
   //
   // Default state: a running agent comes up expanded (freshly-started agents
   // auto-expand), and an agent seen running THIS session stays expanded

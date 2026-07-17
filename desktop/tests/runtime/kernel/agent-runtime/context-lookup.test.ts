@@ -91,7 +91,7 @@ type LookupStore = Parameters<typeof buildContextLookupUserPrompt>[0]["store"];
 const makeLookupStore = (overrides: Partial<LookupStore> = {}): LookupStore =>
   ({
     listThreadsForRecallIndex: () => [],
-    listAgentProgressSummaries: () => [],
+    listAgentAssistantMessages: () => [],
     searchThreads: () => [],
     searchTranscripts: () => [],
     listTranscriptNeighbors: () => [],
@@ -275,7 +275,7 @@ describe("buildContextLookupUserPrompt", () => {
     expect(prompt).toContain("Full ~/.stella/memories/MEMORY.md omitted");
   });
 
-  it("puts only RUNNING threads in the live-status tail, with progress phrases", async () => {
+  it("puts only RUNNING threads in the live-status tail, with agent messages", async () => {
     const { rootPath, db } = await createRoot();
     db.close();
     const now = Date.now();
@@ -299,7 +299,7 @@ describe("buildContextLookupUserPrompt", () => {
           agentStatus: "completed",
         },
       ],
-      listAgentProgressSummaries: (agentId: string) =>
+      listAgentAssistantMessages: (agentId: string) =>
         agentId === "still-running"
           ? [{ text: "running smoke tests", atMs: now - 30_000 }]
           : [{ text: "summing spreadsheet rows", atMs: now }],
@@ -316,7 +316,7 @@ describe("buildContextLookupUserPrompt", () => {
 
     const liveSection = prompt.slice(prompt.indexOf("# Live Thread Status"));
     expect(liveSection).toContain("- still-running (active, last active");
-    expect(liveSection).toContain("live progress (newest last):");
+    expect(liveSection).toContain("agent updates (newest last):");
     expect(liveSection).toMatch(/- \[[^\]]+\] running smoke tests/);
     // Paused threads never render as live status.
     expect(
@@ -379,7 +379,7 @@ describe("formatThreadSearchResults", () => {
         return threads;
       },
       listThreadResultExcerpts: () => excerpts,
-      listAgentProgressSummaries: (agentId: string, limit = 3) =>
+      listAgentAssistantMessages: (agentId: string, limit = 3) =>
         (summariesByAgentId[agentId] ?? []).slice(-limit),
     }) as unknown as Parameters<typeof formatThreadSearchResults>[0];
 
@@ -433,7 +433,7 @@ describe("formatThreadSearchResults", () => {
     expect(out).not.toContain("description: Deploy the backend");
   });
 
-  it("attaches live progress to ACTIVE threads only", () => {
+  it("attaches agent-authored updates to ACTIVE threads only", () => {
     const liveNow = Date.now();
     const out = formatThreadSearchResults(
       makeStore(
@@ -457,7 +457,7 @@ describe("formatThreadSearchResults", () => {
       "flights",
     );
     expect(out).toContain("(active, last active");
-    expect(out).toContain("live progress (newest last):");
+    expect(out).toContain("agent updates (newest last):");
     expect(out).toMatch(/- \[[^\]]+\] paging through fare results/);
   });
 
@@ -643,7 +643,7 @@ describe("runRecall", () => {
           agentStatus: "running",
         },
       ],
-      listAgentProgressSummaries: () => [],
+      listAgentAssistantMessages: () => [],
       searchThreads: () => [],
       searchTranscripts: () => [],
       listTranscriptNeighbors: () => [],
