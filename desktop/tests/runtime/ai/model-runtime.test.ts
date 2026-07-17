@@ -20,6 +20,44 @@ const makeTempDir = async (): Promise<string> => {
   return directory;
 };
 
+const validRemoteCatalogModel = (overrides: Record<string, unknown> = {}) => ({
+  id: "grok-remote-valid",
+  name: "Grok Remote Valid",
+  api: "openai-responses",
+  provider: "xai",
+  baseUrl: "https://api.x.ai/v1",
+  reasoning: true,
+  input: ["text", "image"],
+  cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 500_000,
+  maxTokens: 100_000,
+  ...overrides,
+});
+
+const refreshXaiCatalog = async (
+  buildEntries: (runtime: ModelRuntime) => unknown[],
+): Promise<ModelRuntime> => {
+  const stellaDataDir = await makeTempDir();
+  const runtime = new ModelRuntime();
+  await runtime.initialize({ stellaDataDir, allowNetwork: false });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input) => {
+    if (String(input).endsWith("/xai")) {
+      return new Response(JSON.stringify({ models: buildEntries(runtime) }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response("", { status: 404 });
+  }) as typeof fetch;
+  try {
+    await runtime.getSnapshotForListing({ forceRefresh: true });
+    return runtime;
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+};
+
 afterEach(async () => {
   delete process.env.STELLA_TEST_MODEL_KEY;
   delete process.env.STELLA_MISSING_MODEL_HEADER;
@@ -920,6 +958,86 @@ describe("ModelRuntime", () => {
     }
   });
 
+  it("drops and logs remote catalog entries missing api", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const runtime = await refreshXaiCatalog(() => [
+        validRemoteCatalogModel({ id: "missing-api", api: undefined }),
+      ]);
+
+      expect(runtime.getModel("xai", "missing-api")).toBeUndefined();
+      expect(warn).toHaveBeenCalledWith(
+        "[stella:model-runtime] Dropping invalid remote catalog entry",
+        expect.objectContaining({ providerId: "xai", modelId: "missing-api" }),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("drops and logs remote catalog entries missing cost", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const runtime = await refreshXaiCatalog(() => [
+        validRemoteCatalogModel({ id: "missing-cost", cost: undefined }),
+      ]);
+
+      expect(runtime.getModel("xai", "missing-cost")).toBeUndefined();
+      expect(warn).toHaveBeenCalledWith(
+        "[stella:model-runtime] Dropping invalid remote catalog entry",
+        expect.objectContaining({ providerId: "xai", modelId: "missing-cost" }),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("does not let a malformed remote catalog entry override a builtin id", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      let builtinBefore:
+        | ReturnType<ModelRuntime["getModels"]>[number]
+        | undefined;
+      const runtime = await refreshXaiCatalog((catalogRuntime) => {
+        builtinBefore = catalogRuntime.getModels("xai")[0];
+        if (!builtinBefore) throw new Error("Expected an xAI builtin model");
+        return [
+          validRemoteCatalogModel({
+            id: builtinBefore.id,
+            name: "Malformed Override",
+            cost: { input: "NaN", output: 2, cacheRead: 0, cacheWrite: 0 },
+          }),
+        ];
+      });
+
+      expect(runtime.getModel("xai", builtinBefore?.id ?? "")).toEqual(
+        builtinBefore,
+      );
+      expect(warn).toHaveBeenCalledWith(
+        "[stella:model-runtime] Dropping invalid remote catalog entry",
+        expect.objectContaining({
+          providerId: "xai",
+          modelId: builtinBefore?.id,
+        }),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("accepts a fully valid remote catalog entry", async () => {
+    const runtime = await refreshXaiCatalog(() => [validRemoteCatalogModel()]);
+
+    expect(runtime.getModel("xai", "grok-remote-valid")).toMatchObject({
+      id: "grok-remote-valid",
+      name: "Grok Remote Valid",
+      provider: "xai",
+      api: "openai-responses",
+      baseUrl: "https://api.x.ai/v1",
+      cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+    });
+  });
+
   it("forces a fresh pi.dev request at explicit refresh boundaries", async () => {
     const stellaDataDir = await makeTempDir();
     const runtime = new ModelRuntime();
@@ -996,6 +1114,7 @@ describe("ModelRuntime", () => {
                 baseUrl: "https://api.x.ai/v1",
                 reasoning: true,
                 input: ["text"],
+                cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
                 contextWindow: 128_000,
                 maxTokens: 16_000,
               },

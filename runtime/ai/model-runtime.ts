@@ -3,6 +3,8 @@ import path from "node:path";
 import { MODELS } from "./models.generated.js";
 import {
   ModelConfig,
+  getRemoteCatalogModelValidationErrors,
+  isRemoteCatalogModel,
   isModelConfigValueConfigured,
   resolveModelConfigHeaders,
   resolveModelConfigValue,
@@ -531,12 +533,29 @@ export class ModelRuntime {
     if (!Array.isArray(entries)) {
       throw new Error(`Invalid model catalog for ${providerId}`);
     }
-    const models = entries
-      .filter(
-        (entry): entry is Model<Api> =>
-          Boolean(entry) && typeof entry === "object" && "id" in entry,
-      )
-      .map((model) => ({ ...model, provider: providerId }));
+    const models: Model<Api>[] = [];
+    for (const [entryIndex, entry] of entries.entries()) {
+      if (!isRemoteCatalogModel(entry)) {
+        const modelId =
+          entry &&
+          typeof entry === "object" &&
+          "id" in entry &&
+          typeof entry.id === "string"
+            ? entry.id
+            : undefined;
+        console.warn(
+          "[stella:model-runtime] Dropping invalid remote catalog entry",
+          {
+            providerId,
+            entryIndex,
+            ...(modelId ? { modelId } : {}),
+            errors: getRemoteCatalogModelValidationErrors(entry),
+          },
+        );
+        continue;
+      }
+      models.push({ ...entry, provider: providerId });
+    }
     this.dynamicCatalogs.set(providerId, { models, checkedAt });
   }
 

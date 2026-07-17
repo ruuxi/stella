@@ -44,6 +44,10 @@ export type ModelsJsonProvider = {
   modelOverrides?: Record<string, ModelsJsonModelOverride>;
 };
 
+export type RemoteCatalogModel = Omit<Model<Api>, "provider"> & {
+  provider?: string;
+};
+
 type ModelsJson = {
   providers: Record<string, ModelsJsonProvider>;
 };
@@ -167,6 +171,12 @@ const costSchema = Type.Object({
   cacheRead: Type.Optional(Type.Number()),
   cacheWrite: Type.Optional(Type.Number()),
 });
+const remoteCatalogCostSchema = Type.Object({
+  input: Type.Number({ minimum: 0 }),
+  output: Type.Number({ minimum: 0 }),
+  cacheRead: Type.Number({ minimum: 0 }),
+  cacheWrite: Type.Number({ minimum: 0 }),
+});
 const modelFields = {
   name: Type.Optional(nonEmptyString),
   reasoning: Type.Optional(Type.Boolean()),
@@ -203,6 +213,32 @@ const providerSchema = Type.Object({
 const modelsJsonSchema = Type.Object({
   providers: Type.Record(Type.String(), providerSchema),
 });
+const remoteCatalogModelSchema = Type.Object({
+  id: nonEmptyString,
+  name: nonEmptyString,
+  api: nonEmptyString,
+  provider: Type.Optional(nonEmptyString),
+  baseUrl: nonEmptyString,
+  reasoning: Type.Boolean(),
+  thinkingLevelMap: Type.Optional(thinkingLevelMapSchema),
+  input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
+  cost: remoteCatalogCostSchema,
+  contextWindow: Type.Number({ exclusiveMinimum: 0 }),
+  maxTokens: Type.Number({ exclusiveMinimum: 0 }),
+  headers: Type.Optional(stringRecord),
+  compat: Type.Optional(compatSchema),
+});
+
+export const isRemoteCatalogModel = (
+  value: unknown,
+): value is RemoteCatalogModel => Value.Check(remoteCatalogModelSchema, value);
+
+export const getRemoteCatalogModelValidationErrors = (
+  value: unknown,
+): string[] =>
+  [...Value.Errors(remoteCatalogModelSchema, value)]
+    .slice(0, 8)
+    .map((error) => `${error.path || "root"}: ${error.message}`);
 
 /** Strip JSONC line comments and trailing commas without touching strings. */
 const stripJsonComments = (value: string): string =>
