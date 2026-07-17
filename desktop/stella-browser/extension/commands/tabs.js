@@ -15,6 +15,7 @@ const createRecord = () => Object.create(null);
 const UNSAFE_OWNER_IDS = new Set(["__proto__", "prototype", "constructor"]);
 let ownerTabState = createRecord();
 let ownerLeaseState = createRecord();
+let ownerLeaseHighWater = createRecord();
 let stateLoaded = false;
 let ensureAgentWindowPromise = null;
 let ensureStellaGroupPromise = null;
@@ -135,6 +136,20 @@ function sanitizeOwnerLeaseState(raw) {
   return next;
 }
 
+function sanitizeOwnerLeaseHighWater(raw) {
+  if (!raw || typeof raw !== "object") return createRecord();
+  const next = createRecord();
+  for (const [ownerId, issuedAt] of Object.entries(raw)) {
+    try {
+      const normalizedOwnerId = normalizeOwnerId(ownerId);
+      if (Number.isSafeInteger(issuedAt) && issuedAt > 0) {
+        next[normalizedOwnerId] = issuedAt;
+      }
+    } catch {}
+  }
+  return next;
+}
+
 function getOwnerState(ownerId) {
   const normalized = normalizeOwnerId(ownerId);
   if (!Object.hasOwn(ownerTabState, normalized)) {
@@ -148,7 +163,9 @@ function getOwnerState(ownerId) {
 }
 
 function deleteOwnerState(ownerId) {
-  delete ownerTabState[normalizeOwnerId(ownerId)];
+  const normalized = normalizeOwnerId(ownerId);
+  delete ownerTabState[normalized];
+  if (!ownerLeaseState[normalized]) delete ownerLeaseHighWater[normalized];
 }
 
 function getOwnedTabIds() {
@@ -180,7 +197,10 @@ function resetAgentState({ clearLeases = false } = {}) {
   agentWindowId = null;
   stellaGroupId = null;
   ownerTabState = createRecord();
-  if (clearLeases) ownerLeaseState = createRecord();
+  if (clearLeases) {
+    ownerLeaseState = createRecord();
+    ownerLeaseHighWater = createRecord();
+  }
   clearOwnerRefMaps();
 }
 
@@ -195,14 +215,17 @@ async function loadState() {
       "stellaGroupId",
       "ownerTabState",
       "ownerLeaseState",
+      "ownerLeaseHighWater",
     ]);
     if (data.agentWindowId != null) agentWindowId = data.agentWindowId;
     if (data.stellaGroupId != null) stellaGroupId = data.stellaGroupId;
     ownerTabState = sanitizeOwnerTabState(data.ownerTabState);
     ownerLeaseState = sanitizeOwnerLeaseState(data.ownerLeaseState);
+    ownerLeaseHighWater = sanitizeOwnerLeaseHighWater(data.ownerLeaseHighWater);
   } catch {
     ownerTabState = createRecord();
     ownerLeaseState = createRecord();
+    ownerLeaseHighWater = createRecord();
   }
   stateLoaded = true;
 }
@@ -217,6 +240,7 @@ async function saveState() {
       stellaGroupId,
       ownerTabState,
       ownerLeaseState,
+      ownerLeaseHighWater,
     });
   } catch {}
 }
@@ -225,6 +249,7 @@ export async function authorizeOwnerLease(command) {
   await loadState();
   const ownerId = getCommandOwnerId(command);
   const current = ownerLeaseState[ownerId];
+  const highWater = ownerLeaseHighWater[ownerId] ?? 0;
   const leaseId = command?.ownerLeaseId;
   const issuedAt = command?.ownerLeaseIssuedAt;
 
@@ -250,13 +275,14 @@ export async function authorizeOwnerLease(command) {
     }
     return { ownerId, lease: normalizedLease };
   }
-  if (current && normalizedLease.issuedAt <= current.issuedAt) {
+  if (normalizedLease.issuedAt <= Math.max(current?.issuedAt ?? 0, highWater)) {
     throw new Error(
       `Stale browser owner lease rejected for owner "${ownerId}"; a replacement kernel already owns this browser session.`,
     );
   }
 
   ownerLeaseState[ownerId] = normalizedLease;
+  ownerLeaseHighWater[ownerId] = normalizedLease.issuedAt;
   await saveState();
   return { ownerId, lease: normalizedLease };
 }
@@ -271,6 +297,14 @@ export async function releaseOwnerLease(command) {
     current.issuedAt === command?.ownerLeaseIssuedAt
   ) {
     delete ownerLeaseState[ownerId];
+    if (ownerTabState[ownerId]?.tabIds?.length > 0) {
+      ownerLeaseHighWater[ownerId] = Math.max(
+        ownerLeaseHighWater[ownerId] ?? 0,
+        current.issuedAt,
+      );
+    } else {
+      delete ownerLeaseHighWater[ownerId];
+    }
     await saveState();
   }
 }

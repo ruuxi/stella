@@ -416,7 +416,7 @@ test('in-flight tab close rechecks its lease after replacement', async () => {
   }
 });
 
-test('lease release is non-destructive and permits later sessions without growth', async () => {
+test('lease release preserves the generation fence while tabs survive', async () => {
   const lease = {
     id: 'release-lease',
     action: 'tab_new',
@@ -428,11 +428,35 @@ test('lease release is non-destructive and permits later sessions without growth
   const owned = await handleTabNew(lease);
   await releaseOwnerLease(lease);
 
+  await assert.rejects(
+    authorizeOwnerLease({
+      ...lease,
+      id: 'stale-after-release',
+      ownerLeaseId: 'stale-session',
+      ownerLeaseIssuedAt: 1,
+    }),
+    /Stale browser owner lease rejected/,
+  );
   await authorizeOwnerLease({
     ...lease,
-    id: 'replacement-after-release',
+    id: 'newer-after-release',
     ownerLeaseId: 'later-session',
-    ownerLeaseIssuedAt: 1,
+    ownerLeaseIssuedAt: 600,
   });
   assert.equal(tabs.has(owned.data.tabId), true);
+});
+
+test('lease release leaves no tombstone for a stateless short-lived owner', async () => {
+  const lease = {
+    id: 'stateless-release',
+    action: 'cookies_get',
+    ownerId: 'stateless-owner',
+    ownerLeaseId: 'stateless-session',
+    ownerLeaseIssuedAt: 700,
+  };
+  await authorizeOwnerLease(lease);
+  await releaseOwnerLease(lease);
+
+  assert.equal(storage.ownerLeaseState?.['stateless-owner'], undefined);
+  assert.equal(storage.ownerLeaseHighWater?.['stateless-owner'], undefined);
 });
