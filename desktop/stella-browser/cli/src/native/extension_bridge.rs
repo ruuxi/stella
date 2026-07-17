@@ -35,6 +35,48 @@ const DISCONNECT_SHUTDOWN_MS: u64 = 30_000;
 
 /// Reconnect wait after a dead connection is detected.
 const RECONNECT_WAIT_MS: u64 = 10_000;
+const EXTENSION_PROTOCOL_VERSION: &str = "2.0";
+const MIN_EXTENSION_VERSION: (u64, u64, u64) = (1, 2, 6);
+
+fn parse_extension_version(value: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = value.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.split('-').next()?.parse().ok()?;
+    Some((major, minor, patch))
+}
+
+fn validate_extension_hello(parsed: &Value) -> Result<String, String> {
+    let extension_version = parsed
+        .get("extensionVersion")
+        .or_else(|| parsed.get("version"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let protocol_version = parsed
+        .get("protocolVersion")
+        .and_then(Value::as_str)
+        .unwrap_or("missing");
+
+    if protocol_version != EXTENSION_PROTOCOL_VERSION {
+        return Err(format!(
+            "Stella Browser extension protocol mismatch: extension {} advertises protocol {}, but this Stella runtime requires protocol {} and extension 1.2.6 or newer. Update the Stella Browser extension.",
+            extension_version, protocol_version, EXTENSION_PROTOCOL_VERSION
+        ));
+    }
+    let parsed_version = parse_extension_version(extension_version).ok_or_else(|| {
+        format!(
+            "Stella Browser extension reported invalid version '{}'. Update the Stella Browser extension to 1.2.6 or newer.",
+            extension_version
+        )
+    })?;
+    if parsed_version < MIN_EXTENSION_VERSION {
+        return Err(format!(
+            "Stella Browser extension {} is too old; this Stella runtime requires 1.2.6 or newer. Update the Stella Browser extension.",
+            extension_version
+        ));
+    }
+    Ok(extension_version.to_string())
+}
 
 struct PendingCommand {
     tx: oneshot::Sender<Value>,
@@ -43,6 +85,7 @@ struct PendingCommand {
 
 struct BridgeInner {
     connected: bool,
+    last_connection_error: Option<String>,
     cmd_tx: Option<mpsc::Sender<String>>,
     connection_generation: Option<u64>,
     next_generation: u64,
@@ -83,6 +126,7 @@ impl ExtensionBridge {
             token,
             inner: Arc::new(Mutex::new(BridgeInner {
                 connected: false,
+                last_connection_error: None,
                 cmd_tx: None,
                 connection_generation: None,
                 next_generation: 0,
@@ -211,7 +255,10 @@ impl ExtensionBridge {
 
         let timeout = Duration::from_millis(DEFAULT_WAIT_TIMEOUT_MS);
         tokio::select! {
-            _ = self.connected_notify.notified() => true,
+            _ = self.connected_notify.notified() => {
+                let guard = self.inner.lock().await;
+                guard.connected && guard.cmd_tx.is_some()
+            },
             _ = tokio::time::sleep(timeout) => {
                 let guard = self.inner.lock().await;
                 guard.connected && guard.cmd_tx.is_some()
@@ -233,9 +280,10 @@ impl ExtensionBridge {
             if !guard.connected || guard.cmd_tx.is_none() {
                 drop(guard);
                 if !self.wait_for_connection().await {
-                    return Err(
+                    let guard = self.inner.lock().await;
+                    return Err(guard.last_connection_error.clone().unwrap_or_else(||
                         "Extension not connected. Install the Stella Browser Bridge extension and connect it.".to_string()
-                    );
+                    ));
                 }
             }
         }
@@ -417,6 +465,7 @@ impl ExtensionBridge {
 
         let mut guard = self.inner.lock().await;
         guard.connected = false;
+        guard.last_connection_error = None;
         guard.cmd_tx = None;
         guard.connection_generation = None;
         guard.pending.clear();
@@ -482,6 +531,7 @@ async fn activate_connection(inner: &Arc<Mutex<BridgeInner>>, cmd_tx: mpsc::Send
         let displaced_pending = guard.pending.drain().map(|(_, pending)| pending).collect();
 
         guard.connected = true;
+        guard.last_connection_error = None;
         guard.cmd_tx = Some(cmd_tx);
         guard.connection_generation = Some(generation);
         (generation, displaced_pending)
@@ -602,6 +652,22 @@ async fn handle_extension_connection(
                     continue;
                 }
 
+                let extension_version = match validate_extension_hello(&parsed) {
+                    Ok(version) => version,
+                    Err(error) => {
+                        {
+                            let mut guard = inner.lock().await;
+                            guard.last_connection_error = Some(error.clone());
+                        }
+                        let err = json!({
+                            "type": "auth_error",
+                            "error": error,
+                        });
+                        let _ = cmd_tx.send(serde_json::to_string(&err).unwrap()).await;
+                        connected_notify.notify_waiters();
+                        break;
+                    }
+                };
                 let token = parsed.get("token").and_then(|v| v.as_str()).unwrap_or("");
                 let token_matches = token == expected_token;
 
@@ -615,6 +681,8 @@ async fn handle_extension_connection(
                         "type": "welcome",
                         "session": session,
                         "sessionToken": expected_token,
+                        "extensionVersion": extension_version,
+                        "protocolVersion": EXTENSION_PROTOCOL_VERSION,
                     });
                     let _ = cmd_tx.send(serde_json::to_string(&welcome).unwrap()).await;
                 } else {
@@ -664,7 +732,7 @@ async fn handle_extension_connection(
                         json!({
                             "id": id,
                             "success": false,
-                            "error": parsed.get("error").and_then(|v| v.as_str()).unwrap_or("Unknown extension error"),
+                            "error": parsed.get("error").and_then(|v| v.as_str()).unwrap_or("Extension command failed without an error message"),
                         })
                     };
 
@@ -799,12 +867,37 @@ mod tests {
     fn test_inner() -> Arc<Mutex<BridgeInner>> {
         Arc::new(Mutex::new(BridgeInner {
             connected: false,
+            last_connection_error: None,
             cmd_tx: None,
             connection_generation: None,
             next_generation: 0,
             pending: HashMap::new(),
             last_health_check: Instant::now() - Duration::from_secs(60),
         }))
+    }
+
+    #[test]
+    fn extension_handshake_rejects_legacy_or_incompatible_protocols() {
+        let legacy = json!({ "type": "hello", "version": "1.0.0" });
+        assert!(validate_extension_hello(&legacy)
+            .unwrap_err()
+            .contains("protocol mismatch"));
+
+        let old = json!({
+            "type": "hello",
+            "extensionVersion": "1.2.5",
+            "protocolVersion": EXTENSION_PROTOCOL_VERSION,
+        });
+        assert!(validate_extension_hello(&old)
+            .unwrap_err()
+            .contains("too old"));
+
+        let current = json!({
+            "type": "hello",
+            "extensionVersion": "1.2.6",
+            "protocolVersion": EXTENSION_PROTOCOL_VERSION,
+        });
+        assert_eq!(validate_extension_hello(&current).unwrap(), "1.2.6");
     }
 
     #[tokio::test]

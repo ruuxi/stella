@@ -209,6 +209,7 @@ const nodeReplWorkerMain = async (
   let writeBytes = 0;
   let outputBuffer = "";
   let outputErrorReject: ((error: Error) => void) | undefined;
+  let outputErrorTimer: ReturnType<typeof setTimeout> | undefined;
   let nextSkyCallId = 1;
   let nextBrowserCallId = 1;
   let nextToolCallId = 1;
@@ -445,23 +446,29 @@ const nodeReplWorkerMain = async (
           outputBuffer + String(chunk),
           Math.min(workerData.maxEvalOutputBytes, 65_536),
         );
-        if (
-          /(?:^|\n)(?:Uncaught\b|(?:SyntaxError|ReferenceError|TypeError|RangeError|Error):)/.test(
-            outputBuffer,
-          )
-        ) {
-          const reject = outputErrorReject;
-          outputErrorReject = undefined;
-          // Errors surfaced through the REPL output (uncaught async throws
-          // caught by the REPL domain) abandon the in-flight `server.eval`,
-          // leaving the REPL with a pending evaluation that never settles.
-          // Name the error so the parent drops the kernel instead of reusing
-          // a REPL in that state. The literal must stay inline: this function
-          // is serialized with `toString()` into the worker source, so it
-          // cannot reference module-scope constants.
-          const uncaught = new Error(outputBuffer.trim());
-          uncaught.name = "NodeReplUncaughtError";
-          reject(uncaught);
+        if (/(?:^|\n)Uncaught\b/.test(outputBuffer)) {
+          // Normal REPL errors are also rendered as `Uncaught ...`, then
+          // delivered through server.eval's callback. Give that callback a
+          // short grace period. Only an async/domain throw that abandons the
+          // callback is fatal to this worker.
+          outputErrorTimer ??= setTimeout(() => {
+            const reject = outputErrorReject;
+            outputErrorTimer = undefined;
+            if (!reject) return;
+            outputErrorReject = undefined;
+            // The literal must stay inline: this function is serialized with
+            // `toString()` into the worker source.
+            const renderedError = outputBuffer.trim();
+            const uncaught = new Error(renderedError);
+            if (
+              !/^Uncaught\s+(?:SyntaxError|ReferenceError|TypeError|RangeError):/.test(
+                renderedError,
+              )
+            ) {
+              uncaught.name = "NodeReplUncaughtError";
+            }
+            reject(uncaught);
+          }, 25);
         }
       }
       done();
@@ -531,6 +538,8 @@ const nodeReplWorkerMain = async (
     writes = null;
     writeBytes = 0;
     outputBuffer = "";
+    clearTimeout(outputErrorTimer);
+    outputErrorTimer = undefined;
     outputErrorReject = undefined;
   };
 
@@ -615,6 +624,8 @@ const nodeReplWorkerMain = async (
       const rendered = await new Promise<string>((resolve, reject) => {
         outputErrorReject = reject;
         server.eval(code, server.context, "node_repl", (error, value) => {
+          clearTimeout(outputErrorTimer);
+          outputErrorTimer = undefined;
           outputErrorReject = undefined;
           if (error) {
             reject(error);

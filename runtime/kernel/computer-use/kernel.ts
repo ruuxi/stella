@@ -51,8 +51,8 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 4 * 60 * 60_000;
 /**
  * Upper bound on kernel/session teardown awaited inside the evaluate error
- * path. Disposal can touch the browser bridge (close_owner) and the
- * computer-use session daemon; if either is wedged, an unbounded await here
+ * path. Disposal can touch the browser client transport and the computer-use
+ * session daemon; if either is wedged, an unbounded await here
  * holds the evaluation's own timeout rejection hostage and the node_repl
  * tool call never returns (observed 2026-07-12: a hung Brave extension
  * bridge turned a 5-minute eval timeout into an indefinite tool hang).
@@ -350,6 +350,8 @@ class NodeReplKernel {
       requestBrowserExtensionConnect?: BrowserExtensionConnectRequester;
       executeTool?: NodeReplKernelManagerOptions["executeTool"];
       toolNames: string[];
+      ownerLeaseId: string;
+      ownerLeaseIssuedAt: number;
       onIdle: (kernel: NodeReplKernel) => void;
     },
   ) {
@@ -375,7 +377,8 @@ class NodeReplKernel {
       sessionId: id,
       cwd,
       commandTimeoutMs: options.commandTimeoutMs,
-      disposeCleanup: { action: "close_owner" },
+      ownerLeaseId: options.ownerLeaseId,
+      ownerLeaseIssuedAt: options.ownerLeaseIssuedAt,
     });
     const workerData: NodeReplWorkerData = {
       cwd,
@@ -1075,6 +1078,7 @@ export class NodeReplKernelRegistry {
   private readonly browserSessionFactory: (
     options: BrowserSessionOptions,
   ) => BrowserSessionClient;
+  private lastOwnerLeaseIssuedAt = Date.now();
 
   constructor(private readonly options: NodeReplKernelManagerOptions = {}) {
     this.evalTimeoutMs = options.evalTimeoutMs ?? DEFAULT_EVAL_TIMEOUT_MS;
@@ -1111,6 +1115,11 @@ export class NodeReplKernelRegistry {
       const cwd = path.resolve(
         context.toolWorkspaceRoot ?? context.stellaAppDir ?? process.cwd(),
       );
+      const ownerLeaseIssuedAt = Math.max(
+        Date.now(),
+        this.lastOwnerLeaseIssuedAt + 1,
+      );
+      this.lastOwnerLeaseIssuedAt = ownerLeaseIssuedAt;
       kernel = new NodeReplKernel(id, cwd, {
         sessionFactory,
         authorizeApp: this.options.authorizeApp,
@@ -1122,6 +1131,8 @@ export class NodeReplKernelRegistry {
         toolNames: [...new Set(context.allowedToolNames ?? [])].filter(
           (name) => !NODE_REPL_EXCLUDED_TOOL_NAMES.has(name),
         ),
+        ownerLeaseId: randomUUID(),
+        ownerLeaseIssuedAt,
         evalTimeoutMs: this.evalTimeoutMs,
         commandTimeoutMs: this.commandTimeoutMs,
         idleTimeoutMs: this.idleTimeoutMs,

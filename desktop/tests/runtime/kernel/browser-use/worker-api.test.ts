@@ -99,6 +99,31 @@ describe("browser worker API", () => {
     });
   });
 
+  it("fails loudly when a legacy extension returns index-only tab payloads", async () => {
+    const browser = installBrowserWorkerApi(async (method, args) => {
+      if (method === "command" && args[0] === "tab_list") {
+        return {
+          success: true,
+          data: {
+            tabs: [{ index: 0, title: "Legacy" }],
+            active: 0,
+          },
+        };
+      }
+      if (method === "command" && args[0] === "tab_new") {
+        return { success: true, data: { index: 0, total: 1 } };
+      }
+      return { success: true, data: {} };
+    });
+
+    await expect(browser.tabs.list()).rejects.toThrow(
+      /protocol mismatch.*stable positive tabId.*1\.2\.6/i,
+    );
+    await expect(browser.tabs.new()).rejects.toThrow(
+      /protocol mismatch.*tab_new returned no stable tabId.*1\.2\.6/i,
+    );
+  });
+
   it("translates every Tab operation to a structured action with tabId", async () => {
     const calls: RecordedCall[] = [];
     const callBrowser: BrowserWorkerCall = vi.fn(async (method, args) => {

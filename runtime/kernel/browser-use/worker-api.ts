@@ -1164,6 +1164,11 @@ const title = await tab.title();`;
     activeTabId?: number;
   };
 
+  const browserProtocolMismatch = (detail: string): Error =>
+    new Error(
+      `Stella Browser protocol mismatch: ${detail}. Update the Stella Browser extension to 1.2.6 or newer.`,
+    );
+
   const normalizeTabId = (value: unknown, name: string): number => {
     const numeric =
       typeof value === "string" && value.trim() !== "" ? Number(value) : value;
@@ -1197,29 +1202,35 @@ const title = await tab.title();`;
       ? data
       : Array.isArray(field(data, "tabs"))
         ? (field(data, "tabs") as unknown[])
-        : [];
+        : null;
+    if (!rawTabs) {
+      throw browserProtocolMismatch("tab_list returned no tabs array");
+    }
     const activeRaw = field(data, "activeTabId");
     const activeIndex = numberField(data, "active", -1);
     const tabs: BrowserWorkerTab[] = [];
     let activeTabId: number | undefined;
     for (let index = 0; index < rawTabs.length; index += 1) {
       const item = rawTabs[index];
-      if (!isPlainObject(item)) continue;
-      const rawId = item.tabId ?? item.id;
-      let id: number;
-      try {
-        id = normalizeTabId(rawId, `tabs[${index}].tabId`);
-      } catch {
-        continue;
+      if (!isPlainObject(item)) {
+        throw browserProtocolMismatch(`tab_list tabs[${index}] is not an object`);
       }
-      const active =
-        item.active === true ||
-        item.selected === true ||
-        index === activeIndex ||
-        Number(activeRaw) === id;
-      const tab = getTab(id, { ...item, active });
-      tabs.push(tab);
-      if (active) activeTabId = id;
+      const rawId = item.tabId ?? item.id;
+      try {
+        const id = normalizeTabId(rawId, `tabs[${index}].tabId`);
+        const active =
+          item.active === true ||
+          item.selected === true ||
+          index === activeIndex ||
+          Number(activeRaw) === id;
+        const tab = getTab(id, { ...item, active });
+        tabs.push(tab);
+        if (active) activeTabId = id;
+      } catch (error) {
+        throw browserProtocolMismatch(
+          `tab_list tabs[${index}] has no stable positive tabId (${error instanceof Error ? error.message : String(error)})`,
+        );
+      }
     }
     return Object.freeze({
       tabs: Object.freeze(tabs),
@@ -1607,6 +1618,9 @@ const title = await tab.title();`;
         field(data, "tabId") ??
         field(data, "id") ??
         field(field(data, "tab"), "id");
+      if (rawId === undefined || rawId === null) {
+        throw browserProtocolMismatch("tab_new returned no stable tabId");
+      }
       return getTab(rawId, {
         url: typeof url === "string" ? url : "about:blank",
         active: true,

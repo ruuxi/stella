@@ -14,6 +14,7 @@ let stellaGroupId = null;
 const createRecord = () => Object.create(null);
 const UNSAFE_OWNER_IDS = new Set(["__proto__", "prototype", "constructor"]);
 let ownerTabState = createRecord();
+let ownerLeaseState = createRecord();
 let stateLoaded = false;
 let ensureAgentWindowPromise = null;
 let ensureStellaGroupPromise = null;
@@ -111,6 +112,29 @@ function sanitizeOwnerTabState(raw) {
   return next;
 }
 
+function sanitizeOwnerLeaseState(raw) {
+  if (!raw || typeof raw !== "object") return createRecord();
+  const next = createRecord();
+  for (const [ownerId, value] of Object.entries(raw)) {
+    if (!value || typeof value !== "object") continue;
+    try {
+      const normalizedOwnerId = normalizeOwnerId(ownerId);
+      if (
+        typeof value.id === "string" &&
+        value.id.trim() &&
+        Number.isSafeInteger(value.issuedAt) &&
+        value.issuedAt > 0
+      ) {
+        next[normalizedOwnerId] = {
+          id: value.id.trim(),
+          issuedAt: value.issuedAt,
+        };
+      }
+    } catch {}
+  }
+  return next;
+}
+
 function getOwnerState(ownerId) {
   const normalized = normalizeOwnerId(ownerId);
   if (!Object.hasOwn(ownerTabState, normalized)) {
@@ -152,10 +176,11 @@ function getRequestedTabId(command) {
   return command.tabId;
 }
 
-function resetAgentState() {
+function resetAgentState({ clearLeases = false } = {}) {
   agentWindowId = null;
   stellaGroupId = null;
   ownerTabState = createRecord();
+  if (clearLeases) ownerLeaseState = createRecord();
   clearOwnerRefMaps();
 }
 
@@ -169,12 +194,15 @@ async function loadState() {
       "agentWindowId",
       "stellaGroupId",
       "ownerTabState",
+      "ownerLeaseState",
     ]);
     if (data.agentWindowId != null) agentWindowId = data.agentWindowId;
     if (data.stellaGroupId != null) stellaGroupId = data.stellaGroupId;
     ownerTabState = sanitizeOwnerTabState(data.ownerTabState);
+    ownerLeaseState = sanitizeOwnerLeaseState(data.ownerLeaseState);
   } catch {
     ownerTabState = createRecord();
+    ownerLeaseState = createRecord();
   }
   stateLoaded = true;
 }
@@ -188,8 +216,79 @@ async function saveState() {
       agentWindowId,
       stellaGroupId,
       ownerTabState,
+      ownerLeaseState,
     });
   } catch {}
+}
+
+export async function authorizeOwnerLease(command) {
+  await loadState();
+  const ownerId = getCommandOwnerId(command);
+  const current = ownerLeaseState[ownerId];
+  const leaseId = command?.ownerLeaseId;
+  const issuedAt = command?.ownerLeaseIssuedAt;
+
+  if (leaseId == null && issuedAt == null) {
+    if (current) {
+      throw new Error(
+        `Browser protocol mismatch for owner "${ownerId}": this command has no owner lease. Update Stella and the Stella Browser extension to 1.2.6 or newer.`,
+      );
+    }
+    return { ownerId, lease: null };
+  }
+  if (typeof leaseId !== "string" || !leaseId.trim()) {
+    throw new Error("ownerLeaseId must be a non-empty string");
+  }
+  if (!Number.isSafeInteger(issuedAt) || issuedAt <= 0) {
+    throw new Error("ownerLeaseIssuedAt must be a positive integer");
+  }
+
+  const normalizedLease = { id: leaseId.trim(), issuedAt };
+  if (current?.id === normalizedLease.id) {
+    if (current.issuedAt !== normalizedLease.issuedAt) {
+      throw new Error(`Browser owner lease timestamp changed for owner "${ownerId}"`);
+    }
+    return { ownerId, lease: normalizedLease };
+  }
+  if (current && normalizedLease.issuedAt <= current.issuedAt) {
+    throw new Error(
+      `Stale browser owner lease rejected for owner "${ownerId}"; a replacement kernel already owns this browser session.`,
+    );
+  }
+
+  ownerLeaseState[ownerId] = normalizedLease;
+  await saveState();
+  return { ownerId, lease: normalizedLease };
+}
+
+export async function releaseOwnerLease(command) {
+  await loadState();
+  const ownerId = getCommandOwnerId(command);
+  const current = ownerLeaseState[ownerId];
+  if (
+    current &&
+    current.id === command?.ownerLeaseId &&
+    current.issuedAt === command?.ownerLeaseIssuedAt
+  ) {
+    delete ownerLeaseState[ownerId];
+    await saveState();
+  }
+}
+
+export async function assertCurrentOwnerLease(command) {
+  await loadState();
+  if (command?.ownerLeaseId == null && command?.ownerLeaseIssuedAt == null) return;
+  const ownerId = getCommandOwnerId(command);
+  const current = ownerLeaseState[ownerId];
+  if (
+    !current ||
+    current.id !== command.ownerLeaseId ||
+    current.issuedAt !== command.ownerLeaseIssuedAt
+  ) {
+    throw new Error(
+      `Stale browser owner lease rejected for owner "${ownerId}"; a replacement kernel already owns this browser session.`,
+    );
+  }
 }
 
 /**
@@ -271,7 +370,8 @@ async function ensureAgentWindowInternal() {
     try {
       await chrome.windows.get(agentWindowId);
     } catch {
-      resetAgentState();
+      agentWindowId = null;
+      stellaGroupId = null;
     }
   }
 
@@ -289,7 +389,8 @@ async function ensureAgentWindowInternal() {
       try {
         await chrome.windows.get(agentWindowId);
       } catch {
-        resetAgentState();
+        agentWindowId = null;
+        stellaGroupId = null;
       }
     }
   }
@@ -372,11 +473,7 @@ async function getTabIfValid(tabId) {
   if (!Number.isInteger(tabId)) return null;
 
   try {
-    const tab = await chrome.tabs.get(tabId);
-    if (agentWindowId != null && tab.windowId !== agentWindowId) {
-      return null;
-    }
-    return tab;
+    return await chrome.tabs.get(tabId);
   } catch {
     return null;
   }
@@ -715,21 +812,10 @@ async function validateAgentWindowAfterClose() {
   try {
     await chrome.windows.get(agentWindowId);
   } catch {
-    resetAgentState();
+    agentWindowId = null;
+    stellaGroupId = null;
     await saveState();
   }
-}
-
-/**
- * Close all tabs owned by a specific command owner.
- */
-export async function closeOwnerTabs(commandOrOwnerId) {
-  const ownerId =
-    typeof commandOrOwnerId === "string"
-      ? normalizeOwnerId(commandOrOwnerId)
-      : getCommandOwnerId(commandOrOwnerId);
-  const result = await finalizeOwnerTabs({ ownerId }, []);
-  return { closed: result.closedTabIds.length };
 }
 
 function validateKeepEntries(keep, ownedTabIds) {
@@ -770,6 +856,7 @@ function validateKeepEntries(keep, ownedTabIds) {
 }
 
 export async function finalizeOwnerTabs(command, keep = command?.keep ?? []) {
+  await assertCurrentOwnerLease(command);
   const ownerId = getCommandOwnerId(command);
   const tabs = await getOwnerTabs(ownerId);
   const ownedTabIds = new Set(tabs.map((tab) => tab.id));
@@ -801,6 +888,7 @@ export async function finalizeOwnerTabs(command, keep = command?.keep ?? []) {
 
   for (const tabId of closedTabIds) {
     try {
+      await assertCurrentOwnerLease(command);
       await chrome.tabs.remove(tabId);
       forgetOwnedTab(tabId);
     } catch (error) {
@@ -810,6 +898,7 @@ export async function finalizeOwnerTabs(command, keep = command?.keep ?? []) {
 
   for (const tabId of releasedTabIds) {
     try {
+      await assertCurrentOwnerLease(command);
       await chrome.tabs.ungroup([tabId]);
       forgetOwnedTab(tabId);
     } catch (error) {
@@ -847,7 +936,7 @@ export async function closeAgentWindow() {
     } catch {}
   }
 
-  resetAgentState();
+  resetAgentState({ clearLeases: true });
   await saveState();
 }
 
@@ -1025,7 +1114,8 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
     }
 
     if (removeInfo.windowId === agentWindowId && removeInfo.isWindowClosing) {
-      resetAgentState();
+      agentWindowId = null;
+      stellaGroupId = null;
       changed = true;
     }
 
@@ -1038,6 +1128,7 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
 chrome.windows.onRemoved.addListener((windowId) => {
   if (windowId !== agentWindowId) return;
 
-  resetAgentState();
+  agentWindowId = null;
+  stellaGroupId = null;
   void saveState();
 });

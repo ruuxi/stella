@@ -294,7 +294,8 @@ describe("persistent Node REPL kernels", () => {
       expect(browserOptions[0]).toMatchObject({
         binaryPath: "/runtime/stella-browser.js",
         cwd: "/workspace/project",
-        disposeCleanup: { action: "close_owner" },
+        ownerLeaseId: expect.any(String),
+        ownerLeaseIssuedAt: expect.any(Number),
       });
       expect(command.mock.calls.map(([action]) => action)).toEqual([
         "tab_new",
@@ -312,6 +313,56 @@ describe("persistent Node REPL kernels", () => {
         tabId: 101,
         selector: expect.stringContaining("aria="),
       });
+    } finally {
+      await registry.dispose();
+    }
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the browser session alive after a recoverable REPL syntax error", async () => {
+    const command = vi.fn(async (action: string) => ({
+      sessionId: "syntax-owner",
+      bridgeSessionId: "bridge",
+      requestId: `request-${command.mock.calls.length}`,
+      action,
+      params: {},
+      result: {
+        id: "response",
+        success: true as const,
+        data:
+          action === "tab_new"
+            ? { tabId: 91, index: 0, total: 1 }
+            : {
+                tabs: [{ tabId: 91, url: "about:blank", active: true }],
+                activeTabId: 91,
+              },
+      },
+      attempts: 1,
+      durationMs: 1,
+    }));
+    const dispose = vi.fn(async () => undefined);
+    const registry = new NodeReplKernelRegistry({
+      sessionFactory: defaultSessionFactory,
+      idleTimeoutMs: 60_000,
+      browserSessionFactory: () =>
+        ({ command, chain: vi.fn(), dispose }) as unknown as BrowserSessionClient,
+    });
+
+    try {
+      await registry.evaluate(
+        "const syntaxTabs = [await browser.tabs.new()]",
+        context("syntax-owner"),
+      );
+      await expect(
+        registry.evaluate("const syntaxTabs = []", context("syntax-owner")),
+      ).rejects.toThrow("Identifier 'syntaxTabs' has already been declared");
+      await expect(
+        registry.evaluate(
+          "(await browser.tabs.list()).map(tab => tab.id)",
+          context("syntax-owner"),
+        ),
+      ).resolves.toContain("91");
+      expect(dispose).not.toHaveBeenCalled();
     } finally {
       await registry.dispose();
     }

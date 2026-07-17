@@ -49,6 +49,7 @@ test('chain defaults to no random delay and preserves abort-on-error behavior', 
 
     assert.equal(timeoutCalls, 0);
     assert.equal(response.success, false);
+    assert.equal(response.error, 'Chain step 1 (fill) failed: fill failed');
     assert.equal(response.data.results.length, 2);
     assert.equal(response.data.results[0].data.tabId, 17);
     assert.match(response.data.results[1].error, /fill failed/);
@@ -167,6 +168,23 @@ test('requested screenshot failures fail the chain with format metadata', async 
     error: 'capture failed',
     format: 'jpeg',
   });
+});
+
+test('failed action responses propagate the action and concrete message', async () => {
+  const response = await handleChain(
+    {
+      id: 'chain-action-failure',
+      ownerId: 'owner-a',
+      steps: [{ action: 'click' }],
+    },
+    {
+      click: async () => ({ success: false, error: 'target was detached' }),
+    },
+  );
+
+  assert.equal(response.success, false);
+  assert.equal(response.error, 'Chain step 0 (click) failed: target was detached');
+  assert.equal(response.data.results[0].error, 'target was detached');
 });
 
 test('requested snapshot failures fail the chain', async () => {

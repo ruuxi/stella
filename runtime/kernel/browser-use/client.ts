@@ -19,7 +19,6 @@ const DEFAULT_BROWSER_CHAIN_WAIT_TIMEOUT_MS = 10_000;
 const BROWSER_CHAIN_STEP_BUDGET_MS = 1_000;
 const MIN_BROWSER_CHAIN_TIMEOUT_MS = 3 * 60_000;
 const MAX_BROWSER_CHAIN_TIMEOUT_MS = 4 * 60_000;
-const MAX_DISPOSE_CLEANUP_TIMEOUT_MS = 1_000;
 
 export const BROWSER_CHAIN_ACTIONS = [
   "healthcheck",
@@ -181,11 +180,6 @@ export type BrowserChainResult<TData = unknown> = Readonly<{
   screenshot?: string;
 }>;
 
-export type BrowserDisposeCleanup = Readonly<{
-  action: "finalize_tabs" | "close_owner";
-  params?: BrowserCommandParams;
-}>;
-
 export type BrowserSessionOptions = Readonly<{
   binaryPath?: string;
   sessionId: string;
@@ -196,7 +190,8 @@ export type BrowserSessionOptions = Readonly<{
   signal?: AbortSignal;
   runner?: BrowserCommandRunner;
   getBridgeEnv?: BrowserBridgeEnvironmentProvider;
-  disposeCleanup?: BrowserDisposeCleanup;
+  ownerLeaseId?: string;
+  ownerLeaseIssuedAt?: number;
 }>;
 
 export const BROWSER_SESSION_CLIENT_METHODS = [
@@ -303,7 +298,13 @@ type PendingResponse = {
 
 const ALLOWED_ACTIONS = new Set<string>(BROWSER_PROTOCOL_ACTIONS);
 const ALLOWED_CHAIN_ACTIONS = new Set<string>(BROWSER_CHAIN_ACTIONS);
-const RESERVED_PARAM_KEYS = new Set(["id", "action", "ownerId"]);
+const RESERVED_PARAM_KEYS = new Set([
+  "id",
+  "action",
+  "ownerId",
+  "ownerLeaseId",
+  "ownerLeaseIssuedAt",
+]);
 const EMPTY_BUFFER = Buffer.alloc(0);
 
 const requireNonEmptyString = (value: unknown, name: string): string => {
@@ -448,29 +449,6 @@ const validateChainAction = (
     );
   }
   return action as BrowserChainAction;
-};
-
-const validateDisposeCleanup = (
-  value: BrowserDisposeCleanup | undefined,
-):
-  | Readonly<{
-      action: "finalize_tabs" | "close_owner";
-      params: BrowserCommandParams;
-    }>
-  | undefined => {
-  if (value === undefined) return undefined;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new TypeError("disposeCleanup must be an object.");
-  }
-  if (value.action !== "finalize_tabs" && value.action !== "close_owner") {
-    throw new TypeError(
-      'disposeCleanup.action must be "finalize_tabs" or "close_owner".',
-    );
-  }
-  return Object.freeze({
-    action: value.action,
-    params: validateParams(value.params, "disposeCleanup.params"),
-  });
 };
 
 const validateCommandOptions = (
@@ -706,10 +684,8 @@ export class BrowserSession implements BrowserSessionClient {
   private readonly signal?: AbortSignal;
   private readonly runner: BrowserCommandRunner;
   private readonly getBridgeEnv: BrowserBridgeEnvironmentProvider;
-  private readonly disposeCleanup?: Readonly<{
-    action: "finalize_tabs" | "close_owner";
-    params: BrowserCommandParams;
-  }>;
+  private readonly ownerLeaseId: string;
+  private readonly ownerLeaseIssuedAt: number;
   private executionConfig?: ResolvedExecutionConfig;
   private socket?: Socket;
   private connectingSocket?: Socket;
@@ -754,7 +730,14 @@ export class BrowserSession implements BrowserSessionClient {
     this.signal = options.signal;
     this.runner = options.runner ?? runBrowserCommand;
     this.getBridgeEnv = options.getBridgeEnv ?? getStellaBrowserBridgeEnv;
-    this.disposeCleanup = validateDisposeCleanup(options.disposeCleanup);
+    this.ownerLeaseId =
+      options.ownerLeaseId === undefined
+        ? randomUUID()
+        : requireNonEmptyString(options.ownerLeaseId, "ownerLeaseId");
+    this.ownerLeaseIssuedAt = requirePositiveInteger(
+      options.ownerLeaseIssuedAt ?? Date.now(),
+      "ownerLeaseIssuedAt",
+    );
     this.signal?.addEventListener("abort", this.onSessionAbort, { once: true });
   }
 
@@ -836,15 +819,7 @@ export class BrowserSession implements BrowserSessionClient {
     if (!this.disposePromise) {
       this.disposed = true;
       this.signal?.removeEventListener("abort", this.onSessionAbort);
-      if (this.disposeCleanup) {
-        this.disposePromise = this.queue
-          .then(() => this.sendDisposeCleanup())
-          .catch(() => undefined)
-          .then(() => this.closeClientTransport());
-      } else {
-        this.closeClientTransport();
-        this.disposePromise = this.queue;
-      }
+      this.disposePromise = this.queue.finally(() => this.closeClientTransport());
     }
     return this.disposePromise;
   }
@@ -866,32 +841,6 @@ export class BrowserSession implements BrowserSessionClient {
       () => undefined,
     );
     return result;
-  }
-
-  private async sendDisposeCleanup(): Promise<void> {
-    if (!this.disposeCleanup) return;
-    const timeoutMs = Math.min(
-      this.commandTimeoutMs,
-      MAX_DISPOSE_CLEANUP_TIMEOUT_MS,
-    );
-    const deadline = Date.now() + timeoutMs;
-    if (!this.socket || this.socket.destroyed || !this.socket.writable) {
-      await this.connectOnce(undefined, deadline, timeoutMs, true);
-    }
-    const requestId = randomUUID();
-    await this.roundTrip(
-      {
-        id: requestId,
-        action: this.disposeCleanup.action,
-        ...this.disposeCleanup.params,
-        ownerId: this.sessionId,
-      },
-      requestId,
-      undefined,
-      deadline,
-      timeoutMs,
-      true,
-    );
   }
 
   private closeClientTransport(): void {
@@ -955,6 +904,8 @@ export class BrowserSession implements BrowserSessionClient {
       action,
       ...params,
       ownerId: this.sessionId,
+      ownerLeaseId: this.ownerLeaseId,
+      ownerLeaseIssuedAt: this.ownerLeaseIssuedAt,
     };
     const startedAt = Date.now();
     const deadline = startedAt + timeoutMs;

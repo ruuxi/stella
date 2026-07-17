@@ -11,10 +11,11 @@ Use `var` for reusable REPL bindings. Browser actions are not exposed through `e
 
 ## Production Workflow
 
-Create a task-owned tab, keep its page and locator handles, and batch deterministic dependent actions in one cell:
+Acquire one task-owned tab, navigate that handle, keep its page and locator handles, and batch deterministic dependent actions in one cell:
 
 ```js
-var tab = await browser.tabs.new("https://example.com/sign-in");
+var tab = await browser.tabs.new();
+await tab.goto("https://example.com/sign-in");
 var page = tab.playwright;
 var email = page.getByLabel("Email", { exact: true });
 var password = page.getByLabel("Password", { exact: true });
@@ -114,7 +115,7 @@ The public object graph is frozen. Do not mutate it or attach properties. Call `
 | `browser`      | `documentation()`, `chain(steps, options)`, `tabs`                   |
 | `browser.tabs` | `list()`, `new(url?)`, `selected()`, `get(id)`, `finalize(entries?)` |
 
-Prefer `tabs.new(url)` for a new task. Use `tabs.selected()` only when the user's currently selected owned tab is the target, and `tabs.list()` when tab choice is itself a decision.
+For a new task, call `tabs.new()` once and then navigate that handle with `tab.goto(url)`. If navigation fails, reuse the same handle or inspect `tabs.list()`; do not loop on `tabs.new()` because a delayed response can otherwise create a pileup of blank tabs. Use `tabs.selected()` only when the user's currently selected owned tab is the target, and `tabs.list()` when tab choice is itself a decision.
 
 `browser.chain()` is a low-level JSON action batch, limited to 100 steps. Prefer normal method calls with multiple awaits in one REPL cell because they preserve typed handles and are easier to branch and debug. Chains reject unknown actions, options, arbitrary values, and nested chains. Supported chain options are `delay`, `waitForSelector`, `waitTimeout`, `abortOnError`, `returnSnapshot`, and `returnScreenshot`; do not add `delay` or automatic snapshots without a concrete need.
 

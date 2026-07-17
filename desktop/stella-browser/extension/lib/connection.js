@@ -230,9 +230,12 @@ function doConnect(generation) {
     probeThenConnect(generation);
   });
 
+  const extensionVersion = chrome.runtime.getManifest().version;
   port.postMessage({
     type: 'hello',
-    version: '1.0.0',
+    version: extensionVersion,
+    extensionVersion,
+    protocolVersion: '2.0',
     token: '',
   });
 }

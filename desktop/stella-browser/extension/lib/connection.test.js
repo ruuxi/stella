@@ -36,6 +36,9 @@ globalThis.chrome = {
   },
   runtime: {
     lastError: null,
+    getManifest() {
+      return { version: '1.2.6' };
+    },
     connectNative() {
       const port = createPort();
       ports.push(port);
@@ -69,6 +72,19 @@ test('stale disconnect cannot clear a newer native port', async () => {
   await flush();
   assert.equal(isConnected(), true);
   assert.equal(ports.at(-1), second);
+  disconnect();
+});
+
+test('hello advertises the manifest and protocol versions', async () => {
+  connect();
+  await flush();
+  assert.deepEqual(ports.at(-1).messages[0], {
+    type: 'hello',
+    version: '1.2.6',
+    extensionVersion: '1.2.6',
+    protocolVersion: '2.0',
+    token: '',
+  });
   disconnect();
 });
 

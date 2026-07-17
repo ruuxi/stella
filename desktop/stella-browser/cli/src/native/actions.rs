@@ -1275,7 +1275,7 @@ fn normalize_extension_response(id: &str, response: &Value) -> Value {
             response
                 .get("error")
                 .and_then(Value::as_str)
-                .unwrap_or("Unknown extension error"),
+                .unwrap_or("Extension command failed without an error message"),
         )
     }
 }

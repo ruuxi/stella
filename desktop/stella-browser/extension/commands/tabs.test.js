@@ -133,6 +133,7 @@ globalThis.chrome = {
 };
 
 const {
+  authorizeOwnerLease,
   finalizeOwnerTabs,
   getActiveTab,
   handleTabClose,
@@ -326,4 +327,43 @@ test('failed handoff operations retain ownership for retry', async () => {
   });
   assert.deepEqual(retried.releasedTabIds, [owned.data.tabId]);
   assert.equal(tabs.get(owned.data.tabId).groupId, -1);
+});
+
+test('window drift preserves valid owned tabs in the registry', async () => {
+  const owned = await handleTabNew({ id: 'drift-new', ownerId: 'owner-drift' });
+  tabs.get(owned.data.tabId).windowId = 2;
+  for (const listener of listeners.windowRemoved) listener(1);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const listed = await handleTabList({ id: 'drift-list', ownerId: 'owner-drift' });
+  assert.deepEqual(listed.data.tabs.map((tab) => tab.tabId), [owned.data.tabId]);
+  assert.equal(tabs.has(owned.data.tabId), true);
+});
+
+test('replacement lease fences stale cleanup from an older kernel', async () => {
+  const firstLease = {
+    id: 'lease-first',
+    action: 'tab_new',
+    ownerId: 'owner-lease',
+    ownerLeaseId: 'kernel-1',
+    ownerLeaseIssuedAt: 100,
+  };
+  const replacementLease = {
+    id: 'lease-replacement',
+    action: 'tab_list',
+    ownerId: 'owner-lease',
+    ownerLeaseId: 'kernel-2',
+    ownerLeaseIssuedAt: 200,
+  };
+  await authorizeOwnerLease(firstLease);
+  const owned = await handleTabNew(firstLease);
+  await authorizeOwnerLease(replacementLease);
+
+  await assert.rejects(
+    authorizeOwnerLease({ ...firstLease, id: 'stale-close', action: 'close_owner' }),
+    /Stale browser owner lease rejected/,
+  );
+  assert.equal(tabs.has(owned.data.tabId), true);
+  const listed = await handleTabList(replacementLease);
+  assert.deepEqual(listed.data.tabs.map((tab) => tab.tabId), [owned.data.tabId]);
 });
