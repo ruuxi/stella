@@ -433,21 +433,26 @@ export const createAgentOrchestration = (
         };
       }
     }
+    const managerOwner =
+      context.state.localAgentManager?.resolveOwningManagerThread(
+        event.agentId,
+        event.parentAgentId,
+      );
     const managerParentId =
-      event.parentAgentId &&
-      (context.state.localAgentManager?.isManagerThread(event.parentAgentId) ||
-        context.runtimeStore.getAgentRecord?.(event.parentAgentId)
-          ?.agentType === AGENT_IDS.MANAGER)
-        ? event.parentAgentId
-        : undefined;
-    const isManagerOwned = Boolean(managerParentId);
+      typeof managerOwner === "string" ? managerOwner : undefined;
+    const isManagerOwned = managerParentId !== undefined;
+    const hasUnresolvedManagedAncestry = managerOwner === null;
     // Interjection-turn completions arrive twice (see
     // `AgentLifecycleEvent.audience`): `orchestrator-only` skips every
     // display surface (persisted activity row, renderer/run callbacks,
     // OS notification) so the task UI keeps reading "in progress",
     // while the deferred `display-only` replay skips the hidden
     // orchestrator follow-up that already went out.
-    if (event.audience !== "orchestrator-only" && !isManagerOwned) {
+    if (
+      event.audience !== "orchestrator-only" &&
+      !isManagerOwned &&
+      !hasUnresolvedManagedAncestry
+    ) {
       // Progress ticks are ephemeral decoration: they stream to the renderer
       // below but are never persisted — thread state lives in
       // `runtime_agents` (see `listThreadActivity`), and persisting every
@@ -464,6 +469,10 @@ export const createAgentOrchestration = (
     if (event.audience === "display-only") {
       return;
     }
+    // A legacy/malformed parent link or ancestry cycle cannot be attributed
+    // safely. Keep the task in Activity, but never guess that it belongs in
+    // root chat or let it finalize the root turn.
+    if (hasUnresolvedManagedAncestry) return;
     const userPrompt = buildAgentEventPrompt(event, {
       recipient: isManagerOwned ? "manager" : "orchestrator",
     });

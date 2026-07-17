@@ -426,19 +426,12 @@ describe("remote prompt startup sync", () => {
     expect(fallbackPrompt).toMatch(/\bcontinuity\b/i);
     expect(fallbackPrompt).toMatch(/\bfresh independent context\b/i);
     expect(fallbackPrompt).toMatch(/orchestrator(?:'s)? instructions/i);
-    const statusRule = fallbackPrompt
-      .split("\n")
-      .find((line) => line.includes("[Status]"));
-    expect(statusRule).toMatch(/status|update/i);
-    expect(statusRule).toMatch(/incoming|request|asks/i);
-    expect(statusRule).toMatch(/unfinished|active/i);
-    const milestoneRule = fallbackPrompt
-      .split("\n")
-      .find((line) => line.includes("[Milestone]"));
-    expect(milestoneRule).toMatch(/milestone|interim/i);
-    expect(milestoneRule).toMatch(/explicit|request/i);
-    expect(milestoneRule).toMatch(/conditional|only when/i);
-    expect(milestoneRule).toMatch(/otherwise|unsolicited|by default/i);
+    expect(fallbackPrompt).toMatch(/manager_report[\s\S]*kind: status/i);
+    expect(fallbackPrompt).toMatch(/manager_report[\s\S]*kind: milestone/i);
+    expect(fallbackPrompt).toMatch(/manager_report[\s\S]*kind: complete/i);
+    expect(fallbackPrompt).toMatch(/direct parent `send_input`[\s\S]*active/i);
+    expect(fallbackPrompt).toMatch(/child and descendant[\s\S]*internal/i);
+    expect(fallbackPrompt).toMatch(/internal coordination by default/i);
     await expect(
       readFile(path.join(home, "agents/general.md"), "utf-8"),
     ).resolves.toBe(`${agentFrontmatter("general")}legacy general\n`);

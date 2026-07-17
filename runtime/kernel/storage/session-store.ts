@@ -131,6 +131,7 @@ export type PersistedAgentRecord = {
   agentDepth: number;
   maxAgentDepth?: number;
   parentAgentId?: string;
+  managerTurnState?: import("../../contracts/agent-runtime.js").ManagerTurnState;
   selfModMetadata?: {
     packageId?: string;
     releaseNumber?: number;
@@ -4213,6 +4214,7 @@ export class SessionStore {
         agent_depth,
         max_agent_depth,
         parent_agent_id,
+        manager_turn_state_json,
         self_mod_metadata_json,
         model_config_json,
         status,
@@ -4224,7 +4226,7 @@ export class SessionStore {
         root_run_id,
         attempt_generation
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(thread_id) DO UPDATE SET
         conversation_id = excluded.conversation_id,
         agent_type = excluded.agent_type,
@@ -4232,6 +4234,7 @@ export class SessionStore {
         agent_depth = excluded.agent_depth,
         max_agent_depth = excluded.max_agent_depth,
         parent_agent_id = excluded.parent_agent_id,
+        manager_turn_state_json = excluded.manager_turn_state_json,
         self_mod_metadata_json = excluded.self_mod_metadata_json,
         model_config_json = excluded.model_config_json,
         status = excluded.status,
@@ -4252,6 +4255,7 @@ export class SessionStore {
         record.agentDepth,
         record.maxAgentDepth ?? null,
         record.parentAgentId ?? null,
+        toJsonValueString(record.managerTurnState) ?? null,
         toJsonValueString(record.selfModMetadata) ?? null,
         toJsonValueString(record.modelConfigSnapshot) ?? null,
         record.status,
@@ -4556,6 +4560,7 @@ export class SessionStore {
         agent_depth,
         max_agent_depth,
         parent_agent_id,
+        manager_turn_state_json,
         self_mod_metadata_json,
         model_config_json,
         status,
@@ -4580,6 +4585,7 @@ export class SessionStore {
           agent_depth: number;
           max_agent_depth: number | null;
           parent_agent_id: string | null;
+          manager_turn_state_json: string | null;
           self_mod_metadata_json: string | null;
           model_config_json: string | null;
           status: PersistedAgentRecord["status"];
@@ -4601,6 +4607,9 @@ export class SessionStore {
     const modelConfigSnapshot = parseJsonValue<
       PersistedAgentRecord["modelConfigSnapshot"]
     >(row.model_config_json);
+    const managerTurnState = parseJsonValue<
+      PersistedAgentRecord["managerTurnState"]
+    >(row.manager_turn_state_json);
     return {
       threadId: row.thread_id,
       conversationId: row.conversation_id,
@@ -4611,6 +4620,7 @@ export class SessionStore {
         ? {}
         : { maxAgentDepth: row.max_agent_depth }),
       ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
+      ...(managerTurnState ? { managerTurnState } : {}),
       ...(selfModMetadata ? { selfModMetadata } : {}),
       ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
       status: row.status,
@@ -4638,6 +4648,7 @@ export class SessionStore {
         agent_depth,
         max_agent_depth,
         parent_agent_id,
+        manager_turn_state_json,
         self_mod_metadata_json,
         model_config_json,
         status,
@@ -4661,6 +4672,7 @@ export class SessionStore {
       agent_depth: number;
       max_agent_depth: number | null;
       parent_agent_id: string | null;
+      manager_turn_state_json: string | null;
       self_mod_metadata_json: string | null;
       model_config_json: string | null;
       status: PersistedAgentRecord["status"];
@@ -4680,6 +4692,9 @@ export class SessionStore {
       const modelConfigSnapshot = parseJsonValue<
         PersistedAgentRecord["modelConfigSnapshot"]
       >(row.model_config_json);
+      const managerTurnState = parseJsonValue<
+        PersistedAgentRecord["managerTurnState"]
+      >(row.manager_turn_state_json);
       return {
         threadId: row.thread_id,
         conversationId: row.conversation_id,
@@ -4690,6 +4705,7 @@ export class SessionStore {
           ? {}
           : { maxAgentDepth: row.max_agent_depth }),
         ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
+        ...(managerTurnState ? { managerTurnState } : {}),
         ...(selfModMetadata ? { selfModMetadata } : {}),
         ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
         status: row.status,

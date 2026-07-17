@@ -296,6 +296,40 @@ export const handleSendInput = async (
   };
 };
 
+export const handleManagerReport = async (
+  ctx: StateContext,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> => {
+  if (context.agentType !== AGENT_IDS.MANAGER) {
+    return { error: "Only a Manager can set Manager report visibility." };
+  }
+  const threadId =
+    toOptionalString(context.agentId) ?? toOptionalString(context.cloudAgentId);
+  if (!threadId) {
+    return { error: "Manager thread identity is unavailable." };
+  }
+  const kind = toOptionalString(args.kind);
+  if (kind !== "status" && kind !== "milestone" && kind !== "complete") {
+    return { error: "kind must be status, milestone, or complete" };
+  }
+  const updated = ctx.agentApi?.setManagerTurnDisposition?.(threadId, kind);
+  if (!updated?.updated) {
+    return { error: updated?.reason ?? "Manager reporting is unavailable." };
+  }
+  return {
+    result: {
+      thread_id: threadId,
+      kind,
+      visibility: kind === "complete" ? "terminal" : "public",
+      note:
+        kind === "complete"
+          ? "The next completed assistant response is the consolidated terminal result if managed work is idle."
+          : "The next completed assistant response is visible to the parent without completing the Manager task.",
+    },
+  };
+};
+
 export const handleSpawnAgent = async (
   ctx: StateContext,
   args: Record<string, unknown>,

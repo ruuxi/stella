@@ -658,6 +658,7 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       agent_depth INTEGER NOT NULL,
       max_agent_depth INTEGER,
       parent_agent_id TEXT,
+      manager_turn_state_json TEXT,
       self_mod_metadata_json TEXT,
       model_config_json TEXT,
       status TEXT NOT NULL,
@@ -677,6 +678,13 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   }
   try {
     db.exec("ALTER TABLE runtime_agents ADD COLUMN model_config_json TEXT;");
+  } catch {
+    // Column already exists.
+  }
+  try {
+    db.exec(
+      "ALTER TABLE runtime_agents ADD COLUMN manager_turn_state_json TEXT;",
+    );
   } catch {
     // Column already exists.
   }

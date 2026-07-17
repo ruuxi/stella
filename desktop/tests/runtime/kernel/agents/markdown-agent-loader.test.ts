@@ -69,13 +69,15 @@ describe("loadParsedAgentsFromDir", () => {
     expect(prompt).toMatch(/\bfresh independent context\b/i);
     expect(prompt).toMatch(/orchestrator(?:'s)? instructions/i);
     expect(prompt).not.toMatch(/brand-new[\s-]+(?:fresh-context )?reviewer/i);
-    expect(prompt).toMatch(/explicitly requests[\s\S]*milestone or interim/i);
-    expect(prompt).toContain("[Milestone]");
-    expect(prompt).toContain("[Status]");
-    expect(prompt).toMatch(/asks for status or an update[\s\S]*unfinished/i);
-    expect(prompt).toMatch(/yield without abandoning or completing/i);
-    expect(prompt).toMatch(/change instructions as steering/i);
-    expect(prompt).toMatch(/sentinels are conditional/i);
+    expect(prompt).toMatch(/manager_report[\s\S]*kind: milestone/i);
+    expect(prompt).toMatch(/manager_report[\s\S]*kind: status/i);
+    expect(prompt).toMatch(
+      /direct parent `send_input`[\s\S]*keeps the Manager active/i,
+    );
+    expect(prompt).toMatch(
+      /child and descendant lifecycle messages[\s\S]*internal/i,
+    );
+    expect(prompt).toMatch(/fleet is idle[\s\S]*kind: complete/i);
     expect(prompt).toMatch(
       /otherwise keep intermediate child reports internal/i,
     );

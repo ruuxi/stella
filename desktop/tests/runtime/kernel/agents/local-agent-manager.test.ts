@@ -72,6 +72,11 @@ describe("manager agent orchestration", () => {
             await managerFirstGate;
             return { runId: args.runId, result: "Waiting for child." };
           }
+          await args.toolExecutor(
+            "manager_report",
+            { kind: "complete" },
+            {} as ToolContext,
+          );
           return {
             runId: args.runId,
             result: "Consolidated: child passed verification.",
@@ -155,7 +160,7 @@ describe("manager agent orchestration", () => {
     ]);
   });
 
-  it("does not project an internal child-report wake while a manager is active", async () => {
+  it("keeps an ordinary child-report turn internal and non-terminal", async () => {
     const events: AgentLifecycleEvent[] = [];
     let markFirstRunStarted!: () => void;
     const firstRunStarted = new Promise<void>((resolve) => {
@@ -209,19 +214,15 @@ describe("manager agent orchestration", () => {
       "orchestrator",
       { deliveryKind: "manager-event" },
     );
-    await waitForAgentSettled(manager, managerTask.threadId);
+    while (managerRunCount < 2) {
+      await sleep(5);
+    }
 
     expect(managerRunCount).toBe(2);
-    expect(events.map((event) => event.type)).toEqual([
-      "agent-started",
-      "agent-completed",
-    ]);
+    expect(events.map((event) => event.type)).toEqual(["agent-started"]);
     expect(JSON.stringify(events)).not.toContain("A managed child");
-    expect(events[1]).toEqual(
-      expect.objectContaining({
-        agentId: managerTask.threadId,
-        result: "Manager final response after the child report.",
-      }),
+    expect((await manager.getAgent(managerTask.threadId))?.status).toBe(
+      "running",
     );
   });
 
@@ -254,9 +255,14 @@ describe("manager agent orchestration", () => {
           if (managerPrompts.length === 2) {
             return {
               runId: args.runId,
-              result: "[Status] Status: adopted verification is still running.",
+              result: "Status: adopted verification is still running.",
             };
           }
+          await args.toolExecutor(
+            "manager_report",
+            { kind: "complete" },
+            {} as ToolContext,
+          );
           return { runId: args.runId, result: "Final adopted-thread report." };
         }
         await childGate;

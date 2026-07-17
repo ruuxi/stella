@@ -9,6 +9,7 @@
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import {
   handleSendInput,
+  handleManagerReport,
   handleSpawnAgent,
   handleSpawnManager,
   type StateContext,
@@ -98,6 +99,26 @@ export const createAgentTools = (
     },
     execute: async (args, context) =>
       handleSendInput(stateContext, args, context),
+  },
+  {
+    name: "manager_report",
+    agentTypes: [AGENT_IDS.MANAGER],
+    description:
+      "Declare how the current Manager turn's completed assistant response should surface. Use status or milestone for an intentional public update that keeps the Manager active. Use complete only immediately before the true fleet-idle consolidated final response. Child-driven turns remain internal unless this tool is called.",
+    parameters: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["status", "milestone", "complete"],
+          description:
+            "status or milestone publishes a non-terminal parent update; complete requests one terminal consolidated result after all managed work is idle.",
+        },
+      },
+      required: ["kind"],
+    },
+    execute: async (args, context) =>
+      handleManagerReport(stateContext, args, context),
   },
   {
     name: "pause_agent",
