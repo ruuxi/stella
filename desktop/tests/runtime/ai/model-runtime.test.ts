@@ -3,12 +3,17 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { getModelConfigCommandInvocation } from "../../../../runtime/ai/model-config.js";
+import {
+  getModelConfigCommandInvocation,
+  getRemoteCatalogModelValidationErrors,
+  isRemoteCatalogModel,
+} from "../../../../runtime/ai/model-config.js";
 import {
   mergeModelHeaders,
   ModelRuntime,
 } from "../../../../runtime/ai/model-runtime.js";
 import { getOAuthProvider } from "../../../../runtime/ai/utils/oauth/index.js";
+import azureOpenAIResponsesCatalog from "../../fixtures/azure-openai-responses-catalog.json";
 
 const tempDirs: string[] = [];
 
@@ -958,6 +963,59 @@ describe("ModelRuntime", () => {
     }
   });
 
+  it("accepts and composes the captured 46-entry Azure Responses catalog", async () => {
+    const entries = Object.values(azureOpenAIResponsesCatalog);
+    expect(entries).toHaveLength(46);
+    expect(
+      entries.every(
+        (entry) =>
+          entry.api === "azure-openai-responses" && entry.baseUrl === "",
+      ),
+    ).toBe(true);
+    expect(entries.every(isRemoteCatalogModel)).toBe(true);
+
+    const stellaDataDir = await makeTempDir();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input) => {
+      if (String(input).endsWith("/azure-openai-responses")) {
+        return new Response(JSON.stringify(azureOpenAIResponsesCatalog), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const runtime = new ModelRuntime();
+      await runtime.initialize({ stellaDataDir, allowNetwork: true });
+
+      expect(runtime.getSnapshot().catalogError).toBeUndefined();
+      expect(runtime.getModels("azure-openai-responses")).toHaveLength(47);
+      expect(
+        runtime.getModel("azure-openai-responses", "gpt-5.6-luna"),
+      ).toMatchObject({
+        api: "azure-openai-responses",
+        provider: "azure-openai-responses",
+        baseUrl: "",
+      });
+      expect(
+        runtime.getModel("azure-openai-responses", "codex-mini-latest"),
+      ).toBeDefined();
+
+      const restored = new ModelRuntime();
+      await restored.initialize({ stellaDataDir, allowNetwork: false });
+      expect(
+        restored.getModel("azure-openai-responses", "gpt-5.6-luna"),
+      ).toBeDefined();
+      expect(
+        restored.getModel("azure-openai-responses", "codex-mini-latest"),
+      ).toBeDefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("drops a malformed cached catalog entry before it can override a builtin id", async () => {
     const stellaDataDir = await makeTempDir();
     const builtin = new ModelRuntime().getModels("xai")[0];
@@ -1080,6 +1138,54 @@ describe("ModelRuntime", () => {
       expect(warn).toHaveBeenCalledWith(
         "[stella:model-runtime] Dropping invalid remote catalog entry",
         expect.objectContaining({ providerId: "xai", modelId: "missing-cost" }),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("rejects non-finite and negative remote catalog costs", () => {
+    for (const input of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+      const entry = validRemoteCatalogModel({
+        cost: { input, output: 2, cacheRead: 0, cacheWrite: 0 },
+      });
+      expect(isRemoteCatalogModel(entry)).toBe(false);
+      expect(getRemoteCatalogModelValidationErrors(entry)).toEqual([
+        expect.stringMatching(/^\/cost\/input: Expected number/u),
+      ]);
+    }
+  });
+
+  it("does not accept an empty base URL for a non-Azure builtin collision", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      let builtinBefore:
+        | ReturnType<ModelRuntime["getModels"]>[number]
+        | undefined;
+      const runtime = await refreshXaiCatalog((catalogRuntime) => {
+        builtinBefore = catalogRuntime.getModels("xai")[0];
+        if (!builtinBefore) throw new Error("Expected an xAI builtin model");
+        return [
+          validRemoteCatalogModel({
+            id: builtinBefore.id,
+            name: "Malformed Empty URL Override",
+            baseUrl: "",
+          }),
+        ];
+      });
+
+      expect(runtime.getModel("xai", builtinBefore?.id ?? "")).toEqual(
+        builtinBefore,
+      );
+      expect(warn).toHaveBeenCalledWith(
+        "[stella:model-runtime] Dropping invalid remote catalog entry",
+        expect.objectContaining({
+          providerId: "xai",
+          modelId: builtinBefore?.id,
+          errors: expect.arrayContaining([
+            "/baseUrl: Expected string length greater or equal to 1",
+          ]),
+        }),
       );
     } finally {
       warn.mockRestore();

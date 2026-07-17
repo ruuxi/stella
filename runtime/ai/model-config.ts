@@ -213,12 +213,10 @@ const providerSchema = Type.Object({
 const modelsJsonSchema = Type.Object({
   providers: Type.Record(Type.String(), providerSchema),
 });
-const remoteCatalogModelSchema = Type.Object({
+const remoteCatalogModelFields = {
   id: nonEmptyString,
   name: nonEmptyString,
-  api: nonEmptyString,
   provider: Type.Optional(nonEmptyString),
-  baseUrl: nonEmptyString,
   reasoning: Type.Boolean(),
   thinkingLevelMap: Type.Optional(thinkingLevelMapSchema),
   input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
@@ -227,16 +225,39 @@ const remoteCatalogModelSchema = Type.Object({
   maxTokens: Type.Number({ exclusiveMinimum: 0 }),
   headers: Type.Optional(stringRecord),
   compat: Type.Optional(compatSchema),
+};
+const remoteCatalogModelSchema = Type.Object({
+  ...remoteCatalogModelFields,
+  api: nonEmptyString,
+  baseUrl: nonEmptyString,
 });
+// Azure deployments resolve their endpoint from request options or the user's
+// resource configuration, so their catalog models intentionally use an empty
+// baseUrl. Key this exception to the transport contract rather than the
+// provider name; every other remote transport still requires a URL.
+const azureRemoteCatalogModelSchema = Type.Object({
+  ...remoteCatalogModelFields,
+  api: Type.Literal("azure-openai-responses"),
+  baseUrl: Type.String(),
+});
+
+const remoteCatalogSchemaFor = (value: unknown) =>
+  value &&
+  typeof value === "object" &&
+  "api" in value &&
+  value.api === "azure-openai-responses"
+    ? azureRemoteCatalogModelSchema
+    : remoteCatalogModelSchema;
 
 export const isRemoteCatalogModel = (
   value: unknown,
-): value is RemoteCatalogModel => Value.Check(remoteCatalogModelSchema, value);
+): value is RemoteCatalogModel =>
+  Value.Check(remoteCatalogSchemaFor(value), value);
 
 export const getRemoteCatalogModelValidationErrors = (
   value: unknown,
 ): string[] =>
-  [...Value.Errors(remoteCatalogModelSchema, value)]
+  [...Value.Errors(remoteCatalogSchemaFor(value), value)]
     .slice(0, 8)
     .map((error) => `${error.path || "root"}: ${error.message}`);
 
