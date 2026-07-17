@@ -11,7 +11,10 @@ import {
 import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/shared.js";
 import { createToolHost } from "../../../../../runtime/kernel/tools/host.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
-import { getRuntimeToolMetadata } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
+import {
+  createPiTools,
+  getRuntimeToolMetadata,
+} from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
 import { loadParsedAgentsFromDir } from "../../../../../runtime/kernel/agents/markdown-agent-loader.js";
 import { loadStellaRuntimeAgents } from "../../../../../runtime/extensions/stella-runtime/index.js";
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
@@ -23,6 +26,7 @@ type TestHostContext = {
   createdTasks: Array<Record<string, unknown>>;
   contextLookups: Array<Record<string, unknown>>;
   sourceImports: Array<Record<string, unknown>>;
+  managerDispositions: Array<{ threadId: string; kind: string }>;
 };
 
 const activeContexts = new Set<TestHostContext>();
@@ -46,6 +50,7 @@ const createTestHost = async (
   const createdTasks: Array<Record<string, unknown>> = [];
   const contextLookups: Array<Record<string, unknown>> = [];
   const sourceImports: Array<Record<string, unknown>> = [];
+  const managerDispositions: Array<{ threadId: string; kind: string }> = [];
 
   const host = createToolHost({
     stellaAppDir: rootPath,
@@ -65,6 +70,10 @@ const createTestHost = async (
       },
       getAgent: async () => null,
       cancelAgent: async () => ({ canceled: false }),
+      setManagerTurnDisposition: (threadId, kind) => {
+        managerDispositions.push({ threadId, kind });
+        return { updated: true };
+      },
     },
     validateSpawnModel,
     webSearch: async (query) => ({ text: `results for ${query}` }),
@@ -93,6 +102,7 @@ const createTestHost = async (
     createdTasks,
     contextLookups,
     sourceImports,
+    managerDispositions,
   };
   activeContexts.add(context);
   return context;
@@ -212,6 +222,7 @@ describe("orchestrator direct tool surface", () => {
       "spawn_agent",
       "send_input",
       "pause_agent",
+      "manager_report",
     ]);
     const generalToolNames = advertisedToolNames("general");
     for (const coordinationTool of [
@@ -219,9 +230,89 @@ describe("orchestrator direct tool surface", () => {
       "spawn_manager",
       "send_input",
       "pause_agent",
+      "manager_report",
     ]) {
       expect(generalToolNames).not.toContain(coordinationTool);
     }
+  });
+
+  it("loads and executes structured Manager reporting through the production adapter path", async () => {
+    const { host, rootPath, managerDispositions } = await createTestHost();
+    const agentsDir = path.join(rootPath, "agents");
+    await mkdir(agentsDir, { recursive: true });
+    await Promise.all(
+      ["manager", "general"].map((agentType) =>
+        writeFile(
+          path.join(agentsDir, `${agentType}.md`),
+          [
+            "---",
+            `name: ${agentType}`,
+            `description: ${agentType} prompt`,
+            "tools: stale_home_metadata",
+            "---",
+            `Customized ${agentType} production prompt.`,
+          ].join("\n"),
+        ),
+      ),
+    );
+
+    const loaded = loadStellaRuntimeAgents(
+      rootPath,
+      path.join(repoRoot, "runtime/extensions/stella-runtime/agent-metadata"),
+    );
+    const manager = loaded.find((agent) => agent.id === AGENT_IDS.MANAGER);
+    const general = loaded.find((agent) => agent.id === AGENT_IDS.GENERAL);
+    expect(manager?.toolsAllowlist).toContain("manager_report");
+
+    const managerTools = createPiTools({
+      runId: "manager-run",
+      rootRunId: "root-run",
+      agentId: "manager-thread",
+      conversationId: "conv-1",
+      agentType: AGENT_IDS.MANAGER,
+      deviceId: "device-1",
+      stellaAppDir: rootPath,
+      stellaDataDir: rootPath,
+      toolsAllowlist: manager?.toolsAllowlist,
+      toolCatalog: host.getToolCatalog(AGENT_IDS.MANAGER),
+      store: {} as never,
+      toolExecutor: host.executeTool,
+    });
+    const reportTool = managerTools.find(
+      (tool) => tool.name === "manager_report",
+    );
+    expect(reportTool).toBeDefined();
+
+    for (const kind of ["status", "milestone", "complete"] as const) {
+      const result = await reportTool!.execute(`call-${kind}`, { kind });
+      expect(result.content[0]).toMatchObject({
+        type: "text",
+        text: expect.stringContaining(kind),
+      });
+    }
+    expect(managerDispositions).toEqual([
+      { threadId: "manager-thread", kind: "status" },
+      { threadId: "manager-thread", kind: "milestone" },
+      { threadId: "manager-thread", kind: "complete" },
+    ]);
+
+    const generalTools = createPiTools({
+      runId: "general-run",
+      agentId: "general-thread",
+      conversationId: "conv-1",
+      agentType: AGENT_IDS.GENERAL,
+      deviceId: "device-1",
+      toolsAllowlist: general?.toolsAllowlist,
+      toolCatalog: host.getToolCatalog(AGENT_IDS.GENERAL),
+      store: {} as never,
+      toolExecutor: host.executeTool,
+    });
+    expect(generalTools.map((tool) => tool.name)).not.toContain(
+      "manager_report",
+    );
+    expect(
+      host.getToolCatalog(AGENT_IDS.GENERAL).map((tool) => tool.name),
+    ).not.toContain("manager_report");
   });
 
   it("shows direct coordination tools only to the orchestrator", async () => {
@@ -386,13 +477,18 @@ describe("orchestrator direct tool surface", () => {
     const managerCoordinationTools = host
       .getToolCatalog("manager")
       .filter((tool) =>
-        ["spawn_agent", "spawn_manager", "send_input", "pause_agent"].includes(
-          tool.name,
-        ),
+        [
+          "spawn_agent",
+          "spawn_manager",
+          "send_input",
+          "pause_agent",
+          "manager_report",
+        ].includes(tool.name),
       )
       .map((tool) => tool.name)
       .sort();
     expect(managerCoordinationTools).toEqual([
+      "manager_report",
       "pause_agent",
       "send_input",
       "spawn_agent",

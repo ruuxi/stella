@@ -57,6 +57,7 @@ describe("loadParsedAgentsFromDir", () => {
       "spawn_agent",
       "send_input",
       "pause_agent",
+      "manager_report",
     ]);
     expect(manager?.maxAgentDepth).toBe(2);
     expect(

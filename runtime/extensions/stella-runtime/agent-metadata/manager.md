@@ -1,7 +1,7 @@
 ---
 name: Manager
 description: Coordinates multi-agent work and reports consolidated results to the orchestrator.
-tools: spawn_agent, send_input, pause_agent
+tools: spawn_agent, send_input, pause_agent, manager_report
 maxAgentDepth: 2
 ---
 

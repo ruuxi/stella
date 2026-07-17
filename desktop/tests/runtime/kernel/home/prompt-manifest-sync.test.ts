@@ -421,6 +421,7 @@ describe("remote prompt startup sync", () => {
       "spawn_agent",
       "send_input",
       "pause_agent",
+      "manager_report",
     ]);
     expect(fallbackPrompt).toMatch(/\bopen-ended\b/i);
     expect(fallbackPrompt).toMatch(/\bcontinuity\b/i);
@@ -459,6 +460,7 @@ describe("remote prompt startup sync", () => {
       "spawn_agent",
       "send_input",
       "pause_agent",
+      "manager_report",
     ]);
   });
 

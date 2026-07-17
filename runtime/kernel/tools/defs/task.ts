@@ -1,9 +1,10 @@
 /**
  * Sub-agent management tools for the orchestrator.
  *
- * Four tools manipulate the durable agent thread surface: `spawn_agent`,
- * `spawn_manager`, `send_input`, and `pause_agent`. Managers receive the
- * existing agent-management tools but cannot create another manager.
+ * Five tools manipulate the durable agent thread surface: `spawn_agent`,
+ * `spawn_manager`, `send_input`, `manager_report`, and `pause_agent`.
+ * Managers receive their coordination/reporting tools but cannot create
+ * another manager.
  */
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
