@@ -24,6 +24,7 @@ const activeContexts = new Set<TestContext>();
 
 const createTestContext = (
   onThreadAssistantUpdate?: (payload: ThreadActivityUpdatedPayload) => void,
+  onThreadTranscriptUpdate?: (payload: ThreadActivityUpdatedPayload) => void,
 ): TestContext => {
   const rootPath = path.join(
     os.tmpdir(),
@@ -37,7 +38,10 @@ const createTestContext = (
   const context = {
     rootPath,
     db,
-    store: new SessionStore(db, { onThreadAssistantUpdate }),
+    store: new SessionStore(db, {
+      onThreadAssistantUpdate,
+      onThreadTranscriptUpdate,
+    }),
   };
   activeContexts.add(context);
   return context;
@@ -166,6 +170,126 @@ describe("agent-authored assistant updates", () => {
     ]);
   });
 
+  it("uses durable append order for equal-millisecond bounded Activity updates after reload", () => {
+    const context = createTestContext();
+    const { rootPath, db, store } = context;
+    const conversationId = "conv-equal-ms-authored";
+    const timestamp = 5_000;
+    const attemptGeneration = 8;
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId,
+      agentType: "general",
+      threadId: "equal-ms-authored",
+    });
+    saveRunningAgent(store, {
+      threadId,
+      conversationId,
+      startedAt: timestamp,
+      attemptGeneration,
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp,
+      role: "user",
+      content: "Start equal-time work",
+      payload: {
+        role: "user",
+        content: "Start equal-time work",
+        timestamp,
+      },
+    });
+    const base = db
+      .prepare(
+        `SELECT entry_id AS entryId, session_id AS sessionId,
+                append_seq AS appendSeq
+         FROM runtime_thread_entries
+         WHERE thread_key = ?
+         ORDER BY append_seq ASC
+         LIMIT 1`,
+      )
+      .get(threadId) as {
+      entryId: string;
+      sessionId: string;
+      appendSeq: number;
+    };
+    const insertMessage = db.prepare(
+      `INSERT INTO runtime_thread_entries (
+         entry_id, thread_key, session_id, parent_entry_id, entry_type,
+         timestamp_iso, created_at, append_seq, data_json
+       ) VALUES (?, ?, ?, ?, 'message', ?, ?, ?, ?)`,
+    );
+    const totalMessages =
+      AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread *
+        AGENT_ASSISTANT_UPDATE_LIMITS.scanRowsPerMessage +
+      6;
+    let parentEntryId = base.entryId;
+    for (let index = 0; index < totalMessages; index += 1) {
+      // Lexical IDs deliberately run opposite to insertion order so an
+      // entry-id tie-breaker selects the wrong end of the bounded scan.
+      const entryId = `authored-${String(totalMessages - index).padStart(3, "0")}`;
+      const text = `Insertion ${index}`;
+      insertMessage.run(
+        entryId,
+        threadId,
+        base.sessionId,
+        parentEntryId,
+        new Date(timestamp).toISOString(),
+        timestamp,
+        base.appendSeq + index + 1,
+        JSON.stringify({
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text }],
+            api: "openai-codex-responses",
+            provider: "openai-codex",
+            model: "codex",
+            usage: EMPTY_USAGE,
+            stopReason: "toolUse",
+            timestamp,
+            stellaAttemptGeneration: attemptGeneration,
+          },
+        }),
+      );
+      parentEntryId = entryId;
+    }
+
+    db.close();
+    activeContexts.delete(context);
+    const reopenedDb = new DatabaseSync(getDesktopDatabasePath(rootPath), {
+      timeout: 5000,
+    }) as unknown as SqliteDatabase;
+    initializeDesktopDatabase(reopenedDb);
+    const reopened = {
+      rootPath,
+      db: reopenedDb,
+      store: new SessionStore(reopenedDb),
+    };
+    activeContexts.add(reopened);
+
+    const expected = Array.from(
+      { length: AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread },
+      (_, offset) => ({
+        text: `Insertion ${
+          totalMessages -
+          AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread +
+          offset
+        }`,
+        atMs: timestamp,
+      }),
+    );
+    expect(reopened.store.listAgentAssistantMessages(threadId, 99)).toEqual(
+      expected,
+    );
+    const activity = reopened.store.listThreadActivity(conversationId)[0];
+    expect(activity?.assistantMessages).toEqual(
+      expected.map((entry) => entry.text),
+    );
+    expect(activity?.assistantMessagesUpdatedAt).toBe(timestamp);
+    expect(activity?.assistantMessages).toHaveLength(
+      AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread,
+    );
+  });
+
   it("projects the same assistant messages into Activity rows", () => {
     const { store } = createTestContext();
     saveRunningAgent(store, { threadId: "agent-1", startedAt: 1_000 });
@@ -265,6 +389,88 @@ describe("agent-authored assistant updates", () => {
       attemptGeneration: 4,
     });
     expect(onThreadAssistantUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("invalidates exact General and Manager transcripts for tool-only persisted entries", () => {
+    const onThreadAssistantUpdate = vi.fn();
+    const onThreadTranscriptUpdate = vi.fn();
+    const { store } = createTestContext(
+      onThreadAssistantUpdate,
+      onThreadTranscriptUpdate,
+    );
+    const general = store.resolveOrCreateActiveThread({
+      conversationId: "conv-tool-only-general",
+      agentType: "general",
+      threadId: "tool-only-general",
+    });
+    const manager = store.resolveOrCreateActiveThread({
+      conversationId: "conv-tool-only-manager",
+      agentType: "manager",
+      threadId: "tool-only-manager",
+    });
+
+    for (const [threadId, conversationId] of [
+      [general.threadId, "conv-tool-only-general"],
+      [manager.threadId, "conv-tool-only-manager"],
+    ] as const) {
+      store.appendThreadMessage({
+        threadKey: threadId,
+        timestamp: 6_000,
+        role: "assistant",
+        content: "",
+        payload: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: `call-${threadId}`,
+              name: "Read",
+              arguments: { path: "src/example.ts" },
+            },
+          ],
+          api: "openai-responses",
+          provider: "openai",
+          model: "gpt-5.4",
+          usage: EMPTY_USAGE,
+          stopReason: "toolUse",
+          timestamp: 6_000,
+          stellaAttemptGeneration: 1,
+        },
+      });
+      store.appendThreadMessage({
+        threadKey: threadId,
+        timestamp: 6_001,
+        role: "toolResult",
+        toolCallId: `call-${threadId}`,
+        content: "Tool result persisted",
+      });
+      expect(
+        store.loadThreadMessages(threadId).map((message) => message.role),
+      ).toEqual(["assistant", "toolResult"]);
+      expect(
+        onThreadTranscriptUpdate.mock.calls
+          .map(([payload]) => payload)
+          .filter((payload) => payload.conversationId === conversationId),
+      ).toEqual([
+        {
+          conversationId,
+          transcriptUpdate: {
+            threadId,
+            entryId: expect.any(String),
+            atMs: 6_000,
+          },
+        },
+        {
+          conversationId,
+          transcriptUpdate: {
+            threadId,
+            entryId: expect.any(String),
+            atMs: 6_001,
+          },
+        },
+      ]);
+    }
+    expect(onThreadAssistantUpdate).not.toHaveBeenCalled();
   });
 
   it("bounds active visible task queries per thread and overall", () => {

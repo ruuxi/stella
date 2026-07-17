@@ -9,6 +9,7 @@ import { AgentThreadChatTab } from "@/shell/display/AgentThreadChatTab";
 describe("AgentThreadChatTab", () => {
   let container: HTMLDivElement;
   let root: Root;
+  let rootMounted: boolean;
   let listener: ((payload: ThreadActivityUpdatedPayload) => void) | undefined;
   let mockScrollHeight: number;
   let mockClientHeight: number;
@@ -81,10 +82,11 @@ describe("AgentThreadChatTab", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    rootMounted = true;
   });
 
   afterEach(async () => {
-    await act(async () => root.unmount());
+    if (rootMounted) await act(async () => root.unmount());
     container.remove();
     Reflect.deleteProperty(window, "electronAPI");
     Reflect.deleteProperty(HTMLElement.prototype, "scrollHeight");
@@ -94,13 +96,14 @@ describe("AgentThreadChatTab", () => {
   const renderThread = async (
     threadId = "agent-exact-1",
     conversationId = "conversation-a",
+    agentType = "general",
   ) => {
     await act(async () => {
       root.render(
         <AgentThreadChatTab
           threadId={threadId}
           conversationId={conversationId}
-          agentType="general"
+          agentType={agentType}
         />,
       );
       await Promise.resolve();
@@ -140,13 +143,35 @@ describe("AgentThreadChatTab", () => {
       },
     ]);
     await act(async () => {
-      listener?.({ conversationId: "conversation-other" });
+      listener?.({
+        conversationId: "conversation-other",
+        transcriptUpdate: {
+          threadId: "agent-exact-1",
+          entryId: "other-conversation-entry",
+          atMs: 5,
+        },
+      });
+      listener?.({
+        conversationId: "conversation-a",
+        transcriptUpdate: {
+          threadId: "unrelated-thread",
+          entryId: "other-thread-entry",
+          atMs: 5,
+        },
+      });
       await Promise.resolve();
     });
     expect(listAgentThreadMessages).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      listener?.({ conversationId: "conversation-a" });
+      listener?.({
+        conversationId: "conversation-a",
+        transcriptUpdate: {
+          threadId: "agent-exact-1",
+          entryId: "assistant-2",
+          atMs: 5,
+        },
+      });
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -174,7 +199,14 @@ describe("AgentThreadChatTab", () => {
       },
     ]);
     await act(async () => {
-      listener?.({ conversationId: "conversation-a" });
+      listener?.({
+        conversationId: "conversation-a",
+        transcriptUpdate: {
+          threadId: "agent-exact-1",
+          entryId: "assistant-2",
+          atMs: 5,
+        },
+      });
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -211,7 +243,14 @@ describe("AgentThreadChatTab", () => {
       },
     ]);
     await act(async () => {
-      listener?.({ conversationId: "conversation-a" });
+      listener?.({
+        conversationId: "conversation-a",
+        transcriptUpdate: {
+          threadId: "agent-exact-1",
+          entryId: "assistant-3",
+          atMs: 6,
+        },
+      });
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -222,7 +261,14 @@ describe("AgentThreadChatTab", () => {
     await renderThread();
     listAgentThreadMessages.mockRejectedValueOnce(new Error("Connection lost"));
     await act(async () => {
-      listener?.({ conversationId: "conversation-a" });
+      listener?.({
+        conversationId: "conversation-a",
+        transcriptUpdate: {
+          threadId: "agent-exact-1",
+          entryId: "failed-refresh-entry",
+          atMs: 8,
+        },
+      });
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -234,6 +280,8 @@ describe("AgentThreadChatTab", () => {
     expect(alert?.textContent).toContain(
       "Couldn’t refresh this thread. Connection lost",
     );
+    expect(alert?.getAttribute("aria-live")).toBe("assertive");
+    expect(alert?.getAttribute("aria-atomic")).toBe("true");
 
     listAgentThreadMessages.mockResolvedValueOnce([
       ...initialMessages,
@@ -274,5 +322,87 @@ describe("AgentThreadChatTab", () => {
       container.querySelector<HTMLDivElement>(".agent-thread-chat__scroll")
         ?.scrollTop,
     ).toBe(900);
+  });
+
+  it("coalesces exact-thread entry bursts for General and Manager transcripts", async () => {
+    await renderThread("manager-exact", "conversation-manager", "manager");
+    listAgentThreadMessages.mockResolvedValueOnce([
+      ...initialMessages,
+      {
+        entryId: "tool-result-latest",
+        timestamp: 9,
+        role: "toolResult",
+        content: "Native tool completed without an authored preamble.",
+      },
+    ]);
+
+    await act(async () => {
+      for (const [entryId, atMs] of [
+        ["tool-call-empty", 8],
+        ["tool-result-latest", 9],
+        ["tool-result-duplicate-observation", 9],
+      ] as const) {
+        listener?.({
+          conversationId: "conversation-manager",
+          transcriptUpdate: { threadId: "manager-exact", entryId, atMs },
+        });
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listAgentThreadMessages).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain(
+      "Native tool completed without an authored preamble.",
+    );
+    expect(container.getAttribute("aria-label")).toBeNull();
+    expect(
+      container.querySelector('section[aria-label="manager read-only chat"]'),
+    ).not.toBeNull();
+  });
+
+  it("ignores stale loads and queued refreshes after reuse or unmount", async () => {
+    let resolveOld: ((messages: typeof initialMessages) => void) | undefined;
+    listAgentThreadMessages.mockReset().mockImplementationOnce(
+      () =>
+        new Promise<typeof initialMessages>((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+    await renderThread("old-thread", "old-conversation");
+
+    listAgentThreadMessages.mockResolvedValueOnce([
+      {
+        entryId: "new-thread-entry",
+        timestamp: 20,
+        role: "assistant",
+        content: "Current reused tab transcript.",
+      },
+    ]);
+    await renderThread("new-thread", "new-conversation");
+    await act(async () => {
+      resolveOld?.(initialMessages);
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain("Current reused tab transcript.");
+    expect(container.textContent).not.toContain("Inspect the route.");
+
+    const callsBeforeUnmount = listAgentThreadMessages.mock.calls.length;
+    await act(async () => {
+      listener?.({
+        conversationId: "new-conversation",
+        transcriptUpdate: {
+          threadId: "new-thread",
+          entryId: "queued-at-unmount",
+          atMs: 21,
+        },
+      });
+      root.unmount();
+      rootMounted = false;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(listAgentThreadMessages).toHaveBeenCalledTimes(callsBeforeUnmount);
   });
 });

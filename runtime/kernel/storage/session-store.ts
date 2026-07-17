@@ -86,6 +86,7 @@ export const AGENT_ASSISTANT_UPDATE_LIMITS = {
 
 type SessionStoreOptions = {
   onThreadAssistantUpdate?: (payload: ThreadActivityUpdatedPayload) => void;
+  onThreadTranscriptUpdate?: (payload: ThreadActivityUpdatedPayload) => void;
 };
 
 type VisibleScanRow = {
@@ -880,7 +881,16 @@ const buildThreadPathEntries = (
 
   let leaf: RuntimeThreadSessionEntry | undefined = entries[entries.length - 1];
   const path: RuntimeThreadSessionEntry[] = [];
+  const visited = new Set<string>();
   while (leaf) {
+    if (visited.has(leaf.id)) {
+      // Imported/legacy rows can contain self-references or multi-node parent
+      // cycles. Session entries have no supported branching semantics, and
+      // callers already provide them in durable insertion order, so recover
+      // the complete deterministic history instead of looping forever.
+      return entries;
+    }
+    visited.add(leaf.id);
     path.unshift(leaf);
     leaf = leaf.parentId ? byId.get(leaf.parentId) : undefined;
   }
@@ -2775,6 +2785,7 @@ export class SessionStore {
     const payload = enforceThreadPayloadRowSizeLimit(
       buildFallbackThreadPayload(message),
     );
+    let entryId = "";
     this.withTransaction(() => {
       this.upsertSession(conversationId, message.timestamp);
       const threadSession = this.ensureThreadSession(
@@ -2782,7 +2793,7 @@ export class SessionStore {
         conversationId,
         message.timestamp,
       );
-      this.appendThreadSessionEntry({
+      entryId = this.appendThreadSessionEntry({
         threadKey,
         sessionId: threadSession.sessionId,
         entryType: "message",
@@ -2792,6 +2803,12 @@ export class SessionStore {
         },
       });
       this.touchThread(threadKey);
+    });
+    this.emitThreadTranscriptUpdate({
+      conversationId,
+      threadId: threadKey,
+      entryId,
+      atMs: message.timestamp,
     });
     if (
       payload.role === "assistant" &&
@@ -2824,6 +2841,7 @@ export class SessionStore {
       ...(message.eventId?.trim() ? { eventId: message.eventId.trim() } : {}),
     });
     const conversationId = this.getThreadConversationId(threadKey);
+    let entryId = "";
     this.withTransaction(() => {
       this.upsertSession(conversationId, message.timestamp);
       const threadSession = this.ensureThreadSession(
@@ -2831,7 +2849,7 @@ export class SessionStore {
         conversationId,
         message.timestamp,
       );
-      this.appendThreadSessionEntry({
+      entryId = this.appendThreadSessionEntry({
         threadKey,
         sessionId: threadSession.sessionId,
         entryType: "custom_message",
@@ -2846,6 +2864,12 @@ export class SessionStore {
         },
       });
       this.touchThread(threadKey);
+    });
+    this.emitThreadTranscriptUpdate({
+      conversationId,
+      threadId: threadKey,
+      entryId,
+      atMs: message.timestamp,
     });
   }
 
@@ -2904,6 +2928,7 @@ export class SessionStore {
     }
     const timestamp = asFiniteNumber(args.timestamp) ?? Date.now();
     const conversationId = this.getThreadConversationId(threadKey);
+    let entryId = "";
     this.withTransaction(() => {
       const path = buildThreadPathEntries(
         this.loadThreadSessionEntries(threadKey),
@@ -2917,7 +2942,7 @@ export class SessionStore {
         conversationId,
         timestamp,
       );
-      this.appendThreadSessionEntry({
+      entryId = this.appendThreadSessionEntry({
         threadKey,
         sessionId: threadSession.sessionId,
         entryType: "compaction",
@@ -2937,6 +2962,12 @@ export class SessionStore {
         },
       });
       this.touchThread(threadKey);
+    });
+    this.emitThreadTranscriptUpdate({
+      conversationId,
+      threadId: threadKey,
+      entryId,
+      atMs: timestamp,
     });
   }
 
@@ -4351,9 +4382,12 @@ export class SessionStore {
           entries.entry_id AS entryId,
           entries.data_json AS dataJson,
           targets.targetOrder AS targetOrder,
+          COALESCE(entries.append_seq, entries.rowid) AS appendOrder,
+          entries.rowid AS durableRowId,
           ROW_NUMBER() OVER (
             PARTITION BY entries.thread_key
-            ORDER BY entries.created_at DESC, entries.entry_id DESC
+            ORDER BY COALESCE(entries.append_seq, entries.rowid) DESC,
+              entries.rowid DESC
           ) AS messageRank
         FROM runtime_thread_entries entries
         INNER JOIN targets ON targets.threadId = entries.thread_key
@@ -4363,10 +4397,11 @@ export class SessionStore {
           AND json_extract(entries.data_json, '$.message.stopReason') = 'toolUse'
           AND json_extract(entries.data_json, '$.message.stellaAttemptGeneration') = targets.attemptGeneration
       )
-      SELECT threadId, atMs, entryId, dataJson, targetOrder
+      SELECT
+        threadId, atMs, entryId, dataJson, targetOrder, appendOrder, durableRowId
       FROM ranked
       WHERE messageRank <= ?
-      ORDER BY targetOrder ASC, atMs ASC, entryId ASC
+      ORDER BY targetOrder ASC, appendOrder ASC, durableRowId ASC
     `,
       )
       .all(...targetParams, scanLimit) as Array<{
@@ -4375,6 +4410,8 @@ export class SessionStore {
       entryId: string;
       dataJson: string | null;
       targetOrder: number;
+      appendOrder: number;
+      durableRowId: number;
     }>;
     const candidates = new Map<string, Array<{ text: string; atMs: number }>>();
     for (const row of rows) {
@@ -4540,6 +4577,23 @@ export class SessionStore {
         limit,
       ).get(record.threadId) ?? []
     );
+  }
+
+  private emitThreadTranscriptUpdate(args: {
+    conversationId: string;
+    threadId: string;
+    entryId: string;
+    atMs: number;
+  }): void {
+    if (!this.options.onThreadTranscriptUpdate || !args.entryId) return;
+    this.options.onThreadTranscriptUpdate({
+      conversationId: args.conversationId,
+      transcriptUpdate: {
+        threadId: args.threadId,
+        entryId: args.entryId,
+        atMs: args.atMs,
+      },
+    });
   }
 
   private emitThreadAssistantUpdate(threadId: string, atMs: number): void {

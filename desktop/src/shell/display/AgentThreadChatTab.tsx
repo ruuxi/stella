@@ -148,6 +148,26 @@ export function AgentThreadChatTab({
   );
 
   useEffect(() => {
+    let disposed = false;
+    let refreshQueued = false;
+    let refreshInFlight = false;
+    let refreshPending = false;
+    const scheduleRefresh = () => {
+      refreshPending = true;
+      if (disposed || refreshQueued || refreshInFlight) return;
+      refreshQueued = true;
+      queueMicrotask(() => {
+        refreshQueued = false;
+        if (disposed) return;
+        refreshPending = false;
+        refreshInFlight = true;
+        void load("refresh").finally(() => {
+          refreshInFlight = false;
+          if (refreshPending && !disposed) scheduleRefresh();
+        });
+      });
+    };
+
     messagesRef.current = [];
     pinnedToLatestRef.current = true;
     scrollToLatestAfterRenderRef.current = true;
@@ -160,13 +180,19 @@ export function AgentThreadChatTab({
     void load("initial");
     const unsubscribe =
       window.electronAPI?.localChat?.onThreadActivityUpdated?.((payload) => {
-        if (payload.conversationId === conversationId) void load("refresh");
+        if (
+          payload.conversationId === conversationId &&
+          payload.transcriptUpdate?.threadId === threadId
+        ) {
+          scheduleRefresh();
+        }
       });
     return () => {
+      disposed = true;
       requestGeneration.current += 1;
       unsubscribe?.();
     };
-  }, [conversationId, load]);
+  }, [conversationId, load, threadId]);
 
   useLayoutEffect(() => {
     if (!scrollToLatestAfterRenderRef.current) return;
@@ -210,7 +236,12 @@ export function AgentThreadChatTab({
         <span className="agent-thread-chat__agent">{agentType}</span>
       </header>
       {error && messages.length > 0 ? (
-        <div className="agent-thread-chat__refresh-error" role="alert">
+        <div
+          className="agent-thread-chat__refresh-error"
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
+        >
           <span>Couldn’t refresh this thread. {error}</span>
           <button
             type="button"
@@ -231,7 +262,12 @@ export function AgentThreadChatTab({
             Loading conversation…
           </div>
         ) : error && messages.length === 0 ? (
-          <div className="agent-thread-chat__state" role="alert">
+          <div
+            className="agent-thread-chat__state"
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+          >
             <span>{error}</span>
             <button type="button" onClick={() => void load("initial")}>
               Try again

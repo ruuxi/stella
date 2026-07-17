@@ -195,6 +195,10 @@ const refreshEntry = (entry: ThreadActivityEntry): Promise<void> => {
 };
 
 const handleThreadActivityUpdated = (payload: ThreadActivityUpdatedPayload) => {
+  // Durable transcript invalidations keep an open exact-thread reader live.
+  // They do not change the Activity projection unless accompanied by an
+  // authored update, so avoid refetching every row for tool-only traffic.
+  if (payload.transcriptUpdate && !payload.assistantUpdate) return;
   const entry = entries.get(payload.conversationId);
   if (!entry) return;
   const update = payload.assistantUpdate;

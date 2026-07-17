@@ -211,4 +211,30 @@ describe("mounted Activity authored-message refresh", () => {
     );
     expect(oneShotCompletion).not.toHaveBeenCalled();
   });
+
+  it("does not treat transcript-only tool traffic as an authored Activity update", async () => {
+    await act(async () => {
+      root.render(<MountedActivity />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(listThreadActivity).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      updateListener?.({
+        conversationId: "conv-1",
+        transcriptUpdate: {
+          threadId: "agent-1",
+          entryId: "tool-result-entry",
+          atMs: 2_500,
+        },
+      });
+      await vi.advanceTimersByTimeAsync(120);
+    });
+
+    expect(listThreadActivity).toHaveBeenCalledTimes(1);
+    expect(container.querySelector("output")?.textContent).toBe(
+      "First persisted update",
+    );
+  });
 });

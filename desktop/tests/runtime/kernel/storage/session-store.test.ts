@@ -38,6 +38,25 @@ const createTestContext = (): TestContext => {
   return context;
 };
 
+const appendUserThreadMessages = (
+  store: SessionStore,
+  threadId: string,
+  count: number,
+  timestamp = 8_500,
+) => {
+  for (let index = 0; index < count; index += 1) {
+    const content = `Graph message ${index}`;
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp,
+      role: "user",
+      content,
+      payload: { role: "user", content, timestamp },
+    });
+  }
+  return store.loadThreadMessages(threadId);
+};
+
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const context of activeContexts) {
@@ -1469,6 +1488,111 @@ describe("session-store", () => {
       "Imported second",
       "Imported third",
       "Appended after import",
+    ]);
+  });
+
+  it("recovers a self-cycled imported thread for transcript load and compaction", () => {
+    const { db, store } = createTestContext();
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId: "conv-self-cycle",
+      agentType: "general",
+    });
+    const messages = appendUserThreadMessages(store, threadId, 3);
+    const newestId = messages.at(-1)!.entryId!;
+    db.prepare(
+      `UPDATE runtime_thread_entries
+       SET parent_entry_id = entry_id
+       WHERE entry_id = ?`,
+    ).run(newestId);
+
+    expect(
+      store.loadThreadMessages(threadId).map((entry) => entry.content),
+    ).toEqual(["Graph message 0", "Graph message 1", "Graph message 2"]);
+    store.compactThread({
+      threadKey: threadId,
+      summary: "Recovered self-cycle",
+      fromEntryId: messages[0]!.entryId!,
+      toEntryId: messages[1]!.entryId!,
+      tokensBefore: 30,
+      timestamp: 8_600,
+    });
+    expect(
+      store.loadThreadMessages(threadId).map((entry) => entry.content),
+    ).toEqual([
+      expect.stringContaining("Recovered self-cycle"),
+      "Graph message 2",
+    ]);
+  });
+
+  it("recovers a newest-row multi-node cycle without losing available entries", () => {
+    const { db, store } = createTestContext();
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId: "conv-multi-cycle",
+      agentType: "general",
+    });
+    const messages = appendUserThreadMessages(store, threadId, 4);
+    const previousId = messages[2]!.entryId!;
+    const newestId = messages[3]!.entryId!;
+    const updateParent = db.prepare(
+      `UPDATE runtime_thread_entries SET parent_entry_id = ? WHERE entry_id = ?`,
+    );
+    updateParent.run(newestId, previousId);
+    updateParent.run(previousId, newestId);
+
+    expect(
+      store.loadThreadMessages(threadId).map((entry) => entry.content),
+    ).toEqual([
+      "Graph message 0",
+      "Graph message 1",
+      "Graph message 2",
+      "Graph message 3",
+    ]);
+    store.compactThread({
+      threadKey: threadId,
+      summary: "Recovered multi-cycle",
+      fromEntryId: messages[0]!.entryId!,
+      toEntryId: messages[1]!.entryId!,
+      tokensBefore: 40,
+      timestamp: 8_600,
+    });
+    expect(
+      store.loadThreadMessages(threadId).map((entry) => entry.content),
+    ).toEqual([
+      expect.stringContaining("Recovered multi-cycle"),
+      "Graph message 2",
+      "Graph message 3",
+    ]);
+  });
+
+  it("recovers a disconnected imported parent graph deterministically", () => {
+    const { db, store } = createTestContext();
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId: "conv-disconnected-graph",
+      agentType: "general",
+    });
+    const messages = appendUserThreadMessages(store, threadId, 3);
+    db.prepare(
+      `UPDATE runtime_thread_entries
+       SET parent_entry_id = 'missing-imported-parent'
+       WHERE entry_id = ?`,
+    ).run(messages[1]!.entryId!);
+
+    expect(
+      store.loadThreadMessages(threadId).map((entry) => entry.content),
+    ).toEqual(["Graph message 0", "Graph message 1", "Graph message 2"]);
+    store.compactThread({
+      threadKey: threadId,
+      summary: "Recovered disconnected graph",
+      fromEntryId: messages[0]!.entryId!,
+      toEntryId: messages[1]!.entryId!,
+      tokensBefore: 30,
+      timestamp: 8_600,
+    });
+    expect(
+      store.loadThreadMessages(threadId).map((entry) => entry.content),
+    ).toEqual([
+      expect.stringContaining("Recovered disconnected graph"),
+      "Graph message 2",
     ]);
   });
 

@@ -1031,6 +1031,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       onThreadAssistantUpdate: (payload) => {
         peer.notify(NOTIFICATION_NAMES.THREAD_ACTIVITY_UPDATED, payload);
       },
+      onThreadTranscriptUpdate: (payload) => {
+        peer.notify(NOTIFICATION_NAMES.THREAD_ACTIVITY_UPDATED, payload);
+      },
     });
     const runtimeStore = chatStore as RuntimeStore;
     const storeModStore = new StoreModStore(db);

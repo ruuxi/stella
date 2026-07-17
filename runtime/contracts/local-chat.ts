@@ -68,11 +68,23 @@ export type ThreadActivityAssistantUpdate = {
   rootRunId?: string;
 };
 
+/** Exact persisted-entry invalidation for an agent transcript. This is kept
+ * separate from authored Activity updates so empty tool calls, tool results,
+ * Manager coordination, and compaction can refresh an open read-only thread
+ * without being presented as agent-authored prose. */
+export type ThreadTranscriptUpdate = {
+  threadId: string;
+  entryId: string;
+  atMs: number;
+};
+
 export type ThreadActivityUpdatedPayload = {
   conversationId: string;
   /** Present for incremental authored-message delivery; absent for ordinary
    * lifecycle-only invalidations. */
   assistantUpdate?: ThreadActivityAssistantUpdate;
+  /** Present when this exact thread gained a durable transcript entry. */
+  transcriptUpdate?: ThreadTranscriptUpdate;
 };
 
 /** Bounded, read-only projection of one agent thread's persisted transcript. */
