@@ -4,7 +4,7 @@ import {
   groupCatalogModelsByProvider,
   listLocalCatalogModels,
   mergeCatalogModels,
-  normalizeDirectProviderCatalogModels,
+  normalizeRuntimeCatalogModels,
   normalizeStellaCatalogModels,
   searchCatalogModels,
 } from "../../../src/global/settings/lib/model-catalog";
@@ -15,34 +15,12 @@ import {
 } from "../../../src/global/settings/lib/model-defaults";
 
 describe("settings model catalog", () => {
-  it("lists runtime local-provider models separately from Stella models", () => {
+  it("keeps the built-in local endpoint separate from worker-owned providers", () => {
     const models = listLocalCatalogModels();
 
-    expect(models.some((model) => model.provider === "anthropic")).toBe(true);
-    expect(models.some((model) => model.provider === "openai")).toBe(false);
-    expect(models.some((model) => model.provider === "openai-codex")).toBe(
-      true,
-    );
-    expect(models.some((model) => model.provider === "amazon-bedrock")).toBe(
-      false,
-    );
-    expect(
-      models.some((model) => model.provider === "azure-openai-responses"),
-    ).toBe(false);
+    expect(models.map((model) => model.provider)).toEqual(["local"]);
     expect(models.every((model) => model.source === "local")).toBe(true);
-    expect(models.every((model) => model.id.startsWith("stella/"))).toBe(false);
-  });
-
-  it("keeps Grok 4.5 visible across the renderer/runtime registry boundary", () => {
-    expect(
-      listLocalCatalogModels().find((model) => model.id === "grok/grok-4.5"),
-    ).toMatchObject({
-      modelId: "grok-4.5",
-      name: "Grok 4.5",
-      provider: "grok",
-      contextWindow: 500_000,
-      reasoning: true,
-    });
+    expect(models[0]?.id).toBe("local/llama3.2");
   });
 
   it("normalizes Stella backend rows and keeps Stella-specific models first when merging", () => {
@@ -185,43 +163,44 @@ describe("settings model catalog", () => {
     ).toEqual(["anthropic/claude-opus-4.7"]);
   });
 
-  it("does not add live models.dev OpenAI rows because OpenAI uses the Codex OAuth provider", () => {
-    const models = normalizeDirectProviderCatalogModels({
-      openai: {
-        models: {
-          "gpt-5.5": {
-            id: "gpt-5.5",
-            name: "GPT-5.5",
-            reasoning: true,
-            modalities: {
-              input: ["text", "image", "pdf"],
-              output: ["text"],
-            },
-            limit: {
-              context: 1_050_000,
-              output: 128_000,
-            },
-          },
-          "gpt-image-1.5": {
-            id: "gpt-image-1.5",
-            name: "gpt-image-1.5",
-            modalities: {
-              input: ["text"],
-              output: ["image"],
-            },
-          },
+  it("normalizes supported and runtime-managed providers only", () => {
+    const base = {
+      api: "openai-responses",
+      baseUrl: "https://example.test/v1",
+      reasoning: true,
+      input: ["text", "image"] as Array<"text" | "image">,
+      contextWindow: 500_000,
+      maxTokens: 128_000,
+    };
+    const models = normalizeRuntimeCatalogModels(
+      [
+        { ...base, id: "grok-4.5", name: "Grok 4.5", provider: "xai" },
+        {
+          ...base,
+          id: "private-model",
+          name: "Private model",
+          provider: "my-extension",
         },
-      },
-      "fireworks-ai": {
-        models: {
-          "accounts/fireworks/models/kimi-k2p6": {
-            id: "accounts/fireworks/models/kimi-k2p6",
-            name: "Kimi K2P6",
-          },
+        {
+          ...base,
+          id: "bedrock-model",
+          name: "Bedrock model",
+          provider: "amazon-bedrock",
         },
-      },
-    });
+        {
+          ...base,
+          api: "stella",
+          id: "standard",
+          name: "Stella Standard",
+          provider: "stella",
+        },
+      ],
+      [{ id: "my-extension", authManaged: true, credentialless: false }],
+    );
 
-    expect(models).toEqual([]);
+    expect(models.map((model) => model.id)).toEqual([
+      "my-extension/private-model",
+      "xai/grok-4.5",
+    ]);
   });
 });

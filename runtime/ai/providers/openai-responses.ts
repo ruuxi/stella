@@ -267,7 +267,11 @@ export const streamSimpleOpenAIResponses: StreamFunction<"openai-responses", Sim
 	context: Context,
 	options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
-	const apiKey = options?.apiKey || getEnvApiKey(model.provider);
+	// The OpenAI SDK requires a non-empty apiKey even when authentication is
+	// supplied entirely by custom headers. Match the completions transport's
+	// local/custom-base-url sentinel; model/options headers still override the
+	// SDK's generated Authorization header.
+	const apiKey = options?.apiKey || getEnvApiKey(model.provider) || (model.baseUrl ? "local" : undefined);
 	if (!apiKey) {
 		throw new Error(`No API key for provider: ${model.provider}`);
 	}

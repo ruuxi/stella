@@ -25,7 +25,7 @@ const THREAD_COMPACTION_RESERVE_TOKENS = 16_384;
 /**
  * Fraction of the model's real context window at which the orchestrator
  * thread store compacts. Keyed off `route.model.contextWindow` (the real,
- * models.dev-derived window) so the trigger scales with the active model
+ * provider-catalog-derived window) so the trigger scales with the active model
  * instead of a fixed token budget.
  */
 const THREAD_COMPACTION_TRIGGER_PCT = 0.7;

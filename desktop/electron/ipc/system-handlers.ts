@@ -112,6 +112,7 @@ import {
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_LIST_CODEX_MODELS,
   IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS,
+  IPC_PREFERENCES_LIST_MODELS,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
   IPC_PREFERENCES_GET_LOCKED_COMPUTER_USE,
@@ -2183,6 +2184,31 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     );
   });
 
+  ipcMain.handle(IPC_PREFERENCES_LIST_MODELS, async (event, payload) => {
+    if (
+      !options.externalLinkService.assertPrivilegedSender(
+        event,
+        IPC_PREFERENCES_LIST_MODELS,
+      )
+    ) {
+      throw new Error("Blocked untrusted preferences:listModels request.");
+    }
+    const runner = options.getStellaHostRunner();
+    if (!runner) {
+      return {
+        revision: 0,
+        models: [],
+        runtimeManagedProviders: [],
+        refreshedAt: null,
+      };
+    }
+    const forceRefresh =
+      Boolean(payload) &&
+      typeof payload === "object" &&
+      (payload as { forceRefresh?: unknown }).forceRefresh === true;
+    return await runner.listModels({ forceRefresh });
+  });
+
   ipcMain.handle(
     IPC_PREFERENCES_SET_MODELS,
     (event, payload: Partial<LocalModelPreferencesSnapshot>) => {
@@ -2339,6 +2365,8 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   ipcMain.handle(
     "llmCredentials:loginOAuth",
     async (event, payload: { provider?: string }) => {
+      // Modifying this could break the app. Avoid exposing or logging OAuth
+      // credentials, and confirm any request to weaken this boundary.
       if (
         !options.externalLinkService.assertPrivilegedSender(
           event,
@@ -2368,6 +2396,14 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
         const credentials = await provider.login({
           onAuth: (info) => {
             void shell.openExternal(info.url);
+            if (providerId === "xai" && info.instructions?.trim()) {
+              void dialog.showMessageBox({
+                type: "info",
+                message: "Enter this code to connect xAI",
+                detail: info.instructions,
+                buttons: ["Continue"],
+              });
+            }
           },
           onPrompt: async (prompt) => {
             if (prompt.allowEmpty) return "";

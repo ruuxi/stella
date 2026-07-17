@@ -72,6 +72,7 @@ import type {
   OnboardingWelcomeHtmlResponse,
 } from "../contracts/onboarding";
 import type {
+  RuntimeModelCatalogSnapshot,
   RuntimeSocialSessionStatus,
   RuntimeVoiceOrchestratorConfig,
   RuntimeVoiceToolCallPayload,
@@ -1035,6 +1036,12 @@ export type ElectronSystemApi = {
       source: "alias" | "anthropic";
     }>;
   }>;
+  listLlmModels: (options?: {
+    forceRefresh?: boolean;
+  }) => Promise<RuntimeModelCatalogSnapshot>;
+  onLlmModelsUpdated: (
+    callback: (snapshot: RuntimeModelCatalogSnapshot) => void,
+  ) => () => void;
   listLlmCredentials: () => Promise<LocalLlmCredentialSummary[]>;
   listLlmOAuthProviders: () => Promise<LocalLlmOAuthProviderSummary[]>;
   listLlmOAuthCredentials: () => Promise<LocalLlmCredentialSummary[]>;

@@ -1,16 +1,6 @@
 import { MODELS } from "./models.generated.js";
+import { modelRuntime } from "./model-runtime.js";
 import type { Api, Model, ModelThinkingLevel, Usage } from "./types.js";
-
-const modelRegistry: Map<string, Map<string, Model<Api>>> = new Map();
-
-// Initialize registry from MODELS on module load
-for (const [provider, models] of Object.entries(MODELS)) {
-	const providerModels = new Map<string, Model<Api>>();
-	for (const [id, model] of Object.entries(models)) {
-		providerModels.set(id, model as Model<Api>);
-	}
-	modelRegistry.set(provider, providerModels);
-}
 
 type RegisteredProvider = keyof typeof MODELS;
 
@@ -23,26 +13,21 @@ export function getModel<TProvider extends RegisteredProvider, TModelId extends 
 	provider: TProvider,
 	modelId: TModelId,
 ): Model<ModelApi<TProvider, TModelId>> {
-	const providerModels = modelRegistry.get(provider);
-	return providerModels?.get(modelId as string) as Model<ModelApi<TProvider, TModelId>>;
+	return modelRuntime.getModel(provider, modelId as string) as Model<ModelApi<TProvider, TModelId>>;
 }
 
 export function getModels<TProvider extends RegisteredProvider>(
 	provider: TProvider,
 ): Model<ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>>[] {
-	const models = modelRegistry.get(provider);
-	return models ? (Array.from(models.values()) as Model<ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>>[]) : [];
+	return modelRuntime.getModels(provider) as Model<ModelApi<TProvider, keyof (typeof MODELS)[TProvider]>>[];
 }
 
 export function getModelProviders(): string[] {
-	return Array.from(modelRegistry.keys()).sort();
+	return modelRuntime.getProviderIds();
 }
 
 export function getAllModels(): Model<Api>[] {
-	return getModelProviders().flatMap((provider) => {
-		const models = modelRegistry.get(provider);
-		return models ? Array.from(models.values()) : [];
-	});
+	return modelRuntime.getAllModels();
 }
 
 /**
@@ -51,19 +36,7 @@ export function getAllModels(): Model<Api>[] {
  * are accepted because routing supports both shapes.
  */
 export function isRegisteredModelReference(rawReference: string): boolean {
-	const reference = rawReference.trim();
-	if (!reference) return false;
-	for (const [registryProvider, models] of modelRegistry) {
-		for (const model of models.values()) {
-			if (
-				reference === model.id ||
-				reference === `${registryProvider}/${model.id}` ||
-				reference === `${model.provider}/${model.id}`
-			)
-				return true;
-		}
-	}
-	return false;
+	return modelRuntime.isRegisteredReference(rawReference);
 }
 
 /**
@@ -71,12 +44,7 @@ export function isRegisteredModelReference(rawReference: string): boolean {
  * If the provider doesn't exist in the registry, it is created.
  */
 export function registerModel(provider: string, model: Model<Api>): void {
-	let providerModels = modelRegistry.get(provider);
-	if (!providerModels) {
-		providerModels = new Map<string, Model<Api>>();
-		modelRegistry.set(provider, providerModels);
-	}
-	providerModels.set(model.id, model);
+	modelRuntime.registerModel(provider, model);
 }
 
 /**
@@ -86,12 +54,7 @@ export function registerModel(provider: string, model: Model<Api>): void {
  * linger until the worker restarts.
  */
 export function unregisterModel(provider: string, modelId: string): void {
-	const providerModels = modelRegistry.get(provider);
-	if (!providerModels) return;
-	providerModels.delete(modelId);
-	if (providerModels.size === 0) {
-		modelRegistry.delete(provider);
-	}
+	modelRuntime.unregisterModel(provider, modelId);
 }
 
 export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage): Usage["cost"] {

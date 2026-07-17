@@ -29,7 +29,6 @@ export type KnownProvider =
   | "openai-codex"
   | "deepseek"
   | "github-copilot"
-  | "grok"
   | "xai"
   | "groq"
   | "cerebras"
@@ -60,6 +59,15 @@ export type ModelThinkingLevel = "off" | ThinkingLevel;
 export type ThinkingLevelMap = Partial<
   Record<ModelThinkingLevel, string | null>
 >;
+export type ChatTemplateKwargValue =
+  | string
+  | number
+  | boolean
+  | null
+  | {
+      $var: "thinking.enabled" | "thinking.effort";
+      omitWhenOff?: boolean;
+    };
 
 /** Token budgets for each thinking level (token-based providers only) */
 export interface ThinkingBudgets {
@@ -401,7 +409,10 @@ export interface OpenAICompletionsCompat {
     | "deepseek"
     | "zai"
     | "qwen"
+    | "chat-template"
     | "qwen-chat-template";
+  /** Static or thinking-derived values sent in `chat_template_kwargs`. */
+  chatTemplateKwargs?: Record<string, ChatTemplateKwargValue>;
   /** OpenRouter-specific routing preferences. Only used when baseUrl points to OpenRouter. */
   openRouterRouting?: OpenRouterRouting;
   /** Vercel AI Gateway routing preferences. Only used when baseUrl points to Vercel AI Gateway. */

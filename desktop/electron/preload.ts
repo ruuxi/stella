@@ -87,6 +87,8 @@ import {
   IPC_PREFERENCES_GET_MODELS,
   IPC_PREFERENCES_LIST_CODEX_MODELS,
   IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS,
+  IPC_PREFERENCES_LIST_MODELS,
+  IPC_PREFERENCES_MODELS_UPDATED,
   IPC_PREFERENCES_GET_MINI_DOUBLE_TAP,
   IPC_PREFERENCES_GET_ONBOARDING_COMPLETED,
   IPC_PREFERENCES_GET_PREVENT_SLEEP,
@@ -1422,6 +1424,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
           source: "alias" | "anthropic";
         }>;
       }>,
+    listLlmModels: (options?: { forceRefresh?: boolean }) =>
+      ipcRenderer.invoke(IPC_PREFERENCES_LIST_MODELS, options) as Promise<
+        import("../../runtime/protocol/index.js").RuntimeModelCatalogSnapshot
+      >,
+    onLlmModelsUpdated: onIpc<
+      import("../../runtime/protocol/index.js").RuntimeModelCatalogSnapshot
+    >(IPC_PREFERENCES_MODELS_UPDATED),
     listLlmCredentials: () =>
       ipcRenderer.invoke("llmCredentials:list") as Promise<
         Array<{

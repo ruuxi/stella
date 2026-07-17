@@ -6,10 +6,7 @@ import {
 } from "../agents/agents.js";
 import { loadExtensions } from "../extensions/loader.js";
 import type { ExtensionServices } from "../extensions/services.js";
-import { fetchAndRegisterModelsDevDirectProviderModels } from "../../ai/models-dev.js";
-import { fetchAndRegisterGrokLiveModels } from "../grok-live-models.js";
-import { registerModel, unregisterModel } from "../../ai/models.js";
-import type { Api, Model } from "../../ai/types.js";
+import { modelRuntime } from "../../ai/model-runtime.js";
 import { createRuntimeLogger } from "../debug.js";
 import type { RunnerContext } from "./types.js";
 
@@ -22,23 +19,6 @@ export const createRuntimeInitialization = (
     shutdownTasks: () => void;
   },
 ) => {
-  /**
-   * Tracks which (provider, modelId) pairs were registered by the most
-   * recent extension load. The F1 reload path sweeps this list via
-   * `unregisterModel` AFTER the new disk read finishes, so deleted /
-   * renamed extension models don't linger in the runtime registry. The
-   * model registry itself has no concept of "extension-origin" — a
-   * removed extension that simply stopped exporting a model would
-   * otherwise keep it bound to a stale handler until worker restart.
-   *
-   * Built-in models are never recorded here; only models registered
-   * through the install step below.
-   */
-  let extensionRegisteredModels: Array<{
-    provider: string;
-    modelId: string;
-  }> = [];
-
   /**
    * Keep extension registry swaps synchronous so the orchestrator queue never
    * observes a partially installed extension set.
@@ -64,33 +44,8 @@ export const createRuntimeInitialization = (
       });
     }
     context.toolHost.registerExtensionTools(extensions.tools);
-
+    modelRuntime.setExtensionProviders(extensions.providers);
     for (const providerDef of extensions.providers) {
-      for (const modelDef of providerDef.models) {
-        const model: Model<Api> = {
-          id: modelDef.id,
-          name: modelDef.name,
-          api: providerDef.api as Api,
-          provider: providerDef.name,
-          baseUrl: providerDef.baseUrl,
-          reasoning: modelDef.reasoning ?? false,
-          input: (modelDef.input ?? ["text"]) as ("text" | "image")[],
-          cost: {
-            input: modelDef.cost?.input ?? 0,
-            output: modelDef.cost?.output ?? 0,
-            cacheRead: modelDef.cost?.cacheRead ?? 0,
-            cacheWrite: modelDef.cost?.cacheWrite ?? 0,
-          },
-          contextWindow: modelDef.contextWindow,
-          maxTokens: modelDef.maxTokens,
-          headers: providerDef.headers,
-        };
-        registerModel(providerDef.name, model);
-        extensionRegisteredModels.push({
-          provider: providerDef.name,
-          modelId: modelDef.id,
-        });
-      }
       logger.info(`extensions.provider.registered.${providerDef.name}`, {
         modelCount: providerDef.models.length,
       });
@@ -137,28 +92,6 @@ export const createRuntimeInitialization = (
     }
   };
 
-  const loadAndRegisterModelsDevCatalog = async (): Promise<void> => {
-    try {
-      const registered = await fetchAndRegisterModelsDevDirectProviderModels();
-      logger.info("models-dev.ready", { registered });
-    } catch (error) {
-      logger.warn("models-dev.load-failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  };
-
-  const loadAndRegisterGrokLiveCatalog = async (): Promise<void> => {
-    try {
-      const registered = await fetchAndRegisterGrokLiveModels();
-      if (registered > 0) logger.info("grok-models.ready", { registered });
-    } catch (error) {
-      logger.warn("grok-models.load-failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  };
-
   const initializeRuntime = () => {
     // Stella's lifecycle hooks (self-mod, memory, …) live in the
     // stella-runtime extension and register through the same loader path
@@ -167,24 +100,27 @@ export const createRuntimeInitialization = (
     // get installed. Stella-runtime is just an extension that ships in
     // the source tree.
     const extensionsLoad = loadAndRegisterExtensions();
+    const modelsLoad = modelRuntime.initialize({
+      stellaDataDir: context.stellaDataDir,
+      allowNetwork: false,
+    });
+    void modelsLoad
+      .then(() => modelRuntime.refresh({ allowNetwork: true }))
+      .then(() => {
+        logger.info("model-runtime.catalog.ready", {
+          modelCount: modelRuntime.getAllModels().length,
+        });
+      })
+      .catch((error) => {
+        logger.warn("model-runtime.catalog.load-failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
 
-    // The models.dev catalog is best-effort, network-bound, and purely
-    // ADDITIVE: it only registers extra model IDs onto providers that
-    // already have a built-in template (see ai/models-dev.ts). The agent
-    // default model routes resolve against the built-in models registered
-    // eagerly from models.generated.ts at module load, so the runtime is
-    // fully functional before this fetch resolves. The host blocks on
-    // worker readiness via `waitUntilInitialized` → `initializationPromise`;
-    // gating that on a 3s network fetch needlessly delays the first
-    // chat/dream/chronicle. Kick it off in the BACKGROUND (fire-and-forget,
-    // keeping its existing error swallowing) so it populates whenever it
-    // resolves, and make readiness depend on the extensions load ONLY.
-    void loadAndRegisterModelsDevCatalog();
-    // Same deal for the grok CLI proxy's live model list (additive,
-    // skipped entirely when there's no grok login session).
-    void loadAndRegisterGrokLiveCatalog();
-
-    context.state.initializationPromise = extensionsLoad.then(() => {
+    context.state.initializationPromise = Promise.all([
+      extensionsLoad,
+      modelsLoad,
+    ]).then(() => {
       context.state.isInitialized = true;
     });
 
@@ -274,20 +210,8 @@ export const createRuntimeInitialization = (
     // awaits between these statements.
     context.hookEmitter.clearBySource("extension");
     context.toolHost.unregisterExtensionTools();
-    const previouslyRegistered = extensionRegisteredModels;
-    extensionRegisteredModels = [];
-    for (const entry of previouslyRegistered) {
-      try {
-        unregisterModel(entry.provider, entry.modelId);
-      } catch (error) {
-        logger.warn("extensions.reload.unregister-model-failed", {
-          provider: entry.provider,
-          modelId: entry.modelId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
     installLoadedExtensions(extensions);
+    await modelRuntime.reloadConfig();
     logger.info("extensions.reload.done");
     return { status: "reloaded" };
   };
@@ -299,8 +223,10 @@ export const createRuntimeInitialization = (
    * so the reload eventually applies after the in-flight run completes.
    */
   let resourceWatchers: FSWatcher[] = [];
+  let modelConfigWatcher: FSWatcher | null = null;
   let extensionDebounce: NodeJS.Timeout | null = null;
   let extensionRetry: NodeJS.Timeout | null = null;
+  let modelConfigDebounce: NodeJS.Timeout | null = null;
   const FILE_WATCH_DEBOUNCE_MS = 500;
   const RELOAD_BUSY_RETRY_MS = 2_000;
 
@@ -369,6 +295,57 @@ export const createRuntimeInitialization = (
     }
   };
 
+  const scheduleModelConfigReload = () => {
+    if (modelConfigDebounce) clearTimeout(modelConfigDebounce);
+    modelConfigDebounce = setTimeout(() => {
+      modelConfigDebounce = null;
+      void modelRuntime
+        .reloadConfig()
+        .then(() => {
+          const configError = modelRuntime.getSnapshot().configError;
+          if (configError) {
+            logger.warn("model-runtime.config.invalid", { error: configError });
+          } else {
+            logger.info("model-runtime.config.reloaded");
+          }
+        })
+        .catch((error) => {
+          logger.warn("model-runtime.config.reload-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+    }, FILE_WATCH_DEBOUNCE_MS);
+  };
+
+  const startModelConfigWatcher = () => {
+    if (modelConfigWatcher) return;
+    try {
+      modelConfigWatcher = fsWatch(
+        context.stellaDataDir,
+        { recursive: false },
+        (_eventType, filename) => {
+          if (filename && path.basename(String(filename)) === "models.json") {
+            scheduleModelConfigReload();
+          }
+        },
+      );
+      modelConfigWatcher.on("error", (error) => {
+        logger.warn("model-runtime.config.watch.error", {
+          error: error instanceof Error ? error.message : String(error),
+          path: context.stellaDataDir,
+        });
+      });
+      logger.info("model-runtime.config.watch.started", {
+        path: path.join(context.stellaDataDir, "models.json"),
+      });
+    } catch (error) {
+      logger.warn("model-runtime.config.watch.start-failed", {
+        error: error instanceof Error ? error.message : String(error),
+        path: context.stellaDataDir,
+      });
+    }
+  };
+
   const stopExtensionWatcher = () => {
     if (extensionDebounce) {
       clearTimeout(extensionDebounce);
@@ -378,6 +355,16 @@ export const createRuntimeInitialization = (
       clearTimeout(extensionRetry);
       extensionRetry = null;
     }
+    if (modelConfigDebounce) {
+      clearTimeout(modelConfigDebounce);
+      modelConfigDebounce = null;
+    }
+    try {
+      modelConfigWatcher?.close();
+    } catch {
+      // Best-effort.
+    }
+    modelConfigWatcher = null;
     for (const watcher of resourceWatchers) {
       try {
         watcher.close();
@@ -396,6 +383,7 @@ export const createRuntimeInitialization = (
       // Start the extensions watcher only after initial load completes,
       // so we don't race with the first registration.
       startExtensionWatcher();
+      startModelConfigWatcher();
     });
   };
 

@@ -628,6 +628,23 @@ const stopWorkerServices = async (state: WorkerState) => {
 
 export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   let shuttingDown = false;
+  let unsubscribeFromModelCatalog: (() => void) | undefined;
+  let modelRuntimeModule:
+    | Promise<typeof import("../ai/model-runtime.js")>
+    | undefined;
+  const ensureModelRuntimeSubscription = async () => {
+    const loaded = await (modelRuntimeModule ??= import(
+      "../ai/model-runtime.js"
+    ));
+    if (!shuttingDown) {
+      unsubscribeFromModelCatalog ??= loaded.modelRuntime.onCatalogChanged(
+        (snapshot) => {
+          peer.notify(NOTIFICATION_NAMES.MODEL_CATALOG_UPDATED, snapshot);
+        },
+      );
+    }
+    return loaded.modelRuntime;
+  };
   const state: WorkerState = {
     init: null,
     db: null,
@@ -1569,6 +1586,9 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_INITIALIZE,
     async (params) => {
+      // Subscribe before the runner loads extensions or models.json so every
+      // successful initial/hot registry composition reaches the renderer.
+      await ensureModelRuntimeSubscription();
       const result = await initializeWorker(
         params as WorkerInitializationState,
       );
@@ -1685,6 +1705,18 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       socialSessions,
     };
   });
+
+  peer.registerRequestHandler(
+    METHOD_NAMES.INTERNAL_WORKER_LIST_MODELS,
+    async (params) => {
+      const modelRuntime = await ensureModelRuntimeSubscription();
+      const forceRefresh =
+        Boolean(params) &&
+        typeof params === "object" &&
+        (params as { forceRefresh?: unknown }).forceRefresh === true;
+      return await modelRuntime.getSnapshotForListing({ forceRefresh });
+    },
+  );
 
   peer.registerRequestHandler(
     METHOD_NAMES.INTERNAL_WORKER_GET_ACTIVE,
@@ -4056,6 +4088,8 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
       return;
     }
     shuttingDown = true;
+    unsubscribeFromModelCatalog?.();
+    unsubscribeFromModelCatalog = undefined;
     await stopWorkerServices(state);
   };
 

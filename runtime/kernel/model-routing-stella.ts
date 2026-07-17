@@ -19,7 +19,7 @@ import type { ResolvedLlmRoute } from "./model-routing.js";
 /**
  * Fallback context window for Stella-managed relay routes, used only when the
  * resolved upstream model isn't found in the registry. When the model *is* in
- * the registry, `createRelayModel` carries its real (models.dev-derived)
+ * the registry, `createRelayModel` carries its real provider-catalog-derived
  * context window instead — which the orchestrator compaction trigger keys off.
  */
 export const STELLA_CONTEXT_WINDOW = 80_000;

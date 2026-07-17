@@ -1,5 +1,9 @@
 import { webContents } from "electron";
-import { IPC_RUNTIME_AVAILABILITY } from "../../src/shared/contracts/ipc-channels.js";
+import {
+  IPC_PREFERENCES_MODELS_UPDATED,
+  IPC_RUNTIME_AVAILABILITY,
+} from "../../src/shared/contracts/ipc-channels.js";
+import type { RuntimeModelCatalogSnapshot } from "../../../runtime/protocol/index.js";
 import type { StellaHostRunner } from "../stella-host-runner.js";
 import type { RuntimeAvailabilitySnapshot } from "../runtime-host-adapter.js";
 
@@ -26,6 +30,7 @@ export const registerRuntimeAvailabilityBridge = ({
   onStellaHostRunnerChanged,
 }: Options) => {
   let unsubscribeFromRunner: (() => void) | null = null;
+  let unsubscribeFromModelCatalog: (() => void) | null = null;
   let lastSnapshotKey: string | null = null;
 
   const broadcast = (snapshot: RuntimeAvailabilitySnapshot) => {
@@ -47,11 +52,25 @@ export const registerRuntimeAvailabilityBridge = ({
   const attach = (runner: StellaHostRunner | null) => {
     unsubscribeFromRunner?.();
     unsubscribeFromRunner = null;
+    unsubscribeFromModelCatalog?.();
+    unsubscribeFromModelCatalog = null;
     if (!runner) return;
     broadcast(runner.getAvailabilitySnapshot());
     unsubscribeFromRunner = runner.onAvailabilityChange((snapshot) => {
       broadcast(snapshot);
     });
+    unsubscribeFromModelCatalog = runner.onModelCatalogUpdated(
+      (snapshot: RuntimeModelCatalogSnapshot) => {
+        for (const wc of webContents.getAllWebContents()) {
+          if (wc.isDestroyed()) continue;
+          try {
+            wc.send(IPC_PREFERENCES_MODELS_UPDATED, snapshot);
+          } catch {
+            // Ignore renderer-side delivery failures while a window closes.
+          }
+        }
+      },
+    );
   };
 
   attach(getStellaHostRunner());
@@ -62,6 +81,8 @@ export const registerRuntimeAvailabilityBridge = ({
   return () => {
     unsubscribeFromRunner?.();
     unsubscribeFromRunner = null;
+    unsubscribeFromModelCatalog?.();
+    unsubscribeFromModelCatalog = null;
     unsubscribeFromLifecycle();
   };
 };

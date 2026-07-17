@@ -1,9 +1,10 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import type { Api, Model } from "../ai/types.js";
 import { AGENT_IDS } from "../contracts/agent-runtime.js";
 import { getModels } from "../ai/models.js";
+import {
+  mergeModelHeaders,
+  modelRuntime,
+} from "../ai/model-runtime.js";
 import {
   formatLlmRouteFailure,
   type LlmRouteFailure,
@@ -38,30 +39,6 @@ export type ResolvedLlmRoute = {
 
 const LOCAL_PROVIDER = "local";
 const DEFAULT_LOCAL_OPENAI_BASE_URL = "http://127.0.0.1:11434/v1";
-const GROK_PROVIDER = "grok";
-
-export const readGrokCliSessionToken = (): string | undefined => {
-  const authPath =
-    process.env.GROK_AUTH_PATH?.trim() ||
-    path.join(
-      process.env.GROK_HOME?.trim() || path.join(os.homedir(), ".grok"),
-      "auth.json",
-    );
-  try {
-    const parsed = JSON.parse(fs.readFileSync(authPath, "utf8")) as Record<
-      string,
-      { key?: unknown }
-    >;
-    for (const value of Object.values(parsed)) {
-      if (typeof value?.key === "string" && value.key.trim()) {
-        return value.key.trim();
-      }
-    }
-  } catch {
-    // Missing or corrupt Grok auth means this route is unavailable.
-  }
-  return undefined;
-};
 
 const createLocalOpenAICompatibleModel = (
   modelId: string,
@@ -140,7 +117,8 @@ const hasLocalProviderAuth = (
   providerId: string,
 ): boolean =>
   Boolean(getCredential(stellaAppDir, providerId)) ||
-  hasLocalLlmOAuthCredential(stellaAppDir, providerId);
+  hasLocalLlmOAuthCredential(stellaAppDir, providerId) ||
+  modelRuntime.hasRuntimeManagedAuth(providerId);
 
 const getLocalProviderApiKey = async (
   stellaAppDir: string,
@@ -151,7 +129,7 @@ const getLocalProviderApiKey = async (
   const oauthKey = (
     await getLocalLlmOAuthApiKey(stellaAppDir, providerId)
   )?.trim();
-  return oauthKey || undefined;
+  return oauthKey || modelRuntime.getRuntimeManagedApiKey(providerId);
 };
 
 /**
@@ -179,6 +157,18 @@ const getDirectProviderCandidates = (
         ]),
       };
     case "moonshotai":
+      if (modelRuntime.hasRuntimeProviderOrigin(provider)) {
+        return {
+          credentialProvider: provider,
+          registryProvider: provider,
+          allowBaseUrlWithoutCredential:
+            modelRuntime.allowsCredentiallessRouting(provider),
+          candidates: uniqueModelCandidates([
+            modelId,
+            modelId.replace(/\./g, "-"),
+          ]),
+        };
+      }
       return {
         credentialProvider: "kimi-coding",
         registryProvider: "kimi-coding",
@@ -196,7 +186,6 @@ const getDirectProviderCandidates = (
     case "mistral":
     case "opencode":
     case "cerebras":
-    case GROK_PROVIDER:
     case "xai":
     case "zai":
     case "openrouter":
@@ -217,7 +206,8 @@ const getDirectProviderCandidates = (
         return {
           credentialProvider: provider,
           registryProvider: provider,
-          allowBaseUrlWithoutCredential: true,
+          allowBaseUrlWithoutCredential:
+            modelRuntime.allowsCredentiallessRouting(provider),
           candidates: uniqueModelCandidates([
             modelId,
             modelId.replace(/\./g, "-"),
@@ -233,11 +223,10 @@ const getDirectProviderCandidates = (
  * Pass-through gateways whose model-id space is owned by the gateway, not our
  * static registry. The gateway accepts arbitrary `<vendor>/<model>` ids as-is
  * and normalizes transport/quirks, so we can synthesize a routable model from
- * the gateway's registry template when the (best-effort, network-bound)
- * models.dev fetch hasn't populated the exact id yet. This keeps the model
- * picker (which fetches models.dev live) and the runtime resolver from
- * disagreeing. The gateway remains the authority — a bogus id fails loudly
- * upstream, not here.
+ * the gateway's registry template when the dynamic provider catalog hasn't
+ * populated the exact id yet. This keeps the picker and runtime resolver from
+ * disagreeing while a catalog refresh is pending. The gateway remains the
+ * authority — a bogus id fails loudly upstream, not here.
  *
  * Direct vendor providers (Anthropic, OpenAI, …) are intentionally excluded:
  * their id formats are quirk-specific (dashes, date suffixes) and encoded
@@ -245,7 +234,8 @@ const getDirectProviderCandidates = (
  *
  * Build a routable model for `modelId` by cloning the gateway's registry
  * template — which carries the `api`, `baseUrl`, `headers`, and `compat`
- * needed to actually make the request, none of which models.dev provides.
+ * needed to actually make the request, none of which catalog metadata alone
+ * provides.
  * Cost metadata falls back to the template's values; the request still
  * succeeds and the gateway validates the id.
  *
@@ -340,46 +330,77 @@ const resolveDirectProviderRoute = (args: {
   if (!directModel) {
     return { kind: "unknown-model" };
   }
-
-  // Any registry model under the grok CLI-proxy provider authenticates with
-  // the grok login session token (grok is not synthesizable, so this only
-  // ever matches models registered with their own routing headers — the
-  // built-in Composer entry plus live models from `grok-live-models.ts`).
-  if (args.provider === GROK_PROVIDER) {
-    return {
-      kind: "route",
-      route: {
-        model: directModel,
-        route: "direct-provider",
-        getApiKey: () => readGrokCliSessionToken(),
-      },
-    };
-  }
+  const routedModel = {
+    ...directModel,
+    headers: directModel.headers,
+  };
+  let configuredHeadersState:
+    | { ok: true; applied: boolean; headers?: Record<string, string> }
+    | { ok: false; error: unknown }
+    | undefined;
+  const applyConfiguredHeaders = (): void => {
+    if (!configuredHeadersState) {
+      try {
+        configuredHeadersState = {
+          ok: true,
+          applied: false,
+          headers: modelRuntime.getConfiguredHeaders(
+            directProvider.registryProvider,
+            directModel.id,
+          ),
+        };
+      } catch (error) {
+        configuredHeadersState = { ok: false, error };
+      }
+    }
+    if (!configuredHeadersState.ok) throw configuredHeadersState.error;
+    if (configuredHeadersState.applied) return;
+    routedModel.headers = mergeModelHeaders(
+      routedModel.headers,
+      configuredHeadersState.headers,
+    );
+    configuredHeadersState.applied = true;
+  };
 
   if (
     hasLocalProviderAuth(args.stellaAppDir, directProvider.credentialProvider)
   ) {
+    const getRequestApiKey = async (): Promise<string | undefined> => {
+      applyConfiguredHeaders();
+      const apiKey = await getLocalProviderApiKey(
+        args.stellaAppDir,
+        directProvider.credentialProvider,
+      );
+      if (
+        apiKey &&
+        modelRuntime.usesConfiguredAuthHeader(directProvider.registryProvider)
+      ) {
+        routedModel.headers = mergeModelHeaders(routedModel.headers, {
+          Authorization: `Bearer ${apiKey}`,
+        });
+      }
+      return apiKey;
+    };
     return {
       kind: "route",
       route: {
-        model: directModel,
+        model: routedModel,
         route: "direct-provider",
-        getApiKey: () =>
-          getLocalProviderApiKey(
-            args.stellaAppDir,
-            directProvider.credentialProvider,
-          ),
+        getApiKey: getRequestApiKey,
       },
     };
   }
 
-  if (directProvider.allowBaseUrlWithoutCredential && directModel.baseUrl) {
+  if (directProvider.allowBaseUrlWithoutCredential && routedModel.baseUrl) {
     return {
       kind: "route",
       route: {
-        model: directModel,
+        model: routedModel,
         route: "direct-provider",
-        getApiKey: () => "",
+        getApiKey: () => {
+          applyConfiguredHeaders();
+          return "";
+        },
       },
     };
   }

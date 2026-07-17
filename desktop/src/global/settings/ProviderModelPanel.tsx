@@ -63,16 +63,25 @@ const REASONING_OPTIONS: ReadonlyArray<{ id: ReasoningEffort; label: string }> =
 
 const STELLA_PROVIDER_KEY = "stella";
 const LOCAL_PROVIDER_KEY = "local";
-const GROK_PROVIDER_KEY = "grok";
 const DEFAULT_TARGET = "__default__";
 const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:11434/v1";
 
-type ProviderTab = {
+export type ProviderTab = {
   key: string;
   label: string;
   models: CatalogModel[];
   llmEntry: LlmProviderEntry | undefined;
+  runtimeManaged: boolean;
+  runtimeManagedAuth: boolean;
+  runtimeCredentialless: boolean;
 };
+
+export const providerUsesRuntimeManagedAuth = (
+  tab: Pick<
+    ProviderTab,
+    "runtimeManagedAuth" | "runtimeCredentialless"
+  >,
+): boolean => tab.runtimeManagedAuth || tab.runtimeCredentialless;
 
 interface ProviderModelPanelProps {
   /** Currently selected model id. Empty string means default. */
@@ -149,6 +158,9 @@ function buildProviderTabs(
       label: group.providerName,
       models,
       llmEntry: LLM_PROVIDERS.find((entry) => entry.key === group.provider),
+      runtimeManaged: group.runtimeManaged,
+      runtimeManagedAuth: group.runtimeManagedAuth,
+      runtimeCredentialless: group.runtimeCredentialless,
     });
   }
   return Array.from(tabs.values()).sort((a, b) =>
@@ -361,7 +373,6 @@ export function ProviderModelPanel({
   const renderSection = (tab: ProviderTab, models: CatalogModel[]) => {
     const isStella = tab.key === STELLA_PROVIDER_KEY;
     const isLocal = tab.key === LOCAL_PROVIDER_KEY;
-    const isGrok = tab.key === GROK_PROVIDER_KEY;
     const isOpenRouter = tab.key === "openrouter";
     const apiKey = findApiKey(credentials.apiKeys, tab.key);
     const oauthCred = findOauthCredential(
@@ -375,11 +386,14 @@ export function ProviderModelPanel({
         ? { key: tab.key, label: tab.label, placeholder: "API key" }
         : undefined);
     const connected = isStella || Boolean(apiKey) || Boolean(oauthCred);
-    const usesExternalLogin = isGrok;
+    // Providers introduced by models.json/extensions own their auth and may
+    // be intentionally credentialless (Ollama, local proxies). Do not block
+    // their model rows behind Stella's built-in provider login UI.
+    const usesRuntimeManagedAuth = providerUsesRuntimeManagedAuth(tab);
     const requiresAuth =
       !isStella &&
       !isLocal &&
-      !usesExternalLogin &&
+      !usesRuntimeManagedAuth &&
       !connected &&
       Boolean(llmEntry);
     const supportsApiKey =
@@ -489,8 +503,6 @@ export function ProviderModelPanel({
                     <LogOut size={13} strokeWidth={1.75} aria-hidden />
                   )}
                 </button>
-              ) : isGrok ? (
-                <span className="model-picker-group-note">Uses grok login</span>
               ) : null}
             </>
           )}

@@ -19,7 +19,6 @@ const PROVIDER_RAIL_PRIORITY: readonly string[] = [
   "anthropic",
   "openai-codex",
   "openai",
-  "grok",
   "xai",
   "local",
 ];
@@ -46,7 +45,6 @@ export const LLM_PROVIDERS: readonly LlmProviderEntry[] = [
   { key: "google", label: "Google", placeholder: "AIza..." },
   { key: "kimi-coding", label: "Kimi (Moonshot AI)", placeholder: "sk-..." },
   { key: "zai", label: "Z.AI", placeholder: "..." },
-  { key: "grok", label: "Grok", placeholder: "Use grok login" },
   { key: "xai", label: "xAI", placeholder: "xai-..." },
   { key: "groq", label: "Groq", placeholder: "gsk_..." },
   { key: "mistral", label: "Mistral", placeholder: "..." },

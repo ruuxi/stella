@@ -618,13 +618,7 @@ export class Agent {
 					}
 				: undefined,
 			getApiKey: this.getApiKey
-				? async (provider) => {
-						try {
-							return await this.getApiKey?.(provider);
-						} catch {
-							return undefined;
-						}
-					}
+				? async (provider) => await this.getApiKey?.(provider)
 				: undefined,
 			refreshApiKey: this.refreshApiKey
 				? async () => {

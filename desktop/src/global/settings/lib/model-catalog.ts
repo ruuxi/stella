@@ -1,5 +1,8 @@
-import { getAllModels } from "../../../../../runtime/ai/models.js";
 import type { Api, Model } from "../../../../../runtime/ai/types.js";
+import type {
+  RuntimeModelCatalogModel,
+  RuntimeModelCatalogSnapshot,
+} from "../../../../../runtime/protocol/index.js";
 // Provider display names live in a shared, browser-safe runtime module so the
 // model picker and the runtime route-error toasts can't drift apart.
 import { getProviderDisplayName } from "../../../../../runtime/ai/provider-display.js";
@@ -19,6 +22,12 @@ export type CatalogModel = {
   maxTokens?: number;
   input?: Model<Api>["input"];
   reasoning?: boolean;
+  /** The model came from models.json or an extension/runtime registration. */
+  runtimeManaged?: boolean;
+  /** Authentication for this provider is owned by models.json/an extension. */
+  runtimeManagedAuth?: boolean;
+  /** The runtime explicitly allows this configured custom provider without auth. */
+  runtimeCredentialless?: boolean;
   /**
    * Whether the backend will honor this model for the current user's
    * audience. Defaults to true; the Stella `/api/models` endpoint sets
@@ -39,6 +48,16 @@ export type ProviderGroup = {
   provider: string;
   providerName: string;
   models: CatalogModel[];
+  runtimeManaged: boolean;
+  runtimeManagedAuth: boolean;
+  runtimeCredentialless: boolean;
+};
+
+export type ManagedRuntimeCatalogPayload = {
+  revision: number;
+  directModels: CatalogModel[];
+  configError?: string;
+  catalogError?: string;
 };
 
 export type CatalogApiModel = {
@@ -54,32 +73,6 @@ export type CatalogApiResponse = {
   data?: CatalogApiModel[];
   defaults?: CatalogDefaultModel[];
 };
-
-type ModelsDevModelEntry = {
-  id?: string;
-  name?: string;
-  reasoning?: boolean;
-  modalities?: {
-    input?: string[];
-    output?: string[];
-  };
-  cost?: {
-    input?: number;
-    output?: number;
-    cache_read?: number;
-    cache_write?: number;
-  };
-  limit?: {
-    context?: number;
-    output?: number;
-  };
-};
-
-type ModelsDevProviderEntry = {
-  models?: Record<string, ModelsDevModelEntry>;
-};
-
-export type ModelsDevApi = Record<string, ModelsDevProviderEntry>;
 
 export { getProviderDisplayName };
 
@@ -185,12 +178,8 @@ function compareCatalogModels(a: CatalogModel, b: CatalogModel): number {
   return a.name.localeCompare(b.name);
 }
 
-function toDirectModelId(model: Model<Api>): string {
-  return `${model.provider}/${model.id}`;
-}
-
 export function listLocalCatalogModels(): CatalogModel[] {
-  const localUrlModels: CatalogModel[] = [
+  return [
     {
       id: "local/llama3.2",
       modelId: "llama3.2",
@@ -202,49 +191,6 @@ export function listLocalCatalogModels(): CatalogModel[] {
       reasoning: false,
     },
   ];
-  // Grok's live model discovery runs in the runtime worker, while this
-  // catalog is assembled in the renderer from its own static registry. Keep
-  // the current Grok model visible here; the worker still owns live discovery
-  // and the transport metadata used when the model is selected.
-  const grokCatalogModels: CatalogModel[] = [
-    {
-      id: "grok/grok-4.5",
-      modelId: "grok-4.5",
-      name: "Grok 4.5",
-      provider: "grok",
-      providerName: getProviderDisplayName("grok"),
-      source: "local",
-      contextWindow: 500_000,
-      input: ["text"],
-      reasoning: true,
-    },
-  ];
-
-  return [
-    ...localUrlModels,
-    ...grokCatalogModels,
-    ...getAllModels()
-      .filter(
-        (model) =>
-          model.api !== "stella" &&
-          LOCAL_MODEL_PROVIDER_KEYS.has(model.provider),
-      )
-      .map((model) => ({
-        id: toDirectModelId(model),
-        modelId: model.id,
-        name: model.name || model.id,
-        provider: model.provider,
-        providerName: getProviderDisplayName(model.provider),
-        source: "local" as const,
-        contextWindow: model.contextWindow,
-        maxTokens: model.maxTokens,
-        input: model.input,
-        reasoning: model.reasoning,
-      })),
-  ].sort((a, b) => {
-    const providerSort = a.providerName.localeCompare(b.providerName);
-    return providerSort || a.name.localeCompare(b.name);
-  });
 }
 
 export function normalizeStellaCatalogModels(
@@ -272,57 +218,56 @@ export function normalizeStellaCatalogModels(
     });
 }
 
-const MODELS_DEV_DIRECT_PROVIDER_KEYS = new Set([
-  "anthropic",
-  "cerebras",
-  "google",
-  "groq",
-  "mistral",
-  "moonshotai",
-  "openrouter",
-  "vercel-ai-gateway",
-  "xai",
-  "zai",
-]);
-
-function toCatalogInput(
-  input: readonly string[] | undefined,
-): Model<Api>["input"] {
-  const next: Model<Api>["input"] = ["text"];
-  if (input?.includes("image")) {
-    next.push("image");
-  }
-  return next;
+export function normalizeRuntimeCatalogModels(
+  models: readonly RuntimeModelCatalogModel[],
+  runtimeManagedProviders: RuntimeModelCatalogSnapshot["runtimeManagedProviders"] = [],
+): CatalogModel[] {
+  const runtimeManagedById = new Map(
+    runtimeManagedProviders.map((provider) => [provider.id, provider]),
+  );
+  const selectableProviders = new Set([
+    ...LOCAL_MODEL_PROVIDER_KEYS,
+    ...runtimeManagedById.keys(),
+  ]);
+  return models
+    .filter(
+      (model) =>
+        model.api !== "stella" &&
+        model.provider !== "stella" &&
+        selectableProviders.has(model.provider),
+    )
+    .map((model) => ({
+      id: `${model.provider}/${model.id}`,
+      modelId: model.id,
+      name: model.name || model.id,
+      provider: model.provider,
+      providerName: getProviderDisplayName(model.provider),
+      source: "local" as const,
+      contextWindow: model.contextWindow,
+      maxTokens: model.maxTokens,
+      input: model.input,
+      reasoning: model.reasoning,
+      runtimeManaged: runtimeManagedById.has(model.provider),
+      runtimeManagedAuth:
+        runtimeManagedById.get(model.provider)?.authManaged ?? false,
+      runtimeCredentialless:
+        runtimeManagedById.get(model.provider)?.credentialless ?? false,
+    }))
+    .sort(compareCatalogModels);
 }
 
-export function normalizeDirectProviderCatalogModels(
-  data: ModelsDevApi,
-): CatalogModel[] {
-  const models: CatalogModel[] = [];
-  for (const [provider, providerEntry] of Object.entries(data)) {
-    if (!MODELS_DEV_DIRECT_PROVIDER_KEYS.has(provider)) continue;
-    const sourceModels = providerEntry.models ?? {};
-    for (const [modelId, entry] of Object.entries(sourceModels)) {
-      const id = (entry.id ?? modelId).trim();
-      if (!id) continue;
-      const input = entry.modalities?.input ?? ["text"];
-      const output = entry.modalities?.output ?? ["text"];
-      if (!input.includes("text") || !output.includes("text")) continue;
-      models.push({
-        id: `${provider}/${id}`,
-        modelId: id,
-        name: entry.name?.trim() || id,
-        provider,
-        providerName: getProviderDisplayName(provider),
-        source: "local",
-        contextWindow: entry.limit?.context,
-        maxTokens: entry.limit?.output,
-        input: toCatalogInput(input),
-        reasoning: entry.reasoning ?? false,
-      });
-    }
-  }
-  return models.sort(compareCatalogModels);
+export function normalizeRuntimeCatalogSnapshot(
+  snapshot: RuntimeModelCatalogSnapshot | null | undefined,
+): ManagedRuntimeCatalogPayload {
+  return {
+    revision: snapshot?.revision ?? 0,
+    directModels: normalizeRuntimeCatalogModels(
+      snapshot?.models ?? [],
+      snapshot?.runtimeManagedProviders ?? [],
+    ),
+    configError: snapshot?.configError,
+    catalogError: snapshot?.catalogError,
+  };
 }
 
 export function mergeCatalogModels(
@@ -353,6 +298,13 @@ export function groupCatalogModelsByProvider(
       provider,
       providerName: models[0]?.providerName ?? getProviderDisplayName(provider),
       models: [...models].sort(compareCatalogModels),
+      runtimeManaged: models.some((model) => model.runtimeManaged === true),
+      runtimeManagedAuth: models.some(
+        (model) => model.runtimeManagedAuth === true,
+      ),
+      runtimeCredentialless: models.some(
+        (model) => model.runtimeCredentialless === true,
+      ),
     }))
     .sort((a, b) => {
       if (a.provider === "stella" && b.provider !== "stella") return -1;

@@ -121,13 +121,11 @@ export const resolveRunnerUtilityLlmRoute = async (
     } catch {
       continue;
     }
-    const apiKey = (await enriched.getApiKey())?.trim();
-    if (
-      Boolean(apiKey) ||
-      resolvedLlmSupportsCredentiallessCalls(enriched)
-    ) {
+    if (resolvedLlmSupportsCredentiallessCalls(enriched)) {
       return enriched;
     }
+    const apiKey = (await enriched.getApiKey())?.trim();
+    if (apiKey) return enriched;
   }
   return await resolveRunnerLlmRouteWithMetadata(
     context,

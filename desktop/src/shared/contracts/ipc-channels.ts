@@ -169,6 +169,8 @@ export const IPC_AGENT_SELF_MOD_HMR_STATE = "agent:selfModHmrState" as const;
  * and back.
  */
 export const IPC_RUNTIME_AVAILABILITY = "runtime:availability" as const;
+export const IPC_PREFERENCES_MODELS_UPDATED =
+  "preferences:modelsUpdated" as const;
 export const IPC_SELFMOD_APPLY = "selfmod:apply" as const;
 export const IPC_SELFMOD_REVERT = "selfmod:revert" as const;
 export const IPC_SELFMOD_LAST_COMMIT = "selfmod:lastCommit" as const;
@@ -229,6 +231,7 @@ export const IPC_PREFERENCES_GET_MODELS =
   "preferences:getLocalModelPreferences" as const;
 export const IPC_PREFERENCES_SET_MODELS =
   "preferences:setLocalModelPreferences" as const;
+export const IPC_PREFERENCES_LIST_MODELS = "preferences:listModels" as const;
 export const IPC_PREFERENCES_LIST_CODEX_MODELS =
   "preferences:listCodexModels" as const;
 export const IPC_PREFERENCES_LIST_CLAUDE_CODE_MODELS =

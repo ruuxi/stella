@@ -7,14 +7,14 @@ import {
   groupCatalogModelsByProvider,
   listLocalCatalogModels,
   mergeCatalogModels,
-  normalizeDirectProviderCatalogModels,
+  normalizeRuntimeCatalogSnapshot,
   normalizeStellaCatalogModels,
   searchCatalogModels,
   withStellaPresetFallbacks,
   type CatalogApiResponse,
   type CatalogDefaultModel,
   type CatalogModel,
-  type ModelsDevApi,
+  type ManagedRuntimeCatalogPayload,
   type ProviderGroup,
 } from "@/global/settings/lib/model-catalog";
 import { STELLA_MODELS_PATH } from "@/shared/stella-api";
@@ -31,10 +31,6 @@ import { usePersistentConvexOneShot } from "@/shared/lib/use-convex-one-shot";
 type StellaCatalogPayload = {
   models: CatalogModel[];
   defaults: CatalogDefaultModel[];
-};
-
-type ManagedGatewayPayload = {
-  directModels: CatalogModel[];
 };
 
 type AuthSessionData =
@@ -64,10 +60,10 @@ type BillingStatus = {
 };
 
 const MODEL_CATALOG_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const MODELS_DEV_API_URL = "https://models.dev/api.json";
 
 const EMPTY_STELLA: StellaCatalogPayload = { models: [], defaults: [] };
-const EMPTY_MANAGED: ManagedGatewayPayload = {
+const EMPTY_MANAGED: ManagedRuntimeCatalogPayload = {
+  revision: 0,
   directModels: [],
 };
 
@@ -93,20 +89,33 @@ const stellaCatalogStore = createResourceStore<string, StellaCatalogPayload>({
 });
 
 /**
- * Single-key (audience-independent) cache for the public models.dev catalog
- * that powers the Direct Provider rows.
+ * Single worker-owned catalog for direct providers. The runtime restores its
+ * persisted last-good catalog immediately and refreshes pi.dev in the
+ * background, so the renderer never maintains a second provider registry.
  */
-const managedGatewayStore = createResourceStore<"default", ManagedGatewayPayload>({
+const managedGatewayStore = createResourceStore<"default", ManagedRuntimeCatalogPayload>({
   staleMs: MODEL_CATALOG_REFRESH_INTERVAL_MS,
-  fetcher: async () => {
-    const res = await fetch(MODELS_DEV_API_URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = (await res.json()) as ModelsDevApi;
-    return {
-      directModels: normalizeDirectProviderCatalogModels(data),
-    };
+  accept: (next, current) => next.revision > current.revision,
+  fetcher: async (_key, context) => {
+    const data = await window.electronAPI?.system?.listLlmModels?.({
+      forceRefresh: context.force,
+    });
+    return normalizeRuntimeCatalogSnapshot(data);
   },
 });
+
+const stopManagedCatalogUpdates =
+  typeof window !== "undefined"
+    ? window.electronAPI?.system?.onLlmModelsUpdated?.((snapshot) => {
+        managedGatewayStore.push(
+          "default",
+          normalizeRuntimeCatalogSnapshot(snapshot),
+        );
+      })
+    : undefined;
+if (import.meta.hot && stopManagedCatalogUpdates) {
+  import.meta.hot.dispose(stopManagedCatalogUpdates);
+}
 
 function getBillingAudienceKey(
   billingStatus: BillingStatus | undefined,
@@ -226,7 +235,11 @@ export function useModelCatalog() {
   }, [managedQuery, stellaQuery]);
 
   const errorMessage =
-    stellaQuery.error?.message ?? managedQuery.error?.message ?? null;
+    managedPayload.configError ??
+    managedQuery.error?.message ??
+    managedPayload.catalogError ??
+    stellaQuery.error?.message ??
+    null;
 
   return {
     models: stellaModels,

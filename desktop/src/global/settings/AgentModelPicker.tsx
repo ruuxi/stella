@@ -294,6 +294,7 @@ export function AgentModelPicker({
     refresh,
     refreshing,
     audience,
+    error: catalogError,
   } = useModelCatalog();
 
   const [preferences, setPreferencesRaw] =
@@ -1476,9 +1477,9 @@ export function AgentModelPicker({
       </div>
 
       <div className="agent-model-picker-body">
-        {error ? (
+        {error ?? catalogError ? (
           <p className="agent-model-picker-error" role="alert">
-            {error}
+            {error ?? catalogError}
           </p>
         ) : null}
         {pendingAgent === ENGINE_PENDING_TARGET && oauthPendingRef.current ? (

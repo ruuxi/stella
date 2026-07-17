@@ -86,6 +86,8 @@ import {
   type StoreReleaseSourcePack,
   type RuntimeInitializeParams,
   type RuntimeInitializeResult,
+  type RuntimeModelCatalogSnapshot,
+  type RuntimeListModelsRequest,
 } from "../protocol/index.js";
 import {
   createRuntimeUnavailableError,
@@ -120,6 +122,7 @@ type RuntimeHostEvents = {
   "local-chat-updated": LocalChatUpdatedPayload | null;
   "thread-activity-updated": ThreadActivityUpdatedPayload;
   "schedule-updated": void;
+  "model-catalog-updated": RuntimeModelCatalogSnapshot;
 };
 
 type ConnectorFollowupTarget = {
@@ -2366,6 +2369,16 @@ export class StellaRuntimeHost {
     }
   }
 
+  async listModels(
+    request: RuntimeListModelsRequest = {},
+  ): Promise<RuntimeModelCatalogSnapshot> {
+    return await this.requestWorker<RuntimeModelCatalogSnapshot>(
+      METHOD_NAMES.INTERNAL_WORKER_LIST_MODELS,
+      request,
+      { ensureWorker: true, recordActivity: false },
+    );
+  }
+
   async startChat(payload: RuntimeChatPayload) {
     return await this.requestWorker<{ runId: string; userMessageId: string }>(
       METHOD_NAMES.INTERNAL_WORKER_START_CHAT,
@@ -3877,6 +3890,15 @@ export class StellaRuntimeHost {
       NOTIFICATION_NAMES.SCHEDULE_UPDATED,
       () => {
         this.events.emit("schedule-updated", undefined);
+      },
+    );
+    peer.registerNotificationHandler(
+      NOTIFICATION_NAMES.MODEL_CATALOG_UPDATED,
+      (params) => {
+        this.events.emit(
+          "model-catalog-updated",
+          params as RuntimeModelCatalogSnapshot,
+        );
       },
     );
   }

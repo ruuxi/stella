@@ -16,6 +16,7 @@ import { calculateCost, clampThinkingLevel } from "../models.js";
 import type {
 	AssistantMessage,
 	CacheRetention,
+	ChatTemplateKwargValue,
 	Context,
 	ImageContent,
 	Message,
@@ -89,6 +90,8 @@ type ResolvedOpenAICompletionsCompat = Omit<Required<OpenAICompletionsCompat>, "
 	cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
 };
 
+type ResolvedChatTemplateKwargValue = string | number | boolean | null;
+
 type ChatCompletionInstructionMessageParam = ChatCompletionDeveloperMessageParam | ChatCompletionSystemMessageParam;
 
 type ChatCompletionTextPartWithCacheControl = ChatCompletionContentPartText & {
@@ -141,7 +144,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 			const cacheRetention = resolveCacheRetention(options?.cacheRetention);
 			const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
 			const client = createClient(model, context, apiKey, options?.headers, cacheSessionId, compat);
-			let params = buildParams(model, context, options, compat, cacheRetention);
+			let params = buildOpenAICompletionsParams(model, context, options, compat, cacheRetention);
 			const nextParams = await options?.onPayload?.(params, model);
 			if (nextParams !== undefined) {
 				params = nextParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
@@ -483,7 +486,7 @@ function createClient(
 	});
 }
 
-function buildParams(
+export function buildOpenAICompletionsParams(
 	model: Model<"openai-completions">,
 	context: Context,
 	options?: OpenAICompletionsOptions,
@@ -549,9 +552,15 @@ function buildParams(
 		(params as any).enable_thinking = !!options?.reasoningEffort;
 	} else if (compat.thinkingFormat === "qwen-chat-template" && model.reasoning) {
 		(params as any).chat_template_kwargs = {
+			...buildChatTemplateKwargs(model, options, compat),
 			enable_thinking: !!options?.reasoningEffort,
 			preserve_thinking: true,
 		};
+	} else if (compat.thinkingFormat === "chat-template" && model.reasoning) {
+		const chatTemplateKwargs = buildChatTemplateKwargs(model, options, compat);
+		if (chatTemplateKwargs) {
+			(params as any).chat_template_kwargs = chatTemplateKwargs;
+		}
 	} else if (compat.thinkingFormat === "deepseek" && model.reasoning) {
 		(params as any).thinking = { type: options?.reasoningEffort ? "enabled" : "disabled" };
 		if (options?.reasoningEffort) {
@@ -595,6 +604,40 @@ function buildParams(
 	}
 
 	return params;
+}
+
+function buildChatTemplateKwargs(
+	model: Model<"openai-completions">,
+	options: OpenAICompletionsOptions | undefined,
+	compat: ResolvedOpenAICompletionsCompat,
+): Record<string, ResolvedChatTemplateKwargValue> | undefined {
+	const kwargs: Record<string, ResolvedChatTemplateKwargValue> = {};
+	for (const [key, value] of Object.entries(compat.chatTemplateKwargs)) {
+		const resolved = resolveChatTemplateKwargValue(model, options, value);
+		if (resolved !== undefined) kwargs[key] = resolved;
+	}
+	return Object.keys(kwargs).length > 0 ? kwargs : undefined;
+}
+
+function resolveChatTemplateKwargValue(
+	model: Model<"openai-completions">,
+	options: OpenAICompletionsOptions | undefined,
+	value: ChatTemplateKwargValue,
+): ResolvedChatTemplateKwargValue | undefined {
+	if (typeof value !== "object" || value === null) return value;
+
+	const reasoningEffort = options?.reasoningEffort;
+	if (!reasoningEffort && value.omitWhenOff) return undefined;
+	if (value.$var === "thinking.enabled") return Boolean(reasoningEffort);
+
+	const mappedValue = reasoningEffort
+		? model.thinkingLevelMap?.[reasoningEffort]
+		: model.thinkingLevelMap?.off;
+	return mappedValue === undefined
+		? reasoningEffort
+		: typeof mappedValue === "string"
+			? mappedValue
+			: undefined;
 }
 
 function getCompatCacheControl(
@@ -1145,6 +1188,7 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
 				: provider === "openrouter" || baseUrl.includes("openrouter.ai")
 					? "openrouter"
 					: "openai",
+		chatTemplateKwargs: {},
 		openRouterRouting: {},
 		vercelGatewayRouting: {},
 		zaiToolStream: false,
@@ -1179,6 +1223,8 @@ export function getCompat(model: Model<"openai-completions">): ResolvedOpenAICom
 		replayReasoningContentField:
 			model.compat.replayReasoningContentField ?? detected.replayReasoningContentField,
 		thinkingFormat: model.compat.thinkingFormat ?? detected.thinkingFormat,
+		chatTemplateKwargs:
+			model.compat.chatTemplateKwargs ?? detected.chatTemplateKwargs,
 		openRouterRouting: model.compat.openRouterRouting ?? {},
 		vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
 		zaiToolStream: model.compat.zaiToolStream ?? detected.zaiToolStream,

@@ -103,6 +103,7 @@ export const METHOD_NAMES = {
   INITIALIZED: "initialized",
   RUNTIME_CONFIGURE: "runtime.configure",
   RUNTIME_HEALTH: "runtime.health",
+  RUNTIME_LIST_MODELS: "runtime.listModels",
   RUNTIME_RESTART_WORKER: "runtime.restartWorker",
   RUN_HEALTH_CHECK: "run.healthCheck",
   RUN_GET_ACTIVE: "run.getActive",
@@ -187,6 +188,7 @@ export const METHOD_NAMES = {
   INTERNAL_WORKER_INITIALIZE: "internal.worker.initialize",
   INTERNAL_WORKER_CONFIGURE: "internal.worker.configure",
   INTERNAL_WORKER_HEALTH: "internal.worker.health",
+  INTERNAL_WORKER_LIST_MODELS: "internal.worker.listModels",
   INTERNAL_WORKER_GET_ACTIVE: "internal.worker.getActive",
   INTERNAL_WORKER_START_CHAT: "internal.worker.startChat",
   INTERNAL_WORKER_CANCEL: "internal.worker.cancel",
@@ -340,6 +342,35 @@ export const METHOD_NAMES = {
     "internal.worker.googleWorkspace.disconnect",
 } as const;
 
+export type RuntimeModelCatalogModel = {
+  id: string;
+  name: string;
+  provider: string;
+  api: string;
+  baseUrl: string;
+  reasoning: boolean;
+  input: Array<"text" | "image">;
+  contextWindow: number;
+  maxTokens: number;
+};
+
+export type RuntimeModelCatalogSnapshot = {
+  revision: number;
+  models: RuntimeModelCatalogModel[];
+  runtimeManagedProviders: Array<{
+    id: string;
+    authManaged: boolean;
+    credentialless: boolean;
+  }>;
+  refreshedAt: number | null;
+  configError?: string;
+  catalogError?: string;
+};
+
+export type RuntimeListModelsRequest = {
+  forceRefresh?: boolean;
+};
+
 export const NOTIFICATION_NAMES = {
   RUNTIME_READY: "runtime.ready",
   RUNTIME_RELOADING: "runtime.reloading",
@@ -351,6 +382,7 @@ export const NOTIFICATION_NAMES = {
   LOCAL_CHAT_UPDATED: "localChat.updated",
   THREAD_ACTIVITY_UPDATED: "localChat.threadActivityUpdated",
   SCHEDULE_UPDATED: "schedule.updated",
+  MODEL_CATALOG_UPDATED: "modelCatalog.updated",
   APPROVAL_REQUESTED: "approval.requested",
 } as const;
 

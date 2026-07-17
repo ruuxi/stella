@@ -225,7 +225,8 @@ let cachedPreferences: LocalModelPreferences | null = null;
 /* ── component ────────────────────────────────────────────────── */
 
 export function EngineTabContent() {
-  const { allModels: engineCatalogModels } = useModelCatalog();
+  const { allModels: engineCatalogModels, error: catalogError } =
+    useModelCatalog();
   const [preferences, setPreferences] = useState<LocalModelPreferences | null>(
     () => cachedPreferences,
   );
@@ -592,6 +593,10 @@ export function EngineTabContent() {
 
   /* ── render ─────────────────────────────────────────────────── */
 
+  const visibleStatus =
+    status ??
+    (catalogError ? { kind: "error" as const, text: catalogError } : null);
+
   return (
     <div className="right-sidebar__rich right-sidebar__rich--engine">
       <section className="engine-tab" aria-label="Model settings">
@@ -600,9 +605,9 @@ export function EngineTabContent() {
             className="engine-tab__status-slot"
             role="status"
             aria-live="polite"
-            data-kind={status?.kind ?? "idle"}
+            data-kind={visibleStatus?.kind ?? "idle"}
           >
-            {status ? <span>{status.text}</span> : null}
+            {visibleStatus ? <span>{visibleStatus.text}</span> : null}
           </div>
 
           <span className="engine-tab__engine-kicker">Engine</span>

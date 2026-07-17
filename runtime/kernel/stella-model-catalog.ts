@@ -69,6 +69,31 @@ const CATALOG_FETCH_TIMEOUT_MS = 15_000;
 /** Minimum spacing between background refresh attempts per identity. */
 const CATALOG_REFRESH_MIN_INTERVAL_MS = 30_000;
 
+const publishCatalogToModelRuntime = async (
+  catalog: StellaModelCatalog,
+  site: StellaSiteConfig,
+): Promise<void> => {
+  const routes = catalog.models
+    .filter((model) => model.id.startsWith(`${STELLA_PROVIDER}/`))
+    .map((model) =>
+      createStellaRoute({
+        site,
+        agentType: "orchestrator",
+        modelId: model.id,
+        resolvedModelId:
+          model.upstreamModel ??
+          resolveOfflineStellaModelId(model.id) ??
+          undefined,
+      }),
+    )
+    .filter((route): route is NonNullable<typeof route> => Boolean(route));
+  const { modelRuntime } = await import("../ai/model-runtime.js");
+  modelRuntime.setManagedProviderModels(
+    STELLA_PROVIDER,
+    routes.map((route) => ({ ...route.model, provider: STELLA_PROVIDER })),
+  );
+};
+
 /**
  * The disk cache is keyed by the IDENTITY (endpoint + user + device) only —
  * deliberately NOT by catalog version. The pushed `modelCatalogUpdatedAt`
@@ -343,6 +368,7 @@ const fetchStellaModelCatalog = async (args: {
 
   const cached = catalogCache.get(request.cacheKey);
   if (cached) {
+    await publishCatalogToModelRuntime(cached, args.site);
     return cloneCatalog(cached);
   }
 
@@ -353,6 +379,7 @@ const fetchStellaModelCatalog = async (args: {
   );
   if (diskCached?.fresh) {
     catalogCache.set(request.cacheKey, cloneCatalog(diskCached.catalog));
+    await publishCatalogToModelRuntime(diskCached.catalog, args.site);
     return diskCached.catalog;
   }
   if (diskCached) {
@@ -365,12 +392,20 @@ const fetchStellaModelCatalog = async (args: {
       !inFlightCatalogRequests.has(request.identityKey) &&
       Date.now() - lastAttempt >= CATALOG_REFRESH_MIN_INTERVAL_MS
     ) {
-      void fetchCatalogFromNetwork(request, args.stellaDataDir);
+      void fetchCatalogFromNetwork(request, args.stellaDataDir).then(
+        (catalog) =>
+          catalog
+            ? publishCatalogToModelRuntime(catalog, args.site)
+            : undefined,
+      );
     }
+    await publishCatalogToModelRuntime(diskCached.catalog, args.site);
     return diskCached.catalog;
   }
 
-  return await fetchCatalogFromNetwork(request, args.stellaDataDir);
+  const fetched = await fetchCatalogFromNetwork(request, args.stellaDataDir);
+  if (fetched) await publishCatalogToModelRuntime(fetched, args.site);
+  return fetched;
 };
 
 const modelIdentityFromId = (modelId: string): ModelIdentity => {

@@ -156,7 +156,7 @@ export function ProviderConnectedDialog() {
         anthropic: "anthropic/claude-opus-4.7",
         google: "google/gemini-3.1-pro",
         openrouter: "openrouter/anthropic/claude-opus-4.7",
-        xai: "xai/grok-4",
+        xai: "xai/grok-4.5",
       };
       const model = defaultModelByProvider[detail.provider];
       if (model) {

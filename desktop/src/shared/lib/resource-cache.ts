@@ -27,6 +27,7 @@ export type ResourceStore<K extends string, T> = {
   get(key: K): ResourceEntry<T>;
   ensure(key: K, options?: { force?: boolean }): Promise<T>;
   set(key: K, data: T): void;
+  push(key: K, data: T): void;
   invalidate(key: K | "*"): void;
   subscribe(key: K, listener: () => void): () => void;
 };
@@ -39,8 +40,9 @@ const EMPTY_ENTRY: ResourceEntry<unknown> = {
 };
 
 export function createResourceStore<K extends string, T>(opts: {
-  fetcher: (key: K) => Promise<T>;
+  fetcher: (key: K, context: { force: boolean }) => Promise<T>;
   staleMs?: number;
+  accept?: (next: T, current: T) => boolean;
 }): ResourceStore<K, T> {
   const entries = new Map<K, ResourceEntry<T>>();
   const inFlight = new Map<K, Promise<T>>();
@@ -78,6 +80,9 @@ export function createResourceStore<K extends string, T>(opts: {
     return Date.now() - entry.fetchedAt < opts.staleMs;
   };
 
+  const shouldAccept = (next: T, current: T | undefined): boolean =>
+    current === undefined || opts.accept === undefined || opts.accept(next, current);
+
   const ensure: ResourceStore<K, T>["ensure"] = (key, options) => {
     const entry = getEntry(key);
     if (!options?.force && isFresh(entry)) {
@@ -94,14 +99,22 @@ export function createResourceStore<K extends string, T>(opts: {
     setEntry(key, { isFetching: true });
     const promise = (async () => {
       try {
-        const data = await opts.fetcher(key);
+        const data = await opts.fetcher(key, {
+          force: options?.force === true,
+        });
         if (getGeneration(key) === generation) {
-          setEntry(key, {
-            data,
-            error: null,
-            fetchedAt: Date.now(),
-            isFetching: false,
-          });
+          const current = getEntry(key).data;
+          setEntry(
+            key,
+            shouldAccept(data, current)
+              ? {
+                  data,
+                  error: null,
+                  fetchedAt: Date.now(),
+                  isFetching: false,
+                }
+              : { error: null, isFetching: false },
+          );
         }
         return data;
       } catch (caught) {
@@ -138,6 +151,17 @@ export function createResourceStore<K extends string, T>(opts: {
         error: null,
         fetchedAt: Date.now(),
         isFetching: false,
+      });
+    },
+    push(key, data) {
+      const current = getEntry(key).data;
+      if (!shouldAccept(data, current)) return;
+      // External updates do not supersede an in-flight fetch. The fetch's
+      // eventual response is compared against this value before it commits.
+      setEntry(key, {
+        data,
+        error: null,
+        fetchedAt: Date.now(),
       });
     },
     invalidate(key) {
