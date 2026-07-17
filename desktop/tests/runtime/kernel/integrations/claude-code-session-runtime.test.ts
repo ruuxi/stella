@@ -21,6 +21,7 @@ import {
   buildClaudeCodeTurnPrompts,
   buildClaudePromptFromMessages,
   buildExternalStellaHistoryPromptMessage,
+  createExternalAssistantUpdateBuffer,
   getExternalEngineSessionId,
   setExternalEngineSessionId,
 } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
@@ -1171,6 +1172,107 @@ describe("claude-code-session-runtime", () => {
       } else {
         process.env.STELLA_CLAUDE_CODE_IDLE_TIMEOUT_MS = previousTimeout;
       }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("flushes one authored preamble at the actual vanilla native-tool boundary", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-native-preamble-"),
+    );
+    const binDir = path.join(dir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "let buffer = '';",
+        "const emit = (payload) => process.stdout.write(JSON.stringify(payload) + '\\n');",
+        "function handle() {",
+        "  emit({ type: 'stream_event', session_id: 'fake-session', event: { type: 'content_block_start', content_block: { type: 'text', text: '' } } });",
+        "  emit({ type: 'stream_event', session_id: 'fake-session', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'I will inspect the route.' } } });",
+        "  emit({ type: 'stream_event', session_id: 'fake-session', event: { type: 'content_block_start', content_block: { type: 'tool_use', id: 'tool-native', name: 'Bash', input: { command: 'pwd' } } } });",
+        "  emit({ type: 'assistant', session_id: 'fake-session', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'tool-native', name: 'Bash', input: { command: 'pwd' } }] } });",
+        "  emit({ type: 'user', session_id: 'fake-session', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool-native', content: 'done' }] } });",
+        "  emit({ type: 'stream_event', session_id: 'fake-session', event: { type: 'content_block_start', content_block: { type: 'text', text: '' } } });",
+        "  emit({ type: 'stream_event', session_id: 'fake-session', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Final answer.' } } });",
+        "  emit({ type: 'result', session_id: 'fake-session', is_error: false, result: 'Final answer.' });",
+        "}",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  if (buffer.includes('\\n')) { buffer = ''; handle(); }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const appendThreadMessage = vi.fn();
+    const updateBuffer = createExternalAssistantUpdateBuffer({
+      store: { appendThreadMessage } as never,
+      threadKey: "agent-claude",
+      engine: "claude_code",
+      runId: "run-native-preamble",
+      attemptGeneration: 6,
+    });
+    const nativeToolStarts = vi.fn(
+      (activity: {
+        toolCallId: string;
+        toolName: string;
+        toolArgs: Record<string, unknown>;
+      }) => {
+        expect(activity).toEqual({
+          toolCallId: "tool-native",
+          toolName: "Bash",
+          toolArgs: { command: "pwd" },
+        });
+        updateBuffer.flushBeforeTool();
+      },
+    );
+    const executeTool = vi.fn(async () => ({ result: "unused" }));
+    const streamed: string[] = [];
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    try {
+      const result = await runClaudeCodeTurn({
+        runId: "run-native-preamble",
+        sessionKey: `test-native-preamble:${Date.now()}`,
+        prompt: "Inspect the route.",
+        modelId: "claude-code/default",
+        vanilla: true,
+        tools: [],
+        executeTool,
+        onStream: (chunk) => {
+          streamed.push(chunk);
+          updateBuffer.append(chunk);
+        },
+        onNativeToolStart: nativeToolStarts,
+      });
+      updateBuffer.discard();
+
+      expect(result.text).toBe("Final answer.");
+      expect(streamed[0]).toBe("I will inspect the route.");
+      expect(streamed.at(-1)?.trim()).toBe("Final answer.");
+      expect(nativeToolStarts).toHaveBeenCalledOnce();
+      expect(executeTool).not.toHaveBeenCalled();
+      expect(appendThreadMessage).toHaveBeenCalledOnce();
+      expect(appendThreadMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadKey: "agent-claude",
+          content: "I will inspect the route.",
+          payload: expect.objectContaining({
+            stopReason: "toolUse",
+            stellaRunId: "run-native-preamble",
+            stellaAttemptGeneration: 6,
+            usage: expect.objectContaining({
+              totalTokens: 0,
+              cost: expect.objectContaining({ total: 0 }),
+            }),
+          }),
+        }),
+      );
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });

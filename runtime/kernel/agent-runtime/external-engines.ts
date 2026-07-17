@@ -804,6 +804,7 @@ const runClaudeHostedTurn = async (args: {
       );
     },
     onStream: acceptClaudeStreamChunk,
+    onNativeToolStart: flushPreambleBeforeTool,
     onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     executeTool: executeClaudeTool,
   });
@@ -864,6 +865,7 @@ const runClaudeHostedTurn = async (args: {
         );
       },
       onStream: acceptClaudeStreamChunk,
+      onNativeToolStart: flushPreambleBeforeTool,
       executeTool: executeClaudeTool,
       onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     });

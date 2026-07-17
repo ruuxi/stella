@@ -418,6 +418,15 @@ type ClaudeCodeTurnRequest = {
     toolName: string;
     update: ToolResult;
   }) => void;
+  /**
+   * Native Claude Code tool boundary observed in vanilla mode. This is a
+   * notification only: Claude Code still owns execution and tool results.
+   */
+  onNativeToolStart?: (args: {
+    toolCallId: string;
+    toolName: string;
+    toolArgs: Record<string, unknown>;
+  }) => void;
   onStream?: (chunk: string) => void;
   onStatusChange?: (status: ClaudeCodeStatusChange) => void;
   abortSignal?: AbortSignal;
@@ -786,14 +795,33 @@ export const collectClaudeCodeNativeFileChanges = (
 const updateClaudeCodeNativeToolActivity = (
   event: Record<string, unknown>,
   activeToolUseIds: Set<string>,
+  onNativeToolStart?: ClaudeCodeTurnRequest["onNativeToolStart"],
 ): boolean => {
   const before = activeToolUseIds.size;
+  const startToolUse = (block: Record<string, unknown> | null) => {
+    if (block?.type !== "tool_use" || typeof block.id !== "string") {
+      return;
+    }
+    const alreadyActive = activeToolUseIds.has(block.id);
+    activeToolUseIds.add(block.id);
+    if (alreadyActive) {
+      return;
+    }
+    onNativeToolStart?.({
+      toolCallId: block.id,
+      toolName:
+        typeof block.name === "string" && block.name.trim()
+          ? block.name.trim()
+          : "claude_native_tool",
+      toolArgs: asObject(block.input) ?? {},
+    });
+  };
   const updateFromContent = (content: unknown) => {
     if (!Array.isArray(content)) return;
     for (const raw of content) {
       const block = asObject(raw);
-      if (block?.type === "tool_use" && typeof block.id === "string") {
-        activeToolUseIds.add(block.id);
+      if (block?.type === "tool_use") {
+        startToolUse(block);
       } else if (
         block?.type === "tool_result" &&
         typeof block.tool_use_id === "string"
@@ -810,9 +838,7 @@ const updateClaudeCodeNativeToolActivity = (
     const source = asObject(event.event);
     if (source?.type === "content_block_start") {
       const block = asObject(source.content_block);
-      if (block?.type === "tool_use" && typeof block.id === "string") {
-        activeToolUseIds.add(block.id);
-      }
+      startToolUse(block);
     }
   }
   return before !== activeToolUseIds.size;
@@ -1923,6 +1949,7 @@ class ClaudeCodeSessionRuntime {
             updateClaudeCodeNativeToolActivity(
               parsedLine,
               current.activeNativeToolUseIds,
+              current.request.onNativeToolStart,
             )
           ) {
             this.refreshPendingIdleTimer(processState, current);
