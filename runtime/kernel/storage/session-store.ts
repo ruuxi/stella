@@ -884,7 +884,12 @@ const buildThreadPathEntries = (
     path.unshift(leaf);
     leaf = leaf.parentId ? byId.get(leaf.parentId) : undefined;
   }
-  return path;
+  // Older writers selected the parent by `(created_at, random entry_id)`.
+  // Several same-millisecond appends could therefore create sibling branches
+  // even though this runtime has no user-facing branch operation. The rows
+  // arrive in durable insertion order; if the parent walk drops any of them,
+  // recover the complete linear history instead of silently losing entries.
+  return path.length === entries.length ? path : entries;
 };
 
 const buildRawThreadMessages = (
@@ -2658,7 +2663,7 @@ export class SessionStore {
       SELECT entry_id AS entryId
       FROM runtime_thread_entries
       WHERE thread_key = ?
-      ORDER BY created_at DESC, entry_id DESC
+      ORDER BY COALESCE(append_seq, rowid) DESC, rowid DESC
       LIMIT 1
     `,
       )
@@ -2677,6 +2682,20 @@ export class SessionStore {
   }): string {
     const entryId = generateLocalId();
     const parentEntryId = this.getThreadLeafEntryId(args.threadKey);
+    const appendSeqRow = this.db
+      .prepare(
+        `
+      SELECT COALESCE(MAX(COALESCE(append_seq, rowid)), 0) + 1 AS appendSeq
+      FROM runtime_thread_entries
+      WHERE thread_key = ?
+    `,
+      )
+      .get(args.threadKey) as { appendSeq?: unknown } | undefined;
+    const appendSeq =
+      typeof appendSeqRow?.appendSeq === "number" &&
+      Number.isFinite(appendSeqRow.appendSeq)
+        ? appendSeqRow.appendSeq
+        : 1;
     const timestampIso = toIsoTimestamp(args.timestamp);
     this.db
       .prepare(
@@ -2689,9 +2708,10 @@ export class SessionStore {
         entry_type,
         timestamp_iso,
         created_at,
+        append_seq,
         data_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
       .run(
@@ -2702,6 +2722,7 @@ export class SessionStore {
         args.entryType,
         timestampIso,
         args.timestamp,
+        appendSeq,
         toJsonValueString(args.data),
       );
     return entryId;
@@ -2724,13 +2745,16 @@ export class SessionStore {
         recent.created_at AS createdAt,
         recent.data_json AS dataJson
       FROM (
-        SELECT *
+        SELECT
+          *,
+          rowid AS durable_rowid,
+          COALESCE(append_seq, rowid) AS durable_append_seq
         FROM runtime_thread_entries
         WHERE thread_key = ?
-        ORDER BY created_at DESC, entry_id DESC
+        ORDER BY durable_append_seq DESC, rowid DESC
         ${normalizedLimit ? "LIMIT ?" : ""}
       ) recent
-      ORDER BY recent.created_at ASC, recent.entry_id ASC
+      ORDER BY recent.durable_append_seq ASC, recent.durable_rowid ASC
     `;
     const rows = (
       normalizedLimit

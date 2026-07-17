@@ -2,13 +2,14 @@ import { mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
 } from "../../../../../runtime/kernel/storage/database-init.js";
 import { SessionStore } from "../../../../../runtime/kernel/storage/session-store.js";
 import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/shared.js";
+import { buildBackgroundTaskLifecycleIndex } from "@/features/chat/lib/background-task-lifecycle";
 
 type TestContext = {
   rootPath: string;
@@ -38,6 +39,7 @@ const createTestContext = (): TestContext => {
 };
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const context of activeContexts) {
     context.db.close();
     await rm(context.rootPath, { recursive: true, force: true });
@@ -1173,6 +1175,301 @@ describe("session-store", () => {
       )
       .get(threadId) as { count: number };
     expect(threadRows.count).toBe(2);
+  });
+
+  it("keeps many frozen-time Manager entries linear and complete across a full reload", () => {
+    const context = createTestContext();
+    const { rootPath, db, store } = context;
+    const frozenAt = 7_000;
+    vi.spyOn(Date, "now").mockReturnValue(frozenAt);
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId: "conv-frozen-manager",
+      agentType: "manager",
+    });
+    store.saveAgentRecord({
+      threadId,
+      conversationId: "conv-frozen-manager",
+      agentType: "manager",
+      description: "Coordinate frozen-time work",
+      agentDepth: 1,
+      status: "running",
+      attemptGeneration: 9,
+      managerTurnState: {
+        origin: "managed-event",
+        visibility: "internal",
+        lifecycle: "continue",
+      },
+      startedAt: frozenAt,
+      completedAt: null,
+      updatedAt: frozenAt,
+    });
+
+    const messageCount = 240;
+    for (let index = 0; index < messageCount; index += 1) {
+      const content = `Frozen message ${index}`;
+      const assistant = index % 2 === 1;
+      store.appendThreadMessage({
+        threadKey: threadId,
+        timestamp: frozenAt,
+        role: assistant ? "assistant" : "user",
+        content,
+        payload: assistant
+          ? {
+              role: "assistant",
+              content: [{ type: "text", text: content }],
+              api: "openai-responses",
+              provider: "openai",
+              model: "gpt-5.4",
+              usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: {
+                  input: 0,
+                  output: 0,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  total: 0,
+                },
+              },
+              stopReason: "stop",
+              timestamp: frozenAt,
+            }
+          : { role: "user", content, timestamp: frozenAt },
+      });
+    }
+
+    const entryRows = db
+      .prepare(
+        `
+      SELECT
+        entry_id AS entryId,
+        parent_entry_id AS parentEntryId,
+        append_seq AS appendSeq
+      FROM runtime_thread_entries
+      WHERE thread_key = ?
+      ORDER BY append_seq ASC
+    `,
+      )
+      .all(threadId) as Array<{
+      entryId: string;
+      parentEntryId: string | null;
+      appendSeq: number;
+    }>;
+    expect(entryRows).toHaveLength(messageCount);
+    expect(new Set(entryRows.map((row) => row.appendSeq)).size).toBe(
+      messageCount,
+    );
+    for (let index = 1; index < entryRows.length; index += 1) {
+      expect(entryRows[index]?.parentEntryId).toBe(
+        entryRows[index - 1]?.entryId,
+      );
+    }
+
+    db.close();
+    activeContexts.delete(context);
+    const reopenedDb = new DatabaseSync(getDesktopDatabasePath(rootPath), {
+      timeout: 5000,
+    }) as unknown as SqliteDatabase;
+    initializeDesktopDatabase(reopenedDb);
+    const reopened = {
+      rootPath,
+      db: reopenedDb,
+      store: new SessionStore(reopenedDb),
+    };
+    activeContexts.add(reopened);
+
+    const reloaded = reopened.store.loadThreadMessages(threadId);
+    expect(reloaded).toHaveLength(messageCount);
+    expect(reloaded.map((message) => message.content)).toEqual(
+      Array.from(
+        { length: messageCount },
+        (_, index) => `Frozen message ${index}`,
+      ),
+    );
+    expect(reopened.store.loadThreadMessages(threadId, 200)).toHaveLength(200);
+    expect(reopened.store.loadThreadMessages(threadId, 200)[0]?.content).toBe(
+      "Frozen message 40",
+    );
+    expect(reopened.store.getAgentRecord(threadId)).toMatchObject({
+      attemptGeneration: 9,
+      managerTurnState: {
+        origin: "managed-event",
+        visibility: "internal",
+        lifecycle: "continue",
+      },
+    });
+  });
+
+  it("rehydrates equal-timestamp lifecycle terminals onto their durable attempt", () => {
+    const context = createTestContext();
+    const { rootPath, db, store } = context;
+    const conversationId = "conv-same-ms-lifecycle";
+    const timestamp = 7_500;
+    const append = (
+      eventId: string,
+      type: string,
+      payload: Record<string, unknown>,
+    ) =>
+      store.appendEvent({
+        eventId,
+        conversationId,
+        timestamp,
+        type,
+        payload,
+      });
+
+    append("z-start-old", "agent-started", {
+      agentId: "same-ms-agent",
+      agentType: "general",
+      description: "Prior attempt",
+      rootRunId: "same-root",
+      attemptGeneration: 21,
+    });
+    append("a-terminal-old", "agent-completed", {
+      agentId: "same-ms-agent",
+      rootRunId: "same-root",
+      attemptGeneration: 21,
+      result: "Prior result",
+    });
+    append("a-start-current", "agent-started", {
+      agentId: "same-ms-agent",
+      agentType: "general",
+      description: "Current attempt",
+      rootRunId: "same-root",
+      attemptGeneration: 22,
+      isFollowUp: true,
+    });
+    append("b-terminal-current", "agent-canceled", {
+      agentId: "same-ms-agent",
+      rootRunId: "same-root",
+      attemptGeneration: 22,
+      error: "Paused current attempt",
+    });
+
+    db.close();
+    activeContexts.delete(context);
+    const reopenedDb = new DatabaseSync(getDesktopDatabasePath(rootPath), {
+      timeout: 5000,
+    }) as unknown as SqliteDatabase;
+    initializeDesktopDatabase(reopenedDb);
+    const reopened = {
+      rootPath,
+      db: reopenedDb,
+      store: new SessionStore(reopenedDb),
+    };
+    activeContexts.add(reopened);
+
+    const reloaded = reopened.store.listActivity(conversationId).activities;
+    expect(reloaded.map((event) => event._id)).toEqual([
+      "a-start-current",
+      "a-terminal-old",
+      "b-terminal-current",
+      "z-start-old",
+    ]);
+    const index = buildBackgroundTaskLifecycleIndex(reloaded);
+    expect(index.byStartEventId.get("z-start-old")).toMatchObject({
+      attemptGeneration: 21,
+      status: "completed",
+      terminalEventId: "a-terminal-old",
+    });
+    expect(index.byStartEventId.get("a-start-current")).toMatchObject({
+      attemptGeneration: 22,
+      status: "canceled",
+      terminalEventId: "b-terminal-current",
+      errorText: "Paused current attempt",
+    });
+    expect(index.startEventIdByLifecycleEventId.get("a-terminal-old")).toBe(
+      "z-start-old",
+    );
+    expect(index.startEventIdByLifecycleEventId.get("b-terminal-current")).toBe(
+      "a-start-current",
+    );
+  });
+
+  it("orders imported legacy rows by insertion and recovers an old accidental branch", () => {
+    const { db, store } = createTestContext();
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId: "conv-imported-thread",
+      agentType: "general",
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 8_000,
+      role: "user",
+      content: "Imported base",
+      payload: { role: "user", content: "Imported base", timestamp: 8_000 },
+    });
+    const base = db
+      .prepare(
+        `SELECT entry_id AS entryId, session_id AS sessionId
+         FROM runtime_thread_entries WHERE thread_key = ? LIMIT 1`,
+      )
+      .get(threadId) as { entryId: string; sessionId: string };
+    const insertLegacy = db.prepare(`
+      INSERT INTO runtime_thread_entries (
+        entry_id, thread_key, session_id, parent_entry_id, entry_type,
+        timestamp_iso, created_at, append_seq, data_json
+      ) VALUES (?, ?, ?, ?, 'message', ?, ?, NULL, ?)
+    `);
+    insertLegacy.run(
+      "legacy-random-z",
+      threadId,
+      base.sessionId,
+      base.entryId,
+      new Date(8_000).toISOString(),
+      8_000,
+      JSON.stringify({
+        message: { role: "user", content: "Imported second", timestamp: 8_000 },
+      }),
+    );
+    insertLegacy.run(
+      "legacy-random-a",
+      threadId,
+      base.sessionId,
+      base.entryId,
+      new Date(8_000).toISOString(),
+      8_000,
+      JSON.stringify({
+        message: { role: "user", content: "Imported third", timestamp: 8_000 },
+      }),
+    );
+    initializeDesktopDatabase(db);
+    expect(
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM runtime_thread_entries
+             WHERE thread_key = ? AND append_seq IS NULL`,
+          )
+          .get(threadId) as { count: number }
+      ).count,
+    ).toBe(0);
+
+    expect(
+      store.loadThreadMessages(threadId).map((entry) => entry.content),
+    ).toEqual(["Imported base", "Imported second", "Imported third"]);
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 8_000,
+      role: "user",
+      content: "Appended after import",
+      payload: {
+        role: "user",
+        content: "Appended after import",
+        timestamp: 8_000,
+      },
+    });
+    expect(
+      store.loadThreadMessages(threadId).map((entry) => entry.content),
+    ).toEqual([
+      "Imported base",
+      "Imported second",
+      "Imported third",
+      "Appended after import",
+    ]);
   });
 
   it("preserves assistant thinking blocks in persisted thread payloads", () => {

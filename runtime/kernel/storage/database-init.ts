@@ -636,13 +636,34 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       entry_type TEXT NOT NULL,
       timestamp_iso TEXT NOT NULL,
       created_at INTEGER NOT NULL,
+      append_seq INTEGER,
       data_json TEXT,
       FOREIGN KEY(thread_key) REFERENCES runtime_threads(thread_key) ON DELETE CASCADE
     );
   `);
+  try {
+    db.exec(
+      "ALTER TABLE runtime_thread_entries ADD COLUMN append_seq INTEGER;",
+    );
+  } catch {
+    // Column already exists.
+  }
+  // `created_at` is user/model time and can repeat. Preserve actual insertion
+  // order for legacy rows before any new append chooses its durable parent.
+  // `rowid` is available on every historical version of this table and keeps
+  // this migration compatible with copied/imported databases.
+  db.exec(`
+    UPDATE runtime_thread_entries
+    SET append_seq = rowid
+    WHERE append_seq IS NULL;
+  `);
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_runtime_thread_entries_thread_created
     ON runtime_thread_entries(thread_key, created_at, entry_id);
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_runtime_thread_entries_thread_append
+    ON runtime_thread_entries(thread_key, append_seq);
   `);
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_runtime_thread_entries_thread_parent
