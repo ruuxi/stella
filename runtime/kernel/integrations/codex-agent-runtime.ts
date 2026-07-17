@@ -1394,6 +1394,17 @@ export const runCodexAgentTurn = async (request: {
   onStatus?: (status: string) => void;
   onReasoning?: (chunk: string) => void;
   onCommandExecution?: (activity: CodexCommandExecutionActivity) => void;
+  /** Commentary/preamble deltas, independent of final-answer streaming. */
+  onCommentaryStream?: (chunk: string) => void;
+  /**
+   * First observation of a Codex-owned tool item. Notification only: Codex
+   * remains responsible for execution and result delivery.
+   */
+  onNativeToolStart?: (args: {
+    toolCallId: string;
+    toolName: string;
+    toolArgs: Record<string, unknown>;
+  }) => void;
   onStream?: (chunk: string) => void;
   onSessionId?: (sessionId: string) => void;
   streamFinalAnswer?: boolean;
@@ -1440,6 +1451,7 @@ export const runCodexAgentTurn = async (request: {
   // flushed preamble, once inside the persisted final answer) whenever no
   // final-answer item overwrites finalText.
   const agentMessageIsCommentary = new Map<string, boolean>();
+  const observedNativeToolItems = new Set<string>();
   let threadId: string | undefined;
   let turnId: string | undefined;
   let turnFailure: string | null = null;
@@ -1607,12 +1619,14 @@ export const runCodexAgentTurn = async (request: {
           // accumulating them here would duplicate the commentary in the
           // persisted final answer when no final item overwrites finalText.
           if (
-            agentMessageIsCommentary.get(notification.params.itemId) !== true
+            agentMessageIsCommentary.get(notification.params.itemId) === true
           ) {
+            request.onCommentaryStream?.(notification.params.delta);
+          } else {
             finalText += notification.params.delta;
-          }
-          if (request.streamFinalAnswer !== false) {
-            request.onStream?.(notification.params.delta);
+            if (request.streamFinalAnswer !== false) {
+              request.onStream?.(notification.params.delta);
+            }
           }
           return;
         case "item/reasoning/textDelta":
@@ -1627,6 +1641,56 @@ export const runCodexAgentTurn = async (request: {
         case "item/started":
         case "item/completed": {
           const item = notification.params.item;
+          const nativeBoundary = (() => {
+            switch (item.type) {
+              case "commandExecution":
+                return {
+                  toolName: "exec_command",
+                  toolArgs: {
+                    command: sanitizeCodexCommandForActivity(item.command),
+                    ...(item.cwd
+                      ? { cwd: redactSensitiveText(item.cwd) }
+                      : {}),
+                  },
+                };
+              case "webSearch":
+                return {
+                  toolName: "web_search",
+                  toolArgs: { query: redactSensitiveText(item.query) },
+                };
+              case "fileChange":
+                return {
+                  toolName: "file_change",
+                  toolArgs: {
+                    paths: item.changes.map((change) => change.path),
+                  },
+                };
+              case "dynamicToolCall":
+                return {
+                  toolName: item.tool,
+                  toolArgs: {
+                    ...(item.namespace ? { namespace: item.namespace } : {}),
+                  },
+                };
+              case "mcpToolCall":
+                return {
+                  toolName: item.tool,
+                  toolArgs: { server: item.server },
+                };
+              default:
+                return null;
+            }
+          })();
+          if (nativeBoundary) {
+            const observationKey = `${item.type}:${item.id}`;
+            if (!observedNativeToolItems.has(observationKey)) {
+              observedNativeToolItems.add(observationKey);
+              request.onNativeToolStart?.({
+                toolCallId: item.id,
+                ...nativeBoundary,
+              });
+            }
+          }
           const status = statusFromCodexItem(item);
           if (status) emitStatus(status);
           if (item.type === "commandExecution") {

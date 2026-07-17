@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildCodexThreadResumeParams,
@@ -24,6 +24,7 @@ import {
 import {
   buildClaudePromptFromMessages,
   buildExternalStellaHistoryPromptMessage,
+  createExternalAssistantUpdateBuffer,
   selectExternalOrchestratorEngine,
 } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
 import {
@@ -906,6 +907,138 @@ describe("Codex agent runtime", () => {
     }
   });
 
+  it("delivers commentary through suppressed final streaming and flushes each native boundary once", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-codex-authored-boundaries-"),
+    );
+    const fakeCodex = path.join(dir, "codex");
+    fs.writeFileSync(
+      fakeCodex,
+      [
+        "#!/usr/bin/env node",
+        'const readline = require("node:readline");',
+        "const send = (message) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\\n');",
+        "readline.createInterface({ input: process.stdin }).on('line', (line) => {",
+        "  const message = JSON.parse(line);",
+        "  if (message.method === 'initialize') { send({ id: message.id, result: {} }); return; }",
+        "  if (message.method === 'initialized') return;",
+        "  if (message.method === 'thread/start') { send({ id: message.id, result: { thread: { id: 'thread-authored-boundaries' } } }); return; }",
+        "  if (message.method === 'turn/start') {",
+        "    const threadId = message.params.threadId;",
+        "    const turn = { id: 'turn-authored-boundaries', status: 'inProgress' };",
+        "    const completedTurn = { id: turn.id, status: 'completed' };",
+        "    send({ id: message.id, result: { turn } });",
+        "    send({ method: 'turn/started', params: { threadId, turn } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'comment-command', text: '', phase: 'commentary' } } });",
+        "    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, itemId: 'comment-command', delta: 'I will inspect the process.' } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-1', command: 'pwd', status: 'inProgress' } } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'commandExecution', id: 'cmd-1', command: 'pwd', status: 'completed', exitCode: 0 } } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'comment-search', text: '', phase: 'commentary' } } });",
+        "    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, itemId: 'comment-search', delta: 'I will verify the docs.' } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'webSearch', id: 'search-1', query: 'Codex docs' } } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'webSearch', id: 'search-1', query: 'Codex docs' } } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'comment-file', text: '', phase: 'commentary' } } });",
+        "    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, itemId: 'comment-file', delta: 'I will apply the fix.' } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'fileChange', id: 'file-1', changes: [{ path: 'runtime/fix.ts', kind: { type: 'update', move_path: null } }], status: 'inProgress' } } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'fileChange', id: 'file-1', changes: [{ path: 'runtime/fix.ts', kind: { type: 'update', move_path: null } }], status: 'completed' } } });",
+        "    send({ method: 'item/started', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'final-1', text: '', phase: 'final_answer' } } });",
+        "    send({ method: 'item/agentMessage/delta', params: { threadId, turnId: turn.id, itemId: 'final-1', delta: 'Final result only.' } });",
+        "    send({ method: 'item/completed', params: { threadId, turnId: turn.id, item: { type: 'agentMessage', id: 'final-1', text: 'Final result only.', phase: 'final_answer' } } });",
+        "    send({ method: 'turn/completed', params: { threadId, turn: completedTurn } });",
+        "  }",
+        "});",
+        "process.stdin.resume();",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeCodex, 0o755);
+    const previousPath = process.env.STELLA_CODEX_CLI_PATH;
+    const appendThreadMessage = vi.fn();
+    const updateBuffer = createExternalAssistantUpdateBuffer({
+      store: { appendThreadMessage } as never,
+      threadKey: "agent-codex",
+      engine: "codex",
+      runId: "run-authored-boundaries",
+      attemptGeneration: 4,
+    });
+    const commentary: string[] = [];
+    const finalStream: string[] = [];
+    const nativeStarts = vi.fn(
+      (activity: {
+        toolCallId: string;
+        toolName: string;
+        toolArgs: Record<string, unknown>;
+      }) => {
+        updateBuffer.flushBeforeTool();
+        return activity;
+      },
+    );
+    process.env.STELLA_CODEX_CLI_PATH = fakeCodex;
+    try {
+      const result = await runCodexAgentTurn({
+        runId: "run-authored-boundaries",
+        prompt: "Inspect, verify, and fix.",
+        cwd: dir,
+        streamFinalAnswer: false,
+        onCommentaryStream: (chunk) => {
+          commentary.push(chunk);
+          updateBuffer.append(chunk);
+        },
+        onNativeToolStart: nativeStarts,
+        onStream: (chunk) => finalStream.push(chunk),
+      });
+      updateBuffer.discard();
+
+      expect(result.text).toBe("Final result only.");
+      expect(commentary).toEqual([
+        "I will inspect the process.",
+        "I will verify the docs.",
+        "I will apply the fix.",
+      ]);
+      expect(finalStream).toEqual([]);
+      expect(nativeStarts).toHaveBeenCalledTimes(3);
+      expect(nativeStarts.mock.calls.map(([activity]) => activity)).toEqual([
+        {
+          toolCallId: "cmd-1",
+          toolName: "exec_command",
+          toolArgs: { command: "pwd" },
+        },
+        {
+          toolCallId: "search-1",
+          toolName: "web_search",
+          toolArgs: { query: "Codex docs" },
+        },
+        {
+          toolCallId: "file-1",
+          toolName: "file_change",
+          toolArgs: { paths: ["runtime/fix.ts"] },
+        },
+      ]);
+      expect(appendThreadMessage).toHaveBeenCalledTimes(3);
+      expect(
+        appendThreadMessage.mock.calls.map(
+          ([entry]) => (entry as { content: string }).content,
+        ),
+      ).toEqual(commentary);
+      expect(JSON.stringify(appendThreadMessage.mock.calls)).not.toContain(
+        "Final result only.",
+      );
+      expect(result.fileChanges).toEqual([
+        {
+          path: path.join(dir, "runtime/fix.ts"),
+          kind: { type: "update" },
+        },
+      ]);
+    } finally {
+      shutdownCodexAppServerRuntime();
+      if (previousPath === undefined) {
+        delete process.env.STELLA_CODEX_CLI_PATH;
+      } else {
+        process.env.STELLA_CODEX_CLI_PATH = previousPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("does not finish on a commentary assistant message before Codex keeps working", async () => {
     const dir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-fake-codex-commentary-before-tool-"),
@@ -1068,6 +1201,7 @@ describe("Codex agent runtime", () => {
       const result = await runCodexAgentTurn({
         runId: "run-commentary-delta",
         prompt: "hello",
+        onCommentaryStream: (chunk) => streamed.push(chunk),
         onStream: (chunk) => streamed.push(chunk),
       });
 

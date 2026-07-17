@@ -995,6 +995,11 @@ const runCodexHostedTurn = async (args: {
       args.callbacks?.onAssistantMessage?.(preambleEvent);
     }
   };
+  const acceptCodexAssistantChunk = (chunk: string) => {
+    assistantUpdateBuffer.append(chunk);
+    args.opts.onProgress?.(chunk);
+    args.callbacks?.onStream?.(runEvents.recordStream(chunk));
+  };
   const executeCodexTool = async (
     toolCallId: string,
     toolName: string,
@@ -1080,11 +1085,6 @@ const runCodexHostedTurn = async (args: {
       state: activity.status,
     };
     if (activity.status === "inProgress") {
-      flushPreambleBeforeTool({
-        toolCallId: activity.id,
-        toolName,
-        toolArgs,
-      });
       responseTargetTracker?.noteToolStart(toolName, toolArgs);
       args.callbacks?.onToolStart?.(
         runEvents.recordToolStart({
@@ -1164,11 +1164,9 @@ const runCodexHostedTurn = async (args: {
       args.callbacks?.onReasoning?.(runEvents.recordReasoning(chunk));
     },
     onCommandExecution: emitCodexCommandExecution,
-    onStream: (chunk) => {
-      assistantUpdateBuffer.append(chunk);
-      args.opts.onProgress?.(chunk);
-      args.callbacks?.onStream?.(runEvents.recordStream(chunk));
-    },
+    onCommentaryStream: acceptCodexAssistantChunk,
+    onNativeToolStart: flushPreambleBeforeTool,
+    onStream: acceptCodexAssistantChunk,
     onSessionId: persistCodexSessionId,
     onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
     executeTool: executeCodexTool,
@@ -1221,11 +1219,9 @@ const runCodexHostedTurn = async (args: {
         args.callbacks?.onReasoning?.(runEvents.recordReasoning(chunk));
       },
       onCommandExecution: emitCodexCommandExecution,
-      onStream: (chunk) => {
-        assistantUpdateBuffer.append(chunk);
-        args.opts.onProgress?.(chunk);
-        args.callbacks?.onStream?.(runEvents.recordStream(chunk));
-      },
+      onCommentaryStream: acceptCodexAssistantChunk,
+      onNativeToolStart: flushPreambleBeforeTool,
+      onStream: acceptCodexAssistantChunk,
       onSessionId: persistCodexSessionId,
       onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
       executeTool: executeCodexTool,
