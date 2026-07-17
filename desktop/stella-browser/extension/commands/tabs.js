@@ -276,8 +276,8 @@ export async function releaseOwnerLease(command) {
 }
 
 export async function assertCurrentOwnerLease(command) {
-  await loadState();
   if (command?.ownerLeaseId == null && command?.ownerLeaseIssuedAt == null) return;
+  await loadState();
   const ownerId = getCommandOwnerId(command);
   const current = ownerLeaseState[ownerId];
   if (
@@ -1041,6 +1041,11 @@ export async function handleTabClose(command) {
   }
 
   tab ??= tabs[index];
+  // Authorization at dispatch is insufficient: tab discovery can overlap a
+  // replacement kernel claiming this owner. Fence the destructive operation
+  // itself so an already-admitted stale command cannot close the new lease's
+  // tab session.
+  await assertCurrentOwnerLease(command);
   clearTabRefMap(ownerId, tab.id);
   clearCdpEvents(tab.id);
 
@@ -1075,7 +1080,6 @@ chrome.tabs.onCreated.addListener((tab) => {
   if (!Number.isInteger(tab?.id)) return;
   trackTabAdoption(tab.id, () => adoptChildTab(tab));
 });
-
 chrome.webNavigation?.onCreatedNavigationTarget?.addListener((details) => {
   if (
     !Number.isInteger(details?.tabId) ||

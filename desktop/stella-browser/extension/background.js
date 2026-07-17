@@ -127,6 +127,10 @@ const HANDLERS = {
     await releaseOwnerLease(cmd);
     return { id: cmd.id, success: true, data };
   },
+  release_owner_lease: async (cmd) => {
+    await releaseOwnerLease(cmd);
+    return { id: cmd.id, success: true, data: { released: true } };
+  },
 
   // Cookies
   cookies_get: handleCookiesGet,
@@ -238,7 +242,6 @@ onCommand(handleCommand);
 onStatus((connected) => {
   console.log('[background] Connection status:', connected ? 'connected' : 'disconnected');
 });
-
 // Keep service worker alive via offscreen document port
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === 'keepalive') {

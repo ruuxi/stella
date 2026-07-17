@@ -200,6 +200,7 @@ fn is_known_action(action: &str) -> bool {
             | "chain"
             | "finalize_tabs"
             | "close_owner"
+            | "release_owner_lease"
     )
 }
 
@@ -231,7 +232,11 @@ fn validate_chain_actions(cmd: &Value) -> Result<Vec<&str>, String> {
             .and_then(Value::as_str)
             .filter(|action| !action.trim().is_empty())
             .ok_or_else(|| format!("Chain step {} must have a non-empty string action", index))?;
-        if action == "chain" || action == "finalize_tabs" || action == "close_owner" {
+        if action == "chain"
+            || action == "finalize_tabs"
+            || action == "close_owner"
+            || action == "release_owner_lease"
+        {
             return Err(format!(
                 "Chain step {} cannot contain top-level-only action {}",
                 index, action
@@ -1021,6 +1026,7 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
             | "chain"
             | "finalize_tabs"
             | "close_owner"
+            | "release_owner_lease"
     );
     if !skip_launch && !matches!(state.backend_type, BackendType::Extension) {
         // Check if existing connection is stale and needs re-launch
@@ -1231,7 +1237,7 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
         "mousedown" => handle_mousedown(cmd, state).await,
         "mouseup" => handle_mouseup(cmd, state).await,
         "chain" => Err("Chain is only supported by the extension backend".to_string()),
-        "finalize_tabs" | "close_owner" => Err(format!(
+        "finalize_tabs" | "close_owner" | "release_owner_lease" => Err(format!(
             "Action '{}' requires the extension backend",
             action
         )),
@@ -6252,7 +6258,7 @@ mod tests {
             .unwrap_err()
             .contains("top-level-only action chain"));
 
-        for action in ["finalize_tabs", "close_owner"] {
+        for action in ["finalize_tabs", "close_owner", "release_owner_lease"] {
             let lifecycle = json!({ "steps": [{ "action": action }] });
             assert!(validate_chain_actions(&lifecycle)
                 .unwrap_err()

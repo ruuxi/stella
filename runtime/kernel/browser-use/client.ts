@@ -91,6 +91,7 @@ export const BROWSER_PROTOCOL_ACTIONS = [
   ...BROWSER_CHAIN_ACTIONS,
   "finalize_tabs",
   "close_owner",
+  "release_owner_lease",
 ] as const;
 
 export type BrowserChainAction = (typeof BROWSER_CHAIN_ACTIONS)[number];
@@ -819,7 +820,34 @@ export class BrowserSession implements BrowserSessionClient {
     if (!this.disposePromise) {
       this.disposed = true;
       this.signal?.removeEventListener("abort", this.onSessionAbort);
-      this.disposePromise = this.queue.finally(() => this.closeClientTransport());
+      const releaseLease = this.enqueue(async () => {
+        const socket = this.socket;
+        if (!socket || socket.destroyed || !socket.writable) return;
+
+        const requestId = randomUUID();
+        const timeoutMs = Math.min(this.commandTimeoutMs, 1_000);
+        const deadline = Date.now() + timeoutMs;
+        try {
+          await this.roundTrip(
+            {
+              id: requestId,
+              action: "release_owner_lease",
+              ownerId: this.sessionId,
+              ownerLeaseId: this.ownerLeaseId,
+              ownerLeaseIssuedAt: this.ownerLeaseIssuedAt,
+            },
+            requestId,
+            undefined,
+            deadline,
+            timeoutMs,
+            true,
+          );
+        } catch {
+          // Lease release is best-effort and non-destructive. A newer lease is
+          // intentionally unaffected, and transport disposal must still finish.
+        }
+      });
+      this.disposePromise = releaseLease.finally(() => this.closeClientTransport());
     }
     return this.disposePromise;
   }

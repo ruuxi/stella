@@ -542,7 +542,10 @@ describe("BrowserSession direct daemon client", () => {
       await client.dispose();
       await socketClosed.promise;
 
-      expect(daemon.requests.map((request) => request.action)).toEqual(["url"]);
+      expect(daemon.requests.map((request) => request.action)).toEqual([
+        "url",
+        "release_owner_lease",
+      ]);
       expect(client.isDisposed).toBe(true);
       await expect(client.command("title")).rejects.toBeInstanceOf(
         BrowserSessionDisposedError,
@@ -577,7 +580,16 @@ describe("BrowserSession direct daemon client", () => {
           ownerLeaseId: "kernel-lease-2",
           ownerLeaseIssuedAt: 2_000,
         }),
+        expect.objectContaining({
+          action: "release_owner_lease",
+          ownerId: "node-repl-session-1",
+          ownerLeaseId: "kernel-lease-2",
+          ownerLeaseIssuedAt: 2_000,
+        }),
       ]);
+      expect(
+        daemon.requests.some((request) => request.action === "close_owner"),
+      ).toBe(false);
     } finally {
       await client.dispose();
       await daemon.close();

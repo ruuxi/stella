@@ -4,7 +4,7 @@
  *
  * This eliminates per-step round trips through the native bridge.
  */
-import { getActiveTab } from './tabs.js';
+import { assertCurrentOwnerLease, getActiveTab } from './tabs.js';
 import { resolveSelector, buildRoleMatcherScript } from '../lib/selector.js';
 import { evaluateRuntime } from '../lib/debugger.js';
 
@@ -54,7 +54,6 @@ function isPlainObject(value) {
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }
-
 function validateSafeValue(value, path, depth = 0) {
   if (depth > MAX_JSON_DEPTH) {
     throw new Error(`${path} exceeds the maximum object depth`);
@@ -292,6 +291,11 @@ export async function handleChain(command, handlers) {
       break;
     }
     stepCommand.timeout = Math.min(stepCommand.timeout, remainingBeforeAction);
+
+    // A replacement kernel can claim this owner while a prior chain step or
+    // implicit wait is still running. Revalidate at the execution boundary so
+    // the admitted chain cannot continue acting under its superseded lease.
+    await assertCurrentOwnerLease(stepCommand);
 
     // 2. Look up and execute the handler
     const handler = handlers[step.action];
