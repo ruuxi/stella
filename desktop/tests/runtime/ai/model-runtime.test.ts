@@ -14,6 +14,7 @@ import {
 } from "../../../../runtime/ai/model-runtime.js";
 import { getOAuthProvider } from "../../../../runtime/ai/utils/oauth/index.js";
 import azureOpenAIResponsesCatalog from "../../fixtures/azure-openai-responses-catalog.json";
+import openRouterAutoCatalog from "../../fixtures/openrouter-auto-catalog.json";
 
 const tempDirs: string[] = [];
 
@@ -1100,10 +1101,84 @@ describe("ModelRuntime", () => {
       expect(runtime.getModel("xai", "grok-repaired-cache")?.name).toBe(
         "Grok Repaired Cache",
       );
+      const repairedStore = JSON.parse(
+        await readFile(path.join(stellaDataDir, "models-store.json"), "utf8"),
+      ) as { xai?: { models?: Array<{ id?: string }> } };
+      expect(repairedStore.xai?.models).toEqual([
+        expect.objectContaining({ id: "grok-repaired-cache" }),
+      ]);
       expect(warn).toHaveBeenCalledWith(
         "[stella:model-runtime] Dropping invalid remote catalog entry",
         expect.objectContaining({ providerId: "xai", source: "cache" }),
       );
+    } finally {
+      warn.mockRestore();
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not erase a malformed persisted catalog when its repair response is all invalid", async () => {
+    const stellaDataDir = await makeTempDir();
+    const storePath = path.join(stellaDataDir, "models-store.json");
+    const malformedCachedModel = validRemoteCatalogModel({
+      id: "grok-malformed-last-good",
+      cost: { input: "NaN", output: 2, cacheRead: 0, cacheWrite: 0 },
+    });
+    await writeFile(
+      storePath,
+      JSON.stringify({
+        xai: {
+          models: [malformedCachedModel],
+          checkedAt: Date.now(),
+        },
+      }),
+    );
+    const storedBefore = JSON.parse(await readFile(storePath, "utf8")) as {
+      xai?: unknown;
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input) => {
+      if (String(input).endsWith("/xai")) {
+        return new Response(
+          JSON.stringify({
+            models: [
+              validRemoteCatalogModel({
+                id: "grok-invalid-repair",
+                cost: {
+                  input: "NaN",
+                  output: 2,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                },
+              }),
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("", { status: 404 });
+    }) as typeof fetch;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const runtime = new ModelRuntime();
+      await runtime.initialize({ stellaDataDir, allowNetwork: true });
+
+      expect(runtime.getSnapshot().catalogError).toMatch(
+        /xai: Invalid model catalog for xai/u,
+      );
+      expect(runtime.getModel("xai", "grok-malformed-last-good")).toBeUndefined();
+      expect(runtime.getModel("xai", "grok-invalid-repair")).toBeUndefined();
+      const storedAfter = JSON.parse(await readFile(storePath, "utf8")) as {
+        xai?: unknown;
+      };
+      expect(storedAfter.xai).toEqual(storedBefore.xai);
+
+      const restored = new ModelRuntime();
+      await restored.initialize({ stellaDataDir, allowNetwork: false });
+      expect(
+        restored.getModel("xai", "grok-malformed-last-good"),
+      ).toBeUndefined();
     } finally {
       warn.mockRestore();
       globalThis.fetch = originalFetch;
@@ -1144,15 +1219,50 @@ describe("ModelRuntime", () => {
     }
   });
 
-  it("rejects non-finite and negative remote catalog costs", () => {
+  it("rejects non-finite and unsupported negative remote catalog costs", () => {
     for (const input of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
       const entry = validRemoteCatalogModel({
         cost: { input, output: 2, cacheRead: 0, cacheWrite: 0 },
       });
       expect(isRemoteCatalogModel(entry)).toBe(false);
       expect(getRemoteCatalogModelValidationErrors(entry)).toEqual([
-        expect.stringMatching(/^\/cost\/input: Expected number/u),
+        expect.stringMatching(/^\/cost\/input: Expected (?:number|union)/u),
       ]);
+    }
+  });
+
+  it("accepts the OpenRouter auto-routing unknown-price sentinel fixture", async () => {
+    const auto = openRouterAutoCatalog["openrouter/auto"];
+    expect(isRemoteCatalogModel(auto)).toBe(true);
+
+    const stellaDataDir = await makeTempDir();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input) => {
+      if (String(input).endsWith("/openrouter")) {
+        return new Response(JSON.stringify(openRouterAutoCatalog), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("", { status: 404 });
+    }) as typeof fetch;
+    try {
+      const runtime = new ModelRuntime();
+      await runtime.initialize({ stellaDataDir, allowNetwork: true });
+      const stored = JSON.parse(
+        await readFile(path.join(stellaDataDir, "models-store.json"), "utf8"),
+      ) as { openrouter?: { models?: Array<{ id?: string }> } };
+
+      expect(
+        stored.openrouter?.models?.some(
+          (model) => model.id === "openrouter/auto",
+        ),
+      ).toBe(true);
+      expect(runtime.getModel("openrouter", "openrouter/auto")?.cost).toEqual(
+        auto.cost,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 

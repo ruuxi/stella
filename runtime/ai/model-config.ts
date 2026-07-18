@@ -171,9 +171,17 @@ const costSchema = Type.Object({
   cacheRead: Type.Optional(Type.Number()),
   cacheWrite: Type.Optional(Type.Number()),
 });
+// pi.dev uses -1_000_000 specifically for dynamically routed prices that are
+// unknowable until OpenRouter selects an upstream model (`openrouter/auto`).
+// Accept only that documented catalog sentinel; arbitrary negative prices
+// remain invalid and cannot override a builtin entry.
+const remoteCatalogPriceSchema = Type.Union([
+  Type.Number({ minimum: 0 }),
+  Type.Literal(-1_000_000),
+]);
 const remoteCatalogCostSchema = Type.Object({
-  input: Type.Number({ minimum: 0 }),
-  output: Type.Number({ minimum: 0 }),
+  input: remoteCatalogPriceSchema,
+  output: remoteCatalogPriceSchema,
   cacheRead: Type.Number({ minimum: 0 }),
   cacheWrite: Type.Number({ minimum: 0 }),
 });

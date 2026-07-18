@@ -27,7 +27,12 @@ type StoredCatalogEntry = {
   checkedAt?: number;
 };
 
-type StoredCatalogs = Record<string, StoredCatalogEntry>;
+type PersistedCatalogEntry = {
+  models: unknown[];
+  checkedAt?: number;
+};
+
+type StoredCatalogs = Record<string, PersistedCatalogEntry>;
 
 export type RuntimeProviderDefinition = {
   name: string;
@@ -273,6 +278,10 @@ const extensionModels = (provider: RuntimeProviderDefinition): Model<Api>[] =>
 export class ModelRuntime {
   private readonly builtins = new Map<string, Model<Api>[]>();
   private readonly dynamicCatalogs = new Map<string, StoredCatalogEntry>();
+  private readonly persistedCatalogs = new Map<
+    string,
+    PersistedCatalogEntry
+  >();
   private readonly extensionProviders = new Map<
     string,
     RuntimeProviderDefinition
@@ -356,6 +365,10 @@ export class ModelRuntime {
           entry.models,
           "cache",
         );
+        this.persistedCatalogs.set(providerId, {
+          models: structuredClone(entry.models),
+          checkedAt,
+        });
         this.dynamicCatalogs.set(providerId, {
           models: validation.models,
           checkedAt: validation.invalidCount > 0 ? undefined : checkedAt,
@@ -368,7 +381,7 @@ export class ModelRuntime {
 
   private writeStoredCatalogs(): void {
     if (!this.storePath) return;
-    const stored = Object.fromEntries(this.dynamicCatalogs) as StoredCatalogs;
+    const stored = Object.fromEntries(this.persistedCatalogs) as StoredCatalogs;
     ensurePrivateDirSync(path.dirname(this.storePath));
     writePrivateFileSync(this.storePath, JSON.stringify(stored, null, 2));
   }
@@ -569,6 +582,12 @@ export class ModelRuntime {
         models: stored?.models ?? [],
         checkedAt,
       });
+      this.persistedCatalogs.set(providerId, {
+        models: structuredClone(
+          this.persistedCatalogs.get(providerId)?.models ?? stored?.models ?? [],
+        ),
+        checkedAt,
+      });
       return;
     }
     if (!response.ok) {
@@ -599,6 +618,10 @@ export class ModelRuntime {
     }
     this.dynamicCatalogs.set(providerId, {
       models: validation.models,
+      checkedAt,
+    });
+    this.persistedCatalogs.set(providerId, {
+      models: validation.models.map(cloneModel),
       checkedAt,
     });
   }

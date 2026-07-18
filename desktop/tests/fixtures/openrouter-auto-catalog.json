@@ -1,0 +1,23 @@
+{
+  "openrouter/auto": {
+    "id": "openrouter/auto",
+    "name": "Auto Router",
+    "api": "openai-completions",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "provider": "openrouter",
+    "reasoning": true,
+    "input": ["text", "image"],
+    "cost": {
+      "input": -1000000,
+      "output": -1000000,
+      "cacheRead": 0,
+      "cacheWrite": 0
+    },
+    "contextWindow": 2000000,
+    "maxTokens": 4096,
+    "compat": {
+      "supportsDeveloperRole": false,
+      "thinkingFormat": "openrouter"
+    }
+  }
+}
