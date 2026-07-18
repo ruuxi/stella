@@ -609,14 +609,39 @@ const readMemoryFiles = async (
   return blocks.join("\n\n");
 };
 
+const RECALL_ANCHOR_CONTINUATION_RE = /[\p{L}\p{N}_./-]/u;
+
+const hasRecallBoundaryMatch = (value: string, anchor: string): boolean => {
+  const normalizedValue = value.normalize("NFKC").toLocaleLowerCase();
+  const normalizedAnchor = anchor.normalize("NFKC").trim().toLocaleLowerCase();
+  if (!normalizedAnchor) return false;
+
+  let fromIndex = 0;
+  while (fromIndex <= normalizedValue.length - normalizedAnchor.length) {
+    const index = normalizedValue.indexOf(normalizedAnchor, fromIndex);
+    if (index < 0) return false;
+    const before = index > 0 ? normalizedValue[index - 1] : undefined;
+    const afterIndex = index + normalizedAnchor.length;
+    const after =
+      afterIndex < normalizedValue.length
+        ? normalizedValue[afterIndex]
+        : undefined;
+    if (
+      (!before || !RECALL_ANCHOR_CONTINUATION_RE.test(before)) &&
+      (!after || !RECALL_ANCHOR_CONTINUATION_RE.test(after))
+    ) {
+      return true;
+    }
+    fromIndex = index + 1;
+  }
+  return false;
+};
+
 const lineMatchesTerms = (
   line: string,
   normalizedTerms: string[],
 ): string[] => {
-  const lower = line.toLocaleLowerCase();
-  return normalizedTerms.filter((term) =>
-    lower.includes(term.toLocaleLowerCase()),
-  );
+  return normalizedTerms.filter((term) => hasRecallBoundaryMatch(line, term));
 };
 
 const formatLineRange = (start: number, end: number): string =>
@@ -1326,6 +1351,7 @@ const selectUsableRecallEvidence = (
   value: string,
   terms: readonly string[],
   exactPhrases: readonly string[],
+  allowGenericTokens: boolean,
 ): string | null => {
   const normalized = value.toLocaleLowerCase();
   if (
@@ -1368,7 +1394,11 @@ const selectUsableRecallEvidence = (
       ...new Set(
         tokenizeSearchQuery(term)
           .map((token) => token.toLocaleLowerCase())
-          .filter((token) => token.length >= 4 && !genericTokens.has(token)),
+          .filter(
+            (token) =>
+              token.length >= 4 &&
+              (allowGenericTokens || !genericTokens.has(token)),
+          ),
       ),
     ];
     return tokens.length > 0 ? [tokens] : [];
@@ -1388,13 +1418,15 @@ const selectUsableRecallEvidence = (
         : normalizedUnit;
     if (
       normalizedExactPhrases.length > 0 &&
-      !normalizedExactPhrases.every((phrase) => normalizedUnit.includes(phrase))
+      !normalizedExactPhrases.every((phrase) =>
+        hasRecallBoundaryMatch(normalizedUnit, phrase),
+      )
     ) {
       return false;
     }
     return (
       distinctiveTermGroups.filter((group) =>
-        group.every((token) => anchorText.includes(token)),
+        group.every((token) => hasRecallBoundaryMatch(anchorText, token)),
       ).length >= requiredGroupMatches
     );
   });
@@ -1447,7 +1479,7 @@ const deterministicReformulation = (
   return normalizeMemorySearchTerms(
     candidates.length > 0
       ? candidates
-      : originalTerms.flatMap((term) => term.split(/[^\p{L}\p{N}_.\/-]+/u)),
+      : originalTerms.flatMap((term) => term.split(/[^\p{L}\p{N}_./-]+/u)),
   );
 };
 
@@ -1473,6 +1505,7 @@ const runArchitecturalRecall = async (args: {
 }): Promise<string> => {
   const intentDecision = classifyRecallIntent(args.lookupPrompt);
   const intent = intentDecision.intent;
+  const bareRepoLookup = isBareRepoLookup(args.lookupPrompt);
   const classificationRequiresSynthesis =
     !intentDecision.deterministicFastPath;
   let synthesisRequired = classificationRequiresSynthesis;
@@ -1610,6 +1643,7 @@ const runArchitecturalRecall = async (args: {
         value,
         terms,
         intentDecision.exactPhrases,
+        bareRepoLookup || intentDecision.exactPhrases.length > 0,
       );
       return selected ? [{ kind, value: selected }] : [];
     });

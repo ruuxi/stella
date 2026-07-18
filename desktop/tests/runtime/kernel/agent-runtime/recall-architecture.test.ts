@@ -11,6 +11,7 @@ import {
   runRecall,
 } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
 import { readMemorySummaryDoc } from "../../../../../runtime/kernel/runner/shared.js";
+import { redactBenchmarkBrief } from "../../../../../runtime/scripts/recall-benchmark-redaction.js";
 
 const roots = new Set<string>();
 
@@ -113,6 +114,64 @@ describe("architectural Recall pipeline", () => {
       fastPath: true,
     });
     expect(getFtsHealth).not.toHaveBeenCalled();
+  });
+
+  it("uses delimiter-safe repository anchors and preserves bare stella", async () => {
+    const falseRoot = await createRoot();
+    await writeFile(
+      path.join(falseRoot, "memories", "memory_index.md"),
+      "# Memory routing index\n- stella-v20 repo path: /tmp/stella-v20",
+    );
+    const makeArgs = (root: string, prompt: string, term: string) => ({
+      conversationId: "conv-1",
+      lookupPrompt: prompt,
+      memorySearchTerms: [term],
+      stellaAppDir: root,
+      stellaDataDir: root,
+      store: makeStore(),
+      localEvents: [],
+      recallRoute: {
+        activeEngine: "default",
+        executionEngine: "native",
+        modelId: "test/light",
+      } as never,
+      recallReadQueries: {
+        getFtsHealth: () => ({
+          healthy: true,
+          transcriptReady: true,
+          threadsReady: true,
+        }),
+        listTranscriptNeighborsBatch: () => [],
+      },
+    });
+
+    await expect(
+      runRecall(makeArgs(falseRoot, "stella-v2", "stella-v2")),
+    ).resolves.toBe("Nothing relevant found.");
+    await expect(
+      runRecall(
+        makeArgs(falseRoot, 'Find exact phrase "stella-v2".', "stella-v2"),
+      ),
+    ).resolves.toBe("Nothing relevant found.");
+
+    const trueRoot = await createRoot();
+    await writeFile(
+      path.join(trueRoot, "memories", "memory_index.md"),
+      "# Memory routing index\n- stella repo path: /Users/rahulnanda/projects/stella",
+    );
+    await expect(
+      runRecall(makeArgs(trueRoot, "stella", "stella")),
+    ).resolves.toContain("stella repo path");
+  });
+
+  it("redacts a street address even when no city or state follows", () => {
+    expect(
+      redactBenchmarkBrief(
+        "Rahul drove to the south entrance at 10919 S Central Avenue before dusk.",
+      ),
+    ).toBe(
+      "Rahul drove to the south entrance at [REDACTED POSTAL ADDRESS] before dusk.",
+    );
   });
 
   it("fails loudly before thread search when FTS is degraded", async () => {
