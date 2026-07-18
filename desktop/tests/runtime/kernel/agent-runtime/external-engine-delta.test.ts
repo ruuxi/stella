@@ -7,7 +7,8 @@ import {
   buildClaudeCodeTurnPrompts,
   buildExternalThreadUpdatesDelta,
   createExternalDeltaWatermarkTracker,
-  EXTERNAL_DELTA_MAX_ROW_CHARS,
+  EXTERNAL_DELTA_MAX_ROWS,
+  EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS,
   EXTERNAL_DELTA_MAX_TOTAL_CHARS,
   getExternalDeliveredEntryId,
   setExternalDeliveredEntryId,
@@ -695,11 +696,11 @@ describe("external-engine out-of-band delta injection", () => {
     );
   });
 
-  it("bounds an oversized backlog and drains it across successive turns", () =>
+  it("bounds an oversized backlog, always includes the triggering row, and drains in order across turns", () =>
     withStore((store) => {
       const threadKey = "conversation-1:manager:thread-14";
       const bigReport = (marker: string) =>
-        `[Agent report] ${marker} ${"x".repeat(EXTERNAL_DELTA_MAX_ROW_CHARS + 14_000)}`;
+        `[Agent report] ${marker} ${"x".repeat(20_000)} TAIL-${marker}-END`;
       appendChildReport(store, threadKey, 14_000, bigReport("BACKLOG-A"));
       const entryB = appendChildReport(
         store,
@@ -707,11 +708,12 @@ describe("external-engine out-of-band delta injection", () => {
         14_001,
         bigReport("BACKLOG-B"),
       );
-      const entryC = appendChildReport(
+      appendChildReport(store, threadKey, 14_002, bigReport("BACKLOG-C"));
+      const entryD = appendChildReport(
         store,
         threadKey,
-        14_002,
-        bigReport("BACKLOG-C"),
+        14_003,
+        bigReport("BACKLOG-D"),
       );
 
       // No watermark (legacy value or engine takeover): the first batch is
@@ -721,20 +723,30 @@ describe("external-engine out-of-band delta injection", () => {
         threadKey,
         promptMessages: [{ text: MANAGER_WAKE_STUB }],
       });
+      // Contiguous prefix: A and B, whole (tails intact — the tail carries
+      // outcomes/blockers and must never be cut).
       expect(first.message?.text).toContain("BACKLOG-A");
-      expect(first.message?.text).toContain("BACKLOG-B");
+      expect(first.message?.text).toContain("TAIL-BACKLOG-A-END");
+      expect(first.message?.text).toContain("TAIL-BACKLOG-B-END");
+      // C is withheld — but D, the newest row (the one whose persistence
+      // triggered this wake), is ALWAYS present, whole, as a marked
+      // out-of-order section.
       expect(first.message?.text).not.toContain("BACKLOG-C");
-      expect(first.message?.text).toContain("truncated");
-      expect(first.message?.text).toContain("withheld to fit this turn");
-      expect(first.message!.text.length).toBeLessThan(
-        EXTERNAL_DELTA_MAX_TOTAL_CHARS + 4_000,
+      expect(first.message?.text).toContain("TAIL-BACKLOG-D-END");
+      expect(first.message?.text).toContain(
+        "Newest update, delivered ahead of the withheld ones",
       );
+      // Withheld rows are NEWER than the packed prefix; the marker says so.
+      expect(first.message?.text).toContain("NEWER updates were withheld");
+      expect(first.message?.text).not.toContain("older updates were withheld");
       expect(first.truncated).toBe(true);
+      // The watermark advances only through the contiguous prefix (A, B) —
+      // never through the out-of-order D section.
       expect(first.coveredCount).toBe(2);
       expect(first.lastEntryId).toBe(entryB);
 
-      // The turn can now succeed; the watermark advances past the batch and
-      // the next turn picks up the remainder.
+      // Next turn: C and D delivered in order — D is re-delivered
+      // (at-least-once, the safe direction).
       setExternalDeliveredEntryId({
         store,
         threadKey,
@@ -751,32 +763,139 @@ describe("external-engine out-of-band delta injection", () => {
         }),
         promptMessages: [{ text: "Continue." }],
       });
-      expect(second.message?.text).toContain("BACKLOG-C");
+      expect(second.message?.text).toContain("TAIL-BACKLOG-C-END");
+      expect(second.message?.text).toContain("TAIL-BACKLOG-D-END");
       expect(second.message?.text).not.toContain("BACKLOG-B");
       expect(second.truncated).toBe(false);
-      expect(second.lastEntryId).toBe(entryC);
+      expect(second.lastEntryId).toBe(entryD);
     }));
 
-  it("truncates a single oversized report with an explicit marker", () =>
+  it("gives a report larger than the block budget its own dedicated batch, tail intact", () =>
     withStore((store) => {
       const threadKey = "conversation-1:manager:thread-15";
       appendChildReport(
         store,
         threadKey,
         15_000,
-        `[Agent report] HUGE-REPORT ${"y".repeat(EXTERNAL_DELTA_MAX_ROW_CHARS + 4_000)}`,
+        `[Agent report] HUGE-REPORT ${"y".repeat(EXTERNAL_DELTA_MAX_TOTAL_CHARS + 12_000)} HUGE-TAIL-END`,
+      );
+      const smallEntryId = appendChildReport(
+        store,
+        threadKey,
+        15_001,
+        "[Agent report] child-b completed: SMALL-AFTER-HUGE",
       );
       const delta = buildExternalThreadUpdatesDelta({
         store,
         threadKey,
         promptMessages: [{ text: MANAGER_WAKE_STUB }],
       });
+      // Delivered WHOLE as a one-report batch: no tail cut, no elision.
       expect(delta.message?.text).toContain("HUGE-REPORT");
-      expect(delta.message?.text).toMatch(/\[…truncated \d+ characters/);
-      // The row itself is still covered — a single giant report must not
-      // wedge the watermark forever.
-      expect(delta.truncated).toBe(false);
+      expect(delta.message?.text).toContain("HUGE-TAIL-END");
+      expect(delta.message?.text).not.toContain("elided");
+      // The small newer row is the triggering row: present out-of-order.
+      expect(delta.message?.text).toContain("SMALL-AFTER-HUGE");
+      // Watermark covers only the dedicated report, not the newer row.
       expect(delta.coveredCount).toBe(1);
+      expect(delta.truncated).toBe(true);
+      expect(delta.lastEntryId).not.toBe(smallEntryId);
+    }));
+
+  it("elides only the middle, never the tail, for a report beyond engine capacity", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-17";
+      appendChildReport(
+        store,
+        threadKey,
+        17_000,
+        `HEAD-START ${"z".repeat(EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS + 10_000)} GIANT-TAIL-END`,
+      );
+      const delta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+      });
+      expect(delta.message?.text).toContain("HEAD-START");
+      expect(delta.message?.text).toContain("GIANT-TAIL-END");
+      expect(delta.message?.text).toContain(
+        "elided from the MIDDLE of this report",
+      );
+      expect(delta.coveredCount).toBe(1);
+      // Bounded near the engine-capacity cap, not the raw report size.
+      expect(delta.message!.text.length).toBeLessThan(
+        EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS + 2_000,
+      );
+    }));
+
+  it("bounds the SERIALIZED block (wrappers and envelope included) under a flood of tiny rows", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-18";
+      const totalRows = EXTERNAL_DELTA_MAX_ROWS + 150;
+      for (let index = 0; index < totalRows; index += 1) {
+        appendChildReport(store, threadKey, 18_000 + index, `tick ${index}`);
+      }
+      const delta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+      });
+      // Reviewer probe shape: per-row wrapper overhead must not balloon the
+      // serialized block past the configured budget.
+      expect(delta.message!.text.length).toBeLessThanOrEqual(
+        EXTERNAL_DELTA_MAX_TOTAL_CHARS,
+      );
+      // The row cap bounds the batch; coverage matches exactly what fit.
+      expect(delta.coveredCount).toBe(EXTERNAL_DELTA_MAX_ROWS);
+      expect(delta.truncated).toBe(true);
+      // The triggering (newest) row is still present out-of-order.
+      expect(delta.message?.text).toContain(`tick ${totalRows - 1}`);
+    }));
+
+  it("dedupes the resumed-turn recovery fallback against its history block so old rows cannot starve new ones", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-19";
+      // An old, still-undelivered report big enough to consume the whole
+      // packing budget — and already present in the history snapshot.
+      const oldReport = `[Agent report] OLD-DUPLICATED-ROW ${"w".repeat(EXTERNAL_DELTA_MAX_TOTAL_CHARS)}`;
+      appendChildReport(store, threadKey, 19_000, oldReport);
+      const newEntryId = appendChildReport(
+        store,
+        threadKey,
+        19_001,
+        "[Agent report] child-b completed: GENUINELY-NEW-ROW",
+      );
+      const historyPromptMessage = {
+        messageType: "message" as const,
+        uiVisibility: "hidden" as const,
+        customType: "runtime.stella_thread_history",
+        text: `<stella_thread_history source="stella">\n<history_message index="1" role="runtimeInternal">\n${oldReport}\n</history_message>\n</stella_thread_history>`,
+      };
+      // The fallback variant dedupes against the history block it is sent
+      // with: the old row is covered for free and the new row fits.
+      const fallbackDelta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        deliveredContextTexts: [historyPromptMessage.text],
+      });
+      expect(fallbackDelta.message?.text).toContain("GENUINELY-NEW-ROW");
+      expect(fallbackDelta.message?.text).not.toContain("OLD-DUPLICATED-ROW");
+      expect(fallbackDelta.coveredCount).toBe(2);
+      expect(fallbackDelta.lastEntryId).toBe(newEntryId);
+      expect(fallbackDelta.truncated).toBe(false);
+
+      // Composed fallback prompt: old row once via history, new row via the
+      // deduped delta — nothing starved, nothing duplicated.
+      const { resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
+        historyPromptMessage,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        hasPersistedSession: true,
+        deltaPromptMessage: null,
+        fallbackDeltaPromptMessage: fallbackDelta.message,
+      });
+      expect(resumeFallbackPrompt).toContain("GENUINELY-NEW-ROW");
+      expect(resumeFallbackPrompt!.split("OLD-DUPLICATED-ROW")).toHaveLength(2);
     }));
 
   it("legacy takeover with a session-creating turn initializes the watermark from the history block without replaying the backlog", () =>

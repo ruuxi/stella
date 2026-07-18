@@ -499,9 +499,23 @@ const EXTERNAL_DELTA_CUSTOM_TYPES: ReadonlySet<string> = new Set([
  * turns that failure loop into incremental drain: each successful turn
  * advances the watermark past the delivered batch and the next turn picks up
  * the remainder.
+ *
+ * Reports are delivered WHOLE: buildAgentEventPrompt deliberately preserves
+ * full child final reports because the TAIL carries outcomes and blockers —
+ * cutting it could make a manager act on a false completion with no way to
+ * retrieve the omitted end. A report too large for the normal block budget
+ * gets its own dedicated single-row batch (the contiguous-prefix watermark
+ * semantics permit a 1-row batch) sized up to the engine's practical input
+ * capacity; only a report exceeding even that is elided, and then from the
+ * MIDDLE with an explicit marker so head and tail both survive.
+ *
+ * Budgets bound the SERIALIZED block — wrapper tags, markers, and the
+ * envelope count, not just report text — and a row-count cap keeps a flood
+ * of tiny rows from ballooning the block through per-row overhead.
  */
-export const EXTERNAL_DELTA_MAX_ROW_CHARS = 16_000;
 export const EXTERNAL_DELTA_MAX_TOTAL_CHARS = 48_000;
+export const EXTERNAL_DELTA_MAX_ROWS = 100;
+export const EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS = 300_000;
 
 export type ExternalThreadUpdatesDelta = {
   /** Hidden prompt message carrying the undelivered rows, or null. */
@@ -600,49 +614,126 @@ export const buildExternalThreadUpdatesDelta = (args: {
   const contextTexts = (args.deliveredContextTexts ?? []).filter(
     (text) => text.trim().length > 0,
   );
-  // Oldest-first bounded packing. Coverage must stay a contiguous prefix of
-  // the candidate order — once the budget is exhausted the scan stops, even
-  // for rows that would have been deduplicated for free, so the watermark
-  // can never step over an unexamined row.
+  const isRowCoveredElsewhere = (text: string): boolean =>
+    promptTexts.has(text) ||
+    contextTexts.some((context) => context.includes(text));
+  // Middle elision for a report beyond even the dedicated-batch capacity:
+  // the head carries the task framing and the TAIL carries outcomes and
+  // blockers, so both must survive; only the middle may be elided, marked.
+  const elideMiddle = (text: string): string => {
+    if (text.length <= EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS) {
+      return text;
+    }
+    const headChars = Math.ceil(EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS * 0.6);
+    const tailChars = EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS - headChars;
+    const elided = text.length - headChars - tailChars;
+    return `${text.slice(0, headChars)}\n[… ${elided} characters elided from the MIDDLE of this report to fit the engine input; head and tail are verbatim, and the full report is in the Stella thread …]\n${text.slice(text.length - tailChars)}`;
+  };
+  const serializeRow = (
+    index: number | string,
+    customType: string,
+    rowText: string,
+  ): string =>
+    `<thread_update index="${index}" customType="${customType}">\n${rowText}\n</thread_update>`;
+  const HEADER =
+    '<stella_thread_updates source="stella" note="Runtime events (managed-agent reports and task updates) persisted to this Stella thread since your previous turn. They are not in your session transcript; treat them as delivered context.">';
+  const FOOTER = "</stella_thread_updates>";
+  const WITHHELD_NOTE =
+    "[Some NEWER updates were withheld to fit this turn; they will be delivered in order on later turns. The newest update is included below so it is never withheld.]";
+  const LATEST_MARKER =
+    "[Newest update, delivered ahead of the withheld ones above; it will be re-delivered in order on a later turn.]";
+  // Reserve envelope + marker space so the serialized block (not just the
+  // report text) honors the budget; the latest-section reserve keeps a small
+  // triggering row from pushing the block past it.
+  const LATEST_SECTION_RESERVE = 2_000;
+  const packingBudget =
+    EXTERNAL_DELTA_MAX_TOTAL_CHARS -
+    HEADER.length -
+    FOOTER.length -
+    WITHHELD_NOTE.length -
+    LATEST_MARKER.length -
+    LATEST_SECTION_RESERVE;
+  // Oldest-first bounded packing of the contiguous covered prefix. Coverage
+  // must stay a contiguous prefix of the candidate order — once the budget
+  // is exhausted the scan stops, even for rows that would have been
+  // deduplicated for free, so the watermark can never step over an
+  // unexamined row. Rows are packed WHOLE: a first row too large for the
+  // budget becomes its own dedicated batch (elided from the middle only past
+  // the engine-capacity cap) instead of losing its tail.
   const lines: string[] = [];
-  let totalChars = 0;
+  let serializedChars = 0;
   let coveredCount = 0;
   let coveredLastEntryId: string | null = null;
+  let coveredEndIndex = -1;
   let truncated = false;
-  for (const row of undelivered) {
+  for (const [index, row] of undelivered.entries()) {
     const text = row.content.trim();
-    if (
-      !text ||
-      promptTexts.has(text) ||
-      contextTexts.some((context) => context.includes(text))
-    ) {
+    if (!text || isRowCoveredElsewhere(text)) {
       coveredCount += 1;
       coveredLastEntryId = row.entryId ?? coveredLastEntryId;
+      coveredEndIndex = index;
       continue;
     }
-    let rowText = text;
-    if (rowText.length > EXTERNAL_DELTA_MAX_ROW_CHARS) {
-      const omitted = rowText.length - EXTERNAL_DELTA_MAX_ROW_CHARS;
-      rowText = `${rowText.slice(0, EXTERNAL_DELTA_MAX_ROW_CHARS)}\n[…truncated ${omitted} characters; the full report is in the Stella thread]`;
-    }
+    const serialized = serializeRow(
+      lines.length + 1,
+      row.customMessage!.customType,
+      elideMiddle(text),
+    );
+    const cost = serialized.length + 1;
     if (
       lines.length > 0 &&
-      totalChars + rowText.length > EXTERNAL_DELTA_MAX_TOTAL_CHARS
+      (serializedChars + cost > packingBudget ||
+        lines.length >= EXTERNAL_DELTA_MAX_ROWS)
     ) {
       truncated = true;
       break;
     }
-    lines.push(
-      `<thread_update index="${lines.length + 1}" customType="${row.customMessage!.customType}">\n${rowText}\n</thread_update>`,
-    );
-    totalChars += rowText.length;
+    lines.push(serialized);
+    serializedChars += cost;
     coveredCount += 1;
     coveredLastEntryId = row.entryId ?? coveredLastEntryId;
+    coveredEndIndex = index;
+    if (cost > packingBudget) {
+      // Dedicated single-row batch for an oversized report: delivered whole
+      // (or middle-elided past engine capacity), never tail-cut. Stop here
+      // so the block stays a one-report batch.
+      if (index < undelivered.length - 1) {
+        truncated = true;
+      }
+      break;
+    }
+  }
+  truncated = truncated || coveredEndIndex < undelivered.length - 1;
+  // The content-free wake stub means this delta is the manager's only view
+  // of the report that woke it — and external turns get no extra queued step
+  // to fetch more. The newest not-otherwise-covered row is therefore always
+  // included, even beyond the contiguous prefix, as a marked out-of-order
+  // section. The watermark still advances only through the contiguous
+  // prefix, so this row is re-delivered in order later (at-least-once).
+  let latestSection: string | null = null;
+  if (truncated) {
+    for (
+      let index = undelivered.length - 1;
+      index > coveredEndIndex;
+      index -= 1
+    ) {
+      const row = undelivered[index]!;
+      const text = row.content.trim();
+      if (!text || isRowCoveredElsewhere(text)) {
+        continue;
+      }
+      latestSection = serializeRow(
+        "latest",
+        row.customMessage!.customType,
+        elideMiddle(text),
+      );
+      break;
+    }
   }
   const lastEntryId =
     coveredLastEntryId ??
     (args.afterEntryId && afterIndex >= 0 ? args.afterEntryId : null);
-  if (lines.length === 0) {
+  if (lines.length === 0 && !latestSection) {
     return { message: null, lastEntryId, coveredCount, truncated };
   }
   return {
@@ -651,14 +742,11 @@ export const buildExternalThreadUpdatesDelta = (args: {
       uiVisibility: "hidden",
       customType: "runtime.stella_thread_updates",
       text: [
-        '<stella_thread_updates source="stella" note="Runtime events (managed-agent reports and task updates) persisted to this Stella thread since your previous turn. They are not in your session transcript; treat them as delivered context.">',
+        HEADER,
         ...lines,
-        ...(truncated
-          ? [
-              "[Additional older updates were withheld to fit this turn; they will be delivered on following turns.]",
-            ]
-          : []),
-        "</stella_thread_updates>",
+        ...(truncated ? [WITHHELD_NOTE] : []),
+        ...(latestSection ? [LATEST_MARKER, latestSection] : []),
+        FOOTER,
       ].join("\n"),
     },
     lastEntryId,
@@ -1098,14 +1186,36 @@ const runClaudeHostedTurn = async (args: {
   const watermarkTracker = createExternalDeltaWatermarkTracker(
     initialDeliveredEntryId,
   );
-  // The main delta is anchored at the persisted watermark, so the main
-  // prompt and its fallback share it: a reseed here still covers everything.
   watermarkTracker.noteMainlineDelta(threadUpdatesDelta);
+  // The resumed-turn fallback embeds the full history block, so its delta
+  // variant is deduplicated against that block: without this, rows already
+  // duplicated by the history could consume the whole packing budget and
+  // starve genuinely-new rows out of a recovery reseed. Same anchor (the
+  // persisted watermark), so a reseed still covers everything; dedupe only
+  // frees budget, never reduces coverage.
+  const mainFallbackDelta =
+    persistedSessionId && historyPromptMessage
+      ? buildExternalThreadUpdatesDelta({
+          store: args.opts.store,
+          threadKey,
+          ...(initialDeliveredEntryId
+            ? { afterEntryId: initialDeliveredEntryId }
+            : {}),
+          promptMessages: args.promptMessages,
+          deliveredContextTexts: [historyPromptMessage.text],
+        })
+      : null;
+  if (mainFallbackDelta) {
+    watermarkTracker.noteReseedDelta(mainFallbackDelta);
+  }
   const { prompt, resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
     historyPromptMessage,
     promptMessages: args.promptMessages,
     hasPersistedSession: Boolean(persistedSessionId),
     deltaPromptMessage: threadUpdatesDelta.message,
+    ...(mainFallbackDelta
+      ? { fallbackDeltaPromptMessage: mainFallbackDelta.message }
+      : {}),
   });
   const claudeCodeEffortLevel = getClaudeCodeRuntimeEffortLevel(
     args.opts.stellaAppDir,
@@ -1611,6 +1721,14 @@ const runCodexHostedTurn = async (args: {
     // earlier prompts of this turn delivered (bounded by the same budget).
     // The live thread sees those rows twice within one turn; a silently
     // reseeded thread sees them at all.
+    //
+    // LATENT (documented, intentionally unfixed): this queued branch is
+    // unreachable today — codex runs receive no liveAgent (the external
+    // orchestrator engine is claude-only and runExternalSubagentTurn passes
+    // none), so nothing ever drains here. If queued codex becomes real, the
+    // persisted-watermark anchor re-delivers the same delta rows to the live
+    // thread once per queued iteration. That duplication is the accepted
+    // cost of silent-reseed safety; revisit batching if it gets noisy.
     const queuedThreadUpdatesDelta = buildExternalThreadUpdatesDelta({
       store: args.opts.store,
       threadKey,
