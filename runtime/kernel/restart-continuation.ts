@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -9,30 +10,38 @@ import path from "node:path";
  *
  *  1. SHUTDOWN RECORD (`restart-continuation.json`) — written by the HOST at
  *     restart initiation (worker restart, host stop / app quit). Minimal on
- *     purpose: `{ reason, createdAt }`. The set of interrupted threads is NOT
- *     recorded here — the durable `runtime_agents` rows with status
- *     `running` at next boot are exactly the threads that were in flight at
- *     shutdown. Repeated writes within one restart episode keep the earliest
- *     (most specific) reason but refresh the timestamp, so staleness is
- *     measured from the actual shutdown moment.
+ *     purpose: `{ episodeId, reason, createdAt }`. The set of interrupted
+ *     threads is NOT recorded here — the durable `runtime_agents` rows with
+ *     status `running` at next boot are exactly the threads that were in
+ *     flight at shutdown. Repeated writes within one restart episode keep
+ *     the earliest (most specific) reason AND the episode id but refresh the
+ *     timestamp, so staleness is measured from the actual shutdown moment.
+ *     The random episode id is the identity that binds every downstream
+ *     artifact to this specific restart.
  *
  *  2. INTERRUPTION STATE (`restart-interruption.json`) — written by the
  *     WORKER at boot when it consumes a fresh shutdown record AND threads
  *     were running at shutdown. Conversion is write-then-delete: the state
  *     is durably written BEFORE the record (and snapshot sidecar) are
  *     removed, and a crash between the two is deduped on the next boot via
- *     the same-episode check (matching `shutdownAt`), so existing delivery
- *     bookkeeping is never reset.
+ *     the same-episode check (matching `episodeId`), so existing delivery
+ *     bookkeeping is never reset — while a DISTINCT new episode always
+ *     converts, even if timestamps collide.
  *
  *  2b. SNAPSHOT SIDECAR (`restart-interrupted-threads.json`) — written by
  *     the `LocalAgentManager` orphan sweep BEFORE it flips the `running`
- *     rows. The flip destroys the only live evidence of what was running,
- *     so if the interruption-state write fails on boot 1, this sidecar is
- *     what lets boot 2 genuinely reconstruct the interruption from the
- *     retained shutdown record (the live snapshot is empty by then).
+ *     rows, stamped with the episode id of the shutdown record present at
+ *     that moment. The flip destroys the only live evidence of what was
+ *     running, so if the interruption-state write fails on boot 1, this
+ *     sidecar is what lets boot 2 genuinely reconstruct the interruption
+ *     from the retained shutdown record (the live snapshot is empty by
+ *     then). It is accepted as fallback evidence ONLY when its episode id
+ *     matches the record's — a mismatched sidecar (e.g. retained from a
+ *     failed episode N while the app kept running into a later episode
+ *     N+1) is stale and is deleted instead of resurrecting old threads.
  *     Conversion consumes it on every exit path except a failed state
  *     write; the idle rule only applies when BOTH the live snapshot and
- *     the sidecar are empty.
+ *     the (episode-matched) sidecar are empty.
  *
  * Delivery bookkeeping is PER CONVERSATION with explicit claimed-vs-completed
  * outcomes:
@@ -118,6 +127,12 @@ export const isRestartContinuationTurnEnabled = (env: EnvLike): boolean =>
 
 export type RestartShutdownRecord = {
   version: 1;
+  /**
+   * Random identity of this restart episode. Shared by the snapshot sidecar
+   * and the interruption state so fallback evidence and dedupe checks bind
+   * to THIS restart, never to leftovers from an earlier one.
+   */
+  episodeId: string;
   /** e.g. "self-mod-apply-process-restart", "runtime-reload", "app-shutdown". */
   reason: string;
   createdAt: number;
@@ -146,6 +161,8 @@ export type RestartConversationContinuation = {
 
 export type RestartInterruptionState = {
   version: 2;
+  /** Episode id of the shutdown record this state was converted from. */
+  episodeId: string;
   reason: string;
   shutdownAt: number;
   bootAt: number;
@@ -228,8 +245,12 @@ const parseShutdownRecord = (value: unknown): RestartShutdownRecord | null => {
   if (typeof record.createdAt !== "number" || !Number.isFinite(record.createdAt)) {
     return null;
   }
+  if (typeof record.episodeId !== "string" || !record.episodeId.trim()) {
+    return null;
+  }
   return {
     version: 1,
+    episodeId: record.episodeId,
     reason: record.reason,
     createdAt: record.createdAt,
   };
@@ -238,11 +259,12 @@ const parseShutdownRecord = (value: unknown): RestartShutdownRecord | null => {
 /** Raw record write (atomic). Prefer {@link recordRestartShutdown}. */
 export const writeRestartShutdownRecord = (
   stellaDataDir: string,
-  args: { reason: string; now?: number },
+  args: { reason: string; now?: number; episodeId?: string },
 ): boolean => {
   try {
     const record: RestartShutdownRecord = {
       version: 1,
+      episodeId: args.episodeId ?? crypto.randomUUID(),
       reason: args.reason.trim() || "restart",
       createdAt: args.now ?? Date.now(),
     };
@@ -257,10 +279,11 @@ export const writeRestartShutdownRecord = (
  * Episode-aware shutdown-record write used by every restart-initiation call
  * site. An existing record from the SAME restart episode (age within
  * {@link RESTART_EPISODE_WINDOW_MS}) keeps its earlier, more specific reason
- * but gets a refreshed timestamp — so staleness at next boot is computed
- * from the actual shutdown moment, and a leftover record from an aborted
- * older episode can neither mislabel a newer restart nor kill it via a
- * stale `createdAt`.
+ * AND its episode id but gets a refreshed timestamp — so staleness at next
+ * boot is computed from the actual shutdown moment, and a leftover record
+ * from an aborted older episode can neither mislabel a newer restart nor
+ * kill it via a stale `createdAt`. Beyond the window a fresh episode id is
+ * minted, which invalidates any sidecar retained from the older episode.
  */
 export const recordRestartShutdown = (
   stellaDataDir: string,
@@ -268,17 +291,23 @@ export const recordRestartShutdown = (
 ): boolean => {
   const now = args.now ?? Date.now();
   let reason = args.reason;
+  let episodeId: string | undefined;
   try {
     const existing = parseShutdownRecord(
       readJsonFile(recordPath(stellaDataDir)),
     );
     if (existing && now - existing.createdAt <= RESTART_EPISODE_WINDOW_MS) {
       reason = existing.reason;
+      episodeId = existing.episodeId;
     }
   } catch {
     // Unreadable existing record: fall through with the new reason.
   }
-  return writeRestartShutdownRecord(stellaDataDir, { reason, now });
+  return writeRestartShutdownRecord(stellaDataDir, {
+    reason,
+    now,
+    ...(episodeId ? { episodeId } : {}),
+  });
 };
 
 /** Read the shutdown record without deleting it. */
@@ -294,6 +323,8 @@ export const deleteRestartShutdownRecord = (stellaDataDir: string): void => {
 
 type RestartInterruptedSnapshot = {
   version: 1;
+  /** Episode id of the shutdown record present when the sweep captured. */
+  episodeId: string;
   capturedAt: number;
   threads: RestartInterruptedThreadRef[];
 };
@@ -317,9 +348,12 @@ const parseThreadRefs = (value: unknown): RestartInterruptedThreadRef[] =>
  * the orphan sweep BEFORE any row is flipped: the flip destroys the only
  * live evidence of what was running, and this sidecar is what makes a
  * next-boot retry of a failed interruption-state write real instead of
- * illusory. Never called with an empty list (an idle boot must not clobber
- * a sidecar retained for retry). Best-effort: on failure the feature
- * degrades to requiring a successful state write on the same boot.
+ * illusory. The sidecar is stamped with the episode id of the shutdown
+ * record on disk at capture time — without a record there is no episode the
+ * evidence could ever be matched against, so nothing is written. Never
+ * called with an empty list (an idle boot must not clobber a sidecar
+ * retained for retry). Best-effort: on failure the feature degrades to
+ * requiring a successful state write on the same boot.
  */
 export const writeRestartInterruptedSnapshot = (
   stellaDataDir: string,
@@ -327,9 +361,12 @@ export const writeRestartInterruptedSnapshot = (
   now = Date.now(),
 ): boolean => {
   if (threads.length === 0) return false;
+  const record = peekRestartShutdownRecord(stellaDataDir);
+  if (!record) return false;
   try {
     const snapshot: RestartInterruptedSnapshot = {
       version: 1,
+      episodeId: record.episodeId,
       capturedAt: now,
       threads: threads.map(({ threadId, conversationId }) => ({
         threadId,
@@ -343,15 +380,21 @@ export const writeRestartInterruptedSnapshot = (
   }
 };
 
-/** Read the pre-flip snapshot sidecar (tolerant; [] when absent/torn). */
+/** Read the pre-flip snapshot sidecar (tolerant; null when absent/torn). */
 export const readRestartInterruptedSnapshot = (
   stellaDataDir: string,
-): RestartInterruptedThreadRef[] => {
+): { episodeId: string; threads: RestartInterruptedThreadRef[] } | null => {
   const value = readJsonFile(snapshotPath(stellaDataDir));
-  if (!value || typeof value !== "object") return [];
+  if (!value || typeof value !== "object") return null;
   const snapshot = value as Partial<RestartInterruptedSnapshot>;
-  if (snapshot.version !== 1) return [];
-  return parseThreadRefs(snapshot.threads);
+  if (snapshot.version !== 1) return null;
+  if (typeof snapshot.episodeId !== "string" || !snapshot.episodeId.trim()) {
+    return null;
+  }
+  return {
+    episodeId: snapshot.episodeId,
+    threads: parseThreadRefs(snapshot.threads),
+  };
 };
 
 export const deleteRestartInterruptedSnapshot = (
@@ -397,6 +440,9 @@ const parseInterruptionState = (
   if (!value || typeof value !== "object") return null;
   const state = value as Partial<RestartInterruptionState>;
   if (state.version !== 2) return null;
+  if (typeof state.episodeId !== "string" || !state.episodeId.trim()) {
+    return null;
+  }
   if (typeof state.reason !== "string") return null;
   if (typeof state.shutdownAt !== "number" || typeof state.bootAt !== "number") {
     return null;
@@ -418,6 +464,7 @@ const parseInterruptionState = (
   }
   return {
     version: 2,
+    episodeId: state.episodeId,
     reason: state.reason,
     shutdownAt: state.shutdownAt,
     bootAt: state.bootAt,
@@ -435,12 +482,15 @@ const parseInterruptionState = (
  *
  * The interrupted-thread evidence is the live pre-flip snapshot when this
  * boot's sweep captured one, falling back to the durable snapshot sidecar a
- * PREVIOUS boot's sweep persisted before flipping the rows. That fallback is
- * what makes the failed-state-write retry real: boot 1 flips the rows, so a
- * boot-2 retry can only reconstruct the interruption from the sidecar.
+ * PREVIOUS boot's sweep persisted before flipping the rows — accepted ONLY
+ * when its episode id matches the record's. That fallback is what makes the
+ * failed-state-write retry real: boot 1 flips the rows, so a boot-2 retry
+ * can only reconstruct the interruption from the sidecar. A mismatched
+ * sidecar is stale leftovers from an older episode and is deleted instead
+ * of resurrecting old threads.
  *
  * A crash between 2 and 3 leaves record + sidecar + state; the next boot
- * recognizes the already-converted episode via the same-`shutdownAt` check
+ * recognizes the already-converted episode via the same-`episodeId` check
  * and cleans up without resetting the state's delivery bookkeeping.
  *
  * Returns the state when created, null otherwise (no record / stale record /
@@ -478,23 +528,33 @@ export const convertRestartShutdownRecordAtBoot = (args: {
     return null;
   }
   const existing = readRestartInterruptionState(args.stellaDataDir, now);
-  if (existing && existing.shutdownAt === record.createdAt) {
+  if (existing && existing.episodeId === record.episodeId) {
     // This episode already converted (a previous boot crashed between the
     // state write and the cleanup). Never rewrite — that would reset the
-    // existing delivery bookkeeping.
+    // existing delivery bookkeeping. Keyed on the random episode id, so a
+    // DISTINCT new record that happens to share a timestamp still converts.
     cleanup();
     return null;
   }
-  const interruptedThreads =
-    args.interruptedThreads.length > 0
-      ? args.interruptedThreads
-      : readRestartInterruptedSnapshot(args.stellaDataDir);
+  let interruptedThreads = args.interruptedThreads;
+  if (interruptedThreads.length === 0) {
+    // Fallback evidence: the pre-flip sidecar — but ONLY when it belongs to
+    // THIS record's episode. A mismatched sidecar is a leftover from an
+    // older failed episode (the app kept running into a newer restart) and
+    // resurrecting its threads would fire a continuation for arbitrarily
+    // old work; `cleanup()` below deletes it as stale.
+    const sidecar = readRestartInterruptedSnapshot(args.stellaDataDir);
+    if (sidecar && sidecar.episodeId === record.episodeId) {
+      interruptedThreads = sidecar.threads;
+    }
+  }
   if (interruptedThreads.length === 0) {
     cleanup();
     return null;
   }
   const state: RestartInterruptionState = {
     version: 2,
+    episodeId: record.episodeId,
     reason: record.reason,
     shutdownAt: record.createdAt,
     bootAt: now,

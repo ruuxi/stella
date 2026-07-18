@@ -132,7 +132,7 @@ describe("shutdown record", () => {
     expect(convert([{ threadId: "t", conversationId: "conv-1" }])).toBeNull();
   });
 
-  it("keeps the earliest reason but refreshes the timestamp within one episode", () => {
+  it("keeps the earliest reason and episode id but refreshes the timestamp within one episode", () => {
     const t0 = Date.now() - 30_000;
     expect(
       recordRestartShutdown(dataDir, {
@@ -140,8 +140,9 @@ describe("shutdown record", () => {
         now: t0,
       }),
     ).toBe(true);
-    // stop() moments later with the generic label: reason preserved,
-    // createdAt refreshed to the actual shutdown moment.
+    const original = peekRestartShutdownRecord(dataDir);
+    // stop() moments later with the generic label: reason and episode id
+    // preserved, createdAt refreshed to the actual shutdown moment.
     const t1 = t0 + 5_000;
     expect(
       recordRestartShutdown(dataDir, { reason: "app-shutdown", now: t1 }),
@@ -149,13 +150,15 @@ describe("shutdown record", () => {
     const merged = peekRestartShutdownRecord(dataDir);
     expect(merged?.reason).toBe("self-mod-apply-process-restart");
     expect(merged?.createdAt).toBe(t1);
+    expect(merged?.episodeId).toBe(original?.episodeId);
   });
 
-  it("replaces a leftover record from an older episode outright", () => {
+  it("replaces a leftover record from an older episode outright, minting a new id", () => {
     const old = Date.now() - RESTART_EPISODE_WINDOW_MS - 60_000;
     expect(
       recordRestartShutdown(dataDir, { reason: "runtime-reload", now: old }),
     ).toBe(true);
+    const stale = peekRestartShutdownRecord(dataDir);
     // A record that survived a host relaunch without an intervening boot
     // must not mislabel the newer restart or poison staleness.
     const now = Date.now();
@@ -165,6 +168,7 @@ describe("shutdown record", () => {
     const replaced = peekRestartShutdownRecord(dataDir);
     expect(replaced?.reason).toBe("app-shutdown");
     expect(replaced?.createdAt).toBe(now);
+    expect(replaced?.episodeId).not.toBe(stale?.episodeId);
     // And conversion still treats it as fresh.
     expect(
       convert([{ threadId: "t", conversationId: "conv-1" }], { now }),
@@ -244,6 +248,7 @@ describe("boot conversion", () => {
       writeRestartShutdownRecord(dataDir, {
         reason: "runtime-reload",
         now: state!.shutdownAt,
+        episodeId: state!.episodeId,
       }),
     ).toBe(true);
     expect(
@@ -258,6 +263,58 @@ describe("boot conversion", () => {
     expect(fs.existsSync(snapshotFilePath())).toBe(false);
     const preserved = readRestartInterruptionState(dataDir);
     expect(preserved?.conversations["conv-1"]?.reminderAttachedAt).toBeDefined();
+  });
+
+  it("never resurrects an older episode's sidecar under a newer record", () => {
+    // Episode N: record + sidecar retained after a failed state write.
+    writeFreshRecord("runtime-reload");
+    expect(
+      writeRestartInterruptedSnapshot(dataDir, [
+        { threadId: "thread-old", conversationId: "conv-1" },
+      ]),
+    ).toBe(true);
+    // The app keeps running; a later graceful restart replaces the record
+    // with episode N+1 (fresh id, fresh timestamp, different reason).
+    const later = Date.now() + RESTART_EPISODE_WINDOW_MS + 60_000;
+    expect(
+      recordRestartShutdown(dataDir, { reason: "app-shutdown", now: later }),
+    ).toBe(true);
+    // Episode N+1 boots idle: the N-stamped sidecar must NOT be accepted as
+    // evidence — no state, no resurrection; both artifacts cleaned up.
+    expect(convert([], { now: later })).toBeNull();
+    expect(readRestartInterruptionState(dataDir, later)).toBeNull();
+    expect(fs.existsSync(recordFilePath())).toBe(false);
+    expect(fs.existsSync(snapshotFilePath())).toBe(false);
+  });
+
+  it("converts a DISTINCT new episode even when timestamps collide to the millisecond", () => {
+    const t = Date.now();
+    // Episode A converts at timestamp t.
+    writeFreshRecord("runtime-reload");
+    const recordA = peekRestartShutdownRecord(dataDir);
+    const stateA = convert(
+      [{ threadId: "thread-a", conversationId: "conv-1" }],
+      { now: t },
+    );
+    expect(stateA).not.toBeNull();
+    // Episode B: new record sharing the exact millisecond, new identity,
+    // with its own sidecar evidence for thread-b.
+    expect(
+      writeRestartShutdownRecord(dataDir, { reason: "app-shutdown", now: t }),
+    ).toBe(true);
+    const recordB = peekRestartShutdownRecord(dataDir);
+    expect(recordB?.episodeId).not.toBe(recordA?.episodeId);
+    expect(
+      writeRestartInterruptedSnapshot(dataDir, [
+        { threadId: "thread-b", conversationId: "conv-2" },
+      ]),
+    ).toBe(true);
+    // The genuine new conversion proceeds (not suppressed by the guard).
+    const stateB = convert([], { now: t });
+    expect(stateB?.episodeId).toBe(recordB?.episodeId);
+    expect(stateB?.threads).toEqual([
+      { threadId: "thread-b", conversationId: "conv-2" },
+    ]);
   });
 
   it("keeps record AND sidecar when the state write fails (retry next boot)", () => {
