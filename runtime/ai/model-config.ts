@@ -171,19 +171,26 @@ const costSchema = Type.Object({
   cacheRead: Type.Optional(Type.Number()),
   cacheWrite: Type.Optional(Type.Number()),
 });
-// pi.dev uses -1_000_000 specifically for dynamically routed prices that are
-// unknowable until OpenRouter selects an upstream model (`openrouter/auto`).
-// Accept only that documented catalog sentinel; arbitrary negative prices
-// remain invalid and cannot override a builtin entry.
-const remoteCatalogPriceSchema = Type.Union([
+const nonNegativeRemoteCatalogPriceSchema = Type.Number({ minimum: 0 });
+const remoteCatalogCostSchema = Type.Object({
+  input: nonNegativeRemoteCatalogPriceSchema,
+  output: nonNegativeRemoteCatalogPriceSchema,
+  cacheRead: nonNegativeRemoteCatalogPriceSchema,
+  cacheWrite: nonNegativeRemoteCatalogPriceSchema,
+});
+// pi.dev uses -1_000_000 specifically for openrouter/auto input/output prices,
+// which are unknowable until OpenRouter selects an upstream model. Selection
+// of this schema is additionally gated by the authoritative refresh provider
+// below; an entry's optional provider field is never trusted for the exception.
+const openRouterAutoPriceSchema = Type.Union([
   Type.Number({ minimum: 0 }),
   Type.Literal(-1_000_000),
 ]);
-const remoteCatalogCostSchema = Type.Object({
-  input: remoteCatalogPriceSchema,
-  output: remoteCatalogPriceSchema,
-  cacheRead: Type.Number({ minimum: 0 }),
-  cacheWrite: Type.Number({ minimum: 0 }),
+const openRouterAutoCostSchema = Type.Object({
+  input: openRouterAutoPriceSchema,
+  output: openRouterAutoPriceSchema,
+  cacheRead: nonNegativeRemoteCatalogPriceSchema,
+  cacheWrite: nonNegativeRemoteCatalogPriceSchema,
 });
 const modelFields = {
   name: Type.Optional(nonEmptyString),
@@ -239,6 +246,13 @@ const remoteCatalogModelSchema = Type.Object({
   api: nonEmptyString,
   baseUrl: nonEmptyString,
 });
+const openRouterAutoRemoteCatalogModelSchema = Type.Object({
+  ...remoteCatalogModelFields,
+  id: Type.Literal("openrouter/auto"),
+  cost: openRouterAutoCostSchema,
+  api: nonEmptyString,
+  baseUrl: nonEmptyString,
+});
 // Azure deployments resolve their endpoint from request options or the user's
 // resource configuration, so their catalog models intentionally use an empty
 // baseUrl. Key this exception to the transport contract rather than the
@@ -249,23 +263,43 @@ const azureRemoteCatalogModelSchema = Type.Object({
   baseUrl: Type.String(),
 });
 
-const remoteCatalogSchemaFor = (value: unknown) =>
-  value &&
-  typeof value === "object" &&
-  "api" in value &&
-  value.api === "azure-openai-responses"
+const remoteCatalogSchemaFor = (
+  value: unknown,
+  authoritativeProviderId?: string,
+) => {
+  if (
+    authoritativeProviderId === "openrouter" &&
+    value &&
+    typeof value === "object" &&
+    "id" in value &&
+    value.id === "openrouter/auto"
+  ) {
+    return openRouterAutoRemoteCatalogModelSchema;
+  }
+  return value &&
+    typeof value === "object" &&
+    "api" in value &&
+    value.api === "azure-openai-responses"
     ? azureRemoteCatalogModelSchema
     : remoteCatalogModelSchema;
+};
 
 export const isRemoteCatalogModel = (
   value: unknown,
+  authoritativeProviderId?: string,
 ): value is RemoteCatalogModel =>
-  Value.Check(remoteCatalogSchemaFor(value), value);
+  Value.Check(remoteCatalogSchemaFor(value, authoritativeProviderId), value);
 
 export const getRemoteCatalogModelValidationErrors = (
   value: unknown,
+  authoritativeProviderId?: string,
 ): string[] =>
-  [...Value.Errors(remoteCatalogSchemaFor(value), value)]
+  [
+    ...Value.Errors(
+      remoteCatalogSchemaFor(value, authoritativeProviderId),
+      value,
+    ),
+  ]
     .slice(0, 8)
     .map((error) => `${error.path || "root"}: ${error.message}`);
 

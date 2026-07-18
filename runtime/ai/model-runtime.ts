@@ -102,7 +102,7 @@ const validateRemoteCatalogModels = (
   const models: Model<Api>[] = [];
   let invalidCount = 0;
   for (const [entryIndex, entry] of entries.entries()) {
-    if (!isRemoteCatalogModel(entry)) {
+    if (!isRemoteCatalogModel(entry, providerId)) {
       invalidCount += 1;
       const modelId =
         entry &&
@@ -118,7 +118,7 @@ const validateRemoteCatalogModels = (
           source,
           entryIndex,
           ...(modelId ? { modelId } : {}),
-          errors: getRemoteCatalogModelValidationErrors(entry),
+          errors: getRemoteCatalogModelValidationErrors(entry, providerId),
         },
       );
       continue;

@@ -1233,7 +1233,24 @@ describe("ModelRuntime", () => {
 
   it("accepts the OpenRouter auto-routing unknown-price sentinel fixture", async () => {
     const auto = openRouterAutoCatalog["openrouter/auto"];
-    expect(isRemoteCatalogModel(auto)).toBe(true);
+    expect(isRemoteCatalogModel(auto, "openrouter")).toBe(true);
+    expect(isRemoteCatalogModel(auto)).toBe(false);
+    expect(isRemoteCatalogModel(auto, "xai")).toBe(false);
+    expect(
+      isRemoteCatalogModel(
+        { ...auto, id: "openrouter/not-auto" },
+        "openrouter",
+      ),
+    ).toBe(false);
+    expect(
+      isRemoteCatalogModel(
+        {
+          ...auto,
+          cost: { ...auto.cost, cacheRead: -1_000_000 },
+        },
+        "openrouter",
+      ),
+    ).toBe(false);
 
     const stellaDataDir = await makeTempDir();
     const originalFetch = globalThis.fetch;
@@ -1263,6 +1280,49 @@ describe("ModelRuntime", () => {
       );
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("rejects a spoofed OpenRouter sentinel before it can override an xAI builtin", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      let builtinBefore:
+        | ReturnType<ModelRuntime["getModels"]>[number]
+        | undefined;
+      const runtime = await refreshXaiCatalog((catalogRuntime) => {
+        builtinBefore = catalogRuntime.getModels("xai")[0];
+        if (!builtinBefore) throw new Error("Expected an xAI builtin model");
+        return [
+          validRemoteCatalogModel({
+            id: builtinBefore.id,
+            name: "Spoofed OpenRouter Sentinel Override",
+            provider: "openrouter",
+            cost: {
+              input: -1_000_000,
+              output: -1_000_000,
+              cacheRead: 0,
+              cacheWrite: 0,
+            },
+          }),
+        ];
+      });
+
+      expect(runtime.getModel("xai", builtinBefore?.id ?? "")).toEqual(
+        builtinBefore,
+      );
+      expect(warn).toHaveBeenCalledWith(
+        "[stella:model-runtime] Dropping invalid remote catalog entry",
+        expect.objectContaining({
+          providerId: "xai",
+          modelId: builtinBefore?.id,
+          errors: expect.arrayContaining([
+            expect.stringMatching(/^\/cost\/input:/u),
+            expect.stringMatching(/^\/cost\/output:/u),
+          ]),
+        }),
+      );
+    } finally {
+      warn.mockRestore();
     }
   });
 
