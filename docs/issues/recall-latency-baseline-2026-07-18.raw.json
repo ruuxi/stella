@@ -1,0 +1,1066 @@
+{
+  "schemaVersion": 2,
+  "measurement": "corrected-semantics baseline replay",
+  "sourceCommit": "c2161d8a88f4d587fce9d39ba9970d3c450545b2",
+  "methodology": {
+    "routeMode": "pinned-claude-haiku",
+    "directRun": true,
+    "browserContext": false,
+    "queryOrder": [
+      "memory_system",
+      "carplay_thread",
+      "browser_cleanup_race",
+      "utility_model_policy",
+      "release_workflow",
+      "prompt_contract",
+      "radial_ui_decision",
+      "episodic_drive",
+      "billing_case",
+      "no_match"
+    ],
+    "note": "Replayed the corrected telemetry commit against the same frozen snapshot as phase C; the old emitted summary is retained below and each run is augmented with its raw telemetry record."
+  },
+  "snapshot": {
+    "dataDir": "/tmp/stella-recall-phase-c.mAfWfo/.stella",
+    "sha256": "31c0479e5e078df5a5a98c7abfa5b83e226c22da97c56e7eeebc6e0212add0ff"
+  },
+  "sampleCount": 10,
+  "completedCount": 10,
+  "errorCount": 0,
+  "engineModels": [
+    "claude-code:claude-code/haiku"
+  ],
+  "totalMs": {
+    "median": 21003.632,
+    "p90": 43642.363,
+    "min": 15186.343,
+    "max": 59756.822
+  },
+  "phaseMedianMs": {
+    "routeMs": 0.152,
+    "hostContextMs": 19.025,
+    "seedSearchMs": 85.852,
+    "assemblyMs": 0.307,
+    "modelMs": 20885.996
+  },
+  "phaseP90Ms": {
+    "routeMs": 0.463,
+    "hostContextMs": 51.175,
+    "seedSearchMs": 122.722,
+    "assemblyMs": 0.624,
+    "modelMs": 43261.681
+  },
+  "seedChars": {
+    "median": 45363.5,
+    "p90": 52965,
+    "min": 31311,
+    "max": 63629
+  },
+  "modelCalls": {
+    "median": 1.5,
+    "p90": 4,
+    "max": 4
+  },
+  "toolRounds": {
+    "median": 0.5,
+    "p90": 3,
+    "max": 3
+  },
+  "sourceTimings": {
+    "host.appBrowserContext": {
+      "medianMs": 0,
+      "p90Ms": 0,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "host.localEvents": {
+      "medianMs": 19.024,
+      "p90Ms": 51.17,
+      "medianCalls": 1,
+      "medianChars": 0
+    },
+    "seed.chronicleFiles": {
+      "medianMs": 0.464,
+      "p90Ms": 1.1,
+      "medianCalls": 1,
+      "medianChars": 29
+    },
+    "seed.liveThreadStatus": {
+      "medianMs": 1.727,
+      "p90Ms": 8.489,
+      "medianCalls": 1,
+      "medianChars": 303
+    },
+    "seed.memoryFiles": {
+      "medianMs": 2.089,
+      "p90Ms": 5.545,
+      "medianCalls": 1,
+      "medianChars": 4214
+    },
+    "seed.memorySearch": {
+      "medianMs": 10.235,
+      "p90Ms": 20.742,
+      "medianCalls": 1,
+      "medianChars": 17277
+    },
+    "seed.threadSearch": {
+      "medianMs": 26.895,
+      "p90Ms": 39.134,
+      "medianCalls": 1,
+      "medianChars": 10541.5
+    },
+    "seed.transcriptSearch": {
+      "medianMs": 45.619,
+      "p90Ms": 92.575,
+      "medianCalls": 1,
+      "medianChars": 16994
+    },
+    "tool.memorySearch": {
+      "medianMs": 0,
+      "p90Ms": 16.403,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "tool.threadSearch": {
+      "medianMs": 0,
+      "p90Ms": 16.526,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "tool.transcriptSearch": {
+      "medianMs": 0,
+      "p90Ms": 103.498,
+      "medianCalls": 0,
+      "medianChars": 0
+    }
+  },
+  "runs": [
+    {
+      "query": {
+        "id": "memory_system",
+        "prompt": "What did we determine about profile.md, memory_summary.md, MEMORY.md, and the sources Recall searches?",
+        "terms": [
+          "profile.md",
+          "memory_summary.md",
+          "MEMORY.md",
+          "Recall"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 17.549,
+        "hostContextMs": 40.828,
+        "seedSearchMs": 90.015,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 40.827,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.006,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 5.525,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 20.742,
+            "chars": 17159
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 39.134,
+            "chars": 9486
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 23.707,
+            "chars": 11059
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 6.046,
+            "chars": 303
+          }
+        },
+        "seedChars": 43489,
+        "modelCalls": 1,
+        "modelMs": 15379.879,
+        "toolRounds": 0,
+        "assemblyMs": 0.624,
+        "totalMs": 15531.051
+      },
+      "emittedRunSummary": {
+        "queryId": "memory_system",
+        "outcome": "answer",
+        "totalMs": 15531.051,
+        "seedChars": 43489,
+        "modelCalls": 1,
+        "modelMs": 15379.879,
+        "toolRounds": 0
+      }
+    },
+    {
+      "query": {
+        "id": "carplay_thread",
+        "prompt": "Find the prior agent thread for the CarPlay blank-screen connect replay race and summarize its result with the resumable thread id.",
+        "terms": [
+          "CarPlay",
+          "blank-screen",
+          "connect replay",
+          "race"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.133,
+        "hostContextMs": 9.242,
+        "seedSearchMs": 122.722,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 9.241,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.544,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.652,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 2.06,
+            "chars": 17395
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 26.9,
+            "chars": 10357
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 92.575,
+            "chars": 19087
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 1.104,
+            "chars": 303
+          },
+          "tool.threadSearch": {
+            "kind": "sql",
+            "calls": 2,
+            "ms": 16.526,
+            "chars": 20165
+          }
+        },
+        "seedChars": 52653,
+        "modelCalls": 2,
+        "modelMs": 27202.228,
+        "toolRounds": 1,
+        "assemblyMs": 0.341,
+        "totalMs": 27352.6
+      },
+      "emittedRunSummary": {
+        "queryId": "carplay_thread",
+        "outcome": "answer",
+        "totalMs": 27352.6,
+        "seedChars": 52653,
+        "modelCalls": 2,
+        "modelMs": 27202.228,
+        "toolRounds": 1
+      }
+    },
+    {
+      "query": {
+        "id": "browser_cleanup_race",
+        "prompt": "What was found about browser tab reuse and stale cleanup acting on a newer kernel?",
+        "terms": [
+          "browser",
+          "tab reuse",
+          "stale cleanup",
+          "kernel"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.291,
+        "hostContextMs": 27.691,
+        "seedSearchMs": 117.69,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 27.689,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.384,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.72,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 9.964,
+            "chars": 17643
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 34.359,
+            "chars": 11362
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 69.72,
+            "chars": 16582
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 3.545,
+            "chars": 303
+          }
+        },
+        "seedChars": 51352,
+        "modelCalls": 1,
+        "modelMs": 15040.077,
+        "toolRounds": 0,
+        "assemblyMs": 0.22,
+        "totalMs": 15186.343
+      },
+      "emittedRunSummary": {
+        "queryId": "browser_cleanup_race",
+        "outcome": "answer",
+        "totalMs": 15186.343,
+        "seedChars": 51352,
+        "modelCalls": 1,
+        "modelMs": 15040.077,
+        "toolRounds": 0
+      }
+    },
+    {
+      "query": {
+        "id": "utility_model_policy",
+        "prompt": "What prior decision did we make about low reasoning for Recall, Chronicle, and progress summaries?",
+        "terms": [
+          "Recall",
+          "Chronicle",
+          "progress summaries",
+          "low reasoning"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.115,
+        "hostContextMs": 9.07,
+        "seedSearchMs": 71.2,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 9.069,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.283,
+            "chars": 29
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.951,
+            "chars": 19296
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.978,
+            "chars": 4214
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 17.45,
+            "chars": 10482
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 50.652,
+            "chars": 17406
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 1.092,
+            "chars": 303
+          },
+          "tool.memorySearch": {
+            "kind": "file",
+            "calls": 2,
+            "ms": 16.403,
+            "chars": 56148
+          },
+          "tool.transcriptSearch": {
+            "kind": "sql",
+            "calls": 3,
+            "ms": 106.072,
+            "chars": 52776
+          }
+        },
+        "seedChars": 52965,
+        "modelCalls": 4,
+        "modelMs": 59552.867,
+        "toolRounds": 3,
+        "assemblyMs": 0.239,
+        "totalMs": 59756.822
+      },
+      "emittedRunSummary": {
+        "queryId": "utility_model_policy",
+        "outcome": "answer",
+        "totalMs": 59756.822,
+        "seedChars": 52965,
+        "modelCalls": 4,
+        "modelMs": 59552.867,
+        "toolRounds": 3
+      }
+    },
+    {
+      "query": {
+        "id": "release_workflow",
+        "prompt": "What are the established repo-scope and verification rules for Stella release sweeps?",
+        "terms": [
+          "release sweep",
+          "repo scope",
+          "verification",
+          "Stella"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.114,
+        "hostContextMs": 8.912,
+        "seedSearchMs": 64.794,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 8.911,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.242,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.642,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 2.181,
+            "chars": 28471
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 12.285,
+            "chars": 10695
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 49.215,
+            "chars": 18695
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 1.049,
+            "chars": 303
+          }
+        },
+        "seedChars": 63629,
+        "modelCalls": 1,
+        "modelMs": 18286.737,
+        "toolRounds": 0,
+        "assemblyMs": 0.161,
+        "totalMs": 18361.04
+      },
+      "emittedRunSummary": {
+        "queryId": "release_workflow",
+        "outcome": "answer",
+        "totalMs": 18361.04,
+        "seedChars": 63629,
+        "modelCalls": 1,
+        "modelMs": 18286.737,
+        "toolRounds": 0
+      }
+    },
+    {
+      "query": {
+        "id": "prompt_contract",
+        "prompt": "What are the prior orchestrator prompt rules for Recall versus send_input and milestone status?",
+        "terms": [
+          "orchestrator prompt",
+          "Recall",
+          "send_input",
+          "milestone"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.082,
+        "hostContextMs": 9.528,
+        "seedSearchMs": 47.169,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 9.527,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.318,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.434,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 10.392,
+            "chars": 17456
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 7.793,
+            "chars": 9904
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 27.842,
+            "chars": 14100
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 1.078,
+            "chars": 303
+          }
+        },
+        "seedChars": 47238,
+        "modelCalls": 1,
+        "modelMs": 19802.941,
+        "toolRounds": 0,
+        "assemblyMs": 0.177,
+        "totalMs": 19860.188
+      },
+      "emittedRunSummary": {
+        "queryId": "prompt_contract",
+        "outcome": "answer",
+        "totalMs": 19860.188,
+        "seedChars": 47238,
+        "modelCalls": 1,
+        "modelMs": 19802.941,
+        "toolRounds": 0
+      }
+    },
+    {
+      "query": {
+        "id": "radial_ui_decision",
+        "prompt": "What was the prior product decision about the radial dial versus a native context menu?",
+        "terms": [
+          "radial dial",
+          "native context menu",
+          "product decision"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.102,
+        "hostContextMs": 10.359,
+        "seedSearchMs": 63.813,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 10.358,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.897,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 2.329,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 10.078,
+            "chars": 125
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 10.293,
+            "chars": 11900
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 42.023,
+            "chars": 19386
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 1.332,
+            "chars": 303
+          },
+          "tool.memorySearch": {
+            "kind": "file",
+            "calls": 3,
+            "ms": 28.868,
+            "chars": 82697
+          },
+          "tool.transcriptSearch": {
+            "kind": "sql",
+            "calls": 2,
+            "ms": 103.498,
+            "chars": 37477
+          },
+          "tool.threadSearch": {
+            "kind": "sql",
+            "calls": 2,
+            "ms": 40.651,
+            "chars": 22085
+          }
+        },
+        "seedChars": 37181,
+        "modelCalls": 4,
+        "modelMs": 29393.714,
+        "toolRounds": 3,
+        "assemblyMs": 0.471,
+        "totalMs": 29642.698
+      },
+      "emittedRunSummary": {
+        "queryId": "radial_ui_decision",
+        "outcome": "answer",
+        "totalMs": 29642.698,
+        "seedChars": 37181,
+        "modelCalls": 4,
+        "modelMs": 29393.714,
+        "toolRounds": 3
+      }
+    },
+    {
+      "query": {
+        "id": "episodic_drive",
+        "prompt": "When was Rahul's first destination drive in the blue Lotus Emira, and where did he actually go?",
+        "terms": [
+          "blue Lotus Emira",
+          "first destination drive",
+          "actually go"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.219,
+        "hostContextMs": 79.714,
+        "seedSearchMs": 236.788,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 79.713,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 5.056,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 7.209,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 23.992,
+            "chars": 9024
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 61.078,
+            "chars": 9323
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 142.959,
+            "chars": 18027
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 8.489,
+            "chars": 303
+          },
+          "tool.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 60.87,
+            "chars": 17546
+          }
+        },
+        "seedChars": 42152,
+        "modelCalls": 2,
+        "modelMs": 43261.681,
+        "toolRounds": 1,
+        "assemblyMs": 0.291,
+        "totalMs": 43642.363
+      },
+      "emittedRunSummary": {
+        "queryId": "episodic_drive",
+        "outcome": "answer",
+        "totalMs": 43642.363,
+        "seedChars": 42152,
+        "modelCalls": 2,
+        "modelMs": 43261.681,
+        "toolRounds": 1
+      }
+    },
+    {
+      "query": {
+        "id": "billing_case",
+        "prompt": "What happened with the anomalous Vercel AI Gateway credit charges, and how was the dispute sent?",
+        "terms": [
+          "Vercel AI Gateway",
+          "credit charges",
+          "dispute"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.463,
+        "hostContextMs": 51.175,
+        "seedSearchMs": 107.166,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 51.17,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.1,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 5.545,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 18.279,
+            "chars": 4297
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 39.087,
+            "chars": 11374
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 40.858,
+            "chars": 9861
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 8.741,
+            "chars": 303
+          }
+        },
+        "seedChars": 31311,
+        "modelCalls": 1,
+        "modelMs": 17097.906,
+        "toolRounds": 0,
+        "assemblyMs": 0.728,
+        "totalMs": 17258.044
+      },
+      "emittedRunSummary": {
+        "queryId": "billing_case",
+        "outcome": "answer",
+        "totalMs": 17258.044,
+        "seedChars": 31311,
+        "modelCalls": 1,
+        "modelMs": 17097.906,
+        "toolRounds": 0
+      }
+    },
+    {
+      "query": {
+        "id": "no_match",
+        "prompt": "Find the decision where Project Zephyr approved an aquarium telemetry migration from Cassandra to CockroachDB.",
+        "terms": [
+          "Project Zephyr",
+          "aquarium telemetry",
+          "Cassandra",
+          "CockroachDB"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.171,
+        "hostContextMs": 29.577,
+        "seedSearchMs": 81.688,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 29.576,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.324,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 2.199,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 12.373,
+            "chars": 133
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 26.89,
+            "chars": 10601
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 40.205,
+            "chars": 15507
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 2.122,
+            "chars": 303
+          },
+          "tool.threadSearch": {
+            "kind": "sql",
+            "calls": 2,
+            "ms": 13.836,
+            "chars": 21254
+          },
+          "tool.transcriptSearch": {
+            "kind": "sql",
+            "calls": 2,
+            "ms": 43.67,
+            "chars": 18311
+          },
+          "tool.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 7.871,
+            "chars": 130
+          }
+        },
+        "seedChars": 32034,
+        "modelCalls": 3,
+        "modelMs": 21969.051,
+        "toolRounds": 2,
+        "assemblyMs": 0.323,
+        "totalMs": 22147.075
+      },
+      "emittedRunSummary": {
+        "queryId": "no_match",
+        "outcome": "answer",
+        "totalMs": 22147.075,
+        "seedChars": 32034,
+        "modelCalls": 3,
+        "modelMs": 21969.051,
+        "toolRounds": 2
+      }
+    }
+  ]
+}

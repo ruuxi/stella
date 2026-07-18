@@ -140,3 +140,29 @@ routing behavior was changed in this telemetry phase.
 - The dev harness runtime was present during the corrected rerun. The read-only
   direct path was retained for exact comparability with the original query set;
   no live desktop process was invoked or controlled.
+
+## Raw audit artifact and same-snapshot replay
+
+The original corrected-semantics figures above remain the phase-(a)/(b)
+yardstick. The first benchmark script did not retain its complete per-run JSON,
+so phase (c) replayed commit `c2161d8a88f4d587fce9d39ba9970d3c450545b2`
+against the exact frozen snapshot used for the quick-win comparison. The raw
+artifact is
+[`recall-latency-baseline-2026-07-18.raw.json`](./recall-latency-baseline-2026-07-18.raw.json).
+It contains the emitted summary plus every run's query, model id, outcome,
+phase timings, source timings, seed size, model-call count, and tool-round
+count.
+
+Snapshot SHA-256:
+`31c0479e5e078df5a5a98c7abfa5b83e226c22da97c56e7eeebc6e0212add0ff`.
+The snapshot was made with SQLite's backup API from read-only `~/.stella`, then
+the copied database alone was changed from WAL to DELETE journal mode so it
+could be reopened read-only without mutable sidecar files. Preferences,
+memory, and Chronicle inputs were copied once and never changed between sets.
+
+The same-snapshot replay completed 10/10 with zero errors on
+`claude-code/haiku`: median 21.004s, p90 43.642s; median/p90 seed
+45,363.5/52,965 characters; median/p90 model calls 1.5/4; median/p90 tool
+rounds 0.5/3. Phase medians were route 0.152ms, host context 19.025ms, seed
+search 85.852ms, assembly 0.307ms, and pure model time 20.886s. Phase p90s
+were 0.463ms, 51.175ms, 122.722ms, 0.624ms, and 43.262s respectively.
