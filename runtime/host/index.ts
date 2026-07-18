@@ -14,6 +14,11 @@ import { readConfiguredConvexUrl } from "../kernel/convex-urls.js";
 import type { ConnectorTokenPayload } from "../kernel/connectors/oauth.js";
 import { resolveBundledRuntimeFile } from "../kernel/shared/runtime-paths.js";
 import { getFileLogger } from "../observability/file-logger.js";
+import {
+  hasRestartShutdownRecord,
+  isRestartContinuationEnabled,
+  writeRestartShutdownRecord,
+} from "../kernel/restart-continuation.js";
 import { LocalSchedulerService } from "../kernel/local-scheduler-service.js";
 import { createRemoteTurnBridge } from "../kernel/remote-turn-bridge.js";
 import {
@@ -1035,6 +1040,37 @@ export class StellaRuntimeHost {
   }
 
   /**
+   * Restart-with-continuation shutdown record. Written synchronously and
+   * best-effort at every restart-initiation point (worker restart, host
+   * stop). The record is deliberately minimal — reason + timestamp — because
+   * the interrupted-thread set is derived at next boot from the durable
+   * `runtime_agents` rows still marked `running` (which survive even a hard
+   * kill that skips this write). The next worker boot consumes the record
+   * exactly once; a stale record is discarded there.
+   */
+  private writeRestartContinuationRecord(
+    reason: string,
+    options?: { skipIfPresent?: boolean },
+  ) {
+    if (!isRestartContinuationEnabled(process.env)) return;
+    const stellaDataDir = this.options.initializeParams?.stellaDataDirPath;
+    if (!stellaDataDir) return;
+    try {
+      if (options?.skipIfPresent && hasRestartShutdownRecord(stellaDataDir)) {
+        return;
+      }
+      const written = writeRestartShutdownRecord(stellaDataDir, { reason });
+      if (written) {
+        getFileLogger()?.process("host.restart-continuation-record", {
+          reason,
+        });
+      }
+    } catch {
+      // Best-effort — never let continuation bookkeeping break a shutdown.
+    }
+  }
+
+  /**
    * Unified gate for restarting the runtime worker. A restart may only proceed
    * when NONE of the blockers hold:
    *   - a per-run self-mod reload PAUSE is active (a self-mod / desktop update
@@ -1135,6 +1171,10 @@ export class StellaRuntimeHost {
           this.deferredRuntimeReload = false;
           getFileLogger()?.process("host.worker-restart", { reason });
           console.warn(`[runtime-host] Restarting runtime worker (${reason}).`);
+          // Restart-with-continuation: the replacement worker's boot sweep
+          // joins this record against the durable thread rows to decide
+          // whether interrupted agent work should be auto-resumed.
+          this.writeRestartContinuationRecord(reason);
           try {
             await this.restartWorker();
           } catch (error) {
@@ -2248,6 +2288,16 @@ export class StellaRuntimeHost {
   }
 
   async stop(options?: { killWorker?: boolean }) {
+    // Restart-with-continuation: persist the shutdown record FIRST and
+    // synchronously — every graceful teardown (app quit, dev-supervisor
+    // SIGTERM, self-mod process-restart relaunch) funnels through here and
+    // may not survive the rest of this method. A pending self-mod restart
+    // reason wins over the generic app-shutdown label; an existing record
+    // written moments ago by a more specific path is preserved.
+    this.writeRestartContinuationRecord(
+      this.pendingStaleWorkerRestart?.reason ?? "app-shutdown",
+      { skipIfPresent: true },
+    );
     this.started = false;
     this.hostReady = false;
     this.workerHealthCache = null;

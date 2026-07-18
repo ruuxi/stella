@@ -773,6 +773,17 @@ export class LocalAgentManager implements AgentToolApi {
   private static readonly MAX_QUEUE_MESSAGES = 32;
   private static readonly MAX_LOG_MESSAGES = 80;
   private nextId = 0;
+  /**
+   * Threads whose durable rows were still `running` when this manager booted
+   * — i.e. the agent work interrupted by the previous shutdown/restart. The
+   * boot sweep below flips those rows, so this snapshot (captured before the
+   * flip) is the only surviving record of "what was in flight at shutdown".
+   * Consumed by the restart-with-continuation boot conversion.
+   */
+  private readonly bootInterruptedThreads: Array<{
+    threadId: string;
+    conversationId: string;
+  }> = [];
 
   constructor(opts: LocalAgentManagerOpts) {
     this.opts = opts;
@@ -780,10 +791,24 @@ export class LocalAgentManager implements AgentToolApi {
     this.recoverOrCancelOrphanedPersistedAgents();
   }
 
+  /** Threads that were running at the previous shutdown (pre-sweep snapshot). */
+  getBootInterruptedThreads(): Array<{
+    threadId: string;
+    conversationId: string;
+  }> {
+    return [...this.bootInterruptedThreads];
+  }
+
   private recoverOrCancelOrphanedPersistedAgents(): void {
     const now = Date.now();
     const runningRecords =
       this.opts.listAgentRecordsByStatus?.("running") ?? [];
+    for (const record of runningRecords) {
+      this.bootInterruptedThreads.push({
+        threadId: record.threadId,
+        conversationId: record.conversationId,
+      });
+    }
     for (const record of runningRecords) {
       if (record.agentType === AGENT_IDS.MANAGER) {
         const result =

@@ -18,6 +18,15 @@ import {
   loadConnectorAccessToken,
 } from "./connectors/oauth.js";
 import { AGENT_IDS } from "../contracts/agent-runtime.js";
+import {
+  AGENT_ORPHANED_RESTART_CANCEL_REASON,
+  AGENT_PAUSE_CANCEL_REASON,
+  AGENT_SHUTDOWN_CANCEL_REASON,
+} from "./agents/local-agent-manager.js";
+import {
+  convertRestartShutdownRecordAtBoot,
+  fireRestartContinuationTurn,
+} from "./restart-continuation.js";
 import type {
   RunnerPublicApi,
   StellaHostRunnerOptions,
@@ -212,6 +221,67 @@ export const createStellaHostRunner = (
     buildAgentContext: buildAgentContextWithResolvedRoute,
     sendMessage: orchestratorController.sendMessage,
   });
+
+  // Restart-with-continuation: the LocalAgentManager the orchestration layer
+  // just built has swept the durable thread rows that were `running` at the
+  // previous shutdown. Convert a fresh shutdown record + that snapshot into
+  // the one-shot interruption state (synchronously, before any user turn can
+  // build a prompt), then schedule the boot-time continuation turn once the
+  // runner finishes initializing. All guards (env gates, staleness,
+  // idle-at-shutdown) live in the kernel module.
+  const restartInterruptionState = convertRestartShutdownRecordAtBoot({
+    stellaDataDir: context.stellaDataDir,
+    env: process.env,
+    interruptedThreads:
+      context.state.localAgentManager?.getBootInterruptedThreads() ?? [],
+  });
+  if (restartInterruptionState) {
+    void (async () => {
+      // `start()` is called by the worker right after this factory returns;
+      // wait for its initialization promise so the automation turn doesn't
+      // bounce off the not-ready health check. Bounded poll — if start never
+      // comes (unexpected), fire anyway and let the turn report not-ready.
+      const deadline = Date.now() + 30_000;
+      while (!context.state.initializationPromise && Date.now() < deadline) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 250));
+      }
+      try {
+        await context.state.initializationPromise;
+      } catch {
+        // Initialization failures surface elsewhere; the turn below will
+        // report its own error if the runtime is truly unusable.
+      }
+      await fireRestartContinuationTurn({
+        stellaDataDir: context.stellaDataDir,
+        env: process.env,
+        sentinels: {
+          pausedReasons: [AGENT_PAUSE_CANCEL_REASON],
+          restartCancelReasons: [
+            AGENT_ORPHANED_RESTART_CANCEL_REASON,
+            AGENT_SHUTDOWN_CANCEL_REASON,
+          ],
+        },
+        getAgentRecord: (threadId) =>
+          context.runtimeStore.getAgentRecord?.(threadId) ?? null,
+        listAgentRecordsByStatus: (status) =>
+          context.runtimeStore.listAgentRecordsByStatus?.(status) ?? [],
+        appendLocalChatEvent: (args) => {
+          context.appendLocalChatEvent?.(args);
+        },
+        runAutomationTurn: (args) =>
+          orchestratorController.runAutomationTurn(args),
+        log: (message, detail) => {
+          console.warn(`[runner] ${message}`, detail ?? {});
+        },
+      });
+    })().catch((error) => {
+      console.warn(
+        "[runner] restart-continuation boot fire failed",
+        error instanceof Error ? error.message : error,
+      );
+    });
+  }
+
   const warmModelCatalog = async (): Promise<void> => {
     await resolveAgentModelRoute(context, AGENT_IDS.ORCHESTRATOR);
   };
