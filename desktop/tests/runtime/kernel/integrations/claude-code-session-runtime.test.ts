@@ -6,6 +6,7 @@ import {
   claudeCodeSessionHasActiveProcess,
   collectClaudeCodeNativeFileChanges,
   createClaudeCodeStreamEmitter,
+  getClaudeCodeModelRoundFromStreamEvent,
   getClaudeCodeModelFallbackFromStreamEvent,
   isClaudeCodeModelRefusalOrOverloadError,
   getClaudeCodeStatusChangeFromStreamEvent,
@@ -34,6 +35,31 @@ import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/share
 import { DatabaseSync } from "node:sqlite";
 
 describe("claude-code-session-runtime", () => {
+  it("classifies finalized assistant messages as model and tool rounds", () => {
+    expect(
+      getClaudeCodeModelRoundFromStreamEvent({
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          content: [
+            { type: "thinking", thinking: "search" },
+            { type: "tool_use", id: "one", name: "search_memory" },
+            { type: "tool_use", id: "two", name: "search_threads" },
+          ],
+        },
+      }),
+    ).toEqual({ messageId: "msg-1", toolCallCount: 2 });
+    expect(
+      getClaudeCodeModelRoundFromStreamEvent({
+        type: "assistant",
+        message: { content: [{ type: "text", text: "done" }] },
+      }),
+    ).toEqual({ toolCallCount: 0 });
+    expect(
+      getClaudeCodeModelRoundFromStreamEvent({ type: "stream_event" }),
+    ).toBeNull();
+  });
+
   const originalFetch = globalThis.fetch;
   const originalAnthropicApiKey = process.env.ANTHROPIC_API_KEY;
   const originalAnthropicOauthToken = process.env.ANTHROPIC_OAUTH_TOKEN;

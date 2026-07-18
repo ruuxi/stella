@@ -1267,22 +1267,78 @@ export const runRecall = async (args: {
         tools: RECALL_RUNTIME_TOOLS,
         messages,
       };
-      const text = (
-        await runModelCall(() =>
-          runClaudeCodeAgentTextCompletion({
+      let observedModelRounds = 0;
+      const observedModelRoundIds = new Set<string>();
+      const observedToolRoundIds = new Set<string>();
+      let anonymousModelRound = 0;
+      let activeToolExecutions = 0;
+      let toolExecutionStartedAt = 0;
+      let toolExecutionMs = 0;
+      const beginToolExecution = (): void => {
+        if (activeToolExecutions === 0) {
+          toolExecutionStartedAt = performance.now();
+        }
+        activeToolExecutions += 1;
+      };
+      const endToolExecution = (): void => {
+        activeToolExecutions = Math.max(0, activeToolExecutions - 1);
+        if (activeToolExecutions === 0) {
+          toolExecutionMs += performance.now() - toolExecutionStartedAt;
+        }
+      };
+      const modelStartedAt = performance.now();
+      let modelFailed = false;
+      let text: string;
+      try {
+        text = (
+          await runClaudeCodeAgentTextCompletion({
             stellaAppDir: args.stellaAppDir,
             agentType: AGENT_IDS.ORCHESTRATOR,
             stellaModel: args.resolvedLlm.model.id,
             effortLevel: "low",
             context,
             abortSignal: args.signal,
-            executeTool: async (_toolCallId, toolName, toolArgs) => {
-              telemetry.addToolRound();
-              return executeRecallToolCall(toolName, toolArgs);
+            onModelRound: ({ messageId, toolCallCount }) => {
+              const roundId = messageId ?? `anonymous:${anonymousModelRound++}`;
+              if (!observedModelRoundIds.has(roundId)) {
+                observedModelRoundIds.add(roundId);
+                observedModelRounds += 1;
+                telemetry.addModelCall();
+              }
+              if (
+                toolCallCount > 0 &&
+                !observedToolRoundIds.has(roundId)
+              ) {
+                observedToolRoundIds.add(roundId);
+                telemetry.addToolRound();
+              }
             },
-          }),
-        )
-      ).trim();
+            executeTool: async (_toolCallId, toolName, toolArgs) => {
+              beginToolExecution();
+              try {
+                return await executeRecallToolCall(toolName, toolArgs);
+              } finally {
+                endToolExecution();
+              }
+            },
+          })
+        ).trim();
+      } catch (error) {
+        modelFailed = true;
+        throw error;
+      } finally {
+        if (activeToolExecutions > 0) {
+          toolExecutionMs += performance.now() - toolExecutionStartedAt;
+          activeToolExecutions = 0;
+        }
+        telemetry.addModelRuntimeMs(
+          Math.max(0, performance.now() - modelStartedAt - toolExecutionMs),
+        );
+        // A launch/transport failure can happen before an assistant event.
+        // Preserve one attempted model call instead of reporting zero.
+        if (observedModelRounds === 0) telemetry.addModelCall();
+        if (modelFailed) emitTelemetry("thrown");
+      }
       if (attempt === 0 && text && isNothingFoundBrief(text) && !ranSearch) {
         logRecallTrace("[stella:recall:step]", {
           conversationId: args.conversationId,

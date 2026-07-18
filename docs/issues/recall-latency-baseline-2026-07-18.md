@@ -1,13 +1,23 @@
 # Recall latency baseline — 2026-07-18
 
-This is the telemetry-first baseline for the v1 Recall latency overhaul. It
-captures the current behavior before any retrieval, routing, deduplication, or
-batching changes.
+This is the corrected-semantics telemetry-first baseline for the v1 Recall
+latency overhaul. It captures the current behavior before any retrieval,
+routing, deduplication, or batching changes.
+
+> **Corrected semantics:** this measurement supersedes the figures originally
+> committed in `d64707e69`. That first pass timed the whole Claude Code runtime
+> as `modelMs`, including time spent executing retrieval tools, and counted
+> individual tool calls as `toolRounds`. The corrected collector subtracts the
+> union of tool-execution intervals from Claude model wall time, deduplicates
+> Claude's thinking/text envelopes by model message id, and counts one tool
+> round per model turn that issues one or more tool calls. Native Stella and
+> Codex-provider calls already execute tools outside the timed model call, so
+> all engine paths now have the same definitions.
 
 ## Isolation and method
 
-- Code under test: `/Users/rahulnanda/projects/stella` at the parent of this
-  phase's telemetry commit.
+- Code under test: `/Users/rahulnanda/projects/stella` with the telemetry stack
+  from `d64707e69` plus the corrected semantics described above.
 - Sample: 10 sequential representative lookups covering durable memory, prior
   agent work, product decisions, episodic history, multi-source history, and a
   deliberate no-match.
@@ -37,26 +47,28 @@ The runner prints timing telemetry and never prints or persists Recall answers.
 
 | Metric | Median | P90 | Min | Max |
 | --- | ---: | ---: | ---: | ---: |
-| Total latency | 20.090s | 26.740s | 11.181s | 27.900s |
-| Seed size | 45,187 chars | 52,822 chars | 31,236 chars | 62,539 chars |
-| Model calls | 1 | 1 | 1 | 1 |
-| Tool rounds | 0 | 3 | 0 | 4 |
+| Total latency | 18.106s | 28.271s | 16.469s | 36.529s |
+| Seed size | 45,091 chars | 52,821 chars | 29,708 chars | 62,538 chars |
+| Model calls | 1 | 3 | 1 | 3 |
+| Tool rounds | 0 | 2 | 0 | 2 |
 
-`modelCalls` counts Recall's model-runtime invocations. On the current Claude
-Code route, one invocation owns its internal tool loop; `toolRounds` counts the
-search requests observed inside that invocation.
+`modelCalls` counts true model turns. `toolRounds` counts the subset of those
+turns that issue one or more tools, regardless of whether a round issues one
+search or several parallel searches. `modelMs` is pure model/runtime wall time:
+tool execution remains visible in the per-source timings and `totalMs`, but is
+excluded from `modelMs` even when Claude Code owns the tool loop internally.
 
 ### Phase timing
 
 | Phase | Median | P90 |
 | --- | ---: | ---: |
-| Route resolution | 0.187ms | 0.365ms |
-| Host context | 12.373ms | 13.799ms |
-| Seed searches, wall time | 63.217ms | 93.010ms |
-| Prompt assembly | 0.239ms | 0.289ms |
-| Model runtime | 20.020s | 26.664s |
+| Route resolution | 0.102ms | 0.161ms |
+| Host context | 9.583ms | 11.566ms |
+| Seed searches, wall time | 44.679ms | 65.575ms |
+| Prompt assembly | 0.185ms | 0.351ms |
+| Model runtime, excluding tool execution | 18.051s | 28.187s |
 
-At the median, model runtime is 99.65% of end-to-end latency. The phase medians
+At the median, model runtime is 99.70% of end-to-end latency. The phase medians
 are independently calculated and therefore are not expected to add up exactly
 to the median total.
 
@@ -68,40 +80,42 @@ wall time.
 
 | Source | Kind | Median | P90 | Median rendered chars |
 | --- | --- | ---: | ---: | ---: |
-| Local context events (800-event read) | SQL | 12.372ms | 13.798ms | n/a |
-| Chronicle files | file | 0.682ms | 0.817ms | 29 |
-| Resident memory files | file | 2.415ms | 3.097ms | 4,214 |
-| Memory keyword search | file | 10.294ms | 13.965ms | 17,177 |
-| Agent thread search | SQL | 21.011ms | 24.764ms | 10,466 |
-| Transcript search + neighbors | SQL | 33.336ms | 61.800ms | 16,994 |
-| Live thread status | SQL | 2.073ms | 3.087ms | 228 |
+| Local context events (800-event read) | SQL | 9.582ms | 11.566ms | n/a |
+| Chronicle files | file | 0.495ms | 0.730ms | 29 |
+| Resident memory files | file | 1.649ms | 2.375ms | 4,214 |
+| Memory keyword search | file | 7.533ms | 10.656ms | 17,177 |
+| Agent thread search | SQL | 7.096ms | 10.320ms | 10,533 |
+| Transcript search + neighbors | SQL | 27.355ms | 50.271ms | 16,994 |
+| Live thread status | SQL | 0.932ms | 1.277ms | 227 |
 
-Only three runs initiated deeper searches. Even their observed retrieval work
-was small relative to model time: the largest aggregate was 80.402ms for two
-transcript searches; the same run also spent 8.163ms on one thread search and
-12.026ms on one memory-file search.
+Four runs initiated deeper searches. Even their observed retrieval work was
+small relative to model time. The most search-heavy run made five tool calls in
+two true rounds: two transcript searches took 56.317ms in aggregate, one thread
+search took 5.805ms, and two memory-file searches took 16.000ms. Those intervals
+remain in `totalMs` but are excluded from `modelMs` by wall-clock union, so
+parallel tool calls are never double-subtracted.
 
 ### Per-run totals
 
 | Query shape | Total | Seed chars | Model time | Tool rounds |
 | --- | ---: | ---: | ---: | ---: |
-| Memory-system history | 26.740s | 42,816 | 26.664s | 0 |
-| Prior CarPlay thread | 11.181s | 52,822 | 11.098s | 0 |
-| Browser cleanup race | 25.585s | 51,279 | 25.541s | 0 |
-| Utility-model policy | 18.600s | 52,367 | 18.511s | 0 |
-| Release workflow | 17.733s | 62,539 | 17.644s | 0 |
-| Prompt contract | 19.665s | 47,557 | 19.593s | 0 |
-| Product-decision lookup | 26.268s | 37,048 | 26.163s | 4 |
-| Episodic lookup | 27.900s | 41,604 | 27.762s | 1 |
-| Multi-source billing history | 20.516s | 31,236 | 20.448s | 0 |
-| Deliberate no-match | 16.642s | 32,275 | 16.596s | 3 |
+| Memory-system history | 16.469s | 43,054 | 16.404s | 0 |
+| Prior CarPlay thread | 17.003s | 52,821 | 16.891s | 0 |
+| Browser cleanup race | 16.707s | 51,280 | 16.634s | 0 |
+| Utility-model policy | 19.407s | 52,783 | 19.366s | 0 |
+| Release workflow | 17.832s | 62,538 | 17.773s | 0 |
+| Prompt contract | 28.271s | 47,128 | 28.187s | 2 |
+| Product-decision lookup | 21.998s | 37,117 | 21.862s | 2 |
+| Episodic lookup | 36.529s | 42,076 | 36.432s | 1 |
+| Multi-source billing history | 17.484s | 31,235 | 17.451s | 0 |
+| Deliberate no-match | 18.379s | 29,708 | 18.328s | 1 |
 
 ## Comparison with the diagnosis baseline
 
 The earlier diagnosis reported a 28s median, 88s p90, and an approximately
-45KB seed. Against those reference numbers, this run is 7.91s (28.2%) lower at
-the median and 61.26s (69.6%) lower at p90, while the seed is effectively
-unchanged at 45,187 median characters.
+45KB seed. Against those reference numbers, this run is 9.894s (35.3%) lower at
+the median and 59.729s (67.9%) lower at p90, while the seed is effectively
+unchanged at 45,091 median characters.
 
 This comparison is directional, not a controlled before/after experiment: the
 query set is representative rather than identical, provider latency varies,
@@ -118,10 +132,11 @@ routing behavior was changed in this telemetry phase.
 
 - SQLite/file retrieval is not the latency bottleneck: the full eager seed is
   assembled in tens of milliseconds.
-- The oversized seed remains: median 45,187 characters, reaching 62,539.
+- The oversized seed remains: median 45,091 characters, reaching 62,538.
 - Model/runtime time dominates end to end, including Claude Code's internal
-  tool loop.
-- The common sample needed no deeper tool search in 7 of 10 runs; the remaining
-  runs used 1, 3, or 4 tool rounds.
-- The missing standalone dev-harness runtime prevented a desktop-driven run;
-  the read-only direct path was used instead, as allowed for this phase.
+  model turns but excluding tool-execution wall time.
+- The common sample needed no deeper tool search in 6 of 10 runs; the remaining
+  runs used one or two true tool rounds.
+- The dev harness runtime was present during the corrected rerun. The read-only
+  direct path was retained for exact comparability with the original query set;
+  no live desktop process was invoked or controlled.

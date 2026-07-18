@@ -97,8 +97,12 @@ export class RecallTelemetryCollector {
     this.assemblyMs += finiteNonNegative(ms);
   }
 
-  addModelCall(ms: number): void {
+  addModelCall(ms = 0): void {
     this.modelCalls += 1;
+    this.modelMs += finiteNonNegative(ms);
+  }
+
+  addModelRuntimeMs(ms: number): void {
     this.modelMs += finiteNonNegative(ms);
   }
 

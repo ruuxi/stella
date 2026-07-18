@@ -1005,14 +1005,24 @@ describe("runRecall", () => {
     type EngineTurn = Parameters<typeof runClaudeCodeAgentTextCompletion>[0];
 
     const makeClaudeCodeArgs = async (rootPath: string) => {
-      const searchTranscripts = vi.fn(() => [
-        {
-          conversationId: "conv-2",
-          role: "user" as const,
-          atMs: Date.parse("2026-07-01T10:00:00Z"),
-          text: "the wifi password at the lake house is PINETREE42",
-        },
-      ]);
+      const searchTranscripts = vi.fn(() => {
+        // The first call is eager seed retrieval. Later calls happen inside
+        // Claude's runtime-owned tool loop and must not inflate modelMs.
+        if (searchTranscripts.mock.calls.length > 1) {
+          const deadline = performance.now() + 20;
+          while (performance.now() < deadline) {
+            // Deterministic synchronous retrieval stand-in.
+          }
+        }
+        return [
+          {
+            conversationId: "conv-2",
+            role: "user" as const,
+            atMs: Date.parse("2026-07-01T10:00:00Z"),
+            text: "the wifi password at the lake house is PINETREE42",
+          },
+        ];
+      });
       return {
         args: await makeRunArgs(rootPath, { searchTranscripts }),
         searchTranscripts,
@@ -1036,6 +1046,8 @@ describe("runRecall", () => {
           "search_threads",
         ]);
         expect(turn.executeTool).toBeDefined();
+        turn.onModelRound?.({ messageId: "round-1", toolCallCount: 0 });
+        turn.onModelRound?.({ messageId: "round-1", toolCallCount: 3 });
         const hit = await turn.executeTool!("call-1", "search_transcripts", {
           query: "lake house wifi password",
         });
@@ -1049,17 +1061,38 @@ describe("runRecall", () => {
         expect(unknown.error).toContain(
           "search_memory, search_transcripts, or search_threads",
         );
+        turn.onModelRound?.({ messageId: "round-2", toolCallCount: 0 });
         return "The lake house wifi password is PINETREE42.";
       });
 
       const { args, searchTranscripts } = await makeClaudeCodeArgs(rootPath);
-      const out = await runRecall(args);
+      const telemetryRecords: Array<
+        Parameters<
+          NonNullable<Parameters<typeof runRecall>[0]["onTelemetry"]>
+        >[0]
+      > = [];
+      const out = await runRecall({
+        ...args,
+        onTelemetry: (record) => telemetryRecords.push(record),
+      });
 
       expect(out).toBe("The lake house wifi password is PINETREE42.");
       expect(searchTranscripts).toHaveBeenCalledWith({
         query: "lake house wifi password",
         limit: 12,
       });
+      expect(telemetryRecords).toHaveLength(1);
+      expect(telemetryRecords[0]).toMatchObject({
+        modelCalls: 2,
+        toolRounds: 1,
+      });
+      const toolMs =
+        telemetryRecords[0]?.sourceTimings["tool.transcriptSearch"]?.ms ?? 0;
+      expect(toolMs).toBeGreaterThan(30);
+      expect(
+        (telemetryRecords[0]?.totalMs ?? 0) -
+          (telemetryRecords[0]?.modelMs ?? 0),
+      ).toBeGreaterThanOrEqual(toolMs - 5);
       vi.mocked(shouldUseClaudeCodeAgentRuntime).mockReturnValue(false);
     });
 

@@ -445,6 +445,11 @@ type ClaudeCodeTurnRequest = {
     toolArgs: Record<string, unknown>;
   }) => void;
   onStream?: (chunk: string) => void;
+  /** Diagnostic boundary: one finalized Claude assistant message is one model round. */
+  onModelRound?: (args: {
+    messageId?: string;
+    toolCallCount: number;
+  }) => void;
   onStatusChange?: (status: ClaudeCodeStatusChange) => void;
   abortSignal?: AbortSignal;
 };
@@ -928,6 +933,27 @@ export const createClaudeCodeStreamEmitter = (
     boundaryPending = false;
     lastVisibleChar = out.at(-1) ?? lastVisibleChar;
     onStream?.(out);
+  };
+};
+
+export const getClaudeCodeModelRoundFromStreamEvent = (
+  event: Record<string, unknown>,
+): { messageId?: string; toolCallCount: number } | null => {
+  if (event.type !== "assistant") return null;
+  const message = asObject(event.message);
+  const content = message?.content;
+  const messageId =
+    typeof message?.id === "string" && message.id.trim()
+      ? message.id.trim()
+      : undefined;
+  if (!Array.isArray(content)) {
+    return { ...(messageId ? { messageId } : {}), toolCallCount: 0 };
+  }
+  return {
+    ...(messageId ? { messageId } : {}),
+    toolCallCount: content.filter(
+      (raw) => asObject(raw)?.type === "tool_use",
+    ).length,
   };
 };
 
@@ -1969,6 +1995,14 @@ class ClaudeCodeSessionRuntime {
           getClaudeCodeModelFallbackFromStreamEvent(parsedLine);
         const current = processState.pending[0];
         if (current) {
+          const modelRound = getClaudeCodeModelRoundFromStreamEvent(parsedLine);
+          if (modelRound) {
+            try {
+              current.request.onModelRound?.(modelRound);
+            } catch {
+              // Diagnostic observers must never disrupt the engine stream.
+            }
+          }
           if (
             updateClaudeCodeNativeToolActivity(
               parsedLine,
