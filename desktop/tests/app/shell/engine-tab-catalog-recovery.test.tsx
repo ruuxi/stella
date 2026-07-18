@@ -35,39 +35,39 @@ vi.mock("@/global/settings/hooks/use-llm-credentials", () => ({
   }),
 }));
 
+vi.mock("@/global/settings/EnginePickerPill", () => ({
+  EnginePickerPill: () => null,
+}));
 vi.mock("@/global/settings/ProviderModelPanel", () => ({
   ProviderModelPanel: () => null,
 }));
 vi.mock("@/global/settings/ProviderOnlyPicker", () => ({
   ProviderOnlyPicker: () => null,
 }));
-vi.mock("@/global/settings/VoiceCatalogPicker", () => ({
-  VoiceCatalogPicker: () => null,
+vi.mock("@/global/settings/VoiceProviderPicker", () => ({
+  VoiceProviderPicker: () => null,
 }));
 vi.mock("@/global/billing/audience", () => ({
   resolveBillingAudience: () => null,
   getPlanLabel: () => "",
   isRestrictedModelOverrideAudience: () => false,
 }));
-vi.mock("@/router", () => ({ router: { navigate: vi.fn() } }));
-vi.mock("@/features/workspace-display/default-tabs", () => ({
-  openEngineDisplayTab: vi.fn(),
-}));
-vi.mock("@/shared/hooks/use-edge-fade", () => ({
-  useEdgeFadeRef: () => ({ current: null }),
-}));
-vi.mock("@/ui/brand-icon", () => ({ BrandIcon: () => null }));
 vi.mock("@/ui/icons", () => ({
-  Check: () => null,
-  ChevronDown: () => null,
+  Lightbulb: () => null,
   MoreHorizontal: () => null,
   RefreshCw: () => null,
   RotateCcw: () => null,
+  Search: () => null,
+  Star: () => null,
 }));
 vi.mock("@/ui/dropdown-menu", () => ({
   DropdownMenu: ({ children }: { children?: unknown }) => children ?? null,
   DropdownMenuContent: () => null,
   DropdownMenuItem: () => null,
+  DropdownMenuRadioGroup: ({ children }: { children?: unknown }) =>
+    children ?? null,
+  DropdownMenuRadioItem: ({ children }: { children?: unknown }) =>
+    children ?? null,
   DropdownMenuSeparator: () => null,
   DropdownMenuTrigger: ({ children }: { children?: unknown }) =>
     children ?? null,
@@ -94,40 +94,39 @@ const preferences = {
   realtimeVoice: { provider: "stella" as const },
 };
 
-const runtimeModel = (provider: string, id: string, name: string) => ({
-  id,
-  name,
-  provider,
-  api: "openai-responses",
-  baseUrl: "https://example.test/v1",
-  reasoning: true,
-  input: ["text"] as Array<"text">,
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 128_000,
-  maxTokens: 16_384,
-});
-
-const recoveredSnapshot: RuntimeModelCatalogSnapshot = {
-  revision: 101,
-  models: [
-    runtimeModel("openai-codex", "gpt-5.6-sol", "GPT-5.6 Sol"),
-    runtimeModel("anthropic", "claude-opus-4-8", "Claude Opus 4.8"),
-    runtimeModel("google", "gemini-3-flash-preview", "Gemini 3 Flash"),
-    runtimeModel("xai", "grok-4.5", "Grok 4.5"),
-  ],
+const emptySnapshot: RuntimeModelCatalogSnapshot = {
+  revision: 100,
+  models: [],
   runtimeManagedProviders: [],
-  refreshedAt: 101,
+  refreshedAt: null,
 };
 
-const restartedSnapshot: RuntimeModelCatalogSnapshot = {
-  revision: 202,
+const recoveredSnapshot: RuntimeModelCatalogSnapshot = {
+  revision: 200,
   models: [
-    ...recoveredSnapshot.models,
-    runtimeModel("openai-codex", "gpt-5.5", "GPT-5.5"),
-    runtimeModel("groq", "qwen3-32b", "Qwen3 32B"),
+    {
+      id: "gpt-5.6-sol",
+      name: "GPT-5.6 Sol",
+      provider: "openai-codex",
+      api: "openai-responses",
+      baseUrl: "https://example.test/v1",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128_000,
+      maxTokens: 16_384,
+    },
   ],
   runtimeManagedProviders: [],
-  refreshedAt: 202,
+  refreshedAt: 200,
+};
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 };
 
 const settle = async () => {
@@ -138,7 +137,7 @@ const settle = async () => {
   }
 };
 
-describe("AgentModelPicker catalog recovery", () => {
+describe("EngineTabContent catalog recovery", () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -158,32 +157,25 @@ describe("AgentModelPicker catalog recovery", () => {
     vi.restoreAllMocks();
   });
 
-  it("recovers the real ChatGPT/provider picker path after runner rejection, ready availability, and refresh", async () => {
-    let availabilityListener:
-      | ((snapshot: { connected: boolean; ready: boolean }) => void)
-      | undefined;
+  it("refreshes runtime and Codex catalogs together until their intersection recovers", async () => {
+    const runtimeRefresh = deferred<RuntimeModelCatalogSnapshot>();
+    const codexRefresh = deferred<{
+      models: Array<{ id: string; hidden: boolean }>;
+    }>();
     const listLlmModels = vi
       .fn()
-      .mockRejectedValueOnce(
-        new Error("Stella runtime model catalog is not ready."),
-      )
-      .mockResolvedValueOnce(recoveredSnapshot)
-      .mockResolvedValueOnce(restartedSnapshot);
-    const listCodexModels = vi.fn(async () => ({
-      models: [
-        { id: "gpt-5.6-sol", hidden: false },
-        { id: "gpt-5.5", hidden: false },
-      ],
-    }));
+      .mockResolvedValueOnce(emptySnapshot)
+      .mockImplementationOnce(() => runtimeRefresh.promise);
+    const liveCodexModels = {
+      models: [{ id: "gpt-5.6-sol", hidden: false }],
+    };
+    const listCodexModels = vi
+      .fn()
+      .mockResolvedValueOnce(liveCodexModels)
+      .mockImplementationOnce(() => codexRefresh.promise);
+
     (window as unknown as { electronAPI: unknown }).electronAPI = {
-      agent: {
-        onAvailability: vi.fn(
-          (listener: NonNullable<typeof availabilityListener>) => {
-            availabilityListener = listener;
-            return () => {};
-          },
-        ),
-      },
+      agent: { onAvailability: vi.fn(() => () => {}) },
       system: {
         getLocalModelPreferences: vi.fn(async () => ({ ...preferences })),
         setLocalModelPreferences: vi.fn(
@@ -209,47 +201,42 @@ describe("AgentModelPicker catalog recovery", () => {
       ),
     );
 
-    const { AgentModelPicker } =
-      await import("@/global/settings/AgentModelPicker");
+    const { EngineTabContent } =
+      await import("@/shell/display/EngineTabContent");
     await act(async () => {
-      root.render(<AgentModelPicker />);
+      root.render(<EngineTabContent />);
     });
     await settle();
 
     expect(container.textContent).toContain(
-      "Stella runtime model catalog is not ready.",
+      "No models are currently available to both ChatGPT and Codex.",
     );
-    expect(listLlmModels).toHaveBeenCalledTimes(1);
-
-    expect(availabilityListener).toBeTypeOf("function");
-    act(() => availabilityListener?.({ connected: false, ready: false }));
-    act(() => availabilityListener?.({ connected: true, ready: true }));
-    await settle();
-
-    expect(listLlmModels).toHaveBeenCalledTimes(2);
-    expect(container.textContent).not.toContain(
-      "Stella runtime model catalog is not ready.",
-    );
-    expect(container.textContent).toContain("GPT-5.6 Sol");
-    for (const provider of ["Anthropic", "Google", "xAI"]) {
-      expect(
-        container.querySelector(`button[aria-label="${provider}"]`),
-      ).not.toBeNull();
-    }
-
     const refresh = container.querySelector(
-      'button[aria-label="Refresh model catalog"]',
+      ".engine-runtime-model-panel__refresh",
     ) as HTMLButtonElement | null;
     expect(refresh).not.toBeNull();
-    await act(async () => refresh?.click());
-    await settle();
 
-    expect(listLlmModels).toHaveBeenCalledTimes(3);
-    expect(listCodexModels.mock.calls.length).toBeGreaterThanOrEqual(2);
+    await act(async () => {
+      refresh?.click();
+      await Promise.resolve();
+    });
+
+    expect(listLlmModels).toHaveBeenCalledTimes(2);
+    expect(listCodexModels).toHaveBeenCalledTimes(2);
+    expect(refresh?.disabled).toBe(true);
+    expect(refresh?.textContent).toContain("Refreshing…");
+
+    runtimeRefresh.resolve(recoveredSnapshot);
+    await settle();
+    expect(refresh?.disabled).toBe(true);
+    expect(refresh?.textContent).toContain("Refreshing…");
+
+    codexRefresh.resolve(liveCodexModels);
+    await settle();
+    expect(refresh?.disabled).toBe(false);
     expect(container.textContent).not.toContain(
       "No models are currently available to both ChatGPT and Codex.",
     );
-    expect(container.textContent).toContain("GPT-5.5");
-    expect(container.querySelector('button[aria-label="Groq"]')).not.toBeNull();
+    expect(container.textContent).toContain("GPT-5.6 Sol");
   });
 });

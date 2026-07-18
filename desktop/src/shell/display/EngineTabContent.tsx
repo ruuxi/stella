@@ -1083,15 +1083,16 @@ function ModelsSection({
     runtimeModelEngine === "codex_cli" ? "ChatGPT" : "Claude Code";
   const runtimePanelFavoriteScope =
     runtimeModelEngine === "codex_cli" ? "engine:codex" : "engine:claude-code";
+  const chatGptCatalogRefreshing = refreshing || codexCatalog.loading;
   const runtimePanelLoading =
     runtimeModelEngine === "codex_cli"
-      ? codexCatalog.loading
+      ? chatGptCatalogRefreshing
       : claudeCodeModelsLoading;
   const runtimePanelRefresh =
     runtimeModelEngine === "codex_cli"
-      ? () => {
+      ? async () => {
           onExplicitCodexAction();
-          void codexCatalog.refresh();
+          await Promise.all([refresh(), codexCatalog.refresh()]);
         }
       : onRefreshClaudeCodeModels;
   const runtimePanelState =
@@ -1102,7 +1103,7 @@ function ModelsSection({
             kind: "error" as const,
             message: `ChatGPT models could not be verified: ${codexCatalog.error}`,
           }
-        : codexCatalog.loading
+        : chatGptCatalogRefreshing
           ? {
               kind: "status" as const,
               message: "Verifying ChatGPT models…",
@@ -1211,7 +1212,7 @@ function ModelsSection({
                   inputsDisabled ||
                   (runtimeModelEngine === "codex_cli" && !chatGptConnected) ||
                   (runtimeModelEngine === "codex_cli" &&
-                    codexCatalog.loading) ||
+                    chatGptCatalogRefreshing) ||
                   (runtimeModelEngine === "codex_cli" &&
                     codexCatalog.models === null)
                 }
