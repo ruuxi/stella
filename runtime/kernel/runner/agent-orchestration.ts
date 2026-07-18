@@ -658,6 +658,7 @@ export const createAgentOrchestration = (
       shouldContinueSelfModLifecycleAfterInterrupt,
       subagentSession,
       onProgress,
+      onStatus,
       onToolStart,
       onToolEnd,
       toolExecutor,
@@ -1097,6 +1098,9 @@ export const createAgentOrchestration = (
                   onEnd: (event) => runnerCallbacks.onEnd(event),
                 }
               : {}),
+            onStatus: (event) => {
+              onStatus?.(event);
+            },
             onToolStart: (event) => {
               onToolStart?.(event);
               runnerCallbacks?.onToolStart(event);

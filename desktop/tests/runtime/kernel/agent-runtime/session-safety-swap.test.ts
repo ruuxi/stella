@@ -11,9 +11,17 @@ import {
   serializeQuarantineRecord,
 } from "../../../../../runtime/kernel/agent-runtime/provider-abort-containment.js";
 import { executeRuntimeAgentPrompt } from "../../../../../runtime/kernel/agent-runtime/run-execution.js";
+import {
+  executeAgentTurnWithRetry,
+  type AgentRunFailure,
+} from "../../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
 import type { ResolvedLlmRoute } from "../../../../../runtime/kernel/model-routing.js";
 import { providerAbortedStopMessage } from "../../../../../runtime/ai/utils/provider-stop.js";
-import type { Api, Model, StopReason } from "../../../../../runtime/ai/types.js";
+import type {
+  Api,
+  Model,
+  StopReason,
+} from "../../../../../runtime/ai/types.js";
 
 const SAFETY_ABORT_MESSAGE = providerAbortedStopMessage("refusal");
 
@@ -26,7 +34,10 @@ const usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-const userMessage = (timestamp: number, text = "do the thing"): AgentMessage => ({
+const userMessage = (
+  timestamp: number,
+  text = "do the thing",
+): AgentMessage => ({
   role: "user",
   content: text,
   timestamp,
@@ -91,6 +102,13 @@ class TestSession extends PiSessionCore {
   retrySameModel(agent: Agent, errorMessage: string) {
     return this.prepareSafetySameModelRetry(agent, {
       errorMessage,
+      logContext: {},
+    });
+  }
+
+  retryRun(agent: Agent, failure: AgentRunFailure) {
+    return this.prepareAgentRunRetry(agent, {
+      failure,
       logContext: {},
     });
   }
@@ -283,6 +301,97 @@ describe("swap-resume flow (end to end)", () => {
   });
 });
 
+describe("transient run retry resume flow", () => {
+  it("resumes after completed tool results without replaying the side effect", async () => {
+    const route = fableStellaRoute();
+    const session = new TestSession();
+    session.setRoute(route);
+
+    const messages: AgentMessage[] = [];
+    const agent = fakeAgent(messages, route);
+    const sideEffect = vi.fn();
+    agent.prompt.mockImplementation(async (prompted: AgentMessage[]) => {
+      messages.push(...prompted);
+      sideEffect();
+      messages.push({
+        role: "toolResult",
+        toolCallId: "call-write",
+        toolName: "apply_patch",
+        content: [{ type: "text", text: "write completed" }],
+        isError: false,
+        timestamp: 50,
+      });
+      messages.push(
+        assistantMessage(100, "error", {
+          errorMessage: "relay_stream_lost",
+        }),
+      );
+    });
+    agent.continue.mockImplementation(async () => {
+      expect(messages.at(-1)?.role).toBe("toolResult");
+      messages.push(assistantMessage(200, "stop", { text: "recovered" }));
+    });
+
+    const result = await executeAgentTurnWithRetry({
+      execute: (resume) =>
+        executeRuntimeAgentPrompt({
+          agent,
+          promptMessages: [{ text: "make one durable change" }],
+          runId: "run-transient-tool",
+          agentType: "general",
+          userMessageId: "msg-transient-tool",
+          recorder: {} as never,
+          ...(resume ? { resume: true } : {}),
+        }),
+      prepareRetry: (failure) => session.retryRun(agent, failure),
+      random: () => 0.5,
+      sleep: async () => undefined,
+    });
+
+    expect(result).toMatchObject({ finalText: "recovered", attempts: 2 });
+    expect(sideEffect).toHaveBeenCalledOnce();
+    expect(agent.prompt).toHaveBeenCalledOnce();
+    expect(agent.continue).toHaveBeenCalledOnce();
+  });
+
+  it("retries a clean empty assistant tail instead of finalizing fake success", async () => {
+    const route = fableStellaRoute();
+    const session = new TestSession();
+    session.setRoute(route);
+
+    const messages: AgentMessage[] = [];
+    const agent = fakeAgent(messages, route);
+    agent.prompt.mockImplementation(async (prompted: AgentMessage[]) => {
+      messages.push(...prompted);
+      messages.push(assistantMessage(100, "stop"));
+    });
+    agent.continue.mockImplementation(async () => {
+      expect(messages.at(-1)?.role).toBe("user");
+      messages.push(assistantMessage(200, "stop", { text: "real result" }));
+    });
+
+    const result = await executeAgentTurnWithRetry({
+      execute: (resume) =>
+        executeRuntimeAgentPrompt({
+          agent,
+          promptMessages: [{ text: "return a result" }],
+          runId: "run-empty-retry",
+          agentType: "general",
+          userMessageId: "msg-empty-retry",
+          recorder: {} as never,
+          ...(resume ? { resume: true } : {}),
+        }),
+      prepareRetry: (failure) => session.retryRun(agent, failure),
+      random: () => 0.5,
+      sleep: async () => undefined,
+    });
+
+    expect(result).toMatchObject({ finalText: "real result", attempts: 2 });
+    expect(agent.prompt).toHaveBeenCalledOnce();
+    expect(agent.continue).toHaveBeenCalledOnce();
+  });
+});
+
 describe("quarantine restart re-seeding through the session", () => {
   it("re-masks persisted quarantine records on a fresh session", () => {
     const route = fableStellaRoute();
@@ -298,7 +407,10 @@ describe("quarantine restart re-seeding through the session", () => {
           customMessage: {
             customType: QUARANTINE_CUSTOM_TYPE,
             content: [
-              { type: "text" as const, text: serializeQuarantineRecord(record) },
+              {
+                type: "text" as const,
+                text: serializeQuarantineRecord(record),
+              },
             ],
             display: false,
           },

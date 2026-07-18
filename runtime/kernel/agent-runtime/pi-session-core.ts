@@ -16,6 +16,7 @@ import {
 } from "./provider-abort-containment.js";
 import { createRuntimeAgent, resolveAgentThinkingLevel } from "./shared.js";
 import { buildHistorySource } from "./thread-memory.js";
+import type { AgentRunFailure } from "./agent-run-retry.js";
 
 type CreateRuntimeAgentArgs = Parameters<typeof createRuntimeAgent>[0];
 
@@ -177,7 +178,7 @@ export class PiSessionCore {
     if (!isProviderContentAbortMessage(args.errorMessage)) return null;
     const swap = buildSafetyAbortSwapRoute(this.currentResolvedLlm);
     if (!swap) return null;
-    if (!this.popErroredTailForResume(agent)) return null;
+    if (!this.popAssistantTailForResume(agent)) return null;
 
     this.setResolvedLlm(swap.route);
     agent.state.model = swap.route.model;
@@ -207,7 +208,7 @@ export class PiSessionCore {
     if (!this.currentResolvedLlm) return null;
     if (!isProviderContentAbortMessage(args.errorMessage)) return null;
     if (!buildSafetyAbortSwapRoute(this.currentResolvedLlm)) return null;
-    if (!this.popErroredTailForResume(agent)) return null;
+    if (!this.popAssistantTailForResume(agent)) return null;
 
     const modelId = this.currentResolvedLlm.model.id;
     this.logger.warn("safety-same-model-retry", {
@@ -220,6 +221,33 @@ export class PiSessionCore {
   }
 
   /**
+   * Prepare a transient run-level retry without appending another user turn.
+   * Only the failed (or clean-but-empty) assistant tail is removed. Any tool
+   * result immediately before it remains in context, so `continue()` resumes
+   * after completed side effects instead of executing them again.
+   */
+  protected prepareAgentRunRetry(
+    agent: Agent,
+    args: { failure: AgentRunFailure; logContext: SessionLogContext },
+  ): boolean {
+    if (!args.failure.retryable) return false;
+    if (
+      !this.popAssistantTailForResume(agent, {
+        allowEmpty: args.failure.category === "empty_response",
+      })
+    ) {
+      return false;
+    }
+    this.logger.warn("agent-run-retry", {
+      threadKey: this.threadKey,
+      category: args.failure.category,
+      providerError: args.failure.message,
+      ...args.logContext,
+    });
+    return true;
+  }
+
+  /**
    * Pop the errored assistant tail so `continue()` resumes from the prompt
    * instead of refusing on a trailing assistant message. Inspects the tail
    * WITHOUT mutating it first: only commits to the pop once the retry is
@@ -229,20 +257,32 @@ export class PiSessionCore {
    * shape is unexpected (e.g. failure mid-tool-loop) and resuming would
    * throw.
    */
-  private popErroredTailForResume(agent: Agent): boolean {
+  private popAssistantTailForResume(
+    agent: Agent,
+    options?: { allowEmpty?: boolean },
+  ): boolean {
     const messages = agent.state.messages;
     const last = messages[messages.length - 1];
     const popErroredTail =
       last?.role === "assistant" &&
       (last.stopReason === "error" || last.stopReason === "aborted");
-    const tailAfterPop = popErroredTail
+    const popEmptyTail =
+      options?.allowEmpty === true &&
+      last?.role === "assistant" &&
+      !last.content.some(
+        (block) =>
+          block.type === "toolCall" ||
+          (block.type === "text" && block.text.trim().length > 0),
+      );
+    const popAssistantTail = popErroredTail || popEmptyTail;
+    const tailAfterPop = popAssistantTail
       ? messages[messages.length - 2]
       : last;
-    if (tailAfterPop?.role === "assistant") {
+    if (!tailAfterPop || tailAfterPop.role === "assistant") {
       return false;
     }
-    if (popErroredTail) {
-      // Drop the aborted stream's partial output.
+    if (popAssistantTail) {
+      // Drop the failed stream's partial output or the clean-but-empty reply.
       messages.pop();
     }
     return true;

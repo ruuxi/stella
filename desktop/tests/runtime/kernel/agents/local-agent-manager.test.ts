@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   AGENT_ORPHANED_RESTART_CANCEL_REASON,
@@ -24,6 +24,7 @@ import {
 import { waitForAgentSettled } from "../../../helpers/agent.js";
 import { buildAgentEventPrompt } from "../../../../../runtime/kernel/runner/shared.js";
 import type { PersistedAgentRecord } from "../../../../../runtime/kernel/storage/session-store.js";
+import { executeAgentTurnWithRetry } from "../../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -48,6 +49,84 @@ describe("task tool activity sanitization", () => {
 });
 
 describe("manager agent orchestration", () => {
+  it("shows retry progress and preserves an accepted final report exactly once", async () => {
+    const events: AgentLifecycleEvent[] = [];
+    const reportSideEffect = vi.fn();
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 2,
+      }),
+      runSubagent: async (args) => {
+        const retried = await executeAgentTurnWithRetry({
+          execute: async (resume) => {
+            if (!resume) {
+              reportSideEffect();
+              const report = await args.toolExecutor(
+                "report",
+                { message: "Durable retry-safe final report.", final: true },
+                {} as ToolContext,
+              );
+              expect(report.error).toBeUndefined();
+              return { finalText: "", errorMessage: "relay_stream_lost" };
+            }
+            return { finalText: "Private Manager completion text." };
+          },
+          prepareRetry: () => true,
+          onRetry: (info) =>
+            args.onStatus?.({
+              statusState: "provider-retry",
+              statusText: `Retrying attempt ${info.attempt} of ${info.maxAttempts}`,
+            }),
+          random: () => 0.5,
+          sleep: async () => undefined,
+        });
+        return {
+          runId: args.runId,
+          result: retried.finalText,
+          ...(retried.errorMessage ? { error: retried.errorMessage } : {}),
+        };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => events.push(event),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-manager-retry-final",
+      description: "Retry-safe Manager final",
+      prompt: "Report once after transient recovery.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await waitForAgentSettled(manager, task.threadId);
+
+    expect(reportSideEffect).toHaveBeenCalledOnce();
+    expect(
+      events.filter(
+        (event) =>
+          event.type === "agent-progress" &&
+          event.statusText?.includes("Retrying attempt 2 of 4"),
+      ),
+    ).toHaveLength(1);
+    expect(events.filter((event) => event.type === "agent-completed")).toEqual([
+      expect.objectContaining({
+        agentId: task.threadId,
+        result: "Durable retry-safe final report.",
+      }),
+    ]);
+    expect(events.some((event) => event.type === "agent-failed")).toBe(false);
+    expect(JSON.stringify(events)).not.toContain(
+      "Private Manager completion text.",
+    );
+  });
+
   it("parks while children run, routes child completion only to the manager, and emits one consolidated result", async () => {
     const upstreamTerminalEvents: AgentLifecycleEvent[] = [];
     const managerPrompts: string[] = [];

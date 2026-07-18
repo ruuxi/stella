@@ -30,6 +30,11 @@ import type {
   SubagentRunOptions,
   SubagentRunResult,
 } from "./types.js";
+import {
+  executeAgentTurnWithRetry,
+  formatAgentRunRetryStatus,
+  type AgentTurnExecution,
+} from "./agent-run-retry.js";
 
 export class SubagentSession extends PiSessionCore {
   private currentRetryStatusContext: {
@@ -81,8 +86,7 @@ export class SubagentSession extends PiSessionCore {
     // `OrchestratorSession.runTurn`. Without the runId in the payload,
     // any hook that keys on it (e.g. a baseline cache) silently fails
     // to set up its run-scoped state.
-    const runId =
-      opts.runId ?? `local:sub:${crypto.randomUUID()}`;
+    const runId = opts.runId ?? `local:sub:${crypto.randomUUID()}`;
     const effectiveSystemPrompt = await buildSubagentSystemPrompt({
       ...opts,
       runId,
@@ -175,9 +179,7 @@ export class SubagentSession extends PiSessionCore {
         ],
       });
     }
-    let swapAttempted:
-      | { fromModelId: string; toModelId: string }
-      | undefined;
+    let swapAttempted: { fromModelId: string; toModelId: string } | undefined;
 
     runEvents.recordRunStart();
 
@@ -238,7 +240,27 @@ export class SubagentSession extends PiSessionCore {
           : {}),
         ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
       };
-      let execution = await executeRuntimeAgentPrompt(executionArgs);
+      let execution: AgentTurnExecution = await executeAgentTurnWithRetry({
+        execute: (resume) =>
+          executeRuntimeAgentPrompt({
+            ...executionArgs,
+            ...(resume ? { resume: true } : {}),
+          }),
+        prepareRetry: (failure) =>
+          this.prepareAgentRunRetry(agent, {
+            failure,
+            logContext: { threadId: this.threadId, runId },
+          }),
+        ...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
+        onRetry: (info) => {
+          opts.callbacks?.onStatus?.(
+            runEvents.recordStatus(
+              formatAgentRunRetryStatus(info),
+              "provider-retry",
+            ),
+          );
+        },
+      });
 
       // Safety containment: a fable-5 refusal/safety abort first gets
       // retried on the configured model — refusals are often transient — up

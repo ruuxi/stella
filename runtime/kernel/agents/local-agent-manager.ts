@@ -527,6 +527,14 @@ type LocalAgentManagerOpts = {
      */
     subagentSession?: SubagentSession;
     onProgress?: (chunk: string) => void;
+    onStatus?: (event: {
+      statusText: string;
+      statusState:
+        | "running"
+        | "compacting"
+        | "provider-retry"
+        | "model-fallback";
+    }) => void;
     onToolStart?: (event: {
       runId: string;
       seq: number;
@@ -1725,6 +1733,30 @@ export class LocalAgentManager implements AgentToolApi {
           if (!compact) return;
           task.recentActivity = [truncate(compact, 500)];
           task.lastActivityAt = Date.now();
+        },
+        onStatus: (event) => {
+          if (event.statusState !== "provider-retry") return;
+          if (
+            !isCurrentAttempt() ||
+            attempt.controller.signal.aborted ||
+            task.status === "canceled"
+          ) {
+            return;
+          }
+          const statusText = truncate(event.statusText, 500);
+          task.recentActivity = [statusText];
+          task.lastActivityAt = Date.now();
+          this.opts.onAgentEvent?.({
+            type: "agent-progress",
+            conversationId: task.conversationId,
+            rootRunId: task.rootRunId,
+            agentId: task.threadId,
+            agentType: task.agentType,
+            description: task.description,
+            parentAgentId: task.parentAgentId,
+            attemptGeneration: attempt.generation,
+            statusText,
+          });
         },
         onToolStart: (ev) => {
           // Once cancelAgent has marked this task canceled, suppress any

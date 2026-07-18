@@ -29,6 +29,7 @@ import type {
   LocalChatAppendEventArgs,
   SqliteDatabase,
 } from "../../../../../runtime/kernel/storage/shared.js";
+import { executeAgentTurnWithRetry } from "../../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
 
 type MockRunArgs = {
   agentId?: string;
@@ -43,6 +44,12 @@ type MockRunArgs = {
     args: Record<string, unknown>,
     context: ToolContext,
   ) => Promise<unknown>;
+  callbacks?: {
+    onStatus?: (event: {
+      statusText: string;
+      statusState: "provider-retry";
+    }) => void;
+  };
 };
 
 const runMock = vi.hoisted(() => ({
@@ -52,6 +59,7 @@ const runMock = vi.hoisted(() => ({
         runId: string;
         result: string;
         interrupted?: boolean;
+        error?: string;
       }>),
 }));
 
@@ -240,6 +248,178 @@ afterEach(async () => {
 });
 
 describe("manager orchestration production routing", () => {
+  it("routes an exhausted top-level failure as a structured orchestrator event", async () => {
+    const { manager, appendedEvents, sentMessages, streamedAgentEvents } =
+      createHarness();
+    let attempts = 0;
+    runMock.handler = async (args) => {
+      const retried = await executeAgentTurnWithRetry({
+        execute: async () => {
+          attempts += 1;
+          return { finalText: "", errorMessage: "500 Server Error" };
+        },
+        prepareRetry: () => true,
+        onRetry: (info) =>
+          args.callbacks?.onStatus?.({
+            statusState: "provider-retry",
+            statusText: `Retrying attempt ${info.attempt} of ${info.maxAttempts}`,
+          }),
+        random: () => 0.5,
+        sleep: async () => undefined,
+      });
+      return {
+        runId: "top-level-exhausted",
+        result: retried.finalText,
+        ...(retried.errorMessage ? { error: retried.errorMessage } : {}),
+      };
+    };
+
+    const task = await manager.createAgent({
+      conversationId: "conversation-top-level-failure",
+      rootRunId: "root-filter-run",
+      description: "Top-level transient failure",
+      prompt: "Retry and report failure if recovery exhausts.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await waitUntil(
+      async () => (await manager.getAgent(task.threadId))?.status === "error",
+    );
+
+    expect(attempts).toBe(4);
+    expect(
+      streamedAgentEvents.filter(
+        (event) =>
+          event.type === "agent-progress" &&
+          event.agentId === task.threadId &&
+          event.statusText?.startsWith("Retrying attempt"),
+      ),
+    ).toHaveLength(3);
+    expect(JSON.stringify(appendedEvents)).not.toContain("Retrying attempt");
+    expect(JSON.stringify(sentMessages)).not.toContain("Retrying attempt");
+    expect(appendedEvents).toContainEqual(
+      expect.objectContaining({
+        type: "agent-failed",
+        eventId: `${task.threadId}:1:agent-failed`,
+        payload: expect.objectContaining({
+          agentId: task.threadId,
+          attemptGeneration: 1,
+          error: expect.stringContaining(
+            "Automatic recovery exhausted after 4 attempts (http_5xx)",
+          ),
+        }),
+      }),
+    );
+    expect(sentMessages).toContainEqual(
+      expect.objectContaining({
+        text: expect.stringContaining("[Task failed]"),
+        responseTarget: expect.objectContaining({
+          type: "agent_turn",
+          agentId: task.threadId,
+        }),
+      }),
+    );
+  });
+
+  it("routes an exhausted child failure only to its owning Manager", async () => {
+    const { manager, store, appendedEvents, sentMessages } = createHarness();
+    let releaseManagerFirst!: () => void;
+    const managerFirstGate = new Promise<void>((resolve) => {
+      releaseManagerFirst = resolve;
+    });
+    let managerRuns = 0;
+    let childAttempts = 0;
+
+    runMock.handler = async (args) => {
+      if (args.agentType === AGENT_IDS.MANAGER) {
+        managerRuns += 1;
+        if (managerRuns === 1) {
+          await managerFirstGate;
+          return { runId: "manager-wait", result: "Waiting for child." };
+        }
+        expect(historyText(args)).toContain("[Task failed]");
+        expect(historyText(args)).toContain(
+          "Automatic recovery exhausted after 4 attempts",
+        );
+        await reportManager(
+          args,
+          "Manager adapted after the child retry failure.",
+          true,
+        );
+        return {
+          runId: "manager-adapted",
+          result: "Private Manager completion.",
+        };
+      }
+
+      const retried = await executeAgentTurnWithRetry({
+        execute: async () => {
+          childAttempts += 1;
+          return { finalText: "", errorMessage: "relay_stream_lost" };
+        },
+        prepareRetry: () => true,
+        random: () => 0.5,
+        sleep: async () => undefined,
+      });
+      return {
+        runId: "child-exhausted",
+        result: retried.finalText,
+        ...(retried.errorMessage ? { error: retried.errorMessage } : {}),
+      };
+    };
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conversation-owner-failure",
+      description: "Own retrying child",
+      prompt: "Adapt if the child fails.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const childTask = await manager.createAgent({
+      conversationId: "conversation-owner-failure",
+      description: "Transient child",
+      prompt: "Retry transient transport failures.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+    releaseManagerFirst();
+
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(childTask.threadId))?.status === "error",
+    );
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(managerTask.threadId))?.status === "completed",
+    );
+
+    expect(childAttempts).toBe(4);
+    const managerHistory = store.loadThreadMessages(managerTask.threadId);
+    expect(
+      managerHistory.filter((message) =>
+        message.customMessage?.content.some(
+          (block) =>
+            block.type === "text" &&
+            block.text.includes(
+              "Automatic recovery exhausted after 4 attempts",
+            ),
+        ),
+      ),
+    ).toHaveLength(1);
+    expect(JSON.stringify(appendedEvents)).not.toContain(childTask.threadId);
+    expect(JSON.stringify(sentMessages)).not.toContain(childTask.threadId);
+    expect(JSON.stringify(sentMessages)).not.toContain("relay_stream_lost");
+    expect(JSON.stringify(appendedEvents)).toContain(managerTask.threadId);
+    expect(JSON.stringify(sentMessages)).toContain(
+      "Manager adapted after the child retry failure.",
+    );
+  });
+
   it("starts spawn_manager with the spawning Orchestrator model snapshot in a customized existing home", async () => {
     let harness = createHarness();
     await mkdir(path.join(harness.rootPath, "agents"), { recursive: true });

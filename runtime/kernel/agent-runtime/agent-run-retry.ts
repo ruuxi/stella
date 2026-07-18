@@ -1,0 +1,306 @@
+export const AGENT_RUN_MAX_ATTEMPTS = 4;
+export const AGENT_RUN_RETRY_DELAYS_MS = [1_000, 2_500, 6_000] as const;
+export const AGENT_RUN_RETRY_JITTER_RATIO = 0.1;
+
+export const EMPTY_AGENT_RUN_ERROR =
+  "The model ended the turn without a user-visible reply.";
+
+export type AgentRunFailureCategory =
+  | "http_5xx"
+  | "rate_limit"
+  | "relay_stream_lost"
+  | "relay_response_missing"
+  | "transport"
+  | "empty_response"
+  | "auth"
+  | "invalid_model_or_route"
+  | "canceled"
+  | "non_retryable";
+
+export type AgentRunFailure = {
+  category: AgentRunFailureCategory;
+  message: string;
+  retryable: boolean;
+};
+
+export type AgentTurnExecution = {
+  finalText: string;
+  errorMessage?: string;
+};
+
+export type AgentRunRetryInfo = AgentRunFailure & {
+  attempt: number;
+  maxAttempts: number;
+  delayMs: number;
+};
+
+export const formatAgentRunRetryStatus = (info: AgentRunRetryInfo): string => {
+  const seconds = Math.max(0.1, info.delayMs / 1_000);
+  const formattedSeconds = Number.isInteger(seconds)
+    ? String(seconds)
+    : seconds.toFixed(1).replace(/\.0$/, "");
+  return `Connection interrupted. Retrying in ${formattedSeconds}s (attempt ${info.attempt} of ${info.maxAttempts})`;
+};
+
+const errorMessage = (error: unknown): string => {
+  if (error instanceof Error) return error.message || error.name;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+};
+
+const numericStatus = (error: unknown): number | undefined => {
+  if (!error || typeof error !== "object") return undefined;
+  const candidate = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    response?: { status?: unknown };
+  };
+  const status =
+    candidate.status ?? candidate.statusCode ?? candidate.response?.status;
+  return typeof status === "number" && Number.isFinite(status)
+    ? status
+    : undefined;
+};
+
+const errorCode = (error: unknown): string | undefined => {
+  if (!error || typeof error !== "object") return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code.trim().toUpperCase() : undefined;
+};
+
+const errorName = (error: unknown): string | undefined =>
+  error instanceof Error ? error.name : undefined;
+
+const isExplicitCancellation = (
+  message: string,
+  code?: string,
+  name?: string,
+): boolean =>
+  name === "AbortError" ||
+  code === "ABORT_ERR" ||
+  /\b(?:request was aborted|aborted by (?:the )?user|explicit(?:ly)? cancel(?:ed|led)|cancel(?:ed|led) by (?:the )?user|user cancel(?:ed|led)|task was cancel(?:ed|led)|operation was cancel(?:ed|led))\b/i.test(
+    message,
+  );
+
+const isAuthFailure = (message: string, status?: number): boolean =>
+  status === 401 ||
+  status === 403 ||
+  /\b(?:http(?: status)?\s*[:=]?\s*)?(?:401|403)\b|\b(?:unauthorized|forbidden|authentication(?: failed| error)|authenticationerror|invalid api key|invalid_api_key|missing api key|permission denied)\b/i.test(
+    message,
+  );
+
+const isInvalidModelOrRoute = (message: string): boolean =>
+  /\b(?:invalid|unknown|unsupported|unrecognized)\s+(?:model|route)\b|\b(?:model|route)[-_ ]not[-_ ]found\b|\bno (?:valid )?(?:model|route)\b|\b(?:model|route)\s+[^\n]{0,100}\s+not found\b/i.test(
+    message,
+  );
+
+const isRelayResponseMissing = (message: string, status?: number): boolean =>
+  /\brelay response (?:was )?not found\b/i.test(message) ||
+  (status === 404 &&
+    /\brelay\b[^\n]*\bresponse\b[^\n]*\bnot found\b/i.test(message));
+
+const isRelayStreamLost = (message: string, code?: string): boolean =>
+  code === "RELAY_STREAM_LOST" ||
+  /\brelay[_ -]stream[_ -]lost\b|\bupstream response (?:was )?lost before a terminal event\b/i.test(
+    message,
+  );
+
+const isRateLimit = (message: string, status?: number): boolean =>
+  status === 429 ||
+  /\b(?:http(?: status)?\s*[:=]?\s*)?429\b|\btoo many requests\b|\brate limit(?:ed|ing)?\b|\brelay buffer quota exceeded\b|\btransient relay[^\n]*quota exceeded\b/i.test(
+    message,
+  );
+
+const isHttp5xx = (message: string, status?: number): boolean =>
+  (typeof status === "number" && status >= 500 && status <= 599) ||
+  /(?:^|\b)(?:http(?: status)?|status(?: code)?|upstream)\s*[:=]?\s*5\d\d\b|(?:^|\b)5\d\d\s+server error\b|\bserver error\s*[:=]?\s*5\d\d\b/i.test(
+    message,
+  );
+
+const TRANSPORT_CODES = new Set([
+  "ECONNABORTED",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTUNREACH",
+  "EPIPE",
+  "ETIMEDOUT",
+  "EAI_AGAIN",
+  "ENETDOWN",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "UND_ERR_SOCKET",
+]);
+
+const isTransportFailure = (message: string, code?: string): boolean =>
+  (code !== undefined && TRANSPORT_CODES.has(code)) ||
+  /\b(?:ECONNABORTED|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|EPIPE|ETIMEDOUT|EAI_AGAIN|ENETDOWN|ENETUNREACH|ENOTFOUND|UND_ERR_SOCKET)\b|\bunexpected eof\b|\bpremature (?:stream )?close\b|\bconnection (?:reset|refused|closed|terminated|timed? out)\b|\bsocket (?:hang up|closed|reset|terminated)\b|\bfetch failed\b|\bfailed to fetch\b|\bnetwork (?:error|offline)\b|\btransport (?:error|eof|timeout)\b|\btimed? out\b|\btimeout\b|\bdid not produce activity for \d+(?:\.\d+)?s\b/i.test(
+    message,
+  );
+
+export const classifyAgentRunFailure = (error: unknown): AgentRunFailure => {
+  const message = errorMessage(error).trim() || "Agent run failed";
+  const status = numericStatus(error);
+  const code = errorCode(error);
+  const name = errorName(error);
+
+  if (isExplicitCancellation(message, code, name)) {
+    return { category: "canceled", message, retryable: false };
+  }
+  if (isAuthFailure(message, status)) {
+    return { category: "auth", message, retryable: false };
+  }
+  if (isInvalidModelOrRoute(message)) {
+    return { category: "invalid_model_or_route", message, retryable: false };
+  }
+  if (isRelayStreamLost(message, code)) {
+    return { category: "relay_stream_lost", message, retryable: true };
+  }
+  if (isRelayResponseMissing(message, status)) {
+    return { category: "relay_response_missing", message, retryable: true };
+  }
+  if (isRateLimit(message, status)) {
+    return { category: "rate_limit", message, retryable: true };
+  }
+  if (isHttp5xx(message, status)) {
+    return { category: "http_5xx", message, retryable: true };
+  }
+  if (isTransportFailure(message, code)) {
+    return { category: "transport", message, retryable: true };
+  }
+  return { category: "non_retryable", message, retryable: false };
+};
+
+const classifyExecution = (
+  execution: AgentTurnExecution,
+): AgentRunFailure | null => {
+  if (execution.errorMessage?.trim()) {
+    return classifyAgentRunFailure(execution.errorMessage);
+  }
+  if (!execution.finalText.trim()) {
+    return {
+      category: "empty_response",
+      message: EMPTY_AGENT_RUN_ERROR,
+      retryable: true,
+    };
+  }
+  return null;
+};
+
+export const agentRunRetryDelayMs = (
+  retryIndex: number,
+  random: () => number = Math.random,
+): number => {
+  const base =
+    AGENT_RUN_RETRY_DELAYS_MS[
+      Math.min(Math.max(0, retryIndex), AGENT_RUN_RETRY_DELAYS_MS.length - 1)
+    ];
+  const jitter = 1 + (random() * 2 - 1) * AGENT_RUN_RETRY_JITTER_RATIO;
+  return Math.max(0, Math.round(base * jitter));
+};
+
+const abortError = (signal: AbortSignal): Error => {
+  const reason = signal.reason;
+  if (reason instanceof Error) return reason;
+  const error = new Error(
+    typeof reason === "string" && reason.trim()
+      ? reason
+      : "Request was aborted",
+  );
+  error.name = "AbortError";
+  return error;
+};
+
+const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError(signal));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(abortError(signal!));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    timer.unref?.();
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+
+const exhaustedMessage = (failure: AgentRunFailure, attempts: number): string =>
+  `Automatic recovery exhausted after ${attempts} attempts (${failure.category}): ${failure.message}`;
+
+export const executeAgentTurnWithRetry = async (args: {
+  execute: (resume: boolean) => Promise<AgentTurnExecution>;
+  prepareRetry: (failure: AgentRunFailure) => boolean;
+  signal?: AbortSignal;
+  onRetry?: (info: AgentRunRetryInfo) => void;
+  maxAttempts?: number;
+  random?: () => number;
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+}): Promise<AgentTurnExecution & { attempts: number }> => {
+  const maxAttempts = Math.max(1, args.maxAttempts ?? AGENT_RUN_MAX_ATTEMPTS);
+  const wait = args.sleep ?? sleep;
+  let attempt = 1;
+
+  for (;;) {
+    if (args.signal?.aborted) throw abortError(args.signal);
+
+    let execution: AgentTurnExecution;
+    let thrownFailure: AgentRunFailure | undefined;
+    try {
+      execution = await args.execute(attempt > 1);
+    } catch (error) {
+      execution = { finalText: "", errorMessage: errorMessage(error) };
+      thrownFailure = classifyAgentRunFailure(error);
+      if (thrownFailure.message !== execution.errorMessage) {
+        execution.errorMessage = thrownFailure.message;
+      }
+    }
+
+    const failure = thrownFailure ?? classifyExecution(execution);
+    if (!failure) return { ...execution, attempts: attempt };
+    if (!failure.retryable) {
+      return {
+        finalText: execution.finalText,
+        errorMessage: failure.message,
+        attempts: attempt,
+      };
+    }
+    if (attempt >= maxAttempts) {
+      return {
+        finalText: execution.finalText,
+        errorMessage: exhaustedMessage(failure, attempt),
+        attempts: attempt,
+      };
+    }
+
+    const delayMs = agentRunRetryDelayMs(attempt - 1, args.random);
+    const nextAttempt = attempt + 1;
+    try {
+      args.onRetry?.({
+        ...failure,
+        attempt: nextAttempt,
+        maxAttempts,
+        delayMs,
+      });
+    } catch {
+      // Activity/status reporting must never break recovery.
+    }
+    await wait(delayMs, args.signal);
+    if (!args.prepareRetry(failure)) {
+      return {
+        finalText: execution.finalText,
+        errorMessage: `Automatic recovery could not safely resume after attempt ${attempt} (${failure.category}): ${failure.message}`,
+        attempts: attempt,
+      };
+    }
+    attempt = nextAttempt;
+  }
+};
