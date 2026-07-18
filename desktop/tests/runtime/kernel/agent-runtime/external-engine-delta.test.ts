@@ -6,6 +6,9 @@ import { DatabaseSync } from "node:sqlite";
 import {
   buildClaudeCodeTurnPrompts,
   buildExternalThreadUpdatesDelta,
+  createExternalDeltaWatermarkTracker,
+  EXTERNAL_DELTA_MAX_ROW_CHARS,
+  EXTERNAL_DELTA_MAX_TOTAL_CHARS,
   getExternalDeliveredEntryId,
   setExternalDeliveredEntryId,
 } from "../../../../../runtime/kernel/agent-runtime/external-engines.js";
@@ -562,6 +565,266 @@ describe("external-engine out-of-band delta injection", () => {
       expect(
         store.getThreadExternalDeliveredEntryId(threadKey),
       ).toBeUndefined();
+    }));
+
+  it("queued follow-up + recovery reseed: a row consumed by the in-turn cursor still reaches the reseeded session before the watermark passes it", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-12";
+      // History snapshot frozen at context construction — WITHOUT row R.
+      const historyPromptMessage = {
+        messageType: "message" as const,
+        uiVisibility: "hidden" as const,
+        customType: "runtime.stella_thread_history",
+        text: '<stella_thread_history source="stella">\n<history_message index="1" role="user">\nCoordinate the work\n</history_message>\n</stella_thread_history>',
+      };
+      // R lands after the snapshot; the resumed main prompt delivers it.
+      const rowREntryId = appendChildReport(
+        store,
+        threadKey,
+        12_000,
+        "[Agent report] child-a completed: ROW-R-RESULT",
+      );
+      const tracker = createExternalDeltaWatermarkTracker(undefined);
+      const mainDelta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+      });
+      expect(mainDelta.message?.text).toContain("ROW-R-RESULT");
+      tracker.noteMainlineDelta(mainDelta);
+      expect(tracker.cursor).toBe(rowREntryId);
+
+      // Queued follow-up: the cursor-anchored delta rightly excludes R...
+      const queuedDelta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        afterEntryId: tracker.cursor,
+        promptMessages: [{ text: "Queued follow-up." }],
+      });
+      expect(queuedDelta.message).toBeNull();
+      // ...but the queued FALLBACK is anchored at the persisted watermark:
+      // a reseed abandons the session that received R with the main prompt.
+      const queuedFallbackDelta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: "Queued follow-up." }],
+        deliveredContextTexts: [historyPromptMessage.text],
+      });
+      expect(queuedFallbackDelta.message?.text).toContain("ROW-R-RESULT");
+      tracker.noteMainlineDelta(queuedDelta);
+      tracker.noteReseedDelta(queuedFallbackDelta);
+
+      const { prompt: queuedPrompt, resumeFallbackPrompt } =
+        buildClaudeCodeTurnPrompts({
+          historyPromptMessage,
+          promptMessages: [{ text: "Queued follow-up." }],
+          hasPersistedSession: true,
+          deltaPromptMessage: queuedDelta.message,
+          fallbackDeltaPromptMessage: queuedFallbackDelta.message,
+        });
+      // Live session already has R; a reseeded session gets it via fallback.
+      expect(queuedPrompt).not.toContain("ROW-R-RESULT");
+      expect(resumeFallbackPrompt).toContain("ROW-R-RESULT");
+      // Fallback covered R, so the watermark may legitimately pass it.
+      expect(tracker.resolve()).toBe(rowREntryId);
+    }));
+
+  it("queued reseed fallback exists even when the history snapshot is empty", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-13";
+      appendChildReport(
+        store,
+        threadKey,
+        13_000,
+        "[Agent report] child-a completed: FIRST-EVER-ROW",
+      );
+      const fallbackDelta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: "Queued follow-up." }],
+      });
+      // Brand-new manager thread: no history snapshot, but the queued
+      // fallback must still reseed the row the main prompt consumed.
+      const { resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
+        historyPromptMessage: null,
+        promptMessages: [{ text: "Queued follow-up." }],
+        hasPersistedSession: true,
+        deltaPromptMessage: null,
+        fallbackDeltaPromptMessage: fallbackDelta.message,
+      });
+      expect(resumeFallbackPrompt).toContain("FIRST-EVER-ROW");
+    }));
+
+  it("watermark tracker: a truncated reseed fallback pins the watermark below the in-turn cursor", () => {
+    const tracker = createExternalDeltaWatermarkTracker("entry-0");
+    tracker.noteMainlineDelta({
+      message: null,
+      lastEntryId: "entry-3",
+      coveredCount: 3,
+      truncated: false,
+    });
+    // The reseed prompt only covered one row before hitting the budget: if
+    // recovery used it, the fresh session never saw entries 2-3.
+    tracker.noteReseedDelta({
+      message: null,
+      lastEntryId: "entry-1",
+      coveredCount: 1,
+      truncated: true,
+    });
+    expect(tracker.resolve()).toBe("entry-1");
+
+    // Full-coverage fallback keeps the cursor.
+    const covered = createExternalDeltaWatermarkTracker("entry-0");
+    covered.noteMainlineDelta({
+      message: null,
+      lastEntryId: "entry-3",
+      coveredCount: 3,
+      truncated: false,
+    });
+    covered.noteReseedDelta({
+      message: null,
+      lastEntryId: "entry-3",
+      coveredCount: 3,
+      truncated: false,
+    });
+    expect(covered.resolve()).toBe("entry-3");
+
+    // No deltas at all resolves to the unchanged initial watermark.
+    expect(createExternalDeltaWatermarkTracker("entry-0").resolve()).toBe(
+      "entry-0",
+    );
+  });
+
+  it("bounds an oversized backlog and drains it across successive turns", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-14";
+      const bigReport = (marker: string) =>
+        `[Agent report] ${marker} ${"x".repeat(EXTERNAL_DELTA_MAX_ROW_CHARS + 14_000)}`;
+      appendChildReport(store, threadKey, 14_000, bigReport("BACKLOG-A"));
+      const entryB = appendChildReport(
+        store,
+        threadKey,
+        14_001,
+        bigReport("BACKLOG-B"),
+      );
+      const entryC = appendChildReport(
+        store,
+        threadKey,
+        14_002,
+        bigReport("BACKLOG-C"),
+      );
+
+      // No watermark (legacy value or engine takeover): the first batch is
+      // bounded instead of replaying the whole raw backlog into one prompt.
+      const first = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+      });
+      expect(first.message?.text).toContain("BACKLOG-A");
+      expect(first.message?.text).toContain("BACKLOG-B");
+      expect(first.message?.text).not.toContain("BACKLOG-C");
+      expect(first.message?.text).toContain("truncated");
+      expect(first.message?.text).toContain("withheld to fit this turn");
+      expect(first.message!.text.length).toBeLessThan(
+        EXTERNAL_DELTA_MAX_TOTAL_CHARS + 4_000,
+      );
+      expect(first.truncated).toBe(true);
+      expect(first.coveredCount).toBe(2);
+      expect(first.lastEntryId).toBe(entryB);
+
+      // The turn can now succeed; the watermark advances past the batch and
+      // the next turn picks up the remainder.
+      setExternalDeliveredEntryId({
+        store,
+        threadKey,
+        engine: "codex_cli",
+        entryId: first.lastEntryId!,
+      });
+      const second = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        afterEntryId: getExternalDeliveredEntryId({
+          store,
+          threadKey,
+          engine: "codex_cli",
+        }),
+        promptMessages: [{ text: "Continue." }],
+      });
+      expect(second.message?.text).toContain("BACKLOG-C");
+      expect(second.message?.text).not.toContain("BACKLOG-B");
+      expect(second.truncated).toBe(false);
+      expect(second.lastEntryId).toBe(entryC);
+    }));
+
+  it("truncates a single oversized report with an explicit marker", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-15";
+      appendChildReport(
+        store,
+        threadKey,
+        15_000,
+        `[Agent report] HUGE-REPORT ${"y".repeat(EXTERNAL_DELTA_MAX_ROW_CHARS + 4_000)}`,
+      );
+      const delta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+      });
+      expect(delta.message?.text).toContain("HUGE-REPORT");
+      expect(delta.message?.text).toMatch(/\[…truncated \d+ characters/);
+      // The row itself is still covered — a single giant report must not
+      // wedge the watermark forever.
+      expect(delta.truncated).toBe(false);
+      expect(delta.coveredCount).toBe(1);
+    }));
+
+  it("legacy takeover with a session-creating turn initializes the watermark from the history block without replaying the backlog", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-16";
+      const reports = [
+        "[Agent report] child-a completed: LEGACY-ROW-1",
+        "[Agent report] child-b completed: LEGACY-ROW-2",
+        "[Agent report] child-c completed: LEGACY-ROW-3",
+      ];
+      let newestEntryId = "";
+      reports.forEach((text, index) => {
+        newestEntryId = appendChildReport(
+          store,
+          threadKey,
+          16_000 + index,
+          text,
+        );
+      });
+      // Legacy un-namespaced watermark reads as unseen...
+      store.setThreadExternalDeliveredEntryId(threadKey, "legacy-entry");
+      expect(
+        getExternalDeliveredEntryId({
+          store,
+          threadKey,
+          engine: "claude_code_local",
+        }),
+      ).toBeUndefined();
+      // ...but the takeover turn sends the full-history block, so every row
+      // it contains is covered by containment at zero prompt cost: the
+      // watermark jumps to the newest covered row with no delta replay.
+      const historyText = [
+        '<stella_thread_history source="stella">',
+        ...reports.map(
+          (text, index) =>
+            `<history_message index="${index + 1}" role="runtimeInternal">\n${text}\n</history_message>`,
+        ),
+        "</stella_thread_history>",
+      ].join("\n");
+      const delta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+        deliveredContextTexts: [historyText],
+      });
+      expect(delta.message).toBeNull();
+      expect(delta.coveredCount).toBe(3);
+      expect(delta.lastEntryId).toBe(newestEntryId);
     }));
 
   it("adds the watermark column to a legacy database missing it", () => {

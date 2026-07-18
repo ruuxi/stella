@@ -490,16 +490,36 @@ const EXTERNAL_DELTA_CUSTOM_TYPES: ReadonlySet<string> = new Set([
   "runtime.task_update",
 ]);
 
+/**
+ * Size budget for one delta block. Child final reports are not capped at
+ * persistence time, and an absent watermark (legacy value or engine takeover)
+ * selects the whole raw backlog — an unbounded block could exceed the
+ * engine's usable input, fail the turn, never advance the success-only
+ * watermark, and rebuild the identical oversized prompt forever. Bounding
+ * turns that failure loop into incremental drain: each successful turn
+ * advances the watermark past the delivered batch and the next turn picks up
+ * the remainder.
+ */
+export const EXTERNAL_DELTA_MAX_ROW_CHARS = 16_000;
+export const EXTERNAL_DELTA_MAX_TOTAL_CHARS = 48_000;
+
 export type ExternalThreadUpdatesDelta = {
   /** Hidden prompt message carrying the undelivered rows, or null. */
   message: RuntimePromptMessage | null;
   /**
-   * Entry id of the newest out-of-band row observed while building the delta
-   * (whether injected or deduplicated against this turn's prompt messages).
-   * Persist it as the delivered watermark once the turn succeeds; null when
-   * the thread has no out-of-band rows at all.
+   * Entry id of the newest out-of-band row COVERED by the prompt this delta
+   * rides in — included in the block, deduplicated against the turn's prompt
+   * messages, or contained in a `deliveredContextTexts` block sent alongside
+   * it. Rows past the size budget are NOT covered. When everything after the
+   * anchor was already delivered this is the newest candidate (an unchanged
+   * watermark); null only when the thread has no out-of-band rows at all.
+   * Persist it as the delivered watermark once the turn succeeds.
    */
   lastEntryId: string | null;
+  /** Number of candidates covered, counting from the `afterEntryId` anchor. */
+  coveredCount: number;
+  /** True when the size budget cut the batch short; more backlog remains. */
+  truncated: boolean;
 };
 
 /**
@@ -553,15 +573,24 @@ export const buildExternalThreadUpdatesDelta = (args: {
         EXTERNAL_DELTA_CUSTOM_TYPES.has(row.customMessage.customType),
     );
   if (candidates.length === 0) {
-    return { message: null, lastEntryId: null };
+    return {
+      message: null,
+      lastEntryId: null,
+      coveredCount: 0,
+      truncated: false,
+    };
   }
-  const lastEntryId = candidates[candidates.length - 1]?.entryId ?? null;
   const afterIndex = args.afterEntryId
     ? candidates.findIndex((row) => row.entryId === args.afterEntryId)
     : -1;
   const undelivered = candidates.slice(afterIndex + 1);
   if (undelivered.length === 0) {
-    return { message: null, lastEntryId };
+    return {
+      message: null,
+      lastEntryId: candidates[candidates.length - 1]?.entryId ?? null,
+      coveredCount: 0,
+      truncated: false,
+    };
   }
   const promptTexts = new Set(
     args.promptMessages
@@ -571,19 +600,50 @@ export const buildExternalThreadUpdatesDelta = (args: {
   const contextTexts = (args.deliveredContextTexts ?? []).filter(
     (text) => text.trim().length > 0,
   );
-  const lines = undelivered
-    .flatMap((row) => {
-      const text = row.content.trim();
-      if (!text || promptTexts.has(text)) return [];
-      if (contextTexts.some((context) => context.includes(text))) return [];
-      return [{ customType: row.customMessage!.customType, text }];
-    })
-    .map(
-      (row, index) =>
-        `<thread_update index="${index + 1}" customType="${row.customType}">\n${row.text}\n</thread_update>`,
+  // Oldest-first bounded packing. Coverage must stay a contiguous prefix of
+  // the candidate order — once the budget is exhausted the scan stops, even
+  // for rows that would have been deduplicated for free, so the watermark
+  // can never step over an unexamined row.
+  const lines: string[] = [];
+  let totalChars = 0;
+  let coveredCount = 0;
+  let coveredLastEntryId: string | null = null;
+  let truncated = false;
+  for (const row of undelivered) {
+    const text = row.content.trim();
+    if (
+      !text ||
+      promptTexts.has(text) ||
+      contextTexts.some((context) => context.includes(text))
+    ) {
+      coveredCount += 1;
+      coveredLastEntryId = row.entryId ?? coveredLastEntryId;
+      continue;
+    }
+    let rowText = text;
+    if (rowText.length > EXTERNAL_DELTA_MAX_ROW_CHARS) {
+      const omitted = rowText.length - EXTERNAL_DELTA_MAX_ROW_CHARS;
+      rowText = `${rowText.slice(0, EXTERNAL_DELTA_MAX_ROW_CHARS)}\n[…truncated ${omitted} characters; the full report is in the Stella thread]`;
+    }
+    if (
+      lines.length > 0 &&
+      totalChars + rowText.length > EXTERNAL_DELTA_MAX_TOTAL_CHARS
+    ) {
+      truncated = true;
+      break;
+    }
+    lines.push(
+      `<thread_update index="${lines.length + 1}" customType="${row.customMessage!.customType}">\n${rowText}\n</thread_update>`,
     );
+    totalChars += rowText.length;
+    coveredCount += 1;
+    coveredLastEntryId = row.entryId ?? coveredLastEntryId;
+  }
+  const lastEntryId =
+    coveredLastEntryId ??
+    (args.afterEntryId && afterIndex >= 0 ? args.afterEntryId : null);
   if (lines.length === 0) {
-    return { message: null, lastEntryId };
+    return { message: null, lastEntryId, coveredCount, truncated };
   }
   return {
     message: {
@@ -593,10 +653,73 @@ export const buildExternalThreadUpdatesDelta = (args: {
       text: [
         '<stella_thread_updates source="stella" note="Runtime events (managed-agent reports and task updates) persisted to this Stella thread since your previous turn. They are not in your session transcript; treat them as delivered context.">',
         ...lines,
+        ...(truncated
+          ? [
+              "[Additional older updates were withheld to fit this turn; they will be delivered on following turns.]",
+            ]
+          : []),
         "</stella_thread_updates>",
       ].join("\n"),
     },
     lastEntryId,
+    coveredCount,
+    truncated,
+  };
+};
+
+/**
+ * Per-turn watermark arithmetic for external-engine delta delivery.
+ *
+ * A turn can send several prompts: the main prompt, queued follow-ups that
+ * continue the SAME session (deltas anchored at the in-turn cursor so the
+ * live session gets each row once), and fallback prompts that seed a FRESH
+ * session when recovery abandons the old one (missing resume / compaction
+ * loop). A fresh session never saw the cursor-anchored deltas, so
+ * reseed-capable prompts carry deltas anchored at the PERSISTED watermark.
+ * Because reseeds are not observable from here, the persisted watermark
+ * after success is the minimum of the mainline coverage and every
+ * reseed-prompt coverage — under-advancing only re-delivers (at-least-once),
+ * never skips.
+ *
+ * Coverage counts are comparable because every delta covers a contiguous
+ * prefix of the same append-only candidate order starting at the persisted
+ * watermark; mainline counts accumulate across cursor-anchored windows.
+ */
+export const createExternalDeltaWatermarkTracker = (
+  initialEntryId: string | undefined,
+) => {
+  let mainlineCoveredCount = 0;
+  let cursorEntryId = initialEntryId;
+  let guaranteedCoveredCount = Number.POSITIVE_INFINITY;
+  let guaranteedEntryId = initialEntryId;
+  return {
+    /** Anchor for the next mainline (live-session) delta build. */
+    get cursor(): string | undefined {
+      return cursorEntryId;
+    },
+    /** Record a delta sent to the live session (anchored at the cursor). */
+    noteMainlineDelta(delta: ExternalThreadUpdatesDelta): void {
+      mainlineCoveredCount += delta.coveredCount;
+      if (delta.lastEntryId) {
+        cursorEntryId = delta.lastEntryId;
+      }
+    },
+    /**
+     * Record a delta carried by a prompt that may seed a fresh session
+     * (anchored at the persisted watermark).
+     */
+    noteReseedDelta(delta: ExternalThreadUpdatesDelta): void {
+      if (delta.coveredCount < guaranteedCoveredCount) {
+        guaranteedCoveredCount = delta.coveredCount;
+        guaranteedEntryId = delta.lastEntryId ?? initialEntryId;
+      }
+    },
+    /** Watermark safe to persist after the turn succeeds. */
+    resolve(): string | undefined {
+      return guaranteedCoveredCount < mainlineCoveredCount
+        ? guaranteedEntryId
+        : cursorEntryId;
+    },
   };
 };
 
@@ -624,20 +747,41 @@ export const buildExternalThreadUpdatesDelta = (args: {
  * prompt), the fallback must carry the delta too — the delivered watermark
  * advances past these rows on success, so they must be present no matter
  * which prompt variant was actually sent.
+ *
+ * On queued follow-up turns the main delta is anchored at the in-turn cursor
+ * (the live session already received earlier rows), but a recovery reseed
+ * abandons that session together with everything it was sent. The fallback
+ * for such turns therefore carries `fallbackDeltaPromptMessage` — a delta
+ * anchored at the PERSISTED watermark — so the fresh session still receives
+ * rows the cursor already consumed.
  */
 export const buildClaudeCodeTurnPrompts = (args: {
   historyPromptMessage: RuntimePromptMessage | null;
   promptMessages: RuntimePromptMessage[];
   hasPersistedSession: boolean;
   deltaPromptMessage?: RuntimePromptMessage | null;
+  fallbackDeltaPromptMessage?: RuntimePromptMessage | null;
 }): { prompt: string; resumeFallbackPrompt?: string } => {
-  const historyPrefixedPrompt = args.historyPromptMessage
-    ? buildClaudePromptFromMessages([
-        args.historyPromptMessage,
-        ...(args.deltaPromptMessage ? [args.deltaPromptMessage] : []),
-        ...args.promptMessages,
-      ])
-    : undefined;
+  // Session-creating turns use the history-prefixed prompt as the MAIN
+  // prompt, so it must carry the main delta; for resumed turns it only ever
+  // seeds a fresh session, so it carries the reseed-anchored delta instead.
+  const fallbackDeltaMessage = args.hasPersistedSession
+    ? (args.fallbackDeltaPromptMessage ?? args.deltaPromptMessage)
+    : args.deltaPromptMessage;
+  const fallbackSeedMessages = [
+    ...(args.historyPromptMessage ? [args.historyPromptMessage] : []),
+    ...(fallbackDeltaMessage ? [fallbackDeltaMessage] : []),
+  ];
+  // Built even with an empty history snapshot: a delta-only fallback still
+  // reseeds rows that arrived after the snapshot (e.g. a brand-new manager
+  // thread whose first child completed mid-turn).
+  const historyPrefixedPrompt =
+    fallbackSeedMessages.length > 0
+      ? buildClaudePromptFromMessages([
+          ...fallbackSeedMessages,
+          ...args.promptMessages,
+        ])
+      : undefined;
   const prompt =
     !args.hasPersistedSession && historyPrefixedPrompt
       ? historyPrefixedPrompt
@@ -951,8 +1095,12 @@ const runClaudeHostedTurn = async (args: {
       ? { deliveredContextTexts: [historyPromptMessage.text] }
       : {}),
   });
-  let deliveredEntryWatermark =
-    threadUpdatesDelta.lastEntryId ?? initialDeliveredEntryId;
+  const watermarkTracker = createExternalDeltaWatermarkTracker(
+    initialDeliveredEntryId,
+  );
+  // The main delta is anchored at the persisted watermark, so the main
+  // prompt and its fallback share it: a reseed here still covers everything.
+  watermarkTracker.noteMainlineDelta(threadUpdatesDelta);
   const { prompt, resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
     historyPromptMessage,
     promptMessages: args.promptMessages,
@@ -1031,20 +1179,35 @@ const runClaudeHostedTurn = async (args: {
       promptMessages: queuedPromptMessages,
     });
     // Out-of-band rows persisted while this turn was running (e.g. a child
-    // completing mid-turn) — delivered from the in-turn watermark so nothing
-    // sent by the main prompt repeats. Included in the queued fallback
-    // prompt too (via buildClaudeCodeTurnPrompts), so a reseed mid-queue
-    // still carries them.
+    // completing mid-turn) — anchored at the in-turn cursor so the live
+    // session gets nothing the main prompt already sent.
     const queuedThreadUpdatesDelta = buildExternalThreadUpdatesDelta({
       store: args.opts.store,
       threadKey,
-      ...(deliveredEntryWatermark
-        ? { afterEntryId: deliveredEntryWatermark }
+      ...(watermarkTracker.cursor
+        ? { afterEntryId: watermarkTracker.cursor }
         : {}),
       promptMessages: queuedPromptMessages,
     });
-    deliveredEntryWatermark =
-      queuedThreadUpdatesDelta.lastEntryId ?? deliveredEntryWatermark;
+    // A recovery reseed abandons the live session together with every
+    // cursor-anchored delta it received, so the queued FALLBACK carries a
+    // delta anchored at the persisted watermark instead (deduplicated
+    // against the frozen history snapshot it is sent with). The tracker
+    // takes the minimum coverage so a truncated fallback can never let the
+    // watermark pass rows a reseeded session lacked.
+    const queuedFallbackDelta = buildExternalThreadUpdatesDelta({
+      store: args.opts.store,
+      threadKey,
+      ...(initialDeliveredEntryId
+        ? { afterEntryId: initialDeliveredEntryId }
+        : {}),
+      promptMessages: queuedPromptMessages,
+      ...(queuedHistoryPromptMessage
+        ? { deliveredContextTexts: [queuedHistoryPromptMessage.text] }
+        : {}),
+    });
+    watermarkTracker.noteMainlineDelta(queuedThreadUpdatesDelta);
+    watermarkTracker.noteReseedDelta(queuedFallbackDelta);
     // Queued follow-ups always continue the session the turn just ran on, so
     // the main prompt never re-sends history; a lost resume reseeds via the
     // fallback prompt.
@@ -1056,6 +1219,7 @@ const runClaudeHostedTurn = async (args: {
       promptMessages: queuedPromptMessages,
       hasPersistedSession: true,
       deltaPromptMessage: queuedThreadUpdatesDelta.message,
+      fallbackDeltaPromptMessage: queuedFallbackDelta.message,
     });
     finalResult = await runClaudeCodeTurn({
       runId,
@@ -1112,16 +1276,16 @@ const runClaudeHostedTurn = async (args: {
     sessionId: finalResult.sessionId,
   });
   // Only persisted on success: an aborted/failed turn re-delivers the same
-  // rows next turn (at-least-once) instead of silently dropping them.
-  if (
-    deliveredEntryWatermark &&
-    deliveredEntryWatermark !== initialDeliveredEntryId
-  ) {
+  // rows next turn (at-least-once) instead of silently dropping them. The
+  // tracker resolves the minimum coverage across the mainline prompts and
+  // every reseed-capable fallback built this turn.
+  const resolvedWatermark = watermarkTracker.resolve();
+  if (resolvedWatermark && resolvedWatermark !== initialDeliveredEntryId) {
     setExternalDeliveredEntryId({
       store: args.opts.store,
       threadKey,
       engine: sessionEngine,
-      entryId: deliveredEntryWatermark,
+      entryId: resolvedWatermark,
     });
   }
 
@@ -1440,13 +1604,18 @@ const runCodexHostedTurn = async (args: {
     }
     const queuedPromptMessages = queued.map(formatQueuedClaudeMessage);
     const queuedAttachments = attachmentsFromQueuedMessages(queued);
-    // Rows persisted while this turn was running, offset from the in-turn
-    // watermark so nothing sent by the main prompt repeats.
+    // Anchored at the PERSISTED watermark, not an in-turn cursor: a stale
+    // Codex resume silently falls through to a fresh thread
+    // (startOrResumeCodexThread) with no fallback-prompt channel, so every
+    // queued prompt must be self-sufficient — it re-carries anything the
+    // earlier prompts of this turn delivered (bounded by the same budget).
+    // The live thread sees those rows twice within one turn; a silently
+    // reseeded thread sees them at all.
     const queuedThreadUpdatesDelta = buildExternalThreadUpdatesDelta({
       store: args.opts.store,
       threadKey,
-      ...(deliveredEntryWatermark
-        ? { afterEntryId: deliveredEntryWatermark }
+      ...(initialDeliveredEntryId
+        ? { afterEntryId: initialDeliveredEntryId }
         : {}),
       promptMessages: queuedPromptMessages,
     });
