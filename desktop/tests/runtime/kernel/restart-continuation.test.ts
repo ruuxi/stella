@@ -7,6 +7,7 @@ import {
   RESTART_CONTINUATION_MAX_RECORD_AGE_MS,
   RESTART_CONTINUATION_RECORD_FILE,
   RESTART_EPISODE_WINDOW_MS,
+  RESTART_INTERRUPTED_SNAPSHOT_FILE,
   RESTART_INTERRUPTION_STATE_FILE,
   attachRestartReminderForConversation,
   buildRestartReminderText,
@@ -19,6 +20,7 @@ import {
   readRestartInterruptionState,
   recordRestartShutdown,
   resolveRestartReminderOutcome,
+  writeRestartInterruptedSnapshot,
   writeRestartShutdownRecord,
   type RestartContinuationFireDeps,
   type RestartThreadRecordLike,
@@ -67,6 +69,8 @@ const recordFilePath = () =>
   path.join(dataDir, RESTART_CONTINUATION_RECORD_FILE);
 const stateFilePath = () =>
   path.join(dataDir, RESTART_INTERRUPTION_STATE_FILE);
+const snapshotFilePath = () =>
+  path.join(dataDir, RESTART_INTERRUPTED_SNAPSHOT_FILE);
 
 const writeFreshRecord = (reason = "self-mod-apply-process-restart") => {
   expect(writeRestartShutdownRecord(dataDir, { reason })).toBe(true);
@@ -229,15 +233,125 @@ describe("boot conversion", () => {
     expect(readRestartInterruptionState(dataDir)?.threads).toHaveLength(1);
   });
 
-  it("keeps the shutdown record when the state write fails (retry next boot)", () => {
+  it("does not reset bookkeeping when record+sidecar survive a crash after conversion", () => {
     writeFreshRecord("runtime-reload");
+    const state = convert([{ threadId: "thread-a", conversationId: "conv-1" }]);
+    expect(state).not.toBeNull();
+    // Delivery bookkeeping exists before the simulated crash.
+    expect(attach("conv-1", "run-1")).not.toBeNull();
+    // Crash before cleanup left the SAME episode's record and sidecar.
+    expect(
+      writeRestartShutdownRecord(dataDir, {
+        reason: "runtime-reload",
+        now: state!.shutdownAt,
+      }),
+    ).toBe(true);
+    expect(
+      writeRestartInterruptedSnapshot(dataDir, [
+        { threadId: "thread-a", conversationId: "conv-1" },
+      ]),
+    ).toBe(true);
+    // Boot 2 (empty live snapshot): the same-episode check cleans up
+    // without rewriting the state — bookkeeping survives.
+    expect(convert([])).toBeNull();
+    expect(fs.existsSync(recordFilePath())).toBe(false);
+    expect(fs.existsSync(snapshotFilePath())).toBe(false);
+    const preserved = readRestartInterruptionState(dataDir);
+    expect(preserved?.conversations["conv-1"]?.reminderAttachedAt).toBeDefined();
+  });
+
+  it("keeps record AND sidecar when the state write fails (retry next boot)", () => {
+    writeFreshRecord("runtime-reload");
+    expect(
+      writeRestartInterruptedSnapshot(dataDir, [
+        { threadId: "thread-a", conversationId: "conv-1" },
+      ]),
+    ).toBe(true);
     // Occupy the state path with a directory so the atomic rename fails.
     fs.mkdirSync(stateFilePath());
     const state = convert([{ threadId: "thread-a", conversationId: "conv-1" }]);
     expect(state).toBeNull();
-    // Not silently lost: the record survives for the next boot's retry.
+    // Not silently lost: both retry artifacts survive for the next boot.
     expect(fs.existsSync(recordFilePath())).toBe(true);
+    expect(fs.existsSync(snapshotFilePath())).toBe(true);
     fs.rmdirSync(stateFilePath());
+  });
+
+  it("two-boot probe: a failed state write on boot 1 still recovers on boot 2", async () => {
+    // Graceful shutdown wrote the record while thread-a was running.
+    writeFreshRecord("runtime-reload");
+    const flipped: PersistedAgentRecord[] = [];
+    const runningRow: PersistedAgentRecord = {
+      threadId: "thread-a",
+      conversationId: "conv-1",
+      agentType: "general",
+      description: "Refactor the parser",
+      agentDepth: 1,
+      status: "running",
+      attemptGeneration: 0,
+      startedAt: Date.now(),
+      completedAt: null,
+      updatedAt: Date.now(),
+    };
+    const makeManager = (running: PersistedAgentRecord[]) =>
+      new LocalAgentManager({
+        maxConcurrent: 1,
+        listAgentRecordsByStatus: (status: string) =>
+          status === "running" ? running : [],
+        saveAgentRecord: (record: PersistedAgentRecord) => {
+          flipped.push(record);
+        },
+        hasAgentLifecycleEvent: () => true,
+        // Production wiring: sweep persists the pre-flip snapshot sidecar.
+        persistBootInterruptionSnapshot: (
+          threads: Array<{ threadId: string; conversationId: string }>,
+        ) => {
+          writeRestartInterruptedSnapshot(dataDir, threads);
+        },
+      } as unknown as ConstructorParameters<typeof LocalAgentManager>[0]);
+
+    // Boot 1: sweep captures + flips the rows; the interruption-state write
+    // fails (state path occupied by a directory).
+    const boot1 = makeManager([runningRow]);
+    expect(flipped.some((r) => r.threadId === "thread-a")).toBe(true);
+    fs.mkdirSync(stateFilePath());
+    expect(convert(boot1.getBootInterruptedThreads())).toBeNull();
+    fs.rmdirSync(stateFilePath());
+    expect(fs.existsSync(recordFilePath())).toBe(true);
+    expect(fs.existsSync(snapshotFilePath())).toBe(true);
+
+    // Boot 2: the rows were flipped on boot 1 — the live snapshot is EMPTY.
+    const boot2 = makeManager([]);
+    expect(boot2.getBootInterruptedThreads()).toEqual([]);
+    const state = convert(boot2.getBootInterruptedThreads());
+    expect(state?.threads).toEqual([
+      { threadId: "thread-a", conversationId: "conv-1" },
+    ]);
+    expect(fs.existsSync(recordFilePath())).toBe(false);
+    expect(fs.existsSync(snapshotFilePath())).toBe(false);
+
+    // The reconstructed interruption drives both mechanisms.
+    const turns: string[] = [];
+    const fired = await fireRestartContinuationTurn({
+      stellaDataDir: dataDir,
+      env: {},
+      sentinels,
+      getAgentRecord: (threadId) =>
+        threadId === "thread-a"
+          ? makeRecordRow({ threadId: "thread-a" })
+          : null,
+      listAgentRecordsByStatus: () => [],
+      appendLocalChatEvent: vi.fn(),
+      runAutomationTurn: async (args) => {
+        turns.push(args.userPrompt);
+        return { status: "ok", finalText: "resumed" };
+      },
+    });
+    expect(fired.outcomes["conv-1"]).toBe("completed");
+    expect(turns[0]).toContain("thread-a");
+    const reminder = attach("conv-1", "run-1");
+    expect(reminder).not.toBeNull();
+    expect(reminder?.turnCompleted).toBe(true);
   });
 
   it("tolerates malformed/partial JSON in both files without throwing", () => {
@@ -637,6 +751,9 @@ describe("LocalAgentManager boot snapshot", () => {
         updatedAt: Date.now(),
       },
     ];
+    let rowsFlippedWhenSnapshotPersisted = -1;
+    let snapshotThreads: Array<{ threadId: string; conversationId: string }> =
+      [];
     const manager = new LocalAgentManager({
       maxConcurrent: 1,
       listAgentRecordsByStatus: (status: string) =>
@@ -645,12 +762,22 @@ describe("LocalAgentManager boot snapshot", () => {
         saved.push(record);
       },
       hasAgentLifecycleEvent: () => true,
+      persistBootInterruptionSnapshot: (
+        threads: Array<{ threadId: string; conversationId: string }>,
+      ) => {
+        rowsFlippedWhenSnapshotPersisted = saved.length;
+        snapshotThreads = threads;
+      },
     } as unknown as ConstructorParameters<typeof LocalAgentManager>[0]);
 
     expect(manager.getBootInterruptedThreads()).toEqual([
       { threadId: "thread-a", conversationId: "conv-1" },
       { threadId: "thread-mgr", conversationId: "conv-1" },
     ]);
+    // The durable snapshot is persisted BEFORE any row is flipped — it is
+    // the retry evidence that survives the flip.
+    expect(rowsFlippedWhenSnapshotPersisted).toBe(0);
+    expect(snapshotThreads).toEqual(manager.getBootInterruptedThreads());
     // Existing sweep behavior is preserved: general → orphan-canceled,
     // manager → completed with a synthesized report.
     const general = saved.find((r) => r.threadId === "thread-a");

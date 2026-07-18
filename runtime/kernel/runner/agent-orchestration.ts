@@ -16,6 +16,7 @@ import { runExplore } from "../agent-runtime/explore.js";
 import { resolveOrchestratorThreadKey } from "../thread-runtime.js";
 import { shouldUseAutomaticSkillExplore } from "../shared/skill-catalog.js";
 import { LocalAgentManager } from "../agents/local-agent-manager.js";
+import { writeRestartInterruptedSnapshot } from "../restart-continuation.js";
 import { extractApplyPatchTargetPaths } from "../tools/apply-patch.js";
 import { isKnownSafeCommand } from "../tools/safe-commands.js";
 import { resolveToolPath } from "../tools/path-inference.js";
@@ -637,6 +638,12 @@ export const createAgentOrchestration = (
       context.runtimeStore.listActiveThreads(conversationId),
     listGroupMemberThreadIds: (groupKey) =>
       context.runtimeStore.listGroupMemberThreadIds(groupKey),
+    // Restart-with-continuation: durably snapshot the still-running rows
+    // BEFORE the boot sweep flips them, so a failed interruption-state
+    // write can genuinely be retried on the next boot.
+    persistBootInterruptionSnapshot: (threads) => {
+      writeRestartInterruptedSnapshot(context.stellaDataDir, threads);
+    },
     onAgentEvent: handleAgentLifecycleEvent,
     fetchAgentContext: deps.buildAgentContext,
     runSubagent: async ({

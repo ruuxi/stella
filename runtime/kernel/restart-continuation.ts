@@ -17,12 +17,22 @@ import path from "node:path";
  *     measured from the actual shutdown moment.
  *
  *  2. INTERRUPTION STATE (`restart-interruption.json`) — written by the
- *     WORKER at boot when it consumes a fresh shutdown record AND the
- *     `LocalAgentManager` orphan sweep found threads that were running at
- *     shutdown. Conversion is write-then-delete: the state is durably
- *     written BEFORE the record is removed, and a crash between the two is
- *     deduped on the next boot (the sweep finds no running rows, so the
- *     leftover record converts to nothing and the existing state survives).
+ *     WORKER at boot when it consumes a fresh shutdown record AND threads
+ *     were running at shutdown. Conversion is write-then-delete: the state
+ *     is durably written BEFORE the record (and snapshot sidecar) are
+ *     removed, and a crash between the two is deduped on the next boot via
+ *     the same-episode check (matching `shutdownAt`), so existing delivery
+ *     bookkeeping is never reset.
+ *
+ *  2b. SNAPSHOT SIDECAR (`restart-interrupted-threads.json`) — written by
+ *     the `LocalAgentManager` orphan sweep BEFORE it flips the `running`
+ *     rows. The flip destroys the only live evidence of what was running,
+ *     so if the interruption-state write fails on boot 1, this sidecar is
+ *     what lets boot 2 genuinely reconstruct the interruption from the
+ *     retained shutdown record (the live snapshot is empty by then).
+ *     Conversion consumes it on every exit path except a failed state
+ *     write; the idle rule only applies when BOTH the live snapshot and
+ *     the sidecar are empty.
  *
  * Delivery bookkeeping is PER CONVERSATION with explicit claimed-vs-completed
  * outcomes:
@@ -60,6 +70,8 @@ import path from "node:path";
 
 export const RESTART_CONTINUATION_RECORD_FILE = "restart-continuation.json";
 export const RESTART_INTERRUPTION_STATE_FILE = "restart-interruption.json";
+export const RESTART_INTERRUPTED_SNAPSHOT_FILE =
+  "restart-interrupted-threads.json";
 
 /** Shutdown records older than this at boot are discarded unread. */
 export const RESTART_CONTINUATION_MAX_RECORD_AGE_MS = 15 * 60_000;
@@ -162,6 +174,9 @@ const recordPath = (stellaDataDir: string) =>
 
 const statePath = (stellaDataDir: string) =>
   path.join(stellaDataDir, RESTART_INTERRUPTION_STATE_FILE);
+
+const snapshotPath = (stellaDataDir: string) =>
+  path.join(stellaDataDir, RESTART_INTERRUPTED_SNAPSHOT_FILE);
 
 const readJsonFile = (filePath: string): unknown => {
   try {
@@ -277,6 +292,74 @@ export const deleteRestartShutdownRecord = (stellaDataDir: string): void => {
   deleteFileSilently(recordPath(stellaDataDir));
 };
 
+type RestartInterruptedSnapshot = {
+  version: 1;
+  capturedAt: number;
+  threads: RestartInterruptedThreadRef[];
+};
+
+const parseThreadRefs = (value: unknown): RestartInterruptedThreadRef[] =>
+  Array.isArray(value)
+    ? value.filter(
+        (thread): thread is RestartInterruptedThreadRef =>
+          Boolean(
+            thread &&
+              typeof (thread as RestartInterruptedThreadRef).threadId ===
+                "string" &&
+              typeof (thread as RestartInterruptedThreadRef).conversationId ===
+                "string",
+          ),
+      )
+    : [];
+
+/**
+ * Durably persist the pre-flip snapshot of running thread rows. Called by
+ * the orphan sweep BEFORE any row is flipped: the flip destroys the only
+ * live evidence of what was running, and this sidecar is what makes a
+ * next-boot retry of a failed interruption-state write real instead of
+ * illusory. Never called with an empty list (an idle boot must not clobber
+ * a sidecar retained for retry). Best-effort: on failure the feature
+ * degrades to requiring a successful state write on the same boot.
+ */
+export const writeRestartInterruptedSnapshot = (
+  stellaDataDir: string,
+  threads: RestartInterruptedThreadRef[],
+  now = Date.now(),
+): boolean => {
+  if (threads.length === 0) return false;
+  try {
+    const snapshot: RestartInterruptedSnapshot = {
+      version: 1,
+      capturedAt: now,
+      threads: threads.map(({ threadId, conversationId }) => ({
+        threadId,
+        conversationId,
+      })),
+    };
+    writeJsonAtomic(snapshotPath(stellaDataDir), snapshot);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Read the pre-flip snapshot sidecar (tolerant; [] when absent/torn). */
+export const readRestartInterruptedSnapshot = (
+  stellaDataDir: string,
+): RestartInterruptedThreadRef[] => {
+  const value = readJsonFile(snapshotPath(stellaDataDir));
+  if (!value || typeof value !== "object") return [];
+  const snapshot = value as Partial<RestartInterruptedSnapshot>;
+  if (snapshot.version !== 1) return [];
+  return parseThreadRefs(snapshot.threads);
+};
+
+export const deleteRestartInterruptedSnapshot = (
+  stellaDataDir: string,
+): void => {
+  deleteFileSilently(snapshotPath(stellaDataDir));
+};
+
 const parseConversationContinuation = (
   value: unknown,
 ): RestartConversationContinuation => {
@@ -348,18 +431,24 @@ const parseInterruptionState = (
  *
  *   1. peek (do NOT delete) the shutdown record;
  *   2. durably write the interruption state;
- *   3. delete the record.
+ *   3. delete the record and the snapshot sidecar.
  *
- * A crash between 2 and 3 leaves both files; the next boot's orphan sweep
- * finds no `running` rows (they were flipped before conversion runs), so the
- * leftover record converts to nothing via the idle rule and the existing
- * state file survives untouched — natural dedupe.
+ * The interrupted-thread evidence is the live pre-flip snapshot when this
+ * boot's sweep captured one, falling back to the durable snapshot sidecar a
+ * PREVIOUS boot's sweep persisted before flipping the rows. That fallback is
+ * what makes the failed-state-write retry real: boot 1 flips the rows, so a
+ * boot-2 retry can only reconstruct the interruption from the sidecar.
+ *
+ * A crash between 2 and 3 leaves record + sidecar + state; the next boot
+ * recognizes the already-converted episode via the same-`shutdownAt` check
+ * and cleans up without resetting the state's delivery bookkeeping.
  *
  * Returns the state when created, null otherwise (no record / stale record /
- * disabled / idle-at-shutdown). Idle shutdowns are strict: no interrupted
- * threads → no state file → no turn AND no reminder. A pre-existing state
- * file from an earlier interruption is only replaced when a NEW interruption
- * is being recorded (newest episode wins), never on null paths.
+ * disabled / already converted / idle-at-shutdown). Idle shutdowns are
+ * strict: no interrupted threads in EITHER the live snapshot or the sidecar
+ * → no state file → no turn AND no reminder. A pre-existing state file from
+ * an earlier interruption is only replaced when a NEW interruption is being
+ * recorded (newest episode wins), never on null paths.
  */
 export const convertRestartShutdownRecordAtBoot = (args: {
   stellaDataDir: string;
@@ -368,22 +457,40 @@ export const convertRestartShutdownRecordAtBoot = (args: {
   now?: number;
 }): RestartInterruptionState | null => {
   const now = args.now ?? Date.now();
-  if (!isRestartContinuationEnabled(args.env)) {
-    // Feature off: drop the record so it can't fire stale after re-enable.
+  const cleanup = () => {
     deleteRestartShutdownRecord(args.stellaDataDir);
+    deleteRestartInterruptedSnapshot(args.stellaDataDir);
+  };
+  if (!isRestartContinuationEnabled(args.env)) {
+    // Feature off: drop the artifacts so they can't fire stale on re-enable.
+    cleanup();
     return null;
   }
   const record = peekRestartShutdownRecord(args.stellaDataDir);
   if (!record) {
-    // Also clears an unparsable/torn record file, if any.
-    deleteRestartShutdownRecord(args.stellaDataDir);
+    // Also clears an unparsable/torn record file and an orphaned sidecar
+    // (e.g. left by a crash that never wrote a record).
+    cleanup();
     return null;
   }
-  if (
-    now - record.createdAt > RESTART_CONTINUATION_MAX_RECORD_AGE_MS ||
-    args.interruptedThreads.length === 0
-  ) {
-    deleteRestartShutdownRecord(args.stellaDataDir);
+  if (now - record.createdAt > RESTART_CONTINUATION_MAX_RECORD_AGE_MS) {
+    cleanup();
+    return null;
+  }
+  const existing = readRestartInterruptionState(args.stellaDataDir, now);
+  if (existing && existing.shutdownAt === record.createdAt) {
+    // This episode already converted (a previous boot crashed between the
+    // state write and the cleanup). Never rewrite — that would reset the
+    // existing delivery bookkeeping.
+    cleanup();
+    return null;
+  }
+  const interruptedThreads =
+    args.interruptedThreads.length > 0
+      ? args.interruptedThreads
+      : readRestartInterruptedSnapshot(args.stellaDataDir);
+  if (interruptedThreads.length === 0) {
+    cleanup();
     return null;
   }
   const state: RestartInterruptionState = {
@@ -391,21 +498,22 @@ export const convertRestartShutdownRecordAtBoot = (args: {
     reason: record.reason,
     shutdownAt: record.createdAt,
     bootAt: now,
-    threads: args.interruptedThreads.map(({ threadId, conversationId }) => ({
+    threads: interruptedThreads.map(({ threadId, conversationId }) => ({
       threadId,
       conversationId,
     })),
     conversations: {},
   };
   try {
-    // Durable BEFORE the record is removed (write-then-delete).
+    // Durable BEFORE the record/sidecar are removed (write-then-delete).
     writeJsonAtomic(statePath(args.stellaDataDir), state);
   } catch {
-    // State could not be persisted: keep the shutdown record so the next
-    // boot retries the conversion instead of silently losing the episode.
+    // State could not be persisted: keep the shutdown record AND the
+    // snapshot sidecar so the next boot genuinely retries the conversion
+    // (its live snapshot will be empty — the rows are already flipped).
     return null;
   }
-  deleteRestartShutdownRecord(args.stellaDataDir);
+  cleanup();
   return state;
 };
 

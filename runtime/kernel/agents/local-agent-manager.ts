@@ -596,6 +596,16 @@ type LocalAgentManagerOpts = {
   listAgentRecordsByStatus?: (
     status: TaskLifecycleStatus,
   ) => PersistedAgentRecord[];
+  /**
+   * Durably persist the pre-flip snapshot of still-`running` rows BEFORE the
+   * boot sweep flips them (restart-with-continuation). The flip destroys the
+   * only live evidence of what was running, so this write must land first —
+   * it is what lets a later boot retry a failed interruption-state write.
+   * Only invoked with a non-empty list.
+   */
+  persistBootInterruptionSnapshot?: (
+    threads: Array<{ threadId: string; conversationId: string }>,
+  ) => void;
   hasAgentLifecycleEvent?: (
     conversationId: string,
     eventId: string,
@@ -808,6 +818,20 @@ export class LocalAgentManager implements AgentToolApi {
         threadId: record.threadId,
         conversationId: record.conversationId,
       });
+    }
+    if (this.bootInterruptedThreads.length > 0) {
+      // Persist the snapshot BEFORE any row below is flipped: after the
+      // flip, this in-memory capture is the only remaining evidence of the
+      // interruption, and it dies with this process. Best-effort — on
+      // failure the continuation degrades to requiring a successful
+      // interruption-state write on this same boot.
+      try {
+        this.opts.persistBootInterruptionSnapshot?.(
+          this.getBootInterruptedThreads(),
+        );
+      } catch {
+        // Never let continuation bookkeeping break the boot sweep.
+      }
     }
     for (const record of runningRecords) {
       if (record.agentType === AGENT_IDS.MANAGER) {
