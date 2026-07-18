@@ -29,7 +29,19 @@ import type {
   LocalChatAppendEventArgs,
   SqliteDatabase,
 } from "../../../../../runtime/kernel/storage/shared.js";
-import { executeAgentTurnWithRetry } from "../../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
+import { Agent } from "../../../../../runtime/kernel/agent-core/agent.js";
+import { PiSessionCore } from "../../../../../runtime/kernel/agent-runtime/pi-session-core.js";
+import { executeRuntimeAgentPrompt } from "../../../../../runtime/kernel/agent-runtime/run-execution.js";
+import {
+  executeAgentTurnWithRetry,
+  type AgentRunFailure,
+} from "../../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
+import { createAssistantMessageEventStream } from "../../../../../runtime/ai/utils/event-stream.js";
+import type {
+  Api,
+  AssistantMessage,
+  Model,
+} from "../../../../../runtime/ai/types.js";
 
 type MockRunArgs = {
   agentId?: string;
@@ -62,6 +74,53 @@ const runMock = vi.hoisted(() => ({
         error?: string;
       }>),
 }));
+
+class RetryTestSession extends PiSessionCore {
+  constructor() {
+    super({
+      threadKey: "manager-retry-test",
+      loggerName: "manager-retry-test",
+    });
+  }
+
+  prepareRetry(agent: Agent, failure: AgentRunFailure): boolean {
+    return this.prepareAgentRunRetry(agent, {
+      failure,
+      logContext: {},
+    });
+  }
+}
+
+const emptyResponseModel = {
+  id: "empty-response-model",
+  name: "empty-response-model",
+  api: "openai-completions",
+  provider: "openai",
+  baseUrl: "https://relay.example/api/llm",
+  reasoning: false,
+  input: ["text"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 128_000,
+  maxTokens: 0,
+} as Model<Api>;
+
+const emptyAssistantMessage = (): AssistantMessage => ({
+  role: "assistant",
+  content: [],
+  api: "openai-completions",
+  provider: "openai",
+  model: emptyResponseModel.id,
+  usage: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  },
+  stopReason: "stop",
+  timestamp: Date.now(),
+});
 
 vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
   runSubagentTask: (args: MockRunArgs) => {
@@ -329,7 +388,7 @@ describe("manager orchestration production routing", () => {
       releaseManagerFirst = resolve;
     });
     let managerRuns = 0;
-    let childAttempts = 0;
+    let childProviderCalls = 0;
 
     runMock.handler = async (args) => {
       if (args.agentType === AGENT_IDS.MANAGER) {
@@ -353,12 +412,41 @@ describe("manager orchestration production routing", () => {
         };
       }
 
-      const retried = await executeAgentTurnWithRetry({
-        execute: async () => {
-          childAttempts += 1;
-          return { finalText: "", errorMessage: "relay_stream_lost" };
+      const session = new RetryTestSession();
+      const agent = new Agent({
+        initialState: {
+          model: emptyResponseModel,
+          systemPrompt: "",
+          tools: [],
+          messages: [],
         },
-        prepareRetry: () => true,
+        streamFn: () => {
+          childProviderCalls += 1;
+          const stream = createAssistantMessageEventStream();
+          const message = emptyAssistantMessage();
+          stream.push({ type: "start", partial: message });
+          stream.push({ type: "done", message });
+          return stream;
+        },
+      });
+      const recorder = {
+        recordQueuedUserMessageStart: () => null,
+        recordAssistantMessageEnd: () => null,
+      } as never;
+      const retried = await executeAgentTurnWithRetry({
+        execute: async (resume) =>
+          executeRuntimeAgentPrompt({
+            agent,
+            promptText: "Return a non-empty child result.",
+            runId: "child-empty-response",
+            agentType: AGENT_IDS.GENERAL,
+            userMessageId: "child-empty-response-user",
+            recorder,
+            abortSignal: args.abortSignal,
+            resume,
+          }),
+        prepareRetry: (failure) => session.prepareRetry(agent, failure),
+        signal: args.abortSignal,
         random: () => 0.5,
         sleep: async () => undefined,
       });
@@ -398,7 +486,7 @@ describe("manager orchestration production routing", () => {
         (await manager.getAgent(managerTask.threadId))?.status === "completed",
     );
 
-    expect(childAttempts).toBe(4);
+    expect(childProviderCalls).toBe(4);
     const managerHistory = store.loadThreadMessages(managerTask.threadId);
     expect(
       managerHistory.filter((message) =>
@@ -413,7 +501,7 @@ describe("manager orchestration production routing", () => {
     ).toHaveLength(1);
     expect(JSON.stringify(appendedEvents)).not.toContain(childTask.threadId);
     expect(JSON.stringify(sentMessages)).not.toContain(childTask.threadId);
-    expect(JSON.stringify(sentMessages)).not.toContain("relay_stream_lost");
+    expect(JSON.stringify(sentMessages)).not.toContain("empty_response");
     expect(JSON.stringify(appendedEvents)).toContain(managerTask.threadId);
     expect(JSON.stringify(sentMessages)).toContain(
       "Manager adapted after the child retry failure.",

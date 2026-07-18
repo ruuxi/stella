@@ -72,17 +72,8 @@ const errorCode = (error: unknown): string | undefined => {
   return typeof code === "string" ? code.trim().toUpperCase() : undefined;
 };
 
-const errorName = (error: unknown): string | undefined =>
-  error instanceof Error ? error.name : undefined;
-
-const isExplicitCancellation = (
-  message: string,
-  code?: string,
-  name?: string,
-): boolean =>
-  name === "AbortError" ||
-  code === "ABORT_ERR" ||
-  /\b(?:request was aborted|aborted by (?:the )?user|explicit(?:ly)? cancel(?:ed|led)|cancel(?:ed|led) by (?:the )?user|user cancel(?:ed|led)|task was cancel(?:ed|led)|operation was cancel(?:ed|led))\b/i.test(
+const isExplicitCancellation = (message: string): boolean =>
+  /\b(?:aborted by (?:the )?user|explicit(?:ly)? cancel(?:ed|led)|cancel(?:ed|led) by (?:the )?user|user cancel(?:ed|led))\b/i.test(
     message,
   );
 
@@ -141,13 +132,15 @@ const isTransportFailure = (message: string, code?: string): boolean =>
     message,
   );
 
-export const classifyAgentRunFailure = (error: unknown): AgentRunFailure => {
+export const classifyAgentRunFailure = (
+  error: unknown,
+  options?: { signal?: AbortSignal },
+): AgentRunFailure => {
   const message = errorMessage(error).trim() || "Agent run failed";
   const status = numericStatus(error);
   const code = errorCode(error);
-  const name = errorName(error);
 
-  if (isExplicitCancellation(message, code, name)) {
+  if (options?.signal?.aborted || isExplicitCancellation(message)) {
     return { category: "canceled", message, retryable: false };
   }
   if (isAuthFailure(message, status)) {
@@ -176,9 +169,10 @@ export const classifyAgentRunFailure = (error: unknown): AgentRunFailure => {
 
 const classifyExecution = (
   execution: AgentTurnExecution,
+  signal?: AbortSignal,
 ): AgentRunFailure | null => {
   if (execution.errorMessage?.trim()) {
-    return classifyAgentRunFailure(execution.errorMessage);
+    return classifyAgentRunFailure(execution.errorMessage, { signal });
   }
   if (!execution.finalText.trim()) {
     return {
@@ -258,13 +252,13 @@ export const executeAgentTurnWithRetry = async (args: {
       execution = await args.execute(attempt > 1);
     } catch (error) {
       execution = { finalText: "", errorMessage: errorMessage(error) };
-      thrownFailure = classifyAgentRunFailure(error);
+      thrownFailure = classifyAgentRunFailure(error, { signal: args.signal });
       if (thrownFailure.message !== execution.errorMessage) {
         execution.errorMessage = thrownFailure.message;
       }
     }
 
-    const failure = thrownFailure ?? classifyExecution(execution);
+    const failure = thrownFailure ?? classifyExecution(execution, args.signal);
     if (!failure) return { ...execution, attempts: attempt };
     if (!failure.retryable) {
       return {

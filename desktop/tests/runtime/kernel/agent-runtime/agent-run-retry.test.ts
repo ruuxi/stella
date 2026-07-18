@@ -91,6 +91,67 @@ describe("agent run transient retry policy", () => {
     ]);
   });
 
+  it("retries a timeout-shaped AbortError when the run was not canceled", async () => {
+    const controller = new AbortController();
+    const timeout = new Error("transport timeout while reading response");
+    timeout.name = "AbortError";
+    const execute = vi
+      .fn<(resume: boolean) => Promise<{ finalText: string }>>()
+      .mockRejectedValueOnce(timeout)
+      .mockResolvedValueOnce({ finalText: "recovered" });
+    const prepareRetry = vi.fn(() => true);
+
+    const result = await executeAgentTurnWithRetry({
+      execute,
+      prepareRetry,
+      signal: controller.signal,
+      random: () => 0.5,
+      sleep: noWait,
+    });
+
+    expect(result).toEqual({ finalText: "recovered", attempts: 2 });
+    expect(execute).toHaveBeenNthCalledWith(1, false);
+    expect(execute).toHaveBeenNthCalledWith(2, true);
+    expect(prepareRetry).toHaveBeenCalledOnce();
+    expect(
+      classifyAgentRunFailure(timeout, { signal: controller.signal }),
+    ).toMatchObject({ category: "transport", retryable: true });
+  });
+
+  it("fails fast when the run signal is genuinely canceled", async () => {
+    const controller = new AbortController();
+    const execute = vi.fn(async () => {
+      controller.abort("Canceled by user");
+      const error = new Error("transport timeout while reading response");
+      error.name = "AbortError";
+      throw error;
+    });
+    const prepareRetry = vi.fn(() => true);
+    const onRetry = vi.fn();
+
+    const result = await executeAgentTurnWithRetry({
+      execute,
+      prepareRetry,
+      onRetry,
+      signal: controller.signal,
+      sleep: noWait,
+    });
+
+    expect(result).toMatchObject({
+      finalText: "",
+      attempts: 1,
+      errorMessage: "transport timeout while reading response",
+    });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(prepareRetry).not.toHaveBeenCalled();
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(
+      classifyAgentRunFailure(new Error("transport timeout"), {
+        signal: controller.signal,
+      }),
+    ).toMatchObject({ category: "canceled", retryable: false });
+  });
+
   it("uses 4 total attempts with 1s, 2.5s, and 6s backoff", async () => {
     const calls: boolean[] = [];
     const waits: number[] = [];
@@ -126,7 +187,7 @@ describe("agent run transient retry policy", () => {
     ["403 auth", "403 Forbidden", "auth"],
     ["invalid model", "invalid model: missing-model", "invalid_model_or_route"],
     ["invalid route", "route not found for provider", "invalid_model_or_route"],
-    ["cancellation", "Request was aborted", "canceled"],
+    ["cancellation", "Canceled by user", "canceled"],
   ])("fails fast for %s", async (_name, message, category) => {
     const prepareRetry = vi.fn(() => true);
     const onRetry = vi.fn();
