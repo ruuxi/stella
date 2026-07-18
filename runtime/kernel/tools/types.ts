@@ -303,6 +303,7 @@ export type ToolHostOptions = {
     prompt: string;
     memorySearchTerms?: string[];
     agentType?: string;
+    modelConfigSnapshot?: AgentModelConfigSnapshot;
     signal?: AbortSignal;
   }) => Promise<RecallLookupResult>;
   /**

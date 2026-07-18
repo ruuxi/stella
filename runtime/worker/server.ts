@@ -169,6 +169,10 @@ import type {
   LocalChatEventRecord,
   SqliteDatabase,
 } from "../kernel/storage/shared.js";
+import {
+  listTranscriptNeighborsBatch,
+  readRecallFtsHealth,
+} from "../kernel/storage/recall-read-queries.js";
 import { createEmptySocialSessionServiceSnapshot } from "../contracts/index.js";
 import { SocialSessionService } from "./social-sessions/service.js";
 import { SocialSessionStore } from "./social-sessions/store.js";
@@ -1265,6 +1269,11 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
         )) as HostAppBrowserContextSnapshot,
       listLocalChatEvents: (conversationId, maxItems) =>
         chatStore.listEvents(conversationId, maxItems),
+      recallReadQueries: {
+        getFtsHealth: () => readRecallFtsHealth(db),
+        listTranscriptNeighborsBatch: (targets, options) =>
+          listTranscriptNeighborsBatch(db, targets, options),
+      },
       appendLocalChatEvent: (args) => {
         const event = chatStore.appendEvent(args);
         notifyLocalChatUpdated(peer, args.conversationId, event);

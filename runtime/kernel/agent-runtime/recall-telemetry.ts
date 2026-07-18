@@ -23,6 +23,9 @@ export type RecallTelemetryRecord = {
   outcome: string;
   engine: "claude-code" | "native" | "unknown";
   modelId: string;
+  intent?: string;
+  fastPath?: boolean;
+  retrievalPasses?: number;
   routeMs: number;
   hostContextMs: number;
   seedSearchMs: number;
@@ -64,6 +67,9 @@ export class RecallTelemetryCollector {
   private assemblyMs = 0;
   private engine: RecallTelemetryRecord["engine"] = "unknown";
   private modelId = "unknown";
+  private intent: string | undefined;
+  private fastPath: boolean | undefined;
+  private retrievalPasses = 0;
 
   constructor(seed: RecallTelemetrySeed = {}) {
     this.startedAtMs =
@@ -83,6 +89,15 @@ export class RecallTelemetryCollector {
   setRoute(engine: RecallTelemetryRecord["engine"], modelId: string): void {
     this.engine = engine;
     this.modelId = modelId.trim() || "unknown";
+  }
+
+  setIntent(intent: string, fastPath: boolean): void {
+    this.intent = intent;
+    this.fastPath = fastPath;
+  }
+
+  addRetrievalPass(): void {
+    this.retrievalPasses += 1;
   }
 
   setSeedSearchMs(ms: number): void {
@@ -138,6 +153,11 @@ export class RecallTelemetryCollector {
       outcome,
       engine: this.engine,
       modelId: this.modelId,
+      ...(this.intent ? { intent: this.intent } : {}),
+      ...(this.fastPath !== undefined ? { fastPath: this.fastPath } : {}),
+      ...(this.retrievalPasses > 0
+        ? { retrievalPasses: this.retrievalPasses }
+        : {}),
       routeMs: roundedMs(this.routeMs),
       hostContextMs: roundedMs(this.hostContextMs),
       seedSearchMs: roundedMs(this.seedSearchMs),

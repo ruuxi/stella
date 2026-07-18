@@ -306,8 +306,8 @@ export class DreamInboxStore {
   }
 
   /**
-   * Oldest-first unprocessed rows across all kinds. Caller decides how many
-   * to claim per run.
+   * Frequently surfaced rows lead, then the remaining queue is oldest-first.
+   * This makes Dream retain and refresh memory that repeatedly proves useful.
    */
   listUnprocessed(args?: { limit?: number }): DreamInboxRow[] {
     const limit = Math.max(1, Math.min(args?.limit ?? 50, 500));
@@ -317,7 +317,8 @@ export class DreamInboxStore {
         SELECT ${ROW_COLUMNS}
         FROM dream_inbox
         WHERE processed_by_dream_at IS NULL
-        ORDER BY source_updated_at ASC, id ASC
+        ORDER BY usage_count DESC, COALESCE(last_usage, 0) DESC,
+                 source_updated_at ASC, id ASC
         LIMIT ?
         `,
       )
@@ -417,7 +418,9 @@ export class DreamInboxStore {
       .prepare(
         `
         UPDATE dream_inbox
-        SET usage_count = usage_count + 1, last_usage = ?
+        SET usage_count = usage_count + 1,
+            last_usage = ?,
+            processed_by_dream_at = NULL
         WHERE kind = 'thread_summary' AND thread_id = ? AND run_id = ?
         `,
       )

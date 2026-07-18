@@ -12,6 +12,7 @@ import path from "node:path";
 
 export const MEMORY_FILE = "MEMORY.md";
 export const MEMORY_SUMMARY_FILE = "memory_summary.md";
+export const MEMORY_INDEX_FILE = "memory_index.md";
 
 const MEMORY_TEMPLATE = `# MEMORY
 
@@ -48,6 +49,17 @@ const MEMORY_SUMMARY_TEMPLATE = `# Memory summary
 <!-- DREAM:SUMMARY_END -->
 `;
 
+const MEMORY_INDEX_TEMPLATE = `# Memory routing index
+
+> Compact, discriminative routing map maintained by Dream. Keep task families,
+> aliases, repo names, paths, prior-decision hooks, and the best retrieval
+> source. Loaded on every Orchestrator turn and searched before deeper memory.
+
+<!-- DREAM:INDEX_START -->
+- No routing entries recorded yet.
+<!-- DREAM:INDEX_END -->
+`;
+
 export const memoriesRoot = (stellaDataDir: string): string =>
   path.join(stellaDataDir, "memories");
 
@@ -56,6 +68,9 @@ export const memoryFilePath = (stellaDataDir: string): string =>
 
 export const memorySummaryPath = (stellaDataDir: string): string =>
   path.join(memoriesRoot(stellaDataDir), MEMORY_SUMMARY_FILE);
+
+export const memoryIndexPath = (stellaDataDir: string): string =>
+  path.join(memoriesRoot(stellaDataDir), MEMORY_INDEX_FILE);
 
 const writeIfMissing = async (target: string, contents: string): Promise<void> => {
   try {
@@ -72,6 +87,7 @@ export const ensureDreamMemoryLayout = async (
   await fs.mkdir(root, { recursive: true });
   await writeIfMissing(memoryFilePath(stellaDataDir), MEMORY_TEMPLATE);
   await writeIfMissing(memorySummaryPath(stellaDataDir), MEMORY_SUMMARY_TEMPLATE);
+  await writeIfMissing(memoryIndexPath(stellaDataDir), MEMORY_INDEX_TEMPLATE);
 };
 
 export const readMemoryFile = async (
@@ -89,6 +105,16 @@ export const readMemorySummary = async (
 ): Promise<string | null> => {
   try {
     return await fs.readFile(memorySummaryPath(stellaDataDir), "utf-8");
+  } catch {
+    return null;
+  }
+};
+
+export const readMemoryIndex = async (
+  stellaDataDir: string,
+): Promise<string | null> => {
+  try {
+    return await fs.readFile(memoryIndexPath(stellaDataDir), "utf-8");
   } catch {
     return null;
   }

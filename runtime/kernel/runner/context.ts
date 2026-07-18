@@ -54,9 +54,11 @@ import type {
 } from "../storage/shared.js";
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import { BackgroundCompactionScheduler } from "../agent-runtime/compaction-scheduler.js";
+import { ensureDreamMemoryLayout } from "../memory/dream-storage.js";
 import {
-  RECALL_NO_MATCH_TEXT,
+  isRecallNoMatchBrief,
   RecallRetrievalError,
+  routeRecallIntent,
   runRecall,
 } from "../agent-runtime/context-lookup.js";
 import type { RecallTelemetrySeed } from "../agent-runtime/recall-telemetry.js";
@@ -434,6 +436,7 @@ export const createRunnerContext = ({
   runtimeStore,
   getAppBrowserContext,
   listLocalChatEvents,
+  recallReadQueries,
   appendLocalChatEvent,
   notifyThreadActivityUpdated,
   getDefaultConversationId,
@@ -589,37 +592,47 @@ export const createRunnerContext = ({
             const recallRoute = await resolveRunnerRecallLlmRoute(
               context,
               AGENT_IDS.ORCHESTRATOR,
+              payload.modelConfigSnapshot,
             );
             const routeMs = performance.now() - routeStartedAt;
             const sourceTimings: NonNullable<
               RecallTelemetrySeed["sourceTimings"]
             > = {};
+            const intent = routeRecallIntent(payload.prompt);
+            const needsHostContext = intent === "live_context";
             const hostContextStartedAt = performance.now();
             const localEventsStartedAt = performance.now();
-            const localEvents = context.listLocalChatEvents
-              ? context
-                  .listLocalChatEvents(payload.conversationId, 800)
-                  .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type))
-              : [];
+            const localEvents =
+              needsHostContext && context.listLocalChatEvents
+                ? context
+                    .listLocalChatEvents(payload.conversationId, 5)
+                    .filter((event) =>
+                      LOCAL_CONTEXT_EVENT_TYPES.has(event.type),
+                    )
+                : [];
             sourceTimings["host.localEvents"] = {
               kind: "sql",
-              calls: context.listLocalChatEvents ? 1 : 0,
+              calls: needsHostContext && context.listLocalChatEvents ? 1 : 0,
               ms: performance.now() - localEventsStartedAt,
               chars: 0,
             };
             const appBrowserStartedAt = performance.now();
-            const appBrowserContext = getAppBrowserContext
-              ? await getAppBrowserContext()
-              : undefined;
+            const appBrowserContext =
+              needsHostContext && getAppBrowserContext
+                ? await getAppBrowserContext()
+                : undefined;
             sourceTimings["host.appBrowserContext"] = {
               kind: "host",
-              calls: getAppBrowserContext ? 1 : 0,
+              calls: needsHostContext && getAppBrowserContext ? 1 : 0,
               ms: performance.now() - appBrowserStartedAt,
               chars: appBrowserContext
                 ? JSON.stringify(appBrowserContext).length
                 : 0,
             };
             const hostContextMs = performance.now() - hostContextStartedAt;
+            let resultMetadata:
+              | Pick<RecallLookupResult, "intent" | "fastPath" | "sources">
+              | undefined;
             const brief = await runRecall({
               conversationId: payload.conversationId,
               lookupPrompt: payload.prompt,
@@ -632,22 +645,28 @@ export const createRunnerContext = ({
               localEvents,
               ...(appBrowserContext ? { appBrowserContext } : {}),
               recallRoute,
+              ...(context.recallReadQueries
+                ? { recallReadQueries: context.recallReadQueries }
+                : {}),
               telemetry: {
                 startedAtMs: recallStartedAtMs,
                 routeMs,
                 hostContextMs,
                 sourceTimings,
               },
+              onResultMetadata: (metadata) => {
+                resultMetadata = metadata;
+              },
               ...(payload.signal ? { signal: payload.signal } : {}),
             });
             return {
-              status:
-                brief.trim() === RECALL_NO_MATCH_TEXT
-                  ? "no_match"
-                  : brief.startsWith("Recall failed:")
-                    ? "synthesis_error"
-                    : "found",
+              status: isRecallNoMatchBrief(brief)
+                ? "no_match"
+                : brief.startsWith("Recall failed:")
+                  ? "synthesis_error"
+                  : "found",
               brief,
+              ...resultMetadata,
             };
           } catch (error) {
             return {
@@ -767,6 +786,7 @@ export const createRunnerContext = ({
     fashionApi: resolvedFashionApi,
     runtimeStore,
     listLocalChatEvents,
+    recallReadQueries,
     appendLocalChatEvent,
     notifyThreadActivityUpdated,
     getDefaultConversationId,
@@ -1106,6 +1126,9 @@ export const buildAgentContext = async (
     args.agentType,
     "injectsPersonality",
   );
+  if (injectsResidentMemory) {
+    await ensureDreamMemoryLayout(context.stellaDataDir);
+  }
 
   return {
     systemPrompt:

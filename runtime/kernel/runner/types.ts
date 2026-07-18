@@ -37,7 +37,11 @@ import type {
   LocalAgentManager,
   AgentLifecycleEvent,
 } from "../agents/local-agent-manager.js";
-import type { RuntimeStore } from "../storage/runtime-store.js";
+import type {
+  RuntimeStore,
+  TranscriptSearchHit,
+} from "../storage/runtime-store.js";
+import type { RecallFtsHealth } from "../storage/recall-read-queries.js";
 import type {
   StorePackageRecord,
   StorePackageReleaseRecord,
@@ -205,6 +209,13 @@ export type StellaHostRunnerOptions = {
     conversationId: string,
     maxItems: number,
   ) => LocalContextEvent[];
+  recallReadQueries?: {
+    getFtsHealth: () => RecallFtsHealth;
+    listTranscriptNeighborsBatch: (
+      targets: readonly { conversationId: string; atMs: number }[],
+      options?: { before?: number; after?: number; windowMs?: number },
+    ) => TranscriptSearchHit[][];
+  };
   appendLocalChatEvent?: (args: LocalChatAppendEventArgs) => void;
   /** Fired after every `runtime_agents` write so the renderer's
    *  thread-activity store can refetch the conversation's rows. */
@@ -412,6 +423,7 @@ export type RunnerContext = {
   fashionApi?: FashionToolApi;
   runtimeStore: RuntimeStore;
   listLocalChatEvents?: StellaHostRunnerOptions["listLocalChatEvents"];
+  recallReadQueries?: StellaHostRunnerOptions["recallReadQueries"];
   appendLocalChatEvent?: StellaHostRunnerOptions["appendLocalChatEvent"];
   notifyThreadActivityUpdated?: StellaHostRunnerOptions["notifyThreadActivityUpdated"];
   getDefaultConversationId?: StellaHostRunnerOptions["getDefaultConversationId"];

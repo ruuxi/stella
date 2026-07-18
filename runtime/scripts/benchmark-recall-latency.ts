@@ -18,7 +18,10 @@ import { performance } from "node:perf_hooks";
 import { DatabaseSync } from "node:sqlite";
 
 import { AGENT_IDS } from "../contracts/agent-runtime.js";
-import { runRecall } from "../kernel/agent-runtime/context-lookup.js";
+import {
+  routeRecallIntent,
+  runRecall,
+} from "../kernel/agent-runtime/context-lookup.js";
 import {
   RECALL_CLAUDE_CODE_MODEL,
   type RecallModelRoute,
@@ -31,6 +34,10 @@ import { LOCAL_CONTEXT_EVENT_TYPES } from "../kernel/runner/shared.js";
 import { resolveRunnerRecallLlmRoute } from "../kernel/runner/model-selection.js";
 import type { RunnerContext } from "../kernel/runner/types.js";
 import { SessionStore } from "../kernel/storage/session-store.js";
+import {
+  listTranscriptNeighborsBatch,
+  readRecallFtsHealth,
+} from "../kernel/storage/recall-read-queries.js";
 import type { LocalContextEvent } from "../kernel/local-history.js";
 
 const REPO_ROOT = process.cwd();
@@ -275,6 +282,11 @@ const runnerContext = {
 const results: Array<{
   queryId: string;
   telemetry?: RecallTelemetryRecord;
+  resultMetadata?: {
+    intent: string;
+    fastPath: boolean;
+    sources: unknown[];
+  };
   error?: string;
 }> = [];
 
@@ -286,14 +298,21 @@ try {
     const routeMs = performance.now() - routeStartedAt;
 
     const hostStartedAt = performance.now();
+    const intent = routeRecallIntent(query.prompt);
+    const needsHostContext = intent === "live_context";
     const localEventsStartedAt = performance.now();
-    const localEvents = (
-      store.listEvents(conversationId, 800) as LocalContextEvent[]
-    ).filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type));
+    const localEvents = needsHostContext
+      ? (store.listEvents(conversationId, 5) as LocalContextEvent[]).filter(
+          (event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type),
+        )
+      : [];
     const localEventsMs = performance.now() - localEventsStartedAt;
     const hostContextMs = performance.now() - hostStartedAt;
 
     let telemetry: RecallTelemetryRecord | undefined;
+    let resultMetadata:
+      | { intent: string; fastPath: boolean; sources: unknown[] }
+      | undefined;
     try {
       await runRecall({
         conversationId,
@@ -304,6 +323,11 @@ try {
         store,
         localEvents,
         recallRoute,
+        recallReadQueries: {
+          getFtsHealth: () => readRecallFtsHealth(db as never),
+          listTranscriptNeighborsBatch: (targets, options) =>
+            listTranscriptNeighborsBatch(db as never, targets, options),
+        },
         telemetry: {
           startedAtMs,
           routeMs,
@@ -311,7 +335,7 @@ try {
           sourceTimings: {
             "host.localEvents": {
               kind: "sql",
-              calls: 1,
+              calls: needsHostContext ? 1 : 0,
               ms: localEventsMs,
               chars: 0,
             },
@@ -326,9 +350,12 @@ try {
         onTelemetry: (record) => {
           telemetry = record;
         },
+        onResultMetadata: (metadata) => {
+          resultMetadata = metadata;
+        },
         signal: AbortSignal.timeout(180_000),
       });
-      results.push({ queryId: query.id, telemetry });
+      results.push({ queryId: query.id, telemetry, resultMetadata });
       process.stdout.write(
         `${query.id}: ${telemetry ? `${(telemetry.totalMs / 1_000).toFixed(1)}s ${telemetry.modelId} calls=${telemetry.modelCalls} rounds=${telemetry.toolRounds}` : "missing telemetry"}\n`,
       );
@@ -413,6 +440,7 @@ const summary = {
   runs: results.map((result, index) => ({
     query: QUERIES[index],
     ...(result.telemetry ? { telemetry: result.telemetry } : {}),
+    ...(result.resultMetadata ? { resultMetadata: result.resultMetadata } : {}),
     ...(result.error ? { error: result.error } : {}),
   })),
 };

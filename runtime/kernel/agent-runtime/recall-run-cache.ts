@@ -9,6 +9,14 @@ export type RecallLookupResult = {
   brief: string;
   /** True when this normalized lookup already ran (or was already in flight). */
   cached?: true;
+  intent?: string;
+  fastPath?: boolean;
+  sources?: Array<{
+    kind: "memory" | "thread" | "transcript" | "live";
+    inboxId?: number;
+    threadId?: string;
+    runId?: string;
+  }>;
 };
 
 const normalizeLookupPart = (value: string): string =>

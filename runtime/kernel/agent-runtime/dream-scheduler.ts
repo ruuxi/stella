@@ -157,7 +157,17 @@ const readDreamConfig = (stellaDataDir: string): DreamConfig => {
 };
 
 export const buildDreamSystemPrompt = (stellaDataDir: string): string =>
-  readHomePrompt(stellaDataDir, "dream-scheduled") ?? "";
+  [
+    readHomePrompt(stellaDataDir, "dream-scheduled") ?? "",
+    [
+      "Maintain ~/.stella/memories/memory_index.md on every consolidation pass.",
+      "Keep it a compact routing map: task families, aliases, repo names, paths, prior-decision hooks, and the best retrieval source (memory, threads, or transcripts).",
+      "Use the DREAM:INDEX_START / DREAM:INDEX_END anchors and StrReplace. Prefer retaining and refreshing inbox entries with higher usage_count or recent last_usage.",
+      "profile.md remains exclusively Remember-owned; never edit it.",
+    ].join(" "),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
 const buildDreamTools = (): Tool[] =>
   [dreamTool, readTool, strReplaceTool].map((def) => ({

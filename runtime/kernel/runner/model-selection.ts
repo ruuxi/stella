@@ -1,7 +1,9 @@
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
+import type { AgentModelConfigSnapshot } from "../../contracts/agent-engine.js";
 import { getAgentRuntimeEngine } from "../preferences/local-preferences.js";
 import {
   RECALL_CLAUDE_CODE_MODEL,
+  RECALL_CLAUDE_PROVIDER_MODEL,
   RECALL_CODEX_PROVIDER_MODEL,
   RECALL_STELLA_MODEL,
   type RecallModelRoute,
@@ -70,9 +72,28 @@ export const resolveRunnerLlmRouteWithMetadata = async (
 export const resolveRunnerRecallLlmRoute = async (
   context: RunnerContext,
   agentType: string,
+  modelConfigSnapshot?: AgentModelConfigSnapshot,
 ): Promise<RecallModelRoute> => {
-  const activeEngine = getAgentRuntimeEngine(context.stellaDataDir);
+  const activeEngine =
+    modelConfigSnapshot?.engine ?? getAgentRuntimeEngine(context.stellaDataDir);
   if (activeEngine === "claude_code_local") {
+    try {
+      const resolvedLlm = resolveRunnerLlmRoute(
+        context,
+        agentType,
+        RECALL_CLAUDE_PROVIDER_MODEL,
+      );
+      return {
+        activeEngine,
+        executionEngine: "native",
+        modelId: `${resolvedLlm.model.provider}/${resolvedLlm.model.id}`,
+        resolvedLlm,
+      };
+    } catch {
+      // Claude Code subscription auth belongs to the CLI and is not exposed
+      // as an Anthropic provider credential. Fall back to the authoritative
+      // Haiku CLI route when no independent provider credential is present.
+    }
     return {
       activeEngine,
       executionEngine: "claude-code",

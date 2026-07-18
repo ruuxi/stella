@@ -70,6 +70,33 @@ describe("DreamInboxStore", () => {
     expect(after[0]?.content).toBe("Updated output");
   });
 
+  it("requeues surfaced evidence and prioritizes it by usage", () => {
+    const { store } = createTestContext();
+    store.recordThreadSummary({
+      threadId: "thread-used",
+      runId: "run-used",
+      agentType: "general",
+      rolloutSummary: "Frequently recalled work",
+    });
+    store.recordThreadSummary({
+      threadId: "thread-other",
+      runId: "run-other",
+      agentType: "general",
+      rolloutSummary: "Other work",
+    });
+    const rows = store.listUnprocessed();
+    store.markProcessed({ ids: rows.map((row) => row.id) });
+
+    store.recordUsage("thread-used", "run-used");
+
+    expect(store.countUnprocessed()).toBe(1);
+    expect(store.listUnprocessed()[0]).toMatchObject({
+      threadId: "thread-used",
+      runId: "run-used",
+      usageCount: 1,
+    });
+  });
+
   it("redacts secrets before content enters the inbox", () => {
     const { store } = createTestContext();
 
@@ -111,7 +138,10 @@ describe("DreamInboxStore", () => {
     const tenMinute = unprocessed.find((row) => row.sourceKey === "10m");
     expect(tenMinute?.kind).toBe("chronicle");
     expect(tenMinute?.content).toBe("- Now reviewing a pull request");
-    expect(tenMinute?.metadata).toMatchObject({ window: "10m", uniqueLines: 9 });
+    expect(tenMinute?.metadata).toMatchObject({
+      window: "10m",
+      uniqueLines: 9,
+    });
   });
 
   it("stores memory notes as formatted candidates and lists them newest first", () => {

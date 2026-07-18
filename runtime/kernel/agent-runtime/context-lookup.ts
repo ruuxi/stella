@@ -212,6 +212,59 @@ export const RECALL_RUNTIME_TOOLS: Tool[] = [
 
 /** The one legitimate no-result answer — everything else is an error. */
 export const RECALL_NO_MATCH_TEXT = "Nothing relevant found.";
+export const isRecallNoMatchBrief = (brief: string): boolean =>
+  brief.trim().toLocaleLowerCase().startsWith("nothing relevant found");
+
+export type RecallIntent =
+  | "durable_memory"
+  | "delegated_work"
+  | "episodic"
+  | "live_context"
+  | "multi_source";
+
+/** Cheap deterministic routing happens before any evidence source is read. */
+export const routeRecallIntent = (prompt: string): RecallIntent => {
+  const value = prompt.normalize("NFKC").toLocaleLowerCase();
+  if (
+    /\b(right now|currently|current app|current browser|active tab|on[- ]screen|this page|this window|frontmost|selected)\b/.test(
+      value,
+    )
+  ) {
+    return "live_context";
+  }
+  if (
+    /\b(thread|agent|delegat(?:e|ed)|resum(?:e|able)|still running|status|progress|crash(?:ed)?)\b/.test(
+      value,
+    )
+  ) {
+    return "delegated_work";
+  }
+  if (
+    /\b(what did i|did i|when did|where did|first|earliest|latest|last time|what happened|actually go|actually do|i said|i went)\b/.test(
+      value,
+    )
+  ) {
+    return "episodic";
+  }
+  if (
+    /(?:^|\s)(?:\/[^\s]+|[\w.-]+\/[\w./-]+)|\b(repo(?:sitory)?|path|file|prior decision|decision|policy|rule|established|determine|determined|recall hook)\b/.test(
+      value,
+    )
+  ) {
+    return "durable_memory";
+  }
+  return "multi_source";
+};
+
+const recallIntentNeedsSynthesis = (
+  intent: RecallIntent,
+  prompt: string,
+): boolean =>
+  intent === "multi_source" ||
+  (intent === "episodic" &&
+    /\b(first|earliest|latest|last time|what happened|actually|why|how)\b/i.test(
+      prompt,
+    ));
 /**
  * Failure outcomes get texts DISTINCT from the no-match answer so the
  * orchestrator can tell "searched and found nothing" from "the lookup
@@ -445,6 +498,11 @@ type MemoryFileSource = {
 };
 
 const MEMORY_FILE_SOURCES = (stellaDataDir: string): MemoryFileSource[] => [
+  {
+    displayPath: "~/.stella/memories/memory_index.md",
+    path: path.join(stellaDataDir, "memories", "memory_index.md"),
+    includeByDefault: true,
+  },
   {
     displayPath: "~/.stella/memories/memory_summary.md",
     path: path.join(stellaDataDir, "memories", "memory_summary.md"),
@@ -816,6 +874,10 @@ export const formatTranscriptSearchResults = (
   conversationId: string,
   query: string | undefined,
   limit?: number,
+  listNeighborsBatch?: (
+    targets: readonly { conversationId: string; atMs: number }[],
+    options?: { before?: number; after?: number; windowMs?: number },
+  ) => TranscriptSearchHit[][],
 ): string => {
   const cappedLimit = Math.max(1, Math.min(25, Math.floor(limit ?? 12)));
   const tokens = tokenizeSearchQuery(query);
@@ -845,6 +907,25 @@ export const formatTranscriptSearchResults = (
     expandable.add(hit);
   }
 
+  const expandableHits = [...expandable];
+  let batchedNeighbors: TranscriptSearchHit[][] | undefined;
+  if (listNeighborsBatch && expandableHits.length > 0) {
+    try {
+      batchedNeighbors = listNeighborsBatch(
+        expandableHits.map((hit) => ({
+          conversationId: hit.conversationId,
+          atMs: hit.atMs,
+        })),
+        { before: MESSAGE_CONTEXT_BEFORE, after: MESSAGE_CONTEXT_AFTER },
+      );
+    } catch {
+      batchedNeighbors = undefined;
+    }
+  }
+  const expandableIndex = new Map(
+    expandableHits.map((hit, index) => [hit, index] as const),
+  );
+
   // Expand a message hit with the surrounding exchange: the matched message
   // names the thing, but the neighbors are usually the event itself.
   const renderHit = (hit: TranscriptSearchHit): string => {
@@ -861,12 +942,16 @@ export const formatTranscriptSearchResults = (
     if (!expandable.has(hit)) return rendered;
     let neighbors: ReturnType<ContextLookupStore["listTranscriptNeighbors"]>;
     try {
-      neighbors = store.listTranscriptNeighbors({
-        conversationId: hit.conversationId,
-        atMs: hit.atMs,
-        before: MESSAGE_CONTEXT_BEFORE,
-        after: MESSAGE_CONTEXT_AFTER,
-      });
+      const batchIndex = expandableIndex.get(hit);
+      neighbors =
+        batchIndex !== undefined && batchedNeighbors
+          ? (batchedNeighbors[batchIndex] ?? [])
+          : store.listTranscriptNeighbors({
+              conversationId: hit.conversationId,
+              atMs: hit.atMs,
+              before: MESSAGE_CONTEXT_BEFORE,
+              after: MESSAGE_CONTEXT_AFTER,
+            });
     } catch {
       return rendered;
     }
@@ -1119,6 +1204,413 @@ export const resolveRecallSearchAction = (
   return null;
 };
 
+type RecallSourceReference = {
+  kind: "memory" | "thread" | "transcript" | "live";
+  inboxId?: number;
+  threadId?: string;
+  runId?: string;
+};
+
+type RecallReadQueries = {
+  getFtsHealth: () => {
+    healthy: boolean;
+    transcriptReady: boolean;
+    threadsReady: boolean;
+    reason?: string;
+  };
+  listTranscriptNeighborsBatch: (
+    targets: readonly { conversationId: string; atMs: number }[],
+    options?: { before?: number; after?: number; windowMs?: number },
+  ) => TranscriptSearchHit[][];
+};
+
+const hasUsableRecallEvidence = (
+  kind: RecallIntent,
+  value: string,
+  terms: readonly string[],
+): boolean => {
+  const normalized = value.toLocaleLowerCase();
+  const genericTokens = new Set([
+    "stella",
+    "recall",
+    "project",
+    "prior",
+    "decision",
+  ]);
+  const distinctiveTokens = [
+    ...new Set(
+      terms
+        .flatMap((term) => tokenizeSearchQuery(term))
+        .map((term) => term.toLocaleLowerCase())
+        .filter((term) => term.length >= 4 && !genericTokens.has(term)),
+    ),
+  ];
+  const requiredMatches = Math.min(2, distinctiveTokens.length);
+  if (
+    requiredMatches > 0 &&
+    distinctiveTokens.filter((term) => normalized.includes(term)).length <
+      requiredMatches
+  ) {
+    return false;
+  }
+  if (kind === "durable_memory") {
+    return !normalized.includes("no matching memory lines found");
+  }
+  if (kind === "delegated_work") {
+    return (
+      !normalized.includes("no agent threads matched") &&
+      !normalized.includes("no past agent work recorded")
+    );
+  }
+  if (kind === "episodic") {
+    return (
+      !normalized.includes("nothing matched in past conversation") &&
+      !normalized.includes("no usable search terms")
+    );
+  }
+  if (kind === "live_context") {
+    return (
+      !normalized.includes("no live app or browser-tab snapshot") ||
+      !normalized.includes("no message-attached app/browser context")
+    );
+  }
+  return value.trim().length > 0;
+};
+
+const deterministicReformulation = (
+  prompt: string,
+  originalTerms: readonly string[],
+): string[] => {
+  const filler = new Set([
+    "what",
+    "when",
+    "where",
+    "which",
+    "did",
+    "does",
+    "have",
+    "about",
+    "prior",
+    "previous",
+    "find",
+    "recall",
+    "status",
+    "first",
+    "last",
+    "latest",
+  ]);
+  const original = new Set(
+    originalTerms.flatMap((term) => tokenizeSearchQuery(term)),
+  );
+  const candidates = tokenizeSearchQuery(prompt)
+    .filter((term) => term.length >= 3 && !filler.has(term.toLocaleLowerCase()))
+    .filter((term) => !original.has(term));
+  return normalizeMemorySearchTerms(
+    candidates.length > 0
+      ? candidates
+      : originalTerms.flatMap((term) => term.split(/[^\p{L}\p{N}_.\/-]+/u)),
+  );
+};
+
+const runArchitecturalRecall = async (args: {
+  conversationId: string;
+  lookupPrompt: string;
+  seedTerms: readonly string[];
+  stellaAppDir: string;
+  stellaDataDir: string;
+  store: RuntimeStore;
+  localEvents: LocalContextEvent[];
+  appBrowserContext?: HostAppBrowserContextSnapshot;
+  recallRoute: RecallModelRoute;
+  recallReadQueries?: RecallReadQueries;
+  telemetry: RecallTelemetryCollector;
+  emitTelemetry: (outcome: string) => void;
+  onResultMetadata?: (metadata: {
+    intent: RecallIntent;
+    fastPath: boolean;
+    sources: RecallSourceReference[];
+  }) => void;
+  signal?: AbortSignal;
+}): Promise<string> => {
+  const intent = routeRecallIntent(args.lookupPrompt);
+  const synthesisRequired = recallIntentNeedsSynthesis(
+    intent,
+    args.lookupPrompt,
+  );
+  args.telemetry.setIntent(intent, !synthesisRequired);
+  const useClaudeCode = args.recallRoute.executionEngine === "claude-code";
+  args.telemetry.setRoute(
+    useClaudeCode ? "claude-code" : "native",
+    args.recallRoute.modelId,
+  );
+
+  let sourceKinds:
+    | readonly ["durable_memory"]
+    | readonly ["delegated_work"]
+    | readonly ["episodic"]
+    | readonly ["live_context"]
+    | readonly ["durable_memory", "delegated_work", "episodic"] =
+    intent === "durable_memory"
+      ? (["durable_memory"] as const)
+      : intent === "delegated_work"
+        ? (["delegated_work"] as const)
+        : intent === "episodic"
+          ? (["episodic"] as const)
+          : intent === "live_context"
+            ? (["live_context"] as const)
+            : (["durable_memory", "delegated_work", "episodic"] as const);
+
+  let ftsChecked = false;
+  const ensureFtsReady = (): void => {
+    if (ftsChecked || !args.recallReadQueries) return;
+    if (
+      !sourceKinds.some(
+        (kind) => kind === "delegated_work" || kind === "episodic",
+      )
+    ) {
+      return;
+    }
+    ftsChecked = true;
+    const healthStartedAt = performance.now();
+    const health = args.recallReadQueries.getFtsHealth();
+    args.telemetry.addSource(
+      "retrieval.ftsHealth",
+      "sql",
+      performance.now() - healthStartedAt,
+    );
+    if (!health.healthy) {
+      const diagnostic = {
+        conversationId: args.conversationId,
+        transcriptReady: health.transcriptReady,
+        threadsReady: health.threadsReady,
+        reason: health.reason ?? "unknown",
+      };
+      console.error("[stella:recall:fts-degraded]", JSON.stringify(diagnostic));
+      throw new RecallRetrievalError(
+        `Recall FTS unavailable: ${health.reason ?? "index health check failed"}`,
+      );
+    }
+  };
+  ensureFtsReady();
+
+  const retrieve = async (terms: readonly string[]) => {
+    args.telemetry.addRetrievalPass();
+    const query = normalizeMemorySearchTerms(terms).join(" ");
+    const passStartedAt = performance.now();
+    const results = await Promise.all(
+      sourceKinds.map(async (kind) => {
+        const startedAt = performance.now();
+        let value = "";
+        try {
+          if (kind === "durable_memory") {
+            value = await readMemorySearchResults(args.stellaDataDir, terms);
+          } else if (kind === "delegated_work") {
+            const threads = formatThreadSearchResults(
+              args.store,
+              args.conversationId,
+              query,
+            );
+            const live = formatLiveThreadStatus(args.store);
+            value = `${threads}\n\n# Live status\n${live}`;
+          } else if (kind === "episodic") {
+            value = formatTranscriptSearchResults(
+              args.store,
+              args.conversationId,
+              query,
+              undefined,
+              args.recallReadQueries?.listTranscriptNeighborsBatch,
+            );
+          } else {
+            value = [
+              formatLiveAppBrowserContext(args.appBrowserContext),
+              formatLatestLocalContext(args.localEvents),
+            ].join("\n\n");
+          }
+          return { kind, value };
+        } finally {
+          args.telemetry.addSource(
+            `retrieval.${kind}`,
+            kind === "durable_memory"
+              ? "file"
+              : kind === "live_context"
+                ? "host"
+                : "sql",
+            performance.now() - startedAt,
+            value.length,
+          );
+        }
+      }),
+    );
+    args.telemetry.setSeedSearchMs(performance.now() - passStartedAt);
+    return results;
+  };
+
+  let evidence = await retrieve(args.seedTerms);
+  if (
+    !evidence.some(({ kind, value }) =>
+      hasUsableRecallEvidence(kind, value, args.seedTerms),
+    )
+  ) {
+    if (intent === "durable_memory") {
+      // A durable-index miss gets one transcript pass with the SAME concrete
+      // anchors. Broadening file terms creates false positives (for example,
+      // matching the generic word "project" in an unrelated memory block).
+      sourceKinds = ["episodic"];
+      ensureFtsReady();
+      evidence = await retrieve(args.seedTerms);
+    } else {
+      const reformulated = deterministicReformulation(
+        args.lookupPrompt,
+        args.seedTerms,
+      );
+      if (reformulated.length > 0) evidence = await retrieve(reformulated);
+    }
+  }
+
+  const usable = evidence.filter(({ kind, value }) =>
+    hasUsableRecallEvidence(kind, value, args.seedTerms),
+  );
+  if (usable.length === 0) {
+    args.telemetry.setSeedChars(0);
+    args.onResultMetadata?.({ intent, fastPath: true, sources: [] });
+    args.emitTelemetry("no-match");
+    return RECALL_NO_MATCH_TEXT;
+  }
+
+  const assemblyStartedAt = performance.now();
+  const evidenceText = renderCappedRecallSeed(
+    usable.map(({ kind, value }) => ({
+      heading: `# ${kind.replaceAll("_", " ")}`,
+      body: value,
+      maxBodyChars: 8_500,
+    })),
+    usable.map((_, index) => index),
+  );
+  args.telemetry.setSeedChars(evidenceText.length);
+  args.telemetry.addAssemblyMs(performance.now() - assemblyStartedAt);
+
+  const threadIds = new Set<string>();
+  for (const match of evidenceText.matchAll(/^- ([^\s|]+) \|/gm)) {
+    if (match[1]) threadIds.add(match[1]);
+  }
+  const sources: RecallSourceReference[] = usable.map(({ kind }) => ({
+    kind:
+      kind === "durable_memory"
+        ? "memory"
+        : kind === "delegated_work"
+          ? "thread"
+          : kind === "episodic"
+            ? "transcript"
+            : "live",
+  }));
+  if (threadIds.size > 0) {
+    const rows = args.store.dreamInboxStore.listRecentThreadSummaries({
+      limit: 200,
+    });
+    for (const row of rows) {
+      if (!row.threadId || !row.runId || !threadIds.has(row.threadId)) continue;
+      try {
+        args.store.dreamInboxStore.recordUsage(row.threadId, row.runId);
+      } catch (error) {
+        // Read-only benchmark snapshots cannot persist feedback. Production
+        // writes remain best-effort bookkeeping, never a Recall failure.
+        logRecallTrace("[stella:recall:usage-feedback-failed]", {
+          threadId: row.threadId,
+          runId: row.runId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      sources.push({
+        kind: "thread",
+        inboxId: row.id,
+        threadId: row.threadId,
+        runId: row.runId,
+      });
+      threadIds.delete(row.threadId);
+    }
+  }
+
+  if (!synthesisRequired) {
+    args.onResultMetadata?.({ intent, fastPath: true, sources });
+    args.emitTelemetry("fast-path");
+    return evidenceText;
+  }
+
+  args.telemetry.setIntent(intent, false);
+  const systemPrompt =
+    "Synthesize the supplied Recall evidence into one concise factual brief. Cite dates and thread ids present in evidence. Do not invent facts. If evidence is insufficient, answer exactly: Nothing relevant found.";
+  const userPrompt = `${evidenceText}\n\n# Lookup request\n${args.lookupPrompt.trim()}`;
+  const modelStartedAt = performance.now();
+  let brief = "";
+  try {
+    if (useClaudeCode) {
+      brief = (
+        await runClaudeCodeAgentTextCompletion({
+          stellaAppDir: args.stellaDataDir,
+          cwd: args.stellaAppDir,
+          agentType: AGENT_IDS.ORCHESTRATOR,
+          modelOverride: args.recallRoute.claudeCodeModel,
+          effortLevel: "low",
+          context: {
+            systemPrompt,
+            messages: [
+              {
+                role: "user",
+                content: [{ type: "text", text: userPrompt }],
+                timestamp: Date.now(),
+              },
+            ],
+            tools: [],
+          },
+          abortSignal: args.signal,
+        })
+      ).trim();
+    } else {
+      const resolvedLlm = args.recallRoute.resolvedLlm;
+      if (!resolvedLlm) {
+        throw new Error("Recall light-tier route is unavailable.");
+      }
+      const apiKey = (await resolvedLlm.getApiKey())?.trim();
+      if (!apiKey) throw new Error("No Recall model credential is configured.");
+      const response = await completeSimple(
+        resolvedLlm.model,
+        {
+          systemPrompt,
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: userPrompt }],
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        {
+          apiKey,
+          reasoning: "low",
+          ...(resolvedLlm.refreshApiKey
+            ? { refreshApiKey: resolvedLlm.refreshApiKey }
+            : {}),
+          maxTokens: MAX_CONTEXT_OUTPUT_TOKENS,
+          temperature: 0,
+          ...(args.signal ? { signal: args.signal } : {}),
+        },
+      );
+      if (
+        response.stopReason === "error" ||
+        response.stopReason === "aborted"
+      ) {
+        throw new Error(response.errorMessage ?? response.stopReason);
+      }
+      brief = readAssistantText(response).trim();
+    }
+  } finally {
+    args.telemetry.addModelCall(performance.now() - modelStartedAt);
+  }
+  args.onResultMetadata?.({ intent, fastPath: false, sources });
+  args.emitTelemetry(brief ? "answer" : "empty-brief");
+  return brief || RECALL_EMPTY_BRIEF_TEXT;
+};
+
 /**
  * Agent-backed recall. Seeds the model with the eager context (memory
  * summary, pre-seeded memory/thread/transcript search results from the
@@ -1139,8 +1631,14 @@ export const runRecall = async (args: {
   localEvents: LocalContextEvent[];
   appBrowserContext?: HostAppBrowserContextSnapshot;
   recallRoute: RecallModelRoute;
+  recallReadQueries?: RecallReadQueries;
   telemetry?: RecallTelemetrySeed;
   onTelemetry?: (record: RecallTelemetryRecord) => void;
+  onResultMetadata?: (metadata: {
+    intent: RecallIntent;
+    fastPath: boolean;
+    sources: RecallSourceReference[];
+  }) => void;
   signal?: AbortSignal;
 }): Promise<string> => {
   const telemetry = new RecallTelemetryCollector(args.telemetry);
@@ -1164,6 +1662,40 @@ export const runRecall = async (args: {
       ? args.memorySearchTerms
       : tokenizeSearchQuery(args.lookupPrompt),
   );
+  if (args.recallReadQueries) {
+    try {
+      return await runArchitecturalRecall({
+        conversationId: args.conversationId,
+        lookupPrompt: args.lookupPrompt,
+        seedTerms,
+        stellaAppDir: args.stellaAppDir,
+        stellaDataDir: args.stellaDataDir,
+        store: args.store,
+        localEvents: args.localEvents,
+        ...(args.appBrowserContext
+          ? { appBrowserContext: args.appBrowserContext }
+          : {}),
+        recallRoute: args.recallRoute,
+        ...(args.recallReadQueries
+          ? { recallReadQueries: args.recallReadQueries }
+          : {}),
+        telemetry,
+        emitTelemetry,
+        ...(args.onResultMetadata
+          ? { onResultMetadata: args.onResultMetadata }
+          : {}),
+        ...(args.signal ? { signal: args.signal } : {}),
+      });
+    } catch (error) {
+      emitTelemetry("thrown");
+      throw error instanceof RecallRetrievalError
+        ? error
+        : new Error(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+// Test/replay callers without the read-query bundle retain the previous
+// implementation while production always supplies the architectural path.
   let seed: string;
   try {
     seed = await buildContextLookupUserPrompt({
@@ -1382,7 +1914,8 @@ export const runRecall = async (args: {
             context,
             abortSignal: args.signal,
             onModelRound: ({ messageId, toolCallCount }) => {
-              const roundId = messageId ?? `anonymous:${anonymousModelRound++}`;
+              const roundId =
+                messageId ?? `anonymous:${anonymousModelRound++}`;
               if (!observedModelRoundIds.has(roundId)) {
                 observedModelRoundIds.add(roundId);
                 observedModelRounds += 1;
@@ -1416,7 +1949,8 @@ export const runRecall = async (args: {
         );
         // A launch/transport failure can happen before an assistant event.
         // Preserve one attempted model call instead of reporting zero.
-        if (modelFailed || observedModelRounds === 0) telemetry.addModelCall();
+        if (modelFailed || observedModelRounds === 0)
+          telemetry.addModelCall();
         if (modelFailed) emitTelemetry("thrown");
       }
       if (attempt === 0 && text && isNothingFoundBrief(text) && !ranSearch) {
@@ -1507,7 +2041,10 @@ export const runRecall = async (args: {
   // one-time rejection.
   for (;;) {
     const response = await completeWithRetry();
-    if (response.stopReason === "error" || response.stopReason === "aborted") {
+    if (
+      response.stopReason === "error" ||
+      response.stopReason === "aborted"
+    ) {
       logRecallTrace("[stella:recall:step]", {
         conversationId: args.conversationId,
         step: searchStep,

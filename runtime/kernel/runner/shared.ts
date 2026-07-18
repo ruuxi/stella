@@ -71,10 +71,15 @@ const readResidentMemoryDoc = (filePath: string): string | undefined => {
  */
 export const readMemorySummaryDoc = (
   stellaDataDir: string,
-): string | undefined =>
-  readResidentMemoryDoc(
+): string | undefined => {
+  const summary = readResidentMemoryDoc(
     path.join(stellaDataDir, "memories", "memory_summary.md"),
   );
+  const routingIndex = readResidentMemoryDoc(
+    path.join(stellaDataDir, "memories", "memory_index.md"),
+  );
+  return [summary, routingIndex].filter(Boolean).join("\n\n") || undefined;
+};
 
 /**
  * The durable user-profile facts written by the `Remember` tool, read

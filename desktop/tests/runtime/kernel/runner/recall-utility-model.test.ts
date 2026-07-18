@@ -58,13 +58,17 @@ const model = (
 vi.mock("../../../../../runtime/ai/models.js", () => ({
   getAllModels: () => [
     model("anthropic", "claude-opus-4-8", "anthropic"),
+    model("anthropic", "claude-haiku-4-5", "anthropic"),
     model("openrouter", "openai/gpt-5.5"),
     model("openai-codex", "gpt-5.6-luna", "openai-codex-responses"),
   ],
   getModels: (provider: string) => {
     switch (provider) {
       case "anthropic":
-        return [model("anthropic", "claude-opus-4-8", "anthropic")];
+        return [
+          model("anthropic", "claude-opus-4-8", "anthropic"),
+          model("anthropic", "claude-haiku-4-5", "anthropic"),
+        ];
       case "openrouter":
         return [model("openrouter", "openai/gpt-5.5")];
       case "openai-codex":
@@ -149,6 +153,53 @@ describe("resolveRunnerRecallLlmRoute", () => {
       claudeCodeModel: "haiku",
     });
     expect(catalogMetadataCalls.count).toBe(0);
+  });
+
+  it("uses the captured run engine when preferences change mid-turn", async () => {
+    const { resolveRunnerRecallLlmRoute } = await loadModule();
+    const stellaDataDir = tempDirs.create("recall-captured-engine-");
+    writeFileSync(
+      path.join(stellaDataDir, "preferences.json"),
+      JSON.stringify({ agentRuntimeEngine: "default" }),
+    );
+    const context = makeContext({ stellaDataDir, signedIn: true });
+
+    const route = await resolveRunnerRecallLlmRoute(context, "orchestrator", {
+      engine: "claude_code_local",
+      routeModel: "stella/saved-at-run-start",
+      engineModel: "fable",
+    });
+
+    expect(route).toEqual({
+      activeEngine: "claude_code_local",
+      executionEngine: "claude-code",
+      modelId: "claude-code/haiku",
+      claudeCodeModel: "haiku",
+    });
+    expect(catalogMetadataCalls.count).toBe(0);
+  });
+
+  it("uses the direct Anthropic provider when a Stella credential is available", async () => {
+    credentials.set("anthropic", "anthropic-test-key");
+    const { resolveRunnerRecallLlmRoute } = await loadModule();
+    const stellaDataDir = tempDirs.create("recall-claude-direct-");
+    writeFileSync(
+      path.join(stellaDataDir, "preferences.json"),
+      JSON.stringify({ agentRuntimeEngine: "claude_code_local" }),
+    );
+    const context = makeContext({ stellaDataDir, signedIn: true });
+
+    const route = await resolveRunnerRecallLlmRoute(context, "orchestrator");
+
+    expect(route).toMatchObject({
+      activeEngine: "claude_code_local",
+      executionEngine: "native",
+      modelId: "anthropic/claude-haiku-4-5",
+      resolvedLlm: {
+        route: "direct-provider",
+        model: { provider: "anthropic", id: "claude-haiku-4-5" },
+      },
+    });
   });
 
   it("uses Luna through the direct OpenAI provider for the Codex engine", async () => {
