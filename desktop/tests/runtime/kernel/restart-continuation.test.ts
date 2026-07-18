@@ -6,16 +6,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   RESTART_CONTINUATION_MAX_RECORD_AGE_MS,
   RESTART_CONTINUATION_RECORD_FILE,
+  RESTART_EPISODE_WINDOW_MS,
   RESTART_INTERRUPTION_STATE_FILE,
+  attachRestartReminderForConversation,
   buildRestartReminderText,
-  consumeRestartReminderForConversation,
-  consumeRestartShutdownRecord,
   convertRestartShutdownRecordAtBoot,
   describeCurrentThreadState,
   fireRestartContinuationTurn,
   isRestartContinuationEnabled,
   isRestartContinuationTurnEnabled,
+  peekRestartShutdownRecord,
   readRestartInterruptionState,
+  recordRestartShutdown,
+  resolveRestartReminderOutcome,
   writeRestartShutdownRecord,
   type RestartContinuationFireDeps,
   type RestartThreadRecordLike,
@@ -28,7 +31,7 @@ import {
   LocalAgentManager,
 } from "../../../../runtime/kernel/agents/local-agent-manager.js";
 import type { PersistedAgentRecord } from "../../../../runtime/kernel/storage/session-store.js";
-import { createRestartContinuationReminderHook } from "../../../../runtime/extensions/stella-runtime/hooks/restart-continuation-reminder.hook.js";
+import { createRestartContinuationReminderHooks } from "../../../../runtime/extensions/stella-runtime/hooks/restart-continuation-reminder.hook.js";
 
 const sentinels: ThreadStateSentinels = {
   pausedReasons: [AGENT_PAUSE_CANCEL_REASON],
@@ -60,6 +63,11 @@ afterEach(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
+const recordFilePath = () =>
+  path.join(dataDir, RESTART_CONTINUATION_RECORD_FILE);
+const stateFilePath = () =>
+  path.join(dataDir, RESTART_INTERRUPTION_STATE_FILE);
+
 const writeFreshRecord = (reason = "self-mod-apply-process-restart") => {
   expect(writeRestartShutdownRecord(dataDir, { reason })).toBe(true);
 };
@@ -73,6 +81,12 @@ const convert = (
     env: options?.env ?? {},
     interruptedThreads,
     ...(options?.now !== undefined ? { now: options.now } : {}),
+  });
+
+const attach = (conversationId: string, runId?: string) =>
+  attachRestartReminderForConversation(dataDir, {
+    conversationId,
+    ...(runId ? { runId } : {}),
   });
 
 describe("restart continuation gating", () => {
@@ -104,18 +118,53 @@ describe("restart continuation gating", () => {
 });
 
 describe("shutdown record", () => {
-  it("writes on restart initiation and is consumed exactly once", () => {
+  it("writes on restart initiation and is consumed exactly once by conversion", () => {
     writeFreshRecord("runtime-reload");
-    expect(
-      fs.existsSync(path.join(dataDir, RESTART_CONTINUATION_RECORD_FILE)),
-    ).toBe(true);
+    expect(fs.existsSync(recordFilePath())).toBe(true);
+    const state = convert([{ threadId: "t", conversationId: "conv-1" }]);
+    expect(state?.reason).toBe("runtime-reload");
+    expect(fs.existsSync(recordFilePath())).toBe(false);
+    // Second boot: no record → nothing.
+    expect(convert([{ threadId: "t", conversationId: "conv-1" }])).toBeNull();
+  });
 
-    const first = consumeRestartShutdownRecord(dataDir);
-    expect(first?.reason).toBe("runtime-reload");
-    expect(consumeRestartShutdownRecord(dataDir)).toBeNull();
+  it("keeps the earliest reason but refreshes the timestamp within one episode", () => {
+    const t0 = Date.now() - 30_000;
     expect(
-      fs.existsSync(path.join(dataDir, RESTART_CONTINUATION_RECORD_FILE)),
-    ).toBe(false);
+      recordRestartShutdown(dataDir, {
+        reason: "self-mod-apply-process-restart",
+        now: t0,
+      }),
+    ).toBe(true);
+    // stop() moments later with the generic label: reason preserved,
+    // createdAt refreshed to the actual shutdown moment.
+    const t1 = t0 + 5_000;
+    expect(
+      recordRestartShutdown(dataDir, { reason: "app-shutdown", now: t1 }),
+    ).toBe(true);
+    const merged = peekRestartShutdownRecord(dataDir);
+    expect(merged?.reason).toBe("self-mod-apply-process-restart");
+    expect(merged?.createdAt).toBe(t1);
+  });
+
+  it("replaces a leftover record from an older episode outright", () => {
+    const old = Date.now() - RESTART_EPISODE_WINDOW_MS - 60_000;
+    expect(
+      recordRestartShutdown(dataDir, { reason: "runtime-reload", now: old }),
+    ).toBe(true);
+    // A record that survived a host relaunch without an intervening boot
+    // must not mislabel the newer restart or poison staleness.
+    const now = Date.now();
+    expect(recordRestartShutdown(dataDir, { reason: "app-shutdown", now })).toBe(
+      true,
+    );
+    const replaced = peekRestartShutdownRecord(dataDir);
+    expect(replaced?.reason).toBe("app-shutdown");
+    expect(replaced?.createdAt).toBe(now);
+    // And conversion still treats it as fresh.
+    expect(
+      convert([{ threadId: "t", conversationId: "conv-1" }], { now }),
+    ).not.toBeNull();
   });
 });
 
@@ -133,8 +182,6 @@ describe("boot conversion", () => {
     expect(readRestartInterruptionState(dataDir)?.reason).toBe(
       "self-mod-apply-process-restart",
     );
-    // Record consumed: a second boot converts nothing (no double fire).
-    expect(convert(threads)).toBeNull();
   });
 
   it("ignores stale records and produces no state (no turn, no reminder)", () => {
@@ -143,16 +190,16 @@ describe("boot conversion", () => {
       now: Date.now() + RESTART_CONTINUATION_MAX_RECORD_AGE_MS + 1,
     });
     expect(state).toBeNull();
+    expect(fs.existsSync(recordFilePath())).toBe(false);
     expect(readRestartInterruptionState(dataDir)).toBeNull();
-    expect(
-      consumeRestartReminderForConversation(dataDir, "conv-1"),
-    ).toBeNull();
+    expect(attach("conv-1")).toBeNull();
   });
 
   it("produces nothing when the shutdown was idle (no running threads)", () => {
     writeFreshRecord();
     expect(convert([])).toBeNull();
     expect(readRestartInterruptionState(dataDir)).toBeNull();
+    expect(fs.existsSync(recordFilePath())).toBe(false);
   });
 
   it("produces nothing on a normal cold boot with no record", () => {
@@ -165,9 +212,42 @@ describe("boot conversion", () => {
     expect(
       convert(threads, { env: { STELLA_DISABLE_RESTART_CONTINUATION: "1" } }),
     ).toBeNull();
-    expect(
-      fs.existsSync(path.join(dataDir, RESTART_CONTINUATION_RECORD_FILE)),
-    ).toBe(false);
+    expect(fs.existsSync(recordFilePath())).toBe(false);
+  });
+
+  it("recovers when a previous boot crashed between state-write and record-delete", () => {
+    // Boot 1: converted (state written) but died before deleting the record
+    // — simulate by re-creating the record after conversion.
+    writeFreshRecord("runtime-reload");
+    const state = convert([{ threadId: "thread-a", conversationId: "conv-1" }]);
+    expect(state).not.toBeNull();
+    writeFreshRecord("runtime-reload");
+    // Boot 2: the sweep already flipped the rows on boot 1, so the leftover
+    // record converts via the idle rule — record consumed, state preserved.
+    expect(convert([])).toBeNull();
+    expect(fs.existsSync(recordFilePath())).toBe(false);
+    expect(readRestartInterruptionState(dataDir)?.threads).toHaveLength(1);
+  });
+
+  it("keeps the shutdown record when the state write fails (retry next boot)", () => {
+    writeFreshRecord("runtime-reload");
+    // Occupy the state path with a directory so the atomic rename fails.
+    fs.mkdirSync(stateFilePath());
+    const state = convert([{ threadId: "thread-a", conversationId: "conv-1" }]);
+    expect(state).toBeNull();
+    // Not silently lost: the record survives for the next boot's retry.
+    expect(fs.existsSync(recordFilePath())).toBe(true);
+    fs.rmdirSync(stateFilePath());
+  });
+
+  it("tolerates malformed/partial JSON in both files without throwing", () => {
+    fs.writeFileSync(recordFilePath(), '{"version":1,"reason":"tru', "utf8");
+    fs.writeFileSync(stateFilePath(), "not json at all", "utf8");
+    expect(peekRestartShutdownRecord(dataDir)).toBeNull();
+    expect(readRestartInterruptionState(dataDir)).toBeNull();
+    // A torn record converts as a cold boot and is cleared.
+    expect(convert([{ threadId: "t", conversationId: "conv-1" }])).toBeNull();
+    expect(fs.existsSync(recordFilePath())).toBe(false);
   });
 });
 
@@ -191,6 +271,14 @@ describe("boot-time continuation turn", () => {
         threadId: "thread-paused",
         description: "Paused research",
         error: AGENT_PAUSE_CANCEL_REASON,
+      }),
+    ],
+    [
+      "thread-c",
+      makeRecordRow({
+        threadId: "thread-c",
+        conversationId: "conv-2",
+        description: "Second conversation task",
       }),
     ],
   ]);
@@ -244,6 +332,7 @@ describe("boot-time continuation turn", () => {
     const result = await fireRestartContinuationTurn(deps);
     expect(result.fired).toBe(true);
     expect(result.conversationIds).toEqual(["conv-1"]);
+    expect(result.outcomes["conv-1"]).toBe("completed");
 
     // Visible system-style notice + the orchestrator's final reply.
     expect(deps.appended).toHaveLength(2);
@@ -262,9 +351,107 @@ describe("boot-time continuation turn", () => {
     expect(prompt).toContain("thread-paused");
     expect(prompt).toContain("do NOT resume");
 
-    // Second fire is a no-op (state latched).
+    // Completion recorded only after it happened.
+    const state = readRestartInterruptionState(dataDir);
+    expect(state?.conversations["conv-1"]?.turnClaimedAt).toBeDefined();
+    expect(state?.conversations["conv-1"]?.turnCompletedAt).toBeDefined();
+    expect(state?.conversations["conv-1"]?.turnFailedAt).toBeUndefined();
+
+    // Second fire is a no-op (per-conversation claims latch it).
     const again = await fireRestartContinuationTurn(makeDeps());
     expect(again.fired).toBe(false);
+  });
+
+  it("records failure when the automation turn errors — reminder stays full guidance", async () => {
+    seedState();
+    const deps = makeDeps({
+      runAutomationTurn: async () => ({ status: "error", error: "boom" }),
+    });
+    const result = await fireRestartContinuationTurn(deps);
+    // The dispatch happened, but success was never claimed.
+    expect(result.outcomes["conv-1"]).toBe("failed");
+    const state = readRestartInterruptionState(dataDir);
+    expect(state?.conversations["conv-1"]?.turnCompletedAt).toBeUndefined();
+    expect(state?.conversations["conv-1"]?.turnFailedAt).toBeDefined();
+
+    // No refire (claimed), but the reminder is the primary path with FULL
+    // guidance and the work stays surfaced as resumable.
+    const again = await fireRestartContinuationTurn(makeDeps());
+    expect(again.fired).toBe(false);
+    const attached = attach("conv-1", "run-1");
+    expect(attached?.turnCompleted).toBe(false);
+    const text = buildRestartReminderText({
+      reason: attached!.state.reason,
+      shutdownAt: attached!.state.shutdownAt,
+      syntheticTurnCompleted: attached!.turnCompleted,
+      threads: [
+        {
+          threadId: "thread-a",
+          description: "Refactor the parser",
+          agentType: "general",
+          stateLabel: describeCurrentThreadState(
+            rows.get("thread-a") ?? null,
+            sentinels,
+          ).label,
+        },
+      ],
+    });
+    expect(text).toContain("No automatic resume turn ran");
+    expect(text).toContain("resumable via send_input");
+  });
+
+  it("records failure when the automation turn throws", async () => {
+    seedState();
+    const deps = makeDeps({
+      runAutomationTurn: async () => {
+        throw new Error("transport died");
+      },
+    });
+    const result = await fireRestartContinuationTurn(deps);
+    expect(result.outcomes["conv-1"]).toBe("failed");
+    expect(
+      readRestartInterruptionState(dataDir)?.conversations["conv-1"]
+        ?.turnFailedAt,
+    ).toBeDefined();
+  });
+
+  it("a hung early conversation never marks later conversations handled", async () => {
+    writeFreshRecord();
+    convert([
+      { threadId: "thread-a", conversationId: "conv-1" },
+      { threadId: "thread-c", conversationId: "conv-2" },
+    ]);
+    let releaseFirstTurn: (() => void) | undefined;
+    const deps = makeDeps({
+      runAutomationTurn: (args) =>
+        args.conversationId === "conv-1"
+          ? new Promise((resolve) => {
+              releaseFirstTurn = () =>
+                resolve({ status: "ok", finalText: "done" });
+            })
+          : Promise.resolve({ status: "ok", finalText: "done" }),
+    });
+    const firePromise = fireRestartContinuationTurn(deps);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // While conv-1 hangs: it is claimed (no refire) but NOT completed, and
+    // conv-2 is untouched — its reminder is full-guidance primary recovery.
+    const during = readRestartInterruptionState(dataDir);
+    expect(during?.conversations["conv-1"]?.turnClaimedAt).toBeDefined();
+    expect(during?.conversations["conv-1"]?.turnCompletedAt).toBeUndefined();
+    expect(during?.conversations["conv-2"]).toBeUndefined();
+    const conv2 = attach("conv-2", "run-9");
+    expect(conv2).not.toBeNull();
+    expect(conv2?.turnCompleted).toBe(false);
+
+    releaseFirstTurn?.();
+    const result = await firePromise;
+    expect(result.outcomes["conv-1"]).toBe("completed");
+    // conv-2 acquired a pending reminder mid-fire → the turn skips it.
+    expect(result.outcomes["conv-2"]).toBe("skipped");
+    const after = readRestartInterruptionState(dataDir);
+    expect(after?.conversations["conv-2"]?.turnClaimedAt).toBeUndefined();
+    expect(after?.conversations["conv-2"]?.reminderAttachedAt).toBeDefined();
   });
 
   it("does not fire on a cold boot with no interruption state", async () => {
@@ -284,47 +471,81 @@ describe("boot-time continuation turn", () => {
     expect(result.fired).toBe(false);
     expect(deps.turns).toHaveLength(0);
     // Reminder path still has the full state (primary recovery path).
-    const consumed = consumeRestartReminderForConversation(dataDir, "conv-1");
-    expect(consumed?.threads.map((t) => t.threadId)).toEqual([
+    const attached = attach("conv-1", "run-1");
+    expect(attached?.threads.map((t) => t.threadId)).toEqual([
       "thread-a",
       "thread-mgr",
     ]);
-    expect(consumed?.state.syntheticTurnFiredAt).toBeUndefined();
+    expect(attached?.turnCompleted).toBe(false);
   });
 
-  it("skips conversations whose reminder already attached (user messaged first)", async () => {
+  it("skips conversations whose reminder is already pending (user messaged first)", async () => {
     seedState();
-    expect(
-      consumeRestartReminderForConversation(dataDir, "conv-1"),
-    ).not.toBeNull();
+    expect(attach("conv-1", "run-1")).not.toBeNull();
     const deps = makeDeps();
     const result = await fireRestartContinuationTurn(deps);
     expect(result.fired).toBe(false);
+    expect(result.outcomes["conv-1"]).toBe("skipped");
     expect(deps.turns).toHaveLength(0);
   });
 });
 
-describe("next-user-message reminder consumption", () => {
-  it("is one-shot per conversation and deletes the state when drained", () => {
-    writeFreshRecord("app-shutdown");
+describe("delivery-safe reminder consumption", () => {
+  const seed = (reason = "app-shutdown") => {
+    writeFreshRecord(reason);
     convert([{ threadId: "thread-a", conversationId: "conv-1" }]);
+  };
 
-    const first = consumeRestartReminderForConversation(dataDir, "conv-1");
-    expect(first?.threads).toHaveLength(1);
-    expect(consumeRestartReminderForConversation(dataDir, "conv-1")).toBeNull();
+  it("consumes only after the carrying turn succeeds, then stays consumed", () => {
+    seed();
+    expect(attach("conv-1", "run-1")).not.toBeNull();
+    // Still pending — a re-attach before resolution is allowed.
+    expect(attach("conv-1", "run-1")).not.toBeNull();
+    resolveRestartReminderOutcome(dataDir, {
+      conversationId: "conv-1",
+      runId: "run-1",
+      succeeded: true,
+    });
+    expect(attach("conv-1", "run-2")).toBeNull();
+    // Single conversation drained → state file removed.
+    expect(fs.existsSync(stateFilePath())).toBe(false);
+  });
+
+  it("re-attaches when the carrying turn fails or is interrupted", () => {
+    seed();
+    expect(attach("conv-1", "run-1")).not.toBeNull();
+    resolveRestartReminderOutcome(dataDir, {
+      conversationId: "conv-1",
+      runId: "run-1",
+      succeeded: false,
+    });
+    // Pending mark cleared → next user message re-attaches, still full.
+    const state = readRestartInterruptionState(dataDir);
+    expect(state?.conversations["conv-1"]?.reminderAttachedAt).toBeUndefined();
+    expect(state?.conversations["conv-1"]?.reminderConsumedAt).toBeUndefined();
+    const again = attach("conv-1", "run-2");
+    expect(again).not.toBeNull();
+    expect(again?.turnCompleted).toBe(false);
+  });
+
+  it("ignores outcomes from runs that are not carrying the reminder", () => {
+    seed();
+    expect(attach("conv-1", "run-1")).not.toBeNull();
+    resolveRestartReminderOutcome(dataDir, {
+      conversationId: "conv-1",
+      runId: "other-run",
+      succeeded: true,
+    });
     expect(
-      fs.existsSync(path.join(dataDir, RESTART_INTERRUPTION_STATE_FILE)),
-    ).toBe(false);
+      readRestartInterruptionState(dataDir)?.conversations["conv-1"]
+        ?.reminderConsumedAt,
+    ).toBeUndefined();
   });
 
   it("only fires for conversations that actually had interrupted work", () => {
-    writeFreshRecord();
-    convert([{ threadId: "thread-a", conversationId: "conv-1" }]);
-    expect(consumeRestartReminderForConversation(dataDir, "conv-2")).toBeNull();
-    // conv-1 still pending afterwards.
-    expect(
-      consumeRestartReminderForConversation(dataDir, "conv-1"),
-    ).not.toBeNull();
+    seed();
+    expect(attach("conv-2", "run-1")).toBeNull();
+    expect(attach("conv-1", "run-1")).not.toBeNull();
   });
 });
 
@@ -373,14 +594,14 @@ describe("current-state labels and reminder text", () => {
     };
     const full = buildRestartReminderText({
       ...base,
-      syntheticTurnFired: false,
+      syntheticTurnCompleted: false,
     });
     expect(full).toContain("app-shutdown");
     expect(full).toContain("thread-a");
     expect(full).toContain("No automatic resume turn ran");
     const brief = buildRestartReminderText({
       ...base,
-      syntheticTurnFired: true,
+      syntheticTurnCompleted: true,
     });
     expect(brief).toContain("already ran");
     expect(brief).not.toContain("No automatic resume turn ran");
@@ -440,14 +661,14 @@ describe("LocalAgentManager boot snapshot", () => {
   });
 });
 
-describe("restart-continuation reminder hook", () => {
-  const makeHook = (rows: Map<string, PersistedAgentRecord>) =>
-    createRestartContinuationReminderHook({
+describe("restart-continuation reminder hooks", () => {
+  const makeHooks = (rows: Map<string, PersistedAgentRecord>) =>
+    createRestartContinuationReminderHooks({
       stellaDataDir: dataDir,
       store: {
         getAgentRecord: (threadId: string) => rows.get(threadId) ?? null,
       } as unknown as Parameters<
-        typeof createRestartContinuationReminderHook
+        typeof createRestartContinuationReminderHooks
       >[0]["store"],
     });
 
@@ -472,18 +693,21 @@ describe("restart-continuation reminder hook", () => {
     convert([{ threadId: "thread-a", conversationId: "conv-1" }]);
   };
 
-  it("attaches a hidden reminder exactly once on the first post-boot user turn", async () => {
-    seed();
-    const hook = makeHook(
-      new Map([["thread-a", persistedRow({ threadId: "thread-a" })]]),
-    );
-    const payload = {
+  const userPayload = (runId: string) =>
+    ({
       agentType: "orchestrator",
       userPrompt: "hey, how is it going?",
       conversationId: "conv-1",
       isUserTurn: true,
-    };
-    const result = await hook.handler(payload as never);
+      runId,
+    }) as never;
+
+  it("attaches a hidden reminder and consumes it only after the carrying turn succeeds", async () => {
+    seed();
+    const [attachHook, settleHook] = makeHooks(
+      new Map([["thread-a", persistedRow({ threadId: "thread-a" })]]),
+    );
+    const result = await attachHook.handler(userPayload("run-1"));
     expect(result?.prependMessages).toHaveLength(1);
     const message = result!.prependMessages![0];
     expect(message.uiVisibility).toBe("hidden");
@@ -494,29 +718,54 @@ describe("restart-continuation reminder hook", () => {
     );
     expect(message.text).toContain("app-shutdown");
 
-    // One-shot: the next user turn gets nothing.
-    expect(await hook.handler(payload as never)).toBeUndefined();
+    // Carrying turn FAILS → not consumed; re-attaches on the next message.
+    await settleHook.handler({
+      agentType: "orchestrator",
+      conversationId: "conv-1",
+      runId: "run-1",
+      isUserTurn: true,
+      finalText: "boom",
+      outcome: "error",
+    } as never);
+    const retry = await attachHook.handler(userPayload("run-2"));
+    expect(retry?.prependMessages).toHaveLength(1);
+
+    // Carrying turn SUCCEEDS → consumed; no further attachments.
+    await settleHook.handler({
+      agentType: "orchestrator",
+      conversationId: "conv-1",
+      runId: "run-2",
+      isUserTurn: true,
+      finalText: "ok",
+      outcome: "success",
+    } as never);
+    expect(await attachHook.handler(userPayload("run-3"))).toBeUndefined();
   });
 
-  it("never consumes on hidden/system turns (including the synthetic turn)", async () => {
+  it("never attaches or settles on hidden/system turns (including the synthetic turn)", async () => {
     seed();
-    const hook = makeHook(
+    const [attachHook, settleHook] = makeHooks(
       new Map([["thread-a", persistedRow({ threadId: "thread-a" })]]),
     );
-    const hidden = await hook.handler({
+    const hidden = await attachHook.handler({
       agentType: "orchestrator",
       userPrompt: "[Stella runtime] …",
       conversationId: "conv-1",
       isUserTurn: false,
+      runId: "auto-run",
     } as never);
     expect(hidden).toBeUndefined();
-    // Still available for the real user turn.
-    const real = await hook.handler({
+    // A hidden turn's success must not consume an unattached reminder.
+    await settleHook.handler({
       agentType: "orchestrator",
-      userPrompt: "hello",
       conversationId: "conv-1",
-      isUserTurn: true,
+      runId: "auto-run",
+      isUserTurn: false,
+      finalText: "ok",
+      outcome: "success",
     } as never);
+    // Still available for the real user turn.
+    const real = await attachHook.handler(userPayload("run-1"));
     expect(real?.prependMessages).toHaveLength(1);
   });
 
@@ -524,18 +773,11 @@ describe("restart-continuation reminder hook", () => {
     // Record written, but nothing was running → no state at all.
     writeFreshRecord();
     convert([]);
-    const hook = makeHook(new Map());
-    expect(
-      await hook.handler({
-        agentType: "orchestrator",
-        userPrompt: "hello",
-        conversationId: "conv-1",
-        isUserTurn: true,
-      } as never),
-    ).toBeUndefined();
+    const [attachHook] = makeHooks(new Map());
+    expect(await attachHook.handler(userPayload("run-1"))).toBeUndefined();
   });
 
-  it("goes brief when the synthetic turn already fired", async () => {
+  it("goes brief only when the synthetic turn actually completed", async () => {
     seed("self-mod-apply-process-restart");
     const rows = new Map([["thread-a", persistedRow({ threadId: "thread-a" })]]);
     const fired = await fireRestartContinuationTurn({
@@ -547,18 +789,35 @@ describe("restart-continuation reminder hook", () => {
       appendLocalChatEvent: vi.fn(),
       runAutomationTurn: async () => ({ status: "ok", finalText: "done" }),
     });
-    expect(fired.fired).toBe(true);
+    expect(fired.outcomes["conv-1"]).toBe("completed");
 
-    const hook = makeHook(rows);
-    const result = await hook.handler({
-      agentType: "orchestrator",
-      userPrompt: "hello",
-      conversationId: "conv-1",
-      isUserTurn: true,
-    } as never);
+    const [attachHook] = makeHooks(rows);
+    const result = await attachHook.handler(userPayload("run-1"));
     expect(result?.prependMessages).toHaveLength(1);
     expect(result!.prependMessages![0].text).toContain("already ran");
     expect(result!.prependMessages![0].text).not.toContain(
+      "No automatic resume turn ran",
+    );
+  });
+
+  it("stays full guidance when the synthetic turn failed", async () => {
+    seed();
+    const rows = new Map([["thread-a", persistedRow({ threadId: "thread-a" })]]);
+    const fired = await fireRestartContinuationTurn({
+      stellaDataDir: dataDir,
+      env: {},
+      sentinels,
+      getAgentRecord: (threadId) => rows.get(threadId) ?? null,
+      listAgentRecordsByStatus: () => [],
+      appendLocalChatEvent: vi.fn(),
+      runAutomationTurn: async () => ({ status: "error", error: "boom" }),
+    });
+    expect(fired.outcomes["conv-1"]).toBe("failed");
+
+    const [attachHook] = makeHooks(rows);
+    const result = await attachHook.handler(userPayload("run-1"));
+    expect(result?.prependMessages).toHaveLength(1);
+    expect(result!.prependMessages![0].text).toContain(
       "No automatic resume turn ran",
     );
   });

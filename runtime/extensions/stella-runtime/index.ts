@@ -9,7 +9,7 @@ import { createConnectorFormatReminderHook } from "./hooks/connector-format-remi
 import { createDreamSchedulerNotifyHook } from "./hooks/dream-scheduler-notify.hook.js";
 import { createDynamicMemoryReminderHook } from "./hooks/dynamic-memory-reminder.hook.js";
 import { createMemoryReviewHook } from "./hooks/memory-review.hook.js";
-import { createRestartContinuationReminderHook } from "./hooks/restart-continuation-reminder.hook.js";
+import { createRestartContinuationReminderHooks } from "./hooks/restart-continuation-reminder.hook.js";
 import { createRevertNoticeHook } from "./hooks/revert-notice.hook.js";
 import { createSelfModHooks } from "./hooks/self-mod.hook.js";
 import { createStaleUserReminderHook } from "./hooks/stale-user-reminder.hook.js";
@@ -127,13 +127,15 @@ const stellaRuntimeExtension: ExtensionFactory = (pi, services) => {
   // Restart-continuation reminder: after a restart/quit that interrupted
   // agent work, the first user message in the affected conversation gets a
   // hidden note with the restart reason and each interrupted thread's
-  // CURRENT state (one-shot; no-op on clean boots).
-  register(
-    createRestartContinuationReminderHook({
-      stellaDataDir: services.stellaDataDir,
-      store: services.store,
-    }),
-  );
+  // CURRENT state. Delivery-safe one-shot: the paired agent_end hook only
+  // consumes it when the carrying turn succeeds (failed turns re-attach).
+  // No-op on clean boots.
+  for (const hook of createRestartContinuationReminderHooks({
+    stellaDataDir: services.stellaDataDir,
+    store: services.store,
+  })) {
+    register(hook);
+  }
   register(
     createMemoryReviewHook({
       stellaDataDir: services.stellaDataDir,

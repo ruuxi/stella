@@ -15,9 +15,8 @@ import type { ConnectorTokenPayload } from "../kernel/connectors/oauth.js";
 import { resolveBundledRuntimeFile } from "../kernel/shared/runtime-paths.js";
 import { getFileLogger } from "../observability/file-logger.js";
 import {
-  hasRestartShutdownRecord,
   isRestartContinuationEnabled,
-  writeRestartShutdownRecord,
+  recordRestartShutdown,
 } from "../kernel/restart-continuation.js";
 import { LocalSchedulerService } from "../kernel/local-scheduler-service.js";
 import { createRemoteTurnBridge } from "../kernel/remote-turn-bridge.js";
@@ -1045,21 +1044,19 @@ export class StellaRuntimeHost {
    * stop). The record is deliberately minimal — reason + timestamp — because
    * the interrupted-thread set is derived at next boot from the durable
    * `runtime_agents` rows still marked `running` (which survive even a hard
-   * kill that skips this write). The next worker boot consumes the record
-   * exactly once; a stale record is discarded there.
+   * kill that skips this write). `recordRestartShutdown` is episode-aware:
+   * within one restart episode the earliest (most specific) reason is kept
+   * while the timestamp refreshes; a leftover record from an older aborted
+   * episode is replaced outright, so it can neither mislabel a newer restart
+   * nor kill the continuation via a stale timestamp. The next worker boot
+   * consumes the record exactly once; a stale record is discarded there.
    */
-  private writeRestartContinuationRecord(
-    reason: string,
-    options?: { skipIfPresent?: boolean },
-  ) {
+  private writeRestartContinuationRecord(reason: string) {
     if (!isRestartContinuationEnabled(process.env)) return;
     const stellaDataDir = this.options.initializeParams?.stellaDataDirPath;
     if (!stellaDataDir) return;
     try {
-      if (options?.skipIfPresent && hasRestartShutdownRecord(stellaDataDir)) {
-        return;
-      }
-      const written = writeRestartShutdownRecord(stellaDataDir, { reason });
+      const written = recordRestartShutdown(stellaDataDir, { reason });
       if (written) {
         getFileLogger()?.process("host.restart-continuation-record", {
           reason,
@@ -2292,11 +2289,11 @@ export class StellaRuntimeHost {
     // synchronously — every graceful teardown (app quit, dev-supervisor
     // SIGTERM, self-mod process-restart relaunch) funnels through here and
     // may not survive the rest of this method. A pending self-mod restart
-    // reason wins over the generic app-shutdown label; an existing record
-    // written moments ago by a more specific path is preserved.
+    // reason wins over the generic app-shutdown label; episode merging in
+    // the writer keeps a same-episode reason written moments ago by a more
+    // specific path while refreshing the shutdown timestamp.
     this.writeRestartContinuationRecord(
       this.pendingStaleWorkerRestart?.reason ?? "app-shutdown",
-      { skipIfPresent: true },
     );
     this.started = false;
     this.hostReady = false;
