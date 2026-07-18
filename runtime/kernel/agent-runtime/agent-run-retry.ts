@@ -28,6 +28,11 @@ export type AgentTurnExecution = {
   errorMessage?: string;
 };
 
+export type AgentRunRetryState = {
+  attemptsUsed: number;
+  retriesUsed: number;
+};
+
 export type AgentRunRetryInfo = AgentRunFailure & {
   attempt: number;
   maxAttempts: number;
@@ -230,8 +235,15 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
 const exhaustedMessage = (failure: AgentRunFailure, attempts: number): string =>
   `Automatic recovery exhausted after ${attempts} attempts (${failure.category}): ${failure.message}`;
 
+export const hasAgentRunAttemptBudget = (
+  state: AgentRunRetryState,
+  maxAttempts: number = AGENT_RUN_MAX_ATTEMPTS,
+): boolean => state.attemptsUsed < Math.max(1, maxAttempts);
+
 export const executeAgentTurnWithRetry = async (args: {
+  state?: AgentRunRetryState;
   execute: (resume: boolean) => Promise<AgentTurnExecution>;
+  initialResume?: boolean;
   prepareRetry: (failure: AgentRunFailure) => boolean;
   signal?: AbortSignal;
   onRetry?: (info: AgentRunRetryInfo) => void;
@@ -241,15 +253,22 @@ export const executeAgentTurnWithRetry = async (args: {
 }): Promise<AgentTurnExecution & { attempts: number }> => {
   const maxAttempts = Math.max(1, args.maxAttempts ?? AGENT_RUN_MAX_ATTEMPTS);
   const wait = args.sleep ?? sleep;
-  let attempt = 1;
+  const state = args.state ?? { attemptsUsed: 0, retriesUsed: 0 };
+  let resume = args.initialResume === true;
 
   for (;;) {
     if (args.signal?.aborted) throw abortError(args.signal);
+    if (!hasAgentRunAttemptBudget(state, maxAttempts)) {
+      throw new Error(
+        `Agent run attempt budget exhausted after ${state.attemptsUsed} attempts`,
+      );
+    }
+    state.attemptsUsed += 1;
 
     let execution: AgentTurnExecution;
     let thrownFailure: AgentRunFailure | undefined;
     try {
-      execution = await args.execute(attempt > 1);
+      execution = await args.execute(resume);
     } catch (error) {
       execution = { finalText: "", errorMessage: errorMessage(error) };
       thrownFailure = classifyAgentRunFailure(error, { signal: args.signal });
@@ -259,24 +278,25 @@ export const executeAgentTurnWithRetry = async (args: {
     }
 
     const failure = thrownFailure ?? classifyExecution(execution, args.signal);
-    if (!failure) return { ...execution, attempts: attempt };
+    if (!failure) return { ...execution, attempts: state.attemptsUsed };
     if (!failure.retryable) {
       return {
         finalText: execution.finalText,
         errorMessage: failure.message,
-        attempts: attempt,
+        attempts: state.attemptsUsed,
       };
     }
-    if (attempt >= maxAttempts) {
+    if (!hasAgentRunAttemptBudget(state, maxAttempts)) {
       return {
         finalText: execution.finalText,
-        errorMessage: exhaustedMessage(failure, attempt),
-        attempts: attempt,
+        errorMessage: exhaustedMessage(failure, state.attemptsUsed),
+        attempts: state.attemptsUsed,
       };
     }
 
-    const delayMs = agentRunRetryDelayMs(attempt - 1, args.random);
-    const nextAttempt = attempt + 1;
+    const delayMs = agentRunRetryDelayMs(state.retriesUsed, args.random);
+    const nextAttempt = state.attemptsUsed + 1;
+    state.retriesUsed += 1;
     try {
       args.onRetry?.({
         ...failure,
@@ -291,10 +311,10 @@ export const executeAgentTurnWithRetry = async (args: {
     if (!args.prepareRetry(failure)) {
       return {
         finalText: execution.finalText,
-        errorMessage: `Automatic recovery could not safely resume after attempt ${attempt} (${failure.category}): ${failure.message}`,
-        attempts: attempt,
+        errorMessage: `Automatic recovery could not safely resume after attempt ${state.attemptsUsed} (${failure.category}): ${failure.message}`,
+        attempts: state.attemptsUsed,
       };
     }
-    attempt = nextAttempt;
+    resume = true;
   }
 };

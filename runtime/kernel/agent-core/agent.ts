@@ -106,6 +106,9 @@ export interface AgentOptions {
 	 */
 	onProviderRetry?: SimpleStreamOptions["onProviderRetry"];
 
+	/** See {@link AgentLoopConfig.degenerateResponseRetries}. */
+	degenerateResponseRetries?: number;
+
 	/**
 	 * Custom token budgets for thinking levels (token-based providers only).
 	 */
@@ -174,6 +177,7 @@ export class Agent {
 	public refreshApiKey?: (provider: string) => Promise<string | undefined> | string | undefined;
 	private _onPayload?: SimpleStreamOptions["onPayload"];
 	private _onProviderRetry?: SimpleStreamOptions["onProviderRetry"];
+	private _degenerateResponseRetries: number;
 	private runningPrompt?: Promise<void>;
 	private resolveRunningPrompt?: () => void;
 	private _thinkingBudgets?: ThinkingBudgets;
@@ -202,6 +206,10 @@ export class Agent {
 		this.refreshApiKey = opts.refreshApiKey;
 		this._onPayload = opts.onPayload;
 		this._onProviderRetry = opts.onProviderRetry;
+		this._degenerateResponseRetries = Math.max(
+			0,
+			Math.floor(opts.degenerateResponseRetries ?? 1),
+		);
 		this._thinkingBudgets = opts.thinkingBudgets;
 		this._transport = opts.transport ?? "sse";
 		this._maxRetryDelayMs = opts.maxRetryDelayMs;
@@ -570,6 +578,7 @@ export class Agent {
 
 		const config: AgentLoopConfig = {
 			model,
+			degenerateResponseRetries: this._degenerateResponseRetries,
 			reasoning,
 			sessionId: this._sessionId,
 			onPayload: this._onPayload,

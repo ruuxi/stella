@@ -65,8 +65,10 @@ import {
 import { createPiTools } from "./tool-adapters.js";
 import type { OrchestratorRunOptions, RuntimeRunCallbacks } from "./types.js";
 import {
+  AGENT_RUN_MAX_ATTEMPTS,
   executeAgentTurnWithRetry,
   formatAgentRunRetryStatus,
+  hasAgentRunAttemptBudget,
   type AgentTurnExecution,
 } from "./agent-run-retry.js";
 
@@ -301,27 +303,32 @@ export class OrchestratorSession extends PiSessionCore {
         conversationId: opts.conversationId,
         ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
       };
-      let execution: AgentTurnExecution = await executeAgentTurnWithRetry({
-        execute: (resume) =>
-          executeRuntimeAgentPrompt({
-            ...executionArgs,
-            ...(resume ? { resume: true } : {}),
-          }),
-        prepareRetry: (failure) =>
-          this.prepareAgentRunRetry(agent, {
-            failure,
-            logContext: { conversationId: this.conversationId, runId },
-          }),
-        ...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
-        onRetry: (info) => {
-          opts.callbacks?.onStatus?.(
-            runEvents.recordStatus(
-              formatAgentRunRetryStatus(info),
-              "provider-retry",
-            ),
-          );
-        },
-      });
+      const retryState = { attemptsUsed: 0, retriesUsed: 0 };
+      const executeWithTransientRetry = (initialResume = false) =>
+        executeAgentTurnWithRetry({
+          state: retryState,
+          initialResume,
+          execute: (resume) =>
+            executeRuntimeAgentPrompt({
+              ...executionArgs,
+              ...(resume ? { resume: true } : {}),
+            }),
+          prepareRetry: (failure) =>
+            this.prepareAgentRunRetry(agent, {
+              failure,
+              logContext: { conversationId: this.conversationId, runId },
+            }),
+          ...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
+          onRetry: (info) => {
+            opts.callbacks?.onStatus?.(
+              runEvents.recordStatus(
+                formatAgentRunRetryStatus(info),
+                "provider-retry",
+              ),
+            );
+          },
+        });
+      let execution: AgentTurnExecution = await executeWithTransientRetry();
 
       // Safety containment: a fable-5 refusal/safety abort first gets
       // retried on the configured model — refusals are often transient — up
@@ -331,6 +338,7 @@ export class OrchestratorSession extends PiSessionCore {
       while (
         execution.errorMessage &&
         !opts.abortSignal?.aborted &&
+        hasAgentRunAttemptBudget(retryState, AGENT_RUN_MAX_ATTEMPTS) &&
         fableAttempts < SAFETY_ABORT_FABLE_ATTEMPTS
       ) {
         const retry = this.prepareSafetySameModelRetry(agent, {
@@ -352,16 +360,17 @@ export class OrchestratorSession extends PiSessionCore {
             "running",
           ),
         );
-        execution = await executeRuntimeAgentPrompt({
-          ...executionArgs,
-          resume: true,
-        });
+        execution = await executeWithTransientRetry(true);
       }
       // Safety model swap: after the fable attempts are exhausted, one retry
       // on opus-4.8 (same auth path, per-run only). `prepareSafetyModelSwap`
       // returns null for anything else, and this block runs at most once per
       // turn, so there is no swap ping-pong.
-      if (execution.errorMessage && !opts.abortSignal?.aborted) {
+      if (
+        execution.errorMessage &&
+        !opts.abortSignal?.aborted &&
+        hasAgentRunAttemptBudget(retryState, AGENT_RUN_MAX_ATTEMPTS)
+      ) {
         const swap = this.prepareSafetyModelSwap(agent, {
           errorMessage: execution.errorMessage,
           logContext: { conversationId: this.conversationId, runId },
@@ -380,10 +389,7 @@ export class OrchestratorSession extends PiSessionCore {
             customType: "containment.safety-model-swap",
             content: [{ type: "text", text: statusText }],
           });
-          execution = await executeRuntimeAgentPrompt({
-            ...executionArgs,
-            resume: true,
-          });
+          execution = await executeWithTransientRetry(true);
         }
       }
       const { finalText, errorMessage } = execution;

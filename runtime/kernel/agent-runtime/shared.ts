@@ -511,6 +511,10 @@ export const createRuntimeAgent = (args: {
       args.agentType,
     ),
     onProviderRetry: args.onProviderRetry,
+    // The runtime's four-attempt policy owns empty completions. Leaving the
+    // Agent core's default one-shot enabled here would allow every outer
+    // attempt to make two provider calls.
+    degenerateResponseRetries: 0,
     afterToolCall: args.afterToolCall
       ? async (context, signal) => await args.afterToolCall?.(context, signal)
       : undefined,

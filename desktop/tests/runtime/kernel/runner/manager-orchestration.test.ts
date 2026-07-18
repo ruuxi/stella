@@ -32,6 +32,7 @@ import type {
 import { Agent } from "../../../../../runtime/kernel/agent-core/agent.js";
 import { PiSessionCore } from "../../../../../runtime/kernel/agent-runtime/pi-session-core.js";
 import { executeRuntimeAgentPrompt } from "../../../../../runtime/kernel/agent-runtime/run-execution.js";
+import { createRuntimeAgent } from "../../../../../runtime/kernel/agent-runtime/shared.js";
 import {
   executeAgentTurnWithRetry,
   type AgentRunFailure,
@@ -413,22 +414,25 @@ describe("manager orchestration production routing", () => {
       }
 
       const session = new RetryTestSession();
-      const agent = new Agent({
-        initialState: {
+      const agent = createRuntimeAgent({
+        agentType: AGENT_IDS.GENERAL,
+        systemPrompt: "",
+        resolvedLlm: {
           model: emptyResponseModel,
-          systemPrompt: "",
-          tools: [],
-          messages: [],
+          route: "test",
+          getApiKey: () => undefined,
         },
-        streamFn: () => {
-          childProviderCalls += 1;
-          const stream = createAssistantMessageEventStream();
-          const message = emptyAssistantMessage();
-          stream.push({ type: "start", partial: message });
-          stream.push({ type: "done", message });
-          return stream;
-        },
+        tools: [],
+        historySource: [],
       });
+      agent.streamFn = () => {
+        childProviderCalls += 1;
+        const stream = createAssistantMessageEventStream();
+        const message = emptyAssistantMessage();
+        stream.push({ type: "start", partial: message });
+        stream.push({ type: "done", message });
+        return stream;
+      };
       const recorder = {
         recordQueuedUserMessageStart: () => null,
         recordAssistantMessageEnd: () => null,

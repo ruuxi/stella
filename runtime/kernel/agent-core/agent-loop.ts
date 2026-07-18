@@ -22,6 +22,41 @@ import type {
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
 /**
+ * True when an assistant message looks like an upstream pathology:
+ * the model terminated but produced neither user-visible text nor a
+ * tool call. Covers two flavors:
+ *  - `stopReason: "stop"` with only thinking content — Kimi K2 family
+ *    pathology where the model self-terminates after burning its
+ *    reasoning trace.
+ *  - `stopReason: "length"` with no usable output — provider-side
+ *    truncation that hit a cap before any visible text was emitted
+ *    (e.g. a reasoning model that exhausted the combined cap during
+ *    thinking).
+ * Reasoning-only `thinking` blocks do not count as a usable result.
+ */
+const isDegenerateAssistantMessage = (
+	message: AssistantMessage | null,
+): boolean => {
+	if (!message) return false;
+	if (message.stopReason !== "stop" && message.stopReason !== "length") {
+		return false;
+	}
+	let hasText = false;
+	let hasToolCall = false;
+	for (const part of message.content) {
+		if (part.type === "text" && part.text.trim().length > 0) {
+			hasText = true;
+			break;
+		}
+		if (part.type === "toolCall") {
+			hasToolCall = true;
+			break;
+		}
+	}
+	return !hasText && !hasToolCall;
+};
+
+/**
  * Start an agent loop with new prompt messages and expose emitted events as a stream.
  */
 export function agentLoop(
@@ -253,8 +288,8 @@ async function streamAssistantResponse(
 	// hard cap truncates mid-sentence / mid-tool-call when hit, and
 	// for reasoning models can leave zero budget for the visible
 	// answer (cap exhausted by thinking). Trust the model to
-	// self-terminate; run-level recovery owns the shared retry budget for
-	// degenerate responses, and `Model.maxTokens` is reserved
+	// self-terminate; the scoped degenerate-response retry below handles
+	// pathological terminations, and `Model.maxTokens` is reserved
 	// for explicit per-call overrides via `config.maxTokens`.
 	const streamOptions = {
 		...config,
@@ -350,7 +385,27 @@ async function streamAssistantResponse(
 		return await finalize();
 	};
 
-	return await runOnce();
+	let finalMessage = await runOnce();
+
+	// Standalone Agent users retain the defensive one-shot retry. Runtime
+	// sessions disable it so one visible run-level policy owns the provider
+	// attempt budget instead of multiplying inner and outer retries.
+	const maxDegenerateRetries = Math.max(
+		0,
+		Math.floor(config.degenerateResponseRetries ?? 1),
+	);
+	for (
+		let retry = 0;
+		retry < maxDegenerateRetries && isDegenerateAssistantMessage(finalMessage);
+		retry += 1
+	) {
+		if (context.messages[context.messages.length - 1] === finalMessage) {
+			context.messages.pop();
+		}
+		finalMessage = await runOnce();
+	}
+
+	return finalMessage;
 }
 
 /**

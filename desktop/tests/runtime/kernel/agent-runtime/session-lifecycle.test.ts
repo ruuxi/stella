@@ -12,6 +12,7 @@ import { OrchestratorSession } from "../../../../../runtime/kernel/agent-runtime
 import { SubagentSession } from "../../../../../runtime/kernel/agent-runtime/subagent-session.js";
 import { createExternalOrchestratorRunSession } from "../../../../../runtime/kernel/agent-runtime/run-session.js";
 import { loadStellaRuntimeAgents } from "../../../../../runtime/extensions/stella-runtime/index.js";
+import { providerAbortedStopMessage } from "../../../../../runtime/ai/utils/provider-stop.js";
 
 const executeRuntimeAgentPrompt = vi.fn();
 
@@ -37,6 +38,35 @@ const model = {
   contextWindow: 128_000,
   maxTokens: 4_096,
 } as const;
+
+const safetyModel = {
+  ...model,
+  id: "anthropic/claude-fable-5",
+  name: "Claude Fable 5",
+} as const;
+
+const assistantMessage = (args: {
+  text?: string;
+  errorMessage?: string;
+  timestamp: number;
+}) => ({
+  role: "assistant" as const,
+  content: args.text ? [{ type: "text" as const, text: args.text }] : [],
+  api: "openai-completions" as const,
+  provider: "test",
+  model: safetyModel.id,
+  usage: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  },
+  stopReason: args.errorMessage ? ("error" as const) : ("stop" as const),
+  ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
+  timestamp: args.timestamp,
+});
 
 const textFromMessages = (messages: AgentMessage[]): string[] =>
   messages.map((message) => {
@@ -105,7 +135,7 @@ describe("OrchestratorSession", () => {
 
     executeRuntimeAgentPrompt.mockImplementation(async ({ agent }) => {
       seenAgents.push(agent);
-      return { finalText: "" };
+      return { finalText: "done" };
     });
 
     await session.runTurn(createOptions({ runId: "run-1" }));
@@ -115,6 +145,59 @@ describe("OrchestratorSession", () => {
 
     expect(seenAgents).toHaveLength(2);
     expect(seenAgents[1]).toBe(seenAgents[0]);
+  });
+
+  it("retries a transient failure from the resumed same-model safety stage", async () => {
+    const session = new OrchestratorSession("conversation-safety-retry");
+    const safetyError = providerAbortedStopMessage("refusal");
+    const executions = [
+      { finalText: "", errorMessage: safetyError },
+      { finalText: "", errorMessage: "500 Server Error" },
+      { finalText: "recovered" },
+    ];
+
+    executeRuntimeAgentPrompt.mockImplementation(
+      async ({
+        agent,
+        resume,
+      }: {
+        agent: { state: { messages: AgentMessage[] } };
+        resume?: boolean;
+      }) => {
+        const call = executeRuntimeAgentPrompt.mock.calls.length;
+        const execution = executions[call - 1]!;
+        agent.state.messages.push(
+          assistantMessage({
+            ...(execution.finalText ? { text: execution.finalText } : {}),
+            ...(execution.errorMessage
+              ? { errorMessage: execution.errorMessage }
+              : {}),
+            timestamp: call,
+          }),
+        );
+        if (call > 1) expect(resume).toBe(true);
+        return execution;
+      },
+    );
+
+    await session.runTurn(
+      createOptions({
+        runId: "run-safety-stage-transient",
+        conversationId: "conversation-safety-retry",
+        resolvedLlm: {
+          model: safetyModel,
+          route: "direct-provider",
+          getApiKey: () => undefined,
+        },
+      }),
+    );
+
+    expect(executeRuntimeAgentPrompt).toHaveBeenCalledTimes(3);
+    expect(
+      executeRuntimeAgentPrompt.mock.calls.map(([args]) =>
+        Boolean((args as { resume?: boolean }).resume),
+      ),
+    ).toEqual([false, true, true]);
   });
 
   it("refreshes the advertised tool schema on the next turn of an open session", async () => {
@@ -179,7 +262,7 @@ describe("OrchestratorSession", () => {
 
     executeRuntimeAgentPrompt.mockImplementation(async ({ agent }) => {
       advertisedTools.push(agent.state.tools.map((tool) => tool.name));
-      return { finalText: "" };
+      return { finalText: "done" };
     });
 
     await session.runTurn(
@@ -220,7 +303,7 @@ describe("OrchestratorSession", () => {
 
     executeRuntimeAgentPrompt.mockImplementation(async ({ agent }) => {
       startMessages.push(textFromMessages(agent.state.messages));
-      return { finalText: "" };
+      return { finalText: "done" };
     });
 
     await session.runTurn(createOptions({ runId: "run-1" }));
@@ -297,7 +380,7 @@ describe("SubagentSession", () => {
     let executionHistory: string[] = [];
     executeRuntimeAgentPrompt.mockImplementation(async ({ agent }) => {
       executionHistory = textFromMessages(agent.state.messages);
-      return { finalText: "" };
+      return { finalText: "done" };
     });
 
     const turn = session.runTurn({

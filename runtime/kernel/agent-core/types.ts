@@ -101,6 +101,13 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	model: Model<Api>;
 
 	/**
+	 * Immediate retries for clean responses with no text or tool calls.
+	 * Defaults to one; runtime sessions set zero so their bounded run-level
+	 * retry policy owns every degenerate provider attempt.
+	 */
+	degenerateResponseRetries?: number;
+
+	/**
 	 * Converts AgentMessage[] to LLM-compatible Message[] before each LLM call.
 	 *
 	 * Each AgentMessage must be converted to a UserMessage, AssistantMessage, or ToolResultMessage

@@ -12,8 +12,10 @@ import {
 } from "../../../../../runtime/kernel/agent-runtime/provider-abort-containment.js";
 import { executeRuntimeAgentPrompt } from "../../../../../runtime/kernel/agent-runtime/run-execution.js";
 import {
+  AGENT_RUN_MAX_ATTEMPTS,
   executeAgentTurnWithRetry,
   type AgentRunFailure,
+  type AgentRunRetryState,
 } from "../../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
 import type { ResolvedLlmRoute } from "../../../../../runtime/kernel/model-routing.js";
 import { providerAbortedStopMessage } from "../../../../../runtime/ai/utils/provider-stop.js";
@@ -249,7 +251,7 @@ describe("prepareSafetySameModelRetry", () => {
 });
 
 describe("swap-resume flow (end to end)", () => {
-  it("fable safety abort → swap to opus → resume continues without re-prompting", async () => {
+  it("retries a transient failure during the safety-model swap stage", async () => {
     const route = fableStellaRoute();
     const session = new TestSession();
     session.setRoute(route);
@@ -263,10 +265,17 @@ describe("swap-resume flow (end to end)", () => {
         assistantMessage(100, "error", { errorMessage: SAFETY_ABORT_MESSAGE }),
       );
     });
-    // Attempt 2 (after swap): the loop resumes cleanly on the new model.
-    agent.continue.mockImplementation(async () => {
-      messages.push(assistantMessage(200, "stop", { text: "recovered" }));
-    });
+    // Attempt 2 (after swap): transport fails transiently. The shared run
+    // envelope resumes the swapped model again and attempt 3 succeeds.
+    agent.continue
+      .mockImplementationOnce(async () => {
+        messages.push(
+          assistantMessage(200, "error", { errorMessage: "500 Server Error" }),
+        );
+      })
+      .mockImplementationOnce(async () => {
+        messages.push(assistantMessage(300, "stop", { text: "recovered" }));
+      });
 
     const executionArgs = {
       agent,
@@ -277,7 +286,25 @@ describe("swap-resume flow (end to end)", () => {
       recorder: {} as never,
     };
 
-    const attempt1 = await executeRuntimeAgentPrompt(executionArgs);
+    const retryState: AgentRunRetryState = {
+      attemptsUsed: 0,
+      retriesUsed: 0,
+    };
+    const executeWithRetry = (initialResume = false) =>
+      executeAgentTurnWithRetry({
+        state: retryState,
+        initialResume,
+        execute: (resume) =>
+          executeRuntimeAgentPrompt({
+            ...executionArgs,
+            ...(resume ? { resume: true } : {}),
+          }),
+        prepareRetry: (failure) => session.retryRun(agent, failure),
+        random: () => 0.5,
+        sleep: async () => undefined,
+      });
+
+    const attempt1 = await executeWithRetry();
     expect(attempt1.errorMessage).toBe(SAFETY_ABORT_MESSAGE);
     expect(agent.prompt).toHaveBeenCalledTimes(1);
 
@@ -289,19 +316,158 @@ describe("swap-resume flow (end to end)", () => {
     // The errored assistant was dropped; the prompt is still in context.
     expect(messages.at(-1)?.role).toBe("user");
 
-    const attempt2 = await executeRuntimeAgentPrompt({
-      ...executionArgs,
-      resume: true,
-    });
+    const attempt2 = await executeWithRetry(true);
     expect(attempt2.errorMessage).toBeUndefined();
     expect(attempt2.finalText).toBe("recovered");
-    // Resume mode: no second prompt append, exactly one continue.
+    // Resume mode: no second prompt append; both post-swap provider calls
+    // continue from the retained prompt state.
     expect(agent.prompt).toHaveBeenCalledTimes(1);
-    expect(agent.continue).toHaveBeenCalledTimes(1);
+    expect(agent.continue).toHaveBeenCalledTimes(2);
+    expect(retryState).toEqual({ attemptsUsed: 3, retriesUsed: 1 });
   });
 });
 
 describe("transient run retry resume flow", () => {
+  it("retries a transient failure raised by a resumed safety-stage call", async () => {
+    const route = fableStellaRoute();
+    const session = new TestSession();
+    session.setRoute(route);
+
+    const messages: AgentMessage[] = [];
+    const agent = fakeAgent(messages, route);
+    agent.prompt.mockImplementation(async (prompted: AgentMessage[]) => {
+      messages.push(...prompted);
+      messages.push(
+        assistantMessage(100, "error", { errorMessage: SAFETY_ABORT_MESSAGE }),
+      );
+    });
+    agent.continue
+      .mockImplementationOnce(async () => {
+        messages.push(
+          assistantMessage(200, "error", { errorMessage: "500 Server Error" }),
+        );
+      })
+      .mockImplementationOnce(async () => {
+        messages.push(assistantMessage(300, "stop", { text: "recovered" }));
+      });
+
+    const retryState: AgentRunRetryState = {
+      attemptsUsed: 0,
+      retriesUsed: 0,
+    };
+    const executionArgs = {
+      agent,
+      promptMessages: [{ text: "summarize safely" }],
+      runId: "run-safety-transient",
+      agentType: "general",
+      userMessageId: "msg-safety-transient",
+      recorder: {} as never,
+    };
+    const executeWithRetry = (initialResume = false) =>
+      executeAgentTurnWithRetry({
+        state: retryState,
+        initialResume,
+        execute: (resume) =>
+          executeRuntimeAgentPrompt({
+            ...executionArgs,
+            ...(resume ? { resume: true } : {}),
+          }),
+        prepareRetry: (failure) => session.retryRun(agent, failure),
+        random: () => 0.5,
+        sleep: async () => undefined,
+      });
+
+    let execution = await executeWithRetry();
+    expect(execution.errorMessage).toBe(SAFETY_ABORT_MESSAGE);
+    expect(
+      session.retrySameModel(agent, execution.errorMessage!),
+    ).not.toBeNull();
+
+    execution = await executeWithRetry(true);
+
+    expect(execution).toMatchObject({ finalText: "recovered", attempts: 3 });
+    expect(retryState).toEqual({ attemptsUsed: 3, retriesUsed: 1 });
+    expect(agent.prompt).toHaveBeenCalledOnce();
+    expect(agent.continue).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares the four-provider-attempt budget across safety stages", async () => {
+    const route = fableStellaRoute();
+    const session = new TestSession();
+    session.setRoute(route);
+
+    const messages: AgentMessage[] = [];
+    const agent = fakeAgent(messages, route);
+    agent.prompt.mockImplementation(async (prompted: AgentMessage[]) => {
+      messages.push(...prompted);
+      messages.push(
+        assistantMessage(100, "error", { errorMessage: "500 Server Error" }),
+      );
+    });
+    agent.continue
+      .mockImplementationOnce(async () => {
+        messages.push(
+          assistantMessage(200, "error", { errorMessage: "500 Server Error" }),
+        );
+      })
+      .mockImplementationOnce(async () => {
+        messages.push(
+          assistantMessage(300, "error", {
+            errorMessage: SAFETY_ABORT_MESSAGE,
+          }),
+        );
+      })
+      .mockImplementationOnce(async () => {
+        messages.push(
+          assistantMessage(400, "error", {
+            errorMessage: "429 relay buffer quota exceeded",
+          }),
+        );
+      });
+
+    const retryState: AgentRunRetryState = {
+      attemptsUsed: 0,
+      retriesUsed: 0,
+    };
+    const executionArgs = {
+      agent,
+      promptMessages: [{ text: "stay within the turn budget" }],
+      runId: "run-shared-budget",
+      agentType: "general",
+      userMessageId: "msg-shared-budget",
+      recorder: {} as never,
+    };
+    const executeWithRetry = (initialResume = false) =>
+      executeAgentTurnWithRetry({
+        state: retryState,
+        initialResume,
+        execute: (resume) =>
+          executeRuntimeAgentPrompt({
+            ...executionArgs,
+            ...(resume ? { resume: true } : {}),
+          }),
+        prepareRetry: (failure) => session.retryRun(agent, failure),
+        random: () => 0.5,
+        sleep: async () => undefined,
+      });
+
+    let execution = await executeWithRetry();
+    expect(execution.errorMessage).toBe(SAFETY_ABORT_MESSAGE);
+    expect(
+      session.retrySameModel(agent, execution.errorMessage!),
+    ).not.toBeNull();
+
+    execution = await executeWithRetry(true);
+
+    expect(retryState.attemptsUsed).toBe(AGENT_RUN_MAX_ATTEMPTS);
+    expect(agent.prompt).toHaveBeenCalledOnce();
+    expect(agent.continue).toHaveBeenCalledTimes(3);
+    expect(execution.attempts).toBe(AGENT_RUN_MAX_ATTEMPTS);
+    expect(execution.errorMessage).toContain(
+      "Automatic recovery exhausted after 4 attempts (rate_limit)",
+    );
+  });
+
   it("resumes after completed tool results without replaying the side effect", async () => {
     const route = fableStellaRoute();
     const session = new TestSession();
