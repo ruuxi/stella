@@ -1793,7 +1793,13 @@ const runArchitecturalRecall = async (args: {
     args.telemetry.addModelCall(performance.now() - modelStartedAt);
   }
   args.onResultMetadata?.({ intent, fastPath: false, sources });
-  args.emitTelemetry(brief ? "answer" : "empty-brief");
+  args.emitTelemetry(
+    !brief
+      ? "empty-brief"
+      : isRecallNoMatchBrief(brief)
+        ? "no-match"
+        : "answer",
+  );
   return brief || RECALL_EMPTY_BRIEF_TEXT;
 };
 
