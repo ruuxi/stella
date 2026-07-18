@@ -1,0 +1,879 @@
+{
+  "schemaVersion": 2,
+  "methodology": {
+    "routeMode": "pinned-claude-fable",
+    "directRun": true,
+    "browserContext": false,
+    "queryOrder": [
+      "memory_system",
+      "carplay_thread",
+      "browser_cleanup_race",
+      "utility_model_policy",
+      "release_workflow",
+      "prompt_contract",
+      "radial_ui_decision",
+      "episodic_drive",
+      "billing_case",
+      "no_match"
+    ]
+  },
+  "snapshot": {
+    "dataDir": "/tmp/stella-recall-round5.wKtV8W/.stella",
+    "sha256": "a3a07ceda9eeab4e256c4c59b9dc0581aa802c22f18eb4895fce829710b5557a"
+  },
+  "sampleCount": 10,
+  "completedCount": 10,
+  "errorCount": 0,
+  "engineModels": [
+    "claude-code:claude-code/fable"
+  ],
+  "totalMs": {
+    "median": 183.884,
+    "p90": 5415.237,
+    "min": 34.445,
+    "max": 10522.758
+  },
+  "phaseMedianMs": {
+    "routeMs": 0.007,
+    "hostContextMs": 0.025,
+    "seedSearchMs": 131.733,
+    "assemblyMs": 0.011,
+    "modelMs": 0
+  },
+  "phaseP90Ms": {
+    "routeMs": 0.009,
+    "hostContextMs": 0.086,
+    "seedSearchMs": 178.384,
+    "assemblyMs": 0.027,
+    "modelMs": 5361.697
+  },
+  "seedChars": {
+    "median": 979,
+    "p90": 12000,
+    "min": 0,
+    "max": 12000
+  },
+  "modelCalls": {
+    "median": 0,
+    "p90": 1,
+    "max": 1
+  },
+  "toolRounds": {
+    "median": 0,
+    "p90": 0,
+    "max": 0
+  },
+  "sourceTimings": {
+    "host.appBrowserContext": {
+      "medianMs": 0,
+      "p90Ms": 0,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "host.localEvents": {
+      "medianMs": 0,
+      "p90Ms": 0,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "retrieval.delegated_work": {
+      "medianMs": 0,
+      "p90Ms": 12.076,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "retrieval.durable_memory": {
+      "medianMs": 4.642,
+      "p90Ms": 84.589,
+      "medianCalls": 1,
+      "medianChars": 8225
+    },
+    "retrieval.episodic": {
+      "medianMs": 128.791,
+      "p90Ms": 167.688,
+      "medianCalls": 1,
+      "medianChars": 16044.5
+    },
+    "retrieval.ftsHealth": {
+      "medianMs": 0.356,
+      "p90Ms": 0.839,
+      "medianCalls": 1,
+      "medianChars": 0
+    }
+  },
+  "runs": [
+    {
+      "query": {
+        "id": "memory_system",
+        "prompt": "What did we determine about profile.md, memory_summary.md, MEMORY.md, and the sources Recall searches?",
+        "terms": [
+          "profile.md",
+          "memory_summary.md",
+          "MEMORY.md",
+          "Recall"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "fast-path",
+        "engine": "claude-code",
+        "modelId": "claude-code/fable",
+        "intent": "durable_memory",
+        "fastPath": true,
+        "retrievalPasses": 1,
+        "routeMs": 18.116,
+        "hostContextMs": 0.728,
+        "seedSearchMs": 12.784,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0.001,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 12.672,
+            "chars": 20197
+          }
+        },
+        "seedChars": 4276,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0.127,
+        "totalMs": 34.445
+      },
+      "resultMetadata": {
+        "intent": "durable_memory",
+        "fastPath": true,
+        "sources": [
+          {
+            "kind": "memory"
+          }
+        ]
+      },
+      "brief": "# durable memory\n<match path=\"~/.stella/memories/MEMORY.md\" lines=\"26-34\">\n29: ## 2026-07-18 20:14 — Recall latency root-caused (LLM/seed overhead, not SQLite) + Codex memory architecture reverse-engineered with Stella adoption plan\n30: Threads: root-cause-why-stella-s-recall-memory-search-is:local:sub:fcf2b043-0291-4962-9cf5-aa0e660101bb, reverse-engineer-chatgpt-desktop-app-codex-repo:local:sub:e82d9d8b-6d91-4667-b64b-a9833f7b386a\n31: Why this matters: Recall feels slow (median 28.1s over 49 calls, p90 88.4s) despite millisecond SQLite/FTS retrieval, and Codex's shipped memory design shows how to shrink the payload and skip the LLM for common lookups.\n32: Outcome: Recall analysis (strictly read-only, mode=ro + query_only, no code changed): retrieval is NOT the bottleneck — 2.13GB live DB, both FTS indexes complete/backfilled (Jul 11), representative searches 1–20ms (unused LIKE fallback would be 3.7s). Real causes, ranked: (1) oversized eager seed — every source pre-searched, avg 45,286 chars, p90 53,642; (2) serial model/tool rounds (avg 3.45 extra searches, +17.7K chars median); (3) orchestrator invoked Recall twice in 7 of 10 recent runs (+5–14s between calls); (4) wrong utility route — Recall spawns a fresh one-shot Claude CLI on `claude-code/fable` (saved claudeCodeModel outranks the stella/light pin in claude-code-agent-runtime.ts:62), not the benchmarked `gpt-5.6-luna`; latest 27.5s call did ZERO model-initiated searches; (5) unranked substring memory search; (6) minor N+1s (transcript neighbors, active threads, 800-event load for 5 rows). July 11's 599–4,560s outliers predate the route-resolution fix (historical, not current). Recommended: one parallel retrieval pass + one synthesis call capped ~8–12KB with single reformulation fallback; pin Recall to Luna/off independent of engine; cache same-turn Recall with structured found/no_match status; intent-based source routing; compact structured routing index (MEMORY.md is 1.12MB, summary 30.8KB); batch secondary reads; phase-level timing telemetry. Codex reverse-engineering (ChatGPT.app 26.715.31251 bundling codex-cli 0.145.0-alpha.18, asar extracted read-only; source pulled ff-only to `35eaf3ffb`): memory is SQLite `~/.codex/memories_1.sqlite` stage1_outputs (428 rows, 256 selected, 120 cited) + progressive-disclosure files — `memory_summary.md` always injected capped 2,500 tokens, `MEMORY.md` (469KB) as primary grep target, per-rollout summaries, skills, private git baseline for incremental diffs. Phase 1 = background LLM per idle rollout (gpt-5.6-luna, low reasoning, concurrency 8, strict JSON, relevance gate, secrets redacted). Phase 2 (Dream equivalent, `memory_consolidate_global`) = locked-down consolidation agent (gpt-5.6-terra, medium, no network/agents/MCP, 6h cooldown, skips LLM when git diff is clean). No embeddings/vector DB anywhere — model-directed rg/substring search driven by an explicit injected decision contract; hidden citation blocks bump usage_count/last_usage, closing a retention feedback loop. Stella adoption recs: deterministic no-LLM `search_memory` fast path for the orchestrator; make memory_summary a real routing index; complete the unused usage-feedback loop (`recordUsage()` has no call site); normalize Dream inputs via cheap structured extraction; deterministic incremental diff for Dream; split cheap/strong background models with a 25%-quota guard — while keeping Remember-owned profile.md, pre-compaction flush, and FTS5 episodic search. Only mutation across both tasks: the authorized ff-only pull of ~/workspaces/codex.\n33: Recall hooks: Recall slow root cause 28s median seed 45K chars eager, claude-code fable wrong utility model one-shot CLI spawn, duplicate same-turn Recall calls orchestrator, FTS healthy milliseconds LIKE fallback 3.7s unused, gpt-5.6-luna utility route recommendation cap 8-12KB, Codex memories_1.sqlite stage1_outputs usage_count citations, memory_summary 2500 tokens always injected MEMORY.md grep target, Phase 1 luna Phase 2 terra memory_consolidate_global git baseline six hour cooldown, no embeddings substring rg decision contract, search_memory deterministic fast path routing index, recordUsage no call site feedback loop, normalize Dream inputs structured extraction quota guard\n34: \n</match>"
+    },
+    {
+      "query": {
+        "id": "carplay_thread",
+        "prompt": "Find the prior agent thread for the CarPlay blank-screen connect replay race and summarize its result with the resumable thread id.",
+        "terms": [
+          "CarPlay",
+          "blank-screen",
+          "connect replay",
+          "race"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "no-match",
+        "engine": "claude-code",
+        "modelId": "claude-code/fable",
+        "intent": "delegated_work",
+        "fastPath": true,
+        "retrievalPasses": 2,
+        "routeMs": 0.007,
+        "hostContextMs": 0.025,
+        "seedSearchMs": 14.817,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.839,
+            "chars": 0
+          },
+          "retrieval.delegated_work": {
+            "kind": "sql",
+            "calls": 2,
+            "ms": 61.555,
+            "chars": 22919
+          }
+        },
+        "seedChars": 0,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0,
+        "totalMs": 63.547
+      },
+      "resultMetadata": {
+        "intent": "delegated_work",
+        "fastPath": true,
+        "sources": []
+      },
+      "brief": "Nothing relevant found."
+    },
+    {
+      "query": {
+        "id": "browser_cleanup_race",
+        "prompt": "What was found about browser tab reuse and stale cleanup acting on a newer kernel?",
+        "terms": [
+          "browser",
+          "tab reuse",
+          "stale cleanup",
+          "kernel"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/fable",
+        "intent": "multi_source",
+        "fastPath": false,
+        "retrievalPasses": 1,
+        "routeMs": 0.005,
+        "hostContextMs": 0.086,
+        "seedSearchMs": 178.384,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.286,
+            "chars": 0
+          },
+          "retrieval.delegated_work": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 12.076,
+            "chars": 11233
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 157.951,
+            "chars": 16582
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 178.371,
+            "chars": 16317
+          }
+        },
+        "seedChars": 12000,
+        "modelCalls": 1,
+        "modelMs": 10297.432,
+        "toolRounds": 0,
+        "assemblyMs": 0.023,
+        "totalMs": 10522.758
+      },
+      "resultMetadata": {
+        "intent": "multi_source",
+        "fastPath": false,
+        "sources": [
+          {
+            "kind": "memory"
+          },
+          {
+            "kind": "thread"
+          },
+          {
+            "kind": "transcript"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1347,
+            "threadId": "unify-the-sqlite-ordering-column-fix-across-v1",
+            "runId": "local:sub:a7601434-7617-40cb-9e51-bb2623e055d7"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1321,
+            "threadId": "v1-builder-replace-manager-upward-channel-with",
+            "runId": "local:sub:c6b5d9f4-4928-4e21-9272-47931b21e44f"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1289,
+            "threadId": "inspect-interrupted-ff-state-through-stella-max",
+            "runId": "local:sub:09e96df3-2e4f-44e6-9074-c8acc41e5a77"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1195,
+            "threadId": "generate-apple-app-specific-password-in-browser",
+            "runId": "local:sub:fa95b7b2-2d2d-499b-84a2-321be939372a"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1157,
+            "threadId": "fresh-review-of-the-browser-fix-port-into",
+            "runId": "local:sub:d56a5b11-811b-4e8a-952a-a0faa2b1cd77"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1156,
+            "threadId": "port-the-browser-tab-ownership-fix-4-v1-dev",
+            "runId": "local:sub:b43ad18e-12e6-42e4-880b-955011caa96e"
+          }
+        ]
+      },
+      "brief": "**Brief: browser tab-ownership fix (v1 → stella-v2)**\n\nThe evidence documents a browser tab-ownership fix, but does not describe the specific mechanism of tab reuse or stale cleanup acting on a newer kernel. What is established:\n\n- **Port (Jul 16, 2026, thread `port-the-browser-tab-ownership-fix-4-v1-dev`)**: Four v1-dev commits (`9b15adab`, `494d81a4`, `5e7576c2`, `79e85b19`) were ported into the stella-v2 monorepo layout as commit `14260c98251c477785ba41d52436a607d6eea60c`, built and tested, committed locally.\n- **Review (Jul 16, 2026, thread `fresh-review-of-the-browser-fix-port-into`)**: Fresh review of commit `14260c98` found it **SHIPPABLE, no findings** — all eight behaviors faithfully preserved, including: recoverable REPL errors reject only the cell; only fatal async/domain failures terminate the kernel; a syntax-error recovery test proves the browser session remains alive across kernel error handling.\n- Related context: node_repl 600s hangs were root-caused to a wedged Brave bridge + unbounded disposeKernel, fixed in `e68bdd5b9` (60s drain deadline keeping kernel alive, 10s dispose race); a Brave extension tab index→id skew still requires an extension update.\n\nNo evidence in the supplied material details a stale-cleanup routine incorrectly targeting a newer kernel instance or the tab-reuse logic itself."
+    },
+    {
+      "query": {
+        "id": "utility_model_policy",
+        "prompt": "What prior decision did we make about low reasoning for Recall, Chronicle, and progress summaries?",
+        "terms": [
+          "Recall",
+          "Chronicle",
+          "progress summaries",
+          "low reasoning"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "no-match",
+        "engine": "claude-code",
+        "modelId": "claude-code/fable",
+        "intent": "durable_memory",
+        "fastPath": true,
+        "retrievalPasses": 2,
+        "routeMs": 0.008,
+        "hostContextMs": 0.027,
+        "seedSearchMs": 167.714,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.268,
+            "chars": 20641
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.531,
+            "chars": 0
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 167.688,
+            "chars": 17406
+          }
+        },
+        "seedChars": 0,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0,
+        "totalMs": 170.398
+      },
+      "resultMetadata": {
+        "intent": "durable_memory",
+        "fastPath": true,
+        "sources": []
+      },
+      "brief": "Nothing relevant found."
+    },
+    {
+      "query": {
+        "id": "release_workflow",
+        "prompt": "What are the established repo-scope and verification rules for Stella release sweeps?",
+        "terms": [
+          "release sweep",
+          "repo scope",
+          "verification",
+          "Stella"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "no-match",
+        "engine": "claude-code",
+        "modelId": "claude-code/fable",
+        "intent": "durable_memory",
+        "fastPath": true,
+        "retrievalPasses": 2,
+        "routeMs": 0.004,
+        "hostContextMs": 0.021,
+        "seedSearchMs": 99.648,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.076,
+            "chars": 29778
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.35,
+            "chars": 0
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 99.63,
+            "chars": 18695
+          }
+        },
+        "seedChars": 0,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0,
+        "totalMs": 102.272
+      },
+      "resultMetadata": {
+        "intent": "durable_memory",
+        "fastPath": true,
+        "sources": []
+      },
+      "brief": "Nothing relevant found."
+    },
+    {
+      "query": {
+        "id": "prompt_contract",
+        "prompt": "What are the prior orchestrator prompt rules for Recall versus send_input and milestone status?",
+        "terms": [
+          "orchestrator prompt",
+          "Recall",
+          "send_input",
+          "milestone"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "no-match",
+        "engine": "claude-code",
+        "modelId": "claude-code/fable",
+        "intent": "multi_source",
+        "fastPath": false,
+        "retrievalPasses": 1,
+        "routeMs": 0.005,
+        "hostContextMs": 0.024,
+        "seedSearchMs": 84.593,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.318,
+            "chars": 0
+          },
+          "retrieval.delegated_work": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 7.73,
+            "chars": 10057
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 74.838,
+            "chars": 14100
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 84.589,
+            "chars": 16899
+          }
+        },
+        "seedChars": 12000,
+        "modelCalls": 1,
+        "modelMs": 5325.951,
+        "toolRounds": 0,
+        "assemblyMs": 0.027,
+        "totalMs": 5415.237
+      },
+      "resultMetadata": {
+        "intent": "multi_source",
+        "fastPath": false,
+        "sources": [
+          {
+            "kind": "memory"
+          },
+          {
+            "kind": "thread"
+          },
+          {
+            "kind": "transcript"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1391,
+            "threadId": "fresh-review-round-4-phase-d-architectural",
+            "runId": "local:sub:5dadbc87-f667-4078-9db3-9ed46972b2ce"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1388,
+            "threadId": "recall-overhaul-v1-builder-replacement-verify",
+            "runId": "local:sub:78803d77-b253-47fc-86fe-dcd6da4f0389"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1387,
+            "threadId": "build-restart-with-continuation-self-restart",
+            "runId": "local:sub:8f346b9f-d0a7-4106-b1d9-2c6622c788f8"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1362,
+            "threadId": "fresh-review-round-2-corrected-recall-telemetry",
+            "runId": "local:sub:8dbf5eb1-fdc1-4b95-8f2b-ac44cf37e5c1"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1357,
+            "threadId": "fresh-review-round-1-recall-telemetry-baseline",
+            "runId": "local:sub:ae5f8ee3-914b-4749-b0bf-151b688c759e"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1356,
+            "threadId": "recall-latency-overhaul-v1-builder-telemetry",
+            "runId": "local:sub:ad580f7f-8bae-48bf-87c0-f94dc8798a06"
+          }
+        ]
+      },
+      "brief": "Nothing relevant found."
+    },
+    {
+      "query": {
+        "id": "radial_ui_decision",
+        "prompt": "What was the prior product decision about the radial dial versus a native context menu?",
+        "terms": [
+          "radial dial",
+          "native context menu",
+          "product decision"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "no-match",
+        "engine": "claude-code",
+        "modelId": "claude-code/fable",
+        "intent": "durable_memory",
+        "fastPath": true,
+        "retrievalPasses": 2,
+        "routeMs": 0.009,
+        "hostContextMs": 0.028,
+        "seedSearchMs": 183.103,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 8.252,
+            "chars": 125
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 2.815,
+            "chars": 0
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 183.092,
+            "chars": 19386
+          }
+        },
+        "seedChars": 0,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0,
+        "totalMs": 194.819
+      },
+      "resultMetadata": {
+        "intent": "durable_memory",
+        "fastPath": true,
+        "sources": []
+      },
+      "brief": "Nothing relevant found."
+    },
+    {
+      "query": {
+        "id": "episodic_drive",
+        "prompt": "When was Rahul's first destination drive in the blue Lotus Emira, and where did he actually go?",
+        "terms": [
+          "blue Lotus Emira",
+          "first destination drive",
+          "actually go"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "no-match",
+        "engine": "claude-code",
+        "modelId": "claude-code/fable",
+        "intent": "episodic",
+        "fastPath": false,
+        "retrievalPasses": 1,
+        "routeMs": 0.005,
+        "hostContextMs": 0.014,
+        "seedSearchMs": 167.551,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.344,
+            "chars": 0
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 167.532,
+            "chars": 18027
+          }
+        },
+        "seedChars": 8511,
+        "modelCalls": 1,
+        "modelMs": 2578.36,
+        "toolRounds": 0,
+        "assemblyMs": 0.021,
+        "totalMs": 2746.793
+      },
+      "resultMetadata": {
+        "intent": "episodic",
+        "fastPath": false,
+        "sources": [
+          {
+            "kind": "transcript"
+          }
+        ]
+      },
+      "brief": "Nothing relevant found."
+    },
+    {
+      "query": {
+        "id": "billing_case",
+        "prompt": "What happened with the anomalous Vercel AI Gateway credit charges, and how was the dispute sent?",
+        "terms": [
+          "Vercel AI Gateway",
+          "credit charges",
+          "dispute"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/fable",
+        "intent": "episodic",
+        "fastPath": false,
+        "retrievalPasses": 1,
+        "routeMs": 0.009,
+        "hostContextMs": 0.019,
+        "seedSearchMs": 20.615,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.362,
+            "chars": 0
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 20.599,
+            "chars": 9861
+          }
+        },
+        "seedChars": 1958,
+        "modelCalls": 1,
+        "modelMs": 5361.697,
+        "toolRounds": 0,
+        "assemblyMs": 0.026,
+        "totalMs": 5383.057
+      },
+      "resultMetadata": {
+        "intent": "episodic",
+        "fastPath": false,
+        "sources": [
+          {
+            "kind": "transcript"
+          }
+        ]
+      },
+      "brief": "**Vercel AI Gateway billing anomaly — brief (evidence from Jul 8, 2026 conversation)**\n\n**The charges:** 9 \"AI Gateway Credits\" invoices landed in an 18-minute burst — seven $20 charges within a 28-second window (21:50:11–21:50:39 UTC), then two $21.62 charges ~17 minutes later. Total: **$183.24** (for $180 of credits). The pattern supported the user's read that it was a billing bug.\n\n**The dispute:** By 6:16 PM on Jul 8, 2026, Stella confirmed the dispute was **filed with Vercel Support** — sent (not drafted), routed through whichever channel tied to the account: from [REDACTED EMAIL] if logged in, otherwise Vercel's in-dashboard support form.\n\n**Related follow-up in the same session:** the user then had Stella ship a sidebar-only fix (canvas-share excluded), released as **desktop-v0.0.401** at 6:44 PM.\n\nNo thread ids were present in the evidence."
+    },
+    {
+      "query": {
+        "id": "no_match",
+        "prompt": "Find the decision where Project Zephyr approved an aquarium telemetry migration from Cassandra to CockroachDB.",
+        "terms": [
+          "Project Zephyr",
+          "aquarium telemetry",
+          "Cassandra",
+          "CockroachDB"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "no-match",
+        "engine": "claude-code",
+        "modelId": "claude-code/fable",
+        "intent": "durable_memory",
+        "fastPath": true,
+        "retrievalPasses": 2,
+        "routeMs": 0.006,
+        "hostContextMs": 0.019,
+        "seedSearchMs": 163.817,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 8.016,
+            "chars": 133
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.625,
+            "chars": 0
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 163.807,
+            "chars": 15507
+          }
+        },
+        "seedChars": 0,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0,
+        "totalMs": 172.948
+      },
+      "resultMetadata": {
+        "intent": "durable_memory",
+        "fastPath": true,
+        "sources": []
+      },
+      "brief": "Nothing relevant found."
+    }
+  ]
+}

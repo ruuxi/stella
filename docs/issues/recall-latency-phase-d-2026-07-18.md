@@ -1,5 +1,11 @@
 # Recall latency phase (d) — architectural overhaul — 2026-07-18
 
+> **Superseded for correctness/hit-rate claims.** Round-4 timings were
+> independently confirmed, but this benchmark did not retain returned briefs
+> and its 6/6 direct-hit claim was disproved by adversarial review. The
+> correctness-qualified replacement, with every redacted brief persisted, is
+> [`recall-latency-phase-d-round5-2026-07-18.md`](./recall-latency-phase-d-round5-2026-07-18.md).
+
 Implementation commit: `75cf48242f0f76a763f36d377e62006cff152250`.
 This phase adds deterministic intent routing, a zero-model direct-results path,
 one-pass/one-call synthesis, a resident memory routing index, usage feedback,
@@ -146,7 +152,7 @@ Fable rejection.
   memory injection.
 - Electron and preload TypeScript checks passed.
 - Runtime boundary check and `git diff --check` passed.
-- One pre-reset Haiku set was discarded after Claude Code reported its session
-  limit during three synthesis cases. One initial c216 attempt was discarded
-  because redirecting `HOME` hid Claude CLI auth. Neither contributes to any
-  aggregate; both are named in the raw artifact's audit metadata.
+- The raw artifact records all four discarded sets: one-query preflight,
+  pre-reset Haiku session-limit run, invalid c216 HOME-redirect run, and the
+  first valid c216 aggregate superseded by the full-telemetry replay. None
+  contributes to an aggregate.

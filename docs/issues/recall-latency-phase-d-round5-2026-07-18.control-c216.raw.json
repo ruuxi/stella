@@ -1,0 +1,971 @@
+{
+  "sampleCount": 10,
+  "completedCount": 10,
+  "errorCount": 0,
+  "engineModels": [
+    "claude-code:claude-code/haiku"
+  ],
+  "totalMs": {
+    "median": 23492.296,
+    "p90": 47316.926,
+    "min": 16512.364,
+    "max": 50886.228
+  },
+  "phaseMedianMs": {
+    "routeMs": 0.096,
+    "hostContextMs": 22.725,
+    "seedSearchMs": 84.675,
+    "assemblyMs": 0.199,
+    "modelMs": 23381.826
+  },
+  "phaseP90Ms": {
+    "routeMs": 0.141,
+    "hostContextMs": 27.441,
+    "seedSearchMs": 105.602,
+    "assemblyMs": 0.336,
+    "modelMs": 47131.209
+  },
+  "seedChars": {
+    "median": 47429.5,
+    "p90": 53688,
+    "min": 31156,
+    "max": 64647
+  },
+  "modelCalls": {
+    "median": 1.5,
+    "p90": 3,
+    "max": 4
+  },
+  "toolRounds": {
+    "median": 0.5,
+    "p90": 2,
+    "max": 3
+  },
+  "sourceTimings": {
+    "host.appBrowserContext": {
+      "medianMs": 0,
+      "p90Ms": 0,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "host.localEvents": {
+      "medianMs": 22.724,
+      "p90Ms": 27.441,
+      "medianCalls": 1,
+      "medianChars": 0
+    },
+    "seed.chronicleFiles": {
+      "medianMs": 0.325,
+      "p90Ms": 0.818,
+      "medianCalls": 1,
+      "medianChars": 29
+    },
+    "seed.liveThreadStatus": {
+      "medianMs": 2.904,
+      "p90Ms": 3.685,
+      "medianCalls": 1,
+      "medianChars": 148
+    },
+    "seed.memoryFiles": {
+      "medianMs": 1.828,
+      "p90Ms": 2.733,
+      "medianCalls": 1,
+      "medianChars": 4214
+    },
+    "seed.memorySearch": {
+      "medianMs": 8.205,
+      "p90Ms": 10.856,
+      "medianCalls": 1,
+      "medianChars": 16608
+    },
+    "seed.threadSearch": {
+      "medianMs": 27.604,
+      "p90Ms": 30.487,
+      "medianCalls": 1,
+      "medianChars": 10380.5
+    },
+    "seed.transcriptSearch": {
+      "medianMs": 48.005,
+      "p90Ms": 69.154,
+      "medianCalls": 1,
+      "medianChars": 16994
+    },
+    "tool.memorySearch": {
+      "medianMs": 0,
+      "p90Ms": 8.648,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "tool.threadSearch": {
+      "medianMs": 0,
+      "p90Ms": 25.675,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "tool.transcriptSearch": {
+      "medianMs": 0,
+      "p90Ms": 97.104,
+      "medianCalls": 0,
+      "medianChars": 0
+    }
+  },
+  "rawRuns": [
+    {
+      "query": {
+        "id": "memory_system",
+        "prompt": "What did we determine about profile.md, memory_summary.md, MEMORY.md, and the sources Recall searches?",
+        "terms": [
+          "profile.md",
+          "memory_summary.md",
+          "MEMORY.md",
+          "Recall"
+        ]
+      },
+      "queryId": "memory_system",
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 8.867,
+        "hostContextMs": 30.67,
+        "seedSearchMs": 77.666,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 30.669,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.745,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 3.931,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 11.565,
+            "chars": 20197
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 34.126,
+            "chars": 9344
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 27.852,
+            "chars": 13177
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 3.824,
+            "chars": 148
+          }
+        },
+        "seedChars": 48348,
+        "modelCalls": 1,
+        "modelMs": 22532.78,
+        "toolRounds": 0,
+        "assemblyMs": 0.581,
+        "totalMs": 22652.864
+      },
+      "brief": "# Determinations on Memory Tiers and Recall Sources\n\n## Memory Files — Audit Verdict (Jul 5)\n\n**`profile.md`** → **Keep.** Cleanest home for explicit durable facts and operating boundaries. No structural changes needed.\n\n**`memory_summary.md`** → **Keep, but tighten hard.** It's your currently-active-focus snapshot (~10–20 lines), injected every orchestrator turn (so it sits in my working context on *every* turn whether relevant or not). The live file has sprawled and duplicates recent `MEMORY.md` entries. Fix: enforce discipline on what gets written, not a structural tier cut.\n\n**`MEMORY.md`** → Keep as the longer, unbounded, grep-searchable archive ledger. I do *not* see this directly on each turn — it's only searched when the Recall tool runs.\n\n**Core memory (onboarding)** → **Drop.** Identified as redundant — its content duplicates `profile.md` and the `user-profile` skill; the always-resident injection can be eliminated.\n\n## Recall Search Behavior — Root Cause (Jul 18)\n\n**Slowness is NOT a retrieval problem.** SQLite/FTS is healthy (1–20ms searches); the live DB's indexes are complete.\n\n**Real bottleneck (ranked):**\n1. **Oversized eager seed** — every source pre-searched, avg 45K–54K chars per lookup\n2. **Serial model/tool rounds** — Recall repeats searches over multiple inference rounds\n3. **Duplicate same-turn calls** — Orchestrator invoked Recall twice in 7 of 10 recent runs  \n4. **Wrong utility model** — spawns fresh Claude CLI on the wrong saved model, not the benchmarked Luna\n5. **Unranked substring search** — no learned routing priority\n6. **N+1s** — transcript neighbors, active threads, bulk event loads for small result sets\n\n**Codex comparison** (reverse-engineered): deterministic no-LLM fast path for common lookups, memory_summary always injected capped 2,500 tokens, MEMORY.md as primary grep target, no embeddings—model-driven substring search via explicit injected decision contract."
+    },
+    {
+      "query": {
+        "id": "carplay_thread",
+        "prompt": "Find the prior agent thread for the CarPlay blank-screen connect replay race and summarize its result with the resumable thread id.",
+        "terms": [
+          "CarPlay",
+          "blank-screen",
+          "connect replay",
+          "race"
+        ]
+      },
+      "queryId": "carplay_thread",
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.141,
+        "hostContextMs": 26.006,
+        "seedSearchMs": 121.156,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 26.005,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.576,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.853,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 2.232,
+            "chars": 17395
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 30.487,
+            "chars": 10637
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 84.905,
+            "chars": 19087
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 3.434,
+            "chars": 148
+          },
+          "tool.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 10.636,
+            "chars": 10221
+          }
+        },
+        "seedChars": 52778,
+        "modelCalls": 2,
+        "modelMs": 24849.61,
+        "toolRounds": 1,
+        "assemblyMs": 0.292,
+        "totalMs": 25009.061
+      },
+      "brief": "**Thread ID: `carplay-crash-when-opened-while-phone-app`** | last active Jul 3, 2026, 4:06 PM (paused)\n\n## Summary\n\nThe thread successfully **root-caused, reproduced, and fixed** the CarPlay blank-screen connect-replay race. \n\n**Key finding:** The bug was a timing race where:\n- CarPlay connects\n- `react-native-carplay` marks itself connected  \n- Stella registers its `onConnect` handler **too late**\n- No one calls `setRootTemplate` → Emira gets a blank screen\n\n**Outcome:** JS-only fix verified in the CarPlay simulator, committed locally. No push or OTA published at the time of completion. The thread indicates the root cause was not stale-bridge or theme/appearance — the breadcrumb log revealed two crash-relaunches in the session.\n\n**To resume:** Thread is paused and resumable at `carplay-crash-when-opened-while-phone-app`."
+    },
+    {
+      "query": {
+        "id": "browser_cleanup_race",
+        "prompt": "What was found about browser tab reuse and stale cleanup acting on a newer kernel?",
+        "terms": [
+          "browser",
+          "tab reuse",
+          "stale cleanup",
+          "kernel"
+        ]
+      },
+      "queryId": "browser_cleanup_race",
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.081,
+        "hostContextMs": 25.947,
+        "seedSearchMs": 105.602,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 25.947,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.948,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 2.424,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 10.856,
+            "chars": 16317
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 28.627,
+            "chars": 11067
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 62.683,
+            "chars": 16582
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 3.366,
+            "chars": 148
+          }
+        },
+        "seedChars": 49576,
+        "modelCalls": 1,
+        "modelMs": 18525.253,
+        "toolRounds": 0,
+        "assemblyMs": 0.201,
+        "totalMs": 18657.382
+      },
+      "brief": "# Browser Tab Reuse & Stale Cleanup — What Was Found\n\n**Proven verdict (Jul 16–17):** Two bugs, one critical.\n\n## Bug 1: Tab Reuse ID/Index Skew\n- **Extension returned indices, runtime needed stable IDs.** `tab_new` succeeded but returned only an index; runtime threw \"tab id must be a positive integer\" → `tab_list` silently dropped rows without a `tabId` → returned `[]`.\n- **Status:** Fixed via extension 1.2.5 (auto-updated Jul 13).\n\n## Bug 2: Stale Cleanup Nuking Newer Kernel (PRIMARY CAUSE)\nThis is the core of your question:\n\n> **Any ordinary REPL error (e.g., `SyntaxError: Identifier 'tabs' has already been declared`) got classified as fatal → kernel disposed itself → disposal ran `close_owner` → physically closed every tab it owned.** The kernel then recreated, but the old kernel's cleanup had already wiped all three existing tabs.\n\n**Proven in dev harness (thread `prove-the-real-stella-browser-tab-loss-root`):** Three physical tabs existed; a plain syntax error triggered kernel disposal with `close_owner`, removing all three. Next `tab_list` timed out.\n\n## Fixes Applied\n- **Extension:** lease/generation fencing to validate and reject stale cleanup commands against newer kernel instances.\n- **Runtime:** don't treat ordinary REPL errors as fatal kernel failures; only async/domain-level crashes terminate the kernel.\n- **Status:** Ported into `stella-v2` (commit `14260c98`), reviewed **SHIPPABLE, no findings** (Jul 16, 9:56 PM).\n\n**Threads:** \n- Diagnosis: `diagnose-stella-browser-tab-bug-new-tab-instead` \n- Proof: `prove-the-real-stella-browser-tab-loss-root`\n- Port review: `fresh-review-of-the-browser-fix-port-into`"
+    },
+    {
+      "query": {
+        "id": "utility_model_policy",
+        "prompt": "What prior decision did we make about low reasoning for Recall, Chronicle, and progress summaries?",
+        "terms": [
+          "Recall",
+          "Chronicle",
+          "progress summaries",
+          "low reasoning"
+        ]
+      },
+      "queryId": "utility_model_policy",
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.103,
+        "hostContextMs": 6.561,
+        "seedSearchMs": 64.032,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 6.56,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.245,
+            "chars": 29
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.871,
+            "chars": 20641
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.803,
+            "chars": 4214
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 16.633,
+            "chars": 10015
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 44.708,
+            "chars": 17406
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.863,
+            "chars": 148
+          },
+          "tool.transcriptSearch": {
+            "kind": "sql",
+            "calls": 3,
+            "ms": 140.001,
+            "chars": 43322
+          }
+        },
+        "seedChars": 53688,
+        "modelCalls": 3,
+        "modelMs": 50674.589,
+        "toolRounds": 2,
+        "assemblyMs": 0.19,
+        "totalMs": 50886.228
+      },
+      "brief": "**For Recall:** The benchmark decision (Jul 11, committed `d8b79e4d2`) was explicit: **reasoning should be OFF, except Grok uses medium.**\n\n- **Luna/off** — new balanced default (63.9 accuracy, 4.5s p50, $0.155/q)\n- **Grok-4.5/medium** — accuracy-first option (84.1 accuracy)  \n- **DeepSeek/off** — cost-first option ($0.026/q)\n- **Principle:** \"Reasoning hurts Recall except Grok\"\n\nAdditionally, from Jul 18 (1:21 PM), Recall should route to **the light tier of whatever engine the orchestrator is on**, never a separate model picker (fixing why it was forcing Fable instead of respecting your engine choice).\n\n**For Chronicle & progress summaries:** No explicit prior decision about reasoning-effort levels in the search results. The recent work (Jul 13, Jul 3) discusses *displaying/hiding* progress summaries (e.g., collapsing them after an agent finishes), but doesn't pin a reasoning-effort choice. You may have a memory note on this—does it ring a bell?"
+    },
+    {
+      "query": {
+        "id": "release_workflow",
+        "prompt": "What are the established repo-scope and verification rules for Stella release sweeps?",
+        "terms": [
+          "release sweep",
+          "repo scope",
+          "verification",
+          "Stella"
+        ]
+      },
+      "queryId": "release_workflow",
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.098,
+        "hostContextMs": 21.948,
+        "seedSearchMs": 101.225,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 21.946,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.211,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.523,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 2.354,
+            "chars": 29778
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 27.081,
+            "chars": 10561
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 69.154,
+            "chars": 18695
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 2.572,
+            "chars": 148
+          }
+        },
+        "seedChars": 64647,
+        "modelCalls": 1,
+        "modelMs": 16387.975,
+        "toolRounds": 0,
+        "assemblyMs": 0.177,
+        "totalMs": 16512.364
+      },
+      "brief": "Looking at the memory and transcripts, here are the **established repo-scope and verification rules** for Stella release sweeps:\n\n## Repo Scope\n\n**Isolated repos per platform:**\n- **Desktop** (`~/projects/stella`) — publishes as a tagged release + CI build\n- **Mobile** (`stella-mobile`) — TestFlight build, then App Store/Play Store submit\n- **Backend** (`stella-backend`) — Convex deployment, separate cadence\n- **Website** (`stella-website`) — pushed and deployed independently\n- **Launcher** (`stella-launcher`) — decides dispatch per release\n\n**Environment hierarchy:**\n- `~/projects/stella` (DEV — all active work)\n- `~/stella` (PROD — production live checkout, never touched by release work)\n- Separate worktrees for harness/demo/isolated testing (never mixed with release streams)\n\n## Verification Rules\n\n1. **Pre-sweep**: Clean working tree on each repo; commits authored by the user (`ruuxi <[REDACTED EMAIL]>`), no AI trailers\n\n2. **Content alignment** — Desktop fast-forward operations verified:\n   - `contentAligned: true` state confirmed\n   - Backup refs preserved\n   - Rollback path = revert commit + backup ref\n\n3. **Per-repo sign-off**:\n   - Desktop: tag pushed, CI workflow runs, binary signed/notarized\n   - Mobile: EAS build submitted, then App Store/Play Store processing tracked\n   - Backend: deployment verified live (200 responses, endpoint checks)\n\n4. **No mixing of concerns** — standing rule: \"never delegate work against live `~/stella`; deploy/release and activation require explicit approval\"\n\n5. **Multi-turn ordering** — when all repos are involved:\n   - Desktop release + CI build first\n   - Mobile TestFlight / App Store submit in parallel or after desktop\n   - Backend deployed only if new code requires it\n   - Website/launcher decisions made per sweep\n\n**Key transcript evidence** (Jun 29, 2026): sweep completed with 6 desktop commits, mobile TestFlight build 92 submitted, website already live, backend untouched — all verified end-to-end before publishing."
+    },
+    {
+      "query": {
+        "id": "prompt_contract",
+        "prompt": "What are the prior orchestrator prompt rules for Recall versus send_input and milestone status?",
+        "terms": [
+          "orchestrator prompt",
+          "Recall",
+          "send_input",
+          "milestone"
+        ]
+      },
+      "queryId": "prompt_contract",
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.078,
+        "hostContextMs": 22.245,
+        "seedSearchMs": 78.094,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 22.244,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.259,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 2.733,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.82,
+            "chars": 16899
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 29.079,
+            "chars": 9889
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 43.727,
+            "chars": 14100
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 1.996,
+            "chars": 148
+          }
+        },
+        "seedChars": 46511,
+        "modelCalls": 1,
+        "modelMs": 24230.872,
+        "toolRounds": 0,
+        "assemblyMs": 0.15,
+        "totalMs": 24331.728
+      },
+      "brief": "Looking at the memory and transcript results, I can establish these key **routing rules** that were formalized/revised in July:\n\n## Send_input vs Spawn Rules (Jul 12 revision)\nFrom the transcript (Jul 12, 10:24 AM):\n- **`send_input`** — reserved for steering a *specific in-flight* (or just-finished) task, not for spinning up related-but-separable work\n- **`spawn_agent`** — for new work in the same group carrying findings/decisions/paths into the brief (fresh agent inherits nothing)\n- **Exception:** `send_input` still wins when a follow-on genuinely depends on a task's output to proceed\n\n## Status / Milestone Patterns (certified in Manager gate, line 44 memory)\n- **`[Status]`** — natural-language update requests; emit stripped, non-terminal patterns\n- **`[Milestone]`** — explicitly requested milestones; trigger recording without terminating the Manager\n- No public intent/mode field or regex-matched phrases; model-driven inference only\n\n## Recall Routing Rule (Jul 18, 1:21 PM)\n- **Recall should use the light tier of whatever engine the orchestrator is on** (never direct model call; always spawned)\n\n## Prior Divergence\nThe memory notes (line 11) that the **home orchestrator prompt was \"customized/diverged (stale `group` arg)\"** — the bundled `manager.md` became the fallback when the custom copy fell out of sync. This suggests the prior versioning issue was *group* argument guidance and separation of concerns between spawn vs send_input that got revised toward parallel-first routing.\n\nThe threads `rewrite-orchestrator-routing-section-parallel-first spawn vs send_input` (Jul 12) and `final-release-qa-manager-status-and-lean orchestrator prompt` (Jul 13) document those recent corrections to the canonical rules."
+    },
+    {
+      "query": {
+        "id": "radial_ui_decision",
+        "prompt": "What was the prior product decision about the radial dial versus a native context menu?",
+        "terms": [
+          "radial dial",
+          "native context menu",
+          "product decision"
+        ]
+      },
+      "queryId": "radial_ui_decision",
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.087,
+        "hostContextMs": 27.441,
+        "seedSearchMs": 91.255,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 27.441,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.215,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.468,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 8.733,
+            "chars": 125
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 28.127,
+            "chars": 11863
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 51.302,
+            "chars": 19386
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 3.024,
+            "chars": 148
+          },
+          "tool.transcriptSearch": {
+            "kind": "sql",
+            "calls": 2,
+            "ms": 97.104,
+            "chars": 36677
+          },
+          "tool.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 25.722,
+            "chars": 6037
+          },
+          "tool.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 9.579,
+            "chars": 17371
+          }
+        },
+        "seedChars": 36989,
+        "modelCalls": 4,
+        "modelMs": 25802.138,
+        "toolRounds": 3,
+        "assemblyMs": 0.228,
+        "totalMs": 26054.319
+      },
+      "brief": "Nothing relevant found.\n\nI've searched through your memory (MEMORY.md), all past conversation transcripts, and agent thread histories using multiple angles—\"radial dial,\" \"context menu,\" \"interaction patterns,\" \"right-click,\" and product decisions—and I don't have a record of a prior decision comparing a radial dial UI to a native context menu.\n\nThe closest match in recent work (Jul 10, 2026) was about **fixing right-click behavior in the composer** so it shows the normal text menu (cut/copy/paste) instead of toggling the sidebar—but that's a different issue from a radial-dial-vs-context-menu product decision.\n\nCould you clarify:\n- **Where** was this decision discussed? (e.g., which app, which context—canvas, composer, activity panel?)\n- **When** roughly? (helps me narrow the transcript window)\n- **What was decided?** (which approach did you choose?)\n\nWith more context, I can either find the record or help you document it for future reference."
+    },
+    {
+      "query": {
+        "id": "episodic_drive",
+        "prompt": "When was Rahul's first destination drive in the blue Lotus Emira, and where did he actually go?",
+        "terms": [
+          "blue Lotus Emira",
+          "first destination drive",
+          "actually go"
+        ]
+      },
+      "queryId": "episodic_drive",
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.093,
+        "hostContextMs": 23.111,
+        "seedSearchMs": 98.366,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 23.11,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.818,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 2.405,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 8.243,
+            "chars": 11062
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 25.837,
+            "chars": 9322
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 60.537,
+            "chars": 18027
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 3.685,
+            "chars": 148
+          },
+          "tool.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 37.637,
+            "chars": 15846
+          },
+          "tool.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 25.675,
+            "chars": 4575
+          }
+        },
+        "seedChars": 44034,
+        "modelCalls": 2,
+        "modelMs": 47131.209,
+        "toolRounds": 1,
+        "assemblyMs": 0.336,
+        "totalMs": 47316.926
+      },
+      "brief": "**June 29, 2026, evening (around 7:22–7:36 PM MST)** — South Mountain Park / Papago area, Phoenix\n\nRahul drove to **South Mountain Park's south entrance (10919 S Central Avenue)**, but found the gate locked and the park closed at dusk. \n\nFrom the transcript:\n- **7:22 PM**: \"I got here and the road is normal af / Maybe I'm on the wrong road? Idk I put the address you gave me\"\n- Stella corrected him: the address was the **south mountain entrance**, and \"the entrance road itself is flat as hell. the actual fun is *inside* the park\"\n- **7:36 PM**: User: \"I think it's. Closed that's why lmao\"\n- Stella: \"yeah that'll do it 😭 gate's locked, summit's done for tonight\"\n\nThis is the only confirmed destination drive in the available records — a planned scenic mountain drive that ended at a closed gate. Prior to this, Stella had mentioned planning Apache Trail or Bush Highway runs, but no confirmation of those trips appears in the transcripts; the South Mountain attempt on June 29 evening is the first concrete \"he actually drove to X\" with a destination address and location."
+    },
+    {
+      "query": {
+        "id": "billing_case",
+        "prompt": "What happened with the anomalous Vercel AI Gateway credit charges, and how was the dispute sent?",
+        "terms": [
+          "Vercel AI Gateway",
+          "credit charges",
+          "dispute"
+        ]
+      },
+      "queryId": "billing_case",
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.136,
+        "hostContextMs": 22.339,
+        "seedSearchMs": 52.741,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 22.338,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.246,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.591,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 8.166,
+            "chars": 4297
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 24.25,
+            "chars": 11374
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 17.443,
+            "chars": 9861
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 2.784,
+            "chars": 148
+          }
+        },
+        "seedChars": 31156,
+        "modelCalls": 1,
+        "modelMs": 16609.723,
+        "toolRounds": 0,
+        "assemblyMs": 0.196,
+        "totalMs": 16685.442
+      },
+      "brief": "## Vercel AI Gateway Dispute — Case 01vTYKu8KXp7DTEd\n\n**Date:** July 8, 2026, 6:14 PM MST\n\n**The anomaly:** Nine \"AI Gateway Credits\" invoices charged in an **18-minute burst**:\n- Seven $20.00 charges within **28 seconds** (21:50:11–21:50:39 UTC)\n- Two $21.62 charges ~17 minutes later (22:07:17–22:07:56 UTC)\n- **Total: $183.24** (for $180 of credits) — does not match the configured $25 auto-reload and was never manually initiated\n\n**Invoices:** XHOIZJXR-0005, 0006, 0008, 0009, 0010, 0011, 0012, 0028, 0029\n\n**Assessment:** Billing bug, not a leaked key or account compromise. The pattern (identical $20 charges in the same second) is the signature of an automated payment loop/webhook retry, not human or API-driven spending.\n\n**Dispute filed:** Via Vercel's authenticated in-product support case API ([REDACTED EMAIL] scope; company webmail not accessible at the time)\n\n- **Case ID:** `01vTYKu8KXp7DTEd`\n- **Thread:** `th_01KX2728X13B902Y6PMGJWXEE1`\n- **URL:** vercel.com/fromyou/~/support/cases/01vTYKu8KXp7DTEd\n- **Status:** Open, awaiting Vercel response\n\n**Facts cited in dispute:** Seven rapid $20 charges + two $21.62 charges; total $183.24; requested reversal, refund, and explanation of the burst.\n\nThread: `investigate-the-200-vercel-ai-gateway-bill-on:local:sub:5813a9bc-d7b3-42a1-8296-84ccf01e8171`"
+    },
+    {
+      "query": {
+        "id": "no_match",
+        "prompt": "Find the decision where Project Zephyr approved an aquarium telemetry migration from Cassandra to CockroachDB.",
+        "terms": [
+          "Project Zephyr",
+          "aquarium telemetry",
+          "Cassandra",
+          "CockroachDB"
+        ]
+      },
+      "queryId": "no_match",
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "routeMs": 0.094,
+        "hostContextMs": 7.721,
+        "seedSearchMs": 57.534,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 7.721,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "seed.chronicleFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 0.391,
+            "chars": 29
+          },
+          "seed.memoryFiles": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.427,
+            "chars": 4214
+          },
+          "seed.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 8.372,
+            "chars": 133
+          },
+          "seed.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 13.269,
+            "chars": 10200
+          },
+          "seed.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 35.003,
+            "chars": 15507
+          },
+          "seed.liveThreadStatus": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.828,
+            "chars": 148
+          },
+          "tool.memorySearch": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 8.648,
+            "chars": 115
+          },
+          "tool.threadSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 12.525,
+            "chars": 10332
+          },
+          "tool.transcriptSearch": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 1.89,
+            "chars": 85
+          }
+        },
+        "seedChars": 31478,
+        "modelCalls": 2,
+        "modelMs": 20894.481,
+        "toolRounds": 1,
+        "assemblyMs": 0.156,
+        "totalMs": 20983.555
+      },
+      "brief": "Nothing relevant found.\n\nI've searched across your memory ledger, all past agent threads, and conversation transcripts using multiple concrete search angles (\"Zephyr,\" \"Cassandra,\" \"CockroachDB,\" \"aquarium,\" and combinations). No record exists for:\n- A project named \"Project Zephyr\"\n- Any aquarium telemetry work\n- A Cassandra-to-CockroachDB migration decision\n\nYour documented work history is entirely focused on the Stella personal AI assistant platform (v1/v2 development, Recall latency overhaul, Manager channels, certification reviews, etc.). This query appears to reference work outside that scope."
+    }
+  ]
+}

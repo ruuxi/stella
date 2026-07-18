@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "controlCommit": "c2161d8a88f4d587fce9d39ba9970d3c450545b2",
+  "implementationHead": "8bb44874130f84168caefaa018b74f1fa65811c9",
+  "snapshotSha256": "a3a07ceda9eeab4e256c4c59b9dc0581aa802c22f18eb4895fce829710b5557a",
+  "queryOrder": [
+    "memory_system",
+    "carplay_thread",
+    "browser_cleanup_race",
+    "utility_model_policy",
+    "release_workflow",
+    "prompt_contract",
+    "radial_ui_decision",
+    "episodic_drive",
+    "billing_case",
+    "no_match"
+  ],
+  "finalRuns": [
+    "recall-latency-phase-d-round5-2026-07-18.control-c216.raw.json",
+    "recall-latency-phase-d-round5-2026-07-18.haiku.raw.json",
+    "recall-latency-phase-d-round5-2026-07-18.fable.raw.json"
+  ],
+  "round4DiscardedRuns": [
+    {
+      "kind": "one-query preflight",
+      "reason": "bundle and FTS validation only"
+    },
+    {
+      "kind": "pre-reset full Haiku attempt",
+      "reason": "Claude Code session limit interrupted three residual synthesis cases; not used"
+    },
+    {
+      "kind": "c216 HOME-redirect attempt",
+      "reason": "invalid because redirected HOME hid Claude CLI authentication; not used"
+    },
+    {
+      "kind": "first valid c216 aggregate",
+      "reason": "superseded by identical-protocol replay retaining full per-run telemetry"
+    }
+  ],
+  "round5DiscardedRuns": [
+    {
+      "kind": "one-query pre-redaction preflight",
+      "reason": "found a postal-address redaction gap; raw brief intentionally not persisted",
+      "rawIncluded": false
+    },
+    {
+      "kind": "one-query post-redaction preflight",
+      "reason": "redaction validation only",
+      "rawIncluded": true,
+      "artifact": "recall-latency-phase-d-round5-2026-07-18.discarded-preflight.raw.json"
+    },
+    {
+      "kind": "initial ten-query Haiku audit",
+      "reason": "brief audit exposed partial-anchor false direct answers",
+      "rawIncluded": true,
+      "artifact": "recall-latency-phase-d-round5-2026-07-18.discarded-initial.raw.json"
+    },
+    {
+      "kind": "first stricter-gate Haiku audit",
+      "reason": "superseded after direct briefs still showed incomplete term-group matching",
+      "rawIncluded": false,
+      "rawStatus": "temporary path overwritten before promotion",
+      "consoleSummary": {
+        "sampleCount": 10,
+        "completedCount": 10,
+        "errorCount": 0,
+        "medianMs": 3166.167,
+        "p90Ms": 10534.145
+      }
+    },
+    {
+      "kind": "complete-anchor gate Haiku audit",
+      "reason": "showed ambiguity synthesis was being skipped when no direct result qualified",
+      "rawIncluded": true,
+      "artifact": "recall-latency-phase-d-round5-2026-07-18.discarded-anchor-gate.raw.json"
+    },
+    {
+      "kind": "pre-outcome-classifier Haiku audit",
+      "reason": "timings valid but synthesized no-match prefixes were still labeled answer",
+      "rawIncluded": true,
+      "artifact": "recall-latency-phase-d-round5-2026-07-18.discarded-pre-outcome.raw.json"
+    }
+  ]
+}

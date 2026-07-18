@@ -1,0 +1,955 @@
+{
+  "schemaVersion": 2,
+  "methodology": {
+    "routeMode": "pinned-claude-haiku",
+    "directRun": true,
+    "browserContext": false,
+    "queryOrder": [
+      "memory_system",
+      "carplay_thread",
+      "browser_cleanup_race",
+      "utility_model_policy",
+      "release_workflow",
+      "prompt_contract",
+      "radial_ui_decision",
+      "episodic_drive",
+      "billing_case",
+      "no_match"
+    ]
+  },
+  "snapshot": {
+    "dataDir": "/tmp/stella-recall-round5.wKtV8W/.stella",
+    "sha256": "a3a07ceda9eeab4e256c4c59b9dc0581aa802c22f18eb4895fce829710b5557a"
+  },
+  "sampleCount": 10,
+  "completedCount": 10,
+  "errorCount": 0,
+  "engineModels": [
+    "claude-code:claude-code/haiku"
+  ],
+  "totalMs": {
+    "median": 207.943,
+    "p90": 11904.924,
+    "min": 2.01,
+    "max": 16488.613
+  },
+  "phaseMedianMs": {
+    "routeMs": 0.007,
+    "hostContextMs": 0.025,
+    "seedSearchMs": 90.897,
+    "assemblyMs": 0.019,
+    "modelMs": 0
+  },
+  "phaseP90Ms": {
+    "routeMs": 0.013,
+    "hostContextMs": 0.112,
+    "seedSearchMs": 205.449,
+    "assemblyMs": 0.028,
+    "modelMs": 11874.228
+  },
+  "seedChars": {
+    "median": 8514,
+    "p90": 12000,
+    "min": 0,
+    "max": 12000
+  },
+  "modelCalls": {
+    "median": 0,
+    "p90": 1,
+    "max": 1
+  },
+  "toolRounds": {
+    "median": 0,
+    "p90": 0,
+    "max": 0
+  },
+  "sourceTimings": {
+    "host.appBrowserContext": {
+      "medianMs": 0,
+      "p90Ms": 0,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "host.localEvents": {
+      "medianMs": 0,
+      "p90Ms": 0,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "retrieval.delegated_work": {
+      "medianMs": 0,
+      "p90Ms": 15.824,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "retrieval.durable_memory": {
+      "medianMs": 4.065,
+      "p90Ms": 180.754,
+      "medianCalls": 1,
+      "medianChars": 129
+    },
+    "retrieval.episodic": {
+      "medianMs": 90.879,
+      "p90Ms": 203.647,
+      "medianCalls": 1,
+      "medianChars": 12684
+    },
+    "retrieval.ftsHealth": {
+      "medianMs": 0.592,
+      "p90Ms": 2.333,
+      "medianCalls": 1,
+      "medianChars": 0
+    }
+  },
+  "runs": [
+    {
+      "query": {
+        "id": "memory_system",
+        "prompt": "What did we determine about profile.md, memory_summary.md, MEMORY.md, and the sources Recall searches?",
+        "terms": [
+          "profile.md",
+          "memory_summary.md",
+          "MEMORY.md",
+          "Recall"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "fast-path",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "durable_memory",
+        "fastPath": true,
+        "retrievalPasses": 1,
+        "routeMs": 8.275,
+        "hostContextMs": 0.622,
+        "seedSearchMs": 10.787,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0.001,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 10.686,
+            "chars": 20197
+          }
+        },
+        "seedChars": 8517,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0.111,
+        "totalMs": 21.956
+      },
+      "resultMetadata": {
+        "intent": "durable_memory",
+        "fastPath": true,
+        "sources": [
+          {
+            "kind": "memory"
+          }
+        ]
+      },
+      "brief": "# durable memory\n<match path=\"~/.stella/memories/memory_summary.md\" lines=\"9-11\">\n9: - **ff skill stale-base root cause is fixed**: new `stella-ff` `base-resolution.ts` prefers the newest proven prior ff operation as base (blob-hash proofs, overlays preserved, genuine conflicts still hard-stop); the recurring 19-false-conflict pattern from stale base `f4c2125` is closed.\n10: - **Recall latency overhaul in flight**: root-caused — SQLite/FTS retrieval is milliseconds; latency is model runtime (99.65% of median ~20s), the ~45K-char eager seed, duplicate same-turn Recall calls, and a fresh one-shot Claude CLI on the wrong utility model. Phase-level telemetry + baseline committed `d64707e69` (not pushed); next phases: single retrieval pass + Luna routing + same-turn caching. Note: dev replays selected `claude-code/haiku`, not saved `fable` — reconcile in the routing phase. Codex's memory design was reverse-engineered as reference (no embeddings; injected routing summary + grep over MEMORY.md; usage-count feedback loop Stella never wired up).\n11: - **Manager mid-stream thread adoption is BUILT** (Manager `send_input` → `adoptAgent`, durable `parentAgentId`, child completions route to the Manager, no stealing from active Managers); no atomic adopt-at-spawn; guidance thin spots: no explicit ≥2-children rule, home orchestrator prompt customized/diverged (stale `group` arg), home manager.md is the bundled fallback.\n</match>\n\n<match path=\"~/.stella/memories/memory_summary.md\" lines=\"51-53\">\n51: - **Activity display (local, not pushed)**: friendly state-aware tool labels `2ca28b442`, stable sidebar/tray titles `aa23d4c3f`, file results/path search restored `1e6dd069d` (review SHIPPABLE). Tray-search follow-ups: `410c0eeea` scopes search out of the left sidebar (displaySearchStore is a module singleton — only the tray may call useDisplaySearchQuery) and `2ca95cec8` adds a data-searching min-height reserve; two fresh reviews' P1/P2 (content-driven height above the 18rem floor, two-stage clear resize, weak min-height contract test, stranded no-results blank) **FIXED `5851e8f4f`** — results box frozen to fixed height min(18rem,46vh) with internal scroll, shouldTrayHoldSearchLayout predicate gives single-settle clear, no-results fills/centers, behavioral predicate + CSS-contract tests; fresh review **SHIPPABLE, no findings** (96 tests). Sidebar scoping `410c0eeea` verified correct; supersedes `2ca95cec8`.\n52: - **Profile memory caps**: the believed Jul-8 cap fix never existed — `951438895` was the compaction-trigger change and shipped fine in v0.0.405; new `73770ff2f` removes the 320-char per-entry slice and raises aggregate 2,000→4,000 (local, not pushed — prod still 320/2000); profile.md restored from SQLite transcripts; actual unreleased dev backlog 29 commits past v0.0.408 (`941b1b726`).\n53: - **FromYou**: [REDACTED POSTAL ADDRESS] Legalinc. Vercel dispute `01vTYKu8KXp7DTEd`; Meta waitlisted. Spotify Liked Songs verified; node_repl `repl.start undefined` broken.\n</match>\n\n<match path=\"~/.stella/memories/MEMORY.md\" lines=\"26-34\">\n26: Outcome: Read-only investigation (v1 dev `cec1e069d`, backend `7141659b3`; both worktrees clean, live `~/stella` untouched). Verdict BUILT — real ownership reassignment, persistence, and completion rerouting: `spawn_manager` accepts only a prompt (no thread_ids/adopt arg); the Orchestrator names existing thread IDs in the brief, the Manager calls `send_input`, and the handler calls `adoptAgent(target, manager)` before delivering (state.ts:236). `adoptAgent` (local-agent-manager.ts:1201) requires an active Manager, same conversation, non-terminal target; rejects Manager-to-Manager adoption and parent cycles; rewrites and persists `parentAgentId` (`runtime_agents.parent_agent_id`). Child completions resolve to the nearest Manager and are withheld from root Orchestrator history; a Manager cannot finish while adopted/spawned descendants are active; an actively-owned thread cannot be stolen (transfer only after both old Manager and target are paused). The exact mid-flight case is codified in tests (local-agent-manager.test.ts:322; state.test.ts:783 verifies adoptAgent-then-send order). Boundaries: no atomic adopt-at-spawn, no adoption-only tool (adoption always steers the target). Guidance: backend canonical orchestrator.md routes single deliverables to `spawn_agent` and Stella-self modifications away from Managers; thin spots — \"dynamically coordinate\" is subjective, no explicit ≥2-children rule, and manager.md has no defensive rule against misrouting (a wrongly created Manager must add the extra General-agent layer since it cannot do work itself). Home `~/.stella/agents/orchestrator.md` is customized (stricter on the three-layer pattern but diverged — still instructs a `group` arg that the current spawn_agent schema no longer exposes); home manager.md is the bundled fallback (`sourceRevision: bundled-manager-fallback`). No files edited, no tests run, nothing pushed.\n27: Recall hooks: manager adopt existing thread mid-stream BUILT, send_input adoptAgent parentAgentId durable runtime_agents, spawn_manager no thread_ids arg brief names threads, completion routed nearest Manager withheld from root, cannot steal active manager pause both transfer, spawn_manager vs spawn_agent single deliverable guidance thin spots no two-child rule, home orchestrator customized stale group arg, bundled-manager-fallback manager.md\n28: \n29: ## 2026-07-18 20:14 — Recall latency root-caused (LLM/seed overhead, not SQLite) + Codex memory architecture reverse-engineered with Stella adoption plan\n30: Threads: root-cause-why-stella-s-recall-memory-search-is:local:sub:fcf2b043-0291-4962-9cf5-aa0e660101bb, reverse-engineer-chatgpt-desktop-app-codex-repo:local:sub:e82d9d8b-6d91-4667-b64b-a9833f7b386a\n31: Why this matters: Recall feels slow (median 28.1s over 49 calls, p90 88.4s) despite millisecond SQLite/FTS retrieval, and Codex's shipped memory design shows how to shrink the payload and skip the LLM for common lookups.\n32: Outcome: Recall analysis (strictly read-only, mode=ro + query_only, no code changed): retrieval is NOT the bottleneck — 2.13GB live DB, both FTS indexes complete/backfilled (Jul 11), representative searches 1–20ms (unused LIKE fallback would be 3.7s). Real causes, ranked: (1) oversized eager seed — every source pre-searched, avg 45,286 chars, p90 53,642; (2) serial model/tool rounds (avg 3.45 extra searches, +17.7K chars median); (3) orchestrator invoked Recall twice in 7 of 10 recent runs (+5–14s between calls); (4) wrong utility route — Recall spawns a fresh one-shot Claude CLI on `claude-code/fable` (saved claudeCodeModel outranks the stella/light pin in claude-code-agent-runtime.ts:62), not the benchmarked `gpt-5.6-luna`; latest 27.5s call did ZERO model-initiated searches; (5) unranked substring memory search; (6) minor N+1s (transcript neighbors, active threads, 800-event load for 5 rows). July 11's 599–4,560s outliers predate the route-resolution fix (historical, not current). Recommended: one parallel retrieval pass + one synthesis call capped ~8–12KB with single reformulation fallback; pin Recall to Luna/off independent of engine; cache same-turn Recall with structured found/no_match status; intent-based source routing; compact structured routing index (MEMORY.md is 1.12MB, summary 30.8KB); batch secondary reads; phase-level timing telemetry. Codex reverse-engineering (ChatGPT.app 26.715.31251 bundling codex-cli 0.145.0-alpha.18, asar extracted read-only; source pulled ff-only to `35eaf3ffb`): memory is SQLite `~/.codex/memories_1.sqlite` stage1_outputs (428 rows, 256 selected, 120 cited) + progressive-disclosure files — `memory_summary.md` always injected capped 2,500 tokens, `MEMORY.md` (469KB) as primary grep target, per-rollout summaries, skills, private git baseline for incremental diffs. Phase 1 = background LLM per idle rollout (gpt-5.6-luna, low reasoning, concurrency 8, strict JSON, relevance gate, secrets redacted). Phase 2 (Dream equivalent, `memory_consolidate_global`) = locked-down consolidation agent (gpt-5.6-terra, medium, no network/agents/MCP, 6h cooldown, skips LLM when git diff is clean). No embeddings/vector DB anywhere — model-directed rg/substring search driven by an explicit injected decision contract; hidden citation blocks bump usage_count/last_usage, closing a retention feedback loop. Stella adoption recs: deterministic no-LLM `search_memory` fast path for the orchestrator; make mem\n...[seed section truncated]"
+    },
+    {
+      "query": {
+        "id": "carplay_thread",
+        "prompt": "Find the prior agent thread for the CarPlay blank-screen connect replay race and summarize its result with the resumable thread id.",
+        "terms": [
+          "CarPlay",
+          "blank-screen",
+          "connect replay",
+          "race"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "fast-path",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "delegated_work",
+        "fastPath": true,
+        "retrievalPasses": 2,
+        "routeMs": 0.005,
+        "hostContextMs": 0.02,
+        "seedSearchMs": 13.497,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 1.887,
+            "chars": 0
+          },
+          "retrieval.delegated_work": {
+            "kind": "sql",
+            "calls": 2,
+            "ms": 50.923,
+            "chars": 22915
+          }
+        },
+        "seedChars": 8517,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0.013,
+        "totalMs": 114.289
+      },
+      "resultMetadata": {
+        "intent": "delegated_work",
+        "fastPath": true,
+        "sources": [
+          {
+            "kind": "thread"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1392,
+            "threadId": "dump-full-persisted-report-text-for-replacement",
+            "runId": "local:sub:4832d14e-d8c8-450f-9020-0cc92c1362e0"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1387,
+            "threadId": "build-restart-with-continuation-self-restart",
+            "runId": "local:sub:8f346b9f-d0a7-4106-b1d9-2c6622c788f8"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1357,
+            "threadId": "fresh-review-round-1-recall-telemetry-baseline",
+            "runId": "local:sub:ae5f8ee3-914b-4749-b0bf-151b688c759e"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1356,
+            "threadId": "recall-latency-overhaul-v1-builder-telemetry",
+            "runId": "local:sub:ad580f7f-8bae-48bf-87c0-f94dc8798a06"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1351,
+            "threadId": "map-current-manager-capability-can-it-adopt-in",
+            "runId": "local:sub:4dbf1a1b-d47f-4951-ae72-9c20106df245"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1350,
+            "threadId": "reverse-engineer-chatgpt-desktop-app-codex-repo",
+            "runId": "local:sub:e82d9d8b-6d91-4667-b64b-a9833f7b386a"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1334,
+            "threadId": "build-v1-retry-owner-routed-failure-propagation",
+            "runId": "local:sub:13f6c4df-72b6-44df-a3b0-f7dbeb37c1e3"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1314,
+            "threadId": "sixth-agent-final-certification-of-clean-v1-and",
+            "runId": "local:sub:0a0f8eb4-362e-4cf5-9c10-83dc44a27d56"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1242,
+            "threadId": "fresh-final-re-certification-of-v2-exact-thread",
+            "runId": "local:sub:61991718-be60-43fe-a17b-07634ca03371"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1143,
+            "threadId": "implement-spawn-manager-manager-agent-that",
+            "runId": "local:sub:0d0870c8-b0c7-44ec-9793-6018e8c61db1"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1040,
+            "threadId": "design-the-stella-workflow-tool-dynamic-multi-2",
+            "runId": "local:sub:ce1d07ce-5bee-4439-b759-d72926bc3915"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 797,
+            "threadId": "investigate-80k-context-overflow-without",
+            "runId": "local:sub:9ccce230-1f1b-46fb-944a-c148b6b0efc9"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 785,
+            "threadId": "fix-voice-speaking-completions-while-disabled",
+            "runId": "local:sub:18b2bbcb-2353-4804-8051-557c8adccbf6"
+          }
+        ]
+      },
+      "brief": "# delegated work\n- dump-full-persisted-report-text-for-replacement | last active Jul 18, 2026, 3:56 PM (paused, last active 20m ago) | from this conversation | Dump full persisted report text for replacement-builder thread (read-only DB fetch)\n  description: Fetch round-4 phase-d review verdict from manager thread\n  result: **Outcome: done.** Read-only fetch via `file:...?mode=ro`, no writes. Exactly one matching row: entry `01KXVQ1EJTZXRRF81HW56CAWFD` at `2026-07-18T22:55:04.282Z` (12,286 bytes). **Verdict: FAIL.** ## Full report text, verbatim ``` <system_reminder> A managed child reached a terminal state. This report is for process coordination, not an automatic upstream update. Continue the instructed process a\n\n- build-restart-with-continuation-self-restart | last active Jul 18, 2026, 3:41 PM (paused, last active 34m ago) | from this conversation | Build restart-with-continuation: self-restart + auto-resume of orchestrator and agent work after apply\n  description: Round 6: sweep must write a fresh-episode sidecar over a stale one\n  result: **Outcome: done — the MED and the boundary nit are fixed, committed as `a8ed0ac0f`** (author/committer `ruuxi <[REDACTED EMAIL]>`, no trailers, two files staged by explicit path, NOT pushed; rebased cleanly on the Recall commit that landed mid-round). Ready for the round-6 close review. ## The fix — never-clobber narrowed to what it actually protects **Key insight the fix encodes**: with a sin\n\n- fresh-review-round-1-recall-telemetry-baseline | last active Jul 18, 2026, 1:47 PM (paused, last active 2h ago) | from this conversation | Fresh review round 1 — Recall telemetry + baseline batch in v1\n  description: Reviewer: restate full round-1 verdict in-thread\n  result: # Round-1 verdict: FAIL The review is complete. Batch 1 exists and the baseline appears genuinely measured, but the telemetry fails a core requirement: on the dominant Claude Code path, `modelMs` overlaps retrieval time and `toolRounds` counts tool calls rather than rounds. The resulting phase metrics are not consistently comparable across engines. ## 1. Batch commit and files touched Batch-1 c\n\n- recall-latency-overhaul-v1-builder-telemetry | last active Jul 18, 2026, 1:46 PM (paused, last active 2h ago) | from this conversation | Recall latency overhaul v1 builder — telemetry + baseline first\n  description: Builder: restate full phase (a)/(b) report in-thread\n  result: Phase (a) telemetry and phase (b) baseline measurement are complete. No later phase has started. ## 1. Telemetry implemented Recall now emits one structured JSON record per lookup under: `[stella:recall:telemetry]` Instrumented locations: - Telemetry schema and collector: [recall-telemetry.ts](/Users/rahulnanda/projects/stella/runtime/kernel/agent-runtime/recall-telemetry.ts:20) - Collector\n\n- map-current-manager-capability-can-it-adopt-in | last active Jul 18, 2026, 1:22 PM (paused, last active 2h ago) | from this conversation | Map current manager capability: can it adopt in-flight threads? + what's the current when-to-use-manager prompt guidance\n  result: Read-only investigation complete. Both dev worktrees remained clean; `~/stella` was not touched. Inspected: - Stella v1 dev: `cec1e069d4b6cb9829bbc527000f55a9f2c6727f` - Stella backend: `7141659b3a6d7de7d39a651aa05efe50a6607874` ## 1. Mid-stream adoption verdict: BUILT A Manager can adopt direct, already-running General-agent threads from the same conversation. This is real ownership reassignme\n\n- reverse-engineer-chatgpt-desktop-app-codex-repo | last active Jul 18, 2026, 1:14 PM (paused, last active 3h ago) | from this conversation | Reverse-engineer ChatGPT desktop app + codex repo: memory, dream system, how the agent decides/searches memory\n  result: ## Bottom line Rahul’s hypothesis is directionally right, with one important correction: > Codex uses a background LLM pipeline to create a compact, always-injected routing summary and a larger Markdown file intended for grep—but memory is not stored in one file. The normal read path is: ```text memory_summary.md injected into the model ↓ model decides memory is relevant ↓\n\n- build-v1-retry-owner-routed-failure-propagation | last active Jul 18, 2026, 8:56 AM (paused, last active 7h ago) | from this conversation | Build v1 retry + owner-routed failure propagation for agent runs\n  description: v1 fix round 3: retryable silent length-truncation and watchdog abort fencing\n  result: Implemented and committed v1 fix round 3. - Silent `length` truncation fingerprint now classifies as retryable `empty_response`, while cancellation/auth/invalid-route precedence remains intact. - Watchdog-aborted prompt and resume paths now wait up to 100 ms for the Agent loop to settle before retry preparation, matching v2. - Persistent empty and thinking-only length completions each perform exa\n\n- sixth-agent-final-certification-of-clean-v1-and | last active Jul 17, 2026, 10:51 PM (paused, last active 17h ago) | from this conversation | Sixth-agent final certification of clean v1 and v2 heads\n  result: # APPROVE / CERTIFIED No scoped Critical, High, Medium, or Low findings. Both v1 and v2 are certified for the requested behavior. Evidence: - v1 exact-thread projection uses raw typed entries, suppresses generic tool transport, and persists canonical private lifecycle events separately from model history: [local-chat-history-service.ts](/Users/rahulnanda/projects/stella/desktop/electron/service\n\n- fresh-final-re-certification-of-v2-exact-thread | last active Jul 17, 2026, 3:31 PM (paused, last active 1d ago) | from this conversation | Fresh final re-certification of v2 exact-thread and coordinated work\n  result: # SHIPPABLE Fresh read-only re-certification passed at exact HEAD `6a7731e46a658cc26a940613161a3e29208b5a5f`. Findings by severity: - Critical / high / medium / low: No findings. - Blockers: None. - Source nits: None. Evidence: - Durable message, custom-entry, and compaction invalidations occur after immediate transaction commit and carry exact thread/conversation/entry attribution: [session-\n\n- implement-spawn-manager-manager-agent-that | last active Jul 15, 2026, 8:05 PM (paused, last active 2d ago) | from this conversation | Implement spawn_manager: manager agent that coordinates sub-agents\n  description: Manager must inherit orchestrator engine/model automatically\n  result: Implemented and committed locally. Root cause: Manager startup independently resolved `agentType: manager`, but the backend has no Manager model config. This violated the intended inheritance contract. Fix: - `spawn_manager` now captures the Orchestrator turn’s effective engine, exact resolved model, and reasoning effort. - The snapshot persists with the Manager thread across pause, resume, and\n\n- design-the-stella-workflow-tool-dynamic-multi-2 | last active Jul 12, 2026, 11:06 AM (paused, last active 6d ago) | from this conversation | Design the Stella workflow tool (dynamic multi-agent orchestration)\n  description: Incorporate expert design-review feedback into the workflow doc (§8 replay, thread()×replay, lint, runaway advisory, §15 dedupe)\n  result: Done. All seven review items are incorporated and committed. **Commit:** `488d3eb29d4314805fa191b651c5f0081cb0bf4a` on `master` in `~/projects/stella` — author and committer `ruuxi <[REDACTED EMAIL]>`, no AI trailers, `git -c core.fsmonitor=false`, `git add -f` (docs/ still gitignored), not pushed. The identical file also lives at [~/stella/docs/workflow-tool-design.md](/Users/rahulnanda/stella\n\n- investigate-80k-context-overflow-without | last active Jul 9, 2026, 1:13 PM (paused, last active 9d ago) | from this conversation | Investigate 80k context overflow without compaction\n  summary: ## Topic Investigation of Stella runtime context-overflow failures in the durable agent workstream **“Add Muse Spark 1.1 as Stella-managed backend provider” — thread_id: `add-muse-spark-1-1-as-stella-managed-backend`**, using read-only inspection of Stella’s SQLite records, runtime logs, and source \n  result: **Outcome — done** Permanent dev fix committed: `2c4bdbf0067ff8c6eea2c1273d8fc16dfb7647a3` ### What changed - Scoped usage-based successful-response overflow detection to ZAI/z.ai only. - Preserved explicit provider overflow recognition globally. - Added regressions covering: - Successful OpenAI response above 80k remains successful. - Successful Stella-managed OpenAI response above 80k re\n\n- fix-voice-speaking-completions-while-disabled | last active Jul 9,\n...[seed section truncated]"
+    },
+    {
+      "query": {
+        "id": "browser_cleanup_race",
+        "prompt": "What was found about browser tab reuse and stale cleanup acting on a newer kernel?",
+        "terms": [
+          "browser",
+          "tab reuse",
+          "stale cleanup",
+          "kernel"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "multi_source",
+        "fastPath": false,
+        "retrievalPasses": 1,
+        "routeMs": 0.006,
+        "hostContextMs": 0.112,
+        "seedSearchMs": 180.766,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.325,
+            "chars": 0
+          },
+          "retrieval.delegated_work": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 8.87,
+            "chars": 11231
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 162.596,
+            "chars": 16582
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 180.754,
+            "chars": 16317
+          }
+        },
+        "seedChars": 12000,
+        "modelCalls": 1,
+        "modelMs": 16304.366,
+        "toolRounds": 0,
+        "assemblyMs": 0.025,
+        "totalMs": 16488.613
+      },
+      "resultMetadata": {
+        "intent": "multi_source",
+        "fastPath": false,
+        "sources": [
+          {
+            "kind": "memory"
+          },
+          {
+            "kind": "thread"
+          },
+          {
+            "kind": "transcript"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1157,
+            "threadId": "fresh-review-of-the-browser-fix-port-into",
+            "runId": "local:sub:d56a5b11-811b-4e8a-952a-a0faa2b1cd77"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1156,
+            "threadId": "port-the-browser-tab-ownership-fix-4-v1-dev",
+            "runId": "local:sub:b43ad18e-12e6-42e4-880b-955011caa96e"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1155,
+            "threadId": "prove-the-real-stella-browser-tab-loss-root",
+            "runId": "local:sub:7b4722a9-600b-4858-a781-e2aa5b1f11b7"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1154,
+            "threadId": "diagnose-stella-browser-tab-bug-new-tab-instead",
+            "runId": "local:sub:e60ed3eb-4fc3-4cc1-a4ef-acbd6a95feff"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1112,
+            "threadId": "fresh-round-7-review-spawn-manager-ownership",
+            "runId": "local:sub:f9a04892-58d5-4d38-95fe-53680d75ef82"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1110,
+            "threadId": "fresh-round-6-review-spawn-manager-durable",
+            "runId": "local:sub:73a2eb10-b93d-4fda-9d79-81e1a9063dcc"
+          }
+        ]
+      },
+      "brief": "Nothing relevant found.\n\nThe available memory references browser tab issues (tab index→id skew, tab-loss root causes, extension protocol skew) and spawn_manager cleanup work, but does not contain documented findings specifically about \"browser tab reuse and stale cleanup acting on a newer kernel.\""
+    },
+    {
+      "query": {
+        "id": "utility_model_policy",
+        "prompt": "What prior decision did we make about low reasoning for Recall, Chronicle, and progress summaries?",
+        "terms": [
+          "Recall",
+          "Chronicle",
+          "progress summaries",
+          "low reasoning"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "multi_source",
+        "fastPath": false,
+        "retrievalPasses": 1,
+        "routeMs": 0.011,
+        "hostContextMs": 0.025,
+        "seedSearchMs": 216.32,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 2.139,
+            "chars": 0
+          },
+          "retrieval.delegated_work": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 10.953,
+            "chars": 10179
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 203.647,
+            "chars": 17406
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 216.312,
+            "chars": 20641
+          }
+        },
+        "seedChars": 12000,
+        "modelCalls": 1,
+        "modelMs": 8576.972,
+        "toolRounds": 0,
+        "assemblyMs": 0.019,
+        "totalMs": 8839.756
+      },
+      "resultMetadata": {
+        "intent": "multi_source",
+        "fastPath": false,
+        "sources": [
+          {
+            "kind": "memory"
+          },
+          {
+            "kind": "thread"
+          },
+          {
+            "kind": "transcript"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 783,
+            "threadId": "release-prepared-meta-reasoning-fix",
+            "runId": "local:sub:07b76d7f-c31c-4a7e-ad03-4aa8addba601"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 487,
+            "threadId": "no-reasoning-summaries-for-claude-code-agents",
+            "runId": "local:sub:f099e444-8097-43b5-ab4c-d32204f0ffeb"
+          }
+        ]
+      },
+      "brief": "Nothing relevant found.\n\nThe evidence shows you discussed including reasoning summaries in Recall (Jul 1 episodic), and a fix was committed (`7d8ddc436`) for Claude Code agents not showing reasoning summaries, but I don't see an explicit prior decision documented about \"low reasoning\" for Recall, Chronicle, and progress summaries."
+    },
+    {
+      "query": {
+        "id": "release_workflow",
+        "prompt": "What are the established repo-scope and verification rules for Stella release sweeps?",
+        "terms": [
+          "release sweep",
+          "repo scope",
+          "verification",
+          "Stella"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "fast-path",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "durable_memory",
+        "fastPath": true,
+        "retrievalPasses": 1,
+        "routeMs": 0.013,
+        "hostContextMs": 0.028,
+        "seedSearchMs": 1.377,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 1.362,
+            "chars": 29778
+          }
+        },
+        "seedChars": 8517,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0.028,
+        "totalMs": 2.01
+      },
+      "resultMetadata": {
+        "intent": "durable_memory",
+        "fastPath": true,
+        "sources": [
+          {
+            "kind": "memory"
+          }
+        ]
+      },
+      "brief": "# durable memory\n<match path=\"~/.stella/memories/memory_summary.md\" lines=\"37-51\">\n37: - **Mobile activity sheet reworked → SHIPPABLE (local, not pushed)**: files nested under owning agents / \"This conversation\" + newest-first pagination `4c4e12425`, review's 2 P1 + 2 P2 fixed `675e0e9b3`; a further fresh review flagged a blocking pagination-anchor regression (maintainVisibleContentPosition anchored the wrapper View not keyed rows), FIXED `76158ccf` by moving to virtualized keyed LegendList rows with data/size anchoring + native start/end pagination; second fresh review **SHIPPABLE, no findings** (297 tests); mobile main ahead 3 of origin. Mobile sent-image chip left-aligned `01f1691` (alignSelf flex-start) and **released to TestFlight 1.0.20 build 105** (EAS 23ef8184 FINISHED, submission fd58ce29 processing).\n38: - **Updater hardened (local, not pushed)**: `ad33b20d` makes desktop updater content-aware vs published base (empty overlay = clean reset, genuine overlays = source-pack merger, conflicts return to agent, no ancestry merge fallback); browser binaries removed from Git tracking → hydrated under out/<platform> via new build/download-stella-browser CI; 31+2 tests green. Review-fix follow-up `49a2c74b`: release-artifact skew (pinned sourceSha/one manifest), fresh-checkout hydration, destructive-recovery ref/snapshot, github.sha-only artifact identity; 36+3 tests. Ship build-stella-browser CI first (populate current.json), then desktop release.\n39: - **Remote prompt-sync built (local, not pushed)**: Stella `0953ea0d` + backend `05c7d289` move all 8 agent prompts + scheduled Dream (`~/.stella/prompts/dream-scheduled.md`) behind a public Convex GET /api/stella/prompts manifest (sha256/ETag/304/CDN); startup verifies + atomically caches (precedence fresh→cached→bundled, no rollback); `.bundled-manifest` migrated to v2 {lastSyncedHash,sourceRevision,customized}; 20+126 tests. **Consolidation now COMPLETE** — chronicle/memory-review/compaction/generic fallbacks/personality presets migrated (Stella `acf60e9e`, backend `013f563e`), PERSONALITY.md tracked via `.personality-manifest.json` (lastSyncedHash/sourceRevision/customized), canonical manifest 16 IDs (rev 8c634240); 43+13+126 tests. Round-1 review's 17 findings: **all 16 approved fixes implemented** (`033c2363e5` + backend `5302f6df5a`, #15 deferred) — atomic replaces, monotonic publishedAt v2, all-or-nothing publish, revision from {id,sha256}, body-only manifests, resource limits, HTTPS-only, 10s publish timeout. Round-2's 5 findings fixed (`e79b1354c` + backend `1ea7b8024`); round-3's 3 findings fixed (`66b63cb82`: endpoint-keyed high-water map, hard-link personality install, canonical endpoint dedup); round-4's 3 P2 fixed `567f18381`; round-5 review found 3 new P2 (high-water loss >256KiB, lock-takeover ownership, personality edit loss) fixed `ee27111ad` (per-endpoint fsynced publication records, shared lock removed, conflict-artifact recovery); round-6 review: **NOT SHIPPABLE** (P1 stale process can apply older revision, stranded guard, parent-dir fsync, unbounded records) — all 4 fixed `72247beb4` (apply transaction + StalePromptManifestError, guard→conflict on staged-cleanup failure, dir-chain fsync, compaction to max+3); round-7 review flagged P1 stale-lock reclamation race, fixed `e9efe4f09` by replacing directory leases with **SQLite BEGIN IMMEDIATE** (kernel locking, crash auto-release, SIGKILL/contender tests); round-8's ETag A→B→A rollback FIXED `7f5f4cc8f` + backend `dc8649042` (ETag now \"<publishedAt>-<revision>\", regressions on both sides); round-9 review: **SHIPPABLE, no findings**. Go-live EXECUTED through prompts: browser CI fixed `5372ab301` (matrix limited to darwin-arm64/x64 + win-x64) and published (run 29137448879, current.json live); backend deployed to prod benevolent-minnow-586; **16 prompts published** (rev 03fb730a, publishedAt 1783739802587, endpoint 200 + ETag/304 verified). Desktop **v0.0.409 PUBLISHED** (workflow 29137883206 attempt 3 after hung publish + --clobber draft repair; the failing prompt-sync fsync test was machine-load flakiness, passed 3 isolated runs).\n40: - **Desktop chat/composer UI (local, not pushed)**: sent image attachments now render as composer chips `c60e72618` (ImageAttachmentChip 72×54 + lightbox; mobile still 84×64 mismatch); queued-chip double-animation fixed `b99f30c9f` (played-ID tracking outside Legend virtual-list; `b58cd439c` confirmed unrelated); engine-scoped model picker redesigned `4b277d79b` (inline Stella/ChatGPT/Claude Code pill, Codex→ChatGPT, per-engine reasoning), then review (0 P0, 5 P1) fixed in `ce9d09d1e` (legacy migration, Unavailable rows, per-engine snapshots, OAuth timeout/cancel + refresh-before-routing, registry∩live catalog, a11y); round-2 review's 7 issues (4 P1: draft-state migration, OAuth PKCE/token-exchange abort gaps, legacy Claude snapshot loss, draftEngine restore) **all fixed** in `e9d62685e` incl. single `DEFAULT_CODEX_MODEL` (resolves stale gpt-5.5 default; 90 tests); round-3's 5 P2 fixed `b21d1768f`, round-4's 2 P2 fixed `c0baf3689` (migration-failure latch, single shared Codex catalog instance); round-5's 2 P2 fixed `ebb2db37e` (independent Refresh disabled state + latch clear on refresh), round-6's pointer-events P2 fixed `4789c8d10` (disabled CSS scoped so Refresh stays clickable); round-7 review: **SHIPPABLE, no findings** (65 tests); ChatGPT selection dead-end + stale catalog fixed `d293c72de` — resolveChatGptModelSelection auto-resolves instead of throwing \"Choose an available ChatGPT model\" (auth is the only interruption), openai-codex registry gains gpt-5.6-sol/terra/luna + gpt-5.5 (was hidden above 5.4 by the registry∩live intersection), DEFAULT_CODEX_MODEL → gpt-5.6-sol (102 tests; 5.5/5.6 pricing uses gpt-5.4 baseline, adjust when known); fresh review of `d293c72de` **SHIPPABLE** (no P0/P1; 171 tests), its 2 P2 + nitpicks fixed `dcbcc2fef` — LEGACY_CODEX_DEFAULTS treats saved gpt-5.5 as non-explicit so stella/light spawns downgrade again; resolveChatGptEngineModel keeps the saved model on transient live-list gaps and surfaces \"Routed to <model> (saved model unavailable).\" only when gone from registry too; default fallback tier now reachable; supportsXhigh covers gpt-5.5/5.6; HAND-CURATED note in models.generated.ts (69 tests); fresh review of `dcbcc2fef` **NOT SHIPPABLE** (string-match can't tell an explicit gpt-5.5 pick from a legacy default; reroute notice cleared before render), truly fixed `50049cfd1` via a persisted `codexModelExplicit` provenance marker (Light downgrade keys off the marker, LEGACY_CODEX_DEFAULTS removed; P2-B notice shown after the save succeeds; 71 tests), fresh review **SHIPPABLE, no findings** — **shipped in desktop v0.0.419**; queued chips collapse + bottom-anchor `4241f7c7d`; context chips moved into + menu, activity pill always shown, sidebar Search removed `cec57a7ce`. Queued dequeue ordering: monotonic per-conversation logical clock `120c9713b`; its review found a multi-assistant backward-clock clamp reorder (ownerTimestamp+1 collapse → lexical _id order), fixed `4c040155` (pre-sort slot ordinal + testable clock hook; 54 tests); round-3 review (e6625380): **NOT SHIPPABLE** — comparator still non-transitive (use-conversation-display-messages.ts:139), same-owner assistants use the slot ordinal but cross-owner assistants still compare lexically, so three tied rows can form a cycle when another turn's assistant shares the clamped timestamp; fixed round-4 `e6bf80f4e`: createDisplayOrderComparator gives one total order per tied-timestamp bucket (clamped timestamp → stable pre-sort input index, owner-independent); review flagged only an ineffective transitivity fixture (index%3 owners didn't fail the old comparator), fixed `78b70c391` (explicit legacy cycle z<a<m<z + inline rot guard, test-file-only); final review: **SHIPPABLE, no findings** (57 tests). All local, not pushed.\n41: - **Recall LLM benchmark RE-RUN DONE (Claude Code)**: 32 combos×10q=320 judged (Terra/high judge 54s). Kimi/off now 10/10 66.9 fixed via bounded retries+2-in-flight cap. Luna/off 63.9 acc 4.5s p50 $0.155/q **new balanced default** replaces Luna/medium (52.3→39.1). Grok-4.5/medium 84.1 accuracy-first, DeepSeek/off cost-first $0.026/q. Reasoning hurts Recall except Grok. Committed `d8b79e4d2` on benchmark/recall-llm-20260710 (artifacts regenerated, 11 files, no push). Cost $39.48+$0.52, Grok $0.62/q verified token×rate.\n42: - **Muse 1.1 vs Grok 4.5 Minecraft self-mod DONE**\n...[seed section truncated]"
+    },
+    {
+      "query": {
+        "id": "prompt_contract",
+        "prompt": "What are the prior orchestrator prompt rules for Recall versus send_input and milestone status?",
+        "terms": [
+          "orchestrator prompt",
+          "Recall",
+          "send_input",
+          "milestone"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "fast-path",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "delegated_work",
+        "fastPath": true,
+        "retrievalPasses": 1,
+        "routeMs": 0.006,
+        "hostContextMs": 0.026,
+        "seedSearchMs": 15.838,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.817,
+            "chars": 0
+          },
+          "retrieval.delegated_work": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 15.824,
+            "chars": 10053
+          }
+        },
+        "seedChars": 2567,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0.024,
+        "totalMs": 18.421
+      },
+      "resultMetadata": {
+        "intent": "delegated_work",
+        "fastPath": true,
+        "sources": [
+          {
+            "kind": "thread"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1130,
+            "threadId": "create-orchestrator-only-codex-prompting-skill",
+            "runId": "local:sub:72f1f0a0-4e86-4f76-bc0f-ab97ab330e98"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1126,
+            "threadId": "final-release-qa-manager-status-and-lean",
+            "runId": "local:sub:632efdd7-d556-49d7-bfd6-973a566bb5eb"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 1039,
+            "threadId": "rewrite-orchestrator-routing-section-parallel",
+            "runId": "local:sub:840c3f8d-8c28-45fd-800d-6862305b58de"
+          },
+          {
+            "kind": "thread",
+            "inboxId": 604,
+            "threadId": "fix-orchestrator-prompt-stella-updates-apply",
+            "runId": "local:sub:320ec96e-bf9c-47ef-872c-b6472ea3b89e"
+          }
+        ]
+      },
+      "brief": "# delegated work\n- create-orchestrator-only-codex-prompting-skill | last active Jul 13, 2026, 9:30 AM (paused, last active 5d ago) | from this conversation | Create orchestrator-only Codex prompting skill\n  description: Keep Codex skill personal-only; clean accidental live seed edits\n  result: Created the personal skill: [codex-prompting](/Users/rahulnanda/.stella/skills/codex-prompting/SKILL.md). Exact description: > ORCHESTRATOR ONLY. Use whenever Stella's orchestrator composes, repairs, or refines a spawn brief for ChatGPT/Codex coding work, including codebase explanations, implementations, bug fixes, tests, screenshot or UI work, refactors, reviews, and documentation. Never use th\n\n- final-release-qa-manager-status-and-lean | last active Jul 13, 2026, 9:10 AM (paused, last active 5d ago) | from this conversation | Final release QA: manager status and lean orchestrator prompt\n  result: # NOT SHIPPABLE Reviewed exact clean HEADs: - Stella: `df715feb5588be8b8abe61f370b0d226dbdbf944` - Backend: `4e6e7085f75d7054a780e2f18c1e9f6c39eaf279` ## P1 — Ordinary status phrasing can terminate unfinished Managers Status intent is inferred through a finite phrase regex in [local-agent-manager.ts](/Users/rahulnanda/projects/stella/runtime/kernel/agents/local-agent-manager.ts:692), then stor\n\n- rewrite-orchestrator-routing-section-parallel | last active Jul 12, 2026, 10:24 AM (paused, last active 6d ago) | from this conversation | Rewrite orchestrator routing section (parallel-first spawn vs send_input) in stella-backend\n  result: Done. The routing section in the canonical orchestrator prompt is rewritten to the parallel-first model, tests and typecheck pass, and the change is committed locally — nothing published or deployed. **File:** `~/projects/stella-backend/prompts/stella-runtime/agents/orchestrator.md` (served as `agents/orchestrator.md` in the prompt-sync manifest; confirmed it's one of the 16 prompts enumerated in\n\n- fix-orchestrator-prompt-stella-updates-apply | last active Jul 4, 2026, 5:37 AM (paused, last active 14d ago) | from this conversation | Fix orchestrator prompt: Stella updates apply via a card, not automatically\n  result: Done — factual fix committed to the DEV copy only (`~/projects/stella`), production `~/stella` untouched, nothing published. **What changed** - `runtime/extensions/stella-runtime/agents/orchestrator.md` (the \"About Stella\" section, the paragraph after the \"every part of Stella is editable\" note). Reworded the single passage that claimed automatic application. Old: > Stella changes apply themselv"
+    },
+    {
+      "query": {
+        "id": "radial_ui_decision",
+        "prompt": "What was the prior product decision about the radial dial versus a native context menu?",
+        "terms": [
+          "radial dial",
+          "native context menu",
+          "product decision"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "fast-path",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "durable_memory",
+        "fastPath": true,
+        "retrievalPasses": 2,
+        "routeMs": 0.005,
+        "hostContextMs": 0.013,
+        "seedSearchMs": 190.183,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 6.767,
+            "chars": 125
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.291,
+            "chars": 0
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 190.168,
+            "chars": 19386
+          }
+        },
+        "seedChars": 8511,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0.019,
+        "totalMs": 198.078
+      },
+      "resultMetadata": {
+        "intent": "durable_memory",
+        "fastPath": true,
+        "sources": [
+          {
+            "kind": "transcript"
+          }
+        ]
+      },
+      "brief": "# episodic\n- [Jun 29, 2026, 9:26 PM] Stella (conversation …XHDRGF): …ashboards to read. with that lens: **1. voice mode — the whole app, basically.** one giant tap-to-talk. tap → dictate → stella answers → TTS reads it back, hands-free. this is the product in the car. 100% yes, make it the home screen, not a button buried in a menu. **2. a grid of quick voice actions (4-6 presets).** this is the piece you're missing and it's …\n\n- [Jun 29, 2026, 9:27 PM] Stella (conversation …XHDRGF): clean. honestly the right call — in the car, fewer things to think about is the whole point. voice home + a replay card is a complete product: you talk, it talks back, you replay if the road ate it. no menus, no decisions. so v1 is two surfaces: - **voice home** — tap-to-talk, dictate → stella → TTS reads back, hands-free loop - **replay** — now-playing-styl…\n  surrounding exchange:\n    [Jun 29, 2026, 9:26 PM] Stella: yeah, this is the right move — the car screen's a locked box, but your *phone* projecting into it via carplay is a door you actually own. lean there. one real caveat befo…\n    [Jun 29, 2026, 9:27 PM] User: I don't want the quick action grid. I think voice mode plus replay is enough.\n    [Jun 29, 2026, 9:28 PM] User: By the way, cancel my schedule for the evening check-in and morning anchor or whatever it is. Um Yeah, we don't need it. And I already like checked or like updated the ap…\n    [Jun 29, 2026, 9:29 PM] Stella: done, both killed — no more 8am anchor or 9:30pm check-in. you're driving the discipline thing through the app now anyway, so the pings were just noise. 🤙\n    [Jun 29, 2026, 9:29 PM] Stella: yep, both gone. nothing else firing on a timer now. 🤙\n    [Jun 29, 2026, 9:30 PM] User: Wow, I just saw that uh the scheduling has a agent card just like the general agent. I'm not sure why that is. Um seems like it got scoped to other agents and not just th…\n    [Jun 29, 2026, 9:30 PM] User: Don't need to see a card for that I meant.\n    [Jun 29, 2026, 9:30 PM] Stella: ha, yeah — the schedule run is firing the same \"started in background\" card that general-agent spawns use. it shouldn't; that card's meant for actual work you delegated, …\n    [Jun 29, 2026, 9:30 PM] Stella: on it. and i pointed it at the better fix: rather than just denylisting schedule, only show the card for actual user-delegated spawns (general) and treat everything inter…\n    [Jun 29, 2026, 9:31 PM] User: W\n\n- [Jul 7, 2026, 6:43 PM] Stella (this conversation): …a clean escalation valve**. That's exactly what early-return gives you. **The key thing both of your options blur: there are two different kinds of \"I need help.\"** - **Type A — a decision that needs user or product context.** Money, credentials, ambiguous intent, irreversible actions, \"direction X vs Y.\" These *must* come up to me, because I'm the one holdi…\n  surrounding exchange:\n    [Jul 7, 2026, 6:27 PM] Stella: Got it — sending them off to fix all three and re-render. Quick flag on #3: since the real app doesn't show engine badges anywhere, the engine-interchange video loses its…\n    [Jul 7, 2026, 6:42 PM] User: hoenstly, one thing i'm thinking about is ,making general agents, in it's system prompt, be informed that it can return early. i think we have this sort of 'autonomously …\n    [Jul 7, 2026, 6:50 PM] User: ok ti's clea the issue with remotion is that we are using codex. the model is to poor at ui work. we'll just do it normal and have it continue where it left off with corr…\n    [Jul 7, 2026, 6:51 PM] Stella: Yeah — Codex is weak at UI/layout reasoning, that tracks. Let me pull it off that and hand the demo work to the normal model, picking up from where it left off.\n    [Jul 7, 2026, 6:51 PM] Stella: Done — pulled it off Codex. The normal model's now on it, picking up from the committed state and fixing all four: the user-before-assistant ordering, the composer pill→r…\n    [Jul 7, 2026, 7:08 PM] Stella: All four fixed and re-rendered on the normal model. The ordering bug you spotted was a real tie-break bug: when the user message and the assistant reply land on the same …\n    [Jul 7, 2026, 7:15 PM] User: still has auto scorll beahvior. like it's literllay just scrolling instead of being based on sent user message/stream text like the deksotp app is\n    [Jul 7, 2026, 7:15 PM] Stella: You're right — that's not what the app does. The desktop app's scroll is event-anchored, not a running pan: when you send a message it reframes so your new message sits a…\n    [Jul 7, 2026, 7:15 PM] Stella: Good catch. Sent it back to fix the scroll properly — it needs to be event-driven like the real app: reframe to your message on send, follow the streaming text as it grow…\n    [Jul 7, 2026, 7:37 PM] Stella: Fixed. The running pan was coming from time-based scroll keyframes baked into the scenario — it was literally interpolating scroll position over time regardless of what w…\n\n- [Jul 8, 2026, 5:39 PM] Stella (this conversation): …tirely. **3. The actual fill (all in the privileged main process)** One service does the sensitive work: (1) resolves merchant + amount, (2) checks your spend policy, (3) pops a **native macOS dialog that defaults to Cancel**, (4) only on approval decrypts the card transiently, (5) drives the browser extension to fill the checkout fields, (6) scrubs the secr…\n  surrounding exchange:\n    [Jul 8, 2026, 5:37 PM] Stella: No — nothing to undo. The earlier fix (`018c8c95`) wasn't *wrong*, it was solving a **different symptom**: the \"row stuck red/failed after it actually recovered\" bug you …\n    [Jul 8, 2026, 5:37 PM] User: please explain to me how the payment stuff works again that we did\n    [Jul 8, 2026, 5:48 PM] User: use codex, need you to investigate this: i got a vercel bill on [REDACTED EMAIL] that's why i asked if we are using vercel ai gateway, but u said we aren't in stella ba…\n    [Jul 8, 2026, 5:50 PM] Stella: On it — spinning up a Codex investigation to trace where that $200 came from. Quick note: for the \"did a key leak in my public repos\" angle, I can pull your **GitHub secr…\n    [Jul 8, 2026, 5:50 PM] Stella: Codex investigation is running. It'll trace it from the most reliable angle first — the **Vercel account's own AI Gateway usage logs** (which project/key/model drove the …\n    [Jul 8, 2026, 5:51 PM] User: tahts the werid thing, i got the email on [REDACTED EMAIL], and i checked the vercel account, but there are no logs lol\n    [Jul 8, 2026, 5:52 PM] Stella: That's a big tell — a \"bill\" email with **zero usage and no logs in the actual account** is a classic **fake-invoice / phishing** signature. Real Vercel spend always show…\n    [Jul 8, 2026, 5:53 PM] Stella: Honestly, \"bill email but the account shows nothing\" points hard at one thing: it's probably **not a real charge** — most likely a **fake-invoice / phishing email**. Real…\n    [Jul 8, 2026, 5:53 PM] User: its @vercel.com and its verified\n    [Jul 8, 2026, 5:53 PM] Stella: Okay — verified from @vercel.com means it's **real, not phishing.** So the money's real; it's just on a **Vercel team/scope you didn't look at.** The most likely story no…\n\n- [Jul 10, 2026, 6:31 PM] Stella (this conversation): All four changes are in: - **Context chips** moved off the above-composer row into the `+` menu (app/tab attach and window capture all still work). - **Activity pill** always shows now — \"Task in progress\" only when the left sidebar is closed; when it's open it shows the normal search state. - **Search** removed from the left sidebar (still reachable via the…\n  surrounding exchange:\n    [Jul 10, 2026, 6:27 PM] User: investigation needed: Currently, i'm unsure how we handle stella self mod updates, when multiple agents are making changes. Is it proeprly handled, where the apply update…\n    [Jul 10, 2026, 6:28 PM] Stella: Done. Queued messages now sit right above the composer — that big gap is gone (trailing space moved above the chip, 12px gap below). 2+ queued collapse into a single \"X m…\n    [Jul 10, 2026, 6:32 PM] Stella: All 10 model-picker fixes landed (legacy migration gated on OAuth, unavailable-model rows, per-engine reasoning/model persistence, cancellable OAuth with 5-min timeout, c…\n    [Jul 10, 2026, 6:32 PM] Stella: Fresh reviewer's on the model-picker fixes now — verifying each one holds and hunting for any regressions the fixes introduced. I'll triage whatever it finds and either c…\n    [Jul 10, 2026, 6:34 PM] Stella: Answer's clearer than you'd hope — and not in the safe direction. Full trace on\n...[seed section truncated]"
+    },
+    {
+      "query": {
+        "id": "episodic_drive",
+        "prompt": "When was Rahul's first destination drive in the blue Lotus Emira, and where did he actually go?",
+        "terms": [
+          "blue Lotus Emira",
+          "first destination drive",
+          "actually go"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "episodic",
+        "fastPath": false,
+        "retrievalPasses": 1,
+        "routeMs": 0.005,
+        "hostContextMs": 0.013,
+        "seedSearchMs": 154.192,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 0.367,
+            "chars": 0
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 154.172,
+            "chars": 18027
+          }
+        },
+        "seedChars": 8511,
+        "modelCalls": 1,
+        "modelMs": 6362.014,
+        "toolRounds": 0,
+        "assemblyMs": 0.011,
+        "totalMs": 6517.115
+      },
+      "resultMetadata": {
+        "intent": "episodic",
+        "fastPath": false,
+        "sources": [
+          {
+            "kind": "transcript"
+          }
+        ]
+      },
+      "brief": "Nothing relevant found."
+    },
+    {
+      "query": {
+        "id": "billing_case",
+        "prompt": "What happened with the anomalous Vercel AI Gateway credit charges, and how was the dispute sent?",
+        "terms": [
+          "Vercel AI Gateway",
+          "credit charges",
+          "dispute"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "answer",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "episodic",
+        "fastPath": false,
+        "retrievalPasses": 1,
+        "routeMs": 0.007,
+        "hostContextMs": 0.018,
+        "seedSearchMs": 27.601,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 2.738,
+            "chars": 0
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 27.585,
+            "chars": 9861
+          }
+        },
+        "seedChars": 7494,
+        "modelCalls": 1,
+        "modelMs": 11874.228,
+        "toolRounds": 0,
+        "assemblyMs": 0.013,
+        "totalMs": 11904.924
+      },
+      "resultMetadata": {
+        "intent": "episodic",
+        "fastPath": false,
+        "sources": [
+          {
+            "kind": "transcript"
+          }
+        ]
+      },
+      "brief": "# Vercel AI Gateway Billing Dispute — Summary\n\n**Incident:** On **Jul 8, 2026**, anomalous charges appeared on [REDACTED EMAIL]'s Vercel account. Initial theory (leaked API key or account compromise) was ruled out when forensics showed the charge pattern matched an automated billing bug, not human or API-driven spending.\n\n**Evidence & Diagnosis:**\n- **9 \"AI Gateway Credits\" invoices in an 18-minute burst** (~2:50 PM UTC, stopped ~3:00 PM)\n- **Seven $20 charges within 28 seconds** (timestamps: 21:50:11–21:50:39 UTC)\n- Two additional $21.62 charges ~17 minutes later\n- **Total: $183.24** ($180 in credits)\n- Pattern signature: identical charges at near-instantaneous intervals; consistent with automated retry/webhook loop, not manual or API key spending\n\n**Action Taken:**\nDispute filed with Vercel Support on **Jul 8, 2026, ~6:09 PM**, routed through [REDACTED EMAIL]'s account dashboard. Submission included exact charge count and UTC timestamps as evidence of erroneous duplicate charges, with request for reversal.\n\n**Context:** User confirmed no Stella backend usage of Vercel AI Gateway (OpenRouter used instead), and no team members on solo account ruled out third-party spending theories."
+    },
+    {
+      "query": {
+        "id": "no_match",
+        "prompt": "Find the decision where Project Zephyr approved an aquarium telemetry migration from Cassandra to CockroachDB.",
+        "terms": [
+          "Project Zephyr",
+          "aquarium telemetry",
+          "Cassandra",
+          "CockroachDB"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "no-match",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "durable_memory",
+        "fastPath": true,
+        "retrievalPasses": 2,
+        "routeMs": 0.007,
+        "hostContextMs": 0.025,
+        "seedSearchMs": 205.449,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 9.526,
+            "chars": 133
+          },
+          "retrieval.ftsHealth": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 2.333,
+            "chars": 0
+          },
+          "retrieval.episodic": {
+            "kind": "sql",
+            "calls": 1,
+            "ms": 205.439,
+            "chars": 15507
+          }
+        },
+        "seedChars": 0,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0,
+        "totalMs": 217.807
+      },
+      "resultMetadata": {
+        "intent": "durable_memory",
+        "fastPath": true,
+        "sources": []
+      },
+      "brief": "Nothing relevant found."
+    }
+  ]
+}

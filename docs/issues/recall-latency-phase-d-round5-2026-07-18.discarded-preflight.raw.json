@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 2,
+  "methodology": {
+    "routeMode": "pinned-claude-haiku",
+    "directRun": true,
+    "browserContext": false,
+    "queryOrder": [
+      "memory_system"
+    ]
+  },
+  "snapshot": {
+    "dataDir": "/tmp/stella-recall-round5.wKtV8W/.stella",
+    "sha256": "a3a07ceda9eeab4e256c4c59b9dc0581aa802c22f18eb4895fce829710b5557a"
+  },
+  "sampleCount": 1,
+  "completedCount": 1,
+  "errorCount": 0,
+  "engineModels": [
+    "claude-code:claude-code/haiku"
+  ],
+  "totalMs": {
+    "median": 22.848,
+    "p90": 22.848,
+    "min": 22.848,
+    "max": 22.848
+  },
+  "phaseMedianMs": {
+    "routeMs": 8.146,
+    "hostContextMs": 0.678,
+    "seedSearchMs": 11.576,
+    "assemblyMs": 0.114,
+    "modelMs": 0
+  },
+  "phaseP90Ms": {
+    "routeMs": 8.146,
+    "hostContextMs": 0.678,
+    "seedSearchMs": 11.576,
+    "assemblyMs": 0.114,
+    "modelMs": 0
+  },
+  "seedChars": {
+    "median": 8517,
+    "p90": 8517,
+    "min": 8517,
+    "max": 8517
+  },
+  "modelCalls": {
+    "median": 0,
+    "p90": 0,
+    "max": 0
+  },
+  "toolRounds": {
+    "median": 0,
+    "p90": 0,
+    "max": 0
+  },
+  "sourceTimings": {
+    "host.appBrowserContext": {
+      "medianMs": 0,
+      "p90Ms": 0,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "host.localEvents": {
+      "medianMs": 0,
+      "p90Ms": 0,
+      "medianCalls": 0,
+      "medianChars": 0
+    },
+    "retrieval.durable_memory": {
+      "medianMs": 11.484,
+      "p90Ms": 11.484,
+      "medianCalls": 1,
+      "medianChars": 20197
+    }
+  },
+  "runs": [
+    {
+      "query": {
+        "id": "memory_system",
+        "prompt": "What did we determine about profile.md, memory_summary.md, MEMORY.md, and the sources Recall searches?",
+        "terms": [
+          "profile.md",
+          "memory_summary.md",
+          "MEMORY.md",
+          "Recall"
+        ]
+      },
+      "telemetry": {
+        "version": 1,
+        "conversationId": "01KWJ93DCEH7FVYAZ849P21J68",
+        "outcome": "fast-path",
+        "engine": "claude-code",
+        "modelId": "claude-code/haiku",
+        "intent": "durable_memory",
+        "fastPath": true,
+        "retrievalPasses": 1,
+        "routeMs": 8.146,
+        "hostContextMs": 0.678,
+        "seedSearchMs": 11.576,
+        "sourceTimings": {
+          "host.localEvents": {
+            "kind": "sql",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "host.appBrowserContext": {
+            "kind": "host",
+            "calls": 0,
+            "ms": 0,
+            "chars": 0
+          },
+          "retrieval.durable_memory": {
+            "kind": "file",
+            "calls": 1,
+            "ms": 11.484,
+            "chars": 20197
+          }
+        },
+        "seedChars": 8517,
+        "modelCalls": 0,
+        "modelMs": 0,
+        "toolRounds": 0,
+        "assemblyMs": 0.114,
+        "totalMs": 22.848
+      },
+      "resultMetadata": {
+        "intent": "durable_memory",
+        "fastPath": true,
+        "sources": [
+          {
+            "kind": "memory"
+          }
+        ]
+      },
+      "brief": "# durable memory\n<match path=\"~/.stella/memories/memory_summary.md\" lines=\"9-11\">\n9: - **ff skill stale-base root cause is fixed**: new `stella-ff` `base-resolution.ts` prefers the newest proven prior ff operation as base (blob-hash proofs, overlays preserved, genuine conflicts still hard-stop); the recurring 19-false-conflict pattern from stale base `f4c2125` is closed.\n10: - **Recall latency overhaul in flight**: root-caused — SQLite/FTS retrieval is milliseconds; latency is model runtime (99.65% of median ~20s), the ~45K-char eager seed, duplicate same-turn Recall calls, and a fresh one-shot Claude CLI on the wrong utility model. Phase-level telemetry + baseline committed `d64707e69` (not pushed); next phases: single retrieval pass + Luna routing + same-turn caching. Note: dev replays selected `claude-code/haiku`, not saved `fable` — reconcile in the routing phase. Codex's memory design was reverse-engineered as reference (no embeddings; injected routing summary + grep over MEMORY.md; usage-count feedback loop Stella never wired up).\n11: - **Manager mid-stream thread adoption is BUILT** (Manager `send_input` → `adoptAgent`, durable `parentAgentId`, child completions route to the Manager, no stealing from active Managers); no atomic adopt-at-spawn; guidance thin spots: no explicit ≥2-children rule, home orchestrator prompt customized/diverged (stale `group` arg), home manager.md is the bundled fallback.\n</match>\n\n<match path=\"~/.stella/memories/memory_summary.md\" lines=\"51-53\">\n51: - **Activity display (local, not pushed)**: friendly state-aware tool labels `2ca28b442`, stable sidebar/tray titles `aa23d4c3f`, file results/path search restored `1e6dd069d` (review SHIPPABLE). Tray-search follow-ups: `410c0eeea` scopes search out of the left sidebar (displaySearchStore is a module singleton — only the tray may call useDisplaySearchQuery) and `2ca95cec8` adds a data-searching min-height reserve; two fresh reviews' P1/P2 (content-driven height above the 18rem floor, two-stage clear resize, weak min-height contract test, stranded no-results blank) **FIXED `5851e8f4f`** — results box frozen to fixed height min(18rem,46vh) with internal scroll, shouldTrayHoldSearchLayout predicate gives single-settle clear, no-results fills/centers, behavioral predicate + CSS-contract tests; fresh review **SHIPPABLE, no findings** (96 tests). Sidebar scoping `410c0eeea` verified correct; supersedes `2ca95cec8`.\n52: - **Profile memory caps**: the believed Jul-8 cap fix never existed — `951438895` was the compaction-trigger change and shipped fine in v0.0.405; new `73770ff2f` removes the 320-char per-entry slice and raises aggregate 2,000→4,000 (local, not pushed — prod still 320/2000); profile.md restored from SQLite transcripts; actual unreleased dev backlog 29 commits past v0.0.408 (`941b1b726`).\n53: - **FromYou**: [REDACTED POSTAL ADDRESS] Legalinc. Vercel dispute `01vTYKu8KXp7DTEd`; Meta waitlisted. Spotify Liked Songs verified; node_repl `repl.start undefined` broken.\n</match>\n\n<match path=\"~/.stella/memories/MEMORY.md\" lines=\"26-34\">\n26: Outcome: Read-only investigation (v1 dev `cec1e069d`, backend `7141659b3`; both worktrees clean, live `~/stella` untouched). Verdict BUILT — real ownership reassignment, persistence, and completion rerouting: `spawn_manager` accepts only a prompt (no thread_ids/adopt arg); the Orchestrator names existing thread IDs in the brief, the Manager calls `send_input`, and the handler calls `adoptAgent(target, manager)` before delivering (state.ts:236). `adoptAgent` (local-agent-manager.ts:1201) requires an active Manager, same conversation, non-terminal target; rejects Manager-to-Manager adoption and parent cycles; rewrites and persists `parentAgentId` (`runtime_agents.parent_agent_id`). Child completions resolve to the nearest Manager and are withheld from root Orchestrator history; a Manager cannot finish while adopted/spawned descendants are active; an actively-owned thread cannot be stolen (transfer only after both old Manager and target are paused). The exact mid-flight case is codified in tests (local-agent-manager.test.ts:322; state.test.ts:783 verifies adoptAgent-then-send order). Boundaries: no atomic adopt-at-spawn, no adoption-only tool (adoption always steers the target). Guidance: backend canonical orchestrator.md routes single deliverables to `spawn_agent` and Stella-self modifications away from Managers; thin spots — \"dynamically coordinate\" is subjective, no explicit ≥2-children rule, and manager.md has no defensive rule against misrouting (a wrongly created Manager must add the extra General-agent layer since it cannot do work itself). Home `~/.stella/agents/orchestrator.md` is customized (stricter on the three-layer pattern but diverged — still instructs a `group` arg that the current spawn_agent schema no longer exposes); home manager.md is the bundled fallback (`sourceRevision: bundled-manager-fallback`). No files edited, no tests run, nothing pushed.\n27: Recall hooks: manager adopt existing thread mid-stream BUILT, send_input adoptAgent parentAgentId durable runtime_agents, spawn_manager no thread_ids arg brief names threads, completion routed nearest Manager withheld from root, cannot steal active manager pause both transfer, spawn_manager vs spawn_agent single deliverable guidance thin spots no two-child rule, home orchestrator customized stale group arg, bundled-manager-fallback manager.md\n28: \n29: ## 2026-07-18 20:14 — Recall latency root-caused (LLM/seed overhead, not SQLite) + Codex memory architecture reverse-engineered with Stella adoption plan\n30: Threads: root-cause-why-stella-s-recall-memory-search-is:local:sub:fcf2b043-0291-4962-9cf5-aa0e660101bb, reverse-engineer-chatgpt-desktop-app-codex-repo:local:sub:e82d9d8b-6d91-4667-b64b-a9833f7b386a\n31: Why this matters: Recall feels slow (median 28.1s over 49 calls, p90 88.4s) despite millisecond SQLite/FTS retrieval, and Codex's shipped memory design shows how to shrink the payload and skip the LLM for common lookups.\n32: Outcome: Recall analysis (strictly read-only, mode=ro + query_only, no code changed): retrieval is NOT the bottleneck — 2.13GB live DB, both FTS indexes complete/backfilled (Jul 11), representative searches 1–20ms (unused LIKE fallback would be 3.7s). Real causes, ranked: (1) oversized eager seed — every source pre-searched, avg 45,286 chars, p90 53,642; (2) serial model/tool rounds (avg 3.45 extra searches, +17.7K chars median); (3) orchestrator invoked Recall twice in 7 of 10 recent runs (+5–14s between calls); (4) wrong utility route — Recall spawns a fresh one-shot Claude CLI on `claude-code/fable` (saved claudeCodeModel outranks the stella/light pin in claude-code-agent-runtime.ts:62), not the benchmarked `gpt-5.6-luna`; latest 27.5s call did ZERO model-initiated searches; (5) unranked substring memory search; (6) minor N+1s (transcript neighbors, active threads, 800-event load for 5 rows). July 11's 599–4,560s outliers predate the route-resolution fix (historical, not current). Recommended: one parallel retrieval pass + one synthesis call capped ~8–12KB with single reformulation fallback; pin Recall to Luna/off independent of engine; cache same-turn Recall with structured found/no_match status; intent-based source routing; compact structured routing index (MEMORY.md is 1.12MB, summary 30.8KB); batch secondary reads; phase-level timing telemetry. Codex reverse-engineering (ChatGPT.app 26.715.31251 bundling codex-cli 0.145.0-alpha.18, asar extracted read-only; source pulled ff-only to `35eaf3ffb`): memory is SQLite `~/.codex/memories_1.sqlite` stage1_outputs (428 rows, 256 selected, 120 cited) + progressive-disclosure files — `memory_summary.md` always injected capped 2,500 tokens, `MEMORY.md` (469KB) as primary grep target, per-rollout summaries, skills, private git baseline for incremental diffs. Phase 1 = background LLM per idle rollout (gpt-5.6-luna, low reasoning, concurrency 8, strict JSON, relevance gate, secrets redacted). Phase 2 (Dream equivalent, `memory_consolidate_global`) = locked-down consolidation agent (gpt-5.6-terra, medium, no network/agents/MCP, 6h cooldown, skips LLM when git diff is clean). No embeddings/vector DB anywhere — model-directed rg/substring search driven by an explicit injected decision contract; hidden citation blocks bump usage_count/last_usage, closing a retention feedback loop. Stella adoption recs: deterministic no-LLM `search_memory` fast path for the orchestrator; make mem\n...[seed section truncated]"
+    }
+  ]
+}
