@@ -208,6 +208,21 @@ describe("shutdown record", () => {
     expect(rolled?.episodeId).not.toBe("episode-old");
     expect(rolled?.reason).toBe("app-shutdown");
     expect(rolled?.episodeStartedAt).toBe(now);
+    // Boundary: exactly AT the cap is no longer "younger than" — new id.
+    expect(
+      writeRestartShutdownRecord(dataDir, {
+        reason: "runtime-reload",
+        episodeId: "episode-boundary",
+        now: now - 60_000,
+        episodeStartedAt: now - RESTART_EPISODE_MAX_AGE_MS,
+      }),
+    ).toBe(true);
+    expect(
+      recordRestartShutdown(dataDir, { reason: "app-shutdown", now }),
+    ).toBe(true);
+    expect(peekRestartShutdownRecord(dataDir)?.episodeId).not.toBe(
+      "episode-boundary",
+    );
     // Within the cap the id chains normally.
     const chained = peekRestartShutdownRecord(dataDir);
     expect(
@@ -458,9 +473,11 @@ describe("boot conversion", () => {
     expect(fs.existsSync(snapshotFilePath())).toBe(false);
   });
 
-  it("the sweep never clobbers a sidecar retained from a different episode", () => {
-    // Episode N's sidecar is on disk; a NEW unattempted record (episode M)
-    // authorizes this boot's capture, but N's sidecar stays untouched.
+  it("a fresh episode's capture replaces a dead sidecar from a superseded episode", () => {
+    // Episode N's sidecar is on disk but N's record was superseded by a NEW
+    // unattempted record (episode M): N's evidence is dead the moment its
+    // record vanished, so M's capture must take the sidecar slot — it is
+    // M's only next-boot retry evidence.
     writeFreshRecord("runtime-reload");
     const episodeN = peekRestartShutdownRecord(dataDir)?.episodeId;
     expect(
@@ -477,9 +494,61 @@ describe("boot conversion", () => {
     ]);
     expect(captured).toBe(episodeM);
     const sidecar = readRestartInterruptedSnapshot(dataDir);
-    expect(sidecar?.episodeId).toBe(episodeN);
+    expect(sidecar?.episodeId).toBe(episodeM);
     expect(sidecar?.threads).toEqual([
+      { threadId: "thread-m", conversationId: "conv-2" },
+    ]);
+  });
+
+  it("three-boot probe: a fresh episode after a failed one keeps its own retry evidence", () => {
+    // Boot 1 / episode N: sweep captures thread-a, conversion's state write
+    // fails → attempted N record + N sidecar retained.
+    writeFreshRecord("runtime-reload");
+    const episodeN = peekRestartShutdownRecord(dataDir)?.episodeId;
+    const capturedN = writeRestartInterruptedSnapshot(dataDir, [
       { threadId: "thread-a", conversationId: "conv-1" },
+    ]);
+    expect(capturedN).toBe(episodeN);
+    fs.mkdirSync(stateFilePath());
+    expect(
+      convert([{ threadId: "thread-a", conversationId: "conv-1" }], {
+        capturedEpisodeId: capturedN,
+      }),
+    ).toBeNull();
+    fs.rmdirSync(stateFilePath());
+
+    // The app keeps running, new work starts, then a GRACEFUL shutdown
+    // mints episode N+1 (attempted N is never merged forward).
+    expect(recordRestartShutdown(dataDir, { reason: "app-shutdown" })).toBe(
+      true,
+    );
+    const episodeN1 = peekRestartShutdownRecord(dataDir)?.episodeId;
+    expect(episodeN1).not.toBe(episodeN);
+
+    // Boot 2: sweep finds N+1's row and must WRITE N+1's sidecar over N's
+    // dead one (N's record no longer exists — its evidence protects
+    // nothing).
+    const capturedN1 = writeRestartInterruptedSnapshot(dataDir, [
+      { threadId: "thread-b", conversationId: "conv-2" },
+    ]);
+    expect(capturedN1).toBe(episodeN1);
+    expect(readRestartInterruptedSnapshot(dataDir)?.episodeId).toBe(episodeN1);
+    // N+1's conversion ALSO fails its state write.
+    fs.mkdirSync(stateFilePath());
+    expect(
+      convert([{ threadId: "thread-b", conversationId: "conv-2" }], {
+        capturedEpisodeId: capturedN1,
+      }),
+    ).toBeNull();
+    fs.rmdirSync(stateFilePath());
+    expect(peekRestartShutdownRecord(dataDir)?.attemptedAt).toBeDefined();
+
+    // Boot 3: rows flipped, live snapshot empty — N+1 recovers from ITS
+    // OWN matching sidecar instead of losing the continuation.
+    const state = convert([], { capturedEpisodeId: null });
+    expect(state?.episodeId).toBe(episodeN1);
+    expect(state?.threads).toEqual([
+      { threadId: "thread-b", conversationId: "conv-2" },
     ]);
   });
 

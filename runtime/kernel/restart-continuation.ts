@@ -98,8 +98,9 @@ export const RESTART_EPISODE_WINDOW_MS = 2 * 60_000;
  * Absolute cap on how long one episode id may keep being merged-forward,
  * measured from the episode's FIRST `createdAt`. Without it, rapid repeated
  * restarts (each within {@link RESTART_EPISODE_WINDOW_MS}) could roll a
- * stale episode — and a retained failed-conversion record — forever. Past
- * the cap a fresh id is minted, which expires the old episode's artifacts.
+ * stale episode — and a retained failed-conversion record — forever. An
+ * episode merges only while strictly younger than the cap; at or past it a
+ * fresh id is minted, which expires the old episode's artifacts.
  */
 export const RESTART_EPISODE_MAX_AGE_MS = 30 * 60_000;
 
@@ -348,7 +349,7 @@ export const markRestartShutdownRecordAttempted = (
  * invalidates any sidecar retained from the older episode — when the
  * existing record is beyond the window, was already conversion-attempted
  * (a dead retained episode must not absorb a new shutdown), or the episode
- * has chained past {@link RESTART_EPISODE_MAX_AGE_MS} from its first
+ * has chained to or past {@link RESTART_EPISODE_MAX_AGE_MS} from its first
  * `createdAt` (rapid repeated restarts must not roll one episode forever).
  */
 export const recordRestartShutdown = (
@@ -367,7 +368,7 @@ export const recordRestartShutdown = (
       existing &&
       !existing.attemptedAt &&
       now - existing.createdAt <= RESTART_EPISODE_WINDOW_MS &&
-      now - existing.episodeStartedAt <= RESTART_EPISODE_MAX_AGE_MS
+      now - existing.episodeStartedAt < RESTART_EPISODE_MAX_AGE_MS
     ) {
       reason = existing.reason;
       episodeId = existing.episodeId;
@@ -429,16 +430,22 @@ const parseThreadRefs = (value: unknown): RestartInterruptedThreadRef[] =>
  * capture so conversion can verify it against the record it consumes:
  *
  *  - No record on disk → null, nothing written. There is no episode this
- *    evidence could ever be matched against (hard-crash boot).
+ *    evidence could ever be matched against (hard-crash boot). An existing
+ *    sidecar is left alone — deleting stale evidence is conversion's job.
  *  - Record already conversion-attempted → null, nothing written. A
  *    retained failed-conversion record belongs to an EARLIER shutdown whose
  *    rows were already swept; the rows found now were interrupted by a
  *    crash (or belong to a newer shutdown) and must not be absorbed under
  *    the old episode. Refusing the write also preserves that episode's
- *    retained retry sidecar.
- *  - Existing sidecar stamped with a DIFFERENT episode id → capture is
- *    authorized (id returned) but the sidecar is NOT clobbered: retained
- *    retry evidence from another episode is never overwritten by this one.
+ *    retained retry sidecar — the ONLY situation in which an on-disk
+ *    sidecar is still-pending retry evidence (its id matches an attempted
+ *    record still on disk).
+ *  - Record is a FRESH (unattempted) episode → capture authorized and the
+ *    sidecar is written, REPLACING any sidecar from a different episode.
+ *    A mismatched sidecar's own record no longer exists (there is only one
+ *    record file), so it became dead evidence the moment its record was
+ *    superseded; preserving it would protect nothing while costing the
+ *    fresh episode its next-boot retry evidence.
  *
  * Never called with an empty list (an idle boot must not clobber a sidecar
  * retained for retry). Best-effort: on write failure the capture stays
@@ -454,10 +461,6 @@ export const writeRestartInterruptedSnapshot = (
   const record = peekRestartShutdownRecord(stellaDataDir);
   if (!record) return null;
   if (record.attemptedAt) return null;
-  const existing = readRestartInterruptedSnapshot(stellaDataDir);
-  if (existing && existing.episodeId !== record.episodeId) {
-    return record.episodeId;
-  }
   try {
     const snapshot: RestartInterruptedSnapshot = {
       version: 1,
