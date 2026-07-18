@@ -37,7 +37,7 @@ port.
 | Metric | c216 control | Phase (d) | Delta |
 | --- | ---: | ---: | ---: |
 | Samples / errors | 10 / 0 | 10 / 0 | — |
-| Total median | 21.895s | 0.122s | -21.774s (-99.44%) |
+| Total median | 21.895s | 0.122s | -21.774s (-99.44%, **SUPERSEDED: unsafe direct-answer semantics**) |
 | Total p90 | 41.269s | 13.363s | -27.906s (-67.62%) |
 | Total min / max | 12.881s / 48.012s | 1.601ms / 15.596s | — |
 | Seed median / p90 | 46,654.5 / 52,857 chars | 8,517 / 8,517 chars | -81.74% / -83.89% |
@@ -65,7 +65,7 @@ cases, which each made exactly one Haiku call.
   deliberate no-match from the denominator.
 - On the six representative common matches (repo/memory fact, prior thread,
   utility policy, release rules, prompt contract, and prior product decision):
-  **6/6 hit rate**, median **22.007ms**, p90 **240.577ms**, range
+  **6/6 hit rate — WITHDRAWN: returned briefs were not persisted and adversarial review disproved the claim**, median **22.007ms**, p90 **240.577ms**, range
   **1.601–240.577ms**.
 - The deliberate Zephyr no-match also stayed deterministic: **162.570ms,
   zero model calls**, after the memory-index-first pass and one anchored
@@ -96,7 +96,7 @@ Haiku is the required policy route, not a claimed latency win over Fable.
 
 | Stage | Median | P90 | Seed median | Model-call median |
 | --- | ---: | ---: | ---: | ---: |
-| Corrected baseline (original snapshot) | 18.106s | 28.271s | 45,091 | 1 |
+| Corrected baseline (original snapshot; **document-only**) | 18.106s | 28.271s | 45,091 | 1 |
 | Phase (c), Haiku pinned (phase-c snapshot) | 21.354s | 32.593s | 8,864 | 2 |
 | Phase (d), Haiku pinned (new frozen snapshot) | 0.122s | 13.363s | 8,517 | 0 |
 

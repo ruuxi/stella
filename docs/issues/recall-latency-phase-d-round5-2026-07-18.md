@@ -139,3 +139,12 @@ in any aggregate. No discarded set contributes to the tables above.
 - Renderer, Electron, and preload TypeScript checks passed.
 - Runtime boundary check, ESLint, and `git diff --check` passed.
 - Final raw JSON passed a secret/email/private-key scan.
+
+## Round-6 narrow boundary verification
+
+The delimiter-safe anchor follow-up was replayed against the same frozen
+snapshot and Haiku route. All ten structured outcomes, fast-path flags,
+model-call counts, and all six zero-model briefs were identical to the final
+round-5 set, so the aggregate tables above were not replaced. The verification
+run is retained at
+[`recall-latency-phase-d-round6-boundary-check-2026-07-18.raw.json`](./recall-latency-phase-d-round6-boundary-check-2026-07-18.raw.json).

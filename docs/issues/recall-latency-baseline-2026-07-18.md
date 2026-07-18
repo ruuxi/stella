@@ -47,7 +47,7 @@ The runner prints timing telemetry and never prints or persists Recall answers.
 
 | Metric | Median | P90 | Min | Max |
 | --- | ---: | ---: | ---: | ---: |
-| Total latency | 18.106s | 28.271s | 16.469s | 36.529s |
+| Total latency (**document-only historical result**) | 18.106s | 28.271s | 16.469s | 36.529s |
 | Seed size | 45,091 chars | 52,821 chars | 29,708 chars | 62,538 chars |
 | Model calls | 1 | 3 | 1 | 3 |
 | Tool rounds | 0 | 2 | 0 | 2 |

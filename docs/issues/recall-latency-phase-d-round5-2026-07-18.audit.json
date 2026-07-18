@@ -20,6 +20,13 @@
     "recall-latency-phase-d-round5-2026-07-18.haiku.raw.json",
     "recall-latency-phase-d-round5-2026-07-18.fable.raw.json"
   ],
+  "round6BoundaryCheck": {
+    "implementationCommit": "9e96ac26d9b4b36e6d9ba914dab20aee76e6376b",
+    "artifact": "recall-latency-phase-d-round6-boundary-check-2026-07-18.raw.json",
+    "answerClassificationsChanged": false,
+    "directBriefsChanged": false,
+    "timingsPromotedToRound5Tables": false
+  },
   "round4DiscardedRuns": [
     {
       "kind": "one-query preflight",
