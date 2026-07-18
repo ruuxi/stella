@@ -1,4 +1,5 @@
 import path from "path";
+import { performance } from "node:perf_hooks";
 import { createFashionApi } from "./fashion-api.js";
 import { createToolHost } from "../tools/host.js";
 import { HookEmitter } from "../extensions/hook-emitter.js";
@@ -54,6 +55,7 @@ import type {
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import { BackgroundCompactionScheduler } from "../agent-runtime/compaction-scheduler.js";
 import { runRecall } from "../agent-runtime/context-lookup.js";
+import type { RecallTelemetrySeed } from "../agent-runtime/recall-telemetry.js";
 import {
   defaultPromptForAgentType,
   DEFAULT_MAX_AGENT_DEPTH,
@@ -566,24 +568,45 @@ export const createRunnerContext = ({
     },
     sourceImportApi,
     contextProvider: async (payload) => {
+      const recallStartedAtMs = performance.now();
       const agent = resolveAgent(context, AGENT_IDS.ORCHESTRATOR);
       const model = getConfiguredModel(context, AGENT_IDS.ORCHESTRATOR, agent);
       // Recall is a cheap internal utility pass — pin it to the light model
       // instead of riding the orchestrator's (expensive) configured model.
       // Falls back to the orchestrator pick for signed-out / pure-BYOK users.
+      const routeStartedAt = performance.now();
       const resolvedLlm = await resolveRunnerUtilityLlmRoute(
         context,
         AGENT_IDS.ORCHESTRATOR,
         model,
       );
+      const routeMs = performance.now() - routeStartedAt;
+      const sourceTimings: NonNullable<RecallTelemetrySeed["sourceTimings"]> =
+        {};
+      const hostContextStartedAt = performance.now();
+      const localEventsStartedAt = performance.now();
       const localEvents = context.listLocalChatEvents
         ? context
             .listLocalChatEvents(payload.conversationId, 800)
             .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type))
         : [];
+      sourceTimings["host.localEvents"] = {
+        kind: "sql",
+        calls: context.listLocalChatEvents ? 1 : 0,
+        ms: performance.now() - localEventsStartedAt,
+        chars: 0,
+      };
+      const appBrowserStartedAt = performance.now();
       const appBrowserContext = getAppBrowserContext
         ? await getAppBrowserContext()
         : undefined;
+      sourceTimings["host.appBrowserContext"] = {
+        kind: "host",
+        calls: getAppBrowserContext ? 1 : 0,
+        ms: performance.now() - appBrowserStartedAt,
+        chars: appBrowserContext ? JSON.stringify(appBrowserContext).length : 0,
+      };
+      const hostContextMs = performance.now() - hostContextStartedAt;
       return await runRecall({
         conversationId: payload.conversationId,
         lookupPrompt: payload.prompt,
@@ -596,6 +619,12 @@ export const createRunnerContext = ({
         localEvents,
         ...(appBrowserContext ? { appBrowserContext } : {}),
         resolvedLlm,
+        telemetry: {
+          startedAtMs: recallStartedAtMs,
+          routeMs,
+          hostContextMs,
+          sourceTimings,
+        },
         ...(payload.signal ? { signal: payload.signal } : {}),
       });
     },

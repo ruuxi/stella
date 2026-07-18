@@ -683,10 +683,26 @@ describe("runRecall", () => {
       .mockResolvedValueOnce(
         assistantText("The lake house wifi password is PINETREE42."),
       );
+    const telemetryRecords: Array<
+      Parameters<NonNullable<Parameters<typeof runRecall>[0]["onTelemetry"]>>[0]
+    > = [];
 
-    const out = await runRecall(
-      await makeRunArgs(rootPath, { searchTranscripts }),
-    );
+    const out = await runRecall({
+      ...(await makeRunArgs(rootPath, { searchTranscripts })),
+      telemetry: {
+        routeMs: 12.5,
+        hostContextMs: 3.25,
+        sourceTimings: {
+          "host.localEvents": {
+            kind: "sql",
+            calls: 1,
+            ms: 0.5,
+            chars: 0,
+          },
+        },
+      },
+      onTelemetry: (record) => telemetryRecords.push(record),
+    });
 
     expect(out).toBe("The lake house wifi password is PINETREE42.");
     expect(completions).toHaveBeenCalledTimes(2);
@@ -724,6 +740,33 @@ describe("runRecall", () => {
     expect((toolResult.content[0] as { text: string }).text).toContain(
       "PINETREE42",
     );
+    expect(telemetryRecords).toHaveLength(1);
+    expect(telemetryRecords[0]).toMatchObject({
+      version: 1,
+      conversationId: "conv-1",
+      outcome: "answer",
+      engine: "native",
+      modelId: "test-model",
+      routeMs: 12.5,
+      hostContextMs: 3.25,
+      modelCalls: 2,
+      toolRounds: 1,
+    });
+    expect(telemetryRecords[0]?.seedChars).toBeGreaterThan(0);
+    expect(telemetryRecords[0]?.seedSearchMs).toBeGreaterThanOrEqual(0);
+    expect(telemetryRecords[0]?.assemblyMs).toBeGreaterThanOrEqual(0);
+    expect(telemetryRecords[0]?.modelMs).toBeGreaterThanOrEqual(0);
+    expect(telemetryRecords[0]?.totalMs).toBeGreaterThanOrEqual(0);
+    expect(telemetryRecords[0]?.sourceTimings).toMatchObject({
+      "host.localEvents": { kind: "sql", calls: 1, ms: 0.5 },
+      "seed.memoryFiles": { kind: "file", calls: 1 },
+      "seed.memorySearch": { kind: "file", calls: 1 },
+      "seed.chronicleFiles": { kind: "file", calls: 1 },
+      "seed.threadSearch": { kind: "sql", calls: 1 },
+      "seed.transcriptSearch": { kind: "sql", calls: 1 },
+      "seed.liveThreadStatus": { kind: "sql", calls: 1 },
+      "tool.transcriptSearch": { kind: "sql", calls: 1 },
+    });
   });
 
   it("executes parallel tool calls from one turn and answers unknown tools with an error result", async () => {

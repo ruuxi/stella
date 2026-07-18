@@ -1,4 +1,5 @@
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 
 import type {
   AssistantMessage,
@@ -29,9 +30,16 @@ import {
   runtimeThreadLastActiveAt,
 } from "../runtime-threads.js";
 import {
+  getClaudeCodeAgentModelId,
   runClaudeCodeAgentTextCompletion,
   shouldUseClaudeCodeAgentRuntime,
 } from "../integrations/claude-code-agent-runtime.js";
+import {
+  RecallTelemetryCollector,
+  type RecallTelemetryRecord,
+  type RecallTelemetrySeed,
+  type RecallTelemetrySourceKind,
+} from "./recall-telemetry.js";
 
 const MAX_CONTEXT_OUTPUT_TOKENS = 1_500;
 const EAGER_MEMORY_FILE_CHAR_BUDGET = 4_000;
@@ -875,32 +883,73 @@ export const buildContextLookupUserPrompt = async (args: {
   store: ContextLookupStore;
   localEvents: LocalContextEvent[];
   appBrowserContext?: HostAppBrowserContextSnapshot;
+  telemetry?: RecallTelemetryCollector;
 }): Promise<string> => {
+  const timeSource = async (
+    name: string,
+    kind: RecallTelemetrySourceKind,
+    read: () => Promise<string> | string,
+  ): Promise<string> => {
+    const startedAt = performance.now();
+    let value = "";
+    try {
+      value = await read();
+      return value;
+    } finally {
+      args.telemetry?.addSource(
+        name,
+        kind,
+        performance.now() - startedAt,
+        value.length,
+      );
+    }
+  };
   const terms = normalizeMemorySearchTerms(args.searchTerms);
   const hasTerms = terms.length > 0;
   const seedQuery = terms.join(" ");
+  const seedSearchStartedAt = performance.now();
   const [memoryFiles, memorySearchResults, chronicleFiles] = await Promise.all([
-    readMemoryFiles(args.stellaDataDir, { hasSearchTerms: hasTerms }),
+    timeSource("seed.memoryFiles", "file", () =>
+      readMemoryFiles(args.stellaDataDir, { hasSearchTerms: hasTerms }),
+    ),
     hasTerms
-      ? readMemorySearchResults(args.stellaDataDir, terms)
-      : Promise.resolve(
-          "No search terms provided — the memory ledger above is the memory evidence; use search_memory for targeted lines.",
+      ? timeSource("seed.memorySearch", "file", () =>
+          readMemorySearchResults(args.stellaDataDir, terms),
+        )
+      : timeSource("seed.memorySearch", "file", () =>
+          Promise.resolve(
+            "No search terms provided — the memory ledger above is the memory evidence; use search_memory for targeted lines.",
+          ),
         ),
-    readChronicleFiles(args.stellaDataDir),
+    timeSource("seed.chronicleFiles", "file", () =>
+      readChronicleFiles(args.stellaDataDir),
+    ),
   ]);
-  const threadSearchResults = formatThreadSearchResults(
-    args.store,
-    args.conversationId,
-    hasTerms ? seedQuery : undefined,
+  const threadSearchResults = await timeSource("seed.threadSearch", "sql", () =>
+    formatThreadSearchResults(
+      args.store,
+      args.conversationId,
+      hasTerms ? seedQuery : undefined,
+    ),
   );
   const transcriptSearchResults = hasTerms
-    ? formatTranscriptSearchResults(args.store, args.conversationId, seedQuery)
+    ? await timeSource("seed.transcriptSearch", "sql", () =>
+        formatTranscriptSearchResults(
+          args.store,
+          args.conversationId,
+          seedQuery,
+        ),
+      )
     : "No search terms provided — use search_transcripts with concrete terms.";
-  const liveStatus = formatLiveThreadStatus(args.store);
+  const liveStatus = await timeSource("seed.liveThreadStatus", "sql", () =>
+    formatLiveThreadStatus(args.store),
+  );
+  args.telemetry?.setSeedSearchMs(performance.now() - seedSearchStartedAt);
 
   // Pre-seeded searches lead (they are the likeliest evidence), live/current
   // state follows, and the lookup request comes LAST so it sits closest to
   // the model's answer.
+  const assemblyStartedAt = performance.now();
   const sections = [
     "# Memory Files",
     memoryFiles,
@@ -938,7 +987,9 @@ export const buildContextLookupUserPrompt = async (args: {
     "# Lookup Request",
     truncate(args.lookupPrompt.trim(), 2_000),
   ];
-  return sections.join("\n");
+  const prompt = sections.join("\n");
+  args.telemetry?.addAssemblyMs(performance.now() - assemblyStartedAt);
+  return prompt;
 };
 
 type RecallSearchAction =
@@ -1008,8 +1059,24 @@ export const runRecall = async (args: {
   localEvents: LocalContextEvent[];
   appBrowserContext?: HostAppBrowserContextSnapshot;
   resolvedLlm: ResolvedLlmRoute;
+  telemetry?: RecallTelemetrySeed;
+  onTelemetry?: (record: RecallTelemetryRecord) => void;
   signal?: AbortSignal;
 }): Promise<string> => {
+  const telemetry = new RecallTelemetryCollector(args.telemetry);
+  let telemetryEmitted = false;
+  const emitTelemetry = (outcome: string): void => {
+    if (telemetryEmitted) return;
+    telemetryEmitted = true;
+    const record = telemetry.snapshot(args.conversationId, outcome);
+    logRecallTrace("[stella:recall:telemetry]", record);
+    try {
+      args.onTelemetry?.(record);
+    } catch {
+      // Observers are diagnostic-only and must never break Recall.
+    }
+  };
+
   // The Recall tool requires search terms; for callers that still omit
   // them, tokenizing the lookup prompt keeps the pre-seed useful.
   const seedTerms = normalizeMemorySearchTerms(
@@ -1017,17 +1084,25 @@ export const runRecall = async (args: {
       ? args.memorySearchTerms
       : tokenizeSearchQuery(args.lookupPrompt),
   );
-  const seed = await buildContextLookupUserPrompt({
-    conversationId: args.conversationId,
-    lookupPrompt: args.lookupPrompt,
-    searchTerms: seedTerms,
-    stellaDataDir: args.stellaDataDir,
-    store: args.store,
-    localEvents: args.localEvents,
-    ...(args.appBrowserContext
-      ? { appBrowserContext: args.appBrowserContext }
-      : {}),
-  });
+  let seed: string;
+  try {
+    seed = await buildContextLookupUserPrompt({
+      conversationId: args.conversationId,
+      lookupPrompt: args.lookupPrompt,
+      searchTerms: seedTerms,
+      stellaDataDir: args.stellaDataDir,
+      store: args.store,
+      localEvents: args.localEvents,
+      ...(args.appBrowserContext
+        ? { appBrowserContext: args.appBrowserContext }
+        : {}),
+      telemetry,
+    });
+  } catch (error) {
+    emitTelemetry("thrown");
+    throw error;
+  }
+  telemetry.setSeedChars(seed.length);
 
   // Engine preferences live in the data dir (`~/.stella/preferences.json`) —
   // same detection the one-shot completion path uses. When the Claude Code
@@ -1037,14 +1112,37 @@ export const runRecall = async (args: {
     stellaAppDir: args.stellaDataDir,
     modelId: args.resolvedLlm.model.id,
   });
+  telemetry.setRoute(
+    useClaudeCode ? "claude-code" : "native",
+    useClaudeCode
+      ? getClaudeCodeAgentModelId(
+          args.stellaAppDir,
+          args.resolvedLlm.model.id,
+          AGENT_IDS.ORCHESTRATOR,
+        )
+      : args.resolvedLlm.model.id,
+  );
+  const verbose = recallTraceVerbose();
+  const finish = (outcome: string, brief: string): string => {
+    logRecallTrace("[stella:recall:answer]", {
+      conversationId: args.conversationId,
+      outcome,
+      briefChars: brief.length,
+      ...(verbose ? { briefPreview: previewForTrace(brief) } : {}),
+    });
+    emitTelemetry(outcome);
+    return brief;
+  };
   const apiKey = useClaudeCode
     ? undefined
     : (await args.resolvedLlm.getApiKey())?.trim();
   if (!useClaudeCode && !apiKey) {
-    return "Recall is unavailable because no model credential is configured.";
+    return finish(
+      "credential-unavailable",
+      "Recall is unavailable because no model credential is configured.",
+    );
   }
 
-  const verbose = recallTraceVerbose();
   /** Model-INITIATED searches only — the pre-seeded seed round doesn't count. */
   let ranSearch = false;
   let searchStep = 0;
@@ -1053,22 +1151,33 @@ export const runRecall = async (args: {
     action: RecallSearchAction,
   ): Promise<string> => {
     ranSearch = true;
-    const observation =
-      action.kind === "search_memory"
-        ? await readMemorySearchResults(args.stellaDataDir, action.terms)
-        : action.kind === "search_transcripts"
-          ? formatTranscriptSearchResults(
-              args.store,
-              args.conversationId,
-              action.query,
-              action.limit,
-            )
-          : formatThreadSearchResults(
-              args.store,
-              args.conversationId,
-              action.query,
-              action.limit,
-            );
+    const sourceStartedAt = performance.now();
+    let observation = "";
+    try {
+      observation =
+        action.kind === "search_memory"
+          ? await readMemorySearchResults(args.stellaDataDir, action.terms)
+          : action.kind === "search_transcripts"
+            ? formatTranscriptSearchResults(
+                args.store,
+                args.conversationId,
+                action.query,
+                action.limit,
+              )
+            : formatThreadSearchResults(
+                args.store,
+                args.conversationId,
+                action.query,
+                action.limit,
+              );
+    } finally {
+      telemetry.addSource(
+        `tool.${action.kind === "search_memory" ? "memorySearch" : action.kind === "search_transcripts" ? "transcriptSearch" : "threadSearch"}`,
+        action.kind === "search_memory" ? "file" : "sql",
+        performance.now() - sourceStartedAt,
+        observation.length,
+      );
+    }
     logRecallTrace("[stella:recall:step]", {
       conversationId: args.conversationId,
       step: searchStep++,
@@ -1117,14 +1226,19 @@ export const runRecall = async (args: {
       ? { promptPreview: previewForTrace(args.lookupPrompt, 200) }
       : {}),
   });
-  const finish = (outcome: string, brief: string): string => {
-    logRecallTrace("[stella:recall:answer]", {
-      conversationId: args.conversationId,
-      outcome,
-      briefChars: brief.length,
-      ...(verbose ? { briefPreview: previewForTrace(brief) } : {}),
-    });
-    return brief;
+
+  const runModelCall = async <T>(call: () => Promise<T>): Promise<T> => {
+    const startedAt = performance.now();
+    let failed = false;
+    try {
+      return await call();
+    } catch (error) {
+      failed = true;
+      throw error;
+    } finally {
+      telemetry.addModelCall(performance.now() - startedAt);
+      if (failed) emitTelemetry("thrown");
+    }
   };
 
   const isNothingFoundBrief = (brief: string): boolean =>
@@ -1154,16 +1268,20 @@ export const runRecall = async (args: {
         messages,
       };
       const text = (
-        await runClaudeCodeAgentTextCompletion({
-          stellaAppDir: args.stellaAppDir,
-          agentType: AGENT_IDS.ORCHESTRATOR,
-          stellaModel: args.resolvedLlm.model.id,
-          effortLevel: "low",
-          context,
-          abortSignal: args.signal,
-          executeTool: async (_toolCallId, toolName, toolArgs) =>
-            executeRecallToolCall(toolName, toolArgs),
-        })
+        await runModelCall(() =>
+          runClaudeCodeAgentTextCompletion({
+            stellaAppDir: args.stellaAppDir,
+            agentType: AGENT_IDS.ORCHESTRATOR,
+            stellaModel: args.resolvedLlm.model.id,
+            effortLevel: "low",
+            context,
+            abortSignal: args.signal,
+            executeTool: async (_toolCallId, toolName, toolArgs) => {
+              telemetry.addToolRound();
+              return executeRecallToolCall(toolName, toolArgs);
+            },
+          }),
+        )
       ).trim();
       if (attempt === 0 && text && isNothingFoundBrief(text) && !ranSearch) {
         logRecallTrace("[stella:recall:step]", {
@@ -1194,23 +1312,25 @@ export const runRecall = async (args: {
   // covers the seed and every earlier round on each subsequent step.
   const messages: Message[] = [userMessage(seed)];
   const complete = async (): Promise<AssistantMessage> =>
-    completeSimple(
-      args.resolvedLlm.model,
-      {
-        systemPrompt: RECALL_SYSTEM_PROMPT,
-        tools: RECALL_RUNTIME_TOOLS,
-        messages,
-      },
-      {
-        apiKey: apiKey as string,
-        reasoning: "low",
-        ...(args.resolvedLlm.refreshApiKey
-          ? { refreshApiKey: args.resolvedLlm.refreshApiKey }
-          : {}),
-        maxTokens: MAX_CONTEXT_OUTPUT_TOKENS,
-        temperature: 0,
-        ...(args.signal ? { signal: args.signal } : {}),
-      },
+    runModelCall(() =>
+      completeSimple(
+        args.resolvedLlm.model,
+        {
+          systemPrompt: RECALL_SYSTEM_PROMPT,
+          tools: RECALL_RUNTIME_TOOLS,
+          messages,
+        },
+        {
+          apiKey: apiKey as string,
+          reasoning: "low",
+          ...(args.resolvedLlm.refreshApiKey
+            ? { refreshApiKey: args.resolvedLlm.refreshApiKey }
+            : {}),
+          maxTokens: MAX_CONTEXT_OUTPUT_TOKENS,
+          temperature: 0,
+          ...(args.signal ? { signal: args.signal } : {}),
+        },
+      ),
     );
 
   // Transport failures (the relay dropping a stream) surface as stopReason
@@ -1333,6 +1453,7 @@ export const runRecall = async (args: {
       );
     }
     toolRounds += 1;
+    telemetry.addToolRound();
     // Parallel tool calls in one turn run concurrently against the store.
     const results = await Promise.all(
       toolCalls.map(async (call) => {
