@@ -130,6 +130,20 @@ const restartedSnapshot: RuntimeModelCatalogSnapshot = {
   refreshedAt: 202,
 };
 
+const equalRevisionEmptySnapshot: RuntimeModelCatalogSnapshot = {
+  revision: recoveredSnapshot.revision,
+  models: [],
+  runtimeManagedProviders: [],
+  refreshedAt: recoveredSnapshot.refreshedAt,
+};
+
+const lowerRevisionSnapshot: RuntimeModelCatalogSnapshot = {
+  revision: recoveredSnapshot.revision - 1,
+  models: [runtimeModel("openai-codex", "gpt-lower-stale", "GPT Lower Stale")],
+  runtimeManagedProviders: [],
+  refreshedAt: 100,
+};
+
 const settle = async () => {
   for (let index = 0; index < 8; index += 1) {
     await act(async () => {
@@ -251,5 +265,108 @@ describe("AgentModelPicker catalog recovery", () => {
     );
     expect(container.textContent).toContain("GPT-5.5");
     expect(container.querySelector('button[aria-label="Groq"]')).not.toBeNull();
+  });
+
+  it("clears a reattachment error at the same revision while retaining models and ignoring a lower revision", async () => {
+    let availabilityListener:
+      | ((snapshot: { connected: boolean; ready: boolean }) => void)
+      | undefined;
+    const notReady = () =>
+      new Error("Stella runtime model catalog is not ready.");
+    const listLlmModels = vi
+      .fn()
+      .mockResolvedValueOnce(recoveredSnapshot)
+      .mockRejectedValueOnce(notReady())
+      .mockResolvedValueOnce(equalRevisionEmptySnapshot)
+      .mockRejectedValueOnce(notReady())
+      .mockResolvedValueOnce(lowerRevisionSnapshot);
+    const listCodexModels = vi.fn(async () => ({
+      models: [
+        { id: "gpt-5.6-sol", hidden: false },
+        { id: "gpt-lower-stale", hidden: false },
+      ],
+    }));
+    (window as unknown as { electronAPI: unknown }).electronAPI = {
+      agent: {
+        onAvailability: vi.fn(
+          (listener: NonNullable<typeof availabilityListener>) => {
+            availabilityListener = listener;
+            return () => {};
+          },
+        ),
+      },
+      system: {
+        getLocalModelPreferences: vi.fn(async () => ({ ...preferences })),
+        setLocalModelPreferences: vi.fn(
+          async (patch: Record<string, unknown>) => ({
+            ...preferences,
+            ...patch,
+          }),
+        ),
+        listCodexModels,
+        listClaudeCodeModels: vi.fn(async () => ({ models: [] })),
+        listLlmModels,
+        onLlmModelsUpdated: vi.fn(() => () => {}),
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ data: [], defaults: [] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+
+    const { AgentModelPicker } =
+      await import("@/global/settings/AgentModelPicker");
+    await act(async () => {
+      root.render(<AgentModelPicker />);
+    });
+    await settle();
+    expect(container.textContent).toContain("GPT-5.6 Sol");
+
+    let refresh = container.querySelector(
+      'button[aria-label="Refresh model catalog"]',
+    ) as HTMLButtonElement | null;
+    expect(refresh).not.toBeNull();
+    act(() => availabilityListener?.({ connected: false, ready: false }));
+    await act(async () => refresh?.click());
+    await settle();
+    expect(container.textContent).toContain(notReady().message);
+    expect(container.textContent).toContain("GPT-5.6 Sol");
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<AgentModelPicker />);
+    });
+    await settle();
+    expect(listLlmModels).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain(notReady().message);
+    expect(container.textContent).toContain("GPT-5.6 Sol");
+
+    act(() => availabilityListener?.({ connected: true, ready: true }));
+    await settle();
+    expect(listLlmModels).toHaveBeenCalledTimes(3);
+    expect(container.textContent).not.toContain(notReady().message);
+    expect(container.textContent).toContain("GPT-5.6 Sol");
+
+    refresh = container.querySelector(
+      'button[aria-label="Refresh model catalog"]',
+    ) as HTMLButtonElement | null;
+    act(() => availabilityListener?.({ connected: false, ready: false }));
+    await act(async () => refresh?.click());
+    await settle();
+    expect(container.textContent).toContain(notReady().message);
+
+    act(() => availabilityListener?.({ connected: true, ready: true }));
+    await settle();
+    expect(listLlmModels).toHaveBeenCalledTimes(5);
+    expect(container.textContent).toContain(notReady().message);
+    expect(container.textContent).toContain("GPT-5.6 Sol");
+    expect(container.textContent).not.toContain("GPT Lower Stale");
   });
 });

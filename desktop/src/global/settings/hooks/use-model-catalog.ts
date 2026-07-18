@@ -107,7 +107,7 @@ const managedGatewayStore = createResourceStore<
   ManagedRuntimeCatalogPayload
 >({
   staleMs: MODEL_CATALOG_REFRESH_INTERVAL_MS,
-  accept: (next, current) => next.revision > current.revision,
+  compare: (next, current) => next.revision - current.revision,
   fetcher: (_key, context) => fetchManagedRuntimeCatalog(context.force),
 });
 

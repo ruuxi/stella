@@ -43,10 +43,19 @@ export function createResourceStore<K extends string, T>(opts: {
   fetcher: (key: K, context: { force: boolean }) => Promise<T>;
   staleMs?: number;
   accept?: (next: T, current: T) => boolean;
+  /**
+   * Revision/order comparator for stores that reconcile external snapshots.
+   * Newer values replace current data, equivalent values retain current data
+   * while clearing stale errors, and older values are ignored.
+   */
+  compare?: (next: T, current: T) => number;
 }): ResourceStore<K, T> {
   const entries = new Map<K, ResourceEntry<T>>();
   const inFlight = new Map<K, Promise<T>>();
   const listeners = new Map<K, Set<() => void>>();
+  // Successful equal/newer reconciliations must also fence failures from
+  // requests that began earlier, without canceling a possible newer result.
+  const reconciliations = new Map<K, number>();
   // Per-key generation counter. Bumped by `set`, `invalidate`, and each
   // forced fetch so that an in-flight fetch which started under an older
   // generation drops its result instead of clobbering newer state.
@@ -56,6 +65,12 @@ export function createResourceStore<K extends string, T>(opts: {
   const bumpGeneration = (key: K): number => {
     const next = getGeneration(key) + 1;
     generations.set(key, next);
+    return next;
+  };
+  const getReconciliation = (key: K): number => reconciliations.get(key) ?? 0;
+  const bumpReconciliation = (key: K): number => {
+    const next = getReconciliation(key) + 1;
+    reconciliations.set(key, next);
     return next;
   };
 
@@ -80,8 +95,19 @@ export function createResourceStore<K extends string, T>(opts: {
     return Date.now() - entry.fetchedAt < opts.staleMs;
   };
 
-  const shouldAccept = (next: T, current: T | undefined): boolean =>
-    current === undefined || opts.accept === undefined || opts.accept(next, current);
+  const reconcile = (
+    next: T,
+    current: T | undefined,
+  ): "replace" | "retain" | "ignore" => {
+    if (current === undefined) return "replace";
+    if (opts.compare) {
+      const order = opts.compare(next, current);
+      return order > 0 ? "replace" : order === 0 ? "retain" : "ignore";
+    }
+    return opts.accept === undefined || opts.accept(next, current)
+      ? "replace"
+      : "ignore";
+  };
 
   const ensure: ResourceStore<K, T>["ensure"] = (key, options) => {
     const entry = getEntry(key);
@@ -95,6 +121,7 @@ export function createResourceStore<K extends string, T>(opts: {
     // written by `set`/`invalidate`); capture the generation this fetch
     // owns so late-settling stale fetches can be dropped below.
     const generation = options?.force ? bumpGeneration(key) : getGeneration(key);
+    const reconciliationAtStart = getReconciliation(key);
 
     setEntry(key, { isFetching: true });
     const promise = (async () => {
@@ -103,25 +130,37 @@ export function createResourceStore<K extends string, T>(opts: {
           force: options?.force === true,
         });
         if (getGeneration(key) === generation) {
-          const current = getEntry(key).data;
-          setEntry(
-            key,
-            shouldAccept(data, current)
-              ? {
-                  data,
-                  error: null,
-                  fetchedAt: Date.now(),
-                  isFetching: false,
-                }
-              : { error: null, isFetching: false },
-          );
+          const decision = reconcile(data, getEntry(key).data);
+          if (decision === "replace") {
+            bumpReconciliation(key);
+            setEntry(key, {
+              data,
+              error: null,
+              fetchedAt: Date.now(),
+              isFetching: false,
+            });
+          } else if (decision === "retain") {
+            bumpReconciliation(key);
+            setEntry(key, {
+              error: null,
+              fetchedAt: Date.now(),
+              isFetching: false,
+            });
+          } else {
+            setEntry(key, { isFetching: false });
+          }
         }
         return data;
       } catch (caught) {
         const error =
           caught instanceof Error ? caught : new Error(String(caught));
         if (getGeneration(key) === generation) {
-          setEntry(key, { error, isFetching: false });
+          setEntry(
+            key,
+            getReconciliation(key) === reconciliationAtStart
+              ? { error, isFetching: false }
+              : { isFetching: false },
+          );
         }
         throw error;
       }
@@ -146,6 +185,7 @@ export function createResourceStore<K extends string, T>(opts: {
       // Supersede any in-flight fetch so its late result can't clobber
       // this just-written value.
       bumpGeneration(key);
+      bumpReconciliation(key);
       setEntry(key, {
         data,
         error: null,
@@ -154,12 +194,13 @@ export function createResourceStore<K extends string, T>(opts: {
       });
     },
     push(key, data) {
-      const current = getEntry(key).data;
-      if (!shouldAccept(data, current)) return;
+      const decision = reconcile(data, getEntry(key).data);
+      if (decision === "ignore") return;
       // External updates do not supersede an in-flight fetch. The fetch's
       // eventual response is compared against this value before it commits.
+      bumpReconciliation(key);
       setEntry(key, {
-        data,
+        ...(decision === "replace" ? { data } : {}),
         error: null,
         fetchedAt: Date.now(),
       });
@@ -170,8 +211,10 @@ export function createResourceStore<K extends string, T>(opts: {
           ...entries.keys(),
           ...inFlight.keys(),
           ...generations.keys(),
+          ...reconciliations.keys(),
         ]);
         entries.clear();
+        reconciliations.clear();
         for (const k of keys) {
           bumpGeneration(k);
           notify(k);
@@ -180,6 +223,7 @@ export function createResourceStore<K extends string, T>(opts: {
       }
       bumpGeneration(key);
       entries.delete(key);
+      reconciliations.delete(key);
       notify(key);
     },
     subscribe(key, listener) {
