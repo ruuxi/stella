@@ -301,6 +301,42 @@ export const setExternalEngineSessionId = (args: {
   );
 };
 
+/**
+ * The delivered watermark is engine-namespaced exactly like the session id:
+ * each engine's CLI transcript only contains what THAT engine was prompted
+ * with, so a Claude→Codex takeover must not inherit Claude's watermark —
+ * Codex never receives a full-history reseed, and the delta is its only
+ * channel for out-of-band rows. A mismatched (or legacy un-namespaced)
+ * value reads as undefined, so the new engine's first turn delivers
+ * everything it has not seen.
+ */
+export const getExternalDeliveredEntryId = (args: {
+  store: BaseRunOptions["store"];
+  threadKey: string;
+  engine: ExternalEngineSessionKind;
+}): string | undefined => {
+  const raw = args.store.getThreadExternalDeliveredEntryId(args.threadKey);
+  if (!raw) return undefined;
+  const expectedPrefix = `${args.engine}:`;
+  if (raw.startsWith(expectedPrefix)) {
+    const entryId = raw.slice(expectedPrefix.length).trim();
+    return entryId || undefined;
+  }
+  return undefined;
+};
+
+export const setExternalDeliveredEntryId = (args: {
+  store: BaseRunOptions["store"];
+  threadKey: string;
+  engine: ExternalEngineSessionKind;
+  entryId: string;
+}) => {
+  args.store.setThreadExternalDeliveredEntryId(
+    args.threadKey,
+    `${args.engine}:${args.entryId}`,
+  );
+};
+
 const persistExternalPromptMessages = (
   opts: BaseRunOptions,
   threadKey: string,
@@ -478,20 +514,36 @@ export type ExternalThreadUpdatesDelta = {
  * persisted after `afterEntryId` (the delivered watermark), keeping resumed
  * prompts small instead of re-sending the whole history each turn.
  *
+ * Candidates are scanned from the RAW entry log, not the compaction-overlaid
+ * projection: a compaction checkpoint folds a range into one summary row, and
+ * an undelivered report inside that range would otherwise stop being a
+ * candidate while newer surviving rows advance the watermark past it —
+ * silently dropping it for engines that never re-read Stella history. The
+ * watermark bounds the scan, so raw reads stay small and deliver-once.
+ *
  * Rows whose text is already present verbatim in this turn's prompt messages
  * (e.g. an orchestrator's in-memory follow-up delivery of the same report)
- * are counted as delivered but omitted from the block. A watermark that no
- * longer resolves to a surviving row was folded into a compaction
- * checkpoint; every surviving out-of-band row is newer, so all are sent.
+ * or contained in a `deliveredContextTexts` block that rides in the SAME
+ * prompt (the full-history block on session-creating turns) are counted as
+ * delivered but omitted from the block. The caller must guarantee that the
+ * returned message is included in every prompt variant actually sent —
+ * including resume-fallback reseeds — because `lastEntryId` becomes the
+ * delivered watermark on turn success.
  */
 export const buildExternalThreadUpdatesDelta = (args: {
   store: BaseRunOptions["store"];
   threadKey: string;
   afterEntryId?: string;
   promptMessages: RuntimePromptMessage[];
+  /**
+   * Texts of context blocks included in the same prompt as the delta (e.g.
+   * the full Stella-history block). Rows already contained in one of them
+   * are delivered by that block, not re-injected.
+   */
+  deliveredContextTexts?: string[];
 }): ExternalThreadUpdatesDelta => {
   const candidates = args.store
-    .loadThreadMessagesWithEntryTypes(args.threadKey)
+    .loadRawThreadMessagesWithEntryTypes(args.threadKey)
     .filter(
       (row) =>
         row.sourceEntryType === "custom_message" &&
@@ -516,10 +568,14 @@ export const buildExternalThreadUpdatesDelta = (args: {
       .map((message) => message.text.trim())
       .filter((text) => text.length > 0),
   );
+  const contextTexts = (args.deliveredContextTexts ?? []).filter(
+    (text) => text.trim().length > 0,
+  );
   const lines = undelivered
     .flatMap((row) => {
       const text = row.content.trim();
       if (!text || promptTexts.has(text)) return [];
+      if (contextTexts.some((context) => context.includes(text))) return [];
       return [{ customType: row.customMessage!.customType, text }];
     })
     .map(
@@ -557,11 +613,17 @@ export const buildExternalThreadUpdatesDelta = (args: {
  * "Compacting context" loop). A lost or looping session still reseeds from
  * the checkpoint-style history through `resumeFallbackPrompt`.
  *
- * Resumed turns instead carry `deltaPromptMessage` — the out-of-band rows
- * (managed-child reports, task updates) the resumed CLI transcript cannot
- * contain (see `buildExternalThreadUpdatesDelta`). The fallback prompt stays
- * delta-free: it already embeds the full Stella history, which includes any
- * row persisted before this run started.
+ * Every variant additionally carries `deltaPromptMessage` — the out-of-band
+ * rows (managed-child reports, task updates) not covered by the other blocks
+ * (see `buildExternalThreadUpdatesDelta`). The history block is built from a
+ * snapshot taken at run-context construction, so a report that lands in the
+ * store during that async window is missing from it; the delta (computed
+ * against the live store, deduplicated against the history text) is what
+ * delivers it. Because a lost resume or compaction loop replaces the main
+ * prompt with `resumeFallbackPrompt` (possibly embedded in a reconciliation
+ * prompt), the fallback must carry the delta too — the delivered watermark
+ * advances past these rows on success, so they must be present no matter
+ * which prompt variant was actually sent.
  */
 export const buildClaudeCodeTurnPrompts = (args: {
   historyPromptMessage: RuntimePromptMessage | null;
@@ -572,6 +634,7 @@ export const buildClaudeCodeTurnPrompts = (args: {
   const historyPrefixedPrompt = args.historyPromptMessage
     ? buildClaudePromptFromMessages([
         args.historyPromptMessage,
+        ...(args.deltaPromptMessage ? [args.deltaPromptMessage] : []),
         ...args.promptMessages,
       ])
     : undefined;
@@ -866,12 +929,17 @@ const runClaudeHostedTurn = async (args: {
     promptMessages: args.promptMessages,
   });
   // Out-of-band rows (managed-child reports, task updates) persisted since
-  // the last turn this engine saw. Injected only on resumed turns — a
-  // session-creating turn already carries them inside the full history block
-  // — but the watermark advances either way so the first resumed turn does
-  // not re-send rows the session was seeded with.
-  const initialDeliveredEntryId =
-    args.opts.store.getThreadExternalDeliveredEntryId(threadKey);
+  // the last turn THIS engine saw, injected into every prompt variant. On
+  // session-creating turns the delta is deduplicated against the full
+  // history block sent alongside it: the history snapshot predates this run,
+  // so a report that landed during context construction is only in the
+  // delta. The watermark may only advance past rows present in the sent
+  // prompt, which this arrangement guarantees by construction.
+  const initialDeliveredEntryId = getExternalDeliveredEntryId({
+    store: args.opts.store,
+    threadKey,
+    engine: sessionEngine,
+  });
   const threadUpdatesDelta = buildExternalThreadUpdatesDelta({
     store: args.opts.store,
     threadKey,
@@ -879,6 +947,9 @@ const runClaudeHostedTurn = async (args: {
       ? { afterEntryId: initialDeliveredEntryId }
       : {}),
     promptMessages: args.promptMessages,
+    ...(!persistedSessionId && historyPromptMessage
+      ? { deliveredContextTexts: [historyPromptMessage.text] }
+      : {}),
   });
   let deliveredEntryWatermark =
     threadUpdatesDelta.lastEntryId ?? initialDeliveredEntryId;
@@ -886,7 +957,7 @@ const runClaudeHostedTurn = async (args: {
     historyPromptMessage,
     promptMessages: args.promptMessages,
     hasPersistedSession: Boolean(persistedSessionId),
-    deltaPromptMessage: persistedSessionId ? threadUpdatesDelta.message : null,
+    deltaPromptMessage: threadUpdatesDelta.message,
   });
   const claudeCodeEffortLevel = getClaudeCodeRuntimeEffortLevel(
     args.opts.stellaAppDir,
@@ -961,7 +1032,9 @@ const runClaudeHostedTurn = async (args: {
     });
     // Out-of-band rows persisted while this turn was running (e.g. a child
     // completing mid-turn) — delivered from the in-turn watermark so nothing
-    // sent by the main prompt repeats.
+    // sent by the main prompt repeats. Included in the queued fallback
+    // prompt too (via buildClaudeCodeTurnPrompts), so a reseed mid-queue
+    // still carries them.
     const queuedThreadUpdatesDelta = buildExternalThreadUpdatesDelta({
       store: args.opts.store,
       threadKey,
@@ -1044,10 +1117,12 @@ const runClaudeHostedTurn = async (args: {
     deliveredEntryWatermark &&
     deliveredEntryWatermark !== initialDeliveredEntryId
   ) {
-    args.opts.store.setThreadExternalDeliveredEntryId(
+    setExternalDeliveredEntryId({
+      store: args.opts.store,
       threadKey,
-      deliveredEntryWatermark,
-    );
+      engine: sessionEngine,
+      entryId: deliveredEntryWatermark,
+    });
   }
 
   return {
@@ -1276,9 +1351,15 @@ const runCodexHostedTurn = async (args: {
   };
   // Codex never receives the full Stella-history block, so the out-of-band
   // delta (managed-child reports, task updates) is injected on every turn —
-  // first and resumed alike — keyed off the delivered watermark.
-  const initialDeliveredEntryId =
-    args.opts.store.getThreadExternalDeliveredEntryId(threadKey);
+  // first and resumed alike — keyed off the codex-scoped delivered
+  // watermark. An engine takeover reads no watermark (different namespace),
+  // so the first Codex turn delivers every row the Codex session has never
+  // seen, including reports previously delivered only to Claude.
+  const initialDeliveredEntryId = getExternalDeliveredEntryId({
+    store: args.opts.store,
+    threadKey,
+    engine: "codex_cli",
+  });
   const threadUpdatesDelta = buildExternalThreadUpdatesDelta({
     store: args.opts.store,
     threadKey,
@@ -1439,10 +1520,12 @@ const runCodexHostedTurn = async (args: {
     deliveredEntryWatermark &&
     deliveredEntryWatermark !== initialDeliveredEntryId
   ) {
-    args.opts.store.setThreadExternalDeliveredEntryId(
+    setExternalDeliveredEntryId({
+      store: args.opts.store,
       threadKey,
-      deliveredEntryWatermark,
-    );
+      engine: "codex_cli",
+      entryId: deliveredEntryWatermark,
+    });
   }
 
   return {

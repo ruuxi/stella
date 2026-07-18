@@ -4445,8 +4445,12 @@ export class SessionStore {
    * seen. External engines resume from their own CLI transcript instead of
    * re-reading the Stella thread, so rows appended by the orchestration layer
    * after the engine's last turn are injected as a delta keyed off this value
-   * (see external-engines delta injection). Unused by the Pi engine, whose
-   * history refresh already re-reads the thread.
+   * (see external-engines delta injection). Like `external_session_id`, the
+   * stored value is engine-namespaced (`<engine>:<entryId>`) by the
+   * external-engines helpers — each engine transcript has its own delivery
+   * state, so an engine takeover must not inherit the previous engine's
+   * watermark. Unused by the Pi engine, whose history refresh already
+   * re-reads the thread.
    */
   getThreadExternalDeliveredEntryId(threadKey: string): string | undefined {
     this.ensureImplicitThreadRow(threadKey);
