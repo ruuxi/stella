@@ -572,12 +572,20 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       last_used_at INTEGER NOT NULL,
       summary TEXT,
       external_session_id TEXT,
+      external_delivered_entry_id TEXT,
       group_key TEXT,
       group_label TEXT
     );
   `);
   try {
     db.exec("ALTER TABLE runtime_threads ADD COLUMN external_session_id TEXT;");
+  } catch {
+    // Column already exists.
+  }
+  try {
+    db.exec(
+      "ALTER TABLE runtime_threads ADD COLUMN external_delivered_entry_id TEXT;",
+    );
   } catch {
     // Column already exists.
   }

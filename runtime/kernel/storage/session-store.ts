@@ -4438,6 +4438,54 @@ export class SessionStore {
       .run(normalized, Date.now(), threadKey);
   }
 
+  /**
+   * Watermark for out-of-band runtime rows already delivered to this thread's
+   * external engine session: the entry id of the newest custom row (e.g.
+   * `runtime.task_lifecycle` managed-child reports) the external engine has
+   * seen. External engines resume from their own CLI transcript instead of
+   * re-reading the Stella thread, so rows appended by the orchestration layer
+   * after the engine's last turn are injected as a delta keyed off this value
+   * (see external-engines delta injection). Unused by the Pi engine, whose
+   * history refresh already re-reads the thread.
+   */
+  getThreadExternalDeliveredEntryId(threadKey: string): string | undefined {
+    this.ensureImplicitThreadRow(threadKey);
+    const row = this.db
+      .prepare(
+        `
+      SELECT external_delivered_entry_id AS externalDeliveredEntryId
+      FROM runtime_threads
+      WHERE thread_key = ?
+      LIMIT 1
+    `,
+      )
+      .get(threadKey) as { externalDeliveredEntryId?: unknown } | undefined;
+    return typeof row?.externalDeliveredEntryId === "string" &&
+      row.externalDeliveredEntryId.trim().length > 0
+      ? row.externalDeliveredEntryId.trim()
+      : undefined;
+  }
+
+  setThreadExternalDeliveredEntryId(
+    threadKey: string,
+    entryId: string | null | undefined,
+  ): void {
+    this.ensureImplicitThreadRow(threadKey);
+    const normalized =
+      typeof entryId === "string" && entryId.trim().length > 0
+        ? entryId.trim()
+        : null;
+    this.db
+      .prepare(
+        `
+      UPDATE runtime_threads
+      SET external_delivered_entry_id = ?
+      WHERE thread_key = ?
+    `,
+      )
+      .run(normalized, threadKey);
+  }
+
   updateThreadSummary(threadKey: string, summary: string): void {
     const trimmed = summary.trim();
     if (!trimmed) return;

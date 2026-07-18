@@ -443,6 +443,108 @@ export const buildExternalStellaHistoryPromptMessage = (args: {
 };
 
 /**
+ * Out-of-band rows the orchestration layer appends to a thread without going
+ * through the engine's own turn loop — managed-child terminal reports and
+ * interim task updates (see runner/agent-orchestration.ts). The Pi engine
+ * picks these up through its history refresh; external engines resume from
+ * their own CLI transcript, so these rows must be injected explicitly.
+ */
+const EXTERNAL_DELTA_CUSTOM_TYPES: ReadonlySet<string> = new Set([
+  "runtime.task_lifecycle",
+  "runtime.task_update",
+]);
+
+export type ExternalThreadUpdatesDelta = {
+  /** Hidden prompt message carrying the undelivered rows, or null. */
+  message: RuntimePromptMessage | null;
+  /**
+   * Entry id of the newest out-of-band row observed while building the delta
+   * (whether injected or deduplicated against this turn's prompt messages).
+   * Persist it as the delivered watermark once the turn succeeds; null when
+   * the thread has no out-of-band rows at all.
+   */
+  lastEntryId: string | null;
+};
+
+/**
+ * Build the delta of out-of-band runtime rows an external engine session has
+ * not seen yet.
+ *
+ * The full Stella-history block is only sent on session-creating turns (see
+ * `buildClaudeCodeTurnPrompts`); resumed turns rely on the CLI transcript,
+ * which never contains rows written out-of-band by the orchestration layer —
+ * e.g. a manager's `runtime.task_lifecycle` child reports, whose wake prompt
+ * is deliberately a content-free stub. This delta carries exactly those rows
+ * persisted after `afterEntryId` (the delivered watermark), keeping resumed
+ * prompts small instead of re-sending the whole history each turn.
+ *
+ * Rows whose text is already present verbatim in this turn's prompt messages
+ * (e.g. an orchestrator's in-memory follow-up delivery of the same report)
+ * are counted as delivered but omitted from the block. A watermark that no
+ * longer resolves to a surviving row was folded into a compaction
+ * checkpoint; every surviving out-of-band row is newer, so all are sent.
+ */
+export const buildExternalThreadUpdatesDelta = (args: {
+  store: BaseRunOptions["store"];
+  threadKey: string;
+  afterEntryId?: string;
+  promptMessages: RuntimePromptMessage[];
+}): ExternalThreadUpdatesDelta => {
+  const candidates = args.store
+    .loadThreadMessagesWithEntryTypes(args.threadKey)
+    .filter(
+      (row) =>
+        row.sourceEntryType === "custom_message" &&
+        typeof row.entryId === "string" &&
+        row.entryId.length > 0 &&
+        row.customMessage !== undefined &&
+        EXTERNAL_DELTA_CUSTOM_TYPES.has(row.customMessage.customType),
+    );
+  if (candidates.length === 0) {
+    return { message: null, lastEntryId: null };
+  }
+  const lastEntryId = candidates[candidates.length - 1]?.entryId ?? null;
+  const afterIndex = args.afterEntryId
+    ? candidates.findIndex((row) => row.entryId === args.afterEntryId)
+    : -1;
+  const undelivered = candidates.slice(afterIndex + 1);
+  if (undelivered.length === 0) {
+    return { message: null, lastEntryId };
+  }
+  const promptTexts = new Set(
+    args.promptMessages
+      .map((message) => message.text.trim())
+      .filter((text) => text.length > 0),
+  );
+  const lines = undelivered
+    .flatMap((row) => {
+      const text = row.content.trim();
+      if (!text || promptTexts.has(text)) return [];
+      return [{ customType: row.customMessage!.customType, text }];
+    })
+    .map(
+      (row, index) =>
+        `<thread_update index="${index + 1}" customType="${row.customType}">\n${row.text}\n</thread_update>`,
+    );
+  if (lines.length === 0) {
+    return { message: null, lastEntryId };
+  }
+  return {
+    message: {
+      messageType: "message",
+      uiVisibility: "hidden",
+      customType: "runtime.stella_thread_updates",
+      text: [
+        '<stella_thread_updates source="stella" note="Runtime events (managed-agent reports and task updates) persisted to this Stella thread since your previous turn. They are not in your session transcript; treat them as delivered context.">',
+        ...lines,
+        "</stella_thread_updates>",
+      ].join("\n"),
+    },
+    lastEntryId,
+  };
+};
+
+/**
  * Build the per-turn Claude Code prompt pair.
  *
  * The stored Stella history (already checkpoint-compacted by
@@ -454,11 +556,18 @@ export const buildExternalStellaHistoryPromptMessage = (args: {
  * until Claude Code's own auto-compaction fires on every turn (an endless
  * "Compacting context" loop). A lost or looping session still reseeds from
  * the checkpoint-style history through `resumeFallbackPrompt`.
+ *
+ * Resumed turns instead carry `deltaPromptMessage` — the out-of-band rows
+ * (managed-child reports, task updates) the resumed CLI transcript cannot
+ * contain (see `buildExternalThreadUpdatesDelta`). The fallback prompt stays
+ * delta-free: it already embeds the full Stella history, which includes any
+ * row persisted before this run started.
  */
 export const buildClaudeCodeTurnPrompts = (args: {
   historyPromptMessage: RuntimePromptMessage | null;
   promptMessages: RuntimePromptMessage[];
   hasPersistedSession: boolean;
+  deltaPromptMessage?: RuntimePromptMessage | null;
 }): { prompt: string; resumeFallbackPrompt?: string } => {
   const historyPrefixedPrompt = args.historyPromptMessage
     ? buildClaudePromptFromMessages([
@@ -469,7 +578,11 @@ export const buildClaudeCodeTurnPrompts = (args: {
   const prompt =
     !args.hasPersistedSession && historyPrefixedPrompt
       ? historyPrefixedPrompt
-      : buildClaudePromptFromMessages(args.promptMessages);
+      : buildClaudePromptFromMessages(
+          args.deltaPromptMessage
+            ? [args.deltaPromptMessage, ...args.promptMessages]
+            : args.promptMessages,
+        );
   return {
     prompt,
     ...(historyPrefixedPrompt
@@ -752,10 +865,28 @@ const runClaudeHostedTurn = async (args: {
     opts: args.opts,
     promptMessages: args.promptMessages,
   });
+  // Out-of-band rows (managed-child reports, task updates) persisted since
+  // the last turn this engine saw. Injected only on resumed turns — a
+  // session-creating turn already carries them inside the full history block
+  // — but the watermark advances either way so the first resumed turn does
+  // not re-send rows the session was seeded with.
+  const initialDeliveredEntryId =
+    args.opts.store.getThreadExternalDeliveredEntryId(threadKey);
+  const threadUpdatesDelta = buildExternalThreadUpdatesDelta({
+    store: args.opts.store,
+    threadKey,
+    ...(initialDeliveredEntryId
+      ? { afterEntryId: initialDeliveredEntryId }
+      : {}),
+    promptMessages: args.promptMessages,
+  });
+  let deliveredEntryWatermark =
+    threadUpdatesDelta.lastEntryId ?? initialDeliveredEntryId;
   const { prompt, resumeFallbackPrompt } = buildClaudeCodeTurnPrompts({
     historyPromptMessage,
     promptMessages: args.promptMessages,
     hasPersistedSession: Boolean(persistedSessionId),
+    deltaPromptMessage: persistedSessionId ? threadUpdatesDelta.message : null,
   });
   const claudeCodeEffortLevel = getClaudeCodeRuntimeEffortLevel(
     args.opts.stellaAppDir,
@@ -828,6 +959,19 @@ const runClaudeHostedTurn = async (args: {
       opts: args.opts,
       promptMessages: queuedPromptMessages,
     });
+    // Out-of-band rows persisted while this turn was running (e.g. a child
+    // completing mid-turn) — delivered from the in-turn watermark so nothing
+    // sent by the main prompt repeats.
+    const queuedThreadUpdatesDelta = buildExternalThreadUpdatesDelta({
+      store: args.opts.store,
+      threadKey,
+      ...(deliveredEntryWatermark
+        ? { afterEntryId: deliveredEntryWatermark }
+        : {}),
+      promptMessages: queuedPromptMessages,
+    });
+    deliveredEntryWatermark =
+      queuedThreadUpdatesDelta.lastEntryId ?? deliveredEntryWatermark;
     // Queued follow-ups always continue the session the turn just ran on, so
     // the main prompt never re-sends history; a lost resume reseeds via the
     // fallback prompt.
@@ -838,6 +982,7 @@ const runClaudeHostedTurn = async (args: {
       historyPromptMessage: queuedHistoryPromptMessage,
       promptMessages: queuedPromptMessages,
       hasPersistedSession: true,
+      deltaPromptMessage: queuedThreadUpdatesDelta.message,
     });
     finalResult = await runClaudeCodeTurn({
       runId,
@@ -893,6 +1038,17 @@ const runClaudeHostedTurn = async (args: {
     engine: sessionEngine,
     sessionId: finalResult.sessionId,
   });
+  // Only persisted on success: an aborted/failed turn re-delivers the same
+  // rows next turn (at-least-once) instead of silently dropping them.
+  if (
+    deliveredEntryWatermark &&
+    deliveredEntryWatermark !== initialDeliveredEntryId
+  ) {
+    args.opts.store.setThreadExternalDeliveredEntryId(
+      threadKey,
+      deliveredEntryWatermark,
+    );
+  }
 
   return {
     finalText: finalResult.text,
@@ -1118,8 +1274,25 @@ const runCodexHostedTurn = async (args: {
       }),
     );
   };
-  const prompt = buildCodexPromptFromMessages({
+  // Codex never receives the full Stella-history block, so the out-of-band
+  // delta (managed-child reports, task updates) is injected on every turn —
+  // first and resumed alike — keyed off the delivered watermark.
+  const initialDeliveredEntryId =
+    args.opts.store.getThreadExternalDeliveredEntryId(threadKey);
+  const threadUpdatesDelta = buildExternalThreadUpdatesDelta({
+    store: args.opts.store,
+    threadKey,
+    ...(initialDeliveredEntryId
+      ? { afterEntryId: initialDeliveredEntryId }
+      : {}),
     promptMessages: args.promptMessages,
+  });
+  let deliveredEntryWatermark =
+    threadUpdatesDelta.lastEntryId ?? initialDeliveredEntryId;
+  const prompt = buildCodexPromptFromMessages({
+    promptMessages: threadUpdatesDelta.message
+      ? [threadUpdatesDelta.message, ...args.promptMessages]
+      : args.promptMessages,
   });
   const inheritedCodexConfig =
     args.opts.agentContext.modelConfigSnapshot?.engine === "codex_cli"
@@ -1186,8 +1359,22 @@ const runCodexHostedTurn = async (args: {
     }
     const queuedPromptMessages = queued.map(formatQueuedClaudeMessage);
     const queuedAttachments = attachmentsFromQueuedMessages(queued);
-    const queuedPrompt = buildCodexPromptFromMessages({
+    // Rows persisted while this turn was running, offset from the in-turn
+    // watermark so nothing sent by the main prompt repeats.
+    const queuedThreadUpdatesDelta = buildExternalThreadUpdatesDelta({
+      store: args.opts.store,
+      threadKey,
+      ...(deliveredEntryWatermark
+        ? { afterEntryId: deliveredEntryWatermark }
+        : {}),
       promptMessages: queuedPromptMessages,
+    });
+    deliveredEntryWatermark =
+      queuedThreadUpdatesDelta.lastEntryId ?? deliveredEntryWatermark;
+    const queuedPrompt = buildCodexPromptFromMessages({
+      promptMessages: queuedThreadUpdatesDelta.message
+        ? [queuedThreadUpdatesDelta.message, ...queuedPromptMessages]
+        : queuedPromptMessages,
     });
     finalResult = await runCodexAgentTurn({
       runId,
@@ -1246,6 +1433,17 @@ const runCodexHostedTurn = async (args: {
     args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
   }
   persistCodexSessionId(finalResult.sessionId);
+  // Only persisted on success: an aborted/failed turn re-delivers the same
+  // rows next turn (at-least-once) instead of silently dropping them.
+  if (
+    deliveredEntryWatermark &&
+    deliveredEntryWatermark !== initialDeliveredEntryId
+  ) {
+    args.opts.store.setThreadExternalDeliveredEntryId(
+      threadKey,
+      deliveredEntryWatermark,
+    );
+  }
 
   return {
     finalText: finalResult.text,
