@@ -304,6 +304,16 @@ describe("architectural Recall pipeline", () => {
       "multi_source",
     );
     expect(
+      routeRecallIntent(
+        "What prior decision set low reasoning for Recall and progress summaries?",
+      ),
+    ).toBe("durable_memory");
+    expect(
+      routeRecallIntent(
+        "What are the prior orchestrator prompt rules for Recall and milestone status?",
+      ),
+    ).toBe("multi_source");
+    expect(
       routeRecallIntent("Find this phrase right now in which old discussion"),
     ).toBe("multi_source");
     expect(routeRecallIntent("stella-v2")).toBe("durable_memory");

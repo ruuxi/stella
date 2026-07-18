@@ -270,9 +270,10 @@ export const classifyRecallIntent = (prompt: string): RecallIntentDecision => {
   )
     matchedIntents.push("live_context");
   if (
-    /\b(thread|agent|delegat(?:e|ed)|resum(?:e|able)|still running|status|progress|crash(?:ed)?)\b/.test(
+    /\b(thread|agent|delegat(?:e|ed)|resum(?:e|able)|still running|status|crash(?:ed)?)\b/.test(
       value,
-    )
+    ) ||
+    /\bprogress\b(?!\s+summar(?:y|ies))/i.test(value)
   )
     matchedIntents.push("delegated_work");
   if (
@@ -282,7 +283,7 @@ export const classifyRecallIntent = (prompt: string): RecallIntentDecision => {
   )
     matchedIntents.push("episodic");
   if (
-    /(?:^|\s)(?:\/[^\s]+|[\w.-]+\/[\w./-]+)|\b(repo(?:sitory)?|path|file|prior decision|decision|policy|rule|established|determine|determined|recall hook)\b/.test(
+    /(?:^|\s)(?:\/[^\s]+|[\w.-]+\/[\w./-]+)|\b(repo(?:sitor(?:y|ies))?s?|paths?|files?|prior decisions?|decisions?|polic(?:y|ies)|rules?|established|determine|determined|recall hooks?)\b/.test(
       value,
     )
   )
@@ -1288,14 +1289,31 @@ const splitRecallEvidenceUnits = (
   kind: RecallIntent,
   value: string,
 ): string[] => {
+  if (kind === "durable_memory") {
+    const matches = value.match(/<match\b[^>]*>[\s\S]*?<\/match>/g) ?? [];
+    return matches.flatMap((match) => {
+      const lines = match.split("\n");
+      const opening = lines[0] ?? "<match>";
+      const body = lines.slice(1, -1);
+      const groups: string[][] = [];
+      for (const line of body) {
+        if (/^\d+:\s+(?:- |##\s)/.test(line) || groups.length === 0) {
+          groups.push([line]);
+        } else {
+          groups[groups.length - 1]!.push(line);
+        }
+      }
+      return groups
+        .filter((group) => group.some((line) => line.trim()))
+        .map((group) => [opening, ...group, "</match>"].join("\n"));
+    });
+  }
   const pattern =
-    kind === "durable_memory"
-      ? /<match\b[^>]*>[\s\S]*?<\/match>/g
-      : kind === "delegated_work"
-        ? /^- [^\n]+[\s\S]*?(?=^- |^# Live status|(?![\s\S]))/gm
-        : kind === "episodic"
-          ? /^- \[[^\n]+\][\s\S]*?(?=^- \[|(?![\s\S]))/gm
-          : /^- [\s\S]*?(?=^- |(?![\s\S]))/gm;
+    kind === "delegated_work"
+      ? /^- [^\n]+[\s\S]*?(?=^- |^# Live status|(?![\s\S]))/gm
+      : kind === "episodic"
+        ? /^- \[[^\n]+\][\s\S]*?(?=^- \[|(?![\s\S]))/gm
+        : /^- [\s\S]*?(?=^- |(?![\s\S]))/gm;
   const units = value
     .match(pattern)
     ?.map((unit) => unit.trim())
@@ -1345,21 +1363,27 @@ const selectUsableRecallEvidence = (
     "prior",
     "decision",
   ]);
-  const distinctiveTokens = [
-    ...new Set(
-      terms
-        .flatMap((term) => tokenizeSearchQuery(term))
-        .map((term) => term.toLocaleLowerCase())
-        .filter((term) => term.length >= 4 && !genericTokens.has(term)),
-    ),
-  ];
-  const requiredMatches = Math.min(2, distinctiveTokens.length);
-  if (requiredMatches === 0) return null;
+  const distinctiveTermGroups = terms.flatMap((term) => {
+    const tokens = [
+      ...new Set(
+        tokenizeSearchQuery(term)
+          .map((token) => token.toLocaleLowerCase())
+          .filter((token) => token.length >= 4 && !genericTokens.has(token)),
+      ),
+    ];
+    return tokens.length > 0 ? [tokens] : [];
+  });
+  const requiredGroupMatches = Math.min(2, distinctiveTermGroups.length);
+  if (requiredGroupMatches === 0) return null;
   const normalizedExactPhrases = exactPhrases.map((phrase) =>
     phrase.replace(/\s+/g, " ").trim().toLocaleLowerCase(),
   );
   const matchingUnits = splitRecallEvidenceUnits(kind, value).filter((unit) => {
     const normalizedUnit = unit.replace(/\s+/g, " ").toLocaleLowerCase();
+    const anchorText =
+      kind === "delegated_work"
+        ? (unit.split("\n", 1)[0] ?? "").toLocaleLowerCase()
+        : normalizedUnit;
     if (
       normalizedExactPhrases.length > 0 &&
       !normalizedExactPhrases.every((phrase) => normalizedUnit.includes(phrase))
@@ -1367,8 +1391,9 @@ const selectUsableRecallEvidence = (
       return false;
     }
     return (
-      distinctiveTokens.filter((term) => normalizedUnit.includes(term))
-        .length >= requiredMatches
+      distinctiveTermGroups.filter((group) =>
+        group.some((token) => anchorText.includes(token)),
+      ).length >= requiredGroupMatches
     );
   });
   return matchingUnits.length > 0 ? matchingUnits.join("\n\n") : null;
@@ -1437,7 +1462,7 @@ const runArchitecturalRecall = async (args: {
 }): Promise<string> => {
   const intentDecision = classifyRecallIntent(args.lookupPrompt);
   const intent = intentDecision.intent;
-  const synthesisRequired = !intentDecision.deterministicFastPath;
+  let synthesisRequired = !intentDecision.deterministicFastPath;
   args.telemetry.setIntent(intent, intentDecision.deterministicFastPath);
   const useClaudeCode = args.recallRoute.executionEngine === "claude-code";
   args.telemetry.setRoute(
@@ -1585,6 +1610,10 @@ const runArchitecturalRecall = async (args: {
       // anchors. Broadening file terms creates false positives (for example,
       // matching the generic word "project" in an unrelated memory block).
       sourceKinds = ["episodic"];
+      // Transcript rows are timelines, not direct answers. A durable-memory
+      // miss may consult them, but only an explicit exact-phrase lookup can
+      // return a matched row without synthesis.
+      if (intentDecision.exactPhrases.length === 0) synthesisRequired = true;
       ensureFtsReady();
       evidence = await retrieve(evidenceTerms);
     } else {
