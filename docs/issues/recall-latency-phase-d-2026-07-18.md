@@ -150,4 +150,3 @@ Fable rejection.
   limit during three synthesis cases. One initial c216 attempt was discarded
   because redirecting `HOME` hid Claude CLI auth. Neither contributes to any
   aggregate; both are named in the raw artifact's audit metadata.
-
