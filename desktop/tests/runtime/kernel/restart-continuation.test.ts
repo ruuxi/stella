@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   RESTART_CONTINUATION_MAX_RECORD_AGE_MS,
   RESTART_CONTINUATION_RECORD_FILE,
+  RESTART_EPISODE_MAX_AGE_MS,
   RESTART_EPISODE_WINDOW_MS,
   RESTART_INTERRUPTED_SNAPSHOT_FILE,
   RESTART_INTERRUPTION_STATE_FILE,
@@ -17,6 +18,7 @@ import {
   isRestartContinuationEnabled,
   isRestartContinuationTurnEnabled,
   peekRestartShutdownRecord,
+  readRestartInterruptedSnapshot,
   readRestartInterruptionState,
   recordRestartShutdown,
   resolveRestartReminderOutcome,
@@ -78,12 +80,22 @@ const writeFreshRecord = (reason = "self-mod-apply-process-restart") => {
 
 const convert = (
   interruptedThreads: Array<{ threadId: string; conversationId: string }>,
-  options?: { env?: Record<string, string | undefined>; now?: number },
+  options?: {
+    env?: Record<string, string | undefined>;
+    now?: number;
+    capturedEpisodeId?: string | null;
+  },
 ) =>
   convertRestartShutdownRecordAtBoot({
     stellaDataDir: dataDir,
     env: options?.env ?? {},
     interruptedThreads,
+    // Default mimics the real same-boot flow: the sweep captured under the
+    // record currently on disk. Failure-boundary tests pass explicit values.
+    capturedEpisodeId:
+      options && "capturedEpisodeId" in options
+        ? (options.capturedEpisodeId ?? null)
+        : (peekRestartShutdownRecord(dataDir)?.episodeId ?? null),
     ...(options?.now !== undefined ? { now: options.now } : {}),
   });
 
@@ -174,6 +186,61 @@ describe("shutdown record", () => {
       convert([{ threadId: "t", conversationId: "conv-1" }], { now }),
     ).not.toBeNull();
   });
+
+  it("caps episode chaining at an absolute max age from the first createdAt", () => {
+    const now = Date.now();
+    // An episode that has been merge-forwarded for longer than the cap:
+    // last write is recent (within the merge window), but the episode
+    // started past the absolute max age.
+    expect(
+      writeRestartShutdownRecord(dataDir, {
+        reason: "runtime-reload",
+        episodeId: "episode-old",
+        now: now - 60_000,
+        episodeStartedAt: now - RESTART_EPISODE_MAX_AGE_MS - 1_000,
+      }),
+    ).toBe(true);
+    expect(
+      recordRestartShutdown(dataDir, { reason: "app-shutdown", now }),
+    ).toBe(true);
+    const rolled = peekRestartShutdownRecord(dataDir);
+    // The stale episode expires instead of rolling forever.
+    expect(rolled?.episodeId).not.toBe("episode-old");
+    expect(rolled?.reason).toBe("app-shutdown");
+    expect(rolled?.episodeStartedAt).toBe(now);
+    // Within the cap the id chains normally.
+    const chained = peekRestartShutdownRecord(dataDir);
+    expect(
+      recordRestartShutdown(dataDir, {
+        reason: "runtime-reload",
+        now: now + 60_000,
+      }),
+    ).toBe(true);
+    expect(peekRestartShutdownRecord(dataDir)?.episodeId).toBe(
+      chained?.episodeId,
+    );
+  });
+
+  it("never merges forward onto a conversion-attempted (retained) record", () => {
+    const now = Date.now();
+    expect(
+      writeRestartShutdownRecord(dataDir, {
+        reason: "runtime-reload",
+        episodeId: "episode-attempted",
+        now: now - 30_000,
+        attemptedAt: now - 20_000,
+      }),
+    ).toBe(true);
+    // A new graceful shutdown moments later must start a fresh episode: the
+    // retained record's shutdown was already swept on an earlier boot.
+    expect(
+      recordRestartShutdown(dataDir, { reason: "app-shutdown", now }),
+    ).toBe(true);
+    const next = peekRestartShutdownRecord(dataDir);
+    expect(next?.episodeId).not.toBe("episode-attempted");
+    expect(next?.reason).toBe("app-shutdown");
+    expect(next?.attemptedAt).toBeUndefined();
+  });
 });
 
 describe("boot conversion", () => {
@@ -243,7 +310,9 @@ describe("boot conversion", () => {
     expect(state).not.toBeNull();
     // Delivery bookkeeping exists before the simulated crash.
     expect(attach("conv-1", "run-1")).not.toBeNull();
-    // Crash before cleanup left the SAME episode's record and sidecar.
+    // Crash before cleanup left the SAME episode's record and sidecar (the
+    // sidecar was written pre-flip while the record was unattempted; the
+    // record carries the conversion-attempt latch).
     expect(
       writeRestartShutdownRecord(dataDir, {
         reason: "runtime-reload",
@@ -255,6 +324,14 @@ describe("boot conversion", () => {
       writeRestartInterruptedSnapshot(dataDir, [
         { threadId: "thread-a", conversationId: "conv-1" },
       ]),
+    ).toBe(state!.episodeId);
+    expect(
+      writeRestartShutdownRecord(dataDir, {
+        reason: "runtime-reload",
+        now: state!.shutdownAt,
+        episodeId: state!.episodeId,
+        attemptedAt: state!.shutdownAt,
+      }),
     ).toBe(true);
     // Boot 2 (empty live snapshot): the same-episode check cleans up
     // without rewriting the state — bookkeeping survives.
@@ -272,7 +349,7 @@ describe("boot conversion", () => {
       writeRestartInterruptedSnapshot(dataDir, [
         { threadId: "thread-old", conversationId: "conv-1" },
       ]),
-    ).toBe(true);
+    ).toBe(peekRestartShutdownRecord(dataDir)?.episodeId);
     // The app keeps running; a later graceful restart replaces the record
     // with episode N+1 (fresh id, fresh timestamp, different reason).
     const later = Date.now() + RESTART_EPISODE_WINDOW_MS + 60_000;
@@ -308,12 +385,101 @@ describe("boot conversion", () => {
       writeRestartInterruptedSnapshot(dataDir, [
         { threadId: "thread-b", conversationId: "conv-2" },
       ]),
-    ).toBe(true);
+    ).toBe(recordB?.episodeId);
     // The genuine new conversion proceeds (not suppressed by the guard).
     const stateB = convert([], { now: t });
     expect(stateB?.episodeId).toBe(recordB?.episodeId);
     expect(stateB?.threads).toEqual([
       { threadId: "thread-b", conversationId: "conv-2" },
+    ]);
+  });
+
+  it("a retained record never absorbs a later crash boot's rows and its sidecar survives", () => {
+    // Episode N: graceful shutdown while thread-a ran; conversion attempt
+    // fails its state write → attempted record + N's sidecar retained.
+    writeFreshRecord("runtime-reload");
+    const episodeN = peekRestartShutdownRecord(dataDir)?.episodeId;
+    const capturedN = writeRestartInterruptedSnapshot(dataDir, [
+      { threadId: "thread-a", conversationId: "conv-1" },
+    ]);
+    expect(capturedN).toBe(episodeN);
+    fs.mkdirSync(stateFilePath());
+    expect(
+      convert([{ threadId: "thread-a", conversationId: "conv-1" }], {
+        capturedEpisodeId: capturedN,
+      }),
+    ).toBeNull();
+    fs.rmdirSync(stateFilePath());
+    expect(peekRestartShutdownRecord(dataDir)?.attemptedAt).toBeDefined();
+
+    // The app keeps running, new agent work starts, then it HARD-CRASHES
+    // (no new record). Next boot's sweep finds the fresh crash row.
+    const crashCapture = writeRestartInterruptedSnapshot(dataDir, [
+      { threadId: "thread-crash", conversationId: "conv-9" },
+    ]);
+    // The retained attempted record does not authorize the capture, and
+    // N's retry sidecar is NOT clobbered by the crash row.
+    expect(crashCapture).toBeNull();
+    expect(
+      readRestartInterruptionState(dataDir),
+    ).toBeNull();
+    // Conversion refuses the unauthorized live rows and recovers episode
+    // N's REAL interruption from the preserved sidecar.
+    const state = convert(
+      [{ threadId: "thread-crash", conversationId: "conv-9" }],
+      { capturedEpisodeId: crashCapture },
+    );
+    expect(state?.episodeId).toBe(episodeN);
+    expect(state?.threads).toEqual([
+      { threadId: "thread-a", conversationId: "conv-1" },
+    ]);
+  });
+
+  it("refuses live rows when the record was swapped between capture and conversion", () => {
+    // Sweep captures thread-a under episode N.
+    writeFreshRecord("runtime-reload");
+    const capturedN = writeRestartInterruptedSnapshot(dataDir, [
+      { threadId: "thread-a", conversationId: "conv-1" },
+    ]);
+    expect(capturedN).toBe(peekRestartShutdownRecord(dataDir)?.episodeId);
+    // The record is replaced by episode N+1 before conversion runs.
+    expect(
+      writeRestartShutdownRecord(dataDir, { reason: "app-shutdown" }),
+    ).toBe(true);
+    // Live rows captured under N are refused under N+1; the N-stamped
+    // sidecar does not match either → no state, artifacts cleaned up.
+    expect(
+      convert([{ threadId: "thread-a", conversationId: "conv-1" }], {
+        capturedEpisodeId: capturedN,
+      }),
+    ).toBeNull();
+    expect(readRestartInterruptionState(dataDir)).toBeNull();
+    expect(fs.existsSync(recordFilePath())).toBe(false);
+    expect(fs.existsSync(snapshotFilePath())).toBe(false);
+  });
+
+  it("the sweep never clobbers a sidecar retained from a different episode", () => {
+    // Episode N's sidecar is on disk; a NEW unattempted record (episode M)
+    // authorizes this boot's capture, but N's sidecar stays untouched.
+    writeFreshRecord("runtime-reload");
+    const episodeN = peekRestartShutdownRecord(dataDir)?.episodeId;
+    expect(
+      writeRestartInterruptedSnapshot(dataDir, [
+        { threadId: "thread-a", conversationId: "conv-1" },
+      ]),
+    ).toBe(episodeN);
+    expect(
+      writeRestartShutdownRecord(dataDir, { reason: "app-shutdown" }),
+    ).toBe(true);
+    const episodeM = peekRestartShutdownRecord(dataDir)?.episodeId;
+    const captured = writeRestartInterruptedSnapshot(dataDir, [
+      { threadId: "thread-m", conversationId: "conv-2" },
+    ]);
+    expect(captured).toBe(episodeM);
+    const sidecar = readRestartInterruptedSnapshot(dataDir);
+    expect(sidecar?.episodeId).toBe(episodeN);
+    expect(sidecar?.threads).toEqual([
+      { threadId: "thread-a", conversationId: "conv-1" },
     ]);
   });
 
@@ -323,7 +489,7 @@ describe("boot conversion", () => {
       writeRestartInterruptedSnapshot(dataDir, [
         { threadId: "thread-a", conversationId: "conv-1" },
       ]),
-    ).toBe(true);
+    ).toBe(peekRestartShutdownRecord(dataDir)?.episodeId);
     // Occupy the state path with a directory so the atomic rename fails.
     fs.mkdirSync(stateFilePath());
     const state = convert([{ threadId: "thread-a", conversationId: "conv-1" }]);
@@ -359,20 +525,26 @@ describe("boot conversion", () => {
           flipped.push(record);
         },
         hasAgentLifecycleEvent: () => true,
-        // Production wiring: sweep persists the pre-flip snapshot sidecar.
+        // Production wiring: sweep persists the pre-flip snapshot sidecar
+        // and holds the episode id the capture was authorized under.
         persistBootInterruptionSnapshot: (
           threads: Array<{ threadId: string; conversationId: string }>,
-        ) => {
-          writeRestartInterruptedSnapshot(dataDir, threads);
-        },
+        ) => writeRestartInterruptedSnapshot(dataDir, threads),
       } as unknown as ConstructorParameters<typeof LocalAgentManager>[0]);
 
     // Boot 1: sweep captures + flips the rows; the interruption-state write
     // fails (state path occupied by a directory).
     const boot1 = makeManager([runningRow]);
     expect(flipped.some((r) => r.threadId === "thread-a")).toBe(true);
+    expect(boot1.getBootInterruptionEpisodeId()).toBe(
+      peekRestartShutdownRecord(dataDir)?.episodeId,
+    );
     fs.mkdirSync(stateFilePath());
-    expect(convert(boot1.getBootInterruptedThreads())).toBeNull();
+    expect(
+      convert(boot1.getBootInterruptedThreads(), {
+        capturedEpisodeId: boot1.getBootInterruptionEpisodeId(),
+      }),
+    ).toBeNull();
     fs.rmdirSync(stateFilePath());
     expect(fs.existsSync(recordFilePath())).toBe(true);
     expect(fs.existsSync(snapshotFilePath())).toBe(true);
@@ -380,7 +552,10 @@ describe("boot conversion", () => {
     // Boot 2: the rows were flipped on boot 1 — the live snapshot is EMPTY.
     const boot2 = makeManager([]);
     expect(boot2.getBootInterruptedThreads()).toEqual([]);
-    const state = convert(boot2.getBootInterruptedThreads());
+    expect(boot2.getBootInterruptionEpisodeId()).toBeNull();
+    const state = convert(boot2.getBootInterruptedThreads(), {
+      capturedEpisodeId: boot2.getBootInterruptionEpisodeId(),
+    });
     expect(state?.threads).toEqual([
       { threadId: "thread-a", conversationId: "conv-1" },
     ]);
@@ -824,6 +999,7 @@ describe("LocalAgentManager boot snapshot", () => {
       ) => {
         rowsFlippedWhenSnapshotPersisted = saved.length;
         snapshotThreads = threads;
+        return "episode-test";
       },
     } as unknown as ConstructorParameters<typeof LocalAgentManager>[0]);
 
@@ -835,6 +1011,8 @@ describe("LocalAgentManager boot snapshot", () => {
     // the retry evidence that survives the flip.
     expect(rowsFlippedWhenSnapshotPersisted).toBe(0);
     expect(snapshotThreads).toEqual(manager.getBootInterruptedThreads());
+    // The capture holds the episode id it was authorized under.
+    expect(manager.getBootInterruptionEpisodeId()).toBe("episode-test");
     // Existing sweep behavior is preserved: general → orphan-canceled,
     // manager → completed with a synthesized report.
     const general = saved.find((r) => r.threadId === "thread-a");

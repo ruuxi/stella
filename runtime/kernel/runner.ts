@@ -234,6 +234,8 @@ export const createStellaHostRunner = (
     env: process.env,
     interruptedThreads:
       context.state.localAgentManager?.getBootInterruptedThreads() ?? [],
+    capturedEpisodeId:
+      context.state.localAgentManager?.getBootInterruptionEpisodeId() ?? null,
   });
   if (restartInterruptionState) {
     void (async () => {

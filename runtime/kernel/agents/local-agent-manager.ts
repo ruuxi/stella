@@ -601,11 +601,14 @@ type LocalAgentManagerOpts = {
    * boot sweep flips them (restart-with-continuation). The flip destroys the
    * only live evidence of what was running, so this write must land first —
    * it is what lets a later boot retry a failed interruption-state write.
-   * Only invoked with a non-empty list.
+   * Only invoked with a non-empty list. Returns the episode id the capture
+   * is authorized under (null/undefined when unauthorized — e.g. no shutdown
+   * record on disk, or a retained already-attempted one); conversion later
+   * verifies this id against the record it consumes.
    */
   persistBootInterruptionSnapshot?: (
     threads: Array<{ threadId: string; conversationId: string }>,
-  ) => void;
+  ) => string | null | undefined;
   hasAgentLifecycleEvent?: (
     conversationId: string,
     eventId: string,
@@ -794,6 +797,8 @@ export class LocalAgentManager implements AgentToolApi {
     threadId: string;
     conversationId: string;
   }> = [];
+  /** Episode id the boot capture was authorized under (see opts). */
+  private bootInterruptionEpisodeId: string | null = null;
 
   constructor(opts: LocalAgentManagerOpts) {
     this.opts = opts;
@@ -809,6 +814,14 @@ export class LocalAgentManager implements AgentToolApi {
     return [...this.bootInterruptedThreads];
   }
 
+  /**
+   * Episode id the pre-flip capture was authorized under; null when the
+   * capture is unauthorized (no shutdown record / retained attempted one).
+   */
+  getBootInterruptionEpisodeId(): string | null {
+    return this.bootInterruptionEpisodeId;
+  }
+
   private recoverOrCancelOrphanedPersistedAgents(): void {
     const now = Date.now();
     const runningRecords =
@@ -822,13 +835,16 @@ export class LocalAgentManager implements AgentToolApi {
     if (this.bootInterruptedThreads.length > 0) {
       // Persist the snapshot BEFORE any row below is flipped: after the
       // flip, this in-memory capture is the only remaining evidence of the
-      // interruption, and it dies with this process. Best-effort — on
-      // failure the continuation degrades to requiring a successful
-      // interruption-state write on this same boot.
+      // interruption, and it dies with this process. The returned episode
+      // id binds the capture to the shutdown record present right now;
+      // conversion refuses the capture if the record changes underneath it.
+      // Best-effort — on failure the continuation degrades to requiring a
+      // successful interruption-state write on this same boot.
       try {
-        this.opts.persistBootInterruptionSnapshot?.(
-          this.getBootInterruptedThreads(),
-        );
+        this.bootInterruptionEpisodeId =
+          this.opts.persistBootInterruptionSnapshot?.(
+            this.getBootInterruptedThreads(),
+          ) ?? null;
       } catch {
         // Never let continuation bookkeeping break the boot sweep.
       }

@@ -640,10 +640,10 @@ export const createAgentOrchestration = (
       context.runtimeStore.listGroupMemberThreadIds(groupKey),
     // Restart-with-continuation: durably snapshot the still-running rows
     // BEFORE the boot sweep flips them, so a failed interruption-state
-    // write can genuinely be retried on the next boot.
-    persistBootInterruptionSnapshot: (threads) => {
-      writeRestartInterruptedSnapshot(context.stellaDataDir, threads);
-    },
+    // write can genuinely be retried on the next boot. The returned episode
+    // id binds the live capture to the shutdown record present right now.
+    persistBootInterruptionSnapshot: (threads) =>
+      writeRestartInterruptedSnapshot(context.stellaDataDir, threads),
     onAgentEvent: handleAgentLifecycleEvent,
     fetchAgentContext: deps.buildAgentContext,
     runSubagent: async ({
