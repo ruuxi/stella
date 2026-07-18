@@ -182,4 +182,105 @@ describe("local agent thread history boundary", () => {
     );
     service.close();
   });
+
+  it("suppresses a reconstructed Claude Code checkpoint containing native tool transport after reopen", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "stella-thread-chat-"));
+    roots.push(root);
+    let service = new LocalChatHistoryService({ stellaAppDir: root });
+    const store = (
+      service as unknown as { getStore: () => SessionStore }
+    ).getStore();
+    const threadId = "claude-native-checkpoint";
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 1_000,
+      role: "assistant",
+      content: "",
+      payload: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "claude-native-spawn",
+            name: "spawn_agent",
+            arguments: { description: "Native child", prompt: "Raw prompt" },
+          },
+        ],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude-code",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "toolUse",
+        timestamp: 1_000,
+      } as never,
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 1_001,
+      role: "toolResult",
+      toolCallId: "claude-native-spawn",
+      content: '{"thread_id":"native-child","running_in_background":true}',
+    });
+    const toolEntries = store.loadThreadMessages(threadId);
+    store.compactThread({
+      threadKey: threadId,
+      summary:
+        '[Tool call] spawn_agent\nargs: {"description":"Native child"}\n\n[Tool result] spawn_agent\n{"thread_id":"native-child"}',
+      fromEntryId: toolEntries[0]!.entryId!,
+      toEntryId: toolEntries[1]!.entryId!,
+      tokensBefore: 500,
+      timestamp: 1_002,
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 1_003,
+      role: "assistant",
+      content: "Claude authored conclusion.",
+      payload: {
+        role: "assistant",
+        content: [{ type: "text", text: "Claude authored conclusion." }],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude-code",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: 1_003,
+      } as never,
+    });
+
+    expect(service.listAgentThreadMessages({ threadId })).toEqual([
+      expect.objectContaining({
+        role: "assistant",
+        content: "Claude authored conclusion.",
+      }),
+    ]);
+    service.close();
+
+    service = new LocalChatHistoryService({ stellaAppDir: root });
+    const reloaded = service.listAgentThreadMessages({ threadId });
+    expect(reloaded).toEqual([
+      expect.objectContaining({
+        role: "assistant",
+        content: "Claude authored conclusion.",
+      }),
+    ]);
+    expect(JSON.stringify(reloaded)).not.toMatch(
+      /spawn_agent|Native child|native-child|\[Tool call\]|\[Tool result\]/,
+    );
+    service.close();
+  });
 });

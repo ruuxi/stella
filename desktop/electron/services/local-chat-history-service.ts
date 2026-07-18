@@ -342,12 +342,17 @@ export class LocalChatHistoryService {
             ]
           : [];
       }
+      // Payload-less assistant rows are reconstruction artifacts rather than
+      // verifiable authored messages. In particular, Claude Code native tool
+      // history can be reconstructed from a preview containing raw tool
+      // transport. Keep the unstructured fallback strictly user-only.
+      if (message.role !== "user") return [];
       const content = message.content.trim();
       if (!content) return [];
       return [
         {
           ...identity,
-          role: message.role === "assistant" ? "assistant" : "user",
+          role: "user",
           content,
         },
       ];

@@ -200,6 +200,34 @@ describe("AgentThreadChatTab", () => {
       await Promise.resolve();
     });
     expect(container.textContent).toContain("A newer authored update arrived.");
+
+    listAgentThreadMessages.mockResolvedValue([
+      {
+        entryId: "claude-authored",
+        timestamp: 6,
+        role: "assistant",
+        content: "Claude authored conclusion.",
+      },
+    ]);
+    await act(async () => {
+      root.render(null);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      root.render(
+        <AgentThreadChatTab
+          threadId="agent-exact-1"
+          conversationId="conversation-a"
+          agentType="general"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain("Claude authored conclusion.");
+    expect(container.textContent).not.toMatch(
+      /spawn_agent|\[Tool call\]|\[Tool result\]/,
+    );
   });
 
   it("opens at the newest message, follows while pinned, and preserves manual reading", async () => {

@@ -112,6 +112,7 @@
 }
 
 .chat-workspace-strip__task-row-head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -125,17 +126,21 @@
   margin-right: 0;
 }
 
-/* Exact-thread chat action. It occupies no row width while absent, then the
-   flex row yields only its 26px action slot on hover/focus. */
+/* Exact-thread chat is a trailing overlay. Resting rows reserve no width, and
+   the two-pixel inset keeps the full rounded hit target inside the scroller. */
 .chat-workspace-strip__task-attach {
   appearance: none;
-  flex: 0 0 0;
-  width: 0;
+  position: absolute;
+  z-index: 1;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 0;
-  margin: 0;
+  width: 26px;
+  height: 26px;
+  padding: 4px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -145,21 +150,20 @@
   pointer-events: none;
   transition:
     opacity 120ms ease,
-    width 120ms ease,
-    flex-basis 120ms ease,
-    padding 120ms ease,
     background 120ms ease,
     color 120ms ease;
+}
+
+.chat-workspace-strip__task-row-head:hover .chat-workspace-strip__task-button,
+.chat-workspace-strip__task-row-head:focus-within
+  .chat-workspace-strip__task-button {
+  padding-right: 32px;
 }
 
 .chat-workspace-strip__task-row-head:hover .chat-workspace-strip__task-attach,
 .chat-workspace-strip__task-row-head:focus-within
   .chat-workspace-strip__task-attach,
 .chat-workspace-strip__task-attach:focus-visible {
-  flex-basis: 26px;
-  width: 26px;
-  padding: 4px;
-  margin-right: -6px;
   opacity: 1;
   pointer-events: auto;
 }
@@ -172,11 +176,11 @@
 }
 
 @media (hover: none), (pointer: coarse) {
+  .chat-workspace-strip__task-row-head .chat-workspace-strip__task-button {
+    padding-right: 32px;
+  }
+
   .chat-workspace-strip__task-attach {
-    flex-basis: 26px;
-    width: 26px;
-    padding: 4px;
-    margin-right: -6px;
     opacity: 1;
     pointer-events: auto;
   }

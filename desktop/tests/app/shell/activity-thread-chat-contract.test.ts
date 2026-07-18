@@ -26,11 +26,12 @@ describe("Activity exact-thread chat UI contract", () => {
 
   it("reserves no trailing width until hover/focus and remains touch-visible", () => {
     expect(css).toMatch(
-      /\.chat-workspace-strip__task-attach\s*\{[\s\S]*?flex:\s*0 0 0;[\s\S]*?width:\s*0;/,
+      /\.chat-workspace-strip__task-attach\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?right:\s*2px;[\s\S]*?width:\s*26px;/,
     );
     expect(css).toMatch(
-      /task-row-head:focus-within[\s\S]*?flex-basis:\s*26px;/,
+      /task-row-head:focus-within[\s\S]*?padding-right:\s*32px;/,
     );
+    expect(css).not.toMatch(/margin-right:\s*-/);
     expect(css).toMatch(/@media \(hover: none\), \(pointer: coarse\)/);
   });
 });
