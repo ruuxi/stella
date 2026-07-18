@@ -238,21 +238,25 @@ describe("local agent thread history boundary", () => {
       ],
     ] as const) {
       const eventId = `child:1:${type}`;
-      store.appendEvent({
-        conversationId: "conv-engine-projection",
-        eventId,
-        timestamp: 200 + offset,
-        type,
-        payload,
-      });
-      store.appendThreadCustomMessage({
+      store.appendThreadLifecycleEvent({
         threadKey: threadId,
-        timestamp: 200 + offset,
-        customType: "runtime.task_lifecycle",
-        content: `<system_reminder> ${type} raw coordination`,
-        display: false,
-        eventId,
+        event: {
+          _id: eventId,
+          timestamp: 200 + offset,
+          type,
+          payload,
+        },
       });
+      if (type === "agent-completed") {
+        store.appendThreadCustomMessage({
+          threadKey: threadId,
+          timestamp: 200 + offset,
+          customType: "runtime.task_lifecycle",
+          content: `<system_reminder> ${type} raw coordination`,
+          display: false,
+          eventId,
+        });
+      }
     }
 
     const messages = service.listAgentThreadMessages({ threadId });
@@ -275,7 +279,7 @@ describe("local agent thread history boundary", () => {
     service.close();
   });
 
-  it("suppresses a reconstructed Claude Code checkpoint containing native tool transport after reopen", async () => {
+  it("preserves authored Claude prose inside compaction while suppressing its native tool transport after reopen", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "stella-thread-chat-"));
     roots.push(root);
     let service = new LocalChatHistoryService({ stellaAppDir: root });
@@ -320,8 +324,37 @@ describe("local agent thread history boundary", () => {
       toolCallId: "claude-native-spawn",
       content: '{"thread_id":"native-child","running_in_background":true}',
     });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 1_002,
+      role: "assistant",
+      content: "Claude authored note inside the compacted range.",
+      payload: {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "Claude authored note inside the compacted range.",
+          },
+        ],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude-code",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: 1_002,
+      } as never,
+    });
     const toolEntries = store.loadThreadMessagesWithEntryTypes(threadId);
     expect(toolEntries.map((entry) => entry.sourceEntryType)).toEqual([
+      "message",
       "message",
       "message",
     ]);
@@ -330,18 +363,19 @@ describe("local agent thread history boundary", () => {
       summary:
         '[Tool call] spawn_agent\nargs: {"description":"Native child"}\n\n[Tool result] spawn_agent\n{"thread_id":"native-child"}',
       fromEntryId: toolEntries[0]!.entryId!,
-      toEntryId: toolEntries[1]!.entryId!,
+      toEntryId: toolEntries[2]!.entryId!,
       tokensBefore: 500,
-      timestamp: 1_002,
+      timestamp: 1_003,
     });
     expect(
-      store.loadThreadMessagesWithEntryTypes(threadId).find((entry) =>
-        entry.content.startsWith("[[THREAD_CHECKPOINT]]"),
-      )?.sourceEntryType,
+      store
+        .loadThreadMessagesWithEntryTypes(threadId)
+        .find((entry) => entry.content.startsWith("[[THREAD_CHECKPOINT]]"))
+        ?.sourceEntryType,
     ).toBe("compaction");
     store.appendThreadMessage({
       threadKey: threadId,
-      timestamp: 1_003,
+      timestamp: 1_004,
       role: "assistant",
       content: "Claude authored conclusion.",
       payload: {
@@ -359,25 +393,30 @@ describe("local agent thread history boundary", () => {
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
         },
         stopReason: "stop",
-        timestamp: 1_003,
+        timestamp: 1_004,
       } as never,
     });
 
-    expect(service.listAgentThreadMessages({ threadId })).toEqual([
-      expect.objectContaining({
-        role: "assistant",
-        content: "Claude authored conclusion.",
-      }),
+    expect(
+      service
+        .listAgentThreadMessages({ threadId })
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.content),
+    ).toEqual([
+      "Claude authored note inside the compacted range.",
+      "Claude authored conclusion.",
     ]);
     service.close();
 
     service = new LocalChatHistoryService({ stellaAppDir: root });
     const reloaded = service.listAgentThreadMessages({ threadId });
-    expect(reloaded).toEqual([
-      expect.objectContaining({
-        role: "assistant",
-        content: "Claude authored conclusion.",
-      }),
+    expect(
+      reloaded
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.content),
+    ).toEqual([
+      "Claude authored note inside the compacted range.",
+      "Claude authored conclusion.",
     ]);
     expect(JSON.stringify(reloaded)).not.toMatch(
       /spawn_agent|Native child|native-child|\[Tool call\]|\[Tool result\]/,

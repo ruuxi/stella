@@ -299,7 +299,7 @@ export class LocalChatHistoryService {
     if (!threadId) throw new Error("threadId is required.");
     const limit = Math.min(300, Math.max(1, Math.floor(args.limit ?? 200)));
     const store = this.getStore();
-    const messages = store.loadThreadMessagesWithEntryTypes(threadId, limit);
+    const messages = store.loadRawThreadMessagesWithEntryTypes(threadId, limit);
     const lifecycleById = new Map(
       store
         .listLifecycleEventsByIds(
@@ -313,7 +313,7 @@ export class LocalChatHistoryService {
         )
         .map((event) => [event._id, event]),
     );
-    return messages.flatMap<AgentThreadMessageRecord>((message) => {
+    const projected = messages.flatMap<AgentThreadMessageRecord>((message) => {
       const identity = {
         ...(message.entryId ? { entryId: message.entryId } : {}),
         timestamp: message.timestamp,
@@ -357,6 +357,27 @@ export class LocalChatHistoryService {
         },
       ];
     });
+    const seenLifecycleIds = new Set(
+      projected.flatMap((message) =>
+        message.role === "lifecycle" && message.lifecycleEvent
+          ? [message.lifecycleEvent._id]
+          : [],
+      ),
+    );
+    for (const entry of store.listThreadLifecycleEntries(threadId, limit)) {
+      if (seenLifecycleIds.has(entry.event._id)) continue;
+      seenLifecycleIds.add(entry.event._id);
+      projected.push({
+        entryId: entry.entryId,
+        timestamp: entry.event.timestamp,
+        role: "lifecycle",
+        content: "",
+        lifecycleEvent: entry.event as EventRecord,
+      });
+    }
+    // Array.sort is stable: equal timestamps retain durable append order from
+    // each source instead of being scrambled by opaque entry IDs.
+    return projected.sort((a, b) => a.timestamp - b.timestamp);
   }
 
   listFiles(args: {

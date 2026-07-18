@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { LocalChatHistoryService } from "../../../../electron/services/local-chat-history-service.js";
 import { AGENT_IDS } from "../../../../../runtime/contracts/agent-runtime.js";
 import {
   AGENT_PAUSE_CANCEL_REASON,
@@ -501,6 +502,7 @@ describe("manager orchestration production routing", () => {
 
   it("keeps managed-child starts, follow-ups, and terminal reminders out of the root transcript", async () => {
     const {
+      rootPath,
       manager,
       store,
       appendedEvents,
@@ -719,6 +721,88 @@ describe("manager orchestration production routing", () => {
     expect(managerHistory).toContain("First child private result.");
     expect(managerHistory).toContain("First child private follow-up result.");
     expect(managerHistory).toContain("Second child private result.");
+    const historyService = new LocalChatHistoryService({
+      stellaAppDir: rootPath,
+    });
+    const privateLifecycle = historyService
+      .listAgentThreadMessages({ threadId: managerTask.threadId, limit: 300 })
+      .filter((message) => message.role === "lifecycle")
+      .map((message) => message.lifecycleEvent!);
+    historyService.close();
+    const privateTaskCards = privateLifecycle
+      .filter((event) =>
+        ["agent-started", "agent-completed"].includes(event.type),
+      )
+      .map((event) => ({
+        id: event._id,
+        type: event.type,
+        agentId: event.payload?.agentId,
+        attemptGeneration: event.payload?.attemptGeneration,
+        isFollowUp: event.payload?.isFollowUp,
+      }));
+    expect(privateTaskCards).toEqual([
+      {
+        id: `${firstChild.threadId}:1:agent-started`,
+        type: "agent-started",
+        agentId: firstChild.threadId,
+        attemptGeneration: 1,
+        isFollowUp: undefined,
+      },
+      {
+        id: `${secondChild.threadId}:1:agent-started`,
+        type: "agent-started",
+        agentId: secondChild.threadId,
+        attemptGeneration: 1,
+        isFollowUp: undefined,
+      },
+      {
+        id: `${firstChild.threadId}:1:agent-completed`,
+        type: "agent-completed",
+        agentId: firstChild.threadId,
+        attemptGeneration: 1,
+        isFollowUp: undefined,
+      },
+      {
+        id: expect.stringMatching(
+          new RegExp(`^${firstChild.threadId}:\\d+:agent-started$`),
+        ),
+        type: "agent-started",
+        agentId: firstChild.threadId,
+        attemptGeneration: expect.any(Number),
+        isFollowUp: true,
+      },
+      {
+        id: expect.stringMatching(
+          new RegExp(`^${firstChild.threadId}:\\d+:agent-completed$`),
+        ),
+        type: "agent-completed",
+        agentId: firstChild.threadId,
+        attemptGeneration: expect.any(Number),
+        isFollowUp: undefined,
+      },
+      {
+        id: `${secondChild.threadId}:1:agent-completed`,
+        type: "agent-completed",
+        agentId: secondChild.threadId,
+        attemptGeneration: 1,
+        isFollowUp: undefined,
+      },
+    ]);
+    const followUpStart = privateTaskCards[3]!;
+    const followUpCompletion = privateTaskCards[4]!;
+    expect(followUpStart.attemptGeneration).toBeGreaterThan(1);
+    expect(followUpCompletion.attemptGeneration).toBe(
+      followUpStart.attemptGeneration,
+    );
+    expect(followUpStart.id).toBe(
+      `${firstChild.threadId}:${followUpStart.attemptGeneration}:agent-started`,
+    );
+    expect(followUpCompletion.id).toBe(
+      `${firstChild.threadId}:${followUpStart.attemptGeneration}:agent-completed`,
+    );
+    expect(JSON.stringify(privateLifecycle)).not.toMatch(
+      /spawn_agent|send_input|\[Tool call\]|\[Tool result\]/,
+    );
     const activityIds = store
       .listThreadActivity("conversation-root-filter")
       .map((record) => record.threadId);
@@ -752,6 +836,129 @@ describe("manager orchestration production routing", () => {
       expect.objectContaining({ type: "agent-started" }),
       expect.objectContaining({ type: "agent-completed" }),
     ]);
+  });
+
+  it("projects managed-child failure and cancellation cards from production lifecycle events only", async () => {
+    const harness = createHarness();
+    const { manager, appendedEvents, sentMessages } = harness;
+    runMock.handler = async (args) => {
+      if (args.agentType === AGENT_IDS.MANAGER) {
+        return {
+          runId: `manager-private-terminal-${Date.now()}`,
+          result: "Waiting for private terminal events.",
+        };
+      }
+      if (args.agentId?.includes("failing-child")) {
+        throw new Error("Private managed failure.");
+      }
+      await waitForAbort(args.abortSignal);
+      return { runId: "canceled-child", result: "", interrupted: true };
+    };
+
+    const managerTask = await manager.createAgent({
+      conversationId: "conversation-private-terminal-cards",
+      description: "Coordinate private terminal cards",
+      prompt: "Wait for both private children.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    const failedChild = await manager.createAgent({
+      conversationId: "conversation-private-terminal-cards",
+      description: "Failing child",
+      prompt: "Fail in the test runtime.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+    const canceledChild = await manager.createAgent({
+      conversationId: "conversation-private-terminal-cards",
+      description: "Canceled child",
+      prompt: "Wait to be canceled.",
+      agentType: AGENT_IDS.GENERAL,
+      agentDepth: 2,
+      maxAgentDepth: 2,
+      parentAgentId: managerTask.threadId,
+      storageMode: "local",
+    });
+
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(failedChild.threadId))?.status === "error",
+    );
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(canceledChild.threadId))?.status === "running",
+    );
+    await manager.cancelAgent(
+      canceledChild.threadId,
+      "Canceled for private lifecycle regression.",
+    );
+    await waitUntil(
+      async () =>
+        (await manager.getAgent(canceledChild.threadId))?.status === "canceled",
+    );
+
+    const historyService = new LocalChatHistoryService({
+      stellaAppDir: harness.rootPath,
+    });
+    const privateLifecycle = historyService
+      .listAgentThreadMessages({ threadId: managerTask.threadId, limit: 300 })
+      .filter((message) => message.role === "lifecycle")
+      .map((message) => message.lifecycleEvent!);
+    historyService.close();
+
+    expect(
+      privateLifecycle
+        .filter((event) =>
+          ["agent-started", "agent-failed", "agent-canceled"].includes(
+            event.type,
+          ),
+        )
+        .map((event) => ({
+          id: event._id,
+          type: event.type,
+          agentId: event.payload?.agentId,
+          error: event.payload?.error,
+        })),
+    ).toEqual([
+      {
+        id: `${failedChild.threadId}:1:agent-started`,
+        type: "agent-started",
+        agentId: failedChild.threadId,
+        error: undefined,
+      },
+      {
+        id: `${canceledChild.threadId}:1:agent-started`,
+        type: "agent-started",
+        agentId: canceledChild.threadId,
+        error: undefined,
+      },
+      {
+        id: `${failedChild.threadId}:1:agent-failed`,
+        type: "agent-failed",
+        agentId: failedChild.threadId,
+        error: "Private managed failure.",
+      },
+      {
+        id: `${canceledChild.threadId}:1:agent-canceled`,
+        type: "agent-canceled",
+        agentId: canceledChild.threadId,
+        error: "Canceled for private lifecycle regression.",
+      },
+    ]);
+    expect(JSON.stringify(appendedEvents)).not.toContain(failedChild.threadId);
+    expect(JSON.stringify(appendedEvents)).not.toContain(
+      canceledChild.threadId,
+    );
+    expect(JSON.stringify(sentMessages)).not.toContain(
+      "Private managed failure.",
+    );
+    expect(JSON.stringify(sentMessages)).not.toContain(
+      "Canceled for private lifecycle regression.",
+    );
   });
 
   it("routes a managed grandchild through durable ancestry without root projection", async () => {

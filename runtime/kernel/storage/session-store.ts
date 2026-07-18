@@ -43,6 +43,7 @@ import {
   RUNTIME_THREAD_SESSION_VERSION,
   type RuntimeThreadCompactionEntry,
   type RuntimeThreadCustomMessageEntry,
+  type RuntimeThreadLifecycleEntry,
   type RuntimeThreadMessageEntry,
   type RuntimeThreadSessionEntry,
   type RuntimeThreadMessage,
@@ -742,6 +743,38 @@ const enforceCustomMessageRowSizeLimit = (
   };
 };
 
+const THREAD_LIFECYCLE_EVENT_TYPES = new Set([
+  "agent-started",
+  "agent-progress",
+  "agent-completed",
+  "agent-failed",
+  "agent-canceled",
+]);
+
+const parseStoredThreadLifecycleEvent = (
+  value: unknown,
+): LocalChatEventRecord | null => {
+  const record = asObject(value);
+  const id = asTrimmedString(record?._id);
+  const type = asTrimmedString(record?.type);
+  const timestamp = asFiniteNumber(record?.timestamp);
+  if (
+    !id ||
+    !type ||
+    !THREAD_LIFECYCLE_EVENT_TYPES.has(type) ||
+    timestamp === null
+  ) {
+    return null;
+  }
+  const payload = asObject(record?.payload);
+  return {
+    _id: id,
+    timestamp,
+    type,
+    ...(payload ? { payload } : {}),
+  };
+};
+
 const parseThreadSessionEntry = (
   row: ThreadSessionEntryRow,
 ): RuntimeThreadSessionEntry | null => {
@@ -819,6 +852,17 @@ const parseThreadSessionEntry = (
         display,
         ...(eventId ? { eventId } : {}),
       } satisfies RuntimeThreadCustomMessageEntry;
+    }
+    case "lifecycle_event": {
+      const event = parseStoredThreadLifecycleEvent(data?.event);
+      if (!event) return null;
+      return {
+        type: "lifecycle_event",
+        id: row.entryId,
+        parentId: row.parentEntryId,
+        timestamp: row.timestampIso,
+        event,
+      } satisfies RuntimeThreadLifecycleEntry;
     }
     default:
       return null;
@@ -2943,6 +2987,93 @@ export class SessionStore {
     });
   }
 
+  appendThreadLifecycleEvent(message: {
+    threadKey: string;
+    event: LocalChatEventRecord;
+  }): void {
+    const threadKey = normalizeRuntimeThreadId(message.threadKey);
+    if (!threadKey) throw new Error("threadKey is required.");
+    const event = parseStoredThreadLifecycleEvent(message.event);
+    if (!event) throw new Error("A valid lifecycle event is required.");
+    const conversationId = this.getThreadConversationId(threadKey);
+    let entryId = "";
+    this.withTransaction(() => {
+      this.upsertSession(conversationId, event.timestamp);
+      const threadSession = this.ensureThreadSession(
+        threadKey,
+        conversationId,
+        event.timestamp,
+      );
+      entryId = this.appendThreadSessionEntry({
+        threadKey,
+        sessionId: threadSession.sessionId,
+        entryType: "lifecycle_event",
+        timestamp: event.timestamp,
+        data: { event },
+      });
+      this.touchThread(threadKey);
+    });
+    this.emitThreadTranscriptUpdate({
+      conversationId,
+      threadId: threadKey,
+      entryId,
+      atMs: event.timestamp,
+    });
+  }
+
+  hasThreadLifecycleEvent(
+    threadKeyInput: string,
+    eventIdInput: string,
+  ): boolean {
+    const threadKey = normalizeRuntimeThreadId(threadKeyInput);
+    const eventId = asTrimmedString(eventIdInput);
+    if (!threadKey || !eventId) return false;
+    const row = this.db
+      .prepare(
+        `SELECT 1 AS present
+         FROM runtime_thread_entries
+         WHERE thread_key = ?
+           AND entry_type = 'lifecycle_event'
+           AND json_extract(data_json, '$.event._id') = ?
+         LIMIT 1`,
+      )
+      .get(threadKey, eventId);
+    return Boolean(row);
+  }
+
+  listThreadLifecycleEntries(
+    threadKeyInput: string,
+    limit = 300,
+  ): Array<{ entryId: string; event: LocalChatEventRecord }> {
+    const threadKey = normalizeRuntimeThreadId(threadKeyInput);
+    if (!threadKey) throw new Error("threadKey is required.");
+    const normalizedLimit = Math.min(
+      500,
+      Math.max(1, Math.floor(Number.isFinite(limit) ? limit : 300)),
+    );
+    const rows = this.db
+      .prepare(
+        `SELECT entry_id AS entryId, data_json AS dataJson
+         FROM (
+           SELECT entry_id, data_json, append_seq, rowid
+           FROM runtime_thread_entries
+           WHERE thread_key = ? AND entry_type = 'lifecycle_event'
+           ORDER BY COALESCE(append_seq, rowid) DESC, rowid DESC
+           LIMIT ?
+         ) recent
+         ORDER BY COALESCE(append_seq, rowid) ASC, rowid ASC`,
+      )
+      .all(threadKey, normalizedLimit) as Array<{
+      entryId: string;
+      dataJson: string | null;
+    }>;
+    return rows.flatMap((row) => {
+      const data = parseJsonValue<Record<string, unknown>>(row.dataJson);
+      const event = parseStoredThreadLifecycleEvent(data?.event);
+      return event ? [{ entryId: row.entryId, event }] : [];
+    });
+  }
+
   loadThreadMessagesWithEntryTypes(
     threadKeyInput: string,
     limit?: number,
@@ -2964,6 +3095,40 @@ export class SessionStore {
       this.loadThreadSessionEntries(threadKey, limit),
     ).map((message) => ({
       ...(message.entryId ? { entryId: message.entryId } : {}),
+      sourceEntryType: message.sourceEntryType,
+      timestamp: message.timestamp,
+      role: message.role,
+      content: message.content,
+      ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
+      ...(message.payload ? { payload: message.payload } : {}),
+      ...(message.customMessage
+        ? { customMessage: message.customMessage }
+        : {}),
+    }));
+  }
+
+  loadRawThreadMessagesWithEntryTypes(
+    threadKeyInput: string,
+    limit?: number,
+  ): ReturnType<SessionStore["loadThreadMessagesWithEntryTypes"]> {
+    const threadKey = normalizeRuntimeThreadId(threadKeyInput);
+    if (!threadKey) throw new Error("threadKey is required.");
+    // Limit projected messages, not storage rows. A busy Manager thread can
+    // contain many display-only lifecycle entries; counting those toward the
+    // message limit would silently starve authored prose from the sidebar.
+    const path = buildThreadPathEntries(
+      this.loadThreadSessionEntries(threadKey),
+    );
+    const rawMessages = buildRawThreadMessages(path);
+    const normalizedLimit =
+      typeof limit === "number" && Number.isFinite(limit)
+        ? Math.max(1, Math.floor(limit))
+        : undefined;
+    const selected = normalizedLimit
+      ? rawMessages.slice(-normalizedLimit)
+      : rawMessages;
+    return selected.map((message) => ({
+      entryId: message.entryId,
       sourceEntryType: message.sourceEntryType,
       timestamp: message.timestamp,
       role: message.role,

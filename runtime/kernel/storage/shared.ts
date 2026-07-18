@@ -182,6 +182,13 @@ export type RuntimeThreadCustomMessageEntry =
     eventId?: string;
   };
 
+/** Display-only lifecycle snapshot scoped to one durable agent thread.
+ * Unlike a custom message, this entry is never replayed into model context. */
+export type RuntimeThreadLifecycleEntry = RuntimeThreadSessionEntryBase & {
+  type: "lifecycle_event";
+  event: LocalChatEventRecord;
+};
+
 export type RuntimeThreadLabelEntry = RuntimeThreadSessionEntryBase & {
   type: "label";
   targetId: string;
@@ -201,6 +208,7 @@ export type RuntimeThreadSessionEntry =
   | RuntimeThreadBranchSummaryEntry
   | RuntimeThreadCustomEntry
   | RuntimeThreadCustomMessageEntry
+  | RuntimeThreadLifecycleEntry
   | RuntimeThreadLabelEntry
   | RuntimeThreadSessionInfoEntry;
 

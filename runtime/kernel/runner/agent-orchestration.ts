@@ -24,6 +24,7 @@ import type {
   ToolContext,
   ToolResult,
 } from "../tools/types.js";
+import type { LocalChatEventRecord } from "../storage/shared.js";
 import type {
   LocalAgentContext,
   AgentLifecycleEvent,
@@ -399,6 +400,36 @@ const appendAgentLifecycleChatEvent = (
   });
 };
 
+const isCardLifecycleEvent = (
+  event: AgentLifecycleEvent,
+): event is AgentLifecycleEvent & {
+  type:
+    | "agent-started"
+    | "agent-progress"
+    | "agent-completed"
+    | "agent-failed"
+    | "agent-canceled";
+} => event.type !== "agent-message";
+
+const buildThreadLifecycleEvent = (
+  event: AgentLifecycleEvent,
+  timestamp: number,
+): LocalChatEventRecord => {
+  const derivedId = `${event.agentId}:${
+    event.attemptGeneration ?? timestamp
+  }:${event.type}`;
+  return {
+    _id:
+      event.eventId?.trim() ||
+      (event.type === "agent-progress"
+        ? `${derivedId}:${timestamp}`
+        : derivedId),
+    timestamp,
+    type: event.type,
+    payload: buildLifecycleEventPayload(event),
+  };
+};
+
 export const createAgentOrchestration = (
   context: RunnerContext,
   deps: {
@@ -479,6 +510,29 @@ export const createAgentOrchestration = (
         context.state.runCallbacksByRunId
           .get(event.rootRunId)
           ?.onAgentEvent?.(event);
+      }
+    }
+    if (
+      managerParentId &&
+      event.audience !== "orchestrator-only" &&
+      isCardLifecycleEvent(event)
+    ) {
+      // Manager descendants stay out of the root event table, but their own
+      // exact-thread viewer still needs the canonical lifecycle semantics.
+      // Store a display-only structured entry beside (not inside) the
+      // model-visible terminal reminder. Starts/progress have no reminder at
+      // all, and this entry type is never replayed into Manager context.
+      const lifecycleEvent = buildThreadLifecycleEvent(event, Date.now());
+      if (
+        !context.runtimeStore.hasThreadLifecycleEvent(
+          managerParentId,
+          lifecycleEvent._id,
+        )
+      ) {
+        context.runtimeStore.appendThreadLifecycleEvent({
+          threadKey: managerParentId,
+          event: lifecycleEvent,
+        });
       }
     }
     if (event.audience === "display-only") {
