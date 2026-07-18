@@ -13,7 +13,10 @@ import {
   getDesktopDatabasePath,
   initializeDesktopDatabase,
 } from "../../../../../runtime/kernel/storage/database-init.js";
-import { SessionStore } from "../../../../../runtime/kernel/storage/session-store.js";
+import {
+  FtsSearchUnavailableError,
+  SessionStore,
+} from "../../../../../runtime/kernel/storage/session-store.js";
 import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/shared.js";
 
 type TestContext = {
@@ -301,7 +304,7 @@ describe("transcript FTS index", () => {
     ).toEqual(["remember the emira torque spec"]);
   });
 
-  it("falls back to the LIKE scan when the index is unavailable", () => {
+  it("fails loudly when the index is unavailable unless degraded mode is explicit", () => {
     const { store, db } = createTestContext();
     appendChat(
       store,
@@ -317,8 +320,13 @@ describe("transcript FTS index", () => {
     // A fresh store re-detects availability (the flag is cached per store).
     const fallbackStore = new SessionStore(db);
 
+    expect(() =>
+      fallbackStore.searchTranscripts({ query: "zanzibar" }),
+    ).toThrow(FtsSearchUnavailableError);
     expect(
-      fallbackStore.searchTranscripts({ query: "zanzibar" }).map((h) => h.text),
+      fallbackStore
+        .searchTranscripts({ query: "zanzibar", degradedMode: "like" })
+        .map((h) => h.text),
     ).toEqual(["the secret is zanzibar"]);
   });
 

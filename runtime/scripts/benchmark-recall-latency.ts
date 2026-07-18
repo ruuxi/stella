@@ -4,7 +4,8 @@
  * This intentionally bypasses the live desktop process. SQLite is opened
  * read-only with PRAGMA query_only, memory files are only read, and the active
  * utility engine/model route is resolved exactly as the runner resolves it.
- * Answers are never printed or persisted; only timing telemetry is emitted.
+ * Returned briefs are secret-redacted and included in BASELINE_RESULT so
+ * correctness and fast-path classifications remain independently auditable.
  *
  * Run from the repo root (Bun does not expose node:sqlite):
  *   node node_modules/esbuild/bin/esbuild runtime/scripts/benchmark-recall-latency.ts --bundle --platform=node --format=esm --banner:js="import { createRequire as __stellaCreateRequire } from 'node:module'; const require = __stellaCreateRequire(import.meta.url);" --outfile=/tmp/stella-recall-latency.mjs
@@ -39,6 +40,7 @@ import {
   readRecallFtsHealth,
 } from "../kernel/storage/recall-read-queries.js";
 import type { LocalContextEvent } from "../kernel/local-history.js";
+import { redactMemoryText } from "../kernel/memory/redaction.js";
 
 const REPO_ROOT = process.cwd();
 const readArg = (name: string): string | undefined => {
@@ -287,6 +289,7 @@ const results: Array<{
     fastPath: boolean;
     sources: unknown[];
   };
+  brief?: string;
   error?: string;
 }> = [];
 
@@ -314,7 +317,7 @@ try {
       | { intent: string; fastPath: boolean; sources: unknown[] }
       | undefined;
     try {
-      await runRecall({
+      const brief = await runRecall({
         conversationId,
         lookupPrompt: query.prompt,
         memorySearchTerms: query.terms,
@@ -355,7 +358,12 @@ try {
         },
         signal: AbortSignal.timeout(180_000),
       });
-      results.push({ queryId: query.id, telemetry, resultMetadata });
+      results.push({
+        queryId: query.id,
+        telemetry,
+        resultMetadata,
+        brief: redactMemoryText(brief),
+      });
       process.stdout.write(
         `${query.id}: ${telemetry ? `${(telemetry.totalMs / 1_000).toFixed(1)}s ${telemetry.modelId} calls=${telemetry.modelCalls} rounds=${telemetry.toolRounds}` : "missing telemetry"}\n`,
       );
@@ -441,6 +449,7 @@ const summary = {
     query: QUERIES[index],
     ...(result.telemetry ? { telemetry: result.telemetry } : {}),
     ...(result.resultMetadata ? { resultMetadata: result.resultMetadata } : {}),
+    ...(result.brief !== undefined ? { brief: result.brief } : {}),
     ...(result.error ? { error: result.error } : {}),
   })),
 };

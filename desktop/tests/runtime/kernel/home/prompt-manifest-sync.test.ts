@@ -959,6 +959,10 @@ describe("remote prompt startup sync", () => {
       "prompts/dream-scheduled.md": "remote dream prompt",
     });
     await reconcileRemotePromptManifest(remote, home, bundled);
-    expect(buildDreamSystemPrompt(home)).toBe("remote dream prompt");
+    const prompt = buildDreamSystemPrompt(home);
+    expect(prompt).toContain("remote dream prompt");
+    expect(prompt).toContain("at most 80 entries and 6000 characters");
+    expect(prompt).toContain("Never put secrets, credentials, tokens");
+    expect(prompt).toContain("prune entries older than 90 days");
   });
 });

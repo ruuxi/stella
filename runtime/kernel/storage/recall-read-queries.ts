@@ -10,46 +10,88 @@ export type RecallFtsHealth = {
   reason?: string;
 };
 
+const probeRecallFtsMatch = (
+  db: SqliteDatabase,
+  table: "message_text_fts" | "thread_search_fts",
+): string | undefined => {
+  try {
+    db.prepare(`SELECT rowid FROM ${table} WHERE ${table} MATCH ? LIMIT 1`).get(
+      '"__stella_recall_fts_probe__"',
+    );
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+};
+
 /**
  * Recall must never accidentally enter SessionStore's slow LIKE fallback.
  * This read-only preflight turns a missing table or incomplete backfill into
  * a visible retrieval failure instead.
  */
 export const readRecallFtsHealth = (db: SqliteDatabase): RecallFtsHealth => {
-  const tableRows = db
-    .prepare(
-      `SELECT name FROM sqlite_master
-       WHERE type = 'table' AND name IN ('message_text_fts', 'thread_search_fts')`,
-    )
-    .all() as Array<{ name?: string }>;
-  const tables = new Set(tableRows.map((row) => row.name));
-  const flagRows = db
-    .prepare(
-      `SELECT key FROM settings
-       WHERE key IN ('transcript_fts_backfilled_v1', 'thread_search_fts_backfilled_v1')`,
-    )
-    .all() as Array<{ key?: string }>;
-  const flags = new Set(flagRows.map((row) => row.key));
-  const transcriptReady =
-    tables.has("message_text_fts") && flags.has("transcript_fts_backfilled_v1");
-  const threadsReady =
-    tables.has("thread_search_fts") &&
-    flags.has("thread_search_fts_backfilled_v1");
-  return {
-    healthy: transcriptReady && threadsReady,
-    transcriptReady,
-    threadsReady,
-    ...(!transcriptReady || !threadsReady
-      ? {
-          reason: [
-            !transcriptReady ? "transcript FTS missing or not backfilled" : "",
-            !threadsReady ? "thread FTS missing or not backfilled" : "",
-          ]
-            .filter(Boolean)
-            .join("; "),
-        }
-      : {}),
-  };
+  try {
+    const tableRows = db
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name IN ('message_text_fts', 'thread_search_fts')`,
+      )
+      .all() as Array<{ name?: string }>;
+    const tables = new Set(tableRows.map((row) => row.name));
+    const flagRows = db
+      .prepare(
+        `SELECT key FROM settings
+         WHERE key IN ('transcript_fts_backfilled_v1', 'thread_search_fts_backfilled_v1')`,
+      )
+      .all() as Array<{ key?: string }>;
+    const flags = new Set(flagRows.map((row) => row.key));
+    const transcriptProbeError = tables.has("message_text_fts")
+      ? probeRecallFtsMatch(db, "message_text_fts")
+      : undefined;
+    const threadProbeError = tables.has("thread_search_fts")
+      ? probeRecallFtsMatch(db, "thread_search_fts")
+      : undefined;
+    const transcriptReady =
+      tables.has("message_text_fts") &&
+      flags.has("transcript_fts_backfilled_v1") &&
+      !transcriptProbeError;
+    const threadsReady =
+      tables.has("thread_search_fts") &&
+      flags.has("thread_search_fts_backfilled_v1") &&
+      !threadProbeError;
+    return {
+      healthy: transcriptReady && threadsReady,
+      transcriptReady,
+      threadsReady,
+      ...(!transcriptReady || !threadsReady
+        ? {
+            reason: [
+              !transcriptReady
+                ? transcriptProbeError
+                  ? `transcript FTS MATCH probe failed: ${transcriptProbeError}`
+                  : "transcript FTS missing or not backfilled"
+                : "",
+              !threadsReady
+                ? threadProbeError
+                  ? `thread FTS MATCH probe failed: ${threadProbeError}`
+                  : "thread FTS missing or not backfilled"
+                : "",
+            ]
+              .filter(Boolean)
+              .join("; "),
+          }
+        : {}),
+    };
+  } catch (error) {
+    return {
+      healthy: false,
+      transcriptReady: false,
+      threadsReady: false,
+      reason: `FTS health preflight failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
 };
 
 export type TranscriptNeighborTarget = {

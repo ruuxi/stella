@@ -44,7 +44,9 @@ describe("buildSystemPrompt", () => {
 
 describe("buildStartupPromptMessages", () => {
   it("can include the registry startup doc when explicitly enabled", async () => {
-    const stellaDataDir = await mkdtemp(path.join(tmpdir(), "stella-registry-"));
+    const stellaDataDir = await mkdtemp(
+      path.join(tmpdir(), "stella-registry-"),
+    );
     try {
       await writeFile(
         path.join(stellaDataDir, "registry.md"),
@@ -72,7 +74,9 @@ describe("buildStartupPromptMessages", () => {
   });
 
   it("omits the registry startup doc by default", async () => {
-    const stellaDataDir = await mkdtemp(path.join(tmpdir(), "stella-registry-"));
+    const stellaDataDir = await mkdtemp(
+      path.join(tmpdir(), "stella-registry-"),
+    );
     try {
       await writeFile(
         path.join(stellaDataDir, "registry.md"),
@@ -120,7 +124,8 @@ describe("buildStartupPromptMessages", () => {
         maxAgentDepth: 1,
         threadHistory: [],
         userProfile: "# User Profile\n\n- The user goes by Bob",
-        memorySummary: "# Memory summary\n\n- Shipping the resident-memory rewire",
+        memorySummary:
+          "# Memory summary\n\n- Shipping the resident-memory rewire",
       },
     });
 
@@ -129,9 +134,26 @@ describe("buildStartupPromptMessages", () => {
     expect(promptText).toContain("The user goes by Bob");
     expect(promptText).toContain('path="~/.stella/memories/memory_summary.md"');
     expect(promptText).toContain("resident-memory rewire");
-    expect(messages.every((m) => m.customType === "bootstrap.startup_doc")).toBe(
-      true,
-    );
+    expect(
+      messages.every((m) => m.customType === "bootstrap.startup_doc"),
+    ).toBe(true);
+  });
+
+  it("hard-caps a resident memory summary before persisting the startup doc", async () => {
+    const messages = await buildStartupPromptMessages({
+      context: {
+        systemPrompt: "system",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+        threadHistory: [],
+        memorySummary: `# Memory summary\n${"x".repeat(20_000)}TAIL_SENTINEL`,
+      },
+    });
+
+    const promptText = messages.map((message) => message.text).join("\n");
+    expect(promptText).toContain("resident memory summary truncated");
+    expect(promptText).not.toContain("TAIL_SENTINEL");
+    expect(promptText.length).toBeLessThan(12_200);
   });
 
   it("does not re-inject resident docs already persisted in thread history", async () => {

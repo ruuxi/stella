@@ -31,8 +31,10 @@ const logger = createRuntimeLogger("agent-runtime.thread-memory");
 const LIFE_REGISTRY_DISPLAY_PATH = "~/.stella/registry.md";
 const LIFE_CORE_MEMORY_DISPLAY_PATH = "~/.stella/core-memory.md";
 const LIFE_USER_PROFILE_DISPLAY_PATH = "~/.stella/memories/profile.md";
-const LIFE_MEMORY_SUMMARY_DISPLAY_PATH =
-  "~/.stella/memories/memory_summary.md";
+const LIFE_MEMORY_SUMMARY_DISPLAY_PATH = "~/.stella/memories/memory_summary.md";
+const MEMORY_SUMMARY_BOOTSTRAP_MAX_CHARS = 12_000;
+const MEMORY_SUMMARY_TRUNCATION_MARKER =
+  "\n...[resident memory summary truncated]";
 const LIFE_PERSONALITY_DISPLAY_PATH = "~/.stella/PERSONALITY.md";
 const BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE = "bootstrap.startup_doc";
 export const buildRunThreadKey = ({
@@ -530,7 +532,10 @@ export const buildStartupPromptMessages = async (args: {
     ? redactMemoryText(args.context.coreMemory.trim())
     : "";
   if (coreMemory) {
-    const doc = buildStartupDocMessage(LIFE_CORE_MEMORY_DISPLAY_PATH, coreMemory);
+    const doc = buildStartupDocMessage(
+      LIFE_CORE_MEMORY_DISPLAY_PATH,
+      coreMemory,
+    );
     if (!hasPersistedStartupDoc(args.context, doc)) {
       messages.push(
         createInternalPromptMessage(
@@ -566,9 +571,17 @@ export const buildStartupPromptMessages = async (args: {
 
   // Resident focus summary — Dream's dynamic snapshot of what the user is
   // actively working on, now pushed instead of only reachable via Context.
-  const memorySummary = args.context.memorySummary
+  const rawMemorySummary = args.context.memorySummary
     ? redactMemoryText(args.context.memorySummary.trim())
     : "";
+  const memorySummary =
+    rawMemorySummary.length > MEMORY_SUMMARY_BOOTSTRAP_MAX_CHARS
+      ? `${rawMemorySummary.slice(
+          0,
+          MEMORY_SUMMARY_BOOTSTRAP_MAX_CHARS -
+            MEMORY_SUMMARY_TRUNCATION_MARKER.length,
+        )}${MEMORY_SUMMARY_TRUNCATION_MARKER}`
+      : rawMemorySummary;
   if (memorySummary) {
     const doc = buildStartupDocMessage(
       LIFE_MEMORY_SUMMARY_DISPLAY_PATH,

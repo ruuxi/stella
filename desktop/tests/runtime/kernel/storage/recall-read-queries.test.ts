@@ -78,4 +78,41 @@ describe("Recall read queries", () => {
       threadsReady: false,
     });
   });
+
+  it("proves MATCH execution instead of trusting table names and flags", () => {
+    const db = makeDb();
+    db.exec(`
+      CREATE TABLE message_text_fts (text TEXT);
+      CREATE TABLE thread_search_fts (text TEXT);
+      INSERT INTO settings (key, value) VALUES
+        ('transcript_fts_backfilled_v1', '1'),
+        ('thread_search_fts_backfilled_v1', '1');
+    `);
+
+    expect(readRecallFtsHealth(db as never)).toMatchObject({
+      healthy: false,
+      transcriptReady: false,
+      threadsReady: false,
+    });
+    expect(readRecallFtsHealth(db as never).reason).toContain(
+      "MATCH probe failed",
+    );
+  });
+
+  it("reports healthy only when both FTS indexes execute MATCH", () => {
+    const db = makeDb();
+    db.exec(`
+      CREATE VIRTUAL TABLE message_text_fts USING fts5(text);
+      CREATE VIRTUAL TABLE thread_search_fts USING fts5(text);
+      INSERT INTO settings (key, value) VALUES
+        ('transcript_fts_backfilled_v1', '1'),
+        ('thread_search_fts_backfilled_v1', '1');
+    `);
+
+    expect(readRecallFtsHealth(db as never)).toEqual({
+      healthy: true,
+      transcriptReady: true,
+      threadsReady: true,
+    });
+  });
 });

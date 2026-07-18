@@ -4,11 +4,13 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  classifyRecallIntent,
   isRecallNoMatchBrief,
   RecallRetrievalError,
   routeRecallIntent,
   runRecall,
 } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
+import { readMemorySummaryDoc } from "../../../../../runtime/kernel/runner/shared.js";
 
 const roots = new Set<string>();
 
@@ -39,11 +41,29 @@ const makeStore = () =>
     listThreadResultExcerpts: vi.fn(() => new Map()),
     dreamInboxStore: {
       listRecentThreadSummaries: vi.fn(() => []),
+      findThreadSummariesByThreadIds: vi.fn(() => []),
       recordUsage: vi.fn(),
     },
   }) as never;
 
 describe("architectural Recall pipeline", () => {
+  it("deterministically caps the resident routing index at injection", async () => {
+    const root = await createRoot();
+    await writeFile(
+      path.join(root, "memories", "memory_summary.md"),
+      "# Memory summary\n- active focus",
+    );
+    await writeFile(
+      path.join(root, "memories", "memory_index.md"),
+      `# Memory routing index\n${"x".repeat(7_000)}TAIL_SENTINEL`,
+    );
+
+    const resident = readMemorySummaryDoc(root) ?? "";
+    expect(resident).toContain("resident memory truncated");
+    expect(resident).not.toContain("TAIL_SENTINEL");
+    expect(resident.length).toBeLessThan(6_100);
+  });
+
   it("routes common facts to memory and returns matched lines with zero model calls", async () => {
     const root = await createRoot();
     await writeFile(
@@ -180,6 +200,90 @@ describe("architectural Recall pipeline", () => {
     expect(store.searchTranscripts).toHaveBeenCalledTimes(1);
   });
 
+  it("requires anchors to co-occur inside one memory result", async () => {
+    const root = await createRoot();
+    await writeFile(
+      path.join(root, "memories", "memory_index.md"),
+      [
+        "# Memory routing index",
+        "- alpha-anchor belongs to one unrelated entry",
+        "  filler one",
+        "  filler two",
+        "  filler three",
+        "  filler four",
+        "  filler five",
+        "- beta-anchor belongs to another unrelated entry",
+      ].join("\n"),
+    );
+    const store = makeStore() as any;
+
+    const brief = await runRecall({
+      conversationId: "conv-1",
+      lookupPrompt: "What prior decision joined alpha-anchor and beta-anchor?",
+      memorySearchTerms: ["alpha-anchor", "beta-anchor"],
+      stellaAppDir: root,
+      stellaDataDir: root,
+      store,
+      localEvents: [],
+      recallRoute: {
+        activeEngine: "default",
+        executionEngine: "native",
+        modelId: "test/light",
+      } as never,
+      recallReadQueries: {
+        getFtsHealth: () => ({
+          healthy: true,
+          transcriptReady: true,
+          threadsReady: true,
+        }),
+        listTranscriptNeighborsBatch: () => [],
+      },
+    });
+
+    expect(brief).toBe("Nothing relevant found.");
+    expect(store.searchTranscripts).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an exact-phrase result directly and accepts reformulated terms", async () => {
+    const root = await createRoot();
+    await writeFile(
+      path.join(root, "memories", "memory_index.md"),
+      "# Memory routing index\n- banana protocol belongs to the orchard repo",
+    );
+    const records: Array<{ modelCalls: number; fastPath?: boolean }> = [];
+
+    const brief = await runRecall({
+      conversationId: "conv-1",
+      lookupPrompt: "Find exact phrase banana protocol.",
+      memorySearchTerms: ["wrong-alpha", "wrong-beta"],
+      stellaAppDir: root,
+      stellaDataDir: root,
+      store: makeStore(),
+      localEvents: [],
+      recallRoute: {
+        activeEngine: "default",
+        executionEngine: "native",
+        modelId: "test/light",
+      } as never,
+      recallReadQueries: {
+        getFtsHealth: () => ({
+          healthy: true,
+          transcriptReady: true,
+          threadsReady: true,
+        }),
+        listTranscriptNeighborsBatch: () => [],
+      },
+      onTelemetry: (record) => records.push(record),
+    });
+
+    expect(brief).toContain("banana protocol");
+    expect(records[0]).toMatchObject({
+      modelCalls: 0,
+      fastPath: true,
+      retrievalPasses: 2,
+    });
+  });
+
   it("classifies live, delegated, episodic, durable, and ambiguous intents deterministically", () => {
     expect(
       routeRecallIntent("What is on my active browser tab right now?"),
@@ -196,8 +300,27 @@ describe("architectural Recall pipeline", () => {
     expect(routeRecallIntent("Tell me what we know about Zephyr")).toBe(
       "multi_source",
     );
-    expect(isRecallNoMatchBrief("  NOTHING RELEVANT FOUND: after two passes")).toBe(
-      true,
+    expect(routeRecallIntent("What file defines agent status?")).toBe(
+      "multi_source",
     );
+    expect(
+      routeRecallIntent("Find this phrase right now in which old discussion"),
+    ).toBe("multi_source");
+    expect(routeRecallIntent("stella-v2")).toBe("durable_memory");
+    expect(routeRecallIntent("Find exact phrase banana protocol")).toBe(
+      "multi_source",
+    );
+    expect(
+      classifyRecallIntent("Find exact phrase banana protocol"),
+    ).toMatchObject({ deterministicFastPath: true });
+    expect(
+      classifyRecallIntent("When did I first drive the blue Lotus?"),
+    ).toMatchObject({ deterministicFastPath: false });
+    expect(
+      classifyRecallIntent("What file defines agent status?"),
+    ).toMatchObject({ deterministicFastPath: false });
+    expect(
+      isRecallNoMatchBrief("  NOTHING RELEVANT FOUND: after two passes"),
+    ).toBe(true);
   });
 });

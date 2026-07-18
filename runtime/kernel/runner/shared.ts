@@ -13,6 +13,7 @@ import {
 import { isOrchestratorAgentType } from "../../contracts/agent-runtime.js";
 import { formatAgentTerminalStateSystemReminder } from "../../contracts/system-reminders.js";
 import { redactMemoryText } from "../memory/redaction.js";
+import { MEMORY_INDEX_MAX_CHARS } from "../memory/dream-storage.js";
 import { readHomePrompt } from "../prompts/home-prompts.js";
 
 export const DEFAULT_MAX_AGENT_DEPTH = 8;
@@ -55,10 +56,21 @@ export const readCoreMemory = (stellaDataDir: string): string | undefined => {
   return undefined;
 };
 
-const readResidentMemoryDoc = (filePath: string): string | undefined => {
+const capResidentMemoryDoc = (content: string, maxChars?: number): string => {
+  if (!maxChars || content.length <= maxChars) return content;
+  const marker = "\n...[resident memory truncated]";
+  return `${content.slice(0, Math.max(0, maxChars - marker.length))}${marker}`;
+};
+
+const readResidentMemoryDoc = (
+  filePath: string,
+  maxChars?: number,
+): string | undefined => {
   try {
     const content = fs.readFileSync(filePath, "utf-8").trim();
-    return content ? redactMemoryText(content) : undefined;
+    return content
+      ? capResidentMemoryDoc(redactMemoryText(content), maxChars)
+      : undefined;
   } catch {
     return undefined;
   }
@@ -77,6 +89,7 @@ export const readMemorySummaryDoc = (
   );
   const routingIndex = readResidentMemoryDoc(
     path.join(stellaDataDir, "memories", "memory_index.md"),
+    MEMORY_INDEX_MAX_CHARS,
   );
   return [summary, routingIndex].filter(Boolean).join("\n\n") || undefined;
 };

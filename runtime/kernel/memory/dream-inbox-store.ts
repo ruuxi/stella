@@ -92,6 +92,8 @@ const ROW_COLUMNS = `
   last_usage
 `;
 
+export const DREAM_USAGE_REQUEUE_DEBOUNCE_MS = 6 * 60 * 60 * 1_000;
+
 const parseMetadata = (raw: string | null): Record<string, unknown> | null => {
   if (!raw) return null;
   try {
@@ -194,8 +196,7 @@ export class DreamInboxStore {
     const createdAt = candidate.createdAt ?? new Date();
     const note: Required<MemoryNoteCandidate> = {
       title,
-      category:
-        redactMemoryText(candidate.category.trim()) || "active_focus",
+      category: redactMemoryText(candidate.category.trim()) || "active_focus",
       memory,
       recallHooks: redactMemoryStringArray(
         candidate.recallHooks.map((hook) => hook.trim()).filter(Boolean),
@@ -337,10 +338,9 @@ export class DreamInboxStore {
   }
 
   /** Stamp rows as consumed by Dream. Returns how many rows were updated. */
-  markProcessed(args: {
-    ids: number[];
-    processedAt?: number;
-  }): { updated: number } {
+  markProcessed(args: { ids: number[]; processedAt?: number }): {
+    updated: number;
+  } {
     if (args.ids.length === 0) return { updated: 0 };
     const processedAt = args.processedAt ?? Date.now();
     const stmt = this.db.prepare(
@@ -388,6 +388,33 @@ export class DreamInboxStore {
     return rows.map(fromRow);
   }
 
+  /** Resolve the newest summary for each exact surfaced thread id. */
+  findThreadSummariesByThreadIds(
+    threadIds: readonly string[],
+  ): DreamInboxRow[] {
+    const ids = [
+      ...new Set(threadIds.map((id) => id.trim()).filter(Boolean)),
+    ].slice(0, 100);
+    if (ids.length === 0) return [];
+    const rows = this.db
+      .prepare(
+        `
+        SELECT ${ROW_COLUMNS}
+        FROM dream_inbox
+        WHERE kind = 'thread_summary'
+          AND thread_id IN (${ids.map(() => "?").join(", ")})
+        ORDER BY source_updated_at DESC, id DESC
+        `,
+      )
+      .all(...ids) as DreamInboxRawRow[];
+    const seen = new Set<string>();
+    return rows.flatMap((row) => {
+      if (!row.thread_id || seen.has(row.thread_id)) return [];
+      seen.add(row.thread_id);
+      return [fromRow(row)];
+    });
+  }
+
   /**
    * Newest-first memory-note bodies, consolidated or not. The memory-review
    * pass includes these in its known-memory context so it does not re-propose
@@ -413,17 +440,29 @@ export class DreamInboxStore {
    * Update usage counters when the Orchestrator surfaces a thread summary in
    * its working context. Pure bookkeeping; never throws on missing rows.
    */
-  recordUsage(threadId: string, runId: string): void {
+  recordUsage(
+    threadId: string,
+    runId: string,
+    options?: { nowMs?: number; requeueDebounceMs?: number },
+  ): void {
+    const nowMs = options?.nowMs ?? Date.now();
+    const requeueDebounceMs = Math.max(
+      0,
+      options?.requeueDebounceMs ?? DREAM_USAGE_REQUEUE_DEBOUNCE_MS,
+    );
     this.db
       .prepare(
         `
         UPDATE dream_inbox
         SET usage_count = usage_count + 1,
             last_usage = ?,
-            processed_by_dream_at = NULL
+            processed_by_dream_at = CASE
+              WHEN last_usage IS NULL OR last_usage <= ? THEN NULL
+              ELSE processed_by_dream_at
+            END
         WHERE kind = 'thread_summary' AND thread_id = ? AND run_id = ?
         `,
       )
-      .run(Date.now(), threadId, runId);
+      .run(nowMs, nowMs - requeueDebounceMs, threadId, runId);
   }
 }

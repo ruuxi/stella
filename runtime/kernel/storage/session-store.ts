@@ -90,6 +90,34 @@ type SessionStoreOptions = {
   onThreadTranscriptUpdate?: (payload: ThreadActivityUpdatedPayload) => void;
 };
 
+export class FtsSearchUnavailableError extends Error {
+  override readonly name = "FtsSearchUnavailableError";
+
+  constructor(
+    readonly index: "threads" | "transcripts",
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+  }
+}
+
+const throwFtsSearchUnavailable = (
+  index: "threads" | "transcripts",
+  reason: string,
+  cause?: unknown,
+): never => {
+  console.error(
+    "[stella:recall:fts-degraded]",
+    JSON.stringify({ index, reason }),
+  );
+  throw new FtsSearchUnavailableError(
+    index,
+    `Recall ${index} FTS unavailable: ${reason}`,
+    cause === undefined ? undefined : { cause },
+  );
+};
+
 type VisibleScanRow = {
   timestamp: number | null;
   id: string | null;
@@ -3355,29 +3383,37 @@ export class SessionStore {
    * thread history, porter stemming matches word forms ("deploys" ~
    * "deploy"), and — the main quality win — the agent's final
    * `result`/`error` text is searchable, which no LIKE column ever was.
-   * When the index is unavailable (an SQLite build without FTS5, or a
-   * dropped index after a failed backfill), the original LIKE scan answers
-   * instead; it deliberately keeps its narrower column set, so result/error
-   * matching is exclusive to the FTS path.
+   * Missing or broken FTS is a surfaced retrieval failure. The LIKE scan is
+   * available only when a caller deliberately opts into degraded mode.
    */
   searchThreads(args: {
     conversationId: string;
     query?: string;
     limit?: number;
+    degradedMode?: "like";
   }): RuntimeThreadRecord[] {
     const limit = Math.max(1, Math.min(25, Math.floor(args.limit ?? 12)));
     const tokens = tokenizeSearchQuery(args.query);
     // No tokens means "most recent work" — a pure recency read of the base
     // table that the FTS index (matching only) has nothing to add to.
-    if (tokens.length > 0 && this.threadFtsAvailable()) {
-      try {
-        return this.searchThreadsFts(args.conversationId, tokens, limit);
-      } catch {
-        // A token FTS5 cannot tokenize (pure punctuation) makes MATCH
-        // throw — the LIKE scan below still handles it.
-      }
+    if (tokens.length === 0) {
+      return this.searchThreadsLike(args.conversationId, tokens, limit);
     }
-    return this.searchThreadsLike(args.conversationId, tokens, limit);
+    if (args.degradedMode === "like") {
+      console.warn(
+        "[stella:recall:fts-degraded]",
+        JSON.stringify({ index: "threads", reason: "explicit LIKE mode" }),
+      );
+      return this.searchThreadsLike(args.conversationId, tokens, limit);
+    }
+    if (!this.threadFtsAvailable()) {
+      return throwFtsSearchUnavailable("threads", "index table is missing");
+    }
+    try {
+      return this.searchThreadsFts(args.conversationId, tokens, limit);
+    } catch (error) {
+      return throwFtsSearchUnavailable("threads", "MATCH query failed", error);
+    }
   }
 
   private hasThreadFts: boolean | undefined;
@@ -3743,26 +3779,36 @@ export class SessionStore {
    *
    * Backed by the `message_text_fts` FTS5 index (see database-init) so the
    * lookup scales with match count, not history size, and porter stemming
-   * matches word forms ("drive" ~ "drives"). When the index is unavailable
-   * — an SQLite build without FTS5, or a dropped index after a failed
-   * backfill — the original LIKE scan answers instead.
+   * matches word forms ("drive" ~ "drives"). Missing or broken FTS is a
+   * surfaced retrieval failure; LIKE requires an explicit degraded-mode opt-in.
    */
   searchTranscripts(args: {
     query: string;
     limit?: number;
+    degradedMode?: "like";
   }): TranscriptSearchHit[] {
     const limit = Math.max(1, Math.min(25, Math.floor(args.limit ?? 12)));
     const tokens = tokenizeSearchQuery(args.query);
     if (tokens.length === 0) return [];
-    if (this.transcriptFtsAvailable()) {
-      try {
-        return this.searchTranscriptsFts(tokens, limit);
-      } catch {
-        // A token FTS5 cannot tokenize (pure punctuation) makes MATCH
-        // throw — the LIKE scan below still handles it.
-      }
+    if (args.degradedMode === "like") {
+      console.warn(
+        "[stella:recall:fts-degraded]",
+        JSON.stringify({ index: "transcripts", reason: "explicit LIKE mode" }),
+      );
+      return this.searchTranscriptsLike(tokens, limit);
     }
-    return this.searchTranscriptsLike(tokens, limit);
+    if (!this.transcriptFtsAvailable()) {
+      return throwFtsSearchUnavailable("transcripts", "index table is missing");
+    }
+    try {
+      return this.searchTranscriptsFts(tokens, limit);
+    } catch (error) {
+      return throwFtsSearchUnavailable(
+        "transcripts",
+        "MATCH query failed",
+        error,
+      );
+    }
   }
 
   private hasTranscriptFts: boolean | undefined;
