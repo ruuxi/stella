@@ -1401,6 +1401,15 @@ const selectUsableRecallEvidence = (
   return matchingUnits.length > 0 ? matchingUnits.join("\n\n") : null;
 };
 
+const hasSubstantiveRecallEvidence = (value: string): boolean =>
+  value.split("\n").some((line) => {
+    const normalized = line.trim();
+    if (!normalized || normalized.startsWith("#")) return false;
+    return !/^(?:nothing relevant found|no\b.*\b(?:found|available|matched|matches|results?))\.?$/i.test(
+      normalized,
+    );
+  });
+
 const deterministicReformulation = (
   prompt: string,
   originalTerms: readonly string[],
@@ -1464,7 +1473,9 @@ const runArchitecturalRecall = async (args: {
 }): Promise<string> => {
   const intentDecision = classifyRecallIntent(args.lookupPrompt);
   const intent = intentDecision.intent;
-  let synthesisRequired = !intentDecision.deterministicFastPath;
+  const classificationRequiresSynthesis =
+    !intentDecision.deterministicFastPath;
+  let synthesisRequired = classificationRequiresSynthesis;
   args.telemetry.setIntent(intent, intentDecision.deterministicFastPath);
   const useClaudeCode = args.recallRoute.executionEngine === "claude-code";
   args.telemetry.setRoute(
@@ -1606,6 +1617,15 @@ const runArchitecturalRecall = async (args: {
   let evidenceTerms = args.seedTerms;
   let evidence = await retrieve(evidenceTerms);
   let usable = selectUsableEvidence(evidence, evidenceTerms);
+  if (usable.length === 0 && classificationRequiresSynthesis) {
+    // Ambiguous and episodic requests are deliberately model-routed. Their
+    // evidence may be individually incomplete; that is exactly why synthesis
+    // is required. Do not turn the direct-answer confidence gate into an
+    // accidental no-match gate for those requests.
+    usable = evidence.filter(({ value }) =>
+      hasSubstantiveRecallEvidence(value),
+    );
+  }
   if (usable.length === 0) {
     if (intent === "durable_memory") {
       // A durable-index miss gets one transcript pass with the SAME concrete
@@ -1629,6 +1649,11 @@ const runArchitecturalRecall = async (args: {
       }
     }
     usable = selectUsableEvidence(evidence, evidenceTerms);
+    if (usable.length === 0 && classificationRequiresSynthesis) {
+      usable = evidence.filter(({ value }) =>
+        hasSubstantiveRecallEvidence(value),
+      );
+    }
   }
 
   if (usable.length === 0) {
