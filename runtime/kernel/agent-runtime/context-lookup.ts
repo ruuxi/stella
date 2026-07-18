@@ -1373,11 +1373,13 @@ const selectUsableRecallEvidence = (
     ];
     return tokens.length > 0 ? [tokens] : [];
   });
-  const requiredGroupMatches = Math.min(2, distinctiveTermGroups.length);
-  if (requiredGroupMatches === 0) return null;
   const normalizedExactPhrases = exactPhrases.map((phrase) =>
     phrase.replace(/\s+/g, " ").trim().toLocaleLowerCase(),
   );
+  const requiredGroupMatches =
+    normalizedExactPhrases.length > 0 ? 0 : distinctiveTermGroups.length;
+  if (requiredGroupMatches === 0 && normalizedExactPhrases.length === 0)
+    return null;
   const matchingUnits = splitRecallEvidenceUnits(kind, value).filter((unit) => {
     const normalizedUnit = unit.replace(/\s+/g, " ").toLocaleLowerCase();
     const anchorText =
@@ -1392,7 +1394,7 @@ const selectUsableRecallEvidence = (
     }
     return (
       distinctiveTermGroups.filter((group) =>
-        group.some((token) => anchorText.includes(token)),
+        group.every((token) => anchorText.includes(token)),
       ).length >= requiredGroupMatches
     );
   });

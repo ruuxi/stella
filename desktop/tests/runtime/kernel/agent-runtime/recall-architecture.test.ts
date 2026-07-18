@@ -244,6 +244,50 @@ describe("architectural Recall pipeline", () => {
     expect(store.searchTranscripts).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects partial phrase anchors even when generic tokens overlap", async () => {
+    const root = await createRoot();
+    await writeFile(
+      path.join(root, "memories", "memory_index.md"),
+      [
+        "# Memory routing index",
+        "- Stella release verification covered a repository change.",
+      ].join("\n"),
+    );
+    const store = makeStore() as any;
+
+    const brief = await runRecall({
+      conversationId: "conv-1",
+      lookupPrompt:
+        "What are the established repo-scope and verification rules for Stella release sweeps?",
+      memorySearchTerms: [
+        "release sweep",
+        "repo scope",
+        "verification",
+        "Stella",
+      ],
+      stellaAppDir: root,
+      stellaDataDir: root,
+      store,
+      localEvents: [],
+      recallRoute: {
+        activeEngine: "default",
+        executionEngine: "native",
+        modelId: "test/light",
+      } as never,
+      recallReadQueries: {
+        getFtsHealth: () => ({
+          healthy: true,
+          transcriptReady: true,
+          threadsReady: true,
+        }),
+        listTranscriptNeighborsBatch: () => [],
+      },
+    });
+
+    expect(brief).toBe("Nothing relevant found.");
+    expect(store.searchTranscripts).toHaveBeenCalledTimes(1);
+  });
+
   it("returns an exact-phrase result directly and accepts reformulated terms", async () => {
     const root = await createRoot();
     await writeFile(
