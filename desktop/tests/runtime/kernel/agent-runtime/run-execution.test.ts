@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { executeAgentTurnWithRetry } from "../../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
 import { executeRuntimeAgentPrompt } from "../../../../../runtime/kernel/agent-runtime/run-execution.js";
 
 const createAssistantMessage = (text: string) => ({
@@ -149,6 +150,81 @@ describe("executeRuntimeAgentPrompt", () => {
       ).rejects.toThrow("Agent did not produce activity");
       expect(agent.abort).toHaveBeenCalledOnce();
       expect(listeners.size).toBe(0);
+    } finally {
+      if (previousTimeout === undefined) {
+        delete process.env.STELLA_AGENT_STARTUP_IDLE_TIMEOUT_MS;
+      } else {
+        process.env.STELLA_AGENT_STARTUP_IDLE_TIMEOUT_MS = previousTimeout;
+      }
+    }
+  });
+
+  it("waits for a watchdog-aborted Agent loop to settle before retrying", async () => {
+    const previousTimeout = process.env.STELLA_AGENT_STARTUP_IDLE_TIMEOUT_MS;
+    process.env.STELLA_AGENT_STARTUP_IDLE_TIMEOUT_MS = "25";
+    let processing = false;
+    let settlePrompt: (() => void) | undefined;
+    const agent = {
+      state: {
+        messages: [] as Array<ReturnType<typeof createAssistantMessage>>,
+      },
+      subscribe: vi.fn(() => () => {}),
+      prompt: vi.fn(() => {
+        processing = true;
+        return new Promise<void>((resolve) => {
+          settlePrompt = resolve;
+        });
+      }),
+      followUp: vi.fn(),
+      continue: vi.fn(async () => {
+        if (processing) {
+          throw new Error(
+            "Agent is already processing. Wait for completion before continuing.",
+          );
+        }
+        agent.state.messages = [createAssistantMessage("recovered")];
+      }),
+      abort: vi.fn(() => {
+        setTimeout(() => {
+          processing = false;
+          agent.state.messages = [
+            {
+              ...createAssistantMessage(""),
+              content: [],
+              stopReason: "error",
+              errorMessage: "Agent did not produce activity for 0s.",
+            } as never,
+          ];
+          settlePrompt?.();
+        }, 50);
+      }),
+    };
+
+    try {
+      const result = await executeAgentTurnWithRetry({
+        execute: (resume) =>
+          executeRuntimeAgentPrompt({
+            agent,
+            promptText: "recover after the watchdog",
+            runId: "run-watchdog-retry",
+            agentType: "general",
+            userMessageId: "msg-watchdog-retry",
+            recorder: {} as never,
+            resume,
+          }),
+        prepareRetry: () => {
+          agent.state.messages.pop();
+          return true;
+        },
+        random: () => 0.5,
+        sleep: async () => undefined,
+      });
+
+      expect(result).toEqual({ finalText: "recovered", attempts: 2 });
+      expect(agent.prompt).toHaveBeenCalledOnce();
+      expect(agent.abort).toHaveBeenCalledOnce();
+      expect(agent.continue).toHaveBeenCalledOnce();
+      expect(processing).toBe(false);
     } finally {
       if (previousTimeout === undefined) {
         delete process.env.STELLA_AGENT_STARTUP_IDLE_TIMEOUT_MS;

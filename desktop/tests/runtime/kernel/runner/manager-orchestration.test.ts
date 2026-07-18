@@ -123,6 +123,17 @@ const emptyAssistantMessage = (): AssistantMessage => ({
   timestamp: Date.now(),
 });
 
+const silentLengthTruncationMessage = (): AssistantMessage => ({
+  ...emptyAssistantMessage(),
+  content: [{ type: "thinking", thinking: "reasoning that hit the cap" }],
+  usage: {
+    ...emptyAssistantMessage().usage,
+    output: 4096,
+    totalTokens: 4096,
+  },
+  stopReason: "length",
+});
+
 vi.mock("../../../../../runtime/kernel/agent-runtime.js", () => ({
   runSubagentTask: (args: MockRunArgs) => {
     if (!runMock.handler) throw new Error("Missing manager test run handler");
@@ -382,135 +393,149 @@ describe("manager orchestration production routing", () => {
     );
   });
 
-  it("routes an exhausted child failure only to its owning Manager", async () => {
-    const { manager, store, appendedEvents, sentMessages } = createHarness();
-    let releaseManagerFirst!: () => void;
-    const managerFirstGate = new Promise<void>((resolve) => {
-      releaseManagerFirst = resolve;
-    });
-    let managerRuns = 0;
-    let childProviderCalls = 0;
+  it.each([
+    {
+      caseName: "persistent empty completions",
+      createMessage: emptyAssistantMessage,
+    },
+    {
+      caseName: "persistent silent length truncations",
+      createMessage: silentLengthTruncationMessage,
+    },
+  ])(
+    "routes exhausted $caseName only to the owning Manager",
+    async ({ createMessage }) => {
+      const { manager, store, appendedEvents, sentMessages } = createHarness();
+      let releaseManagerFirst!: () => void;
+      const managerFirstGate = new Promise<void>((resolve) => {
+        releaseManagerFirst = resolve;
+      });
+      let managerRuns = 0;
+      let childProviderCalls = 0;
 
-    runMock.handler = async (args) => {
-      if (args.agentType === AGENT_IDS.MANAGER) {
-        managerRuns += 1;
-        if (managerRuns === 1) {
-          await managerFirstGate;
-          return { runId: "manager-wait", result: "Waiting for child." };
+      runMock.handler = async (args) => {
+        if (args.agentType === AGENT_IDS.MANAGER) {
+          managerRuns += 1;
+          if (managerRuns === 1) {
+            await managerFirstGate;
+            return { runId: "manager-wait", result: "Waiting for child." };
+          }
+          expect(historyText(args)).toContain("[Task failed]");
+          expect(historyText(args)).toContain(
+            "Automatic recovery exhausted after 4 attempts",
+          );
+          expect(historyText(args)).toContain("(empty_response)");
+          await reportManager(
+            args,
+            "Manager adapted after the child retry failure.",
+            true,
+          );
+          return {
+            runId: "manager-adapted",
+            result: "Private Manager completion.",
+          };
         }
-        expect(historyText(args)).toContain("[Task failed]");
-        expect(historyText(args)).toContain(
-          "Automatic recovery exhausted after 4 attempts",
-        );
-        await reportManager(
-          args,
-          "Manager adapted after the child retry failure.",
-          true,
-        );
-        return {
-          runId: "manager-adapted",
-          result: "Private Manager completion.",
+
+        const session = new RetryTestSession();
+        const agent = createRuntimeAgent({
+          agentType: AGENT_IDS.GENERAL,
+          systemPrompt: "",
+          resolvedLlm: {
+            model: emptyResponseModel,
+            route: "test",
+            getApiKey: () => undefined,
+          },
+          tools: [],
+          historySource: [],
+        });
+        agent.streamFn = () => {
+          childProviderCalls += 1;
+          const stream = createAssistantMessageEventStream();
+          const message = createMessage();
+          stream.push({ type: "start", partial: message });
+          stream.push({ type: "done", message });
+          return stream;
         };
-      }
+        const recorder = {
+          recordQueuedUserMessageStart: () => null,
+          recordAssistantMessageEnd: () => null,
+        } as never;
+        const retried = await executeAgentTurnWithRetry({
+          execute: async (resume) =>
+            executeRuntimeAgentPrompt({
+              agent,
+              promptText: "Return a non-empty child result.",
+              runId: "child-empty-response",
+              agentType: AGENT_IDS.GENERAL,
+              userMessageId: "child-empty-response-user",
+              recorder,
+              abortSignal: args.abortSignal,
+              resume,
+            }),
+          prepareRetry: (failure) => session.prepareRetry(agent, failure),
+          signal: args.abortSignal,
+          random: () => 0.5,
+          sleep: async () => undefined,
+        });
+        return {
+          runId: "child-exhausted",
+          result: retried.finalText,
+          ...(retried.errorMessage ? { error: retried.errorMessage } : {}),
+        };
+      };
 
-      const session = new RetryTestSession();
-      const agent = createRuntimeAgent({
+      const managerTask = await manager.createAgent({
+        conversationId: "conversation-owner-failure",
+        description: "Own retrying child",
+        prompt: "Adapt if the child fails.",
+        agentType: AGENT_IDS.MANAGER,
+        agentDepth: 1,
+        storageMode: "local",
+      });
+      const childTask = await manager.createAgent({
+        conversationId: "conversation-owner-failure",
+        description: "Transient child",
+        prompt: "Retry transient transport failures.",
         agentType: AGENT_IDS.GENERAL,
-        systemPrompt: "",
-        resolvedLlm: {
-          model: emptyResponseModel,
-          route: "test",
-          getApiKey: () => undefined,
-        },
-        tools: [],
-        historySource: [],
+        agentDepth: 2,
+        maxAgentDepth: 2,
+        parentAgentId: managerTask.threadId,
+        storageMode: "local",
       });
-      agent.streamFn = () => {
-        childProviderCalls += 1;
-        const stream = createAssistantMessageEventStream();
-        const message = emptyAssistantMessage();
-        stream.push({ type: "start", partial: message });
-        stream.push({ type: "done", message });
-        return stream;
-      };
-      const recorder = {
-        recordQueuedUserMessageStart: () => null,
-        recordAssistantMessageEnd: () => null,
-      } as never;
-      const retried = await executeAgentTurnWithRetry({
-        execute: async (resume) =>
-          executeRuntimeAgentPrompt({
-            agent,
-            promptText: "Return a non-empty child result.",
-            runId: "child-empty-response",
-            agentType: AGENT_IDS.GENERAL,
-            userMessageId: "child-empty-response-user",
-            recorder,
-            abortSignal: args.abortSignal,
-            resume,
-          }),
-        prepareRetry: (failure) => session.prepareRetry(agent, failure),
-        signal: args.abortSignal,
-        random: () => 0.5,
-        sleep: async () => undefined,
-      });
-      return {
-        runId: "child-exhausted",
-        result: retried.finalText,
-        ...(retried.errorMessage ? { error: retried.errorMessage } : {}),
-      };
-    };
+      releaseManagerFirst();
 
-    const managerTask = await manager.createAgent({
-      conversationId: "conversation-owner-failure",
-      description: "Own retrying child",
-      prompt: "Adapt if the child fails.",
-      agentType: AGENT_IDS.MANAGER,
-      agentDepth: 1,
-      storageMode: "local",
-    });
-    const childTask = await manager.createAgent({
-      conversationId: "conversation-owner-failure",
-      description: "Transient child",
-      prompt: "Retry transient transport failures.",
-      agentType: AGENT_IDS.GENERAL,
-      agentDepth: 2,
-      maxAgentDepth: 2,
-      parentAgentId: managerTask.threadId,
-      storageMode: "local",
-    });
-    releaseManagerFirst();
+      await waitUntil(
+        async () =>
+          (await manager.getAgent(childTask.threadId))?.status === "error",
+      );
+      await waitUntil(
+        async () =>
+          (await manager.getAgent(managerTask.threadId))?.status ===
+          "completed",
+      );
 
-    await waitUntil(
-      async () =>
-        (await manager.getAgent(childTask.threadId))?.status === "error",
-    );
-    await waitUntil(
-      async () =>
-        (await manager.getAgent(managerTask.threadId))?.status === "completed",
-    );
-
-    expect(childProviderCalls).toBe(4);
-    const managerHistory = store.loadThreadMessages(managerTask.threadId);
-    expect(
-      managerHistory.filter((message) =>
-        message.customMessage?.content.some(
-          (block) =>
-            block.type === "text" &&
-            block.text.includes(
-              "Automatic recovery exhausted after 4 attempts",
-            ),
+      expect(childProviderCalls).toBe(4);
+      const managerHistory = store.loadThreadMessages(managerTask.threadId);
+      expect(
+        managerHistory.filter((message) =>
+          message.customMessage?.content.some(
+            (block) =>
+              block.type === "text" &&
+              block.text.includes(
+                "Automatic recovery exhausted after 4 attempts",
+              ),
+          ),
         ),
-      ),
-    ).toHaveLength(1);
-    expect(JSON.stringify(appendedEvents)).not.toContain(childTask.threadId);
-    expect(JSON.stringify(sentMessages)).not.toContain(childTask.threadId);
-    expect(JSON.stringify(sentMessages)).not.toContain("empty_response");
-    expect(JSON.stringify(appendedEvents)).toContain(managerTask.threadId);
-    expect(JSON.stringify(sentMessages)).toContain(
-      "Manager adapted after the child retry failure.",
-    );
-  });
+      ).toHaveLength(1);
+      expect(JSON.stringify(appendedEvents)).not.toContain(childTask.threadId);
+      expect(JSON.stringify(sentMessages)).not.toContain(childTask.threadId);
+      expect(JSON.stringify(sentMessages)).not.toContain("empty_response");
+      expect(JSON.stringify(appendedEvents)).toContain(managerTask.threadId);
+      expect(JSON.stringify(sentMessages)).toContain(
+        "Manager adapted after the child retry failure.",
+      );
+    },
+  );
 
   it("starts spawn_manager with the spawning Orchestrator model snapshot in a customized existing home", async () => {
     let harness = createHarness();

@@ -234,6 +234,34 @@ describe("agent run transient retry policy", () => {
     );
   });
 
+  it("retries the established silent length-truncation completion", async () => {
+    const truncated =
+      "Run truncated: model hit the output-token cap (4096 tokens) while reasoning; no visible reply was produced.";
+    const execute = vi
+      .fn<
+        (
+          resume: boolean,
+        ) => Promise<{ finalText: string; errorMessage?: string }>
+      >()
+      .mockResolvedValueOnce({ finalText: "", errorMessage: truncated })
+      .mockResolvedValueOnce({ finalText: "recovered" });
+
+    const result = await executeAgentTurnWithRetry({
+      execute,
+      prepareRetry: () => true,
+      random: () => 0.5,
+      sleep: noWait,
+    });
+
+    expect(result).toEqual({ finalText: "recovered", attempts: 2 });
+    expect(execute).toHaveBeenNthCalledWith(1, false);
+    expect(execute).toHaveBeenNthCalledWith(2, true);
+    expect(classifyAgentRunFailure(truncated)).toMatchObject({
+      category: "empty_response",
+      retryable: true,
+    });
+  });
+
   it("keeps the configured jitter within ten percent", () => {
     expect(agentRunRetryDelayMs(0, () => 0)).toBe(900);
     expect(agentRunRetryDelayMs(1, () => 0.5)).toBe(2_500);

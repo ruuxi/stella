@@ -39,6 +39,7 @@ const DEFAULT_AGENT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 // tracking is intact. This run-killing backstop fires only when tracking
 // leaked (e.g. a lost tool_execution_end).
 const DEFAULT_AGENT_TOOL_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
+const AGENT_ABORT_SETTLE_GRACE_MS = 100;
 
 const configuredTimeoutMs = (
   envName: string,
@@ -48,6 +49,23 @@ const configuredTimeoutMs = (
   if (!raw) return fallbackMs;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs;
+};
+
+const waitForAgentAbortSettlement = async (
+  work: Promise<void>,
+): Promise<void> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      work.catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, AGENT_ABORT_SETTLE_GRACE_MS);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 };
 
 const MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -216,7 +234,16 @@ export const executeRuntimeAgentPrompt = async (args: {
     if (args.resume) {
       const continuePromise = args.agent.continue();
       continuePromise.catch(() => undefined);
-      await Promise.race([continuePromise, idleFailure]);
+      try {
+        await Promise.race([continuePromise, idleFailure]);
+      } catch (error) {
+        // When the watchdog aborts the Agent, wait for its loop to append the
+        // terminal errored assistant before returning control to run-level
+        // retry preparation. Otherwise a retry can race the still-settling
+        // attempt and resume on an assistant tail.
+        await waitForAgentAbortSettlement(continuePromise);
+        throw error;
+      }
       await args.onAfterPrompt?.();
       const completion = getAgentCompletion(args.agent);
       return {
@@ -289,7 +316,14 @@ export const executeRuntimeAgentPrompt = async (args: {
       promptMessages.map((message) => message.message),
     );
     promptPromise.catch(() => undefined);
-    await Promise.race([promptPromise, idleFailure]);
+    try {
+      await Promise.race([promptPromise, idleFailure]);
+    } catch (error) {
+      // See the resume branch above: retry fencing needs the aborted Agent
+      // loop fully settled before inspecting and removing its error tail.
+      await waitForAgentAbortSettlement(promptPromise);
+      throw error;
+    }
     await args.onAfterPrompt?.();
     const completion = getAgentCompletion(args.agent);
 

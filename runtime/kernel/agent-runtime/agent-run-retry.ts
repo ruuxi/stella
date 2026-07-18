@@ -154,6 +154,9 @@ export const classifyAgentRunFailure = (
   if (isInvalidModelOrRoute(message)) {
     return { category: "invalid_model_or_route", message, retryable: false };
   }
+  if (/run truncated:[^\n]*no visible reply was produced/i.test(message)) {
+    return { category: "empty_response", message, retryable: true };
+  }
   if (isRelayStreamLost(message, code)) {
     return { category: "relay_stream_lost", message, retryable: true };
   }
