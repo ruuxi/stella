@@ -56,6 +56,18 @@ const ROUTE_MODE =
   ("active" as "active" | "pinned-claude-haiku" | "pinned-claude-fable");
 process.env.STELLA_RECALL_TRACE_VERBOSE = "0";
 
+const BENCHMARK_EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const BENCHMARK_PHONE_RE =
+  /\b(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g;
+const BENCHMARK_POSTAL_ADDRESS_RE =
+  /\b\d{1,6}\s+[A-Za-z][A-Za-z0-9.' -]{1,40}\s(?:Street|St|Avenue|Ave|Road|Rd|Drive|Dr|Lane|Ln|Boulevard|Blvd|Court|Ct|Way)\b(?:\s+(?:Ste|Suite|Apt|Unit)\s*#?[A-Za-z0-9-]+)?(?:\s+[A-Za-z.'-]+){0,3}\s+[A-Z]{2}\b/gi;
+
+const redactBenchmarkBrief = (brief: string): string =>
+  redactMemoryText(brief)
+    .replace(BENCHMARK_EMAIL_RE, "[REDACTED EMAIL]")
+    .replace(BENCHMARK_PHONE_RE, "[REDACTED PHONE]")
+    .replace(BENCHMARK_POSTAL_ADDRESS_RE, "[REDACTED POSTAL ADDRESS]");
+
 const QUERIES = [
   {
     id: "memory_system",
@@ -362,7 +374,7 @@ try {
         queryId: query.id,
         telemetry,
         resultMetadata,
-        brief: redactMemoryText(brief),
+        brief: redactBenchmarkBrief(brief),
       });
       process.stdout.write(
         `${query.id}: ${telemetry ? `${(telemetry.totalMs / 1_000).toFixed(1)}s ${telemetry.modelId} calls=${telemetry.modelCalls} rounds=${telemetry.toolRounds}` : "missing telemetry"}\n`,
