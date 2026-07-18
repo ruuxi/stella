@@ -91,15 +91,9 @@ export type ThreadActivityUpdatedPayload = {
 export type AgentThreadMessageRecord = {
   entryId?: string;
   timestamp: number;
-  role: "user" | "assistant" | "toolResult" | "runtimeInternal";
+  role: "user" | "assistant" | "lifecycle";
   content: string;
-  toolCallId?: string;
-  customMessage?: {
-    customType: string;
-    content: string | unknown[];
-    display: boolean;
-    eventId?: string;
-  };
+  lifecycleEvent?: EventRecord;
 };
 
 /**

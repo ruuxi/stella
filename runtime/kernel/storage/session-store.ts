@@ -1568,6 +1568,46 @@ export class SessionStore {
     return rows.map((row) => this.deserializeEventRow(row));
   }
 
+  /** Resolve canonical lifecycle rows referenced by exact-thread custom
+   * messages without flattening generic tool/debug payloads into chat. */
+  listLifecycleEventsByIds(
+    eventIdsInput: readonly string[],
+  ): LocalChatEventRecord[] {
+    const eventIds = [
+      ...new Set(eventIdsInput.map(asTrimmedString).filter(Boolean)),
+    ].slice(0, 500) as string[];
+    if (eventIds.length === 0) return [];
+    const rows = this.db
+      .prepare(
+        `
+      SELECT
+        message.id AS _id,
+        message.created_at AS timestamp,
+        message.type AS type,
+        message.device_id AS deviceId,
+        message.request_id AS requestId,
+        message.target_device_id AS targetDeviceId,
+        part.data_json AS payloadJson,
+        message.data_json AS channelEnvelopeJson
+      FROM message
+      LEFT JOIN part
+        ON part.message_id = message.id
+       AND part.ord = 0
+      WHERE message.id IN (${eventIds.map(() => "?").join(", ")})
+        AND message.type IN (
+          'agent-started',
+          'agent-progress',
+          'agent-completed',
+          'agent-failed',
+          'agent-canceled'
+        )
+      ORDER BY message.created_at ASC, message.id ASC
+    `,
+      )
+      .all(...eventIds) as LocalChatEventRow[];
+    return rows.map((row) => this.deserializeEventRow(row));
+  }
+
   /**
    * Return cross-conversation activity newer than `sinceMs` (plain ms
    * since the Unix epoch — same unit `message.created_at` is written

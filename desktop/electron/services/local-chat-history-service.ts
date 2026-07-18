@@ -18,6 +18,8 @@ import type {
   SqliteDatabase,
 } from "../../../runtime/kernel/storage/shared.js";
 import type {
+  AgentThreadMessageRecord,
+  EventRecord,
   LocalChatUpdatedPayload,
   TaskDecorationUpdatedPayload,
   ThreadActivityRecord,
@@ -296,18 +298,60 @@ export class LocalChatHistoryService {
     const threadId = args.threadId.trim();
     if (!threadId) throw new Error("threadId is required.");
     const limit = Math.min(300, Math.max(1, Math.floor(args.limit ?? 200)));
-    return this.getStore()
-      .loadThreadMessages(threadId, limit)
-      .map((message) => ({
+    const store = this.getStore();
+    const messages = store.loadThreadMessages(threadId, limit);
+    const lifecycleById = new Map(
+      store
+        .listLifecycleEventsByIds(
+          messages.flatMap((message) => {
+            const eventId = message.customMessage?.eventId;
+            return message.customMessage?.customType ===
+              "runtime.task_lifecycle" && eventId
+              ? [eventId]
+              : [];
+          }),
+        )
+        .map((event) => [event._id, event]),
+    );
+    return messages.flatMap<AgentThreadMessageRecord>((message) => {
+      const identity = {
         ...(message.entryId ? { entryId: message.entryId } : {}),
         timestamp: message.timestamp,
-        role: message.role,
-        content: message.content,
-        ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
-        ...(message.customMessage
-          ? { customMessage: message.customMessage }
-          : {}),
-      }));
+      };
+      if (message.payload?.role === "assistant") {
+        const content = message.payload.content
+          .flatMap((block) =>
+            block.type === "text" && block.text.trim() ? [block.text] : [],
+          )
+          .join("\n\n")
+          .trim();
+        return content ? [{ ...identity, role: "assistant", content }] : [];
+      }
+      if (message.payload?.role === "toolResult") return [];
+      if (message.customMessage) {
+        const eventId = message.customMessage.eventId;
+        const lifecycleEvent = eventId ? lifecycleById.get(eventId) : undefined;
+        return lifecycleEvent
+          ? [
+              {
+                ...identity,
+                role: "lifecycle",
+                content: "",
+                lifecycleEvent: lifecycleEvent as EventRecord,
+              },
+            ]
+          : [];
+      }
+      const content = message.content.trim();
+      if (!content) return [];
+      return [
+        {
+          ...identity,
+          role: message.role === "assistant" ? "assistant" : "user",
+          content,
+        },
+      ];
+    });
   }
 
   listFiles(args: {

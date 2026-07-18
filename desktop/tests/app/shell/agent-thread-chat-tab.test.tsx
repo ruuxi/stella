@@ -28,16 +28,37 @@ describe("AgentThreadChatTab", () => {
       content: "I found the durable owner.",
     },
     {
-      entryId: "tool-1",
+      entryId: "child-start",
       timestamp: 3,
-      role: "toolResult" as const,
-      content: "3 checks passed",
+      role: "lifecycle" as const,
+      content: "",
+      lifecycleEvent: {
+        _id: "child:1:agent-started",
+        timestamp: 3,
+        type: "agent-started",
+        payload: {
+          agentId: "child",
+          agentType: "general",
+          description: "Inspect child ownership",
+          attemptGeneration: 1,
+        },
+      },
     },
     {
-      entryId: "coordination-1",
+      entryId: "child-completed",
       timestamp: 4,
-      role: "runtimeInternal" as const,
-      content: "Managed child settled.",
+      role: "lifecycle" as const,
+      content: "",
+      lifecycleEvent: {
+        _id: "child:1:agent-completed",
+        timestamp: 4,
+        type: "agent-completed",
+        payload: {
+          agentId: "child",
+          result: "Managed child settled.",
+          attemptGeneration: 1,
+        },
+      },
     },
   ];
 
@@ -119,8 +140,11 @@ describe("AgentThreadChatTab", () => {
       limit: 200,
     });
     expect(container.textContent).toContain("I found the durable owner.");
-    expect(container.textContent).toContain("3 checks passed");
     expect(container.textContent).toContain("Managed child settled.");
+    expect(container.querySelector(".agent-completion-card")).not.toBeNull();
+    expect(container.textContent).not.toMatch(
+      /\[Tool call\]|\[Tool result\]|spawn_agent|3 checks passed/,
+    );
     expect(container.querySelector("textarea")).toBeNull();
     expect(container.querySelector("input")).toBeNull();
     expect(container.textContent).toContain("Read-only agent thread");
@@ -326,15 +350,7 @@ describe("AgentThreadChatTab", () => {
 
   it("coalesces exact-thread entry bursts for General and Manager transcripts", async () => {
     await renderThread("manager-exact", "conversation-manager", "manager");
-    listAgentThreadMessages.mockResolvedValueOnce([
-      ...initialMessages,
-      {
-        entryId: "tool-result-latest",
-        timestamp: 9,
-        role: "toolResult",
-        content: "Native tool completed without an authored preamble.",
-      },
-    ]);
+    listAgentThreadMessages.mockResolvedValueOnce([...initialMessages]);
 
     await act(async () => {
       for (const [entryId, atMs] of [
@@ -353,7 +369,7 @@ describe("AgentThreadChatTab", () => {
     });
 
     expect(listAgentThreadMessages).toHaveBeenCalledTimes(2);
-    expect(container.textContent).toContain(
+    expect(container.textContent).not.toContain(
       "Native tool completed without an authored preamble.",
     );
     expect(container.getAttribute("aria-label")).toBeNull();

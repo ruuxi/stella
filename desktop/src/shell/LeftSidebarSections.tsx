@@ -589,8 +589,15 @@ const TasksList = memo(function TasksList({
           ) : (
             <TaskRow
               key={activityRowKey(row)}
-              task={row.hierarchy.owner}
-              expanded={isTaskExpanded(row.hierarchy.owner)}
+              task={
+                row.hierarchy.status === row.hierarchy.owner.status
+                  ? row.hierarchy.owner
+                  : { ...row.hierarchy.owner, status: row.hierarchy.status }
+              }
+              expanded={
+                row.hierarchy.status === "running" ||
+                isTaskExpanded(row.hierarchy.owner)
+              }
               onToggle={onToggleTask}
               onSelect={onSelectTask}
               files={agentFiles.get(row.hierarchy.owner.id) ?? EMPTY_FILES}

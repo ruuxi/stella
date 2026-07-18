@@ -7,6 +7,7 @@ import {
   extractStepsFromEvents,
   getTaskGroupStatusText,
   getTaskHierarchyStatusText,
+  getActivityRowStatus,
   groupActivityTasks,
   pruneGroupExpandOverrides,
   selectFreshActivityTasks,
@@ -226,6 +227,8 @@ describe("manager ownership hierarchy", () => {
     expect(rows.map((row) => row.kind)).toEqual(["hierarchy", "task"]);
     const hierarchy =
       rows[0]!.kind === "hierarchy" ? rows[0].hierarchy : undefined;
+    expect(hierarchy?.status).toBe("running");
+    expect(getActivityRowStatus(rows[0]!)).toBe("running");
     expect(hierarchy?.owner.id).toBe("manager");
     expect(
       hierarchy?.children.map((row) =>
@@ -822,6 +825,60 @@ describe("buildActivityTasks", () => {
       "b-second",
     ]);
   });
+
+  it.each(["general", "manager"] as const)(
+    "keeps a terminal owner tree visible when a resumed %s descendant is running",
+    (agentType) => {
+      const makeTask = (
+        overrides: Partial<TaskItem> & { id: string },
+      ): TaskItem => ({
+        description: "Task",
+        agentType: "general",
+        status: "running",
+        startedAtMs: 100,
+        lastUpdatedAtMs: 100,
+        ...overrides,
+      });
+      const manager = makeTask({
+        id: "terminal-manager",
+        agentType: "manager",
+        status: "completed",
+        completedAtMs: 400,
+      });
+      const resumed = makeTask({
+        id: `resumed-${agentType}`,
+        agentType,
+        parentAgentId: manager.id,
+        status: "running",
+        startedAtMs: 500,
+        lastUpdatedAtMs: 500,
+      });
+
+      expect(selectFreshActivityTasks([manager, resumed], 600)).toContain(
+        resumed,
+      );
+      const [row] = groupActivityTasks([manager, resumed]);
+      expect(row?.kind).toBe("hierarchy");
+      expect(row && getActivityRowStatus(row)).toBe("running");
+      if (row?.kind === "hierarchy") {
+        expect(row.hierarchy.owner.id).toBe(manager.id);
+        expect(row.hierarchy.children).toMatchObject([
+          { kind: "task", task: { id: resumed.id, status: "running" } },
+        ]);
+      }
+
+      const settledRows = groupActivityTasks([
+        manager,
+        {
+          ...resumed,
+          status: "completed",
+          completedAtMs: 700,
+          lastUpdatedAtMs: 700,
+        },
+      ]);
+      expect(getActivityRowStatus(settledRows[0]!)).toBe("completed");
+    },
+  );
 });
 
 describe("selectFreshActivityTasks", () => {

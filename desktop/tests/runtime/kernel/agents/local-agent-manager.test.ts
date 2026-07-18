@@ -23,6 +23,7 @@ import {
 } from "@/features/chat/streaming/task-decoration-store";
 import { waitForAgentSettled } from "../../../helpers/agent.js";
 import { buildAgentEventPrompt } from "../../../../../runtime/kernel/runner/shared.js";
+import type { PersistedAgentRecord } from "../../../../../runtime/kernel/storage/session-store.js";
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -1458,6 +1459,119 @@ describe("LocalAgentManager file records across send_input re-runs", () => {
 });
 
 describe("send_input follow-up description and run rebind", () => {
+  it.each([
+    [AGENT_IDS.GENERAL, "completed"],
+    [AGENT_IDS.GENERAL, "canceled"],
+    [AGENT_IDS.MANAGER, "completed"],
+    [AGENT_IDS.MANAGER, "canceled"],
+  ] as const)(
+    "persists a resumed %s %s thread as running immediately and settles it",
+    async (agentType, terminalStatus) => {
+      const threadId = `${agentType}-${terminalStatus}-resume`;
+      const persisted: PersistedAgentRecord = {
+        threadId,
+        conversationId: "conv-resume-activity",
+        agentType,
+        description: "Original work",
+        agentDepth: agentType === AGENT_IDS.MANAGER ? 1 : 2,
+        status: terminalStatus,
+        attemptGeneration: 3,
+        startedAt: 100,
+        completedAt: 200,
+        updatedAt: 200,
+      };
+      const saved: PersistedAgentRecord[] = [];
+      const events: AgentLifecycleEvent[] = [];
+      let markStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        markStarted = resolve;
+      });
+      let finish!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const manager = new LocalAgentManager({
+        maxConcurrent: 1,
+        fetchAgentContext: async () => ({
+          systemPrompt: "",
+          dynamicContext: "",
+          maxAgentDepth: 4,
+        }),
+        runSubagent: async (args) => {
+          markStarted();
+          await gate;
+          return { runId: args.runId, result: "Resumed parent reply" };
+        },
+        toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+        getAgentRecord: (candidate) =>
+          candidate === threadId ? persisted : null,
+        saveAgentRecord: (record) => saved.push({ ...record }),
+        onAgentEvent: (event) => events.push(event),
+        resolveTaskThread: () => ({
+          threadId,
+          conversationId: persisted.conversationId,
+          agentType,
+          name: "Resumed thread",
+          createdAt: 100,
+          lastUsedAt: 200,
+        }),
+        createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+        completeCloudAgentRecord: async () => undefined,
+        getCloudAgentRecord: async () => null,
+        cancelCloudAgentRecord: async () => ({ canceled: false }),
+      });
+
+      await expect(
+        manager.sendAgentMessage(
+          threadId,
+          "Apply the resumed requirement",
+          "orchestrator",
+          { deliveryKind: "external-input", rootRunId: "root-resumed" },
+        ),
+      ).resolves.toEqual({ delivered: true });
+      await started;
+
+      expect(saved.at(-1)).toMatchObject({
+        threadId,
+        status: "running",
+        attemptGeneration: 4,
+        rootRunId: "root-resumed",
+      });
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "agent-started",
+          agentId: threadId,
+          isFollowUp: true,
+          attemptGeneration: 4,
+        }),
+      );
+
+      finish();
+      if (agentType === AGENT_IDS.MANAGER) {
+        await sleep(25);
+        expect(saved.at(-1)).toMatchObject({
+          threadId,
+          status: "running",
+          attemptGeneration: 4,
+        });
+        await manager.cancelAgent(threadId, "Test cleanup after parent reply");
+        expect(saved.at(-1)).toMatchObject({
+          threadId,
+          status: "canceled",
+          attemptGeneration: 4,
+        });
+        return;
+      }
+      await waitForAgentSettled(manager, threadId);
+      expect(saved.at(-1)).toMatchObject({
+        threadId,
+        status: "completed",
+        attemptGeneration: 4,
+        result: "Resumed parent reply",
+      });
+    },
+  );
+
   it("adopts the orchestrator follow-up description onto the thread", async () => {
     // The folded Activity row is keyed per thread and titled by
     // `description`. A follow-up re-tasks the thread, so every lifecycle

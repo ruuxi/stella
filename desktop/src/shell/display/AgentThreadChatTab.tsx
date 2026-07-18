@@ -2,10 +2,19 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { Markdown } from "@/app/chat/Markdown";
+import { BackgroundWorkCard } from "@/app/chat/BackgroundWorkCard";
+import { AgentCompletionCard } from "@/app/chat/AgentCompletionCard";
+import {
+  buildBackgroundTaskLifecycleIndex,
+  type BackgroundTaskCardState,
+  type BackgroundTaskLifecycleIndex,
+} from "@/features/chat/lib/background-task-lifecycle";
+import { isAgentStartedEvent } from "@/features/chat/lib/event-transforms";
 import { MessageSquare } from "@/ui/icons";
 import type { AgentThreadMessageRecord } from "../../../../runtime/contracts/local-chat.js";
 import "./agent-thread-chat-tab.css";
@@ -19,11 +28,71 @@ const roleLabel = (role: AgentThreadMessageRecord["role"]): string => {
       return "Instruction";
     case "assistant":
       return "Agent";
-    case "toolResult":
-      return "Tool result";
-    case "runtimeInternal":
-      return "Coordination";
+    case "lifecycle":
+      return "Activity";
   }
+};
+
+const ThreadLifecycleCard = ({
+  state,
+  index,
+  conversationId,
+}: {
+  state: BackgroundTaskCardState;
+  index: BackgroundTaskLifecycleIndex;
+  conversationId: string;
+}) => {
+  if (state.status === "completed" && state.completion) {
+    return (
+      <AgentCompletionCard
+        sections={[state.completion]}
+        cardId={state.cardId}
+        conversationId={conversationId}
+      />
+    );
+  }
+  const superseded = [...index.byStartEventId.values()].some(
+    (candidate) =>
+      candidate.agentId === state.agentId &&
+      candidate.startEventId !== state.startEventId &&
+      (candidate.attemptGeneration !== undefined &&
+      state.attemptGeneration !== undefined
+        ? candidate.attemptGeneration > state.attemptGeneration
+        : candidate.startedAtMs > state.startedAtMs),
+  );
+  return (
+    <BackgroundWorkCard
+      threadIds={[state.agentId]}
+      completedThreadIds={state.status === "completed" ? [state.agentId] : []}
+      pausedThreadIds={state.status === "canceled" ? [state.agentId] : []}
+      failedThreadIds={state.status === "failed" ? [state.agentId] : []}
+      supersededThreadIds={superseded ? [state.agentId] : []}
+      spawnedAtMs={{ [state.agentId]: state.startedAtMs }}
+      descriptions={{ [state.agentId]: state.title }}
+      statusTexts={state.isFollowUp ? { [state.agentId]: state.title } : {}}
+      progressTexts={
+        state.progressText ? { [state.agentId]: state.progressText } : {}
+      }
+      toolActivities={
+        state.toolActivity ? { [state.agentId]: state.toolActivity } : {}
+      }
+      followUpThreadIds={state.isFollowUp ? [state.agentId] : []}
+      cardId={state.cardId}
+      startEventIdsByThread={{ [state.agentId]: state.startEventId }}
+      attemptGenerationsByThread={
+        state.attemptGeneration !== undefined
+          ? { [state.agentId]: state.attemptGeneration }
+          : {}
+      }
+      rootRunIdsByThread={
+        state.rootRunId ? { [state.agentId]: state.rootRunId } : {}
+      }
+      terminalEventIdsByThread={
+        state.terminalEventId ? { [state.agentId]: state.terminalEventId } : {}
+      }
+      conversationId={conversationId}
+    />
+  );
 };
 
 const messageIdentity = (
@@ -31,7 +100,7 @@ const messageIdentity = (
   index: number,
 ): string =>
   message.entryId ??
-  `${message.timestamp}:${message.role}:${message.toolCallId ?? ""}:${message.content}:${index}`;
+  `${message.timestamp}:${message.role}:${message.lifecycleEvent?._id ?? ""}:${message.content}:${index}`;
 
 const countAppendedMessages = (
   previous: AgentThreadMessageRecord[],
@@ -90,6 +159,29 @@ export function AgentThreadChatTab({
   const messagesRef = useRef<AgentThreadMessageRecord[]>([]);
   const pinnedToLatestRef = useRef(true);
   const scrollToLatestAfterRenderRef = useRef(false);
+  const lifecycleIndex = useMemo(
+    () =>
+      buildBackgroundTaskLifecycleIndex(
+        messages.flatMap((message) =>
+          message.role === "lifecycle" && message.lifecycleEvent
+            ? [message.lifecycleEvent]
+            : [],
+        ),
+      ),
+    [messages],
+  );
+  const visibleMessages = useMemo(
+    () =>
+      messages.filter((message) => {
+        if (message.role !== "lifecycle") return true;
+        return Boolean(
+          message.lifecycleEvent &&
+            isAgentStartedEvent(message.lifecycleEvent) &&
+            lifecycleIndex.byStartEventId.has(message.lifecycleEvent._id),
+        );
+      }),
+    [lifecycleIndex, messages],
+  );
 
   const load = useCallback(
     async (reason: "initial" | "refresh") => {
@@ -273,33 +365,47 @@ export function AgentThreadChatTab({
               Try again
             </button>
           </div>
-        ) : messages.length === 0 ? (
+        ) : visibleMessages.length === 0 ? (
           <div className="agent-thread-chat__state">
             <MessageSquare size={22} strokeWidth={1.5} aria-hidden="true" />
             <span>No messages in this thread yet.</span>
           </div>
         ) : (
           <ol className="agent-thread-chat__messages">
-            {messages.map((message, index) => (
+            {visibleMessages.map((message, index) => (
               <li
                 key={message.entryId ?? `${message.timestamp}:${index}`}
                 className="agent-thread-chat__message"
                 data-role={message.role}
               >
-                <span className="agent-thread-chat__role">
-                  {roleLabel(message.role)}
-                </span>
-                <div className="agent-thread-chat__body">
-                  {message.role === "assistant" ? (
-                    <Markdown
-                      text={message.content}
-                      cacheKey={message.entryId ?? `${threadId}:${index}`}
-                      hideHorizontalRules
-                    />
-                  ) : (
-                    message.content
-                  )}
-                </div>
+                {message.role === "lifecycle" && message.lifecycleEvent ? (
+                  <ThreadLifecycleCard
+                    state={
+                      lifecycleIndex.byStartEventId.get(
+                        message.lifecycleEvent._id,
+                      )!
+                    }
+                    index={lifecycleIndex}
+                    conversationId={conversationId}
+                  />
+                ) : (
+                  <>
+                    <span className="agent-thread-chat__role">
+                      {roleLabel(message.role)}
+                    </span>
+                    <div className="agent-thread-chat__body">
+                      {message.role === "assistant" ? (
+                        <Markdown
+                          text={message.content}
+                          cacheKey={message.entryId ?? `${threadId}:${index}`}
+                          hideHorizontalRules
+                        />
+                      ) : (
+                        message.content
+                      )}
+                    </div>
+                  </>
+                )}
               </li>
             ))}
           </ol>

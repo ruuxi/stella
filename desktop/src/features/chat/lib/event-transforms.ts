@@ -518,6 +518,8 @@ export type TaskHierarchy = {
   children: ActivityRow[]
   /** All descendants, excluding `owner`. */
   descendantCount: number
+  /** Aggregate owner/descendant status used by collapsed Activity surfaces. */
+  status: TaskLifecycleStatus
 }
 
 export type ActivityRow =
@@ -538,7 +540,7 @@ export const getActivityRowStatus = (row: ActivityRow): TaskLifecycleStatus =>
     ? row.task.status
     : row.kind === 'group'
       ? row.group.status
-      : row.hierarchy.owner.status
+      : row.hierarchy.status
 
 export const getActivityRowCompletedAtMs = (row: ActivityRow): number => {
   const entry =
@@ -666,12 +668,21 @@ export function groupActivityTasks(tasks: readonly TaskItem[]): ActivityRow[] {
         const nextAncestors = new Set(ancestors)
         nextAncestors.add(task.id)
         const childRows = buildRows(children, nextAncestors)
+        const statuses = [task.status, ...childRows.map(getActivityRowStatus)]
+        const status: TaskLifecycleStatus = statuses.includes('running')
+          ? 'running'
+          : statuses.includes('error')
+            ? 'error'
+            : statuses.includes('completed')
+              ? 'completed'
+              : 'canceled'
         rows.push({
           kind: 'hierarchy',
           hierarchy: {
             owner: task,
             children: childRows,
             descendantCount: countActivityTasks(childRows),
+            status,
           },
         })
         continue

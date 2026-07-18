@@ -141,15 +141,6 @@
   white-space: normal;
 }
 
-.agent-thread-chat__message[data-role="toolResult"] .agent-thread-chat__body,
-.agent-thread-chat__message[data-role="runtimeInternal"]
-  .agent-thread-chat__body {
-  color: var(--text-weak);
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-xs);
-}
-
 .agent-thread-chat__state {
   min-height: 160px;
   display: flex;
