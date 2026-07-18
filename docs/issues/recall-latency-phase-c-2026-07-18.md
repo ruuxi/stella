@@ -33,7 +33,7 @@ the Fable-to-Haiku route change.
 | --- | ---: | ---: | ---: |
 | Samples / errors | 10 / 0 | 10 / 0 | — |
 | Total median | 21.004s | 21.354s | +0.350s (+1.67%) |
-| Total p90 | 43.642s | 32.593s | -11.049s (-25.32%) |
+| Total p90 | 43.642s | 32.593s | -11.049s (-25.32%, OBSERVATIONAL) |
 | Total min / max | 15.186s / 59.757s | 12.637s / 33.711s | — |
 | Seed median | 45,363.5 chars | 8,864 chars | -36,499.5 (-80.46%) |
 | Seed p90 | 52,965 chars | 8,871 chars | -44,094 (-83.25%) |
@@ -42,8 +42,9 @@ the Fable-to-Haiku route change.
 | Tool rounds median / p90 / max | 0.5 / 3 / 3 | 1 / 2 / 4 | — |
 
 The median change is within provider/model-turn variance and is not presented
-as a speedup. The controlled improvements are the deterministic seed reduction
-and the materially lower observed tail.
+as a speedup. The deterministic seed reduction is controlled; the lower p90 is
+**OBSERVATIONAL** because only 5/10 paired queries improved while 5/10
+regressed.
 
 ### Phase breakdown
 
