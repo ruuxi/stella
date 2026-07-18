@@ -15,9 +15,7 @@ export const AGENT_IDS = {
 export type AgentId = (typeof AGENT_IDS)[keyof typeof AGENT_IDS];
 export type AgentIdLike = AgentId | (string & {});
 
-export type ManagerTurnOrigin = "initial" | "managed-event" | "parent-input";
 export type ManagerReportState = {
-  turnOrigin: ManagerTurnOrigin;
   /** Accepted terminal payload, retained across a superseded attempt. */
   finalMessage?: string;
   /** Attempt that accepted `finalMessage`; useful for fencing diagnostics. */

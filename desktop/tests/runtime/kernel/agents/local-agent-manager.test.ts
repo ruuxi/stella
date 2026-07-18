@@ -457,6 +457,101 @@ describe("manager agent orchestration", () => {
     expect(JSON.stringify(events)).not.toContain("Duplicate final report");
   });
 
+  it("recovers a normal Manager completion exactly once when its row write crashes", async () => {
+    const records = new Map<string, PersistedAgentRecord>();
+    const durableLifecycleEvents = new Set<string>();
+    const lifecycleEvents: AgentLifecycleEvent[] = [];
+    let failNextCompletedSave = true;
+    let markCompletedSaveFailed!: () => void;
+    const completedSaveFailed = new Promise<void>((resolve) => {
+      markCompletedSaveFailed = resolve;
+    });
+    const options: ConstructorParameters<typeof LocalAgentManager>[0] = {
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 2,
+      }),
+      runSubagent: async (args) => {
+        const submitted = await args.toolExecutor(
+          "report",
+          { message: "Crash-safe normal final.", final: true },
+          {} as ToolContext,
+        );
+        expect(submitted.error).toBeUndefined();
+        return {
+          runId: args.runId,
+          result: "Private finalized Manager text.",
+        };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      getAgentRecord: (threadId) => records.get(threadId) ?? null,
+      listAgentRecordsByStatus: (status) =>
+        [...records.values()].filter((record) => record.status === status),
+      saveAgentRecord: (record) => {
+        if (record.status === "completed" && failNextCompletedSave) {
+          failNextCompletedSave = false;
+          expect(
+            durableLifecycleEvents.has(
+              `${record.threadId}:${record.attemptGeneration}:agent-completed`,
+            ),
+          ).toBe(true);
+          markCompletedSaveFailed();
+          throw new Error("Injected crash after normal completion append");
+        }
+        records.set(record.threadId, { ...record });
+      },
+      hasAgentLifecycleEvent: (_conversationId, eventId) =>
+        durableLifecycleEvents.has(eventId),
+      onAgentEvent: (event) => {
+        lifecycleEvents.push(event);
+        if (event.eventId) durableLifecycleEvents.add(event.eventId);
+      },
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    };
+    const manager = new LocalAgentManager(options);
+
+    const task = await manager.createAgent({
+      conversationId: "conv-normal-completion-crash",
+      description: "Crash-safe normal completion",
+      prompt: "Submit one final report.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await completedSaveFailed;
+
+    expect(records.get(task.threadId)).toMatchObject({
+      status: "running",
+      managerReportState: { finalMessage: "Crash-safe normal final." },
+    });
+    new LocalAgentManager(options);
+    new LocalAgentManager(options);
+
+    expect(records.get(task.threadId)).toMatchObject({
+      status: "completed",
+      result: "Crash-safe normal final.",
+    });
+    expect(
+      lifecycleEvents.filter(
+        (event) =>
+          event.type === "agent-completed" && event.agentId === task.threadId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        eventId: `${task.threadId}:1:agent-completed`,
+        result: "Crash-safe normal final.",
+      }),
+    ]);
+    expect(JSON.stringify(lifecycleEvents)).not.toContain(
+      "Private finalized Manager text.",
+    );
+  });
+
   it("seals descendants and preserves an accepted final if a child appears after acceptance", async () => {
     const events: AgentLifecycleEvent[] = [];
     const savedRecords: PersistedAgentRecord[] = [];
@@ -683,7 +778,6 @@ describe("LocalAgentManager Exec fs locking", () => {
       description: "Persisted Manager final",
       agentDepth: 1,
       managerReportState: {
-        turnOrigin: "initial",
         reportSequence: 0,
         finalMessage: "Recovered durable final report.",
         finalAttemptGeneration: 7,
@@ -695,6 +789,8 @@ describe("LocalAgentManager Exec fs locking", () => {
       updatedAt: 200,
     });
     const lifecycleEvents: AgentLifecycleEvent[] = [];
+    const durableLifecycleEvents = new Set<string>();
+    let failNextCompletedSave = true;
     const makeManager = () =>
       new LocalAgentManager({
         maxConcurrent: 1,
@@ -710,15 +806,34 @@ describe("LocalAgentManager Exec fs locking", () => {
         toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
         listAgentRecordsByStatus: (status) =>
           [...records.values()].filter((record) => record.status === status),
-        saveAgentRecord: (record) =>
-          records.set(record.threadId, { ...record }),
-        onAgentEvent: (event) => lifecycleEvents.push(event),
+        saveAgentRecord: (record) => {
+          if (record.status === "completed" && failNextCompletedSave) {
+            failNextCompletedSave = false;
+            expect(
+              durableLifecycleEvents.has(
+                `${record.threadId}:${record.attemptGeneration}:agent-completed`,
+              ),
+            ).toBe(true);
+            throw new Error("Injected crash before completed row write");
+          }
+          records.set(record.threadId, { ...record });
+        },
+        hasAgentLifecycleEvent: (_conversationId, eventId) =>
+          durableLifecycleEvents.has(eventId),
+        onAgentEvent: (event) => {
+          lifecycleEvents.push(event);
+          if (event.eventId) durableLifecycleEvents.add(event.eventId);
+        },
         createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
         completeCloudAgentRecord: async () => undefined,
         getCloudAgentRecord: async () => null,
         cancelCloudAgentRecord: async () => ({ canceled: false }),
       });
 
+    expect(() => makeManager()).toThrow(
+      "Injected crash before completed row write",
+    );
+    expect(records.get("persisted-manager-final")?.status).toBe("running");
     makeManager();
     makeManager();
 
@@ -1780,7 +1895,6 @@ describe("send_input follow-up description and run rebind", () => {
         ...(agentType === AGENT_IDS.MANAGER
           ? {
               managerReportState: {
-                turnOrigin: "managed-event" as const,
                 reportSequence: 1,
                 finalMessage: "Already delivered final report.",
                 finalAttemptGeneration: 3,

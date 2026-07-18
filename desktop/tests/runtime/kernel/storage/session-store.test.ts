@@ -1214,7 +1214,6 @@ describe("session-store", () => {
       status: "running",
       attemptGeneration: 9,
       managerReportState: {
-        turnOrigin: "managed-event",
         reportSequence: 2,
         finalMessage: "Durable final report.",
         finalAttemptGeneration: 9,
@@ -1316,7 +1315,6 @@ describe("session-store", () => {
     expect(reopened.store.getAgentRecord(threadId)).toMatchObject({
       attemptGeneration: 9,
       managerReportState: {
-        turnOrigin: "managed-event",
         reportSequence: 2,
         finalMessage: "Durable final report.",
         finalAttemptGeneration: 9,

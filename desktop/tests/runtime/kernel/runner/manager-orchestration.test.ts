@@ -692,6 +692,9 @@ describe("manager orchestration production routing", () => {
       }),
       expect.objectContaining({
         type: "agent-completed",
+        eventId: expect.stringMatching(
+          new RegExp(`^${managerTask.threadId}:\\d+:agent-completed$`),
+        ),
         payload: expect.objectContaining({
           agentId: managerTask.threadId,
           attemptGeneration: expect.any(Number),
@@ -699,6 +702,22 @@ describe("manager orchestration production routing", () => {
         }),
       }),
     ]);
+    expect(
+      store.hasEvent(
+        "conversation-root-filter",
+        rootLifecycle[1]?.eventId ?? "",
+        "agent-completed",
+      ),
+    ).toBe(true);
+    expect(
+      store
+        .loadThreadMessages("conversation-root-filter")
+        .some(
+          (message) =>
+            message.customMessage?.customType === "runtime.task_lifecycle" &&
+            message.customMessage.eventId === rootLifecycle[1]?.eventId,
+        ),
+    ).toBe(true);
     expect(
       (rootLifecycle[1]?.payload as { attemptGeneration?: number })
         .attemptGeneration,

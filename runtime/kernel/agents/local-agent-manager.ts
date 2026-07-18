@@ -258,9 +258,17 @@ const formatTaskUpdateStatusText = (text: string): string =>
 export const MANAGER_NO_FINAL_REPORT_RESULT =
   "Manager ended without a final report.";
 
-const managerReportStateForOrigin = (
-  turnOrigin: ManagerReportState["turnOrigin"],
-): ManagerReportState => ({ turnOrigin, reportSequence: 0 });
+const normalizeManagerReportState = (
+  state?: ManagerReportState,
+): ManagerReportState => ({
+  ...(state?.finalMessage !== undefined
+    ? { finalMessage: state.finalMessage }
+    : {}),
+  ...(state?.finalAttemptGeneration !== undefined
+    ? { finalAttemptGeneration: state.finalAttemptGeneration }
+    : {}),
+  reportSequence: state?.reportSequence ?? 0,
+});
 
 const fileRecordKey = (record: FileChangeRecord): string =>
   `${record.kind.type}:${record.path}:${
@@ -580,6 +588,11 @@ type LocalAgentManagerOpts = {
   listAgentRecordsByStatus?: (
     status: TaskLifecycleStatus,
   ) => PersistedAgentRecord[];
+  hasAgentLifecycleEvent?: (
+    conversationId: string,
+    eventId: string,
+    type: AgentLifecycleEvent["type"],
+  ) => boolean;
   listActiveThreads?: (conversationId: string) => RuntimeThreadRecord[];
 };
 
@@ -768,19 +781,7 @@ export class LocalAgentManager implements AgentToolApi {
         const result =
           record.managerReportState?.finalMessage ??
           MANAGER_NO_FINAL_REPORT_RESULT;
-        this.opts.saveAgentRecord?.({
-          ...record,
-          status: "completed",
-          completedAt: now,
-          result,
-          error: undefined,
-          updatedAt: now,
-        });
-        // The persisted running row is the durable fence. Saving completion
-        // before emitting means a later restart cannot replay this report;
-        // the deterministic event id also lets downstream consumers dedupe
-        // concurrent recovery defensively.
-        this.opts.onAgentEvent?.({
+        const completedEvent: AgentLifecycleEvent = {
           type: "agent-completed",
           conversationId: record.conversationId,
           eventId: `${record.threadId}:${record.attemptGeneration ?? 0}:agent-completed`,
@@ -791,6 +792,21 @@ export class LocalAgentManager implements AgentToolApi {
           parentAgentId: record.parentAgentId,
           attemptGeneration: record.attemptGeneration,
           result,
+        };
+        // Event-first is the crash fence. If the worker dies before the row
+        // update, the next startup sees the still-running row, observes the
+        // durable event id, skips re-delivery, and finishes the row update.
+        this.emitAgentLifecycleEventOnce(completedEvent);
+        this.opts.saveAgentRecord?.({
+          ...record,
+          managerReportState: normalizeManagerReportState(
+            record.managerReportState,
+          ),
+          status: "completed",
+          completedAt: now,
+          result,
+          error: undefined,
+          updatedAt: now,
         });
         continue;
       }
@@ -904,7 +920,11 @@ export class LocalAgentManager implements AgentToolApi {
         : {}),
       ...(task.parentAgentId ? { parentAgentId: task.parentAgentId } : {}),
       ...(task.managerReportState
-        ? { managerReportState: task.managerReportState }
+        ? {
+            managerReportState: normalizeManagerReportState(
+              task.managerReportState,
+            ),
+          }
         : {}),
       ...(task.selfModMetadata
         ? { selfModMetadata: task.selfModMetadata }
@@ -1034,8 +1054,7 @@ export class LocalAgentManager implements AgentToolApi {
     if (!trimmedMessage) {
       return { accepted: false, reason: "Report message is required." };
     }
-    const current =
-      task.managerReportState ?? managerReportStateForOrigin("initial");
+    const current = normalizeManagerReportState(task.managerReportState);
     if (current.finalMessage !== undefined) {
       return {
         accepted: false,
@@ -1106,6 +1125,21 @@ export class LocalAgentManager implements AgentToolApi {
       | "agent-canceled",
   ): string {
     return `${task.threadId}:${task.attemptGeneration}:${type}`;
+  }
+
+  private emitAgentLifecycleEventOnce(event: AgentLifecycleEvent): void {
+    const eventId = event.eventId?.trim();
+    if (
+      eventId &&
+      this.opts.hasAgentLifecycleEvent?.(
+        event.conversationId,
+        eventId,
+        event.type,
+      )
+    ) {
+      return;
+    }
+    this.opts.onAgentEvent?.(event);
   }
 
   private assertActiveParentChain(request: AgentToolRequest): void {
@@ -1275,7 +1309,7 @@ export class LocalAgentManager implements AgentToolApi {
     task.waitingForManagedChildren = false;
     task.managerReportState =
       task.agentType === AGENT_IDS.MANAGER
-        ? managerReportStateForOrigin("initial")
+        ? normalizeManagerReportState()
         : undefined;
     if (!options?.preserveSelfModRun) {
       // A terminal pause/cancel closes the prior run in the runner's finally
@@ -1309,9 +1343,8 @@ export class LocalAgentManager implements AgentToolApi {
           ? record.status === "completed" ||
             record.status === "error" ||
             record.status === "canceled"
-            ? managerReportStateForOrigin("parent-input")
-            : (record.managerReportState ??
-              managerReportStateForOrigin("parent-input"))
+            ? normalizeManagerReportState()
+            : normalizeManagerReportState(record.managerReportState)
           : undefined,
       selfModMetadata: record.selfModMetadata,
       modelConfigSnapshot: record.modelConfigSnapshot,
@@ -1964,7 +1997,7 @@ export class LocalAgentManager implements AgentToolApi {
       // same report rather than falling back or asking for another final.
       task.managerReportState = managerHasFinalReport
         ? managerReportState
-        : managerReportStateForOrigin("managed-event");
+        : normalizeManagerReportState();
       task.terminalEventEmitted = false;
       this.persistTask(task);
       return;
@@ -1993,7 +2026,11 @@ export class LocalAgentManager implements AgentToolApi {
       }
     }
 
-    this.persistTask(task);
+    const managerCompletionUsesEventFirst =
+      task.agentType === AGENT_IDS.MANAGER && task.status === "completed";
+    if (!managerCompletionUsesEventFirst) {
+      this.persistTask(task);
+    }
 
     // Emit task lifecycle event
     if (!task.terminalEventEmitted) {
@@ -2036,7 +2073,14 @@ export class LocalAgentManager implements AgentToolApi {
         // terminal → the terminal-resume path in `sendAgentMessage`, with
         // this completion already emitted). A completion can never be
         // misclassified as interjected.
-        this.opts.onAgentEvent?.(completedEvent);
+        if (managerCompletionUsesEventFirst) {
+          // A Manager's accepted report must be durably visible before its
+          // running row becomes completed. Recovery can safely retry this
+          // stable event id if the row update never happens.
+          this.emitAgentLifecycleEventOnce(completedEvent);
+        } else {
+          this.opts.onAgentEvent?.(completedEvent);
+        }
       } else if (task.status === "error") {
         this.opts.onAgentEvent?.({
           type: "agent-failed",
@@ -2065,6 +2109,10 @@ export class LocalAgentManager implements AgentToolApi {
         });
       }
       task.terminalEventEmitted = true;
+    }
+
+    if (managerCompletionUsesEventFirst) {
+      this.persistTask(task);
     }
 
     // Sync task completion to Convex in background (non-blocking)
@@ -2155,7 +2203,7 @@ export class LocalAgentManager implements AgentToolApi {
       waitingForManagedChildren: false,
       managerReportState:
         request.agentType === AGENT_IDS.MANAGER
-          ? managerReportStateForOrigin("initial")
+          ? normalizeManagerReportState()
           : undefined,
       attemptGeneration: 0,
     };
@@ -2555,21 +2603,6 @@ export class LocalAgentManager implements AgentToolApi {
         ? options?.description?.trim() || undefined
         : undefined;
     const isManagerEvent = options?.deliveryKind === "manager-event";
-    const applyManagerTurnOrigin = (target: RuntimeAgentRecord) => {
-      if (target.agentType !== AGENT_IDS.MANAGER) return;
-      if (
-        isManagerEvent &&
-        target.managerReportState?.turnOrigin === "parent-input"
-      ) {
-        return;
-      }
-      const current =
-        target.managerReportState ?? managerReportStateForOrigin("initial");
-      target.managerReportState = {
-        ...current,
-        turnOrigin: isManagerEvent ? "managed-event" : "parent-input",
-      };
-    };
     const deliveredInput = isManagerEvent
       ? "Review the newly persisted managed-child event in this thread and continue the instructed process."
       : text;
@@ -2628,7 +2661,6 @@ export class LocalAgentManager implements AgentToolApi {
       if (options?.parentAgentId) {
         resumedTask.parentAgentId = options.parentAgentId;
       }
-      applyManagerTurnOrigin(resumedTask);
       if (followUpDescription) {
         resumedTask.description = followUpDescription;
       }
@@ -2661,7 +2693,6 @@ export class LocalAgentManager implements AgentToolApi {
       task.parentAgentId = options.parentAgentId;
     }
     this.assignModelConfigSnapshotIfMissing(task, options?.modelConfigSnapshot);
-    applyManagerTurnOrigin(task);
     if (task.waitingForManagedChildren && task.status === "pending") {
       task.toSubagentQueue.push(deliveredInput);
       task.messageLog.push({
@@ -2716,7 +2747,6 @@ export class LocalAgentManager implements AgentToolApi {
         threadId: task.threadId,
       });
       this.resetTaskForNextAttempt(task, text);
-      applyManagerTurnOrigin(task);
       task.pendingStartStatusText = updateStatusText;
       // Re-activating a terminal thread is a `send_input` follow-up.
       task.pendingStartIsFollowUp = true;
