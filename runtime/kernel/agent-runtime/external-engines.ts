@@ -509,13 +509,20 @@ const EXTERNAL_DELTA_CUSTOM_TYPES: ReadonlySet<string> = new Set([
  * capacity; only a report exceeding even that is elided, and then from the
  * MIDDLE with an explicit marker so head and tail both survive.
  *
- * Budgets bound the SERIALIZED block — wrapper tags, markers, and the
+ * Budgets bound the SERIALIZED output — wrapper tags, markers, and the
  * envelope count, not just report text — and a row-count cap keeps a flood
  * of tiny rows from ballooning the block through per-row overhead.
+ * `EXTERNAL_DELTA_MAX_MESSAGE_CHARS` is the hard contract on the COMPLETE
+ * serialized message (prefix + out-of-order latest section + markers +
+ * envelope): when a dedicated oversized report and an oversized triggering
+ * row coincide, their elision budgets shrink to share the cap. Without a
+ * global bound, an engine rejecting the oversized prompt combined with
+ * success-only watermark persistence would rebuild the identical prompt
+ * forever.
  */
 export const EXTERNAL_DELTA_MAX_TOTAL_CHARS = 48_000;
 export const EXTERNAL_DELTA_MAX_ROWS = 100;
-export const EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS = 300_000;
+export const EXTERNAL_DELTA_MAX_MESSAGE_CHARS = 300_000;
 
 export type ExternalThreadUpdatesDelta = {
   /** Hidden prompt message carrying the undelivered rows, or null. */
@@ -617,17 +624,31 @@ export const buildExternalThreadUpdatesDelta = (args: {
   const isRowCoveredElsewhere = (text: string): boolean =>
     promptTexts.has(text) ||
     contextTexts.some((context) => context.includes(text));
-  // Middle elision for a report beyond even the dedicated-batch capacity:
-  // the head carries the task framing and the TAIL carries outcomes and
-  // blockers, so both must survive; only the middle may be elided, marked.
-  const elideMiddle = (text: string): string => {
-    if (text.length <= EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS) {
+  // Middle elision for a report beyond its rendering budget: the head
+  // carries the task framing and the TAIL carries outcomes and blockers, so
+  // both must survive; only the middle may be elided, marked. The result
+  // (marker included) never exceeds `maxChars`, and the cut boundaries are
+  // nudged off UTF-16 surrogate pairs so no lone surrogate is emitted.
+  const ELISION_MARKER_ALLOWANCE = 220;
+  const isHighSurrogate = (code: number): boolean =>
+    code >= 0xd800 && code <= 0xdbff;
+  const isLowSurrogate = (code: number): boolean =>
+    code >= 0xdc00 && code <= 0xdfff;
+  const elideMiddleTo = (text: string, maxChars: number): string => {
+    if (text.length <= maxChars) {
       return text;
     }
-    const headChars = Math.ceil(EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS * 0.6);
-    const tailChars = EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS - headChars;
-    const elided = text.length - headChars - tailChars;
-    return `${text.slice(0, headChars)}\n[… ${elided} characters elided from the MIDDLE of this report to fit the engine input; head and tail are verbatim, and the full report is in the Stella thread …]\n${text.slice(text.length - tailChars)}`;
+    const usable = Math.max(0, maxChars - ELISION_MARKER_ALLOWANCE);
+    let headEnd = Math.ceil(usable * 0.6);
+    let tailStart = text.length - (usable - headEnd);
+    if (headEnd > 0 && isHighSurrogate(text.charCodeAt(headEnd - 1))) {
+      headEnd -= 1;
+    }
+    if (tailStart < text.length && isLowSurrogate(text.charCodeAt(tailStart))) {
+      tailStart += 1;
+    }
+    const elided = tailStart - headEnd;
+    return `${text.slice(0, headEnd)}\n[… ${elided} characters elided from the MIDDLE of this report to fit the engine input; head and tail are verbatim, and the full report is in the Stella thread …]\n${text.slice(tailStart)}`;
   };
   const serializeRow = (
     index: number | string,
@@ -653,15 +674,18 @@ export const buildExternalThreadUpdatesDelta = (args: {
     WITHHELD_NOTE.length -
     LATEST_MARKER.length -
     LATEST_SECTION_RESERVE;
-  // Oldest-first bounded packing of the contiguous covered prefix. Coverage
-  // must stay a contiguous prefix of the candidate order — once the budget
-  // is exhausted the scan stops, even for rows that would have been
+  // Oldest-first bounded SELECTION of the contiguous covered prefix (raw
+  // text cost; elision happens at render time under the global cap).
+  // Coverage must stay a contiguous prefix of the candidate order — once the
+  // budget is exhausted the scan stops, even for rows that would have been
   // deduplicated for free, so the watermark can never step over an
   // unexamined row. Rows are packed WHOLE: a first row too large for the
-  // budget becomes its own dedicated batch (elided from the middle only past
-  // the engine-capacity cap) instead of losing its tail.
-  const lines: string[] = [];
+  // budget becomes its own dedicated single-row batch instead of losing its
+  // tail.
+  type SelectedRow = { text: string; customType: string };
+  const prefixRows: SelectedRow[] = [];
   let serializedChars = 0;
+  let dedicatedOversized = false;
   let coveredCount = 0;
   let coveredLastEntryId: string | null = null;
   let coveredEndIndex = -1;
@@ -674,29 +698,26 @@ export const buildExternalThreadUpdatesDelta = (args: {
       coveredEndIndex = index;
       continue;
     }
-    const serialized = serializeRow(
-      lines.length + 1,
-      row.customMessage!.customType,
-      elideMiddle(text),
-    );
-    const cost = serialized.length + 1;
+    const cost =
+      serializeRow(prefixRows.length + 1, row.customMessage!.customType, text)
+        .length + 1;
     if (
-      lines.length > 0 &&
+      prefixRows.length > 0 &&
       (serializedChars + cost > packingBudget ||
-        lines.length >= EXTERNAL_DELTA_MAX_ROWS)
+        prefixRows.length >= EXTERNAL_DELTA_MAX_ROWS)
     ) {
       truncated = true;
       break;
     }
-    lines.push(serialized);
+    prefixRows.push({ text, customType: row.customMessage!.customType });
     serializedChars += cost;
     coveredCount += 1;
     coveredLastEntryId = row.entryId ?? coveredLastEntryId;
     coveredEndIndex = index;
     if (cost > packingBudget) {
-      // Dedicated single-row batch for an oversized report: delivered whole
-      // (or middle-elided past engine capacity), never tail-cut. Stop here
-      // so the block stays a one-report batch.
+      // Dedicated single-row batch for an oversized report. Stop here so
+      // the block stays a one-report batch.
+      dedicatedOversized = true;
       if (index < undelivered.length - 1) {
         truncated = true;
       }
@@ -710,7 +731,7 @@ export const buildExternalThreadUpdatesDelta = (args: {
   // included, even beyond the contiguous prefix, as a marked out-of-order
   // section. The watermark still advances only through the contiguous
   // prefix, so this row is re-delivered in order later (at-least-once).
-  let latestSection: string | null = null;
+  let latestRow: SelectedRow | null = null;
   if (truncated) {
     for (
       let index = undelivered.length - 1;
@@ -722,19 +743,65 @@ export const buildExternalThreadUpdatesDelta = (args: {
       if (!text || isRowCoveredElsewhere(text)) {
         continue;
       }
-      latestSection = serializeRow(
-        "latest",
-        row.customMessage!.customType,
-        elideMiddle(text),
-      );
+      latestRow = { text, customType: row.customMessage!.customType };
       break;
     }
   }
   const lastEntryId =
     coveredLastEntryId ??
     (args.afterEntryId && afterIndex >= 0 ? args.afterEntryId : null);
-  if (lines.length === 0 && !latestSection) {
+  if (prefixRows.length === 0 && !latestRow) {
     return { message: null, lastEntryId, coveredCount, truncated };
+  }
+  // Render under ONE global cap on the complete serialized message. All
+  // fixed parts (envelope, notes, markers, wrappers, joiners) are charged
+  // first; the remaining content budget is shared between the prefix and
+  // the latest section. In the normal path the prefix is already bounded by
+  // `packingBudget` (~1/6 of the cap), so the latest row gets the large
+  // remainder; when a dedicated oversized report and an oversized latest
+  // row coincide, each is elided to roughly half so the composed total
+  // still honors the cap and the drain loop keeps making progress.
+  const wrapperCost = (index: number | string, customType: string): number =>
+    serializeRow(index, customType, "").length + 1;
+  const fixedOverhead =
+    HEADER.length +
+    FOOTER.length +
+    1 +
+    (truncated ? WITHHELD_NOTE.length + 1 : 0) +
+    (latestRow ? LATEST_MARKER.length + 1 : 0);
+  const contentBudget = EXTERNAL_DELTA_MAX_MESSAGE_CHARS - fixedOverhead;
+  let renderedLatest: string | null = null;
+  let latestBudgetUsed = 0;
+  if (latestRow) {
+    const latestWrapper = wrapperCost("latest", latestRow.customType);
+    const prefixReserve = dedicatedOversized
+      ? // Split roughly in half with the dedicated report; a small latest
+        // row hands its unused share back to the report below.
+        Math.floor((contentBudget - latestWrapper) / 2)
+      : // Selection cost already includes wrappers and joiners, so this
+        // reserves exactly what the whole prefix will render to.
+        serializedChars;
+    const latestTextBudget = Math.max(
+      ELISION_MARKER_ALLOWANCE * 2,
+      contentBudget - latestWrapper - prefixReserve,
+    );
+    const latestText = elideMiddleTo(latestRow.text, latestTextBudget);
+    renderedLatest = serializeRow("latest", latestRow.customType, latestText);
+    latestBudgetUsed = renderedLatest.length + 1;
+  }
+  const prefixContentBudget = contentBudget - latestBudgetUsed;
+  const lines: string[] = [];
+  let prefixUsed = 0;
+  for (const [index, selected] of prefixRows.entries()) {
+    const rowWrapper = wrapperCost(index + 1, selected.customType);
+    const rowTextBudget = Math.max(
+      ELISION_MARKER_ALLOWANCE * 2,
+      prefixContentBudget - prefixUsed - rowWrapper,
+    );
+    const rowText = elideMiddleTo(selected.text, rowTextBudget);
+    const serialized = serializeRow(index + 1, selected.customType, rowText);
+    lines.push(serialized);
+    prefixUsed += serialized.length + 1;
   }
   return {
     message: {
@@ -745,7 +812,7 @@ export const buildExternalThreadUpdatesDelta = (args: {
         HEADER,
         ...lines,
         ...(truncated ? [WITHHELD_NOTE] : []),
-        ...(latestSection ? [LATEST_MARKER, latestSection] : []),
+        ...(renderedLatest ? [LATEST_MARKER, renderedLatest] : []),
         FOOTER,
       ].join("\n"),
     },

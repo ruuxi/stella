@@ -7,8 +7,8 @@ import {
   buildClaudeCodeTurnPrompts,
   buildExternalThreadUpdatesDelta,
   createExternalDeltaWatermarkTracker,
+  EXTERNAL_DELTA_MAX_MESSAGE_CHARS,
   EXTERNAL_DELTA_MAX_ROWS,
-  EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS,
   EXTERNAL_DELTA_MAX_TOTAL_CHARS,
   getExternalDeliveredEntryId,
   setExternalDeliveredEntryId,
@@ -809,7 +809,7 @@ describe("external-engine out-of-band delta injection", () => {
         store,
         threadKey,
         17_000,
-        `HEAD-START ${"z".repeat(EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS + 10_000)} GIANT-TAIL-END`,
+        `HEAD-START ${"z".repeat(EXTERNAL_DELTA_MAX_MESSAGE_CHARS + 10_000)} GIANT-TAIL-END`,
       );
       const delta = buildExternalThreadUpdatesDelta({
         store,
@@ -822,10 +822,139 @@ describe("external-engine out-of-band delta injection", () => {
         "elided from the MIDDLE of this report",
       );
       expect(delta.coveredCount).toBe(1);
-      // Bounded near the engine-capacity cap, not the raw report size.
-      expect(delta.message!.text.length).toBeLessThan(
-        EXTERNAL_DELTA_MAX_SINGLE_ROW_CHARS + 2_000,
+      // The COMPLETE serialized message honors the global cap.
+      expect(delta.message!.text.length).toBeLessThanOrEqual(
+        EXTERNAL_DELTA_MAX_MESSAGE_CHARS,
       );
+    }));
+
+  it("caps the complete serialized message when a bounded prefix meets an oversized triggering row", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-20";
+      // Reviewer probe: ~45k of prefix + >300k newest previously composed
+      // to ~345k because the latest section was elided independently.
+      appendChildReport(
+        store,
+        threadKey,
+        20_000,
+        `[Agent report] PREFIX-A ${"a".repeat(20_000)} TAIL-PREFIX-A-END`,
+      );
+      appendChildReport(
+        store,
+        threadKey,
+        20_001,
+        `[Agent report] PREFIX-B ${"b".repeat(20_000)} TAIL-PREFIX-B-END`,
+      );
+      appendChildReport(
+        store,
+        threadKey,
+        20_002,
+        `[Agent report] SKIPPED-C ${"c".repeat(10_000)}`,
+      );
+      appendChildReport(
+        store,
+        threadKey,
+        20_003,
+        `TRIGGER-HEAD ${"t".repeat(EXTERNAL_DELTA_MAX_MESSAGE_CHARS + 20_000)} TRIGGER-TAIL-END`,
+      );
+      const delta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+      });
+      expect(delta.message!.text.length).toBeLessThanOrEqual(
+        EXTERNAL_DELTA_MAX_MESSAGE_CHARS,
+      );
+      // Prefix rows stay whole; the oversized trigger keeps head AND tail.
+      expect(delta.message?.text).toContain("TAIL-PREFIX-A-END");
+      expect(delta.message?.text).toContain("TAIL-PREFIX-B-END");
+      expect(delta.message?.text).not.toContain("SKIPPED-C");
+      expect(delta.message?.text).toContain("TRIGGER-HEAD");
+      expect(delta.message?.text).toContain("TRIGGER-TAIL-END");
+      expect(delta.coveredCount).toBe(2);
+      expect(delta.truncated).toBe(true);
+    }));
+
+  it("caps the complete serialized message when a dedicated oversized report meets an oversized triggering row", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-21";
+      // Reviewer probe: both independently elided to ~300k previously
+      // composed to ~601k. Now they share the cap roughly in half.
+      appendChildReport(
+        store,
+        threadKey,
+        21_000,
+        `DEDICATED-HEAD ${"d".repeat(EXTERNAL_DELTA_MAX_MESSAGE_CHARS + 20_000)} DEDICATED-TAIL-END`,
+      );
+      appendChildReport(
+        store,
+        threadKey,
+        21_001,
+        `TRIGGER-HEAD ${"t".repeat(EXTERNAL_DELTA_MAX_MESSAGE_CHARS + 20_000)} TRIGGER-TAIL-END`,
+      );
+      const delta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+      });
+      expect(delta.message!.text.length).toBeLessThanOrEqual(
+        EXTERNAL_DELTA_MAX_MESSAGE_CHARS,
+      );
+      // Both reports keep head AND tail; both are middle-elided.
+      expect(delta.message?.text).toContain("DEDICATED-HEAD");
+      expect(delta.message?.text).toContain("DEDICATED-TAIL-END");
+      expect(delta.message?.text).toContain("TRIGGER-HEAD");
+      expect(delta.message?.text).toContain("TRIGGER-TAIL-END");
+      // Watermark covers only the dedicated (older) report.
+      expect(delta.coveredCount).toBe(1);
+      expect(delta.truncated).toBe(true);
+    }));
+
+  it("keeps even a barely-oversized single report within the global cap (wrapper overhead included)", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-22";
+      // Reviewer probe: a 300,001-char row previously serialized to 300,494.
+      appendChildReport(
+        store,
+        threadKey,
+        22_000,
+        "e".repeat(EXTERNAL_DELTA_MAX_MESSAGE_CHARS + 1),
+      );
+      const delta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+      });
+      expect(delta.message!.text.length).toBeLessThanOrEqual(
+        EXTERNAL_DELTA_MAX_MESSAGE_CHARS,
+      );
+      expect(delta.coveredCount).toBe(1);
+      expect(delta.truncated).toBe(false);
+    }));
+
+  it("never splits a surrogate pair at an elision boundary", () =>
+    withStore((store) => {
+      const threadKey = "conversation-1:manager:thread-23";
+      // A report made of astral-plane pairs: any code-unit boundary inside
+      // the body would split a pair unless nudged.
+      appendChildReport(
+        store,
+        threadKey,
+        23_000,
+        "💀".repeat((EXTERNAL_DELTA_MAX_MESSAGE_CHARS + 40_000) / 2),
+      );
+      const delta = buildExternalThreadUpdatesDelta({
+        store,
+        threadKey,
+        promptMessages: [{ text: MANAGER_WAKE_STUB }],
+      });
+      const text = delta.message!.text;
+      expect(text).toContain("elided from the MIDDLE");
+      // No lone high surrogate (high not followed by low)...
+      expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(text)).toBe(false);
+      // ...and no lone low surrogate (low not preceded by high).
+      expect(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(text)).toBe(false);
+      expect(text.length).toBeLessThanOrEqual(EXTERNAL_DELTA_MAX_MESSAGE_CHARS);
     }));
 
   it("bounds the SERIALIZED block (wrappers and envelope included) under a flood of tiny rows", () =>
