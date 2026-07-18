@@ -93,15 +93,22 @@ const stellaCatalogStore = createResourceStore<string, StellaCatalogPayload>({
  * persisted last-good catalog immediately and refreshes pi.dev in the
  * background, so the renderer never maintains a second provider registry.
  */
-const managedGatewayStore = createResourceStore<"default", ManagedRuntimeCatalogPayload>({
+async function fetchManagedRuntimeCatalog(
+  forceRefresh: boolean,
+): Promise<ManagedRuntimeCatalogPayload> {
+  const data = await window.electronAPI?.system?.listLlmModels?.({
+    forceRefresh,
+  });
+  return normalizeRuntimeCatalogSnapshot(data);
+}
+
+const managedGatewayStore = createResourceStore<
+  "default",
+  ManagedRuntimeCatalogPayload
+>({
   staleMs: MODEL_CATALOG_REFRESH_INTERVAL_MS,
   accept: (next, current) => next.revision > current.revision,
-  fetcher: async (_key, context) => {
-    const data = await window.electronAPI?.system?.listLlmModels?.({
-      forceRefresh: context.force,
-    });
-    return normalizeRuntimeCatalogSnapshot(data);
-  },
+  fetcher: (_key, context) => fetchManagedRuntimeCatalog(context.force),
 });
 
 const stopManagedCatalogUpdates =
@@ -113,8 +120,33 @@ const stopManagedCatalogUpdates =
         );
       })
     : undefined;
-if (import.meta.hot && stopManagedCatalogUpdates) {
-  import.meta.hot.dispose(stopManagedCatalogUpdates);
+
+// A renderer can preload the picker during the short window between an
+// Electron/runtime restart and runner attachment. The old IPC contract
+// returned a successful revision-0 empty snapshot in that window, which the
+// 24-hour resource cache then treated as authoritative. Model-catalog update
+// notifications are edge-triggered, so a renderer that subscribed after the
+// worker's initial publish could remain empty indefinitely. Re-read the
+// worker-owned snapshot whenever runtime availability returns; push keeps the
+// revision fence, and the non-forced read serves restored last-good data while
+// the worker refreshes remote providers in the background.
+const stopManagedCatalogAvailabilityUpdates =
+  typeof window !== "undefined"
+    ? window.electronAPI?.agent?.onAvailability?.((snapshot) => {
+        if (!snapshot.connected || !snapshot.ready) return;
+        void fetchManagedRuntimeCatalog(false)
+          .then((catalog) => managedGatewayStore.push("default", catalog))
+          .catch(() => undefined);
+      })
+    : undefined;
+
+if (import.meta.hot) {
+  if (stopManagedCatalogUpdates) {
+    import.meta.hot.dispose(stopManagedCatalogUpdates);
+  }
+  if (stopManagedCatalogAvailabilityUpdates) {
+    import.meta.hot.dispose(stopManagedCatalogAvailabilityUpdates);
+  }
 }
 
 function getBillingAudienceKey(

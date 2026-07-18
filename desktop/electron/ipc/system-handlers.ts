@@ -2195,12 +2195,11 @@ export const registerSystemHandlers = (options: SystemHandlersOptions) => {
     }
     const runner = options.getStellaHostRunner();
     if (!runner) {
-      return {
-        revision: 0,
-        models: [],
-        runtimeManagedProviders: [],
-        refreshedAt: null,
-      };
+      // Do not let a renderer preload during runner attachment turn a
+      // transient lifecycle gap into a successful, 24-hour cached empty
+      // catalog. Runtime availability will prompt the renderer to retry once
+      // the worker-owned last-good snapshot is readable.
+      throw new Error("Stella runtime model catalog is not ready.");
     }
     const forceRefresh =
       Boolean(payload) &&

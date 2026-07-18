@@ -1446,7 +1446,7 @@ export function AgentModelPicker({
               void loadClaudeCodeModels();
             } else if (showChatGptPanel) {
               migrationAttemptedRef.current = null;
-              void codexCatalog.refresh();
+              void Promise.all([codexCatalog.refresh(), refresh()]);
             } else {
               void refresh();
             }
