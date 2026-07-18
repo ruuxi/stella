@@ -827,11 +827,17 @@ const parseThreadSessionEntry = (
 
 const toThreadMessageRecord = (
   entry: RuntimeThreadSessionEntry,
-): (RuntimeThreadMessage & { entryId: string }) | null => {
+):
+  | (RuntimeThreadMessage & {
+      entryId: string;
+      sourceEntryType: "message" | "custom_message";
+    })
+  | null => {
   if (entry.type === "message") {
     const payload = entry.message;
     return {
       entryId: entry.id,
+      sourceEntryType: "message",
       threadKey: "",
       timestamp: payload.timestamp,
       role: payload.role,
@@ -845,6 +851,7 @@ const toThreadMessageRecord = (
   if (entry.type === "custom_message") {
     return {
       entryId: entry.id,
+      sourceEntryType: "custom_message",
       threadKey: "",
       timestamp: Date.parse(entry.timestamp) || Date.now(),
       role: "runtimeInternal",
@@ -904,13 +911,30 @@ const buildThreadPathEntries = (
 
 const buildRawThreadMessages = (
   path: RuntimeThreadSessionEntry[],
-): Array<RuntimeThreadMessage & { entryId: string }> =>
+): Array<
+  RuntimeThreadMessage & {
+    entryId: string;
+    sourceEntryType: "message" | "custom_message";
+  }
+> =>
   path
     .map((entry) => toThreadMessageRecord(entry))
     .filter(
-      (message): message is RuntimeThreadMessage & { entryId: string } =>
+      (
+        message,
+      ): message is RuntimeThreadMessage & {
+        entryId: string;
+        sourceEntryType: "message" | "custom_message";
+      } =>
         message !== null,
     );
+
+type LoadedThreadMessage = RuntimeThreadMessage & {
+  entryId: string;
+  /** Durable entry semantics for projections that must distinguish authored
+   * messages from synthetic compaction checkpoints without inspecting text. */
+  sourceEntryType: "message" | "custom_message" | "compaction";
+};
 
 const normalizeCompactionOverlay = (
   compaction: RuntimeThreadCompactionEntry,
@@ -962,14 +986,19 @@ const buildThreadCompactionOverlays = (
     .filter((entry): entry is ThreadCompactionOverlay => entry !== null);
 
 const applyCompactionOverlays = (
-  rawMessages: Array<RuntimeThreadMessage & { entryId: string }>,
+  rawMessages: Array<
+    RuntimeThreadMessage & {
+      entryId: string;
+      sourceEntryType: "message" | "custom_message";
+    }
+  >,
   overlays: ThreadCompactionOverlay[],
-): Array<RuntimeThreadMessage & { entryId: string }> => {
+): LoadedThreadMessage[] => {
   if (rawMessages.length === 0 || overlays.length === 0) {
     return rawMessages;
   }
   const ids = rawMessages.map((message) => message.entryId);
-  const result: Array<RuntimeThreadMessage & { entryId: string }> = [];
+  const result: LoadedThreadMessage[] = [];
   let index = 0;
   while (index < rawMessages.length) {
     const matching = overlays.filter(
@@ -982,6 +1011,7 @@ const applyCompactionOverlays = (
       if (endIndex >= index) {
         result.push({
           entryId: overlay.id,
+          sourceEntryType: "compaction",
           threadKey: "",
           timestamp: overlay.timestamp,
           role: "assistant",
@@ -999,7 +1029,7 @@ const applyCompactionOverlays = (
 
 const buildThreadMessagesFromEntries = (
   entries: RuntimeThreadSessionEntry[],
-): Array<RuntimeThreadMessage & { entryId: string }> => {
+): LoadedThreadMessage[] => {
   const path = buildThreadPathEntries(entries);
   const rawMessages = buildRawThreadMessages(path);
   const overlays = buildThreadCompactionOverlays(path, rawMessages);
@@ -2913,11 +2943,12 @@ export class SessionStore {
     });
   }
 
-  loadThreadMessages(
+  loadThreadMessagesWithEntryTypes(
     threadKeyInput: string,
     limit?: number,
   ): Array<{
     entryId?: string;
+    sourceEntryType: "message" | "custom_message" | "compaction";
     timestamp: number;
     role: RuntimeThreadMessage["role"];
     content: string;
@@ -2933,6 +2964,7 @@ export class SessionStore {
       this.loadThreadSessionEntries(threadKey, limit),
     ).map((message) => ({
       ...(message.entryId ? { entryId: message.entryId } : {}),
+      sourceEntryType: message.sourceEntryType,
       timestamp: message.timestamp,
       role: message.role,
       content: message.content,
@@ -2942,6 +2974,23 @@ export class SessionStore {
         ? { customMessage: message.customMessage }
         : {}),
     }));
+  }
+
+  loadThreadMessages(
+    threadKeyInput: string,
+    limit?: number,
+  ): Array<{
+    entryId?: string;
+    timestamp: number;
+    role: RuntimeThreadMessage["role"];
+    content: string;
+    toolCallId?: string;
+    payload?: RuntimeThreadMessage["payload"];
+    customMessage?: RuntimeThreadMessage["customMessage"];
+  }> {
+    return this.loadThreadMessagesWithEntryTypes(threadKeyInput, limit).map(
+      ({ sourceEntryType: _sourceEntryType, ...message }) => message,
+    );
   }
 
   compactThread(args: {

@@ -24,13 +24,36 @@ describe("Activity exact-thread chat UI contract", () => {
     expect(source).toContain("Open read-only chat for");
   });
 
-  it("reserves no trailing width until hover/focus and remains touch-visible", () => {
+  it("keeps the narrow last-row action and hover background inside the scroll boundary", () => {
+    expect(css).toMatch(
+      /\.chat-workspace-strip__panel\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?overflow-x:\s*hidden;/,
+    );
+    expect(css).toMatch(
+      /\.chat-workspace-strip__list--tasks\s*>\s*\.chat-workspace-strip__task-row\s*\{[\s\S]*?overflow:\s*visible clip;/,
+    );
+    expect(css).not.toMatch(
+      /\.chat-workspace-strip__panel\s*\{[\s\S]*?overflow:\s*visible;/,
+    );
     expect(css).toMatch(
       /\.chat-workspace-strip__task-attach\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?right:\s*2px;[\s\S]*?width:\s*26px;/,
     );
     expect(css).toMatch(
+      /\.chat-workspace-strip__task-button\s*\{[\s\S]*?min-width:\s*0;/,
+    );
+    expect(css).toMatch(
+      /task-row-head\s+\.chat-workspace-strip__task-button\s*\{[\s\S]*?margin-right:\s*0;/,
+    );
+    expect(css).toMatch(
       /task-row-head:focus-within[\s\S]*?padding-right:\s*32px;/,
     );
+    // At a deliberately narrow 160px row, the 26px hit target remains fully
+    // inset: [132, 158], never crossing the right clip edge at 160.
+    const narrowRowWidth = 160;
+    const actionWidth = 26;
+    const actionRightInset = 2;
+    const actionLeft = narrowRowWidth - actionRightInset - actionWidth;
+    expect(actionLeft).toBeGreaterThanOrEqual(0);
+    expect(actionLeft + actionWidth).toBeLessThan(narrowRowWidth);
     expect(css).not.toMatch(/margin-right:\s*-/);
     expect(css).toMatch(/@media \(hover: none\), \(pointer: coarse\)/);
   });

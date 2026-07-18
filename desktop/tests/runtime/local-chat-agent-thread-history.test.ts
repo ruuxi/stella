@@ -51,7 +51,7 @@ describe("local agent thread history boundary", () => {
     service.close();
   });
 
-  it("keeps Stella, Codex, and Claude authored prose while suppressing generic tools and resolving lifecycle events", async () => {
+  it("keeps authored prose while projecting real Claude transport and lifecycle shapes structurally", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "stella-thread-chat-"));
     roots.push(root);
     const service = new LocalChatHistoryService({ stellaAppDir: root });
@@ -72,12 +72,6 @@ describe("local agent thread history boundary", () => {
         api: "openai-codex-responses",
         provider: "openai-codex",
         model: "codex",
-      },
-      {
-        label: "Claude Code",
-        api: "anthropic-messages",
-        provider: "anthropic",
-        model: "claude-code",
       },
     ].entries()) {
       store.appendThreadMessage({
@@ -131,6 +125,101 @@ describe("local agent thread history boundary", () => {
       });
     }
 
+    // Live Claude Code history stores authored prose, native tool calls, and
+    // native tool results as three distinct structured entries. Preserve the
+    // text entry and hide the transport entries without inspecting strings.
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 110,
+      role: "assistant",
+      content: "Claude Code preamble",
+      payload: {
+        role: "assistant",
+        content: [{ type: "text", text: "Claude Code preamble" }],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude-code",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: 110,
+      } as never,
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 111,
+      role: "assistant",
+      content: "",
+      payload: {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "claude-native-spawn",
+            name: "spawn_agent",
+            arguments: { description: "Raw Claude child", prompt: "Private" },
+          },
+        ],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude-code",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "toolUse",
+        timestamp: 111,
+      } as never,
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 112,
+      role: "toolResult",
+      toolCallId: "claude-native-spawn",
+      content: '{"thread_id":"private-claude-child"}',
+      payload: {
+        role: "toolResult",
+        toolCallId: "claude-native-spawn",
+        toolName: "spawn_agent",
+        content: [{ type: "text", text: '{"thread_id":"private-claude-child"}' }],
+        isError: false,
+        timestamp: 112,
+      } as never,
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 113,
+      role: "assistant",
+      content: "Claude Code continuation",
+      payload: {
+        role: "assistant",
+        content: [{ type: "text", text: "Claude Code continuation" }],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude-code",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "stop",
+        timestamp: 113,
+      } as never,
+    });
+
     for (const [offset, type, payload] of [
       [
         0,
@@ -167,18 +256,21 @@ describe("local agent thread history boundary", () => {
     }
 
     const messages = service.listAgentThreadMessages({ threadId });
-    expect(messages.filter((message) => message.role === "assistant")).toEqual(
-      ["Stella-native", "Codex", "Claude Code"].map((label) =>
-        expect.objectContaining({
-          content: `${label} preamble\n\n${label} continuation`,
-        }),
-      ),
-    );
+    expect(
+      messages
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.content),
+    ).toEqual([
+      "Stella-native preamble\n\nStella-native continuation",
+      "Codex preamble\n\nCodex continuation",
+      "Claude Code preamble",
+      "Claude Code continuation",
+    ]);
     expect(
       messages.filter((message) => message.role === "lifecycle"),
     ).toHaveLength(2);
     expect(JSON.stringify(messages)).not.toMatch(
-      /spawn_agent|Raw child task|Transport payload|childThreadId|system_reminder|\[Tool call\]|\[Tool result\]/,
+      /spawn_agent|Raw child task|Raw Claude child|Transport payload|Private|childThreadId|private-claude-child|system_reminder|\[Tool call\]|\[Tool result\]/,
     );
     service.close();
   });
@@ -228,7 +320,11 @@ describe("local agent thread history boundary", () => {
       toolCallId: "claude-native-spawn",
       content: '{"thread_id":"native-child","running_in_background":true}',
     });
-    const toolEntries = store.loadThreadMessages(threadId);
+    const toolEntries = store.loadThreadMessagesWithEntryTypes(threadId);
+    expect(toolEntries.map((entry) => entry.sourceEntryType)).toEqual([
+      "message",
+      "message",
+    ]);
     store.compactThread({
       threadKey: threadId,
       summary:
@@ -238,6 +334,11 @@ describe("local agent thread history boundary", () => {
       tokensBefore: 500,
       timestamp: 1_002,
     });
+    expect(
+      store.loadThreadMessagesWithEntryTypes(threadId).find((entry) =>
+        entry.content.startsWith("[[THREAD_CHECKPOINT]]"),
+      )?.sourceEntryType,
+    ).toBe("compaction");
     store.appendThreadMessage({
       threadKey: threadId,
       timestamp: 1_003,

@@ -299,7 +299,7 @@ export class LocalChatHistoryService {
     if (!threadId) throw new Error("threadId is required.");
     const limit = Math.min(300, Math.max(1, Math.floor(args.limit ?? 200)));
     const store = this.getStore();
-    const messages = store.loadThreadMessages(threadId, limit);
+    const messages = store.loadThreadMessagesWithEntryTypes(threadId, limit);
     const lifecycleById = new Map(
       store
         .listLifecycleEventsByIds(
@@ -342,17 +342,17 @@ export class LocalChatHistoryService {
             ]
           : [];
       }
-      // Payload-less assistant rows are reconstruction artifacts rather than
-      // verifiable authored messages. In particular, Claude Code native tool
-      // history can be reconstructed from a preview containing raw tool
-      // transport. Keep the unstructured fallback strictly user-only.
-      if (message.role !== "user") return [];
+      // Compaction checkpoints summarize model transport as well as authored
+      // prose. They are synthetic history entries, not assistant messages for
+      // the read-only thread chat, so exclude them by durable entry type.
+      if (message.sourceEntryType === "compaction") return [];
       const content = message.content.trim();
       if (!content) return [];
+      if (message.role !== "assistant" && message.role !== "user") return [];
       return [
         {
           ...identity,
-          role: "user",
+          role: message.role,
           content,
         },
       ];
