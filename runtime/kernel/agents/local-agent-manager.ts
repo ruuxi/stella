@@ -756,14 +756,44 @@ export class LocalAgentManager implements AgentToolApi {
   constructor(opts: LocalAgentManagerOpts) {
     this.opts = opts;
     this.defaultMaxConcurrent = Math.max(1, opts.maxConcurrent ?? 3);
-    this.cancelOrphanedPersistedAgents();
+    this.recoverOrCancelOrphanedPersistedAgents();
   }
 
-  private cancelOrphanedPersistedAgents(): void {
+  private recoverOrCancelOrphanedPersistedAgents(): void {
     const now = Date.now();
     const runningRecords =
       this.opts.listAgentRecordsByStatus?.("running") ?? [];
     for (const record of runningRecords) {
+      if (record.agentType === AGENT_IDS.MANAGER) {
+        const result =
+          record.managerReportState?.finalMessage ??
+          MANAGER_NO_FINAL_REPORT_RESULT;
+        this.opts.saveAgentRecord?.({
+          ...record,
+          status: "completed",
+          completedAt: now,
+          result,
+          error: undefined,
+          updatedAt: now,
+        });
+        // The persisted running row is the durable fence. Saving completion
+        // before emitting means a later restart cannot replay this report;
+        // the deterministic event id also lets downstream consumers dedupe
+        // concurrent recovery defensively.
+        this.opts.onAgentEvent?.({
+          type: "agent-completed",
+          conversationId: record.conversationId,
+          eventId: `${record.threadId}:${record.attemptGeneration ?? 0}:agent-completed`,
+          rootRunId: record.rootRunId,
+          agentId: record.threadId,
+          agentType: record.agentType,
+          description: record.description,
+          parentAgentId: record.parentAgentId,
+          attemptGeneration: record.attemptGeneration,
+          result,
+        });
+        continue;
+      }
       const error = AGENT_ORPHANED_RESTART_CANCEL_REASON;
       this.opts.saveAgentRecord?.({
         ...record,
@@ -1099,6 +1129,14 @@ export class LocalAgentManager implements AgentToolApi {
           `Cannot create a child because parent thread ${cursor} is paused or finished.`,
         );
       }
+      if (
+        parent.agentType === AGENT_IDS.MANAGER &&
+        parent.managerReportState?.finalMessage !== undefined
+      ) {
+        throw new Error(
+          `Cannot create a child because manager ${cursor} already submitted its final report.`,
+        );
+      }
       cursor = parent.parentAgentId;
     }
   }
@@ -1133,6 +1171,13 @@ export class LocalAgentManager implements AgentToolApi {
       return {
         adopted: false,
         reason: "A paused or finished manager cannot adopt threads.",
+      };
+    }
+    if (manager.managerReportState?.finalMessage !== undefined) {
+      return {
+        adopted: false,
+        reason:
+          "A manager cannot adopt threads after submitting its final report.",
       };
     }
     const target = this.getAgentState(threadId);
@@ -1913,7 +1958,13 @@ export class LocalAgentManager implements AgentToolApi {
       task.error = undefined;
       task.controller = new AbortController();
       task.waitingForManagedChildren = true;
-      task.managerReportState = managerReportStateForOrigin("managed-event");
+      // A final report is an accepted, durable terminal payload. Preserve it
+      // even if a child becomes visible after acceptance (for example from a
+      // persisted-row race); once that child settles, completion must use the
+      // same report rather than falling back or asking for another final.
+      task.managerReportState = managerHasFinalReport
+        ? managerReportState
+        : managerReportStateForOrigin("managed-event");
       task.terminalEventEmitted = false;
       this.persistTask(task);
       return;

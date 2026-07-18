@@ -456,6 +456,126 @@ describe("manager agent orchestration", () => {
     );
     expect(JSON.stringify(events)).not.toContain("Duplicate final report");
   });
+
+  it("seals descendants and preserves an accepted final if a child appears after acceptance", async () => {
+    const events: AgentLifecycleEvent[] = [];
+    const savedRecords: PersistedAgentRecord[] = [];
+    let racingChildActive = false;
+    let managerThreadId = "";
+    let runCount = 0;
+    const racingChild: PersistedAgentRecord = {
+      threadId: "racing-child-after-final",
+      conversationId: "conv-final-child-race",
+      agentType: AGENT_IDS.GENERAL,
+      description: "Racing child",
+      agentDepth: 2,
+      parentAgentId: "pending-manager-id",
+      status: "running",
+      attemptGeneration: 0,
+      startedAt: 10,
+      completedAt: null,
+      updatedAt: 10,
+    };
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 2,
+      }),
+      runSubagent: async (args) => {
+        runCount += 1;
+        if (runCount === 1) {
+          const submitted = await args.toolExecutor(
+            "report",
+            { message: "Sealed report survives the child race.", final: true },
+            {} as ToolContext,
+          );
+          expect(submitted.error).toBeUndefined();
+          racingChild.parentAgentId = managerThreadId;
+          racingChildActive = true;
+          return {
+            runId: args.runId,
+            result: "Private turn before racing child wait.",
+          };
+        }
+        return {
+          runId: args.runId,
+          result: "Private turn after racing child settled.",
+        };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      getAgentRecord: (threadId) =>
+        threadId === racingChild.threadId ? racingChild : null,
+      listAgentRecordsByStatus: (status) =>
+        status === "running" && racingChildActive ? [racingChild] : [],
+      saveAgentRecord: (record) => savedRecords.push({ ...record }),
+      onAgentEvent: (event) => events.push(event),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-final-child-race",
+      description: "Protect accepted final report",
+      prompt: "Submit the final report once.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    managerThreadId = task.threadId;
+
+    while (
+      savedRecords.filter(
+        (record) =>
+          record.managerReportState?.finalMessage ===
+          "Sealed report survives the child race.",
+      ).length < 2
+    ) {
+      await sleep(5);
+    }
+    await expect(
+      manager.createAgent({
+        conversationId: "conv-final-child-race",
+        description: "Late child",
+        prompt: "This child must not start.",
+        agentType: AGENT_IDS.GENERAL,
+        agentDepth: 2,
+        parentAgentId: task.threadId,
+        storageMode: "local",
+      }),
+    ).rejects.toThrow(/already submitted its final report/i);
+
+    expect((await manager.getAgent(task.threadId))?.status).toBe("running");
+    expect(savedRecords.at(-1)?.managerReportState).toMatchObject({
+      finalMessage: "Sealed report survives the child race.",
+    });
+
+    racingChildActive = false;
+    await manager.sendAgentMessage(
+      task.threadId,
+      "<system_reminder>The racing child settled.</system_reminder>",
+      "orchestrator",
+      { deliveryKind: "manager-event" },
+    );
+    await waitForAgentSettled(manager, task.threadId);
+
+    expect(runCount).toBe(2);
+    expect(
+      events.filter(
+        (event) =>
+          event.type === "agent-completed" && event.agentId === task.threadId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        result: "Sealed report survives the child race.",
+      }),
+    ]);
+    expect(JSON.stringify(events)).not.toContain("Private turn before");
+    expect(JSON.stringify(events)).not.toContain("Private turn after");
+  });
 });
 
 describe("LocalAgentManager Exec fs locking", () => {
@@ -551,6 +671,80 @@ describe("LocalAgentManager Exec fs locking", () => {
         audience: "display-only",
       }),
     ]);
+  });
+
+  it("recovers a persisted Manager final exactly once after worker restart", () => {
+    const records = new Map<string, PersistedAgentRecord>();
+    records.set("persisted-manager-final", {
+      threadId: "persisted-manager-final",
+      conversationId: "conv-persisted-manager-final",
+      rootRunId: "root-persisted-manager-final",
+      agentType: AGENT_IDS.MANAGER,
+      description: "Persisted Manager final",
+      agentDepth: 1,
+      managerReportState: {
+        turnOrigin: "initial",
+        reportSequence: 0,
+        finalMessage: "Recovered durable final report.",
+        finalAttemptGeneration: 7,
+      },
+      status: "running",
+      attemptGeneration: 7,
+      startedAt: 100,
+      completedAt: null,
+      updatedAt: 200,
+    });
+    const lifecycleEvents: AgentLifecycleEvent[] = [];
+    const makeManager = () =>
+      new LocalAgentManager({
+        maxConcurrent: 1,
+        fetchAgentContext: async () => ({
+          systemPrompt: "",
+          dynamicContext: "",
+          maxAgentDepth: 2,
+        }),
+        runSubagent: async (args) => ({
+          runId: args.runId,
+          result: "unused",
+        }),
+        toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+        listAgentRecordsByStatus: (status) =>
+          [...records.values()].filter((record) => record.status === status),
+        saveAgentRecord: (record) =>
+          records.set(record.threadId, { ...record }),
+        onAgentEvent: (event) => lifecycleEvents.push(event),
+        createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+        completeCloudAgentRecord: async () => undefined,
+        getCloudAgentRecord: async () => null,
+        cancelCloudAgentRecord: async () => ({ canceled: false }),
+      });
+
+    makeManager();
+    makeManager();
+
+    expect(records.get("persisted-manager-final")).toMatchObject({
+      status: "completed",
+      completedAt: expect.any(Number),
+      result: "Recovered durable final report.",
+      managerReportState: {
+        finalMessage: "Recovered durable final report.",
+        finalAttemptGeneration: 7,
+      },
+    });
+    expect(lifecycleEvents).toEqual([
+      expect.objectContaining({
+        type: "agent-completed",
+        eventId: "persisted-manager-final:7:agent-completed",
+        conversationId: "conv-persisted-manager-final",
+        rootRunId: "root-persisted-manager-final",
+        agentId: "persisted-manager-final",
+        attemptGeneration: 7,
+        result: "Recovered durable final report.",
+      }),
+    ]);
+    expect(JSON.stringify(lifecycleEvents)).not.toContain(
+      AGENT_ORPHANED_RESTART_CANCEL_REASON,
+    );
   });
 
   it("emits completed terminal events with the agent result and file changes", async () => {
