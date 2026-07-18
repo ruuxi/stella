@@ -67,6 +67,127 @@ afterEach(async () => {
 });
 
 describe("session-store", () => {
+  it("migrates v1 append-sequence rows to the canonical insertion sequence", async () => {
+    const rootPath = path.join(
+      os.tmpdir(),
+      `stella-session-store-v1-thread-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    await mkdir(rootPath, { recursive: true });
+    const db = new DatabaseSync(getDesktopDatabasePath(rootPath), {
+      timeout: 5000,
+    }) as unknown as SqliteDatabase;
+    db.exec(`
+      CREATE TABLE runtime_thread_entries (
+        entry_id TEXT PRIMARY KEY,
+        thread_key TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        parent_entry_id TEXT,
+        entry_type TEXT NOT NULL,
+        timestamp_iso TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        append_seq INTEGER,
+        data_json TEXT
+      );
+      CREATE INDEX idx_runtime_thread_entries_thread_append
+      ON runtime_thread_entries(thread_key, append_seq);
+    `);
+    const insertLegacy = db.prepare(`
+      INSERT INTO runtime_thread_entries (
+        entry_id, thread_key, session_id, parent_entry_id, entry_type,
+        timestamp_iso, created_at, append_seq, data_json
+      ) VALUES (?, 'legacy-thread', 'legacy-session', ?, ?, ?, ?, ?, ?)
+    `);
+    const timestamp = 1_700_000_000_000;
+    insertLegacy.run(
+      "legacy-random-z",
+      null,
+      "message",
+      new Date(timestamp).toISOString(),
+      timestamp,
+      1,
+      JSON.stringify({
+        message: { role: "user", content: "Legacy first", timestamp },
+      }),
+    );
+    insertLegacy.run(
+      "legacy-random-a",
+      "legacy-random-z",
+      "custom_message",
+      new Date(timestamp).toISOString(),
+      timestamp,
+      2,
+      JSON.stringify({
+        customType: "managed-child-terminal",
+        content: "Legacy sibling event",
+        display: false,
+        eventId: "legacy-child-event",
+      }),
+    );
+    insertLegacy.run(
+      "legacy-random-m",
+      "legacy-random-z",
+      "message",
+      new Date(timestamp).toISOString(),
+      timestamp,
+      3,
+      JSON.stringify({
+        message: { role: "user", content: "Legacy second", timestamp },
+      }),
+    );
+
+    initializeDesktopDatabase(db);
+    const context = { rootPath, db, store: new SessionStore(db) };
+    activeContexts.add(context);
+
+    expect(
+      context.store
+        .loadThreadMessages("legacy-thread")
+        .map((message) => message.content),
+    ).toEqual(["Legacy first", "Legacy sibling event", "Legacy second"]);
+    const migrated = db
+      .prepare(
+        `SELECT insertion_sequence AS insertionSequence
+         FROM runtime_thread_entries
+         WHERE thread_key = 'legacy-thread'
+         ORDER BY insertion_sequence`,
+      )
+      .all() as Array<{ insertionSequence: number }>;
+    expect(migrated.map((row) => row.insertionSequence)).toEqual([1, 2, 3]);
+    expect(
+      db
+        .prepare(
+          `SELECT 1 FROM sqlite_schema
+           WHERE type = 'index'
+             AND name = 'idx_runtime_thread_entries_thread_append'`,
+        )
+        .get(),
+    ).toBeUndefined();
+
+    db.prepare(
+      `INSERT INTO runtime_thread_entries (
+         entry_id, thread_key, session_id, parent_entry_id, entry_type,
+         timestamp_iso, created_at, data_json
+       ) VALUES (?, 'legacy-thread', 'legacy-session', ?, 'message', ?, ?, ?)`,
+    ).run(
+      "legacy-random-new",
+      "legacy-random-m",
+      new Date(timestamp).toISOString(),
+      timestamp,
+      JSON.stringify({
+        message: { role: "user", content: "Imported later", timestamp },
+      }),
+    );
+    expect(
+      db
+        .prepare(
+          `SELECT insertion_sequence AS insertionSequence
+           FROM runtime_thread_entries
+           WHERE entry_id = 'legacy-random-new'`,
+        )
+        .get(),
+    ).toMatchObject({ insertionSequence: 4 });
+  });
+
   it("migrates legacy agent rows with a zero ownership generation", async () => {
     const rootPath = path.join(
       os.tmpdir(),
@@ -1266,19 +1387,19 @@ describe("session-store", () => {
       SELECT
         entry_id AS entryId,
         parent_entry_id AS parentEntryId,
-        append_seq AS appendSeq
+        insertion_sequence AS insertionSequence
       FROM runtime_thread_entries
       WHERE thread_key = ?
-      ORDER BY append_seq ASC
+      ORDER BY insertion_sequence ASC
     `,
       )
       .all(threadId) as Array<{
       entryId: string;
       parentEntryId: string | null;
-      appendSeq: number;
+      insertionSequence: number;
     }>;
     expect(entryRows).toHaveLength(messageCount);
-    expect(new Set(entryRows.map((row) => row.appendSeq)).size).toBe(
+    expect(new Set(entryRows.map((row) => row.insertionSequence)).size).toBe(
       messageCount,
     );
     for (let index = 1; index < entryRows.length; index += 1) {
@@ -1430,7 +1551,7 @@ describe("session-store", () => {
     const insertLegacy = db.prepare(`
       INSERT INTO runtime_thread_entries (
         entry_id, thread_key, session_id, parent_entry_id, entry_type,
-        timestamp_iso, created_at, append_seq, data_json
+        timestamp_iso, created_at, insertion_sequence, data_json
       ) VALUES (?, ?, ?, ?, 'message', ?, ?, NULL, ?)
     `);
     insertLegacy.run(
@@ -1461,7 +1582,7 @@ describe("session-store", () => {
         db
           .prepare(
             `SELECT COUNT(*) AS count FROM runtime_thread_entries
-             WHERE thread_key = ? AND append_seq IS NULL`,
+             WHERE thread_key = ? AND insertion_sequence IS NULL`,
           )
           .get(threadId) as { count: number }
       ).count,

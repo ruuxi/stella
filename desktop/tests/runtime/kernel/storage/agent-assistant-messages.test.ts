@@ -200,23 +200,21 @@ describe("agent-authored assistant updates", () => {
     });
     const base = db
       .prepare(
-        `SELECT entry_id AS entryId, session_id AS sessionId,
-                append_seq AS appendSeq
+        `SELECT entry_id AS entryId, session_id AS sessionId
          FROM runtime_thread_entries
          WHERE thread_key = ?
-         ORDER BY append_seq ASC
+         ORDER BY insertion_sequence ASC
          LIMIT 1`,
       )
       .get(threadId) as {
       entryId: string;
       sessionId: string;
-      appendSeq: number;
     };
     const insertMessage = db.prepare(
       `INSERT INTO runtime_thread_entries (
          entry_id, thread_key, session_id, parent_entry_id, entry_type,
-         timestamp_iso, created_at, append_seq, data_json
-       ) VALUES (?, ?, ?, ?, 'message', ?, ?, ?, ?)`,
+         timestamp_iso, created_at, data_json
+       ) VALUES (?, ?, ?, ?, 'message', ?, ?, ?)`,
     );
     const totalMessages =
       AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread *
@@ -235,7 +233,6 @@ describe("agent-authored assistant updates", () => {
         parentEntryId,
         new Date(timestamp).toISOString(),
         timestamp,
-        base.appendSeq + index + 1,
         JSON.stringify({
           message: {
             role: "assistant",

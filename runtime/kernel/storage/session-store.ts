@@ -931,26 +931,19 @@ const buildThreadPathEntries = (
   }
 
   let leaf: RuntimeThreadSessionEntry | undefined = entries[entries.length - 1];
-  const path: RuntimeThreadSessionEntry[] = [];
+  const reversePath: RuntimeThreadSessionEntry[] = [];
   const visited = new Set<string>();
   while (leaf) {
-    if (visited.has(leaf.id)) {
-      // Imported/legacy rows can contain self-references or multi-node parent
-      // cycles. Session entries have no supported branching semantics, and
-      // callers already provide them in durable insertion order, so recover
-      // the complete deterministic history instead of looping forever.
-      return entries;
-    }
+    // Malformed imported history must not hang reconstruction. Falling back
+    // to the durable insertion order also retains every legitimate legacy
+    // sibling created by the former same-millisecond parent race.
+    if (visited.has(leaf.id)) return entries;
     visited.add(leaf.id);
-    path.unshift(leaf);
+    reversePath.push(leaf);
     leaf = leaf.parentId ? byId.get(leaf.parentId) : undefined;
   }
-  // Older writers selected the parent by `(created_at, random entry_id)`.
-  // Several same-millisecond appends could therefore create sibling branches
-  // even though this runtime has no user-facing branch operation. The rows
-  // arrive in durable insertion order; if the parent walk drops any of them,
-  // recover the complete linear history instead of silently losing entries.
-  return path.length === entries.length ? path : entries;
+  if (reversePath.length !== entries.length) return entries;
+  return reversePath.reverse();
 };
 
 const buildRawThreadMessages = (
@@ -1099,8 +1092,13 @@ export class SessionStore {
     return this.dreamInboxStoreInstance;
   }
 
-  private withTransaction(work: () => void): void {
-    this.db.exec("BEGIN TRANSACTION;");
+  private withTransaction(
+    work: () => void,
+    mode: "deferred" | "immediate" = "deferred",
+  ): void {
+    this.db.exec(
+      mode === "immediate" ? "BEGIN IMMEDIATE;" : "BEGIN TRANSACTION;",
+    );
     try {
       work();
       this.db.exec("COMMIT;");
@@ -2786,7 +2784,7 @@ export class SessionStore {
       SELECT entry_id AS entryId
       FROM runtime_thread_entries
       WHERE thread_key = ?
-      ORDER BY COALESCE(append_seq, rowid) DESC, rowid DESC
+      ORDER BY insertion_sequence DESC, rowid DESC
       LIMIT 1
     `,
       )
@@ -2805,20 +2803,6 @@ export class SessionStore {
   }): string {
     const entryId = generateLocalId();
     const parentEntryId = this.getThreadLeafEntryId(args.threadKey);
-    const appendSeqRow = this.db
-      .prepare(
-        `
-      SELECT COALESCE(MAX(COALESCE(append_seq, rowid)), 0) + 1 AS appendSeq
-      FROM runtime_thread_entries
-      WHERE thread_key = ?
-    `,
-      )
-      .get(args.threadKey) as { appendSeq?: unknown } | undefined;
-    const appendSeq =
-      typeof appendSeqRow?.appendSeq === "number" &&
-      Number.isFinite(appendSeqRow.appendSeq)
-        ? appendSeqRow.appendSeq
-        : 1;
     const timestampIso = toIsoTimestamp(args.timestamp);
     this.db
       .prepare(
@@ -2831,10 +2815,9 @@ export class SessionStore {
         entry_type,
         timestamp_iso,
         created_at,
-        append_seq,
         data_json
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
       .run(
@@ -2845,7 +2828,6 @@ export class SessionStore {
         args.entryType,
         timestampIso,
         args.timestamp,
-        appendSeq,
         toJsonValueString(args.data),
       );
     return entryId;
@@ -2868,16 +2850,13 @@ export class SessionStore {
         recent.created_at AS createdAt,
         recent.data_json AS dataJson
       FROM (
-        SELECT
-          *,
-          rowid AS durable_rowid,
-          COALESCE(append_seq, rowid) AS durable_append_seq
+        SELECT rowid AS entryRowId, *
         FROM runtime_thread_entries
         WHERE thread_key = ?
-        ORDER BY durable_append_seq DESC, rowid DESC
+        ORDER BY insertion_sequence DESC, rowid DESC
         ${normalizedLimit ? "LIMIT ?" : ""}
       ) recent
-      ORDER BY recent.durable_append_seq ASC, recent.durable_rowid ASC
+      ORDER BY recent.insertion_sequence ASC, recent.entryRowId ASC
     `;
     const rows = (
       normalizedLimit
@@ -2916,7 +2895,7 @@ export class SessionStore {
         },
       });
       this.touchThread(threadKey);
-    });
+    }, "immediate");
     this.emitThreadTranscriptUpdate({
       conversationId,
       threadId: threadKey,
@@ -2977,7 +2956,7 @@ export class SessionStore {
         },
       });
       this.touchThread(threadKey);
-    });
+    }, "immediate");
     this.emitThreadTranscriptUpdate({
       conversationId,
       threadId: threadKey,
@@ -3011,7 +2990,7 @@ export class SessionStore {
         data: { event },
       });
       this.touchThread(threadKey);
-    });
+    }, "immediate");
     this.emitThreadTranscriptUpdate({
       conversationId,
       threadId: threadKey,
@@ -3054,13 +3033,13 @@ export class SessionStore {
       .prepare(
         `SELECT entry_id AS entryId, data_json AS dataJson
          FROM (
-           SELECT entry_id, data_json, append_seq, rowid
+           SELECT entry_id, data_json, insertion_sequence, rowid
            FROM runtime_thread_entries
            WHERE thread_key = ? AND entry_type = 'lifecycle_event'
-           ORDER BY COALESCE(append_seq, rowid) DESC, rowid DESC
+           ORDER BY insertion_sequence DESC, rowid DESC
            LIMIT ?
          ) recent
-         ORDER BY COALESCE(append_seq, rowid) ASC, rowid ASC`,
+         ORDER BY insertion_sequence ASC, rowid ASC`,
       )
       .all(threadKey, normalizedLimit) as Array<{
       entryId: string;
@@ -3215,7 +3194,7 @@ export class SessionStore {
         },
       });
       this.touchThread(threadKey);
-    });
+    }, "immediate");
     this.emitThreadTranscriptUpdate({
       conversationId,
       threadId: threadKey,
@@ -4635,11 +4614,11 @@ export class SessionStore {
           entries.entry_id AS entryId,
           entries.data_json AS dataJson,
           targets.targetOrder AS targetOrder,
-          COALESCE(entries.append_seq, entries.rowid) AS appendOrder,
+          entries.insertion_sequence AS appendOrder,
           entries.rowid AS durableRowId,
           ROW_NUMBER() OVER (
             PARTITION BY entries.thread_key
-            ORDER BY COALESCE(entries.append_seq, entries.rowid) DESC,
+            ORDER BY entries.insertion_sequence DESC,
               entries.rowid DESC
           ) AS messageRank
         FROM runtime_thread_entries entries
