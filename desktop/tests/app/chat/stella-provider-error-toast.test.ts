@@ -5,7 +5,10 @@ import {
   formatLlmRouteFailure,
   type LlmRouteFailure,
 } from "../../../../runtime/ai/llm-route-failure.js";
-import { resolveStellaProviderErrorToast } from "@/features/chat/streaming/stella-provider-error-toast";
+import {
+  isStellaLimitOrAuthReason,
+  resolveStellaProviderErrorToast,
+} from "@/features/chat/streaming/stella-provider-error-toast";
 
 // Locks the runtime↔desktop contract: route failures are matched by their
 // stable marker, not by human-readable prose. A reworded message must keep the
@@ -60,5 +63,19 @@ describe("llm route failure → toast", () => {
     expect(toast.title).toBe("Provider key needed");
     expect(toast.action).toBeDefined();
     expect(toast.secondaryAction).toBeDefined();
+  });
+
+  it("surfaces Claude Code login failures with the CLI login steps", () => {
+    const reason =
+      "[claude-code/login-required] Claude Code needs login. Open Terminal, run `claude`, then use `/login`.";
+
+    expect(isStellaLimitOrAuthReason(reason)).toBe(true);
+    expect(resolveStellaProviderErrorToast(reason)).toMatchObject({
+      title: "Claude Code needs login",
+      description:
+        "Open Terminal, run claude, then use /login. Retry in Stella after Claude Code confirms you are signed in.",
+      variant: "error",
+      duration: 10000,
+    });
   });
 });

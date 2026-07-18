@@ -1532,6 +1532,74 @@ describe("claude-code-session-runtime", () => {
     }
   });
 
+  it("fails login errors immediately without replaying the prompt", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fake-claude-login-required-"),
+    );
+    const binDir = path.join(dir, "bin");
+    const logPath = path.join(dir, "prompts.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    const fakeClaude = path.join(binDir, "claude");
+    fs.writeFileSync(
+      fakeClaude,
+      [
+        "#!/usr/bin/env node",
+        "const fs = require('node:fs');",
+        "let buffer = '';",
+        "process.stdin.on('data', chunk => {",
+        "  buffer += chunk.toString('utf8');",
+        "  for (;;) {",
+        "    const idx = buffer.indexOf('\\n');",
+        "    if (idx === -1) break;",
+        "    const line = buffer.slice(0, idx).trim();",
+        "    buffer = buffer.slice(idx + 1);",
+        "    if (!line) continue;",
+        "    fs.appendFileSync(process.env.STELLA_FAKE_CLAUDE_LOG, line + '\\n');",
+        "    process.stdout.write(JSON.stringify({",
+        "      type: 'result',",
+        "      session_id: 'logged-out-session',",
+        "      is_error: true,",
+        "      result: 'Not logged in · Please run /login',",
+        "    }) + '\\n');",
+        "  }",
+        "});",
+      ].join("\n"),
+    );
+    fs.chmodSync(fakeClaude, 0o755);
+    const previousPath = process.env.PATH;
+    const previousLogPath = process.env.STELLA_FAKE_CLAUDE_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${previousPath ?? ""}`;
+    process.env.STELLA_FAKE_CLAUDE_LOG = logPath;
+    const sessionKey = `test-login-required:${Date.now()}`;
+    try {
+      await expect(
+        runClaudeCodeTurn({
+          runId: "run-login-required",
+          sessionKey,
+          prompt: "Do the task.",
+          modelId: "claude-code/default",
+          tools: [],
+          executeTool: async () => ({ result: "unused" }),
+        }),
+      ).rejects.toThrow(
+        /\[claude-code\/login-required\] Claude Code needs login/,
+      );
+      const prompts = fs.readFileSync(logPath, "utf8").trim().split("\n");
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]).toContain("Do the task.");
+      expect(claudeCodeSessionHasActiveProcess(sessionKey)).toBe(false);
+    } finally {
+      shutdownClaudeCodeRuntime();
+      process.env.PATH = previousPath;
+      if (previousLogPath === undefined) {
+        delete process.env.STELLA_FAKE_CLAUDE_LOG;
+      } else {
+        process.env.STELLA_FAKE_CLAUDE_LOG = previousLogPath;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("does not replay a step whose attempt already applied native file writes", async () => {
     const dir = fs.mkdtempSync(
       path.join(os.tmpdir(), "stella-fake-claude-mutated-exit-"),

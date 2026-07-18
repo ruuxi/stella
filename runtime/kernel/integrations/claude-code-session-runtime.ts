@@ -51,6 +51,23 @@ export const isClaudeCodeModelRefusalOrOverloadError = (
   message: string,
 ): boolean =>
   /unable to respond to this request|usage policy|overloaded/i.test(message);
+
+export const CLAUDE_CODE_LOGIN_REQUIRED_MARKER = "[claude-code/login-required]";
+
+const isClaudeCodeLoginRequiredMessage = (message: string): boolean =>
+  /not logged in\s*[·:-]?\s*please run \/login|oauth access token has been revoked|authentication_failed/i.test(
+    message,
+  );
+
+export class ClaudeCodeLoginRequiredError extends Error {
+  constructor() {
+    super(
+      `${CLAUDE_CODE_LOGIN_REQUIRED_MARKER} Claude Code needs login. Open Terminal, run \`claude\`, then use \`/login\`. Retry in Stella after Claude Code confirms you are signed in.`,
+    );
+    this.name = "ClaudeCodeLoginRequiredError";
+  }
+}
+
 /**
  * Model aliases the `claude` CLI accepts via `--model` — canonical list in
  * claude-code-resolved-models.ts. `default` is special: it clears any
@@ -1415,6 +1432,13 @@ class ClaudeCodeSessionRuntime {
         if (request.abortSignal?.aborted) {
           throw error;
         }
+        if (error instanceof ClaudeCodeLoginRequiredError) {
+          // Authentication cannot recover by replaying the prompt. Drop the
+          // child so the first turn after /login starts a fresh CLI process
+          // that reads the new credentials.
+          this.resetStreamingProcess(request.sessionKey, session);
+          throw error;
+        }
         const recoverable = asRecoverableStepError(error);
         const hasPossibleSideEffects = Boolean(
           recoverable &&
@@ -2257,6 +2281,9 @@ class ClaudeCodeSessionRuntime {
       resultError = parsedError || "Claude Code reported an error.";
     }
     if (resultError) {
+      if (isClaudeCodeLoginRequiredMessage(resultError)) {
+        throw new ClaudeCodeLoginRequiredError();
+      }
       throw new ClaudeCodeMalformedResultError(resultError, "result_error");
     }
     const usageRaw = parsed.usage as Record<string, unknown> | undefined;

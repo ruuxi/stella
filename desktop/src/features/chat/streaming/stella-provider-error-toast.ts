@@ -68,6 +68,8 @@ const authMatchers = [
   'expired token',
 ] as const
 
+const claudeCodeLoginRequiredMatcher = '[claude-code/login-required]'
+
 const modelRestrictionMatchers = [
   'unsupported stella model selection',
   'invalid stella model selection',
@@ -114,6 +116,7 @@ export const isStellaLimitOrAuthReason = (
     includesAny(normalized, signInRequiredMatchers) ||
     includesAny(normalized, billingMatchers) ||
     includesAny(normalized, rateLimitMatchers) ||
+    normalized.includes(claudeCodeLoginRequiredMatcher) ||
     includesAny(normalized, authMatchers)
   )
 }
@@ -161,6 +164,16 @@ export const resolveStellaProviderErrorToast = (
       duration: 8000,
       action: signInAction,
       secondaryAction: BYOK_TOAST_ACTION,
+    }
+  }
+
+  if (normalized.includes(claudeCodeLoginRequiredMatcher)) {
+    return {
+      title: 'Claude Code needs login',
+      description:
+        'Open Terminal, run claude, then use /login. Retry in Stella after Claude Code confirms you are signed in.',
+      variant: 'error',
+      duration: 10000,
     }
   }
 
