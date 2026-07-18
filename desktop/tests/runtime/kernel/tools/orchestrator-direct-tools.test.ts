@@ -26,7 +26,11 @@ type TestHostContext = {
   createdTasks: Array<Record<string, unknown>>;
   contextLookups: Array<Record<string, unknown>>;
   sourceImports: Array<Record<string, unknown>>;
-  managerDispositions: Array<{ threadId: string; kind: string }>;
+  managerReports: Array<{
+    threadId: string;
+    message: string;
+    final: boolean;
+  }>;
 };
 
 const activeContexts = new Set<TestHostContext>();
@@ -50,7 +54,11 @@ const createTestHost = async (
   const createdTasks: Array<Record<string, unknown>> = [];
   const contextLookups: Array<Record<string, unknown>> = [];
   const sourceImports: Array<Record<string, unknown>> = [];
-  const managerDispositions: Array<{ threadId: string; kind: string }> = [];
+  const managerReports: Array<{
+    threadId: string;
+    message: string;
+    final: boolean;
+  }> = [];
 
   const host = createToolHost({
     stellaAppDir: rootPath,
@@ -70,9 +78,9 @@ const createTestHost = async (
       },
       getAgent: async () => null,
       cancelAgent: async () => ({ canceled: false }),
-      setManagerTurnDisposition: (threadId, kind) => {
-        managerDispositions.push({ threadId, kind });
-        return { updated: true };
+      submitManagerReport: (threadId, message, final) => {
+        managerReports.push({ threadId, message, final });
+        return { accepted: true };
       },
     },
     validateSpawnModel,
@@ -102,7 +110,7 @@ const createTestHost = async (
     createdTasks,
     contextLookups,
     sourceImports,
-    managerDispositions,
+    managerReports,
   };
   activeContexts.add(context);
   return context;
@@ -222,7 +230,7 @@ describe("orchestrator direct tool surface", () => {
       "spawn_agent",
       "send_input",
       "pause_agent",
-      "manager_report",
+      "report",
     ]);
     const generalToolNames = advertisedToolNames("general");
     for (const coordinationTool of [
@@ -230,14 +238,14 @@ describe("orchestrator direct tool surface", () => {
       "spawn_manager",
       "send_input",
       "pause_agent",
-      "manager_report",
+      "report",
     ]) {
       expect(generalToolNames).not.toContain(coordinationTool);
     }
   });
 
-  it("loads and executes structured Manager reporting through the production adapter path", async () => {
-    const { host, rootPath, managerDispositions } = await createTestHost();
+  it("loads and executes Manager-only reporting through the production adapter path", async () => {
+    const { host, rootPath, managerReports } = await createTestHost();
     const agentsDir = path.join(rootPath, "agents");
     await mkdir(agentsDir, { recursive: true });
     await Promise.all(
@@ -262,7 +270,7 @@ describe("orchestrator direct tool surface", () => {
     );
     const manager = loaded.find((agent) => agent.id === AGENT_IDS.MANAGER);
     const general = loaded.find((agent) => agent.id === AGENT_IDS.GENERAL);
-    expect(manager?.toolsAllowlist).toContain("manager_report");
+    expect(manager?.toolsAllowlist).toContain("report");
 
     const managerTools = createPiTools({
       runId: "manager-run",
@@ -278,22 +286,25 @@ describe("orchestrator direct tool surface", () => {
       store: {} as never,
       toolExecutor: host.executeTool,
     });
-    const reportTool = managerTools.find(
-      (tool) => tool.name === "manager_report",
-    );
+    const reportTool = managerTools.find((tool) => tool.name === "report");
     expect(reportTool).toBeDefined();
 
-    for (const kind of ["status", "milestone", "complete"] as const) {
-      const result = await reportTool!.execute(`call-${kind}`, { kind });
-      expect(result.content[0]).toMatchObject({
-        type: "text",
-        text: expect.stringContaining(kind),
-      });
-    }
-    expect(managerDispositions).toEqual([
-      { threadId: "manager-thread", kind: "status" },
-      { threadId: "manager-thread", kind: "milestone" },
-      { threadId: "manager-thread", kind: "complete" },
+    await reportTool!.execute("call-update", { message: "Still checking." });
+    await reportTool!.execute("call-final", {
+      message: "Checks passed.",
+      final: true,
+    });
+    expect(managerReports).toEqual([
+      {
+        threadId: "manager-thread",
+        message: "Still checking.",
+        final: false,
+      },
+      {
+        threadId: "manager-thread",
+        message: "Checks passed.",
+        final: true,
+      },
     ]);
 
     const generalTools = createPiTools({
@@ -307,12 +318,10 @@ describe("orchestrator direct tool surface", () => {
       store: {} as never,
       toolExecutor: host.executeTool,
     });
-    expect(generalTools.map((tool) => tool.name)).not.toContain(
-      "manager_report",
-    );
+    expect(generalTools.map((tool) => tool.name)).not.toContain("report");
     expect(
       host.getToolCatalog(AGENT_IDS.GENERAL).map((tool) => tool.name),
-    ).not.toContain("manager_report");
+    ).not.toContain("report");
   });
 
   it("shows direct coordination tools only to the orchestrator", async () => {
@@ -482,14 +491,14 @@ describe("orchestrator direct tool surface", () => {
           "spawn_manager",
           "send_input",
           "pause_agent",
-          "manager_report",
+          "report",
         ].includes(tool.name),
       )
       .map((tool) => tool.name)
       .sort();
     expect(managerCoordinationTools).toEqual([
-      "manager_report",
       "pause_agent",
+      "report",
       "send_input",
       "spawn_agent",
     ]);

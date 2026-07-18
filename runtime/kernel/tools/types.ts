@@ -207,11 +207,12 @@ export type AgentToolApi = {
     threadId: string,
     parentAgentId: string,
   ) => Promise<{ adopted: boolean; reason?: string }>;
-  /** Structured Manager visibility/lifecycle signal for the current turn. */
-  setManagerTurnDisposition?: (
+  /** Deliver a Manager-authored payload through its only upward channel. */
+  submitManagerReport?: (
     threadId: string,
-    disposition: "status" | "milestone" | "complete",
-  ) => { updated: boolean; reason?: string };
+    message: string,
+    final: boolean,
+  ) => { accepted: boolean; reason?: string };
   sendAgentMessage?: (
     threadId: string,
     message: string,

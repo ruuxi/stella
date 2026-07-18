@@ -57,7 +57,7 @@ describe("loadParsedAgentsFromDir", () => {
       "spawn_agent",
       "send_input",
       "pause_agent",
-      "manager_report",
+      "report",
     ]);
     expect(manager?.maxAgentDepth).toBe(2);
     expect(
@@ -70,18 +70,14 @@ describe("loadParsedAgentsFromDir", () => {
     expect(prompt).toMatch(/\bfresh independent context\b/i);
     expect(prompt).toMatch(/orchestrator(?:'s)? instructions/i);
     expect(prompt).not.toMatch(/brand-new[\s-]+(?:fresh-context )?reviewer/i);
-    expect(prompt).toMatch(/manager_report[\s\S]*kind: milestone/i);
-    expect(prompt).toMatch(/manager_report[\s\S]*kind: status/i);
-    expect(prompt).toMatch(
-      /direct parent `send_input`[\s\S]*keeps the Manager active/i,
-    );
+    expect(prompt).toMatch(/`report` is your only upward channel/i);
+    expect(prompt).toMatch(/final: false[\s\S]*sparingly/i);
+    expect(prompt).toMatch(/assistant responses[\s\S]*private/i);
     expect(prompt).toMatch(
       /child and descendant lifecycle messages[\s\S]*internal/i,
     );
-    expect(prompt).toMatch(/fleet is idle[\s\S]*kind: complete/i);
-    expect(prompt).toMatch(
-      /otherwise keep intermediate child reports internal/i,
-    );
+    expect(prompt).toMatch(/fleet is idle[\s\S]*final: true/i);
+    expect(prompt).toMatch(/final: true[\s\S]*exactly once/i);
   });
 
   it("loads agents when given a directory string path", () => {

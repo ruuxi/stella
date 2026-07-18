@@ -2,7 +2,7 @@
  * Sub-agent management tools for the orchestrator.
  *
  * Five tools manipulate the durable agent thread surface: `spawn_agent`,
- * `spawn_manager`, `send_input`, `manager_report`, and `pause_agent`.
+ * `spawn_manager`, `send_input`, `report`, and `pause_agent`.
  * Managers receive their coordination/reporting tools but cannot create
  * another manager.
  */
@@ -10,7 +10,7 @@
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
 import {
   handleSendInput,
-  handleManagerReport,
+  handleReport,
   handleSpawnAgent,
   handleSpawnManager,
   type StateContext,
@@ -102,24 +102,28 @@ export const createAgentTools = (
       handleSendInput(stateContext, args, context),
   },
   {
-    name: "manager_report",
+    name: "report",
     agentTypes: [AGENT_IDS.MANAGER],
     description:
-      "Declare how the current Manager turn's completed assistant response should surface. Use status or milestone for an intentional public update that keeps the Manager active. Use complete only immediately before the true fleet-idle consolidated final response. Child-driven turns remain internal unless this tool is called.",
+      "Send a Manager report to the orchestrator. This is the Manager's only upward channel. Use non-final reports sparingly for blockers, questions, or requested progress; call exactly once with final true for the consolidated terminal result.",
     parameters: {
       type: "object",
       properties: {
-        kind: {
+        message: {
           type: "string",
-          enum: ["status", "milestone", "complete"],
           description:
-            "status or milestone publishes a non-terminal parent update; complete requests one terminal consolidated result after all managed work is idle.",
+            "The exact update or consolidated result to deliver upward.",
+        },
+        final: {
+          type: "boolean",
+          default: false,
+          description:
+            "False sends a non-terminal update. True supplies the Manager's terminal completion result.",
         },
       },
-      required: ["kind"],
+      required: ["message"],
     },
-    execute: async (args, context) =>
-      handleManagerReport(stateContext, args, context),
+    execute: async (args, context) => handleReport(stateContext, args, context),
   },
   {
     name: "pause_agent",

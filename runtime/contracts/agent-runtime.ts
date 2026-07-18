@@ -16,16 +16,14 @@ export type AgentId = (typeof AGENT_IDS)[keyof typeof AGENT_IDS];
 export type AgentIdLike = AgentId | (string & {});
 
 export type ManagerTurnOrigin = "initial" | "managed-event" | "parent-input";
-export type ManagerTurnVisibility =
-  | "internal"
-  | "parent-reply"
-  | "public-status"
-  | "terminal";
-export type ManagerTurnLifecycle = "continue" | "complete";
-export type ManagerTurnState = {
-  origin: ManagerTurnOrigin;
-  visibility: ManagerTurnVisibility;
-  lifecycle: ManagerTurnLifecycle;
+export type ManagerReportState = {
+  turnOrigin: ManagerTurnOrigin;
+  /** Accepted terminal payload, retained across a superseded attempt. */
+  finalMessage?: string;
+  /** Attempt that accepted `finalMessage`; useful for fencing diagnostics. */
+  finalAttemptGeneration?: number;
+  /** Per-attempt sequence for distinct non-terminal report event ids. */
+  reportSequence: number;
 };
 
 type AgentPromptRole = "orchestrator" | "subagent";

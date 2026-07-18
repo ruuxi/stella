@@ -421,16 +421,16 @@ describe("remote prompt startup sync", () => {
       "spawn_agent",
       "send_input",
       "pause_agent",
-      "manager_report",
+      "report",
     ]);
     expect(fallbackPrompt).toMatch(/\bopen-ended\b/i);
     expect(fallbackPrompt).toMatch(/\bcontinuity\b/i);
     expect(fallbackPrompt).toMatch(/\bfresh independent context\b/i);
     expect(fallbackPrompt).toMatch(/orchestrator(?:'s)? instructions/i);
-    expect(fallbackPrompt).toMatch(/manager_report[\s\S]*kind: status/i);
-    expect(fallbackPrompt).toMatch(/manager_report[\s\S]*kind: milestone/i);
-    expect(fallbackPrompt).toMatch(/manager_report[\s\S]*kind: complete/i);
-    expect(fallbackPrompt).toMatch(/direct parent `send_input`[\s\S]*active/i);
+    expect(fallbackPrompt).toMatch(/`report` is your only upward channel/i);
+    expect(fallbackPrompt).toMatch(/final: false[\s\S]*sparingly/i);
+    expect(fallbackPrompt).toMatch(/final: true[\s\S]*exactly once/i);
+    expect(fallbackPrompt).toMatch(/assistant responses[\s\S]*private/i);
     expect(fallbackPrompt).toMatch(/child and descendant[\s\S]*internal/i);
     expect(fallbackPrompt).toMatch(/internal coordination by default/i);
     await expect(
@@ -460,7 +460,7 @@ describe("remote prompt startup sync", () => {
       "spawn_agent",
       "send_input",
       "pause_agent",
-      "manager_report",
+      "report",
     ]);
   });
 

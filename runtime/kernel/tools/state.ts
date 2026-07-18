@@ -296,36 +296,46 @@ export const handleSendInput = async (
   };
 };
 
-export const handleManagerReport = async (
+export const handleReport = async (
   ctx: StateContext,
   args: Record<string, unknown>,
   context: ToolContext,
 ): Promise<ToolResult> => {
   if (context.agentType !== AGENT_IDS.MANAGER) {
-    return { error: "Only a Manager can set Manager report visibility." };
+    return { error: "Only a Manager can use report." };
   }
   const threadId =
     toOptionalString(context.agentId) ?? toOptionalString(context.cloudAgentId);
   if (!threadId) {
     return { error: "Manager thread identity is unavailable." };
   }
-  const kind = toOptionalString(args.kind);
-  if (kind !== "status" && kind !== "milestone" && kind !== "complete") {
-    return { error: "kind must be status, milestone, or complete" };
+  const message = toOptionalString(args.message);
+  if (!message) {
+    return { error: "message is required" };
   }
-  const updated = ctx.agentApi?.setManagerTurnDisposition?.(threadId, kind);
-  if (!updated?.updated) {
-    return { error: updated?.reason ?? "Manager reporting is unavailable." };
+  if (args.final !== undefined && typeof args.final !== "boolean") {
+    return { error: "final must be a boolean" };
+  }
+  const final = args.final === true;
+  const submitted = ctx.agentApi?.submitManagerReport?.(
+    threadId,
+    message,
+    final,
+  );
+  if (!submitted?.accepted) {
+    return {
+      error: submitted?.reason ?? "Manager reporting is unavailable.",
+    };
   }
   return {
     result: {
       thread_id: threadId,
-      kind,
-      visibility: kind === "complete" ? "terminal" : "public",
-      note:
-        kind === "complete"
-          ? "The next completed assistant response is the consolidated terminal result if managed work is idle."
-          : "The next completed assistant response is visible to the parent without completing the Manager task.",
+      final,
+      delivered: !final,
+      accepted: true,
+      note: final
+        ? "The report is stored as the Manager's terminal result and will be delivered by the completion event."
+        : "The report was delivered as a non-terminal update; the Manager remains active.",
     },
   };
 };

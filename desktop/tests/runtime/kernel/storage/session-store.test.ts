@@ -1213,10 +1213,11 @@ describe("session-store", () => {
       agentDepth: 1,
       status: "running",
       attemptGeneration: 9,
-      managerTurnState: {
-        origin: "managed-event",
-        visibility: "internal",
-        lifecycle: "continue",
+      managerReportState: {
+        turnOrigin: "managed-event",
+        reportSequence: 2,
+        finalMessage: "Durable final report.",
+        finalAttemptGeneration: 9,
       },
       startedAt: frozenAt,
       completedAt: null,
@@ -1314,10 +1315,11 @@ describe("session-store", () => {
     );
     expect(reopened.store.getAgentRecord(threadId)).toMatchObject({
       attemptGeneration: 9,
-      managerTurnState: {
-        origin: "managed-event",
-        visibility: "internal",
-        lifecycle: "continue",
+      managerReportState: {
+        turnOrigin: "managed-event",
+        reportSequence: 2,
+        finalMessage: "Durable final report.",
+        finalAttemptGeneration: 9,
       },
     });
   });

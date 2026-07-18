@@ -642,16 +642,17 @@ export const createRunnerContext = ({
           parentAgentId,
         );
       },
-      setManagerTurnDisposition: (threadId, disposition) => {
+      submitManagerReport: (threadId, message, final) => {
         if (!context.state.localAgentManager) {
           return {
-            updated: false,
+            accepted: false,
             reason: "Local task manager not initialized",
           };
         }
-        return context.state.localAgentManager.setManagerTurnDisposition(
+        return context.state.localAgentManager.submitManagerReport(
           threadId,
-          disposition,
+          message,
+          final,
         );
       },
       sendAgentMessage: async (agentId, message, from, options) => {

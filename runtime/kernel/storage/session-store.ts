@@ -133,7 +133,7 @@ export type PersistedAgentRecord = {
   agentDepth: number;
   maxAgentDepth?: number;
   parentAgentId?: string;
-  managerTurnState?: import("../../contracts/agent-runtime.js").ManagerTurnState;
+  managerReportState?: import("../../contracts/agent-runtime.js").ManagerReportState;
   selfModMetadata?: {
     packageId?: string;
     releaseNumber?: number;
@@ -969,8 +969,7 @@ const buildRawThreadMessages = (
       ): message is RuntimeThreadMessage & {
         entryId: string;
         sourceEntryType: "message" | "custom_message";
-      } =>
-        message !== null,
+      } => message !== null,
     );
 
 type LoadedThreadMessage = RuntimeThreadMessage & {
@@ -4564,7 +4563,7 @@ export class SessionStore {
         record.agentDepth,
         record.maxAgentDepth ?? null,
         record.parentAgentId ?? null,
-        toJsonValueString(record.managerTurnState) ?? null,
+        toJsonValueString(record.managerReportState) ?? null,
         toJsonValueString(record.selfModMetadata) ?? null,
         toJsonValueString(record.modelConfigSnapshot) ?? null,
         record.status,
@@ -4939,8 +4938,8 @@ export class SessionStore {
     const modelConfigSnapshot = parseJsonValue<
       PersistedAgentRecord["modelConfigSnapshot"]
     >(row.model_config_json);
-    const managerTurnState = parseJsonValue<
-      PersistedAgentRecord["managerTurnState"]
+    const managerReportState = parseJsonValue<
+      PersistedAgentRecord["managerReportState"]
     >(row.manager_turn_state_json);
     return {
       threadId: row.thread_id,
@@ -4952,7 +4951,7 @@ export class SessionStore {
         ? {}
         : { maxAgentDepth: row.max_agent_depth }),
       ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
-      ...(managerTurnState ? { managerTurnState } : {}),
+      ...(managerReportState ? { managerReportState } : {}),
       ...(selfModMetadata ? { selfModMetadata } : {}),
       ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
       status: row.status,
@@ -5024,8 +5023,8 @@ export class SessionStore {
       const modelConfigSnapshot = parseJsonValue<
         PersistedAgentRecord["modelConfigSnapshot"]
       >(row.model_config_json);
-      const managerTurnState = parseJsonValue<
-        PersistedAgentRecord["managerTurnState"]
+      const managerReportState = parseJsonValue<
+        PersistedAgentRecord["managerReportState"]
       >(row.manager_turn_state_json);
       return {
         threadId: row.thread_id,
@@ -5037,7 +5036,7 @@ export class SessionStore {
           ? {}
           : { maxAgentDepth: row.max_agent_depth }),
         ...(row.parent_agent_id ? { parentAgentId: row.parent_agent_id } : {}),
-        ...(managerTurnState ? { managerTurnState } : {}),
+        ...(managerReportState ? { managerReportState } : {}),
         ...(selfModMetadata ? { selfModMetadata } : {}),
         ...(modelConfigSnapshot ? { modelConfigSnapshot } : {}),
         status: row.status,

@@ -74,8 +74,11 @@ describe("manager agent orchestration", () => {
             return { runId: args.runId, result: "Waiting for child." };
           }
           await args.toolExecutor(
-            "manager_report",
-            { kind: "complete" },
+            "report",
+            {
+              message: "Consolidated: child passed verification.",
+              final: true,
+            },
             {} as ToolContext,
           );
           return {
@@ -161,7 +164,7 @@ describe("manager agent orchestration", () => {
     ]);
   });
 
-  it("keeps an ordinary child-report turn internal and non-terminal", async () => {
+  it("never surfaces finalized Manager text and emits the no-final fallback", async () => {
     const events: AgentLifecycleEvent[] = [];
     let markFirstRunStarted!: () => void;
     const firstRunStarted = new Promise<void>((resolve) => {
@@ -220,10 +223,20 @@ describe("manager agent orchestration", () => {
     }
 
     expect(managerRunCount).toBe(2);
-    expect(events.map((event) => event.type)).toEqual(["agent-started"]);
+    expect(events.map((event) => event.type)).toEqual([
+      "agent-started",
+      "agent-completed",
+    ]);
     expect(JSON.stringify(events)).not.toContain("A managed child");
+    expect(JSON.stringify(events)).not.toContain(
+      "Manager final response after the child report.",
+    );
+    expect(events.at(-1)).toMatchObject({
+      type: "agent-completed",
+      result: "Manager ended without a final report.",
+    });
     expect((await manager.getAgent(managerTask.threadId))?.status).toBe(
-      "running",
+      "completed",
     );
   });
 
@@ -254,14 +267,21 @@ describe("manager agent orchestration", () => {
             return { runId: args.runId, result: "Waiting." };
           }
           if (managerPrompts.length === 2) {
+            await args.toolExecutor(
+              "report",
+              {
+                message: "Status: adopted verification is still running.",
+              },
+              {} as ToolContext,
+            );
             return {
               runId: args.runId,
               result: "Status: adopted verification is still running.",
             };
           }
           await args.toolExecutor(
-            "manager_report",
-            { kind: "complete" },
+            "report",
+            { message: "Final adopted-thread report.", final: true },
             {} as ToolContext,
           );
           return { runId: args.runId, result: "Final adopted-thread report." };
@@ -346,6 +366,95 @@ describe("manager agent orchestration", () => {
     await waitForAgentSettled(manager, managerTask.threadId);
     expect(managerPrompts[2]).toContain("newly persisted managed-child event");
     expect(upstreamManagerResults).toEqual(["Final adopted-thread report."]);
+  });
+
+  it("delivers an accepted final report exactly once across attempt fencing", async () => {
+    const events: AgentLifecycleEvent[] = [];
+    let finalAccepted!: () => void;
+    const accepted = new Promise<void>((resolve) => {
+      finalAccepted = resolve;
+    });
+    let runCount = 0;
+    const manager = new LocalAgentManager({
+      maxConcurrent: 1,
+      fetchAgentContext: async () => ({
+        systemPrompt: "",
+        dynamicContext: "",
+        maxAgentDepth: 2,
+      }),
+      runSubagent: async (args) => {
+        runCount += 1;
+        if (runCount === 1) {
+          const submitted = await args.toolExecutor(
+            "report",
+            { message: "Durable fenced final report.", final: true },
+            {} as ToolContext,
+          );
+          expect(submitted.error).toBeUndefined();
+          finalAccepted();
+          await new Promise<void>((resolve) =>
+            args.abortSignal.addEventListener("abort", () => resolve(), {
+              once: true,
+            }),
+          );
+          return {
+            runId: args.runId,
+            result: "Private stale finalized turn.",
+            interrupted: true,
+          };
+        }
+        const duplicate = await args.toolExecutor(
+          "report",
+          { message: "Duplicate final report.", final: true },
+          {} as ToolContext,
+        );
+        expect(duplicate.error).toMatch(/already accepted/i);
+        return {
+          runId: args.runId,
+          result: "Private replacement finalized turn.",
+        };
+      },
+      toolExecutor: async (): Promise<ToolResult> => ({ result: "unused" }),
+      onAgentEvent: (event) => events.push(event),
+      createCloudAgentRecord: async () => ({ agentId: "cloud-unused" }),
+      completeCloudAgentRecord: async () => undefined,
+      getCloudAgentRecord: async () => null,
+      cancelCloudAgentRecord: async () => ({ canceled: false }),
+    });
+
+    const task = await manager.createAgent({
+      conversationId: "conv-fenced-report",
+      description: "Fence final Manager report",
+      prompt: "Report once, then finish.",
+      agentType: AGENT_IDS.MANAGER,
+      agentDepth: 1,
+      storageMode: "local",
+    });
+    await accepted;
+    await manager.sendAgentMessage(
+      task.threadId,
+      "Retry the interrupted completion.",
+      "orchestrator",
+      { deliveryKind: "external-input" },
+    );
+    await waitForAgentSettled(manager, task.threadId);
+
+    expect(runCount).toBe(2);
+    expect(
+      events.filter(
+        (event) =>
+          event.type === "agent-completed" && event.agentId === task.threadId,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        result: "Durable fenced final report.",
+      }),
+    ]);
+    expect(JSON.stringify(events)).not.toContain("Private stale finalized");
+    expect(JSON.stringify(events)).not.toContain(
+      "Private replacement finalized",
+    );
+    expect(JSON.stringify(events)).not.toContain("Duplicate final report");
   });
 });
 
@@ -1474,6 +1583,16 @@ describe("send_input follow-up description and run rebind", () => {
         agentType,
         description: "Original work",
         agentDepth: agentType === AGENT_IDS.MANAGER ? 1 : 2,
+        ...(agentType === AGENT_IDS.MANAGER
+          ? {
+              managerReportState: {
+                turnOrigin: "managed-event" as const,
+                reportSequence: 1,
+                finalMessage: "Already delivered final report.",
+                finalAttemptGeneration: 3,
+              },
+            }
+          : {}),
         status: terminalStatus,
         attemptGeneration: 3,
         startedAt: 100,
@@ -1548,18 +1667,16 @@ describe("send_input follow-up description and run rebind", () => {
 
       finish();
       if (agentType === AGENT_IDS.MANAGER) {
-        await sleep(25);
+        await waitForAgentSettled(manager, threadId);
         expect(saved.at(-1)).toMatchObject({
           threadId,
-          status: "running",
+          status: "completed",
           attemptGeneration: 4,
+          result: "Manager ended without a final report.",
         });
-        await manager.cancelAgent(threadId, "Test cleanup after parent reply");
-        expect(saved.at(-1)).toMatchObject({
-          threadId,
-          status: "canceled",
-          attemptGeneration: 4,
-        });
+        expect(saved.at(-1)?.result).not.toBe(
+          "Already delivered final report.",
+        );
         return;
       }
       await waitForAgentSettled(manager, threadId);
