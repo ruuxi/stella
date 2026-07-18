@@ -1,15 +1,17 @@
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
+import type { RecallLookupResult } from "../../agent-runtime/recall-run-cache.js";
 import type { ToolDefinition } from "../types.js";
 
 export type RecallToolOptions = {
   contextProvider?: (payload: {
     conversationId: string;
     requestId: string;
+    runId?: string;
     prompt: string;
     memorySearchTerms?: string[];
     agentType?: string;
     signal?: AbortSignal;
-  }) => Promise<string>;
+  }) => Promise<RecallLookupResult>;
 };
 
 export const createRecallTool = (
@@ -20,7 +22,7 @@ export const createRecallTool = (
   description:
     "Look up deeper memory, past work, or live machine context that isn't currently loaded. A recall agent searches the durable memory ledger, every past agent thread you've ever run (resumable — it returns thread_ids), recent activity, the chronicle, and the current app/browser state, then returns one concise brief. " +
     'Use it when the user references something from before ("yesterday", "that", "the thing I was doing"), asks about prior work, names a repo/module/feature with possible history, points at past agent threads to resume, or the request is ambiguous and earlier context could change the answer. ' +
-    "You do NOT need it for the user's name, location, stable preferences, or current focus — those are already in your context. Skip it for self-contained requests (current time, simple rewrite, trivial formatting). When in doubt on anything historical or on-screen, do a quick Recall.",
+    "You do NOT need it for the user's name, location, stable preferences, or current focus — those are already in your context. Skip it for self-contained requests (current time, simple rewrite, trivial formatting). When in doubt on anything historical or on-screen, do a quick Recall. The result has a structured status: found, no_match, retrieval_error, or synthesis_error. Do not blindly retry the same lookup after no_match or an error; identical same-run lookups are cached.",
   parameters: {
     type: "object",
     properties: {
@@ -62,6 +64,7 @@ export const createRecallTool = (
     const result = await options.contextProvider({
       conversationId: context.conversationId,
       requestId: context.requestId,
+      ...(context.runId ? { runId: context.runId } : {}),
       prompt,
       ...(memorySearchTerms?.length ? { memorySearchTerms } : {}),
       ...(context.agentType ? { agentType: context.agentType } : {}),

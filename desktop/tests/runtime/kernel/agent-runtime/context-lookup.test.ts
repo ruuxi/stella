@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  EAGER_RECALL_SEED_MAX_CHARS,
   MAX_THREAD_SEARCH_RESULTS,
   RECALL_BUDGET_EXHAUSTED_TEXT,
   RECALL_EMPTY_BRIEF_TEXT,
@@ -15,6 +16,7 @@ import {
   formatThreadSearchResults,
   formatTranscriptSearchResults,
   resolveRecallSearchAction,
+  renderCappedRecallSeed,
   runRecall,
 } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
 import type {
@@ -230,6 +232,29 @@ describe("buildContextLookupUserPrompt", () => {
     expect(prompt.indexOf("# Chronicle Context")).toBeLessThan(
       prompt.indexOf("# Lookup Request"),
     );
+    expect(prompt.length).toBeLessThanOrEqual(EAGER_RECALL_SEED_MAX_CHARS);
+  });
+
+  it("caps oversized sections deterministically while preserving the lookup tail", () => {
+    const sections = [
+      {
+        heading: "# Memory Search Results",
+        body: "m".repeat(20_000),
+        maxBodyChars: 10_000,
+      },
+      {
+        heading: "# Lookup Request",
+        body: "find the exact prior decision",
+        maxBodyChars: 1_000,
+      },
+    ];
+    const first = renderCappedRecallSeed(sections, [1, 0]);
+    const second = renderCappedRecallSeed(sections, [1, 0]);
+
+    expect(first).toBe(second);
+    expect(first.length).toBeLessThanOrEqual(EAGER_RECALL_SEED_MAX_CHARS);
+    expect(first).toContain("# Memory Search Results");
+    expect(first).toContain("# Lookup Request\nfind the exact prior decision");
   });
 
   it("includes matched memory lines and omits the full ledger when terms are provided", async () => {
@@ -651,10 +676,15 @@ describe("runRecall", () => {
       ...storeOverrides,
     } as unknown as Parameters<typeof runRecall>[0]["store"],
     localEvents: [],
-    resolvedLlm: {
-      model: { id: "test-model" },
-      getApiKey: async () => "test-key",
-    } as unknown as Parameters<typeof runRecall>[0]["resolvedLlm"],
+    recallRoute: {
+      activeEngine: "default",
+      executionEngine: "native",
+      modelId: "test-provider/test-model",
+      resolvedLlm: {
+        model: { id: "test-model" },
+        getApiKey: async () => "test-key",
+      },
+    } as unknown as Parameters<typeof runRecall>[0]["recallRoute"],
   });
 
   it("advertises the native tools, executes a tool round, and returns the final text brief", async () => {
@@ -746,7 +776,7 @@ describe("runRecall", () => {
       conversationId: "conv-1",
       outcome: "answer",
       engine: "native",
-      modelId: "test-model",
+      modelId: "test-provider/test-model",
       routeMs: 12.5,
       hostContextMs: 3.25,
       modelCalls: 2,
@@ -981,9 +1011,16 @@ describe("runRecall", () => {
     }
     completions.mockResolvedValueOnce(assistantText(""));
 
-    const out = await runRecall(await makeRunArgs(rootPath));
+    const telemetryRecords: Array<
+      Parameters<NonNullable<Parameters<typeof runRecall>[0]["onTelemetry"]>>[0]
+    > = [];
+    const out = await runRecall({
+      ...(await makeRunArgs(rootPath)),
+      onTelemetry: (record) => telemetryRecords.push(record),
+    });
     expect(out).toBe(RECALL_BUDGET_EXHAUSTED_TEXT);
     expect(completions).toHaveBeenCalledTimes(6);
+    expect(telemetryRecords[0]?.toolRounds).toBe(5);
     const messages = lastContext().messages;
     const budgetResult = messages.find(
       (message): message is ToolResultMessage =>
@@ -1023,8 +1060,18 @@ describe("runRecall", () => {
           },
         ];
       });
+      const repoCheckout = path.join(rootPath, "repo-checkout");
       return {
-        args: await makeRunArgs(rootPath, { searchTranscripts }),
+        args: {
+          ...(await makeRunArgs(rootPath, { searchTranscripts })),
+          stellaAppDir: repoCheckout,
+          recallRoute: {
+            activeEngine: "claude_code_local" as const,
+            executionEngine: "claude-code" as const,
+            modelId: "claude-code/haiku",
+            claudeCodeModel: "haiku",
+          },
+        },
         searchTranscripts,
       };
     };
@@ -1040,6 +1087,9 @@ describe("runRecall", () => {
           RECALL_TOOL_RUNTIME_SYSTEM_PROMPT,
         );
         expect(turn.effortLevel).toBe("low");
+        expect(turn.modelOverride).toBe("haiku");
+        expect(turn.stellaAppDir).toBe(rootPath);
+        expect(turn.cwd).toBe(path.join(rootPath, "repo-checkout"));
         expect(turn.context.tools?.map((tool) => tool.name)).toEqual([
           "search_memory",
           "search_transcripts",
@@ -1127,6 +1177,32 @@ describe("runRecall", () => {
       expect(out).toBe("Found it: PINETREE42.");
       expect(engine).toHaveBeenCalledTimes(2);
       vi.mocked(shouldUseClaudeCodeAgentRuntime).mockReturnValue(false);
+    });
+
+    it("counts a failed Claude turn after already observed model rounds", async () => {
+      const { rootPath, db } = await createRoot();
+      db.close();
+      const engine = vi.mocked(runClaudeCodeAgentTextCompletion);
+      engine.mockReset();
+      engine.mockImplementationOnce(async (turn: EngineTurn) => {
+        turn.onModelRound?.({ messageId: "round-1", toolCallCount: 0 });
+        throw new Error("transport failed after an observed round");
+      });
+      const { args } = await makeClaudeCodeArgs(rootPath);
+      const telemetryRecords: Array<
+        Parameters<
+          NonNullable<Parameters<typeof runRecall>[0]["onTelemetry"]>
+        >[0]
+      > = [];
+
+      await expect(
+        runRecall({
+          ...args,
+          onTelemetry: (record) => telemetryRecords.push(record),
+        }),
+      ).rejects.toThrow("transport failed after an observed round");
+      expect(telemetryRecords).toHaveLength(1);
+      expect(telemetryRecords[0]?.modelCalls).toBe(2);
     });
   });
 });

@@ -87,7 +87,10 @@ const createTestHost = async (
     webSearch: async (query) => ({ text: `results for ${query}` }),
     contextProvider: async (payload) => {
       contextLookups.push(payload);
-      return "Relevant context for this turn.";
+      return {
+        status: "found" as const,
+        brief: "Relevant context for this turn.",
+      };
     },
     sourceImportApi: {
       importSource: async (payload) => {
@@ -129,6 +132,7 @@ const makeToolContext = (agentType: string): ToolContext => ({
   conversationId: "conv-1",
   deviceId: "device-1",
   requestId: "req-1",
+  runId: "run-1",
   agentType,
   storageMode: "local",
   ...(agentType === AGENT_IDS.ORCHESTRATOR
@@ -586,11 +590,15 @@ describe("orchestrator direct tool surface", () => {
     );
 
     expect(orchestratorResult.error).toBeUndefined();
-    expect(orchestratorResult.result).toBe("Relevant context for this turn.");
+    expect(orchestratorResult.result).toEqual({
+      status: "found",
+      brief: "Relevant context for this turn.",
+    });
     expect(contextLookups).toHaveLength(1);
     expect(contextLookups[0]).toMatchObject({
       conversationId: "conv-1",
       requestId: "req-1",
+      runId: "run-1",
       prompt: "Find context for what the user means by yesterday's tab.",
       memorySearchTerms: ["yesterday", "tab"],
       agentType: "orchestrator",

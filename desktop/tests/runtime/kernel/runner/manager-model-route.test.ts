@@ -18,7 +18,7 @@ const routeMocks = vi.hoisted(() => ({
 
 vi.mock("../../../../../runtime/kernel/runner/model-selection.js", () => ({
   resolveRunnerLlmRoute: vi.fn(),
-  resolveRunnerUtilityLlmRoute: vi.fn(),
+  resolveRunnerRecallLlmRoute: vi.fn(),
   resolveRunnerLlmRouteWithMetadata: routeMocks.withMetadata,
 }));
 

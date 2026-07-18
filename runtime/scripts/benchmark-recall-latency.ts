@@ -10,6 +10,8 @@
  *   node node_modules/esbuild/bin/esbuild runtime/scripts/benchmark-recall-latency.ts --bundle --platform=node --format=esm --banner:js="import { createRequire as __stellaCreateRequire } from 'node:module'; const require = __stellaCreateRequire(import.meta.url);" --outfile=/tmp/stella-recall-latency.mjs
  *   node /tmp/stella-recall-latency.mjs [--limit N]
  */
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync, type Dirent } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -17,19 +19,32 @@ import { DatabaseSync } from "node:sqlite";
 
 import { AGENT_IDS } from "../contracts/agent-runtime.js";
 import { runRecall } from "../kernel/agent-runtime/context-lookup.js";
+import {
+  RECALL_CLAUDE_CODE_MODEL,
+  type RecallModelRoute,
+} from "../kernel/agent-runtime/recall-route.js";
 import type {
   RecallTelemetryRecord,
   RecallTelemetrySourceTiming,
 } from "../kernel/agent-runtime/recall-telemetry.js";
 import { LOCAL_CONTEXT_EVENT_TYPES } from "../kernel/runner/shared.js";
-import { resolveRunnerUtilityLlmRoute } from "../kernel/runner/model-selection.js";
+import { resolveRunnerRecallLlmRoute } from "../kernel/runner/model-selection.js";
 import type { RunnerContext } from "../kernel/runner/types.js";
 import { SessionStore } from "../kernel/storage/session-store.js";
 import type { LocalContextEvent } from "../kernel/local-history.js";
 
 const REPO_ROOT = process.cwd();
-const DATA_DIR = path.join(os.homedir(), ".stella");
+const readArg = (name: string): string | undefined => {
+  const index = process.argv.indexOf(name);
+  return index === -1 ? undefined : process.argv[index + 1];
+};
+const DATA_DIR = path.resolve(
+  readArg("--data-dir") ?? path.join(os.homedir(), ".stella"),
+);
 const DB_PATH = path.join(DATA_DIR, "stella.sqlite");
+const ROUTE_MODE =
+  readArg("--route") ??
+  ("active" as "active" | "pinned-claude-haiku" | "pinned-claude-fable");
 process.env.STELLA_RECALL_TRACE_VERBOSE = "0";
 
 const QUERIES = [
@@ -103,6 +118,68 @@ const parseLimit = (): number => {
     throw new Error("--limit must be a positive integer");
   }
   return Math.min(parsed, QUERIES.length);
+};
+
+const snapshotHash = (dataDir: string): string => {
+  const hash = createHash("sha256");
+  const roots = [
+    "preferences.json",
+    "stella.sqlite",
+    "memories",
+    path.join("memories_extensions", "chronicle"),
+  ];
+  const visit = (relativePath: string): void => {
+    const absolutePath = path.join(dataDir, relativePath);
+    let entries: Dirent<string>[];
+    try {
+      entries = readdirSync(absolutePath, { withFileTypes: true });
+    } catch {
+      try {
+        hash.update(relativePath);
+        hash.update(readFileSync(absolutePath));
+      } catch {
+        // Missing optional snapshot inputs are represented by their absence.
+      }
+      return;
+    }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.isSymbolicLink()) continue;
+      const child = path.join(relativePath, entry.name);
+      if (entry.isDirectory()) visit(child);
+      else if (entry.isFile()) {
+        hash.update(child);
+        hash.update(readFileSync(path.join(dataDir, child)));
+      }
+    }
+  };
+  for (const root of roots) visit(root);
+  return hash.digest("hex");
+};
+
+const resolveBenchmarkRoute = async (): Promise<RecallModelRoute> => {
+  if (ROUTE_MODE === "pinned-claude-haiku") {
+    return {
+      activeEngine: "claude_code_local",
+      executionEngine: "claude-code",
+      modelId: `claude-code/${RECALL_CLAUDE_CODE_MODEL}`,
+      claudeCodeModel: RECALL_CLAUDE_CODE_MODEL,
+    };
+  }
+  if (ROUTE_MODE === "pinned-claude-fable") {
+    return {
+      activeEngine: "claude_code_local",
+      executionEngine: "claude-code",
+      modelId: "claude-code/fable",
+      claudeCodeModel: "fable",
+    };
+  }
+  if (ROUTE_MODE !== "active") {
+    throw new Error(`Unsupported --route value: ${ROUTE_MODE}`);
+  }
+  return await resolveRunnerRecallLlmRoute(
+    runnerContext,
+    AGENT_IDS.ORCHESTRATOR,
+  );
 };
 
 const defaultConversationId = (db: DatabaseSync): string => {
@@ -179,10 +256,6 @@ const summarizeSources = (
   );
 };
 
-if (path.resolve(DATA_DIR) !== path.resolve(os.homedir(), ".stella")) {
-  throw new Error(`Unexpected Stella data path: ${DATA_DIR}`);
-}
-
 const db = new DatabaseSync(DB_PATH, { readOnly: true });
 db.exec("PRAGMA query_only = ON;");
 const store = new SessionStore(db as never);
@@ -209,11 +282,7 @@ try {
   for (const query of QUERIES.slice(0, parseLimit())) {
     const startedAtMs = performance.now();
     const routeStartedAt = performance.now();
-    const resolvedLlm = await resolveRunnerUtilityLlmRoute(
-      runnerContext,
-      AGENT_IDS.ORCHESTRATOR,
-      undefined,
-    );
+    const recallRoute = await resolveBenchmarkRoute();
     const routeMs = performance.now() - routeStartedAt;
 
     const hostStartedAt = performance.now();
@@ -234,7 +303,7 @@ try {
         stellaDataDir: DATA_DIR,
         store,
         localEvents,
-        resolvedLlm,
+        recallRoute,
         telemetry: {
           startedAtMs,
           routeMs,
@@ -287,6 +356,17 @@ const countValues = (field: "modelCalls" | "toolRounds"): number[] =>
   completed.map((record) => record[field]);
 
 const summary = {
+  schemaVersion: 2,
+  methodology: {
+    routeMode: ROUTE_MODE,
+    directRun: true,
+    browserContext: false,
+    queryOrder: QUERIES.slice(0, parseLimit()).map((query) => query.id),
+  },
+  snapshot: {
+    dataDir: DATA_DIR,
+    sha256: snapshotHash(DATA_DIR),
+  },
   sampleCount: results.length,
   completedCount: completed.length,
   errorCount: results.filter((result) => result.error).length,
@@ -330,18 +410,9 @@ const summary = {
     max: Math.max(...countValues("toolRounds")),
   },
   sourceTimings: summarizeSources(completed),
-  runs: results.map((result) => ({
-    queryId: result.queryId,
-    ...(result.telemetry
-      ? {
-          outcome: result.telemetry.outcome,
-          totalMs: result.telemetry.totalMs,
-          seedChars: result.telemetry.seedChars,
-          modelCalls: result.telemetry.modelCalls,
-          modelMs: result.telemetry.modelMs,
-          toolRounds: result.telemetry.toolRounds,
-        }
-      : {}),
+  runs: results.map((result, index) => ({
+    query: QUERIES[index],
+    ...(result.telemetry ? { telemetry: result.telemetry } : {}),
     ...(result.error ? { error: result.error } : {}),
   })),
 };

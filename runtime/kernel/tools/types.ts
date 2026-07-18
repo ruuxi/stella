@@ -20,6 +20,7 @@ import type {
   LocalHeartbeatUpsertInput,
 } from "../shared/scheduling.js";
 import type { RuntimeThreadRecord } from "../runtime-threads.js";
+import type { RecallLookupResult } from "../agent-runtime/recall-run-cache.js";
 
 export type ToolContext = {
   conversationId: string;
@@ -298,11 +299,12 @@ export type ToolHostOptions = {
   contextProvider?: (payload: {
     conversationId: string;
     requestId: string;
+    runId?: string;
     prompt: string;
     memorySearchTerms?: string[];
     agentType?: string;
     signal?: AbortSignal;
-  }) => Promise<string>;
+  }) => Promise<RecallLookupResult>;
   /**
    * Optional DreamInboxStore + stellaDataDir used by the background Dream
    * agent's consolidation pass.

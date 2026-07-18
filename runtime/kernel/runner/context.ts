@@ -54,8 +54,16 @@ import type {
 } from "../storage/shared.js";
 import { getBundledCoreAgentFallback } from "../agents/agents.js";
 import { BackgroundCompactionScheduler } from "../agent-runtime/compaction-scheduler.js";
-import { runRecall } from "../agent-runtime/context-lookup.js";
+import {
+  RECALL_NO_MATCH_TEXT,
+  RecallRetrievalError,
+  runRecall,
+} from "../agent-runtime/context-lookup.js";
 import type { RecallTelemetrySeed } from "../agent-runtime/recall-telemetry.js";
+import {
+  RecallRunCache,
+  type RecallLookupResult,
+} from "../agent-runtime/recall-run-cache.js";
 import {
   defaultPromptForAgentType,
   DEFAULT_MAX_AGENT_DEPTH,
@@ -71,7 +79,7 @@ import {
 import {
   resolveRunnerLlmRoute,
   resolveRunnerLlmRouteWithMetadata,
-  resolveRunnerUtilityLlmRoute,
+  resolveRunnerRecallLlmRoute,
 } from "./model-selection.js";
 import {
   captureEffectiveModelConfig,
@@ -440,6 +448,7 @@ export const createRunnerContext = ({
 
   const context = {} as RunnerContext;
   const hookEmitter = new HookEmitter();
+  const recallRunCache = new RecallRunCache();
 
   const convexAction = async (
     ref: unknown,
@@ -568,65 +577,91 @@ export const createRunnerContext = ({
     },
     sourceImportApi,
     contextProvider: async (payload) => {
-      const recallStartedAtMs = performance.now();
-      const agent = resolveAgent(context, AGENT_IDS.ORCHESTRATOR);
-      const model = getConfiguredModel(context, AGENT_IDS.ORCHESTRATOR, agent);
-      // Recall is a cheap internal utility pass — pin it to the light model
-      // instead of riding the orchestrator's (expensive) configured model.
-      // Falls back to the orchestrator pick for signed-out / pure-BYOK users.
-      const routeStartedAt = performance.now();
-      const resolvedLlm = await resolveRunnerUtilityLlmRoute(
-        context,
-        AGENT_IDS.ORCHESTRATOR,
-        model,
-      );
-      const routeMs = performance.now() - routeStartedAt;
-      const sourceTimings: NonNullable<RecallTelemetrySeed["sourceTimings"]> =
-        {};
-      const hostContextStartedAt = performance.now();
-      const localEventsStartedAt = performance.now();
-      const localEvents = context.listLocalChatEvents
-        ? context
-            .listLocalChatEvents(payload.conversationId, 800)
-            .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type))
-        : [];
-      sourceTimings["host.localEvents"] = {
-        kind: "sql",
-        calls: context.listLocalChatEvents ? 1 : 0,
-        ms: performance.now() - localEventsStartedAt,
-        chars: 0,
-      };
-      const appBrowserStartedAt = performance.now();
-      const appBrowserContext = getAppBrowserContext
-        ? await getAppBrowserContext()
-        : undefined;
-      sourceTimings["host.appBrowserContext"] = {
-        kind: "host",
-        calls: getAppBrowserContext ? 1 : 0,
-        ms: performance.now() - appBrowserStartedAt,
-        chars: appBrowserContext ? JSON.stringify(appBrowserContext).length : 0,
-      };
-      const hostContextMs = performance.now() - hostContextStartedAt;
-      return await runRecall({
-        conversationId: payload.conversationId,
-        lookupPrompt: payload.prompt,
-        ...(payload.memorySearchTerms?.length
-          ? { memorySearchTerms: payload.memorySearchTerms }
-          : {}),
-        stellaAppDir,
-        stellaDataDir,
-        store: context.runtimeStore,
-        localEvents,
-        ...(appBrowserContext ? { appBrowserContext } : {}),
-        resolvedLlm,
-        telemetry: {
-          startedAtMs: recallStartedAtMs,
-          routeMs,
-          hostContextMs,
-          sourceTimings,
+      const runId = payload.runId ?? `request:${payload.requestId}`;
+      return await recallRunCache.getOrCreate(
+        runId,
+        payload.prompt,
+        payload.memorySearchTerms,
+        async (): Promise<RecallLookupResult> => {
+          try {
+            const recallStartedAtMs = performance.now();
+            const routeStartedAt = performance.now();
+            const recallRoute = await resolveRunnerRecallLlmRoute(
+              context,
+              AGENT_IDS.ORCHESTRATOR,
+            );
+            const routeMs = performance.now() - routeStartedAt;
+            const sourceTimings: NonNullable<
+              RecallTelemetrySeed["sourceTimings"]
+            > = {};
+            const hostContextStartedAt = performance.now();
+            const localEventsStartedAt = performance.now();
+            const localEvents = context.listLocalChatEvents
+              ? context
+                  .listLocalChatEvents(payload.conversationId, 800)
+                  .filter((event) => LOCAL_CONTEXT_EVENT_TYPES.has(event.type))
+              : [];
+            sourceTimings["host.localEvents"] = {
+              kind: "sql",
+              calls: context.listLocalChatEvents ? 1 : 0,
+              ms: performance.now() - localEventsStartedAt,
+              chars: 0,
+            };
+            const appBrowserStartedAt = performance.now();
+            const appBrowserContext = getAppBrowserContext
+              ? await getAppBrowserContext()
+              : undefined;
+            sourceTimings["host.appBrowserContext"] = {
+              kind: "host",
+              calls: getAppBrowserContext ? 1 : 0,
+              ms: performance.now() - appBrowserStartedAt,
+              chars: appBrowserContext
+                ? JSON.stringify(appBrowserContext).length
+                : 0,
+            };
+            const hostContextMs = performance.now() - hostContextStartedAt;
+            const brief = await runRecall({
+              conversationId: payload.conversationId,
+              lookupPrompt: payload.prompt,
+              ...(payload.memorySearchTerms?.length
+                ? { memorySearchTerms: payload.memorySearchTerms }
+                : {}),
+              stellaAppDir,
+              stellaDataDir,
+              store: context.runtimeStore,
+              localEvents,
+              ...(appBrowserContext ? { appBrowserContext } : {}),
+              recallRoute,
+              telemetry: {
+                startedAtMs: recallStartedAtMs,
+                routeMs,
+                hostContextMs,
+                sourceTimings,
+              },
+              ...(payload.signal ? { signal: payload.signal } : {}),
+            });
+            return {
+              status:
+                brief.trim() === RECALL_NO_MATCH_TEXT
+                  ? "no_match"
+                  : brief.startsWith("Recall failed:")
+                    ? "synthesis_error"
+                    : "found",
+              brief,
+            };
+          } catch (error) {
+            return {
+              status:
+                error instanceof RecallRetrievalError
+                  ? "retrieval_error"
+                  : "synthesis_error",
+              brief: `Recall failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            };
+          }
         },
-        ...(payload.signal ? { signal: payload.signal } : {}),
-      });
+      );
     },
     ...(runtimeStore?.dreamInboxStore
       ? { dreamInboxStore: runtimeStore.dreamInboxStore }

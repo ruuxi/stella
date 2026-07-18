@@ -12,7 +12,6 @@ import { completeSimple, readAssistantText } from "../../ai/stream.js";
 import { AGENT_IDS } from "../../contracts/agent-runtime.js";
 import type { HostAppBrowserContextSnapshot } from "../../protocol/index.js";
 import type { LocalContextEvent } from "../local-history.js";
-import type { ResolvedLlmRoute } from "../model-routing.js";
 import { readOptionalTextFile } from "../shared/read-optional-text-file.js";
 import {
   sanitizePromptContext,
@@ -29,20 +28,20 @@ import {
   formatRuntimeThreadStatusSuffix,
   runtimeThreadLastActiveAt,
 } from "../runtime-threads.js";
-import {
-  getClaudeCodeAgentModelId,
-  runClaudeCodeAgentTextCompletion,
-  shouldUseClaudeCodeAgentRuntime,
-} from "../integrations/claude-code-agent-runtime.js";
+import { runClaudeCodeAgentTextCompletion } from "../integrations/claude-code-agent-runtime.js";
 import {
   RecallTelemetryCollector,
   type RecallTelemetryRecord,
   type RecallTelemetrySeed,
   type RecallTelemetrySourceKind,
 } from "./recall-telemetry.js";
+import type { RecallModelRoute } from "./recall-route.js";
 
 const MAX_CONTEXT_OUTPUT_TOKENS = 1_500;
 const EAGER_MEMORY_FILE_CHAR_BUDGET = 4_000;
+/** Hard ceiling for the complete eager seed, including headings and request. */
+export const EAGER_RECALL_SEED_MAX_CHARS = 12_000;
+const SEED_TRUNCATION_MARKER = "\n...[seed section truncated]";
 /** Tool-call ROUNDS (a round may carry several parallel searches). */
 const MAX_RECALL_STEPS = 4;
 /**
@@ -225,6 +224,10 @@ export const RECALL_NO_OUTPUT_TEXT =
 export const RECALL_BUDGET_EXHAUSTED_TEXT =
   "Recall failed: search-step budget exhausted without a final answer. Retry with concrete anchors (thread ids, file names, exact phrases).";
 
+export class RecallRetrievalError extends Error {
+  override readonly name = "RecallRetrievalError";
+}
+
 /**
  * Recall internals go to stderr as JSON lines (the same channel as the
  * working-indicator traces, landing in runtime.log), so a bad answer is
@@ -283,6 +286,57 @@ const truncate = (value: string, maxChars: number): string =>
   value.length <= maxChars
     ? value
     : `${value.slice(0, maxChars)}\n...[truncated]`;
+
+const truncateExact = (value: string, maxChars: number): string => {
+  if (maxChars <= 0) return "";
+  if (value.length <= maxChars) return value;
+  if (maxChars <= SEED_TRUNCATION_MARKER.length) {
+    return SEED_TRUNCATION_MARKER.slice(0, maxChars);
+  }
+  return `${value.slice(0, maxChars - SEED_TRUNCATION_MARKER.length)}${SEED_TRUNCATION_MARKER}`;
+};
+
+type EagerSeedSection = {
+  heading: string;
+  intro?: string;
+  body: string;
+  maxBodyChars: number;
+};
+
+/** Deterministic evidence selection that always preserves the lookup tail. */
+export const renderCappedRecallSeed = (
+  sections: readonly EagerSeedSection[],
+  priority: readonly number[],
+): string => {
+  const emptyBodies = sections.map((section) =>
+    [section.heading, ...(section.intro ? [section.intro] : []), ""].join("\n"),
+  );
+  let remaining = Math.max(
+    0,
+    EAGER_RECALL_SEED_MAX_CHARS - emptyBodies.join("\n\n").length,
+  );
+  const bodyBudgets = sections.map(() => 0);
+  for (const index of priority) {
+    const section = sections[index];
+    if (!section || remaining <= 0) continue;
+    const budget = Math.min(
+      section.body.length,
+      section.maxBodyChars,
+      remaining,
+    );
+    bodyBudgets[index] = budget;
+    remaining -= budget;
+  }
+  return sections
+    .map((section, index) =>
+      [
+        section.heading,
+        ...(section.intro ? [section.intro] : []),
+        truncateExact(section.body, bodyBudgets[index] ?? 0),
+      ].join("\n"),
+    )
+    .join("\n\n");
+};
 
 const escapeAttribute = (value: string): string =>
   value
@@ -950,44 +1004,70 @@ export const buildContextLookupUserPrompt = async (args: {
   // state follows, and the lookup request comes LAST so it sits closest to
   // the model's answer.
   const assemblyStartedAt = performance.now();
-  const sections = [
-    "# Memory Files",
-    memoryFiles,
-    "",
-    "# Memory Search Results",
-    "Pre-run from the lookup's search terms.",
-    memorySearchResults,
-    "",
-    "# Agent Thread Search Results",
-    `Pre-run from the lookup's search terms: delegated agent threads matching them (across ALL conversations, any age; up to ${MAX_THREAD_SEARCH_RESULTS}, newest first by last activity). Each entry: thread_id | last active date/time | live state, plus name/description/summary and final result/error excerpts. This is a NARROWED view — threads that don't match the terms are not listed; find those with search_threads.`,
-    threadSearchResults,
-    "",
-    "# Transcript Search Results",
-    "Pre-run from the lookup's search terms: past chat messages matching them (across ALL conversations), oldest → newest.",
-    transcriptSearchResults,
-    "",
-    "# Current Time",
-    // Anchors the whole lookup to "now": thread status, live agent updates,
-    // timestamps, and recency phrases are all relative to this moment.
-    formatDateTimeReminder(Date.now()),
-    "",
-    "# Local App And Browser Context",
-    formatLiveAppBrowserContext(args.appBrowserContext),
-    "",
-    "# Message-Attached App And Browser Context",
-    formatLatestLocalContext(args.localEvents),
-    "",
-    "# Live Thread Status",
-    "Threads executing a turn RIGHT NOW, with their latest agent-authored assistant messages. Any other thread is paused (idle but resumable) as of the current time above.",
-    liveStatus,
-    "",
-    "# Chronicle Context",
-    chronicleFiles,
-    "",
-    "# Lookup Request",
-    truncate(args.lookupPrompt.trim(), 2_000),
+  const sections: EagerSeedSection[] = [
+    {
+      heading: "# Memory Files",
+      body: memoryFiles,
+      maxBodyChars: 600,
+    },
+    {
+      heading: "# Memory Search Results",
+      intro: "Pre-run from the lookup's search terms.",
+      body: memorySearchResults,
+      maxBodyChars: 1_700,
+    },
+    {
+      heading: "# Agent Thread Search Results",
+      intro: `Pre-run from the lookup's search terms: delegated agent threads matching them (across ALL conversations, any age; up to ${MAX_THREAD_SEARCH_RESULTS}, newest first by last activity). Each entry: thread_id | last active date/time | live state, plus name/description/summary and final result/error excerpts. This is a NARROWED view — threads that don't match the terms are not listed; find those with search_threads.`,
+      body: threadSearchResults,
+      maxBodyChars: 2_300,
+    },
+    {
+      heading: "# Transcript Search Results",
+      intro:
+        "Pre-run from the lookup's search terms: past chat messages matching them (across ALL conversations), oldest → newest.",
+      body: transcriptSearchResults,
+      maxBodyChars: 2_700,
+    },
+    {
+      heading: "# Current Time",
+      body: formatDateTimeReminder(Date.now()),
+      maxBodyChars: 300,
+    },
+    {
+      heading: "# Local App And Browser Context",
+      body: formatLiveAppBrowserContext(args.appBrowserContext),
+      maxBodyChars: 350,
+    },
+    {
+      heading: "# Message-Attached App And Browser Context",
+      body: formatLatestLocalContext(args.localEvents),
+      maxBodyChars: 350,
+    },
+    {
+      heading: "# Live Thread Status",
+      intro:
+        "Threads executing a turn RIGHT NOW, with their latest agent-authored assistant messages. Any other thread is paused (idle but resumable) as of the current time above.",
+      body: liveStatus,
+      maxBodyChars: 750,
+    },
+    {
+      heading: "# Chronicle Context",
+      body: chronicleFiles,
+      maxBodyChars: 350,
+    },
+    {
+      heading: "# Lookup Request",
+      body: args.lookupPrompt.trim(),
+      maxBodyChars: 1_000,
+    },
   ];
-  const prompt = sections.join("\n");
+  // Search evidence first, then the request and live status; lower-signal
+  // context fills only the remaining deterministic budget.
+  const prompt = renderCappedRecallSeed(
+    sections,
+    [1, 2, 3, 9, 7, 0, 4, 5, 6, 8],
+  );
   args.telemetry?.addAssemblyMs(performance.now() - assemblyStartedAt);
   return prompt;
 };
@@ -1058,7 +1138,7 @@ export const runRecall = async (args: {
   store: RuntimeStore;
   localEvents: LocalContextEvent[];
   appBrowserContext?: HostAppBrowserContextSnapshot;
-  resolvedLlm: ResolvedLlmRoute;
+  recallRoute: RecallModelRoute;
   telemetry?: RecallTelemetrySeed;
   onTelemetry?: (record: RecallTelemetryRecord) => void;
   signal?: AbortSignal;
@@ -1100,27 +1180,20 @@ export const runRecall = async (args: {
     });
   } catch (error) {
     emitTelemetry("thrown");
-    throw error;
+    throw new RecallRetrievalError(
+      error instanceof Error ? error.message : String(error),
+      { cause: error },
+    );
   }
   telemetry.setSeedChars(seed.length);
 
-  // Engine preferences live in the data dir (`~/.stella/preferences.json`) —
-  // same detection the one-shot completion path uses. When the Claude Code
-  // engine is active, the run needs no route credential and the engine maps a
-  // pinned `stella/light` model id to its own light model (haiku).
-  const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
-    stellaAppDir: args.stellaDataDir,
-    modelId: args.resolvedLlm.model.id,
-  });
+  // The runner resolves this authoritative route from the active engine before
+  // retrieval. Claude needs no provider credential here; its explicit Haiku
+  // override is carried separately from saved user model preferences.
+  const useClaudeCode = args.recallRoute.executionEngine === "claude-code";
   telemetry.setRoute(
     useClaudeCode ? "claude-code" : "native",
-    useClaudeCode
-      ? getClaudeCodeAgentModelId(
-          args.stellaAppDir,
-          args.resolvedLlm.model.id,
-          AGENT_IDS.ORCHESTRATOR,
-        )
-      : args.resolvedLlm.model.id,
+    args.recallRoute.modelId,
   );
   const verbose = recallTraceVerbose();
   const finish = (outcome: string, brief: string): string => {
@@ -1133,9 +1206,16 @@ export const runRecall = async (args: {
     emitTelemetry(outcome);
     return brief;
   };
+  const resolvedLlm = args.recallRoute.resolvedLlm;
+  if (!useClaudeCode && !resolvedLlm) {
+    return finish(
+      "route-unavailable",
+      "Recall failed: the active engine's light-tier route is unavailable.",
+    );
+  }
   const apiKey = useClaudeCode
     ? undefined
-    : (await args.resolvedLlm.getApiKey())?.trim();
+    : (await resolvedLlm?.getApiKey())?.trim();
   if (!useClaudeCode && !apiKey) {
     return finish(
       "credential-unavailable",
@@ -1292,9 +1372,12 @@ export const runRecall = async (args: {
       try {
         text = (
           await runClaudeCodeAgentTextCompletion({
-            stellaAppDir: args.stellaAppDir,
+            // Preferences always resolve from the data dir; the explicit
+            // model pin below makes Recall immune to saved fable/opus picks.
+            stellaAppDir: args.stellaDataDir,
+            cwd: args.stellaAppDir,
             agentType: AGENT_IDS.ORCHESTRATOR,
-            stellaModel: args.resolvedLlm.model.id,
+            modelOverride: args.recallRoute.claudeCodeModel,
             effortLevel: "low",
             context,
             abortSignal: args.signal,
@@ -1305,10 +1388,7 @@ export const runRecall = async (args: {
                 observedModelRounds += 1;
                 telemetry.addModelCall();
               }
-              if (
-                toolCallCount > 0 &&
-                !observedToolRoundIds.has(roundId)
-              ) {
+              if (toolCallCount > 0 && !observedToolRoundIds.has(roundId)) {
                 observedToolRoundIds.add(roundId);
                 telemetry.addToolRound();
               }
@@ -1336,7 +1416,7 @@ export const runRecall = async (args: {
         );
         // A launch/transport failure can happen before an assistant event.
         // Preserve one attempted model call instead of reporting zero.
-        if (observedModelRounds === 0) telemetry.addModelCall();
+        if (modelFailed || observedModelRounds === 0) telemetry.addModelCall();
         if (modelFailed) emitTelemetry("thrown");
       }
       if (attempt === 0 && text && isNothingFoundBrief(text) && !ranSearch) {
@@ -1370,7 +1450,7 @@ export const runRecall = async (args: {
   const complete = async (): Promise<AssistantMessage> =>
     runModelCall(() =>
       completeSimple(
-        args.resolvedLlm.model,
+        resolvedLlm!.model,
         {
           systemPrompt: RECALL_SYSTEM_PROMPT,
           tools: RECALL_RUNTIME_TOOLS,
@@ -1379,8 +1459,8 @@ export const runRecall = async (args: {
         {
           apiKey: apiKey as string,
           reasoning: "low",
-          ...(args.resolvedLlm.refreshApiKey
-            ? { refreshApiKey: args.resolvedLlm.refreshApiKey }
+          ...(resolvedLlm!.refreshApiKey
+            ? { refreshApiKey: resolvedLlm!.refreshApiKey }
             : {}),
           maxTokens: MAX_CONTEXT_OUTPUT_TOKENS,
           temperature: 0,
@@ -1477,6 +1557,10 @@ export const runRecall = async (args: {
       );
     }
     messages.push(response);
+    // Count every model turn that issued tools, including the turn rejected
+    // because the execution budget is already spent. Claude reports the same
+    // round from its assistant event before execution is considered.
+    telemetry.addToolRound();
     if (toolRounds >= MAX_RECALL_STEPS) {
       // Budget spent. The tool protocol still demands a result for every
       // issued call, so each gets an out-of-budget error, then one forced
@@ -1509,7 +1593,6 @@ export const runRecall = async (args: {
       );
     }
     toolRounds += 1;
-    telemetry.addToolRound();
     // Parallel tool calls in one turn run concurrently against the store.
     const results = await Promise.all(
       toolCalls.map(async (call) => {
