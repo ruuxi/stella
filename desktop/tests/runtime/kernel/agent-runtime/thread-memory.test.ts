@@ -139,6 +139,30 @@ describe("buildStartupPromptMessages", () => {
     ).toBe(true);
   });
 
+  it("injects the routing index under its own path label", async () => {
+    const messages = await buildStartupPromptMessages({
+      context: {
+        systemPrompt: "system",
+        dynamicContext: "",
+        maxAgentDepth: 1,
+        threadHistory: [],
+        memorySummary: "# Memory summary\n\n- current focus",
+        memoryIndex:
+          "# Memory index\n\n- muse benchmark -> MEMORY.md 2026-06-27",
+      },
+    });
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.text).toContain(
+      'path="~/.stella/memories/memory_summary.md"',
+    );
+    expect(messages[0]?.text).not.toContain("muse benchmark");
+    expect(messages[1]?.text).toContain(
+      'path="~/.stella/memories/memory_index.md"',
+    );
+    expect(messages[1]?.text).toContain("muse benchmark");
+  });
+
   it("hard-caps a resident memory summary before persisting the startup doc", async () => {
     const messages = await buildStartupPromptMessages({
       context: {

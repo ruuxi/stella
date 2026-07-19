@@ -269,6 +269,42 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
     expect(loadStartupDocs()).toEqual(docsBefore);
   });
 
+  it("scrubs a legacy persisted copy containing a retired comment at the boundary", () => {
+    // Copies persisted before comment-stripping landed still carry the
+    // graveyard; the first boundary refresh rewrites them from the (now
+    // stripped) disk read even when the file itself did not change.
+    writeMemoryDocs({
+      profile: "# User Profile\n\n- The user goes by Bob",
+      summary:
+        "# Memory summary\n\n- focus snapshot v1\n<!-- DREAM:RETIRED_SUMMARY\n- retired bullet\n-->",
+    });
+    persistThreadCustomMessage(context.store, {
+      threadKey: THREAD_KEY,
+      customType: "bootstrap.startup_doc",
+      content: [
+        {
+          type: "text",
+          text: buildStartupDocMessage(
+            LIFE_MEMORY_SUMMARY_DISPLAY_PATH,
+            "# Memory summary\n\n- focus snapshot v1\n<!-- DREAM:RETIRED_SUMMARY\n- retired bullet\n-->",
+          ),
+        },
+      ],
+      display: false,
+    });
+
+    const refreshed = refreshResidentStartupDocs({
+      store: context.store,
+      threadKey: THREAD_KEY,
+      stellaDataDir: context.stellaDataDir,
+    });
+    expect(refreshed).toBe(1);
+    const [doc] = loadStartupDocs();
+    expect(doc!.text).toContain("focus snapshot v1");
+    expect(doc!.text).not.toContain("retired bullet");
+    expect(doc!.text).not.toContain("DREAM:RETIRED_SUMMARY");
+  });
+
   it("updateThreadCustomMessageContent rejects unknown entries and preserves metadata", () => {
     writeMemoryDocs({
       profile: "# User Profile\n\n- The user goes by Bob",

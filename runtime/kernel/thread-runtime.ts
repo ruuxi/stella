@@ -10,7 +10,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRuntimeLogger } from "./debug.js";
 import { redactMemoryText } from "./memory/redaction.js";
-import { refreshResidentStartupDocs } from "./memory/resident-docs.js";
+import {
+  refreshResidentStartupDocs,
+  stripInjectedHtmlComments,
+} from "./memory/resident-docs.js";
 import { readHomePrompt } from "./prompts/home-prompts.js";
 
 const logger = createRuntimeLogger("thread-runtime");
@@ -871,7 +874,11 @@ const DURABLE_MEMORY_DOC_MAX_CHARS = 8_000;
  */
 const readDurableMemoryDoc = (filePath: string): string | undefined => {
   try {
-    const content = fs.readFileSync(filePath, "utf-8").trim();
+    // Same comment-stripping rule as every injected view: retired archive
+    // blocks never enter a model request, including the summarizer's.
+    const content = stripInjectedHtmlComments(
+      fs.readFileSync(filePath, "utf-8"),
+    );
     return content ? redactMemoryText(content) : undefined;
   } catch {
     return undefined;

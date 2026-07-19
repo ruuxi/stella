@@ -490,7 +490,7 @@ describe("orchestrator thread compaction failure handling", () => {
     );
     fs.writeFileSync(
       path.join(stellaDataDir, "memories", "memory_summary.md"),
-      "Workflow tiers: tier-1 ships without review.",
+      "Workflow tiers: tier-1 ships without review.\n<!-- DREAM:RETIRED_SUMMARY\nRetired archive bullet about the Muse benchmark costing $14.92.\n-->",
     );
     try {
       const { store } = createFakeStore();
@@ -518,6 +518,9 @@ describe("orchestrator thread compaction failure handling", () => {
       expect(prompt).toContain("123 Elm Street");
       expect(prompt).toContain("tier-1 ships without review");
       expect(prompt).toContain("Do not restate durable memory");
+      // Retired HTML-comment archives never enter a model request.
+      expect(prompt).not.toContain("DREAM:RETIRED_SUMMARY");
+      expect(prompt).not.toContain("Muse benchmark");
 
       // Non-orchestrator agents don't get the docs injected per turn, so
       // their summaries must keep such facts: no reference, no omit rule.

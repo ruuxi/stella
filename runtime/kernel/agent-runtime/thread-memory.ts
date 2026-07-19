@@ -32,6 +32,7 @@ import {
   buildStartupDocMessage,
   capBootstrapMemorySummary,
   LIFE_CORE_MEMORY_DISPLAY_PATH,
+  LIFE_MEMORY_INDEX_DISPLAY_PATH,
   LIFE_MEMORY_SUMMARY_DISPLAY_PATH,
   LIFE_PERSONALITY_DISPLAY_PATH,
   LIFE_REGISTRY_DISPLAY_PATH,
@@ -567,6 +568,25 @@ export const buildStartupPromptMessages = async (args: {
     messages.push(
       createInternalPromptMessage(
         buildStartupDocMessage(LIFE_MEMORY_SUMMARY_DISPLAY_PATH, memorySummary),
+        "hidden",
+        BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE,
+      ),
+    );
+  }
+
+  // Resident routing index — injected under its own path label so summary
+  // truncation can never silently swallow it (it previously piggybacked on
+  // the memory-summary doc and was cut first by the shared cap).
+  const memoryIndex = args.context.memoryIndex
+    ? redactMemoryText(args.context.memoryIndex.trim())
+    : "";
+  if (
+    memoryIndex &&
+    !hasPersistedStartupDoc(args.context, LIFE_MEMORY_INDEX_DISPLAY_PATH)
+  ) {
+    messages.push(
+      createInternalPromptMessage(
+        buildStartupDocMessage(LIFE_MEMORY_INDEX_DISPLAY_PATH, memoryIndex),
         "hidden",
         BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE,
       ),

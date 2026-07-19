@@ -29,8 +29,27 @@ export const LIFE_CORE_MEMORY_DISPLAY_PATH = "~/.stella/core-memory.md";
 export const LIFE_USER_PROFILE_DISPLAY_PATH = "~/.stella/memories/profile.md";
 export const LIFE_MEMORY_SUMMARY_DISPLAY_PATH =
   "~/.stella/memories/memory_summary.md";
+export const LIFE_MEMORY_INDEX_DISPLAY_PATH =
+  "~/.stella/memories/memory_index.md";
 export const LIFE_PERSONALITY_DISPLAY_PATH = "~/.stella/PERSONALITY.md";
 export const BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE = "bootstrap.startup_doc";
+
+/**
+ * Strip HTML comment blocks from a memory doc before it is injected into
+ * model context. Dream's archival convention wraps retired content in
+ * comments (e.g. the DREAM:RETIRED_SUMMARY block — measured live at 27.6KB,
+ * 100% re-compressions of MEMORY.md blocks), and injecting an archive costs
+ * tokens and crowds the real content out of the injection cap. Comments stay
+ * on disk untouched; only injected views drop them. An unterminated `<!--`
+ * is stripped through end-of-doc so a malformed comment can't leak the
+ * graveyard back into context.
+ */
+export const stripInjectedHtmlComments = (text: string): string =>
+  text
+    .replace(/<!--[\s\S]*?-->/gu, "")
+    .replace(/<!--[\s\S]*$/u, "")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
 
 export const MEMORY_SUMMARY_BOOTSTRAP_MAX_CHARS = 12_000;
 const MEMORY_SUMMARY_TRUNCATION_MARKER =
@@ -69,7 +88,11 @@ const readResidentMemoryDoc = (
   maxChars?: number,
 ): string | undefined => {
   try {
-    const content = fs.readFileSync(filePath, "utf-8").trim();
+    // Comments are stripped BEFORE the cap so retired archive blocks can
+    // never consume injection budget or push live entries past the cap.
+    const content = stripInjectedHtmlComments(
+      fs.readFileSync(filePath, "utf-8"),
+    );
     return content
       ? capResidentMemoryDoc(redactMemoryText(content), maxChars)
       : undefined;
@@ -100,19 +123,28 @@ export const readCoreMemory = (stellaDataDir: string): string | undefined => {
  * Dream's dynamic focus summary, read synchronously for resident injection.
  * Push-injected alongside core memory so the user's current active focus is
  * always in the Orchestrator's context (not only via the `Context` lookup).
+ * Summary only — the routing index is a separate doc with its own path label
+ * ({@link readMemoryIndexDoc}), so summary truncation can never silently
+ * swallow the index and the model can cite each source distinctly.
  */
 export const readMemorySummaryDoc = (
   stellaDataDir: string,
-): string | undefined => {
-  const summary = readResidentMemoryDoc(
+): string | undefined =>
+  readResidentMemoryDoc(
     path.join(stellaDataDir, "memories", "memory_summary.md"),
   );
-  const routingIndex = readResidentMemoryDoc(
+
+/**
+ * Dream's routing index (what memory contains and where to find it), read
+ * synchronously for resident injection under its own path label.
+ */
+export const readMemoryIndexDoc = (
+  stellaDataDir: string,
+): string | undefined =>
+  readResidentMemoryDoc(
     path.join(stellaDataDir, "memories", "memory_index.md"),
     MEMORY_INDEX_MAX_CHARS,
   );
-  return [summary, routingIndex].filter(Boolean).join("\n\n") || undefined;
-};
 
 /**
  * The durable user-profile facts written by the `Remember` tool, read
@@ -163,6 +195,10 @@ export const readStartupDocBodyFromDisk = (
       return memorySummary
         ? capBootstrapMemorySummary(redactMemoryText(memorySummary.trim()))
         : undefined;
+    }
+    case LIFE_MEMORY_INDEX_DISPLAY_PATH: {
+      const memoryIndex = readMemoryIndexDoc(stellaDataDir);
+      return memoryIndex ? redactMemoryText(memoryIndex.trim()) : undefined;
     }
     default:
       return undefined;

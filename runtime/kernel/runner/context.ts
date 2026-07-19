@@ -73,6 +73,7 @@ import {
   LOCAL_HISTORY_RESERVE_TOKENS,
   MIN_LOCAL_HISTORY_TOKENS,
   readCoreMemory,
+  readMemoryIndexDoc,
   readMemorySummaryDoc,
   readUserProfileDoc,
   sanitizeConvexDeploymentUrl,
@@ -1162,6 +1163,9 @@ export const buildAgentContext = async (
       : undefined,
     memorySummary: injectsResidentMemory
       ? readMemorySummaryDoc(context.stellaDataDir)
+      : undefined,
+    memoryIndex: injectsResidentMemory
+      ? readMemoryIndexDoc(context.stellaDataDir)
       : undefined,
     userProfile: injectsResidentMemory
       ? readUserProfileDoc(context.stellaDataDir)
