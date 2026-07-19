@@ -116,7 +116,7 @@ describe("buildStartupPromptMessages", () => {
     expect(promptText).toContain("***");
   });
 
-  it("push-injects the resident user profile and focus summary as startup docs", async () => {
+  it("push-injects the resident user profile and memory map as startup docs", async () => {
     const messages = await buildStartupPromptMessages({
       context: {
         systemPrompt: "system",
@@ -124,60 +124,55 @@ describe("buildStartupPromptMessages", () => {
         maxAgentDepth: 1,
         threadHistory: [],
         userProfile: "# User Profile\n\n- The user goes by Bob",
-        memorySummary:
-          "# Memory summary\n\n- Shipping the resident-memory rewire",
+        memoryMap:
+          "# Memory map\n\n- resident-memory rewire -> MEMORY.md 2026-07-18",
       },
     });
 
     const promptText = messages.map((message) => message.text).join("\n");
     expect(promptText).toContain('path="~/.stella/memories/profile.md"');
     expect(promptText).toContain("The user goes by Bob");
-    expect(promptText).toContain('path="~/.stella/memories/memory_summary.md"');
+    expect(promptText).toContain('path="~/.stella/memories/memory_map.md"');
     expect(promptText).toContain("resident-memory rewire");
     expect(
       messages.every((m) => m.customType === "bootstrap.startup_doc"),
     ).toBe(true);
   });
 
-  it("injects the routing index under its own path label", async () => {
-    const messages = await buildStartupPromptMessages({
-      context: {
-        systemPrompt: "system",
-        dynamicContext: "",
-        maxAgentDepth: 1,
-        threadHistory: [],
-        memorySummary: "# Memory summary\n\n- current focus",
-        memoryIndex:
-          "# Memory index\n\n- muse benchmark -> MEMORY.md 2026-06-27",
-      },
-    });
-
-    expect(messages).toHaveLength(2);
-    expect(messages[0]?.text).toContain(
-      'path="~/.stella/memories/memory_summary.md"',
-    );
-    expect(messages[0]?.text).not.toContain("muse benchmark");
-    expect(messages[1]?.text).toContain(
-      'path="~/.stella/memories/memory_index.md"',
-    );
-    expect(messages[1]?.text).toContain("muse benchmark");
-  });
-
-  it("hard-caps a resident memory summary before persisting the startup doc", async () => {
-    const messages = await buildStartupPromptMessages({
-      context: {
-        systemPrompt: "system",
-        dynamicContext: "",
-        maxAgentDepth: 1,
-        threadHistory: [],
-        memorySummary: `# Memory summary\n${"x".repeat(20_000)}TAIL_SENTINEL`,
-      },
-    });
-
-    const promptText = messages.map((message) => message.text).join("\n");
-    expect(promptText).toContain("resident memory summary truncated");
-    expect(promptText).not.toContain("TAIL_SENTINEL");
-    expect(promptText.length).toBeLessThan(12_200);
+  it("suppresses map injection while a retired doc's pinned copy is still persisted", async () => {
+    // Pre-migration thread mid-epoch: the frozen memory_summary copy still
+    // carries the routing content, so injecting the map too would duplicate
+    // it for the rest of the epoch AND leave the retired copy pinned. The
+    // boundary refresh converts the retired copy into the map copy instead.
+    for (const retiredPath of [
+      "~/.stella/memories/memory_summary.md",
+      "~/.stella/memories/memory_index.md",
+    ]) {
+      const messages = await buildStartupPromptMessages({
+        context: {
+          systemPrompt: "system",
+          dynamicContext: "",
+          maxAgentDepth: 1,
+          threadHistory: [
+            {
+              role: "runtimeInternal",
+              content: "",
+              customMessage: {
+                customType: "bootstrap.startup_doc",
+                content: [
+                  {
+                    type: "text",
+                    text: `<startup_doc path="${retiredPath}">\n# Retired doc\n\n- frozen content\n</startup_doc>`,
+                  },
+                ],
+              },
+            },
+          ],
+          memoryMap: "# Memory map\n\n- entry -> MEMORY.md 2026-07-18",
+        },
+      });
+      expect(messages).toEqual([]);
+    }
   });
 
   it("does not re-inject resident docs already persisted in thread history", async () => {
@@ -251,13 +246,13 @@ describe("buildStartupPromptMessages", () => {
           content: [
             {
               type: "text",
-              text: '<startup_doc path="~/.stella/memories/memory_summary.md">\n# Memory summary\n\n- v1 of the focus snapshot\n</startup_doc>',
+              text: '<startup_doc path="~/.stella/memories/memory_map.md">\n# Memory map\n\n- v1 of the routing map\n</startup_doc>',
             },
           ],
         },
       },
     ];
-    // Dream rewrites the summary repeatedly within one epoch; every build
+    // Dream rewrites the map repeatedly within one epoch; every build
     // must contribute zero new messages so the persisted prefix stays
     // byte-identical between compactions.
     for (const rewrite of ["v2", "v3", "v4"]) {
@@ -267,7 +262,7 @@ describe("buildStartupPromptMessages", () => {
           dynamicContext: "",
           maxAgentDepth: 1,
           threadHistory: persistedHistory,
-          memorySummary: `# Memory summary\n\n- ${rewrite} of the focus snapshot`,
+          memoryMap: `# Memory map\n\n- ${rewrite} of the routing map`,
         },
       });
       expect(messages).toEqual([]);

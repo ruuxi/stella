@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -14,7 +14,10 @@ import type {
   SimpleStreamOptions,
   StreamOptions,
 } from "../../../../../runtime/ai/types.js";
-import { maybeSpawnDreamRun } from "../../../../../runtime/kernel/agent-runtime/dream-scheduler.js";
+import {
+  buildDreamSystemPrompt,
+  maybeSpawnDreamRun,
+} from "../../../../../runtime/kernel/agent-runtime/dream-scheduler.js";
 import type { ResolvedLlmRoute } from "../../../../../runtime/kernel/model-routing.js";
 import type { RuntimeStore } from "../../../../../runtime/kernel/storage/runtime-store.js";
 
@@ -228,5 +231,46 @@ describe("maybeSpawnDreamRun", () => {
     expect(result.scheduled).toBe(false);
     expect(result.reason).toBe("no_inputs");
     expect(providerCalls).toBe(0);
+  });
+});
+
+describe("buildDreamSystemPrompt (single prompt source)", () => {
+  it("is complete without any installed home prompt and carries the map contract", () => {
+    const rootPath = createRoot();
+    const prompt = buildDreamSystemPrompt(rootPath);
+
+    // Built-in fallback body: full behavioral instructions, not just rules.
+    expect(prompt).toContain("You are the Dream agent for Stella");
+    expect(prompt).toContain('action="markProcessed"');
+    // Mechanically appended memory_map contract.
+    expect(prompt).toContain("memory_map.md");
+    expect(prompt).toContain("memory_summary.md and memory_index.md are RETIRED");
+    expect(prompt).toContain("IS REJECTED");
+    expect(prompt).toContain("DREAM:MAP_START / DREAM:MAP_END");
+    expect(prompt).toContain("## Derived constraints");
+    expect(prompt).toContain("never edit it");
+  });
+
+  it("keeps the synchronized home prompt as the base body while the map contract stays authoritative", async () => {
+    const rootPath = createRoot();
+    await mkdir(path.join(rootPath, "prompts"), { recursive: true });
+    // A stale remote body that still mentions the retired summary file: the
+    // appended contract must supersede it explicitly.
+    await writeFile(
+      path.join(rootPath, "prompts", "dream-scheduled.md"),
+      "Custom scheduled Dream body.\nAfter folding rows, refresh memory_summary.md.",
+      "utf-8",
+    );
+
+    const prompt = buildDreamSystemPrompt(rootPath);
+    expect(prompt).toContain("Custom scheduled Dream body.");
+    expect(prompt).not.toContain("You are the Dream agent for Stella");
+    const contractIndex = prompt.indexOf(
+      "memory_summary.md and memory_index.md are RETIRED",
+    );
+    expect(contractIndex).toBeGreaterThan(
+      prompt.indexOf("Custom scheduled Dream body."),
+    );
+    expect(prompt).toContain("supersedes any earlier instructions");
   });
 });

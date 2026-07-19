@@ -4,11 +4,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  LIFE_MEMORY_INDEX_DISPLAY_PATH,
-  readMemoryIndexDoc,
-  readMemorySummaryDoc,
+  LIFE_MEMORY_MAP_DISPLAY_PATH,
+  readMemoryMapDoc,
   readStartupDocBodyFromDisk,
   readUserProfileDoc,
+  RETIRED_STARTUP_DOC_DISPLAY_PATHS,
   stripInjectedHtmlComments,
 } from "../../../../../runtime/kernel/memory/resident-docs.js";
 
@@ -52,49 +52,46 @@ describe("resident memory doc reads", () => {
     fs.rmSync(stellaDataDir, { recursive: true, force: true });
   });
 
-  it("never injects the retired-summary graveyard, even ahead of the cap", () => {
-    // A 27.6KB-class retired comment ahead of the live content previously
-    // consumed the injection budget and cut the doc mid-bullet.
+  it("injects only the map's non-comment content (charter and anchors are free)", () => {
     writeMemoryFile(
-      "memory_summary.md",
-      `<!-- DREAM:RETIRED_SUMMARY\n${"- retired bullet with old figures\n".repeat(800)}-->\n# Memory summary\n\n- live focus entry`,
+      "memory_map.md",
+      "<!-- DREAM:MAP_CHARTER\nrouting guidance for the writer only\n-->\n# Memory map\n\n<!-- DREAM:MAP_START -->\n- muse benchmark -> MEMORY.md 2026-06-27\n<!-- DREAM:MAP_END -->",
     );
-    const summary = readMemorySummaryDoc(stellaDataDir);
-    expect(summary).toBe("# Memory summary\n\n- live focus entry");
-  });
-
-  it("keeps summary and index as separate docs", () => {
-    writeMemoryFile("memory_summary.md", "# Memory summary\n\n- focus");
-    writeMemoryFile(
-      "memory_index.md",
-      "# Memory index\n\n- muse benchmark -> MEMORY.md 2026-06-27",
-    );
-    expect(readMemorySummaryDoc(stellaDataDir)).not.toContain("Memory index");
-    expect(readMemoryIndexDoc(stellaDataDir)).toBe(
-      "# Memory index\n\n- muse benchmark -> MEMORY.md 2026-06-27",
+    expect(readMemoryMapDoc(stellaDataDir)).toBe(
+      "# Memory map\n\n- muse benchmark -> MEMORY.md 2026-06-27",
     );
     expect(
-      readStartupDocBodyFromDisk(stellaDataDir, LIFE_MEMORY_INDEX_DISPLAY_PATH),
+      readStartupDocBodyFromDisk(stellaDataDir, LIFE_MEMORY_MAP_DISPLAY_PATH),
     ).toContain("muse benchmark");
   });
 
-  it("treats a comment-only index template as absent", () => {
+  it("treats a comment-only map template as absent", () => {
     writeMemoryFile(
-      "memory_index.md",
+      "memory_map.md",
       "<!-- Populate with routing entries; one line each. -->",
     );
-    expect(readMemoryIndexDoc(stellaDataDir)).toBeUndefined();
+    expect(readMemoryMapDoc(stellaDataDir)).toBeUndefined();
   });
 
-  it("caps an oversized index after stripping", () => {
+  it("caps an oversized map read after stripping (write-jail backstop)", () => {
     writeMemoryFile(
-      "memory_index.md",
+      "memory_map.md",
       `<!-- guidance -->\n${"- entry pointing somewhere useful\n".repeat(400)}`,
     );
-    const index = readMemoryIndexDoc(stellaDataDir);
-    expect(index).toBeDefined();
-    expect(index!.length).toBeLessThanOrEqual(6_000);
-    expect(index).toContain("[resident memory truncated]");
+    const memoryMap = readMemoryMapDoc(stellaDataDir);
+    expect(memoryMap).toBeDefined();
+    expect(memoryMap!.length).toBeLessThanOrEqual(6_000);
+    expect(memoryMap).toContain("[resident memory truncated]");
+  });
+
+  it("returns no fresh body for retired doc paths", () => {
+    writeMemoryFile("memory_summary.md", "# Memory summary\n\n- focus");
+    writeMemoryFile("memory_index.md", "# Memory index\n\n- entry");
+    for (const retiredPath of RETIRED_STARTUP_DOC_DISPLAY_PATHS) {
+      expect(
+        readStartupDocBodyFromDisk(stellaDataDir, retiredPath),
+      ).toBeUndefined();
+    }
   });
 
   it("strips comments from the profile doc", () => {

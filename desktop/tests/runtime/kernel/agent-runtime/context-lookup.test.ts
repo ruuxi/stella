@@ -105,7 +105,7 @@ describe("buildContextLookupUserPrompt", () => {
   it("pre-seeds thread/transcript/memory searches and orders sections stable → volatile → request", async () => {
     const { rootPath, db } = await createRoot();
     await writeFile(
-      path.join(rootPath, "memories", "memory_summary.md"),
+      path.join(rootPath, "memories", "memory_map.md"),
       "Working on Stella memory routing.",
     );
     await writeFile(
@@ -203,7 +203,7 @@ describe("buildContextLookupUserPrompt", () => {
       "Find context for what the user means by 'this' in the current app.",
     );
     expect(prompt).toContain(
-      '<memory_file path="~/.stella/memories/memory_summary.md">',
+      '<memory_file path="~/.stella/memories/memory_map.md">',
     );
     expect(prompt).toContain("thread-1");
     expect(prompt).toContain("result: Added a read-only context lookup");
@@ -260,7 +260,7 @@ describe("buildContextLookupUserPrompt", () => {
   it("includes matched memory lines and omits the full ledger when terms are provided", async () => {
     const { rootPath, db } = await createRoot();
     await writeFile(
-      path.join(rootPath, "memories", "memory_summary.md"),
+      path.join(rootPath, "memories", "memory_map.md"),
       "Working on Stella memory routing.",
     );
     await writeFile(

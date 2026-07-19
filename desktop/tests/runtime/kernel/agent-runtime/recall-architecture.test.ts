@@ -10,10 +10,7 @@ import {
   routeRecallIntent,
   runRecall,
 } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
-import {
-  readMemoryIndexDoc,
-  readMemorySummaryDoc,
-} from "../../../../../runtime/kernel/runner/shared.js";
+import { readMemoryMapDoc } from "../../../../../runtime/kernel/runner/shared.js";
 import { redactBenchmarkBrief } from "../../../../../runtime/scripts/recall-benchmark-redaction.js";
 
 const roots = new Set<string>();
@@ -51,33 +48,26 @@ const makeStore = () =>
   }) as never;
 
 describe("architectural Recall pipeline", () => {
-  it("deterministically caps the resident routing index at injection", async () => {
+  it("deterministically caps the resident routing map at injection", async () => {
     const root = await createRoot();
     await writeFile(
-      path.join(root, "memories", "memory_summary.md"),
-      "# Memory summary\n- active focus",
-    );
-    await writeFile(
-      path.join(root, "memories", "memory_index.md"),
-      `# Memory routing index\n${"x".repeat(7_000)}TAIL_SENTINEL`,
+      path.join(root, "memories", "memory_map.md"),
+      `# Memory map\n${"x".repeat(7_000)}TAIL_SENTINEL`,
     );
 
-    // The index is its own resident doc now; the summary read never carries
-    // it, and the index read stays deterministically capped.
-    const residentSummary = readMemorySummaryDoc(root) ?? "";
-    expect(residentSummary).toBe("# Memory summary\n- active focus");
-    const residentIndex = readMemoryIndexDoc(root) ?? "";
-    expect(residentIndex).toContain("resident memory truncated");
-    expect(residentIndex).not.toContain("TAIL_SENTINEL");
-    expect(residentIndex.length).toBeLessThan(6_100);
+    // The map read stays deterministically capped (write-jail backstop).
+    const residentMap = readMemoryMapDoc(root) ?? "";
+    expect(residentMap).toContain("resident memory truncated");
+    expect(residentMap).not.toContain("TAIL_SENTINEL");
+    expect(residentMap.length).toBeLessThan(6_100);
   });
 
   it("routes common facts to memory and returns matched lines with zero model calls", async () => {
     const root = await createRoot();
     await writeFile(
-      path.join(root, "memories", "memory_index.md"),
+      path.join(root, "memories", "memory_map.md"),
       [
-        "# Memory routing index",
+        "# Memory map",
         "- Stella repo path: /Users/rahulnanda/projects/stella",
         "  hooks: stella repo, dev checkout, v1",
       ].join("\n"),
@@ -126,8 +116,8 @@ describe("architectural Recall pipeline", () => {
   it("uses delimiter-safe repository anchors and preserves bare stella", async () => {
     const falseRoot = await createRoot();
     await writeFile(
-      path.join(falseRoot, "memories", "memory_index.md"),
-      "# Memory routing index\n- stella-v20 repo path: /tmp/stella-v20",
+      path.join(falseRoot, "memories", "memory_map.md"),
+      "# Memory map\n- stella-v20 repo path: /tmp/stella-v20",
     );
     const makeArgs = (root: string, prompt: string, term: string) => ({
       conversationId: "conv-1",
@@ -169,8 +159,8 @@ describe("architectural Recall pipeline", () => {
     ]) {
       const adjacentRoot = await createRoot();
       await writeFile(
-        path.join(adjacentRoot, "memories", "memory_index.md"),
-        `# Memory routing index\n- ${adjacentEvidence} repo path: /tmp/rejected`,
+        path.join(adjacentRoot, "memories", "memory_map.md"),
+        `# Memory map\n- ${adjacentEvidence} repo path: /tmp/rejected`,
       );
       await expect(
         runRecall(makeArgs(adjacentRoot, "stella-v2", "stella-v2")),
@@ -179,8 +169,8 @@ describe("architectural Recall pipeline", () => {
 
     const trueRoot = await createRoot();
     await writeFile(
-      path.join(trueRoot, "memories", "memory_index.md"),
-      "# Memory routing index\n- stella repo path: /Users/rahulnanda/projects/stella",
+      path.join(trueRoot, "memories", "memory_map.md"),
+      "# Memory map\n- stella repo path: /Users/rahulnanda/projects/stella",
     );
     await expect(
       runRecall(makeArgs(trueRoot, "stella", "stella")),
@@ -240,8 +230,8 @@ describe("architectural Recall pipeline", () => {
   it("does not turn a generic one-token fallback hit into a false match", async () => {
     const root = await createRoot();
     await writeFile(
-      path.join(root, "memories", "memory_index.md"),
-      "# Memory routing index\n- unrelated work",
+      path.join(root, "memories", "memory_map.md"),
+      "# Memory map\n- unrelated work",
     );
     const store = makeStore() as any;
     store.searchTranscripts.mockReturnValue([
@@ -292,9 +282,9 @@ describe("architectural Recall pipeline", () => {
   it("requires anchors to co-occur inside one memory result", async () => {
     const root = await createRoot();
     await writeFile(
-      path.join(root, "memories", "memory_index.md"),
+      path.join(root, "memories", "memory_map.md"),
       [
-        "# Memory routing index",
+        "# Memory map",
         "- alpha-anchor belongs to one unrelated entry",
         "  filler one",
         "  filler two",
@@ -336,9 +326,9 @@ describe("architectural Recall pipeline", () => {
   it("rejects partial phrase anchors even when generic tokens overlap", async () => {
     const root = await createRoot();
     await writeFile(
-      path.join(root, "memories", "memory_index.md"),
+      path.join(root, "memories", "memory_map.md"),
       [
-        "# Memory routing index",
+        "# Memory map",
         "- Stella release verification covered a repository change.",
       ].join("\n"),
     );
@@ -380,8 +370,8 @@ describe("architectural Recall pipeline", () => {
   it("returns an exact-phrase result directly and accepts reformulated terms", async () => {
     const root = await createRoot();
     await writeFile(
-      path.join(root, "memories", "memory_index.md"),
-      "# Memory routing index\n- banana protocol belongs to the orchard repo",
+      path.join(root, "memories", "memory_map.md"),
+      "# Memory map\n- banana protocol belongs to the orchard repo",
     );
     const records: Array<{ modelCalls: number; fastPath?: boolean }> = [];
 

@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // against the real SQLite store: mid-epoch the persisted doc copies must stay
 // byte-frozen no matter how the source files change (prompt-cache stability),
 // and a successful compaction must rewrite them in place from disk (same
-// entry, same position) so the new epoch starts current.
+// entry, same position) so the new epoch starts current. The same boundary
+// owns the memory_summary/memory_index → memory_map migration: retired pinned
+// copies are converted/removed ONLY here, never mid-epoch.
 
 const completeSimpleMock = vi.fn();
 
@@ -40,15 +42,19 @@ import {
 } from "../../../../runtime/kernel/agent-runtime/thread-memory.js";
 import {
   buildStartupDocMessage,
-  LIFE_MEMORY_SUMMARY_DISPLAY_PATH,
+  LIFE_MEMORY_MAP_DISPLAY_PATH,
   LIFE_USER_PROFILE_DISPLAY_PATH,
   refreshResidentStartupDocs,
 } from "../../../../runtime/kernel/memory/resident-docs.js";
 import {
-  readMemorySummaryDoc,
+  readMemoryMapDoc,
   readUserProfileDoc,
 } from "../../../../runtime/kernel/runner/shared.js";
 import type { ResolvedLlmRoute } from "../../../../runtime/kernel/model-routing.js";
+
+const LIFE_MEMORY_SUMMARY_DISPLAY_PATH =
+  "~/.stella/memories/memory_summary.md";
+const LIFE_MEMORY_INDEX_DISPLAY_PATH = "~/.stella/memories/memory_index.md";
 
 const VALID_SUMMARY = [
   "## Topic",
@@ -80,11 +86,18 @@ let context: TestContext;
 
 const THREAD_KEY = "conv-refresh-1";
 
-const writeMemoryDocs = (args: { profile: string; summary: string }): void => {
+const writeMemoryDocs = (args: {
+  profile?: string;
+  memoryMap?: string;
+}): void => {
   const memoriesDir = path.join(context.stellaDataDir, "memories");
   fs.mkdirSync(memoriesDir, { recursive: true });
-  fs.writeFileSync(path.join(memoriesDir, "profile.md"), args.profile);
-  fs.writeFileSync(path.join(memoriesDir, "memory_summary.md"), args.summary);
+  if (args.profile !== undefined) {
+    fs.writeFileSync(path.join(memoriesDir, "profile.md"), args.profile);
+  }
+  if (args.memoryMap !== undefined) {
+    fs.writeFileSync(path.join(memoriesDir, "memory_map.md"), args.memoryMap);
+  }
 };
 
 const buildContextFromStore = () => ({
@@ -93,7 +106,7 @@ const buildContextFromStore = () => ({
   maxAgentDepth: 1,
   threadHistory: context.store.loadThreadMessages(THREAD_KEY),
   userProfile: readUserProfileDoc(context.stellaDataDir),
-  memorySummary: readMemorySummaryDoc(context.stellaDataDir),
+  memoryMap: readMemoryMapDoc(context.stellaDataDir),
 });
 
 /** Persist startup docs exactly the way run-execution does after injection. */
@@ -111,6 +124,15 @@ const persistStartupDocsFromPromptBuild = async (): Promise<number> => {
     });
   }
   return messages.length;
+};
+
+const persistStartupDoc = (displayPath: string, body: string): void => {
+  persistThreadCustomMessage(context.store, {
+    threadKey: THREAD_KEY,
+    customType: "bootstrap.startup_doc",
+    content: [{ type: "text", text: buildStartupDocMessage(displayPath, body) }],
+    display: false,
+  });
 };
 
 const appendBigConversation = (count = 40): void => {
@@ -141,6 +163,21 @@ const loadStartupDocs = () =>
               .join("\n"),
     }));
 
+const compactOnce = async (): Promise<void> => {
+  completeSimpleMock.mockResolvedValue({
+    content: [{ type: "text", text: VALID_SUMMARY }],
+    stopReason: "stop",
+  });
+  const result = await maybeCompactRuntimeThread({
+    store: context.store,
+    threadKey: THREAD_KEY,
+    resolvedLlm: createRoute(),
+    agentType: "orchestrator",
+    stellaDataDir: context.stellaDataDir,
+  });
+  expect(result).toEqual({ compacted: true });
+};
+
 describe("compaction-boundary refresh of pinned startup docs", () => {
   beforeEach(() => {
     completeSimpleMock.mockReset();
@@ -169,7 +206,7 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
   it("freezes pinned docs mid-epoch and refreshes them in place at compaction", async () => {
     writeMemoryDocs({
       profile: "# User Profile\n\n- The user goes by Bob",
-      summary: "# Memory summary\n\n- focus snapshot v1",
+      memoryMap: "# Memory map\n\n- routing snapshot v1",
     });
     expect(await persistStartupDocsFromPromptBuild()).toBe(2);
     const docsBefore = loadStartupDocs();
@@ -178,11 +215,11 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
     appendBigConversation();
 
     // Mid-epoch rewrite: Remember updates the profile; Dream rewrites the
-    // summary. Prompt builds must inject nothing (byte-stable prefix) and the
+    // map. Prompt builds must inject nothing (byte-stable prefix) and the
     // persisted copies must stay byte-identical.
     writeMemoryDocs({
       profile: "# User Profile\n\n- The user goes by Robert",
-      summary: "# Memory summary\n\n- focus snapshot v2",
+      memoryMap: "# Memory map\n\n- routing snapshot v2",
     });
     expect(
       await buildStartupPromptMessages({
@@ -194,18 +231,7 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
 
     // Compaction boundary: the overlay is written and the pinned copies catch
     // up from disk — same entries, same order, fresh bytes.
-    completeSimpleMock.mockResolvedValue({
-      content: [{ type: "text", text: VALID_SUMMARY }],
-      stopReason: "stop",
-    });
-    const result = await maybeCompactRuntimeThread({
-      store: context.store,
-      threadKey: THREAD_KEY,
-      resolvedLlm: createRoute(),
-      agentType: "orchestrator",
-      stellaDataDir: context.stellaDataDir,
-    });
-    expect(result).toEqual({ compacted: true });
+    await compactOnce();
 
     const docsAfter = loadStartupDocs();
     expect(docsAfter).toHaveLength(2);
@@ -222,10 +248,10 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
       ),
     );
     expect(profileDoc?.text).not.toContain("Bob");
-    const summaryDoc = docsAfter.find((doc) =>
-      doc.text.includes(LIFE_MEMORY_SUMMARY_DISPLAY_PATH),
+    const mapDoc = docsAfter.find((doc) =>
+      doc.text.includes(LIFE_MEMORY_MAP_DISPLAY_PATH),
     );
-    expect(summaryDoc?.text).toContain("focus snapshot v2");
+    expect(mapDoc?.text).toContain("routing snapshot v2");
 
     // The refreshed docs remain the head of the rebuilt window, and the next
     // prompt build still injects nothing — exactly one copy per doc, ever.
@@ -249,23 +275,21 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
   it("leaves unchanged docs byte-identical and keeps stale copies when a source vanishes", async () => {
     writeMemoryDocs({
       profile: "# User Profile\n\n- The user goes by Bob",
-      summary: "# Memory summary\n\n- focus snapshot v1",
+      memoryMap: "# Memory map\n\n- routing snapshot v1",
     });
     await persistStartupDocsFromPromptBuild();
     const docsBefore = loadStartupDocs();
 
-    // Delete the summary source; refresh must keep the existing pinned copy
+    // Delete the map source; refresh must keep the existing pinned copy
     // rather than blanking resident context, and must not touch the
     // unchanged profile doc at all.
-    fs.rmSync(
-      path.join(context.stellaDataDir, "memories", "memory_summary.md"),
-    );
+    fs.rmSync(path.join(context.stellaDataDir, "memories", "memory_map.md"));
     const refreshed = refreshResidentStartupDocs({
       store: context.store,
       threadKey: THREAD_KEY,
       stellaDataDir: context.stellaDataDir,
     });
-    expect(refreshed).toBe(0);
+    expect(refreshed).toEqual({ refreshedDocs: 0, removedDocs: 0 });
     expect(loadStartupDocs()).toEqual(docsBefore);
   });
 
@@ -274,42 +298,27 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
     // graveyard; the first boundary refresh rewrites them from the (now
     // stripped) disk read even when the file itself did not change.
     writeMemoryDocs({
-      profile: "# User Profile\n\n- The user goes by Bob",
-      summary:
-        "# Memory summary\n\n- focus snapshot v1\n<!-- DREAM:RETIRED_SUMMARY\n- retired bullet\n-->",
+      memoryMap:
+        "# Memory map\n\n- routing snapshot v1\n<!-- DREAM:RETIRED_SUMMARY\n- retired bullet\n-->",
     });
-    persistThreadCustomMessage(context.store, {
-      threadKey: THREAD_KEY,
-      customType: "bootstrap.startup_doc",
-      content: [
-        {
-          type: "text",
-          text: buildStartupDocMessage(
-            LIFE_MEMORY_SUMMARY_DISPLAY_PATH,
-            "# Memory summary\n\n- focus snapshot v1\n<!-- DREAM:RETIRED_SUMMARY\n- retired bullet\n-->",
-          ),
-        },
-      ],
-      display: false,
-    });
+    persistStartupDoc(
+      LIFE_MEMORY_MAP_DISPLAY_PATH,
+      "# Memory map\n\n- routing snapshot v1\n<!-- DREAM:RETIRED_SUMMARY\n- retired bullet\n-->",
+    );
 
     const refreshed = refreshResidentStartupDocs({
       store: context.store,
       threadKey: THREAD_KEY,
       stellaDataDir: context.stellaDataDir,
     });
-    expect(refreshed).toBe(1);
+    expect(refreshed).toEqual({ refreshedDocs: 1, removedDocs: 0 });
     const [doc] = loadStartupDocs();
-    expect(doc!.text).toContain("focus snapshot v1");
+    expect(doc!.text).toContain("routing snapshot v1");
     expect(doc!.text).not.toContain("retired bullet");
     expect(doc!.text).not.toContain("DREAM:RETIRED_SUMMARY");
   });
 
   it("updateThreadCustomMessageContent rejects unknown entries and preserves metadata", () => {
-    writeMemoryDocs({
-      profile: "# User Profile\n\n- The user goes by Bob",
-      summary: "# Memory summary\n\n- focus snapshot v1",
-    });
     persistThreadCustomMessage(context.store, {
       threadKey: THREAD_KEY,
       customType: "bootstrap.startup_doc",
@@ -337,5 +346,185 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
     const [updated] = loadStartupDocs();
     expect(updated!.text).toBe("doc v2");
     expect(updated!.entryId).toBe(doc!.entryId);
+  });
+
+  it("removeThreadCustomMessage deletes only custom-message entries", () => {
+    persistThreadCustomMessage(context.store, {
+      threadKey: THREAD_KEY,
+      customType: "bootstrap.startup_doc",
+      content: [{ type: "text", text: "doc v1" }],
+      display: false,
+    });
+    context.store.appendThreadMessage({
+      timestamp: 10_000,
+      threadKey: THREAD_KEY,
+      role: "user",
+      content: "an ordinary conversation message",
+    });
+    const [doc] = loadStartupDocs();
+    const conversationEntryId = context.store
+      .loadThreadMessages(THREAD_KEY)
+      .find((message) => message.role === "user")?.entryId;
+    expect(conversationEntryId).toBeDefined();
+
+    expect(
+      context.store.removeThreadCustomMessage({
+        threadKey: THREAD_KEY,
+        entryId: "missing-entry",
+      }),
+    ).toBe(false);
+    // A conversation entry is not a custom message; the guard refuses it.
+    expect(
+      context.store.removeThreadCustomMessage({
+        threadKey: THREAD_KEY,
+        entryId: conversationEntryId!,
+      }),
+    ).toBe(false);
+    expect(
+      context.store.removeThreadCustomMessage({
+        threadKey: THREAD_KEY,
+        entryId: doc!.entryId!,
+      }),
+    ).toBe(true);
+    expect(loadStartupDocs()).toEqual([]);
+    expect(
+      context.store
+        .loadThreadMessages(THREAD_KEY)
+        .some((message) => message.role === "user"),
+    ).toBe(true);
+  });
+
+  describe("memory_summary/memory_index → memory_map migration", () => {
+    it("converts the retired summary copy into the map at the boundary and drops the index copy", async () => {
+      // A pre-migration thread: summary + index pinned copies persisted.
+      persistStartupDoc(
+        LIFE_USER_PROFILE_DISPLAY_PATH,
+        "# User Profile\n\n- The user goes by Bob",
+      );
+      persistStartupDoc(
+        LIFE_MEMORY_SUMMARY_DISPLAY_PATH,
+        "# Memory summary\n\n- old focus snapshot",
+      );
+      persistStartupDoc(
+        LIFE_MEMORY_INDEX_DISPLAY_PATH,
+        "# Memory index\n\n- old routing entry",
+      );
+      writeMemoryDocs({
+        profile: "# User Profile\n\n- The user goes by Bob",
+        memoryMap: "# Memory map\n\n- seeded routing entry",
+      });
+      const docsBefore = loadStartupDocs();
+      expect(docsBefore).toHaveLength(3);
+
+      // Mid-epoch (post-upgrade, pre-boundary): prompt builds must inject
+      // NOTHING — the retired copies stay byte-frozen and the map is
+      // suppressed while they persist. The prefix is byte-identical across
+      // the upgrade until the boundary.
+      appendBigConversation();
+      expect(
+        await buildStartupPromptMessages({
+          context: buildContextFromStore(),
+          stellaDataDir: context.stellaDataDir,
+        }),
+      ).toEqual([]);
+      expect(loadStartupDocs()).toEqual(docsBefore);
+
+      // Boundary: summary entry converts IN PLACE into the map copy (same
+      // entry id — it inherits the pinned head slot); index entry is removed.
+      await compactOnce();
+
+      const docsAfter = loadStartupDocs();
+      expect(docsAfter).toHaveLength(2);
+      const summaryEntryId = docsBefore[1]!.entryId;
+      const mapDoc = docsAfter.find((doc) =>
+        doc.text.includes(LIFE_MEMORY_MAP_DISPLAY_PATH),
+      );
+      expect(mapDoc?.entryId).toBe(summaryEntryId);
+      expect(mapDoc?.text).toBe(
+        buildStartupDocMessage(
+          LIFE_MEMORY_MAP_DISPLAY_PATH,
+          "# Memory map\n\n- seeded routing entry",
+        ),
+      );
+      expect(
+        docsAfter.some(
+          (doc) =>
+            doc.text.includes(LIFE_MEMORY_SUMMARY_DISPLAY_PATH) ||
+            doc.text.includes(LIFE_MEMORY_INDEX_DISPLAY_PATH),
+        ),
+      ).toBe(false);
+
+      // Post-migration: builds inject nothing; the pinned map is canonical.
+      expect(
+        await buildStartupPromptMessages({
+          context: buildContextFromStore(),
+          stellaDataDir: context.stellaDataDir,
+        }),
+      ).toEqual([]);
+    });
+
+    it("keeps retired copies frozen when no map body exists yet", () => {
+      persistStartupDoc(
+        LIFE_MEMORY_SUMMARY_DISPLAY_PATH,
+        "# Memory summary\n\n- old focus snapshot",
+      );
+      const docsBefore = loadStartupDocs();
+
+      // No memory_map.md on disk: retiring the summary now would blank the
+      // thread's only resident routing context. Keep it; retry next boundary.
+      const refreshed = refreshResidentStartupDocs({
+        store: context.store,
+        threadKey: THREAD_KEY,
+        stellaDataDir: context.stellaDataDir,
+      });
+      expect(refreshed).toEqual({ refreshedDocs: 0, removedDocs: 0 });
+      expect(loadStartupDocs()).toEqual(docsBefore);
+    });
+
+    it("dedupes extra copies of the same doc at the boundary, keeping the head-most", () => {
+      writeMemoryDocs({ memoryMap: "# Memory map\n\n- fresh entry" });
+      persistStartupDoc(
+        LIFE_MEMORY_MAP_DISPLAY_PATH,
+        "# Memory map\n\n- head copy",
+      );
+      persistStartupDoc(
+        LIFE_MEMORY_MAP_DISPLAY_PATH,
+        "# Memory map\n\n- stale duplicate copy",
+      );
+      const [headDoc] = loadStartupDocs();
+
+      const refreshed = refreshResidentStartupDocs({
+        store: context.store,
+        threadKey: THREAD_KEY,
+        stellaDataDir: context.stellaDataDir,
+      });
+      expect(refreshed).toEqual({ refreshedDocs: 1, removedDocs: 1 });
+      const docsAfter = loadStartupDocs();
+      expect(docsAfter).toHaveLength(1);
+      expect(docsAfter[0]!.entryId).toBe(headDoc!.entryId);
+      expect(docsAfter[0]!.text).toContain("fresh entry");
+    });
+
+    it("drops retired copies outright when a pinned map copy already exists", () => {
+      writeMemoryDocs({ memoryMap: "# Memory map\n\n- fresh entry" });
+      persistStartupDoc(
+        LIFE_MEMORY_MAP_DISPLAY_PATH,
+        "# Memory map\n\n- fresh entry",
+      );
+      persistStartupDoc(
+        LIFE_MEMORY_INDEX_DISPLAY_PATH,
+        "# Memory index\n\n- straggler entry",
+      );
+
+      const refreshed = refreshResidentStartupDocs({
+        store: context.store,
+        threadKey: THREAD_KEY,
+        stellaDataDir: context.stellaDataDir,
+      });
+      expect(refreshed).toEqual({ refreshedDocs: 0, removedDocs: 1 });
+      const docsAfter = loadStartupDocs();
+      expect(docsAfter).toHaveLength(1);
+      expect(docsAfter[0]!.text).toContain(LIFE_MEMORY_MAP_DISPLAY_PATH);
+    });
   });
 });

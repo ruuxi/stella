@@ -489,7 +489,7 @@ describe("orchestrator thread compaction failure handling", () => {
       "Rahul's workshop address is 123 Elm Street.",
     );
     fs.writeFileSync(
-      path.join(stellaDataDir, "memories", "memory_summary.md"),
+      path.join(stellaDataDir, "memories", "memory_map.md"),
       "Workflow tiers: tier-1 ships without review.\n<!-- DREAM:RETIRED_SUMMARY\nRetired archive bullet about the Muse benchmark costing $14.92.\n-->",
     );
     try {
