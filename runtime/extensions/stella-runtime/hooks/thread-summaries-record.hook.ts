@@ -40,12 +40,17 @@ export const createThreadSummariesRecordHook = (opts: {
         runId: payload.runId,
         agentType: payload.agentType,
         rolloutSummary: payload.finalText,
-        // Reporting conversation (subagents: the parent's) — the thread
-        // whose window carries the byte-equivalent report. Lets the
-        // delta-input pass mechanically consume this row ONLY when its own
-        // delta provably covers it.
-        ...(payload.conversationId
-          ? { conversationId: payload.conversationId }
+        // Reporting conversation — spawn-site VERIFIED (services field, not
+        // payload.conversationId): every subagent agent_end carries the root
+        // conversation id, but a manager-owned child's terminal report
+        // persists only to the manager's thread, never the orchestrator
+        // window the step-6 delta reads. Only runs whose ancestry the spawn
+        // site resolved to the orchestrator get stamped; everything else
+        // stays NULL and flows through the model-driven Dream list path.
+        ...(payload.services.dreamReportingConversationId
+          ? {
+              conversationId: payload.services.dreamReportingConversationId,
+            }
           : {}),
       });
     } catch (error) {

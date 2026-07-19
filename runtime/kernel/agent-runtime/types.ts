@@ -297,6 +297,16 @@ export type SubagentRunOptions = BaseRunOptions & {
   callbacks?: Partial<RuntimeRunCallbacks>;
   suppressCompletionSideEffects?: boolean;
   /**
+   * Conversation whose ORCHESTRATOR thread will hold this child's terminal
+   * report byte-equivalently. Set by the spawn site ONLY when it verified
+   * the child has no Manager ancestor (manager-owned children report to the
+   * manager's thread and never reach the orchestrator window; unresolved
+   * ancestry persists nowhere). When unset, the child's Dream-inbox row
+   * carries a NULL conversation and always flows through the model-driven
+   * list path — never delta-covered mechanical consumption.
+   */
+  dreamReportingConversationId?: string;
+  /**
    * Long-lived per-task subagent session. When provided, the Pi engine
    * path routes through `session.runTurn(opts)` so the underlying `Agent`
    * survives across `send_input` / restart-on-input cycles. The external

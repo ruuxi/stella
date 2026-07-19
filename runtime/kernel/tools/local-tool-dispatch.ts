@@ -35,15 +35,18 @@ export type LocalDreamConfig = {
   stellaDataDir: string;
   /**
    * When set, Dream's `list` hides rows the pass's orchestrator delta
-   * already represents (the delta's own conversation, covered kinds), so
-   * the model is not double-fed. Rows from OTHER conversations, legacy
-   * NULL-conversation rows, and chronicle transport still list normally —
+   * already represents (the delta's own conversation, covered kinds, newer
+   * than the watermark the delta derives from), so the model is not
+   * double-fed. Rows from OTHER conversations, legacy NULL-conversation
+   * rows, pre-window rows, and chronicle transport still list normally —
    * they flow through the model-driven markProcessed path exactly like the
    * pre-migration inbox pass, which is what keeps at-least-once intact.
    */
   inboxListExclude?: {
     conversationId: string;
     kinds: readonly DreamInboxKind[];
+    /** Exclusive lower bound of the pass's delta window. */
+    sinceTs: number;
   };
 };
 

@@ -275,8 +275,8 @@ export const buildDreamDeltaUserMessage = (transcript: string): string =>
   [
     "Run the Dream consolidation pass.",
     "",
-    "Primary input — the orchestrator conversation delta since the last consolidation watermark is below. Treat it exactly as you would inbox rows: user turns and task reports are the signal; fold what the user would expect Stella to recall later into MEMORY.md, then update the memory map. Rollout summaries and review notes from THIS conversation are already represented in the delta, so the inbox list will not return them.",
-    'Additionally call Dream with action="list": it returns everything the delta does NOT cover — screen-activity (chronicle) digests plus rollout summaries and review notes reported by other conversations. Fold those exactly like before and markProcessed the ids you handled.',
+    "Primary input — the orchestrator conversation delta since the last consolidation watermark is below. Treat it exactly as you would inbox rows: user turns and task reports are the signal; fold what the user would expect Stella to recall later into MEMORY.md, then update the memory map. Rollout summaries and review notes this delta already carries are excluded from the inbox list, so nothing is double-fed.",
+    'Additionally call Dream with action="list": it returns everything the delta does NOT cover — screen-activity (chronicle) digests plus any rollout summaries and review notes from other conversations, manager-run work, or older spans. Fold those exactly like before and markProcessed the ids you handled.',
     "",
     "ORCHESTRATOR DELTA:",
     "",

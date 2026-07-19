@@ -453,7 +453,32 @@ const DELTA_COVERED_KINDS: readonly DreamInboxKind[] = [
 type DeltaInput = {
   conversationId: string;
   delta: DreamDeltaTranscript;
+  /** Watermark this pass derives from — the window's exclusive lower bound. */
+  sinceWatermark: number;
+  /**
+   * The load limit filled the window AND its oldest loaded message is
+   * already past the watermark: an unloaded backlog span may sit between
+   * the watermark and the window. Derivation proceeds on what was loaded,
+   * but mechanical consumption is skipped — a row whose report lives in the
+   * unseen span must stay on the model-driven path.
+   */
+  truncatedBelow: boolean;
 };
+
+/**
+ * Detect a window that the load limit cut off BELOW: the projection returns
+ * the NEWEST `limit` messages, so a full window whose oldest message is
+ * newer than the watermark implies messages between the two were never
+ * loaded — coverage will jump the unseen span.
+ */
+const isWindowTruncatedBelow = (
+  messages: DreamDeltaSourceMessage[],
+  loadLimit: number,
+  watermark: number,
+): boolean =>
+  messages.length >= loadLimit &&
+  typeof messages[0]?.timestamp === "number" &&
+  messages[0].timestamp > watermark;
 
 /**
  * Prepare the cutover pass's primary input. Returns null — meaning "run the
@@ -496,18 +521,43 @@ const prepareDeltaInput = (args: {
   }
   const delta = buildDreamDeltaTranscript(messages, watermark);
   if (!delta.transcript) return null;
-  return { conversationId, delta };
+  if (delta.truncated && delta.coveredThroughTs <= watermark) {
+    // Same-millisecond tie group bigger than the whole budget: the tie
+    // rollback pins coverage at the watermark, so the pass re-derives this
+    // window every time (lossless, but a permanent stall worth seeing).
+    logger.warn("dream.delta.coverage-pinned", {
+      conversationId,
+      watermark,
+      includedMessages: delta.includedMessages,
+    });
+  }
+  const truncatedBelow = isWindowTruncatedBelow(
+    messages,
+    DREAM_DELTA_LOAD_LIMIT,
+    watermark,
+  );
+  if (truncatedBelow) {
+    logger.warn("dream.delta.window-truncated-below", {
+      conversationId,
+      watermark,
+      oldestLoadedTs: messages[0]?.timestamp ?? 0,
+    });
+  }
+  return { conversationId, delta, sinceWatermark: watermark, truncatedBelow };
 };
 
 /**
  * Post-pass bookkeeping for a CLEANLY completed delta-input pass: advance the
  * delta watermark through what the pass actually read, and mechanically
  * consume ONLY the inbox rows this delta provably covers — same reporting
- * conversation, source time within coverage. Rows from other conversations
- * (and legacy rows with no conversation) are untouchable here by
- * construction: their content never entered this delta, so they stay queued
- * for the model-driven list path, keeping at-least-once intact while the
- * recording hooks remain on as the rollback path.
+ * conversation, source time strictly inside THIS pass's window
+ * (sinceWatermark, coveredThroughTs]. Everything else stays queued for the
+ * model-driven list path: other conversations' rows, legacy NULL rows,
+ * pre-window rows (their span may only ever have been shadow-covered —
+ * proposals discarded by design), and the whole window when the load limit
+ * truncated it below (an unseen backlog span may hold the report). That is
+ * what keeps at-least-once intact while the recording hooks remain on as
+ * the rollback path.
  */
 const finishDeltaPass = (store: RuntimeStore, input: DeltaInput): void => {
   advanceDeltaWatermarkSafe(
@@ -515,12 +565,19 @@ const finishDeltaPass = (store: RuntimeStore, input: DeltaInput): void => {
     input.conversationId,
     input.delta.coveredThroughTs,
   );
+  if (input.truncatedBelow) {
+    logger.warn("dream.delta.consumption-skipped-truncated-window", {
+      conversationId: input.conversationId,
+    });
+    return;
+  }
   try {
     const inbox = store.dreamInboxStore;
     if (typeof inbox.markKindsProcessedThrough === "function") {
       const { updated } = inbox.markKindsProcessedThrough({
         conversationId: input.conversationId,
         kinds: DELTA_COVERED_KINDS,
+        sinceTs: input.sinceWatermark,
         throughTs: input.delta.coveredThroughTs,
       });
       if (updated > 0) {
@@ -567,6 +624,7 @@ const runDream = async (args: {
           inboxListExclude: {
             conversationId: deltaInput.conversationId,
             kinds: DELTA_COVERED_KINDS,
+            sinceTs: deltaInput.sinceWatermark,
           },
         }
       : {}),
@@ -1136,6 +1194,25 @@ export const runDreamDeltaShadow = async (args: {
 
     const delta = buildDreamDeltaTranscript(messages, watermark);
     if (!delta.transcript) return "skipped_empty";
+    // Degraded-window visibility (shadow never consumes rows, so these are
+    // observability-only here): a load-limit-truncated window derives with
+    // its oldest span missing, and a coverage pin means a same-ms tie group
+    // outgrew the budget and this window will re-derive every pass.
+    if (
+      isWindowTruncatedBelow(messages, DREAM_DELTA_LOAD_LIMIT, watermark)
+    ) {
+      logger.warn("dream.delta-shadow.window-truncated-below", {
+        conversationId: args.conversationId,
+        watermark,
+        oldestLoadedTs: messages[0]?.timestamp ?? 0,
+      });
+    }
+    if (delta.truncated && delta.coveredThroughTs <= watermark) {
+      logger.warn("dream.delta-shadow.coverage-pinned", {
+        conversationId: args.conversationId,
+        watermark,
+      });
+    }
 
     const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
       stellaAppDir: args.stellaDataDir,

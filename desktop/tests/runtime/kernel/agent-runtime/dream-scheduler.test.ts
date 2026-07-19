@@ -635,6 +635,7 @@ describe("orchestrator-delta staging (migration step 6)", () => {
     const markCalls: Array<{
       conversationId: string;
       kinds: readonly string[];
+      sinceTs: number;
       throughTs: number;
     }> = [];
     let watermark = args.watermark ?? 0;
@@ -653,6 +654,7 @@ describe("orchestrator-delta staging (migration step 6)", () => {
         markKindsProcessedThrough: (call: {
           conversationId: string;
           kinds: readonly string[];
+          sinceTs: number;
           throughTs: number;
         }) => {
           markCalls.push(call);
@@ -807,12 +809,52 @@ describe("orchestrator-delta staging (migration step 6)", () => {
       {
         conversationId: CONVERSATION_ID,
         kinds: ["thread_summary", "memory_note"],
+        sinceTs: 1_000,
         throughTs: 2_000,
       },
     ]);
     // No shadow in delta mode — the delta IS the live input.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(contexts.length).toBe(1);
+  });
+
+  it("skips mechanical consumption when the load limit truncated the window below the watermark", async () => {
+    const rootPath = createRoot();
+    await mkdir(rootPath, { recursive: true });
+    await writeFile(
+      path.join(rootPath, "config.json"),
+      JSON.stringify({ dream: { inputSource: "delta" } }),
+      "utf-8",
+    );
+    const { route } = buildRecordingRoute(["Folded what was loaded."]);
+    // A full window (exactly the load limit) whose OLDEST message is
+    // already past the watermark: an unloaded backlog span sits between the
+    // two, and rows whose reports live in it must not be swept.
+    const fullWindow = Array.from({ length: 2_000 }, (_, index) =>
+      userMsg(5_000 + index, `backlog message ${index}`),
+    );
+    const { store, advances, markCalls } = buildDeltaStore({
+      pending: 1,
+      watermark: 1_000,
+      messages: fullWindow,
+    });
+
+    const result = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      trigger: "manual",
+      conversationId: CONVERSATION_ID,
+    });
+    expect(result.scheduled).toBe(true);
+
+    await waitFor(() => advances.length > 0, 3_000);
+    // Derivation proceeded (watermark advanced over the loaded window)…
+    expect(advances[0]?.conversationId).toBe(CONVERSATION_ID);
+    expect(advances[0]?.ts).toBeGreaterThan(1_000);
+    // …but nothing was consumed mechanically.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(markCalls).toEqual([]);
   });
 
   it("delta mode is eligible on a drained inbox when unconsolidated delta exists", async () => {

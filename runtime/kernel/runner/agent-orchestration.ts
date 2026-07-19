@@ -1024,6 +1024,20 @@ export const createAgentOrchestration = (
           }
         }
       };
+      // Reporting scope for the Dream-inbox row this run records: only a
+      // child with verified orchestrator-reporting ancestry (the ownership
+      // walk returns `undefined` — a string is a manager owner whose thread
+      // gets the report instead of the orchestrator window; `null` is
+      // unresolved ancestry that reports nowhere) may be stamped with the
+      // conversation. Anything unverifiable stays unstamped, so its inbox
+      // row keeps a NULL conversation and is only ever consumed by the
+      // model-driven Dream list path — never delta-covered mechanically.
+      const managedAncestry =
+        agentId && context.state.localAgentManager
+          ? context.state.localAgentManager.resolveOwningManagerThread(agentId)
+          : null;
+      const dreamReportingConversationId =
+        managedAncestry === undefined ? conversationId : undefined;
       try {
         const result = await runSubagentTask({
           conversationId,
@@ -1033,6 +1047,9 @@ export const createAgentOrchestration = (
           rootRunId,
           agentType,
           userPrompt: composedUserPrompt,
+          ...(dreamReportingConversationId
+            ? { dreamReportingConversationId }
+            : {}),
           selfModMetadata: effectiveSelfModMetadata,
           agentContext,
           toolCatalog: context.toolHost.getToolCatalog(agentType, {

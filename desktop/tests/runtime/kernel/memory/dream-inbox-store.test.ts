@@ -507,6 +507,7 @@ describe("DreamInboxStore", () => {
         excludeConversationKinds: {
           conversationId: "conv-b",
           kinds: ["thread_summary", "memory_note"],
+          sinceTs: 0,
         },
       });
       // conv-b's covered rows are hidden (the delta carries them); the
@@ -516,6 +517,55 @@ describe("DreamInboxStore", () => {
         "thread-legacy",
         "thread-x",
       ]);
+    });
+
+    it("neither hides nor consumes pre-window rows — spans covered only by shadow passes stay on the model path", () => {
+      const { store } = createTestContext();
+      const old = new Date(Date.now() - 120_000);
+      // Recorded long before the pass's window: its span was covered only
+      // by shadow passes, whose proposals are discarded by design — no
+      // applied derivation ever read it.
+      store.recordMemoryNote(
+        {
+          title: "Pre-window note",
+          category: "active_focus",
+          memory: "only ever shadow-covered",
+          recallHooks: [],
+          evidence: [],
+          createdAt: old,
+        },
+        { conversationId: "conv-a" },
+      );
+      store.recordThreadSummary({
+        threadId: "thread-in-window",
+        runId: "run-1",
+        agentType: "general",
+        rolloutSummary: "inside the pass window",
+        conversationId: "conv-a",
+      });
+      const windowStart = old.getTime() + 30_000;
+      const windowEnd = Date.now() + 30_000;
+
+      // First cutover pass over (windowStart, windowEnd]: the old row is
+      // outside the derivation window — it must not be swept…
+      const { updated } = store.markKindsProcessedThrough({
+        conversationId: "conv-a",
+        kinds: ["thread_summary", "memory_note"],
+        sinceTs: windowStart,
+        throughTs: windowEnd,
+      });
+      expect(updated).toBe(1);
+      // …and it must still be VISIBLE to the model-driven list despite
+      // matching the conversation and kind.
+      const visible = store.listUnprocessed({
+        excludeConversationKinds: {
+          conversationId: "conv-a",
+          kinds: ["thread_summary", "memory_note"],
+          sinceTs: windowStart,
+        },
+      });
+      expect(visible).toHaveLength(1);
+      expect(visible[0]?.title).toBe("Pre-window note");
     });
 
     it("never mechanically consumes rows from conversations the delta did not cover (reviewer A/B scenario)", () => {
@@ -547,6 +597,7 @@ describe("DreamInboxStore", () => {
       const { updated } = store.markKindsProcessedThrough({
         conversationId: "conv-b",
         kinds: ["thread_summary", "memory_note"],
+        sinceTs: rowA.sourceUpdatedAt - 60_000,
         throughTs: rowA.sourceUpdatedAt + 60_000,
       });
       expect(updated).toBe(0);
@@ -557,6 +608,7 @@ describe("DreamInboxStore", () => {
       const consumed = store.markKindsProcessedThrough({
         conversationId: "conv-a",
         kinds: ["thread_summary", "memory_note"],
+        sinceTs: rowA.sourceUpdatedAt - 60_000,
         throughTs: rowA.sourceUpdatedAt + 60_000,
       });
       expect(consumed.updated).toBe(1);
@@ -592,6 +644,7 @@ describe("DreamInboxStore", () => {
       const { updated } = store.markKindsProcessedThrough({
         conversationId: "conv-a",
         kinds: ["thread_summary", "memory_note"],
+        sinceTs: old.getTime() - 60_000,
         throughTs,
       });
       expect(updated).toBe(1);

@@ -347,17 +347,21 @@ export class DreamInboxStore {
    * This makes Dream retain and refresh memory that repeatedly proves useful.
    *
    * `excludeConversationKinds` hides the rows a delta-input pass reads from
-   * its orchestrator delta instead (same conversation, covered kinds), so
-   * the model is not double-fed. Everything else — chronicle transport,
-   * rows reported by OTHER conversations, and legacy NULL-conversation rows
-   * — still flows through this list to the model-driven markProcessed path
-   * exactly like the pre-migration inbox pass.
+   * its orchestrator delta instead (same conversation, covered kinds, newer
+   * than the watermark the pass derives from), so the model is not
+   * double-fed. Everything else — chronicle transport, rows reported by
+   * OTHER conversations, legacy NULL-conversation rows, and pre-window rows
+   * whose span may only ever have been shadow-covered — still flows through
+   * this list to the model-driven markProcessed path exactly like the
+   * pre-migration inbox pass.
    */
   listUnprocessed(args?: {
     limit?: number;
     excludeConversationKinds?: {
       conversationId: string;
       kinds: readonly DreamInboxKind[];
+      /** Exclusive lower bound; rows at/below it are NOT hidden. */
+      sinceTs: number;
     };
   }): DreamInboxRow[] {
     const limit = Math.max(1, Math.min(args?.limit ?? 50, 500));
@@ -367,6 +371,7 @@ export class DreamInboxStore {
         ? {
             conversationId: args.excludeConversationKinds.conversationId,
             kinds: [...new Set(args.excludeConversationKinds.kinds)],
+            sinceTs: Math.max(0, args.excludeConversationKinds.sinceTs),
           }
         : null;
     // NULL-safe (`IS NOT`): a legacy row with no conversation matches no
@@ -375,7 +380,7 @@ export class DreamInboxStore {
     const excludeFilter = exclude
       ? ` AND (conversation_id IS NOT ? OR kind NOT IN (${exclude.kinds
           .map(() => "?")
-          .join(", ")}))`
+          .join(", ")}) OR source_updated_at <= ?)`
       : "";
     const rows = this.db
       .prepare(
@@ -389,7 +394,9 @@ export class DreamInboxStore {
         `,
       )
       .all(
-        ...(exclude ? [exclude.conversationId, ...exclude.kinds] : []),
+        ...(exclude
+          ? [exclude.conversationId, ...exclude.kinds, exclude.sinceTs]
+          : []),
         limit,
       ) as DreamInboxRawRow[];
     return rows.map(fromRow);
@@ -537,22 +544,40 @@ export class DreamInboxStore {
 
   /**
    * Code-level consumption for the delta-input pass, scoped to the delta's
-   * OWN conversation: a row reported by conversation C at time T derives
-   * from C's messages ≤ T, so `conversation_id = C AND source_updated_at ≤
-   * coveredThroughTs` ⇒ its content is provably inside (or before) the
-   * completed delta. Rows from other conversations and legacy NULL-
-   * conversation rows are NEVER touched here — their content never entered
-   * this delta, so they stay queued for the model-driven list path. Rows
-   * arriving mid-pass carry a later timestamp and stay queued too.
+   * OWN conversation AND its own derivation window: a row reported by
+   * conversation C at time T derives from C's messages ≤ T, so
+   * `conversation_id = C AND sinceTs < source_updated_at ≤ coveredThroughTs`
+   * ⇒ its content is provably inside the span an APPLIED derivation just
+   * read. Rows at or below `sinceTs` are never consumed — their span may
+   * have been covered only by shadow passes, whose proposals are discarded
+   * by design — and rows from other conversations / legacy NULL rows are
+   * never touched: all of those stay queued for the model-driven list path.
+   * Rows arriving mid-pass carry a later timestamp and stay queued too.
+   *
+   * Timestamp-domain caveat (accepted): `source_updated_at` is the hook's
+   * wall clock while coverage is message timestamps, and the row can be
+   * written moments BEFORE its report message lands in the orchestrator
+   * thread. A pass racing that gap can consume the row while the report
+   * text sits just above coverage — the report is then derived by the next
+   * pass (both clocks are the same machine's; the gap is milliseconds).
+   * Freshness lag, never loss.
    */
   markKindsProcessedThrough(args: {
     conversationId: string;
     kinds: readonly DreamInboxKind[];
+    /** Exclusive lower bound: the watermark the delta pass started from. */
+    sinceTs: number;
     throughTs: number;
     processedAt?: number;
   }): { updated: number } {
     const conversationId = args.conversationId.trim();
-    if (!conversationId || args.kinds.length === 0 || !(args.throughTs > 0)) {
+    if (
+      !conversationId ||
+      args.kinds.length === 0 ||
+      !(args.throughTs > 0) ||
+      !(args.sinceTs >= 0) ||
+      args.throughTs <= args.sinceTs
+    ) {
       return { updated: 0 };
     }
     const kinds = [...new Set(args.kinds)];
@@ -564,6 +589,7 @@ export class DreamInboxStore {
         WHERE processed_by_dream_at IS NULL
           AND conversation_id = ?
           AND kind IN (${kinds.map(() => "?").join(", ")})
+          AND source_updated_at > ?
           AND source_updated_at <= ?
         `,
       )
@@ -571,6 +597,7 @@ export class DreamInboxStore {
         args.processedAt ?? Date.now(),
         conversationId,
         ...kinds,
+        args.sinceTs,
         args.throughTs,
       ) as { changes?: number } | undefined;
     return { updated: Number(result?.changes ?? 0) };
