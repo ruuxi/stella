@@ -1054,7 +1054,8 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   // Unified Dream inbox: every durable input Dream consolidates flows through
   // this one queue — subagent rollout summaries, orchestrator memory-review
   // notes, and chronicle screen-activity digests. `processed_by_dream_at IS
-  // NULL` is the entire queue state; there is no separate watermark file.
+  // NULL` is the entire queue state (the pass-completion watermark below is
+  // scheduling bookkeeping, never queue state).
   // Replaces the pre-launch `thread_summaries` table (hard cut, no migration).
   db.exec("DROP TABLE IF EXISTS thread_summaries;");
   db.exec(`
@@ -1082,5 +1083,22 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_dream_inbox_kind_updated
     ON dream_inbox(kind, source_updated_at);
+  `);
+
+  // Persisted marker of the last COMPLETED Dream consolidation pass, keyed by
+  // the pending-inbox frontier (max source_updated_at among unprocessed rows)
+  // captured when that pass started. It is NOT queue state — per-row
+  // `processed_by_dream_at` remains the sole authority on what has been
+  // consumed (no double-processing; a row missed once stays queued). The
+  // watermark only lets the consolidate-before-compact ordering skip its
+  // bounded await when a pass already completed past the current frontier, so
+  // losing or lagging it costs freshness (an extra or a skipped best-effort
+  // pass), never correctness. Single row; survives restarts.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dream_consolidation_watermark (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      frontier INTEGER NOT NULL,
+      completed_at INTEGER NOT NULL
+    );
   `);
 };

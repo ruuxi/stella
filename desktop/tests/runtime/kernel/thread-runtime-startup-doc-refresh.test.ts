@@ -51,6 +51,7 @@ import {
   readUserProfileDoc,
 } from "../../../../runtime/kernel/runner/shared.js";
 import type { ResolvedLlmRoute } from "../../../../runtime/kernel/model-routing.js";
+import { awaitPreCompactionConsolidation } from "../../../../runtime/kernel/agent-runtime/dream-scheduler.js";
 
 const LIFE_MEMORY_SUMMARY_DISPLAY_PATH =
   "~/.stella/memories/memory_summary.md";
@@ -525,6 +526,108 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
       const docsAfter = loadStartupDocs();
       expect(docsAfter).toHaveLength(1);
       expect(docsAfter[0]!.text).toContain(LIFE_MEMORY_MAP_DISPLAY_PATH);
+    });
+  });
+
+  describe("consolidate-before-compact ordering (cache stability)", () => {
+    const recordPendingInboxRow = (): void => {
+      context.store.dreamInboxStore.recordThreadSummary({
+        threadId: "thread-1",
+        runId: "run-1",
+        agentType: "general",
+        rolloutSummary: "Delivered the widget refactor and verified tests.",
+      });
+    };
+
+    it("a timed-out Dream pass changes nothing mid-epoch and compaction proceeds", async () => {
+      writeMemoryDocs({
+        profile: "# User Profile\n\n- The user goes by Bob",
+        memoryMap: "# Memory map\n\n- routing snapshot v1",
+      });
+      await persistStartupDocsFromPromptBuild();
+      appendBigConversation();
+      const docsBefore = loadStartupDocs();
+      const messageCountBefore =
+        context.store.loadThreadMessages(THREAD_KEY).length;
+      recordPendingInboxRow();
+
+      // The Dream pass hangs at its provider call; the bounded await must
+      // return without touching the thread or the persisted prefix.
+      completeSimpleMock.mockReturnValue(new Promise(() => {}));
+      const result = await awaitPreCompactionConsolidation({
+        stellaDataDir: context.stellaDataDir,
+        store: context.store,
+        resolvedLlm: createRoute(),
+        timeoutMs: 100,
+      });
+      expect(result.outcome).toBe("timed_out");
+      expect(loadStartupDocs()).toEqual(docsBefore);
+      expect(context.store.loadThreadMessages(THREAD_KEY)).toHaveLength(
+        messageCountBefore,
+      );
+      // No completed pass: the watermark must not advance, so the missed
+      // span stays covered for a later pass.
+      expect(
+        context.store.dreamInboxStore.readConsolidationWatermark(),
+      ).toBeNull();
+
+      // Compaction proceeds regardless of the timed-out pass.
+      await compactOnce();
+      expect(loadStartupDocs()).toHaveLength(2);
+    });
+
+    it("a completed pass advances the watermark; the prefix stays byte-frozen until the boundary", async () => {
+      writeMemoryDocs({
+        profile: "# User Profile\n\n- The user goes by Bob",
+        memoryMap: "# Memory map\n\n- routing snapshot v1",
+      });
+      await persistStartupDocsFromPromptBuild();
+      appendBigConversation();
+      const docsBefore = loadStartupDocs();
+      recordPendingInboxRow();
+
+      // Dream answers with a final message and no tool calls: a clean pass.
+      completeSimpleMock.mockResolvedValueOnce({
+        content: [{ type: "text", text: "Nothing to consolidate." }],
+        stopReason: "stop",
+      });
+      const result = await awaitPreCompactionConsolidation({
+        stellaDataDir: context.stellaDataDir,
+        store: context.store,
+        resolvedLlm: createRoute(),
+      });
+      expect(result.outcome).toBe("consolidated");
+      const watermark =
+        context.store.dreamInboxStore.readConsolidationWatermark();
+      expect(watermark).not.toBeNull();
+      expect(watermark!.frontier).toBeGreaterThan(0);
+
+      // Simulate Dream having rewritten the map on disk mid-epoch: the
+      // pinned copy stays byte-identical and prompt builds inject nothing.
+      writeMemoryDocs({ memoryMap: "# Memory map\n\n- routing snapshot v2" });
+      expect(
+        await buildStartupPromptMessages({
+          context: buildContextFromStore(),
+          stellaDataDir: context.stellaDataDir,
+        }),
+      ).toEqual([]);
+      expect(loadStartupDocs()).toEqual(docsBefore);
+
+      // A second boundary with the same pending rows skips the await: the
+      // persisted watermark already covers the frontier.
+      const second = await awaitPreCompactionConsolidation({
+        stellaDataDir: context.stellaDataDir,
+        store: context.store,
+        resolvedLlm: createRoute(),
+      });
+      expect(second.outcome).toBe("skipped_fresh");
+
+      // Only the compaction boundary lets the disk state in.
+      await compactOnce();
+      const mapDoc = loadStartupDocs().find((doc) =>
+        doc.text.includes(LIFE_MEMORY_MAP_DISPLAY_PATH),
+      );
+      expect(mapDoc?.text).toContain("routing snapshot v2");
     });
   });
 });

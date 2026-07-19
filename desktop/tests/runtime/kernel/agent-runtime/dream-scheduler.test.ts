@@ -15,6 +15,7 @@ import type {
   StreamOptions,
 } from "../../../../../runtime/ai/types.js";
 import {
+  awaitPreCompactionConsolidation,
   buildDreamSystemPrompt,
   maybeSpawnDreamRun,
 } from "../../../../../runtime/kernel/agent-runtime/dream-scheduler.js";
@@ -101,6 +102,38 @@ const buildFakeRoute = (args: {
     route: "direct-provider",
     getApiKey: () => args.apiKey ?? "",
   };
+};
+
+/** An API whose streams never settle — simulates a hung provider. */
+const registerHangingApi = (): Api => {
+  const apiId = `fake-hang-${Math.random().toString(36).slice(2)}` as Api;
+  const hanging = () =>
+    ({
+      result: () => new Promise<AssistantMessage>(() => {}),
+    }) as AssistantMessageEventStream;
+  registerApiProvider({
+    api: apiId,
+    stream: hanging,
+    streamSimple: hanging,
+  });
+  return apiId;
+};
+
+/** An API whose streams reject — simulates a provider failure. */
+const registerFailingApi = (): Api => {
+  const apiId = `fake-fail-${Math.random().toString(36).slice(2)}` as Api;
+  const failing = () =>
+    ({
+      result: async () => {
+        throw new Error("provider stream failed");
+      },
+    }) as AssistantMessageEventStream;
+  registerApiProvider({
+    api: apiId,
+    stream: failing,
+    streamSimple: failing,
+  });
+  return apiId;
 };
 
 const waitFor = async (predicate: () => boolean, timeoutMs = 1_000): Promise<void> => {
@@ -272,5 +305,184 @@ describe("buildDreamSystemPrompt (single prompt source)", () => {
       prompt.indexOf("Custom scheduled Dream body."),
     );
     expect(prompt).toContain("supersedes any earlier instructions");
+  });
+});
+
+describe("awaitPreCompactionConsolidation (consolidate-before-compact)", () => {
+  type FakeInbox = {
+    countUnprocessed: () => number;
+    pendingFrontier: () => number;
+    readConsolidationWatermark: () =>
+      | { frontier: number; completedAt: number }
+      | null;
+    writeConsolidationWatermark: (args: {
+      frontier: number;
+      completedAt?: number;
+    }) => void;
+  };
+
+  const buildFakeStore = (args: {
+    pending: number;
+    frontier: number;
+    watermark?: { frontier: number; completedAt: number } | null;
+  }): { store: RuntimeStore; watermarkWrites: Array<{ frontier: number }> } => {
+    const watermarkWrites: Array<{ frontier: number }> = [];
+    const inbox: FakeInbox = {
+      countUnprocessed: () => args.pending,
+      pendingFrontier: () => args.frontier,
+      readConsolidationWatermark: () => args.watermark ?? null,
+      writeConsolidationWatermark: (write) => {
+        watermarkWrites.push({ frontier: write.frontier });
+      },
+    };
+    return {
+      store: { dreamInboxStore: inbox } as unknown as RuntimeStore,
+      watermarkWrites,
+    };
+  };
+
+  it("skips fresh when nothing is pending, without spawning a run", async () => {
+    const rootPath = createRoot();
+    let providerCalls = 0;
+    const { store } = buildFakeStore({ pending: 0, frontier: 0 });
+    const result = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("noop"),
+        apiKey: "key",
+        onRequest: () => {
+          providerCalls += 1;
+        },
+      }),
+    });
+    expect(result.outcome).toBe("skipped_fresh");
+    expect(providerCalls).toBe(0);
+  });
+
+  it("skips fresh when a completed pass already covers the pending frontier", async () => {
+    const rootPath = createRoot();
+    let providerCalls = 0;
+    const { store } = buildFakeStore({
+      pending: 3,
+      frontier: 1_000,
+      watermark: { frontier: 1_500, completedAt: Date.now() },
+    });
+    const result = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("noop"),
+        apiKey: "key",
+        onRequest: () => {
+          providerCalls += 1;
+        },
+      }),
+    });
+    expect(result.outcome).toBe("skipped_fresh");
+    expect(providerCalls).toBe(0);
+  });
+
+  it("awaits a spawned pass to completion and advances the persisted watermark", async () => {
+    const rootPath = createRoot();
+    const { store, watermarkWrites } = buildFakeStore({
+      pending: 2,
+      frontier: 4_242,
+    });
+    const result = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("Nothing to consolidate."),
+        apiKey: "key",
+      }),
+    });
+    expect(result.outcome).toBe("consolidated");
+    expect(result.pendingItems).toBe(2);
+    expect(watermarkWrites).toEqual([{ frontier: 4_242 }]);
+
+    // With the watermark persisted at the frontier, the next boundary skips
+    // the await outright even though rows are still marked pending.
+    const second = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store: buildFakeStore({
+        pending: 2,
+        frontier: 4_242,
+        watermark: { frontier: 4_242, completedAt: Date.now() },
+      }).store,
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("noop"),
+        apiKey: "key",
+      }),
+    });
+    expect(second.outcome).toBe("skipped_fresh");
+  });
+
+  it("times out on a hung pass and returns without advancing the watermark", async () => {
+    const rootPath = createRoot();
+    const { store, watermarkWrites } = buildFakeStore({
+      pending: 1,
+      frontier: 9_000,
+    });
+    const hangingRoute = buildFakeRoute({
+      response: fakeAssistant("never delivered"),
+      apiKey: "key",
+    });
+    hangingRoute.model = {
+      ...hangingRoute.model,
+      api: registerHangingApi(),
+    } as typeof hangingRoute.model;
+
+    const startedAt = Date.now();
+    const result = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: hangingRoute,
+      timeoutMs: 120,
+    });
+    expect(result.outcome).toBe("timed_out");
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(watermarkWrites).toEqual([]);
+  });
+
+  it("reports an incomplete pass (provider failure) and leaves the watermark alone", async () => {
+    const rootPath = createRoot();
+    const { store, watermarkWrites } = buildFakeStore({
+      pending: 1,
+      frontier: 7_000,
+    });
+    const failingRoute = buildFakeRoute({
+      response: fakeAssistant("unused"),
+      apiKey: "key",
+    });
+    failingRoute.model = {
+      ...failingRoute.model,
+      api: registerFailingApi(),
+    } as typeof failingRoute.model;
+
+    const result = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: failingRoute,
+    });
+    expect(result.outcome).toBe("incomplete");
+    expect(watermarkWrites).toEqual([]);
+  });
+
+  it("never throws even when the store is entirely broken", async () => {
+    const rootPath = createRoot();
+    const result = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store: {
+        get dreamInboxStore(): never {
+          throw new Error("store exploded");
+        },
+      } as unknown as RuntimeStore,
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("noop"),
+        apiKey: "key",
+      }),
+    });
+    expect(result.outcome).toBe("skipped_fresh");
   });
 });

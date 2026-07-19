@@ -26,6 +26,9 @@
  * under `.stella/locks/dream/`.
  *
  * Fire-and-forget: callers `void maybeSpawnDreamRun(...)` and never await it.
+ * The one deliberate exception is {@link awaitPreCompactionConsolidation} —
+ * the consolidate-before-compact ordering — which awaits the current run with
+ * a hard timeout and never lets Dream block or fail a compaction.
  */
 
 import fs from "node:fs";
@@ -77,11 +80,27 @@ type DreamConfig = {
   tokenInterval: number;
 };
 
+type DreamRunOutcome = {
+  /**
+   * True when the pass ran to a clean final message (or the Claude Code
+   * runtime finished without throwing). Iteration-capped, thrown, and
+   * credential-less passes report false: rows they left unprocessed stay
+   * queued, and the pass watermark must not advance past them.
+   */
+  completed: boolean;
+};
+
 type DreamRuntimeState = {
   inFlight: boolean;
   lastRunAt: number;
   /** Orchestrator token estimate captured at the last Dream run. */
   tokensAtLastRun: number;
+  /**
+   * Settles when the in-flight run finishes; never rejects. Lets the
+   * consolidate-before-compact ordering join a run that is already running
+   * instead of racing the single-flight lock.
+   */
+  completion: Promise<DreamRunOutcome> | null;
 };
 
 const RUNTIME_STATE = new Map<string, DreamRuntimeState>();
@@ -89,7 +108,12 @@ const RUNTIME_STATE = new Map<string, DreamRuntimeState>();
 const stateFor = (stellaDataDir: string): DreamRuntimeState => {
   let state = RUNTIME_STATE.get(stellaDataDir);
   if (!state) {
-    state = { inFlight: false, lastRunAt: 0, tokensAtLastRun: 0 };
+    state = {
+      inFlight: false,
+      lastRunAt: 0,
+      tokensAtLastRun: 0,
+      completion: null,
+    };
     RUNTIME_STATE.set(stellaDataDir, state);
   }
   return state;
@@ -144,6 +168,22 @@ const acquireLock = (stellaDataDir: string): (() => void) | null => {
       // ignore
     }
     return null;
+  }
+};
+
+/**
+ * Pending-inbox frontier, tolerant of partial store fakes and read failures:
+ * 0 means "nothing pending / unknown", which always degrades to the safe
+ * behavior (no watermark advance; pre-compaction ordering skips).
+ */
+const readPendingFrontierSafe = (store: RuntimeStore): number => {
+  try {
+    const inbox = store.dreamInboxStore;
+    if (typeof inbox.pendingFrontier !== "function") return 0;
+    const frontier = inbox.pendingFrontier();
+    return Number.isFinite(frontier) && frontier > 0 ? frontier : 0;
+  } catch {
+    return 0;
   }
 };
 
@@ -250,7 +290,7 @@ const runDream = async (args: {
   stellaDataDir: string;
   store: RuntimeStore;
   resolvedLlm: ResolvedLlmRoute;
-}): Promise<void> => {
+}): Promise<DreamRunOutcome> => {
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
     stellaAppDir: args.stellaDataDir,
     modelId: args.resolvedLlm.model.id,
@@ -264,7 +304,7 @@ const runDream = async (args: {
     !resolvedLlmSupportsCredentiallessCalls(args.resolvedLlm)
   ) {
     logger.debug("dream.skipped.no-api-key");
-    return;
+    return { completed: false };
   }
 
   await ensureDreamMemoryLayout(args.stellaDataDir);
@@ -320,12 +360,13 @@ const runDream = async (args: {
         toolCalls: totalToolCalls,
         finalText: finalText.slice(0, 80),
       });
+      return { completed: true };
     } catch (error) {
       logger.debug("dream.claude-code.failed", {
         error: error instanceof Error ? error.message : String(error),
       });
+      return { completed: false };
     }
-    return;
   }
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
@@ -346,7 +387,7 @@ const runDream = async (args: {
       logger.debug("dream.completeSimple.failed", {
         error: error instanceof Error ? error.message : String(error),
       });
-      return;
+      return { completed: false };
     }
 
     messages.push(response);
@@ -361,7 +402,7 @@ const runDream = async (args: {
         toolCalls: totalToolCalls,
         finalText: readAssistantText(response).slice(0, 80),
       });
-      return;
+      return { completed: true };
     }
 
     for (const toolCall of toolCalls) {
@@ -411,6 +452,9 @@ const runDream = async (args: {
     iterations: MAX_ITERATIONS,
     toolCalls: totalToolCalls,
   });
+  // Partial pass: some rows may have been folded and marked processed, but
+  // the queue was not drained — the watermark must not advance past it.
+  return { completed: false };
 };
 
 export type SpawnDreamTrigger =
@@ -542,18 +586,45 @@ export const maybeSpawnDreamRun = async (
 
   const memoryMtimeBefore = fileMtimeMs(memoryFilePath(args.stellaDataDir));
   const mapMtimeBefore = fileMtimeMs(memoryMapPath(args.stellaDataDir));
-  void runDream({
+  // Pending frontier captured BEFORE the pass runs: a completed pass may
+  // advance the watermark to exactly this point. Conservative by
+  // construction — rows arriving mid-pass carry a later source_updated_at
+  // and stay ahead of the watermark.
+  const frontierAtStart = readPendingFrontierSafe(args.store);
+  const completion = runDream({
     stellaDataDir: args.stellaDataDir,
     store: args.store,
     resolvedLlm: args.resolvedLlm,
   })
-    .catch((error) => {
+    .catch((error): DreamRunOutcome => {
       logger.debug("dream.run-failed", {
         error: error instanceof Error ? error.message : String(error),
       });
+      return { completed: false };
+    })
+    .then((outcome) => {
+      if (outcome.completed && frontierAtStart > 0) {
+        // Best-effort bookkeeping: a failed write only means the next
+        // pre-compaction ordering runs one redundant (single-flighted,
+        // eligibility-gated) pass.
+        try {
+          args.store.dreamInboxStore.writeConsolidationWatermark({
+            frontier: frontierAtStart,
+          });
+        } catch (error) {
+          logger.debug("dream.watermark-write-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      return outcome;
     })
     .finally(() => {
       state.inFlight = false;
+      // `state.completion` is deliberately left pointing at the (now
+      // settled) promise: a pre-compaction caller that raced the run's
+      // completion still awaits it and reads the real outcome instead of
+      // finding a null handle.
       state.lastRunAt = Date.now();
       if (typeof args.orchestratorTokenEstimate === "number") {
         state.tokensAtLastRun = args.orchestratorTokenEstimate;
@@ -572,10 +643,196 @@ export const maybeSpawnDreamRun = async (
       }
       release();
     });
+  state.completion = completion;
+  void completion;
 
   return {
     scheduled: true,
     reason: "scheduled",
     pendingItems,
   };
+};
+
+/**
+ * Hard ceiling on how long compaction may wait for a Dream pass. Compaction
+ * runs on the background scheduler (never the user-visible finalize path),
+ * so a few minutes of waiting costs nothing visible — but the wait must be
+ * bounded because a hung provider stream would otherwise stall compaction
+ * while the window keeps growing toward the hard context limit.
+ */
+export const DREAM_PRE_COMPACTION_TIMEOUT_MS = 180_000;
+
+export type PreCompactionConsolidationOutcome =
+  /** A Dream pass ran (or was joined) and finished cleanly within budget. */
+  | "consolidated"
+  /** A pass ran but failed or hit its iteration cap; material stays queued. */
+  | "incomplete"
+  /** The timeout elapsed first; the pass keeps running in the background. */
+  | "timed_out"
+  /** Nothing pending, or a completed pass already covers the frontier. */
+  | "skipped_fresh"
+  /** No pass could start (disabled, lock busy, no credentials, …). */
+  | "not_started"
+  /** Unexpected error inside the ordering itself. */
+  | "failed";
+
+export type PreCompactionConsolidationResult = {
+  outcome: PreCompactionConsolidationOutcome;
+  pendingItems: number;
+  waitedMs: number;
+  detail?: string;
+};
+
+const raceCompletion = async (
+  completion: Promise<DreamRunOutcome>,
+  timeoutMs: number,
+): Promise<DreamRunOutcome | "timed_out"> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      completion,
+      new Promise<"timed_out">((resolve) => {
+        timer = setTimeout(() => resolve("timed_out"), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+/**
+ * Consolidate-before-compact ordering (design review §6.2c / migration #5).
+ *
+ * Called by the compaction path when the trigger is met, BEFORE the middle is
+ * folded: gives Dream one bounded, best-effort window to extract durable
+ * memories from the span that is about to be summarized, so those facts exit
+ * the checkpoint recursion via MEMORY.md instead of surviving only through
+ * repeated summarization.
+ *
+ * Contract — ordering affects freshness only, never correctness:
+ *   - NEVER throws and never blocks beyond `timeoutMs`; every outcome means
+ *     "compact now". A timed-out pass keeps running in the background
+ *     (single-flight lock held); its writes land on disk and enter the
+ *     window at a later compaction boundary.
+ *   - Skip-if-fresh via the persisted watermark: when the last completed
+ *     pass already started at/after the newest pending inbox row, waiting
+ *     cannot improve checkpoint freshness, so compaction proceeds
+ *     immediately. (A >LIST-limit backlog can advance the watermark past
+ *     rows the pass never listed; those rows stay queued for the next
+ *     trigger — freshness lag, never loss.)
+ *   - No double-processing: consumption is governed solely by per-row
+ *     `processed_by_dream_at`; the watermark is scheduling bookkeeping.
+ *   - Joins an already-running pass instead of racing the single-flight
+ *     lock; otherwise spawns one through the normal gates.
+ *   - Touches only disk files and the inbox — never thread entries — so the
+ *     injected prompt prefix stays byte-identical until the compaction
+ *     boundary refresh reads the (possibly fresher) disk state.
+ */
+export const awaitPreCompactionConsolidation = async (args: {
+  stellaDataDir: string;
+  store: RuntimeStore;
+  resolvedLlm: ResolvedLlmRoute;
+  timeoutMs?: number;
+}): Promise<PreCompactionConsolidationResult> => {
+  const startedAt = Date.now();
+  const finish = (
+    outcome: PreCompactionConsolidationOutcome,
+    pendingItems: number,
+    detail?: string,
+  ): PreCompactionConsolidationResult => {
+    const result: PreCompactionConsolidationResult = {
+      outcome,
+      pendingItems,
+      waitedMs: Date.now() - startedAt,
+      ...(detail ? { detail } : {}),
+    };
+    logger.info("dream.pre-compaction", result);
+    return result;
+  };
+
+  try {
+    let pendingItems = 0;
+    try {
+      pendingItems = args.store.dreamInboxStore.countUnprocessed();
+    } catch {
+      pendingItems = 0;
+    }
+    const frontier = readPendingFrontierSafe(args.store);
+    if (pendingItems === 0 || frontier === 0) {
+      return finish("skipped_fresh", pendingItems, "nothing pending");
+    }
+    let watermark: { frontier: number } | null = null;
+    try {
+      const inbox = args.store.dreamInboxStore;
+      watermark =
+        typeof inbox.readConsolidationWatermark === "function"
+          ? inbox.readConsolidationWatermark()
+          : null;
+    } catch {
+      watermark = null;
+    }
+    if (watermark && watermark.frontier >= frontier) {
+      return finish(
+        "skipped_fresh",
+        pendingItems,
+        "a completed pass already covers the pending frontier",
+      );
+    }
+
+    const state = stateFor(args.stellaDataDir);
+    // `state.completion` outlives a settled run (see the spawn path), so a
+    // stale handle from a long-finished pass must not be mistaken for a live
+    // one: only join when a run is actually in flight, and after spawning
+    // only trust the handle when it changed from the pre-spawn snapshot (or
+    // the spawn definitively reported `scheduled`).
+    const completionBeforeSpawn = state.completion;
+    let completion = state.inFlight ? state.completion : null;
+    let joined = completion !== null;
+    if (!completion) {
+      const spawn = await maybeSpawnDreamRun({
+        stellaDataDir: args.stellaDataDir,
+        store: args.store,
+        resolvedLlm: args.resolvedLlm,
+        trigger: "pre_compaction",
+      });
+      if (spawn.scheduled) {
+        completion = state.completion;
+        if (!completion) {
+          return finish("not_started", pendingItems, "no completion handle");
+        }
+      } else if (
+        state.completion &&
+        state.completion !== completionBeforeSpawn
+      ) {
+        // `in_flight` raced: another caller registered a run between our
+        // check and the spawn. Join it.
+        completion = state.completion;
+        joined = true;
+      } else {
+        return finish("not_started", pendingItems, spawn.reason);
+      }
+    }
+
+    const timeoutMs = Math.max(
+      1,
+      args.timeoutMs ?? DREAM_PRE_COMPACTION_TIMEOUT_MS,
+    );
+    const raced = await raceCompletion(completion, timeoutMs);
+    if (raced === "timed_out") {
+      return finish(
+        "timed_out",
+        pendingItems,
+        joined ? "joined run still in flight" : "spawned run still in flight",
+      );
+    }
+    return raced.completed
+      ? finish("consolidated", pendingItems)
+      : finish("incomplete", pendingItems);
+  } catch (error) {
+    return finish(
+      "failed",
+      0,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 };

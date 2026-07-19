@@ -6,7 +6,10 @@ import {
   compactRuntimeThreadHistory,
   updateOrchestratorReminderState,
 } from "./thread-memory.js";
-import { getThreadTokenEstimate } from "../thread-runtime.js";
+import {
+  getCompactionTriggerTokens,
+  getThreadTokenEstimate,
+} from "../thread-runtime.js";
 import type {
   OrchestratorRunOptions,
   SubagentRunOptions,
@@ -315,7 +318,48 @@ const runCompactionWithHooks = async (args: {
   threadKey: string;
   runId: string;
   messageCount: number;
+  /**
+   * Thread token estimate captured at schedule time; gates the
+   * consolidate-before-compact ordering so the bounded Dream await only
+   * happens when this run will actually attempt a fold. Estimates only grow
+   * between schedule and execution, so a stale value can at worst skip one
+   * ordering opportunity (freshness), never mis-order a compaction.
+   */
+  orchestratorTokenEstimate?: number;
 }): Promise<{ compacted: boolean }> => {
+  // Consolidate-before-compact (design review §6.2c / migration step 5):
+  // before the middle is folded, give Dream one bounded, best-effort window
+  // to extract durable memories from the span. Every outcome — completed,
+  // failed, timed out, skipped — proceeds to compaction; the persisted
+  // inbox/watermark state re-covers anything missed on a later pass. Runs
+  // inside the background compaction scheduler, so the wait never touches
+  // the user-visible finalize path. Dream writes only disk files, so the
+  // thread's injected prefix stays byte-identical until the boundary refresh
+  // inside `maybeCompactRuntimeThread` reads the fresh disk state.
+  if (
+    args.opts.agentType === AGENT_IDS.ORCHESTRATOR &&
+    args.opts.stellaDataDir?.trim() &&
+    typeof args.orchestratorTokenEstimate === "number" &&
+    args.orchestratorTokenEstimate >=
+      getCompactionTriggerTokens(args.opts.resolvedLlm)
+  ) {
+    try {
+      const { awaitPreCompactionConsolidation } = await import(
+        "./dream-scheduler.js"
+      );
+      await awaitPreCompactionConsolidation({
+        stellaDataDir: args.opts.stellaDataDir,
+        store: args.opts.store,
+        resolvedLlm: args.opts.resolvedLlm,
+      });
+    } catch (error) {
+      logger.debug("compaction.pre-consolidation-failed", {
+        threadKey: args.threadKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   let shouldCompact = true;
   let hookCompaction:
     | { summary: string; preserveLastN?: number }
@@ -493,6 +537,9 @@ export const finalizeOrchestratorSuccess = async (args: {
           threadKey: args.threadKey,
           runId: args.runId,
           messageCount: args.agent.state.messages.length,
+          ...(orchestratorTokenEstimate != null
+            ? { orchestratorTokenEstimate }
+            : {}),
         });
         if (compacted) {
           args.opts.orchestratorSession?.notifyCompacted();

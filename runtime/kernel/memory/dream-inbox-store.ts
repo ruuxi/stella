@@ -327,6 +327,63 @@ export class DreamInboxStore {
     return rows.map(fromRow);
   }
 
+  /**
+   * Newest pending material: max `source_updated_at` across unprocessed rows,
+   * or 0 when the queue is drained. The consolidate-before-compact ordering
+   * compares this frontier against the persisted pass watermark to decide
+   * whether awaiting a Dream pass could still improve checkpoint freshness.
+   */
+  pendingFrontier(): number {
+    const row = this.db
+      .prepare(
+        `SELECT MAX(source_updated_at) AS frontier FROM dream_inbox WHERE processed_by_dream_at IS NULL`,
+      )
+      .get() as { frontier?: number | null } | undefined;
+    return Number(row?.frontier ?? 0);
+  }
+
+  /**
+   * Last completed Dream pass, as the pending frontier captured when that
+   * pass STARTED (conservative: rows arriving mid-pass stay ahead of the
+   * watermark). Null until a pass has ever completed.
+   */
+  readConsolidationWatermark(): { frontier: number; completedAt: number } | null {
+    const row = this.db
+      .prepare(
+        `SELECT frontier, completed_at FROM dream_consolidation_watermark WHERE id = 1`,
+      )
+      .get() as { frontier?: number; completed_at?: number } | undefined;
+    if (row === undefined || typeof row.frontier !== "number") return null;
+    return {
+      frontier: row.frontier,
+      completedAt: Number(row.completed_at ?? 0),
+    };
+  }
+
+  /**
+   * Advance the pass watermark after a completed consolidation. Monotonic:
+   * a delayed writer can never move the frontier backwards. Purely a
+   * freshness signal — per-row `processed_by_dream_at` alone decides what
+   * Dream consumes, so a lost or stale watermark can cost an extra (or a
+   * skipped) best-effort pre-compaction pass, never facts.
+   */
+  writeConsolidationWatermark(args: {
+    frontier: number;
+    completedAt?: number;
+  }): void {
+    this.db
+      .prepare(
+        `
+        INSERT INTO dream_consolidation_watermark (id, frontier, completed_at)
+        VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          frontier = MAX(dream_consolidation_watermark.frontier, excluded.frontier),
+          completed_at = excluded.completed_at
+        `,
+      )
+      .run(args.frontier, args.completedAt ?? Date.now());
+  }
+
   /** Count of unprocessed rows; the Dream scheduler's eligibility gate. */
   countUnprocessed(): number {
     const row = this.db
