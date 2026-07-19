@@ -617,6 +617,25 @@ export const maybeSpawnDreamRun = async (
           });
         }
       }
+      if (outcome.completed) {
+        // Inbox GC rides Dream's own cadence: single-flighted, and only
+        // after a pass that just proved the queue machinery healthy.
+        // Consumed rows past retention are at-rest duplicates of window /
+        // transcript / MEMORY.md content (4.4MB measured live).
+        try {
+          const inbox = args.store.dreamInboxStore;
+          if (typeof inbox.gcProcessedRows === "function") {
+            const { deleted } = inbox.gcProcessedRows();
+            if (deleted > 0) {
+              logger.info("dream.inbox-gc", { deleted });
+            }
+          }
+        } catch (error) {
+          logger.debug("dream.inbox-gc-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       return outcome;
     })
     .finally(() => {

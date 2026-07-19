@@ -301,4 +301,134 @@ describe("DreamInboxStore", () => {
     expect(recents[0]?.kind).toBe("thread_summary");
     expect(recents[0]?.threadId).toBe("thread-a");
   });
+
+  it("tracks the pending frontier and a monotonic pass watermark", () => {
+    const { store } = createTestContext();
+    expect(store.pendingFrontier()).toBe(0);
+    expect(store.readConsolidationWatermark()).toBeNull();
+
+    store.recordThreadSummary({
+      threadId: "thread-a",
+      runId: "run-1",
+      agentType: "general",
+      rolloutSummary: "Pending work",
+    });
+    const frontier = store.pendingFrontier();
+    expect(frontier).toBeGreaterThan(0);
+
+    store.writeConsolidationWatermark({ frontier, completedAt: 111 });
+    expect(store.readConsolidationWatermark()).toEqual({
+      frontier,
+      completedAt: 111,
+    });
+
+    // Monotonic: a delayed writer can never move the frontier backwards.
+    store.writeConsolidationWatermark({ frontier: frontier - 500, completedAt: 222 });
+    expect(store.readConsolidationWatermark()).toEqual({
+      frontier,
+      completedAt: 222,
+    });
+
+    // Draining the queue zeroes the frontier.
+    const ids = store.listUnprocessed().map((row) => row.id);
+    store.markProcessed({ ids });
+    expect(store.pendingFrontier()).toBe(0);
+  });
+
+  describe("gcProcessedRows", () => {
+    const DAY_MS = 24 * 60 * 60 * 1_000;
+
+    it("deletes only processed, unused, non-chronicle rows past retention", () => {
+      const { store } = createTestContext();
+      const now = Date.now();
+      const old = now - 40 * DAY_MS;
+
+      store.recordThreadSummary({
+        threadId: "thread-old-processed",
+        runId: "run-1",
+        agentType: "general",
+        rolloutSummary: "Long consumed",
+      });
+      store.recordThreadSummary({
+        threadId: "thread-old-unprocessed",
+        runId: "run-2",
+        agentType: "general",
+        rolloutSummary: "Never consumed — queue state is sacred",
+      });
+      store.recordThreadSummary({
+        threadId: "thread-recently-processed",
+        runId: "run-3",
+        agentType: "general",
+        rolloutSummary: "Freshly consumed",
+      });
+      store.recordThreadSummary({
+        threadId: "thread-old-but-used",
+        runId: "run-4",
+        agentType: "general",
+        rolloutSummary: "Old but recently surfaced to the orchestrator",
+      });
+      store.recordChronicleSummary({ window: "10m", content: "- digest" });
+
+      const byThread = (threadId: string) =>
+        store
+          .listUnprocessed({ limit: 100 })
+          .find((row) => row.threadId === threadId);
+      store.markProcessed({
+        ids: [byThread("thread-old-processed")!.id],
+        processedAt: old,
+      });
+      store.markProcessed({
+        ids: [byThread("thread-recently-processed")!.id],
+        processedAt: now - 1 * DAY_MS,
+      });
+      const usedRowId = byThread("thread-old-but-used")!.id;
+      store.markProcessed({ ids: [usedRowId], processedAt: old });
+      // First surface requeues (last_usage was NULL); re-consume, then a
+      // second surface inside the debounce keeps the row processed while
+      // stamping a recent last_usage — the exact "old but recently useful"
+      // shape the usage guard must retain.
+      store.recordUsage("thread-old-but-used", "run-4", { nowMs: now - 60_000 });
+      store.markProcessed({ ids: [usedRowId], processedAt: old });
+      store.recordUsage("thread-old-but-used", "run-4", { nowMs: now });
+      // Chronicle row: processed long ago, still exempt.
+      const chronicleRow = store
+        .listUnprocessed({ limit: 100 })
+        .find((row) => row.kind === "chronicle");
+      store.markProcessed({ ids: [chronicleRow!.id], processedAt: old });
+
+      const { deleted } = store.gcProcessedRows({ nowMs: now });
+      expect(deleted).toBe(1);
+
+      const remainingThreads = store
+        .listRecentThreadSummaries({ limit: 100 })
+        .map((row) => row.threadId)
+        .sort();
+      expect(remainingThreads).toEqual([
+        "thread-old-but-used",
+        "thread-old-unprocessed",
+        "thread-recently-processed",
+      ]);
+    });
+
+    it("honors a custom retention window", () => {
+      const { store } = createTestContext();
+      const now = Date.now();
+      store.recordThreadSummary({
+        threadId: "thread-a",
+        runId: "run-1",
+        agentType: "general",
+        rolloutSummary: "Consumed yesterday",
+      });
+      const [row] = store.listUnprocessed();
+      store.markProcessed({
+        ids: [row!.id],
+        processedAt: now - 2 * DAY_MS,
+      });
+
+      expect(store.gcProcessedRows({ nowMs: now }).deleted).toBe(0);
+      expect(
+        store.gcProcessedRows({ nowMs: now, retentionMs: DAY_MS }).deleted,
+      ).toBe(1);
+    });
+  });
 });

@@ -94,6 +94,15 @@ const ROW_COLUMNS = `
 
 export const DREAM_USAGE_REQUEUE_DEBOUNCE_MS = 6 * 60 * 60 * 1_000;
 
+/**
+ * Retention for consumed inbox rows (design review §6.1 / migration #10:
+ * "processed rows GC'd >30d"). A processed row's payload is already durably
+ * represented elsewhere — the orchestrator window / transcript FTS holds the
+ * byte-equivalent report, and Dream folded whatever mattered into MEMORY.md —
+ * so after 30 days the row is pure at-rest duplication (4.4MB measured live).
+ */
+export const DREAM_INBOX_GC_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
+
 const parseMetadata = (raw: string | null): Record<string, unknown> | null => {
   if (!raw) return null;
   try {
@@ -422,6 +431,42 @@ export class DreamInboxStore {
       throw error;
     }
     return { updated };
+  }
+
+  /**
+   * Garbage-collect rows Dream consumed more than `retentionMs` ago.
+   *
+   * Scope guards, all deliberate:
+   *   - Unprocessed rows are NEVER touched — the queue state is sacred; a
+   *     row missed by every pass so far still gets consolidated eventually.
+   *   - Rows surfaced to the orchestrator within the retention window
+   *     (`last_usage`) are kept: usage is the retention signal the usage
+   *     ledger half-built, and recently-useful summaries stay resolvable by
+   *     `findThreadSummariesByThreadIds`.
+   *   - `chronicle` rows are exempt — Chronicle transport is out of scope
+   *     and its per-window upsert keying already bounds it to a handful of
+   *     rows, so exempting it costs nothing.
+   */
+  gcProcessedRows(args?: { retentionMs?: number; nowMs?: number }): {
+    deleted: number;
+  } {
+    const retentionMs = Math.max(
+      0,
+      args?.retentionMs ?? DREAM_INBOX_GC_RETENTION_MS,
+    );
+    const cutoff = (args?.nowMs ?? Date.now()) - retentionMs;
+    const result = this.db
+      .prepare(
+        `
+        DELETE FROM dream_inbox
+        WHERE processed_by_dream_at IS NOT NULL
+          AND processed_by_dream_at < ?
+          AND (last_usage IS NULL OR last_usage < ?)
+          AND kind != 'chronicle'
+        `,
+      )
+      .run(cutoff, cutoff) as { changes?: number } | undefined;
+    return { deleted: Number(result?.changes ?? 0) };
   }
 
   /**
