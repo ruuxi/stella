@@ -134,7 +134,7 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 				totalTokens: 0,
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 			},
-			stopReason: "stop",
+			stopReason: "error",
 			timestamp: Date.now(),
 		};
 
@@ -1064,7 +1064,9 @@ function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | str
 	stopReason: StopReason;
 	errorMessage?: string;
 } {
-	if (reason === null) return { stopReason: "stop" };
+	if (reason === null) {
+		return { stopReason: "error", errorMessage: "Provider finish_reason was null" };
+	}
 	switch (reason) {
 		case "stop":
 		case "end":

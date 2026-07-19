@@ -24,7 +24,10 @@ vi.mock("../../../../runtime/ai/stream.js", () => ({
       .trim(),
 }));
 
-import { maybeCompactRuntimeThread } from "../../../../runtime/kernel/thread-runtime.js";
+import {
+  maybeCompactRuntimeThread,
+  validateThreadSummary,
+} from "../../../../runtime/kernel/thread-runtime.js";
 import { compactRuntimeThreadHistory } from "../../../../runtime/kernel/agent-runtime/thread-memory.js";
 import type { RuntimeStore } from "../../../../runtime/kernel/storage/runtime-store.js";
 import type { ResolvedLlmRoute } from "../../../../runtime/kernel/model-routing.js";
@@ -59,8 +62,8 @@ const createRoute = (apiKey: string | null): ResolvedLlmRoute =>
     getApiKey: async () => apiKey,
   }) as unknown as ResolvedLlmRoute;
 
-// A plausible full-size checkpoint summary — comfortably above the 200-char
-// accept floor that guards large spans against stub summaries.
+// A plausible structured checkpoint summary with enough distinct facts for a
+// large folded span.
 const VALID_SUMMARY = [
   "## Topic",
   "Condensed summary of the backlog covering the full compacted span.",
@@ -72,6 +75,24 @@ const VALID_SUMMARY = [
   "## Open Items",
   "None outstanding beyond the active workstreams named above.",
 ].join("\n");
+
+const CONCISE_INFORMATIVE_SUMMARY = [
+  "## Topic",
+  "Stella release audit.",
+  "## Key Points",
+  "Build, lint and tests passed; raw history remains safe.",
+  "## Current State",
+  "Ready for independent review.",
+  "## Open Items",
+  "Await approval; no edits pending.",
+].join("\n");
+
+const THREAD_SUMMARY_HEADINGS_FOR_TEST = [
+  "Topic",
+  "Key Points",
+  "Current State",
+  "Open Items",
+];
 
 describe("orchestrator thread compaction failure handling", () => {
   beforeEach(() => {
@@ -171,6 +192,28 @@ describe("orchestrator thread compaction failure handling", () => {
     expect(compactCalls).toHaveLength(0);
   });
 
+  it("refuses tool-use and legacy missing terminal outcomes", async () => {
+    for (const stopReason of ["toolUse", undefined]) {
+      const { store, compactCalls } = createFakeStore();
+      completeSimpleMock.mockReset();
+      completeSimpleMock.mockResolvedValue({
+        content: [{ type: "text", text: VALID_SUMMARY }],
+        ...(stopReason ? { stopReason } : {}),
+      });
+
+      const result = await maybeCompactRuntimeThread({
+        store,
+        threadKey: "conversation-1",
+        resolvedLlm: createRoute("auth-token"),
+        agentType: "orchestrator",
+      });
+
+      expect(result).toEqual({ compacted: false });
+      expect(compactCalls).toHaveLength(0);
+      expect(completeSimpleMock).toHaveBeenCalledTimes(2);
+    }
+  });
+
   it("refuses a near-empty summary for a large span even on a clean stop", async () => {
     const { store, compactCalls } = createFakeStore();
     completeSimpleMock.mockResolvedValue({
@@ -191,8 +234,12 @@ describe("orchestrator thread compaction failure handling", () => {
     expect(compactCalls).toHaveLength(0);
   });
 
-  it("refuses a near-empty override summary for a large span", async () => {
+  it("falls back to generation when a hook override is invalid", async () => {
     const { store, compactCalls } = createFakeStore();
+    completeSimpleMock.mockResolvedValue({
+      content: [{ type: "text", text: VALID_SUMMARY }],
+      stopReason: "stop",
+    });
 
     const result = await compactRuntimeThreadHistory({
       store,
@@ -202,9 +249,137 @@ describe("orchestrator thread compaction failure handling", () => {
       overrideSummary: "Compacted.",
     });
 
+    expect(result).toEqual({ compacted: true });
+    expect(completeSimpleMock).toHaveBeenCalledTimes(1);
+    expect(compactCalls).toHaveLength(1);
+    expect(compactCalls[0]).toMatchObject({ summary: VALID_SUMMARY });
+  });
+
+  it("retries one invalid generated summary with a corrective prompt", async () => {
+    const { store, compactCalls } = createFakeStore();
+    completeSimpleMock
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "## Topic\nTruncated." }],
+        stopReason: "stop",
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: VALID_SUMMARY }],
+        stopReason: "stop",
+      });
+
+    const result = await maybeCompactRuntimeThread({
+      store,
+      threadKey: "conversation-1",
+      resolvedLlm: createRoute("auth-token"),
+      agentType: "orchestrator",
+    });
+
+    expect(result).toEqual({ compacted: true });
+    expect(completeSimpleMock).toHaveBeenCalledTimes(2);
+    const retryContext = completeSimpleMock.mock.calls[1]![1] as {
+      messages: Array<{ content: Array<{ text: string }> }>;
+    };
+    expect(retryContext.messages[0]!.content[0]!.text).toContain(
+      "RETRY CORRECTION",
+    );
+    expect(compactCalls).toHaveLength(1);
+  });
+
+  it("bounds invalid generation retries and keeps the original span", async () => {
+    const { store, compactCalls } = createFakeStore();
+    completeSimpleMock.mockResolvedValue({
+      content: [{ type: "text", text: "## Topic\nStill truncated." }],
+      stopReason: "stop",
+    });
+
+    const result = await maybeCompactRuntimeThread({
+      store,
+      threadKey: "conversation-1",
+      resolvedLlm: createRoute("auth-token"),
+      agentType: "orchestrator",
+    });
+
     expect(result).toEqual({ compacted: false });
-    expect(completeSimpleMock).not.toHaveBeenCalled();
+    expect(completeSimpleMock).toHaveBeenCalledTimes(2);
     expect(compactCalls).toHaveLength(0);
+  });
+
+  it("validates normalized visible content rather than UTF-16 length", () => {
+    expect(CONCISE_INFORMATIVE_SUMMARY.length).toBeLessThan(200);
+    expect(
+      validateThreadSummary(CONCISE_INFORMATIVE_SUMMARY, 190_576),
+    ).toMatchObject({ valid: true });
+
+    const zeroWidth = "\u200b".repeat(400);
+    expect(validateThreadSummary(zeroWidth, 190_576)).toMatchObject({
+      valid: false,
+      visibleCodePoints: 0,
+    });
+
+    const astralFragment = [
+      "## Topic",
+      "😀".repeat(100),
+      "## Key Points",
+      "😀".repeat(100),
+      "## Current State",
+      "😀".repeat(100),
+      "## Open Items",
+      "😀".repeat(100),
+    ].join("\n");
+    expect(astralFragment.length).toBeGreaterThan(400);
+    expect(validateThreadSummary(astralFragment, 190_576)).toMatchObject({
+      valid: false,
+    });
+  });
+
+  it("rejects extreme repetition despite valid headings and size", () => {
+    const repeated = THREAD_SUMMARY_HEADINGS_FOR_TEST.map(
+      (heading) => `## ${heading}\n${"alpha ".repeat(80)}`,
+    ).join("\n");
+    expect(validateThreadSummary(repeated, 190_576)).toMatchObject({
+      valid: false,
+      reason: "extreme repetition",
+    });
+  });
+
+  it("rejects structured-looking consonant gibberish", () => {
+    const consonants = "bcdfghjklmnpqrstvwxz";
+    const gibberishWord = (value: number) => {
+      let remainder = value;
+      let suffix = "";
+      do {
+        suffix = consonants[remainder % consonants.length] + suffix;
+        remainder = Math.floor(remainder / consonants.length);
+      } while (remainder > 0);
+      return `qzx${suffix.padStart(4, "q")}`;
+    };
+    const gibberish = THREAD_SUMMARY_HEADINGS_FOR_TEST.map(
+      (heading, sectionIndex) =>
+        `## ${heading}\n${Array.from({ length: 16 }, (_, wordIndex) =>
+          gibberishWord(sectionIndex * 16 + wordIndex),
+        ).join(" ")}`,
+    ).join("\n");
+    expect(validateThreadSummary(gibberish, 190_576)).toMatchObject({
+      valid: false,
+      reason: "gibberish-like token distribution",
+    });
+  });
+
+  it("rejects copied summary-template boilerplate", () => {
+    const boilerplate = [
+      "## Topic",
+      "What the conversation is about, with generic filler copied unchanged.",
+      "## Key Points",
+      "Important information, decisions, and conclusions from the discussion.",
+      "## Current State",
+      "Where things stand now according to this placeholder summary.",
+      "## Open Items",
+      "Unresolved questions, pending tasks, or next steps discussed in the thread.",
+    ].join("\n");
+    expect(validateThreadSummary(boilerplate, 190_576)).toMatchObject({
+      valid: false,
+      reason: "template boilerplate",
+    });
   });
 
   it("instructs the summarizer that a near-empty summary is never acceptable", async () => {

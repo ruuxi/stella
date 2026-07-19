@@ -1,307 +1,813 @@
 #!/usr/bin/env node
-// Repair a stub compaction checkpoint: a compaction entry whose summary is a
-// near-empty fragment standing in for a large span (observed live 2026-07-18:
-// a 55-char "## Topic" fragment replacing a ~190k-token orchestrator span).
+// Repair a stub compaction checkpoint without deleting raw thread history.
+// Dry-run is the default. Apply requires Stella to be stopped, verifies that
+// no Electron/Bun/other process still holds the DB or its WAL sidecars, takes
+// BEGIN IMMEDIATE before authoritative reads, and writes a durable logical
+// backup that can be reversed with --restore.
 //
-// Compaction is a non-destructive overlay: the raw entries of the folded span
-// still exist in `runtime_thread_entries`. Delete the stub and every later
-// compaction that extended the same overlay range: those descendants were
-// summarized from the already-damaged projection and cannot recover the raw
-// span. The projection then falls back to the previous healthy checkpoint plus
-// raw messages, and the fixed summarizer can regenerate a proper checkpoint.
-//
-// Usage (Node >=22.5 only; QUIT Stella first — never apply against a live
-// writer, and do not invoke this script with Bun):
+// Repair:
 //   node runtime/scripts/repair-stub-compaction-checkpoint.mjs \
-//     --db ~/.stella/stella.sqlite \
-//     --entry 01KXSGPM354E01QJ3SXF6V89PJ            # stub entry id
-//   ...inspect the dry-run report, then re-run with both
-//   --apply --confirm-stella-stopped.
+//     --db ~/.stella/stella.sqlite --entry <stub-entry-id>
+//   node runtime/scripts/repair-stub-compaction-checkpoint.mjs \
+//     --db ~/.stella/stella.sqlite --entry <stub-entry-id> \
+//     --apply --confirm-stella-stopped
 //
-// The deleted rows (and the pre-repair runtime_threads summary) are backed up
-// to a JSON file next to the DB so the repair is reversible. Search metadata is
-// changed only with compare-and-swap: if it equals one of the removed overlay
-// summaries, it falls back to the previous healthy checkpoint; unrelated newer
-// metadata is preserved byte-for-byte.
+// Restore a repair from its JSON backup (dry-run first, then apply):
+//   node runtime/scripts/repair-stub-compaction-checkpoint.mjs \
+//     --db ~/.stella/stella.sqlite --restore <backup.json>
+//   node runtime/scripts/repair-stub-compaction-checkpoint.mjs \
+//     --db ~/.stella/stella.sqlite --restore <backup.json> \
+//     --apply --confirm-stella-stopped
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
-const args = process.argv.slice(2);
-const readFlag = (name) => {
-  const index = args.indexOf(`--${name}`);
-  return index >= 0 ? args[index + 1] : undefined;
-};
-const hasFlag = (name) => args.includes(`--${name}`);
-
-const expandHome = (p) =>
-  p?.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p;
-
-const dbPath = expandHome(readFlag("db"));
-const entryId = readFlag("entry");
-const apply = hasFlag("apply");
-const confirmedStopped = hasFlag("confirm-stella-stopped");
-
-// A stub is a tiny summary standing in for a big span. Mirrors the
-// THREAD_SUMMARY_MIN_ACCEPT_CHARS / floor-exempt logic in thread-runtime.ts.
 const STUB_MAX_SUMMARY_CHARS = 200;
 const STUB_MIN_TOKENS_BEFORE = 10_000;
+const BACKUP_VERSION = 1;
+const LSOF_PATH = "/usr/sbin/lsof";
+const REQUIRED_ENTRY_COLUMNS = [
+  "entry_id",
+  "thread_key",
+  "session_id",
+  "parent_entry_id",
+  "entry_type",
+  "timestamp_iso",
+  "created_at",
+  "data_json",
+  "insertion_sequence",
+];
 
-if (!entryId) {
-  console.error("Missing --entry <compaction entry id>.");
-  process.exit(1);
-}
-if (!dbPath) {
-  console.error("Missing --db <explicit sqlite path>.");
-  process.exit(1);
-}
-if (apply && !confirmedStopped) {
-  console.error(
-    "Refusing --apply without --confirm-stella-stopped. Quit Stella, verify the worker has exited, then pass both flags.",
+const fail = (message) => {
+  throw new Error(message);
+};
+
+const quoteIdentifier = (value) => {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(value)) {
+    fail(`Unsafe SQLite identifier: ${value}`);
+  }
+  return `"${value}"`;
+};
+
+const readFlag = (args, name) => {
+  const index = args.indexOf(`--${name}`);
+  if (index < 0) return undefined;
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) {
+    fail(`Missing value for --${name}.`);
+  }
+  return value;
+};
+
+const hasFlag = (args, name) => args.includes(`--${name}`);
+
+const expandHome = (value) => {
+  if (!value?.startsWith("~")) return value;
+  if (value !== "~" && !value.startsWith("~/")) {
+    fail(`Unsupported home-relative path: ${value}`);
+  }
+  return path.join(os.homedir(), value.slice(value === "~" ? 1 : 2));
+};
+
+export const resolveExistingRegularFile = (input, label) => {
+  if (!input) fail(`Missing ${label}.`);
+  const expanded = expandHome(input);
+  const absolute = path.resolve(expanded);
+  if (!fs.existsSync(absolute)) fail(`${label} not found: ${absolute}`);
+  const resolved = fs.realpathSync(absolute);
+  if (!fs.statSync(resolved).isFile())
+    fail(`${label} is not a regular file: ${resolved}`);
+  return resolved;
+};
+
+const parseLsofRecords = (stdout) => {
+  const holders = [];
+  let current = null;
+  for (const line of stdout.split(/\r?\n/u)) {
+    const tag = line[0];
+    const value = line.slice(1);
+    if (tag === "p") {
+      if (current) holders.push(current);
+      current = { pid: Number(value), command: "unknown", user: "unknown" };
+    } else if (tag === "c" && current) current.command = value;
+    else if (tag === "u" && current) current.user = value;
+  }
+  if (current) holders.push(current);
+  return holders.filter((holder) => Number.isInteger(holder.pid));
+};
+
+export const listDatabaseHolders = (dbPath, ignoredPids = [process.pid]) => {
+  if (process.platform !== "darwin") {
+    fail("Active-writer verification is currently supported only on macOS.");
+  }
+  if (!fs.existsSync(LSOF_PATH))
+    fail(`Required active-writer verifier not found: ${LSOF_PATH}`);
+  const candidates = [dbPath, `${dbPath}-wal`, `${dbPath}-shm`].filter(
+    (candidate) => fs.existsSync(candidate),
   );
-  process.exit(1);
-}
-if (!fs.existsSync(dbPath)) {
-  console.error(`Database not found: ${dbPath}`);
-  process.exit(1);
-}
-
-const db = new DatabaseSync(dbPath, { readOnly: !apply });
-try {
-  const row = db
-    .prepare(
-      `SELECT entry_id, thread_key, session_id, parent_entry_id, entry_type,
-              timestamp_iso, created_at, data_json, append_seq,
-              insertion_sequence
-       FROM runtime_thread_entries WHERE entry_id = ?`,
-    )
-    .get(entryId);
-  if (!row) {
-    console.error(`No entry with id ${entryId}.`);
-    process.exit(1);
+  const result = spawnSync(LSOF_PATH, ["-Fpcu", "--", ...candidates], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.error)
+    fail(`Could not inspect database holders: ${result.error.message}`);
+  if (result.status !== 0 && result.status !== 1) {
+    fail(`lsof failed (${result.status}): ${result.stderr.trim()}`);
   }
-  if (row.entry_type !== "compaction") {
-    console.error(`Entry ${entryId} is ${row.entry_type}, not compaction.`);
-    process.exit(1);
-  }
-
-  const data = JSON.parse(row.data_json ?? "{}");
-  const summary = String(data.summary ?? "");
-  const tokensBefore = Number(data.tokensBefore ?? 0);
-  const fromEntryId = String(data.fromEntryId ?? "");
-  if (summary.length >= STUB_MAX_SUMMARY_CHARS) {
-    console.error(
-      `Refusing: summary is ${summary.length} chars (>= ${STUB_MAX_SUMMARY_CHARS}) — not a stub.`,
-    );
-    process.exit(1);
-  }
-  if (tokensBefore < STUB_MIN_TOKENS_BEFORE) {
-    console.error(
-      `Refusing: tokensBefore is ${tokensBefore} (< ${STUB_MIN_TOKENS_BEFORE}) — span too small to qualify as a destroyed checkpoint.`,
-    );
-    process.exit(1);
-  }
-  if (!fromEntryId) {
-    console.error(
-      "Refusing: target compaction has no fromEntryId; this repair only handles explicit overlay ranges.",
-    );
-    process.exit(1);
-  }
-
-  // Later compactions normalize their start to the active overlay's original
-  // fromEntryId. They therefore depend on the damaged projection and must be
-  // removed with the stub. Refuse any unfamiliar later overlay shape. Use the
-  // storage projection's authoritative total order; timestamps can collide or
-  // arrive out of order.
-  const affected = db
-    .prepare(
-      `SELECT entry_id, thread_key, session_id, parent_entry_id, entry_type,
-              timestamp_iso, created_at, data_json, append_seq,
-              insertion_sequence
-       FROM runtime_thread_entries
-       WHERE thread_key = ? AND entry_type = 'compaction'
-         AND insertion_sequence >= ?
-       ORDER BY insertion_sequence ASC`,
-    )
-    .all(row.thread_key, row.insertion_sequence)
-    .map((candidate) => ({
-      row: candidate,
-      data: JSON.parse(candidate.data_json ?? "{}"),
-    }));
-  if (affected[0]?.row.entry_id !== entryId) {
-    console.error(
-      `Refusing: could not anchor affected overlay chain at ${entryId}.`,
-    );
-    process.exit(1);
-  }
-  const incompatibleDescendant = affected
-    .slice(1)
-    .find(
-      (candidate) => String(candidate.data.fromEntryId ?? "") !== fromEntryId,
-    );
-  if (incompatibleDescendant) {
-    console.error(
-      `Refusing: later compaction ${incompatibleDescendant.row.entry_id} starts from a different range.`,
-    );
-    process.exit(1);
-  }
-
-  // The healthy summary to restore onto runtime_threads: the latest earlier
-  // compaction checkpoint on the same thread with a non-stub summary. Use the
-  // same total order as transcript projection, not wall-clock time.
-  const previous = db
-    .prepare(
-      `SELECT entry_id, data_json FROM runtime_thread_entries
-       WHERE thread_key = ? AND entry_type = 'compaction'
-         AND insertion_sequence < ?
-       ORDER BY insertion_sequence DESC`,
-    )
-    .all(row.thread_key, row.insertion_sequence)
-    .map((candidate) => ({
-      entryId: candidate.entry_id,
-      summary: String(JSON.parse(candidate.data_json ?? "{}").summary ?? ""),
-    }))
-    .find((candidate) => candidate.summary.length >= STUB_MAX_SUMMARY_CHARS);
-
-  const thread = db
-    .prepare(`SELECT summary FROM runtime_threads WHERE thread_key = ?`)
-    .get(row.thread_key);
-  const threadSummary =
-    typeof thread?.summary === "string" ? thread.summary : null;
-  const removedSummaries = new Set(
-    affected.map((candidate) => String(candidate.data.summary ?? "")),
+  const ignored = new Set(ignoredPids);
+  return parseLsofRecords(result.stdout).filter(
+    (holder) => !ignored.has(holder.pid),
   );
-  const metadataBelongsToAffectedOverlay =
-    threadSummary !== null && removedSummaries.has(threadSummary);
-  const summaryRepair = metadataBelongsToAffectedOverlay
-    ? previous
-      ? `replace affected overlay metadata with ${previous.entryId}`
-      : "clear affected overlay metadata (no earlier healthy checkpoint)"
-    : "preserve current metadata summary (it is unrelated to the affected overlays)";
+};
 
-  console.log(`Stub checkpoint     ${entryId}`);
-  console.log(`  thread            ${row.thread_key}`);
-  console.log(`  written           ${row.timestamp_iso}`);
-  console.log(`  tokensBefore      ${tokensBefore}`);
-  console.log(`  summary (${summary.length} ch)  ${JSON.stringify(summary)}`);
-  console.log(`Affected overlays  ${affected.length}`);
-  for (const candidate of affected) {
-    console.log(
-      `  ${candidate.row.entry_id}  ${candidate.row.timestamp_iso}  ${String(candidate.data.summary ?? "").length} ch`,
-    );
-  }
-  console.log(
-    previous
-      ? `Fallback checkpoint ${previous.entryId} (${previous.summary.length} ch) — projection reverts to it after deleting the affected overlays.`
-      : "No earlier healthy checkpoint — projection reverts to raw messages only.",
+export const assertNoActiveDatabaseHolders = (
+  dbPath,
+  ignoredPids = [process.pid],
+) => {
+  const holders = listDatabaseHolders(dbPath, ignoredPids);
+  if (holders.length === 0) return;
+  fail(
+    `Refusing apply while database holders are active: ${holders
+      .map((holder) => `${holder.command} pid=${holder.pid}`)
+      .join(", ")}. Quit Stella and its worker, then retry.`,
   );
-  console.log(
-    `Thread metadata     ${threadSummary?.length ?? 0} ch — ${summaryRepair}.`,
-  );
+};
 
-  if (!apply) {
-    console.log(
-      "\nDry run. After quitting Stella and verifying its worker exited, re-run with --apply --confirm-stella-stopped to:",
-    );
-    console.log(
-      `  1. back up all affected rows + current thread summary to JSON`,
-    );
-    console.log(
-      `  2. DELETE ${affected.length} affected compaction overlay(s)`,
-    );
-    console.log(`  3. ${summaryRepair}`);
-    process.exit(0);
+const tableColumns = (db, table) =>
+  db
+    .prepare(`PRAGMA table_info(${quoteIdentifier(table)})`)
+    .all()
+    .map((row) => String(row.name));
+
+const assertSchema = (db) => {
+  const entryColumns = tableColumns(db, "runtime_thread_entries");
+  const threadColumns = tableColumns(db, "runtime_threads");
+  for (const column of REQUIRED_ENTRY_COLUMNS) {
+    if (!entryColumns.includes(column))
+      fail(`Database is missing runtime_thread_entries.${column}.`);
   }
+  if (
+    !threadColumns.includes("thread_key") ||
+    !threadColumns.includes("summary")
+  ) {
+    fail("Database has an incompatible runtime_threads schema.");
+  }
+  return { entryColumns, threadColumns };
+};
 
-  db.exec("BEGIN IMMEDIATE");
+const selectColumns = (columns) => columns.map(quoteIdentifier).join(", ");
+
+const parseCompactionData = (row) => {
+  let data;
   try {
-    // Revalidate the full affected chain after taking the write lock.
-    const affectedUnderLock = db
-      .prepare(
-        `SELECT entry_id, data_json FROM runtime_thread_entries
-         WHERE thread_key = ? AND entry_type = 'compaction'
-           AND insertion_sequence >= ?
-         ORDER BY insertion_sequence ASC`,
-      )
-      .all(row.thread_key, row.insertion_sequence);
-    const chainUnchanged =
-      affectedUnderLock.length === affected.length &&
-      affectedUnderLock.every(
-        (candidate, index) =>
-          candidate.entry_id === affected[index].row.entry_id &&
-          candidate.data_json === affected[index].row.data_json,
-      );
-    if (!chainUnchanged) {
-      throw new Error(
-        "Affected compaction chain changed before apply; nothing was deleted.",
+    data = JSON.parse(row.data_json ?? "{}");
+  } catch (error) {
+    fail(
+      `Entry ${row.entry_id} has invalid data_json: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return data && typeof data === "object" ? data : {};
+};
+
+const rowMatches = (left, right, columns) =>
+  columns.every((column) => Object.is(left?.[column], right?.[column]));
+
+const loadThreadEntries = (db, threadKey, entryColumns) =>
+  db
+    .prepare(
+      `SELECT ${selectColumns(entryColumns)} FROM runtime_thread_entries
+       WHERE thread_key = ?
+       ORDER BY insertion_sequence ASC, rowid ASC`,
+    )
+    .all(threadKey);
+
+const buildTopology = (rows) => {
+  const byId = new Map(rows.map((row) => [row.entry_id, row]));
+  const children = new Map();
+  for (const row of rows) {
+    if (row.parent_entry_id === null) continue;
+    if (!byId.has(row.parent_entry_id)) {
+      fail(
+        `Thread already has dangling parent ${row.parent_entry_id} referenced by ${row.entry_id}.`,
       );
     }
+    const bucket = children.get(row.parent_entry_id) ?? [];
+    bucket.push(row);
+    children.set(row.parent_entry_id, bucket);
+  }
+  return { byId, children };
+};
 
-    const backupPath = path.join(
-      path.dirname(dbPath),
-      `stub-checkpoint-backup-${entryId}-${Date.now()}.json`,
-    );
-    fs.writeFileSync(
-      backupPath,
-      JSON.stringify(
-        {
-          deletedEntries: affected.map((candidate) => candidate.row),
-          threadSummaryBefore: threadSummary,
-        },
-        null,
-        2,
-      ),
-      { flag: "wx" },
-    );
+const ancestorRows = (row, byId) => {
+  const ancestors = [];
+  const visited = new Set([row.entry_id]);
+  let parentId = row.parent_entry_id;
+  while (parentId !== null) {
+    if (visited.has(parentId)) fail(`Cycle detected at ${parentId}.`);
+    visited.add(parentId);
+    const parent = byId.get(parentId);
+    if (!parent) fail(`Missing ancestor ${parentId}.`);
+    ancestors.push(parent);
+    parentId = parent.parent_entry_id;
+  }
+  return ancestors;
+};
 
-    const deleteRow = db.prepare(
-      `DELETE FROM runtime_thread_entries
-       WHERE entry_id = ? AND thread_key = ? AND data_json = ?`,
+const descendantIds = (entryId, children) => {
+  const descendants = new Set();
+  const pending = [...(children.get(entryId) ?? [])];
+  while (pending.length > 0) {
+    const row = pending.pop();
+    if (descendants.has(row.entry_id)) continue;
+    descendants.add(row.entry_id);
+    pending.push(...(children.get(row.entry_id) ?? []));
+  }
+  return descendants;
+};
+
+const nearestSurvivingParentId = (row, affectedIds, byId) => {
+  let parentId = row.parent_entry_id;
+  while (parentId !== null && affectedIds.has(parentId)) {
+    const parent = byId.get(parentId);
+    if (!parent) fail(`Affected ancestor ${parentId} disappeared.`);
+    parentId = parent.parent_entry_id;
+  }
+  return parentId;
+};
+
+const countPathRows = (byId, startEntryId, stopEntryId, includeStop) => {
+  const counts = { message: 0, customMessage: 0 };
+  const visited = new Set();
+  let row = byId.get(startEntryId);
+  while (row) {
+    if (visited.has(row.entry_id)) {
+      fail(`Cycle detected while counting path at ${row.entry_id}.`);
+    }
+    visited.add(row.entry_id);
+    if (row.entry_id === stopEntryId && !includeStop) return counts;
+    if (row.entry_type === "message") counts.message += 1;
+    else if (row.entry_type === "custom_message") counts.customMessage += 1;
+    if (row.entry_id === stopEntryId) return counts;
+    row =
+      row.parent_entry_id === null ? undefined : byId.get(row.parent_entry_id);
+  }
+  fail(`Path from ${startEntryId} does not reach boundary ${stopEntryId}.`);
+};
+
+export const analyzeRepair = (db, entryId) => {
+  const { entryColumns, threadColumns } = assertSchema(db);
+  const target = db
+    .prepare(
+      `SELECT ${selectColumns(entryColumns)} FROM runtime_thread_entries WHERE entry_id = ?`,
+    )
+    .get(entryId);
+  if (!target) fail(`No entry with id ${entryId}.`);
+  if (target.entry_type !== "compaction")
+    fail(`Entry ${entryId} is ${target.entry_type}, not compaction.`);
+  if (!Number.isSafeInteger(target.insertion_sequence))
+    fail(`Entry ${entryId} lacks a safe insertion_sequence.`);
+
+  const targetData = parseCompactionData(target);
+  const summary = String(targetData.summary ?? "");
+  const tokensBefore = Number(targetData.tokensBefore ?? 0);
+  const fromEntryId = String(targetData.fromEntryId ?? "");
+  if (summary.length >= STUB_MAX_SUMMARY_CHARS) {
+    fail(
+      `Refusing: summary is ${summary.length} chars (>= ${STUB_MAX_SUMMARY_CHARS}); not a stub.`,
     );
-    for (const candidate of affected) {
-      const deletion = deleteRow.run(
-        candidate.row.entry_id,
-        row.thread_key,
-        candidate.row.data_json,
+  }
+  if (tokensBefore < STUB_MIN_TOKENS_BEFORE) {
+    fail(
+      `Refusing: tokensBefore is ${tokensBefore} (< ${STUB_MIN_TOKENS_BEFORE}).`,
+    );
+  }
+  if (!fromEntryId || !String(targetData.toEntryId ?? "")) {
+    fail(
+      "Refusing: target compaction has no explicit fromEntryId/toEntryId range.",
+    );
+  }
+
+  const rows = loadThreadEntries(db, target.thread_key, entryColumns);
+  const { byId, children } = buildTopology(rows);
+  const ancestors = ancestorRows(target, byId);
+  const previous = ancestors.find((candidate) => {
+    if (candidate.entry_type !== "compaction") return false;
+    return (
+      String(parseCompactionData(candidate).summary ?? "").length >=
+      STUB_MAX_SUMMARY_CHARS
+    );
+  });
+  if (!previous)
+    fail(
+      "No earlier healthy checkpoint exists on the target's authoritative parent path.",
+    );
+  const previousData = parseCompactionData(previous);
+  const previousSummary = String(previousData.summary ?? "");
+  const previousTo = byId.get(String(previousData.toEntryId ?? ""));
+  if (!previousTo)
+    fail(`Previous checkpoint ${previous.entry_id} has an invalid toEntryId.`);
+
+  const descendants = descendantIds(target.entry_id, children);
+  const affected = rows.filter(
+    (row) =>
+      row.entry_id === target.entry_id ||
+      (descendants.has(row.entry_id) && row.entry_type === "compaction"),
+  );
+  if (
+    affected.some(
+      (candidate) => !Number.isSafeInteger(candidate.insertion_sequence),
+    )
+  ) {
+    fail("An affected checkpoint lacks a safe insertion_sequence.");
+  }
+  for (const candidate of affected.slice(1)) {
+    const data = parseCompactionData(candidate);
+    if (String(data.fromEntryId ?? "") !== fromEntryId) {
+      fail(
+        `Dependent compaction ${candidate.entry_id} starts from an incompatible range.`,
       );
-      if (deletion.changes !== 1) {
-        throw new Error(
-          `Overlay ${candidate.row.entry_id} changed before apply; transaction rolled back.`,
+    }
+  }
+  const affectedIds = new Set(affected.map((row) => row.entry_id));
+  const reparents = rows
+    .filter(
+      (row) =>
+        !affectedIds.has(row.entry_id) &&
+        row.parent_entry_id !== null &&
+        affectedIds.has(row.parent_entry_id),
+    )
+    .map((row) => ({
+      before: row,
+      afterParentEntryId: nearestSurvivingParentId(row, affectedIds, byId),
+    }));
+
+  const thread = db
+    .prepare(
+      `SELECT ${selectColumns(threadColumns)} FROM runtime_threads WHERE thread_key = ?`,
+    )
+    .get(target.thread_key);
+  if (!thread) fail(`Missing runtime_threads row for ${target.thread_key}.`);
+  const removedSummaries = new Set(
+    affected.map((row) => String(parseCompactionData(row).summary ?? "")),
+  );
+  const metadataBelongsToAffectedOverlay =
+    typeof thread.summary === "string" && removedSummaries.has(thread.summary);
+  const threadSummaryAfter = metadataBelongsToAffectedOverlay
+    ? previousSummary
+    : thread.summary;
+
+  const latestAffected = affected.reduce((latest, candidate) =>
+    candidate.insertion_sequence > latest.insertion_sequence
+      ? candidate
+      : latest,
+  );
+  const latestAffectedTo = byId.get(
+    String(parseCompactionData(latestAffected).toEntryId ?? ""),
+  );
+  if (!latestAffectedTo) {
+    fail(
+      `Affected checkpoint ${latestAffected.entry_id} has an invalid toEntryId.`,
+    );
+  }
+  const targetFrom = byId.get(fromEntryId);
+  const targetTo = byId.get(String(targetData.toEntryId));
+  if (!targetFrom || !targetTo)
+    fail("Target compaction range points outside its thread.");
+
+  return {
+    entryId,
+    entryColumns,
+    threadColumns,
+    target,
+    targetData,
+    rows,
+    affected,
+    affectedIds,
+    previous,
+    previousSummary,
+    reparents,
+    thread,
+    threadSummaryAfter,
+    metadataBelongsToAffectedOverlay,
+    counts: {
+      storedInTargetRange: countPathRows(
+        byId,
+        targetTo.entry_id,
+        targetFrom.entry_id,
+        true,
+      ),
+      newlyExposedThroughDependentBoundary: countPathRows(
+        byId,
+        latestAffectedTo.entry_id,
+        previousTo.entry_id,
+        false,
+      ),
+    },
+  };
+};
+
+const createBackupPath = (dbPath, entryId) =>
+  path.join(
+    path.dirname(dbPath),
+    `stub-checkpoint-backup-${entryId}-${Date.now()}.json`,
+  );
+
+const writeDurableJson = (filePath, value) => {
+  const fd = fs.openSync(filePath, "wx", 0o600);
+  try {
+    fs.writeFileSync(fd, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const directoryFd = fs.openSync(path.dirname(filePath), "r");
+  try {
+    fs.fsyncSync(directoryFd);
+  } finally {
+    fs.closeSync(directoryFd);
+  }
+};
+
+const fullRowWhere = (columns) =>
+  columns.map((column) => `${quoteIdentifier(column)} IS ?`).join(" AND ");
+
+const assertRepairPostconditions = (db, plan) => {
+  const current = loadThreadEntries(
+    db,
+    plan.target.thread_key,
+    plan.entryColumns,
+  );
+  const currentById = new Map(current.map((row) => [row.entry_id, row]));
+  for (const deleted of plan.affected) {
+    if (currentById.has(deleted.entry_id))
+      fail(`Deleted checkpoint ${deleted.entry_id} is still present.`);
+  }
+  const reparentById = new Map(
+    plan.reparents.map((item) => [item.before.entry_id, item]),
+  );
+  for (const before of plan.rows) {
+    if (plan.affectedIds.has(before.entry_id)) continue;
+    const after = currentById.get(before.entry_id);
+    if (!after) fail(`Unrelated entry ${before.entry_id} disappeared.`);
+    const reparent = reparentById.get(before.entry_id);
+    for (const column of plan.entryColumns) {
+      const expected =
+        column === "parent_entry_id" && reparent
+          ? reparent.afterParentEntryId
+          : before[column];
+      if (!Object.is(after[column], expected))
+        fail(
+          `Unrelated entry ${before.entry_id}.${column} changed unexpectedly.`,
+        );
+    }
+  }
+  buildTopology(current);
+  const thread = db
+    .prepare(
+      `SELECT ${selectColumns(plan.threadColumns)} FROM runtime_threads WHERE thread_key = ?`,
+    )
+    .get(plan.target.thread_key);
+  if (!Object.is(thread?.summary, plan.threadSummaryAfter))
+    fail("Thread summary postcondition failed.");
+};
+
+export const applyRepairPlan = (
+  db,
+  dbPath,
+  plan,
+  backupPath = createBackupPath(dbPath, plan.entryId),
+) => {
+  const backup = {
+    version: BACKUP_VERSION,
+    kind: "stella-stub-checkpoint-repair",
+    databasePath: dbPath,
+    createdAt: new Date().toISOString(),
+    entryColumns: plan.entryColumns,
+    threadColumns: plan.threadColumns,
+    targetEntryId: plan.entryId,
+    deletedEntries: plan.affected,
+    reparentedChildren: plan.reparents,
+    threadBefore: plan.thread,
+    threadSummaryAfter: plan.threadSummaryAfter,
+    counts: plan.counts,
+  };
+  writeDurableJson(backupPath, backup);
+
+  const updateParent = db.prepare(
+    `UPDATE runtime_thread_entries SET parent_entry_id = ?
+     WHERE entry_id = ? AND thread_key = ? AND parent_entry_id IS ?`,
+  );
+  for (const reparent of plan.reparents) {
+    const result = updateParent.run(
+      reparent.afterParentEntryId,
+      reparent.before.entry_id,
+      reparent.before.thread_key,
+      reparent.before.parent_entry_id,
+    );
+    if (result.changes !== 1)
+      fail(`CAS failed while reparenting ${reparent.before.entry_id}.`);
+  }
+
+  const deleteRow = db.prepare(
+    `DELETE FROM runtime_thread_entries WHERE ${fullRowWhere(plan.entryColumns)}`,
+  );
+  // Delete descendants before ancestors so a future schema-level parent
+  // foreign key cannot make a multi-checkpoint repair order-dependent.
+  for (const row of [...plan.affected].reverse()) {
+    const result = deleteRow.run(
+      ...plan.entryColumns.map((column) => row[column]),
+    );
+    if (result.changes !== 1)
+      fail(`CAS failed while deleting ${row.entry_id}.`);
+  }
+
+  if (!Object.is(plan.thread.summary, plan.threadSummaryAfter)) {
+    const result = db
+      .prepare(
+        `UPDATE runtime_threads SET summary = ?
+         WHERE thread_key = ? AND summary IS ?`,
+      )
+      .run(
+        plan.threadSummaryAfter,
+        plan.target.thread_key,
+        plan.thread.summary,
+      );
+    if (result.changes !== 1)
+      fail("CAS failed while updating runtime_threads.summary.");
+  }
+  assertRepairPostconditions(db, plan);
+  return { backupPath, backup };
+};
+
+const loadBackup = (backupPath) => {
+  const value = JSON.parse(fs.readFileSync(backupPath, "utf8"));
+  if (
+    value?.version !== BACKUP_VERSION ||
+    value?.kind !== "stella-stub-checkpoint-repair"
+  ) {
+    fail(`Unsupported repair backup: ${backupPath}`);
+  }
+  return value;
+};
+
+export const analyzeRestore = (db, dbPath, backup) => {
+  const schema = assertSchema(db);
+  if (path.resolve(backup.databasePath) !== dbPath) {
+    fail(`Backup belongs to a different database path: ${backup.databasePath}`);
+  }
+  if (
+    JSON.stringify(schema.entryColumns) !==
+      JSON.stringify(backup.entryColumns) ||
+    JSON.stringify(schema.threadColumns) !==
+      JSON.stringify(backup.threadColumns)
+  ) {
+    fail("Database schema no longer matches the repair backup.");
+  }
+  for (const row of backup.deletedEntries) {
+    const existing = db
+      .prepare("SELECT 1 FROM runtime_thread_entries WHERE entry_id = ?")
+      .get(row.entry_id);
+    if (existing)
+      fail(`Cannot restore: deleted entry ${row.entry_id} already exists.`);
+    const sequenceOwner = db
+      .prepare(
+        "SELECT entry_id FROM runtime_thread_entries WHERE insertion_sequence = ?",
+      )
+      .get(row.insertion_sequence);
+    if (sequenceOwner)
+      fail(
+        `Cannot restore: insertion_sequence ${row.insertion_sequence} is occupied.`,
+      );
+  }
+  for (const reparent of backup.reparentedChildren) {
+    const current = db
+      .prepare(
+        `SELECT ${selectColumns(backup.entryColumns)} FROM runtime_thread_entries WHERE entry_id = ?`,
+      )
+      .get(reparent.before.entry_id);
+    if (!current)
+      fail(
+        `Cannot restore: reparented child ${reparent.before.entry_id} is missing.`,
+      );
+    for (const column of backup.entryColumns) {
+      const expected =
+        column === "parent_entry_id"
+          ? reparent.afterParentEntryId
+          : reparent.before[column];
+      if (!Object.is(current[column], expected)) {
+        fail(
+          `Cannot restore: child ${reparent.before.entry_id}.${column} changed after repair.`,
         );
       }
     }
+  }
+  const thread = db
+    .prepare(
+      `SELECT ${selectColumns(backup.threadColumns)} FROM runtime_threads WHERE thread_key = ?`,
+    )
+    .get(backup.threadBefore.thread_key);
+  if (!thread) fail("Cannot restore: runtime_threads row is missing.");
+  if (!Object.is(thread.summary, backup.threadSummaryAfter)) {
+    fail("Cannot restore: runtime_threads.summary changed after repair.");
+  }
+  return { schema, thread };
+};
 
-    if (metadataBelongsToAffectedOverlay) {
-      db.prepare(
-        `UPDATE runtime_threads SET summary = ?
-         WHERE thread_key = ? AND summary = ?`,
-      ).run(previous?.summary ?? null, row.thread_key, threadSummary);
-    }
-    db.exec("COMMIT");
-
-    console.log(
-      `\nDeleted ${affected.length} affected compaction overlay(s), beginning with ${entryId}.`,
+export const applyRestorePlan = (db, backup, restorePlan) => {
+  const insert = db.prepare(
+    `INSERT INTO runtime_thread_entries (${selectColumns(backup.entryColumns)})
+     VALUES (${backup.entryColumns.map(() => "?").join(", ")})`,
+  );
+  for (const row of backup.deletedEntries) {
+    const result = insert.run(
+      ...backup.entryColumns.map((column) => row[column]),
     );
-    if (metadataBelongsToAffectedOverlay) {
-      console.log(
-        previous
-          ? `Replaced affected thread metadata from ${previous.entryId}.`
-          : "Cleared affected thread metadata.",
+    if (result.changes !== 1)
+      fail(`Restore insert failed for ${row.entry_id}.`);
+  }
+  const updateParent = db.prepare(
+    `UPDATE runtime_thread_entries SET parent_entry_id = ?
+     WHERE entry_id = ? AND thread_key = ? AND parent_entry_id IS ?`,
+  );
+  for (const reparent of backup.reparentedChildren) {
+    const result = updateParent.run(
+      reparent.before.parent_entry_id,
+      reparent.before.entry_id,
+      reparent.before.thread_key,
+      reparent.afterParentEntryId,
+    );
+    if (result.changes !== 1)
+      fail(`Restore CAS failed for child ${reparent.before.entry_id}.`);
+  }
+  if (!Object.is(backup.threadBefore.summary, backup.threadSummaryAfter)) {
+    const result = db
+      .prepare(
+        `UPDATE runtime_threads SET summary = ?
+         WHERE thread_key = ? AND summary IS ?`,
+      )
+      .run(
+        backup.threadBefore.summary,
+        backup.threadBefore.thread_key,
+        backup.threadSummaryAfter,
       );
-    } else {
-      console.log("Preserved the newer runtime_threads.summary metadata.");
+    if (result.changes !== 1)
+      fail("Restore CAS failed for runtime_threads.summary.");
+  }
+
+  const restoredRows = loadThreadEntries(
+    db,
+    backup.threadBefore.thread_key,
+    backup.entryColumns,
+  );
+  buildTopology(restoredRows);
+  const restoredById = new Map(restoredRows.map((row) => [row.entry_id, row]));
+  for (const row of backup.deletedEntries) {
+    if (!rowMatches(restoredById.get(row.entry_id), row, backup.entryColumns)) {
+      fail(`Restored entry ${row.entry_id} does not match its backup.`);
     }
-    console.log(`Backup written to ${backupPath}.`);
+  }
+  for (const reparent of backup.reparentedChildren) {
+    if (
+      !rowMatches(
+        restoredById.get(reparent.before.entry_id),
+        reparent.before,
+        backup.entryColumns,
+      )
+    ) {
+      fail(
+        `Restored child ${reparent.before.entry_id} does not match its backup.`,
+      );
+    }
+  }
+  const restoredThread = db
+    .prepare(
+      `SELECT ${selectColumns(backup.threadColumns)} FROM runtime_threads WHERE thread_key = ?`,
+    )
+    .get(backup.threadBefore.thread_key);
+  if (!Object.is(restoredThread?.summary, backup.threadBefore.summary)) {
+    fail("Restored runtime_threads.summary does not match its backup.");
+  }
+  return restorePlan;
+};
+
+const printRepairPlan = (plan) => {
+  console.log(`Stub checkpoint     ${plan.entryId}`);
+  console.log(`  thread            ${plan.target.thread_key}`);
+  console.log(`  written           ${plan.target.timestamp_iso}`);
+  console.log(`  tokensBefore      ${plan.targetData.tokensBefore}`);
+  console.log(
+    `  summary           ${JSON.stringify(String(plan.targetData.summary ?? ""))}`,
+  );
+  console.log(`Affected overlays  ${plan.affected.length}`);
+  for (const row of plan.affected) {
+    console.log(
+      `  ${row.entry_id}  ${row.timestamp_iso}  ${String(parseCompactionData(row).summary ?? "").length} ch`,
+    );
+  }
+  console.log(
+    `Fallback checkpoint ${plan.previous.entry_id} (${plan.previousSummary.length} ch)`,
+  );
+  console.log(`Children reparented ${plan.reparents.length}`);
+  const stored = plan.counts.storedInTargetRange;
+  const exposed = plan.counts.newlyExposedThroughDependentBoundary;
+  console.log(
+    `Stored in target range        ${stored.message} message + ${stored.customMessage} custom_message rows`,
+  );
+  console.log(
+    `Newly exposed through latest affected boundary  ${exposed.message} message + ${exposed.customMessage} custom_message rows`,
+  );
+  console.log(
+    Object.is(plan.thread.summary, plan.threadSummaryAfter)
+      ? "Thread metadata     preserved byte-for-byte"
+      : `Thread metadata     restored to ${plan.previous.entry_id}`,
+  );
+};
+
+const runLocked = (db, dbPath, work) => {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    assertNoActiveDatabaseHolders(dbPath, [process.pid]);
+    const result = work();
+    db.exec("COMMIT");
+    return result;
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
   }
-  console.log(
-    "Relaunch Stella; the next turn past the compaction trigger regenerates a full checkpoint.",
-  );
-} finally {
-  db.close();
+};
+
+export const main = (argv = process.argv.slice(2)) => {
+  const dbPath = resolveExistingRegularFile(readFlag(argv, "db"), "Database");
+  const entryId = readFlag(argv, "entry");
+  const restoreInput = readFlag(argv, "restore");
+  const apply = hasFlag(argv, "apply");
+  const confirmedStopped = hasFlag(argv, "confirm-stella-stopped");
+  if (Boolean(entryId) === Boolean(restoreInput)) {
+    fail("Pass exactly one of --entry <id> or --restore <backup.json>.");
+  }
+  if (apply && !confirmedStopped) {
+    fail("Refusing --apply without --confirm-stella-stopped.");
+  }
+  if (apply) assertNoActiveDatabaseHolders(dbPath);
+
+  const db = new DatabaseSync(dbPath, { readOnly: !apply });
+  try {
+    db.exec("PRAGMA foreign_keys = ON");
+    if (entryId) {
+      if (!apply) {
+        const plan = analyzeRepair(db, entryId);
+        printRepairPlan(plan);
+        console.log(
+          "\nDry run. Apply writes a durable logical backup, reparents direct children, deletes affected overlays, and updates metadata in one locked transaction.",
+        );
+        return;
+      }
+      const result = runLocked(db, dbPath, () => {
+        const plan = analyzeRepair(db, entryId);
+        printRepairPlan(plan);
+        return applyRepairPlan(db, dbPath, plan);
+      });
+      console.log(
+        `\nRepair committed. Reversible backup: ${result.backupPath}`,
+      );
+      return;
+    }
+
+    const backupPath = resolveExistingRegularFile(restoreInput, "Backup");
+    const backup = loadBackup(backupPath);
+    if (!apply) {
+      analyzeRestore(db, dbPath, backup);
+      console.log(`Restore backup      ${backupPath}`);
+      console.log(`Entries restored    ${backup.deletedEntries.length}`);
+      console.log(`Children restored   ${backup.reparentedChildren.length}`);
+      console.log(
+        "\nDry run. Re-run with --apply --confirm-stella-stopped to restore the backed-up overlays, parents, and thread summary.",
+      );
+      return;
+    }
+    runLocked(db, dbPath, () => {
+      const plan = analyzeRestore(db, dbPath, backup);
+      return applyRestorePlan(db, backup, plan);
+    });
+    console.log(`Restore committed from ${backupPath}.`);
+  } finally {
+    db.close();
+  }
+};
+
+const isMain =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }

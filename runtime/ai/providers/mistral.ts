@@ -147,7 +147,7 @@ function createOutput(model: Model<"mistral-conversations">): AssistantMessage {
 			totalTokens: 0,
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
-		stopReason: "stop",
+		stopReason: "error",
 		timestamp: Date.now(),
 	};
 }
@@ -623,7 +623,7 @@ function mapToolChoice(
 }
 
 function mapChatStopReason(reason: string | null): StopReason {
-	if (reason === null) return "stop";
+	if (reason === null) return "error";
 	switch (reason) {
 		case "stop":
 			return "stop";
@@ -635,6 +635,6 @@ function mapChatStopReason(reason: string | null): StopReason {
 		case "error":
 			return "error";
 		default:
-			return "stop";
+			return "error";
 	}
 }

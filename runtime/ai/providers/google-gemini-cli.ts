@@ -344,7 +344,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
 				totalTokens: 0,
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 			},
-			stopReason: "stop",
+			stopReason: "error",
 			timestamp: Date.now(),
 		};
 
@@ -496,7 +496,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
 					totalTokens: 0,
 					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 				};
-				output.stopReason = "stop";
+				output.stopReason = "error";
 				output.errorMessage = undefined;
 				output.timestamp = Date.now();
 				started = false;

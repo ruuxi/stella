@@ -501,23 +501,167 @@ export const formatThreadCheckpointMessage = (
 const computeSummaryBudget = (messages: StoredThreadMessage[]): number =>
   Math.max(100, Math.floor(getThreadTokenEstimate(messages) * 0.2));
 
-/**
- * Floor for an accepted checkpoint summary of a non-trivial span. A
- * checkpoint replaces the whole compacted middle in the assistant's window,
- * so a near-empty summary destroys that context's recoverability (observed
- * live: a 55-char stub — a bare `## Topic` heading cut off mid-sentence —
- * standing in for a ~190k-token orchestrator span). Below this floor the span
- * is kept uncompacted and the next turn retries.
- */
-const THREAD_SUMMARY_MIN_ACCEPT_CHARS = 200;
+const THREAD_SUMMARY_FLOOR_EXEMPT_TOKENS = 2_000;
+const THREAD_SUMMARY_MAX_GENERATION_ATTEMPTS = 2;
+const THREAD_SUMMARY_HEADINGS = [
+  "Topic",
+  "Key Points",
+  "Current State",
+  "Open Items",
+] as const;
+
+export type ThreadSummaryValidation = {
+  valid: boolean;
+  reason?: string;
+  visibleCodePoints: number;
+  wordCount: number;
+  uniqueWordCount: number;
+};
+
+const normalizeSummaryForValidation = (summary: string): string =>
+  summary
+    .normalize("NFKC")
+    .replace(/\p{Cf}/gu, "")
+    .replace(/[^\S\r\n]+/gu, " ")
+    .trim();
+
+const segmentSummaryWords = (summary: string): string[] => {
+  const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
+  return Array.from(segmenter.segment(summary))
+    .filter((segment) => segment.isWordLike)
+    .map((segment) => segment.segment.toLocaleLowerCase());
+};
+
+const summarySectionBodies = (summary: string): Map<string, string> => {
+  const matches = Array.from(
+    summary.matchAll(
+      /^##\s*(Topic|Key Points|Current State|Open Items)\s*$/gimu,
+    ),
+  );
+  const sections = new Map<string, string>();
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index]!;
+    const heading = match[1]!.toLocaleLowerCase();
+    const bodyStart = (match.index ?? 0) + match[0].length;
+    const bodyEnd = matches[index + 1]?.index ?? summary.length;
+    sections.set(heading, summary.slice(bodyStart, bodyEnd).trim());
+  }
+  return sections;
+};
+
+const longestRepeatedCodePointRun = (value: string): number => {
+  let longest = 0;
+  let current = 0;
+  let previous = "";
+  for (const codePoint of value) {
+    if (codePoint === previous) current += 1;
+    else {
+      previous = codePoint;
+      current = 1;
+    }
+    longest = Math.max(longest, current);
+  }
+  return longest;
+};
 
 /**
- * Spans smaller than this estimated token count may legitimately summarize
- * to fewer than {@link THREAD_SUMMARY_MIN_ACCEPT_CHARS} characters, so the
- * floor is not applied to them. Any span at or above it has a target budget
- * of 400+ tokens (20% of span), which no honest summary undershoots.
+ * Validate the information carrier that will replace a folded thread span.
+ * Counts normalized Unicode code points rather than UTF-16 code units, strips
+ * invisible format characters, requires the prompt's four durable sections,
+ * and scales the information floor logarithmically so a genuinely concise
+ * summary is accepted without allowing a tiny fragment to replace a huge span.
  */
-const THREAD_SUMMARY_FLOOR_EXEMPT_TOKENS = 2_000;
+export const validateThreadSummary = (
+  summary: string,
+  middleTokens: number,
+): ThreadSummaryValidation => {
+  const normalized = normalizeSummaryForValidation(summary);
+  const visible = Array.from(normalized).filter(
+    (codePoint) => !/\s/u.test(codePoint),
+  );
+  const words = segmentSummaryWords(normalized);
+  const uniqueWords = new Set(words);
+  const base = {
+    visibleCodePoints: visible.length,
+    wordCount: words.length,
+    uniqueWordCount: uniqueWords.size,
+  };
+  if (!normalized || visible.length === 0) {
+    return { valid: false, reason: "no visible content", ...base };
+  }
+  if (middleTokens < THREAD_SUMMARY_FLOOR_EXEMPT_TOKENS) {
+    return { valid: true, ...base };
+  }
+
+  const sections = summarySectionBodies(normalized);
+  const missingSection = THREAD_SUMMARY_HEADINGS.find(
+    (heading) =>
+      !segmentSummaryWords(sections.get(heading.toLowerCase()) ?? "").length,
+  );
+  if (missingSection) {
+    return {
+      valid: false,
+      reason: `missing informative ## ${missingSection} section`,
+      ...base,
+    };
+  }
+
+  const scale = Math.max(
+    0,
+    Math.log2(middleTokens / THREAD_SUMMARY_FLOOR_EXEMPT_TOKENS),
+  );
+  const minVisibleCodePoints = Math.min(150, Math.round(64 + scale * 14));
+  const minWords = Math.min(24, Math.round(10 + scale * 2));
+  if (visible.length < minVisibleCodePoints || words.length < minWords) {
+    return {
+      valid: false,
+      reason: `insufficient information for ${middleTokens} folded tokens`,
+      ...base,
+    };
+  }
+
+  const placeholderFragments = [
+    "what the conversation is about",
+    "important information, decisions, and conclusions",
+    "where things stand now",
+    "unresolved questions, pending tasks, or next steps discussed",
+  ];
+  const lower = normalized.toLocaleLowerCase();
+  if (placeholderFragments.some((fragment) => lower.includes(fragment))) {
+    return { valid: false, reason: "template boilerplate", ...base };
+  }
+
+  const frequencies = new Map<string, number>();
+  for (const word of words) {
+    frequencies.set(word, (frequencies.get(word) ?? 0) + 1);
+  }
+  const mostCommonWord = Math.max(0, ...frequencies.values());
+  const uniqueRatio = uniqueWords.size / Math.max(1, words.length);
+  if (
+    (words.length >= 12 && uniqueRatio < 0.3) ||
+    mostCommonWord / Math.max(1, words.length) > 0.3 ||
+    longestRepeatedCodePointRun(normalized) >= 16
+  ) {
+    return { valid: false, reason: "extreme repetition", ...base };
+  }
+
+  const longAsciiWords = words.filter((word) => /^[a-z]{5,}$/u.test(word));
+  const vowelFreeWords = longAsciiWords.filter(
+    (word) => !/[aeiouy]/u.test(word),
+  );
+  if (
+    longAsciiWords.length >= 12 &&
+    vowelFreeWords.length / longAsciiWords.length > 0.55
+  ) {
+    return {
+      valid: false,
+      reason: "gibberish-like token distribution",
+      ...base,
+    };
+  }
+
+  return { valid: true, ...base };
+};
 
 /**
  * Estimated chars-per-token used to cap the summary request input.
@@ -599,6 +743,7 @@ const buildSummaryPrompt = (
   previousSummary: string | undefined,
   budget: number,
   durableMemoryReference?: string,
+  correctiveReason?: string,
 ): string => {
   if (!formattedConversation) {
     return previousSummary?.trim() ?? "";
@@ -607,7 +752,10 @@ const buildSummaryPrompt = (
     Boolean(durableMemoryReference?.trim()),
   );
   const alreadyKnown = buildAlreadyKnownSection(durableMemoryReference);
-  const footer = `${guidelines}
+  const correction = correctiveReason
+    ? `RETRY CORRECTION: The previous summary was rejected (${correctiveReason}). Return all four required headings with specific, non-repetitive facts. Do not return placeholders, invisible text, or a fragment.\n\n`
+    : "";
+  const footer = `${correction}${guidelines}
 
 Target ~${budget} tokens. Be factual — only include information that was explicitly discussed in the conversation. Do NOT invent file paths, commands, or details that were not mentioned. Write only the summary body.`;
   if (previousSummary?.trim()) {
@@ -693,21 +841,24 @@ export const buildDurableMemoryReference = (
 };
 
 const generateThreadSummary = async (args: {
+  threadKey: string;
   messages: StoredThreadMessage[];
   previousSummary?: string;
   resolvedLlm: ResolvedLlmRoute;
   durableMemoryReference?: string;
   stellaDataDir?: string;
-}): Promise<string | null> => {
+  correctiveReason?: string;
+}): Promise<{ text: string | null; retryable: boolean; reason?: string }> => {
   const apiKey = (await args.resolvedLlm.getApiKey())?.trim();
   if (!apiKey) {
     // Silent-null here previously hid every failed compaction; keep the
     // benign no-credential skip but make it diagnosable.
     logger.warn("thread.compaction.summary-skipped", {
+      threadKey: args.threadKey,
       reason: "no-api-key",
       model: args.resolvedLlm.model.id,
     });
-    return null;
+    return { text: null, retryable: false, reason: "no API key" };
   }
 
   const formattedConversation = capSummaryConversation(
@@ -715,7 +866,13 @@ const generateThreadSummary = async (args: {
     getSummaryInputCharBudget(args.resolvedLlm),
   );
   if (!formattedConversation) {
-    return args.previousSummary?.trim() || null;
+    return {
+      text: args.previousSummary?.trim() || null,
+      retryable: false,
+      ...(!args.previousSummary?.trim()
+        ? { reason: "empty formatted conversation" }
+        : {}),
+    };
   }
 
   const promptBody = buildSummaryPrompt(
@@ -723,6 +880,7 @@ const generateThreadSummary = async (args: {
     args.previousSummary,
     computeSummaryBudget(args.messages),
     args.durableMemoryReference,
+    args.correctiveReason,
   );
 
   // Thrown LLM failures propagate to `compactRuntimeThreadHistory`, which
@@ -757,20 +915,26 @@ const generateThreadSummary = async (args: {
   // so the next turn retries without destroying recoverable history.
   if (message.stopReason !== "stop") {
     logger.warn("thread.compaction.summary-failed", {
+      threadKey: args.threadKey,
       model: args.resolvedLlm.model.id,
       stopReason: message.stopReason,
       errorMessage: message.errorMessage,
       partialChars: text.length,
     });
-    return null;
+    return {
+      text: null,
+      retryable: true,
+      reason: `unclean terminal reason ${String(message.stopReason)}`,
+    };
   }
   if (!text) {
     logger.warn("thread.compaction.summary-empty", {
+      threadKey: args.threadKey,
       model: args.resolvedLlm.model.id,
     });
-    return null;
+    return { text: null, retryable: true, reason: "empty output" };
   }
-  return text;
+  return { text, retryable: false };
 };
 
 /**
@@ -867,39 +1031,73 @@ export const maybeCompactRuntimeThread = async (args: {
     return { compacted: false };
   }
 
-  const summary =
-    args.overrideSummary?.trim() ||
-    (await generateThreadSummary({
+  const middleTokens = getThreadTokenEstimate(splitMessages.middleMessages);
+  let summary: string | null = null;
+  let correctiveReason: string | undefined;
+  const overrideSummary = args.overrideSummary?.trim();
+  if (overrideSummary) {
+    const validation = validateThreadSummary(overrideSummary, middleTokens);
+    if (validation.valid) {
+      summary = overrideSummary;
+    } else {
+      correctiveReason = `hook override: ${validation.reason ?? "invalid summary"}`;
+      logger.warn("thread.compaction.override-invalid-fallback", {
+        threadKey: args.threadKey,
+        model: args.resolvedLlm.model.id,
+        reason: validation.reason,
+        visibleCodePoints: validation.visibleCodePoints,
+        wordCount: validation.wordCount,
+        middleTokens,
+      });
+    }
+  }
+
+  const durableMemoryReference =
+    args.agentType === AGENT_IDS.ORCHESTRATOR
+      ? buildDurableMemoryReference(args.stellaDataDir)
+      : undefined;
+  for (
+    let attempt = 1;
+    !summary && attempt <= THREAD_SUMMARY_MAX_GENERATION_ATTEMPTS;
+    attempt += 1
+  ) {
+    const generated = await generateThreadSummary({
+      threadKey: args.threadKey,
       messages: splitMessages.middleMessages,
       previousSummary: splitMessages.previousSummary,
       resolvedLlm: args.resolvedLlm,
       stellaDataDir: args.stellaDataDir,
-      // Only the orchestrator has the durable-memory docs injected on every
-      // turn; other agents must keep such facts in the summary itself.
-      durableMemoryReference:
-        args.agentType === AGENT_IDS.ORCHESTRATOR
-          ? buildDurableMemoryReference(args.stellaDataDir)
-          : undefined,
-    }));
-  if (!summary) {
-    return { compacted: false };
+      durableMemoryReference,
+      ...(correctiveReason ? { correctiveReason } : {}),
+    });
+    if (generated.text) {
+      const validation = validateThreadSummary(generated.text, middleTokens);
+      if (validation.valid) {
+        summary = generated.text;
+        break;
+      }
+      correctiveReason = validation.reason ?? "invalid summary";
+      logger.warn("thread.compaction.summary-invalid", {
+        threadKey: args.threadKey,
+        model: args.resolvedLlm.model.id,
+        attempt,
+        reason: validation.reason,
+        visibleCodePoints: validation.visibleCodePoints,
+        wordCount: validation.wordCount,
+        uniqueWordCount: validation.uniqueWordCount,
+        middleTokens,
+      });
+    } else {
+      correctiveReason = generated.reason ?? "summary generation failed";
+      if (!generated.retryable) break;
+    }
   }
-
-  // Refuse near-empty summaries for non-trivial spans regardless of where
-  // the summary came from (generated or hook/engine override): writing the
-  // checkpoint would destroy the span's recoverability from the window.
-  // Keeping the span uncompacted is always the safer failure mode.
-  const middleTokens = getThreadTokenEstimate(splitMessages.middleMessages);
-  if (
-    summary.length < THREAD_SUMMARY_MIN_ACCEPT_CHARS &&
-    middleTokens >= THREAD_SUMMARY_FLOOR_EXEMPT_TOKENS
-  ) {
-    logger.warn("thread.compaction.summary-too-short", {
+  if (!summary) {
+    logger.warn("thread.compaction.summary-invalid-final", {
       threadKey: args.threadKey,
       model: args.resolvedLlm.model.id,
-      summaryChars: summary.length,
+      reason: correctiveReason,
       middleTokens,
-      fromOverride: Boolean(args.overrideSummary?.trim()),
     });
     return { compacted: false };
   }

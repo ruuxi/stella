@@ -464,7 +464,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 				totalTokens: 0,
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 			},
-			stopReason: "stop",
+			stopReason: "error",
 			timestamp: Date.now(),
 		};
 
@@ -1614,17 +1614,13 @@ function mapStopReason(reason: Anthropic.Messages.StopReason | string): StopReas
 			return "toolUse";
 		case "refusal":
 			return "error";
-		case "pause_turn": // Stop is good enough -> resubmit
-			return "stop";
+		case "pause_turn":
+			return "error";
 		case "stop_sequence":
 			return "stop"; // We don't supply stop sequences, so this should never happen
 		case "sensitive": // Content flagged by safety filters (not yet in SDK types)
 			return "error";
 		default:
-			// Handle unknown stop reasons gracefully (API may add new values).
-			// A fully-streamed message shouldn't collapse into an error just
-			// because Anthropic introduced a new terminal stop_reason, so treat
-			// it as a normal completion.
-			return "stop";
+			return "error";
 	}
 }

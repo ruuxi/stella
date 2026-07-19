@@ -40,6 +40,7 @@ import {
 } from "../utils/diagnostics.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
+import { anomalousStreamStopError } from "../utils/provider-stop.js";
 import { convertResponsesMessages, convertResponsesTools, processResponsesStream } from "./openai-responses-shared.js";
 import { buildBaseOptions } from "./simple-options.js";
 
@@ -150,7 +151,7 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 				totalTokens: 0,
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 			},
-			stopReason: "stop",
+			stopReason: "error",
 			timestamp: Date.now(),
 		};
 
@@ -200,6 +201,9 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 
 					if (options?.signal?.aborted) {
 						throw new Error("Request was aborted");
+					}
+					if (output.stopReason === "error" || output.stopReason === "aborted") {
+						throw anomalousStreamStopError(output);
 					}
 					stream.push({
 						type: "done",
@@ -300,6 +304,9 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 
 			if (options?.signal?.aborted) {
 				throw new Error("Request was aborted");
+			}
+			if (output.stopReason === "error" || output.stopReason === "aborted") {
+				throw anomalousStreamStopError(output);
 			}
 
 			stream.push({ type: "done", reason: output.stopReason as "stop" | "length" | "toolUse", message: output });
@@ -519,7 +526,11 @@ async function* mapCodexEvents(events: AsyncIterable<Record<string, unknown>>): 
 			const normalizedResponse = response
 				? { ...response, status: normalizeCodexStatus(response.status) }
 				: response;
-			yield { ...event, type: "response.completed", response: normalizedResponse } as ResponseStreamEvent;
+			yield {
+				...event,
+				type: type === "response.incomplete" ? "response.incomplete" : "response.completed",
+				response: normalizedResponse,
+			} as ResponseStreamEvent;
 			return;
 		}
 
