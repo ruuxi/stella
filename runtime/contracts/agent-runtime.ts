@@ -54,7 +54,7 @@ export type AgentCapabilities = {
   /**
    * Push-inject the live resident memory docs — the durable user profile
    * (`~/.stella/memories/profile.md`, written by the Remember tool) and
-   * Dream's focus summary (`~/.stella/memories/memory_summary.md`) — as hidden
+   * Dream's routing map (`~/.stella/memories/memory_map.md`) — as hidden
    * startup docs, so durable facts are always in context without a Context
    * lookup.
    */

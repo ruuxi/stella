@@ -3,8 +3,8 @@
  * subagent.
  *
  * Dream's runtime intercepts via `dispatchLocalTool` (which enforces
- * path-restricted writes to `MEMORY.md`, `memory_summary.md`, and
- * `memory_index.md`). The host
+ * path-restricted writes to `MEMORY.md` and `memory_map.md`, plus the
+ * mechanical hard cap on the map). The host
  * doesn't have an unrestricted handler for this tool — calling it outside
  * the Dream subagent returns an error.
  */

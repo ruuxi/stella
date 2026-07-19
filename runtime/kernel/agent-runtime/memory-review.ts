@@ -21,7 +21,10 @@ import { completeSimple, readAssistantText } from "../../ai/stream.js";
 import { parseJsonWithRepair } from "../../ai/utils/json-parse.js";
 import type { AssistantMessage, Context, Message } from "../../ai/types.js";
 import type { AgentMessage } from "../agent-core/types.js";
-import { readMemorySummary } from "../memory/dream-storage.js";
+import {
+  readMemoryMap,
+  stripInjectedHtmlComments,
+} from "../memory/dream-storage.js";
 import {
   redactMemoryText,
   redactMemoryStringArray,
@@ -154,16 +157,16 @@ export const buildMemoryReviewUserPrompt = (
 
 /**
  * Compact "already recorded / recently proposed" context so the gate can skip
- * duplicates at the source. Combines Dream's consolidated active-focus view
- * (`memory_summary.md`) with the most recent orchestrator-review candidate
- * notes (which may not be consolidated yet). Best-effort and bounded; returns
- * an empty string when nothing is available.
+ * duplicates at the source. Combines Dream's routing map (`memory_map.md`,
+ * comment-stripped like every injected view) with the most recent
+ * orchestrator-review candidate notes (which may not be consolidated yet).
+ * Best-effort and bounded; returns an empty string when nothing is available.
  */
 export const buildKnownMemoryContext = async (args: {
   stellaDataDir: string;
   store: RuntimeStore;
 }): Promise<string> => {
-  const summary = await readMemorySummary(args.stellaDataDir).catch(() => null);
+  const memoryMap = await readMemoryMap(args.stellaDataDir).catch(() => null);
   let recentNotes: string[] = [];
   try {
     recentNotes = args.store.dreamInboxStore.listRecentMemoryNotes(
@@ -174,10 +177,12 @@ export const buildKnownMemoryContext = async (args: {
   }
 
   const blocks: string[] = [];
-  const trimmedSummary = summary ? redactMemoryText(summary.trim()) : "";
-  if (trimmedSummary) {
+  const trimmedMap = memoryMap
+    ? redactMemoryText(stripInjectedHtmlComments(memoryMap))
+    : "";
+  if (trimmedMap) {
     blocks.push(
-      `<consolidated_memory path="~/.stella/memories/memory_summary.md">\n${trimmedSummary}\n</consolidated_memory>`,
+      `<consolidated_memory path="~/.stella/memories/memory_map.md">\n${trimmedMap}\n</consolidated_memory>`,
     );
   }
   if (recentNotes.length > 0) {

@@ -30,14 +30,13 @@ import { redactMemoryText } from "../memory/redaction.js";
 import {
   BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE,
   buildStartupDocMessage,
-  capBootstrapMemorySummary,
   LIFE_CORE_MEMORY_DISPLAY_PATH,
-  LIFE_MEMORY_INDEX_DISPLAY_PATH,
-  LIFE_MEMORY_SUMMARY_DISPLAY_PATH,
+  LIFE_MEMORY_MAP_DISPLAY_PATH,
   LIFE_PERSONALITY_DISPLAY_PATH,
   LIFE_REGISTRY_DISPLAY_PATH,
   LIFE_USER_PROFILE_DISPLAY_PATH,
   parseStartupDocPath,
+  RETIRED_STARTUP_DOC_DISPLAY_PATHS,
 } from "../memory/resident-docs.js";
 
 const logger = createRuntimeLogger("agent-runtime.thread-memory");
@@ -428,32 +427,38 @@ const customMessageContentText = (
     .join("\n");
 };
 
-const hasPersistedStartupDoc = (
-  context: LocalAgentContext,
-  displayPath: string,
-): boolean =>
-  context.threadHistory?.some((entry) => {
+const persistedStartupDocPaths = (context: LocalAgentContext): Set<string> => {
+  const paths = new Set<string>();
+  for (const entry of context.threadHistory ?? []) {
     const customMessage = entry.customMessage;
     if (
       entry.role !== "runtimeInternal" ||
       customMessage?.customType !== BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE
     ) {
-      return false;
+      continue;
     }
-    // Match on the doc's PATH, deliberately not its body. A resident doc
-    // whose source changed mid-thread (a Remember replace/remove, a Dream
-    // rewrite of memory_summary.md) must NOT re-inject: the change is already
-    // visible in the live window as ordinary messages, and appending another
-    // full copy is exactly the stale-copy leak (~14 copies / ~72K tokens per
-    // call measured live). The pinned copy catches up from disk at the next
-    // compaction boundary via `refreshResidentStartupDocs`, where the prompt
-    // prefix is rebuilt and the provider cache is already invalidated.
-    return (
-      parseStartupDocPath(
-        customMessageContentText(customMessage.content),
-      ) === displayPath
+    const docPath = parseStartupDocPath(
+      customMessageContentText(customMessage.content),
     );
-  }) ?? false;
+    if (docPath) {
+      paths.add(docPath);
+    }
+  }
+  return paths;
+};
+
+// Dedup matches on the doc's PATH, deliberately not its body. A resident doc
+// whose source changed mid-thread (a Remember replace/remove, a Dream rewrite
+// of memory_map.md) must NOT re-inject: the change is already visible in the
+// live window as ordinary messages, and appending another full copy is
+// exactly the stale-copy leak (~14 copies / ~72K tokens per call measured
+// live). The pinned copy catches up from disk at the next compaction boundary
+// via `refreshResidentStartupDocs`, where the prompt prefix is rebuilt and
+// the provider cache is already invalidated.
+const hasPersistedStartupDoc = (
+  context: LocalAgentContext,
+  displayPath: string,
+): boolean => persistedStartupDocPaths(context).has(displayPath);
 
 export type OrchestratorPromptMessage = RuntimePromptMessage;
 
@@ -554,43 +559,33 @@ export const buildStartupPromptMessages = async (args: {
     );
   }
 
-  // Resident focus summary — Dream's dynamic snapshot of what the user is
-  // actively working on, now pushed instead of only reachable via Context.
-  const memorySummary = args.context.memorySummary
-    ? capBootstrapMemorySummary(
-        redactMemoryText(args.context.memorySummary.trim()),
-      )
+  // Resident memory map — Dream's routing layer (what memory contains and
+  // where to find it), the single Dream doc since memory_summary/memory_index
+  // retired. While a pinned copy of a RETIRED doc is still persisted (a
+  // pre-migration thread that has not hit its next compaction boundary), the
+  // map is NOT injected: the retired copy's content is still resident, and
+  // adding the map mid-epoch would carry both for the rest of the epoch. The
+  // boundary refresh converts the retired copy into the map copy instead.
+  const memoryMap = args.context.memoryMap
+    ? redactMemoryText(args.context.memoryMap.trim())
     : "";
-  if (
-    memorySummary &&
-    !hasPersistedStartupDoc(args.context, LIFE_MEMORY_SUMMARY_DISPLAY_PATH)
-  ) {
-    messages.push(
-      createInternalPromptMessage(
-        buildStartupDocMessage(LIFE_MEMORY_SUMMARY_DISPLAY_PATH, memorySummary),
-        "hidden",
-        BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE,
-      ),
+  if (memoryMap) {
+    const persistedPaths = persistedStartupDocPaths(args.context);
+    const hasRetiredDocPersisted = [...RETIRED_STARTUP_DOC_DISPLAY_PATHS].some(
+      (retiredPath) => persistedPaths.has(retiredPath),
     );
-  }
-
-  // Resident routing index — injected under its own path label so summary
-  // truncation can never silently swallow it (it previously piggybacked on
-  // the memory-summary doc and was cut first by the shared cap).
-  const memoryIndex = args.context.memoryIndex
-    ? redactMemoryText(args.context.memoryIndex.trim())
-    : "";
-  if (
-    memoryIndex &&
-    !hasPersistedStartupDoc(args.context, LIFE_MEMORY_INDEX_DISPLAY_PATH)
-  ) {
-    messages.push(
-      createInternalPromptMessage(
-        buildStartupDocMessage(LIFE_MEMORY_INDEX_DISPLAY_PATH, memoryIndex),
-        "hidden",
-        BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE,
-      ),
-    );
+    if (
+      !persistedPaths.has(LIFE_MEMORY_MAP_DISPLAY_PATH) &&
+      !hasRetiredDocPersisted
+    ) {
+      messages.push(
+        createInternalPromptMessage(
+          buildStartupDocMessage(LIFE_MEMORY_MAP_DISPLAY_PATH, memoryMap),
+          "hidden",
+          BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE,
+        ),
+      );
+    }
   }
 
   return messages;

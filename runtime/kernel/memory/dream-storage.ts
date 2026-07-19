@@ -5,17 +5,48 @@
  * them with stable templates the first time the scheduler runs (or on
  * startup). The agent then surgically edits them via StrReplace using the
  * unique anchor markers below.
+ *
+ * Layout after the memory_map migration:
+ *   - `MEMORY.md`      — durable task-group ledger (unchanged).
+ *   - `memory_map.md`  — the single resident routing doc. Replaces both
+ *     `memory_summary.md` (narrative retired — the compaction checkpoint owns
+ *     recent narrative now that it is validity-gated) and `memory_index.md`
+ *     (merged in). Pointer-only, hard-capped; over-cap writes are rejected at
+ *     the tool boundary so Dream must curate rather than truncate.
+ *   - `memory_summary.md` / `memory_index.md` — retired. Existing files are
+ *     preserved on disk (marked with a retirement banner) but are no longer
+ *     seeded, read, injected, or writable by Dream. Their routing content is
+ *     folded into the first `memory_map.md` seed.
  */
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
 export const MEMORY_FILE = "MEMORY.md";
+export const MEMORY_MAP_FILE = "memory_map.md";
+/** Retired file names, kept for migration and jail error messages. */
 export const MEMORY_SUMMARY_FILE = "memory_summary.md";
 export const MEMORY_INDEX_FILE = "memory_index.md";
-export const MEMORY_INDEX_MAX_CHARS = 6_000;
-export const MEMORY_INDEX_MAX_ENTRIES = 80;
-export const MEMORY_INDEX_STALE_DAYS = 90;
+
+/**
+ * Hard budget for `memory_map.md`, measured on the INJECTED view (HTML
+ * comments stripped — anchors and charter guidance are free; routed content
+ * is not). Enforced mechanically at the StrReplace boundary: writes that
+ * would exceed it are rejected with an error, never silently truncated.
+ */
+export const MEMORY_MAP_MAX_CHARS = 6_000;
+export const MEMORY_MAP_MAX_ENTRIES = 80;
+export const MEMORY_MAP_STALE_DAYS = 90;
+
+export const MEMORY_MAP_ROUTES_START_ANCHOR = "<!-- DREAM:MAP_START -->";
+export const MEMORY_MAP_ROUTES_END_ANCHOR = "<!-- DREAM:MAP_END -->";
+export const MEMORY_MAP_DERIVED_START_ANCHOR = "<!-- DREAM:DERIVED_START -->";
+export const MEMORY_MAP_DERIVED_END_ANCHOR = "<!-- DREAM:DERIVED_END -->";
+const MEMORY_MAP_MIGRATED_START_ANCHOR = "<!-- DREAM:MIGRATED_SUMMARY_START -->";
+const MEMORY_MAP_MIGRATED_END_ANCHOR = "<!-- DREAM:MIGRATED_SUMMARY_END -->";
+
+const MEMORY_MAP_ROUTES_PLACEHOLDER = "- No routing entries recorded yet.";
+const MEMORY_MAP_DERIVED_PLACEHOLDER = "- None pending promotion.";
 
 const MEMORY_TEMPLATE = `# MEMORY
 
@@ -41,31 +72,74 @@ const MEMORY_TEMPLATE = `# MEMORY
 <!-- DREAM:ARCHIVE_END -->
 `;
 
-const MEMORY_SUMMARY_TEMPLATE = `# Memory summary
+/**
+ * The charter travels as an HTML comment so Dream sees it when reading the
+ * file while the injected view (comments stripped) spends the whole budget on
+ * routing content.
+ */
+const MEMORY_MAP_CHARTER = `<!-- DREAM:MAP_CHARTER
+Memory map — the single resident routing layer, maintained by Dream. It
+replaces memory_summary.md and memory_index.md. Pointer-only: what memory
+contains and where to find it. No narrative, no restated facts — the durable
+facts live in MEMORY.md blocks; this file only routes to them.
 
-> Short, dynamic snapshot of the user's currently active focus. Rewritten by
-> the Dream agent when focus shifts. Target ~10-20 lines max. Loaded on every
-> Orchestrator turn.
+Routing entries (between the DREAM:MAP anchors), one line each:
+- <task family / topic> -> <best source> (updated YYYY-MM-DD) | aliases: <words the user actually says>
+  Best source is one of: MEMORY.md <block date — title>, profile.md,
+  threads:<thread_id>, or transcripts.
 
-<!-- DREAM:SUMMARY_START -->
-- No active focus recorded yet.
-<!-- DREAM:SUMMARY_END -->
-`;
+## Derived constraints (between the DREAM:DERIVED anchors) stages durable
+constraints observed in conversation that have not yet been promoted to
+profile.md via the Remember tool. One line each, tagged [derived YYYY-MM-DD].
+Remove a line once it is promoted. Never edit profile.md yourself.
 
-const MEMORY_INDEX_TEMPLATE = `# Memory routing index
+Hard budget: ${MEMORY_MAP_MAX_CHARS} injected characters (HTML comments are
+not counted) and about ${MEMORY_MAP_MAX_ENTRIES} entries. Writes that would
+exceed the budget are REJECTED with an error — curate (merge, prune, tighten)
+instead of truncating. Prune entries older than ${MEMORY_MAP_STALE_DAYS} days
+unless recent usage shows they are still useful. Never store secrets,
+credentials, tokens, private keys, auth headers, or sensitive personal data.
+Edit only with StrReplace using small unique anchors; keep every DREAM anchor
+comment intact.
+-->`;
 
-> Compact, discriminative routing map maintained by Dream. Keep task families,
-> aliases, repo names, paths, prior-decision hooks, and the best retrieval
-> source. Loaded on every Orchestrator turn and searched before deeper memory.
-> Maximum ${MEMORY_INDEX_MAX_ENTRIES} entries and ${MEMORY_INDEX_MAX_CHARS} characters. Each entry carries an
-> updated date; prune entries older than ${MEMORY_INDEX_STALE_DAYS} days unless recent usage shows they remain useful.
-> Never store secrets, credentials, tokens, private keys, auth headers, or
-> sensitive personal data here. This file contains routing metadata only.
+const buildMemoryMapContent = (args: {
+  routes: string;
+  migratedSummary?: string;
+}): string => {
+  const sections = [
+    MEMORY_MAP_CHARTER,
+    "# Memory map",
+    "",
+    MEMORY_MAP_ROUTES_START_ANCHOR,
+    args.routes,
+    MEMORY_MAP_ROUTES_END_ANCHOR,
+    "",
+    "## Derived constraints",
+    "",
+    MEMORY_MAP_DERIVED_START_ANCHOR,
+    MEMORY_MAP_DERIVED_PLACEHOLDER,
+    MEMORY_MAP_DERIVED_END_ANCHOR,
+  ];
+  if (args.migratedSummary) {
+    sections.push(
+      "",
+      "## Migrated focus notes (from memory_summary.md)",
+      "",
+      "<!-- One-time migration staging: rewrite each line below as a routing entry",
+      "or drop it (the facts are already in MEMORY.md), then delete this whole",
+      "section including its anchors. -->",
+      MEMORY_MAP_MIGRATED_START_ANCHOR,
+      args.migratedSummary,
+      MEMORY_MAP_MIGRATED_END_ANCHOR,
+    );
+  }
+  return `${sections.join("\n")}\n`;
+};
 
-<!-- DREAM:INDEX_START -->
-- No routing entries recorded yet.
-<!-- DREAM:INDEX_END -->
-`;
+const MEMORY_MAP_TEMPLATE = buildMemoryMapContent({
+  routes: MEMORY_MAP_ROUTES_PLACEHOLDER,
+});
 
 export const memoriesRoot = (stellaDataDir: string): string =>
   path.join(stellaDataDir, "memories");
@@ -73,6 +147,10 @@ export const memoriesRoot = (stellaDataDir: string): string =>
 export const memoryFilePath = (stellaDataDir: string): string =>
   path.join(memoriesRoot(stellaDataDir), MEMORY_FILE);
 
+export const memoryMapPath = (stellaDataDir: string): string =>
+  path.join(memoriesRoot(stellaDataDir), MEMORY_MAP_FILE);
+
+/** Retired paths — used only by the migration seed and jail diagnostics. */
 export const memorySummaryPath = (stellaDataDir: string): string =>
   path.join(memoriesRoot(stellaDataDir), MEMORY_SUMMARY_FILE);
 
@@ -82,12 +160,156 @@ export const memoryIndexPath = (stellaDataDir: string): string =>
 const writeIfMissing = async (
   target: string,
   contents: string,
-): Promise<void> => {
+): Promise<boolean> => {
   try {
     await fs.access(target);
+    return false;
   } catch {
     await fs.writeFile(target, contents, "utf-8");
+    return true;
   }
+};
+
+const readOptionalFile = async (target: string): Promise<string | null> => {
+  try {
+    return await fs.readFile(target, "utf-8");
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Strip HTML comment blocks from a memory doc before it is measured or
+ * injected into model context. Dream's conventions keep archives, charters,
+ * and anchors inside comments; only non-comment content costs injection
+ * budget. An unterminated `<!--` is stripped through end-of-doc so a
+ * malformed comment can't leak an archive back into context. Canonical
+ * implementation for the whole memory layer (re-exported by
+ * `resident-docs.ts`, whose callers own the injection path).
+ */
+export const stripInjectedHtmlComments = (text: string): string =>
+  text
+    .replace(/<!--[\s\S]*?-->/gu, "")
+    .replace(/<!--[\s\S]*$/u, "")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+
+const stripComments = stripInjectedHtmlComments;
+
+/**
+ * Extract the content between a retired doc's anchor comments; falls back to
+ * the comment-stripped body when the anchors were edited away.
+ */
+const extractAnchoredBody = (
+  raw: string,
+  startAnchor: string,
+  endAnchor: string,
+): string => {
+  const start = raw.indexOf(startAnchor);
+  const end = raw.indexOf(endAnchor);
+  if (start !== -1 && end !== -1 && end > start) {
+    return raw.slice(start + startAnchor.length, end).trim();
+  }
+  return stripComments(raw);
+};
+
+const dropPlaceholder = (body: string, placeholder: string): string =>
+  body === placeholder ? "" : body;
+
+/** Truncate at a line boundary so a folded entry is never cut mid-line. */
+const truncateAtLineBoundary = (
+  text: string,
+  maxChars: number,
+  marker: string,
+): string => {
+  if (text.length <= maxChars) return text;
+  const slice = text.slice(0, Math.max(0, maxChars));
+  const lastNewline = slice.lastIndexOf("\n");
+  return `${lastNewline > 0 ? slice.slice(0, lastNewline) : slice}\n${marker}`;
+};
+
+const RETIREMENT_BANNER_PREFIX = "<!-- RETIRED";
+
+const buildRetirementBanner = (fileName: string): string =>
+  `${RETIREMENT_BANNER_PREFIX} ${new Date().toISOString().slice(0, 10)}: ${fileName} was replaced by ${MEMORY_MAP_FILE}. Stella no longer reads, injects, or writes this file; it is preserved for reference. -->\n`;
+
+/**
+ * One-time migration seed for `memory_map.md`, built from whatever the
+ * retired docs contain so no routing signal is lost at the cutover:
+ * `memory_index.md` entries become the initial routing entries verbatim;
+ * `memory_summary.md`'s active bullets land in a clearly-marked staging
+ * section for Dream to curate into routes (or drop — every summary fact is
+ * provably duplicated in MEMORY.md). Folded content is bounded so the seeded
+ * map's injected view respects the hard cap; anything cut by the bound
+ * remains readable in the retired files, which are never deleted.
+ */
+const buildSeededMemoryMapContent = (args: {
+  indexRaw: string | null;
+  summaryRaw: string | null;
+}): string => {
+  const indexBody = args.indexRaw
+    ? dropPlaceholder(
+        extractAnchoredBody(
+          args.indexRaw,
+          "<!-- DREAM:INDEX_START -->",
+          "<!-- DREAM:INDEX_END -->",
+        ),
+        MEMORY_MAP_ROUTES_PLACEHOLDER,
+      )
+    : "";
+  const summaryBody = args.summaryRaw
+    ? dropPlaceholder(
+        extractAnchoredBody(
+          args.summaryRaw,
+          "<!-- DREAM:SUMMARY_START -->",
+          "<!-- DREAM:SUMMARY_END -->",
+        ),
+        "- No active focus recorded yet.",
+      )
+    : "";
+  if (!indexBody && !summaryBody) {
+    return MEMORY_MAP_TEMPLATE;
+  }
+  // Budget the folded content against the injected cap, favoring the index
+  // (already routing-shaped) over the summary staging notes.
+  const templateOverheadChars = stripComments(MEMORY_MAP_TEMPLATE).length + 80;
+  const routesBudget = Math.floor(
+    (MEMORY_MAP_MAX_CHARS - templateOverheadChars) * 0.6,
+  );
+  const routes = indexBody
+    ? truncateAtLineBoundary(
+        indexBody,
+        routesBudget,
+        `[migration cut — remaining entries preserved in ${MEMORY_INDEX_FILE}]`,
+      )
+    : MEMORY_MAP_ROUTES_PLACEHOLDER;
+  const summaryBudget =
+    MEMORY_MAP_MAX_CHARS -
+    templateOverheadChars -
+    (indexBody ? stripComments(routes).length : 0);
+  const migratedSummary = summaryBody
+    ? truncateAtLineBoundary(
+        summaryBody,
+        Math.max(0, summaryBudget),
+        `[migration cut — full text preserved in ${MEMORY_SUMMARY_FILE}]`,
+      )
+    : undefined;
+  return buildMemoryMapContent({
+    routes,
+    ...(migratedSummary ? { migratedSummary } : {}),
+  });
+};
+
+/** Prepend the retirement banner unless the file already carries one. */
+const markRetiredFile = async (
+  target: string,
+  fileName: string,
+): Promise<void> => {
+  const raw = await readOptionalFile(target);
+  if (raw === null || raw.startsWith(RETIREMENT_BANNER_PREFIX)) {
+    return;
+  }
+  await fs.writeFile(target, `${buildRetirementBanner(fileName)}${raw}`, "utf-8");
 };
 
 export const ensureDreamMemoryLayout = async (
@@ -96,39 +318,36 @@ export const ensureDreamMemoryLayout = async (
   const root = memoriesRoot(stellaDataDir);
   await fs.mkdir(root, { recursive: true });
   await writeIfMissing(memoryFilePath(stellaDataDir), MEMORY_TEMPLATE);
-  await writeIfMissing(
-    memorySummaryPath(stellaDataDir),
-    MEMORY_SUMMARY_TEMPLATE,
+  const mapTarget = memoryMapPath(stellaDataDir);
+  try {
+    await fs.access(mapTarget);
+    return;
+  } catch {
+    // First run after the migration (or a fresh install): seed the map from
+    // the retired docs, then mark them retired. Retired files are preserved
+    // byte-for-byte below the banner — never deleted.
+  }
+  const [indexRaw, summaryRaw] = await Promise.all([
+    readOptionalFile(memoryIndexPath(stellaDataDir)),
+    readOptionalFile(memorySummaryPath(stellaDataDir)),
+  ]);
+  const seeded = await writeIfMissing(
+    mapTarget,
+    buildSeededMemoryMapContent({ indexRaw, summaryRaw }),
   );
-  await writeIfMissing(memoryIndexPath(stellaDataDir), MEMORY_INDEX_TEMPLATE);
+  if (seeded) {
+    await markRetiredFile(
+      memorySummaryPath(stellaDataDir),
+      MEMORY_SUMMARY_FILE,
+    );
+    await markRetiredFile(memoryIndexPath(stellaDataDir), MEMORY_INDEX_FILE);
+  }
 };
 
 export const readMemoryFile = async (
   stellaDataDir: string,
-): Promise<string | null> => {
-  try {
-    return await fs.readFile(memoryFilePath(stellaDataDir), "utf-8");
-  } catch {
-    return null;
-  }
-};
+): Promise<string | null> => await readOptionalFile(memoryFilePath(stellaDataDir));
 
-export const readMemorySummary = async (
+export const readMemoryMap = async (
   stellaDataDir: string,
-): Promise<string | null> => {
-  try {
-    return await fs.readFile(memorySummaryPath(stellaDataDir), "utf-8");
-  } catch {
-    return null;
-  }
-};
-
-export const readMemoryIndex = async (
-  stellaDataDir: string,
-): Promise<string | null> => {
-  try {
-    return await fs.readFile(memoryIndexPath(stellaDataDir), "utf-8");
-  } catch {
-    return null;
-  }
-};
+): Promise<string | null> => await readOptionalFile(memoryMapPath(stellaDataDir));

@@ -1,6 +1,6 @@
 /**
  * Resident startup docs — the always-loaded files (personality, core memory,
- * user profile, Dream memory summary, registry) that ride the orchestrator
+ * user profile, Dream memory map, registry) that ride the orchestrator
  * window as pinned `bootstrap.startup_doc` messages.
  *
  * Injection contract (prompt-cache preservation): exactly ONE persisted copy
@@ -13,6 +13,11 @@
  * prefix is being rebuilt (and the cache invalidated) anyway — see
  * {@link refreshResidentStartupDocs}.
  *
+ * Retired docs (`memory_summary.md`, `memory_index.md` — both replaced by
+ * `memory_map.md`) follow the same boundary rule: their pinned copies stay
+ * byte-frozen mid-epoch and are removed/replaced by the memory-map copy only
+ * at a compaction/rebuild boundary.
+ *
  * This module is intentionally dependency-light (fs/path/redaction/dream
  * constants only) so both `thread-runtime.ts` and `runner/shared.ts` can use
  * it without the runner→agent-manager→session→thread-runtime module cycle.
@@ -21,49 +26,32 @@
 import fs from "node:fs";
 import path from "node:path";
 import { redactMemoryText } from "./redaction.js";
-import { MEMORY_INDEX_MAX_CHARS } from "./dream-storage.js";
+import {
+  MEMORY_MAP_MAX_CHARS,
+  stripInjectedHtmlComments,
+} from "./dream-storage.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
+
+export { stripInjectedHtmlComments };
 
 export const LIFE_REGISTRY_DISPLAY_PATH = "~/.stella/registry.md";
 export const LIFE_CORE_MEMORY_DISPLAY_PATH = "~/.stella/core-memory.md";
 export const LIFE_USER_PROFILE_DISPLAY_PATH = "~/.stella/memories/profile.md";
-export const LIFE_MEMORY_SUMMARY_DISPLAY_PATH =
-  "~/.stella/memories/memory_summary.md";
-export const LIFE_MEMORY_INDEX_DISPLAY_PATH =
-  "~/.stella/memories/memory_index.md";
+export const LIFE_MEMORY_MAP_DISPLAY_PATH = "~/.stella/memories/memory_map.md";
 export const LIFE_PERSONALITY_DISPLAY_PATH = "~/.stella/PERSONALITY.md";
 export const BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE = "bootstrap.startup_doc";
 
 /**
- * Strip HTML comment blocks from a memory doc before it is injected into
- * model context. Dream's archival convention wraps retired content in
- * comments (e.g. the DREAM:RETIRED_SUMMARY block — measured live at 27.6KB,
- * 100% re-compressions of MEMORY.md blocks), and injecting an archive costs
- * tokens and crowds the real content out of the injection cap. Comments stay
- * on disk untouched; only injected views drop them. An unterminated `<!--`
- * is stripped through end-of-doc so a malformed comment can't leak the
- * graveyard back into context.
+ * Display paths of docs that used to be injected but are retired now that
+ * `memory_map.md` is the routing layer. Existing pinned copies under these
+ * labels are retired at the next compaction/rebuild boundary; mid-epoch they
+ * stay byte-frozen and suppress injection of the map (their content is still
+ * resident, so injecting the map too would duplicate it inside one epoch).
  */
-export const stripInjectedHtmlComments = (text: string): string =>
-  text
-    .replace(/<!--[\s\S]*?-->/gu, "")
-    .replace(/<!--[\s\S]*$/u, "")
-    .replace(/\n{3,}/gu, "\n\n")
-    .trim();
-
-export const MEMORY_SUMMARY_BOOTSTRAP_MAX_CHARS = 12_000;
-const MEMORY_SUMMARY_TRUNCATION_MARKER =
-  "\n...[resident memory summary truncated]";
-
-/** Hard cap applied to the memory summary before it becomes a startup doc. */
-export const capBootstrapMemorySummary = (summary: string): string =>
-  summary.length > MEMORY_SUMMARY_BOOTSTRAP_MAX_CHARS
-    ? `${summary.slice(
-        0,
-        MEMORY_SUMMARY_BOOTSTRAP_MAX_CHARS -
-          MEMORY_SUMMARY_TRUNCATION_MARKER.length,
-      )}${MEMORY_SUMMARY_TRUNCATION_MARKER}`
-    : summary;
+export const RETIRED_STARTUP_DOC_DISPLAY_PATHS: ReadonlySet<string> = new Set([
+  "~/.stella/memories/memory_summary.md",
+  "~/.stella/memories/memory_index.md",
+]);
 
 export const buildStartupDocMessage = (
   displayPath: string,
@@ -120,30 +108,16 @@ export const readCoreMemory = (stellaDataDir: string): string | undefined => {
 };
 
 /**
- * Dream's dynamic focus summary, read synchronously for resident injection.
- * Push-injected alongside core memory so the user's current active focus is
- * always in the Orchestrator's context (not only via the `Context` lookup).
- * Summary only — the routing index is a separate doc with its own path label
- * ({@link readMemoryIndexDoc}), so summary truncation can never silently
- * swallow the index and the model can cite each source distinctly.
+ * Dream's routing map — what memory contains and where to find it — read
+ * synchronously for resident injection under its own path label. The single
+ * resident Dream doc: it replaced both the focus summary and the routing
+ * index. The cap here is a read-side backstop; the write-side jail rejects
+ * over-cap writes outright so a capped read should never trigger in practice.
  */
-export const readMemorySummaryDoc = (
-  stellaDataDir: string,
-): string | undefined =>
+export const readMemoryMapDoc = (stellaDataDir: string): string | undefined =>
   readResidentMemoryDoc(
-    path.join(stellaDataDir, "memories", "memory_summary.md"),
-  );
-
-/**
- * Dream's routing index (what memory contains and where to find it), read
- * synchronously for resident injection under its own path label.
- */
-export const readMemoryIndexDoc = (
-  stellaDataDir: string,
-): string | undefined =>
-  readResidentMemoryDoc(
-    path.join(stellaDataDir, "memories", "memory_index.md"),
-    MEMORY_INDEX_MAX_CHARS,
+    path.join(stellaDataDir, "memories", "memory_map.md"),
+    MEMORY_MAP_MAX_CHARS,
   );
 
 /**
@@ -170,6 +144,9 @@ const readOptionalTextFileSync = (filePath: string): string | undefined => {
  *
  * Personality is read verbatim (no seeding here — the pinned copy only exists
  * because a seeded read already happened on the thread's first turn).
+ * Retired display paths intentionally return undefined: there is no fresh
+ * body for them, only the retirement transition in
+ * {@link refreshResidentStartupDocs}.
  */
 export const readStartupDocBodyFromDisk = (
   stellaDataDir: string,
@@ -190,15 +167,9 @@ export const readStartupDocBodyFromDisk = (
       const userProfile = readUserProfileDoc(stellaDataDir);
       return userProfile ? redactMemoryText(userProfile.trim()) : undefined;
     }
-    case LIFE_MEMORY_SUMMARY_DISPLAY_PATH: {
-      const memorySummary = readMemorySummaryDoc(stellaDataDir);
-      return memorySummary
-        ? capBootstrapMemorySummary(redactMemoryText(memorySummary.trim()))
-        : undefined;
-    }
-    case LIFE_MEMORY_INDEX_DISPLAY_PATH: {
-      const memoryIndex = readMemoryIndexDoc(stellaDataDir);
-      return memoryIndex ? redactMemoryText(memoryIndex.trim()) : undefined;
+    case LIFE_MEMORY_MAP_DISPLAY_PATH: {
+      const memoryMap = readMemoryMapDoc(stellaDataDir);
+      return memoryMap ? redactMemoryText(memoryMap.trim()) : undefined;
     }
     default:
       return undefined;
@@ -214,16 +185,43 @@ const customMessageText = (
         .map((block) => (block.type === "text" ? (block.text ?? "") : ""))
         .join("\n");
 
+type StartupDocEntry = {
+  entryId: string;
+  displayPath: string;
+  persistedDoc: string;
+};
+
+export type ResidentStartupDocRefreshResult = {
+  /** Pinned copies rewritten in place from disk (includes the map conversion). */
+  refreshedDocs: number;
+  /** Retired or duplicate pinned copies deleted at the boundary. */
+  removedDocs: number;
+};
+
 /**
  * Compaction/rebuild-boundary refresh of the pinned resident-doc copies.
  *
  * Called from `maybeCompactRuntimeThread` immediately after a compaction
  * overlay is written — the one moment the prompt prefix is being rebuilt and
  * the provider cache is already invalidated, so updating persisted head
- * entries costs nothing extra. Every surviving `bootstrap.startup_doc` entry
- * whose source file changed is rewritten in place from disk (same entry id,
- * same position — the pin holds). A missing/empty source keeps the existing
- * copy rather than blanking context.
+ * entries costs nothing extra. Three responsibilities, all boundary-only:
+ *
+ *  1. Refresh: every surviving `bootstrap.startup_doc` entry whose source
+ *     file changed is rewritten in place from disk (same entry id, same
+ *     position — the pin holds). A missing/empty source for a live doc keeps
+ *     the existing copy rather than blanking context.
+ *  2. Dedupe: if the same doc path somehow has multiple visible copies (a
+ *     legacy accumulation, or a mid-epoch first injection that predates a
+ *     boundary conversion), the head-most copy is kept and later copies are
+ *     deleted.
+ *  3. Retire: pinned copies of retired docs (memory_summary / memory_index)
+ *     are replaced by the memory-map copy. The head-most retired entry is
+ *     converted in place into the map doc — so the map inherits the retired
+ *     doc's protected head position — and every other retired copy is
+ *     deleted. If a map copy already exists, retired copies are simply
+ *     deleted. If no map body can be read from disk and no map copy exists,
+ *     the retired copies are kept untouched (never blank resident context);
+ *     the transition retries at the next boundary.
  *
  * MUST NOT be called outside a compaction/rebuild boundary: mid-epoch it
  * would mutate the prompt prefix and break cache stability.
@@ -232,9 +230,9 @@ export const refreshResidentStartupDocs = (args: {
   store: RuntimeStore;
   threadKey: string;
   stellaDataDir: string;
-}): number => {
+}): ResidentStartupDocRefreshResult => {
   const messages = args.store.loadThreadMessages(args.threadKey);
-  let refreshedCount = 0;
+  const entries: StartupDocEntry[] = [];
   for (const message of messages) {
     const customMessage = message.customMessage;
     if (
@@ -249,25 +247,90 @@ export const refreshResidentStartupDocs = (args: {
     if (!displayPath) {
       continue;
     }
+    entries.push({ entryId: message.entryId, displayPath, persistedDoc });
+  }
+
+  const result: ResidentStartupDocRefreshResult = {
+    refreshedDocs: 0,
+    removedDocs: 0,
+  };
+  const writeEntry = (entry: StartupDocEntry, freshDoc: string): void => {
+    if (freshDoc.trim() === entry.persistedDoc.trim()) {
+      return;
+    }
+    const updated = args.store.updateThreadCustomMessageContent({
+      threadKey: args.threadKey,
+      entryId: entry.entryId,
+      content: [{ type: "text", text: freshDoc }],
+    });
+    if (updated) {
+      result.refreshedDocs += 1;
+    }
+  };
+  const removeEntry = (entry: StartupDocEntry): void => {
+    const removed = args.store.removeThreadCustomMessage({
+      threadKey: args.threadKey,
+      entryId: entry.entryId,
+    });
+    if (removed) {
+      result.removedDocs += 1;
+    }
+  };
+
+  const retiredEntries = entries.filter((entry) =>
+    RETIRED_STARTUP_DOC_DISPLAY_PATHS.has(entry.displayPath),
+  );
+  const hasExistingMapEntry = entries.some(
+    (entry) => entry.displayPath === LIFE_MEMORY_MAP_DISPLAY_PATH,
+  );
+  const mapBody = readStartupDocBodyFromDisk(
+    args.stellaDataDir,
+    LIFE_MEMORY_MAP_DISPLAY_PATH,
+  );
+  // Retirement transition: the head-most retired entry becomes the map copy,
+  // inheriting the retired doc's pinned head position. Only when no map copy
+  // exists yet — converting alongside an existing copy would duplicate it.
+  const convertedEntry =
+    retiredEntries.length > 0 && mapBody && !hasExistingMapEntry
+      ? retiredEntries[0]
+      : undefined;
+
+  const seenPaths = new Set<string>();
+  for (const entry of entries) {
+    if (entry === convertedEntry) {
+      writeEntry(
+        entry,
+        buildStartupDocMessage(LIFE_MEMORY_MAP_DISPLAY_PATH, mapBody!),
+      );
+      seenPaths.add(LIFE_MEMORY_MAP_DISPLAY_PATH);
+      continue;
+    }
+    if (RETIRED_STARTUP_DOC_DISPLAY_PATHS.has(entry.displayPath)) {
+      // Removable once a live map copy is guaranteed to remain (converted
+      // above or already persisted in this thread). Without one, keep the
+      // frozen copy — its content is the only resident routing context this
+      // thread still has; the transition retries at the next boundary.
+      if (
+        hasExistingMapEntry ||
+        seenPaths.has(LIFE_MEMORY_MAP_DISPLAY_PATH)
+      ) {
+        removeEntry(entry);
+      }
+      continue;
+    }
+    if (seenPaths.has(entry.displayPath)) {
+      removeEntry(entry);
+      continue;
+    }
+    seenPaths.add(entry.displayPath);
     const freshBody = readStartupDocBodyFromDisk(
       args.stellaDataDir,
-      displayPath,
+      entry.displayPath,
     );
     if (!freshBody) {
       continue;
     }
-    const freshDoc = buildStartupDocMessage(displayPath, freshBody);
-    if (freshDoc.trim() === persistedDoc.trim()) {
-      continue;
-    }
-    const updated = args.store.updateThreadCustomMessageContent({
-      threadKey: args.threadKey,
-      entryId: message.entryId,
-      content: [{ type: "text", text: freshDoc }],
-    });
-    if (updated) {
-      refreshedCount += 1;
-    }
+    writeEntry(entry, buildStartupDocMessage(entry.displayPath, freshBody));
   }
-  return refreshedCount;
+  return result;
 };

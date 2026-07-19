@@ -560,13 +560,8 @@ type MemoryFileSource = {
 
 const MEMORY_FILE_SOURCES = (stellaDataDir: string): MemoryFileSource[] => [
   {
-    displayPath: "~/.stella/memories/memory_index.md",
-    path: path.join(stellaDataDir, "memories", "memory_index.md"),
-    includeByDefault: true,
-  },
-  {
-    displayPath: "~/.stella/memories/memory_summary.md",
-    path: path.join(stellaDataDir, "memories", "memory_summary.md"),
+    displayPath: "~/.stella/memories/memory_map.md",
+    path: path.join(stellaDataDir, "memories", "memory_map.md"),
     includeByDefault: true,
   },
   {

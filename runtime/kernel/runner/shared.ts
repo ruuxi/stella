@@ -39,8 +39,7 @@ export const defaultPromptForAgentType = (
 // without a module cycle); re-exported here for existing callers.
 export {
   readCoreMemory,
-  readMemoryIndexDoc,
-  readMemorySummaryDoc,
+  readMemoryMapDoc,
   readUserProfileDoc,
 } from "../memory/resident-docs.js";
 

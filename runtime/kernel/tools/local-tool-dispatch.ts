@@ -3,9 +3,17 @@ import path from "node:path";
 
 import { TOOL_IDS } from "../../contracts/agent-runtime.js";
 import {
-  memoryIndexPath,
+  MEMORY_INDEX_FILE,
+  MEMORY_MAP_FILE,
+  MEMORY_MAP_MAX_CHARS,
+  MEMORY_MAP_ROUTES_END_ANCHOR,
+  MEMORY_MAP_ROUTES_START_ANCHOR,
+  MEMORY_SUMMARY_FILE,
   memoryFilePath,
+  memoryIndexPath,
+  memoryMapPath,
   memorySummaryPath,
+  stripInjectedHtmlComments,
 } from "../memory/dream-storage.js";
 import { redactMemoryText } from "../memory/redaction.js";
 import type { DreamInboxStore } from "../memory/dream-inbox-store.js";
@@ -66,6 +74,8 @@ const ensureDreamReadPath = async (
   );
 };
 
+const MEMORY_FILE_LABELS = `MEMORY.md and ${MEMORY_MAP_FILE}`;
+
 const ensureDreamWritePath = async (
   dream: LocalDreamConfig,
   filePath: string,
@@ -73,15 +83,48 @@ const ensureDreamWritePath = async (
   const resolved = await resolveDreamToolPath(dream, filePath);
   const allowedFiles = await Promise.all([
     normalizePath(memoryFilePath(dream.stellaDataDir)),
-    normalizePath(memorySummaryPath(dream.stellaDataDir)),
-    normalizePath(memoryIndexPath(dream.stellaDataDir)),
+    normalizePath(memoryMapPath(dream.stellaDataDir)),
   ]);
   if (allowedFiles.includes(resolved)) {
     return resolved;
   }
+  const retiredFiles = await Promise.all([
+    normalizePath(memorySummaryPath(dream.stellaDataDir)),
+    normalizePath(memoryIndexPath(dream.stellaDataDir)),
+  ]);
+  if (retiredFiles.includes(resolved)) {
+    throw new Error(
+      `${MEMORY_SUMMARY_FILE} and ${MEMORY_INDEX_FILE} are retired and read-only; their role moved to ${MEMORY_MAP_FILE}. Edit ${MEMORY_MAP_FILE} instead.`,
+    );
+  }
   throw new Error(
-    "Dream StrReplace may only edit MEMORY.md, memory_summary.md, and memory_index.md.",
+    `Dream StrReplace may only edit ${MEMORY_FILE_LABELS}.`,
   );
+};
+
+/**
+ * Mechanical guard on `memory_map.md` writes (CC v2.1.210-style): a write
+ * that would push the INJECTED view (HTML comments stripped — charter and
+ * anchors are free) past the hard cap, blank it, or destroy the routing
+ * anchors is rejected with an explanatory error so Dream curates instead of
+ * a silent truncation ever hiding entries. Returns an error string, or null
+ * when the candidate content is acceptable.
+ */
+export const validateMemoryMapWrite = (updated: string): string | null => {
+  const injected = stripInjectedHtmlComments(updated);
+  if (injected.length > MEMORY_MAP_MAX_CHARS) {
+    return `Write rejected: ${MEMORY_MAP_FILE} would inject ${injected.length} characters (hard cap ${MEMORY_MAP_MAX_CHARS}). Curate the map — merge related entries, prune stale ones, tighten wording — instead of exceeding the budget. Nothing was written.`;
+  }
+  if (injected.length === 0) {
+    return `Write rejected: ${MEMORY_MAP_FILE} would have no injectable content (everything inside HTML comments). Keep at least the routing entries visible. Nothing was written.`;
+  }
+  if (
+    !updated.includes(MEMORY_MAP_ROUTES_START_ANCHOR) ||
+    !updated.includes(MEMORY_MAP_ROUTES_END_ANCHOR)
+  ) {
+    return `Write rejected: the ${MEMORY_MAP_ROUTES_START_ANCHOR} / ${MEMORY_MAP_ROUTES_END_ANCHOR} anchors must stay intact in ${MEMORY_MAP_FILE}. Edit between them. Nothing was written.`;
+  }
+  return null;
 };
 
 const isNumberArray = (value: unknown): value is number[] =>
@@ -217,6 +260,22 @@ export async function dispatchLocalTool(
             newString +
             original.slice(idx + oldString.length);
           count = 1;
+        }
+        // Hard budget on the resident routing map: over-cap or structure-
+        // breaking writes error out here, BEFORE anything reaches disk, so
+        // the doc is curated by the writer rather than truncated by a cap.
+        if (
+          deps.dream &&
+          resolvedPath ===
+            (await normalizePath(memoryMapPath(deps.dream.stellaDataDir)))
+        ) {
+          const rejection = validateMemoryMapWrite(updated);
+          if (rejection) {
+            return {
+              handled: true,
+              text: JSON.stringify({ success: false, error: rejection }),
+            };
+          }
         }
         await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
         await writeFileWithNulGuard(resolvedPath, updated);

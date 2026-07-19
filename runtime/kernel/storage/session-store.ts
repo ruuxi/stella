@@ -3317,6 +3317,51 @@ export class SessionStore {
     return updated;
   }
 
+  /**
+   * Delete one persisted custom-message entry outright.
+   *
+   * Sole caller is the compaction/rebuild-boundary refresh of pinned resident
+   * startup docs (`refreshResidentStartupDocs`), which retires the copies of
+   * docs that no longer exist (memory_summary/memory_index → memory_map) and
+   * dedupes accidental extra copies. Entries are otherwise append-only, and
+   * deleting model-visible history outside a compaction boundary would break
+   * prompt-cache prefix stability. Restricted to `custom_message` rows so a
+   * caller can never delete conversation or compaction entries.
+   */
+  removeThreadCustomMessage(args: {
+    threadKey: string;
+    entryId: string;
+  }): boolean {
+    const threadKey = normalizeRuntimeThreadId(args.threadKey);
+    const entryId = args.entryId.trim();
+    if (!threadKey || !entryId) {
+      return false;
+    }
+    const conversationId = this.getThreadConversationId(threadKey);
+    let removed = false;
+    this.withTransaction(() => {
+      const result = this.db
+        .prepare(
+          `DELETE FROM runtime_thread_entries
+           WHERE thread_key = ? AND entry_id = ? AND entry_type = 'custom_message'`,
+        )
+        .run(threadKey, entryId) as { changes?: number | bigint } | undefined;
+      removed = Number(result?.changes ?? 0) > 0;
+      if (removed) {
+        this.touchThread(threadKey);
+      }
+    }, "immediate");
+    if (removed) {
+      this.emitThreadTranscriptUpdate({
+        conversationId,
+        threadId: threadKey,
+        entryId,
+        atMs: Date.now(),
+      });
+    }
+    return removed;
+  }
+
   recordRunEvent(event: RuntimeRunEvent): void {
     const messageId = `run:${event.runId}:${event.seq ?? generateLocalId()}`;
     this.withTransaction(() => {

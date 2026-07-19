@@ -3,7 +3,7 @@
  * facts Stella knows about the user (name, location, stable preferences).
  *
  * This is Stella's answer to "remember my name": unlike the Dream ledger
- * (`MEMORY.md` / `memory_summary.md`, reachable only via the `Context`
+ * (`MEMORY.md`, reachable only via the `Context`
  * lookup tool), `profile.md` is push-injected into the Orchestrator at
  * session start, so durable identity facts are always in context without a
  * lookup. It is written exclusively by the Orchestrator's `Remember` tool —

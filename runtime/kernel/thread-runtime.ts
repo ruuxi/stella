@@ -887,7 +887,7 @@ const readDurableMemoryDoc = (filePath: string): string | undefined => {
 
 /**
  * Build the "already known — do not repeat" reference from the always-loaded
- * durable-memory docs (user profile + Dream memory summary), so the
+ * durable-memory docs (user profile + Dream memory map), so the
  * summarizer can skip restating facts the assistant sees on every turn.
  */
 export const buildDurableMemoryReference = (
@@ -902,8 +902,8 @@ export const buildDurableMemoryReference = (
       docPath: path.join(stellaDataDir, "memories", "profile.md"),
     },
     {
-      label: "Memory summary (memories/memory_summary.md)",
-      docPath: path.join(stellaDataDir, "memories", "memory_summary.md"),
+      label: "Memory map (memories/memory_map.md)",
+      docPath: path.join(stellaDataDir, "memories", "memory_map.md"),
     },
   ]
     .map(({ label, docPath }) => {
@@ -1287,15 +1287,16 @@ export const maybeCompactRuntimeThread = async (args: {
   const stellaDataDir = args.stellaDataDir?.trim();
   if (stellaDataDir) {
     try {
-      const refreshedDocs = refreshResidentStartupDocs({
+      const { refreshedDocs, removedDocs } = refreshResidentStartupDocs({
         store: args.store,
         threadKey: args.threadKey,
         stellaDataDir,
       });
-      if (refreshedDocs > 0) {
+      if (refreshedDocs > 0 || removedDocs > 0) {
         logger.info("thread.compaction.startup-docs-refreshed", {
           threadKey: args.threadKey,
           refreshedDocs,
+          removedDocs,
         });
       }
     } catch (error) {

@@ -87,10 +87,8 @@ export type LocalAgentContext = {
   agentDepth?: number;
   maxAgentDepth: number;
   coreMemory?: string;
-  /** Dream's dynamic focus summary, push-injected as a resident startup doc. */
-  memorySummary?: string;
-  /** Dream's routing index, push-injected under its own startup-doc path. */
-  memoryIndex?: string;
+  /** Dream's routing map (memory_map.md), push-injected as a resident startup doc. */
+  memoryMap?: string;
   /** Durable user-profile facts (Remember tool), push-injected at session start. */
   userProfile?: string;
   personality?: string;
