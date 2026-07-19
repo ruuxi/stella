@@ -27,6 +27,13 @@
     "directBriefsChanged": false,
     "timingsPromotedToRound5Tables": false
   },
+  "round7UnicodeBoundaryCheck": {
+    "implementationCommit": "307bf17ff279c665718b6e4fc8732624bba70de3",
+    "artifact": "recall-latency-phase-d-round7-unicode-boundary-check-2026-07-18.raw.json",
+    "answerClassificationsChanged": false,
+    "directBriefsChanged": false,
+    "timingsPromotedToRound5Tables": false
+  },
   "round4DiscardedRuns": [
     {
       "kind": "one-query preflight",

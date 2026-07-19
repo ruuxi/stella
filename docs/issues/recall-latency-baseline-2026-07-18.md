@@ -16,7 +16,7 @@ routing, deduplication, or batching changes.
 
 ## Isolation and method
 
-- Code under test: `/Users/rahulnanda/projects/stella` with the telemetry stack
+- Code under test: `[REDACTED HOME]/projects/stella` with the telemetry stack
   from `d64707e69` plus the corrected semantics described above.
 - Sample: 10 sequential representative lookups covering durable memory, prior
   agent work, product decisions, episodic history, multi-source history, and a

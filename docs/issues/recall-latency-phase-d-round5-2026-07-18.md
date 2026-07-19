@@ -148,3 +148,11 @@ model-call counts, and all six zero-model briefs were identical to the final
 round-5 set, so the aggregate tables above were not replaced. The verification
 run is retained at
 [`recall-latency-phase-d-round6-boundary-check-2026-07-18.raw.json`](./recall-latency-phase-d-round6-boundary-check-2026-07-18.raw.json).
+
+## Round-7 Unicode-boundary verification
+
+The code-point-aware boundary follow-up was replayed against the same snapshot,
+query order, and Haiku pin. All ten structured outcomes, fast-path flags,
+model-call counts, and all six zero-model briefs again matched the final
+round-5 set, so its timings were not promoted into the aggregate tables. Raw:
+[`recall-latency-phase-d-round7-unicode-boundary-check-2026-07-18.raw.json`](./recall-latency-phase-d-round7-unicode-boundary-check-2026-07-18.raw.json).
