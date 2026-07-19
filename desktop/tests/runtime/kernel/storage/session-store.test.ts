@@ -1612,6 +1612,105 @@ describe("session-store", () => {
     ]);
   });
 
+  it("repairs rows inserted during the insertion-sequence migration window", () => {
+    const { db, store } = createTestContext();
+    const { threadId } = store.resolveOrCreateActiveThread({
+      conversationId: "conv-partial-sequence-migration",
+      agentType: "general",
+    });
+    store.appendThreadMessage({
+      threadKey: threadId,
+      timestamp: 8_000,
+      role: "user",
+      content: "Before migration window",
+      payload: {
+        role: "user",
+        content: "Before migration window",
+        timestamp: 8_000,
+      },
+    });
+    const base = db
+      .prepare(
+        `SELECT entry_id AS entryId, session_id AS sessionId
+         FROM runtime_thread_entries WHERE thread_key = ? LIMIT 1`,
+      )
+      .get(threadId) as { entryId: string; sessionId: string };
+    const insertMessage = db.prepare(`
+      INSERT INTO runtime_thread_entries (
+        entry_id, thread_key, session_id, parent_entry_id, entry_type,
+        timestamp_iso, created_at, data_json
+      ) VALUES (?, ?, ?, ?, 'message', ?, ?, ?)
+    `);
+
+    db.exec("DROP TRIGGER trg_runtime_thread_entries_sequence;");
+    insertMessage.run(
+      "partial-migration-null",
+      threadId,
+      base.sessionId,
+      base.entryId,
+      new Date(8_001).toISOString(),
+      8_001,
+      JSON.stringify({
+        message: {
+          role: "user",
+          content: "Inside migration window",
+          timestamp: 8_001,
+        },
+      }),
+    );
+    db.exec(`
+      CREATE TRIGGER trg_runtime_thread_entries_sequence
+      AFTER INSERT ON runtime_thread_entries
+      WHEN NEW.insertion_sequence IS NULL
+      BEGIN
+        UPDATE runtime_thread_entries
+        SET insertion_sequence = (
+          SELECT COALESCE(MAX(insertion_sequence), 0) + 1
+          FROM runtime_thread_entries
+        )
+        WHERE rowid = NEW.rowid;
+      END;
+    `);
+    insertMessage.run(
+      "partial-migration-assigned",
+      threadId,
+      base.sessionId,
+      "partial-migration-null",
+      new Date(8_002).toISOString(),
+      8_002,
+      JSON.stringify({
+        message: {
+          role: "user",
+          content: "After migration window",
+          timestamp: 8_002,
+        },
+      }),
+    );
+
+    expect(() => initializeDesktopDatabase(db)).not.toThrow();
+    expect(
+      db
+        .prepare(
+          `SELECT insertion_sequence AS insertionSequence
+           FROM runtime_thread_entries
+           WHERE thread_key = ?
+           ORDER BY rowid`,
+        )
+        .all(threadId),
+    ).toEqual([
+      { insertionSequence: 1 },
+      { insertionSequence: 2 },
+      { insertionSequence: 3 },
+    ]);
+    expect(
+      store.loadThreadMessages(threadId).map((entry) => entry.content),
+    ).toEqual([
+      "Before migration window",
+      "Inside migration window",
+      "After migration window",
+    ]);
+  });
+
   it("recovers a self-cycled imported thread for transcript load and compaction", () => {
     const { db, store } = createTestContext();
     const { threadId } = store.resolveOrCreateActiveThread({
