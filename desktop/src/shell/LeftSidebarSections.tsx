@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -271,12 +272,15 @@ const CompactChildState = memo(function CompactChildState({
           className="chat-workspace-strip__compact-cells"
           aria-hidden="true"
         >
-          {summary.tasks.map((task) => (
+          {summary.tasks.map((task, index) => (
             <span
               key={task.id}
               className={`chat-workspace-strip__compact-cell chat-workspace-strip__compact-cell--${task.status}${
                 task.status === "running" ? " anim-pulse" : ""
               }`}
+              // Staggers the mount fade/scale-in so a burst of freshly
+              // spawned agents ripples in instead of popping as a block.
+              style={{ "--cell-order": index } as CSSProperties}
               title={compactTaskTooltip(task)}
             />
           ))}

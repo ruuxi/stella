@@ -306,7 +306,7 @@
 .chat-workspace-strip__task-button[data-compact="true"] {
   flex-direction: column;
   align-items: stretch;
-  gap: 3px;
+  gap: 5px;
 }
 
 .chat-workspace-strip__task-button[data-compact="true"]
@@ -322,29 +322,51 @@
   min-width: 0;
 }
 
+/* One 4px dot per owned agent — a quiet metadata detail under the title,
+   deliberately smaller and fainter than the tally text. State reads through
+   brightness alone: running dots sit near full foreground and pulse, done
+   dots are faint, stopped dots barely register. The width cap keeps a full
+   16-dot set on one delicate line; anything narrower wraps evenly. */
 .chat-workspace-strip__compact-cells {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
-  min-height: 8px;
+  gap: 4px;
+  max-width: 124px;
   margin-left: 23px;
+  padding-top: 1px;
+  transition: opacity 400ms ease;
+}
+
+/* Once the whole delegation settles, the grid recedes with it — a finished
+   manager row should not keep a loud strip under its title forever. */
+.chat-workspace-strip__task-row[data-status="completed"]
+  .chat-workspace-strip__compact-cells,
+.chat-workspace-strip__task-row[data-status="canceled"]
+  .chat-workspace-strip__compact-cells {
+  opacity: 0.6;
 }
 
 .chat-workspace-strip__compact-cell {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
-  border-radius: 2.5px;
+  width: 4px;
+  height: 4px;
+  flex: 0 0 4px;
+  border-radius: 50%;
   background: color-mix(in oklch, var(--foreground) 14%, transparent);
+  animation: chat-workspace-strip__compact-cell-in 240ms ease-out backwards;
+  animation-delay: calc(var(--cell-order, 0) * 14ms);
+  transition: background-color 250ms ease;
 }
 
 .chat-workspace-strip__compact-cell--completed {
-  background: color-mix(in oklch, var(--foreground) 48%, transparent);
+  background: color-mix(in oklch, var(--foreground) 30%, transparent);
 }
 
 .chat-workspace-strip__compact-cell--running {
   background: var(--foreground);
-  animation: chat-workspace-strip__compact-pulse 1.6s ease-in-out infinite;
+  animation:
+    chat-workspace-strip__compact-cell-in 240ms ease-out backwards,
+    chat-workspace-strip__compact-pulse 1.8s ease-in-out infinite;
+  animation-delay: calc(var(--cell-order, 0) * 14ms);
 }
 
 .chat-workspace-strip__compact-cell--error {
@@ -352,41 +374,53 @@
 }
 
 .chat-workspace-strip__compact-cell--canceled {
-  background: color-mix(in oklch, var(--foreground) 12%, transparent);
-  box-shadow: inset 0 0 0 1px
-    color-mix(in oklch, var(--foreground) 22%, transparent);
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
+/* 17+ agents: the dots merge into one hairline segmented bar with the same
+   brightness language as the grid. */
 .chat-workspace-strip__compact-progress {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   min-width: 0;
+  max-width: 168px;
   margin-left: 23px;
+  padding-top: 2px;
+  transition: opacity 400ms ease;
+}
+
+.chat-workspace-strip__task-row[data-status="completed"]
+  .chat-workspace-strip__compact-progress,
+.chat-workspace-strip__task-row[data-status="canceled"]
+  .chat-workspace-strip__compact-progress {
+  opacity: 0.6;
 }
 
 .chat-workspace-strip__compact-bar {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  height: 5px;
+  gap: 1px;
+  height: 3px;
   overflow: hidden;
   border-radius: 999px;
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: color-mix(in oklch, var(--foreground) 7%, transparent);
 }
 
 .chat-workspace-strip__compact-bar-segment {
   flex-basis: 0;
   min-width: 1px;
+  transition: background-color 250ms ease;
 }
 
 .chat-workspace-strip__compact-bar-segment--done {
-  background: color-mix(in oklch, var(--foreground) 48%, transparent);
+  background: color-mix(in oklch, var(--foreground) 30%, transparent);
 }
 
 .chat-workspace-strip__compact-bar-segment--running {
   background: var(--foreground);
-  animation: chat-workspace-strip__compact-pulse 1.6s ease-in-out infinite;
+  animation: chat-workspace-strip__compact-pulse 1.8s ease-in-out infinite;
 }
 
 .chat-workspace-strip__compact-bar-segment--error {
@@ -394,7 +428,7 @@
 }
 
 .chat-workspace-strip__compact-bar-segment--queued {
-  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+  background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
 .chat-workspace-strip__compact-progress-count {
@@ -413,7 +447,8 @@
   white-space: nowrap;
   color: var(--text-weak);
   font-size: var(--font-size-xs);
-  line-height: 1.35;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
 }
 
 .chat-workspace-strip__compact-status[data-failure="true"] {
@@ -423,17 +458,32 @@
 @keyframes chat-workspace-strip__compact-pulse {
   0%,
   100% {
-    opacity: 0.5;
+    opacity: 0.55;
   }
   50% {
     opacity: 1;
   }
 }
 
+@keyframes chat-workspace-strip__compact-cell-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .chat-workspace-strip__compact-cell,
   .chat-workspace-strip__compact-cell--running,
   .chat-workspace-strip__compact-bar-segment--running {
     animation: none;
+  }
+
+  .chat-workspace-strip__compact-cells,
+  .chat-workspace-strip__compact-progress,
+  .chat-workspace-strip__compact-cell,
+  .chat-workspace-strip__compact-bar-segment {
+    transition: none;
   }
 }
 
