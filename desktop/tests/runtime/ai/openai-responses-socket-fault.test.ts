@@ -1,3 +1,9 @@
+// RUNTIME NOTE: run this suite under real Node (e.g. /opt/homebrew/bin/node),
+// NOT Bun. The mid-stream resume cases race POST-replay vs GET-resume on
+// socket drain timing; under Bun 1.3.x the drain/close callback ordering
+// differs from Node and the resume cases fail deterministically. The
+// neighbouring repair-script suite additionally needs `node:sqlite`, which
+// Bun does not ship, so the runtime suites are Node-only anyway.
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";

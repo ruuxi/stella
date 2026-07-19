@@ -1,3 +1,5 @@
+import { isTransientProviderStreamAnomalyMessage } from "../../ai/utils/provider-stop.js";
+
 export const AGENT_RUN_MAX_ATTEMPTS = 4;
 export const AGENT_RUN_RETRY_DELAYS_MS = [1_000, 2_500, 6_000] as const;
 export const AGENT_RUN_RETRY_JITTER_RATIO = 0.1;
@@ -133,7 +135,7 @@ const TRANSPORT_CODES = new Set([
 
 const isTransportFailure = (message: string, code?: string): boolean =>
   (code !== undefined && TRANSPORT_CODES.has(code)) ||
-  /\b(?:ECONNABORTED|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|EPIPE|ETIMEDOUT|EAI_AGAIN|ENETDOWN|ENETUNREACH|ENOTFOUND|UND_ERR_SOCKET)\b|\bunexpected eof\b|\bpremature (?:stream )?close\b|\bconnection (?:reset|refused|closed|terminated|timed? out)\b|\bsocket (?:hang up|closed|reset|terminated)\b|\bfetch failed\b|\bfailed to fetch\b|\bnetwork (?:error|offline)\b|\btransport (?:error|eof|timeout)\b|\btimed? out\b|\btimeout\b|\bdid not produce activity for \d+(?:\.\d+)?s\b/i.test(
+  /\b(?:ECONNABORTED|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|EPIPE|ETIMEDOUT|EAI_AGAIN|ENETDOWN|ENETUNREACH|ENOTFOUND|UND_ERR_SOCKET)\b|\bunexpected eof\b|\bpremature (?:stream )?close\b|\bconnection (?:reset|refused|closed|terminated|timed? out)\b|\bsocket (?:hang up|closed|reset|terminated)\b|\bfetch failed\b|\bfailed to fetch\b|\bnetwork[_ ](?:error|offline)\b|\btransport (?:error|eof|timeout)\b|\btimed? out\b|\btimeout\b|\bdid not produce activity for \d+(?:\.\d+)?s\b/i.test(
     message,
   );
 
@@ -169,7 +171,15 @@ export const classifyAgentRunFailure = (
   if (isHttp5xx(message, status)) {
     return { category: "http_5xx", message, retryable: true };
   }
-  if (isTransportFailure(message, code)) {
+  // Provider stream anomalies with transient fingerprints (premature EOF
+  // before a terminal event, neutral non-safety abnormal stops, pause_turn)
+  // are transport-class: the remedy is resubmitting the request. Safety /
+  // prompt-block wordings deliberately do not match — those are deterministic
+  // content aborts owned by provider-abort containment.
+  if (
+    isTransportFailure(message, code) ||
+    isTransientProviderStreamAnomalyMessage(message)
+  ) {
     return { category: "transport", message, retryable: true };
   }
   return { category: "non_retryable", message, retryable: false };

@@ -9,6 +9,13 @@ import {
   type AgentRunFailure,
   type AgentRunRetryInfo,
 } from "../../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
+import {
+  anomalousStreamStopError,
+  isTransientProviderStreamAnomalyMessage,
+  pausedTurnStopMessage,
+  promptBlockedStopMessage,
+  providerAbortedStopMessage,
+} from "../../../../../runtime/ai/utils/provider-stop.js";
 
 const noWait = async () => undefined;
 
@@ -266,5 +273,48 @@ describe("agent run transient retry policy", () => {
     expect(agentRunRetryDelayMs(0, () => 0)).toBe(900);
     expect(agentRunRetryDelayMs(1, () => 0.5)).toBe(2_500);
     expect(agentRunRetryDelayMs(2, () => 1)).toBe(6_600);
+  });
+});
+
+describe("provider stream anomaly classification", () => {
+  it("classifies transient stream-anomaly wordings as retryable transport failures", () => {
+    const transientMessages = [
+      // anomalousStreamStopError no-detail fallback (premature EOF before a
+      // terminal event: LB idle-close, proxy drop).
+      anomalousStreamStopError({ stopReason: "error" }).message,
+      // Neutral non-safety abnormal stop, including unknown future reasons.
+      providerAbortedStopMessage("network_error"),
+      providerAbortedStopMessage("some_future_stop_reason"),
+      providerAbortedStopMessage("failed"),
+      // Anthropic pause_turn that could not be resumed in-adapter.
+      pausedTurnStopMessage(),
+      // Anthropic explicit premature-EOF guard.
+      "Anthropic stream ended before message_stop",
+    ];
+    for (const message of transientMessages) {
+      expect(isTransientProviderStreamAnomalyMessage(message)).toBe(true);
+      expect(classifyAgentRunFailure(new Error(message))).toMatchObject({
+        category: "transport",
+        retryable: true,
+      });
+    }
+  });
+
+  it("keeps deterministic content aborts out of the transport ladder", () => {
+    const contentAbortMessages = [
+      // Safety-worded mid-stream abort → provider-abort containment.
+      providerAbortedStopMessage("refusal"),
+      providerAbortedStopMessage("SAFETY"),
+      // Google blocked prompt → provider-abort containment.
+      promptBlockedStopMessage("PROHIBITED_CONTENT"),
+      promptBlockedStopMessage("SAFETY", "blocked by policy"),
+    ];
+    for (const message of contentAbortMessages) {
+      expect(isTransientProviderStreamAnomalyMessage(message)).toBe(false);
+      expect(classifyAgentRunFailure(new Error(message))).toMatchObject({
+        category: "non_retryable",
+        retryable: false,
+      });
+    }
   });
 });

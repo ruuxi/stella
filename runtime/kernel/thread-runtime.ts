@@ -620,10 +620,14 @@ export const validateThreadSummary = (
     };
   }
 
+  // Full placeholder bodies from SUMMARY_STRUCTURE (bracketed form plus the
+  // distinctive unbracketed bodies). Short natural phrases like "where things
+  // stand now" appear in legitimate prose and must NOT be rejected; only a
+  // verbatim echo of the template placeholders is boilerplate.
   const placeholderFragments = [
-    "what the conversation is about",
-    "important information, decisions, and conclusions",
-    "where things stand now",
+    "[what the conversation is about]",
+    "important information, decisions, and conclusions from the conversation",
+    "where things stand now — what has been done, what is in progress",
     "unresolved questions, pending tasks, or next steps discussed",
   ];
   const lower = normalized.toLocaleLowerCase();
@@ -637,10 +641,14 @@ export const validateThreadSummary = (
   }
   const mostCommonWord = Math.max(0, ...frequencies.values());
   const uniqueRatio = uniqueWords.size / Math.max(1, words.length);
+  // Markdown dividers (`----`, `====`, `****`, …) are legitimate formatting
+  // of arbitrary length; strip divider-character runs before measuring
+  // code-point repetition so a 16-char horizontal rule doesn't read as spam.
+  const withoutDividerRuns = normalized.replace(/[=\-_*#~─]{3,}/gu, " ");
   if (
     (words.length >= 12 && uniqueRatio < 0.3) ||
     mostCommonWord / Math.max(1, words.length) > 0.3 ||
-    longestRepeatedCodePointRun(normalized) >= 16
+    longestRepeatedCodePointRun(withoutDividerRuns) >= 16
   ) {
     return { valid: false, reason: "extreme repetition", ...base };
   }

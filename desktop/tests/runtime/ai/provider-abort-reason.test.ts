@@ -2,9 +2,12 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { streamAnthropic } from "../../../../runtime/ai/providers/anthropic.js";
+import { streamGoogle } from "../../../../runtime/ai/providers/google.js";
 import { streamGoogleGeminiCli } from "../../../../runtime/ai/providers/google-gemini-cli.js";
 import type { AssistantMessageEvent, Context, Model } from "../../../../runtime/ai/types.js";
 import { anomalousStreamStopError, providerAbortedStopMessage } from "../../../../runtime/ai/utils/provider-stop.js";
+import { classifyAgentRunFailure } from "../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
+import { isProviderContentAbortMessage } from "../../../../runtime/kernel/agent-runtime/provider-abort-containment.js";
 
 /**
  * Layer-1 regression tests for the "An unknown error occurred" swallow:
@@ -189,5 +192,88 @@ describe("provider-stop helpers", () => {
 		const withoutDetail = anomalousStreamStopError({ stopReason: "error" });
 		expect(withoutDetail.message).toContain('stopReason "error"');
 		expect(withoutDetail.message).not.toBe("An unknown error occurred");
+	});
+});
+
+describe("google prompt-block surfacing", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("surfaces promptFeedback.blockReason from the Gemini API stream as a content abort", async () => {
+		const encoder = new TextEncoder();
+		const sse = `data: ${JSON.stringify({
+			promptFeedback: {
+				blockReason: "PROHIBITED_CONTENT",
+				blockReasonMessage: "blocked by policy",
+			},
+		})}\n\n`;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				new Response(encoder.encode(sse), {
+					status: 200,
+					headers: { "content-type": "text/event-stream" },
+				}),
+			),
+		);
+
+		const googleModel: Model<"google-generative-ai"> = {
+			...(model as unknown as Model<"google-generative-ai">),
+			id: "gemini-3-pro",
+			api: "google-generative-ai",
+			provider: "google",
+			baseUrl: "https://gemini.test/v1beta",
+		};
+		const result = await streamGoogle(googleModel, context, {
+			apiKey: "test-key",
+		}).result();
+
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain('block reason: "PROHIBITED_CONTENT"');
+		expect(result.errorMessage).toContain("blocked by policy");
+		expect(isProviderContentAbortMessage(result.errorMessage)).toBe(true);
+		expect(classifyAgentRunFailure(new Error(result.errorMessage!))).toMatchObject({
+			category: "non_retryable",
+			retryable: false,
+		});
+	});
+
+	it("surfaces promptFeedback.blockReason from Cloud Code Assist without empty-stream retries", async () => {
+		const encoder = new TextEncoder();
+		const sse = [
+			`data: ${JSON.stringify({
+				response: {
+					promptFeedback: { blockReason: "SAFETY" },
+				},
+			})}`,
+			"",
+			"",
+		].join("\n");
+		const fetchMock = vi.fn(async () =>
+			new Response(encoder.encode(sse), {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const geminiModel: Model<"google-gemini-cli"> = {
+			...(model as unknown as Model<"google-gemini-cli">),
+			id: "gemini-3-pro",
+			api: "google-gemini-cli",
+			provider: "google-gemini-cli",
+			baseUrl: "https://cloudcode.example",
+		};
+		const result = await streamGoogleGeminiCli(geminiModel, context, {
+			apiKey: JSON.stringify({ token: "test-token", projectId: "proj" }),
+		}).result();
+
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toContain('block reason: "SAFETY"');
+		expect(isProviderContentAbortMessage(result.errorMessage)).toBe(true);
+		// A blocked prompt is deterministic: it must not burn empty-stream
+		// retries replaying the same blocked request.
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 });

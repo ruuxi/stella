@@ -35,6 +35,7 @@ import type {
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { parseStreamingJson } from "../utils/json-parse.js";
+import { anomalousStreamStopError } from "../utils/provider-stop.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import { isCloudflareProvider, resolveCloudflareBaseUrl } from "./cloudflare.js";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.js";
@@ -378,7 +379,14 @@ export const streamOpenAICompletions: StreamFunction<"openai-completions", OpenA
 				throw new Error("Request was aborted");
 			}
 			if (output.stopReason === "error") {
-				throw new Error(output.errorMessage || "Provider returned an error stop reason");
+				// Prefer captured finish_reason detail; the no-detail fallback marks
+				// a premature EOF (no finish_reason at all), which the agent-run
+				// retry ladder classifies as a retryable transport failure. The
+				// legacy generic "Provider returned an error stop reason" string
+				// must not be thrown here: containment classifies it as a content
+				// abort, which would quarantine healthy threads on plain stream
+				// truncation.
+				throw anomalousStreamStopError(output);
 			}
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });

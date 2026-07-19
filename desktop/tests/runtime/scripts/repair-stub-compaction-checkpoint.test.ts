@@ -462,4 +462,31 @@ describe("stub compaction checkpoint repair", () => {
     expect(danglingParentCount(verified)).toBe(0);
     verified.close();
   });
+  it("rejects an incompatible dependent range even when the dependent sorts before the target", () => {
+    const { db } = makeDatabase();
+    // dependent-b claims a different source range and (via a low
+    // insertion_sequence) sorts BEFORE the target stub. The old
+    // `affected.slice(1)` guard skipped whichever affected row happened to
+    // sort first, so this incompatible dependent escaped validation.
+    db.prepare(
+      "UPDATE runtime_thread_entries SET data_json = ? WHERE entry_id = 'dependent-b'",
+    ).run(
+      JSON.stringify({
+        fromEntryId: "m2",
+        toEntryId: "beta-1",
+        summary: dependentSummaryB,
+        tokensBefore: 192_000,
+      }),
+    );
+    db.prepare(
+      "UPDATE runtime_thread_entries SET insertion_sequence = -1 WHERE entry_id = 'dependent-b'",
+    ).run();
+
+    db.exec("BEGIN IMMEDIATE");
+    expect(() => analyzeRepair(db, "stub")).toThrow(
+      /Dependent compaction dependent-b starts from an incompatible range/,
+    );
+    db.exec("ROLLBACK");
+    db.close();
+  });
 });

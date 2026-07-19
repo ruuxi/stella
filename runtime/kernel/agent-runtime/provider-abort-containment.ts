@@ -70,6 +70,9 @@ const SUSPECT_TAIL_ENTRIES = 8;
  */
 const PROVIDER_ABORT_ERROR_PATTERNS: RegExp[] = [
   /provider aborted the response \(stop reason: "/i,
+  // Google promptFeedback.blockReason (promptBlockedStopMessage): the prompt
+  // was refused before any candidate generated — deterministic on content.
+  /provider blocked the prompt \(block reason: "/i,
   /provider finish_reason: content_filter/i,
   /provider returned an error stop reason/i,
 ];

@@ -21,7 +21,7 @@ import type {
 	ToolCall,
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
-import { anomalousStreamStopError, providerAbortedStopMessage } from "../utils/provider-stop.js";
+import { anomalousStreamStopError, promptBlockedStopMessage, providerAbortedStopMessage } from "../utils/provider-stop.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import {
 	convertMessages,
@@ -309,6 +309,10 @@ interface CloudCodeAssistResponseChunk {
 			};
 			finishReason?: string;
 		}>;
+		promptFeedback?: {
+			blockReason?: string;
+			blockReasonMessage?: string;
+		};
 		usageMetadata?: {
 			promptTokenCount?: number;
 			candidatesTokenCount?: number;
@@ -479,6 +483,8 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
 			}
 
 			let started = false;
+			let promptBlockReason: string | undefined;
+			let promptBlockMessage: string | undefined;
 			const ensureStarted = () => {
 				if (!started) {
 					stream.push({ type: "start", partial: output });
@@ -553,6 +559,16 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
 							// Unwrap the response
 							const responseData = chunk.response;
 							if (!responseData) continue;
+							// A blocked prompt carries promptFeedback.blockReason and no
+							// candidates — capture it so the failure surfaces explicitly
+							// instead of dying as a no-detail "empty response" error.
+							if (
+								responseData.promptFeedback?.blockReason &&
+								responseData.promptFeedback.blockReason !== "BLOCKED_REASON_UNSPECIFIED"
+							) {
+								promptBlockReason = responseData.promptFeedback.blockReason;
+								promptBlockMessage = responseData.promptFeedback.blockReasonMessage;
+							}
 							// Cloud Code Assist mirrors Gemini's responseId field. Keep the first non-empty one.
 							// A single streamed response should retain the same ID across chunks.
 							output.responseId ||= responseData.responseId;
@@ -780,9 +796,26 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli", GoogleGe
 					break;
 				}
 
+				// A blocked prompt is a deterministic content abort, not an empty
+				// stream: retrying just replays the same blocked request, so stop
+				// here and surface the block reason below.
+				if (promptBlockReason) {
+					break;
+				}
+
 				if (emptyAttempt < MAX_EMPTY_STREAM_RETRIES) {
 					resetOutput();
 				}
+			}
+
+			// Blocked prompts surface with the wording that content-abort
+			// containment classifies on, never a generic no-detail error.
+			if (promptBlockReason) {
+				output.stopReason = "error";
+				if (!output.errorMessage) {
+					output.errorMessage = promptBlockedStopMessage(promptBlockReason, promptBlockMessage);
+				}
+				throw anomalousStreamStopError(output);
 			}
 
 			if (!receivedContent) {

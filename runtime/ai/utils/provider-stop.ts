@@ -69,6 +69,72 @@ export function providerAbortedStopMessage(rawStopReason: string): string {
 }
 
 /**
+ * Message for an Anthropic `pause_turn` stop the adapter could not resume
+ * in place. `pause_turn` is a legitimate terminal reason for long-running
+ * server-tool turns whose documented remedy is resubmission, so the wording
+ * is recognized as retryable by the agent-run retry ladder (a fresh attempt
+ * IS a resubmission of the request) and must never read as a content abort.
+ */
+export function pausedTurnStopMessage(): string {
+	return (
+		'Provider paused the turn (stop reason: "pause_turn") before the response completed. ' +
+		"Resubmitting the request continues the turn."
+	);
+}
+
+/**
+ * Message for a prompt the provider refused to process at all (Google
+ * `promptFeedback.blockReason`). Distinct from a mid-stream safety stop:
+ * no candidate was ever generated. Deterministically re-triggered by the
+ * same request content, so downstream content-abort containment
+ * (`isProviderContentAbortMessage`) classifies on this wording.
+ */
+export function promptBlockedStopMessage(blockReason: string, blockReasonMessage?: string): string {
+	const detail = blockReasonMessage?.trim();
+	return (
+		`Provider blocked the prompt (block reason: "${blockReason}")${detail ? `: ${detail}` : ""}. ` +
+		"This is a provider-side content block triggered by something in the request content."
+	);
+}
+
+/**
+ * Fingerprints of stream-anomaly errors that are presumptively transient:
+ * - the {@link anomalousStreamStopError} no-detail fallback (premature EOF —
+ *   load-balancer idle-close, proxy drop — before any terminal event),
+ * - the neutral non-safety {@link providerAbortedStopMessage} wording
+ *   (`failed`/`cancelled`/`OTHER`/unknown-future stop reasons on an
+ *   otherwise fully-streamed message),
+ * - the {@link pausedTurnStopMessage} wording (documented remedy is
+ *   resubmission),
+ * - the Anthropic adapter's explicit premature-EOF guard ("stream ended
+ *   before message_stop").
+ *
+ * Deliberately excludes the safety wording of `providerAbortedStopMessage`
+ * and {@link promptBlockedStopMessage}: those are deterministic content
+ * aborts owned by provider-abort containment, and retrying them at the
+ * transport ladder would just replay the poisoned request. The agent-run
+ * retry ladder (agent-run-retry.ts) classifies matches as retryable
+ * transport failures; keep this list in sync with the message builders
+ * above.
+ */
+const TRANSIENT_STREAM_ANOMALY_PATTERNS: RegExp[] = [
+	/\bprovider stream ended with stopreason "/i,
+	/\bprovider ended the stream abnormally \(stop reason:/i,
+	/\bprovider paused the turn \(stop reason: "pause_turn"\)/i,
+	/\bstream ended before message_stop\b/i,
+];
+
+/**
+ * True when an error message carries one of the transient stream-anomaly
+ * fingerprints above and should be retried at the transport ladder.
+ */
+export function isTransientProviderStreamAnomalyMessage(message: string | undefined): boolean {
+	const trimmed = message?.trim();
+	if (!trimmed) return false;
+	return TRANSIENT_STREAM_ANOMALY_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+/**
  * Error to throw when a stream finished in an `error`/`aborted` state.
  * Prefers whatever detail the adapter captured (provider error body, raw
  * stop reason) over a generic fallback.

@@ -31,7 +31,7 @@ import { sanitizeInlineImagePayload } from "../utils/image-payload.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
 import { headersToRecord } from "../utils/headers.js";
 import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.js";
-import { anomalousStreamStopError, providerAbortedStopMessage } from "../utils/provider-stop.js";
+import { anomalousStreamStopError, pausedTurnStopMessage, providerAbortedStopMessage } from "../utils/provider-stop.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 
 import { resolveCloudflareBaseUrl } from "./cloudflare.js";
@@ -549,200 +549,264 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 			// modified block still slips through, drop the most-recent thinking /
 			// redacted_thinking block(s) from the offending message and retry.
 			// Bounded so a persistent 400 can never loop forever.
-			let response: Response;
 			let thinkingStripAttempts = 0;
-			while (true) {
-				try {
-					response = await client.messages.create({ ...params, stream: true }, requestOptions).asResponse();
-					break;
-				} catch (err) {
-					if (
-						thinkingStripAttempts < MAX_THINKING_STRIP_RETRIES &&
-						isLatestAssistantThinkingModifiedError(err)
-					) {
-						const stripped = stripThinkingFromLastAssistantParam(params.messages);
-						if (stripped) {
-							params = { ...params, messages: stripped };
-							thinkingStripAttempts++;
-							continue;
+			const openStream = async (): Promise<Response> => {
+				while (true) {
+					try {
+						return await client.messages.create({ ...params, stream: true }, requestOptions).asResponse();
+					} catch (err) {
+						if (
+							thinkingStripAttempts < MAX_THINKING_STRIP_RETRIES &&
+							isLatestAssistantThinkingModifiedError(err)
+						) {
+							const stripped = stripThinkingFromLastAssistantParam(params.messages);
+							if (stripped) {
+								params = { ...params, messages: stripped };
+								thinkingStripAttempts++;
+								continue;
+							}
 						}
+						throw err;
 					}
-					throw err;
 				}
-			}
+			};
+			let response = await openStream();
 			await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 			stream.push({ type: "start", partial: output });
 
 			type Block = (ThinkingContent | TextContent | (ToolCall & { partialJson: string })) & { index: number };
 			const blocks = output.content as Block[];
 
-			for await (const event of iterateAnthropicEvents(response, effectiveSignal)) {
-				if (event.type === "message_start") {
-					output.responseId = event.message.id;
-					// Capture initial token usage from message_start event
-					// This ensures we have input token counts even if the stream is aborted early
-					output.usage.input = event.message.usage.input_tokens || 0;
-					output.usage.output = event.message.usage.output_tokens || 0;
-					output.usage.cacheRead = event.message.usage.cache_read_input_tokens || 0;
-					output.usage.cacheWrite = event.message.usage.cache_creation_input_tokens || 0;
-					// Anthropic doesn't provide total_tokens, compute from components
-					output.usage.totalTokens =
-						output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
-					calculateCost(model, output.usage);
-				} else if (event.type === "content_block_start") {
-					if (event.content_block.type === "text") {
-						const block: Block = {
-							type: "text",
-							text: "",
-							index: event.index,
-						};
-						output.content.push(block);
-						stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
-					} else if (event.content_block.type === "thinking") {
-						abortGate.openThinkingBlock();
-						const block: Block = {
-							type: "thinking",
-							thinking: "",
-							thinkingSignature: "",
-							index: event.index,
-						};
-						output.content.push(block);
-						stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
-					} else if (event.content_block.type === "redacted_thinking") {
-						abortGate.openThinkingBlock();
-						const block: Block = {
-							type: "thinking",
-							thinking: "[Reasoning redacted]",
-							thinkingSignature: event.content_block.data,
-							redacted: true,
-							index: event.index,
-						};
-						output.content.push(block);
-						stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
-					} else if (event.content_block.type === "tool_use") {
-						const block: Block = {
-							type: "toolCall",
-							id: event.content_block.id,
-							name: isOAuth
-								? fromClaudeCodeName(event.content_block.name, context.tools)
-								: event.content_block.name,
-							arguments: (event.content_block.input as Record<string, any>) ?? {},
-							partialJson: "",
-							index: event.index,
-						};
-						output.content.push(block);
-						stream.push({ type: "toolcall_start", contentIndex: output.content.length - 1, partial: output });
-					}
-				} else if (event.type === "content_block_delta") {
-					if (event.delta.type === "text_delta") {
+			// Segment loop: normally a single pass, with one extra pass per
+			// pause_turn resubmission (see the decision after the event loop).
+			let pauseResubmits = 0;
+			for (;;) {
+				let pausedTurn = false;
+				let sawUncapturedBlock = false;
+				const segmentStart = output.content.length;
+				// Usage totals already accumulated by earlier pause_turn segments;
+				// each response reports per-request usage, so continuation segments
+				// add onto this base instead of overwriting it.
+				const usageBase = { ...output.usage };
+
+				for await (const event of iterateAnthropicEvents(response, effectiveSignal)) {
+					if (event.type === "message_start") {
+						output.responseId = event.message.id;
+						// Capture initial token usage from message_start event
+						// This ensures we have input token counts even if the stream is aborted early
+						output.usage.input = usageBase.input + (event.message.usage.input_tokens || 0);
+						output.usage.output = usageBase.output + (event.message.usage.output_tokens || 0);
+						output.usage.cacheRead = usageBase.cacheRead + (event.message.usage.cache_read_input_tokens || 0);
+						output.usage.cacheWrite = usageBase.cacheWrite + (event.message.usage.cache_creation_input_tokens || 0);
+						// Anthropic doesn't provide total_tokens, compute from components
+						output.usage.totalTokens =
+							output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+						calculateCost(model, output.usage);
+					} else if (event.type === "content_block_start") {
+						if (event.content_block.type === "text") {
+							const block: Block = {
+								type: "text",
+								text: "",
+								index: event.index,
+							};
+							output.content.push(block);
+							stream.push({ type: "text_start", contentIndex: output.content.length - 1, partial: output });
+						} else if (event.content_block.type === "thinking") {
+							abortGate.openThinkingBlock();
+							const block: Block = {
+								type: "thinking",
+								thinking: "",
+								thinkingSignature: "",
+								index: event.index,
+							};
+							output.content.push(block);
+							stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
+						} else if (event.content_block.type === "redacted_thinking") {
+							abortGate.openThinkingBlock();
+							const block: Block = {
+								type: "thinking",
+								thinking: "[Reasoning redacted]",
+								thinkingSignature: event.content_block.data,
+								redacted: true,
+								index: event.index,
+							};
+							output.content.push(block);
+							stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
+						} else if (event.content_block.type === "tool_use") {
+							const block: Block = {
+								type: "toolCall",
+								id: event.content_block.id,
+								name: isOAuth
+									? fromClaudeCodeName(event.content_block.name, context.tools)
+									: event.content_block.name,
+								arguments: (event.content_block.input as Record<string, any>) ?? {},
+								partialJson: "",
+								index: event.index,
+							};
+							output.content.push(block);
+							stream.push({ type: "toolcall_start", contentIndex: output.content.length - 1, partial: output });
+						} else {
+							// Content block types the adapter does not capture (server-tool
+							// blocks etc.). A pause_turn resubmission would silently drop
+							// them, so resubmission is not faithful once one is seen.
+							sawUncapturedBlock = true;
+						}
+					} else if (event.type === "content_block_delta") {
+						if (event.delta.type === "text_delta") {
+							const index = blocks.findIndex((b) => b.index === event.index);
+							const block = blocks[index];
+							if (block && block.type === "text") {
+								block.text += event.delta.text;
+								stream.push({
+									type: "text_delta",
+									contentIndex: index,
+									delta: event.delta.text,
+									partial: output,
+								});
+							}
+						} else if (event.delta.type === "thinking_delta") {
+							const index = blocks.findIndex((b) => b.index === event.index);
+							const block = blocks[index];
+							if (block && block.type === "thinking") {
+								block.thinking += event.delta.thinking;
+								stream.push({
+									type: "thinking_delta",
+									contentIndex: index,
+									delta: event.delta.thinking,
+									partial: output,
+								});
+							}
+						} else if (event.delta.type === "input_json_delta") {
+							const index = blocks.findIndex((b) => b.index === event.index);
+							const block = blocks[index];
+							if (block && block.type === "toolCall") {
+								block.partialJson += event.delta.partial_json;
+								block.arguments = parseStreamingJson(block.partialJson);
+								stream.push({
+									type: "toolcall_delta",
+									contentIndex: index,
+									delta: event.delta.partial_json,
+									partial: output,
+								});
+							}
+						} else if (event.delta.type === "signature_delta") {
+							const index = blocks.findIndex((b) => b.index === event.index);
+							const block = blocks[index];
+							if (block && block.type === "thinking") {
+								block.thinkingSignature = block.thinkingSignature || "";
+								block.thinkingSignature += event.delta.signature;
+							}
+						}
+					} else if (event.type === "content_block_stop") {
 						const index = blocks.findIndex((b) => b.index === event.index);
 						const block = blocks[index];
-						if (block && block.type === "text") {
-							block.text += event.delta.text;
-							stream.push({
-								type: "text_delta",
-								contentIndex: index,
-								delta: event.delta.text,
-								partial: output,
-							});
+						if (block) {
+							delete (block as any).index;
+							if (block.type === "text") {
+								stream.push({
+									type: "text_end",
+									contentIndex: index,
+									content: block.text,
+									partial: output,
+								});
+							} else if (block.type === "thinking") {
+								// The thinking block is now sealed/signed and replay-safe: this is
+								// the clean boundary at which a deferred interrupt may be applied.
+								abortGate.closeThinkingBlock();
+								stream.push({
+									type: "thinking_end",
+									contentIndex: index,
+									content: block.thinking,
+									partial: output,
+								});
+							} else if (block.type === "toolCall") {
+								block.arguments = parseStreamingJson(block.partialJson);
+								// Finalize in-place and strip the scratch buffer so replay only
+								// carries parsed arguments.
+								delete (block as { partialJson?: string }).partialJson;
+								stream.push({
+									type: "toolcall_end",
+									contentIndex: index,
+									toolCall: block,
+									partial: output,
+								});
+							}
 						}
-					} else if (event.delta.type === "thinking_delta") {
-						const index = blocks.findIndex((b) => b.index === event.index);
-						const block = blocks[index];
-						if (block && block.type === "thinking") {
-							block.thinking += event.delta.thinking;
-							stream.push({
-								type: "thinking_delta",
-								contentIndex: index,
-								delta: event.delta.thinking,
-								partial: output,
-							});
+					} else if (event.type === "message_delta") {
+						if (event.delta.stop_reason) {
+							pausedTurn = event.delta.stop_reason === "pause_turn";
+							output.stopReason = mapStopReason(event.delta.stop_reason);
+							// Preserve the raw provider stop reason (refusal/sensitive/etc.)
+							// so the surfaced error explains WHY the stream died instead of
+							// collapsing into an opaque "unknown error".
+							if (output.stopReason === "error" && !output.errorMessage) {
+								output.errorMessage = pausedTurn
+									? pausedTurnStopMessage()
+									: providerAbortedStopMessage(event.delta.stop_reason);
+							}
 						}
-					} else if (event.delta.type === "input_json_delta") {
-						const index = blocks.findIndex((b) => b.index === event.index);
-						const block = blocks[index];
-						if (block && block.type === "toolCall") {
-							block.partialJson += event.delta.partial_json;
-							block.arguments = parseStreamingJson(block.partialJson);
-							stream.push({
-								type: "toolcall_delta",
-								contentIndex: index,
-								delta: event.delta.partial_json,
-								partial: output,
-							});
+						// Only update usage fields if present (not null).
+						// Preserves input_tokens from message_start when proxies omit it in message_delta.
+						if (event.usage.input_tokens != null) {
+							output.usage.input = usageBase.input + event.usage.input_tokens;
 						}
-					} else if (event.delta.type === "signature_delta") {
-						const index = blocks.findIndex((b) => b.index === event.index);
-						const block = blocks[index];
-						if (block && block.type === "thinking") {
-							block.thinkingSignature = block.thinkingSignature || "";
-							block.thinkingSignature += event.delta.signature;
+						if (event.usage.output_tokens != null) {
+							output.usage.output = usageBase.output + event.usage.output_tokens;
 						}
-					}
-				} else if (event.type === "content_block_stop") {
-					const index = blocks.findIndex((b) => b.index === event.index);
-					const block = blocks[index];
-					if (block) {
-						delete (block as any).index;
-						if (block.type === "text") {
-							stream.push({
-								type: "text_end",
-								contentIndex: index,
-								content: block.text,
-								partial: output,
-							});
-						} else if (block.type === "thinking") {
-							// The thinking block is now sealed/signed and replay-safe: this is
-							// the clean boundary at which a deferred interrupt may be applied.
-							abortGate.closeThinkingBlock();
-							stream.push({
-								type: "thinking_end",
-								contentIndex: index,
-								content: block.thinking,
-								partial: output,
-							});
-						} else if (block.type === "toolCall") {
-							block.arguments = parseStreamingJson(block.partialJson);
-							// Finalize in-place and strip the scratch buffer so replay only
-							// carries parsed arguments.
-							delete (block as { partialJson?: string }).partialJson;
-							stream.push({
-								type: "toolcall_end",
-								contentIndex: index,
-								toolCall: block,
-								partial: output,
-							});
+						if (event.usage.cache_read_input_tokens != null) {
+							output.usage.cacheRead = usageBase.cacheRead + event.usage.cache_read_input_tokens;
 						}
-					}
-				} else if (event.type === "message_delta") {
-					if (event.delta.stop_reason) {
-						output.stopReason = mapStopReason(event.delta.stop_reason);
-						// Preserve the raw provider stop reason (refusal/sensitive/etc.)
-						// so the surfaced error explains WHY the stream died instead of
-						// collapsing into an opaque "unknown error".
-						if (output.stopReason === "error" && !output.errorMessage) {
-							output.errorMessage = providerAbortedStopMessage(event.delta.stop_reason);
+						if (event.usage.cache_creation_input_tokens != null) {
+							output.usage.cacheWrite = usageBase.cacheWrite + event.usage.cache_creation_input_tokens;
 						}
+						// Anthropic doesn't provide total_tokens, compute from components
+						output.usage.totalTokens =
+							output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+						calculateCost(model, output.usage);
 					}
-					// Only update usage fields if present (not null).
-					// Preserves input_tokens from message_start when proxies omit it in message_delta.
-					if (event.usage.input_tokens != null) {
-						output.usage.input = event.usage.input_tokens;
-					}
-					if (event.usage.output_tokens != null) {
-						output.usage.output = event.usage.output_tokens;
-					}
-					if (event.usage.cache_read_input_tokens != null) {
-						output.usage.cacheRead = event.usage.cache_read_input_tokens;
-					}
-					if (event.usage.cache_creation_input_tokens != null) {
-						output.usage.cacheWrite = event.usage.cache_creation_input_tokens;
-					}
-					// Anthropic doesn't provide total_tokens, compute from components
-					output.usage.totalTokens =
-						output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
-					calculateCost(model, output.usage);
 				}
+
+				if (
+					!pausedTurn ||
+					options?.signal?.aborted ||
+					sawUncapturedBlock ||
+					pauseResubmits >= MAX_PAUSE_TURN_RESUBMITS
+				) {
+					break;
+				}
+
+				// pause_turn continuation: resubmit the request with the paused
+				// response content appended as the trailing assistant message and keep
+				// streaming into the same output. On any ineligible pause (uncaptured
+				// blocks, resubmit budget exhausted) the branch above breaks instead
+				// and the run surfaces the retryable pause error — a paused turn must
+				// never masquerade as a clean stop with partial content.
+				pauseResubmits++;
+				for (const block of blocks) {
+					// Segment-scoped streaming scratch: indices restart at 0 in the
+					// continuation stream, so they must not leak across segments.
+					delete (block as { index?: number }).index;
+					delete (block as { partialJson?: string }).partialJson;
+				}
+				const continuation = convertAssistantContentBlocks(output.content.slice(segmentStart), isOAuth);
+				if (continuation.length > 0) {
+					const messages = [...params.messages];
+					const last = messages[messages.length - 1];
+					if (last && last.role === "assistant" && Array.isArray(last.content)) {
+						messages[messages.length - 1] = { ...last, content: [...last.content, ...continuation] };
+					} else {
+						messages.push({ role: "assistant", content: continuation });
+					}
+					// Note: onPayload already ran on the original params; the
+					// continuation only appends the provider's own paused content.
+					params = { ...params, messages };
+				}
+				// The paused-state error must not survive into the continuation;
+				// stopReason stays "error" until the continuation terminates cleanly.
+				output.stopReason = "error";
+				output.errorMessage = undefined;
+				response = await openStream();
+				await options?.onResponse?.({ status: response.status, headers: headersToRecord(response.headers) }, model);
 			}
 
 			if (options?.signal?.aborted) {
@@ -1164,6 +1228,15 @@ function normalizeToolCallId(id: string): string {
 const MAX_THINKING_STRIP_RETRIES = 2;
 
 /**
+ * Bounded in-adapter resubmissions for `pause_turn` stops. Anthropic pauses
+ * long-running (server-tool) turns and documents resubmission — the paused
+ * response content passed back as the trailing assistant message — as the
+ * remedy. The bound prevents a provider that pauses forever from looping;
+ * when it is exhausted the turn surfaces the retryable pause error instead.
+ */
+const MAX_PAUSE_TURN_RESUBMITS = 4;
+
+/**
  * Default bound (ms) on how long an external abort waits for an in-flight
  * Anthropic thinking block to seal before it is forced through anyway. Kept
  * short so a runaway reasoning block can't wedge user input; on timeout the
@@ -1398,6 +1471,62 @@ export function stripDanglingThinkingFromLatestAssistant(messages: Message[]): M
 
 // Exported for tests: asserts the outgoing Anthropic request shape, including
 // validation/repair of tool-produced image blocks.
+/**
+ * Convert internal assistant content blocks to Anthropic request blocks.
+ * Shared by history replay (convertMessages) and the pause_turn continuation
+ * path, which resubmits the paused response content as the trailing
+ * assistant message.
+ */
+function convertAssistantContentBlocks(
+	content: AssistantMessage["content"],
+	isOAuthToken: boolean,
+): ContentBlockParam[] {
+	const blocks: ContentBlockParam[] = [];
+
+	for (const block of content) {
+		if (block.type === "text") {
+			if (block.text.trim().length === 0) continue;
+			blocks.push({
+				type: "text",
+				text: sanitizeSurrogates(block.text),
+			});
+		} else if (block.type === "thinking") {
+			// Redacted thinking: pass the opaque payload back as redacted_thinking
+			if (block.redacted) {
+				blocks.push({
+					type: "redacted_thinking",
+					data: block.thinkingSignature!,
+				});
+				continue;
+			}
+			if (block.thinking.trim().length === 0) continue;
+			// If thinking signature is missing/empty (e.g., from aborted stream),
+			// convert to plain text block without <thinking> tags to avoid API rejection
+			// and prevent Claude from mimicking the tags in responses
+			if (!block.thinkingSignature || block.thinkingSignature.trim().length === 0) {
+				blocks.push({
+					type: "text",
+					text: sanitizeSurrogates(block.thinking),
+				});
+			} else {
+				blocks.push({
+					type: "thinking",
+					thinking: sanitizeSurrogates(block.thinking),
+					signature: block.thinkingSignature,
+				});
+			}
+		} else if (block.type === "toolCall") {
+			blocks.push({
+				type: "tool_use",
+				id: block.id,
+				name: isOAuthToken ? toClaudeCodeName(block.name) : block.name,
+				input: block.arguments ?? {},
+			});
+		}
+	}
+	return blocks;
+}
+
 export function convertMessages(
 	messages: Message[],
 	model: Model<"anthropic-messages">,
@@ -1464,49 +1593,7 @@ export function convertMessages(
 				});
 			}
 		} else if (msg.role === "assistant") {
-			const blocks: ContentBlockParam[] = [];
-
-			for (const block of msg.content) {
-				if (block.type === "text") {
-					if (block.text.trim().length === 0) continue;
-					blocks.push({
-						type: "text",
-						text: sanitizeSurrogates(block.text),
-					});
-				} else if (block.type === "thinking") {
-					// Redacted thinking: pass the opaque payload back as redacted_thinking
-					if (block.redacted) {
-						blocks.push({
-							type: "redacted_thinking",
-							data: block.thinkingSignature!,
-						});
-						continue;
-					}
-					if (block.thinking.trim().length === 0) continue;
-					// If thinking signature is missing/empty (e.g., from aborted stream),
-					// convert to plain text block without <thinking> tags to avoid API rejection
-					// and prevent Claude from mimicking the tags in responses
-					if (!block.thinkingSignature || block.thinkingSignature.trim().length === 0) {
-						blocks.push({
-							type: "text",
-							text: sanitizeSurrogates(block.thinking),
-						});
-					} else {
-						blocks.push({
-							type: "thinking",
-							thinking: sanitizeSurrogates(block.thinking),
-							signature: block.thinkingSignature,
-						});
-					}
-				} else if (block.type === "toolCall") {
-					blocks.push({
-						type: "tool_use",
-						id: block.id,
-						name: isOAuthToken ? toClaudeCodeName(block.name) : block.name,
-						input: block.arguments ?? {},
-					});
-				}
-			}
+			const blocks = convertAssistantContentBlocks(msg.content, isOAuthToken);
 			if (blocks.length === 0) continue;
 			params.push({
 				role: "assistant",
@@ -1615,12 +1702,23 @@ function mapStopReason(reason: Anthropic.Messages.StopReason | string): StopReas
 		case "refusal":
 			return "error";
 		case "pause_turn":
+			// Legitimate pause of a long-running turn; the streaming loop
+			// resubmits it in place (bounded by MAX_PAUSE_TURN_RESUBMITS), and an
+			// unresolved pause surfaces pausedTurnStopMessage, which the agent-run
+			// retry ladder treats as retryable. Mapped to "error" so a paused turn
+			// can never masquerade as a clean stop with partial content.
 			return "error";
 		case "stop_sequence":
 			return "stop"; // We don't supply stop sequences, so this should never happen
 		case "sensitive": // Content flagged by safety filters (not yet in SDK types)
 			return "error";
 		default:
+			// Forward-compatible policy for stop reasons this adapter does not
+			// know yet: map to "error" and surface the neutral
+			// providerAbortedStopMessage wording, which the agent-run retry
+			// ladder classifies as a retryable transport failure. Bounded retries
+			// first, then the raw reason surfaces loudly — never a silent clean
+			// stop, never a permanent zero-retry dead end.
 			return "error";
 	}
 }

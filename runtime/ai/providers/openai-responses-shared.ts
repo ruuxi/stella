@@ -652,7 +652,13 @@ function mapStopReason(status: OpenAI.Responses.ResponseStatus | undefined): Sto
 			return "error";
 		case "in_progress":
 		case "queued":
-			return "error";
+			// Stale non-terminal statuses on a *terminal* completed event: real
+			// endpoints (chatgpt backend `response.done`, relay replays) send a
+			// fully-streamed done event whose response payload still carries the
+			// last polled status. The terminal event is authoritative, so accept
+			// the stream as complete — a truly truncated stream never reaches
+			// this mapping and still fails via the premature-EOF guard.
+			return "stop";
 		default: {
 			const _exhaustive: never = status;
 			throw new Error(`Unhandled stop reason: ${_exhaustive}`);

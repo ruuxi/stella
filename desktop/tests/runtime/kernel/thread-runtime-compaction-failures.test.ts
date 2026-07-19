@@ -520,4 +520,50 @@ describe("orchestrator thread compaction failure handling", () => {
     expect(completeSimpleMock).not.toHaveBeenCalled();
     expect(compactCalls).toHaveLength(0);
   });
+  it("accepts natural prose and markdown dividers that echo no template placeholder", () => {
+    const summary = [
+      "## Topic",
+      "Fixing the compaction retry ladder and the summary gate in the stella runtime.",
+      "================",
+      "## Key Points",
+      "- Transient stream failures now land on the transport ladder and retry with jittered backoff.",
+      "- Deterministic content aborts stay contained and never burn transport retries.",
+      "--------------------",
+      "## Current State",
+      "Here is where things stand now: the classifier and the containment layer both have regression coverage.",
+      "## Open Items",
+      "- Verify the repair script against the staging database snapshot before the next release.",
+    ].join("\n");
+    expect(validateThreadSummary(summary, 190_576)).toMatchObject({
+      valid: true,
+    });
+  });
+
+  it("still rejects verbatim template placeholder echoes", () => {
+    const echoed = [
+      "## Topic",
+      "[What the conversation is about]",
+      "## Key Points",
+      "Important information, decisions, and conclusions from the conversation",
+      "## Current State",
+      "Where things stand now \u2014 what has been done, what is in progress",
+      "## Open Items",
+      "Unresolved questions, pending tasks, or next steps discussed",
+    ].join("\n");
+    expect(validateThreadSummary(echoed, 190_576)).toMatchObject({
+      valid: false,
+      reason: "template boilerplate",
+    });
+  });
+
+  it("still rejects run-length repetition spam that is not a markdown divider", () => {
+    const spam = THREAD_SUMMARY_HEADINGS_FOR_TEST.map(
+      (heading) =>
+        `## ${heading}\nProgress ${"x".repeat(40)} tracked with details, owners, and follow-up numbers.`,
+    ).join("\n");
+    expect(validateThreadSummary(spam, 190_576)).toMatchObject({
+      valid: false,
+      reason: "extreme repetition",
+    });
+  });
 });

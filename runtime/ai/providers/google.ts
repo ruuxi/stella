@@ -21,7 +21,7 @@ import type {
 	ToolCall,
 } from "../types.js";
 import { AssistantMessageEventStream } from "../utils/event-stream.js";
-import { anomalousStreamStopError, providerAbortedStopMessage } from "../utils/provider-stop.js";
+import { anomalousStreamStopError, promptBlockedStopMessage, providerAbortedStopMessage } from "../utils/provider-stop.js";
 import { retryWithBackoff } from "../utils/retry.js";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.js";
 import type { GoogleThinkingLevel } from "./google-gemini-cli.js";
@@ -87,9 +87,18 @@ export const streamGoogle: StreamFunction<"google-generative-ai", GoogleOptions>
 
 			stream.push({ type: "start", partial: output });
 			let currentBlock: TextContent | ThinkingContent | null = null;
+			let promptBlockReason: string | undefined;
+			let promptBlockMessage: string | undefined;
 			const blocks = output.content;
 			const blockIndex = () => blocks.length - 1;
 			for await (const chunk of googleStream) {
+				// A blocked prompt carries promptFeedback.blockReason and usually no
+				// candidates/finishReason at all — capture it so the failure can be
+				// surfaced explicitly below instead of dying as a no-detail error.
+				if (chunk.promptFeedback?.blockReason) {
+					promptBlockReason = String(chunk.promptFeedback.blockReason);
+					promptBlockMessage = chunk.promptFeedback.blockReasonMessage;
+				}
 				// @google/genai documents GenerateContentResponse.responseId as an output-only field
 				// used to identify each response. Keep the first non-empty one from the stream.
 				output.responseId ||= chunk.responseId;
@@ -259,6 +268,16 @@ export const streamGoogle: StreamFunction<"google-generative-ai", GoogleOptions>
 
 			if (options?.signal?.aborted) {
 				throw new Error("Request was aborted");
+			}
+
+			// Blocked prompts are deterministic content aborts: surface the block
+			// reason with the wording that content-abort containment classifies
+			// on, never a generic no-detail error.
+			if (promptBlockReason && promptBlockReason !== "BLOCKED_REASON_UNSPECIFIED") {
+				output.stopReason = "error";
+				if (!output.errorMessage) {
+					output.errorMessage = promptBlockedStopMessage(promptBlockReason, promptBlockMessage);
+				}
 			}
 
 			if (output.stopReason === "aborted" || output.stopReason === "error") {

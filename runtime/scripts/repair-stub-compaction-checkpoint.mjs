@@ -5,6 +5,11 @@
 // BEGIN IMMEDIATE before authoritative reads, and writes a durable logical
 // backup that can be reversed with --restore.
 //
+// RUNTIME REQUIREMENT: run this script — and its vitest suite
+// (desktop/tests/runtime/scripts/repair-stub-compaction-checkpoint.test.ts) —
+// under real Node >= 22 (e.g. /opt/homebrew/bin/node), NOT Bun. Bun 1.3.x
+// does not ship the `node:sqlite` module this script depends on.
+//
 // Repair:
 //   node runtime/scripts/repair-stub-compaction-checkpoint.mjs \
 //     --db ~/.stella/stella.sqlite --entry <stub-entry-id>
@@ -325,7 +330,13 @@ export const analyzeRepair = (db, entryId) => {
   ) {
     fail("An affected checkpoint lacks a safe insertion_sequence.");
   }
-  for (const candidate of affected.slice(1)) {
+  // Validate every dependent checkpoint except the target itself. Filtering
+  // by entry_id (not position) matters: `rows` is ordered by
+  // insertion_sequence, so a dependent row that sorts BEFORE the target
+  // would occupy index 0 and escape a slice(1)-style check.
+  for (const candidate of affected.filter(
+    (row) => row.entry_id !== target.entry_id,
+  )) {
     const data = parseCompactionData(candidate);
     if (String(data.fromEntryId ?? "") !== fromEntryId) {
       fail(
