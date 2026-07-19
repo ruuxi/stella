@@ -294,6 +294,43 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
     expect(loadStartupDocs()).toEqual(docsBefore);
   });
 
+  it("keeps the step-6 shadow log invisible to injection, mid-epoch and at the boundary", async () => {
+    writeMemoryDocs({
+      profile: "# User Profile\n\n- The user goes by Bob",
+      memoryMap: "# Memory map\n\n- routing snapshot v1",
+    });
+    expect(await persistStartupDocsFromPromptBuild()).toBe(2);
+    const docsBefore = loadStartupDocs();
+    appendBigConversation();
+
+    // The delta shadow pass writes ONLY memories/memory_shadow.md. That new
+    // write path must never reach any injected surface: prompt builds stay
+    // empty and pinned copies stay byte-identical mid-epoch...
+    fs.writeFileSync(
+      path.join(context.stellaDataDir, "memories", "memory_shadow.md"),
+      "## Shadow pass\nSHADOW-SENTINEL proposal body",
+    );
+    expect(
+      await buildStartupPromptMessages({
+        context: buildContextFromStore(),
+        stellaDataDir: context.stellaDataDir,
+      }),
+    ).toEqual([]);
+    expect(loadStartupDocs()).toEqual(docsBefore);
+
+    // ...and even the boundary refresh — the one moment docs MAY change —
+    // never promotes the shadow file into a resident doc.
+    await compactOnce();
+    const docsAfter = loadStartupDocs();
+    expect(docsAfter).toHaveLength(2);
+    expect(
+      docsAfter.some((doc) => doc.text.includes("SHADOW-SENTINEL")),
+    ).toBe(false);
+    expect(
+      JSON.stringify(context.store.loadThreadMessages(THREAD_KEY)),
+    ).not.toContain("SHADOW-SENTINEL");
+  });
+
   it("scrubs a legacy persisted copy containing a retired comment at the boundary", () => {
     // Copies persisted before comment-stripping landed still carry the
     // graveyard; the first boundary refresh rewrites them from the (now
@@ -585,10 +622,24 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
       appendBigConversation();
       const docsBefore = loadStartupDocs();
       recordPendingInboxRow();
+      const pendingRow = context.store.dreamInboxStore.listUnprocessed()[0]!;
 
-      // Dream answers with a final message and no tool calls: a clean pass.
+      // A clean pass that actually consumes the row (markProcessed, then a
+      // final message). The watermark only advances through rows the pass
+      // consumed — a completed pass that marked nothing no longer advances.
       completeSimpleMock.mockResolvedValueOnce({
-        content: [{ type: "text", text: "Nothing to consolidate." }],
+        content: [
+          {
+            type: "toolCall",
+            id: "tc-1",
+            name: "Dream",
+            arguments: { action: "markProcessed", ids: [pendingRow.id] },
+          },
+        ],
+        stopReason: "toolUse",
+      });
+      completeSimpleMock.mockResolvedValueOnce({
+        content: [{ type: "text", text: "Folded 1 rollout." }],
         stopReason: "stop",
       });
       const result = await awaitPreCompactionConsolidation({
@@ -600,7 +651,7 @@ describe("compaction-boundary refresh of pinned startup docs", () => {
       const watermark =
         context.store.dreamInboxStore.readConsolidationWatermark();
       expect(watermark).not.toBeNull();
-      expect(watermark!.frontier).toBeGreaterThan(0);
+      expect(watermark!.frontier).toBe(pendingRow.sourceUpdatedAt);
 
       // Simulate Dream having rewritten the map on disk mid-epoch: the
       // pinned copy stays byte-identical and prompt builds inject nothing.

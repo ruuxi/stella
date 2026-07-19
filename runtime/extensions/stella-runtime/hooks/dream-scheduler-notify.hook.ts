@@ -68,6 +68,11 @@ export const createDreamSchedulerNotifyHook = (opts: {
         ...(typeof tokenEstimate === "number"
           ? { orchestratorTokenEstimate: tokenEstimate }
           : {}),
+        // Orchestrator conversation id = its thread key; carries the step-6
+        // delta machinery (shadow derivation / delta input) into the run.
+        ...(payload.conversationId
+          ? { conversationId: payload.conversationId }
+          : {}),
       }).catch((error) => {
         logger.debug("dream-scheduler.notify-failed", {
           error: error instanceof Error ? error.message : String(error),

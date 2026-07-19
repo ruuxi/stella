@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -19,6 +19,7 @@ import {
   buildDreamSystemPrompt,
   maybeSpawnDreamRun,
 } from "../../../../../runtime/kernel/agent-runtime/dream-scheduler.js";
+import type { DreamDeltaSourceMessage } from "../../../../../runtime/kernel/agent-runtime/dream-delta.js";
 import type { ResolvedLlmRoute } from "../../../../../runtime/kernel/model-routing.js";
 import type { RuntimeStore } from "../../../../../runtime/kernel/storage/runtime-store.js";
 
@@ -484,5 +485,408 @@ describe("awaitPreCompactionConsolidation (consolidate-before-compact)", () => {
       }),
     });
     expect(result.outcome).toBe("skipped_fresh");
+  });
+
+  it("advances the watermark only to what the pass actually consumed on a >limit backlog", async () => {
+    const rootPath = createRoot();
+    const watermarkWrites: Array<{ frontier: number }> = [];
+    const store = {
+      dreamInboxStore: {
+        countUnprocessed: () => 60,
+        pendingFrontier: () => 9_999,
+        readConsolidationWatermark: () => null,
+        writeConsolidationWatermark: (write: { frontier: number }) => {
+          watermarkWrites.push({ frontier: write.frontier });
+        },
+        // The pass only consumed rows up to 7_000 (LIST-limit backlog).
+        maxProcessedSourceUpdatedAtSince: () => 7_000,
+      },
+    } as unknown as RuntimeStore;
+    const result = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("folded a batch"),
+        apiKey: "key",
+      }),
+    });
+    expect(result.outcome).toBe("consolidated");
+    expect(watermarkWrites).toEqual([{ frontier: 7_000 }]);
+  });
+
+  it("does not advance the watermark when a completed pass consumed nothing", async () => {
+    const rootPath = createRoot();
+    const watermarkWrites: Array<{ frontier: number }> = [];
+    const store = {
+      dreamInboxStore: {
+        countUnprocessed: () => 3,
+        pendingFrontier: () => 5_000,
+        readConsolidationWatermark: () => null,
+        writeConsolidationWatermark: (write: { frontier: number }) => {
+          watermarkWrites.push({ frontier: write.frontier });
+        },
+        maxProcessedSourceUpdatedAtSince: () => 0,
+      },
+    } as unknown as RuntimeStore;
+    const result = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("Nothing to consolidate."),
+        apiKey: "key",
+      }),
+    });
+    expect(result.outcome).toBe("consolidated");
+    expect(watermarkWrites).toEqual([]);
+  });
+
+  it("skips the wait entirely once a boundary already timed out on the same hung pass", async () => {
+    const rootPath = createRoot();
+    const { store } = buildFakeStore({ pending: 1, frontier: 9_000 });
+    const hangingRoute = buildFakeRoute({
+      response: fakeAssistant("never delivered"),
+      apiKey: "key",
+    });
+    hangingRoute.model = {
+      ...hangingRoute.model,
+      api: registerHangingApi(),
+    } as typeof hangingRoute.model;
+
+    const first = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: hangingRoute,
+      timeoutMs: 100,
+    });
+    expect(first.outcome).toBe("timed_out");
+
+    // Same pass still hung: the next boundary must not pay the timeout again.
+    const startedAt = Date.now();
+    const second = await awaitPreCompactionConsolidation({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: hangingRoute,
+      timeoutMs: 60_000,
+    });
+    expect(second.outcome).toBe("not_started");
+    expect(second.detail).toContain("already timed out");
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+  });
+});
+
+describe("orchestrator-delta staging (migration step 6)", () => {
+  const CONVERSATION_ID = "conv-orchestrator";
+
+  const userMsg = (ts: number, text: string): DreamDeltaSourceMessage => ({
+    timestamp: ts,
+    role: "user",
+    content: text,
+    payload: {
+      role: "user",
+      content: text,
+      timestamp: ts,
+    } as DreamDeltaSourceMessage["payload"],
+  });
+
+  /** Route whose provider records every request context and answers from a
+   * queue (last response repeats), so the Dream pass and the shadow pass can
+   * be told apart by their prompts. */
+  const buildRecordingRoute = (
+    responses: string[],
+  ): { route: ResolvedLlmRoute; contexts: Context[] } => {
+    const contexts: Context[] = [];
+    const apiId = `fake-rec-${Math.random().toString(36).slice(2)}` as Api;
+    const answer = (context: Context): AssistantMessageEventStream => {
+      contexts.push(context);
+      const text =
+        responses[Math.min(contexts.length - 1, responses.length - 1)] ?? "ok";
+      return buildResultStream(fakeAssistant(text));
+    };
+    registerApiProvider({
+      api: apiId,
+      stream: (_model: Model<Api>, context: Context, _options?: StreamOptions) =>
+        answer(context),
+      streamSimple: (
+        _model: Model<Api>,
+        context: Context,
+        _options?: SimpleStreamOptions,
+      ) => answer(context),
+    });
+    const base = buildFakeRoute({ response: fakeAssistant("unused") });
+    return {
+      route: {
+        ...base,
+        model: { ...base.model, api: apiId } as typeof base.model,
+      },
+      contexts,
+    };
+  };
+
+  type DeltaStoreArgs = {
+    pending?: number;
+    frontier?: number;
+    watermark?: number;
+    messages?: DreamDeltaSourceMessage[];
+  };
+
+  const buildDeltaStore = (args: DeltaStoreArgs) => {
+    const advances: Array<{ conversationId: string; ts: number }> = [];
+    const markCalls: Array<{ kinds: readonly string[]; throughTs: number }> = [];
+    let watermark = args.watermark ?? 0;
+    const store = {
+      dreamInboxStore: {
+        countUnprocessed: () => args.pending ?? 0,
+        pendingFrontier: () => args.frontier ?? 0,
+        readConsolidationWatermark: () => null,
+        writeConsolidationWatermark: () => {},
+        maxProcessedSourceUpdatedAtSince: () => 0,
+        readDeltaWatermark: () => watermark,
+        advanceDeltaWatermark: (conversationId: string, ts: number) => {
+          advances.push({ conversationId, ts });
+          watermark = Math.max(watermark, ts);
+        },
+        markKindsProcessedThrough: (call: {
+          kinds: readonly string[];
+          throughTs: number;
+        }) => {
+          markCalls.push(call);
+          return { updated: 0 };
+        },
+      },
+      loadRawThreadMessagesWithEntryTypes: () => args.messages ?? [],
+    } as unknown as RuntimeStore;
+    return { store, advances, markCalls };
+  };
+
+  it("runs the delta derivation in shadow after a completed inbox pass", async () => {
+    const rootPath = createRoot();
+    const { route, contexts } = buildRecordingRoute([
+      "- folded the inbox rows",
+      "## Proposed MEMORY.md blocks\n- shadow proposal marker",
+    ]);
+    const { store, advances } = buildDeltaStore({
+      pending: 1,
+      watermark: 1_000,
+      messages: [userMsg(2_000, "please remember I deploy on Fridays")],
+    });
+
+    const result = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      trigger: "manual",
+      conversationId: CONVERSATION_ID,
+    });
+    expect(result.scheduled).toBe(true);
+
+    await waitFor(() => contexts.length >= 2, 3_000);
+    await waitFor(() => advances.length > 0, 3_000);
+
+    // The second request is the shadow derivation, on the delta transcript.
+    expect(contexts[1]?.systemPrompt).toContain("SHADOW mode");
+    const shadowUserText = JSON.stringify(contexts[1]?.messages ?? []);
+    expect(shadowUserText).toContain("ORCHESTRATOR DELTA");
+    expect(shadowUserText).toContain("deploy on Fridays");
+
+    // Proposal recorded to the shadow log; watermark covers the delta.
+    expect(advances).toEqual([
+      { conversationId: CONVERSATION_ID, ts: 2_000 },
+    ]);
+    const shadowLog = await readFile(
+      path.join(rootPath, "memories", "memory_shadow.md"),
+      "utf-8",
+    );
+    expect(shadowLog).toContain("DREAM:SHADOW_PASS");
+    expect(shadowLog).toContain("shadow proposal marker");
+    expect(shadowLog).toContain(CONVERSATION_ID);
+  });
+
+  it("bootstraps a zero watermark without deriving or writing a shadow entry", async () => {
+    const rootPath = createRoot();
+    const { route, contexts } = buildRecordingRoute(["- folded the rows"]);
+    const { store, advances } = buildDeltaStore({
+      pending: 1,
+      watermark: 0,
+      messages: [userMsg(2_000, "pre-migration history")],
+    });
+
+    const result = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      trigger: "manual",
+      conversationId: CONVERSATION_ID,
+    });
+    expect(result.scheduled).toBe(true);
+
+    await waitFor(() => advances.length > 0, 3_000);
+    expect(advances).toEqual([
+      { conversationId: CONVERSATION_ID, ts: 2_000 },
+    ]);
+    // Only the inbox pass hit the provider; nothing was derived.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(contexts.length).toBe(1);
+    await expect(
+      readFile(path.join(rootPath, "memories", "memory_shadow.md"), "utf-8"),
+    ).rejects.toThrow();
+  });
+
+  it("honors dream.deltaShadow: false", async () => {
+    const rootPath = createRoot();
+    await mkdir(rootPath, { recursive: true });
+    await writeFile(
+      path.join(rootPath, "config.json"),
+      JSON.stringify({ dream: { deltaShadow: false } }),
+      "utf-8",
+    );
+    const { route, contexts } = buildRecordingRoute(["- folded the rows"]);
+    const { store, advances } = buildDeltaStore({
+      pending: 1,
+      watermark: 1_000,
+      messages: [userMsg(2_000, "some new turn")],
+    });
+
+    const result = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      trigger: "manual",
+      conversationId: CONVERSATION_ID,
+    });
+    expect(result.scheduled).toBe(true);
+    await waitFor(() => contexts.length >= 1, 3_000);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(contexts.length).toBe(1);
+    expect(advances).toEqual([]);
+  });
+
+  it("cuts the pass input over to the orchestrator delta with dream.inputSource: delta", async () => {
+    const rootPath = createRoot();
+    await mkdir(rootPath, { recursive: true });
+    await writeFile(
+      path.join(rootPath, "config.json"),
+      JSON.stringify({ dream: { inputSource: "delta" } }),
+      "utf-8",
+    );
+    const { route, contexts } = buildRecordingRoute([
+      "Folded the delta into MEMORY.md.",
+    ]);
+    const { store, advances, markCalls } = buildDeltaStore({
+      pending: 1,
+      watermark: 1_000,
+      messages: [userMsg(2_000, "the delta is the input now")],
+    });
+
+    const result = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      trigger: "manual",
+      conversationId: CONVERSATION_ID,
+    });
+    expect(result.scheduled).toBe(true);
+
+    await waitFor(() => advances.length > 0, 3_000);
+    // Primary input is the delta transcript, not the inbox listing.
+    const passUserText = JSON.stringify(contexts[0]?.messages ?? []);
+    expect(passUserText).toContain("ORCHESTRATOR DELTA");
+    expect(passUserText).toContain("the delta is the input now");
+    // Clean completion: watermark advanced, covered rows consumed in code.
+    expect(advances).toEqual([
+      { conversationId: CONVERSATION_ID, ts: 2_000 },
+    ]);
+    expect(markCalls).toEqual([
+      { kinds: ["thread_summary", "memory_note"], throughTs: 2_000 },
+    ]);
+    // No shadow in delta mode — the delta IS the live input.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(contexts.length).toBe(1);
+  });
+
+  it("delta mode is eligible on a drained inbox when unconsolidated delta exists", async () => {
+    const rootPath = createRoot();
+    await mkdir(rootPath, { recursive: true });
+    await writeFile(
+      path.join(rootPath, "config.json"),
+      JSON.stringify({ dream: { inputSource: "delta" } }),
+      "utf-8",
+    );
+    const { route } = buildRecordingRoute(["Folded the delta."]);
+    const { store, advances } = buildDeltaStore({
+      pending: 0,
+      watermark: 1_000,
+      messages: [userMsg(2_000, "new material")],
+    });
+
+    const result = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      trigger: "manual",
+      conversationId: CONVERSATION_ID,
+    });
+    expect(result.scheduled).toBe(true);
+    await waitFor(() => advances.length > 0, 3_000);
+  });
+
+  it("keeps no_inputs semantics for a drained inbox in the default input mode", async () => {
+    const rootPath = createRoot();
+    const { route, contexts } = buildRecordingRoute(["noop"]);
+    const { store } = buildDeltaStore({
+      pending: 0,
+      watermark: 1_000,
+      messages: [userMsg(2_000, "unconsolidated but inbox mode")],
+    });
+    const result = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      trigger: "manual",
+      conversationId: CONVERSATION_ID,
+    });
+    expect(result.scheduled).toBe(false);
+    expect(result.reason).toBe("no_inputs");
+    expect(contexts.length).toBe(0);
+  });
+
+  it("hydrates the persisted token baseline so a restart cannot fire a spurious interval pass", async () => {
+    const rootPath = createRoot();
+    const baselineWrites: number[] = [];
+    const store = {
+      dreamInboxStore: {
+        countUnprocessed: () => 1,
+        readTokenBaseline: () => 20_000,
+        writeTokenBaseline: (tokens: number) => {
+          baselineWrites.push(tokens);
+        },
+      },
+    } as unknown as RuntimeStore;
+    const { route, contexts } = buildRecordingRoute(["- folded"]);
+
+    // Fresh process state + persisted baseline 20k: an estimate of 25k is
+    // only 5k of growth — below the 20k interval, so no pass fires. Without
+    // hydration this would have measured 25k growth from zero and fired.
+    const below = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      trigger: "token_interval",
+      orchestratorTokenEstimate: 25_000,
+    });
+    expect(below.scheduled).toBe(false);
+    expect(below.reason).toBe("below_threshold");
+    expect(contexts.length).toBe(0);
+
+    // Real growth past the interval still fires, and the new baseline is
+    // persisted for the next restart.
+    const fired = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      trigger: "token_interval",
+      orchestratorTokenEstimate: 45_000,
+    });
+    expect(fired.scheduled).toBe(true);
+    await waitFor(() => baselineWrites.includes(45_000), 3_000);
   });
 });

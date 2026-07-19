@@ -18,7 +18,10 @@ import {
   stripInjectedHtmlComments,
 } from "../memory/dream-storage.js";
 import { redactMemoryText } from "../memory/redaction.js";
-import type { DreamInboxStore } from "../memory/dream-inbox-store.js";
+import type {
+  DreamInboxKind,
+  DreamInboxStore,
+} from "../memory/dream-inbox-store.js";
 import { localNoResponse } from "./local-tool-overrides.js";
 import { withFileWriteLock, writeFileWithNulGuard } from "./file-write-lock.js";
 
@@ -28,6 +31,13 @@ export type LocalToolStore = {
 
 export type LocalDreamConfig = {
   stellaDataDir: string;
+  /**
+   * When set, Dream's `list` returns only these inbox kinds. The delta-input
+   * pass (migration step 6 cutover) restricts the list to `chronicle`:
+   * rollout summaries and review notes are already represented in the
+   * orchestrator delta it reads, so listing them would double-feed Dream.
+   */
+  inboxListKinds?: readonly DreamInboxKind[];
 };
 
 const isWithinDirectory = (candidate: string, root: string): boolean => {
@@ -120,22 +130,22 @@ export const validateMemoryMapWrite = (updated: string): string | null => {
   if (injected.length === 0) {
     return `Write rejected: ${MEMORY_MAP_FILE} would have no injectable content (everything inside HTML comments). Keep at least the routing entries visible. Nothing was written.`;
   }
-  if (
-    !updated.includes(MEMORY_MAP_ROUTES_START_ANCHOR) ||
-    !updated.includes(MEMORY_MAP_ROUTES_END_ANCHOR)
-  ) {
-    return `Write rejected: the ${MEMORY_MAP_ROUTES_START_ANCHOR} / ${MEMORY_MAP_ROUTES_END_ANCHOR} anchors must stay intact in ${MEMORY_MAP_FILE}. Edit between them. Nothing was written.`;
+  // Ordering matters, not just presence: an END swapped before its START
+  // would leave a section no follow-up StrReplace can address correctly.
+  const routesStart = updated.indexOf(MEMORY_MAP_ROUTES_START_ANCHOR);
+  const routesEnd = updated.indexOf(MEMORY_MAP_ROUTES_END_ANCHOR);
+  if (routesStart === -1 || routesEnd === -1 || routesEnd < routesStart) {
+    return `Write rejected: the ${MEMORY_MAP_ROUTES_START_ANCHOR} / ${MEMORY_MAP_ROUTES_END_ANCHOR} anchors must stay intact and in that order in ${MEMORY_MAP_FILE}. Edit between them. Nothing was written.`;
   }
   // The derived-constraints staging section is load-bearing (design review
   // §6.3: a detected constraint is never non-resident), so its anchors get
   // the same mechanical protection as the routing anchors. Every seeded map
   // contains both pairs; a file that lost them is repaired by a write that
   // restores them, which this guard accepts.
-  if (
-    !updated.includes(MEMORY_MAP_DERIVED_START_ANCHOR) ||
-    !updated.includes(MEMORY_MAP_DERIVED_END_ANCHOR)
-  ) {
-    return `Write rejected: the ${MEMORY_MAP_DERIVED_START_ANCHOR} / ${MEMORY_MAP_DERIVED_END_ANCHOR} anchors must stay intact in ${MEMORY_MAP_FILE} (restore them under "## Derived constraints" if they are missing). Nothing was written.`;
+  const derivedStart = updated.indexOf(MEMORY_MAP_DERIVED_START_ANCHOR);
+  const derivedEnd = updated.indexOf(MEMORY_MAP_DERIVED_END_ANCHOR);
+  if (derivedStart === -1 || derivedEnd === -1 || derivedEnd < derivedStart) {
+    return `Write rejected: the ${MEMORY_MAP_DERIVED_START_ANCHOR} / ${MEMORY_MAP_DERIVED_END_ANCHOR} anchors must stay intact and in that order in ${MEMORY_MAP_FILE} (restore them under "## Derived constraints" if they are missing). Nothing was written.`;
   }
   return null;
 };
@@ -327,9 +337,10 @@ export async function dispatchLocalTool(
     const action = typeof args.action === "string" ? args.action : "";
     if (action === "list") {
       const limit = typeof args.limit === "number" ? args.limit : undefined;
-      const rows = inbox.listUnprocessed(
-        limit !== undefined ? { limit } : undefined,
-      );
+      const rows = inbox.listUnprocessed({
+        ...(limit !== undefined ? { limit } : {}),
+        ...(dream.inboxListKinds?.length ? { kinds: dream.inboxListKinds } : {}),
+      });
       return {
         handled: true,
         text: JSON.stringify({

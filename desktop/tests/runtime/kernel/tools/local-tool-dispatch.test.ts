@@ -192,6 +192,71 @@ describe("dispatchLocalTool", () => {
     expect(repaired).toContain("<!-- DREAM:DERIVED_END -->");
   });
 
+  it("rejects a map write that reorders anchors (END before START)", async () => {
+    const rootPath = await createRoot();
+    await ensureDreamMemoryLayout(rootPath);
+    const mapPath = memoryMapPath(rootPath);
+    const before = await readFile(mapPath, "utf-8");
+
+    // Both anchors remain PRESENT but swapped — the old presence-only guard
+    // accepted exactly this corruption.
+    const swapped = before
+      .replace("<!-- DREAM:MAP_START -->", "<!-- TMP_SWAP -->")
+      .replace("<!-- DREAM:MAP_END -->", "<!-- DREAM:MAP_START -->")
+      .replace("<!-- TMP_SWAP -->", "<!-- DREAM:MAP_END -->");
+    const outcome = await strReplace(rootPath, {
+      file_path: mapPath,
+      old_string: before,
+      new_string: swapped,
+    });
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("in that order");
+    await expect(readFile(mapPath, "utf-8")).resolves.toBe(before);
+  });
+
+  it("filters the Dream list to the configured inbox kinds (delta mode)", async () => {
+    const rootPath = await createRoot();
+    const listCalls: Array<Record<string, unknown> | undefined> = [];
+    const inbox = {
+      listUnprocessed: (args?: Record<string, unknown>) => {
+        listCalls.push(args);
+        return [
+          {
+            id: 7,
+            kind: "chronicle",
+            sourceKey: "10m",
+            threadId: null,
+            runId: null,
+            agentType: null,
+            title: "Chronicle 10m screen-activity digest",
+            content: "digest body",
+            metadata: null,
+            sourceUpdatedAt: 123,
+            processedByDreamAt: null,
+            usageCount: 0,
+            lastUsage: null,
+          },
+        ];
+      },
+    };
+
+    const result = await dispatchLocalTool(
+      TOOL_IDS.DREAM,
+      { action: "list" },
+      {
+        conversationId: "dream",
+        store: { dreamInboxStore: inbox as never },
+        dream: { stellaDataDir: rootPath, inboxListKinds: ["chronicle"] },
+      },
+    );
+
+    expect(result.handled).toBe(true);
+    expect(listCalls).toEqual([{ kinds: ["chronicle"] }]);
+    const text = result.handled ? result.text : "";
+    expect(text).toContain("digest body");
+  });
+
   it("rejects writes to the retired summary/index files with a pointer to the map", async () => {
     const rootPath = await createRoot();
     const memoriesDir = path.join(rootPath, "memories");

@@ -22,6 +22,16 @@
  * forced into durable memory until it grows past the interval or is about to
  * compact.
  *
+ * Input staging (migration step 6): with `dream.inputSource: "inbox"` (the
+ * default) the pass consumes Dream-inbox rows exactly as before, and the
+ * orchestrator-delta derivation runs in SHADOW after each completed pass —
+ * proposals land only in `memories/memory_shadow.md`, next to a record of
+ * what the live pass changed, so the two input paths can be diffed before
+ * cutover. With `dream.inputSource: "delta"` the orchestrator-thread delta
+ * since a persisted message-ts watermark becomes the primary input; the
+ * inbox list then serves only Chronicle transport rows, while the recording
+ * hooks stay on so setting the config back to `inbox` is a full rollback.
+ *
  * Single-flight: only one Dream run may execute at a time, via a mkdir lock
  * under `.stella/locks/dream/`.
  *
@@ -49,9 +59,25 @@ import {
   MEMORY_MAP_MAX_CHARS,
   MEMORY_MAP_MAX_ENTRIES,
   MEMORY_MAP_STALE_DAYS,
+  memoriesRoot,
   memoryFilePath,
   memoryMapPath,
+  memoryShadowPath,
 } from "../memory/dream-storage.js";
+import type { DreamInboxKind } from "../memory/dream-inbox-store.js";
+import {
+  appendToShadowLog,
+  buildDreamDeltaTranscript,
+  buildDreamDeltaUserMessage,
+  buildDreamShadowSystemPrompt,
+  buildDreamShadowUserPrompt,
+  DREAM_DELTA_LOAD_LIMIT,
+  formatDeltaEntry,
+  formatShadowLogEntry,
+  type DreamDeltaSourceMessage,
+  type DreamDeltaTranscript,
+} from "./dream-delta.js";
+import { buildDurableMemoryReference } from "../thread-runtime.js";
 import {
   getResolvedLlmApiKey,
   resolvedLlmSupportsCredentiallessCalls,
@@ -75,9 +101,24 @@ const logger = createRuntimeLogger("agent-runtime.dream-scheduler");
 const DEFAULT_TOKEN_INTERVAL = 20_000;
 const MAX_ITERATIONS = 12;
 
+/**
+ * Where Dream's consolidation input comes from (migration step 6):
+ *   - `inbox` (default) — the durable Dream-inbox rows, exactly as before.
+ *     While this is the live path, the orchestrator-delta derivation runs in
+ *     SHADOW alongside it (unless `dream.deltaShadow: false`), writing its
+ *     proposals to `memories/memory_shadow.md` for comparison.
+ *   - `delta` — the cutover: the orchestrator-thread delta since the
+ *     persisted watermark becomes the pass's primary input; the inbox list
+ *     serves only Chronicle transport rows. The recording hooks stay on, so
+ *     rollback is simply setting the config back to `inbox`.
+ */
+type DreamInputSource = "inbox" | "delta";
+
 type DreamConfig = {
   enabled: boolean;
   tokenInterval: number;
+  inputSource: DreamInputSource;
+  deltaShadow: boolean;
 };
 
 type DreamRunOutcome = {
@@ -95,12 +136,20 @@ type DreamRuntimeState = {
   lastRunAt: number;
   /** Orchestrator token estimate captured at the last Dream run. */
   tokensAtLastRun: number;
+  /** True once the persisted token baseline has been read for this process. */
+  baselineHydrated: boolean;
   /**
    * Settles when the in-flight run finishes; never rejects. Lets the
    * consolidate-before-compact ordering join a run that is already running
    * instead of racing the single-flight lock.
    */
   completion: Promise<DreamRunOutcome> | null;
+  /**
+   * The completion handle a pre-compaction wait already timed out on. A
+   * permanently hung pass must cost the full timeout at most once — later
+   * boundaries seeing the same handle still in flight compact immediately.
+   */
+  timedOutCompletion: Promise<DreamRunOutcome> | null;
 };
 
 const RUNTIME_STATE = new Map<string, DreamRuntimeState>();
@@ -112,7 +161,9 @@ const stateFor = (stellaDataDir: string): DreamRuntimeState => {
       inFlight: false,
       lastRunAt: 0,
       tokensAtLastRun: 0,
+      baselineHydrated: false,
       completion: null,
+      timedOutCompletion: null,
     };
     RUNTIME_STATE.set(stellaDataDir, state);
   }
@@ -187,6 +238,100 @@ const readPendingFrontierSafe = (store: RuntimeStore): number => {
   }
 };
 
+/**
+ * Newest source_updated_at among rows the pass actually consumed since it
+ * started. `null` = the store cannot answer (partial fakes / legacy), which
+ * falls back to the historical all-pending-frontier advance; 0 = answerable
+ * but nothing was consumed, which blocks the advance entirely.
+ */
+const readProcessedFrontierSafe = (
+  store: RuntimeStore,
+  sinceMs: number,
+): number | null => {
+  try {
+    const inbox = store.dreamInboxStore;
+    if (typeof inbox.maxProcessedSourceUpdatedAtSince !== "function") {
+      return null;
+    }
+    const frontier = inbox.maxProcessedSourceUpdatedAtSince(sinceMs);
+    return Number.isFinite(frontier) && frontier > 0 ? frontier : 0;
+  } catch {
+    return null;
+  }
+};
+
+const readDeltaWatermarkSafe = (
+  store: RuntimeStore,
+  conversationId: string,
+): number | null => {
+  try {
+    const inbox = store.dreamInboxStore;
+    if (typeof inbox.readDeltaWatermark !== "function") return null;
+    const ts = inbox.readDeltaWatermark(conversationId);
+    return Number.isFinite(ts) && ts >= 0 ? ts : null;
+  } catch {
+    return null;
+  }
+};
+
+const advanceDeltaWatermarkSafe = (
+  store: RuntimeStore,
+  conversationId: string,
+  lastMessageTs: number,
+): void => {
+  try {
+    const inbox = store.dreamInboxStore;
+    if (typeof inbox.advanceDeltaWatermark === "function") {
+      inbox.advanceDeltaWatermark(conversationId, lastMessageTs);
+    }
+  } catch (error) {
+    logger.debug("dream.delta-watermark-write-failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+const readTokenBaselineSafe = (store: RuntimeStore): number | null => {
+  try {
+    const inbox = store.dreamInboxStore;
+    if (typeof inbox.readTokenBaseline !== "function") return null;
+    return inbox.readTokenBaseline();
+  } catch {
+    return null;
+  }
+};
+
+const writeTokenBaselineSafe = (store: RuntimeStore, tokens: number): void => {
+  try {
+    const inbox = store.dreamInboxStore;
+    if (typeof inbox.writeTokenBaseline === "function") {
+      inbox.writeTokenBaseline(tokens);
+    }
+  } catch {
+    // scheduling bookkeeping only
+  }
+};
+
+/**
+ * Raw persisted orchestrator messages (compaction overlays never applied),
+ * newest `limit` of them; empty when the store cannot serve them (partial
+ * fakes), which degrades to inbox-only behavior everywhere.
+ */
+const loadRawOrchestratorMessagesSafe = (
+  store: RuntimeStore,
+  conversationId: string,
+  limit: number,
+): DreamDeltaSourceMessage[] => {
+  try {
+    if (typeof store.loadRawThreadMessagesWithEntryTypes !== "function") {
+      return [];
+    }
+    return store.loadRawThreadMessagesWithEntryTypes(conversationId, limit);
+  } catch {
+    return [];
+  }
+};
+
 const readDreamConfig = (stellaDataDir: string): DreamConfig => {
   const configPath = path.join(stellaDataDir, "config.json");
   try {
@@ -203,11 +348,17 @@ const readDreamConfig = (stellaDataDir: string): DreamConfig => {
         typeof dream.tokenInterval === "number" && dream.tokenInterval > 0
           ? Math.floor(dream.tokenInterval)
           : DEFAULT_TOKEN_INTERVAL,
+      // Step-6 staging default: inbox stays the live input; the delta path
+      // runs in shadow until `dream.inputSource: "delta"` cuts it over.
+      inputSource: dream.inputSource === "delta" ? "delta" : "inbox",
+      deltaShadow: dream.deltaShadow !== false,
     };
   } catch {
     return {
       enabled: true,
       tokenInterval: DEFAULT_TOKEN_INTERVAL,
+      inputSource: "inbox",
+      deltaShadow: true,
     };
   }
 };
@@ -286,10 +437,104 @@ const toToolResultMessage = (
   timestamp: Date.now(),
 });
 
+/**
+ * Inbox kinds the delta-input pass still serves through the Dream tool:
+ * Chronicle transport is out of the migration's scope. Rollout summaries and
+ * review notes are represented byte-equivalently in the orchestrator delta
+ * (design review Q3), so the cutover pass reads them from the delta instead
+ * and consumes their covered rows mechanically below.
+ */
+const DELTA_MODE_LIST_KINDS: readonly DreamInboxKind[] = ["chronicle"];
+const DELTA_COVERED_KINDS: readonly DreamInboxKind[] = [
+  "thread_summary",
+  "memory_note",
+];
+
+type DeltaInput = {
+  conversationId: string;
+  delta: DreamDeltaTranscript;
+};
+
+/**
+ * Prepare the cutover pass's primary input. Returns null — meaning "run the
+ * legacy inbox pass" — when the delta path is not active, the store cannot
+ * serve raw messages, the watermark needs bootstrapping, or the delta has no
+ * material content. Bootstrap (watermark 0) advances straight to the newest
+ * relevant message WITHOUT deriving: the pre-cutover history was already
+ * consolidated by the inbox path, and the one-time deep pass is migration
+ * step 9, not this one.
+ */
+const prepareDeltaInput = (args: {
+  store: RuntimeStore;
+  conversationId?: string;
+  config: DreamConfig;
+}): DeltaInput | null => {
+  if (args.config.inputSource !== "delta" || !args.conversationId) return null;
+  const conversationId = args.conversationId;
+  const watermark = readDeltaWatermarkSafe(args.store, conversationId);
+  if (watermark === null) return null;
+  const messages = loadRawOrchestratorMessagesSafe(
+    args.store,
+    conversationId,
+    DREAM_DELTA_LOAD_LIMIT,
+  );
+  if (messages.length === 0) return null;
+  if (watermark === 0) {
+    const bootstrap = buildDreamDeltaTranscript(messages, 0);
+    if (bootstrap.newestMessageTs > 0) {
+      advanceDeltaWatermarkSafe(
+        args.store,
+        conversationId,
+        bootstrap.newestMessageTs,
+      );
+      logger.info("dream.delta.bootstrapped", {
+        conversationId,
+        watermark: bootstrap.newestMessageTs,
+      });
+    }
+    return null;
+  }
+  const delta = buildDreamDeltaTranscript(messages, watermark);
+  if (!delta.transcript) return null;
+  return { conversationId, delta };
+};
+
+/**
+ * Post-pass bookkeeping for a CLEANLY completed delta-input pass: advance the
+ * delta watermark through what the pass actually read, and mechanically
+ * consume the inbox rows that delta provably covers so the queue (and its GC)
+ * stays healthy while the recording hooks remain on as the rollback path.
+ */
+const finishDeltaPass = (store: RuntimeStore, input: DeltaInput): void => {
+  advanceDeltaWatermarkSafe(
+    store,
+    input.conversationId,
+    input.delta.coveredThroughTs,
+  );
+  try {
+    const inbox = store.dreamInboxStore;
+    if (typeof inbox.markKindsProcessedThrough === "function") {
+      const { updated } = inbox.markKindsProcessedThrough({
+        kinds: DELTA_COVERED_KINDS,
+        throughTs: input.delta.coveredThroughTs,
+      });
+      if (updated > 0) {
+        logger.debug("dream.delta.covered-rows-marked", { updated });
+      }
+    }
+  } catch (error) {
+    logger.debug("dream.delta.covered-rows-mark-failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
 const runDream = async (args: {
   stellaDataDir: string;
   store: RuntimeStore;
   resolvedLlm: ResolvedLlmRoute;
+  config: DreamConfig;
+  conversationId?: string;
 }): Promise<DreamRunOutcome> => {
   const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
     stellaAppDir: args.stellaDataDir,
@@ -309,6 +554,11 @@ const runDream = async (args: {
 
   await ensureDreamMemoryLayout(args.stellaDataDir);
 
+  const deltaInput = prepareDeltaInput(args);
+  const dreamDispatchConfig = {
+    stellaDataDir: args.stellaDataDir,
+    ...(deltaInput ? { inboxListKinds: DELTA_MODE_LIST_KINDS } : {}),
+  };
   const tools = buildDreamTools();
   const messages: Message[] = [
     {
@@ -316,7 +566,9 @@ const runDream = async (args: {
       content: [
         {
           type: "text",
-          text: 'Run the Dream consolidation pass. Start by calling Dream with action="list".',
+          text: deltaInput
+            ? buildDreamDeltaUserMessage(deltaInput.delta.transcript)
+            : 'Run the Dream consolidation pass. Start by calling Dream with action="list".',
         },
       ],
       timestamp: Date.now(),
@@ -342,7 +594,7 @@ const runDream = async (args: {
             store: {
               dreamInboxStore: args.store.dreamInboxStore,
             },
-            dream: { stellaDataDir: args.stellaDataDir },
+            dream: dreamDispatchConfig,
           });
           if (!dispatch.handled) {
             return {
@@ -360,6 +612,7 @@ const runDream = async (args: {
         toolCalls: totalToolCalls,
         finalText: finalText.slice(0, 80),
       });
+      if (deltaInput) finishDeltaPass(args.store, deltaInput);
       return { completed: true };
     } catch (error) {
       logger.debug("dream.claude-code.failed", {
@@ -402,6 +655,7 @@ const runDream = async (args: {
         toolCalls: totalToolCalls,
         finalText: readAssistantText(response).slice(0, 80),
       });
+      if (deltaInput) finishDeltaPass(args.store, deltaInput);
       return { completed: true };
     }
 
@@ -416,7 +670,7 @@ const runDream = async (args: {
             store: {
               dreamInboxStore: args.store.dreamInboxStore,
             },
-            dream: { stellaDataDir: args.stellaDataDir },
+            dream: dreamDispatchConfig,
           },
         );
         if (!dispatch.handled) {
@@ -474,6 +728,14 @@ export type SpawnDreamArgs = {
    * triggers, which run whenever anything is pending.
    */
   orchestratorTokenEstimate?: number;
+  /**
+   * Orchestrator conversation (= its thread key) driving this trigger.
+   * Enables the step-6 delta machinery: the shadow derivation after an inbox
+   * pass, and the delta input itself once `dream.inputSource: "delta"`.
+   * Absent for `manual`/`startup_catchup` runner triggers, which then behave
+   * exactly as before the migration.
+   */
+  conversationId?: string;
 };
 
 export type SpawnDreamResultReason =
@@ -492,6 +754,49 @@ export type SpawnDreamResult = {
   reason: SpawnDreamResultReason;
   pendingItems: number;
   detail?: string;
+};
+
+/**
+ * Whether the cutover delta path has unconsolidated orchestrator material —
+ * the delta-mode analog of `countUnprocessed() > 0`. Scans only the newest
+ * few raw messages (an older-only backlog is caught by the next trigger — a
+ * freshness lag, never loss). A zero watermark is bootstrapped here directly
+ * (no LLM pass needed just to stamp coverage). Always false outside delta
+ * mode or when the store cannot serve raw messages.
+ */
+const DELTA_ELIGIBILITY_SCAN_LIMIT = 25;
+
+const hasDeltaWork = (
+  store: RuntimeStore,
+  conversationId: string | undefined,
+  config: DreamConfig,
+): boolean => {
+  if (config.inputSource !== "delta" || !conversationId) return false;
+  const watermark = readDeltaWatermarkSafe(store, conversationId);
+  if (watermark === null) return false;
+  const messages = loadRawOrchestratorMessagesSafe(
+    store,
+    conversationId,
+    watermark === 0 ? DREAM_DELTA_LOAD_LIMIT : DELTA_ELIGIBILITY_SCAN_LIMIT,
+  );
+  if (messages.length === 0) return false;
+  if (watermark === 0) {
+    const bootstrap = buildDreamDeltaTranscript(messages, 0);
+    if (bootstrap.newestMessageTs > 0) {
+      advanceDeltaWatermarkSafe(store, conversationId, bootstrap.newestMessageTs);
+      logger.info("dream.delta.bootstrapped", {
+        conversationId,
+        watermark: bootstrap.newestMessageTs,
+      });
+    }
+    return false;
+  }
+  return messages.some(
+    (msg) =>
+      typeof msg.timestamp === "number" &&
+      msg.timestamp > watermark &&
+      formatDeltaEntry(msg) !== null,
+  );
 };
 
 /**
@@ -533,7 +838,7 @@ export const maybeSpawnDreamRun = async (
     };
   }
 
-  if (pendingItems === 0) {
+  if (pendingItems === 0 && !hasDeltaWork(args.store, args.conversationId, config)) {
     return {
       scheduled: false,
       reason: "no_inputs",
@@ -546,11 +851,25 @@ export const maybeSpawnDreamRun = async (
   // The interval baseline follows compaction down: if the estimate dropped
   // below the last baseline (a compaction shrank the thread), reset the
   // baseline so growth is measured from the new floor rather than never
-  // re-arming.
+  // re-arming. The baseline is persisted (dream_scheduler_state) and
+  // hydrated once per process, so a worker restart no longer resets it to 0
+  // and fires a spurious full-growth pass.
   if (args.trigger === "token_interval") {
+    if (!state.baselineHydrated) {
+      state.baselineHydrated = true;
+      const persisted = readTokenBaselineSafe(args.store);
+      if (
+        persisted !== null &&
+        state.lastRunAt === 0 &&
+        state.tokensAtLastRun === 0
+      ) {
+        state.tokensAtLastRun = persisted;
+      }
+    }
     const estimate = args.orchestratorTokenEstimate;
     if (typeof estimate === "number" && estimate < state.tokensAtLastRun) {
       state.tokensAtLastRun = estimate;
+      writeTokenBaselineSafe(args.store, estimate);
     }
     const growth =
       typeof estimate === "number" ? estimate - state.tokensAtLastRun : 0;
@@ -587,14 +906,17 @@ export const maybeSpawnDreamRun = async (
   const memoryMtimeBefore = fileMtimeMs(memoryFilePath(args.stellaDataDir));
   const mapMtimeBefore = fileMtimeMs(memoryMapPath(args.stellaDataDir));
   // Pending frontier captured BEFORE the pass runs: a completed pass may
-  // advance the watermark to exactly this point. Conservative by
-  // construction — rows arriving mid-pass carry a later source_updated_at
-  // and stay ahead of the watermark.
+  // advance the watermark up to this point. Conservative by construction —
+  // rows arriving mid-pass carry a later source_updated_at and stay ahead of
+  // the watermark.
   const frontierAtStart = readPendingFrontierSafe(args.store);
+  const passStartedAt = Date.now();
   const completion = runDream({
     stellaDataDir: args.stellaDataDir,
     store: args.store,
     resolvedLlm: args.resolvedLlm,
+    config,
+    ...(args.conversationId ? { conversationId: args.conversationId } : {}),
   })
     .catch((error): DreamRunOutcome => {
       logger.debug("dream.run-failed", {
@@ -604,17 +926,31 @@ export const maybeSpawnDreamRun = async (
     })
     .then((outcome) => {
       if (outcome.completed && frontierAtStart > 0) {
-        // Best-effort bookkeeping: a failed write only means the next
-        // pre-compaction ordering runs one redundant (single-flighted,
-        // eligibility-gated) pass.
-        try {
-          args.store.dreamInboxStore.writeConsolidationWatermark({
-            frontier: frontierAtStart,
-          });
-        } catch (error) {
-          logger.debug("dream.watermark-write-failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
+        // Advance to what the pass actually consumed, never past it: a
+        // >LIST-limit backlog used to advance the watermark to the full
+        // pending frontier even though the pass never listed the newest
+        // rows. A store that cannot answer keeps the historical behavior; a
+        // pass that consumed nothing does not advance at all — either way
+        // the cost ceiling is one redundant best-effort pre-compaction
+        // pass, never skipped material.
+        const processedFrontier = readProcessedFrontierSafe(
+          args.store,
+          passStartedAt,
+        );
+        const advanceTo =
+          processedFrontier === null
+            ? frontierAtStart
+            : Math.min(frontierAtStart, processedFrontier);
+        if (advanceTo > 0) {
+          try {
+            args.store.dreamInboxStore.writeConsolidationWatermark({
+              frontier: advanceTo,
+            });
+          } catch (error) {
+            logger.debug("dream.watermark-write-failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
         }
       }
       if (outcome.completed) {
@@ -647,6 +983,7 @@ export const maybeSpawnDreamRun = async (
       state.lastRunAt = Date.now();
       if (typeof args.orchestratorTokenEstimate === "number") {
         state.tokensAtLastRun = args.orchestratorTokenEstimate;
+        writeTokenBaselineSafe(args.store, args.orchestratorTokenEstimate);
       }
       // Staleness alarm for the routing layer: a pass that grew the ledger
       // without touching the map is exactly how the old index died silently.
@@ -663,13 +1000,239 @@ export const maybeSpawnDreamRun = async (
       release();
     });
   state.completion = completion;
+  state.timedOutCompletion = null;
   void completion;
+
+  // Shadow validation (migration step 6): after the live inbox pass has
+  // fully finished (lock released — the chain above includes the finally),
+  // derive what the orchestrator-delta input path WOULD have consolidated
+  // and record it to memory_shadow.md next to what the live pass actually
+  // changed. Deliberately OUTSIDE `state.completion`: a pre-compaction
+  // boundary that joins the run must never wait on the shadow's LLM call.
+  if (
+    config.inputSource === "inbox" &&
+    config.deltaShadow &&
+    args.conversationId
+  ) {
+    const shadowConversationId = args.conversationId;
+    void completion
+      .then((outcome) => {
+        if (!outcome.completed) return;
+        return runDreamDeltaShadow({
+          stellaDataDir: args.stellaDataDir,
+          store: args.store,
+          resolvedLlm: args.resolvedLlm,
+          conversationId: shadowConversationId,
+          liveMemoryChanged:
+            fileMtimeMs(memoryFilePath(args.stellaDataDir)) !==
+            memoryMtimeBefore,
+          liveMapChanged:
+            fileMtimeMs(memoryMapPath(args.stellaDataDir)) !== mapMtimeBefore,
+        });
+      })
+      .catch((error) => {
+        logger.debug("dream.delta-shadow.spawn-failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }
 
   return {
     scheduled: true,
     reason: "scheduled",
     pendingItems,
   };
+};
+
+export type DreamShadowOutcome =
+  /** Proposal derived, logged to memory_shadow.md, watermark advanced. */
+  | "completed"
+  /** First run for this conversation: watermark stamped, nothing derived. */
+  | "bootstrapped"
+  /** No delta-relevant messages past the watermark; nothing to derive. */
+  | "skipped_empty"
+  /** A shadow derivation is already in flight for this data dir. */
+  | "skipped_busy"
+  /** Store cannot serve raw messages / delta watermark (partial fakes). */
+  | "skipped_unsupported"
+  /** Credentials missing, LLM call failed, or the log write failed. */
+  | "failed";
+
+const SHADOW_IN_FLIGHT = new Set<string>();
+
+/**
+ * Shadow validation for the orchestrator-delta input (migration step 6).
+ * Runs after a completed inbox-driven pass: builds the delta since the
+ * persisted watermark, derives a consolidation PROPOSAL with a one-shot
+ * no-tool completion, and appends it — alongside what the live pass actually
+ * changed — to `memories/memory_shadow.md` for diffing. On a clean pass the
+ * delta watermark advances, so coverage carries over seamlessly when
+ * `dream.inputSource: "delta"` cuts the input over.
+ *
+ * Never touches MEMORY.md, the map, the inbox, or any injected/resident
+ * surface — the shadow file is absent from every read path, so the prompt
+ * prefix stays byte-identical regardless of what the shadow writes. Failures
+ * leave the watermark alone; the window is re-derived next pass.
+ */
+export const runDreamDeltaShadow = async (args: {
+  stellaDataDir: string;
+  store: RuntimeStore;
+  resolvedLlm: ResolvedLlmRoute;
+  conversationId: string;
+  liveMemoryChanged: boolean;
+  liveMapChanged: boolean;
+}): Promise<DreamShadowOutcome> => {
+  if (SHADOW_IN_FLIGHT.has(args.stellaDataDir)) return "skipped_busy";
+  SHADOW_IN_FLIGHT.add(args.stellaDataDir);
+  try {
+    const watermark = readDeltaWatermarkSafe(args.store, args.conversationId);
+    if (watermark === null) return "skipped_unsupported";
+    const messages = loadRawOrchestratorMessagesSafe(
+      args.store,
+      args.conversationId,
+      DREAM_DELTA_LOAD_LIMIT,
+    );
+    if (messages.length === 0) return "skipped_unsupported";
+    if (watermark === 0) {
+      const bootstrap = buildDreamDeltaTranscript(messages, 0);
+      if (bootstrap.newestMessageTs > 0) {
+        advanceDeltaWatermarkSafe(
+          args.store,
+          args.conversationId,
+          bootstrap.newestMessageTs,
+        );
+      }
+      logger.info("dream.delta-shadow.bootstrapped", {
+        conversationId: args.conversationId,
+        watermark: bootstrap.newestMessageTs,
+      });
+      return "bootstrapped";
+    }
+
+    const delta = buildDreamDeltaTranscript(messages, watermark);
+    if (!delta.transcript) return "skipped_empty";
+
+    const useClaudeCode = shouldUseClaudeCodeAgentRuntime({
+      stellaAppDir: args.stellaDataDir,
+      modelId: args.resolvedLlm.model.id,
+    });
+    const apiKey = useClaudeCode
+      ? undefined
+      : await getResolvedLlmApiKey(args.resolvedLlm);
+    if (
+      !useClaudeCode &&
+      !apiKey &&
+      !resolvedLlmSupportsCredentiallessCalls(args.resolvedLlm)
+    ) {
+      logger.debug("dream.delta-shadow.no-api-key");
+      return "failed";
+    }
+
+    const systemPrompt = buildDreamShadowSystemPrompt();
+    // Same unified ALREADY-KNOWN reference (profile + map) the compaction
+    // summarizer uses, so the shadow validates the real dedup context.
+    const alreadyKnown = buildDurableMemoryReference(args.stellaDataDir);
+    const shadowMessages: Message[] = [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: buildDreamShadowUserPrompt({
+              transcript: delta.transcript,
+              sinceIso: new Date(watermark).toISOString(),
+              ...(alreadyKnown ? { alreadyKnown } : {}),
+            }),
+          },
+        ],
+        timestamp: Date.now(),
+      },
+    ];
+
+    let proposal = "";
+    try {
+      if (useClaudeCode) {
+        proposal = await runClaudeCodeAgentTextCompletion({
+          stellaAppDir: args.stellaDataDir,
+          agentType: AGENT_IDS.DREAM,
+          stellaModel: args.resolvedLlm.model.id,
+          context: { systemPrompt, messages: shadowMessages, tools: [] },
+        });
+      } else {
+        const response = await completeSimple(
+          args.resolvedLlm.model,
+          { systemPrompt, messages: shadowMessages, tools: [] },
+          apiKey ? { apiKey } : undefined,
+        );
+        proposal = readAssistantText(response);
+      }
+    } catch (error) {
+      logger.debug("dream.delta-shadow.completion-failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return "failed";
+    }
+    if (!proposal.trim()) {
+      logger.debug("dream.delta-shadow.empty-proposal");
+      return "failed";
+    }
+
+    const entry = formatShadowLogEntry({
+      nowIso: new Date().toISOString(),
+      conversationId: args.conversationId,
+      sinceTs: watermark,
+      coveredThroughTs: delta.coveredThroughTs,
+      includedMessages: delta.includedMessages,
+      transcriptChars: delta.transcript.length,
+      truncated: delta.truncated,
+      liveMemoryChanged: args.liveMemoryChanged,
+      liveMapChanged: args.liveMapChanged,
+      proposal,
+    });
+    try {
+      const shadowPath = memoryShadowPath(args.stellaDataDir);
+      fs.mkdirSync(memoriesRoot(args.stellaDataDir), { recursive: true });
+      let existing: string | null = null;
+      try {
+        existing = fs.readFileSync(shadowPath, "utf-8");
+      } catch {
+        existing = null;
+      }
+      fs.writeFileSync(shadowPath, appendToShadowLog(existing, entry), "utf-8");
+    } catch (error) {
+      // Without the recorded proposal there is nothing to diff, so the
+      // window is deliberately left uncovered for a retry next pass.
+      logger.debug("dream.delta-shadow.log-write-failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return "failed";
+    }
+
+    advanceDeltaWatermarkSafe(
+      args.store,
+      args.conversationId,
+      delta.coveredThroughTs,
+    );
+    logger.info("dream.delta-shadow.completed", {
+      conversationId: args.conversationId,
+      deltaMessages: delta.includedMessages,
+      deltaChars: delta.transcript.length,
+      truncated: delta.truncated,
+      proposalChars: proposal.length,
+      liveMemoryChanged: args.liveMemoryChanged,
+      liveMapChanged: args.liveMapChanged,
+      watermarkFrom: watermark,
+      watermarkTo: delta.coveredThroughTs,
+    });
+    return "completed";
+  } catch (error) {
+    logger.debug("dream.delta-shadow.failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return "failed";
+  } finally {
+    SHADOW_IN_FLIGHT.delete(args.stellaDataDir);
+  }
 };
 
 /**
@@ -752,6 +1315,8 @@ export const awaitPreCompactionConsolidation = async (args: {
   store: RuntimeStore;
   resolvedLlm: ResolvedLlmRoute;
   timeoutMs?: number;
+  /** Orchestrator conversation; enables the delta-input eligibility check. */
+  conversationId?: string;
 }): Promise<PreCompactionConsolidationResult> => {
   const startedAt = Date.now();
   const finish = (
@@ -776,8 +1341,14 @@ export const awaitPreCompactionConsolidation = async (args: {
     } catch {
       pendingItems = 0;
     }
+    // In delta mode, unconsolidated orchestrator material is pending work
+    // even with a drained inbox, and the inbox frontier/watermark freshness
+    // check below does not describe it — the delta watermark advance inside
+    // the pass is what guarantees skip-if-fresh equivalent behavior there.
+    const config = readDreamConfig(args.stellaDataDir);
+    const deltaWork = hasDeltaWork(args.store, args.conversationId, config);
     const frontier = readPendingFrontierSafe(args.store);
-    if (pendingItems === 0 || frontier === 0) {
+    if ((pendingItems === 0 || frontier === 0) && !deltaWork) {
       return finish("skipped_fresh", pendingItems, "nothing pending");
     }
     let watermark: { frontier: number } | null = null;
@@ -790,7 +1361,7 @@ export const awaitPreCompactionConsolidation = async (args: {
     } catch {
       watermark = null;
     }
-    if (watermark && watermark.frontier >= frontier) {
+    if (!deltaWork && watermark && watermark.frontier >= frontier) {
       return finish(
         "skipped_fresh",
         pendingItems,
@@ -799,6 +1370,21 @@ export const awaitPreCompactionConsolidation = async (args: {
     }
 
     const state = stateFor(args.stellaDataDir);
+    // A pass a previous boundary already timed out on must not tax every
+    // subsequent boundary the full timeout: if that same run is still in
+    // flight, compact immediately. Its writes (if it ever finishes) land on
+    // disk and enter the window at a later boundary refresh.
+    if (
+      state.inFlight &&
+      state.completion !== null &&
+      state.completion === state.timedOutCompletion
+    ) {
+      return finish(
+        "not_started",
+        pendingItems,
+        "prior boundary wait on this pass already timed out",
+      );
+    }
     // `state.completion` outlives a settled run (see the spawn path), so a
     // stale handle from a long-finished pass must not be mistaken for a live
     // one: only join when a run is actually in flight, and after spawning
@@ -813,6 +1399,7 @@ export const awaitPreCompactionConsolidation = async (args: {
         store: args.store,
         resolvedLlm: args.resolvedLlm,
         trigger: "pre_compaction",
+        ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       });
       if (spawn.scheduled) {
         completion = state.completion;
@@ -838,6 +1425,9 @@ export const awaitPreCompactionConsolidation = async (args: {
     );
     const raced = await raceCompletion(completion, timeoutMs);
     if (raced === "timed_out") {
+      // Remember the handle so later boundaries skip this hung pass instead
+      // of each paying the full timeout again.
+      state.timedOutCompletion = completion;
       return finish(
         "timed_out",
         pendingItems,

@@ -351,6 +351,9 @@ const runCompactionWithHooks = async (args: {
         stellaDataDir: args.opts.stellaDataDir,
         store: args.opts.store,
         resolvedLlm: args.opts.resolvedLlm,
+        ...(args.opts.conversationId
+          ? { conversationId: args.opts.conversationId }
+          : {}),
       });
     } catch (error) {
       logger.debug("compaction.pre-consolidation-failed", {
