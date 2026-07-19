@@ -59,6 +59,20 @@ const createRoute = (apiKey: string | null): ResolvedLlmRoute =>
     getApiKey: async () => apiKey,
   }) as unknown as ResolvedLlmRoute;
 
+// A plausible full-size checkpoint summary — comfortably above the 200-char
+// accept floor that guards large spans against stub summaries.
+const VALID_SUMMARY = [
+  "## Topic",
+  "Condensed summary of the backlog covering the full compacted span.",
+  "## Key Points",
+  "All sixty backlog messages were reviewed and folded into this checkpoint,",
+  "including the delegated workstreams and their thread ids.",
+  "## Current State",
+  "Work is ongoing; the latest turns remain uncompacted in the tail.",
+  "## Open Items",
+  "None outstanding beyond the active workstreams named above.",
+].join("\n");
+
 describe("orchestrator thread compaction failure handling", () => {
   beforeEach(() => {
     completeSimpleMock.mockReset();
@@ -93,10 +107,132 @@ describe("orchestrator thread compaction failure handling", () => {
     expect(wrapped).toEqual({ compacted: false });
   });
 
+  // Reproduce the partial-error branch capable of creating the live 55-char
+  // stub checkpoint: `completeSimple` can RESOLVE (rather than reject) with a
+  // partial AssistantMessage flagged `stopReason: "error"`. Before the guard,
+  // the truncated fragment was accepted as a summary for a large span.
+  it("refuses a partial summary when the stream dies mid-generation", async () => {
+    const { store, compactCalls } = createFakeStore();
+    completeSimpleMock.mockResolvedValue({
+      content: [
+        {
+          type: "text",
+          text: "## Topic\nStella v2 completion and notarization; removal",
+        },
+      ],
+      stopReason: "error",
+      errorMessage: "managed relay stream terminated: quota exceeded",
+    });
+
+    const result = await maybeCompactRuntimeThread({
+      store,
+      threadKey: "conversation-1",
+      resolvedLlm: createRoute("auth-token"),
+      agentType: "orchestrator",
+    });
+
+    expect(result).toEqual({ compacted: false });
+    expect(compactCalls).toHaveLength(0);
+  });
+
+  it("refuses an aborted summary stream even when the partial text is long", async () => {
+    const { store, compactCalls } = createFakeStore();
+    completeSimpleMock.mockResolvedValue({
+      content: [{ type: "text", text: VALID_SUMMARY }],
+      stopReason: "aborted",
+    });
+
+    const result = await maybeCompactRuntimeThread({
+      store,
+      threadKey: "conversation-1",
+      resolvedLlm: createRoute("auth-token"),
+      agentType: "orchestrator",
+    });
+
+    expect(result).toEqual({ compacted: false });
+    expect(compactCalls).toHaveLength(0);
+  });
+
+  it("refuses a length-limited summary even when it clears the size floor", async () => {
+    const { store, compactCalls } = createFakeStore();
+    completeSimpleMock.mockResolvedValue({
+      content: [{ type: "text", text: VALID_SUMMARY }],
+      stopReason: "length",
+    });
+
+    const result = await maybeCompactRuntimeThread({
+      store,
+      threadKey: "conversation-1",
+      resolvedLlm: createRoute("auth-token"),
+      agentType: "orchestrator",
+    });
+
+    expect(result).toEqual({ compacted: false });
+    expect(compactCalls).toHaveLength(0);
+  });
+
+  it("refuses a near-empty summary for a large span even on a clean stop", async () => {
+    const { store, compactCalls } = createFakeStore();
+    completeSimpleMock.mockResolvedValue({
+      content: [
+        { type: "text", text: "## Topic\nEverything is already known." },
+      ],
+      stopReason: "stop",
+    });
+
+    const result = await maybeCompactRuntimeThread({
+      store,
+      threadKey: "conversation-1",
+      resolvedLlm: createRoute("auth-token"),
+      agentType: "orchestrator",
+    });
+
+    expect(result).toEqual({ compacted: false });
+    expect(compactCalls).toHaveLength(0);
+  });
+
+  it("refuses a near-empty override summary for a large span", async () => {
+    const { store, compactCalls } = createFakeStore();
+
+    const result = await compactRuntimeThreadHistory({
+      store,
+      threadKey: "conversation-1",
+      resolvedLlm: createRoute("auth-token"),
+      agentType: "orchestrator",
+      overrideSummary: "Compacted.",
+    });
+
+    expect(result).toEqual({ compacted: false });
+    expect(completeSimpleMock).not.toHaveBeenCalled();
+    expect(compactCalls).toHaveLength(0);
+  });
+
+  it("instructs the summarizer that a near-empty summary is never acceptable", async () => {
+    const { store } = createFakeStore();
+    completeSimpleMock.mockResolvedValue({
+      content: [{ type: "text", text: VALID_SUMMARY }],
+      stopReason: "stop",
+    });
+
+    await maybeCompactRuntimeThread({
+      store,
+      threadKey: "conversation-1",
+      resolvedLlm: createRoute("auth-token"),
+      agentType: "orchestrator",
+    });
+
+    const context = completeSimpleMock.mock.calls[0]![1] as {
+      messages: Array<{ content: Array<{ type: string; text: string }> }>;
+    };
+    const prompt = context.messages[0]!.content[0]!.text;
+    expect(prompt).toContain("Never return an empty or near-empty summary");
+  });
+
   it("caps the summary input so an oversized backlog still compacts", async () => {
     const { store, compactCalls } = createFakeStore();
     completeSimpleMock.mockResolvedValue({
-      content: [{ type: "text", text: "Condensed summary of the backlog." }],
+      content: [{ type: "text", text: VALID_SUMMARY }],
+      stopReason: "stop",
     });
 
     const result = await maybeCompactRuntimeThread({
@@ -110,7 +246,7 @@ describe("orchestrator thread compaction failure handling", () => {
     expect(compactCalls).toHaveLength(1);
     expect(compactCalls[0]).toMatchObject({
       threadKey: "conversation-1",
-      summary: "Condensed summary of the backlog.",
+      summary: VALID_SUMMARY,
     });
 
     expect(completeSimpleMock).toHaveBeenCalledTimes(1);

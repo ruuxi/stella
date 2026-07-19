@@ -502,6 +502,24 @@ const computeSummaryBudget = (messages: StoredThreadMessage[]): number =>
   Math.max(100, Math.floor(getThreadTokenEstimate(messages) * 0.2));
 
 /**
+ * Floor for an accepted checkpoint summary of a non-trivial span. A
+ * checkpoint replaces the whole compacted middle in the assistant's window,
+ * so a near-empty summary destroys that context's recoverability (observed
+ * live: a 55-char stub — a bare `## Topic` heading cut off mid-sentence —
+ * standing in for a ~190k-token orchestrator span). Below this floor the span
+ * is kept uncompacted and the next turn retries.
+ */
+const THREAD_SUMMARY_MIN_ACCEPT_CHARS = 200;
+
+/**
+ * Spans smaller than this estimated token count may legitimately summarize
+ * to fewer than {@link THREAD_SUMMARY_MIN_ACCEPT_CHARS} characters, so the
+ * floor is not applied to them. Any span at or above it has a target budget
+ * of 400+ tokens (20% of span), which no honest summary undershoots.
+ */
+const THREAD_SUMMARY_FLOOR_EXEMPT_TOKENS = 2_000;
+
+/**
  * Estimated chars-per-token used to cap the summary request input.
  */
 const SUMMARY_INPUT_CHARS_PER_TOKEN = 4;
@@ -554,6 +572,7 @@ const buildSummaryGuidelines = (hasDurableMemoryReference: boolean): string =>
     "Guidelines:",
     '- Thread ids: delegated/background work appears in the conversation as spawn_agent / send_input / check-status tool calls and results carrying a `thread_id`. Name that exact thread_id alongside every workstream you mention (e.g. "shell redesign polish — thread_id: shell-redesign-v2-full-polish") so follow-ups after this checkpoint route to the existing thread instead of spawning a duplicate.',
     "- Pending user decisions: any question posed to the user that was not yet answered by the end of the conversation goes under Open Items with the exact question quoted verbatim; if the user gave a partial or nuanced answer, quote the user's exact relevant words too. Never paraphrase half-answered decisions — quote them.",
+    "- Never return an empty or near-empty summary. After compaction this summary is the only carrier of the compacted span's thread-specific context, so it must stand alone: even if most of the conversation is already covered by durable memory or the previous summary, restate the thread-specific workstreams, decisions, current state, and open items. A bare heading or a one-line fragment is never an acceptable summary.",
     // The durable-memory rule only applies when the always-loaded docs are
     // actually injected for this agent (orchestrator); for other agents the
     // summary is the only carrier of such facts, so omitting them would lose
@@ -706,10 +725,13 @@ const generateThreadSummary = async (args: {
     args.durableMemoryReference,
   );
 
-  // LLM failures propagate to `compactRuntimeThreadHistory`, which logs
-  // `thread.compaction.failed` — a swallowed error here previously made
+  // Thrown LLM failures propagate to `compactRuntimeThreadHistory`, which
+  // logs `thread.compaction.failed` — a swallowed error here previously made
   // compaction fail invisibly on every turn (e.g. the Fable-5
-  // `thinking.type.disabled` 400).
+  // `thinking.type.disabled` 400). A provider stream that dies MID-generation
+  // never throws, though: `completeSimple` resolves with a partial
+  // AssistantMessage flagged `stopReason: "error" | "aborted"` carrying
+  // whatever text already streamed, so the stop reason is checked below.
   const message = await completeSimple(
     args.resolvedLlm.model,
     {
@@ -727,6 +749,21 @@ const generateThreadSummary = async (args: {
     },
   );
   const text = readAssistantText(message);
+  // An unclean stop is a hard failure no matter how much text arrived:
+  // accepting partial or otherwise degenerate text can replace a large
+  // orchestrator span with a stub. `length` is also incomplete, and `toolUse`
+  // is invalid here because the summary request exposes no tools. Accept only
+  // a clean `stop`; keep the span uncompacted for every other terminal reason
+  // so the next turn retries without destroying recoverable history.
+  if (message.stopReason !== "stop") {
+    logger.warn("thread.compaction.summary-failed", {
+      model: args.resolvedLlm.model.id,
+      stopReason: message.stopReason,
+      errorMessage: message.errorMessage,
+      partialChars: text.length,
+    });
+    return null;
+  }
   if (!text) {
     logger.warn("thread.compaction.summary-empty", {
       model: args.resolvedLlm.model.id,
@@ -845,6 +882,25 @@ export const maybeCompactRuntimeThread = async (args: {
           : undefined,
     }));
   if (!summary) {
+    return { compacted: false };
+  }
+
+  // Refuse near-empty summaries for non-trivial spans regardless of where
+  // the summary came from (generated or hook/engine override): writing the
+  // checkpoint would destroy the span's recoverability from the window.
+  // Keeping the span uncompacted is always the safer failure mode.
+  const middleTokens = getThreadTokenEstimate(splitMessages.middleMessages);
+  if (
+    summary.length < THREAD_SUMMARY_MIN_ACCEPT_CHARS &&
+    middleTokens >= THREAD_SUMMARY_FLOOR_EXEMPT_TOKENS
+  ) {
+    logger.warn("thread.compaction.summary-too-short", {
+      threadKey: args.threadKey,
+      model: args.resolvedLlm.model.id,
+      summaryChars: summary.length,
+      middleTokens,
+      fromOverride: Boolean(args.overrideSummary?.trim()),
+    });
     return { compacted: false };
   }
 
