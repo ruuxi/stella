@@ -315,6 +315,17 @@ describe("writeFileWithNulGuard", () => {
     }
   });
 
+  it("accepts content with a lone UTF-16 surrogate (compares against the UTF-8 on-disk intent)", async () => {
+    const dir = await createTempDir();
+    const filePath = path.join(dir, "lone-surrogate.txt");
+    // Legal in JS strings (model-generated tool args can carry it); UTF-8
+    // encodes it as U+FFFD, so raw-string equality would report this
+    // landed write as persistent corruption.
+    const content = 'prefix "\uD800" suffix\n';
+    await writeFileWithNulGuard(filePath, content);
+    expect(await readFile(filePath, "utf-8")).toBe('prefix "�" suffix\n');
+  });
+
   it("throws on a persistent non-NUL mismatch", async () => {
     const dir = await createTempDir();
     const filePath = path.join(dir, "persistent-mismatch.txt");
@@ -359,6 +370,14 @@ describe("writeFileAtomicWithVerify", () => {
     const filePath = path.join(dir, "fresh.md");
     await writeFileAtomicWithVerify(filePath, "hello\n");
     expect(await readFile(filePath, "utf-8")).toBe("hello\n");
+  });
+
+  it("accepts content with a lone UTF-16 surrogate", async () => {
+    const dir = await createTempDir();
+    const filePath = path.join(dir, "surrogate.md");
+    await writeFileAtomicWithVerify(filePath, "a \uDC00 b\n");
+    expect(await readFile(filePath, "utf-8")).toBe("a � b\n");
+    expect(await fsp.readdir(dir)).toEqual(["surrogate.md"]);
   });
 
   it("keeps the original bytes intact and cleans up the temp file when the rename fails", async () => {

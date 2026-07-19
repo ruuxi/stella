@@ -73,8 +73,20 @@ const containsUnexpectedNul = (written: string, intended: string): boolean =>
   written.includes("\u0000") && !intended.includes("\u0000");
 
 /**
+ * The write's actual on-disk intent: what `content` becomes once encoded as
+ * UTF-8. A lone UTF-16 surrogate (legal in JS strings, and reachable via
+ * model-generated tool args) encodes to U+FFFD on disk, so read-back
+ * equality must compare against this round-trip — comparing the raw string
+ * would report a landed write as persistent corruption. Well-formed
+ * strings round-trip unchanged.
+ */
+const utf8OnDiskIntent = (content: string): string =>
+  Buffer.from(content, "utf8").toString("utf8");
+
+/**
  * Write `content` to `filePath` and verify the bytes on disk read back
- * exactly equal the intended content. Equality is strictly stronger than
+ * exactly equal the intended content (as UTF-8 encoding renders it — see
+ * {@link utf8OnDiskIntent}). Equality is strictly stronger than
  * the original NUL-absence check (the corruption signature seen when
  * parallel edits raced), which is kept only to pick the loud message.
  * Should be unreachable once writes are serialized — retries once and
@@ -89,6 +101,7 @@ export const writeFileWithNulGuard = async (
   options?: { flag?: string },
 ): Promise<void> => {
   const maxAttempts = 2;
+  const intended = utf8OnDiskIntent(content);
   let lastWritten = "";
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await fs.writeFile(filePath, content, {
@@ -96,10 +109,10 @@ export const writeFileWithNulGuard = async (
       ...(options?.flag && attempt === 1 ? { flag: options.flag } : {}),
     });
     lastWritten = await fs.readFile(filePath, "utf-8");
-    if (lastWritten === content) {
+    if (lastWritten === intended) {
       return;
     }
-    const kind = containsUnexpectedNul(lastWritten, content)
+    const kind = containsUnexpectedNul(lastWritten, intended)
       ? "NUL-byte corruption"
       : "read-back mismatch";
     console.error(
@@ -110,13 +123,13 @@ export const writeFileWithNulGuard = async (
     );
   }
   throw new Error(
-    containsUnexpectedNul(lastWritten, content)
+    containsUnexpectedNul(lastWritten, intended)
       ? `Write verification failed for ${filePath}: file contains NUL bytes ` +
           `that were not part of the intended content, even after a retry. ` +
           `The file may be corrupted by a concurrent writer.`
       : `Write verification failed for ${filePath}: the bytes on disk do ` +
-          `not match the intended content, even after a retry. The file ` +
-          `may be corrupted by a concurrent writer.`,
+          `not match the intended content, even after a retry — read-back ` +
+          `mismatch; possible concurrent writer or filesystem corruption.`,
   );
 };
 
@@ -149,7 +162,7 @@ export const writeFileAtomicWithVerify = async (
       await handle.close();
     }
     const written = await fs.readFile(tmpPath, "utf-8");
-    if (written !== content) {
+    if (written !== utf8OnDiskIntent(content)) {
       throw new Error(
         `Atomic write verification failed for ${filePath}: the temp file's ` +
           `bytes do not match the intended content.`,
