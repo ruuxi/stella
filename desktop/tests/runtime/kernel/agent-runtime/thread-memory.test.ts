@@ -184,7 +184,12 @@ describe("buildStartupPromptMessages", () => {
     expect(messages).toEqual([]);
   });
 
-  it("re-injects a resident doc whose content changed since it was persisted", async () => {
+  it("does NOT re-inject a resident doc whose content changed mid-epoch (cache stability)", async () => {
+    // Remember replaced the fact after the old doc was persisted. The pinned
+    // copy must stay byte-frozen until the next compaction boundary: the new
+    // fact is already visible in the window as the Remember call/result, and
+    // appending another full copy is the stale-copy leak. The pinned copy
+    // catches up from disk when compaction rebuilds the prefix.
     const messages = await buildStartupPromptMessages({
       context: {
         systemPrompt: "system",
@@ -205,15 +210,44 @@ describe("buildStartupPromptMessages", () => {
             },
           },
         ],
-        // Remember replaced the fact after the old doc was persisted.
         userProfile: "# User Profile\n\n- The user goes by Robert",
       },
     });
 
-    const promptText = messages.map((message) => message.text).join("\n");
-    expect(promptText).toContain('path="~/.stella/memories/profile.md"');
-    expect(promptText).toContain("The user goes by Robert");
-    expect(promptText).not.toContain("The user goes by Bob");
+    expect(messages).toEqual([]);
+  });
+
+  it("keeps the injected prompt byte-stable across repeated mid-epoch rewrites", async () => {
+    const persistedHistory = [
+      {
+        role: "runtimeInternal",
+        content: "",
+        customMessage: {
+          customType: "bootstrap.startup_doc",
+          content: [
+            {
+              type: "text",
+              text: '<startup_doc path="~/.stella/memories/memory_summary.md">\n# Memory summary\n\n- v1 of the focus snapshot\n</startup_doc>',
+            },
+          ],
+        },
+      },
+    ];
+    // Dream rewrites the summary repeatedly within one epoch; every build
+    // must contribute zero new messages so the persisted prefix stays
+    // byte-identical between compactions.
+    for (const rewrite of ["v2", "v3", "v4"]) {
+      const messages = await buildStartupPromptMessages({
+        context: {
+          systemPrompt: "system",
+          dynamicContext: "",
+          maxAgentDepth: 1,
+          threadHistory: persistedHistory,
+          memorySummary: `# Memory summary\n\n- ${rewrite} of the focus snapshot`,
+        },
+      });
+      expect(messages).toEqual([]);
+    }
   });
 
   it("injects personality as a startup doc ahead of core memory on the first turn", async () => {

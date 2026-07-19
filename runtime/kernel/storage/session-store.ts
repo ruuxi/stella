@@ -3231,6 +3231,92 @@ export class SessionStore {
     });
   }
 
+  /**
+   * Rewrite the content of one persisted custom-message entry in place,
+   * keeping its entry id, position, customType, display flag, and eventId.
+   *
+   * Sole caller is the compaction/rebuild-boundary refresh of pinned
+   * resident startup docs (`refreshResidentStartupDocs`): entries are
+   * otherwise append-only, and mutating model-visible history outside a
+   * compaction boundary would break prompt-cache prefix stability.
+   */
+  updateThreadCustomMessageContent(args: {
+    threadKey: string;
+    entryId: string;
+    content: RuntimeThreadCustomMessageEntry["content"];
+  }): boolean {
+    const threadKey = normalizeRuntimeThreadId(args.threadKey);
+    const entryId = args.entryId.trim();
+    if (!threadKey || !entryId) {
+      return false;
+    }
+    const conversationId = this.getThreadConversationId(threadKey);
+    let updated = false;
+    let timestamp = 0;
+    this.withTransaction(() => {
+      const row = this.db
+        .prepare(
+          `SELECT data_json AS dataJson, created_at AS createdAt
+           FROM runtime_thread_entries
+           WHERE thread_key = ? AND entry_id = ? AND entry_type = 'custom_message'
+           LIMIT 1`,
+        )
+        .get(threadKey, entryId) as
+        | { dataJson?: string | null; createdAt?: number }
+        | undefined;
+      if (!row) {
+        return;
+      }
+      const data = parseJsonValue<Record<string, unknown>>(
+        row.dataJson ?? null,
+      );
+      const customType =
+        typeof data?.customType === "string" ? data.customType.trim() : "";
+      if (!customType) {
+        return;
+      }
+      const eventId =
+        typeof data?.eventId === "string" && data.eventId.trim()
+          ? data.eventId.trim()
+          : undefined;
+      const boundedMessage = enforceCustomMessageRowSizeLimit({
+        customType,
+        content: args.content,
+        display: data?.display === true,
+        ...(eventId ? { eventId } : {}),
+      });
+      this.db
+        .prepare(
+          `UPDATE runtime_thread_entries
+           SET data_json = ?
+           WHERE thread_key = ? AND entry_id = ?`,
+        )
+        .run(
+          toJsonValueString({
+            customType: boundedMessage.customType,
+            content: boundedMessage.content,
+            display: boundedMessage.display,
+            ...(boundedMessage.eventId
+              ? { eventId: boundedMessage.eventId }
+              : {}),
+          }),
+          threadKey,
+          entryId,
+        );
+      timestamp = asFiniteNumber(row.createdAt) ?? Date.now();
+      updated = true;
+    }, "immediate");
+    if (updated) {
+      this.emitThreadTranscriptUpdate({
+        conversationId,
+        threadId: threadKey,
+        entryId,
+        atMs: timestamp,
+      });
+    }
+    return updated;
+  }
+
   recordRunEvent(event: RuntimeRunEvent): void {
     const messageId = `run:${event.runId}:${event.seq ?? generateLocalId()}`;
     this.withTransaction(() => {

@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import {
   AGENT_PAUSE_CANCEL_REASON,
   AGENT_SHUTDOWN_CANCEL_REASON,
@@ -12,8 +10,6 @@ import {
 } from "../convex-urls.js";
 import { isOrchestratorAgentType } from "../../contracts/agent-runtime.js";
 import { formatAgentTerminalStateSystemReminder } from "../../contracts/system-reminders.js";
-import { redactMemoryText } from "../memory/redaction.js";
-import { MEMORY_INDEX_MAX_CHARS } from "../memory/dream-storage.js";
 import { readHomePrompt } from "../prompts/home-prompts.js";
 
 export const DEFAULT_MAX_AGENT_DEPTH = 8;
@@ -38,68 +34,14 @@ export const defaultPromptForAgentType = (
       ) ?? "")
     : "";
 
-export const readCoreMemory = (stellaDataDir: string): string | undefined => {
-  const candidatePaths = [
-    path.join(stellaDataDir, "core-memory.md"),
-    path.join(stellaDataDir, "CORE_MEMORY.MD"),
-  ];
-  for (const filePath of candidatePaths) {
-    try {
-      const content = fs.readFileSync(filePath, "utf-8").trim();
-      if (content) {
-        return redactMemoryText(content);
-      }
-    } catch {
-      continue;
-    }
-  }
-  return undefined;
-};
-
-const capResidentMemoryDoc = (content: string, maxChars?: number): string => {
-  if (!maxChars || content.length <= maxChars) return content;
-  const marker = "\n...[resident memory truncated]";
-  return `${content.slice(0, Math.max(0, maxChars - marker.length))}${marker}`;
-};
-
-const readResidentMemoryDoc = (
-  filePath: string,
-  maxChars?: number,
-): string | undefined => {
-  try {
-    const content = fs.readFileSync(filePath, "utf-8").trim();
-    return content
-      ? capResidentMemoryDoc(redactMemoryText(content), maxChars)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-/**
- * Dream's dynamic focus summary, read synchronously for resident injection.
- * Push-injected alongside core memory so the user's current active focus is
- * always in the Orchestrator's context (not only via the `Context` lookup).
- */
-export const readMemorySummaryDoc = (
-  stellaDataDir: string,
-): string | undefined => {
-  const summary = readResidentMemoryDoc(
-    path.join(stellaDataDir, "memories", "memory_summary.md"),
-  );
-  const routingIndex = readResidentMemoryDoc(
-    path.join(stellaDataDir, "memories", "memory_index.md"),
-    MEMORY_INDEX_MAX_CHARS,
-  );
-  return [summary, routingIndex].filter(Boolean).join("\n\n") || undefined;
-};
-
-/**
- * The durable user-profile facts written by the `Remember` tool, read
- * synchronously for resident injection.
- */
-export const readUserProfileDoc = (stellaDataDir: string): string | undefined =>
-  readResidentMemoryDoc(path.join(stellaDataDir, "memories", "profile.md"));
+// Resident-doc readers live in `kernel/memory/resident-docs.ts` (dependency-
+// light so the compaction-boundary refresh in thread-runtime can share them
+// without a module cycle); re-exported here for existing callers.
+export {
+  readCoreMemory,
+  readMemorySummaryDoc,
+  readUserProfileDoc,
+} from "../memory/resident-docs.js";
 
 const MAX_AGENT_EVENT_FIELD_CHARS = 30_000;
 

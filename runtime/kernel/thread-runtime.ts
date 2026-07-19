@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRuntimeLogger } from "./debug.js";
 import { redactMemoryText } from "./memory/redaction.js";
+import { refreshResidentStartupDocs } from "./memory/resident-docs.js";
 import { readHomePrompt } from "./prompts/home-prompts.js";
 
 const logger = createRuntimeLogger("thread-runtime");
@@ -1268,5 +1269,34 @@ export const maybeCompactRuntimeThread = async (args: {
     tokensBefore: totalTokens,
   });
   args.store.updateThreadSummary(args.threadKey, summary);
+
+  // Compaction is the ONLY point where the pinned resident startup docs may
+  // change: the overlay just invalidated the prompt-cache prefix, and the
+  // session rebuilds its message mirror from the store before the next turn,
+  // so refreshing the persisted copies here is free. Mid-epoch the copies are
+  // byte-frozen (injection dedupes on doc path) and disk changes ride in the
+  // window as ordinary messages until this boundary. Best-effort: a refresh
+  // failure must never undo or fail an already-written compaction.
+  const stellaDataDir = args.stellaDataDir?.trim();
+  if (stellaDataDir) {
+    try {
+      const refreshedDocs = refreshResidentStartupDocs({
+        store: args.store,
+        threadKey: args.threadKey,
+        stellaDataDir,
+      });
+      if (refreshedDocs > 0) {
+        logger.info("thread.compaction.startup-docs-refreshed", {
+          threadKey: args.threadKey,
+          refreshedDocs,
+        });
+      }
+    } catch (error) {
+      logger.warn("thread.compaction.startup-doc-refresh-failed", {
+        threadKey: args.threadKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   return { compacted: true };
 };
