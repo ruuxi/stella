@@ -503,6 +503,44 @@ const computeSummaryBudget = (messages: StoredThreadMessage[]): number =>
 
 const THREAD_SUMMARY_FLOOR_EXEMPT_TOKENS = 2_000;
 const THREAD_SUMMARY_MAX_GENERATION_ATTEMPTS = 2;
+/**
+ * Never-shrink guard ratio. The summarizer runs in recursive update form —
+ * a candidate covers everything the previous checkpoint covered plus the new
+ * middle, so its scope never shrinks. A candidate under half the previous
+ * summary's visible size therefore lost information rather than compressed
+ * it. This rule alone would have rejected the live 55-char stub that replaced
+ * a 5,352-char predecessor.
+ */
+const THREAD_SUMMARY_NEVER_SHRINK_RATIO = 0.5;
+/**
+ * Hard-limit escalation: refuse-to-compact is the right default when a
+ * summary fails validation (nothing is destroyed; retry fires next turn),
+ * but repeated failures march the window toward the model's hard context
+ * limit. Once the estimated thread size passes this fraction of the context
+ * window AND at least ESCALATION_MIN_FAILURES consecutive compaction
+ * attempts have failed, a best-available fallback summary (previous
+ * checkpoint carried forward, else the last generated candidate, else a
+ * mechanical skeleton) is written with an explicit staleness marker — the
+ * last resort before API-level truncation silently destroys the head.
+ */
+const THREAD_COMPACTION_HARD_LIMIT_ESCALATION_PCT = 0.9;
+const THREAD_COMPACTION_ESCALATION_MIN_FAILURES = 2;
+
+/**
+ * Consecutive final summary failures per thread. In-memory only: a restart
+ * resets the count, which just delays escalation by one more failed cycle —
+ * escalation is additionally gated on hard-limit proximity, which persists.
+ */
+const consecutiveSummaryFailures = new Map<string, number>();
+
+/** Test seam: clear escalation failure tracking between test cases. */
+export const resetThreadSummaryFailureTracking = (threadKey?: string): void => {
+  if (threadKey === undefined) {
+    consecutiveSummaryFailures.clear();
+  } else {
+    consecutiveSummaryFailures.delete(threadKey);
+  }
+};
 const THREAD_SUMMARY_HEADINGS = [
   "Topic",
   "Key Points",
@@ -524,6 +562,11 @@ const normalizeSummaryForValidation = (summary: string): string =>
     .replace(/\p{Cf}/gu, "")
     .replace(/[^\S\r\n]+/gu, " ")
     .trim();
+
+const countVisibleCodePoints = (value: string): number =>
+  Array.from(normalizeSummaryForValidation(value)).filter(
+    (codePoint) => !/\s/u.test(codePoint),
+  ).length;
 
 const segmentSummaryWords = (summary: string): string[] => {
   const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
@@ -574,6 +617,7 @@ const longestRepeatedCodePointRun = (value: string): number => {
 export const validateThreadSummary = (
   summary: string,
   middleTokens: number,
+  previousSummary?: string,
 ): ThreadSummaryValidation => {
   const normalized = normalizeSummaryForValidation(summary);
   const visible = Array.from(normalized).filter(
@@ -589,6 +633,25 @@ export const validateThreadSummary = (
   if (!normalized || visible.length === 0) {
     return { valid: false, reason: "no visible content", ...base };
   }
+
+  // Never-shrink guard, checked even below the floor-exempt size: a previous
+  // checkpoint only exists when substantial history was already folded, and
+  // the recursive update form means the candidate's scope covers at least
+  // everything the previous summary covered.
+  const previousVisible = previousSummary
+    ? countVisibleCodePoints(previousSummary)
+    : 0;
+  if (
+    previousVisible > 0 &&
+    visible.length < previousVisible * THREAD_SUMMARY_NEVER_SHRINK_RATIO
+  ) {
+    return {
+      valid: false,
+      reason: `shrank below never-shrink floor (${visible.length} visible vs previous ${previousVisible})`,
+      ...base,
+    };
+  }
+
   if (middleTokens < THREAD_SUMMARY_FLOOR_EXEMPT_TOKENS) {
     return { valid: true, ...base };
   }
@@ -1002,6 +1065,42 @@ export const resolveCompactionProtectHeadMessages = (
     ? countLeadingBootstrapStartupDocs(messages)
     : THREAD_COMPACTION_PROTECT_HEAD_MESSAGES;
 
+/**
+ * Last-resort checkpoint written when repeated summary failures push the
+ * window toward the hard context limit. Prefers carrying the previous
+ * checkpoint forward (nothing it covered is lost; only the newly folded span
+ * goes unnarrated), then the last generated-but-invalid candidate, then a
+ * mechanical skeleton. Always prefixed with an explicit staleness marker so
+ * the model — and anyone reading the transcript — knows the bridge lags.
+ * The folded raw entries remain in thread storage and stay searchable.
+ */
+export const buildCompactionEscalationSummary = (args: {
+  previousSummary?: string;
+  bestInvalidCandidate?: string | null;
+  middleTokens: number;
+}): string => {
+  const marker = `[compaction summary refresh failed ${new Date()
+    .toISOString()
+    .slice(0, 10)}; state may lag]`;
+  const carried =
+    args.previousSummary?.trim() || args.bestInvalidCandidate?.trim();
+  if (carried) {
+    return `${marker}\n\n${carried}`;
+  }
+  return [
+    marker,
+    "",
+    "## Topic",
+    "Fallback checkpoint written without a fresh summary.",
+    "## Key Points",
+    `Summary generation failed repeatedly while this thread approached its context limit; ~${args.middleTokens} tokens of history were folded without narration. The raw messages remain in thread storage and are searchable.`,
+    "## Current State",
+    "Rely on the visible recent messages and durable memory docs for standing context.",
+    "## Open Items",
+    "Produce a healthy checkpoint at the next compaction.",
+  ].join("\n");
+};
+
 export const maybeCompactRuntimeThread = async (args: {
   store: RuntimeStore;
   threadKey: string;
@@ -1044,7 +1143,11 @@ export const maybeCompactRuntimeThread = async (args: {
   let correctiveReason: string | undefined;
   const overrideSummary = args.overrideSummary?.trim();
   if (overrideSummary) {
-    const validation = validateThreadSummary(overrideSummary, middleTokens);
+    const validation = validateThreadSummary(
+      overrideSummary,
+      middleTokens,
+      splitMessages.previousSummary,
+    );
     if (validation.valid) {
       summary = overrideSummary;
     } else {
@@ -1064,6 +1167,7 @@ export const maybeCompactRuntimeThread = async (args: {
     args.agentType === AGENT_IDS.ORCHESTRATOR
       ? buildDurableMemoryReference(args.stellaDataDir)
       : undefined;
+  let bestInvalidCandidate: string | null = null;
   for (
     let attempt = 1;
     !summary && attempt <= THREAD_SUMMARY_MAX_GENERATION_ATTEMPTS;
@@ -1079,11 +1183,16 @@ export const maybeCompactRuntimeThread = async (args: {
       ...(correctiveReason ? { correctiveReason } : {}),
     });
     if (generated.text) {
-      const validation = validateThreadSummary(generated.text, middleTokens);
+      const validation = validateThreadSummary(
+        generated.text,
+        middleTokens,
+        splitMessages.previousSummary,
+      );
       if (validation.valid) {
         summary = generated.text;
         break;
       }
+      bestInvalidCandidate = generated.text;
       correctiveReason = validation.reason ?? "invalid summary";
       logger.warn("thread.compaction.summary-invalid", {
         threadKey: args.threadKey,
@@ -1101,14 +1210,55 @@ export const maybeCompactRuntimeThread = async (args: {
     }
   }
   if (!summary) {
-    logger.warn("thread.compaction.summary-invalid-final", {
+    // A missing credential is a standing benign state, not a failing
+    // summarizer — escalating there would fold history that a configured
+    // credential could still summarize properly later.
+    const countsTowardEscalation = correctiveReason !== "no API key";
+    const failureCount = countsTowardEscalation
+      ? (consecutiveSummaryFailures.get(args.threadKey) ?? 0) + 1
+      : (consecutiveSummaryFailures.get(args.threadKey) ?? 0);
+    if (countsTowardEscalation) {
+      consecutiveSummaryFailures.set(args.threadKey, failureCount);
+    }
+    const hardLimitTokens = Math.floor(
+      getContextWindow(args.resolvedLlm) *
+        THREAD_COMPACTION_HARD_LIMIT_ESCALATION_PCT,
+    );
+    const shouldEscalate =
+      countsTowardEscalation &&
+      failureCount >= THREAD_COMPACTION_ESCALATION_MIN_FAILURES &&
+      totalTokens >= hardLimitTokens;
+    if (!shouldEscalate) {
+      logger.error("thread.compaction.summary-invalid-final", {
+        threadKey: args.threadKey,
+        model: args.resolvedLlm.model.id,
+        reason: correctiveReason,
+        middleTokens,
+        consecutiveFailures: failureCount,
+        totalTokens,
+        hardLimitTokens,
+      });
+      return { compacted: false };
+    }
+    summary = buildCompactionEscalationSummary({
+      previousSummary: splitMessages.previousSummary,
+      bestInvalidCandidate,
+      middleTokens,
+    });
+    logger.error("thread.compaction.summary-escalation", {
       threadKey: args.threadKey,
       model: args.resolvedLlm.model.id,
       reason: correctiveReason,
-      middleTokens,
+      consecutiveFailures: failureCount,
+      totalTokens,
+      hardLimitTokens,
+      carriedForwardPrevious: Boolean(splitMessages.previousSummary?.trim()),
+      usedInvalidCandidate:
+        !splitMessages.previousSummary?.trim() &&
+        Boolean(bestInvalidCandidate?.trim()),
     });
-    return { compacted: false };
   }
+  consecutiveSummaryFailures.delete(args.threadKey);
 
   args.store.compactThread({
     threadKey: args.threadKey,
