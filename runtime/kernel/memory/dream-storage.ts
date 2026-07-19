@@ -194,6 +194,19 @@ export const stripInjectedHtmlComments = (text: string): string =>
     .replace(/\n{3,}/gu, "\n\n")
     .trim();
 
+/**
+ * Line-preserving variant of {@link stripInjectedHtmlComments} for
+ * line-oriented readers (Recall's memory line search): comment characters are
+ * blanked but every newline is kept, so reported line numbers still match the
+ * on-disk file while comment text — the map charter, anchors, retired blocks
+ * — can no longer produce matches. Unterminated `<!--` blanks through
+ * end-of-doc, same as the stripping variant.
+ */
+export const blankInjectedHtmlComments = (text: string): string =>
+  text
+    .replace(/<!--[\s\S]*?-->/gu, (comment) => comment.replace(/[^\n]/gu, ""))
+    .replace(/<!--[\s\S]*$/u, (comment) => comment.replace(/[^\n]/gu, ""));
+
 const stripComments = stripInjectedHtmlComments;
 
 /**
@@ -271,33 +284,58 @@ const buildSeededMemoryMapContent = (args: {
     return MEMORY_MAP_TEMPLATE;
   }
   // Budget the folded content against the injected cap, favoring the index
-  // (already routing-shaped) over the summary staging notes.
+  // (already routing-shaped) over the summary staging notes. The initial
+  // budgets are estimates (the flat allowance cannot account for the
+  // migrated-section heading or the line-boundary cut markers, which land
+  // OUTSIDE the budgets), so the result is proved under the cap by
+  // measurement: each pass measures the actual injected length and shrinks
+  // the offending budget by the exact overage. Fixed-size markers plus a
+  // strictly shrinking budget make each pass monotonically tighter; the
+  // bare template (always under the cap) is the terminal fallback, so the
+  // seeded map's injected view respects the hard cap by construction.
   const templateOverheadChars = stripComments(MEMORY_MAP_TEMPLATE).length + 80;
-  const routesBudget = Math.floor(
+  const initialRoutesBudget = Math.floor(
     (MEMORY_MAP_MAX_CHARS - templateOverheadChars) * 0.6,
   );
-  const routes = indexBody
-    ? truncateAtLineBoundary(
-        indexBody,
-        routesBudget,
-        `[migration cut — remaining entries preserved in ${MEMORY_INDEX_FILE}]`,
-      )
-    : MEMORY_MAP_ROUTES_PLACEHOLDER;
-  const summaryBudget =
-    MEMORY_MAP_MAX_CHARS -
-    templateOverheadChars -
-    (indexBody ? stripComments(routes).length : 0);
-  const migratedSummary = summaryBody
-    ? truncateAtLineBoundary(
-        summaryBody,
-        Math.max(0, summaryBudget),
-        `[migration cut — full text preserved in ${MEMORY_SUMMARY_FILE}]`,
-      )
-    : undefined;
-  return buildMemoryMapContent({
-    routes,
-    ...(migratedSummary ? { migratedSummary } : {}),
-  });
+  const ROUTES_CUT_MARKER = `[migration cut — remaining entries preserved in ${MEMORY_INDEX_FILE}]`;
+  const SUMMARY_CUT_MARKER = `[migration cut — full text preserved in ${MEMORY_SUMMARY_FILE}]`;
+  const MAX_FIT_PASSES = 6;
+
+  let summaryShrink = 0;
+  let routesShrink = 0;
+  for (let pass = 0; pass < MAX_FIT_PASSES; pass += 1) {
+    const routesBudget = Math.max(0, initialRoutesBudget - routesShrink);
+    const routes =
+      indexBody && routesBudget > 0
+        ? truncateAtLineBoundary(indexBody, routesBudget, ROUTES_CUT_MARKER)
+        : MEMORY_MAP_ROUTES_PLACEHOLDER;
+    const summaryBudget =
+      MEMORY_MAP_MAX_CHARS -
+      templateOverheadChars -
+      (indexBody ? stripComments(routes).length : 0) -
+      summaryShrink;
+    const migratedSummary =
+      summaryBody && summaryBudget > 0
+        ? truncateAtLineBoundary(summaryBody, summaryBudget, SUMMARY_CUT_MARKER)
+        : undefined;
+    const candidate = buildMemoryMapContent({
+      routes,
+      ...(migratedSummary ? { migratedSummary } : {}),
+    });
+    const overage = stripComments(candidate).length - MEMORY_MAP_MAX_CHARS;
+    if (overage <= 0) {
+      return candidate;
+    }
+    // Shrink the staging section first (it is disposable — every summary
+    // fact is provably duplicated in MEMORY.md / the retired file); only
+    // once it is gone does the routing content give ground.
+    if (migratedSummary) {
+      summaryShrink += overage;
+    } else {
+      routesShrink += overage;
+    }
+  }
+  return MEMORY_MAP_TEMPLATE;
 };
 
 /** Prepend the retirement banner unless the file already carries one. */

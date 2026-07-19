@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  blankInjectedHtmlComments,
   ensureDreamMemoryLayout,
   MEMORY_MAP_MAX_CHARS,
   memoryIndexPath,
@@ -110,6 +111,45 @@ describe("ensureDreamMemoryLayout / memory_map migration", () => {
     expect(map).toContain("- focus bullet 0 with plenty of detail attached");
   });
 
+  it("keeps the seeded injected view under the hard cap even when both folds and their cut markers land (measured clamp, not a flat allowance)", async () => {
+    await mkdir(memoriesDir(), { recursive: true });
+    // Pathological worst case for the old flat +80 allowance: an index that
+    // saturates its budget (forcing the routes cut marker), plus a summary
+    // that saturates the remainder (forcing the second marker and the
+    // migrated-section heading — all chars the flat allowance undercounted).
+    const indexEntries = Array.from(
+      { length: 300 },
+      (_, i) => `- workstream ${i} -> MEMORY.md 2026-06-${(i % 28) + 1} | aliases: alias${i}, keyword${i}`,
+    ).join("\n");
+    const summaryBullets = Array.from(
+      { length: 300 },
+      (_, i) => `- focus bullet ${i} carrying enough detail to matter`,
+    ).join("\n");
+    await writeFile(
+      memoryIndexPath(stellaDataDir),
+      `# Memory index\n\n<!-- DREAM:INDEX_START -->\n${indexEntries}\n<!-- DREAM:INDEX_END -->\n`,
+      "utf-8",
+    );
+    await writeFile(
+      memorySummaryPath(stellaDataDir),
+      `# Memory summary\n\n<!-- DREAM:SUMMARY_START -->\n${summaryBullets}\n<!-- DREAM:SUMMARY_END -->\n`,
+      "utf-8",
+    );
+
+    await ensureDreamMemoryLayout(stellaDataDir);
+
+    const map = await readFile(memoryMapPath(stellaDataDir), "utf-8");
+    expect(stripInjectedHtmlComments(map).length).toBeLessThanOrEqual(
+      MEMORY_MAP_MAX_CHARS,
+    );
+    // Both folds made it in (bounded), with every anchor pair intact.
+    expect(map).toContain("- workstream 0 ->");
+    expect(map).toContain("<!-- DREAM:MAP_START -->");
+    expect(map).toContain("<!-- DREAM:MAP_END -->");
+    expect(map).toContain("<!-- DREAM:DERIVED_START -->");
+    expect(map).toContain("<!-- DREAM:DERIVED_END -->");
+  });
+
   it("is idempotent: a second run never rewrites an existing map or re-banners retired files", async () => {
     await mkdir(memoriesDir(), { recursive: true });
     await writeFile(
@@ -138,5 +178,33 @@ describe("ensureDreamMemoryLayout / memory_map migration", () => {
     await ensureDreamMemoryLayout(stellaDataDir);
     const raw = await readMemoryMap(stellaDataDir);
     expect(raw).toContain("<!-- DREAM:MAP_START -->");
+  });
+});
+
+describe("blankInjectedHtmlComments", () => {
+  it("blanks comment text while preserving every line position", () => {
+    const raw = [
+      "<!-- DREAM:MAP_CHARTER",
+      "guidance the model must not match",
+      "-->",
+      "# Memory map",
+      "- real entry",
+    ].join("\n");
+    const blanked = blankInjectedHtmlComments(raw);
+    const lines = blanked.split("\n");
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toBe("");
+    expect(lines[1]).toBe("");
+    expect(lines[2]).toBe("");
+    expect(lines[3]).toBe("# Memory map");
+    expect(lines[4]).toBe("- real entry");
+    expect(blanked).not.toContain("guidance the model");
+  });
+
+  it("blanks an unterminated comment through end-of-doc", () => {
+    const blanked = blankInjectedHtmlComments(
+      "live line\n<!-- never closed\nstill inside the comment",
+    );
+    expect(blanked.split("\n")).toEqual(["live line", "", ""]);
   });
 });

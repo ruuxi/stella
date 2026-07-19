@@ -30,6 +30,10 @@ import {
 } from "../runtime-threads.js";
 import { runClaudeCodeAgentTextCompletion } from "../integrations/claude-code-agent-runtime.js";
 import {
+  blankInjectedHtmlComments,
+  stripInjectedHtmlComments,
+} from "../memory/dream-storage.js";
+import {
   RecallTelemetryCollector,
   type RecallTelemetryRecord,
   type RecallTelemetrySeed,
@@ -556,6 +560,14 @@ type MemoryFileSource = {
   displayPath: string;
   path: string;
   includeByDefault: boolean;
+  /**
+   * The map keeps its charter and anchors inside HTML comments; injected
+   * views must drop them so the charter's own wording ("aliases", "threads",
+   * task-family examples) can never produce false Recall matches. MEMORY.md
+   * comments are structural anchors only and its blocks are the actual
+   * search target, so it reads raw.
+   */
+  stripInjectedComments?: boolean;
 };
 
 const MEMORY_FILE_SOURCES = (stellaDataDir: string): MemoryFileSource[] => [
@@ -563,6 +575,7 @@ const MEMORY_FILE_SOURCES = (stellaDataDir: string): MemoryFileSource[] => [
     displayPath: "~/.stella/memories/memory_map.md",
     path: path.join(stellaDataDir, "memories", "memory_map.md"),
     includeByDefault: true,
+    stripInjectedComments: true,
   },
   {
     displayPath: "~/.stella/memories/MEMORY.md",
@@ -585,7 +598,11 @@ const readMemoryFiles = async (
   ];
   const blocks: string[] = [];
   for (const file of files) {
-    const content = await readOptionalTextFile(file.path);
+    const raw = await readOptionalTextFile(file.path);
+    const content =
+      raw && file.stripInjectedComments
+        ? stripInjectedHtmlComments(raw)
+        : raw;
     if (!content) continue;
     const rendered = truncate(
       sanitizePromptContext(content, file.displayPath),
@@ -673,7 +690,11 @@ const readMemorySearchResults = async (
   let truncated = false;
 
   for (const file of MEMORY_FILE_SOURCES(stellaDataDir)) {
-    const content = await readOptionalTextFile(file.path);
+    const raw = await readOptionalTextFile(file.path);
+    // Line-preserving blanking (not stripping): matched line numbers must
+    // still correspond to the on-disk file for follow-up reads.
+    const content =
+      raw && file.stripInjectedComments ? blankInjectedHtmlComments(raw) : raw;
     if (!content) continue;
     const lines = content.split(/\r?\n/);
     const usedRanges: Array<{ start: number; end: number }> = [];

@@ -151,6 +151,47 @@ describe("dispatchLocalTool", () => {
     await expect(readFile(mapPath, "utf-8")).resolves.toBe(before);
   });
 
+  it("rejects a map write that deletes the derived-constraints anchors", async () => {
+    const rootPath = await createRoot();
+    await ensureDreamMemoryLayout(rootPath);
+    const mapPath = memoryMapPath(rootPath);
+    const before = await readFile(mapPath, "utf-8");
+
+    const outcome = await strReplace(rootPath, {
+      file_path: mapPath,
+      old_string: "<!-- DREAM:DERIVED_START -->",
+      new_string: "",
+    });
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("DERIVED");
+    expect(outcome.error).toContain("anchors must stay intact");
+    await expect(readFile(mapPath, "utf-8")).resolves.toBe(before);
+  });
+
+  it("accepts a write that restores missing derived anchors", async () => {
+    const rootPath = await createRoot();
+    await ensureDreamMemoryLayout(rootPath);
+    const mapPath = memoryMapPath(rootPath);
+    // Simulate a file that lost the derived pair before this guard existed.
+    const damaged = (await readFile(mapPath, "utf-8"))
+      .replace("<!-- DREAM:DERIVED_START -->\n", "")
+      .replace("<!-- DREAM:DERIVED_END -->\n", "");
+    await writeFile(mapPath, damaged, "utf-8");
+
+    const outcome = await strReplace(rootPath, {
+      file_path: mapPath,
+      old_string: "- None pending promotion.",
+      new_string:
+        "<!-- DREAM:DERIVED_START -->\n- None pending promotion.\n<!-- DREAM:DERIVED_END -->",
+    });
+
+    expect(outcome.success).toBe(true);
+    const repaired = await readFile(mapPath, "utf-8");
+    expect(repaired).toContain("<!-- DREAM:DERIVED_START -->");
+    expect(repaired).toContain("<!-- DREAM:DERIVED_END -->");
+  });
+
   it("rejects writes to the retired summary/index files with a pointer to the map", async () => {
     const rootPath = await createRoot();
     const memoriesDir = path.join(rootPath, "memories");

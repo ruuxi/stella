@@ -300,6 +300,52 @@ describe("buildContextLookupUserPrompt", () => {
     expect(prompt).toContain("Full ~/.stella/memories/MEMORY.md omitted");
   });
 
+  it("never matches or seeds the map's charter comment; matched line numbers stay on-disk accurate", async () => {
+    const { rootPath, db } = await createRoot();
+    await writeFile(
+      path.join(rootPath, "memories", "memory_map.md"),
+      [
+        "<!-- DREAM:MAP_CHARTER",
+        "Writer guidance mentioning zanzibar workflows and aliases.",
+        "-->",
+        "# Memory map",
+        "",
+        "<!-- DREAM:MAP_START -->",
+        "- quokka migration -> MEMORY.md 2026-07-01 | aliases: quokka",
+        "<!-- DREAM:MAP_END -->",
+      ].join("\n"),
+    );
+
+    // A term that exists ONLY inside the charter comment must not match.
+    const charterOnly = await buildContextLookupUserPrompt({
+      conversationId: "conv-1",
+      lookupPrompt: "anything about zanzibar?",
+      searchTerms: ["zanzibar"],
+      stellaDataDir: rootPath,
+      store: makeLookupStore(),
+      localEvents: [],
+    });
+    expect(charterOnly).toContain("No matching memory lines found.");
+    expect(charterOnly).not.toContain("Writer guidance mentioning");
+
+    // A real routing entry matches, and the reported line number is the
+    // ON-DISK line (7), because blanking preserves line positions.
+    const realMatch = await buildContextLookupUserPrompt({
+      conversationId: "conv-1",
+      lookupPrompt: "where is the quokka work?",
+      searchTerms: ["quokka"],
+      stellaDataDir: rootPath,
+      store: makeLookupStore(),
+      localEvents: [],
+    });
+    db.close();
+    expect(realMatch).toContain(
+      "7: - quokka migration -> MEMORY.md 2026-07-01 | aliases: quokka",
+    );
+    // The eager seed read strips the charter outright.
+    expect(realMatch).not.toContain("Writer guidance mentioning");
+  });
+
   it("puts only RUNNING threads in the live-status tail, with agent messages", async () => {
     const { rootPath, db } = await createRoot();
     db.close();

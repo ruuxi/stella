@@ -5,6 +5,8 @@ import { TOOL_IDS } from "../../contracts/agent-runtime.js";
 import {
   MEMORY_INDEX_FILE,
   MEMORY_MAP_FILE,
+  MEMORY_MAP_DERIVED_END_ANCHOR,
+  MEMORY_MAP_DERIVED_START_ANCHOR,
   MEMORY_MAP_MAX_CHARS,
   MEMORY_MAP_ROUTES_END_ANCHOR,
   MEMORY_MAP_ROUTES_START_ANCHOR,
@@ -123,6 +125,17 @@ export const validateMemoryMapWrite = (updated: string): string | null => {
     !updated.includes(MEMORY_MAP_ROUTES_END_ANCHOR)
   ) {
     return `Write rejected: the ${MEMORY_MAP_ROUTES_START_ANCHOR} / ${MEMORY_MAP_ROUTES_END_ANCHOR} anchors must stay intact in ${MEMORY_MAP_FILE}. Edit between them. Nothing was written.`;
+  }
+  // The derived-constraints staging section is load-bearing (design review
+  // §6.3: a detected constraint is never non-resident), so its anchors get
+  // the same mechanical protection as the routing anchors. Every seeded map
+  // contains both pairs; a file that lost them is repaired by a write that
+  // restores them, which this guard accepts.
+  if (
+    !updated.includes(MEMORY_MAP_DERIVED_START_ANCHOR) ||
+    !updated.includes(MEMORY_MAP_DERIVED_END_ANCHOR)
+  ) {
+    return `Write rejected: the ${MEMORY_MAP_DERIVED_START_ANCHOR} / ${MEMORY_MAP_DERIVED_END_ANCHOR} anchors must stay intact in ${MEMORY_MAP_FILE} (restore them under "## Derived constraints" if they are missing). Nothing was written.`;
   }
   return null;
 };
