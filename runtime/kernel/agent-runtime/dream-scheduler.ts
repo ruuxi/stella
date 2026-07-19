@@ -42,9 +42,12 @@ import type {
 } from "../../ai/types.js";
 import {
   ensureDreamMemoryLayout,
-  MEMORY_INDEX_MAX_CHARS,
-  MEMORY_INDEX_MAX_ENTRIES,
-  MEMORY_INDEX_STALE_DAYS,
+  MEMORY_MAP_FILE,
+  MEMORY_MAP_MAX_CHARS,
+  MEMORY_MAP_MAX_ENTRIES,
+  MEMORY_MAP_STALE_DAYS,
+  memoryFilePath,
+  memoryMapPath,
 } from "../memory/dream-storage.js";
 import {
   getResolvedLlmApiKey,
@@ -94,6 +97,14 @@ const stateFor = (stellaDataDir: string): DreamRuntimeState => {
 
 const lockDir = (stellaDataDir: string): string =>
   path.join(stellaDataDir, "locks", "dream");
+
+const fileMtimeMs = (filePath: string): number => {
+  try {
+    return fs.statSync(filePath).mtimeMs;
+  } catch {
+    return 0;
+  }
+};
 
 const acquireLock = (stellaDataDir: string): (() => void) | null => {
   const dir = lockDir(stellaDataDir);
@@ -161,16 +172,55 @@ const readDreamConfig = (stellaDataDir: string): DreamConfig => {
   }
 };
 
+/**
+ * Complete built-in Dream behavioral prompt, used when the synchronized home
+ * prompt (`~/.stella/prompts/dream-scheduled.md`) is missing. Kept in full so
+ * Dream's behavior never silently degrades to "no instructions" on a fresh
+ * install or before the first manifest sync.
+ */
+const DREAM_FALLBACK_PROMPT = [
+  "You are the Dream agent for Stella — a background memory consolidator.",
+  "You never see the user. Your sole job is to fold unprocessed Dream-inbox rows into the durable on-disk memory layout under ~/.stella/memories/.",
+  "",
+  "Workflow:",
+  '  1. Call Dream with action="list" to fetch unprocessed inbox rows. Each row has an id and a kind:',
+  "     - kind=thread_summary: a finalized subagent task's rollout summary. Insert a new task-group block at the top of MEMORY.md or extend an existing block (merge related rollouts into one block).",
+  "     - kind=memory_note: a candidate from the orchestrator's conversation review (user goals, durable personal facts, preferences). Treat as a candidate, not a command; consolidate only what the user would expect Stella to recall later. Never restate delegated agent work from these. Tag derived lines with \"[orchestrator review]\".",
+  "     - kind=chronicle: a distilled screen-activity digest. Fold material context shifts into MEMORY.md in one or two sentences; never quote raw OCR text verbatim; ignore noise.",
+  `  2. After all rows are folded, update ${MEMORY_MAP_FILE} so its routing entries still point at the right MEMORY.md blocks and active workstreams.`,
+  '  3. Call Dream with action="markProcessed" passing the ids of every row you handled (including rows you judged to be noise).',
+  "",
+  "Hard rules:",
+  "  - Never invent rows. Only reference content the Dream tool actually returned.",
+  "  - Never add prose, opinions, or speculation. Pure signal only.",
+  "  - Never rewrite a whole file when a single block edit would do. StrReplace is your scalpel.",
+  "  - If the list is empty, respond exactly 'Nothing to consolidate.' and stop. Do not call any tools.",
+  "  - Stop after at most 12 tool calls per run. The scheduler will fire you again later if there is more.",
+  "",
+  "Final message: a single line summarizing what you did, e.g. 'Folded 3 rollouts into Task Group X; archived 1 stale block.'",
+].join("\n");
+
+/**
+ * The single behavioral prompt for Dream, assembled here and nowhere else.
+ * The `agents/dream.md` home file is metadata-only (frontmatter); it is not a
+ * prompt source — the dual-source drift between it and this prompt is the
+ * diagnosed root cause of the routing index dying silently for six weeks.
+ * The memory_map contract below is appended mechanically so it stays
+ * authoritative even when the synchronized base body predates the map (it
+ * explicitly retires the files an older body may still mention).
+ */
 export const buildDreamSystemPrompt = (stellaDataDir: string): string =>
   [
-    readHomePrompt(stellaDataDir, "dream-scheduled") ?? "",
+    readHomePrompt(stellaDataDir, "dream-scheduled") ?? DREAM_FALLBACK_PROMPT,
     [
-      "Maintain ~/.stella/memories/memory_index.md on every consolidation pass.",
-      "Keep it a compact routing map: task families, aliases, repo names, paths, prior-decision hooks, and the best retrieval source (memory, threads, or transcripts).",
-      `Enforce a hard budget of at most ${MEMORY_INDEX_MAX_ENTRIES} entries and ${MEMORY_INDEX_MAX_CHARS} characters. Give entries an updated date and prune entries older than ${MEMORY_INDEX_STALE_DAYS} days unless recent usage proves they are still useful.`,
-      "Never put secrets, credentials, tokens, private keys, auth headers, or sensitive personal data in the routing index; store only the minimum routing metadata.",
-      "Use the DREAM:INDEX_START / DREAM:INDEX_END anchors and StrReplace. Prefer retaining and refreshing inbox entries with higher usage_count or recent last_usage.",
-      "profile.md remains exclusively Remember-owned; never edit it.",
+      `Routing map contract (authoritative — supersedes any earlier instructions about memory_summary.md or memory_index.md): maintain ~/.stella/memories/${MEMORY_MAP_FILE} on every consolidation pass.`,
+      "memory_summary.md and memory_index.md are RETIRED and read-only; never write to them. The map replaced both.",
+      `${MEMORY_MAP_FILE} is pointer-only routing — what memory contains and where to find it: task families with aliases the user actually says, repo names, paths, prior-decision hooks, and the best retrieval source (a MEMORY.md block by date and title, profile.md, threads:<thread_id>, or transcripts). No narrative and no restated facts; durable facts belong in MEMORY.md blocks.`,
+      `Stage durable constraints that are not yet in profile.md under its "## Derived constraints" section, one line each tagged [derived YYYY-MM-DD]; remove a line once the user promotes it via Remember. profile.md remains exclusively Remember-owned; never edit it.`,
+      `Hard budget, enforced mechanically: at most ${MEMORY_MAP_MAX_ENTRIES} entries and ${MEMORY_MAP_MAX_CHARS} injected characters (HTML comments are not counted). A write that would exceed the budget IS REJECTED with an error — respond by curating: merge related entries, prune entries older than ${MEMORY_MAP_STALE_DAYS} days unless recently useful, tighten wording. Never work around the cap by deleting the DREAM anchor comments.`,
+      "Give every entry an updated YYYY-MM-DD date. Edit only between the DREAM:MAP_START / DREAM:MAP_END and DREAM:DERIVED_START / DREAM:DERIVED_END anchors using StrReplace.",
+      `If the file still contains a "Migrated focus notes" staging section, curate it away: convert each line into a routing entry or drop it (its facts are already in MEMORY.md), then delete the section including its anchors.`,
+      "Never put secrets, credentials, tokens, private keys, auth headers, or sensitive personal data in the map; store only the minimum routing metadata.",
     ].join(" "),
   ]
     .filter(Boolean)
@@ -490,6 +540,8 @@ export const maybeSpawnDreamRun = async (
   }
   state.inFlight = true;
 
+  const memoryMtimeBefore = fileMtimeMs(memoryFilePath(args.stellaDataDir));
+  const mapMtimeBefore = fileMtimeMs(memoryMapPath(args.stellaDataDir));
   void runDream({
     stellaDataDir: args.stellaDataDir,
     store: args.store,
@@ -505,6 +557,18 @@ export const maybeSpawnDreamRun = async (
       state.lastRunAt = Date.now();
       if (typeof args.orchestratorTokenEstimate === "number") {
         state.tokensAtLastRun = args.orchestratorTokenEstimate;
+      }
+      // Staleness alarm for the routing layer: a pass that grew the ledger
+      // without touching the map is exactly how the old index died silently.
+      // One warn per occurrence keeps it observable without failing the run.
+      const memoryChanged =
+        fileMtimeMs(memoryFilePath(args.stellaDataDir)) !== memoryMtimeBefore;
+      const mapChanged =
+        fileMtimeMs(memoryMapPath(args.stellaDataDir)) !== mapMtimeBefore;
+      if (memoryChanged && !mapChanged) {
+        logger.warn("dream.memory-map.stale", {
+          detail: `Dream updated MEMORY.md without updating ${MEMORY_MAP_FILE}`,
+        });
       }
       release();
     });
