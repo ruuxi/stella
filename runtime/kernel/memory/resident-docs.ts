@@ -32,8 +32,11 @@ import {
 } from "./dream-storage.js";
 import { USER_PROFILE_INJECTED_MAX_CHARS } from "./user-profile-store.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
+import { createRuntimeLogger } from "../debug.js";
 
 export { stripInjectedHtmlComments };
+
+const logger = createRuntimeLogger("memory.resident-docs");
 
 export const LIFE_REGISTRY_DISPLAY_PATH = "~/.stella/registry.md";
 export const LIFE_CORE_MEMORY_DISPLAY_PATH = "~/.stella/core-memory.md";
@@ -338,5 +341,160 @@ export const refreshResidentStartupDocs = (args: {
     }
     writeEntry(entry, buildStartupDocMessage(entry.displayPath, freshBody));
   }
+
+  // Boundary telemetry: one info record per epoch of what the refreshed
+  // pinned prefix costs. Best-effort — telemetry must never fail a refresh.
+  try {
+    const postRefreshTexts: string[] = [];
+    for (const message of args.store.loadThreadMessages(args.threadKey)) {
+      const customMessage = message.customMessage;
+      if (
+        message.role === "runtimeInternal" &&
+        customMessage?.customType === BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE
+      ) {
+        postRefreshTexts.push(customMessageText(customMessage.content));
+      }
+    }
+    emitResidentStartupDocTelemetry({
+      source: "compaction-boundary",
+      stats: collectResidentStartupDocStats(postRefreshTexts),
+    });
+  } catch {
+    // best-effort
+  }
   return result;
+};
+
+/**
+ * Telemetry over the resident startup docs riding a thread — the observable
+ * for the two regression classes the memory redesign closed:
+ *
+ *  - copy accumulation (the pre-fix leak measured at ~13 stale copies /
+ *    ~72K tokens per call): any doc path with more than one persisted copy;
+ *  - cap pressure: an injected doc within 10% of its hard cap, the early
+ *    signal before write-side rejections start refusing content.
+ */
+export type ResidentStartupDocStat = {
+  displayPath: string;
+  copies: number;
+  /** Chars of the persisted copies (all copies summed) as injected. */
+  injectedChars: number;
+  /** Hard cap for capped docs (map, profile); absent for uncapped docs. */
+  capChars?: number;
+};
+
+const RESIDENT_DOC_CAPS: Record<string, number> = {
+  [LIFE_MEMORY_MAP_DISPLAY_PATH]: MEMORY_MAP_MAX_CHARS,
+  [LIFE_USER_PROFILE_DISPLAY_PATH]: USER_PROFILE_INJECTED_MAX_CHARS,
+};
+
+const RESIDENT_DOC_CAP_PRESSURE_RATIO = 0.9;
+
+/** Per-path copy counts and sizes from raw startup-doc message texts. */
+export const collectResidentStartupDocStats = (
+  docTexts: readonly string[],
+): ResidentStartupDocStat[] => {
+  const byPath = new Map<string, ResidentStartupDocStat>();
+  for (const text of docTexts) {
+    const displayPath = parseStartupDocPath(text);
+    if (!displayPath) continue;
+    const existing = byPath.get(displayPath);
+    if (existing) {
+      existing.copies += 1;
+      existing.injectedChars += text.length;
+      continue;
+    }
+    const capChars = RESIDENT_DOC_CAPS[displayPath];
+    byPath.set(displayPath, {
+      displayPath,
+      copies: 1,
+      injectedChars: text.length,
+      ...(capChars ? { capChars } : {}),
+    });
+  }
+  return [...byPath.values()];
+};
+
+export type ResidentDocTelemetryAnomalies = {
+  /** Doc paths persisted more than once — the stale-copy leak signature. */
+  duplicatePaths: string[];
+  /** Capped docs at ≥90% of their cap. */
+  capPressurePaths: string[];
+};
+
+/**
+ * Change-keyed so a standing anomaly warns once when it appears (and again
+ * only if it changes shape) instead of once per turn; the debug snapshot
+ * still fires every emission for anyone tailing logs.
+ */
+let lastAnomalySignature = "";
+
+/** Test seam: make anomaly warns deterministic across test cases. */
+export const resetResidentDocTelemetryForTests = (): void => {
+  lastAnomalySignature = "";
+};
+
+export const emitResidentStartupDocTelemetry = (args: {
+  /** Where the observation was made: `prompt-build` or `compaction-boundary`. */
+  source: string;
+  stats: readonly ResidentStartupDocStat[];
+}): ResidentDocTelemetryAnomalies => {
+  const totalChars = args.stats.reduce(
+    (sum, stat) => sum + stat.injectedChars,
+    0,
+  );
+  const duplicatePaths = args.stats
+    .filter((stat) => stat.copies > 1)
+    .map((stat) => stat.displayPath);
+  const capPressurePaths = args.stats
+    .filter(
+      (stat) =>
+        stat.capChars !== undefined &&
+        stat.copies === 1 &&
+        stat.injectedChars >= stat.capChars * RESIDENT_DOC_CAP_PRESSURE_RATIO,
+    )
+    .map((stat) => stat.displayPath);
+
+  const payload = {
+    source: args.source,
+    totalChars,
+    docs: args.stats.map((stat) => ({
+      path: stat.displayPath,
+      copies: stat.copies,
+      chars: stat.injectedChars,
+      ...(stat.capChars !== undefined ? { cap: stat.capChars } : {}),
+    })),
+  };
+  if (args.source === "compaction-boundary") {
+    // Boundary frequency is cheap; an info-level record per epoch gives a
+    // durable series of what each epoch's pinned prefix costs.
+    logger.info("resident-docs.telemetry", payload);
+  } else {
+    logger.debug("resident-docs.telemetry", payload);
+  }
+
+  const signature = JSON.stringify({ duplicatePaths, capPressurePaths });
+  const hasAnomaly = duplicatePaths.length > 0 || capPressurePaths.length > 0;
+  if (hasAnomaly && signature !== lastAnomalySignature) {
+    if (duplicatePaths.length > 0) {
+      logger.warn("resident-docs.duplicate-copies", {
+        source: args.source,
+        paths: duplicatePaths,
+        detail:
+          "multiple persisted copies of a pinned resident doc — the stale-copy accumulation the single-pinned-copy fix eliminates; boundary refresh should dedupe these",
+      });
+    }
+    if (capPressurePaths.length > 0) {
+      logger.warn("resident-docs.cap-pressure", {
+        source: args.source,
+        paths: capPressurePaths,
+        detail:
+          "injected doc within 10% of its hard cap; writes will start being rejected when it fills",
+      });
+    }
+  }
+  if (hasAnomaly || lastAnomalySignature) {
+    lastAnomalySignature = hasAnomaly ? signature : "";
+  }
+  return { duplicatePaths, capPressurePaths };
 };

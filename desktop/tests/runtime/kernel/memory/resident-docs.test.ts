@@ -4,10 +4,15 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  buildStartupDocMessage,
+  collectResidentStartupDocStats,
+  emitResidentStartupDocTelemetry,
   LIFE_MEMORY_MAP_DISPLAY_PATH,
+  LIFE_USER_PROFILE_DISPLAY_PATH,
   readMemoryMapDoc,
   readStartupDocBodyFromDisk,
   readUserProfileDoc,
+  resetResidentDocTelemetryForTests,
   RETIRED_STARTUP_DOC_DISPLAY_PATHS,
   stripInjectedHtmlComments,
 } from "../../../../../runtime/kernel/memory/resident-docs.js";
@@ -116,5 +121,67 @@ describe("resident memory doc reads", () => {
       USER_PROFILE_INJECTED_MAX_CHARS,
     );
     expect(profile).toContain("[resident memory truncated]");
+  });
+});
+
+describe("resident startup-doc telemetry", () => {
+  beforeEach(() => {
+    resetResidentDocTelemetryForTests();
+  });
+
+  const doc = (path: string, body: string): string =>
+    buildStartupDocMessage(path, body);
+
+  it("counts copies and sizes per doc path", () => {
+    const stats = collectResidentStartupDocStats([
+      doc(LIFE_USER_PROFILE_DISPLAY_PATH, "- goes by Bob"),
+      doc(LIFE_MEMORY_MAP_DISPLAY_PATH, "- route v1"),
+      doc(LIFE_MEMORY_MAP_DISPLAY_PATH, "- route v2 (stale duplicate)"),
+      "not a startup doc at all",
+    ]);
+    const byPath = new Map(stats.map((stat) => [stat.displayPath, stat]));
+    expect(byPath.get(LIFE_USER_PROFILE_DISPLAY_PATH)?.copies).toBe(1);
+    expect(byPath.get(LIFE_MEMORY_MAP_DISPLAY_PATH)?.copies).toBe(2);
+    expect(
+      byPath.get(LIFE_MEMORY_MAP_DISPLAY_PATH)?.injectedChars,
+    ).toBeGreaterThan(0);
+    expect(byPath.get(LIFE_MEMORY_MAP_DISPLAY_PATH)?.capChars).toBe(6_000);
+    expect(stats).toHaveLength(2);
+  });
+
+  it("flags duplicate copies — the stale-copy accumulation signature", () => {
+    const anomalies = emitResidentStartupDocTelemetry({
+      source: "prompt-build",
+      stats: collectResidentStartupDocStats([
+        doc(LIFE_MEMORY_MAP_DISPLAY_PATH, "- route v1"),
+        doc(LIFE_MEMORY_MAP_DISPLAY_PATH, "- route v2"),
+      ]),
+    });
+    expect(anomalies.duplicatePaths).toEqual([LIFE_MEMORY_MAP_DISPLAY_PATH]);
+    expect(anomalies.capPressurePaths).toEqual([]);
+  });
+
+  it("flags cap pressure at 90% of a capped doc's budget", () => {
+    const nearCapBody = "x".repeat(5_500); // > 0.9 * 6_000 incl. wrapper
+    const anomalies = emitResidentStartupDocTelemetry({
+      source: "compaction-boundary",
+      stats: collectResidentStartupDocStats([
+        doc(LIFE_MEMORY_MAP_DISPLAY_PATH, nearCapBody),
+        doc(LIFE_USER_PROFILE_DISPLAY_PATH, "- tiny"),
+      ]),
+    });
+    expect(anomalies.capPressurePaths).toEqual([LIFE_MEMORY_MAP_DISPLAY_PATH]);
+    expect(anomalies.duplicatePaths).toEqual([]);
+  });
+
+  it("reports a healthy set as anomaly-free", () => {
+    const anomalies = emitResidentStartupDocTelemetry({
+      source: "prompt-build",
+      stats: collectResidentStartupDocStats([
+        doc(LIFE_USER_PROFILE_DISPLAY_PATH, "- goes by Bob"),
+        doc(LIFE_MEMORY_MAP_DISPLAY_PATH, "- route v1"),
+      ]),
+    });
+    expect(anomalies).toEqual({ duplicatePaths: [], capPressurePaths: [] });
   });
 });

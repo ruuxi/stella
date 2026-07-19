@@ -30,6 +30,8 @@ import { redactMemoryText } from "../memory/redaction.js";
 import {
   BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE,
   buildStartupDocMessage,
+  collectResidentStartupDocStats,
+  emitResidentStartupDocTelemetry,
   LIFE_CORE_MEMORY_DISPLAY_PATH,
   LIFE_MEMORY_MAP_DISPLAY_PATH,
   LIFE_PERSONALITY_DISPLAY_PATH,
@@ -586,6 +588,33 @@ export const buildStartupPromptMessages = async (args: {
         ),
       );
     }
+  }
+
+  // Injection telemetry: what this thread's resident docs cost the window —
+  // persisted pinned copies plus anything injected this turn. Makes the two
+  // regression classes observable (any path with >1 copy is the stale-copy
+  // leak resurfacing; a capped doc near its cap is about to reject writes).
+  // Best-effort: telemetry must never affect prompt building.
+  try {
+    const persistedTexts: string[] = [];
+    for (const entry of args.context.threadHistory ?? []) {
+      const customMessage = entry.customMessage;
+      if (
+        entry.role === "runtimeInternal" &&
+        customMessage?.customType === BOOTSTRAP_STARTUP_DOC_CUSTOM_TYPE
+      ) {
+        persistedTexts.push(customMessageContentText(customMessage.content));
+      }
+    }
+    emitResidentStartupDocTelemetry({
+      source: "prompt-build",
+      stats: collectResidentStartupDocStats([
+        ...persistedTexts,
+        ...messages.map((message) => message.text),
+      ]),
+    });
+  } catch {
+    // best-effort
   }
 
   return messages;
