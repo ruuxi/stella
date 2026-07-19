@@ -431,4 +431,127 @@ describe("DreamInboxStore", () => {
       ).toBe(1);
     });
   });
+
+  describe("delta-input support (migration step 6)", () => {
+    it("tracks a monotonic per-conversation delta watermark", () => {
+      const { store } = createTestContext();
+      expect(store.readDeltaWatermark("conv-1")).toBe(0);
+
+      store.advanceDeltaWatermark("conv-1", 5_000);
+      expect(store.readDeltaWatermark("conv-1")).toBe(5_000);
+      expect(store.readDeltaWatermark("conv-2")).toBe(0);
+
+      // Monotonic: a delayed writer never moves coverage backwards.
+      store.advanceDeltaWatermark("conv-1", 4_000);
+      expect(store.readDeltaWatermark("conv-1")).toBe(5_000);
+      store.advanceDeltaWatermark("conv-1", 6_500);
+      expect(store.readDeltaWatermark("conv-1")).toBe(6_500);
+
+      // Invalid advances are ignored.
+      store.advanceDeltaWatermark("conv-1", 0);
+      store.advanceDeltaWatermark("conv-1", Number.NaN);
+      expect(store.readDeltaWatermark("conv-1")).toBe(6_500);
+    });
+
+    it("persists the scheduler token baseline with last-write-wins semantics", () => {
+      const { store } = createTestContext();
+      expect(store.readTokenBaseline()).toBeNull();
+
+      store.writeTokenBaseline(120_000);
+      expect(store.readTokenBaseline()).toBe(120_000);
+
+      // The baseline legitimately moves DOWN after a compaction shrink.
+      store.writeTokenBaseline(30_000);
+      expect(store.readTokenBaseline()).toBe(30_000);
+
+      store.writeTokenBaseline(-5);
+      expect(store.readTokenBaseline()).toBe(30_000);
+    });
+
+    it("filters listUnprocessed by kinds for the delta-mode chronicle-only view", () => {
+      const { store } = createTestContext();
+      store.recordThreadSummary({
+        threadId: "thread-a",
+        runId: "run-1",
+        agentType: "general",
+        rolloutSummary: "rollout",
+      });
+      store.recordMemoryNote({
+        title: "Note",
+        category: "active_focus",
+        memory: "candidate",
+        recallHooks: [],
+        evidence: [],
+      });
+      store.recordChronicleSummary({ window: "10m", content: "screen digest" });
+
+      expect(store.listUnprocessed()).toHaveLength(3);
+      const chronicleOnly = store.listUnprocessed({ kinds: ["chronicle"] });
+      expect(chronicleOnly).toHaveLength(1);
+      expect(chronicleOnly[0]?.kind).toBe("chronicle");
+    });
+
+    it("marks covered kinds processed through a timestamp, sparing newer rows and chronicle", () => {
+      const { store } = createTestContext();
+      const old = new Date(Date.now() - 60_000);
+      store.recordMemoryNote({
+        title: "Old note",
+        category: "active_focus",
+        memory: "old",
+        recallHooks: [],
+        evidence: [],
+        createdAt: old,
+      });
+      store.recordThreadSummary({
+        threadId: "thread-a",
+        runId: "run-1",
+        agentType: "general",
+        rolloutSummary: "recent rollout",
+      });
+      store.recordChronicleSummary({ window: "10m", content: "digest" });
+
+      const throughTs = old.getTime() + 1;
+      const { updated } = store.markKindsProcessedThrough({
+        kinds: ["thread_summary", "memory_note"],
+        throughTs,
+      });
+      expect(updated).toBe(1);
+      const remaining = store.listUnprocessed();
+      expect(remaining.map((row) => row.kind).sort()).toEqual([
+        "chronicle",
+        "thread_summary",
+      ]);
+    });
+
+    it("reports the processed frontier for rows consumed since a pass started", () => {
+      const { store } = createTestContext();
+      store.recordThreadSummary({
+        threadId: "thread-a",
+        runId: "run-1",
+        agentType: "general",
+        rolloutSummary: "first",
+      });
+      store.recordThreadSummary({
+        threadId: "thread-b",
+        runId: "run-2",
+        agentType: "general",
+        rolloutSummary: "second",
+      });
+      const rows = store.listUnprocessed();
+      expect(rows).toHaveLength(2);
+      const passStartedAt = Date.now();
+      expect(store.maxProcessedSourceUpdatedAtSince(passStartedAt)).toBe(0);
+
+      // Consume only one row: the frontier reflects it, not the full queue.
+      const consumed = rows[0]!;
+      store.markProcessed({ ids: [consumed.id] });
+      expect(store.maxProcessedSourceUpdatedAtSince(passStartedAt)).toBe(
+        consumed.sourceUpdatedAt,
+      );
+      // Rows consumed before the pass start are invisible to it.
+      expect(
+        store.maxProcessedSourceUpdatedAtSince(Date.now() + 60_000),
+      ).toBe(0);
+    });
+  });
 });

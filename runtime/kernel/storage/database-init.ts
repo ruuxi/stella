@@ -1101,4 +1101,32 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       completed_at INTEGER NOT NULL
     );
   `);
+
+  // Persisted message-timestamp watermark for Dream's orchestrator-delta
+  // input (migration step 6): the newest thread message a completed delta
+  // derivation (shadow or live) has covered, per conversation. Message
+  // timestamps make it restart-proof and compaction-proof — the same
+  // mechanism as runtime_memory_review_state.last_reviewed_message_ts.
+  // Monotonic; a lost row costs one re-derivation window, never facts
+  // (raw thread entries and the transcript FTS persist regardless).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dream_delta_watermark (
+      conversation_id TEXT PRIMARY KEY,
+      last_message_ts INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  // Persisted token baseline for the Dream scheduler's token_interval gate.
+  // Previously in-memory only: every worker restart reset it to 0, so the
+  // first token_interval evaluation measured "growth" from zero and fired a
+  // spurious pass (design review §6.1: "fixing the in-memory token-baseline
+  // reset"). Single row; purely a scheduling signal.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dream_scheduler_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      tokens_at_last_run INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
 };

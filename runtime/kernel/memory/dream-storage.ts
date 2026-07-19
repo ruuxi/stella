@@ -24,6 +24,14 @@ import path from "node:path";
 
 export const MEMORY_FILE = "MEMORY.md";
 export const MEMORY_MAP_FILE = "memory_map.md";
+/**
+ * Shadow-validation log for the orchestrator-delta Dream input (migration
+ * step 6). Written only by the shadow pass in the scheduler; deliberately
+ * absent from every read surface — not seeded here, not resident, not in
+ * Recall's `MEMORY_FILE_SOURCES`, and not writable through the Dream jail —
+ * so unvalidated derivations can never leak into live retrieval or context.
+ */
+export const MEMORY_SHADOW_FILE = "memory_shadow.md";
 /** Retired file names, kept for migration and jail error messages. */
 export const MEMORY_SUMMARY_FILE = "memory_summary.md";
 export const MEMORY_INDEX_FILE = "memory_index.md";
@@ -149,6 +157,9 @@ export const memoryFilePath = (stellaDataDir: string): string =>
 
 export const memoryMapPath = (stellaDataDir: string): string =>
   path.join(memoriesRoot(stellaDataDir), MEMORY_MAP_FILE);
+
+export const memoryShadowPath = (stellaDataDir: string): string =>
+  path.join(memoriesRoot(stellaDataDir), MEMORY_SHADOW_FILE);
 
 /** Retired paths — used only by the migration seed and jail diagnostics. */
 export const memorySummaryPath = (stellaDataDir: string): string =>

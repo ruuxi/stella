@@ -318,21 +318,31 @@ export class DreamInboxStore {
   /**
    * Frequently surfaced rows lead, then the remaining queue is oldest-first.
    * This makes Dream retain and refresh memory that repeatedly proves useful.
+   * `kinds` narrows the queue view (the delta-input Dream pass lists only
+   * `chronicle` — rollout summaries and review notes are already represented
+   * byte-equivalently in the orchestrator delta it reads instead).
    */
-  listUnprocessed(args?: { limit?: number }): DreamInboxRow[] {
+  listUnprocessed(args?: {
+    limit?: number;
+    kinds?: readonly DreamInboxKind[];
+  }): DreamInboxRow[] {
     const limit = Math.max(1, Math.min(args?.limit ?? 50, 500));
+    const kinds = args?.kinds?.length ? [...new Set(args.kinds)] : null;
+    const kindFilter = kinds
+      ? ` AND kind IN (${kinds.map(() => "?").join(", ")})`
+      : "";
     const rows = this.db
       .prepare(
         `
         SELECT ${ROW_COLUMNS}
         FROM dream_inbox
-        WHERE processed_by_dream_at IS NULL
+        WHERE processed_by_dream_at IS NULL${kindFilter}
         ORDER BY usage_count DESC, COALESCE(last_usage, 0) DESC,
                  source_updated_at ASC, id ASC
         LIMIT ?
         `,
       )
-      .all(limit) as DreamInboxRawRow[];
+      .all(...(kinds ?? []), limit) as DreamInboxRawRow[];
     return rows.map(fromRow);
   }
 
@@ -391,6 +401,122 @@ export class DreamInboxStore {
         `,
       )
       .run(args.frontier, args.completedAt ?? Date.now());
+  }
+
+  /**
+   * Persisted message-timestamp watermark for the orchestrator-delta input
+   * (migration step 6): newest thread message a completed delta derivation
+   * (shadow or live) covered for this conversation. 0 until the first pass.
+   */
+  readDeltaWatermark(conversationId: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT last_message_ts FROM dream_delta_watermark WHERE conversation_id = ?`,
+      )
+      .get(conversationId) as { last_message_ts?: number } | undefined;
+    const ts = Number(row?.last_message_ts ?? 0);
+    return Number.isFinite(ts) && ts > 0 ? ts : 0;
+  }
+
+  /**
+   * Advance the delta watermark. Monotonic — a delayed or racing writer can
+   * never move coverage backwards, mirroring the memory-review watermark.
+   */
+  advanceDeltaWatermark(conversationId: string, lastMessageTs: number): void {
+    if (!Number.isFinite(lastMessageTs) || lastMessageTs <= 0) return;
+    this.db
+      .prepare(
+        `
+        INSERT INTO dream_delta_watermark (conversation_id, last_message_ts, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(conversation_id) DO UPDATE SET
+          last_message_ts = MAX(dream_delta_watermark.last_message_ts, excluded.last_message_ts),
+          updated_at = excluded.updated_at
+        `,
+      )
+      .run(conversationId, Math.floor(lastMessageTs), Date.now());
+  }
+
+  /**
+   * Persisted token baseline for the scheduler's token_interval gate; null
+   * until a Dream run has ever recorded one. Fixes the in-memory reset where
+   * every worker restart made the next gate measure growth from zero.
+   */
+  readTokenBaseline(): number | null {
+    const row = this.db
+      .prepare(`SELECT tokens_at_last_run FROM dream_scheduler_state WHERE id = 1`)
+      .get() as { tokens_at_last_run?: number } | undefined;
+    const tokens = Number(row?.tokens_at_last_run);
+    return Number.isFinite(tokens) && tokens >= 0 ? tokens : null;
+  }
+
+  /** Write-through of the scheduler's token baseline. Last write wins — the
+   * baseline legitimately moves DOWN when a compaction shrinks the thread. */
+  writeTokenBaseline(tokens: number): void {
+    if (!Number.isFinite(tokens) || tokens < 0) return;
+    this.db
+      .prepare(
+        `
+        INSERT INTO dream_scheduler_state (id, tokens_at_last_run, updated_at)
+        VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          tokens_at_last_run = excluded.tokens_at_last_run,
+          updated_at = excluded.updated_at
+        `,
+      )
+      .run(Math.floor(tokens), Date.now());
+  }
+
+  /**
+   * Newest `source_updated_at` among rows a pass actually consumed since it
+   * started. The scheduler advances the pass watermark to this (never past
+   * it), so a >LIST-limit backlog can no longer advance the watermark past
+   * rows the pass never saw.
+   */
+  maxProcessedSourceUpdatedAtSince(sinceMs: number): number {
+    const row = this.db
+      .prepare(
+        `
+        SELECT MAX(source_updated_at) AS frontier
+        FROM dream_inbox
+        WHERE processed_by_dream_at IS NOT NULL AND processed_by_dream_at >= ?
+        `,
+      )
+      .get(sinceMs) as { frontier?: number | null } | undefined;
+    return Number(row?.frontier ?? 0);
+  }
+
+  /**
+   * Code-level consumption for the delta-input pass: rows of the given kinds
+   * whose content is provably covered by a completed delta derivation (a row
+   * written at T derives from messages ≤ T, so `source_updated_at ≤
+   * coveredThroughTs` ⇒ covered). Keeps the queue and its GC healthy while
+   * the recording hooks stay on as the rollback path; rows arriving mid-pass
+   * carry a later timestamp and stay queued.
+   */
+  markKindsProcessedThrough(args: {
+    kinds: readonly DreamInboxKind[];
+    throughTs: number;
+    processedAt?: number;
+  }): { updated: number } {
+    if (args.kinds.length === 0 || !(args.throughTs > 0)) {
+      return { updated: 0 };
+    }
+    const kinds = [...new Set(args.kinds)];
+    const result = this.db
+      .prepare(
+        `
+        UPDATE dream_inbox
+        SET processed_by_dream_at = ?
+        WHERE processed_by_dream_at IS NULL
+          AND kind IN (${kinds.map(() => "?").join(", ")})
+          AND source_updated_at <= ?
+        `,
+      )
+      .run(args.processedAt ?? Date.now(), ...kinds, args.throughTs) as
+      | { changes?: number }
+      | undefined;
+    return { updated: Number(result?.changes ?? 0) };
   }
 
   /** Count of unprocessed rows; the Dream scheduler's eligibility gate. */
