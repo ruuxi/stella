@@ -10,7 +10,10 @@ import {
   routeRecallIntent,
   runRecall,
 } from "../../../../../runtime/kernel/agent-runtime/context-lookup.js";
-import { readMemorySummaryDoc } from "../../../../../runtime/kernel/runner/shared.js";
+import {
+  readMemoryIndexDoc,
+  readMemorySummaryDoc,
+} from "../../../../../runtime/kernel/runner/shared.js";
 import { redactBenchmarkBrief } from "../../../../../runtime/scripts/recall-benchmark-redaction.js";
 
 const roots = new Set<string>();
@@ -59,10 +62,14 @@ describe("architectural Recall pipeline", () => {
       `# Memory routing index\n${"x".repeat(7_000)}TAIL_SENTINEL`,
     );
 
-    const resident = readMemorySummaryDoc(root) ?? "";
-    expect(resident).toContain("resident memory truncated");
-    expect(resident).not.toContain("TAIL_SENTINEL");
-    expect(resident.length).toBeLessThan(6_100);
+    // The index is its own resident doc now; the summary read never carries
+    // it, and the index read stays deterministically capped.
+    const residentSummary = readMemorySummaryDoc(root) ?? "";
+    expect(residentSummary).toBe("# Memory summary\n- active focus");
+    const residentIndex = readMemoryIndexDoc(root) ?? "";
+    expect(residentIndex).toContain("resident memory truncated");
+    expect(residentIndex).not.toContain("TAIL_SENTINEL");
+    expect(residentIndex.length).toBeLessThan(6_100);
   });
 
   it("routes common facts to memory and returns matched lines with zero model calls", async () => {
