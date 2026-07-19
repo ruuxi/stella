@@ -1,3 +1,4 @@
+import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
@@ -570,32 +571,66 @@ type MemoryFileSource = {
   stripInjectedComments?: boolean;
 };
 
-const MEMORY_FILE_SOURCES = (stellaDataDir: string): MemoryFileSource[] => [
-  {
-    displayPath: "~/.stella/memories/memory_map.md",
-    path: path.join(stellaDataDir, "memories", "memory_map.md"),
-    includeByDefault: true,
-    stripInjectedComments: true,
-  },
-  {
-    displayPath: "~/.stella/memories/MEMORY.md",
-    path: path.join(stellaDataDir, "memories", "MEMORY.md"),
-    includeByDefault: true,
-  },
-];
+/**
+ * Recall's memory sources (design review §6.1 / §6.3 and the MEMORY.md
+ * lifecycle step): the routing map and active ledger, profile.md (a quoted
+ * profile fact used to miss memory search entirely and fall through to a
+ * transcript pass), and every rotation archive under `memories/archive/`
+ * (rotation bounds the active file; it must never hide content from
+ * retrieval). Archives are search-only (`includeByDefault: false`) — the
+ * eager seed reads only the small resident-shaped docs and the active
+ * ledger's head, which is exactly the working set rotation protects.
+ */
+const listMemoryFileSources = async (
+  stellaDataDir: string,
+): Promise<MemoryFileSource[]> => {
+  const sources: MemoryFileSource[] = [
+    {
+      displayPath: "~/.stella/memories/memory_map.md",
+      path: path.join(stellaDataDir, "memories", "memory_map.md"),
+      includeByDefault: true,
+      stripInjectedComments: true,
+    },
+    {
+      displayPath: "~/.stella/memories/MEMORY.md",
+      path: path.join(stellaDataDir, "memories", "MEMORY.md"),
+      includeByDefault: true,
+    },
+    {
+      displayPath: "~/.stella/memories/profile.md",
+      path: path.join(stellaDataDir, "memories", "profile.md"),
+      includeByDefault: true,
+      stripInjectedComments: true,
+    },
+  ];
+  try {
+    const archiveDir = path.join(stellaDataDir, "memories", "archive");
+    const names = (await fsPromises.readdir(archiveDir))
+      .filter((name) => name.endsWith(".md"))
+      .sort();
+    for (const name of names) {
+      sources.push({
+        displayPath: `~/.stella/memories/archive/${name}`,
+        path: path.join(archiveDir, name),
+        includeByDefault: false,
+      });
+    }
+  } catch {
+    // No archive directory yet — rotation has never fired.
+  }
+  return sources;
+};
 
 const readMemoryFiles = async (
   stellaDataDir: string,
   opts?: { hasSearchTerms?: boolean },
 ): Promise<string> => {
-  const files = [
-    ...MEMORY_FILE_SOURCES(stellaDataDir).filter(
-      (file) =>
-        file.includeByDefault &&
-        (!opts?.hasSearchTerms ||
-          file.displayPath !== "~/.stella/memories/MEMORY.md"),
-    ),
-  ];
+  const files = (await listMemoryFileSources(stellaDataDir)).filter(
+    (file) =>
+      file.includeByDefault &&
+      (!opts?.hasSearchTerms ||
+        file.displayPath !== "~/.stella/memories/MEMORY.md"),
+  );
   const blocks: string[] = [];
   for (const file of files) {
     const raw = await readOptionalTextFile(file.path);
@@ -689,7 +724,7 @@ const readMemorySearchResults = async (
   let matchCount = 0;
   let truncated = false;
 
-  for (const file of MEMORY_FILE_SOURCES(stellaDataDir)) {
+  for (const file of await listMemoryFileSources(stellaDataDir)) {
     const raw = await readOptionalTextFile(file.path);
     // Line-preserving blanking (not stripping): matched line numbers must
     // still correspond to the on-disk file for follow-up reads.

@@ -300,6 +300,62 @@ describe("buildContextLookupUserPrompt", () => {
     expect(prompt).toContain("Full ~/.stella/memories/MEMORY.md omitted");
   });
 
+  it("searches profile.md and rotation archives; archives stay out of the eager read", async () => {
+    const { rootPath, db } = await createRoot();
+    await writeFile(
+      path.join(rootPath, "memories", "memory_map.md"),
+      "Working on Stella memory routing.",
+    );
+    await writeFile(
+      path.join(rootPath, "memories", "profile.md"),
+      "- Prefers the Lotus Emira for weekend drives.\n",
+    );
+    await mkdir(path.join(rootPath, "memories", "archive"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(rootPath, "memories", "archive", "MEMORY-2026-Q2.md"),
+      [
+        "# MEMORY archive — 2026-Q2",
+        "",
+        "## 2026-04-12 — Emira headunit recon",
+        "Outcome: rotated-block emira headunit findings archived.",
+      ].join("\n"),
+    );
+
+    const searched = await buildContextLookupUserPrompt({
+      conversationId: "conv-1",
+      lookupPrompt: "What do we know about the Emira?",
+      searchTerms: ["emira"],
+      stellaDataDir: rootPath,
+      store: makeLookupStore(),
+      localEvents: [],
+    });
+    expect(searched).toContain('<match path="~/.stella/memories/profile.md"');
+    expect(searched).toContain(
+      '<match path="~/.stella/memories/archive/MEMORY-2026-Q2.md"',
+    );
+    expect(searched).toContain("rotated-block emira headunit findings");
+
+    const eager = await buildContextLookupUserPrompt({
+      conversationId: "conv-1",
+      lookupPrompt: "General context please.",
+      stellaDataDir: rootPath,
+      store: makeLookupStore(),
+      localEvents: [],
+    });
+    db.close();
+    // Profile rides the eager seed; archives are search-only.
+    expect(eager).toContain(
+      '<memory_file path="~/.stella/memories/profile.md">',
+    );
+    expect(eager).toContain("Lotus Emira");
+    expect(eager).not.toContain(
+      '<memory_file path="~/.stella/memories/archive/MEMORY-2026-Q2.md">',
+    );
+    expect(eager).not.toContain("rotated-block emira headunit findings");
+  });
+
   it("never matches or seeds the map's charter comment; matched line numbers stay on-disk accurate", async () => {
     const { rootPath, db } = await createRoot();
     await writeFile(
