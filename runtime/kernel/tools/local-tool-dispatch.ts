@@ -10,10 +10,12 @@ import {
   MEMORY_MAP_MAX_CHARS,
   MEMORY_MAP_ROUTES_END_ANCHOR,
   MEMORY_MAP_ROUTES_START_ANCHOR,
+  MEMORY_SHADOW_FILE,
   MEMORY_SUMMARY_FILE,
   memoryFilePath,
   memoryIndexPath,
   memoryMapPath,
+  memoryShadowPath,
   memorySummaryPath,
   stripInjectedHtmlComments,
 } from "../memory/dream-storage.js";
@@ -32,12 +34,17 @@ export type LocalToolStore = {
 export type LocalDreamConfig = {
   stellaDataDir: string;
   /**
-   * When set, Dream's `list` returns only these inbox kinds. The delta-input
-   * pass (migration step 6 cutover) restricts the list to `chronicle`:
-   * rollout summaries and review notes are already represented in the
-   * orchestrator delta it reads, so listing them would double-feed Dream.
+   * When set, Dream's `list` hides rows the pass's orchestrator delta
+   * already represents (the delta's own conversation, covered kinds), so
+   * the model is not double-fed. Rows from OTHER conversations, legacy
+   * NULL-conversation rows, and chronicle transport still list normally —
+   * they flow through the model-driven markProcessed path exactly like the
+   * pre-migration inbox pass, which is what keeps at-least-once intact.
    */
-  inboxListKinds?: readonly DreamInboxKind[];
+  inboxListExclude?: {
+    conversationId: string;
+    kinds: readonly DreamInboxKind[];
+  };
 };
 
 const isWithinDirectory = (candidate: string, root: string): boolean => {
@@ -71,6 +78,14 @@ const ensureDreamReadPath = async (
   filePath: string,
 ): Promise<string> => {
   const resolved = await resolveDreamToolPath(dream, filePath);
+  // The shadow-validation log records UNVALIDATED delta-derivation
+  // proposals; letting Dream read it would feed the path being validated
+  // back into the live derivation it is compared against.
+  if (resolved === (await normalizePath(memoryShadowPath(dream.stellaDataDir)))) {
+    throw new Error(
+      `${MEMORY_SHADOW_FILE} is the shadow-validation log and is not readable by Dream; it is diagnostic output, not memory.`,
+    );
+  }
   const [memoriesRoot, extensionsRoot] = await Promise.all([
     normalizePath(path.join(dream.stellaDataDir, "memories")),
     normalizePath(path.join(dream.stellaDataDir, "memories_extensions")),
@@ -339,7 +354,9 @@ export async function dispatchLocalTool(
       const limit = typeof args.limit === "number" ? args.limit : undefined;
       const rows = inbox.listUnprocessed({
         ...(limit !== undefined ? { limit } : {}),
-        ...(dream.inboxListKinds?.length ? { kinds: dream.inboxListKinds } : {}),
+        ...(dream.inboxListExclude
+          ? { excludeConversationKinds: dream.inboxListExclude }
+          : {}),
       });
       return {
         handled: true,

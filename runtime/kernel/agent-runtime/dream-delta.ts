@@ -162,6 +162,12 @@ const capEntry = (entry: string, maxChars: number): string =>
  * strictly newer than `sinceMessageTs`. Stops adding once the char budget is
  * reached; `coveredThroughTs` then reflects only what was actually included
  * so the watermark never advances past unread material.
+ *
+ * Equal-timestamp safety: the watermark filter is a strict `>`, so when the
+ * budget cuts between two messages sharing one millisecond, coverage is
+ * rolled back BELOW the earliest excluded timestamp — otherwise the excluded
+ * tie would be skipped forever. Included ties above the rollback point are
+ * simply re-read next pass (idempotent duplication, never loss).
  */
 export const buildDreamDeltaTranscript = (
   messages: DreamDeltaSourceMessage[],
@@ -176,6 +182,7 @@ export const buildDreamDeltaTranscript = (
   let coveredThroughTs = 0;
   let newestMessageTs = 0;
   let truncated = false;
+  let minExcludedTs = Number.POSITIVE_INFINITY;
   for (const msg of messages) {
     if (!(typeof msg.timestamp === "number" && msg.timestamp > sinceMessageTs)) {
       continue;
@@ -183,16 +190,26 @@ export const buildDreamDeltaTranscript = (
     const entry = formatDeltaEntry(msg);
     if (entry === null) continue;
     newestMessageTs = Math.max(newestMessageTs, msg.timestamp);
-    if (truncated) continue;
     const capped = capEntry(entry, messageMaxChars);
-    if (totalChars + capped.length > maxChars && includedMessages > 0) {
+    if (
+      truncated ||
+      (totalChars + capped.length > maxChars && includedMessages > 0)
+    ) {
       truncated = true;
+      minExcludedTs = Math.min(minExcludedTs, msg.timestamp);
       continue;
     }
     entries.push(capped);
     totalChars += capped.length;
     includedMessages += 1;
     coveredThroughTs = Math.max(coveredThroughTs, msg.timestamp);
+  }
+  if (truncated && Number.isFinite(minExcludedTs)) {
+    // Advance only across a strict timestamp increase: everything at or
+    // above the earliest excluded millisecond stays uncovered. (Corner: if
+    // this pins coverage at the previous watermark, the pass re-derives the
+    // same window — wasteful once, lossy never.)
+    coveredThroughTs = Math.min(coveredThroughTs, minExcludedTs - 1);
   }
   return {
     transcript: entries.join("\n\n"),
@@ -258,8 +275,8 @@ export const buildDreamDeltaUserMessage = (transcript: string): string =>
   [
     "Run the Dream consolidation pass.",
     "",
-    "Primary input — the orchestrator conversation delta since the last consolidation watermark is below. Treat it exactly as you would inbox rows: user turns and task reports are the signal; fold what the user would expect Stella to recall later into MEMORY.md, then update the memory map. Subagent rollout summaries and orchestrator review notes are already represented in this delta, so the inbox list will not return them.",
-    'Additionally call Dream with action="list" to fetch any pending screen-activity (chronicle) digests; fold material shifts and markProcessed the ids you handled.',
+    "Primary input — the orchestrator conversation delta since the last consolidation watermark is below. Treat it exactly as you would inbox rows: user turns and task reports are the signal; fold what the user would expect Stella to recall later into MEMORY.md, then update the memory map. Rollout summaries and review notes from THIS conversation are already represented in the delta, so the inbox list will not return them.",
+    'Additionally call Dream with action="list": it returns everything the delta does NOT cover — screen-activity (chronicle) digests plus rollout summaries and review notes reported by other conversations. Fold those exactly like before and markProcessed the ids you handled.',
     "",
     "ORCHESTRATOR DELTA:",
     "",

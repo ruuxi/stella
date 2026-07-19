@@ -438,13 +438,13 @@ const toToolResultMessage = (
 });
 
 /**
- * Inbox kinds the delta-input pass still serves through the Dream tool:
- * Chronicle transport is out of the migration's scope. Rollout summaries and
- * review notes are represented byte-equivalently in the orchestrator delta
- * (design review Q3), so the cutover pass reads them from the delta instead
- * and consumes their covered rows mechanically below.
+ * Kinds whose rows the orchestrator delta can represent byte-equivalently
+ * (design review Q3) — but only for the delta's OWN conversation. The
+ * cutover pass hides exactly that slice from the Dream list (no double-
+ * feeding) and consumes it mechanically after a clean pass; rows reported
+ * by other conversations and legacy NULL-conversation rows keep flowing
+ * through the model-driven list/markProcessed path unchanged.
  */
-const DELTA_MODE_LIST_KINDS: readonly DreamInboxKind[] = ["chronicle"];
 const DELTA_COVERED_KINDS: readonly DreamInboxKind[] = [
   "thread_summary",
   "memory_note",
@@ -502,8 +502,12 @@ const prepareDeltaInput = (args: {
 /**
  * Post-pass bookkeeping for a CLEANLY completed delta-input pass: advance the
  * delta watermark through what the pass actually read, and mechanically
- * consume the inbox rows that delta provably covers so the queue (and its GC)
- * stays healthy while the recording hooks remain on as the rollback path.
+ * consume ONLY the inbox rows this delta provably covers — same reporting
+ * conversation, source time within coverage. Rows from other conversations
+ * (and legacy rows with no conversation) are untouchable here by
+ * construction: their content never entered this delta, so they stay queued
+ * for the model-driven list path, keeping at-least-once intact while the
+ * recording hooks remain on as the rollback path.
  */
 const finishDeltaPass = (store: RuntimeStore, input: DeltaInput): void => {
   advanceDeltaWatermarkSafe(
@@ -515,6 +519,7 @@ const finishDeltaPass = (store: RuntimeStore, input: DeltaInput): void => {
     const inbox = store.dreamInboxStore;
     if (typeof inbox.markKindsProcessedThrough === "function") {
       const { updated } = inbox.markKindsProcessedThrough({
+        conversationId: input.conversationId,
         kinds: DELTA_COVERED_KINDS,
         throughTs: input.delta.coveredThroughTs,
       });
@@ -557,7 +562,14 @@ const runDream = async (args: {
   const deltaInput = prepareDeltaInput(args);
   const dreamDispatchConfig = {
     stellaDataDir: args.stellaDataDir,
-    ...(deltaInput ? { inboxListKinds: DELTA_MODE_LIST_KINDS } : {}),
+    ...(deltaInput
+      ? {
+          inboxListExclude: {
+            conversationId: deltaInput.conversationId,
+            kinds: DELTA_COVERED_KINDS,
+          },
+        }
+      : {}),
   };
   const tools = buildDreamTools();
   const messages: Message[] = [
@@ -1055,8 +1067,20 @@ export type DreamShadowOutcome =
   | "skipped_busy"
   /** Store cannot serve raw messages / delta watermark (partial fakes). */
   | "skipped_unsupported"
+  /** The LLM call outlived the timeout; abandoned, watermark untouched. */
+  | "timed_out"
   /** Credentials missing, LLM call failed, or the log write failed. */
   | "failed";
+
+/**
+ * Hard ceiling on the shadow's one-shot LLM call. Nothing waits on the
+ * shadow, but the single-flight guard does: without a bound, one hung
+ * provider stream would hold SHADOW_IN_FLIGHT for the process lifetime and
+ * silently end the validation window (every later shadow: skipped_busy).
+ * A timed-out call is abandoned — its eventual result is discarded, the
+ * watermark stays put, and the window is re-derived next pass.
+ */
+export const DREAM_SHADOW_TIMEOUT_MS = 180_000;
 
 const SHADOW_IN_FLIGHT = new Set<string>();
 
@@ -1081,6 +1105,7 @@ export const runDreamDeltaShadow = async (args: {
   conversationId: string;
   liveMemoryChanged: boolean;
   liveMapChanged: boolean;
+  timeoutMs?: number;
 }): Promise<DreamShadowOutcome> => {
   if (SHADOW_IN_FLIGHT.has(args.stellaDataDir)) return "skipped_busy";
   SHADOW_IN_FLIGHT.add(args.stellaDataDir);
@@ -1151,21 +1176,39 @@ export const runDreamDeltaShadow = async (args: {
 
     let proposal = "";
     try {
-      if (useClaudeCode) {
-        proposal = await runClaudeCodeAgentTextCompletion({
-          stellaAppDir: args.stellaDataDir,
-          agentType: AGENT_IDS.DREAM,
-          stellaModel: args.resolvedLlm.model.id,
-          context: { systemPrompt, messages: shadowMessages, tools: [] },
-        });
-      } else {
+      const derive = async (): Promise<string> => {
+        if (useClaudeCode) {
+          return await runClaudeCodeAgentTextCompletion({
+            stellaAppDir: args.stellaDataDir,
+            agentType: AGENT_IDS.DREAM,
+            stellaModel: args.resolvedLlm.model.id,
+            context: { systemPrompt, messages: shadowMessages, tools: [] },
+          });
+        }
         const response = await completeSimple(
           args.resolvedLlm.model,
           { systemPrompt, messages: shadowMessages, tools: [] },
           apiKey ? { apiKey } : undefined,
         );
-        proposal = readAssistantText(response);
+        return readAssistantText(response);
+      };
+      const derivation = derive();
+      // Post-abandon safety: once the race times out nothing awaits this
+      // promise anymore, so observe a late rejection here to keep it from
+      // surfacing as an unhandled rejection. Pre-timeout rejections still
+      // propagate through the race to the catch below.
+      derivation.catch(() => {});
+      const raced = await raceWithTimeout(
+        derivation,
+        Math.max(1, args.timeoutMs ?? DREAM_SHADOW_TIMEOUT_MS),
+      );
+      if (raced === "timed_out") {
+        logger.warn("dream.delta-shadow.timed-out", {
+          conversationId: args.conversationId,
+        });
+        return "timed_out";
       }
+      proposal = raced;
     } catch (error) {
       logger.debug("dream.delta-shadow.completion-failed", {
         error: error instanceof Error ? error.message : String(error),
@@ -1198,7 +1241,13 @@ export const runDreamDeltaShadow = async (args: {
       } catch {
         existing = null;
       }
-      fs.writeFileSync(shadowPath, appendToShadowLog(existing, entry), "utf-8");
+      // Write-temp-then-rename so a reader (or a crash) never sees a torn
+      // file. Two processes sharing a data dir can still lose one entry to
+      // the read-modify-write race — accepted: the log is diagnostic only
+      // and the watermark advance below is monotonic either way.
+      const tmpPath = `${shadowPath}.tmp-${process.pid}`;
+      fs.writeFileSync(tmpPath, appendToShadowLog(existing, entry), "utf-8");
+      fs.renameSync(tmpPath, shadowPath);
     } catch (error) {
       // Without the recorded proposal there is nothing to diff, so the
       // window is deliberately left uncovered for a retry next pass.
@@ -1265,14 +1314,14 @@ export type PreCompactionConsolidationResult = {
   detail?: string;
 };
 
-const raceCompletion = async (
-  completion: Promise<DreamRunOutcome>,
+const raceWithTimeout = async <T>(
+  promise: Promise<T>,
   timeoutMs: number,
-): Promise<DreamRunOutcome | "timed_out"> => {
+): Promise<T | "timed_out"> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      completion,
+      promise,
       new Promise<"timed_out">((resolve) => {
         timer = setTimeout(() => resolve("timed_out"), timeoutMs);
       }),
@@ -1423,7 +1472,7 @@ export const awaitPreCompactionConsolidation = async (args: {
       1,
       args.timeoutMs ?? DREAM_PRE_COMPACTION_TIMEOUT_MS,
     );
-    const raced = await raceCompletion(completion, timeoutMs);
+    const raced = await raceWithTimeout(completion, timeoutMs);
     if (raced === "timed_out") {
       // Remember the handle so later boundaries skip this hung pass instead
       // of each paying the full timeout again.

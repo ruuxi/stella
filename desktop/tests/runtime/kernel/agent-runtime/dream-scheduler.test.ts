@@ -18,6 +18,7 @@ import {
   awaitPreCompactionConsolidation,
   buildDreamSystemPrompt,
   maybeSpawnDreamRun,
+  runDreamDeltaShadow,
 } from "../../../../../runtime/kernel/agent-runtime/dream-scheduler.js";
 import type { DreamDeltaSourceMessage } from "../../../../../runtime/kernel/agent-runtime/dream-delta.js";
 import type { ResolvedLlmRoute } from "../../../../../runtime/kernel/model-routing.js";
@@ -631,7 +632,11 @@ describe("orchestrator-delta staging (migration step 6)", () => {
 
   const buildDeltaStore = (args: DeltaStoreArgs) => {
     const advances: Array<{ conversationId: string; ts: number }> = [];
-    const markCalls: Array<{ kinds: readonly string[]; throughTs: number }> = [];
+    const markCalls: Array<{
+      conversationId: string;
+      kinds: readonly string[];
+      throughTs: number;
+    }> = [];
     let watermark = args.watermark ?? 0;
     const store = {
       dreamInboxStore: {
@@ -646,6 +651,7 @@ describe("orchestrator-delta staging (migration step 6)", () => {
           watermark = Math.max(watermark, ts);
         },
         markKindsProcessedThrough: (call: {
+          conversationId: string;
           kinds: readonly string[];
           throughTs: number;
         }) => {
@@ -791,12 +797,18 @@ describe("orchestrator-delta staging (migration step 6)", () => {
     const passUserText = JSON.stringify(contexts[0]?.messages ?? []);
     expect(passUserText).toContain("ORCHESTRATOR DELTA");
     expect(passUserText).toContain("the delta is the input now");
-    // Clean completion: watermark advanced, covered rows consumed in code.
+    // Clean completion: watermark advanced; mechanical consumption is
+    // scoped to the delta's own conversation (never other conversations'
+    // rows — reviewer finding 1).
     expect(advances).toEqual([
       { conversationId: CONVERSATION_ID, ts: 2_000 },
     ]);
     expect(markCalls).toEqual([
-      { kinds: ["thread_summary", "memory_note"], throughTs: 2_000 },
+      {
+        conversationId: CONVERSATION_ID,
+        kinds: ["thread_summary", "memory_note"],
+        throughTs: 2_000,
+      },
     ]);
     // No shadow in delta mode — the delta IS the live input.
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -847,6 +859,60 @@ describe("orchestrator-delta staging (migration step 6)", () => {
     expect(result.scheduled).toBe(false);
     expect(result.reason).toBe("no_inputs");
     expect(contexts.length).toBe(0);
+  });
+
+  it("bounds the shadow derivation: a hung LLM call times out, releases the single-flight, and leaves the watermark alone", async () => {
+    const rootPath = createRoot();
+    const { store, advances } = buildDeltaStore({
+      watermark: 1_000,
+      messages: [userMsg(2_000, "material for the shadow")],
+    });
+    const hangingRoute = buildFakeRoute({
+      response: fakeAssistant("never delivered"),
+      apiKey: "key",
+    });
+    hangingRoute.model = {
+      ...hangingRoute.model,
+      api: registerHangingApi(),
+    } as typeof hangingRoute.model;
+
+    const startedAt = Date.now();
+    const timedOut = await runDreamDeltaShadow({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: hangingRoute,
+      conversationId: CONVERSATION_ID,
+      liveMemoryChanged: false,
+      liveMapChanged: false,
+      timeoutMs: 100,
+    });
+    expect(timedOut).toBe("timed_out");
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(advances).toEqual([]);
+    await expect(
+      readFile(path.join(rootPath, "memories", "memory_shadow.md"), "utf-8"),
+    ).rejects.toThrow();
+
+    // The single-flight guard was released: the next shadow proceeds and
+    // covers the window the abandoned call left behind.
+    const { route } = buildRecordingRoute([
+      "## Proposed MEMORY.md blocks\n- recovered after timeout",
+    ]);
+    const recovered = await runDreamDeltaShadow({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      conversationId: CONVERSATION_ID,
+      liveMemoryChanged: false,
+      liveMapChanged: false,
+    });
+    expect(recovered).toBe("completed");
+    expect(advances).toEqual([{ conversationId: CONVERSATION_ID, ts: 2_000 }]);
+    const shadowLog = await readFile(
+      path.join(rootPath, "memories", "memory_shadow.md"),
+      "utf-8",
+    );
+    expect(shadowLog).toContain("recovered after timeout");
   });
 
   it("hydrates the persisted token baseline so a restart cannot fire a spurious interval pass", async () => {

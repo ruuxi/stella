@@ -379,7 +379,12 @@ const runReview = async (args: {
   }
 
   try {
-    const written = args.store.dreamInboxStore.recordMemoryNote(candidate);
+    const written = args.store.dreamInboxStore.recordMemoryNote(candidate, {
+      // Reviewed conversation: its window is where this candidate's source
+      // messages live, so only that conversation's delta pass may consume
+      // the row mechanically.
+      conversationId: args.conversationId,
+    });
     logger.debug("memory-review.completed.candidate-written", {
       inboxId: written.id,
       title: candidate.title,

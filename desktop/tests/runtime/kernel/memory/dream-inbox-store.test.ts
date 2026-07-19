@@ -468,50 +468,129 @@ describe("DreamInboxStore", () => {
       expect(store.readTokenBaseline()).toBe(30_000);
     });
 
-    it("filters listUnprocessed by kinds for the delta-mode chronicle-only view", () => {
+    it("hides only the delta-covered slice from the list: same conversation + covered kinds", () => {
       const { store } = createTestContext();
       store.recordThreadSummary({
         threadId: "thread-a",
         runId: "run-1",
         agentType: "general",
-        rolloutSummary: "rollout",
+        rolloutSummary: "rollout from conv-b",
+        conversationId: "conv-b",
       });
-      store.recordMemoryNote({
-        title: "Note",
-        category: "active_focus",
-        memory: "candidate",
-        recallHooks: [],
-        evidence: [],
+      store.recordThreadSummary({
+        threadId: "thread-x",
+        runId: "run-2",
+        agentType: "general",
+        rolloutSummary: "rollout from another conversation",
+        conversationId: "conv-a",
       });
+      store.recordThreadSummary({
+        threadId: "thread-legacy",
+        runId: "run-3",
+        agentType: "general",
+        rolloutSummary: "legacy row without a conversation",
+      });
+      store.recordMemoryNote(
+        {
+          title: "Note",
+          category: "active_focus",
+          memory: "candidate from conv-b",
+          recallHooks: [],
+          evidence: [],
+        },
+        { conversationId: "conv-b" },
+      );
       store.recordChronicleSummary({ window: "10m", content: "screen digest" });
 
-      expect(store.listUnprocessed()).toHaveLength(3);
-      const chronicleOnly = store.listUnprocessed({ kinds: ["chronicle"] });
-      expect(chronicleOnly).toHaveLength(1);
-      expect(chronicleOnly[0]?.kind).toBe("chronicle");
+      expect(store.listUnprocessed()).toHaveLength(5);
+      const visible = store.listUnprocessed({
+        excludeConversationKinds: {
+          conversationId: "conv-b",
+          kinds: ["thread_summary", "memory_note"],
+        },
+      });
+      // conv-b's covered rows are hidden (the delta carries them); the
+      // other-conversation row, the legacy NULL row, and chronicle remain.
+      expect(visible.map((row) => row.threadId ?? row.kind).sort()).toEqual([
+        "chronicle",
+        "thread-legacy",
+        "thread-x",
+      ]);
     });
 
-    it("marks covered kinds processed through a timestamp, sparing newer rows and chronicle", () => {
+    it("never mechanically consumes rows from conversations the delta did not cover (reviewer A/B scenario)", () => {
+      const { store } = createTestContext();
+      // Conversation A: subagent finishes at T1; row recorded, then A is
+      // abandoned — no further Dream trigger ever fires from A.
+      store.recordThreadSummary({
+        threadId: "thread-a",
+        runId: "run-1",
+        agentType: "general",
+        rolloutSummary: "report only conversation A's window ever held",
+        conversationId: "conv-a",
+      });
+      // Legacy row from before the conversation column existed.
+      store.recordThreadSummary({
+        threadId: "thread-legacy",
+        runId: "run-legacy",
+        agentType: "general",
+        rolloutSummary: "legacy report",
+      });
+      const rowA = store
+        .listUnprocessed()
+        .find((row) => row.threadId === "thread-a")!;
+      expect(rowA.conversationId).toBe("conv-a");
+
+      // Conversation B's delta pass completes with coverage PAST T1. Under
+      // the pre-fix semantics this consumed A's row (and GC would later
+      // delete it) although its content never entered any delta.
+      const { updated } = store.markKindsProcessedThrough({
+        conversationId: "conv-b",
+        kinds: ["thread_summary", "memory_note"],
+        throughTs: rowA.sourceUpdatedAt + 60_000,
+      });
+      expect(updated).toBe(0);
+      expect(store.countUnprocessed()).toBe(2);
+
+      // Only A's own delta pass may consume A's row; the legacy NULL row is
+      // untouchable mechanically and stays for the model-driven path.
+      const consumed = store.markKindsProcessedThrough({
+        conversationId: "conv-a",
+        kinds: ["thread_summary", "memory_note"],
+        throughTs: rowA.sourceUpdatedAt + 60_000,
+      });
+      expect(consumed.updated).toBe(1);
+      const remaining = store.listUnprocessed();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]?.threadId).toBe("thread-legacy");
+    });
+
+    it("marks covered rows through a timestamp within one conversation, sparing newer rows and chronicle", () => {
       const { store } = createTestContext();
       const old = new Date(Date.now() - 60_000);
-      store.recordMemoryNote({
-        title: "Old note",
-        category: "active_focus",
-        memory: "old",
-        recallHooks: [],
-        evidence: [],
-        createdAt: old,
-      });
+      store.recordMemoryNote(
+        {
+          title: "Old note",
+          category: "active_focus",
+          memory: "old",
+          recallHooks: [],
+          evidence: [],
+          createdAt: old,
+        },
+        { conversationId: "conv-a" },
+      );
       store.recordThreadSummary({
         threadId: "thread-a",
         runId: "run-1",
         agentType: "general",
         rolloutSummary: "recent rollout",
+        conversationId: "conv-a",
       });
       store.recordChronicleSummary({ window: "10m", content: "digest" });
 
       const throughTs = old.getTime() + 1;
       const { updated } = store.markKindsProcessedThrough({
+        conversationId: "conv-a",
         kinds: ["thread_summary", "memory_note"],
         throughTs,
       });

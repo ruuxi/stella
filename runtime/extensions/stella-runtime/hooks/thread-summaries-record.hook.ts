@@ -40,6 +40,13 @@ export const createThreadSummariesRecordHook = (opts: {
         runId: payload.runId,
         agentType: payload.agentType,
         rolloutSummary: payload.finalText,
+        // Reporting conversation (subagents: the parent's) — the thread
+        // whose window carries the byte-equivalent report. Lets the
+        // delta-input pass mechanically consume this row ONLY when its own
+        // delta provably covers it.
+        ...(payload.conversationId
+          ? { conversationId: payload.conversationId }
+          : {}),
       });
     } catch (error) {
       logger.debug("thread-summaries.record-failed", {

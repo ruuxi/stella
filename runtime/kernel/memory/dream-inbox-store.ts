@@ -32,6 +32,13 @@ export type DreamInboxRow = {
   title: string | null;
   content: string;
   metadata: Record<string, unknown> | null;
+  /**
+   * Reporting conversation (subagent rows: the parent's conversation, whose
+   * window holds the byte-equivalent report). Null on legacy rows recorded
+   * before the column existed — those are never mechanically consumed by
+   * the delta pass and always flow through the model-driven list path.
+   */
+  conversationId: string | null;
   sourceUpdatedAt: number;
   processedByDreamAt: number | null;
   usageCount: number;
@@ -43,6 +50,8 @@ export type RecordThreadSummaryArgs = {
   runId: string;
   agentType: string;
   rolloutSummary: string;
+  /** Reporting conversation; enables delta-covered consumption scoping. */
+  conversationId?: string;
 };
 
 export type MemoryNoteCandidate = {
@@ -70,6 +79,7 @@ type DreamInboxRawRow = {
   title: string | null;
   content: string;
   metadata: string | null;
+  conversation_id: string | null;
   source_updated_at: number;
   processed_by_dream_at: number | null;
   usage_count: number;
@@ -86,6 +96,7 @@ const ROW_COLUMNS = `
   title,
   content,
   metadata,
+  conversation_id,
   source_updated_at,
   processed_by_dream_at,
   usage_count,
@@ -125,6 +136,7 @@ const fromRow = (row: DreamInboxRawRow): DreamInboxRow => ({
   title: row.title,
   content: row.content,
   metadata: parseMetadata(row.metadata),
+  conversationId: row.conversation_id,
   sourceUpdatedAt: row.source_updated_at,
   processedByDreamAt: row.processed_by_dream_at,
   usageCount: row.usage_count,
@@ -188,6 +200,7 @@ export class DreamInboxStore {
       title: null,
       content: summary,
       metadata: null,
+      conversationId: args.conversationId?.trim() || null,
     });
   }
 
@@ -196,7 +209,10 @@ export class DreamInboxStore {
    * (no coalescing); the formatted markdown body is what Dream and the
    * known-memory context read.
    */
-  recordMemoryNote(candidate: MemoryNoteCandidate): { id: number } {
+  recordMemoryNote(
+    candidate: MemoryNoteCandidate,
+    opts?: { conversationId?: string },
+  ): { id: number } {
     const title = redactMemoryText(candidate.title.trim());
     const memory = redactMemoryText(candidate.memory.trim());
     if (!title) throw new Error("title must not be empty.");
@@ -223,6 +239,7 @@ export class DreamInboxStore {
       evidence: note.evidence,
     });
 
+    const conversationId = opts?.conversationId?.trim() || null;
     for (let attempt = 0; attempt < 100; attempt += 1) {
       const sourceKey = attempt === 0 ? baseKey : `${baseKey}-${attempt + 1}`;
       const result = this.db
@@ -230,14 +247,21 @@ export class DreamInboxStore {
           `
           INSERT INTO dream_inbox (
             kind, source_key, thread_id, run_id, agent_type, title,
-            content, metadata, source_updated_at, processed_by_dream_at,
-            usage_count, last_usage
+            content, metadata, conversation_id, source_updated_at,
+            processed_by_dream_at, usage_count, last_usage
           )
-          VALUES ('memory_note', ?, NULL, NULL, NULL, ?, ?, ?, ?, NULL, 0, NULL)
+          VALUES ('memory_note', ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, NULL, 0, NULL)
           ON CONFLICT(kind, source_key) DO NOTHING
           `,
         )
-        .run(sourceKey, note.title, content, metadata, createdAt.getTime()) as
+        .run(
+          sourceKey,
+          note.title,
+          content,
+          metadata,
+          conversationId,
+          createdAt.getTime(),
+        ) as
         | { changes?: number; lastInsertRowid?: number | bigint }
         | undefined;
       if (Number(result?.changes ?? 0) > 0) {
@@ -281,16 +305,17 @@ export class DreamInboxStore {
     title: string | null;
     content: string;
     metadata: string | null;
+    conversationId?: string | null;
   }): void {
     this.db
       .prepare(
         `
         INSERT INTO dream_inbox (
           kind, source_key, thread_id, run_id, agent_type, title,
-          content, metadata, source_updated_at, processed_by_dream_at,
-          usage_count, last_usage
+          content, metadata, conversation_id, source_updated_at,
+          processed_by_dream_at, usage_count, last_usage
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL)
         ON CONFLICT(kind, source_key) DO UPDATE SET
           thread_id = excluded.thread_id,
           run_id = excluded.run_id,
@@ -298,6 +323,7 @@ export class DreamInboxStore {
           title = excluded.title,
           content = excluded.content,
           metadata = excluded.metadata,
+          conversation_id = excluded.conversation_id,
           source_updated_at = excluded.source_updated_at,
           processed_by_dream_at = NULL
         `,
@@ -311,6 +337,7 @@ export class DreamInboxStore {
         args.title,
         args.content,
         args.metadata,
+        args.conversationId ?? null,
         Date.now(),
       );
   }
@@ -318,31 +345,53 @@ export class DreamInboxStore {
   /**
    * Frequently surfaced rows lead, then the remaining queue is oldest-first.
    * This makes Dream retain and refresh memory that repeatedly proves useful.
-   * `kinds` narrows the queue view (the delta-input Dream pass lists only
-   * `chronicle` — rollout summaries and review notes are already represented
-   * byte-equivalently in the orchestrator delta it reads instead).
+   *
+   * `excludeConversationKinds` hides the rows a delta-input pass reads from
+   * its orchestrator delta instead (same conversation, covered kinds), so
+   * the model is not double-fed. Everything else — chronicle transport,
+   * rows reported by OTHER conversations, and legacy NULL-conversation rows
+   * — still flows through this list to the model-driven markProcessed path
+   * exactly like the pre-migration inbox pass.
    */
   listUnprocessed(args?: {
     limit?: number;
-    kinds?: readonly DreamInboxKind[];
+    excludeConversationKinds?: {
+      conversationId: string;
+      kinds: readonly DreamInboxKind[];
+    };
   }): DreamInboxRow[] {
     const limit = Math.max(1, Math.min(args?.limit ?? 50, 500));
-    const kinds = args?.kinds?.length ? [...new Set(args.kinds)] : null;
-    const kindFilter = kinds
-      ? ` AND kind IN (${kinds.map(() => "?").join(", ")})`
+    const exclude =
+      args?.excludeConversationKinds &&
+      args.excludeConversationKinds.kinds.length > 0
+        ? {
+            conversationId: args.excludeConversationKinds.conversationId,
+            kinds: [...new Set(args.excludeConversationKinds.kinds)],
+          }
+        : null;
+    // NULL-safe (`IS NOT`): a legacy row with no conversation matches no
+    // exclusion — plain `NOT (conversation_id = ?)` would evaluate to NULL
+    // and silently hide exactly the rows that must stay on the model path.
+    const excludeFilter = exclude
+      ? ` AND (conversation_id IS NOT ? OR kind NOT IN (${exclude.kinds
+          .map(() => "?")
+          .join(", ")}))`
       : "";
     const rows = this.db
       .prepare(
         `
         SELECT ${ROW_COLUMNS}
         FROM dream_inbox
-        WHERE processed_by_dream_at IS NULL${kindFilter}
+        WHERE processed_by_dream_at IS NULL${excludeFilter}
         ORDER BY usage_count DESC, COALESCE(last_usage, 0) DESC,
                  source_updated_at ASC, id ASC
         LIMIT ?
         `,
       )
-      .all(...(kinds ?? []), limit) as DreamInboxRawRow[];
+      .all(
+        ...(exclude ? [exclude.conversationId, ...exclude.kinds] : []),
+        limit,
+      ) as DreamInboxRawRow[];
     return rows.map(fromRow);
   }
 
@@ -487,19 +536,23 @@ export class DreamInboxStore {
   }
 
   /**
-   * Code-level consumption for the delta-input pass: rows of the given kinds
-   * whose content is provably covered by a completed delta derivation (a row
-   * written at T derives from messages ≤ T, so `source_updated_at ≤
-   * coveredThroughTs` ⇒ covered). Keeps the queue and its GC healthy while
-   * the recording hooks stay on as the rollback path; rows arriving mid-pass
-   * carry a later timestamp and stay queued.
+   * Code-level consumption for the delta-input pass, scoped to the delta's
+   * OWN conversation: a row reported by conversation C at time T derives
+   * from C's messages ≤ T, so `conversation_id = C AND source_updated_at ≤
+   * coveredThroughTs` ⇒ its content is provably inside (or before) the
+   * completed delta. Rows from other conversations and legacy NULL-
+   * conversation rows are NEVER touched here — their content never entered
+   * this delta, so they stay queued for the model-driven list path. Rows
+   * arriving mid-pass carry a later timestamp and stay queued too.
    */
   markKindsProcessedThrough(args: {
+    conversationId: string;
     kinds: readonly DreamInboxKind[];
     throughTs: number;
     processedAt?: number;
   }): { updated: number } {
-    if (args.kinds.length === 0 || !(args.throughTs > 0)) {
+    const conversationId = args.conversationId.trim();
+    if (!conversationId || args.kinds.length === 0 || !(args.throughTs > 0)) {
       return { updated: 0 };
     }
     const kinds = [...new Set(args.kinds)];
@@ -509,13 +562,17 @@ export class DreamInboxStore {
         UPDATE dream_inbox
         SET processed_by_dream_at = ?
         WHERE processed_by_dream_at IS NULL
+          AND conversation_id = ?
           AND kind IN (${kinds.map(() => "?").join(", ")})
           AND source_updated_at <= ?
         `,
       )
-      .run(args.processedAt ?? Date.now(), ...kinds, args.throughTs) as
-      | { changes?: number }
-      | undefined;
+      .run(
+        args.processedAt ?? Date.now(),
+        conversationId,
+        ...kinds,
+        args.throughTs,
+      ) as { changes?: number } | undefined;
     return { updated: Number(result?.changes ?? 0) };
   }
 

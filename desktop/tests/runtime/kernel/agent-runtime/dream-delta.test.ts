@@ -169,6 +169,28 @@ describe("buildDreamDeltaTranscript", () => {
     expect(result.truncated).toBe(true);
   });
 
+  it("never strands an equal-timestamp message on the far side of a budget cut", () => {
+    const big = "x".repeat(90);
+    // Second and third messages share one millisecond; the budget admits
+    // only two entries, cutting between the ties.
+    const first = buildDreamDeltaTranscript(
+      [userMsg(10, big), userMsg(20, `${big}-included-tie`), userMsg(20, `${big}-excluded-tie`)],
+      0,
+      { maxChars: 220 },
+    );
+    expect(first.includedMessages).toBe(2);
+    expect(first.truncated).toBe(true);
+    // Coverage rolls back below the tie: a strict > filter must be able to
+    // see the excluded message again.
+    expect(first.coveredThroughTs).toBeLessThan(20);
+
+    const second = buildDreamDeltaTranscript(
+      [userMsg(10, big), userMsg(20, `${big}-included-tie`), userMsg(20, `${big}-excluded-tie`)],
+      first.coveredThroughTs,
+    );
+    expect(second.transcript).toContain("excluded-tie");
+  });
+
   it("caps a runaway single message without dropping it", () => {
     const result = buildDreamDeltaTranscript(
       [taskReport(10, "y".repeat(10_000))],

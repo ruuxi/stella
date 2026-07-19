@@ -215,7 +215,7 @@ describe("dispatchLocalTool", () => {
     await expect(readFile(mapPath, "utf-8")).resolves.toBe(before);
   });
 
-  it("filters the Dream list to the configured inbox kinds (delta mode)", async () => {
+  it("hides delta-covered rows from the Dream list via the exclusion config (delta mode)", async () => {
     const rootPath = await createRoot();
     const listCalls: Array<Record<string, unknown> | undefined> = [];
     const inbox = {
@@ -232,6 +232,7 @@ describe("dispatchLocalTool", () => {
             title: "Chronicle 10m screen-activity digest",
             content: "digest body",
             metadata: null,
+            conversationId: null,
             sourceUpdatedAt: 123,
             processedByDreamAt: null,
             usageCount: 0,
@@ -247,14 +248,55 @@ describe("dispatchLocalTool", () => {
       {
         conversationId: "dream",
         store: { dreamInboxStore: inbox as never },
-        dream: { stellaDataDir: rootPath, inboxListKinds: ["chronicle"] },
+        dream: {
+          stellaDataDir: rootPath,
+          inboxListExclude: {
+            conversationId: "conv-b",
+            kinds: ["thread_summary", "memory_note"],
+          },
+        },
       },
     );
 
     expect(result.handled).toBe(true);
-    expect(listCalls).toEqual([{ kinds: ["chronicle"] }]);
+    expect(listCalls).toEqual([
+      {
+        excludeConversationKinds: {
+          conversationId: "conv-b",
+          kinds: ["thread_summary", "memory_note"],
+        },
+      },
+    ]);
     const text = result.handled ? result.text : "";
     expect(text).toContain("digest body");
+  });
+
+  it("denies Dream reads of the shadow-validation log", async () => {
+    const rootPath = await createRoot();
+    const memoriesDir = path.join(rootPath, "memories");
+    await mkdir(memoriesDir, { recursive: true });
+    const shadowPath = path.join(memoriesDir, "memory_shadow.md");
+    await writeFile(shadowPath, "unvalidated proposals\n", "utf-8");
+
+    const result = await dispatchLocalTool(
+      TOOL_IDS.READ,
+      { file_path: shadowPath },
+      {
+        conversationId: "dream",
+        dream: { stellaDataDir: rootPath },
+      },
+    );
+
+    expect(result.handled).toBe(true);
+    const parsed = JSON.parse(result.handled ? result.text : "{}") as {
+      success: boolean;
+      error?: string;
+    };
+    expect(parsed.success).toBe(false);
+    expect(parsed.error).toContain("shadow-validation log");
+    expect(result.handled ? result.text : "").not.toContain(
+      "unvalidated proposals",
+    );
   });
 
   it("rejects writes to the retired summary/index files with a pointer to the map", async () => {
