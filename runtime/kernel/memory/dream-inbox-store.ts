@@ -50,7 +50,17 @@ export type RecordThreadSummaryArgs = {
   runId: string;
   agentType: string;
   rolloutSummary: string;
-  /** Reporting conversation; enables delta-covered consumption scoping. */
+  /**
+   * Reporting conversation. Record-time stamping is sound ONLY when the
+   * row's content is already durably persisted in that conversation's
+   * orchestrator thread at write time (memory-review notes qualify: they
+   * derive from already-persisted turn messages). Thread-summary rows
+   * recorded by the agent_end hook must NOT pass this — their terminal
+   * report persists later (or never: supersession, adoption, crash), so
+   * they start NULL and are promoted by
+   * {@link DreamInboxStore.promoteThreadSummaryConversation} from the
+   * orchestrator-persist branch itself.
+   */
   conversationId?: string;
 };
 
@@ -475,6 +485,85 @@ export class DreamInboxStore {
   }
 
   /**
+   * Newest thread message an APPLIED (cutover) delta derivation covered —
+   * shadow passes advance only the shared watermark above, never this.
+   * A memory_note row is mechanically consumable only when applied coverage
+   * is contiguous through its pass's window start (`applied_through_ts ≥
+   * sinceWatermark`): the note's source span reaches arbitrarily far below
+   * its own timestamp, and a span covered only by shadow passes had its
+   * proposals discarded by design. 0 until a cutover pass ever completed —
+   * which makes the first post-flip window (and any flip-back gap)
+   * automatically route notes through the model-driven list path.
+   */
+  readAppliedThroughTs(conversationId: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT applied_through_ts FROM dream_delta_watermark WHERE conversation_id = ?`,
+      )
+      .get(conversationId) as { applied_through_ts?: number | null } | undefined;
+    const ts = Number(row?.applied_through_ts ?? 0);
+    return Number.isFinite(ts) && ts > 0 ? ts : 0;
+  }
+
+  /** Advance applied coverage after a completed cutover pass. Monotonic. */
+  advanceAppliedThroughTs(conversationId: string, throughTs: number): void {
+    if (!Number.isFinite(throughTs) || throughTs <= 0) return;
+    this.db
+      .prepare(
+        `
+        INSERT INTO dream_delta_watermark (conversation_id, last_message_ts, applied_through_ts, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(conversation_id) DO UPDATE SET
+          applied_through_ts = MAX(COALESCE(dream_delta_watermark.applied_through_ts, 0), excluded.applied_through_ts),
+          updated_at = excluded.updated_at
+        `,
+      )
+      .run(
+        conversationId,
+        Math.floor(throughTs),
+        Math.floor(throughTs),
+        Date.now(),
+      );
+  }
+
+  /**
+   * Two-phase stamp promotion (persist-time invariant): called from the
+   * orchestrator-persist branch of the lifecycle handler AFTER the terminal
+   * report was durably written to `conversationId`'s orchestrator thread.
+   * Matches the exact attempt by content — the same redact+trim transform
+   * `recordThreadSummary` applied — so a superseded attempt's row (whose
+   * report never persisted) can never be stamped by a later attempt's
+   * event. Rows that never get promoted (supersession, adoption, crash
+   * before the report persisted) stay NULL forever: visible to the
+   * model-driven list, untouchable by mechanical consumption.
+   */
+  promoteThreadSummaryConversation(args: {
+    threadId: string;
+    conversationId: string;
+    rolloutSummary: string;
+  }): { updated: number } {
+    const conversationId = args.conversationId.trim();
+    const content = redactMemoryText(args.rolloutSummary.trim());
+    if (!conversationId || !content) return { updated: 0 };
+    const result = this.db
+      .prepare(
+        `
+        UPDATE dream_inbox
+        SET conversation_id = ?
+        WHERE kind = 'thread_summary'
+          AND thread_id = ?
+          AND conversation_id IS NULL
+          AND processed_by_dream_at IS NULL
+          AND content = ?
+        `,
+      )
+      .run(conversationId, args.threadId, content) as
+      | { changes?: number }
+      | undefined;
+    return { updated: Number(result?.changes ?? 0) };
+  }
+
+  /**
    * Advance the delta watermark. Monotonic — a delayed or racing writer can
    * never move coverage backwards, mirroring the memory-review watermark.
    */
@@ -561,6 +650,11 @@ export class DreamInboxStore {
    * text sits just above coverage — the report is then derived by the next
    * pass (both clocks are the same machine's; the gap is milliseconds).
    * Freshness lag, never loss.
+   *
+   * Content-size caveat (accepted): the delta transcript caps one message
+   * at DREAM_DELTA_MESSAGE_MAX_CHARS, so a consumed row whose report runs
+   * past that cap had only its head derived; the tail stays reachable via
+   * transcript FTS and the child thread's own retention.
    */
   markKindsProcessedThrough(args: {
     conversationId: string;

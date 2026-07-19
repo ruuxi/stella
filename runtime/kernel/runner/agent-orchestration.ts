@@ -599,6 +599,34 @@ export const createAgentOrchestration = (
         ...(event.eventId ? { eventId: event.eventId } : {}),
       });
     }
+    // Two-phase Dream-inbox stamp, phase 2 (persist-time invariant): the
+    // terminal report is now durably in this conversation's orchestrator
+    // thread — the exact premise mechanical delta consumption relies on —
+    // so promote the matching NULL-conversation row recorded at finalize.
+    // Only THIS branch ever promotes: a superseded/adopted/crashed run
+    // whose report never reached here leaves its row NULL forever (model-
+    // driven path). Content-matched, so a later attempt's event can never
+    // stamp an earlier attempt's unreported row. Best-effort: a missed
+    // promotion (partial store, hook write racing behind) only keeps the
+    // row on the model path — never enables consumption.
+    if (event.type === "agent-completed" && event.result?.trim()) {
+      try {
+        const inbox = context.runtimeStore.dreamInboxStore;
+        if (
+          inbox &&
+          typeof inbox.promoteThreadSummaryConversation === "function"
+        ) {
+          inbox.promoteThreadSummaryConversation({
+            threadId: event.agentId,
+            conversationId: event.conversationId,
+            rolloutSummary: event.result,
+          });
+        }
+      } catch {
+        // Promotion is bookkeeping for an optimization; the row remains
+        // consolidatable through the model-driven list either way.
+      }
+    }
     void deps.sendMessage({
       conversationId: event.conversationId,
       text: userPrompt,
@@ -1024,20 +1052,6 @@ export const createAgentOrchestration = (
           }
         }
       };
-      // Reporting scope for the Dream-inbox row this run records: only a
-      // child with verified orchestrator-reporting ancestry (the ownership
-      // walk returns `undefined` — a string is a manager owner whose thread
-      // gets the report instead of the orchestrator window; `null` is
-      // unresolved ancestry that reports nowhere) may be stamped with the
-      // conversation. Anything unverifiable stays unstamped, so its inbox
-      // row keeps a NULL conversation and is only ever consumed by the
-      // model-driven Dream list path — never delta-covered mechanically.
-      const managedAncestry =
-        agentId && context.state.localAgentManager
-          ? context.state.localAgentManager.resolveOwningManagerThread(agentId)
-          : null;
-      const dreamReportingConversationId =
-        managedAncestry === undefined ? conversationId : undefined;
       try {
         const result = await runSubagentTask({
           conversationId,
@@ -1047,9 +1061,6 @@ export const createAgentOrchestration = (
           rootRunId,
           agentType,
           userPrompt: composedUserPrompt,
-          ...(dreamReportingConversationId
-            ? { dreamReportingConversationId }
-            : {}),
           selfModMetadata: effectiveSelfModMetadata,
           agentContext,
           toolCatalog: context.toolHost.getToolCatalog(agentType, {

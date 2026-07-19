@@ -108,9 +108,18 @@ const MAX_ITERATIONS = 12;
  *     SHADOW alongside it (unless `dream.deltaShadow: false`), writing its
  *     proposals to `memories/memory_shadow.md` for comparison.
  *   - `delta` — the cutover: the orchestrator-thread delta since the
- *     persisted watermark becomes the pass's primary input; the inbox list
- *     serves only Chronicle transport rows. The recording hooks stay on, so
- *     rollback is simply setting the config back to `inbox`.
+ *     persisted watermark becomes the pass's primary input; the Dream list
+ *     serves everything the delta does not cover. The recording hooks stay
+ *     on, so rollback is simply setting the config back to `inbox`.
+ *
+ * Pre-flip drain gate: before flipping to `delta`, drain the inbox (run
+ * Dream manually until `countUnprocessed()` is 0) so nothing recorded under
+ * the old cadence straddles the transition. The flip is SAFE without the
+ * drain — the applied-coverage gate keeps memory_note rows on the
+ * model-driven path until an applied pass has covered the span below their
+ * window, and thread_summary rows are only ever consumed once their report
+ * provably persisted into the delta's thread — but draining first keeps the
+ * first cutover window clean and the shadow-vs-live diff unambiguous.
  */
 type DreamInputSource = "inbox" | "delta";
 
@@ -291,6 +300,42 @@ const advanceDeltaWatermarkSafe = (
   }
 };
 
+/**
+ * Applied (cutover-pass) coverage frontier; `null` when the store cannot
+ * answer, which conservatively reads as "no applied coverage" — memory_note
+ * consumption then stays on the model path.
+ */
+const readAppliedThroughTsSafe = (
+  store: RuntimeStore,
+  conversationId: string,
+): number | null => {
+  try {
+    const inbox = store.dreamInboxStore;
+    if (typeof inbox.readAppliedThroughTs !== "function") return null;
+    const ts = inbox.readAppliedThroughTs(conversationId);
+    return Number.isFinite(ts) && ts >= 0 ? ts : null;
+  } catch {
+    return null;
+  }
+};
+
+const advanceAppliedThroughTsSafe = (
+  store: RuntimeStore,
+  conversationId: string,
+  throughTs: number,
+): void => {
+  try {
+    const inbox = store.dreamInboxStore;
+    if (typeof inbox.advanceAppliedThroughTs === "function") {
+      inbox.advanceAppliedThroughTs(conversationId, throughTs);
+    }
+  } catch (error) {
+    logger.debug("dream.applied-watermark-write-failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
 const readTokenBaselineSafe = (store: RuntimeStore): number | null => {
   try {
     const inbox = store.dreamInboxStore;
@@ -439,15 +484,22 @@ const toToolResultMessage = (
 
 /**
  * Kinds whose rows the orchestrator delta can represent byte-equivalently
- * (design review Q3) — but only for the delta's OWN conversation. The
- * cutover pass hides exactly that slice from the Dream list (no double-
- * feeding) and consumes it mechanically after a clean pass; rows reported
- * by other conversations and legacy NULL-conversation rows keep flowing
- * through the model-driven list/markProcessed path unchanged.
+ * (design review Q3) — but only for the delta's OWN conversation, and for
+ * `memory_note` only once applied coverage is contiguous through the
+ * window start (a note's source span reaches below its own timestamp; a
+ * span covered only by shadow passes had its proposals discarded). The
+ * cutover pass hides exactly its covered slice from the Dream list (no
+ * double-feeding) and consumes it mechanically after a clean pass; rows
+ * reported by other conversations, legacy NULL-conversation rows, and
+ * anything outside the applied-contiguous window keep flowing through the
+ * model-driven list/markProcessed path unchanged.
  */
 const DELTA_COVERED_KINDS: readonly DreamInboxKind[] = [
   "thread_summary",
   "memory_note",
+];
+const DELTA_COVERED_KINDS_NOTES_UNSAFE: readonly DreamInboxKind[] = [
+  "thread_summary",
 ];
 
 type DeltaInput = {
@@ -458,11 +510,20 @@ type DeltaInput = {
   /**
    * The load limit filled the window AND its oldest loaded message is
    * already past the watermark: an unloaded backlog span may sit between
-   * the watermark and the window. Derivation proceeds on what was loaded,
-   * but mechanical consumption is skipped — a row whose report lives in the
-   * unseen span must stay on the model-driven path.
+   * the watermark and the window. Derivation proceeds on what was loaded
+   * and the watermark still advances over the unseen raw span (accepted
+   * loss for non-row content, warn-logged — raw messages remain reachable
+   * through transcript FTS), but mechanical consumption is skipped — a row
+   * whose report lives in the unseen span must stay on the model path.
    */
   truncatedBelow: boolean;
+  /**
+   * Kinds this pass may hide from the list and consume mechanically.
+   * `memory_note` is included only when applied coverage was contiguous
+   * through `sinceWatermark` — otherwise (first post-flip window, flip-back
+   * gaps, stores that cannot answer) notes stay on the model-driven path.
+   */
+  coveredKinds: readonly DreamInboxKind[];
 };
 
 /**
@@ -543,7 +604,30 @@ const prepareDeltaInput = (args: {
       oldestLoadedTs: messages[0]?.timestamp ?? 0,
     });
   }
-  return { conversationId, delta, sinceWatermark: watermark, truncatedBelow };
+  // Applied-contiguity gate for memory_note rows (shadow→cutover
+  // transition): notes are covered kinds only when every span below this
+  // window was covered by an APPLIED pass. Shadow passes advance the shared
+  // watermark but not applied coverage, so the first post-flip window (and
+  // any flip-back gap) automatically routes notes to the model path until
+  // applied coverage catches up.
+  const appliedThroughTs = readAppliedThroughTsSafe(args.store, conversationId);
+  const notesApplied = appliedThroughTs !== null && appliedThroughTs >= watermark;
+  if (!notesApplied) {
+    logger.info("dream.delta.notes-on-model-path", {
+      conversationId,
+      watermark,
+      appliedThroughTs: appliedThroughTs ?? -1,
+    });
+  }
+  return {
+    conversationId,
+    delta,
+    sinceWatermark: watermark,
+    truncatedBelow,
+    coveredKinds: notesApplied
+      ? DELTA_COVERED_KINDS
+      : DELTA_COVERED_KINDS_NOTES_UNSAFE,
+  };
 };
 
 /**
@@ -566,17 +650,32 @@ const finishDeltaPass = (store: RuntimeStore, input: DeltaInput): void => {
     input.delta.coveredThroughTs,
   );
   if (input.truncatedBelow) {
+    // No consumption AND no applied-coverage advance over a window whose
+    // oldest span was never loaded: a memory_note sourced in the unseen
+    // span must not become mechanically consumable through a frontier that
+    // papered over it. The next full window advances applied coverage past
+    // this one (the unseen RAW span stays accepted-loss, warn-logged at
+    // detection), so the note gate reopens one pass later at most.
     logger.warn("dream.delta.consumption-skipped-truncated-window", {
       conversationId: input.conversationId,
     });
     return;
   }
+  // This pass's derivation was APPLIED (its output landed in MEMORY.md /
+  // the map), so applied coverage advances — the gate that lets THIS and
+  // later passes consume memory_note rows once coverage below their
+  // windows is contiguous.
+  advanceAppliedThroughTsSafe(
+    store,
+    input.conversationId,
+    input.delta.coveredThroughTs,
+  );
   try {
     const inbox = store.dreamInboxStore;
     if (typeof inbox.markKindsProcessedThrough === "function") {
       const { updated } = inbox.markKindsProcessedThrough({
         conversationId: input.conversationId,
-        kinds: DELTA_COVERED_KINDS,
+        kinds: input.coveredKinds,
         sinceTs: input.sinceWatermark,
         throughTs: input.delta.coveredThroughTs,
       });
@@ -623,7 +722,11 @@ const runDream = async (args: {
       ? {
           inboxListExclude: {
             conversationId: deltaInput.conversationId,
-            kinds: DELTA_COVERED_KINDS,
+            // Mirrors what finishDeltaPass may consume: when the applied
+            // gate keeps memory_note rows on the model path, they stay
+            // VISIBLE in the list too — hidden-but-unconsumed would strand
+            // them for a pass.
+            kinds: deltaInput.coveredKinds,
             sinceTs: deltaInput.sinceWatermark,
           },
         }

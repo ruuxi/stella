@@ -282,12 +282,6 @@ const emitSubagentAgentEnd = (
                       resolveSubsidiaryLlmRoute: opts.resolveSubsidiaryLlmRoute,
                     }
                   : {}),
-                ...(opts.dreamReportingConversationId
-                  ? {
-                      dreamReportingConversationId:
-                        opts.dreamReportingConversationId,
-                    }
-                  : {}),
               },
             }
           : {}),

@@ -453,6 +453,22 @@ describe("DreamInboxStore", () => {
       expect(store.readDeltaWatermark("conv-1")).toBe(6_500);
     });
 
+    it("tracks applied (cutover-pass) coverage separately from the shared watermark", () => {
+      const { store } = createTestContext();
+      // Shadow passes advance only the shared watermark…
+      store.advanceDeltaWatermark("conv-1", 5_000);
+      expect(store.readDeltaWatermark("conv-1")).toBe(5_000);
+      expect(store.readAppliedThroughTs("conv-1")).toBe(0);
+
+      // …a cutover pass advances applied coverage (monotonic).
+      store.advanceAppliedThroughTs("conv-1", 6_000);
+      expect(store.readAppliedThroughTs("conv-1")).toBe(6_000);
+      store.advanceAppliedThroughTs("conv-1", 4_000);
+      expect(store.readAppliedThroughTs("conv-1")).toBe(6_000);
+      // The shared watermark keeps its own monotonic track.
+      expect(store.readDeltaWatermark("conv-1")).toBeGreaterThanOrEqual(5_000);
+    });
+
     it("persists the scheduler token baseline with last-write-wins semantics", () => {
       const { store } = createTestContext();
       expect(store.readTokenBaseline()).toBeNull();

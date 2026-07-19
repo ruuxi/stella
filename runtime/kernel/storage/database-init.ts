@@ -1125,9 +1125,22 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
     CREATE TABLE IF NOT EXISTS dream_delta_watermark (
       conversation_id TEXT PRIMARY KEY,
       last_message_ts INTEGER NOT NULL,
+      applied_through_ts INTEGER,
       updated_at INTEGER NOT NULL
     );
   `);
+  // Applied (cutover-pass) coverage, distinct from the shared shadow+cutover
+  // watermark above: memory_note mechanical consumption requires applied
+  // coverage contiguous through the pass's window start, because a note's
+  // source span reaches below its own timestamp and shadow-only coverage
+  // discarded its proposals. NULL/0 = no cutover pass ever applied.
+  try {
+    db.exec(
+      "ALTER TABLE dream_delta_watermark ADD COLUMN applied_through_ts INTEGER;",
+    );
+  } catch {
+    // Column already exists.
+  }
 
   // Persisted token baseline for the Dream scheduler's token_interval gate.
   // Previously in-memory only: every worker restart reset it to 0, so the

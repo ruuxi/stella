@@ -35,23 +35,21 @@ export const createThreadSummariesRecordHook = (opts: {
     if (!payload.services) return;
 
     try {
+      // Two-phase Dream-inbox stamp, phase 1: the row is ALWAYS recorded
+      // without a reporting conversation. At finalize time the terminal
+      // report has not persisted anywhere yet — and for superseded
+      // (send_input race), adopted, or crash-interrupted runs it never
+      // will — so no stamp taken here can honestly claim "the orchestrator
+      // window holds this content". The stamp is promoted later by the
+      // lifecycle handler's orchestrator-persist branch, immediately after
+      // it durably writes the report (agent-orchestration.ts). Until then
+      // the row is visible to the model-driven Dream list and untouchable
+      // by mechanical delta consumption.
       opts.store.dreamInboxStore.recordThreadSummary({
         threadId: payload.threadKey,
         runId: payload.runId,
         agentType: payload.agentType,
         rolloutSummary: payload.finalText,
-        // Reporting conversation — spawn-site VERIFIED (services field, not
-        // payload.conversationId): every subagent agent_end carries the root
-        // conversation id, but a manager-owned child's terminal report
-        // persists only to the manager's thread, never the orchestrator
-        // window the step-6 delta reads. Only runs whose ancestry the spawn
-        // site resolved to the orchestrator get stamped; everything else
-        // stays NULL and flows through the model-driven Dream list path.
-        ...(payload.services.dreamReportingConversationId
-          ? {
-              conversationId: payload.services.dreamReportingConversationId,
-            }
-          : {}),
       });
     } catch (error) {
       logger.debug("thread-summaries.record-failed", {

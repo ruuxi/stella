@@ -627,11 +627,14 @@ describe("orchestrator-delta staging (migration step 6)", () => {
     pending?: number;
     frontier?: number;
     watermark?: number;
+    /** Applied (cutover) coverage; defaults to the watermark (contiguous). */
+    appliedThroughTs?: number;
     messages?: DreamDeltaSourceMessage[];
   };
 
   const buildDeltaStore = (args: DeltaStoreArgs) => {
     const advances: Array<{ conversationId: string; ts: number }> = [];
+    const appliedAdvances: Array<{ conversationId: string; ts: number }> = [];
     const markCalls: Array<{
       conversationId: string;
       kinds: readonly string[];
@@ -651,6 +654,11 @@ describe("orchestrator-delta staging (migration step 6)", () => {
           advances.push({ conversationId, ts });
           watermark = Math.max(watermark, ts);
         },
+        readAppliedThroughTs: () =>
+          args.appliedThroughTs ?? args.watermark ?? 0,
+        advanceAppliedThroughTs: (conversationId: string, ts: number) => {
+          appliedAdvances.push({ conversationId, ts });
+        },
         markKindsProcessedThrough: (call: {
           conversationId: string;
           kinds: readonly string[];
@@ -663,7 +671,7 @@ describe("orchestrator-delta staging (migration step 6)", () => {
       },
       loadRawThreadMessagesWithEntryTypes: () => args.messages ?? [],
     } as unknown as RuntimeStore;
-    return { store, advances, markCalls };
+    return { store, advances, appliedAdvances, markCalls };
   };
 
   it("runs the delta derivation in shadow after a completed inbox pass", async () => {
@@ -779,7 +787,7 @@ describe("orchestrator-delta staging (migration step 6)", () => {
     const { route, contexts } = buildRecordingRoute([
       "Folded the delta into MEMORY.md.",
     ]);
-    const { store, advances, markCalls } = buildDeltaStore({
+    const { store, advances, appliedAdvances, markCalls } = buildDeltaStore({
       pending: 1,
       watermark: 1_000,
       messages: [userMsg(2_000, "the delta is the input now")],
@@ -813,9 +821,59 @@ describe("orchestrator-delta staging (migration step 6)", () => {
         throughTs: 2_000,
       },
     ]);
+    // Applied coverage advanced alongside the shared watermark.
+    expect(appliedAdvances).toEqual([
+      { conversationId: CONVERSATION_ID, ts: 2_000 },
+    ]);
     // No shadow in delta mode — the delta IS the live input.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(contexts.length).toBe(1);
+  });
+
+  it("keeps memory_note rows on the model path until applied coverage is contiguous (first post-flip window)", async () => {
+    const rootPath = createRoot();
+    await mkdir(rootPath, { recursive: true });
+    await writeFile(
+      path.join(rootPath, "config.json"),
+      JSON.stringify({ dream: { inputSource: "delta" } }),
+      "utf-8",
+    );
+    const { route } = buildRecordingRoute(["Folded the delta."]);
+    // Shadow passes advanced the shared watermark to 1_000 but applied
+    // coverage is still 0: the span below this window was only ever
+    // shadow-covered, so a note inside the window may derive from spans no
+    // applied pass ever read.
+    const { store, appliedAdvances, markCalls } = buildDeltaStore({
+      pending: 1,
+      watermark: 1_000,
+      appliedThroughTs: 0,
+      messages: [userMsg(2_000, "first window after the flip")],
+    });
+
+    const result = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store,
+      resolvedLlm: route,
+      trigger: "manual",
+      conversationId: CONVERSATION_ID,
+    });
+    expect(result.scheduled).toBe(true);
+
+    await waitFor(() => markCalls.length > 0, 3_000);
+    // thread_summary consumption still works (report-persist promoted rows
+    // are provably in the delta); memory_note is left to the model path.
+    expect(markCalls).toEqual([
+      {
+        conversationId: CONVERSATION_ID,
+        kinds: ["thread_summary"],
+        sinceTs: 1_000,
+        throughTs: 2_000,
+      },
+    ]);
+    // This pass applied its window, so the NEXT pass's gate is contiguous.
+    expect(appliedAdvances).toEqual([
+      { conversationId: CONVERSATION_ID, ts: 2_000 },
+    ]);
   });
 
   it("skips mechanical consumption when the load limit truncated the window below the watermark", async () => {
@@ -833,7 +891,7 @@ describe("orchestrator-delta staging (migration step 6)", () => {
     const fullWindow = Array.from({ length: 2_000 }, (_, index) =>
       userMsg(5_000 + index, `backlog message ${index}`),
     );
-    const { store, advances, markCalls } = buildDeltaStore({
+    const { store, advances, appliedAdvances, markCalls } = buildDeltaStore({
       pending: 1,
       watermark: 1_000,
       messages: fullWindow,
@@ -852,9 +910,11 @@ describe("orchestrator-delta staging (migration step 6)", () => {
     // Derivation proceeded (watermark advanced over the loaded window)…
     expect(advances[0]?.conversationId).toBe(CONVERSATION_ID);
     expect(advances[0]?.ts).toBeGreaterThan(1_000);
-    // …but nothing was consumed mechanically.
+    // …but nothing was consumed mechanically, and applied coverage did NOT
+    // advance over the unseen span (the note gate must not be papered over).
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(markCalls).toEqual([]);
+    expect(appliedAdvances).toEqual([]);
   });
 
   it("delta mode is eligible on a drained inbox when unconsolidated delta exists", async () => {

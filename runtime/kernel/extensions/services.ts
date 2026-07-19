@@ -84,13 +84,4 @@ export type RuntimeRunServices = {
    * Orchestrator turns only.
    */
   orchestratorTokenEstimate?: number;
-  /**
-   * Subagent finalizes only: the conversation whose ORCHESTRATOR thread
-   * holds this run's terminal report byte-equivalently, forwarded from
-   * `SubagentRunOptions.dreamReportingConversationId` (spawn-site verified:
-   * no Manager ancestor). Absent for manager-owned or unverifiable runs —
-   * the thread-summaries hook then records the Dream-inbox row without a
-   * conversation, keeping it on the model-driven path.
-   */
-  dreamReportingConversationId?: string;
 };
