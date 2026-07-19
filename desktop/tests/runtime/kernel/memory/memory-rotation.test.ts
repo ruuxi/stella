@@ -1,7 +1,8 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { promises as fsp } from "node:fs";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   appendSupersededMemoryText,
@@ -224,6 +225,95 @@ describe("rotateMemoryFileIfNeeded", () => {
     expect(occurrences).toBe(1);
     const remaining = await readFile(memoryFilePath(stellaDataDir), "utf-8");
     expect(remaining).not.toContain("crash-survivor matters");
+  });
+
+  it("a rename failure at the active rewrite leaves MEMORY.md byte-intact, no temp litter, and a clean re-run recovers", async () => {
+    const blocks = Array.from({ length: 16 }, (_, i) =>
+      block(`2026-06-${String(i + 1).padStart(2, "0")}`, `crash-${i}`, 25_000),
+    ).reverse();
+    const before = buildMemoryFile({ activeBlocks: blocks });
+    await writeMemoryFile(before);
+
+    const realRename = fsp.rename;
+    const spy = vi.spyOn(fsp, "rename").mockImplementation(async (from, to) => {
+      // Fail only the active-file replacement; archive appends succeed —
+      // exactly the copy-first crash window.
+      if (String(to).endsWith(`${path.sep}MEMORY.md`)) {
+        throw new Error("injected rename failure");
+      }
+      return realRename(from as never, to as never);
+    });
+    try {
+      await expect(rotateMemoryFileIfNeeded(stellaDataDir)).rejects.toThrow(
+        "injected rename failure",
+      );
+    } finally {
+      spy.mockRestore();
+    }
+
+    // Old bytes whole (not truncated mid-rewrite), archives already hold
+    // the copies, and the failed temp file was cleaned up.
+    await expect(readFile(memoryFilePath(stellaDataDir), "utf-8")).resolves.toBe(
+      before,
+    );
+    const archives = await listMemoryArchiveFiles(stellaDataDir);
+    expect(archives.length).toBeGreaterThan(0);
+    const memoriesEntries = await readdir(path.join(stellaDataDir, "memories"));
+    expect(memoriesEntries.filter((name) => name.includes(".tmp-"))).toEqual([]);
+
+    // Crash recovery: the re-run rotates without duplicating archived blocks.
+    const result = await rotateMemoryFileIfNeeded(stellaDataDir);
+    expect(result).not.toBeNull();
+    const archived = (
+      await Promise.all(
+        (await listMemoryArchiveFiles(stellaDataDir)).map((name) =>
+          readFile(path.join(memoryArchiveRoot(stellaDataDir), name), "utf-8"),
+        ),
+      )
+    ).join("\n");
+    expect(archived.split("crash-0 matters").length - 1).toBe(1);
+  });
+
+  it("refuses when an anchor literal is duplicated inside block content", async () => {
+    const rogue = [
+      "## 2026-06-01 12:00 — rogue",
+      "Outcome: quotes the anchor literal <!-- DREAM:ACTIVE_BLOCKS_END --> verbatim.",
+      `Padding: ${"x".repeat(320_000)}`,
+    ].join("\n");
+    const content = buildMemoryFile({
+      activeBlocks: [block("2026-07-01", "fine", 1_000), rogue],
+    });
+    await writeMemoryFile(content);
+    await expect(rotateMemoryFileIfNeeded(stellaDataDir)).resolves.toBeNull();
+    await expect(readFile(memoryFilePath(stellaDataDir), "utf-8")).resolves.toBe(
+      content,
+    );
+  });
+
+  it("preserves blank-line runs inside kept blocks (junction-only whitespace normalization)", async () => {
+    const keptWithGaps = [
+      "## 2026-07-18 12:00 — gapped",
+      "Outcome: keep this",
+      "",
+      "",
+      "",
+      "Tail after a triple blank-line run",
+    ].join("\n");
+    const fresh = Array.from({ length: 5 }, (_, i) =>
+      block(`2026-07-1${i}`, `fresh-${i}`, 1_000),
+    ).reverse();
+    const old = Array.from({ length: 8 }, (_, i) =>
+      block(`2026-05-0${i + 1}`, `old-${i}`, 45_000),
+    ).reverse();
+    await writeMemoryFile(
+      buildMemoryFile({ activeBlocks: [keptWithGaps, ...fresh, ...old] }),
+    );
+
+    await expect(rotateMemoryFileIfNeeded(stellaDataDir)).resolves.not.toBeNull();
+    const remaining = await readFile(memoryFilePath(stellaDataDir), "utf-8");
+    expect(remaining).toContain(
+      "Outcome: keep this\n\n\n\nTail after a triple blank-line run",
+    );
   });
 
   it("never touches injected surfaces (memory_map.md bytes are stable across rotation)", async () => {

@@ -13,7 +13,9 @@
  *     calendar time — and period-derived names keep archives date-greppable.
  *     Rotation is additive and copy-first: a block is appended to its archive
  *     file (and the append verified) before it is ever removed from
- *     MEMORY.md, so a crash between the two can only duplicate, never lose.
+ *     MEMORY.md, and both the appends and the active rewrite are atomic
+ *     temp+rename replacements — a crash at any point leaves whole files,
+ *     so it can only duplicate, never lose or truncate.
  *     Archives join Recall's memory sources, so rotation never hides content
  *     from retrieval; it only bounds the active file.
  *
@@ -35,7 +37,7 @@ import path from "node:path";
 
 import {
   withFileWriteLock,
-  writeFileWithNulGuard,
+  writeFileAtomicWithVerify,
 } from "../tools/file-write-lock.js";
 import { memoriesRoot, memoryFilePath } from "./dream-storage.js";
 import { createRuntimeLogger } from "../debug.js";
@@ -122,9 +124,35 @@ const supersededFileHeader = (): string =>
   ].join("\n");
 
 /**
+ * Lock/write keys must be the REAL path so they serialize with the Dream
+ * StrReplace jail, which realpaths its targets — on a symlinked data dir
+ * the unresolved and resolved strings would otherwise take different
+ * per-path locks. Missing files (a not-yet-created archive) resolve their
+ * parent directory instead, which exists by the time this is called.
+ */
+const resolveLockPath = async (target: string): Promise<string> => {
+  try {
+    return await fs.realpath(target);
+  } catch {
+    try {
+      return path.join(
+        await fs.realpath(path.dirname(target)),
+        path.basename(target),
+      );
+    } catch {
+      return path.resolve(target);
+    }
+  }
+};
+
+/**
  * Append text to an archive file under its write lock, creating it with a
- * header when missing. Skips the append when the exact text is already
- * present (the crash-between-append-and-rewrite dedupe for rotation).
+ * header when missing. Skips the append when the text is already present
+ * (the crash-between-append-and-rewrite dedupe for rotation; containment
+ * rather than exact-entry matching — a block that is a substring of an
+ * existing entry is treated as already preserved, which can only ever skip
+ * a redundant copy, never lose one). The rewrite is atomic (temp+rename+
+ * verify), so a crash mid-append can never damage earlier entries.
  * Throws on failure — callers decide whether that blocks a destructive step.
  */
 const appendToArchiveFile = async (
@@ -133,10 +161,11 @@ const appendToArchiveFile = async (
   text: string,
 ): Promise<void> => {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await withFileWriteLock(filePath, async () => {
+  const resolved = await resolveLockPath(filePath);
+  await withFileWriteLock(resolved, async () => {
     let existing: string | null = null;
     try {
-      existing = await fs.readFile(filePath, "utf-8");
+      existing = await fs.readFile(resolved, "utf-8");
     } catch {
       existing = null;
     }
@@ -144,8 +173,8 @@ const appendToArchiveFile = async (
       return;
     }
     const base = existing ?? header;
-    await writeFileWithNulGuard(
-      filePath,
+    await writeFileAtomicWithVerify(
+      resolved,
       `${base.replace(/\n*$/u, "")}\n\n${text.trim()}\n`,
     );
   });
@@ -231,21 +260,49 @@ const parseBlocks = (
   return blocks;
 };
 
+const countOccurrences = (raw: string, needle: string): number =>
+  raw.split(needle).length - 1;
+
 /**
- * Parse the anchored sections of MEMORY.md. Returns null when either ACTIVE
- * anchor is missing or out of order — rotation refuses to rewrite a file it
- * cannot confidently parse (warn-logged; nothing is modified).
+ * Parse the anchored sections of MEMORY.md. Returns null — rotation refuses
+ * to rewrite a file it cannot confidently parse (warn-logged; nothing is
+ * modified) — when:
+ *  - either ACTIVE anchor is missing or the pair is out of order;
+ *  - any anchor literal appears more than once (e.g. quoted inside a
+ *    block), which would make the index-based section rewrite ambiguous;
+ *  - the ARCHIVE pair is half-present, out of order, or overlaps the
+ *    active section.
  */
 const parseMemoryFile = (raw: string): ParsedMemoryFile | null => {
+  for (const anchor of [ACTIVE_START, ACTIVE_END, ARCHIVE_START, ARCHIVE_END]) {
+    if (countOccurrences(raw, anchor) > 1) return null;
+  }
   const active = sliceBetween(raw, ACTIVE_START, ACTIVE_END);
   if (!active) return null;
-  const archive = sliceBetween(raw, ARCHIVE_START, ARCHIVE_END);
+  const activeEndIndex = raw.indexOf(ACTIVE_END);
+  const archiveStartIndex = raw.indexOf(ARCHIVE_START);
+  const archiveEndIndex = raw.indexOf(ARCHIVE_END);
+  let archiveBody = "";
+  if (archiveStartIndex !== -1 || archiveEndIndex !== -1) {
+    if (
+      archiveStartIndex === -1 ||
+      archiveEndIndex === -1 ||
+      archiveEndIndex < archiveStartIndex ||
+      archiveStartIndex < activeEndIndex
+    ) {
+      return null;
+    }
+    archiveBody = raw.slice(
+      archiveStartIndex + ARCHIVE_START.length,
+      archiveEndIndex,
+    );
+  }
   return {
     raw,
     activeBody: active.body,
-    archiveBody: archive?.body ?? "",
+    archiveBody,
     blocks: [
-      ...parseBlocks(archive?.body ?? "", "archive"),
+      ...parseBlocks(archiveBody, "archive"),
       ...parseBlocks(active.body, "active"),
     ],
   };
@@ -273,14 +330,16 @@ export type MemoryRotationResult = {
  * block has no period file and stays put (structure is never guessed at).
  *
  * Write order is the data-safety invariant: every selected block is appended
- * to its archive file first (each append read back by the NUL guard; exact
- * duplicates skipped), and only after ALL appends succeed is MEMORY.md
- * rewritten without those blocks. Any failure aborts before the rewrite.
+ * to its archive file first (atomic temp+rename with read-back verification;
+ * already-present blocks skipped), and only after ALL appends succeed is
+ * MEMORY.md rewritten — itself atomically, so a crash mid-rewrite presents
+ * either the old file or the new one, never a truncated hybrid that would
+ * damage KEPT blocks. Any failure aborts before the rewrite.
  */
 export const rotateMemoryFileIfNeeded = async (
   stellaDataDir: string,
 ): Promise<MemoryRotationResult | null> => {
-  const activePath = memoryFilePath(stellaDataDir);
+  const activePath = await resolveLockPath(memoryFilePath(stellaDataDir));
   return await withFileWriteLock(activePath, async () => {
     let raw: string;
     try {
@@ -295,7 +354,7 @@ export const rotateMemoryFileIfNeeded = async (
     if (!parsed) {
       logger.warn("memory-rotation.unparseable", {
         detail:
-          "MEMORY.md exceeds the rotation threshold but its DREAM:ACTIVE_BLOCKS anchors are missing or out of order; refusing to rewrite it",
+          "MEMORY.md exceeds the rotation threshold but its DREAM section anchors are missing, duplicated, out of order, or overlapping; refusing to rewrite it",
         bytes: bytesBefore,
       });
       return null;
@@ -349,16 +408,29 @@ export const rotateMemoryFileIfNeeded = async (
     // the active file. Removal is by exact text span within the anchored
     // section bodies, spliced by index (never String.replace replacements,
     // whose `$`-sequence semantics could corrupt content containing `$&`),
-    // so nothing outside the parsed blocks can be touched.
+    // so nothing outside the parsed blocks can be touched. Whitespace is
+    // normalized only at each splice junction (the newlines that surrounded
+    // the removed span collapse to one blank line) — a global newline
+    // collapse would mutate runs of blank lines INSIDE kept blocks.
     const removeBlocks = (body: string, section: MemoryBlock["section"]): string => {
       let updated = body;
       for (const block of selected) {
         if (block.section !== section) continue;
         const at = updated.indexOf(block.text);
         if (at === -1) continue;
-        updated = updated.slice(0, at) + updated.slice(at + block.text.length);
+        const before = updated.slice(0, at).replace(/\n+$/u, "");
+        const after = updated
+          .slice(at + block.text.length)
+          .replace(/^\n+/u, "");
+        updated = !before
+          ? after
+            ? `\n${after}`
+            : "\n"
+          : after
+            ? `${before}\n\n${after}`
+            : `${before}\n`;
       }
-      return updated.replace(/\n{3,}/gu, "\n\n");
+      return updated;
     };
     const replaceSection = (
       source: string,
@@ -385,7 +457,7 @@ export const rotateMemoryFileIfNeeded = async (
       ARCHIVE_END,
       removeBlocks(parsed.archiveBody, "archive"),
     );
-    await writeFileWithNulGuard(activePath, rewritten);
+    await writeFileAtomicWithVerify(activePath, rewritten);
 
     const result: MemoryRotationResult = {
       rotatedBlocks: selected.length,
