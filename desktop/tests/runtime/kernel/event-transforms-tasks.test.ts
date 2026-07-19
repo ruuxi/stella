@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  COMPACT_ACTIVITY_CELL_LIMIT,
   TASK_COMPLETION_INDICATOR_MS,
   buildActivityTasks,
   fallbackTaskDescription,
   isActivityFeedTask,
   extractStepsFromEvents,
-  getTaskGroupStatusText,
-  getTaskHierarchyStatusText,
+  getCompactActivityStatusText,
   getActivityRowStatus,
+  flattenActivityTasks,
   groupActivityTasks,
   pruneGroupExpandOverrides,
   selectFreshActivityTasks,
+  summarizeCompactActivity,
   getTaskAgentUpdates,
-  updateSeenRunningGroupKeys,
   updateSeenRunningTaskIds,
   type EventRecord,
   type TaskItem,
@@ -138,7 +139,7 @@ describe("work-group folding", () => {
     ]);
   });
 
-  it("shows a stable {N} tasks count on the header, not child narration", () => {
+  it("aggregates running, completed, and failed group state", () => {
     const running = groupActivityTasks([
       task({
         id: "task-1",
@@ -159,9 +160,6 @@ describe("work-group folding", () => {
     const runningGroup =
       running[0]!.kind === "group" ? running[0].group : undefined;
     expect(runningGroup?.status).toBe("running");
-    // Never surface an individual member's narration on the group row —
-    // that made the header flicker between siblings. Show a stable count.
-    expect(getTaskGroupStatusText(runningGroup!)).toBe("3 tasks");
 
     const done = groupActivityTasks([
       task({
@@ -181,7 +179,6 @@ describe("work-group folding", () => {
     ]);
     const doneGroup = done[0]!.kind === "group" ? done[0].group : undefined;
     expect(doneGroup?.status).toBe("completed");
-    expect(getTaskGroupStatusText(doneGroup!)).toBe("2 tasks");
 
     const failed = groupActivityTasks([
       task({
@@ -202,7 +199,6 @@ describe("work-group folding", () => {
     const failedGroup =
       failed[0]!.kind === "group" ? failed[0].group : undefined;
     expect(failedGroup?.status).toBe("error");
-    expect(getTaskGroupStatusText(failedGroup!)).toBe("2 tasks");
   });
 });
 
@@ -239,7 +235,6 @@ describe("manager ownership hierarchy", () => {
       ["draft", "completed"],
     ]);
     expect(hierarchy?.descendantCount).toBe(2);
-    expect(getTaskHierarchyStatusText(hierarchy!)).toBe("2 agents");
     expect(
       rows.some((row) => row.kind === "task" && row.task.id === "research"),
     ).toBe(false);
@@ -329,6 +324,102 @@ describe("manager ownership hierarchy", () => {
         task: { id: "descendant", status: "error" },
       });
     }
+  });
+
+  it("flattens every descendant into the compact manager cell model", () => {
+    const rows = groupActivityTasks([
+      task({ id: "manager", agentType: "manager" }),
+      task({ id: "child", parentAgentId: "manager" }),
+      task({ id: "grandchild", parentAgentId: "child" }),
+      task({ id: "done", parentAgentId: "manager", status: "completed" }),
+    ]);
+    const hierarchy = rows[0];
+    expect(hierarchy?.kind).toBe("hierarchy");
+    if (hierarchy?.kind !== "hierarchy") return;
+    expect(
+      flattenActivityTasks(hierarchy.hierarchy.children).map((item) => item.id),
+    ).toEqual(["child", "grandchild", "done"]);
+  });
+});
+
+describe("compact activity summary", () => {
+  const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
+    description: overrides.id,
+    agentType: "general",
+    status: "running",
+    startedAtMs: 100,
+    lastUpdatedAtMs: 100,
+    ...overrides,
+  });
+
+  it("keeps running and done counts visible while failure wording wins", () => {
+    const summary = summarizeCompactActivity([
+      task({
+        id: "running",
+        statusText: "Still working",
+        lastUpdatedAtMs: 400,
+      }),
+      task({
+        id: "failed-old",
+        description: "Review round 3",
+        status: "error",
+        lastUpdatedAtMs: 250,
+      }),
+      task({
+        id: "failed",
+        description: "Review round 4",
+        status: "error",
+        lastUpdatedAtMs: 300,
+      }),
+      task({ id: "done", status: "completed", lastUpdatedAtMs: 200 }),
+    ]);
+
+    expect(getCompactActivityStatusText(summary, true)).toBe(
+      "2 failed — Review round 4 · 1 running · 1 done",
+    );
+    expect(getCompactActivityStatusText(summary, false)).toBe(
+      "1 running · 1 done · 2 failed — latest: Still working",
+    );
+  });
+
+  it("selects the newest child update with deterministic timestamp ties", () => {
+    const summary = summarizeCompactActivity([
+      task({
+        id: "older",
+        statusText: "Checking sources",
+        lastUpdatedAtMs: 200,
+      }),
+      task({
+        id: "z-later-start",
+        statusText: "Drafting answer",
+        startedAtMs: 150,
+        lastUpdatedAtMs: 300,
+      }),
+      task({
+        id: "a-later-start",
+        statusText: "Verifying answer",
+        startedAtMs: 150,
+        lastUpdatedAtMs: 300,
+      }),
+    ]);
+
+    expect(summary.latestTask?.id).toBe("a-later-start");
+    expect(summary.latestText).toBe("Verifying answer");
+    expect(getCompactActivityStatusText(summary, false)).toContain(
+      "latest: Verifying answer",
+    );
+  });
+
+  it("switches to the progress-bar model only after sixteen children", () => {
+    const atLimit = Array.from(
+      { length: COMPACT_ACTIVITY_CELL_LIMIT },
+      (_, index) => task({ id: `task-${index}` }),
+    );
+    expect(summarizeCompactActivity(atLimit).usesProgressBar).toBe(false);
+    expect(
+      summarizeCompactActivity([...atLimit, task({ id: "overflow" })])
+        .usesProgressBar,
+    ).toBe(true);
   });
 });
 
@@ -654,30 +745,6 @@ describe("seen-running expansion stickiness", () => {
       task({ id: "a1", status: "completed" }),
     ]);
     expect(seen.has("a1")).toBe(true);
-  });
-
-  it("tracks group keys while any member runs and keeps them after all finish", () => {
-    const whileRunning = updateSeenRunningGroupKeys(new Set(), [
-      task({ id: "a1", groupKey: "g1" }),
-      task({ id: "a2", groupKey: "g1", status: "completed" }),
-    ]);
-    expect(whileRunning.has("g1")).toBe(true);
-    const done = updateSeenRunningGroupKeys(whileRunning, [
-      task({ id: "a1", groupKey: "g1", status: "completed" }),
-      task({ id: "a2", groupKey: "g1", status: "completed" }),
-    ]);
-    expect(done.has("g1")).toBe(true);
-    // Group keeps its key even when it shrinks to a single member (renders
-    // as a plain task row), mirroring pruneGroupExpandOverrides.
-    const shrunk = updateSeenRunningGroupKeys(done, [
-      task({ id: "a1", groupKey: "g1", status: "completed" }),
-    ]);
-    expect(shrunk.has("g1")).toBe(true);
-    // ...and prunes once no member remains.
-    const gone = updateSeenRunningGroupKeys(shrunk, [
-      task({ id: "b1", status: "completed" }),
-    ]);
-    expect(gone.has("g1")).toBe(false);
   });
 });
 

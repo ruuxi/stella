@@ -14,7 +14,6 @@ import {
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  History,
   CheckCircle2,
   Circle,
   CircleDot,
@@ -47,16 +46,16 @@ import {
 import {
   EMPTY_FIRST_SEEN_ORDER,
   activityRowKey,
+  flattenActivityTasks,
+  getCompactActivityStatusText,
   getActivityRowCompletedAtMs,
   getActivityRowSearchText,
   getActivityRowStatus,
-  getTaskGroupStatusText,
-  getTaskHierarchyStatusText,
   groupActivityTasks,
   orderByFirstSeen,
   pruneGroupExpandOverrides,
   getTaskAgentUpdates,
-  updateSeenRunningGroupKeys,
+  summarizeCompactActivity,
   updateSeenRunningTaskIds,
   type ActivityRow,
   type FirstSeenOrder,
@@ -80,10 +79,6 @@ import {
 } from "@/features/workspace-display/open-payload";
 import { displayTabKindForPayload } from "@/features/workspace-display/payload-kind";
 import { basenameOf } from "@/features/workspace-display/path-to-viewer";
-import {
-  ActivityHistoryDialog,
-  type ActivityHistorySection,
-} from "@/shell/display/ActivityHistoryDialog";
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/scheduling";
 import { TextShimmer } from "@/app/chat/TextShimmer";
@@ -98,8 +93,7 @@ const SECTION_CAPS = {
   overview: { activity: 6, files: 6, schedule: 6, store: 6 },
 } as const;
 // Search still scans every loaded record, but rendering an unbounded match
-// set made a common query mount hundreds of rows at once. The history dialogs
-// remain the escape hatch for longer result sets.
+// set made a common query mount hundreds of rows at once.
 const SEARCH_CAPS = { activity: 40, files: 40, schedule: 30, store: 30 };
 const EMPTY_FILES: ReadonlyArray<ConversationFileEntry> = [];
 /** Most-recent agent-authored messages shown under an expanded agent. */
@@ -176,15 +170,11 @@ function WorkspaceSection({
   title,
   sectionId,
   children,
-  onOpenHistory,
-  historyLabel,
 }: {
   title: string;
   /** Stable id for persisted collapse state. */
   sectionId: string;
   children?: ReactNode;
-  onOpenHistory?: () => void;
-  historyLabel?: string;
 }) {
   const collapsed = useSectionCollapsed(sectionId);
   return (
@@ -198,17 +188,6 @@ function WorkspaceSection({
         >
           {title}
         </button>
-        {onOpenHistory ? (
-          <button
-            type="button"
-            className="chat-workspace-strip__section-history"
-            onClick={onOpenHistory}
-            aria-label={historyLabel ?? `View ${title} history`}
-            title={historyLabel ?? `View ${title} history`}
-          >
-            <History size={14} strokeWidth={2} aria-hidden="true" />
-          </button>
-        ) : null}
       </header>
       <div
         className="chat-workspace-strip__section-collapse"
@@ -219,6 +198,101 @@ function WorkspaceSection({
     </section>
   );
 }
+
+const compactTaskState = (task: TaskItem): string => {
+  switch (task.status) {
+    case "running":
+      return "running";
+    case "completed":
+      return "done";
+    case "error":
+      return "failed";
+    case "canceled":
+      return "stopped";
+  }
+};
+
+const compactTaskTooltip = (task: TaskItem): string => {
+  const label = task.description.trim() || "Agent";
+  const detail = (task.statusText || task.outputPreview || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  const clipped = detail.length > 120 ? `${detail.slice(0, 117)}…` : detail;
+  return `${label} · ${compactTaskState(task)}${clipped ? ` — ${clipped}` : ""}`;
+};
+
+const CompactChildState = memo(function CompactChildState({
+  summary,
+  prioritizeFailure,
+}: {
+  summary: ReturnType<typeof summarizeCompactActivity>;
+  prioritizeFailure: boolean;
+}) {
+  const statusText = getCompactActivityStatusText(summary, prioritizeFailure);
+  return (
+    <>
+      {summary.usesProgressBar ? (
+        <span
+          className="chat-workspace-strip__compact-progress"
+          aria-hidden="true"
+        >
+          <span className="chat-workspace-strip__compact-bar">
+            {summary.completedCount > 0 ? (
+              <span
+                className="chat-workspace-strip__compact-bar-segment chat-workspace-strip__compact-bar-segment--done"
+                style={{ flexGrow: summary.completedCount }}
+              />
+            ) : null}
+            {summary.runningCount > 0 ? (
+              <span
+                className="chat-workspace-strip__compact-bar-segment chat-workspace-strip__compact-bar-segment--running anim-pulse"
+                style={{ flexGrow: summary.runningCount }}
+              />
+            ) : null}
+            {summary.errorCount > 0 ? (
+              <span
+                className="chat-workspace-strip__compact-bar-segment chat-workspace-strip__compact-bar-segment--error"
+                style={{ flexGrow: summary.errorCount }}
+              />
+            ) : null}
+            {summary.canceledCount > 0 ? (
+              <span
+                className="chat-workspace-strip__compact-bar-segment chat-workspace-strip__compact-bar-segment--queued"
+                style={{ flexGrow: summary.canceledCount }}
+              />
+            ) : null}
+          </span>
+          <span className="chat-workspace-strip__compact-progress-count">
+            {summary.completedCount}/{summary.totalCount}
+          </span>
+        </span>
+      ) : (
+        <span
+          className="chat-workspace-strip__compact-cells"
+          aria-hidden="true"
+        >
+          {summary.tasks.map((task) => (
+            <span
+              key={task.id}
+              className={`chat-workspace-strip__compact-cell chat-workspace-strip__compact-cell--${task.status}${
+                task.status === "running" ? " anim-pulse" : ""
+              }`}
+              title={compactTaskTooltip(task)}
+            />
+          ))}
+        </span>
+      )}
+      <span
+        className="chat-workspace-strip__compact-status"
+        data-failure={
+          prioritizeFailure && summary.errorCount > 0 ? "true" : undefined
+        }
+      >
+        {statusText}
+      </span>
+    </>
+  );
+});
 
 function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
   switch (status) {
@@ -275,6 +349,8 @@ const TaskRow = memo(function TaskRow({
   orderIndex,
   metaText,
   childContent,
+  compactChildren,
+  compactFailurePriority = false,
 }: {
   task: TaskItem;
   expanded: boolean;
@@ -289,6 +365,10 @@ const TaskRow = memo(function TaskRow({
   metaText?: string;
   /** Persisted child ownership hierarchy, rendered before files. */
   childContent?: ReactNode;
+  /** Owned agents collapsed into the Manager's cell-grid summary. */
+  compactChildren?: readonly ActivityRow[];
+  /** Keep a child failure at the front while its Manager is still active. */
+  compactFailurePriority?: boolean;
 }) {
   const motionProps = useActivityRowMotionProps(orderIndex);
   // Sidebar and tray rows identify the delegated thread. Live tool state is
@@ -315,6 +395,14 @@ const TaskRow = memo(function TaskRow({
   const filesCapped = files.length > AGENT_FILE_CAP;
   const visibleFiles =
     filesCapped && !showAllFiles ? files.slice(0, AGENT_FILE_CAP) : files;
+  const compactTasks = useMemo(
+    () => (compactChildren ? flattenActivityTasks(compactChildren) : undefined),
+    [compactChildren],
+  );
+  const compactSummary = useMemo(
+    () => (compactTasks ? summarizeCompactActivity(compactTasks) : undefined),
+    [compactTasks],
+  );
   const hasChildContent = Boolean(childContent);
   const hasDetail =
     hasChildContent || Boolean(managerDetail) || hasAgentUpdates || hasFiles;
@@ -331,30 +419,57 @@ const TaskRow = memo(function TaskRow({
         <button
           type="button"
           className="chat-workspace-strip__task-button"
+          data-compact={compactSummary ? "true" : undefined}
           onClick={() => onToggle(task.id, !expanded)}
           aria-expanded={expanded}
           aria-label={`${label || "Activity"} — ${
             expanded ? "collapse" : "expand"
           }`}
         >
-          <span
-            className="chat-workspace-strip__task-icon-wrap"
-            aria-hidden="true"
-          >
-            <TaskStatusIcon status={task.status} />
-          </span>
-          <span className="chat-workspace-strip__task-label">
-            {task.status === "running" ? (
-              <TextShimmer text={label} durationMs={2000} syncPhase />
-            ) : (
-              label
-            )}
-          </span>
-          {metaText ? (
-            <span className="chat-workspace-strip__row-meta chat-workspace-strip__group-status">
-              {metaText}
-            </span>
-          ) : null}
+          {compactSummary ? (
+            <>
+              <span className="chat-workspace-strip__compact-main">
+                <span
+                  className="chat-workspace-strip__task-icon-wrap"
+                  aria-hidden="true"
+                >
+                  <TaskStatusIcon status={task.status} />
+                </span>
+                <span className="chat-workspace-strip__task-label">
+                  {task.status === "running" ? (
+                    <TextShimmer text={label} durationMs={2000} syncPhase />
+                  ) : (
+                    label
+                  )}
+                </span>
+              </span>
+              <CompactChildState
+                summary={compactSummary}
+                prioritizeFailure={compactFailurePriority && !expanded}
+              />
+            </>
+          ) : (
+            <>
+              <span
+                className="chat-workspace-strip__task-icon-wrap"
+                aria-hidden="true"
+              >
+                <TaskStatusIcon status={task.status} />
+              </span>
+              <span className="chat-workspace-strip__task-label">
+                {task.status === "running" ? (
+                  <TextShimmer text={label} durationMs={2000} syncPhase />
+                ) : (
+                  label
+                )}
+              </span>
+              {metaText ? (
+                <span className="chat-workspace-strip__row-meta chat-workspace-strip__group-status">
+                  {metaText}
+                </span>
+              ) : null}
+            </>
+          )}
         </button>
         <button
           type="button"
@@ -470,7 +585,14 @@ const GroupRow = memo(function GroupRow({
 }) {
   const motionProps = useActivityRowMotionProps(orderIndex);
   const label = group.label.trim();
-  const statusText = getTaskGroupStatusText(group);
+  const compactSummary = useMemo(
+    () => summarizeCompactActivity(group.members),
+    [group.members],
+  );
+  const statusText = getCompactActivityStatusText(
+    compactSummary,
+    group.status === "running" && !expanded,
+  );
   return (
     <motion.li
       {...motionProps}
@@ -481,26 +603,30 @@ const GroupRow = memo(function GroupRow({
       <button
         type="button"
         className="chat-workspace-strip__task-button"
+        data-compact="true"
         onClick={() => onToggle(group.groupKey, !expanded)}
         aria-expanded={expanded}
         aria-label={`${label || "Task group"}: ${statusText}`}
       >
-        <span
-          className="chat-workspace-strip__task-icon-wrap"
-          aria-hidden="true"
-        >
-          <TaskStatusIcon status={group.status} />
+        <span className="chat-workspace-strip__compact-main">
+          <span
+            className="chat-workspace-strip__task-icon-wrap"
+            aria-hidden="true"
+          >
+            <TaskStatusIcon status={group.status} />
+          </span>
+          <span className="chat-workspace-strip__task-label">
+            {group.status === "running" ? (
+              <TextShimmer text={label} durationMs={2000} syncPhase />
+            ) : (
+              label
+            )}
+          </span>
         </span>
-        <span className="chat-workspace-strip__task-label">
-          {group.status === "running" ? (
-            <TextShimmer text={label} durationMs={2000} syncPhase />
-          ) : (
-            label
-          )}
-        </span>
-        <span className="chat-workspace-strip__row-meta chat-workspace-strip__group-status">
-          {statusText}
-        </span>
+        <CompactChildState
+          summary={compactSummary}
+          prioritizeFailure={group.status === "running" && !expanded}
+        />
       </button>
       {/* Always mounted so expand/collapse animates (grid-rows 0fr↔1fr). */}
       <div
@@ -534,6 +660,7 @@ const GroupRow = memo(function GroupRow({
 const TasksList = memo(function TasksList({
   rows,
   isTaskExpanded,
+  isCompactTaskExpanded,
   onToggleTask,
   onSelectTask,
   isGroupExpanded,
@@ -544,6 +671,7 @@ const TasksList = memo(function TasksList({
 }: {
   rows: ReadonlyArray<ActivityRow>;
   isTaskExpanded: (task: TaskItem) => boolean;
+  isCompactTaskExpanded: (task: TaskItem) => boolean;
   onToggleTask: (taskId: string, nextExpanded: boolean) => void;
   onSelectTask: (task: TaskItem) => void;
   isGroupExpanded: (group: TaskGroup) => boolean;
@@ -594,20 +722,19 @@ const TasksList = memo(function TasksList({
                   ? row.hierarchy.owner
                   : { ...row.hierarchy.owner, status: row.hierarchy.status }
               }
-              expanded={
-                row.hierarchy.status === "running" ||
-                isTaskExpanded(row.hierarchy.owner)
-              }
+              expanded={isCompactTaskExpanded(row.hierarchy.owner)}
               onToggle={onToggleTask}
               onSelect={onSelectTask}
               files={agentFiles.get(row.hierarchy.owner.id) ?? EMPTY_FILES}
               onOpenFile={onOpenFile}
               orderIndex={index}
-              metaText={getTaskHierarchyStatusText(row.hierarchy)}
+              compactChildren={row.hierarchy.children}
+              compactFailurePriority={row.hierarchy.owner.status === "running"}
               childContent={
                 <TasksList
                   rows={row.hierarchy.children}
                   isTaskExpanded={isTaskExpanded}
+                  isCompactTaskExpanded={isCompactTaskExpanded}
                   onToggleTask={onToggleTask}
                   onSelectTask={onSelectTask}
                   isGroupExpanded={isGroupExpanded}
@@ -713,27 +840,19 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     storeState.snapshot,
     storeState.olderEntries.length,
   ]);
-  const [historySection, setHistorySection] =
-    useState<ActivityHistorySection | null>(null);
   const [openScheduleEntry, setOpenScheduleEntry] =
     useState<ScheduleEntry | null>(null);
-  // Ids/group-keys seen running this session — the sticky half of the
+  // Ids seen running this session — the sticky half of regular task-row
   // expansion defaults below (rolled forward next to `allTasks`).
   const seenRunningTasksRef = useRef<ReadonlySet<string>>(new Set());
-  const seenRunningGroupsRef = useRef<ReadonlySet<string>>(new Set());
-  // Group expand/collapse mirrors the per-task semantics below: a running
-  // group comes up expanded (its members are live) and STAYS expanded once
-  // it finishes (seen-running set), so completion never yanks the group's
-  // work out of view. `groupExpandOverrides` records explicit user toggles,
-  // which win over the status default and are never stomped by it.
+  // Compact groups are collapsed by default, including while running.
+  // Explicit user toggles are persisted and always win.
   const [groupExpandOverrides, setGroupExpandOverrides] = useState<
     ReadonlyMap<string, boolean>
   >(() => new Map());
   const isGroupExpanded = useCallback(
     (group: TaskGroup): boolean =>
-      groupExpandOverrides.get(group.groupKey) ??
-      (group.status === "running" ||
-        seenRunningGroupsRef.current.has(group.groupKey)),
+      groupExpandOverrides.get(group.groupKey) ?? false,
     [groupExpandOverrides],
   );
   const toggleGroup = useCallback((groupKey: string, nextExpanded: boolean) => {
@@ -767,6 +886,10 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     },
     [expandOverrides],
   );
+  const isCompactTaskExpanded = useCallback(
+    (task: TaskItem): boolean => expandOverrides.get(task.id) ?? false,
+    [expandOverrides],
+  );
   const toggleTask = useCallback((taskId: string, nextExpanded: boolean) => {
     setExpandOverrides((prev) => {
       const next = new Map(prev);
@@ -790,7 +913,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
       ? activityExpansionStore.load(conversationId)
       : EMPTY_ACTIVITY_EXPANSION;
     seenRunningTasksRef.current = new Set(snapshot.seenTaskIds);
-    seenRunningGroupsRef.current = new Set(snapshot.seenGroupKeys);
     setExpandOverrides(new Map(Object.entries(snapshot.taskOverrides)));
     setGroupExpandOverrides(new Map(Object.entries(snapshot.groupOverrides)));
   }
@@ -806,10 +928,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     if (allTasks.length === 0) return;
     seenRunningTasksRef.current = updateSeenRunningTaskIds(
       seenRunningTasksRef.current,
-      allTasks,
-    );
-    seenRunningGroupsRef.current = updateSeenRunningGroupKeys(
-      seenRunningGroupsRef.current,
       allTasks,
     );
   }, [allTasks]);
@@ -839,7 +957,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     if (!conversationId || allTasks.length === 0) return;
     activityExpansionStore.save(conversationId, {
       seenTaskIds: [...seenRunningTasksRef.current],
-      seenGroupKeys: [...seenRunningGroupsRef.current],
       taskOverrides: Object.fromEntries(expandOverrides),
       groupOverrides: Object.fromEntries(groupExpandOverrides),
     });
@@ -1002,7 +1119,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     () => doneRows.slice(0, Math.max(0, caps.activity - runningRows.length)),
     [doneRows, caps.activity, runningRows.length],
   );
-  const hiddenDoneCount = doneRows.length - visibleDoneRows.length;
   const visibleActivityRows = useMemo(
     () => [...runningRows, ...visibleDoneRows],
     [runningRows, visibleDoneRows],
@@ -1011,14 +1127,11 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     () => filteredFiles.slice(0, caps.files),
     [caps.files, filteredFiles],
   );
-  const hiddenFilesCount = filteredFiles.length - visibleFiles.length;
   const upNext = useMemo(
     () => filteredSchedules.slice(0, caps.schedule),
     [filteredSchedules, caps.schedule],
   );
-  const hiddenScheduleCount = filteredSchedules.length - upNext.length;
   const storePreview = storeItems.slice(0, caps.store);
-  const hiddenStoreCount = storeItems.length - storePreview.length;
 
   const hasActivity = visibleActivityRows.length > 0;
   const hasFiles = searching && visibleFiles.length > 0;
@@ -1062,17 +1175,11 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     <>
       <div className="chat-workspace-strip__panel">
         {hasActivity && (
-          <WorkspaceSection
-            title="Activity"
-            sectionId="activity"
-            onOpenHistory={
-              hiddenDoneCount > 0 ? () => setHistorySection("done") : undefined
-            }
-            historyLabel={`View all activity (${doneRows.length})`}
-          >
+          <WorkspaceSection title="Activity" sectionId="activity">
             <TasksList
               rows={visibleActivityRows}
               isTaskExpanded={isTaskExpanded}
+              isCompactTaskExpanded={isCompactTaskExpanded}
               onToggleTask={toggleTask}
               onSelectTask={handleSelectTask}
               isGroupExpanded={isGroupExpanded}
@@ -1084,16 +1191,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
         )}
 
         {hasFiles && (
-          <WorkspaceSection
-            title="Files"
-            sectionId="files"
-            onOpenHistory={
-              hiddenFilesCount > 0
-                ? () => setHistorySection("files")
-                : undefined
-            }
-            historyLabel={`View all matching files (${filteredFiles.length})`}
-          >
+          <WorkspaceSection title="Files" sectionId="files">
             <ul className="chat-workspace-strip__list">
               {visibleFiles.map((file) => (
                 <li
@@ -1121,16 +1219,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
         )}
 
         {hasSchedule && (
-          <WorkspaceSection
-            title="Schedule"
-            sectionId="schedule"
-            onOpenHistory={
-              hiddenScheduleCount > 0
-                ? () => setHistorySection("upNext")
-                : undefined
-            }
-            historyLabel={`View all schedules (${schedules.length})`}
-          >
+          <WorkspaceSection title="Schedule" sectionId="schedule">
             <ul className="chat-workspace-strip__list">
               {upNext.map((entry) => (
                 <li
@@ -1159,14 +1248,7 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
         )}
 
         {hasStore && (
-          <WorkspaceSection
-            title="Store"
-            sectionId="store"
-            onOpenHistory={
-              hiddenStoreCount > 0 ? () => openStoreDisplayTab() : undefined
-            }
-            historyLabel={`View all add-ons (${storeItems.length})`}
-          >
+          <WorkspaceSection title="Store" sectionId="store">
             <ul className="chat-workspace-strip__list">
               {storePreview.map((item) => (
                 <li
@@ -1199,29 +1281,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
           if (!next) setOpenScheduleEntry(null);
         }}
         affected={dialogAffected}
-      />
-      <ActivityHistoryDialog
-        open={historySection !== null}
-        onOpenChange={(next) => {
-          if (!next) setHistorySection(null);
-        }}
-        section={historySection ?? "done"}
-        tasks={allTasks}
-        fileEvents={filesFeed.files}
-        onLoadMoreFiles={filesFeed.loadOlder}
-        hasMoreFiles={filesFeed.hasOlder}
-        isLoadingMoreFiles={filesFeed.isLoadingOlder}
-        schedules={schedules}
-        conversationId={conversationId}
-        nowMs={nowMs}
-        onOpenSchedule={(entry) => {
-          setOpenScheduleEntry(entry);
-          setHistorySection(null);
-        }}
-        onOpenFile={(entry) => {
-          handleOpenFile(entry);
-          setHistorySection(null);
-        }}
       />
     </>
   );

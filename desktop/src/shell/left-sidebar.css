@@ -205,24 +205,6 @@
   margin-bottom: 4px;
 }
 
-/* "View all" history buttons stay hidden until the section is hovered
-   (or the button is focused), keeping the resting sidebar quiet. */
-.left-sidebar__scroll .chat-workspace-strip__section-history {
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 120ms ease,
-    color 120ms ease;
-}
-
-.left-sidebar__scroll
-  .chat-workspace-strip__section:hover
-  .chat-workspace-strip__section-history,
-.left-sidebar__scroll .chat-workspace-strip__section-history:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
 /* ── Footer (sign in + account) ───────────────────────────────────── */
 
 .left-sidebar__footer {

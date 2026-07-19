@@ -9,8 +9,8 @@
  *
  * Window growth is purely activity-count based. Activity events are
  * sparse relative to messages (a handful per turn) so the cap can be
- * comfortably small; `loadOlder` doubles the window for the
- * ActivityHistoryDialog "Completed" view when the user scrolls past it.
+ * comfortably small; `loadOlder` doubles the window for full Activity tray
+ * searches.
  *
  * `hasOlderActivity` is inferred from "did the latest fetch saturate the
  * requested limit?" — exact when more rows exist, harmless 1-fetch

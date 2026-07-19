@@ -5,8 +5,8 @@
  * `localChat:updated` notification, with a `pendingRefetch` flag so
  * updates that fire mid-read don't get dropped.
  *
- * Growing into a larger limit (ActivityHistoryDialog's "files"
- * `loadOlder`) seeds the new entry from the largest already-loaded
+ * Growing into a larger limit (for the Activity tray's full search)
+ * seeds the new entry from the largest already-loaded
  * smaller window so the Recent Files list never visibly empties
  * during a grow-fetch.
  */
@@ -187,7 +187,7 @@ const getOrCreateEntry = (
   const existing = localFilesWindows.get(key);
   if (existing) return existing;
   // Seed from the largest already-loaded smaller window so growing
-  // the limit (ActivityHistoryDialog files loadOlder) doesn't briefly
+  // the limit for full Activity search doesn't briefly
   // empty the visible list during the grow-fetch. Mirrors
   // `local-message-store` / `local-activity-store`.
   const seed = [...localFilesWindows.values()]

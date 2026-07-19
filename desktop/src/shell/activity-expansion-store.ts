@@ -3,10 +3,9 @@
  * conversation id. Two pieces per conversation, matching the defaults in
  * `LeftSidebarSections`:
  *
- *   - `seenTaskIds` / `seenGroupKeys` — the "seen running this session" sets
- *     that keep a finished agent's row expanded (files visible). Without
- *     persistence these lived in refs, so an app restart collapsed every row
- *     even though the session looked identical before quitting.
+ *   - `seenTaskIds` — the "seen running this session" set that keeps a
+ *     finished standalone agent's row expanded (files visible). Compact
+ *     Manager/group rows are collapsed by default and use overrides only.
  *   - `taskOverrides` / `groupOverrides` — explicit user toggles, which win
  *     over the status default; persisted so a row the user deliberately
  *     collapsed doesn't spring back open after a relaunch.
@@ -23,7 +22,6 @@ const MAX_CONVERSATIONS = 8;
 
 export type ActivityExpansionSnapshot = {
   seenTaskIds: readonly string[];
-  seenGroupKeys: readonly string[];
   taskOverrides: Readonly<Record<string, boolean>>;
   groupOverrides: Readonly<Record<string, boolean>>;
 };
@@ -33,7 +31,6 @@ type PersistedMap = Record<string, PersistedEntry>;
 
 export const EMPTY_ACTIVITY_EXPANSION: ActivityExpansionSnapshot = {
   seenTaskIds: [],
-  seenGroupKeys: [],
   taskOverrides: {},
   groupOverrides: {},
 };
@@ -41,9 +38,7 @@ export const EMPTY_ACTIVITY_EXPANSION: ActivityExpansionSnapshot = {
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
 
-const isBooleanRecord = (
-  value: unknown,
-): value is Record<string, boolean> =>
+const isBooleanRecord = (value: unknown): value is Record<string, boolean> =>
   typeof value === "object" &&
   value !== null &&
   !Array.isArray(value) &&
@@ -61,7 +56,6 @@ const readPersisted = (): PersistedMap => {
       const candidate = entry as Partial<PersistedEntry>;
       if (
         isStringArray(candidate.seenTaskIds) &&
-        isStringArray(candidate.seenGroupKeys) &&
         isBooleanRecord(candidate.taskOverrides) &&
         isBooleanRecord(candidate.groupOverrides) &&
         typeof candidate.updatedAt === "number"

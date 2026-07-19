@@ -8,8 +8,7 @@
  * Window growth is purely file-event-count based. File events are even
  * sparser than activity events (only fire when a tool actually
  * touches disk), so a cap of 500 covers everyday usage and
- * `loadOlder` doubles the window for the ActivityHistoryDialog
- * "files" section.
+ * `loadOlder` doubles the window for full Activity tray searches.
  */
 import {
   startTransition,

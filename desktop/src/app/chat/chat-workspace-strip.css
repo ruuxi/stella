@@ -77,26 +77,6 @@
   }
 }
 
-.chat-workspace-strip__section-history {
-  appearance: none;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px;
-  background: transparent;
-  border: none;
-  color: var(--text-weak);
-  cursor: default;
-  transition: color 120ms ease;
-}
-
-.chat-workspace-strip__section-history:hover,
-.chat-workspace-strip__section-history:focus-visible {
-  outline: none;
-  color: var(--text-base);
-}
-
 .chat-workspace-strip__section-body {
   display: flex;
   flex-direction: column;
@@ -319,6 +299,142 @@
 
 .chat-workspace-strip__task-button:focus-visible {
   outline: none;
+}
+
+/* Managers and multi-agent groups collapse to a narrow three-line block:
+   title, child-state visualization, and a stable tally/latest line. */
+.chat-workspace-strip__task-button[data-compact="true"] {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.chat-workspace-strip__task-button[data-compact="true"]
+  + .chat-workspace-strip__task-attach {
+  top: 5px;
+  transform: none;
+}
+
+.chat-workspace-strip__compact-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chat-workspace-strip__compact-cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-height: 8px;
+  margin-left: 23px;
+}
+
+.chat-workspace-strip__compact-cell {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 2.5px;
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+
+.chat-workspace-strip__compact-cell--completed {
+  background: color-mix(in oklch, var(--foreground) 48%, transparent);
+}
+
+.chat-workspace-strip__compact-cell--running {
+  background: var(--foreground);
+  animation: chat-workspace-strip__compact-pulse 1.6s ease-in-out infinite;
+}
+
+.chat-workspace-strip__compact-cell--error {
+  background: var(--text-error);
+}
+
+.chat-workspace-strip__compact-cell--canceled {
+  background: color-mix(in oklch, var(--foreground) 12%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklch, var(--foreground) 22%, transparent);
+}
+
+.chat-workspace-strip__compact-progress {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin-left: 23px;
+}
+
+.chat-workspace-strip__compact-bar {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.chat-workspace-strip__compact-bar-segment {
+  flex-basis: 0;
+  min-width: 1px;
+}
+
+.chat-workspace-strip__compact-bar-segment--done {
+  background: color-mix(in oklch, var(--foreground) 48%, transparent);
+}
+
+.chat-workspace-strip__compact-bar-segment--running {
+  background: var(--foreground);
+  animation: chat-workspace-strip__compact-pulse 1.6s ease-in-out infinite;
+}
+
+.chat-workspace-strip__compact-bar-segment--error {
+  background: var(--text-error);
+}
+
+.chat-workspace-strip__compact-bar-segment--queued {
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+
+.chat-workspace-strip__compact-progress-count {
+  flex: 0 0 auto;
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.chat-workspace-strip__compact-status {
+  min-width: 0;
+  margin-left: 23px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-weak);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+.chat-workspace-strip__compact-status[data-failure="true"] {
+  color: var(--text-error);
+}
+
+@keyframes chat-workspace-strip__compact-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace-strip__compact-cell--running,
+  .chat-workspace-strip__compact-bar-segment--running {
+    animation: none;
+  }
 }
 
 .chat-workspace-strip__task-icon-wrap {

@@ -204,8 +204,8 @@ describe("local-activity-store", () => {
         ).toEqual(["ev-1"]);
       });
 
-      // Growing the limit (e.g. ActivityHistoryDialog loadOlder fired)
-      // must NOT visibly empty the list while the larger fetch is in
+      // Growing the limit for full Activity search must NOT visibly empty
+      // the list while the larger fetch is in
       // flight.
       const largerSnapshots: LocalActivityWindowSnapshot[] = [];
       const unsubscribeLarger = subscribeToLocalActivityWindow(

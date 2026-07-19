@@ -2552,8 +2552,8 @@ export class SessionStore {
    * than 500 arbitrary tool results that may or may not have produced
    * a file.
    *
-   * Optional `beforeTimestampMs` / `beforeId` cursor pages strictly-
-   * older file events for the ActivityHistoryDialog "files" section.
+   * Optional `beforeTimestampMs` / `beforeId` cursor pages strictly older
+   * file events for bounded Activity searches.
    */
   listFiles(
     conversationIdInput: string,

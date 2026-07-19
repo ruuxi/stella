@@ -67,8 +67,8 @@ export type LocalChatActivityWindow = {
  * Read shape backing `SessionStore.listFiles` — the `tool_result` and
  * `agent-completed` events whose payloads actually carry
  * `fileChanges` / `producedFiles` arrays. The Recent Files surfaces
- * (Chat tab Recent Files, ActivityHistoryDialog "files" section)
- * derive their list from this without scanning the full event stream.
+ * and Activity tray search derive their list from this without scanning the
+ * full event stream.
  *
  * Events are ordered ASC by `(timestamp, _id)`. The renderer reuses
  * `deriveConversationFiles` to dedup by path; the storage layer's job

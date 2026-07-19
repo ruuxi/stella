@@ -527,6 +527,97 @@ export type ActivityRow =
   | { kind: 'group'; group: TaskGroup }
   | { kind: 'hierarchy'; hierarchy: TaskHierarchy }
 
+export const COMPACT_ACTIVITY_CELL_LIMIT = 16
+
+export type CompactActivitySummary = {
+  tasks: TaskItem[]
+  totalCount: number
+  runningCount: number
+  completedCount: number
+  errorCount: number
+  canceledCount: number
+  latestTask?: TaskItem
+  latestText?: string
+  failureTask?: TaskItem
+  usesProgressBar: boolean
+}
+
+/** Flatten a nested ownership/group projection into one visual per agent. */
+export const flattenActivityTasks = (rows: readonly ActivityRow[]): TaskItem[] => {
+  const tasks: TaskItem[] = []
+  const append = (row: ActivityRow): void => {
+    if (row.kind === 'task') {
+      tasks.push(row.task)
+      return
+    }
+    if (row.kind === 'group') {
+      tasks.push(...row.group.members)
+      return
+    }
+    tasks.push(row.hierarchy.owner)
+    for (const child of row.hierarchy.children) append(child)
+  }
+  for (const row of rows) append(row)
+  return tasks
+}
+
+const compareCompactTaskRecency = (a: TaskItem, b: TaskItem): number =>
+  b.lastUpdatedAtMs - a.lastUpdatedAtMs ||
+  (b.completedAtMs ?? 0) - (a.completedAtMs ?? 0) ||
+  b.startedAtMs - a.startedAtMs ||
+  a.id.localeCompare(b.id)
+
+const compactLatestText = (task: TaskItem): string => {
+  const description = task.description.trim() || 'Agent'
+  const statusText = task.statusText?.trim()
+  if (statusText && statusText !== description) return statusText
+  switch (task.status) {
+    case 'running':
+      return `${description} started`
+    case 'completed':
+      return `${description} done`
+    case 'error':
+      return `${description} failed`
+    case 'canceled':
+      return `${description} stopped`
+  }
+}
+
+/** Counts and newest-event selection for compact Manager/group rows. */
+export function summarizeCompactActivity(tasks: readonly TaskItem[]): CompactActivitySummary {
+  const ordered = [...tasks].sort(compareCompactTaskRecency)
+  const latestTask = ordered[0]
+  const failureTask = ordered.find((task) => task.status === 'error')
+  return {
+    tasks: [...tasks],
+    totalCount: tasks.length,
+    runningCount: tasks.filter((task) => task.status === 'running').length,
+    completedCount: tasks.filter((task) => task.status === 'completed').length,
+    errorCount: tasks.filter((task) => task.status === 'error').length,
+    canceledCount: tasks.filter((task) => task.status === 'canceled').length,
+    latestTask,
+    latestText: latestTask ? compactLatestText(latestTask) : undefined,
+    failureTask,
+    usesProgressBar: tasks.length > COMPACT_ACTIVITY_CELL_LIMIT,
+  }
+}
+
+/** Single tally line shown under the compact state visualization. */
+export function getCompactActivityStatusText(
+  summary: CompactActivitySummary,
+  prioritizeFailure: boolean,
+): string {
+  const tally = `${summary.runningCount} running · ${summary.completedCount} done`
+  const stopped = summary.canceledCount > 0 ? ` · ${summary.canceledCount} stopped` : ''
+  if (prioritizeFailure && summary.failureTask) {
+    const name = summary.failureTask.description.trim() || 'Agent'
+    return `${summary.errorCount} failed — ${name} · ${tally}${stopped}`
+  }
+  const failed = summary.errorCount > 0 ? ` · ${summary.errorCount} failed` : ''
+  const latest = summary.latestText ? ` — latest: ${summary.latestText}` : ''
+  return `${tally}${failed}${stopped}${latest}`
+}
+
 /** Stable, namespaced identity shared by sorting state and React keys. */
 export const activityRowKey = (row: ActivityRow): string =>
   row.kind === 'task'
@@ -795,40 +886,6 @@ export function updateSeenRunningTaskIds(
   return changed ? next : seen
 }
 
-/**
- * Group-key variant of {@link updateSeenRunningTaskIds}: a group counts as
- * running while ANY member is running, and its key survives (keeping the
- * group's default expansion open) until no member remains in the task list.
- * Keyed off tasks' `groupKey` — not the rendered group rows — for the same
- * reason as {@link pruneGroupExpandOverrides}: a group that shrinks to a
- * single member renders as a plain task row but must not lose its state.
- */
-export function updateSeenRunningGroupKeys(
-  seen: ReadonlySet<string>,
-  tasks: readonly TaskItem[],
-): ReadonlySet<string> {
-  let changed = false
-  const presentKeys = new Set<string>()
-  const runningKeys = new Set<string>()
-  for (const task of tasks) {
-    if (!task.groupKey) continue
-    presentKeys.add(task.groupKey)
-    if (task.status === 'running') runningKeys.add(task.groupKey)
-  }
-  const next = new Set<string>()
-  for (const key of seen) {
-    if (presentKeys.has(key)) next.add(key)
-    else changed = true
-  }
-  for (const key of runningKeys) {
-    if (!next.has(key)) {
-      next.add(key)
-      changed = true
-    }
-  }
-  return changed ? next : seen
-}
-
 /** Persistent first-seen ordering state for {@link orderByFirstSeen}. */
 export type FirstSeenOrder = {
   /** Frozen insertion index per item key. */
@@ -889,21 +946,4 @@ export function orderByFirstSeen<T>(
       : ai - bi || aKey.localeCompare(bKey)
   })
   return { ordered, state: { order, next } }
-}
-
-/**
- * Meta line for a group header: a stable "{N} tasks" count of the group's
- * members. Deliberately does NOT surface any individual member's
- * description/narration — deriving the header from child agents made the
- * row flicker between siblings' text on every streamed update. The group's
- * own label carries the title; this count only changes when membership does.
- */
-export function getTaskGroupStatusText(group: TaskGroup): string {
-  return group.totalCount === 1 ? '1 task' : `${group.totalCount} tasks`
-}
-
-export function getTaskHierarchyStatusText(hierarchy: TaskHierarchy): string {
-  return hierarchy.descendantCount === 1
-    ? '1 agent'
-    : `${hierarchy.descendantCount} agents`
 }

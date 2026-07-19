@@ -151,8 +151,8 @@ const getOrCreateEntry = (
   const existing = localActivityWindows.get(key);
   if (existing) return existing;
   // Seed from the largest already-loaded smaller window for the same
-  // conversation so growing the limit (e.g. ActivityHistoryDialog
-  // 500 → 1000 on `loadOlder`) doesn't briefly empty the visible list
+  // conversation so growing the limit (e.g. Activity tray search paging
+  // 500 → 1000) doesn't briefly empty the visible list
   // while the larger fetch is in flight. Mirrors `local-message-store`.
   // `hasLoaded: false` so consumers still know a fresh fetch is in
   // progress for the new limit.
