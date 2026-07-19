@@ -1014,10 +1014,53 @@ const createExternalLiveAgent = () => {
     drain(): ExternalQueuedMessage[] {
       return queued.splice(0, queued.length);
     },
+    /**
+     * Close the live-delivery boundary only when every message accepted so
+     * far has been drained. The empty check and state transition are one
+     * synchronous operation, so a caller can never observe an open external
+     * session after its final queue drain and enqueue work that no turn will
+     * consume. Once closed, runner/orchestrator queues new work as a fresh
+     * root turn behind the still-finalizing run.
+     */
+    finishIfIdle(): boolean {
+      if (queued.length > 0) {
+        return false;
+      }
+      state.isStreaming = false;
+      return true;
+    },
     finish(): void {
       state.isStreaming = false;
     },
   };
+};
+
+/**
+ * Commit one completed external-engine turn before advancing to a queued
+ * prompt. One Stella run can contain several serialized engine turns (a user
+ * turn followed by managed-event/user follow-ups); each final reply is a
+ * distinct durable assistant message and a distinct renderer boundary.
+ */
+const persistCompletedExternalReply = async (args: {
+  opts: BaseRunOptions;
+  session: ExternalOrchestratorRunSession | ExternalSubagentRunSession;
+  callbacks?: Partial<RuntimeRunCallbacks>;
+  text: string;
+}): Promise<void> => {
+  await persistAssistantReply({
+    store: args.opts.store,
+    threadKey: args.session.threadKey,
+    resolvedLlm: args.opts.resolvedLlm,
+    agentType: args.opts.agentType,
+    content: args.text,
+    stellaDataDir: args.opts.stellaDataDir,
+  });
+  const assistantMessageEvent = args.session.runEvents.recordAssistantTextEnd(
+    args.text,
+  );
+  if (assistantMessageEvent) {
+    args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
+  }
 };
 
 const runClaudeHostedTurn = async (args: {
@@ -1341,9 +1384,22 @@ const runClaudeHostedTurn = async (args: {
   collectTurnFileChanges(finalResult.fileChanges);
 
   for (;;) {
+    // Persist and publish THIS completed turn before a queued manager/user
+    // prompt can advance `finalResult`. Previously only the last result after
+    // this loop was committed, so a concurrent managed update overwrote the
+    // user's completed reply even though both existed in the Claude transcript.
+    await persistCompletedExternalReply({
+      opts: args.opts,
+      session: args.session,
+      callbacks: args.callbacks,
+      text: finalResult.text,
+    });
     const queued = args.liveAgent?.drain() ?? [];
     if (queued.length === 0) {
-      break;
+      if (!args.liveAgent || args.liveAgent.finishIfIdle()) {
+        break;
+      }
+      continue;
     }
     const queuedStarted = runEvents.recordQueuedUserMessageStart();
     if (queuedStarted) {
@@ -1430,21 +1486,6 @@ const runClaudeHostedTurn = async (args: {
     });
     assistantUpdateBuffer.discard();
     collectTurnFileChanges(finalResult.fileChanges);
-  }
-
-  await persistAssistantReply({
-    store: args.opts.store,
-    threadKey,
-    resolvedLlm: args.opts.resolvedLlm,
-    agentType: args.opts.agentType,
-    content: finalResult.text,
-    stellaDataDir: args.opts.stellaDataDir,
-  });
-  const assistantMessageEvent = runEvents.recordAssistantTextEnd(
-    finalResult.text,
-  );
-  if (assistantMessageEvent) {
-    args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
   }
   setExternalEngineSessionId({
     store: args.opts.store,
@@ -1771,9 +1812,18 @@ const runCodexHostedTurn = async (args: {
   assistantUpdateBuffer.discard();
 
   for (;;) {
+    await persistCompletedExternalReply({
+      opts: args.opts,
+      session: args.session,
+      callbacks: args.callbacks,
+      text: finalResult.text,
+    });
     const queued = args.liveAgent?.drain() ?? [];
     if (queued.length === 0) {
-      break;
+      if (!args.liveAgent || args.liveAgent.finishIfIdle()) {
+        break;
+      }
+      continue;
     }
     const queuedStarted = runEvents.recordQueuedUserMessageStart();
     if (queuedStarted) {
@@ -1851,21 +1901,6 @@ const runCodexHostedTurn = async (args: {
       streamFinalAnswer: args.session.kind === "orchestrator",
     });
     assistantUpdateBuffer.discard();
-  }
-
-  await persistAssistantReply({
-    store: args.opts.store,
-    threadKey,
-    resolvedLlm: args.opts.resolvedLlm,
-    agentType: args.opts.agentType,
-    content: finalResult.text,
-    stellaDataDir: args.opts.stellaDataDir,
-  });
-  const assistantMessageEvent = runEvents.recordAssistantTextEnd(
-    finalResult.text,
-  );
-  if (assistantMessageEvent) {
-    args.callbacks?.onAssistantMessage?.(assistantMessageEvent);
   }
   persistCodexSessionId(finalResult.sessionId);
   // Only persisted on success: an aborted/failed turn re-delivers the same
