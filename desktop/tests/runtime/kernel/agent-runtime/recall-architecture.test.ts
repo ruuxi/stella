@@ -154,6 +154,22 @@ describe("architectural Recall pipeline", () => {
       ),
     ).resolves.toBe("Nothing relevant found.");
 
+    for (const adjacentEvidence of [
+      "𐐀stella-v2",
+      "stella-v2𐐀",
+      "Astella-v2",
+      "stella-v2Z",
+    ]) {
+      const adjacentRoot = await createRoot();
+      await writeFile(
+        path.join(adjacentRoot, "memories", "memory_index.md"),
+        `# Memory routing index\n- ${adjacentEvidence} repo path: /tmp/rejected`,
+      );
+      await expect(
+        runRecall(makeArgs(adjacentRoot, "stella-v2", "stella-v2")),
+      ).resolves.toBe("Nothing relevant found.");
+    }
+
     const trueRoot = await createRoot();
     await writeFile(
       path.join(trueRoot, "memories", "memory_index.md"),
@@ -164,13 +180,20 @@ describe("architectural Recall pipeline", () => {
     ).resolves.toContain("stella repo path");
   });
 
-  it("redacts a street address even when no city or state follows", () => {
+  it("redacts street addresses and user-home path prefixes", () => {
     expect(
       redactBenchmarkBrief(
         "Rahul drove to the south entrance at 10919 S Central Avenue before dusk.",
       ),
     ).toBe(
       "Rahul drove to the south entrance at [REDACTED POSTAL ADDRESS] before dusk.",
+    );
+    expect(
+      redactBenchmarkBrief(
+        "Inspect /Users/reviewer/projects/stella/runtime/kernel/file.ts:20 next.",
+      ),
+    ).toBe(
+      "Inspect [REDACTED HOME]/projects/stella/runtime/kernel/file.ts:20 next.",
     );
   });
 

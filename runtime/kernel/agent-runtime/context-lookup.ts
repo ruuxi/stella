@@ -611,6 +611,24 @@ const readMemoryFiles = async (
 
 const RECALL_ANCHOR_CONTINUATION_RE = /[\p{L}\p{N}_./-]/u;
 
+const codePointBefore = (value: string, index: number): string | undefined => {
+  if (index <= 0) return undefined;
+  const trailingUnit = value.charCodeAt(index - 1);
+  if (trailingUnit >= 0xdc00 && trailingUnit <= 0xdfff && index >= 2) {
+    const leadingUnit = value.charCodeAt(index - 2);
+    if (leadingUnit >= 0xd800 && leadingUnit <= 0xdbff) {
+      return value.slice(index - 2, index);
+    }
+  }
+  return value[index - 1];
+};
+
+const codePointAt = (value: string, index: number): string | undefined => {
+  if (index < 0 || index >= value.length) return undefined;
+  const point = value.codePointAt(index);
+  return point === undefined ? undefined : String.fromCodePoint(point);
+};
+
 const hasRecallBoundaryMatch = (value: string, anchor: string): boolean => {
   const normalizedValue = value.normalize("NFKC").toLocaleLowerCase();
   const normalizedAnchor = anchor.normalize("NFKC").trim().toLocaleLowerCase();
@@ -620,12 +638,9 @@ const hasRecallBoundaryMatch = (value: string, anchor: string): boolean => {
   while (fromIndex <= normalizedValue.length - normalizedAnchor.length) {
     const index = normalizedValue.indexOf(normalizedAnchor, fromIndex);
     if (index < 0) return false;
-    const before = index > 0 ? normalizedValue[index - 1] : undefined;
+    const before = codePointBefore(normalizedValue, index);
     const afterIndex = index + normalizedAnchor.length;
-    const after =
-      afterIndex < normalizedValue.length
-        ? normalizedValue[afterIndex]
-        : undefined;
+    const after = codePointAt(normalizedValue, afterIndex);
     if (
       (!before || !RECALL_ANCHOR_CONTINUATION_RE.test(before)) &&
       (!after || !RECALL_ANCHOR_CONTINUATION_RE.test(after))
