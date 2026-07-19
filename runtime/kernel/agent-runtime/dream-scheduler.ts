@@ -65,6 +65,7 @@ import {
   memoryShadowPath,
 } from "../memory/dream-storage.js";
 import type { DreamInboxKind } from "../memory/dream-inbox-store.js";
+import { rotateMemoryFileIfNeeded } from "../memory/memory-rotation.js";
 import {
   appendToShadowLog,
   buildDreamDeltaTranscript,
@@ -457,6 +458,12 @@ export const buildDreamSystemPrompt = (stellaDataDir: string): string =>
       "Give every entry an updated YYYY-MM-DD date. Edit only between the DREAM:MAP_START / DREAM:MAP_END and DREAM:DERIVED_START / DREAM:DERIVED_END anchors using StrReplace.",
       `If the file still contains a "Migrated focus notes" staging section, curate it away: convert each line into a routing entry or drop it (its facts are already in MEMORY.md), then delete the section including its anchors.`,
       "Never put secrets, credentials, tokens, private keys, auth headers, or sensitive personal data in the map; store only the minimum routing metadata.",
+    ].join(" "),
+    [
+      "MEMORY.md lifecycle contract (authoritative): supersede, don't append. Each workstream keeps ONE active block — when new outcomes update a workstream that already has a block, rewrite that block in place (refresh its date, Outcome, and Recall hooks) instead of adding a near-duplicate block below or above it.",
+      "Superseding is non-destructive by construction: any text your MEMORY.md edits remove is preserved automatically in ~/.stella/memories/archive/MEMORY-superseded.md before the edit lands, so never keep stale duplicate blocks around out of caution and never re-quote superseded wording into the new block for safekeeping.",
+      "You do not manage MEMORY.md's size: when the active file grows past its threshold, the runtime rotates the oldest blocks into period-named files under ~/.stella/memories/archive/ (Recall greps the archives, so rotation never hides content). Do not move blocks to the trailing '## Archive' section to save space; use it only for blocks that are stale but not superseded, if at all.",
+      "Everything under ~/.stella/memories/archive/ is read-only for you: readable for context, never edited.",
     ].join(" "),
   ]
     .filter(Boolean)
@@ -1097,7 +1104,7 @@ export const maybeSpawnDreamRun = async (
       });
       return { completed: false };
     })
-    .then((outcome) => {
+    .then(async (outcome) => {
       if (outcome.completed && frontierAtStart > 0) {
         // Advance to what the pass actually consumed, never past it: a
         // >LIST-limit backlog used to advance the watermark to the full
@@ -1141,6 +1148,20 @@ export const maybeSpawnDreamRun = async (
           }
         } catch (error) {
           logger.debug("dream.inbox-gc-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        // MEMORY.md size rotation rides the same post-pass moment: still
+        // inside the single-flight lock (no concurrent Dream writer), right
+        // after the only writer that grows the file. Disk-only — MEMORY.md
+        // is never resident, so rotation cannot touch the prompt prefix.
+        try {
+          const rotation = await rotateMemoryFileIfNeeded(args.stellaDataDir);
+          if (rotation) {
+            logger.info("dream.memory-rotation", rotation);
+          }
+        } catch (error) {
+          logger.warn("dream.memory-rotation-failed", {
             error: error instanceof Error ? error.message : String(error),
           });
         }

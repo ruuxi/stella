@@ -8,8 +8,13 @@ import { dispatchLocalTool } from "../../../../../runtime/kernel/tools/local-too
 import {
   ensureDreamMemoryLayout,
   MEMORY_MAP_MAX_CHARS,
+  memoryFilePath,
   memoryMapPath,
 } from "../../../../../runtime/kernel/memory/dream-storage.js";
+import {
+  memoryArchiveRoot,
+  memorySupersededArchivePath,
+} from "../../../../../runtime/kernel/memory/memory-rotation.js";
 
 const activeRoots = new Set<string>();
 
@@ -318,5 +323,97 @@ describe("dispatchLocalTool", () => {
         "frozen content\n",
       );
     }
+  });
+
+  it("journals text a MEMORY.md edit removes into the superseded archive before the write lands", async () => {
+    const rootPath = await createRoot();
+    await ensureDreamMemoryLayout(rootPath);
+    const memoryPath = memoryFilePath(rootPath);
+    const oldBlock =
+      "## 2026-07-10 — ff promotion\nOutcome: Apply card still pending activation.";
+    await writeFile(
+      memoryPath,
+      `# MEMORY\n\n<!-- DREAM:ACTIVE_BLOCKS_START -->\n${oldBlock}\n<!-- DREAM:ACTIVE_BLOCKS_END -->\n`,
+      "utf-8",
+    );
+
+    const outcome = await strReplace(rootPath, {
+      file_path: memoryPath,
+      old_string: oldBlock,
+      new_string:
+        "## 2026-07-19 — ff promotion\nOutcome: Apply card approved; live is on the certified stack.",
+    });
+
+    expect(outcome.success).toBe(true);
+    const updated = await readFile(memoryPath, "utf-8");
+    expect(updated).toContain("Apply card approved");
+    expect(updated).not.toContain("still pending activation");
+    const journal = await readFile(
+      memorySupersededArchivePath(rootPath),
+      "utf-8",
+    );
+    expect(journal).toMatch(/## superseded \d{4}-\d{2}-\d{2}T/);
+    expect(journal).toContain("Apply card still pending activation.");
+  });
+
+  it("does not journal a pure insertion (the replaced anchor survives in the new content)", async () => {
+    const rootPath = await createRoot();
+    await ensureDreamMemoryLayout(rootPath);
+    const memoryPath = memoryFilePath(rootPath);
+
+    const outcome = await strReplace(rootPath, {
+      file_path: memoryPath,
+      old_string: "<!-- DREAM:ACTIVE_BLOCKS_START -->",
+      new_string:
+        "<!-- DREAM:ACTIVE_BLOCKS_START -->\n## 2026-07-19 — new workstream\nOutcome: started.",
+    });
+
+    expect(outcome.success).toBe(true);
+    await expect(
+      readFile(memorySupersededArchivePath(rootPath), "utf-8"),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a destructive MEMORY.md edit when the superseded journal cannot be written", async () => {
+    const rootPath = await createRoot();
+    await ensureDreamMemoryLayout(rootPath);
+    const memoryPath = memoryFilePath(rootPath);
+    const before =
+      "# MEMORY\n\n<!-- DREAM:ACTIVE_BLOCKS_START -->\n## 2026-07-10 — block\nOutcome: original.\n<!-- DREAM:ACTIVE_BLOCKS_END -->\n";
+    await writeFile(memoryPath, before, "utf-8");
+    // A FILE squatting on the archive directory path makes the journal's
+    // mkdir fail — the preservation step cannot complete.
+    await writeFile(memoryArchiveRoot(rootPath), "not a directory", "utf-8");
+
+    const outcome = await strReplace(rootPath, {
+      file_path: memoryPath,
+      old_string: "## 2026-07-10 — block\nOutcome: original.",
+      new_string: "## 2026-07-19 — block\nOutcome: rewritten.",
+    });
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("could not be preserved");
+    await expect(readFile(memoryPath, "utf-8")).resolves.toBe(before);
+  });
+
+  it("rejects Dream writes to rotation archive files as read-only", async () => {
+    const rootPath = await createRoot();
+    await ensureDreamMemoryLayout(rootPath);
+    const archiveDir = memoryArchiveRoot(rootPath);
+    await mkdir(archiveDir, { recursive: true });
+    const archivePath = path.join(archiveDir, "MEMORY-2026-Q2.md");
+    await writeFile(archivePath, "## 2026-04-01 — rotated block\n", "utf-8");
+
+    const outcome = await strReplace(rootPath, {
+      file_path: archivePath,
+      old_string: "rotated block",
+      new_string: "tampered",
+    });
+
+    expect(outcome.success).toBe(false);
+    expect(outcome.error).toContain("read-only");
+    await expect(readFile(archivePath, "utf-8")).resolves.toBe(
+      "## 2026-04-01 — rotated block\n",
+    );
   });
 });

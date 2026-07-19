@@ -19,6 +19,10 @@ import {
   memorySummaryPath,
   stripInjectedHtmlComments,
 } from "../memory/dream-storage.js";
+import {
+  appendSupersededMemoryText,
+  memoryArchiveRoot,
+} from "../memory/memory-rotation.js";
 import { redactMemoryText } from "../memory/redaction.js";
 import type {
   DreamInboxKind,
@@ -125,6 +129,16 @@ const ensureDreamWritePath = async (
   if (retiredFiles.includes(resolved)) {
     throw new Error(
       `${MEMORY_SUMMARY_FILE} and ${MEMORY_INDEX_FILE} are retired and read-only; their role moved to ${MEMORY_MAP_FILE}. Edit ${MEMORY_MAP_FILE} instead.`,
+    );
+  }
+  if (
+    isWithinDirectory(
+      resolved,
+      await normalizePath(memoryArchiveRoot(dream.stellaDataDir)),
+    )
+  ) {
+    throw new Error(
+      "Files under memories/archive are rotation and supersede-preservation output and are read-only. Edit MEMORY.md instead — text your edits remove is preserved there automatically.",
     );
   }
   throw new Error(
@@ -315,6 +329,33 @@ export async function dispatchLocalTool(
             return {
               handled: true,
               text: JSON.stringify({ success: false, error: rejection }),
+            };
+          }
+        }
+        // Supersede preservation on the durable ledger: an edit that removes
+        // text from MEMORY.md (the replaced span no longer appears in the
+        // updated content — pure insertions keep their anchor and skip this)
+        // journals the removed text to the superseded archive FIRST. If the
+        // journal cannot be written, the edit is rejected: no destructive
+        // write lands without its preserved, Recall-reachable copy.
+        if (
+          deps.dream &&
+          resolvedPath ===
+            (await normalizePath(memoryFilePath(deps.dream.stellaDataDir))) &&
+          oldString.trim() &&
+          !updated.includes(oldString)
+        ) {
+          try {
+            await appendSupersededMemoryText(deps.dream.stellaDataDir, oldString);
+          } catch (error) {
+            return {
+              handled: true,
+              text: JSON.stringify({
+                success: false,
+                error: `Write rejected: the removed text could not be preserved in the superseded archive (${
+                  error instanceof Error ? error.message : String(error)
+                }). Nothing was written.`,
+              }),
             };
           }
         }

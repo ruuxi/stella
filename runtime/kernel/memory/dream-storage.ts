@@ -60,8 +60,12 @@ const MEMORY_TEMPLATE = `# MEMORY
 
 > Canonical task-group ledger maintained by the Dream agent. Newest blocks at
 > the top. Each block describes one cohesive task or thread the user has been
-> working on. Stale blocks (>30 days, superseded) are moved under the trailing
-> Archive heading instead of being deleted.
+> working on. Supersede, don't append: one active block per workstream,
+> rewritten in place as it evolves (removed text is preserved automatically
+> in archive/MEMORY-superseded.md). When this file outgrows its size
+> threshold the runtime rotates the oldest blocks into period-named files
+> under archive/; the trailing Archive heading is only for blocks that are
+> stale but not superseded.
 >
 > Schema for each block (do not break the format):
 >

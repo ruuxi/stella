@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -21,6 +22,11 @@ import {
   runDreamDeltaShadow,
 } from "../../../../../runtime/kernel/agent-runtime/dream-scheduler.js";
 import type { DreamDeltaSourceMessage } from "../../../../../runtime/kernel/agent-runtime/dream-delta.js";
+import { memoryFilePath } from "../../../../../runtime/kernel/memory/dream-storage.js";
+import {
+  memoryArchiveRoot,
+  MEMORY_ROTATION_THRESHOLD_BYTES,
+} from "../../../../../runtime/kernel/memory/memory-rotation.js";
 import type { ResolvedLlmRoute } from "../../../../../runtime/kernel/model-routing.js";
 import type { RuntimeStore } from "../../../../../runtime/kernel/storage/runtime-store.js";
 
@@ -243,6 +249,61 @@ describe("maybeSpawnDreamRun", () => {
 
     expect(result.scheduled).toBe(true);
     await waitFor(() => providerCalls > 0);
+  });
+
+  it("rotates an oversized MEMORY.md into period archives after a completed pass", async () => {
+    const rootPath = createRoot();
+    const memoriesDir = path.join(rootPath, "memories");
+    await mkdir(memoriesDir, { recursive: true });
+    const blocks = Array.from({ length: 16 }, (_, i) =>
+      [
+        `## 2026-05-${String(i + 1).padStart(2, "0")} 12:00 — workstream-${i}`,
+        `Outcome: ${"x".repeat(25_000)}`,
+      ].join("\n"),
+    ).reverse();
+    await writeFile(
+      memoryFilePath(rootPath),
+      [
+        "# MEMORY",
+        "",
+        "<!-- DREAM:ACTIVE_BLOCKS_START -->",
+        blocks.join("\n\n"),
+        "<!-- DREAM:ACTIVE_BLOCKS_END -->",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = await maybeSpawnDreamRun({
+      stellaDataDir: rootPath,
+      store: pendingStore(),
+      resolvedLlm: buildFakeRoute({
+        response: fakeAssistant("- consolidated; nothing else to do"),
+      }),
+      trigger: "manual",
+    });
+    expect(result.scheduled).toBe(true);
+
+    const q2Path = path.join(memoryArchiveRoot(rootPath), "MEMORY-2026-Q2.md");
+    // Archives are written copy-first; the active rewrite lands last, so
+    // wait on the active file shrinking, not on the archive appearing.
+    await waitFor(
+      () =>
+        existsSync(q2Path) &&
+        Buffer.byteLength(
+          readFileSync(memoryFilePath(rootPath), "utf-8"),
+          "utf-8",
+        ) <= MEMORY_ROTATION_THRESHOLD_BYTES,
+      3_000,
+    );
+    const remaining = await readFile(memoryFilePath(rootPath), "utf-8");
+    expect(Buffer.byteLength(remaining, "utf-8")).toBeLessThanOrEqual(
+      MEMORY_ROTATION_THRESHOLD_BYTES,
+    );
+    // Newest blocks stay active; the oldest landed verbatim in the archive.
+    expect(remaining).toContain("workstream-15");
+    const archived = await readFile(q2Path, "utf-8");
+    expect(archived).toContain("workstream-0");
   });
 
   it("returns no_inputs when nothing is pending, even at the compaction boundary", async () => {
