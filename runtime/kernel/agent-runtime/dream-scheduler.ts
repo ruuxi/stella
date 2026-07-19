@@ -492,9 +492,10 @@ const toToolResultMessage = (
 /**
  * Kinds whose rows the orchestrator delta can represent byte-equivalently
  * (design review Q3) — but only for the delta's OWN conversation, and for
- * `memory_note` only once applied coverage is contiguous through the
- * window start (a note's source span reaches below its own timestamp; a
- * span covered only by shadow passes had its proposals discarded). The
+ * `memory_note` only once the applied frontier has reached the window
+ * start (a note's source span reaches below its own timestamp; a span
+ * covered only by shadow passes had its proposals discarded — see the
+ * scalar-frontier caveat on `readAppliedThroughTs`). The
  * cutover pass hides exactly its covered slice from the Dream list (no
  * double-feeding) and consumes it mechanically after a clean pass; rows
  * reported by other conversations, legacy NULL-conversation rows, and
@@ -611,12 +612,16 @@ const prepareDeltaInput = (args: {
       oldestLoadedTs: messages[0]?.timestamp ?? 0,
     });
   }
-  // Applied-contiguity gate for memory_note rows (shadow→cutover
-  // transition): notes are covered kinds only when every span below this
-  // window was covered by an APPLIED pass. Shadow passes advance the shared
-  // watermark but not applied coverage, so the first post-flip window (and
-  // any flip-back gap) automatically routes notes to the model path until
-  // applied coverage catches up.
+  // Applied-coverage gate for memory_note rows (shadow→cutover
+  // transition): notes are covered kinds only when the applied frontier has
+  // reached this window's start. Shadow passes advance the shared watermark
+  // but not applied coverage, so the first post-flip window (and a freshly
+  // detected flip-back gap) routes notes to the model-driven path. This is
+  // a one-window guard, not a contiguity proof: the frontier is a scalar,
+  // so the first gated pass that completes advances it over the
+  // never-applied span, and notes recorded after that consume mechanically
+  // even where an older span below them was only ever shadow-covered
+  // (accepted — the span's raw messages stay transcript-FTS-reachable).
   const appliedThroughTs = readAppliedThroughTsSafe(args.store, conversationId);
   const notesApplied = appliedThroughTs !== null && appliedThroughTs >= watermark;
   if (!notesApplied) {
@@ -669,9 +674,11 @@ const finishDeltaPass = (store: RuntimeStore, input: DeltaInput): void => {
     return;
   }
   // This pass's derivation was APPLIED (its output landed in MEMORY.md /
-  // the map), so applied coverage advances — the gate that lets THIS and
-  // later passes consume memory_note rows once coverage below their
-  // windows is contiguous.
+  // the map), so applied coverage advances, reopening mechanical note
+  // consumption for later windows. Scalar-frontier caveat: when this pass
+  // itself ran note-gated over a detected gap, this advance absorbs the
+  // never-applied span below it — the gap costs exactly one model-path
+  // window, not gating until the span is re-covered (it never will be).
   advanceAppliedThroughTsSafe(
     store,
     input.conversationId,

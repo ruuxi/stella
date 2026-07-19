@@ -487,13 +487,23 @@ export class DreamInboxStore {
   /**
    * Newest thread message an APPLIED (cutover) delta derivation covered —
    * shadow passes advance only the shared watermark above, never this.
-   * A memory_note row is mechanically consumable only when applied coverage
-   * is contiguous through its pass's window start (`applied_through_ts ≥
+   * A memory_note row is mechanically consumable only when the applied
+   * frontier has reached its pass's window start (`applied_through_ts ≥
    * sinceWatermark`): the note's source span reaches arbitrarily far below
    * its own timestamp, and a span covered only by shadow passes had its
    * proposals discarded by design. 0 until a cutover pass ever completed —
-   * which makes the first post-flip window (and any flip-back gap)
-   * automatically route notes through the model-driven list path.
+   * which makes the first post-flip window (and any freshly detected
+   * flip-back gap) route notes through the model-driven list path.
+   *
+   * Scalar-frontier caveat: `frontier ≥ ts` proves that SOME applied pass
+   * covered through `ts`, not that every span below `ts` was ever applied.
+   * A detected gap (flip-back, or a truncated-below window that withheld
+   * this advance) gates notes for exactly the one window that sees it; the
+   * gated pass's own advance then absorbs the never-applied span, and later
+   * notes whose source content lies in that span consume mechanically. That
+   * residue is accepted: the span's raw messages remain transcript-FTS- and
+   * child-thread-reachable, and the gated window itself routed its rows to
+   * the model.
    */
   readAppliedThroughTs(conversationId: string): number {
     const row = this.db
@@ -649,7 +659,12 @@ export class DreamInboxStore {
    * thread. A pass racing that gap can consume the row while the report
    * text sits just above coverage — the report is then derived by the next
    * pass (both clocks are the same machine's; the gap is milliseconds).
-   * Freshness lag, never loss.
+   * Freshness lag in the common case — with one raw-loss corner: if the
+   * next window is truncated below (load limit), the watermark advances
+   * over an unseen backlog span, and a report stranded there belongs to a
+   * row this race already consumed, so nothing re-feeds it. Accepted raw
+   * loss for the derivation: the report stays reachable via transcript FTS
+   * and the child thread's own retention.
    *
    * Content-size caveat (accepted): the delta transcript caps one message
    * at DREAM_DELTA_MESSAGE_MAX_CHARS, so a consumed row whose report runs
