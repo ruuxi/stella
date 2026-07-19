@@ -11,6 +11,7 @@ import {
   RETIRED_STARTUP_DOC_DISPLAY_PATHS,
   stripInjectedHtmlComments,
 } from "../../../../../runtime/kernel/memory/resident-docs.js";
+import { USER_PROFILE_INJECTED_MAX_CHARS } from "../../../../../runtime/kernel/memory/user-profile-store.js";
 
 let stellaDataDir: string;
 
@@ -102,5 +103,18 @@ describe("resident memory doc reads", () => {
     expect(readUserProfileDoc(stellaDataDir)).toBe(
       "# User Profile\n\n- goes by Bob",
     );
+  });
+
+  it("caps a runaway profile read (write-side rejection is the real cap)", () => {
+    writeMemoryFile(
+      "profile.md",
+      `# User Profile\n\n${"- a hand-edited fact no Remember call could have written\n".repeat(400)}`,
+    );
+    const profile = readUserProfileDoc(stellaDataDir);
+    expect(profile).toBeDefined();
+    expect(profile!.length).toBeLessThanOrEqual(
+      USER_PROFILE_INJECTED_MAX_CHARS,
+    );
+    expect(profile).toContain("[resident memory truncated]");
   });
 });

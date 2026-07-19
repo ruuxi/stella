@@ -30,6 +30,7 @@ import {
   MEMORY_MAP_MAX_CHARS,
   stripInjectedHtmlComments,
 } from "./dream-storage.js";
+import { USER_PROFILE_INJECTED_MAX_CHARS } from "./user-profile-store.js";
 import type { RuntimeStore } from "../storage/runtime-store.js";
 
 export { stripInjectedHtmlComments };
@@ -122,10 +123,15 @@ export const readMemoryMapDoc = (stellaDataDir: string): string | undefined =>
 
 /**
  * The durable user-profile facts written by the `Remember` tool, read
- * synchronously for resident injection.
+ * synchronously for resident injection. The cap is a read-side backstop
+ * mirroring the map's: the Remember write path mechanically rejects over-cap
+ * bodies, so a capped read only fires on files no writer produced.
  */
 export const readUserProfileDoc = (stellaDataDir: string): string | undefined =>
-  readResidentMemoryDoc(path.join(stellaDataDir, "memories", "profile.md"));
+  readResidentMemoryDoc(
+    path.join(stellaDataDir, "memories", "profile.md"),
+    USER_PROFILE_INJECTED_MAX_CHARS,
+  );
 
 const readOptionalTextFileSync = (filePath: string): string | undefined => {
   try {

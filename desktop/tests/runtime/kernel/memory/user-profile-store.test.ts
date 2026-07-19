@@ -115,7 +115,9 @@ describe("user-profile-store", () => {
     }
 
     expect(await entries()).toHaveLength(10);
-    expect(MAX_USER_PROFILE_CHARS).toBe(4_000);
+    // 4K→6K per the memory design review §6.3: the live profile sat at 95%
+    // of the old cap on the highest-uniqueness store in the system.
+    expect(MAX_USER_PROFILE_CHARS).toBe(6_000);
   });
 
   it("rejects adds that would exceed the size cap", async () => {

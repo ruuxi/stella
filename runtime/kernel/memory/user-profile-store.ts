@@ -22,8 +22,24 @@ import { redactMemoryText } from "./redaction.js";
 
 export const USER_PROFILE_FILE = "profile.md";
 
-/** Cap on the rendered entries body (excludes the header). */
-export const MAX_USER_PROFILE_CHARS = 4_000;
+/**
+ * Cap on the rendered entries body (excludes the header). Raised 4K→6K per
+ * the memory design review (§6.3): the live profile sat at 95% of the old
+ * cap, one busy week away from silent "profile is full" rejections on the
+ * highest-uniqueness store in the system. Writes over the cap are rejected
+ * with an explanatory error (never truncated) — the same mechanical
+ * enforcement philosophy as the memory_map write jail.
+ */
+export const MAX_USER_PROFILE_CHARS = 6_000;
+
+/**
+ * Read-side backstop for the resident injection of `profile.md` (body cap +
+ * headroom for the fixed header and formatting). The write side above is the
+ * real enforcement — a Remember call can never produce an over-cap body — so
+ * a capped read only triggers on a hand-edited or corrupted file, where
+ * bounding the injected view beats faithfully injecting a runaway doc.
+ */
+export const USER_PROFILE_INJECTED_MAX_CHARS = MAX_USER_PROFILE_CHARS + 1_000;
 
 const HEADER = [
   "# User Profile",
