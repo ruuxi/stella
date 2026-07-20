@@ -23,7 +23,12 @@ import {
   IPC_MEDIA_SAVE_OUTPUT,
 } from "../../src/shared/contracts/ipc-channels.js";
 import { materializeMediaArtifact } from "../../../runtime/kernel/tools/media-artifact-store.js";
-import { validateDecodedImageFile } from "../../../runtime/kernel/tools/image-decode-validation.js";
+import {
+  decodeAndValidateImage,
+  decodeBase64ImageBounded,
+  readResponseBodyBounded,
+  validateDecodedImageFile,
+} from "../../../runtime/kernel/tools/image-decode-validation.js";
 
 type BrowserFetchInit = {
   method?: "GET" | "POST";
@@ -204,8 +209,19 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         const dir = path.join(stellaDataDir, "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = resolveMediaOutputPath(dir, payload.fileName);
-        const validateExisting = /\.(?:png|jpe?g|gif|webp)$/i.test(destPath)
-          ? validateDecodedImageFile
+        const declaredImage = /\.(?:png|jpe?g|gif|webp)$/i.test(destPath);
+        const expectedImageMime = /\.png$/i.test(destPath)
+          ? "image/png"
+          : /\.jpe?g$/i.test(destPath)
+            ? "image/jpeg"
+            : /\.gif$/i.test(destPath)
+              ? "image/gif"
+              : /\.webp$/i.test(destPath)
+                ? "image/webp"
+                : undefined;
+        const validateExisting = expectedImageMime
+          ? async (candidate: string) =>
+              await validateDecodedImageFile(candidate, expectedImageMime)
           : undefined;
         // The terminal image_gen path materializes the same deterministic
         // jobId-based filename before the renderer sees completion. Reuse the
@@ -215,8 +231,30 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         if (dataUriMatch) {
           const saved = await materializeMediaArtifact({
             filePath: destPath,
-            ...(validateExisting ? { validateExisting } : {}),
-            producer: async () => Buffer.from(dataUriMatch[2], "base64"),
+            validateExisting: async (candidate) =>
+              await validateDecodedImageFile(
+                candidate,
+                expectedImageMime ?? dataUriMatch[1]?.toLowerCase(),
+              ),
+            producer: async () => {
+              const bytes = decodeBase64ImageBounded(dataUriMatch[2]);
+              const decoded = await decodeAndValidateImage(bytes);
+              if (
+                !decoded ||
+                decoded.mimeType !== dataUriMatch[1]?.toLowerCase() ||
+                (expectedImageMime && decoded.mimeType !== expectedImageMime)
+              ) {
+                throw new Error(
+                  "Image payload MIME type does not match its decoded bytes.",
+                );
+              }
+              if (!expectedImageMime) {
+                throw new Error(
+                  "Image output requires an extension matching its decoded bytes.",
+                );
+              }
+              return bytes;
+            },
           });
           return { ok: true, path: saved.path };
         }
@@ -236,7 +274,30 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
             if (!res.ok) {
               throw new Error(`Download failed (${res.status})`);
             }
-            return Buffer.from(await res.arrayBuffer());
+            const bytes = await readResponseBodyBounded(res, { signal });
+            const responseIsImage =
+              res.headers
+                .get("content-type")
+                ?.toLowerCase()
+                .startsWith("image/") ?? false;
+            if (declaredImage || responseIsImage) {
+              const decoded = await decodeAndValidateImage(bytes);
+              if (!decoded)
+                throw new Error(
+                  "Downloaded image is invalid or exceeds safe resource limits.",
+                );
+              if (expectedImageMime && decoded.mimeType !== expectedImageMime) {
+                throw new Error(
+                  `Downloaded image bytes are ${decoded.mimeType}, not ${expectedImageMime}.`,
+                );
+              }
+              if (!expectedImageMime) {
+                throw new Error(
+                  "Image output requires an extension matching its decoded bytes.",
+                );
+              }
+            }
+            return bytes;
           },
         });
         return { ok: true, path: saved.path };

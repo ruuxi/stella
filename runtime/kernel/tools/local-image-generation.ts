@@ -13,7 +13,9 @@ import {
 } from "./image-operation-store.js";
 import { authorizedReferenceAsDataUri } from "./image-reference-policy.js";
 import {
+  decodeBase64ImageBounded,
   decodeAndValidateImage,
+  readResponseBodyBounded,
   validateDecodedImageFile,
 } from "./image-decode-validation.js";
 import { materializeMediaArtifact } from "./media-artifact-store.js";
@@ -31,6 +33,7 @@ type LocalImageGenerationInput = {
 };
 
 const HTTP_URL_RE = /^https?:\/\//i;
+const MAX_PROVIDER_IMAGE_JSON_BYTES = 4 * 64 * 1024 * 1024 + 1024 * 1024;
 
 const asString = (value: unknown): string | null =>
   typeof value === "string" && value.trim() ? value.trim() : null;
@@ -114,8 +117,22 @@ const openAiSize = (
 };
 
 const parseError = async (response: Response): Promise<string> =>
-  (await response.text().catch(() => "")).trim() ||
-  `request failed with status ${response.status}`;
+  (
+    await readResponseBodyBounded(response, { maxBytes: 1024 * 1024 }).catch(
+      () => Buffer.alloc(0),
+    )
+  )
+    .toString("utf8")
+    .trim() || `request failed with status ${response.status}`;
+
+const parseProviderImageJson = async (response: Response): Promise<unknown> =>
+  JSON.parse(
+    (
+      await readResponseBodyBounded(response, {
+        maxBytes: MAX_PROVIDER_IMAGE_JSON_BYTES,
+      })
+    ).toString("utf8"),
+  );
 
 const extractOpenAiImages = (json: unknown): string[] => {
   const data = (json as { data?: unknown })?.data;
@@ -147,13 +164,13 @@ const imageBytes = async (
   if (image.startsWith("data:")) {
     const match = image.match(/^data:([^;,]+);base64,(.+)$/s);
     if (!match) throw new Error("provider returned an invalid image data URI");
-    return Buffer.from(match[2], "base64");
+    return decodeBase64ImageBounded(match[2]);
   }
-  if (!HTTP_URL_RE.test(image)) return Buffer.from(image, "base64");
+  if (!HTTP_URL_RE.test(image)) return decodeBase64ImageBounded(image);
   const response = await fetch(image, { signal, redirect: "follow" });
   if (!response.ok)
     throw new Error(`image download failed (${response.status})`);
-  return Buffer.from(await response.arrayBuffer());
+  return await readResponseBodyBounded(response, { signal });
 };
 
 const saveProviderImages = async (args: {
@@ -371,7 +388,7 @@ export const runLocalImageGeneration = async (
             );
           form.append(
             "image",
-            new Blob([Buffer.from(match[2], "base64")], { type: match[1] }),
+            new Blob([decodeBase64ImageBounded(match[2])], { type: match[1] }),
             `reference-${index}.png`,
           );
         }
@@ -391,7 +408,7 @@ export const runLocalImageGeneration = async (
           reattached: false,
         });
       }
-      images = extractOpenAiImages(await response.json());
+      images = extractOpenAiImages(await parseProviderImageJson(response));
       markImageOperationSubmitted({
         stellaDataDir: dataDir,
         operationId: operation.operationId,
@@ -432,7 +449,7 @@ export const runLocalImageGeneration = async (
           reattached: false,
         });
       }
-      images = extractOpenAiImages(await response.json());
+      images = extractOpenAiImages(await parseProviderImageJson(response));
       markImageOperationSubmitted({
         stellaDataDir: dataDir,
         operationId: operation.operationId,
@@ -466,7 +483,9 @@ export const runLocalImageGeneration = async (
             reattached: false,
           });
         }
-        const submitted = (await response.json()) as { request_id?: unknown };
+        const submitted = (await parseProviderImageJson(response)) as {
+          request_id?: unknown;
+        };
         requestId = asString(submitted.request_id) ?? undefined;
         if (!requestId) return unknown("Fal accepted no durable request id");
         markImageOperationSubmitted({
@@ -486,7 +505,7 @@ export const runLocalImageGeneration = async (
           },
         );
         if (response.ok) {
-          images = extractFalImages(await response.json());
+          images = extractFalImages(await parseProviderImageJson(response));
           if (images.length) break;
         } else if (response.status >= 400 && response.status < 500) {
           return finish({

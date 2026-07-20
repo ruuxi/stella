@@ -2,7 +2,10 @@ import { constants, promises as fs, type Stats } from "node:fs";
 import path from "node:path";
 
 import type { ToolContext } from "./types.js";
-import { decodeAndValidateImage } from "./image-decode-validation.js";
+import {
+  decodeAndValidateImage,
+  decodeBase64ImageBounded,
+} from "./image-decode-validation.js";
 
 export const MAX_IMAGE_REFERENCE_BYTES = 20 * 1024 * 1024;
 
@@ -77,6 +80,8 @@ export type AuthorizedImageReference = {
 type ReferenceReadHooks = {
   /** Test-only race injection after the file descriptor is safely open. */
   afterOpen?: () => void | Promise<void>;
+  /** Test-only mutation injection between independent descriptor snapshots. */
+  afterFirstRead?: () => void | Promise<void>;
 };
 
 const sameOpenedObject = (left: Stats, right: Stats): boolean =>
@@ -91,13 +96,15 @@ const readBoundedFromHandle = async (
 ): Promise<Buffer> => {
   const chunks: Buffer[] = [];
   let total = 0;
+  let position = 0;
   for (;;) {
     const chunk = Buffer.allocUnsafe(
       Math.min(256 * 1024, MAX_IMAGE_REFERENCE_BYTES + 1 - total),
     );
-    const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+    const { bytesRead } = await handle.read(chunk, 0, chunk.length, position);
     if (bytesRead === 0) break;
     total += bytesRead;
+    position += bytesRead;
     if (total > MAX_IMAGE_REFERENCE_BYTES) {
       throw new Error(
         `reference image exceeds the ${MAX_IMAGE_REFERENCE_BYTES} byte limit`,
@@ -138,6 +145,9 @@ export const readValidatedImageFileNoFollow = async (
     if (!openedStat.isFile()) {
       throw new Error("reference image is not a regular file");
     }
+    if (openedStat.nlink !== 1) {
+      throw new Error("reference image must not be a hard-linked file");
+    }
     if (openedStat.size <= 0 || openedStat.size > MAX_IMAGE_REFERENCE_BYTES) {
       throw new Error(
         `reference image must be between 1 byte and ${MAX_IMAGE_REFERENCE_BYTES} bytes`,
@@ -154,14 +164,20 @@ export const readValidatedImageFileNoFollow = async (
       );
     }
     const pathStat = await fs.stat(postOpenResolved);
-    if (!sameOpenedObject(openedStat, pathStat)) {
+    if (pathStat.nlink !== 1 || !sameOpenedObject(openedStat, pathStat)) {
       throw new Error("reference image changed while it was being authorized");
     }
     const bytes = await readBoundedFromHandle(handle);
+    await options.hooks?.afterFirstRead?.();
+    // A second descriptor-positioned read prevents a same-length overwrite
+    // from producing a mixed snapshot even on coarse-timestamp filesystems.
+    const verificationBytes = await readBoundedFromHandle(handle);
     const finalStat = await handle.stat();
     if (
+      finalStat.nlink !== 1 ||
       !sameOpenedObject(openedStat, finalStat) ||
-      bytes.length !== openedStat.size
+      bytes.length !== openedStat.size ||
+      !bytes.equals(verificationBytes)
     ) {
       throw new Error("reference image changed while it was being read");
     }
@@ -205,7 +221,7 @@ export const authorizedReferenceAsDataUri = async (
 export const validateImageDataUri = async (value: string): Promise<void> => {
   const match = value.match(/^data:([^;,]+);base64,(.+)$/s);
   if (!match) throw new Error("reference data URI must be base64 encoded");
-  const bytes = Buffer.from(match[2], "base64");
+  const bytes = decodeBase64ImageBounded(match[2], MAX_IMAGE_REFERENCE_BYTES);
   if (bytes.length <= 0 || bytes.length > MAX_IMAGE_REFERENCE_BYTES) {
     throw new Error(
       `reference data URI exceeds the ${MAX_IMAGE_REFERENCE_BYTES} byte limit`,

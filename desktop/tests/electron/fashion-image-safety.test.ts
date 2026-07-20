@@ -26,6 +26,115 @@ afterEach(() => {
 
 describe("Fashion image safety", () => {
   it.runIf(process.platform === "darwin")(
+    "fails closed when sips is unavailable, sandbox-denied, or times out",
+    async () => {
+      const root = fs.mkdtempSync(
+        path.join(os.tmpdir(), "stella-fashion-sips-fail-"),
+      );
+      roots.add(root);
+      const source = path.join(root, "picked.heic");
+      fs.writeFileSync(
+        source,
+        Buffer.concat([
+          Buffer.alloc(4),
+          Buffer.from("ftypheic"),
+          Buffer.alloc(32),
+        ]),
+      );
+      await expect(
+        prepareFashionImage(source, path.join(root, "missing"), {
+          sipsPath: path.join(root, "not-installed-sips"),
+        }),
+      ).rejects.toThrow("unavailable");
+      await expect(
+        prepareFashionImage(source, path.join(root, "denied"), {
+          execSips: async () => {
+            const error = new Error("sandbox denied") as NodeJS.ErrnoException;
+            error.code = "EACCES";
+            throw error;
+          },
+        }),
+      ).rejects.toThrow("sandbox denied");
+      await expect(
+        prepareFashionImage(source, path.join(root, "timeout"), {
+          execSips: async () => {
+            const error = new Error("timed out") as Error & { killed: boolean };
+            error.killed = true;
+            throw error;
+          },
+        }),
+      ).rejects.toThrow("30 second safety limit");
+
+      const hangingSips = path.join(root, "hanging-sips");
+      fs.writeFileSync(
+        hangingSips,
+        "#!/usr/bin/env node\nsetInterval(() => undefined, 1000);\n",
+        { mode: 0o700 },
+      );
+      await expect(
+        prepareFashionImage(source, path.join(root, "real-timeout"), {
+          sipsPath: hangingSips,
+          timeoutMs: 25,
+        }),
+      ).rejects.toThrow("safety limit");
+      expect(
+        fs.readdirSync(root).some((name) => name.startsWith(".heic-")),
+      ).toBe(false);
+    },
+  );
+
+  it.runIf(process.platform === "darwin")(
+    "caps sips output bytes and dimensions and removes every partial",
+    async () => {
+      const root = fs.mkdtempSync(
+        path.join(os.tmpdir(), "stella-fashion-sips-budget-"),
+      );
+      roots.add(root);
+      const source = path.join(root, "picked.heic");
+      fs.writeFileSync(
+        source,
+        Buffer.concat([
+          Buffer.alloc(4),
+          Buffer.from("ftypheic"),
+          Buffer.alloc(32),
+        ]),
+      );
+      const outputPath = (args: readonly string[]) =>
+        args[args.indexOf("--out") + 1]!;
+
+      await expect(
+        prepareFashionImage(source, path.join(root, "oversized"), {
+          execSips: async (_executable, args) => {
+            fs.writeFileSync(
+              outputPath(args),
+              Buffer.alloc(20 * 1024 * 1024 + 1),
+            );
+          },
+        }),
+      ).rejects.toThrow("20971520 bytes");
+
+      await expect(
+        prepareFashionImage(source, path.join(root, "dimension-bomb"), {
+          execSips: async (_executable, args) => {
+            fs.writeFileSync(
+              outputPath(args),
+              Buffer.from([
+                0xff, 0xd8, 0xff, 0xc0, 0x00, 0x07, 0x08, 0xff, 0xff, 0xff,
+                0xff, 0x00, 0xff, 0xd9,
+              ]),
+            );
+          },
+        }),
+      ).rejects.toThrow("complete, decodable");
+      expect(
+        fs
+          .readdirSync(root, { recursive: true })
+          .some((name) => String(name).startsWith(".heic-")),
+      ).toBe(false);
+    },
+  );
+
+  it.runIf(process.platform === "darwin")(
     "converts a production-shaped HEIC Fashion reference to a decoded JPEG",
     async () => {
       const root = fs.mkdtempSync(

@@ -27,6 +27,12 @@ const MAX_SETTLED_CALL_LEDGER_ENTRIES = 512;
 export type ClaudeCodeToolMcpActiveTurn = {
   /** Stable Stella run identity; survives a Claude process restart. */
   identityScope?: string;
+  /** Resolve the engine-persisted Anthropic tool_use id for this MCP call. */
+  claimNativeToolUseId?: (
+    toolName: string,
+    args: Record<string, unknown>,
+    signal: AbortSignal,
+  ) => Promise<string>;
   executeTool: (
     toolCallId: string,
     toolName: string,
@@ -293,13 +299,26 @@ export const createClaudeCodeToolMcpHost = async (
           .update("\0")
           .update(stableJson(request.params.arguments ?? {}))
           .digest("hex");
-        const toolCallId =
+        const nativeToolUseId =
           request.params.name === "image_gen"
-            ? `mcp:${durableScope}:${String(extra.requestId)}:${canonicalRequestHash.slice(0, 24)}`
-            : `mcp:${clientSessionId}:${String(extra.requestId)}`;
+            ? await turn?.claimNativeToolUseId?.(
+                request.params.name,
+                request.params.arguments ?? {},
+                extra.signal,
+              )
+            : undefined;
+        if (request.params.name === "image_gen" && !nativeToolUseId) {
+          throw new McpError(
+            ErrorCode.InternalError,
+            "Claude did not expose a durable tool_use identity for image_gen; refusing an unsafe submission.",
+          );
+        }
+        const toolCallId = nativeToolUseId
+          ? `claude:${durableScope}:${nativeToolUseId}:${canonicalRequestHash.slice(0, 24)}`
+          : `mcp:${clientSessionId}:${String(extra.requestId)}`;
         const ledgerKey =
           request.params.name === "image_gen"
-            ? `${durableScope}:${String(extra.requestId)}:${request.params.name}:${canonicalRequestHash}`
+            ? `${durableScope}:${nativeToolUseId}:${request.params.name}:${canonicalRequestHash}`
             : `${clientSessionId}:${String(extra.requestId)}:${request.params.name}`;
         const registerDeliveryAcknowledgement = () => {
           if (request.params.name !== "image_gen") return;

@@ -450,10 +450,7 @@ type ClaudeCodeTurnRequest = {
   }) => void;
   onStream?: (chunk: string) => void;
   /** Diagnostic boundary: one finalized Claude assistant message is one model round. */
-  onModelRound?: (args: {
-    messageId?: string;
-    toolCallCount: number;
-  }) => void;
+  onModelRound?: (args: { messageId?: string; toolCallCount: number }) => void;
   onStatusChange?: (status: ClaudeCodeStatusChange) => void;
   abortSignal?: AbortSignal;
 };
@@ -531,6 +528,18 @@ type SessionState = {
   mcpConfigPath?: string;
   /** Turn-scoped callbacks consulted lazily by the session MCP host. */
   activeMcpTurn?: ClaudeCodeToolMcpActiveTurn;
+  activeNativeToolUseCorrelator?: {
+    observe: (args: {
+      toolCallId: string;
+      toolName: string;
+      toolArgs: Record<string, unknown>;
+    }) => void;
+    claim: (
+      toolName: string,
+      toolArgs: Record<string, unknown>,
+      signal: AbortSignal,
+    ) => Promise<string>;
+  };
   /** A successful NoResponse tool call permits this native turn to end empty. */
   allowEmptyNativeFinal?: boolean;
   /**
@@ -553,6 +562,94 @@ type SessionState = {
    * the turn falls back via `modelOverride`.
    */
   fableSafetyFailures?: number;
+};
+
+const stableToolArgs = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(stableToolArgs).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableToolArgs(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+};
+
+const claudeToolKey = (
+  toolName: string,
+  toolArgs: Record<string, unknown>,
+): string => {
+  const normalizedName = toolName.includes("__")
+    ? (toolName.split("__").at(-1) ?? toolName)
+    : toolName;
+  return crypto
+    .createHash("sha256")
+    .update(normalizedName)
+    .update("\0")
+    .update(stableToolArgs(toolArgs))
+    .digest("hex");
+};
+
+export const createClaudeNativeToolUseCorrelator = () => {
+  const queued = new Map<string, string[]>();
+  const waiters = new Map<string, Array<(id: string) => void>>();
+  const observedIds = new Set<string>();
+  return {
+    observe(args: {
+      toolCallId: string;
+      toolName: string;
+      toolArgs: Record<string, unknown>;
+    }) {
+      if (observedIds.has(args.toolCallId)) return;
+      observedIds.add(args.toolCallId);
+      const key = claudeToolKey(args.toolName, args.toolArgs);
+      const waiter = waiters.get(key)?.shift();
+      if (waiter) {
+        waiter(args.toolCallId);
+        return;
+      }
+      const values = queued.get(key) ?? [];
+      if (!values.includes(args.toolCallId)) values.push(args.toolCallId);
+      queued.set(key, values);
+    },
+    async claim(
+      toolName: string,
+      toolArgs: Record<string, unknown>,
+      signal: AbortSignal,
+    ) {
+      const key = claudeToolKey(toolName, toolArgs);
+      const existing = queued.get(key)?.shift();
+      if (existing) return existing;
+      return await new Promise<string>((resolve, reject) => {
+        const entries = waiters.get(key) ?? [];
+        const onAbort = () => {
+          const index = entries.indexOf(onObserved);
+          if (index >= 0) entries.splice(index, 1);
+          reject(signal.reason ?? new Error("Claude tool call canceled."));
+        };
+        const timer = setTimeout(() => {
+          signal.removeEventListener("abort", onAbort);
+          const index = entries.indexOf(onObserved);
+          if (index >= 0) entries.splice(index, 1);
+          reject(
+            new Error(
+              "Timed out waiting for Claude's durable tool_use identity.",
+            ),
+          );
+        }, 5_000);
+        timer.unref?.();
+        const onObserved = (id: string) => {
+          clearTimeout(timer);
+          signal.removeEventListener("abort", onAbort);
+          resolve(id);
+        };
+        entries.push(onObserved);
+        waiters.set(key, entries);
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      });
+    },
+  };
 };
 
 const asNumber = (value: unknown): number | undefined =>
@@ -870,6 +967,34 @@ const updateClaudeCodeNativeToolActivity = (
   return before !== activeToolUseIds.size;
 };
 
+const observeFinalizedClaudeToolUses = (
+  event: Record<string, unknown>,
+  observe?: (args: {
+    toolCallId: string;
+    toolName: string;
+    toolArgs: Record<string, unknown>;
+  }) => void,
+): void => {
+  if (event.type !== "assistant" || !observe) return;
+  const content = asObject(event.message)?.content;
+  if (!Array.isArray(content)) return;
+  for (const raw of content) {
+    const block = asObject(raw);
+    if (
+      block?.type !== "tool_use" ||
+      typeof block.id !== "string" ||
+      typeof block.name !== "string"
+    ) {
+      continue;
+    }
+    observe({
+      toolCallId: block.id,
+      toolName: block.name,
+      toolArgs: asObject(block.input) ?? {},
+    });
+  }
+};
+
 const fileChangeDedupeKey = (record: FileChangeRecord): string =>
   `${record.kind.type}:${record.path}:${record.kind.type === "update" ? (record.kind.move_path ?? "") : ""}`;
 
@@ -955,9 +1080,8 @@ export const getClaudeCodeModelRoundFromStreamEvent = (
   }
   return {
     ...(messageId ? { messageId } : {}),
-    toolCallCount: content.filter(
-      (raw) => asObject(raw)?.type === "tool_use",
-    ).length,
+    toolCallCount: content.filter((raw) => asObject(raw)?.type === "tool_use")
+      .length,
   };
 };
 
@@ -1310,8 +1434,15 @@ class ClaudeCodeSessionRuntime {
     }
 
     if (!request.vanilla) {
+      const nativeToolUseCorrelator = createClaudeNativeToolUseCorrelator();
+      session.activeNativeToolUseCorrelator = nativeToolUseCorrelator;
       session.activeMcpTurn = {
-        identityScope: `${request.sessionKey}:${request.runId}`,
+        // The persisted Claude session is the conversation boundary. Native
+        // tool_use.id distinguishes invocations within it; Stella run IDs can
+        // change during crash recovery and must not alter replay identity.
+        identityScope: request.sessionKey,
+        claimNativeToolUseId: (toolName, toolArgs, signal) =>
+          nativeToolUseCorrelator.claim(toolName, toolArgs, signal),
         executeTool: async (
           toolCallId,
           toolName,
@@ -2010,6 +2141,10 @@ class ClaudeCodeSessionRuntime {
               // Diagnostic observers must never disrupt the engine stream.
             }
           }
+          observeFinalizedClaudeToolUses(
+            parsedLine,
+            session.activeNativeToolUseCorrelator?.observe,
+          );
           if (
             updateClaudeCodeNativeToolActivity(
               parsedLine,

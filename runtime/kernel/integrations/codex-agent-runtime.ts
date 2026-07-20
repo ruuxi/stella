@@ -816,6 +816,26 @@ const toolArgsFromCodexValue = (value: unknown): Record<string, unknown> => {
   return {};
 };
 
+export const codexDurableImageToolCallId = (args: {
+  sessionKey?: string;
+  threadId: string;
+  callId: string;
+  toolArgs: Record<string, unknown>;
+}): string => {
+  const requestHash = crypto
+    .createHash("sha256")
+    .update("image_gen")
+    .update("\0")
+    .update(stableJson(args.toolArgs))
+    .digest("hex");
+  const durableScope = crypto
+    .createHash("sha256")
+    .update(args.sessionKey ?? args.threadId)
+    .digest("hex")
+    .slice(0, 24);
+  return `codex:${durableScope}:${args.callId}:${requestHash.slice(0, 24)}`;
+};
+
 export const buildCodexThreadStartParams = (args: {
   model: string;
   cwd?: string;
@@ -909,8 +929,8 @@ const responseWithAck = (
 const isResponseWithAck = (value: unknown): value is CodexResponseWithAck =>
   Boolean(
     value &&
-      typeof value === "object" &&
-      (value as Partial<CodexResponseWithAck>)[CODEX_RESPONSE_WITH_ACK],
+    typeof value === "object" &&
+    (value as Partial<CodexResponseWithAck>)[CODEX_RESPONSE_WITH_ACK],
   );
 
 const configuredTimeoutMs = (envName: string, fallbackMs: number): number => {
@@ -1710,9 +1730,7 @@ export const runCodexAgentTurn = async (request: {
                   toolName: "exec_command",
                   toolArgs: {
                     command: sanitizeCodexCommandForActivity(item.command),
-                    ...(item.cwd
-                      ? { cwd: redactSensitiveText(item.cwd) }
-                      : {}),
+                    ...(item.cwd ? { cwd: redactSensitiveText(item.cwd) } : {}),
                   },
                 };
               case "webSearch":
@@ -1823,20 +1841,14 @@ export const runCodexAgentTurn = async (request: {
         const executeTool = request.executeTool;
         const toolName = params.tool;
         const toolArgs = toolArgsFromCodexValue(params.arguments);
-        const requestHash = crypto
-          .createHash("sha256")
-          .update(toolName)
-          .update("\0")
-          .update(stableJson(toolArgs))
-          .digest("hex");
-        const durableScope = crypto
-          .createHash("sha256")
-          .update(`${request.sessionKey ?? "unscoped"}:${request.runId}`)
-          .digest("hex")
-          .slice(0, 24);
         const toolCallId =
           toolName === "image_gen"
-            ? `codex:${durableScope}:${params.callId}:${requestHash.slice(0, 24)}`
+            ? codexDurableImageToolCallId({
+                sessionKey: request.sessionKey,
+                threadId: params.threadId,
+                callId: params.callId,
+                toolArgs,
+              })
             : params.callId;
         const workKey = `tool:${params.callId}`;
         activeTurnWork.add(workKey);

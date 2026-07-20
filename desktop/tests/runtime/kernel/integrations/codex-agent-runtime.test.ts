@@ -11,6 +11,7 @@ import {
   buildCodexUserInput,
   buildCodexPromptFromMessages,
   clampCodexSpawnReasoningEffort,
+  codexDurableImageToolCallId,
   codexImagePathFromFileUrl,
   CODEX_LIGHT_MODEL,
   CODEX_UTILITY_MODEL,
@@ -40,6 +41,62 @@ import {
 describe("Codex agent runtime", () => {
   afterEach(() => {
     shutdownCodexAppServerRuntime();
+  });
+
+  it("uses Codex native dynamicToolCall identity for replay, repeats, and session isolation", () => {
+    const fixture = fs
+      .readFileSync(
+        path.resolve(
+          process.cwd(),
+          "tests/fixtures/external-image-tool-identities/codex-app-server.jsonl",
+        ),
+        "utf8",
+      )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line)) as Array<{
+      method?: string;
+      params?: {
+        threadId?: string;
+        callId?: string;
+        arguments?: Record<string, unknown>;
+        item?: { id?: string };
+      };
+    }>;
+    const started = fixture.find((entry) => entry.method === "item/started");
+    const request = fixture.find((entry) => entry.method === "item/tool/call");
+    if (
+      !started?.params?.item?.id ||
+      !request?.params?.callId ||
+      !request.params.threadId ||
+      !request.params.arguments
+    ) {
+      throw new Error("Codex identity fixture is invalid");
+    }
+    expect(started.params.item.id).toBe(request.params.callId);
+    const common = {
+      sessionKey: "persisted-codex-thread-A",
+      threadId: request.params.threadId,
+      callId: request.params.callId,
+      toolArgs: request.params.arguments,
+    };
+    const replay = codexDurableImageToolCallId(common);
+    expect(codexDurableImageToolCallId(common)).toBe(replay);
+    expect(
+      codexDurableImageToolCallId({ ...common, callId: "call-native-2" }),
+    ).not.toBe(replay);
+    expect(
+      codexDurableImageToolCallId({
+        ...common,
+        sessionKey: "persisted-codex-thread-B",
+      }),
+    ).not.toBe(replay);
+    expect(
+      codexDurableImageToolCallId({
+        ...common,
+        toolArgs: { prompt: "changed image" },
+      }),
+    ).not.toBe(replay);
   });
 
   it("clamps spawn effort against the Codex model/list surface", () => {
@@ -1426,6 +1483,7 @@ describe("Codex agent runtime", () => {
         "    const turn = { id: turnId, status: 'inProgress' };",
         "    send({ id: message.id, result: { turn } });",
         "    send({ method: 'turn/started', params: { threadId, turn } });",
+        "    send({ method: 'item/started', params: { threadId, turnId, startedAtMs: Date.now(), item: { type: 'dynamicToolCall', id: 'codex-image-stable-call', namespace: null, tool: 'image_gen', arguments: { prompt: 'durable codex fox' }, status: 'inProgress', success: null } } });",
         "    send({ id: 900, method: 'item/tool/call', params: { threadId, turnId, callId: 'codex-image-stable-call', namespace: null, tool: 'image_gen', arguments: { prompt: 'durable codex fox' } } });",
         "    return;",
         "  }",
@@ -1551,6 +1609,7 @@ describe("Codex agent runtime", () => {
         " if (message.method === 'turn/start') {",
         "   turnId = `turn-${processNumber}`; const turn = { id: turnId, status: 'inProgress' };",
         "   send({ id: message.id, result: { turn } }); send({ method: 'turn/started', params: { threadId, turn } });",
+        "   send({ method: 'item/started', params: { threadId, turnId, startedAtMs: Date.now(), item: { type: 'dynamicToolCall', id: 'codex-before-write-call', namespace: null, tool: 'image_gen', arguments: { prompt: 'codex before write' }, status: 'inProgress', success: null } } });",
         "   send({ id: 901, method: 'item/tool/call', params: { threadId, turnId, callId: 'codex-before-write-call', namespace: null, tool: 'image_gen', arguments: { prompt: 'codex before write' } } });",
         "   if (processNumber === 1) setTimeout(() => process.exit(19), 10); return;",
         " }",

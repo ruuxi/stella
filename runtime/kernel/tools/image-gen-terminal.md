@@ -12,11 +12,13 @@ credential directly; reference images go only to that selected provider and
 do not pass through Stella managed storage. Local references are restricted to
 the active workspace and Stella attachment/media/output/Fashion roots, capped
 at 20MB after the descriptor read, and fully decoded before use. Reference reads
-use `O_NOFOLLOW`, an already-open file handle, and device/inode/metadata checks
-before and after the bounded read so path or ancestor replacement cannot change
-the authorized object. Fashion's trusted picker stages references locally;
-accepted HEIC files are converted with macOS `sips` and the resulting JPEG is
-fully decoded before publication. Managed local references additionally require
+use `O_NOFOLLOW`, reject files with multiple hardlinks, and compare two
+descriptor-positioned byte snapshots plus device/inode/metadata before and
+after the bounded read so path, ancestor, or same-size content replacement
+cannot change the authorized object. Fashion's trusted picker stages references locally;
+accepted HEIC files are converted with a 30-second macOS `sips` process limit;
+missing/sandbox-denied conversion, oversized output, or an invalid JPEG fails
+closed and cleans temporary files. Managed local references additionally require
 explicit `allowManagedReferenceUpload` consent for the call.
 
 The owner-scoped managed idempotency key is derived from a durable local
@@ -61,15 +63,18 @@ Restart behavior is explicit:
   continue only after its returned request ID was durably attached. A native,
   Claude, or Codex continuation reopens the operation ledger using its stable,
   request-hashed tool-call alias. It polls the attached job or returns the cached
-  terminal result without another POST. An exact durable engine/run/tool alias
+  terminal result without another POST. An exact durable engine/session/tool alias
   plus exact request hash always replays that terminal result, including after
-  its prior response was acknowledged. A different durable run/tool alias is a
-  new intentional request even when the arguments are identical. Pre-canonical
+  its prior response was acknowledged. A different native session/tool identity
+  is a new intentional request even when the arguments are identical. Pre-canonical
   external aliases may reattach once by conversation and normalized request,
-  then are durably promoted to the strict identity scheme. Claude image identity
-  combines the persisted Stella session and run identity rather than the random
-  MCP transport session; Codex uses the same run boundary plus the app-server
-  call ID and canonical request hash.
+  then are durably promoted to the strict identity scheme. Claude uses the
+  persisted stream-json `tool_use.id`, correlated from the finalized assistant
+  transcript rather than MCP request numbering. Codex uses the native
+  `dynamicToolCall.id`/`item/tool/call.callId` within the persisted Codex
+  session. Canonical request hashes are mismatch guards only. A new native ID
+  is therefore a legitimate identical second generation; replay of the same
+  native ID returns the same result even if transport sequencing changes.
 - Native execution does not acknowledge inside the tool adapter. Only after
   Stella durably persists the tool-result transcript row does it acknowledge the
   operation as delivered. Claude acknowledges after the MCP HTTP response emits
@@ -95,6 +100,11 @@ PNG/JPEG/GIF/WebP pixels before rename, reject corrupt or truncated bytes,
 remove stale partials, fsync the file and parent directory, and
 publish only through atomic rename. Payload publication is also keyed by job ID,
 so transcript and completion-subscription convergence emits one artifact payload.
+Managed and BYOK image bodies are byte-limited while streaming, before buffering.
+Base64 length is checked before decoding, and encoded dimensions, total pixels,
+animation frames, and worst-case decoded bytes are bounded before Photon/WASM
+decode. Detected bytes—not a requested destination extension—select renderer
+image validation.
 
 Webhook dedup, terminal CAS, connector scheduling, and billing eligibility are
 one Convex transaction. Only the transaction that changes a nonterminal job to
@@ -103,13 +113,22 @@ is audit-only and never billed. Image connector delivery has a restart-durable
 five-attempt watchdog and records terminal abandonment after exhaustion.
 
 Encrypted managed inputs are deleted after submission settlement, cancellation,
-terminal webhook processing, or unknown classification. Provably unsubmitted
+terminal webhook processing, or unknown classification. Their storage IDs live
+in a durable cleanup outbox from immediately after `storage.store` until a
+transaction containing both storage deletion and outbox acknowledgement
+succeeds; failures retain exponential-backoff retry state. Provably unsubmitted
 pending rows are abandoned after 24 hours. Delivered local operation aliases are
 pruned after 30 days; pending and undelivered terminal rows are retained for
-reattachment. Account deletion transactionally schedules deletion of every
-pending or dispatching submission blob in the same mutation that removes its
-media row, so an in-flight dispatcher's later release cannot orphan encrypted
-input. Local schema creation and column migration run under `BEGIN IMMEDIATE`
+reattachment. Account deletion first opens a durable owner media-purge gate,
+then drains jobs, owner-tagged and legacy job-tagged webhook metadata, encrypted
+blob cleanup, and a durable provider-cancellation outbox. Reservations and
+dispatch claims fail closed while that gate exists; an in-flight accepted Fal
+request is retained until its provider ID can be canceled. A claimed request
+whose provider acceptance is still ambiguous leaves a sanitized canceled
+tombstone and makes account deletion fail closed for a later retry rather than
+hot-looping or discarding the only reconciliation handle. A late webhook may
+attach its provider ID only to the cancellation outbox; it cannot reverse the
+terminal result or bill the user. Local schema creation and column migration run under `BEGIN IMMEDIATE`
 to serialize concurrent desktop processes.
 
 These semantics apply only to `image_gen`. Other media behavior is unchanged.

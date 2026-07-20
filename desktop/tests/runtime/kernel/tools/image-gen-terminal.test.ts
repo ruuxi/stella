@@ -1,5 +1,6 @@
 import {
   mkdir,
+  link,
   readdir,
   readFile,
   rename,
@@ -23,7 +24,10 @@ import {
 } from "../../../../../runtime/kernel/tools/image-operation-store.js";
 import { materializeMediaArtifact } from "../../../../../runtime/kernel/tools/media-artifact-store.js";
 import {
+  decodeBase64ImageBounded,
   decodeAndValidateImage,
+  inspectEncodedImage,
+  readResponseBodyBounded,
   validateDecodedImageFile,
 } from "../../../../../runtime/kernel/tools/image-decode-validation.js";
 import { readAuthorizedImageReference } from "../../../../../runtime/kernel/tools/image-reference-policy.js";
@@ -884,6 +888,40 @@ describe("image_gen terminal managed-media semantics", () => {
     await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("rejects compressed dimension/frame bombs and oversized streamed bodies before decode", async () => {
+    const hugePng = Buffer.alloc(24);
+    Buffer.from("89504e470d0a1a0a", "hex").copy(hugePng);
+    hugePng.write("IHDR", 12, "ascii");
+    hugePng.writeUInt32BE(1_000_000, 16);
+    hugePng.writeUInt32BE(1_000_000, 20);
+    expect(() => inspectEncodedImage(hugePng)).toThrow("resource limits");
+
+    const animatedGif = Buffer.concat([
+      Buffer.from("GIF89a0100", "ascii"),
+      Buffer.alloc(16),
+      Buffer.alloc(301, 0x2c),
+    ]);
+    expect(() => inspectEncodedImage(animatedGif)).toThrow("resource limits");
+
+    await expect(
+      readResponseBodyBounded(
+        new Response("small", { headers: { "content-length": "999" } }),
+        { maxBytes: 8 },
+      ),
+    ).rejects.toThrow("byte limit");
+    const chunked = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(6));
+        controller.enqueue(new Uint8Array(6));
+        controller.close();
+      },
+    });
+    await expect(
+      readResponseBodyBounded(new Response(chunked), { maxBytes: 8 }),
+    ).rejects.toThrow("byte limit");
+    expect(() => decodeBase64ImageBounded("AAAA", 2)).toThrow("byte limit");
+  });
+
   it("does not replay a delivered MCP alias for a different prompt", () => {
     const stellaDataDir = tempDirs.create("image-gen-alias-collision-");
     const common = {
@@ -1197,5 +1235,37 @@ describe("image_gen terminal managed-media semantics", () => {
         },
       }),
     ).rejects.toThrow("outside the authorized directories");
+  });
+
+  it("rejects hardlink escapes and same-size timestamp-restored reference mutation", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-reference-hardlink-");
+    const attachmentDir = path.join(stellaDataDir, "attachments");
+    const outsideDir = tempDirs.create("image-gen-reference-hardlink-outside-");
+    await mkdir(attachmentDir, { recursive: true });
+    const original = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const outside = path.join(outsideDir, "private.png");
+    const insideLink = path.join(attachmentDir, "linked.png");
+    await writeFile(outside, original);
+    await link(outside, insideLink);
+    await expect(
+      readAuthorizedImageReference(insideLink, contextFor(stellaDataDir)),
+    ).rejects.toThrow("hard-linked");
+
+    const raced = path.join(attachmentDir, "raced.png");
+    await writeFile(raced, original);
+    const before = await stat(raced);
+    const changed = Buffer.from(original);
+    changed[changed.length - 8] = changed[changed.length - 8]! ^ 0xff;
+    await expect(
+      readAuthorizedImageReference(raced, contextFor(stellaDataDir), {
+        afterFirstRead: async () => {
+          await writeFile(raced, changed);
+          await utimes(raced, before.atime, before.mtime);
+        },
+      }),
+    ).rejects.toThrow("changed while it was being read");
   });
 });

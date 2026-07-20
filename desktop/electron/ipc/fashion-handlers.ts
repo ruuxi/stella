@@ -16,11 +16,7 @@ import { constants, promises as fs, type Stats } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
-import {
-  BrowserWindow,
-  dialog,
-  type IpcMainInvokeEvent,
-} from "electron";
+import { BrowserWindow, dialog, type IpcMainInvokeEvent } from "electron";
 
 import {
   IPC_FASHION_DELETE_BODY_PHOTO,
@@ -73,6 +69,17 @@ const SUPPORTED_EXTENSIONS = [
   "heic",
 ] as const;
 const execFileAsync = promisify(execFile);
+const SIPS_TIMEOUT_MS = 30_000;
+type FashionConversionOptions = {
+  sipsPath?: string;
+  /** Test override; production always uses the 30-second ceiling. */
+  timeoutMs?: number;
+  execSips?: (
+    executable: string,
+    args: readonly string[],
+    options: { timeout: number; killSignal: NodeJS.Signals; maxBuffer: number },
+  ) => Promise<unknown>;
+};
 
 const EXT_MIME_MAP: Record<string, string> = {
   jpg: "image/jpeg",
@@ -85,8 +92,7 @@ const EXT_MIME_MAP: Record<string, string> = {
 
 const fashionDir = (root: string) => path.join(root, "fashion");
 const tryOnDir = (root: string) => path.join(fashionDir(root), "try-on");
-const mediaOutputsDir = (root: string) =>
-  path.join(root, "media", "outputs");
+const mediaOutputsDir = (root: string) => path.join(root, "media", "outputs");
 const hiddenFashionConversationId = (root: string) =>
   `fashion:${Buffer.from(root).toString("base64url").slice(0, 24)}`;
 
@@ -109,6 +115,7 @@ const readPickedFileNoFollow = async (filePath: string): Promise<Buffer> => {
     const before = await handle.stat();
     if (
       !before.isFile() ||
+      before.nlink !== 1 ||
       before.size <= 0 ||
       before.size > MAX_IMAGE_REFERENCE_BYTES
     ) {
@@ -122,7 +129,7 @@ const readPickedFileNoFollow = async (filePath: string): Promise<Buffer> => {
       const chunk = Buffer.allocUnsafe(
         Math.min(256 * 1024, MAX_IMAGE_REFERENCE_BYTES + 1 - total),
       );
-      const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, total);
       if (bytesRead === 0) break;
       total += bytesRead;
       if (total > MAX_IMAGE_REFERENCE_BYTES) {
@@ -130,11 +137,30 @@ const readPickedFileNoFollow = async (filePath: string): Promise<Buffer> => {
       }
       chunks.push(chunk.subarray(0, bytesRead));
     }
+    const verification = Buffer.allocUnsafe(total);
+    let verificationOffset = 0;
+    while (verificationOffset < total) {
+      const { bytesRead } = await handle.read(
+        verification,
+        verificationOffset,
+        total - verificationOffset,
+        verificationOffset,
+      );
+      if (bytesRead === 0) break;
+      verificationOffset += bytesRead;
+    }
     const after = await handle.stat();
-    if (!sameFile(before, after) || total !== before.size) {
+    const result = Buffer.concat(chunks, total);
+    if (
+      after.nlink !== 1 ||
+      !sameFile(before, after) ||
+      total !== before.size ||
+      verificationOffset !== total ||
+      !result.equals(verification)
+    ) {
       throw new Error("Fashion image changed while it was being read.");
     }
-    return Buffer.concat(chunks, total);
+    return result;
   } finally {
     await handle.close();
   }
@@ -151,10 +177,18 @@ const isHeicBytes = (bytes: Buffer): boolean => {
 const convertHeicToJpeg = async (
   bytes: Buffer,
   directory: string,
+  options: FashionConversionOptions = {},
 ): Promise<Buffer> => {
   if (process.platform !== "darwin") {
     throw new Error("HEIC conversion is available only on macOS.");
   }
+  const sipsPath = options.sipsPath ?? "/usr/bin/sips";
+  const timeoutMs = options.timeoutMs ?? SIPS_TIMEOUT_MS;
+  await fs.access(sipsPath, constants.X_OK).catch(() => {
+    throw new Error(
+      "HEIC conversion is unavailable in this Stella environment.",
+    );
+  });
   await fs.mkdir(directory, { recursive: true });
   const token = randomUUID();
   const sourcePath = path.join(directory, `.heic-source-${token}.heic`);
@@ -167,20 +201,29 @@ const convertHeicToJpeg = async (
     await source.close();
   }
   try {
-    await execFileAsync("/usr/bin/sips", [
-      "-s",
-      "format",
-      "jpeg",
-      sourcePath,
-      "--out",
-      outputPath,
-    ]);
-    const converted = await fs.readFile(outputPath);
-    const decoded = await decodeAndValidateImage(converted);
-    if (!decoded || decoded.mimeType !== "image/jpeg") {
+    await (options.execSips ?? execFileAsync)(
+      sipsPath,
+      ["-s", "format", "jpeg", sourcePath, "--out", outputPath],
+      {
+        timeout: timeoutMs,
+        killSignal: "SIGKILL",
+        maxBuffer: 256 * 1024,
+      },
+    ).catch((error) => {
+      if ((error as NodeJS.ErrnoException & { killed?: boolean }).killed) {
+        throw new Error("HEIC conversion exceeded its 30 second safety limit.");
+      }
+      throw new Error(
+        `HEIC conversion failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+    const converted = await readValidatedImageFileNoFollow(outputPath, {
+      allowedRoots: [await fs.realpath(directory)],
+    });
+    if (converted.mimeType !== "image/jpeg") {
       throw new Error("HEIC conversion did not produce a complete JPEG image.");
     }
-    return converted;
+    return converted.bytes;
   } finally {
     await Promise.all([
       fs.unlink(sourcePath).catch(() => undefined),
@@ -192,12 +235,16 @@ const convertHeicToJpeg = async (
 export const prepareFashionImage = async (
   sourcePath: string,
   directory: string,
+  conversionOptions: FashionConversionOptions = {},
 ): Promise<{ bytes: Buffer; ext: "jpg" | "png" | "gif" | "webp" }> => {
   const bytes = await readPickedFileNoFollow(sourcePath);
   const sourceExt = path.extname(sourcePath).slice(1).toLowerCase();
   if (sourceExt === "heic" || isHeicBytes(bytes)) {
     if (!isHeicBytes(bytes)) throw new Error("Selected HEIC file is invalid.");
-    return { bytes: await convertHeicToJpeg(bytes, directory), ext: "jpg" };
+    return {
+      bytes: await convertHeicToJpeg(bytes, directory, conversionOptions),
+      ext: "jpg",
+    };
   }
   const decoded = await decodeAndValidateImage(bytes);
   if (!decoded)
@@ -316,10 +363,17 @@ const removeAllBodyPhotos = async (root: string) => {
 
 const isPathInside = (childPath: string, parentPath: string): boolean => {
   const relative = path.relative(parentPath, childPath);
-  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
+  return (
+    Boolean(relative) &&
+    !relative.startsWith("..") &&
+    !path.isAbsolute(relative)
+  );
 };
 
-const assertAllowedLocalImagePath = (root: string, rawPath: unknown): string => {
+const assertAllowedLocalImagePath = (
+  root: string,
+  rawPath: unknown,
+): string => {
   if (typeof rawPath !== "string" || rawPath.trim().length === 0) {
     throw new Error("Image path is required.");
   }
@@ -329,8 +383,12 @@ const assertAllowedLocalImagePath = (root: string, rawPath: unknown): string => 
     tryOnDir(root),
     mediaOutputsDir(root),
   ].map((entry) => path.resolve(entry));
-  if (!allowedRoots.some((allowedRoot) => isPathInside(absolutePath, allowedRoot))) {
-    throw new Error("Image path is outside Fashion's allowed local image folders.");
+  if (
+    !allowedRoots.some((allowedRoot) => isPathInside(absolutePath, allowedRoot))
+  ) {
+    throw new Error(
+      "Image path is outside Fashion's allowed local image folders.",
+    );
   }
   return absolutePath;
 };
@@ -423,14 +481,10 @@ export const registerFashionHandlers = (options: FashionHandlerOptions) => {
     },
   );
 
-  registerPrivilegedHandle(
-    options,
-    IPC_FASHION_DELETE_BODY_PHOTO,
-    async () => {
-      await removeAllBodyPhotos(requireRoot());
-      return { ok: true } as const;
-    },
-  );
+  registerPrivilegedHandle(options, IPC_FASHION_DELETE_BODY_PHOTO, async () => {
+    await removeAllBodyPhotos(requireRoot());
+    return { ok: true } as const;
+  });
 
   registerPrivilegedHandle(
     options,
@@ -643,7 +697,9 @@ export const registerFashionHandlers = (options: FashionHandlerOptions) => {
         typeof payload?.batchId === "string" && payload.batchId.trim()
           ? payload.batchId.trim()
           : `fashion-${Date.now().toString(36)}`;
-      const excludeProductIds = normalizeStringArray(payload?.excludeProductIds);
+      const excludeProductIds = normalizeStringArray(
+        payload?.excludeProductIds,
+      );
       const seedHints = normalizeStringArray(payload?.seedHints);
 
       const promptLines = [

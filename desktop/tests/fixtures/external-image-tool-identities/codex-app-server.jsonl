@@ -1,0 +1,4 @@
+{"jsonrpc":"2.0","method":"item/started","params":{"threadId":"thread_fixture","turnId":"turn_fixture","startedAtMs":1770000000000,"item":{"type":"dynamicToolCall","id":"call_fixture_native","namespace":null,"tool":"image_gen","arguments":{"prompt":"fixture fox"},"status":"inProgress","success":null}}}
+{"jsonrpc":"2.0","id":81,"method":"item/tool/call","params":{"threadId":"thread_fixture","turnId":"turn_fixture","callId":"call_fixture_native","namespace":null,"tool":"image_gen","arguments":{"prompt":"fixture fox"}}}
+{"jsonrpc":"2.0","id":81,"result":{"contentItems":[{"type":"inputText","text":"{\"status\":\"succeeded\"}"}],"success":true}}
+{"jsonrpc":"2.0","method":"item/completed","params":{"threadId":"thread_fixture","turnId":"turn_fixture","item":{"type":"dynamicToolCall","id":"call_fixture_native","namespace":null,"tool":"image_gen","arguments":{"prompt":"fixture fox"},"status":"completed","success":true}}}

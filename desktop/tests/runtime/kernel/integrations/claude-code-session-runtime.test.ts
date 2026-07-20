@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   claudeCodeSessionHasActiveProcess,
   collectClaudeCodeNativeFileChanges,
+  createClaudeNativeToolUseCorrelator,
   createClaudeCodeStreamEmitter,
   getClaudeCodeModelRoundFromStreamEvent,
   getClaudeCodeModelFallbackFromStreamEvent,
@@ -35,6 +36,74 @@ import type { SqliteDatabase } from "../../../../../runtime/kernel/storage/share
 import { DatabaseSync } from "node:sqlite";
 
 describe("claude-code-session-runtime", () => {
+  it("correlates protocol-shaped Claude tool_use ids across transport replay and intentional repeats", async () => {
+    const fixture = fs
+      .readFileSync(
+        path.resolve(
+          process.cwd(),
+          "tests/fixtures/external-image-tool-identities/claude-stream-json.jsonl",
+        ),
+        "utf8",
+      )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line)) as Array<{
+      type?: string;
+      message?: {
+        content?: Array<{
+          id?: string;
+          name?: string;
+          input?: Record<string, unknown>;
+        }>;
+      };
+    }>;
+    const fixtureBlock = fixture.find((entry) => entry.type === "assistant")
+      ?.message?.content?.[0];
+    if (!fixtureBlock?.id || !fixtureBlock.name || !fixtureBlock.input) {
+      throw new Error("Claude identity fixture is invalid");
+    }
+    const correlator = createClaudeNativeToolUseCorrelator();
+    const first = {
+      toolCallId: fixtureBlock.id,
+      toolName: fixtureBlock.name,
+      toolArgs: fixtureBlock.input,
+    };
+    // Claude emits this shape in both content_block_start and its finalized
+    // assistant transcript. The duplicate must not queue a second invocation.
+    correlator.observe(first);
+    correlator.observe(first);
+    await expect(
+      correlator.claim(
+        "image_gen",
+        first.toolArgs,
+        new AbortController().signal,
+      ),
+    ).resolves.toBe(first.toolCallId);
+
+    const second = { ...first, toolCallId: "toolu_01JINTENTIONAL_REPEAT" };
+    correlator.observe(second);
+    await expect(
+      correlator.claim(
+        "image_gen",
+        first.toolArgs,
+        new AbortController().signal,
+      ),
+    ).resolves.toBe(second.toolCallId);
+
+    const separateConversation = createClaudeNativeToolUseCorrelator();
+    separateConversation.observe({
+      ...first,
+      toolCallId: "toolu_OTHER_SESSION",
+    });
+    await expect(
+      separateConversation.claim(
+        "image_gen",
+        first.toolArgs,
+        new AbortController().signal,
+      ),
+    ).resolves.toBe("toolu_OTHER_SESSION");
+  });
+
   it("classifies finalized assistant messages as model and tool rounds", () => {
     expect(
       getClaudeCodeModelRoundFromStreamEvent({
@@ -352,7 +421,6 @@ describe("claude-code-session-runtime", () => {
         "Ends without whitespace. starts with space",
       );
     });
-
   });
 
   describe("collectClaudeCodeNativeFileChanges", () => {
@@ -786,7 +854,7 @@ describe("claude-code-session-runtime", () => {
     const fakeClaude = path.join(binDir, "claude");
     fs.writeFileSync(
       fakeClaude,
-      "#!/bin/sh\nexec node \"$STELLA_FAKE_CLAUDE_HELPER\" \"$@\"\n",
+      '#!/bin/sh\nexec node "$STELLA_FAKE_CLAUDE_HELPER" "$@"\n',
     );
     fs.chmodSync(fakeClaude, 0o755);
     const previousPath = process.env.PATH;
@@ -874,7 +942,7 @@ describe("claude-code-session-runtime", () => {
     const fakeClaude = path.join(binDir, "claude");
     fs.writeFileSync(
       fakeClaude,
-      "#!/bin/sh\nexec node \"$STELLA_FAKE_CLAUDE_HELPER\" \"$@\"\n",
+      '#!/bin/sh\nexec node "$STELLA_FAKE_CLAUDE_HELPER" "$@"\n',
     );
     fs.chmodSync(fakeClaude, 0o755);
     const previousPath = process.env.PATH;
@@ -907,7 +975,9 @@ describe("claude-code-session-runtime", () => {
         .readFileSync(logPath, "utf8")
         .trim()
         .split("\n")
-        .map((line) => JSON.parse(line) as { spawnCount: number; content: string });
+        .map(
+          (line) => JSON.parse(line) as { spawnCount: number; content: string },
+        );
       expect(prompts).toHaveLength(2);
       expect(prompts[0]?.content).toContain(originalPrompt);
       expect(prompts[1]?.content).not.toBe(originalPrompt);
@@ -989,7 +1059,7 @@ describe("claude-code-session-runtime", () => {
     const fakeClaude = path.join(binDir, "claude");
     fs.writeFileSync(
       fakeClaude,
-      "#!/bin/sh\nexec node \"$STELLA_FAKE_CLAUDE_HELPER\" \"$@\"\n",
+      '#!/bin/sh\nexec node "$STELLA_FAKE_CLAUDE_HELPER" "$@"\n',
     );
     fs.chmodSync(fakeClaude, 0o755);
     const previousPath = process.env.PATH;
@@ -1021,7 +1091,10 @@ describe("claude-code-session-runtime", () => {
         .readFileSync(logPath, "utf8")
         .trim()
         .split("\n")
-        .map((line) => JSON.parse(line) as { promptCount: number; content: string });
+        .map(
+          (line) =>
+            JSON.parse(line) as { promptCount: number; content: string },
+        );
       expect(prompts).toHaveLength(2);
       expect(prompts[1]?.content).toContain("Do NOT redo, repeat");
       expect(prompts[1]?.content).toContain("charge_once");

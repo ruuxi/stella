@@ -85,12 +85,26 @@ describe("media output artifact dedupe", () => {
       {},
       {
         url: `data:image/png;base64,${Buffer.from("89504e470d0a1a0a", "hex").toString("base64")}`,
-        fileName: "corrupt_0.png",
+        // Destination extension is intentionally non-image: detected source
+        // bytes, not the requested suffix, must select image validation.
+        fileName: "corrupt_0.bin",
       },
     );
     expect(result).toMatchObject({ ok: false });
     expect(
-      fs.existsSync(path.join(dataDir, "media", "outputs", "corrupt_0.png")),
+      fs.existsSync(path.join(dataDir, "media", "outputs", "corrupt_0.bin")),
+    ).toBe(false);
+
+    const mismatch = await handler(
+      {},
+      {
+        url: `data:image/png;base64,${validPng.toString("base64")}`,
+        fileName: "misleading_0.jpg",
+      },
+    );
+    expect(mismatch).toMatchObject({ ok: false });
+    expect(
+      fs.existsSync(path.join(dataDir, "media", "outputs", "misleading_0.jpg")),
     ).toBe(false);
   });
 });

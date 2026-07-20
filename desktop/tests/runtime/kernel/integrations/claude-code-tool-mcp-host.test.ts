@@ -264,6 +264,7 @@ describe("claude-code-tool-mcp-host", () => {
         identityScope: "persisted-claude-session-key",
         getActiveTurn: () => ({
           identityScope: "persisted-claude-session-key:durable-run-id",
+          claimNativeToolUseId: async () => "toolu_persisted_image_1",
           executeTool: async (id, _name, args) => {
             callIds.push(id);
             const operation = reserveDurableImageOperation({
@@ -334,7 +335,7 @@ describe("claude-code-tool-mcp-host", () => {
 
     expect(callIds).toHaveLength(2);
     expect(callIds[1]).toBe(callIds[0]);
-    expect(callIds[0]).toMatch(/^mcp:[a-f0-9]{24}:/);
+    expect(callIds[0]).toMatch(/^claude:[a-f0-9]{24}:toolu_persisted_image_1:/);
     expect(submissions).toBe(1);
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -355,6 +356,7 @@ describe("claude-code-tool-mcp-host", () => {
     });
     const makeTurn = (blockResponse: boolean): ClaudeCodeToolMcpActiveTurn => ({
       identityScope: "claude-session:claude-durable-run",
+      claimNativeToolUseId: async () => "toolu_response_loss_image",
       executeTool: async (toolCallId, _toolName, args) => {
         const operation = reserveDurableImageOperation({
           stellaDataDir: dir,
@@ -443,10 +445,13 @@ describe("claude-code-tool-mcp-host", () => {
 
   it("separates a reused MCP request alias when the canonical image request changes", async () => {
     const callIds: string[] = [];
+    let nativeInvocation = 0;
     const host = await createClaudeCodeToolMcpHost({
       tools: imageTools,
       identityScope: "persisted-alias-collision-scope",
       getActiveTurn: () => ({
+        claimNativeToolUseId: async () =>
+          `toolu_intentional_${++nativeInvocation}`,
         executeTool: async (id) => {
           callIds.push(id);
           return { result: { status: "succeeded" } };
@@ -476,10 +481,13 @@ describe("claude-code-tool-mcp-host", () => {
 
   it("delivers structured image failure and preserves image cancellation", async () => {
     let mode: "failure" | "cancel" = "failure";
+    let nativeInvocation = 0;
     const host = await createClaudeCodeToolMcpHost({
       tools: imageTools,
       identityScope: "failure-cancel-session",
       getActiveTurn: () => ({
+        claimNativeToolUseId: async () =>
+          `toolu_failure_cancel_${++nativeInvocation}`,
         executeTool: async (_id, _name, _args, signal) => {
           if (mode === "failure") {
             return {

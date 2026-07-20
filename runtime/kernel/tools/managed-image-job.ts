@@ -14,6 +14,7 @@ import {
 } from "./media-artifact-store.js";
 import {
   decodeAndValidateImage,
+  readResponseBodyBounded,
   validateDecodedImageFile,
 } from "./image-decode-validation.js";
 
@@ -24,6 +25,7 @@ export const MANAGED_IMAGE_ARTIFACT_GRACE_MS = 60_000;
 const INITIAL_POLL_MS = 750;
 const MAX_POLL_MS = 5_000;
 const SUBMIT_ATTEMPTS = 3;
+const MAX_MEDIA_JOB_JSON_BYTES = 4 * 1024 * 1024;
 
 type MediaJobStatus =
   | "queued"
@@ -174,7 +176,11 @@ export const createManagedImageIdempotencyKey = (
 };
 
 const parseErrorResponse = async (response: Response): Promise<string> => {
-  const text = await response.text().catch(() => "");
+  const text = (
+    await readResponseBodyBounded(response, { maxBytes: 1024 * 1024 }).catch(
+      () => Buffer.alloc(0),
+    )
+  ).toString("utf8");
   if (!text) return `request failed with status ${response.status}`;
   try {
     const parsed = JSON.parse(text) as {
@@ -191,6 +197,15 @@ const parseErrorResponse = async (response: Response): Promise<string> => {
     return text.trim();
   }
 };
+
+const parseJobJson = async (response: Response): Promise<unknown> =>
+  JSON.parse(
+    (
+      await readResponseBodyBounded(response, {
+        maxBytes: MAX_MEDIA_JOB_JSON_BYTES,
+      })
+    ).toString("utf8"),
+  );
 
 const parseJobStatus = (value: unknown): MediaJobStatus | null => {
   switch (value) {
@@ -211,9 +226,9 @@ const isManagedMediaJob = (value: unknown): value is ManagedMediaJob => {
   const record = value as Record<string, unknown>;
   return Boolean(
     asNonEmptyString(record.jobId) &&
-      asNonEmptyString(record.capability) &&
-      asNonEmptyString(record.profile) &&
-      parseJobStatus(record.status),
+    asNonEmptyString(record.capability) &&
+    asNonEmptyString(record.profile) &&
+    parseJobStatus(record.status),
   );
 };
 
@@ -239,7 +254,12 @@ const extractRemoteImages = (output: unknown): RemoteImage[] => {
     .filter((entry): entry is RemoteImage => entry !== null);
 };
 
-const extensionFor = (url: string): string => {
+const extensionFor = (url: string, mimeType?: string): string => {
+  const normalizedMime = mimeType?.split(";")[0]?.trim().toLowerCase();
+  if (normalizedMime === "image/jpeg") return "jpg";
+  if (normalizedMime === "image/png") return "png";
+  if (normalizedMime === "image/gif") return "gif";
+  if (normalizedMime === "image/webp") return "webp";
   const fromUrl = url.match(/\.([a-z0-9]{2,5})(?:[?#]|$)/i)?.[1];
   if (fromUrl && /^(?:png|jpe?g|webp|gif)$/i.test(fromUrl)) {
     return fromUrl.toLowerCase() === "jpeg" ? "jpg" : fromUrl.toLowerCase();
@@ -283,8 +303,14 @@ const materializeImages = async (args: {
 
   for (const [index, image] of args.images.entries()) {
     throwIfAborted(args.signal);
-    const declaredMimeType = image.mimeType ?? "image/png";
-    const extension = extensionFor(image.url);
+    const declaredMimeType = image.mimeType
+      ?.split(";")[0]
+      ?.trim()
+      .toLowerCase();
+    const extension = extensionFor(image.url, declaredMimeType);
+    const expectedMimeType =
+      declaredMimeType ??
+      (extension === "jpg" ? "image/jpeg" : `image/${extension}`);
     const filePath = path.join(
       outputDir,
       `${args.jobId}_${index}.${extension}`,
@@ -294,12 +320,13 @@ const materializeImages = async (args: {
       artifacts.push(existing);
       continue;
     }
-    let mimeType = declaredMimeType;
+    let mimeType = expectedMimeType;
     const saved = await materializeMediaArtifact({
       filePath,
       signal: args.signal,
       producerTimeoutMs: args.downloadTimeoutMs,
-      validateExisting: validateDecodedImageFile,
+      validateExisting: async (candidate) =>
+        await validateDecodedImageFile(candidate, expectedMimeType),
       producer: async (downloadSignal) => {
         const response = await args.fetchImpl(image.url, {
           signal: downloadSignal,
@@ -312,12 +339,19 @@ const materializeImages = async (args: {
         }
         mimeType =
           response.headers.get("content-type")?.split(";")[0]?.trim() ||
-          declaredMimeType;
-        const bytes = Buffer.from(await response.arrayBuffer());
+          expectedMimeType;
+        const bytes = await readResponseBodyBounded(response, {
+          signal: downloadSignal,
+        });
         const decoded = await decodeAndValidateImage(bytes);
         if (!decoded) {
           throw new Error(
             "Image artifact was partial or had an unsupported MIME type.",
+          );
+        }
+        if (decoded.mimeType !== expectedMimeType) {
+          throw new Error(
+            `Image artifact bytes are ${decoded.mimeType}, not ${expectedMimeType}; refusing a misleading file extension.`,
           );
         }
         mimeType = decoded.mimeType;
@@ -439,7 +473,7 @@ export const submitAndWaitForManagedImageJob = async (
         return null;
       }
       return {
-        ...((await response.json()) as AcceptedJob),
+        ...((await parseJobJson(response)) as AcceptedJob),
         reattached: true,
       };
     } catch (error) {
@@ -476,7 +510,7 @@ export const submitAndWaitForManagedImageJob = async (
           },
         );
         if (response.ok) {
-          accepted = (await response.json()) as AcceptedJob;
+          accepted = (await parseJobJson(response)) as AcceptedJob;
           break;
         }
         lastSubmitError = await parseErrorResponse(response);
@@ -561,7 +595,7 @@ export const submitAndWaitForManagedImageJob = async (
             });
           }
         } else {
-          const value = (await response.json()) as unknown;
+          const value = await parseJobJson(response);
           if (!isManagedMediaJob(value)) {
             return finish({
               ok: false,
