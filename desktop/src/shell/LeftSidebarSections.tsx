@@ -244,7 +244,7 @@ const CompactChildState = memo(function CompactChildState({
             ) : null}
             {summary.runningCount > 0 ? (
               <span
-                className="chat-workspace-strip__compact-bar-segment chat-workspace-strip__compact-bar-segment--running anim-pulse"
+                className="chat-workspace-strip__compact-bar-segment chat-workspace-strip__compact-bar-segment--running"
                 style={{ flexGrow: summary.runningCount }}
               />
             ) : null}
@@ -273,11 +273,9 @@ const CompactChildState = memo(function CompactChildState({
           {summary.tasks.map((task, index) => (
             <span
               key={task.id}
-              className={`chat-workspace-strip__compact-cell chat-workspace-strip__compact-cell--${task.status}${
-                task.status === "running" ? " anim-pulse" : ""
-              }`}
-              // Staggers the mount fade/scale-in so a burst of freshly
-              // spawned agents ripples in instead of popping as a block.
+              className={`chat-workspace-strip__compact-cell chat-workspace-strip__compact-cell--${task.status}`}
+              // Stable task identity keeps state changes on this final grid
+              // slot; only the local paint fades/pulses, never its position.
               style={{ "--cell-order": index } as CSSProperties}
               title={compactTaskTooltip(task)}
             />

@@ -9,7 +9,7 @@
  * The pill does double duty:
  *   • Idle, it's the entry point to search — a search icon + "Search".
  *   • While Stella has background work in flight it shows a simple,
- *     shimmering count of how many things are running ("Task in progress",
+ *     shimmering count of how many top-level work units are running ("1 task in progress",
  *     "2 tasks in progress", …) — the per-task detail lives in the inline
  *     chat cards and the tray, so the ambient pill just tallies. When work
  *     settles it briefly shows a finished / couldn't-finish / stopped state
@@ -35,7 +35,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import {
-  isActivityFeedTask,
+  deriveTopLevelActivityWorkUnits,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import {
@@ -59,6 +59,17 @@ const STATUS_FALLBACK: Record<Exclude<PillState, "idle">, string> = {
   done: "Finished",
   error: "Couldn’t finish",
   canceled: "Stopped",
+};
+
+export const getActivityPillLabel = (
+  state: PillState,
+  runningCount: number,
+): string => {
+  if (state === "idle") return "Search";
+  if (state === "running") {
+    return `${runningCount} ${runningCount === 1 ? "task" : "tasks"} in progress`;
+  }
+  return STATUS_FALLBACK[state];
 };
 
 export const getDisplayedActivityPillState = (
@@ -94,15 +105,16 @@ function useActivityPillState(tasks: TaskItem[]): {
   state: PillState;
   runningCount: number;
 } {
-  // `conversation.tasks` is already activity-feed filtered, but re-assert
-  // it here so the pill can never tally an internal helper agent the
-  // sidebar's Activity section would hide.
-  const runningTasks = useMemo(
-    () =>
-      tasks.filter(
-        (task) => task.status === "running" && isActivityFeedTask(task),
-      ),
+  // Count the same durable top-level work units the Activity hierarchy shows:
+  // standalone agents, Manager roots, and direct sibling groups. Owned
+  // descendants never inflate the ambient pill count.
+  const workUnits = useMemo(
+    () => deriveTopLevelActivityWorkUnits(tasks),
     [tasks],
+  );
+  const runningTasks = useMemo(
+    () => workUnits.filter((unit) => unit.status === "running"),
+    [workUnits],
   );
   const runningKey = useMemo(
     () => runningTasks.map((task) => task.id).join("\u0000"),
@@ -115,8 +127,8 @@ function useActivityPillState(tasks: TaskItem[]): {
   const settleTimerRef = useRef<number | null>(null);
   // Read fresh statuses at the falling edge without re-arming the effect on
   // every task tick (only running-set changes drive a transition).
-  const tasksRef = useRef(tasks);
-  tasksRef.current = tasks;
+  const workUnitsRef = useRef(workUnits);
+  workUnitsRef.current = workUnits;
 
   useEffect(() => {
     const prev = prevRunningIdsRef.current;
@@ -130,9 +142,9 @@ function useActivityPillState(tasks: TaskItem[]): {
       setState("running");
     } else if (prev.length > 0) {
       // Work just wound down — settle into the terminal outcome of the
-      // threads that were running, then revert to idle after the dwell.
+      // top-level units that were running, then revert to idle after the dwell.
       const statusById = new Map(
-        tasksRef.current.map((task) => [task.id, task.status]),
+        workUnitsRef.current.map((unit) => [unit.id, unit.status]),
       );
       let anyError = false;
       let anyDone = false;
@@ -263,20 +275,7 @@ const ActivityPillBody = memo(function ActivityPillBody({
   open: boolean;
   onOpenChange: (next: boolean) => void;
 }) {
-  let label: string;
-  if (state === "idle") {
-    label = "Search";
-  } else if (state === "running") {
-    // A single task reads as a generic "in progress" — no count, no
-    // description (the per-task detail lives in the inline cards / tray).
-    // Several at once earn a tally in the same phrasing.
-    label =
-      runningCount > 1
-        ? `${runningCount} tasks in progress`
-        : STATUS_FALLBACK.running;
-  } else {
-    label = STATUS_FALLBACK[state];
-  }
+  const label = getActivityPillLabel(state, runningCount);
 
   const labelNode: ReactNode =
     state === "running" ? (

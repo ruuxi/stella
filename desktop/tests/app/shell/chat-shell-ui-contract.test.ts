@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { getContextSuggestionLabel } from "@/app/chat/ComposerAddMenu";
 import {
+  getActivityPillLabel,
   getDisplayedActivityPillState,
   shouldTrayHoldSearchLayout,
 } from "@/app/chat/ComposerActivityPill";
@@ -21,6 +22,37 @@ describe("chat shell UI contracts", () => {
     expect(getDisplayedActivityPillState("running", false)).toBe("running");
     expect(getDisplayedActivityPillState("running", true)).toBe("idle");
     expect(getDisplayedActivityPillState("done", true)).toBe("done");
+    expect(getActivityPillLabel("running", 1)).toBe("1 task in progress");
+    expect(getActivityPillLabel("running", 2)).toBe("2 tasks in progress");
+  });
+
+  it("keeps manager grid cells stationary and their pulse locally scoped", () => {
+    const sidebar = fs.readFileSync(
+      path.join(SOURCE_ROOT, "shell/LeftSidebarSections.tsx"),
+      "utf8",
+    );
+    const css = fs.readFileSync(
+      path.join(SOURCE_ROOT, "app/chat/chat-workspace-strip.css"),
+      "utf8",
+    );
+
+    // `anim-pulse` belongs to ConnectHeroAnimation and scales around its SVG
+    // coordinate transform-origin. Reusing it on a 4px cell caused the dot to
+    // travel diagonally; Activity must use only its namespaced animation.
+    expect(sidebar).not.toMatch(/compact-(?:cell|bar-segment)[^\n]*anim-pulse/);
+    expect(sidebar).toContain("key={task.id}");
+
+    const cellIn = css.match(
+      /@keyframes chat-workspace-strip__compact-cell-in\s*\{([\s\S]*?)\n\}/,
+    );
+    expect(cellIn?.[1]).toContain("opacity: 0");
+    expect(cellIn?.[1]).not.toContain("transform");
+    expect(css).toContain(
+      ".chat-workspace-strip__compact-cell--running::before",
+    );
+    expect(css).toMatch(
+      /\.chat-workspace-strip__compact-cell\s*\{[\s\S]*?animation: chat-workspace-strip__compact-cell-in/,
+    );
   });
 
   it("labels app and browser context options for the + menu", () => {

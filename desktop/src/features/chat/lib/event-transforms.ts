@@ -118,6 +118,8 @@ export type TaskItem = {
   description: string
   agentType: string
   status: TaskLifecycleStatus
+  /** Durable execution epoch for retry/resume deduplication. */
+  attemptGeneration?: number
   /** Root run that owns the thread's latest lifecycle. */
   runId?: string
   anchorTurnId?: string
@@ -235,6 +237,10 @@ export function buildActivityTasks(
         description: observedDescription ?? record.description,
         agentType: record.agentType,
         status,
+        attemptGeneration:
+          (latestAttemptOwns
+            ? candidateDecoration?.attemptGeneration
+            : undefined) ?? record.attemptGeneration,
         runId:
           (latestAttemptOwns ? candidateDecoration?.runId : undefined) ??
           record.rootRunId,
@@ -713,6 +719,56 @@ export const activityRowKey = (row: ActivityRow): string =>
     : row.kind === 'group'
       ? `group:${row.group.groupKey}`
       : `hierarchy:${row.hierarchy.owner.id}`
+
+export type TopLevelActivityWorkUnit = {
+  id: string
+  status: TaskLifecycleStatus
+}
+
+/**
+ * The units represented by top-level Activity rows. A Manager hierarchy is
+ * governed by its owner rather than its descendants: owned children never
+ * become extra ambient work, even if one remains active while the Manager is
+ * paused. Direct sibling groups use their one visible group row and aggregate
+ * status. Missing/detached parents already fail open as standalone rows in
+ * `groupActivityTasks`, so adoption and detachment update the count naturally.
+ */
+export const deriveTopLevelActivityWorkUnits = (
+  tasks: readonly TaskItem[],
+): TopLevelActivityWorkUnit[] => {
+  const latestById = new Map<string, TaskItem>()
+  for (const task of tasks) {
+    if (!isActivityFeedTask(task)) continue
+    const current = latestById.get(task.id)
+    if (
+      !current ||
+      (task.attemptGeneration ?? 0) > (current.attemptGeneration ?? 0) ||
+      ((task.attemptGeneration ?? 0) ===
+        (current.attemptGeneration ?? 0) &&
+        (task.lastUpdatedAtMs > current.lastUpdatedAtMs ||
+          (task.lastUpdatedAtMs === current.lastUpdatedAtMs &&
+            task.startedAtMs > current.startedAtMs)))
+    ) {
+      latestById.set(task.id, task)
+    }
+  }
+  return groupActivityTasks([...latestById.values()]).map((row) => ({
+    id: activityRowKey(row),
+    status:
+      row.kind === 'task'
+        ? row.task.status
+        : row.kind === 'group'
+          ? row.group.status
+          : row.hierarchy.owner.status,
+  }))
+}
+
+export const countActiveTopLevelActivityWorkUnits = (
+  tasks: readonly TaskItem[],
+): number =>
+  deriveTopLevelActivityWorkUnits(tasks).filter(
+    (unit) => unit.status === 'running',
+  ).length
 
 export const getActivityRowStatus = (row: ActivityRow): TaskLifecycleStatus =>
   row.kind === 'task'

@@ -3,6 +3,8 @@ import {
   COMPACT_ACTIVITY_CELL_LIMIT,
   TASK_COMPLETION_INDICATOR_MS,
   buildActivityTasks,
+  countActiveTopLevelActivityWorkUnits,
+  deriveTopLevelActivityWorkUnits,
   fallbackTaskDescription,
   isActivityFeedTask,
   extractStepsFromEvents,
@@ -339,6 +341,148 @@ describe("manager ownership hierarchy", () => {
     expect(
       flattenActivityTasks(hierarchy.hierarchy.children).map((item) => item.id),
     ).toEqual(["child", "grandchild", "done"]);
+  });
+});
+
+describe("top-level Activity work-unit counts", () => {
+  const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
+    description: overrides.id,
+    agentType: "general",
+    status: "running",
+    startedAtMs: 100,
+    lastUpdatedAtMs: 100,
+    ...overrides,
+  });
+
+  it("counts a direct General plus a Manager with an active child as two", () => {
+    const tasks = [
+      task({ id: "direct" }),
+      task({ id: "manager", agentType: "manager" }),
+      task({ id: "managed-child", parentAgentId: "manager" }),
+    ];
+    expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(2);
+    expect(deriveTopLevelActivityWorkUnits(tasks)).toEqual([
+      { id: "task:direct", status: "running" },
+      { id: "hierarchy:manager", status: "running" },
+    ]);
+  });
+
+  it("counts one Manager with eight descendants as one", () => {
+    const tasks = [
+      task({ id: "manager", agentType: "manager" }),
+      ...Array.from({ length: 8 }, (_, index) =>
+        task({ id: `child-${index}`, parentAgentId: "manager" }),
+      ),
+    ];
+    expect(countActiveTopLevelActivityWorkUnits(tasks)).toBe(1);
+  });
+
+  it("counts two direct agents plus one Manager as three", () => {
+    expect(
+      countActiveTopLevelActivityWorkUnits([
+        task({ id: "direct-a" }),
+        task({ id: "direct-b" }),
+        task({ id: "manager", agentType: "manager" }),
+      ]),
+    ).toBe(3);
+  });
+
+  it("does not promote an active child beneath a paused Manager", () => {
+    expect(
+      countActiveTopLevelActivityWorkUnits([
+        task({ id: "manager", agentType: "manager", status: "canceled" }),
+        task({ id: "child", parentAgentId: "manager" }),
+      ]),
+    ).toBe(0);
+  });
+
+  it("counts a nested Manager tree as one top-level unit", () => {
+    expect(
+      countActiveTopLevelActivityWorkUnits([
+        task({ id: "root-manager", agentType: "manager" }),
+        task({
+          id: "nested-manager",
+          agentType: "manager",
+          parentAgentId: "root-manager",
+        }),
+        task({ id: "leaf", parentAgentId: "nested-manager" }),
+      ]),
+    ).toBe(1);
+  });
+
+  it("counts one active direct group block instead of every member", () => {
+    expect(
+      countActiveTopLevelActivityWorkUnits([
+        task({ id: "group-a", groupKey: "grp-1" }),
+        task({ id: "group-b", groupKey: "grp-1" }),
+        task({
+          id: "group-c",
+          groupKey: "grp-1",
+          status: "completed",
+        }),
+      ]),
+    ).toBe(1);
+  });
+
+  it("updates across completion, resume, adoption, and detachment", () => {
+    const manager = task({ id: "manager", agentType: "manager" });
+    const direct = task({ id: "agent" });
+    expect(countActiveTopLevelActivityWorkUnits([manager, direct])).toBe(2);
+
+    const completed = { ...direct, status: "completed" as const };
+    expect(countActiveTopLevelActivityWorkUnits([manager, completed])).toBe(1);
+
+    const resumed = { ...completed, status: "running" as const };
+    expect(countActiveTopLevelActivityWorkUnits([manager, resumed])).toBe(2);
+
+    const adopted = { ...resumed, parentAgentId: manager.id };
+    expect(countActiveTopLevelActivityWorkUnits([manager, adopted])).toBe(1);
+
+    const pausedManager = { ...manager, status: "canceled" as const };
+    expect(
+      countActiveTopLevelActivityWorkUnits([pausedManager, adopted]),
+    ).toBe(0);
+    expect(
+      countActiveTopLevelActivityWorkUnits([
+        pausedManager,
+        { ...adopted, parentAgentId: undefined },
+      ]),
+    ).toBe(1);
+  });
+
+  it("deduplicates stale retry generations by authoritative attempt and update order", () => {
+    const staleRunning = task({
+      id: "retried",
+      attemptGeneration: 4,
+      lastUpdatedAtMs: 900,
+    });
+    const latestCompleted = task({
+      id: "retried",
+      status: "completed",
+      attemptGeneration: 5,
+      lastUpdatedAtMs: 1_000,
+    });
+    expect(
+      countActiveTopLevelActivityWorkUnits([
+        latestCompleted,
+        staleRunning,
+        staleRunning,
+      ]),
+    ).toBe(0);
+
+    const latestResumed = {
+      ...latestCompleted,
+      status: "running" as const,
+      attemptGeneration: 6,
+      lastUpdatedAtMs: 1_100,
+    };
+    expect(
+      countActiveTopLevelActivityWorkUnits([
+        latestCompleted,
+        staleRunning,
+        latestResumed,
+      ]),
+    ).toBe(1);
   });
 });
 

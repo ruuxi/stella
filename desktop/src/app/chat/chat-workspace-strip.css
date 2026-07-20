@@ -350,30 +350,36 @@
   width: 4px;
   height: 4px;
   flex: 0 0 4px;
-  border-radius: 50%;
-  background: color-mix(in oklch, var(--foreground) 14%, transparent);
+  /* This outer node owns final grid geometry and never transforms. Paint is
+     isolated on ::before so no global/layout animation can move the cell. */
   animation: chat-workspace-strip__compact-cell-in 240ms ease-out backwards;
   animation-delay: calc(var(--cell-order, 0) * 14ms);
+}
+
+.chat-workspace-strip__compact-cell::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--foreground) 14%, transparent);
   transition: background-color 250ms ease;
 }
 
-.chat-workspace-strip__compact-cell--completed {
+.chat-workspace-strip__compact-cell--completed::before {
   background: color-mix(in oklch, var(--foreground) 30%, transparent);
 }
 
-.chat-workspace-strip__compact-cell--running {
+.chat-workspace-strip__compact-cell--running::before {
   background: var(--foreground);
-  animation:
-    chat-workspace-strip__compact-cell-in 240ms ease-out backwards,
-    chat-workspace-strip__compact-pulse 1.8s ease-in-out infinite;
-  animation-delay: calc(var(--cell-order, 0) * 14ms);
+  animation: chat-workspace-strip__compact-pulse 1.8s ease-in-out infinite;
 }
 
-.chat-workspace-strip__compact-cell--error {
+.chat-workspace-strip__compact-cell--error::before {
   background: var(--text-error);
 }
 
-.chat-workspace-strip__compact-cell--canceled {
+.chat-workspace-strip__compact-cell--canceled::before {
   background: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
@@ -468,13 +474,12 @@
 @keyframes chat-workspace-strip__compact-cell-in {
   from {
     opacity: 0;
-    transform: scale(0.4);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .chat-workspace-strip__compact-cell,
-  .chat-workspace-strip__compact-cell--running,
+  .chat-workspace-strip__compact-cell--running::before,
   .chat-workspace-strip__compact-bar-segment--running {
     animation: none;
   }
@@ -482,6 +487,7 @@
   .chat-workspace-strip__compact-cells,
   .chat-workspace-strip__compact-progress,
   .chat-workspace-strip__compact-cell,
+  .chat-workspace-strip__compact-cell::before,
   .chat-workspace-strip__compact-bar-segment {
     transition: none;
   }
