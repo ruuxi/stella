@@ -8,17 +8,166 @@ import { AGENT_IDS } from "../../../../runtime/contracts/agent-runtime.js";
 
 const MOUNT_GRACE_MS = 2_000;
 
-type ActivityNotificationKind = "started" | "completed" | "failed";
+export type ActivityNotificationKind = "started" | "completed" | "failed";
 
-type TaskNotificationRecord = {
+export type TaskNotificationRecord = {
+  attemptGeneration?: number;
   observedRunning: boolean;
   eligibleForStartedNotification: boolean;
   startedNotified: boolean;
   terminalNotified: boolean;
 };
 
-const shouldNotifyForTask = (task: TaskItem): boolean =>
-  task.agentType !== AGENT_IDS.ORCHESTRATOR;
+const isWellFormedThreadId = (value: string): boolean =>
+  value.length > 0 && value.trim() === value;
+
+/**
+ * Select the durable Activity rows that own mobile lifecycle notifications.
+ *
+ * The Activity feed intentionally omits the Orchestrator, so a General
+ * agent's unresolved first parent is its normal standalone boundary. Once an
+ * Activity parent has resolved, however, broken or cyclic ancestry is unsafe:
+ * suppress the row rather than risk notifying for Manager-owned work.
+ */
+export function selectActivityNotificationTasks(
+  tasks: readonly TaskItem[],
+): TaskItem[] {
+  const taskById = new Map<string, TaskItem>();
+  const duplicateIds = new Set<string>();
+  for (const task of tasks) {
+    if (taskById.has(task.id)) duplicateIds.add(task.id);
+    else taskById.set(task.id, task);
+  }
+
+  return tasks.filter((task) => {
+    if (!isWellFormedThreadId(task.id) || duplicateIds.has(task.id)) {
+      return false;
+    }
+    if (task.agentType === AGENT_IDS.MANAGER) {
+      return task.parentAgentId === undefined;
+    }
+    if (task.agentType !== AGENT_IDS.GENERAL) return false;
+
+    let parentId = task.parentAgentId;
+    if (parentId === undefined) return true;
+    if (!isWellFormedThreadId(parentId)) return false;
+
+    const visited = new Set([task.id]);
+    let resolvedActivityParent = false;
+    while (parentId) {
+      if (visited.has(parentId) || duplicateIds.has(parentId)) return false;
+      visited.add(parentId);
+
+      const parent = taskById.get(parentId);
+      if (!parent) {
+        return !resolvedActivityParent;
+      }
+      resolvedActivityParent = true;
+      if (parent.agentType === AGENT_IDS.MANAGER) return false;
+      if (parent.agentType !== AGENT_IDS.GENERAL) return false;
+
+      parentId = parent.parentAgentId;
+      if (parentId === undefined) return true;
+      if (!isWellFormedThreadId(parentId)) return false;
+    }
+
+    return false;
+  });
+}
+
+export function collectActivityNotificationKinds(
+  tasks: readonly TaskItem[],
+  records: Map<string, TaskNotificationRecord>,
+  mountedAtMs: number,
+): ActivityNotificationKind[] {
+  const kinds: ActivityNotificationKind[] = [];
+  const seenTaskIds = new Set<string>();
+
+  for (const task of tasks) {
+    seenTaskIds.add(task.id);
+    let record = records.get(task.id);
+
+    if (!record) {
+      record = {
+        attemptGeneration: task.attemptGeneration,
+        observedRunning: task.status === "running",
+        eligibleForStartedNotification:
+          task.startedAtMs >= mountedAtMs - MOUNT_GRACE_MS,
+        startedNotified: false,
+        terminalNotified: false,
+      };
+      records.set(task.id, record);
+    } else {
+      const recordedGeneration = record.attemptGeneration;
+      const observedGeneration = task.attemptGeneration;
+      if (
+        recordedGeneration !== undefined &&
+        (observedGeneration === undefined ||
+          observedGeneration < recordedGeneration)
+      ) {
+        continue;
+      }
+      if (
+        recordedGeneration !== undefined &&
+        observedGeneration !== undefined &&
+        observedGeneration > recordedGeneration
+      ) {
+        record = {
+          attemptGeneration: observedGeneration,
+          observedRunning: task.status === "running",
+          // The mounted bridge observed this generation advance, so it owns
+          // the new attempt's start even though the thread's durable
+          // startedAtMs still describes its first-ever attempt.
+          eligibleForStartedNotification: true,
+          startedNotified: false,
+          terminalNotified: false,
+        };
+        records.set(task.id, record);
+      } else if (
+        recordedGeneration === undefined &&
+        observedGeneration !== undefined
+      ) {
+        // Attaching a generation to an already-observed legacy snapshot does
+        // not by itself prove that a new attempt began.
+        record.attemptGeneration = observedGeneration;
+      }
+    }
+
+    if (task.status === "running") {
+      record.observedRunning = true;
+      if (
+        record.eligibleForStartedNotification &&
+        !record.startedNotified
+      ) {
+        record.startedNotified = true;
+        kinds.push("started");
+      }
+      continue;
+    }
+
+    const terminalAtMs =
+      task.completedAtMs ?? task.lastUpdatedAtMs ?? task.startedAtMs;
+    const eligibleForTerminalNotification =
+      record.observedRunning ||
+      terminalAtMs >= mountedAtMs - MOUNT_GRACE_MS;
+
+    if (
+      !record.terminalNotified &&
+      eligibleForTerminalNotification &&
+      task.status !== "canceled"
+    ) {
+      record.terminalNotified = true;
+      kinds.push(task.status === "completed" ? "completed" : "failed");
+    }
+  }
+
+  for (const taskId of records.keys()) {
+    if (seenTaskIds.has(taskId)) continue;
+    records.delete(taskId);
+  }
+
+  return kinds;
+}
 
 export function MobileActivityNotificationsBridge() {
   const { hasConnectedAccount } = useAuthSessionState();
@@ -30,7 +179,7 @@ export function MobileActivityNotificationsBridge() {
   const recordsRef = useRef<Map<string, TaskNotificationRecord>>(new Map());
 
   const allTasks = useMemo(
-    () => chat.conversation.tasks.filter(shouldNotifyForTask),
+    () => selectActivityNotificationTasks(chat.conversation.tasks),
     [chat.conversation.tasks],
   );
 
@@ -46,54 +195,13 @@ export function MobileActivityNotificationsBridge() {
       return;
     }
 
-    const seenTaskIds = new Set<string>();
-
-    for (const task of allTasks) {
-      seenTaskIds.add(task.id);
-      let record = recordsRef.current.get(task.id);
-
-      if (!record) {
-        record = {
-          observedRunning: task.status === "running",
-          eligibleForStartedNotification:
-            task.startedAtMs >= mountedAtMsRef.current - MOUNT_GRACE_MS,
-          startedNotified: false,
-          terminalNotified: false,
-        };
-        recordsRef.current.set(task.id, record);
-      }
-
-      if (task.status === "running") {
-        record.observedRunning = true;
-        if (
-          record.eligibleForStartedNotification &&
-          !record.startedNotified
-        ) {
-          record.startedNotified = true;
-          send("started");
-        }
-        continue;
-      }
-
-      const terminalAtMs =
-        task.completedAtMs ?? task.lastUpdatedAtMs ?? task.startedAtMs;
-      const eligibleForTerminalNotification =
-        record.observedRunning ||
-        terminalAtMs >= mountedAtMsRef.current - MOUNT_GRACE_MS;
-
-      if (
-        !record.terminalNotified &&
-        eligibleForTerminalNotification &&
-        task.status !== "canceled"
-      ) {
-        record.terminalNotified = true;
-        send(task.status === "completed" ? "completed" : "failed");
-      }
-    }
-
-    for (const taskId of recordsRef.current.keys()) {
-      if (seenTaskIds.has(taskId)) continue;
-      recordsRef.current.delete(taskId);
+    const kinds = collectActivityNotificationKinds(
+      allTasks,
+      recordsRef.current,
+      mountedAtMsRef.current,
+    );
+    for (const kind of kinds) {
+      send(kind);
     }
   }, [allTasks, hasConnectedAccount, sendActivityNotification]);
 
