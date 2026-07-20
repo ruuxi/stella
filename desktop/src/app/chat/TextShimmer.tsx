@@ -55,6 +55,12 @@ export function TextShimmer({
     if (!shouldAnimate || !sweepRef.current || !sweepTextRef.current) return;
     const sweep = sweepRef.current;
     const sweepText = sweepTextRef.current;
+    if (
+      typeof sweep.animate !== "function" ||
+      typeof sweepText.animate !== "function"
+    ) {
+      return;
+    }
     const sweepDuration = Math.min(900, Math.max(650, duration * 0.35));
     const restDuration = Math.max(3000, duration * 1.5);
     let stopped = false;
