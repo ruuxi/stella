@@ -75,6 +75,11 @@ afterEach(async () => {
 });
 
 describe("ModelRuntime", () => {
+  it("does not register retired Google subscription OAuth providers", () => {
+    expect(getOAuthProvider("google-gemini-cli")).toBeUndefined();
+    expect(getOAuthProvider("google-antigravity")).toBeUndefined();
+  });
+
   it("uses the platform shell contract for models.json commands", () => {
     expect(
       getModelConfigCommandInvocation("echo configured-token", {

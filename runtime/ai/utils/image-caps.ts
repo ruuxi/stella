@@ -178,11 +178,7 @@ const isOpenAIFamily = (provider: string, api: string): boolean =>
   api === "azure-openai-responses";
 
 const isGoogleFamily = (provider: string, api: string): boolean =>
-  provider === "google" ||
-  provider === "google-gemini-cli" ||
-  provider === "google-antigravity" ||
-  api === "google-generative-ai" ||
-  api === "google-gemini-cli";
+  provider === "google" || api === "google-generative-ai";
 
 /**
  * Resolve the resize/encode caps for the given target. Falls back to a safe

@@ -226,6 +226,10 @@ const DEFAULT_PREFERENCES: LocalPreferences = {
 };
 
 const LEGACY_STELLA_DEFAULT_MODEL = "stella/default";
+const RETIRED_MODEL_PROVIDERS = new Set([
+  "google-antigravity",
+  "google-gemini-cli",
+]);
 
 let _cached: LocalPreferences | null = null;
 let _cachedMtime: number | null = null;
@@ -641,6 +645,9 @@ const normalizeModelPreferenceMap = (
     const trimmedModel = typeof model === "string" ? model.trim() : "";
     if (!trimmedAgentType || !trimmedModel) continue;
     if (trimmedModel === LEGACY_STELLA_DEFAULT_MODEL) continue;
+    if (RETIRED_MODEL_PROVIDERS.has(trimmedModel.split("/", 1)[0] ?? "")) {
+      continue;
+    }
     normalized[trimmedAgentType] = trimmedModel;
   }
   return normalized;

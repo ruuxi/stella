@@ -24,6 +24,10 @@ import {
 
 const LLM_OAUTH_CREDENTIALS_FILE = "llm_oauth_credentials.json";
 const LLM_OAUTH_SCOPE_PREFIX = "llm-oauth-credential";
+const RETIRED_LLM_OAUTH_PROVIDERS = new Set([
+  "google-antigravity",
+  "google-gemini-cli",
+]);
 
 type StoredLlmOAuthCredentialRecord = {
   provider: string;
@@ -68,7 +72,7 @@ const readCredentialFile = (
       parsed.credentials &&
       typeof parsed.credentials === "object"
     ) {
-      return parsed;
+      return pruneRetiredLlmOAuthCredentials(stellaAppDir, parsed);
     }
   } catch {
     // Fall through to empty store.
@@ -87,6 +91,53 @@ const writeCredentialFile = (
   const filePath = getLlmOAuthCredentialStorePath(stellaAppDir);
   ensurePrivateDirSync(path.dirname(filePath));
   writePrivateFileSync(filePath, JSON.stringify(payload, null, 2));
+};
+
+const pruneRetiredLlmOAuthCredentials = (
+  stellaAppDir: string,
+  payload: StoredLlmOAuthCredentialFile,
+): StoredLlmOAuthCredentialFile => {
+  const removed: Array<{
+    provider: string;
+    record: StoredLlmOAuthCredentialRecord;
+  }> = [];
+  const credentials = { ...payload.credentials };
+
+  for (const [key, record] of Object.entries(credentials)) {
+    const provider = normalizeProvider(
+      typeof record.provider === "string" ? record.provider : key,
+    );
+    if (!RETIRED_LLM_OAUTH_PROVIDERS.has(provider)) continue;
+    delete credentials[key];
+    removed.push({ provider, record });
+  }
+
+  if (removed.length === 0) return payload;
+
+  const next: StoredLlmOAuthCredentialFile = {
+    ...payload,
+    credentials,
+  };
+  try {
+    writeCredentialFile(stellaAppDir, next);
+  } catch {
+    // Keep the retired providers unavailable in memory and retry the durable
+    // cleanup the next time the credential store is read.
+    return next;
+  }
+
+  for (const { provider, record } of removed) {
+    try {
+      deleteProtectedValue(
+        credentialScope(provider),
+        record.valueProtected,
+      );
+    } catch {
+      // The credential record is already gone, so a protected-storage cleanup
+      // failure cannot make the retired provider usable again.
+    }
+  }
+  return next;
 };
 
 const decodeCredentials = (
@@ -125,6 +176,12 @@ export const listLocalLlmOAuthCredentials = (
       updatedAt: record.updatedAt,
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
+};
+
+export const cleanupRetiredLocalLlmOAuthCredentials = (
+  stellaAppDir: string,
+): void => {
+  readCredentialFile(stellaAppDir);
 };
 
 export const hasLocalLlmOAuthCredential = (

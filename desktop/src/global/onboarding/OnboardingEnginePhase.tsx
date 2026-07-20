@@ -39,7 +39,6 @@ const BYOK_PROVIDER_KEYS: readonly string[] = [
   "cerebras",
   "mistral",
   "github-copilot",
-  "google-gemini-cli",
   "fal",
 ];
 

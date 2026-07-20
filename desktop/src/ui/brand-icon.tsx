@@ -18,8 +18,6 @@ import {
 /** Provider key → brand glyph key. Unlisted keys use the key itself. */
 const BRAND_KEY_ALIASES: Record<string, string> = {
   "openai-codex": "openai",
-  "google-gemini-cli": "gemini",
-  "google-antigravity": "gemini",
   "kimi-coding": "kimi",
   "vercel-ai-gateway": "vercel",
   "github-copilot": "githubcopilot",

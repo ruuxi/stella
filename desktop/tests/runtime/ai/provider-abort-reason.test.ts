@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { streamAnthropic } from "../../../../runtime/ai/providers/anthropic.js";
 import { streamGoogle } from "../../../../runtime/ai/providers/google.js";
-import { streamGoogleGeminiCli } from "../../../../runtime/ai/providers/google-gemini-cli.js";
 import type { AssistantMessageEvent, Context, Model } from "../../../../runtime/ai/types.js";
 import { anomalousStreamStopError, providerAbortedStopMessage } from "../../../../runtime/ai/utils/provider-stop.js";
 import { classifyAgentRunFailure } from "../../../../runtime/kernel/agent-runtime/agent-run-retry.js";
@@ -109,60 +108,6 @@ describe("provider abort reason surfacing (anthropic)", () => {
 	});
 });
 
-describe("provider abort reason surfacing (google-gemini-cli)", () => {
-	afterEach(() => {
-		vi.unstubAllGlobals();
-	});
-
-	it("captures the raw SAFETY finish reason from the Cloud Code Assist stream", async () => {
-		const encoder = new TextEncoder();
-		const sse = [
-			`data: ${JSON.stringify({
-				response: {
-					candidates: [
-						{
-							content: { parts: [{ text: "partial reply before the filter" }] },
-							finishReason: "SAFETY",
-						},
-					],
-					usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 2 },
-				},
-			})}`,
-			"",
-			"",
-		].join("\n");
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async () =>
-				new Response(encoder.encode(sse), {
-					status: 200,
-					headers: { "content-type": "text/event-stream" },
-				}),
-			),
-		);
-
-		const geminiModel: Model<"google-gemini-cli"> = {
-			...(model as unknown as Model<"google-gemini-cli">),
-			id: "gemini-3-pro",
-			api: "google-gemini-cli",
-			provider: "google-gemini-cli",
-			baseUrl: "https://cloudcode.example",
-		};
-		const stream = streamGoogleGeminiCli(geminiModel, context, {
-			apiKey: JSON.stringify({ token: "test-token", projectId: "proj" }),
-		});
-		const events: AssistantMessageEvent[] = [];
-		for await (const event of stream) events.push(event);
-
-		const error = events.find((event) => event.type === "error") as
-			| Extract<AssistantMessageEvent, { type: "error" }>
-			| undefined;
-		expect(error).toBeDefined();
-		expect(error!.error.errorMessage).toContain('stop reason: "SAFETY"');
-		expect(error!.error.errorMessage).toMatch(/refusal\/safety\/content-filter/i);
-	});
-});
-
 describe("provider-stop helpers", () => {
 	it("providerAbortedStopMessage uses safety wording for safety-class stop reasons", () => {
 		const message = providerAbortedStopMessage("sensitive");
@@ -237,43 +182,5 @@ describe("google prompt-block surfacing", () => {
 			category: "non_retryable",
 			retryable: false,
 		});
-	});
-
-	it("surfaces promptFeedback.blockReason from Cloud Code Assist without empty-stream retries", async () => {
-		const encoder = new TextEncoder();
-		const sse = [
-			`data: ${JSON.stringify({
-				response: {
-					promptFeedback: { blockReason: "SAFETY" },
-				},
-			})}`,
-			"",
-			"",
-		].join("\n");
-		const fetchMock = vi.fn(async () =>
-			new Response(encoder.encode(sse), {
-				status: 200,
-				headers: { "content-type": "text/event-stream" },
-			}),
-		);
-		vi.stubGlobal("fetch", fetchMock);
-
-		const geminiModel: Model<"google-gemini-cli"> = {
-			...(model as unknown as Model<"google-gemini-cli">),
-			id: "gemini-3-pro",
-			api: "google-gemini-cli",
-			provider: "google-gemini-cli",
-			baseUrl: "https://cloudcode.example",
-		};
-		const result = await streamGoogleGeminiCli(geminiModel, context, {
-			apiKey: JSON.stringify({ token: "test-token", projectId: "proj" }),
-		}).result();
-
-		expect(result.stopReason).toBe("error");
-		expect(result.errorMessage).toContain('block reason: "SAFETY"');
-		expect(isProviderContentAbortMessage(result.errorMessage)).toBe(true);
-		// A blocked prompt is deterministic: it must not burn empty-stream
-		// retries replaying the same blocked request.
-		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 });

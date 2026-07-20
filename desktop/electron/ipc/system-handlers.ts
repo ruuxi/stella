@@ -54,6 +54,7 @@ import {
   saveLocalLlmCredential,
 } from "../../../runtime/kernel/storage/llm-credentials.js";
 import {
+  cleanupRetiredLocalLlmOAuthCredentials,
   deleteLocalLlmOAuthCredential,
   getLocalLlmOAuthApiKey,
   listLocalLlmOAuthCredentials,
@@ -865,6 +866,10 @@ const asSocialSessionStatus = (value: unknown): RuntimeSocialSessionStatus => {
 
 export const registerSystemHandlers = (options: SystemHandlersOptions) => {
   const activeOAuthLogins = new Map<string, AbortController>();
+  const stellaAppDir = options.getStellaAppDir();
+  if (stellaAppDir) {
+    cleanupRetiredLocalLlmOAuthCredentials(stellaAppDir);
+  }
   ipcMain.handle("device:getId", () => options.getDeviceId());
 
   ipcMain.handle(IPC_APP_QUIT_FOR_RESTART, (event) => {

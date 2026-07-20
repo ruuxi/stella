@@ -9,6 +9,11 @@ import {
   resolveRealtimeVoiceId,
   updateLocalModelPreferences,
 } from "../../../../runtime/kernel/preferences/local-preferences.js";
+import {
+  cleanupRetiredLocalLlmOAuthCredentials,
+  getLlmOAuthCredentialStorePath,
+  listLocalLlmOAuthCredentials,
+} from "../../../../runtime/kernel/storage/llm-oauth-credentials.js";
 import { createSyncTempDirTracker } from "../../helpers/temp.js";
 
 const tempDirs = createSyncTempDirTracker();
@@ -103,6 +108,81 @@ describe("loadLocalPreferences", () => {
       },
     });
     expect(saved.modelOverrides).toEqual({ general: "stella/standard" });
+  });
+
+  it("drops saved model selections for retired Google subscription providers", () => {
+    const stellaDataDir = makeStellaDataDir();
+    writePreferences(stellaDataDir, {
+      defaultModels: {
+        orchestrator: "google-gemini-cli/gemini-3-pro-preview",
+        general: "stella/standard",
+      },
+      modelOverrides: {
+        orchestrator: "google-antigravity/gemini-3.1-pro-high",
+        general: "anthropic/claude-opus-4.8",
+      },
+      stellaConversationModelOverrides: {
+        orchestrator: "google-antigravity/claude-sonnet-4-6",
+        general: "stella/priority",
+      },
+    });
+
+    const loaded = loadLocalPreferences(stellaDataDir);
+    expect(loaded.defaultModels).toEqual({ general: "stella/standard" });
+    expect(loaded.modelOverrides).toEqual({
+      general: "anthropic/claude-opus-4.8",
+    });
+    expect(loaded.stellaConversationModelOverrides).toEqual({
+      general: "stella/priority",
+    });
+  });
+
+  it("removes stored OAuth records for retired Google subscription providers", () => {
+    const stellaDataDir = makeStellaDataDir();
+    fs.mkdirSync(stellaDataDir, { recursive: true });
+    fs.writeFileSync(
+      getLlmOAuthCredentialStorePath(stellaDataDir),
+      JSON.stringify({
+        version: 1,
+        credentials: {
+          "google-gemini-cli": {
+            provider: "google-gemini-cli",
+            label: "Gemini CLI",
+            valueProtected: "retired-gemini-credential",
+            createdAt: 1,
+            updatedAt: 1,
+          },
+          "google-antigravity": {
+            provider: "google-antigravity",
+            label: "Google Antigravity",
+            valueProtected: "retired-antigravity-credential",
+            createdAt: 1,
+            updatedAt: 1,
+          },
+          anthropic: {
+            provider: "anthropic",
+            label: "Anthropic",
+            valueProtected: "supported-credential",
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        },
+      }),
+    );
+
+    cleanupRetiredLocalLlmOAuthCredentials(stellaDataDir);
+    expect(listLocalLlmOAuthCredentials(stellaDataDir)).toEqual([
+      {
+        provider: "anthropic",
+        label: "Anthropic",
+        status: "active",
+        updatedAt: 1,
+      },
+    ]);
+    const persisted = JSON.parse(
+      fs.readFileSync(getLlmOAuthCredentialStorePath(stellaDataDir), "utf-8"),
+    ) as { credentials: Record<string, unknown> };
+    expect(Object.keys(persisted.credentials)).toEqual(["anthropic"]);
   });
 
   it("normalizes direct image provider preferences", () => {

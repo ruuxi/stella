@@ -82,16 +82,6 @@ export function registerBuiltInApiProviders(): void {
 	});
 
 	registerLazyApiProvider({
-		api: "google-gemini-cli",
-		load: async () => {
-			const { streamGoogleGeminiCli, streamSimpleGoogleGeminiCli } = await import(
-				"./google-gemini-cli.js"
-			);
-			return { stream: streamGoogleGeminiCli, streamSimple: streamSimpleGoogleGeminiCli };
-		},
-	});
-
-	registerLazyApiProvider({
 		api: "google-vertex",
 		load: async () => {
 			const { streamGoogleVertex, streamSimpleGoogleVertex } = await import("./google-vertex.js");
