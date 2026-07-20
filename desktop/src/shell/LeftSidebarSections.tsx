@@ -20,7 +20,7 @@ import {
   CircleDot,
   AlertCircle,
   ChevronDown,
-  MessageSquare,
+  Eye,
 } from "@/ui/icons";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
@@ -84,6 +84,7 @@ import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/scheduling";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import { AgentAssistantUpdates } from "@/shell/AgentAssistantUpdates";
+import { selectLatestAgentAssistantMessage } from "@/features/chat/lib/agent-assistant-summary";
 import "@/app/chat/chat-workspace-strip.css";
 
 // Default per-section caps. The compact strip shows a small preview; the
@@ -215,9 +216,9 @@ const compactTaskState = (task: TaskItem): string => {
 
 const compactTaskTooltip = (task: TaskItem): string => {
   const label = task.description.trim() || "Agent";
-  const detail = (task.statusText || task.outputPreview || "")
-    .trim()
-    .replace(/\s+/g, " ");
+  const detail = (
+    selectLatestAgentAssistantMessage(task.assistantMessages) ?? ""
+  ).replace(/\s+/g, " ");
   const clipped = detail.length > 120 ? `${detail.slice(0, 117)}…` : detail;
   return `${label} · ${compactTaskState(task)}${clipped ? ` — ${clipped}` : ""}`;
 };
@@ -382,9 +383,8 @@ const TaskRow = memo(function TaskRow({
   const agentUpdates = getTaskAgentUpdates(task);
   // Per-session only; resets when the row unmounts, which is fine.
   const [showAllFiles, setShowAllFiles] = useState(false);
-  // Agent-authored assistant messages replace the generated progress-summary
-  // ticker. They display only while the thread is active, matching the old
-  // live-update surface without scheduling any extra inference.
+  // Agent-authored assistant messages replace generated/tool-status summary
+  // text and remain available after completion without extra inference.
   const hasAgentUpdates = agentUpdates.length > 0;
   const managerDetail =
     task.agentType === AGENT_IDS.MANAGER
@@ -479,10 +479,10 @@ const TaskRow = memo(function TaskRow({
           type="button"
           className="chat-workspace-strip__task-attach"
           onClick={() => onSelect(task)}
-          aria-label={`Open read-only chat for ${label || "activity"}`}
-          title="Open read-only chat"
+          aria-label="View activity"
+          title="View activity"
         >
-          <MessageSquare size={14} strokeWidth={2} aria-hidden="true" />
+          <Eye size={14} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>
       {/* Always mounted so both the user toggle and the first summary/file

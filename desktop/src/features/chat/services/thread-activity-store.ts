@@ -79,7 +79,7 @@ const recordsSignature = (records: ThreadActivityRecord[]): string =>
   records
     .map(
       (record) =>
-        `${record.threadId}\u0000${record.status}\u0000${record.attemptGeneration ?? 0}\u0000${record.updatedAt}\u0000${record.description}\u0000${record.rootRunId ?? ""}\u0000${JSON.stringify(record.assistantMessages ?? [])}`,
+        `${record.threadId}\u0000${record.status}\u0000${record.attemptGeneration ?? 0}\u0000${record.updatedAt}\u0000${record.description}\u0000${record.rootRunId ?? ""}\u0000${record.assistantMessagesUpdatedSequence ?? ""}\u0000${JSON.stringify(record.assistantMessages ?? [])}`,
     )
     .join("\n");
 
@@ -113,15 +113,17 @@ const applyAssistantUpdateWatermarks = (
       Boolean(record.rootRunId) &&
       Boolean(update.rootRunId) &&
       record.rootRunId !== update.rootRunId;
-    if (
-      record.status !== "running" ||
-      updateIsOlderAttempt ||
-      conflictingRootOnSameAttempt
-    ) {
+    if (updateIsOlderAttempt || conflictingRootOnSameAttempt) {
       entry.assistantUpdates.delete(record.threadId);
       return record;
     }
-    if ((record.assistantMessagesUpdatedAt ?? 0) >= update.atMs) {
+    const recordSequence = record.assistantMessagesUpdatedSequence;
+    const updateSequence = update.atSequence;
+    const recordHasCaughtUp =
+      recordSequence !== undefined && updateSequence !== undefined
+        ? recordSequence >= updateSequence
+        : (record.assistantMessagesUpdatedAt ?? 0) >= update.atMs;
+    if (recordHasCaughtUp) {
       entry.assistantUpdates.delete(record.threadId);
       return record;
     }
@@ -129,6 +131,9 @@ const applyAssistantUpdateWatermarks = (
       ...record,
       assistantMessages: update.assistantMessages,
       assistantMessagesUpdatedAt: update.atMs,
+      ...(update.atSequence === undefined
+        ? {}
+        : { assistantMessagesUpdatedSequence: update.atSequence }),
     };
   });
 
@@ -208,7 +213,9 @@ const handleThreadActivityUpdated = (payload: ThreadActivityUpdatedPayload) => {
       !previous ||
       update.attemptGeneration > previous.attemptGeneration ||
       (update.attemptGeneration === previous.attemptGeneration &&
-        update.atMs >= previous.atMs)
+        (update.atSequence !== undefined && previous.atSequence !== undefined
+          ? update.atSequence >= previous.atSequence
+          : update.atMs >= previous.atMs))
     ) {
       entry.assistantUpdates.set(update.threadId, update);
       if (entry.snapshot.hasLoaded) {

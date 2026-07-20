@@ -70,12 +70,6 @@ const ThreadLifecycleCard = ({
       spawnedAtMs={{ [state.agentId]: state.startedAtMs }}
       descriptions={{ [state.agentId]: state.title }}
       statusTexts={state.isFollowUp ? { [state.agentId]: state.title } : {}}
-      progressTexts={
-        state.progressText ? { [state.agentId]: state.progressText } : {}
-      }
-      toolActivities={
-        state.toolActivity ? { [state.agentId]: state.toolActivity } : {}
-      }
       followUpThreadIds={state.isFollowUp ? [state.agentId] : []}
       cardId={state.cardId}
       startEventIdsByThread={{ [state.agentId]: state.startEventId }}

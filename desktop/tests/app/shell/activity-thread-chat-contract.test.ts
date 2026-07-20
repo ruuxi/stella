@@ -12,7 +12,7 @@ describe("Activity exact-thread chat UI contract", () => {
     "utf8",
   );
 
-  it("opens read-only agent chat without mutating composer context", () => {
+  it("opens exact-thread activity without mutating composer context", () => {
     const handler = source.slice(
       source.indexOf("const handleSelectTask"),
       source.indexOf("if (!hasActivity"),
@@ -21,7 +21,9 @@ describe("Activity exact-thread chat UI contract", () => {
     expect(handler).toContain("threadId: task.id");
     expect(handler).not.toContain("setChatContext");
     expect(handler).not.toContain("requestFocus");
-    expect(source).toContain("Open read-only chat for");
+    expect(source).toContain('aria-label="View activity"');
+    expect(source).toContain("<Eye");
+    expect(source).not.toContain("Open read-only chat for");
   });
 
   it("keeps the narrow last-row action and hover background inside the scroll boundary", () => {

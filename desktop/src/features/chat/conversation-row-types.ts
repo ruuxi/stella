@@ -138,10 +138,11 @@ export type AssistantRowViewModel = {
      *  this carries the follow-up's own message/description for the card title;
      *  absent for plain spawns. See `getBackgroundWork`. */
     statusTexts?: Record<string, string>;
-    /** Latest run-scoped progress narration, keyed by thread id. */
+    /** Raw run-scoped progress narration retained for event/history fidelity;
+     * summary cards intentionally do not present it. */
     progressTexts?: Record<string, string>;
-    /** Structured current tool state, used only for the inline card's
-     *  friendly subtitle. Activity-list titles remain description-only. */
+    /** Raw structured tool state retained for event/history fidelity;
+     * assistant-summary surfaces intentionally do not present it. */
     toolActivities?: Record<string, TaskToolActivity>;
     /** Threads on this card that are `send_input` follow-ups (an update to an
      *  already-spawned thread) rather than fresh spawns — drives the distinct

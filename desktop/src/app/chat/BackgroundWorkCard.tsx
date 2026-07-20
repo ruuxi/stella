@@ -25,24 +25,12 @@
  * (no live task context is needed — the card resolves "still working" from
  * the props threaded through the row).
  */
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
-import { Check, MessageSquare, Send, X } from "@/ui/icons";
+import { Check, Eye, Send, X } from "@/ui/icons";
 import { TextShimmer } from "@/app/chat/TextShimmer";
-import type { TaskToolActivity } from "../../../../runtime/contracts/agent-runtime.js";
-import { friendlyInlineToolStatus } from "@/app/chat/friendly-tool-status";
-import {
-  getTaskDecoration,
-  subscribeTaskDecoration,
-} from "@/features/chat/streaming/task-decoration-store";
 import { useThreadActivity } from "@/features/chat/hooks/use-thread-activity";
+import { selectLatestThreadAssistantSummary } from "@/features/chat/lib/agent-assistant-summary";
 import { openAgentThreadTab } from "@/features/workspace-display/open-payload";
 import "./background-work-card.css";
 
@@ -141,8 +129,6 @@ export function BackgroundWorkCard({
   spawnedAtMs,
   descriptions,
   statusTexts,
-  progressTexts,
-  toolActivities,
   followUpThreadIds,
   cardId,
   startEventIdsByThread,
@@ -169,8 +155,6 @@ export function BackgroundWorkCard({
   descriptions?: Record<string, string>;
   /** Per-thread follow-up text for `send_input` re-activations. */
   statusTexts?: Record<string, string>;
-  progressTexts?: Record<string, string>;
-  toolActivities?: Record<string, TaskToolActivity>;
   /** Threads on this card that are `send_input` follow-ups, not fresh spawns. */
   followUpThreadIds?: string[];
   cardId: string;
@@ -206,22 +190,6 @@ export function BackgroundWorkCard({
     ],
   );
 
-  // Live status for a single-thread card: agent-progress ticks are
-  // ephemeral decoration (never persisted), so the working subtitle
-  // subscribes straight to this thread's decoration in the module store —
-  // one tick re-renders this card only, and it works on every surface
-  // (full chat, sidebar, mini) without threading props through the rows.
-  const liveThreadId = threadIds.length === 1 ? threadIds[0] : undefined;
-  const liveDecoration = useSyncExternalStore(
-    useCallback(
-      (listener: () => void) =>
-        liveThreadId
-          ? subscribeTaskDecoration(liveThreadId, listener)
-          : () => {},
-      [liveThreadId],
-    ),
-    () => (liveThreadId ? getTaskDecoration(liveThreadId) : undefined),
-  );
   const { records: threadActivity } = useThreadActivity(conversationId);
 
   // The card mounting grows its row outside the streaming-text notify path
@@ -263,76 +231,40 @@ export function BackgroundWorkCard({
       ? label?.trim() || resolved[0] || `${threadIds.length} tasks`
       : resolved[0] || label?.trim() || "Background work";
 
-  const latestAuthoredMessage = useMemo(() => {
-    let latest: { text: string; at: number } | undefined;
-    const superseded = new Set(supersededThreadIds ?? []);
-    for (const threadId of threadIds) {
-      // A later `agent-started` owns the thread's current activity projection.
-      // Never let that resumed attempt rewrite this historical card.
-      if (superseded.has(threadId)) continue;
-      const record = threadActivity.find(
-        (entry) => entry.threadId === threadId,
-      );
-      const at = record?.assistantMessagesUpdatedAt ?? 0;
-      const currentAttemptStartedAt = spawnedAtMs?.[threadId] ?? 0;
-      const cardAttempt = attemptGenerationsByThread?.[threadId];
-      const recordAttempt = record?.attemptGeneration;
-      const sameDurableAttempt =
-        cardAttempt === undefined || cardAttempt === recordAttempt;
-      const cardRootRunId = rootRunIdsByThread?.[threadId];
-      const sameRootRun = !cardRootRunId || cardRootRunId === record?.rootRunId;
-      const text = record?.assistantMessages?.at(-1)?.trim();
-      if (
-        text &&
-        sameDurableAttempt &&
-        sameRootRun &&
-        at >= currentAttemptStartedAt &&
-        (!latest || at > latest.at)
-      ) {
-        latest = { text, at };
-      }
-    }
-    return latest?.text;
-  }, [
-    attemptGenerationsByThread,
-    rootRunIdsByThread,
-    spawnedAtMs,
-    supersededThreadIds,
-    threadActivity,
-    threadIds,
-  ]);
+  const latestAssistantSummary = useMemo(
+    () =>
+      selectLatestThreadAssistantSummary(threadActivity, {
+        threadIds,
+        excludedThreadIds: supersededThreadIds,
+        attemptGenerationsByThread,
+        rootRunIdsByThread,
+        startedAtMsByThread: spawnedAtMs,
+      }),
+    [
+      attemptGenerationsByThread,
+      rootRunIdsByThread,
+      spawnedAtMs,
+      supersededThreadIds,
+      threadActivity,
+      threadIds,
+    ],
+  );
   if (threadIds.length === 0) return null;
-  const title = latestAuthoredMessage ?? lifecycleTitle;
+  const title = lifecycleTitle;
 
   // "Paused" only replaces the ACTIVE presentation: while any covered thread
   // is still genuinely working the card keeps its shimmer + normal subtitle,
   // and a settled card keeps its plain historical label.
   const failed = (failedThreadIds?.length ?? 0) > 0;
   const showPaused = paused && !working && !failed;
-  // Live decoration wins over the (reload-only, historical) persisted
-  // progress props; both are absent for multi-thread tally cards.
-  const progressText = !multi
-    ? (liveDecoration?.statusText ?? progressTexts?.[threadIds[0]])
-    : undefined;
-  const toolActivity = !multi
-    ? (liveDecoration?.toolActivity ?? toolActivities?.[threadIds[0]])
-    : undefined;
-  const lifecycleSubtitle = failed
+  const semanticFallback = failed
     ? "Failed"
     : showPaused
       ? "Paused"
-      : working && toolActivity
-        ? friendlyInlineToolStatus(toolActivity)
-        : working && progressText && progressText !== title
-          ? progressText
-          : isFollowUp
-            ? "Follow-up sent"
-            : "Started in background";
-  const subtitle = latestAuthoredMessage
-    ? working
-      ? `Working · ${lifecycleTitle}`
-      : lifecycleTitle
-    : lifecycleSubtitle;
+      : working
+        ? "Working…"
+        : "Completed";
+  const subtitle = latestAssistantSummary?.text ?? semanticFallback;
   const startEventIds = threadIds
     .map((id) => startEventIdsByThread[id])
     .filter(Boolean);
@@ -393,10 +325,10 @@ export function BackgroundWorkCard({
                   "Agent thread",
               })
             }
-            aria-label={`Open read-only chat for ${descriptions?.[threadId]?.trim() || "agent"}`}
-            title="Open read-only chat"
+            aria-label="View activity"
+            title="View activity"
           >
-            <MessageSquare size={14} strokeWidth={1.8} aria-hidden="true" />
+            <Eye size={14} strokeWidth={1.8} aria-hidden="true" />
           </button>
         ))}
       </span>

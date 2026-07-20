@@ -19,7 +19,7 @@
  */
 import { useLayoutEffect, useState } from "react";
 import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
-import { Check, ChevronDown, MessageSquare } from "@/ui/icons";
+import { Check, ChevronDown, Eye } from "@/ui/icons";
 import { DisplayTabIcon } from "@/features/workspace-display/icons";
 import {
   openAgentThreadTab,
@@ -174,10 +174,10 @@ const ThreadChatButton = ({
         title: section.title,
       })
     }
-    aria-label={`Open read-only chat for ${section.title}`}
-    title="Open read-only chat"
+    aria-label="View activity"
+    title="View activity"
   >
-    <MessageSquare size={14} strokeWidth={1.8} aria-hidden="true" />
+    <Eye size={14} strokeWidth={1.8} aria-hidden="true" />
   </button>
 );
 

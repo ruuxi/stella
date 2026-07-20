@@ -378,35 +378,42 @@ describe("compact activity summary", () => {
       "2 failed — Review round 4 · 1 running · 1 done",
     );
     expect(getCompactActivityStatusText(summary, false)).toBe(
-      "1 running · 1 done · 2 failed — latest: Still working",
+      "1 running · 1 done · 2 failed — latest: Working…",
     );
   });
 
-  it("selects the newest child update with deterministic timestamp ties", () => {
+  it("selects assistant prose by durable sequence and ignores later tool status", () => {
     const summary = summarizeCompactActivity([
       task({
         id: "older",
-        statusText: "Checking sources",
+        assistantMessages: ["Checking sources"],
+        assistantMessagesUpdatedAtMs: 200,
+        assistantMessagesUpdatedSequence: 20,
         lastUpdatedAtMs: 200,
       }),
       task({
-        id: "z-later-start",
-        statusText: "Drafting answer",
+        id: "later-assistant",
+        assistantMessages: ["Drafting the human-readable answer"],
+        assistantMessagesUpdatedAtMs: 300,
+        assistantMessagesUpdatedSequence: 21,
         startedAtMs: 150,
         lastUpdatedAtMs: 300,
       }),
       task({
-        id: "a-later-start",
-        statusText: "Verifying answer",
+        id: "later-tool-result",
+        statusText: "exec_command exited 0",
         startedAtMs: 150,
-        lastUpdatedAtMs: 300,
+        lastUpdatedAtMs: 400,
       }),
     ]);
 
-    expect(summary.latestTask?.id).toBe("a-later-start");
-    expect(summary.latestText).toBe("Verifying answer");
+    expect(summary.latestTask?.id).toBe("later-assistant");
+    expect(summary.latestText).toBe("Drafting the human-readable answer");
     expect(getCompactActivityStatusText(summary, false)).toContain(
-      "latest: Verifying answer",
+      "latest: Drafting the human-readable answer",
+    );
+    expect(getCompactActivityStatusText(summary, false)).not.toContain(
+      "exec_command",
     );
   });
 
@@ -664,7 +671,7 @@ describe("getInlineWorkingIndicatorExitDelayMs", () => {
 });
 
 describe("getTaskAgentUpdates", () => {
-  it("uses verbatim assistant messages only while a non-manager agent is running", () => {
+  it("uses verbatim assistant messages for active and completed non-manager agents", () => {
     const assistantMessages = [
       "I checked the exact route.\nNo rewrite was needed.",
       "The focused tests now pass.",
@@ -690,7 +697,7 @@ describe("getTaskAgentUpdates", () => {
           agentType: "general",
           assistantMessages,
         }),
-      ).toEqual([]);
+      ).toEqual(assistantMessages);
     }
   });
 });

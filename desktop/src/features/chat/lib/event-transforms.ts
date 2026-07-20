@@ -18,6 +18,7 @@ import type {
   ToolRequestPayload,
   ToolResultPayload,
 } from '../../../../../runtime/contracts/local-chat.js'
+import { selectLatestAgentAssistantMessage } from './agent-assistant-summary'
 
 export type {
   Attachment,
@@ -130,6 +131,8 @@ export type TaskItem = {
   lastUpdatedAtMs: number
   outputPreview?: string
   assistantMessages?: string[]
+  assistantMessagesUpdatedAtMs?: number
+  assistantMessagesUpdatedSequence?: number
 }
 
 export const TASK_COMPLETION_INDICATOR_MS = 3000
@@ -207,6 +210,9 @@ export function buildActivityTasks(
         lastUpdatedAtMs: record.updatedAt,
         outputPreview: running ? undefined : (record.result ?? record.error),
         assistantMessages: record.assistantMessages,
+        assistantMessagesUpdatedAtMs: record.assistantMessagesUpdatedAt,
+        assistantMessagesUpdatedSequence:
+          record.assistantMessagesUpdatedSequence,
       }
     })
     .sort((a, b) => a.startedAtMs - b.startedAtMs || a.id.localeCompare(b.id))
@@ -568,24 +574,47 @@ const compareCompactTaskRecency = (a: TaskItem, b: TaskItem): number =>
   a.id.localeCompare(b.id)
 
 const compactLatestText = (task: TaskItem): string => {
-  const description = task.description.trim() || 'Agent'
-  const statusText = task.statusText?.trim()
-  if (statusText && statusText !== description) return statusText
+  const assistantText = selectLatestAgentAssistantMessage(
+    task.assistantMessages,
+  )
+  if (assistantText) return assistantText
   switch (task.status) {
     case 'running':
-      return `${description} started`
+      return 'Working…'
     case 'completed':
-      return `${description} done`
+      return 'Completed'
     case 'error':
-      return `${description} failed`
+      return 'Failed'
     case 'canceled':
-      return `${description} stopped`
+      return 'Paused'
   }
+}
+
+const compareCompactAssistantRecency = (a: TaskItem, b: TaskItem): number => {
+  const aHasText = Boolean(selectLatestAgentAssistantMessage(a.assistantMessages))
+  const bHasText = Boolean(selectLatestAgentAssistantMessage(b.assistantMessages))
+  if (aHasText !== bHasText) return Number(bHasText) - Number(aHasText)
+  if (aHasText && bHasText) {
+    const aSequence = a.assistantMessagesUpdatedSequence
+    const bSequence = b.assistantMessagesUpdatedSequence
+    if (
+      aSequence !== undefined &&
+      bSequence !== undefined &&
+      aSequence !== bSequence
+    ) {
+      return bSequence - aSequence
+    }
+    const byTimestamp =
+      (b.assistantMessagesUpdatedAtMs ?? 0) -
+      (a.assistantMessagesUpdatedAtMs ?? 0)
+    if (byTimestamp !== 0) return byTimestamp
+  }
+  return compareCompactTaskRecency(a, b)
 }
 
 /** Counts and newest-event selection for compact Manager/group rows. */
 export function summarizeCompactActivity(tasks: readonly TaskItem[]): CompactActivitySummary {
-  const ordered = [...tasks].sort(compareCompactTaskRecency)
+  const ordered = [...tasks].sort(compareCompactAssistantRecency)
   const latestTask = ordered[0]
   const failureTask = ordered.find((task) => task.status === 'error')
   return {
@@ -846,13 +875,12 @@ export function pruneGroupExpandOverrides(
   return next
 }
 
-/** Agent-authored updates replace the old generated live-summary ticker. */
+/** Agent-authored prose for Activity rows, active or completed. */
 export function getTaskAgentUpdates(
   task: Pick<TaskItem, 'status' | 'agentType' | 'assistantMessages'>,
 ): readonly string[] {
-  if (task.status !== 'running' || task.agentType === AGENT_IDS.MANAGER)
-    return []
-  return task.assistantMessages ?? []
+  if (task.agentType === AGENT_IDS.MANAGER) return []
+  return (task.assistantMessages ?? []).filter((message) => message.trim())
 }
 
 /**

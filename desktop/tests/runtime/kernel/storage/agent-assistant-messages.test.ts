@@ -304,7 +304,7 @@ describe("agent-authored assistant updates", () => {
     );
   });
 
-  it("scopes updates to the current attempt and excludes terminal answers", () => {
+  it("scopes summaries to the current attempt and includes its terminal answer", () => {
     const { store } = createTestContext();
     const threadId = "agent-reused";
     saveRunningAgent(store, { threadId, startedAt: 1_000 });
@@ -347,10 +347,11 @@ describe("agent-authored assistant updates", () => {
 
     expect(store.listAgentAssistantMessages(threadId)).toEqual([
       { text: "Current attempt preamble", atMs: 2_001 },
+      { text: "Current final answer", atMs: 2_003 },
     ]);
   });
 
-  it("emits a bounded mobile-compatible update only after persistence", () => {
+  it("emits bounded interim and final updates only after persistence", () => {
     const onThreadAssistantUpdate = vi.fn();
     const { store } = createTestContext(onThreadAssistantUpdate);
     saveRunningAgent(store, {
@@ -385,7 +386,68 @@ describe("agent-authored assistant updates", () => {
       stopReason: "stop",
       attemptGeneration: 4,
     });
-    expect(onThreadAssistantUpdate).toHaveBeenCalledOnce();
+    expect(onThreadAssistantUpdate).toHaveBeenCalledTimes(2);
+    expect(onThreadAssistantUpdate).toHaveBeenLastCalledWith({
+      conversationId: "conv-1",
+      assistantUpdate: expect.objectContaining({
+        threadId: "agent-1",
+        assistantMessages: [
+          "I am checking the live route.",
+          "The final answer",
+        ],
+        latestMessage: "The final answer",
+        atMs: 1_002,
+        atSequence: expect.any(Number),
+        attemptGeneration: 4,
+      }),
+    });
+  });
+
+  it("keeps the final assistant prose in a completed Activity row", () => {
+    const { store } = createTestContext();
+    saveRunningAgent(store, {
+      threadId: "agent-completed",
+      startedAt: 1_000,
+      attemptGeneration: 3,
+    });
+    appendAssistant(store, {
+      threadId: "agent-completed",
+      timestamp: 1_001,
+      text: "I am checking the last path.",
+      attemptGeneration: 3,
+    });
+    appendAssistant(store, {
+      threadId: "agent-completed",
+      timestamp: 1_002,
+      text: "The implementation is complete and verified.",
+      stopReason: "stop",
+      attemptGeneration: 3,
+    });
+    store.saveAgentRecord({
+      threadId: "agent-completed",
+      conversationId: "conv-1",
+      agentType: "general",
+      description: "Complete the implementation",
+      agentDepth: 0,
+      status: "completed",
+      attemptGeneration: 3,
+      startedAt: 1_000,
+      completedAt: 1_003,
+      result: "Done",
+      updatedAt: 1_003,
+    });
+
+    expect(store.listThreadActivity("conv-1")[0]).toEqual(
+      expect.objectContaining({
+        status: "completed",
+        assistantMessages: [
+          "I am checking the last path.",
+          "The implementation is complete and verified.",
+        ],
+        assistantMessagesUpdatedAt: 1_002,
+        assistantMessagesUpdatedSequence: expect.any(Number),
+      }),
+    );
   });
 
   it("invalidates exact General and Manager transcripts for tool-only persisted entries", () => {

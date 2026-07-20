@@ -425,14 +425,12 @@ const authoredTextFromAssistantPayload = (
     .join("\n\n")
     .trim();
 
-/** Final answers are already represented by the task terminal result. Only a
- * completed assistant turn that hands off to a tool is a live authored update. */
-const activityUpdateTextFromAssistantPayload = (
+/** Human-authored assistant prose for Activity summary surfaces. Tool calls,
+ * tool results, system/custom rows, and empty assistant envelopes contribute
+ * no text; both interim tool handoffs and final assistant answers qualify. */
+const activitySummaryTextFromAssistantPayload = (
   payload: Extract<PersistedRuntimeThreadPayload, { role: "assistant" }>,
-): string =>
-  payload.stopReason === "toolUse"
-    ? authoredTextFromAssistantPayload(payload)
-    : "";
+): string => authoredTextFromAssistantPayload(payload);
 
 const truncateAuthoredUpdate = (
   value: string,
@@ -2932,7 +2930,7 @@ export class SessionStore {
     });
     if (
       payload.role === "assistant" &&
-      activityUpdateTextFromAssistantPayload(payload)
+      activitySummaryTextFromAssistantPayload(payload)
     ) {
       this.emitThreadAssistantUpdate(threadKey, message.timestamp);
     }
@@ -4792,7 +4790,7 @@ export class SessionStore {
       attemptGeneration: number;
     }[],
     limit = AGENT_ASSISTANT_UPDATE_LIMITS.messagesPerThread,
-  ): Map<string, Array<{ text: string; atMs: number }>> {
+  ): Map<string, Array<{ text: string; atMs: number; sequence: number }>> {
     const seen = new Set<string>();
     const targets = targetsInput
       .flatMap((target) => {
@@ -4820,8 +4818,8 @@ export class SessionStore {
       ),
     );
     // Scan past tool-only assistant entries, but never beyond this strict
-    // per-thread row envelope. Only complete tool-handoff messages from the
-    // current attempt qualify; final answers stay on the terminal result.
+    // per-thread row envelope. Any non-empty assistant prose from the current
+    // attempt qualifies, including the final answer before lifecycle completion.
     const scanLimit =
       cappedLimit * AGENT_ASSISTANT_UPDATE_LIMITS.scanRowsPerMessage;
     const targetValues = targets.map(() => "(?, ?, ?, ?)").join(", ");
@@ -4855,7 +4853,6 @@ export class SessionStore {
         WHERE entries.created_at >= targets.startedAt
           AND entries.entry_type = 'message'
           AND json_extract(entries.data_json, '$.message.role') = 'assistant'
-          AND json_extract(entries.data_json, '$.message.stopReason') = 'toolUse'
           AND json_extract(entries.data_json, '$.message.stellaAttemptGeneration') = targets.attemptGeneration
       )
       SELECT
@@ -4874,7 +4871,10 @@ export class SessionStore {
       appendOrder: number;
       durableRowId: number;
     }>;
-    const candidates = new Map<string, Array<{ text: string; atMs: number }>>();
+    const candidates = new Map<
+      string,
+      Array<{ text: string; atMs: number; sequence: number }>
+    >();
     for (const row of rows) {
       let payload: PersistedRuntimeThreadPayload | undefined;
       try {
@@ -4887,20 +4887,20 @@ export class SessionStore {
       }
       if (payload?.role !== "assistant") continue;
       const text = truncateAuthoredUpdate(
-        activityUpdateTextFromAssistantPayload(payload),
+        activitySummaryTextFromAssistantPayload(payload),
         AGENT_ASSISTANT_UPDATE_LIMITS.messageChars,
         AGENT_ASSISTANT_UPDATE_LIMITS.messageBytes,
       );
       if (!text) continue;
       const bucket = candidates.get(row.threadId);
-      const entry = { text, atMs: row.atMs };
+      const entry = { text, atMs: row.atMs, sequence: row.appendOrder };
       if (bucket) bucket.push(entry);
       else candidates.set(row.threadId, [entry]);
     }
 
     const newestFirstByThread = new Map<
       string,
-      Array<{ text: string; atMs: number }>
+      Array<{ text: string; atMs: number; sequence: number }>
     >();
     for (const target of targets) {
       const newestFirst = (candidates.get(target.threadId) ?? [])
@@ -4913,7 +4913,7 @@ export class SessionStore {
 
     const selectedNewestFirst = new Map<
       string,
-      Array<{ text: string; atMs: number }>
+      Array<{ text: string; atMs: number; sequence: number }>
     >();
     const consumedByThread = new Map<
       string,
@@ -5006,7 +5006,10 @@ export class SessionStore {
       }
     }
 
-    const byThread = new Map<string, Array<{ text: string; atMs: number }>>();
+    const byThread = new Map<
+      string,
+      Array<{ text: string; atMs: number; sequence: number }>
+    >();
     for (const target of targets) {
       const selected = selectedNewestFirst.get(target.threadId);
       if (selected?.length) byThread.set(target.threadId, selected.reverse());
@@ -5037,7 +5040,7 @@ export class SessionStore {
         ],
         limit,
       ).get(record.threadId) ?? []
-    );
+    ).map(({ text, atMs }) => ({ text, atMs }));
   }
 
   private emitThreadTranscriptUpdate(args: {
@@ -5068,7 +5071,14 @@ export class SessionStore {
     ) {
       return;
     }
-    const entries = this.listAgentAssistantMessages(record.threadId);
+    const entries =
+      this.listAgentAssistantMessagesByThread([
+        {
+          threadId: record.threadId,
+          startedAt: record.startedAt,
+          attemptGeneration: record.attemptGeneration,
+        },
+      ]).get(record.threadId) ?? [];
     const latest = entries[entries.length - 1];
     if (!latest) return;
     const assistantMessages = entries.map((entry) => entry.text);
@@ -5078,6 +5088,7 @@ export class SessionStore {
       reasoningSummaries: [...assistantMessages],
       latestMessage: latest.text,
       atMs: latest.atMs,
+      atSequence: latest.sequence,
       attemptGeneration: record.attemptGeneration,
       ...(record.rootRunId ? { rootRunId: record.rootRunId } : {}),
     };
@@ -5311,13 +5322,12 @@ export class SessionStore {
       group_label: string | null;
     }>;
     const assistantTargets = rows
-      .filter(
-        (row) =>
-          row.status === "running" && row.agent_type === AGENT_IDS.GENERAL,
-      )
+      .filter((row) => row.agent_type === AGENT_IDS.GENERAL)
       .sort(
         (a, b) =>
-          b.updated_at - a.updated_at || a.thread_id.localeCompare(b.thread_id),
+          Number(b.status === "running") - Number(a.status === "running") ||
+          b.updated_at - a.updated_at ||
+          a.thread_id.localeCompare(b.thread_id),
       )
       .slice(0, AGENT_ASSISTANT_UPDATE_LIMITS.activeThreads)
       .map((row) => ({
@@ -5352,7 +5362,11 @@ export class SessionStore {
           ? {
               assistantMessages: assistantEntries.map((entry) => entry.text),
               ...(latestAssistantEntry
-                ? { assistantMessagesUpdatedAt: latestAssistantEntry.atMs }
+                ? {
+                    assistantMessagesUpdatedAt: latestAssistantEntry.atMs,
+                    assistantMessagesUpdatedSequence:
+                      latestAssistantEntry.sequence,
+                  }
                 : {}),
             }
           : {}),

@@ -47,13 +47,16 @@ export type ThreadActivityRecord = {
   /** Timestamp of the newest assistant message included in the bounded
    * projection. Lets clients reject stale in-flight list responses. */
   assistantMessagesUpdatedAt?: number;
+  /** Durable append sequence of the newest included assistant message.
+   * This is authoritative when several transcript entries share a timestamp. */
+  assistantMessagesUpdatedSequence?: number;
   updatedAt: number;
 };
 
 /**
  * Bounded replacement for the retired generated-summary stream. Emitted only
- * after a complete, persisted interim assistant message lands for the current
- * attempt of a visible running task. `reasoningSummaries` deliberately mirrors
+ * after complete, persisted assistant prose lands for the current attempt of
+ * a visible running task, including its final answer. `reasoningSummaries` mirrors
  * the authored messages for older mobile clients; current clients use the
  * accurately named `assistantMessages` field.
  */
@@ -64,6 +67,8 @@ export type ThreadActivityAssistantUpdate = {
   reasoningSummaries: string[];
   latestMessage: string;
   atMs: number;
+  /** Durable append sequence for equal-timestamp ordering. */
+  atSequence?: number;
   attemptGeneration: number;
   rootRunId?: string;
 };
