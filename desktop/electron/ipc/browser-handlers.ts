@@ -100,7 +100,7 @@ const fetchWithBrowserSession = async (payload: {
     headers.set("Cookie", cookieHeader);
   }
 
-  const response = await fetch(url, {
+  const response = await globalThis.fetch(url, {
     method,
     headers,
     body: payload.init?.body,
@@ -294,7 +294,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
           const signal = AbortSignal.timeout(
             PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
           );
-          const response = await fetch(safeUrl, {
+          const response = await globalThis.fetch(safeUrl, {
             headers: { "User-Agent": "StellaDesktop/1.0" },
             redirect: "follow",
             signal,
@@ -323,7 +323,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
           ...(validateExisting ? { validateExisting } : {}),
           producerTimeoutMs: PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
           producer: async (signal) => {
-            const res = await fetch(safeUrl, {
+            const res = await globalThis.fetch(safeUrl, {
               headers: { "User-Agent": "StellaDesktop/1.0" },
               redirect: "follow",
               signal,

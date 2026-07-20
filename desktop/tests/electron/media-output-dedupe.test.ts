@@ -34,6 +34,7 @@ afterEach(() => {
   handlers.clear();
   tempDirs.cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("media output artifact dedupe", () => {
@@ -109,56 +110,67 @@ describe("media output artifact dedupe", () => {
   });
 
   it("validates remote image bytes independently of URL suffix and content type", async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
     const dataDir = tempDirs.create("media-output-remote-validation-");
-    registerBrowserHandlers({
-      getStellaAppDir: () => dataDir,
-      getStellaDataDir: () => dataDir,
-      assertPrivilegedSender: () => true,
-    });
-    const handler = handlers.get(IPC_MEDIA_SAVE_OUTPUT)!;
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-
-    fetchSpy.mockResolvedValueOnce(
-      new Response(Buffer.from("not an image"), {
-        headers: { "content-type": "application/octet-stream" },
-      }),
-    );
-    await expect(
-      handler(
+    try {
+      registerBrowserHandlers({
+        getStellaAppDir: () => dataDir,
+        getStellaDataDir: () => dataDir,
+        assertPrivilegedSender: () => true,
+      });
+      const handler = handlers.get(IPC_MEDIA_SAVE_OUTPUT)!;
+      vi.stubGlobal("fetch", vi.fn(async (input) => {
+        const url = String(input);
+        if (url === "https://example.test/corrupt.bin") {
+          return new Response(Buffer.from("not an image"), {
+            headers: { "content-type": "application/octet-stream" },
+          });
+        }
+        if (url === "https://example.test/generated.bin") {
+          return new Response(validPng, {
+            headers: { "content-type": "application/octet-stream" },
+          });
+        }
+        throw new Error(`Unexpected fetch ${url}`);
+      }));
+      await expect(
+        handler(
+          {},
+          {
+            url: "https://example.test/corrupt.bin",
+            fileName: "remote-corrupt.bin",
+            kind: "image",
+          },
+        ),
+      ).resolves.toMatchObject({ ok: false });
+      expect(
+        fs.existsSync(
+          path.join(dataDir, "media", "outputs", "remote-corrupt.bin"),
+        ),
+      ).toBe(false);
+      const valid = await handler(
         {},
         {
-          url: "https://example.test/corrupt.bin",
-          fileName: "remote-corrupt.bin",
+          url: "https://example.test/generated.bin",
+          fileName: "remote-valid.bin",
           kind: "image",
         },
-      ),
-    ).resolves.toMatchObject({ ok: false });
-    expect(
-      fs.existsSync(
-        path.join(dataDir, "media", "outputs", "remote-corrupt.bin"),
-      ),
-    ).toBe(false);
-
-    fetchSpy.mockResolvedValueOnce(
-      new Response(validPng, {
-        headers: { "content-type": "application/octet-stream" },
-      }),
-    );
-    const valid = await handler(
-      {},
-      {
-        url: "https://example.test/generated.bin",
-        fileName: "remote-valid.bin",
-        kind: "image",
-      },
-    );
-    const normalizedPath = path.join(
-      dataDir,
-      "media",
-      "outputs",
-      "remote-valid.png",
-    );
-    expect(valid).toEqual({ ok: true, path: normalizedPath });
-    expect(fs.readFileSync(normalizedPath)).toEqual(validPng);
+      );
+      const normalizedPath = path.join(
+        dataDir,
+        "media",
+        "outputs",
+        "remote-valid.png",
+      );
+      expect(valid).toEqual({ ok: true, path: normalizedPath });
+      expect(fs.readFileSync(normalizedPath)).toEqual(validPng);
+    } finally {
+      if (originalNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+    }
   });
 });
