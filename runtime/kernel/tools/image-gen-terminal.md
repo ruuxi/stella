@@ -6,6 +6,31 @@ until its selected provider operation is terminal, every image has been copied i
 Failures return the gateway job ID, terminal status, stable error code, and
 reason when available.
 
+## Accepted UX contract and risk boundary
+
+This implementation is accepted for ordinary terminal-tool UX and common
+restart recovery; it is not a claim of mathematical exactly-once execution
+across the desktop, gateway, and image provider. The local operation identity
+is persisted before submission. For managed generation, the gateway persists
+the owner-scoped job before returning its accepted response, the desktop
+attaches the returned `jobId`, and a common agent retry or restart reuses the
+durable identity and owner-scoped lookup instead of blindly resubmitting.
+
+One narrow duplicate window is explicitly accepted: the gateway may accept a
+POST while the desktop exits before persisting the local `jobId` attachment. If
+that later run cannot recover the prior durable identity or gateway lookup, it
+may create one duplicate submission. The current idempotency lookup, operation
+ledger, and gateway claim mitigate this window, but they are defense in depth,
+not an end-to-end exactly-once guarantee.
+
+The acceptance scope does not certify adversarial replay/exact-once behavior,
+billing or webhook atomicity, BYOK/reference-upload privacy, connector delivery
+watchdogs, encrypted-input deletion/account-purge guarantees, or additional
+reference-path TOCTOU hardening. Existing code includes mitigations in several
+of these areas; they remain out of scope and any pre-existing security or
+privacy gaps should be tracked as follow-up recommendations rather than implied
+guarantees of this terminal-tool contract.
+
 `image_gen` honors the image provider saved in Settings. `stella` uses the
 managed gateway. `openai`, `openrouter`, and `fal` use the user's locally saved
 credential directly; reference images go only to that selected provider and
@@ -77,7 +102,9 @@ at-most-once claim immediately before the direct POST. A returned Fal request
 ID is stored and can be polled after restart. A crash or response loss after a
 direct claim but before durable provider identity is an irreducible boundary:
 the operation returns structured `provider_outcome_unknown` and is never
-blindly resubmitted. This may lose one result, but cannot create a second charge.
+blindly resubmitted. This may lose one result. Stella does not repeat that
+claimed operation, but provider-side billing and a separately identified new
+operation are outside this narrow guarantee.
 
 Restart behavior is explicit:
 
