@@ -2,7 +2,8 @@
  * TextShimmer: animated gradient shimmer across the entire string.
  */
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { useContinuousAnimationGate } from "@/shared/hooks/use-continuous-animation-gate";
 import "./text-shimmer.css";
 
 interface TextShimmerProps {
@@ -23,6 +24,7 @@ export function TextShimmer({
   durationMs,
   syncPhase = false,
 }: TextShimmerProps) {
+  const rootRef = useRef<HTMLSpanElement>(null);
   const duration = useMemo(() => {
     if (durationMs !== undefined) return durationMs;
     const perCharMs = 95;
@@ -32,6 +34,10 @@ export function TextShimmer({
     () => (syncPhase ? -(Date.now() % duration) : 0),
     [duration, syncPhase],
   );
+  const shouldAnimate = useContinuousAnimationGate({
+    active,
+    elementRef: rootRef,
+  });
 
   if (!active) {
     return <span className={className}>{text}</span>;
@@ -39,7 +45,8 @@ export function TextShimmer({
 
   return (
     <span
-      className={`text-shimmer ${className ?? ""}`}
+      ref={rootRef}
+      className={`text-shimmer${shouldAnimate ? " text-shimmer--active" : ""}${className ? ` ${className}` : ""}`}
       style={
         {
           "--text-shimmer-duration": `${duration}ms`,
@@ -47,7 +54,12 @@ export function TextShimmer({
         } as React.CSSProperties
       }
     >
-      {text}
+      <span className="text-shimmer__base">{text}</span>
+      {shouldAnimate ? (
+        <span className="text-shimmer__sweep" aria-hidden="true">
+          <span className="text-shimmer__sweep-text">{text}</span>
+        </span>
+      ) : null}
     </span>
   );
 }

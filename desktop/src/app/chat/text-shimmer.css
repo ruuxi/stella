@@ -1,41 +1,83 @@
-/* TextShimmer — gradient sweeps across the full phrase (shared background) */
+/* TextShimmer — a compositor-only masked window crosses stationary text. */
 
 .text-shimmer {
   --text-shimmer-from: var(--text-strong);
   --text-shimmer-via: var(--text-weaker);
-  display: inline;
-  background-image: linear-gradient(
-    90deg,
-    var(--text-shimmer-from) 0%,
-    var(--text-shimmer-from) 35%,
-    var(--text-shimmer-via) 50%,
-    var(--text-shimmer-from) 65%,
-    var(--text-shimmer-from) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation-name: text-shimmer-sweep;
-  animation-duration: var(--text-shimmer-duration, 2s);
-  animation-delay: var(--text-shimmer-delay, 0ms);
-  animation-iteration-count: infinite;
-  animation-timing-function: linear;
+  --text-shimmer-window: 28%;
+  display: inline-block;
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-shimmer-from);
+  vertical-align: bottom;
 }
 
-@keyframes text-shimmer-sweep {
-  0% {
-    background-position: 100% 0;
+.text-shimmer__base {
+  display: block;
+  overflow: hidden;
+  text-overflow: inherit;
+  white-space: inherit;
+}
+
+.text-shimmer__sweep {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: var(--text-shimmer-window);
+  overflow: hidden;
+  color: var(--text-shimmer-via);
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 38%,
+    #000 62%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    90deg,
+    transparent,
+    #000 38%,
+    #000 62%,
+    transparent
+  );
+  animation: text-shimmer-window var(--text-shimmer-duration, 2s) linear
+    var(--text-shimmer-delay, 0ms) infinite;
+  will-change: transform;
+}
+
+.text-shimmer__sweep-text {
+  display: block;
+  width: calc(100% / 0.28);
+  overflow: hidden;
+  text-overflow: inherit;
+  white-space: inherit;
+  animation: text-shimmer-content var(--text-shimmer-duration, 2s) linear
+    var(--text-shimmer-delay, 0ms) infinite;
+  will-change: transform;
+}
+
+@keyframes text-shimmer-window {
+  from {
+    transform: translate3d(-100%, 0, 0);
   }
-  100% {
-    background-position: -100% 0;
+  to {
+    transform: translate3d(calc(100% / 0.28), 0, 0);
+  }
+}
+
+@keyframes text-shimmer-content {
+  from {
+    transform: translate3d(28%, 0, 0);
+  }
+  to {
+    transform: translate3d(-100%, 0, 0);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .text-shimmer {
+  .text-shimmer__sweep,
+  .text-shimmer__sweep-text {
     animation: none;
-    -webkit-text-fill-color: currentColor;
-    background: none;
   }
 }

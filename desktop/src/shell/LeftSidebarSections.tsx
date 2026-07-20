@@ -82,6 +82,7 @@ import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/sch
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import { AgentAssistantUpdates } from "@/shell/AgentAssistantUpdates";
 import { selectLatestAgentAssistantMessage } from "@/features/chat/lib/agent-assistant-summary";
+import { useContinuousAnimationGate } from "@/shared/hooks/use-continuous-animation-gate";
 import "@/app/chat/chat-workspace-strip.css";
 
 // Default per-section caps. The compact strip shows a small preview; the
@@ -340,6 +341,7 @@ const TaskRow = memo(function TaskRow({
   compactFailurePriority?: boolean;
 }) {
   const motionProps = useActivityRowMotionProps(orderIndex);
+  const rowRef = useRef<HTMLLIElement>(null);
   // Sidebar and tray rows identify the delegated thread. Live tool state is
   // intentionally reserved for the inline chat card, so it cannot replace
   // the stable description here or leak into activity search.
@@ -371,6 +373,11 @@ const TaskRow = memo(function TaskRow({
     () => (compactTasks ? summarizeCompactActivity(compactTasks) : undefined),
     [compactTasks],
   );
+  const compactMotionActive = useContinuousAnimationGate({
+    active:
+      task.status === "running" && (compactSummary?.runningCount ?? 0) > 0,
+    elementRef: rowRef,
+  });
   const hasChildContent = Boolean(childContent);
   const hasDetail =
     hasChildContent || Boolean(managerDetail) || hasAgentUpdates || hasFiles;
@@ -379,9 +386,11 @@ const TaskRow = memo(function TaskRow({
     <motion.li
       {...motionProps}
       className="chat-workspace-strip__task-row"
+      ref={rowRef}
       data-status={task.status}
       data-expanded={expanded ? "true" : undefined}
       title={label}
+      data-continuous-animation={compactMotionActive ? "true" : undefined}
     >
       <div className="chat-workspace-strip__task-row-head">
         <button

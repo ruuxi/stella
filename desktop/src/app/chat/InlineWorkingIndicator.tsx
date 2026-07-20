@@ -159,6 +159,7 @@ export function InlineWorkingIndicator({
           toolCallId={displayProps.runningToolId}
           isReasoning={!displayProps.runningTool}
           reasoningSeed={reasoningSeed}
+          animationActive={active && !leaving}
         />
       )}
     </div>

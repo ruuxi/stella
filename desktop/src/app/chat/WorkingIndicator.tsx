@@ -19,6 +19,8 @@ interface WorkingIndicatorProps {
    * instead of always landing on the first variation ("Thinking"). */
   reasoningSeed?: string;
   className?: string;
+  /** Stops persistent motion while the shell finishes its finite exit. */
+  animationActive?: boolean;
 }
 
 export function WorkingIndicator({
@@ -28,11 +30,13 @@ export function WorkingIndicator({
   isReasoning,
   reasoningSeed,
   className,
+  animationActive = true,
 }: WorkingIndicatorProps) {
   const { state } = useUiState();
   const windowType = useWindowType();
   const windowFocused = useWindowFocus();
-  const animationPaused = !windowFocused || state.window !== windowType;
+  const animationPaused =
+    !animationActive || !windowFocused || state.window !== windowType;
 
   const displayStatus = getWorkingIndicatorDisplayStatus({
     status,
@@ -49,14 +53,15 @@ export function WorkingIndicator({
             width={20}
             height={20}
             maxDpr={1}
-            frameSkip={2}
+            maxFps={30}
             paused={animationPaused}
+            requireWindowFocus
           />
         </div>
       </div>
       <SwapText
         text={displayStatus}
-        active
+        active={animationActive}
         animateInitial={false}
         className="working-status"
       />
