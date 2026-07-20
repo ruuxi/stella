@@ -69,7 +69,6 @@ export type AgentCompletionSection = {
 export type AgentMeta = {
   description?: string;
   agentType?: string;
-  groupLabel?: string;
 };
 
 const asNonEmptyString = (value: unknown): string | undefined =>
@@ -113,9 +112,6 @@ export function buildAgentMetaMap(
     }
     if (!next.agentType) {
       next.agentType = asNonEmptyString(event.payload.agentType);
-    }
-    if (!next.groupLabel) {
-      next.groupLabel = asNonEmptyString(event.payload.groupLabel);
     }
     byId.set(agentId, next);
   }
@@ -307,7 +303,6 @@ export function buildAgentCompletionSections(
     const meta = agentMetaById.get(agentId);
     const title =
       meta?.description?.trim() ||
-      meta?.groupLabel?.trim() ||
       fallbackTaskDescription(agentId);
     const entries = files.get(agentId) ?? [];
     const summary = summaryByAgent.get(agentId);

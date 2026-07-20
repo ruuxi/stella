@@ -2163,8 +2163,8 @@ describe("session-store", () => {
 });
 
 describe("thread activity rows", () => {
-  it("projects one authoritative row per thread, joined with group fields", () => {
-    const { db, store } = createTestContext();
+  it("projects one authoritative row per thread", () => {
+    const { store } = createTestContext();
     store.saveAgentRecord({
       threadId: "research-flights",
       conversationId: "conv-1",
@@ -2190,23 +2190,6 @@ describe("thread activity rows", () => {
       result: "Booked the Marriott",
       updatedAt: 3_000,
     });
-    // Group fields ride the thread registry, joined by thread id.
-    db.prepare(
-      `INSERT INTO runtime_threads (
-         thread_key, conversation_id, agent_type, name, status,
-         created_at, last_used_at, group_key, group_label
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      "book-hotel",
-      "conv-1",
-      "general",
-      "Book the hotel",
-      "active",
-      2_000,
-      3_000,
-      "grp-trip",
-      "Plan the trip",
-    );
     // Other conversations stay out of the projection.
     store.saveAgentRecord({
       threadId: "other-thread",
@@ -2235,8 +2218,6 @@ describe("thread activity rows", () => {
       status: "completed",
       completedAt: 3_000,
       result: "Booked the Marriott",
-      groupKey: "grp-trip",
-      groupLabel: "Plan the trip",
     });
   });
 

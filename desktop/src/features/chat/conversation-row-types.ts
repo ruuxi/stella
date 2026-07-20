@@ -164,8 +164,6 @@ export type AssistantRowViewModel = {
     /** Run-scoped done payload used for lifecycle correlation. The completion
      * card itself is projected separately at the completion timeline anchor. */
     completionSections?: AgentCompletionSection[];
-    groupKey?: string;
-    label?: string;
   };
   /**
    * Append-only completion attachment at the row where `agent-completed` was

@@ -51,13 +51,11 @@ import {
   getActivityRowStatus,
   groupActivityTasks,
   orderByFirstSeen,
-  pruneGroupExpandOverrides,
   getTaskAgentUpdates,
   summarizeCompactActivity,
   updateSeenRunningTaskIds,
   type ActivityRow,
   type FirstSeenOrder,
-  type TaskGroup,
   type TaskItem,
 } from "@/features/chat/lib/event-transforms";
 import { AGENT_IDS } from "../../../runtime/contracts/agent-runtime.js";
@@ -553,110 +551,12 @@ const TaskRow = memo(function TaskRow({
   );
 });
 
-const GroupRow = memo(function GroupRow({
-  group,
-  expanded,
-  onToggle,
-  isTaskExpanded,
-  onToggleTask,
-  onSelectTask,
-  agentFiles,
-  onOpenFile,
-  orderIndex,
-}: {
-  group: TaskGroup;
-  expanded: boolean;
-  onToggle: (groupKey: string, nextExpanded: boolean) => void;
-  isTaskExpanded: (task: TaskItem) => boolean;
-  onToggleTask: (taskId: string, nextExpanded: boolean) => void;
-  onSelectTask: (task: TaskItem) => void;
-  agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
-  onOpenFile: (entry: ConversationFileEntry) => void;
-  /** Position in the host list; drives reorder FLIP measurement. */
-  orderIndex: number;
-}) {
-  const motionProps = useActivityRowMotionProps(orderIndex);
-  const label = group.label.trim();
-  const compactSummary = useMemo(
-    () => summarizeCompactActivity(group.members),
-    [group.members],
-  );
-  const statusText = getCompactActivityStatusText(
-    compactSummary,
-    group.status === "running" && !expanded,
-  );
-  return (
-    <motion.li
-      {...motionProps}
-      className="chat-workspace-strip__task-row chat-workspace-strip__group-row"
-      data-status={group.status}
-      title={`${label} — ${statusText}`}
-    >
-      <button
-        type="button"
-        className="chat-workspace-strip__task-button"
-        data-compact="true"
-        onClick={() => onToggle(group.groupKey, !expanded)}
-        aria-expanded={expanded}
-        aria-label={`${label || "Task group"}: ${statusText}`}
-      >
-        <span className="chat-workspace-strip__compact-main">
-          <span
-            className="chat-workspace-strip__task-icon-wrap"
-            aria-hidden="true"
-          >
-            <TaskStatusIcon status={group.status} />
-          </span>
-          <span className="chat-workspace-strip__task-label">
-            {group.status === "running" ? (
-              <TextShimmer text={label} durationMs={2000} syncPhase />
-            ) : (
-              label
-            )}
-          </span>
-        </span>
-        <CompactChildState
-          summary={compactSummary}
-          prioritizeFailure={group.status === "running" && !expanded}
-        />
-      </button>
-      {/* Always mounted so expand/collapse animates (grid-rows 0fr↔1fr). */}
-      <div
-        className="chat-workspace-strip__task-collapse"
-        data-collapsed={expanded ? undefined : "true"}
-        inert={!expanded}
-      >
-        <div className="chat-workspace-strip__task-collapse-clip">
-          <ul className="chat-workspace-strip__list chat-workspace-strip__list--tasks chat-workspace-strip__group-members">
-            <AnimatePresence initial={false}>
-              {group.members.map((task, index) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  expanded={isTaskExpanded(task)}
-                  onToggle={onToggleTask}
-                  onSelect={onSelectTask}
-                  files={agentFiles.get(task.id) ?? EMPTY_FILES}
-                  onOpenFile={onOpenFile}
-                  orderIndex={index}
-                />
-              ))}
-            </AnimatePresence>
-          </ul>
-        </div>
-      </div>
-    </motion.li>
-  );
-});
-
 const TasksList = memo(function TasksList({
   rows,
   isTaskExpanded,
   isCompactTaskExpanded,
   onToggleTask,
   onSelectTask,
-  isGroupExpanded,
-  onToggleGroup,
   agentFiles,
   onOpenFile,
   nested = false,
@@ -666,8 +566,6 @@ const TasksList = memo(function TasksList({
   isCompactTaskExpanded: (task: TaskItem) => boolean;
   onToggleTask: (taskId: string, nextExpanded: boolean) => void;
   onSelectTask: (task: TaskItem) => void;
-  isGroupExpanded: (group: TaskGroup) => boolean;
-  onToggleGroup: (groupKey: string, nextExpanded: boolean) => void;
   agentFiles: ReadonlyMap<string, ConversationFileEntry[]>;
   onOpenFile: (entry: ConversationFileEntry) => void;
   nested?: boolean;
@@ -690,19 +588,6 @@ const TasksList = memo(function TasksList({
               onToggle={onToggleTask}
               onSelect={onSelectTask}
               files={agentFiles.get(row.task.id) ?? EMPTY_FILES}
-              onOpenFile={onOpenFile}
-              orderIndex={index}
-            />
-          ) : row.kind === "group" ? (
-            <GroupRow
-              key={activityRowKey(row)}
-              group={row.group}
-              expanded={isGroupExpanded(row.group)}
-              onToggle={onToggleGroup}
-              isTaskExpanded={isTaskExpanded}
-              onToggleTask={onToggleTask}
-              onSelectTask={onSelectTask}
-              agentFiles={agentFiles}
               onOpenFile={onOpenFile}
               orderIndex={index}
             />
@@ -729,8 +614,6 @@ const TasksList = memo(function TasksList({
                   isCompactTaskExpanded={isCompactTaskExpanded}
                   onToggleTask={onToggleTask}
                   onSelectTask={onSelectTask}
-                  isGroupExpanded={isGroupExpanded}
-                  onToggleGroup={onToggleGroup}
                   agentFiles={agentFiles}
                   onOpenFile={onOpenFile}
                   nested
@@ -837,23 +720,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
   // Ids seen running this session — the sticky half of regular task-row
   // expansion defaults below (rolled forward next to `allTasks`).
   const seenRunningTasksRef = useRef<ReadonlySet<string>>(new Set());
-  // Compact groups are collapsed by default, including while running.
-  // Explicit user toggles are persisted and always win.
-  const [groupExpandOverrides, setGroupExpandOverrides] = useState<
-    ReadonlyMap<string, boolean>
-  >(() => new Map());
-  const isGroupExpanded = useCallback(
-    (group: TaskGroup): boolean =>
-      groupExpandOverrides.get(group.groupKey) ?? false,
-    [groupExpandOverrides],
-  );
-  const toggleGroup = useCallback((groupKey: string, nextExpanded: boolean) => {
-    setGroupExpandOverrides((prev) => {
-      const next = new Map(prev);
-      next.set(groupKey, nextExpanded);
-      return next;
-    });
-  }, []);
   // Per-agent expand/collapse: an expanded activity row reveals that
   // agent's recent assistant messages and the files it produced.
   //
@@ -906,7 +772,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
       : EMPTY_ACTIVITY_EXPANSION;
     seenRunningTasksRef.current = new Set(snapshot.seenTaskIds);
     setExpandOverrides(new Map(Object.entries(snapshot.taskOverrides)));
-    setGroupExpandOverrides(new Map(Object.entries(snapshot.groupOverrides)));
   }
 
   // Roll the seen-running sets forward in a memo (same idempotent-mutation
@@ -926,19 +791,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
 
   const groupedRows = useMemo(() => groupActivityTasks(allTasks), [allTasks]);
 
-  // Drop overrides for groups with no remaining member in the task list
-  // (aged out of the activity window / conversation switch) so the map can't
-  // grow unboundedly across a long session. Keyed off the unfiltered tasks —
-  // not the rendered rows — so a group that shrinks to a single member
-  // (rendered as a plain task row) or is merely hidden by the sidebar search
-  // keeps the user's explicit choice for when it regrows.
-  useEffect(() => {
-    if (allTasks.length === 0) return;
-    setGroupExpandOverrides((prev) =>
-      pruneGroupExpandOverrides(prev, allTasks),
-    );
-  }, [allTasks]);
-
   // Persist the expansion state so a relaunch (which restores this
   // conversation) brings the Activity rows back exactly as they looked —
   // a finished agent's row keeps showing its files across restarts, not just
@@ -950,9 +802,8 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
     activityExpansionStore.save(conversationId, {
       seenTaskIds: [...seenRunningTasksRef.current],
       taskOverrides: Object.fromEntries(expandOverrides),
-      groupOverrides: Object.fromEntries(groupExpandOverrides),
     });
-  }, [conversationId, allTasks, expandOverrides, groupExpandOverrides]);
+  }, [conversationId, allTasks, expandOverrides]);
 
   const matchingActivityKeys = useMemo(() => {
     if (!searching) return null;
@@ -1174,8 +1025,6 @@ export const LeftSidebarSections = memo(function LeftSidebarSections({
               isCompactTaskExpanded={isCompactTaskExpanded}
               onToggleTask={toggleTask}
               onSelectTask={handleSelectTask}
-              isGroupExpanded={isGroupExpanded}
-              onToggleGroup={toggleGroup}
               agentFiles={agentFiles}
               onOpenFile={handleOpenFile}
             />

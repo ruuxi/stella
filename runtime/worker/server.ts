@@ -2332,8 +2332,6 @@ export const createRuntimeWorkerServer = (peer: WorkerPeerLike) => {
               statusText: ev.statusText,
               attemptGeneration: ev.attemptGeneration,
               ...(ev.toolActivity ? { toolActivity: ev.toolActivity } : {}),
-              ...(ev.groupKey ? { groupKey: ev.groupKey } : {}),
-              ...(ev.groupLabel ? { groupLabel: ev.groupLabel } : {}),
             });
           },
           onAgentReasoning: (ev) => {

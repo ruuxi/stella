@@ -200,11 +200,6 @@ export type AgentToolApi = {
     threadId: string,
     reason?: string,
   ) => Promise<{ canceled: boolean }>;
-  /** Cancel every member thread of a `grp-…` work group at once. */
-  cancelGroup?: (
-    groupKey: string,
-    reason?: string,
-  ) => Promise<{ canceled: boolean; canceledThreadIds: string[] }>;
   /** Rebind an existing thread's completion routing to a manager thread. */
   adoptAgent?: (
     threadId: string,

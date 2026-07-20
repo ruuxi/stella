@@ -10,7 +10,6 @@ const STORAGE_KEY = "stella.sidebar.activityExpansion";
 const snapshot = (suffix: string) => ({
   seenTaskIds: [`task-${suffix}`],
   taskOverrides: { [`task-${suffix}`]: false },
-  groupOverrides: { [`group-${suffix}`]: true },
 });
 
 describe("activity expansion store", () => {

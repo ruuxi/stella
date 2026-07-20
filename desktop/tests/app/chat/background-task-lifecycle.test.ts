@@ -25,8 +25,6 @@ const started = (args: {
   agentType?: string;
   statusText?: string;
   isFollowUp?: boolean;
-  groupKey?: string;
-  groupLabel?: string;
   attemptGeneration?: number;
 }): EventRecord =>
   event(args.id, args.at, "agent-started", {
@@ -39,8 +37,6 @@ const started = (args: {
       ? {}
       : { attemptGeneration: args.attemptGeneration }),
     ...(args.isFollowUp ? { isFollowUp: true } : {}),
-    ...(args.groupKey ? { groupKey: args.groupKey } : {}),
-    ...(args.groupLabel ? { groupLabel: args.groupLabel } : {}),
   });
 
 const completed = (args: {
@@ -183,15 +179,13 @@ describe("spawn-anchored background task lifecycle", () => {
     expect(index.byStartEventId).toHaveLength(1);
   });
 
-  it("updates one grouped spawn card as all group members complete", () => {
+  it("updates one multi-agent spawn card as all agents complete", () => {
     const first = started({
       id: "start-a",
       at: 100,
       agentId: "agent-a",
       rootRunId: "run-group",
       description: "Draft brief",
-      groupKey: "grp-1",
-      groupLabel: "Launch packet",
     });
     const second = started({
       id: "start-b",
@@ -199,8 +193,6 @@ describe("spawn-anchored background task lifecycle", () => {
       agentId: "agent-b",
       rootRunId: "run-group",
       description: "Build chart",
-      groupKey: "grp-1",
-      groupLabel: "Launch packet",
     });
     const events = [
       first,

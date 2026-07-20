@@ -304,7 +304,7 @@ describe("thread FTS index", () => {
     // Simulate an old database: index contents and the backfill flag gone.
     db.exec("DELETE FROM thread_search_fts;");
     db.prepare("DELETE FROM settings WHERE key = ?").run(
-      "thread_search_fts_backfilled_v1",
+      "thread_search_fts_backfilled_v2",
     );
     expect(
       store.searchThreads({ conversationId: "conv-a", query: "zanzibar" }),

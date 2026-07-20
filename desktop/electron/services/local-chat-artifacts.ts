@@ -690,7 +690,6 @@ const deriveAgentWorkPayload = (
   const threadIds: string[] = [];
   const descriptions: Record<string, string> = {};
   const spawnedAtMs: Record<string, number> = {};
-  let groupLabel: string | undefined;
   let createdAt = 0;
 
   for (const event of message.toolEvents) {
@@ -706,7 +705,6 @@ const deriveAgentWorkPayload = (
     if (event.timestamp > (spawnedAtMs[agentId] ?? 0)) {
       spawnedAtMs[agentId] = event.timestamp;
     }
-    if (!groupLabel) groupLabel = trimmedString(payload.groupLabel);
     // Card ordering is anchored when the aggregate first becomes visible.
     // Later sibling starts must not rewrite its insertion timestamp.
     if (createdAt === 0 || event.timestamp < createdAt) {
@@ -737,11 +735,11 @@ const deriveAgentWorkPayload = (
     title =
       state === "running"
         ? `Working on ${total} tasks`
-        : groupLabel || firstDescription || "Background work";
+        : firstDescription || "Background work";
     subtitle =
       state === "running" ? `${completed} of ${total} done` : "Finished";
   } else {
-    title = firstDescription || groupLabel || "Background work";
+    title = firstDescription || "Background work";
     subtitle = state === "running" ? "Working in background" : "Finished";
   }
 
@@ -756,7 +754,7 @@ const deriveAgentWorkPayload = (
     if (!files || files.length === 0) continue;
     agents.push({
       agentId: id,
-      title: descriptions[id] || groupLabel || "Task",
+      title: descriptions[id] || "Task",
       files,
     });
   }
@@ -805,7 +803,6 @@ const buildMobileTasksById = (
       if (event.type === "agent-started") {
         const title =
           trimmedString(payload.description) ||
-          trimmedString(payload.groupLabel) ||
           "Background work";
         const statusText = trimmedString(payload.statusText);
         if (!existing) {
@@ -846,7 +843,6 @@ const buildMobileTasksById = (
           id: agentId,
           title:
             trimmedString(payload.description) ||
-            trimmedString(payload.groupLabel) ||
             "Background work",
           status: terminal,
           createdAt: event.timestamp,

@@ -353,14 +353,6 @@ export type AgentLifecycleEvent = {
    * should reach only the orchestrator.
    */
   audience?: "orchestrator-only" | "display-only";
-  /**
-   * Work group of the thread that emitted this event. Emit sites leave
-   * these unset; the runner's central lifecycle handler enriches every
-   * event from the thread registry so the Activity UI can collapse
-   * sibling agents under one group header.
-   */
-  groupKey?: string;
-  groupLabel?: string;
 };
 
 const ENV_ASSIGNMENT_RE =
@@ -476,11 +468,7 @@ type LocalAgentManagerOpts = {
   }) => {
     threadId: string;
     reused: boolean;
-    groupKey?: string;
-    groupLabel?: string;
   } | null;
-  /** Member thread ids of a `grp-…` work group, for group-level cancel. */
-  listGroupMemberThreadIds?: (groupKey: string) => string[];
   onAgentEvent?: (event: AgentLifecycleEvent) => void;
   fetchAgentContext: (args: {
     conversationId: string;
@@ -2488,24 +2476,6 @@ export class LocalAgentManager implements AgentToolApi {
     } finally {
       this.cancelCascadeInProgress.delete(managerThreadId);
     }
-  }
-
-  async cancelGroup(
-    groupKey: string,
-    reason?: string,
-  ): Promise<{ canceled: boolean; canceledThreadIds: string[] }> {
-    const memberIds = this.opts.listGroupMemberThreadIds?.(groupKey) ?? [];
-    if (memberIds.length === 0) {
-      return { canceled: false, canceledThreadIds: [] };
-    }
-    const canceledThreadIds: string[] = [];
-    for (const threadId of memberIds) {
-      const result = await this.cancelAgent(threadId, reason);
-      if (result.canceled) {
-        canceledThreadIds.push(threadId);
-      }
-    }
-    return { canceled: canceledThreadIds.length > 0, canceledThreadIds };
   }
 
   async getAgent(agentId: string): Promise<AgentToolSnapshot | null> {

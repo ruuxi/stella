@@ -167,8 +167,6 @@ export const getBackgroundWork = (
       attemptGenerationsByThread: Record<string, number>;
       rootRunIdsByThread: Record<string, string>;
       cardId: string;
-      groupKey?: string;
-      label?: string;
     }
   | undefined => {
   const threadIds: string[] = [];
@@ -183,8 +181,6 @@ export const getBackgroundWork = (
   // lifecycle aged out of the loaded windows (presume settled, not pinned
   // as forever-working).
   const spawnedAtMs: Record<string, number> = {};
-  let groupKey: string | undefined;
-  let label: string | undefined;
   for (const event of events) {
     if (!isAgentStartedEvent(event)) continue;
     // Skip internal/system agents invoked behind a tool (schedule, etc.). A
@@ -244,8 +240,6 @@ export const getBackgroundWork = (
         if (followUp) statusTexts[agentId] = followUp;
       }
     }
-    if (!groupKey) groupKey = asNonEmptyString(event.payload.groupKey);
-    if (!label) label = asNonEmptyString(event.payload.groupLabel);
   }
   if (threadIds.length === 0) return undefined;
   const startEventIds = threadIds
@@ -261,8 +255,6 @@ export const getBackgroundWork = (
     attemptGenerationsByThread,
     rootRunIdsByThread,
     cardId: `agent-activity:${startEventIds.join("+")}`,
-    ...(groupKey ? { groupKey } : {}),
-    ...(label ? { label } : {}),
   };
 };
 

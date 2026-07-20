@@ -197,7 +197,7 @@ class TranscriptFtsBackfillError extends Error {
  *   above: no FTS5 → skip; failed backfill → drop the whole index and fall
  *   back to the LIKE scan.
  */
-const THREAD_FTS_BACKFILL_FLAG = "thread_search_fts_backfilled_v1";
+const THREAD_FTS_BACKFILL_FLAG = "thread_search_fts_backfilled_v2";
 
 const THREAD_FTS_ELIGIBLE = `
   runtime_threads.agent_type != 'orchestrator'
@@ -215,14 +215,22 @@ const dropThreadSearchIndex = (db: SqliteDatabase) => {
 };
 
 const ensureThreadSearchIndex = (db: SqliteDatabase) => {
+  const existingColumns = db
+    .prepare("PRAGMA table_info(thread_search_fts)")
+    .all() as Array<{ name?: string }>;
+  if (
+    existingColumns.some(
+      (column) => column.name === "group_key" || column.name === "group_label",
+    )
+  ) {
+    dropThreadSearchIndex(db);
+  }
   try {
     db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS thread_search_fts USING fts5(
         thread_key,
         name,
         summary,
-        group_key,
-        group_label,
         description,
         result,
         error,
@@ -247,12 +255,11 @@ const ensureThreadSearchIndex = (db: SqliteDatabase) => {
     BEGIN
       DELETE FROM thread_search_fts WHERE rowid = NEW.rowid;
       INSERT INTO thread_search_fts(
-        rowid, thread_key, name, summary, group_key, group_label,
+        rowid, thread_key, name, summary,
         description, result, error
       )
       VALUES (
         NEW.rowid, NEW.thread_key, NEW.name, NEW.summary,
-        NEW.group_key, NEW.group_label,
         (SELECT description FROM runtime_agents WHERE thread_id = NEW.thread_key),
         (SELECT result FROM runtime_agents WHERE thread_id = NEW.thread_key),
         (SELECT error FROM runtime_agents WHERE thread_id = NEW.thread_key)
@@ -265,18 +272,17 @@ const ensureThreadSearchIndex = (db: SqliteDatabase) => {
   // eligibility can't change under an existing row.
   db.exec(`
     CREATE TRIGGER IF NOT EXISTS trg_thread_search_fts_thread_update
-    AFTER UPDATE OF name, summary, group_key, group_label ON runtime_threads
+    AFTER UPDATE OF name, summary ON runtime_threads
     WHEN NEW.agent_type != 'orchestrator'
       AND NEW.thread_key NOT LIKE '%::subagent::%'
     BEGIN
       DELETE FROM thread_search_fts WHERE rowid = OLD.rowid;
       INSERT INTO thread_search_fts(
-        rowid, thread_key, name, summary, group_key, group_label,
+        rowid, thread_key, name, summary,
         description, result, error
       )
       VALUES (
         NEW.rowid, NEW.thread_key, NEW.name, NEW.summary,
-        NEW.group_key, NEW.group_label,
         (SELECT description FROM runtime_agents WHERE thread_id = NEW.thread_key),
         (SELECT result FROM runtime_agents WHERE thread_id = NEW.thread_key),
         (SELECT error FROM runtime_agents WHERE thread_id = NEW.thread_key)
@@ -304,13 +310,12 @@ const ensureThreadSearchIndex = (db: SqliteDatabase) => {
         SELECT rowid FROM runtime_threads WHERE thread_key = NEW.thread_id
       );
       INSERT INTO thread_search_fts(
-        rowid, thread_key, name, summary, group_key, group_label,
+        rowid, thread_key, name, summary,
         description, result, error
       )
       SELECT
         runtime_threads.rowid, runtime_threads.thread_key,
         runtime_threads.name, runtime_threads.summary,
-        runtime_threads.group_key, runtime_threads.group_label,
         NEW.description, NEW.result, NEW.error
       FROM runtime_threads
       WHERE runtime_threads.thread_key = NEW.thread_id
@@ -334,13 +339,12 @@ const ensureThreadSearchIndex = (db: SqliteDatabase) => {
         SELECT rowid FROM runtime_threads WHERE thread_key = NEW.thread_id
       );
       INSERT INTO thread_search_fts(
-        rowid, thread_key, name, summary, group_key, group_label,
+        rowid, thread_key, name, summary,
         description, result, error
       )
       SELECT
         runtime_threads.rowid, runtime_threads.thread_key,
         runtime_threads.name, runtime_threads.summary,
-        runtime_threads.group_key, runtime_threads.group_label,
         NEW.description, NEW.result, NEW.error
       FROM runtime_threads
       WHERE runtime_threads.thread_key = NEW.thread_id
@@ -358,13 +362,12 @@ const ensureThreadSearchIndex = (db: SqliteDatabase) => {
         SELECT rowid FROM runtime_threads WHERE thread_key = OLD.thread_id
       );
       INSERT INTO thread_search_fts(
-        rowid, thread_key, name, summary, group_key, group_label,
+        rowid, thread_key, name, summary,
         description, result, error
       )
       SELECT
         runtime_threads.rowid, runtime_threads.thread_key,
         runtime_threads.name, runtime_threads.summary,
-        runtime_threads.group_key, runtime_threads.group_label,
         NULL, NULL, NULL
       FROM runtime_threads
       WHERE runtime_threads.thread_key = OLD.thread_id
@@ -384,13 +387,12 @@ const ensureThreadSearchIndex = (db: SqliteDatabase) => {
     db.exec("DELETE FROM thread_search_fts;");
     db.exec(`
       INSERT INTO thread_search_fts(
-        rowid, thread_key, name, summary, group_key, group_label,
+        rowid, thread_key, name, summary,
         description, result, error
       )
       SELECT
         runtime_threads.rowid, runtime_threads.thread_key,
         runtime_threads.name, runtime_threads.summary,
-        runtime_threads.group_key, runtime_threads.group_label,
         runtime_agents.description, runtime_agents.result,
         runtime_agents.error
       FROM runtime_threads
@@ -572,9 +574,7 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
       last_used_at INTEGER NOT NULL,
       summary TEXT,
       external_session_id TEXT,
-      external_delivered_entry_id TEXT,
-      group_key TEXT,
-      group_label TEXT
+      external_delivered_entry_id TEXT
     );
   `);
   try {
@@ -589,24 +589,11 @@ export const initializeDesktopDatabase = (db: SqliteDatabase) => {
   } catch {
     // Column already exists.
   }
-  try {
-    db.exec("ALTER TABLE runtime_threads ADD COLUMN group_key TEXT;");
-  } catch {
-    // Column already exists.
-  }
-  try {
-    db.exec("ALTER TABLE runtime_threads ADD COLUMN group_label TEXT;");
-  } catch {
-    // Column already exists.
-  }
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_runtime_threads_conversation_status
     ON runtime_threads(conversation_id, status, last_used_at);
   `);
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_runtime_threads_group
-    ON runtime_threads(group_key);
-  `);
+  db.exec("DROP INDEX IF EXISTS idx_runtime_threads_group;");
   // Recall's thread index selects "most recent N by last-active" across ALL
   // conversations; these global recency indexes let that query walk two
   // index scans instead of full-scanning + temp-sorting the tables.

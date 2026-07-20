@@ -1096,9 +1096,7 @@ describe("external-engine out-of-band delta injection", () => {
           created_at INTEGER NOT NULL,
           last_used_at INTEGER NOT NULL,
           summary TEXT,
-          external_session_id TEXT,
-          group_key TEXT,
-          group_label TEXT
+          external_session_id TEXT
         );
       `);
       db.exec(`

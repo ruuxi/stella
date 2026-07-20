@@ -306,12 +306,6 @@ const buildLifecycleEventPayload = (
   event: AgentLifecycleEvent,
 ): Record<string, unknown> => {
   const runFields = event.rootRunId ? { rootRunId: event.rootRunId } : {};
-  const groupFields = event.groupKey
-    ? {
-        groupKey: event.groupKey,
-        ...(event.groupLabel ? { groupLabel: event.groupLabel } : {}),
-      }
-    : {};
   switch (event.type) {
     case "agent-started":
       return {
@@ -327,7 +321,6 @@ const buildLifecycleEventPayload = (
         // Persist the spawn-vs-follow-up discriminator so the inline
         // background-work card can pick its follow-up variant on reload.
         ...(event.isFollowUp ? { isFollowUp: true } : {}),
-        ...groupFields,
       };
     case "agent-completed":
       // `result` is always persisted (even if empty) so the
@@ -348,7 +341,6 @@ const buildLifecycleEventPayload = (
         ...(event.producedFiles?.length
           ? { producedFiles: event.producedFiles }
           : {}),
-        ...groupFields,
       };
     case "agent-message":
       return {
@@ -369,7 +361,6 @@ const buildLifecycleEventPayload = (
           ? { attemptGeneration: event.attemptGeneration }
           : {}),
         ...(event.error ? { error: event.error } : {}),
-        ...groupFields,
       };
     case "agent-progress":
       return {
@@ -382,7 +373,6 @@ const buildLifecycleEventPayload = (
         ...(event.toolActivity ? { toolActivity: event.toolActivity } : {}),
         ...(event.description ? { description: event.description } : {}),
         ...(event.parentAgentId ? { parentAgentId: event.parentAgentId } : {}),
-        ...groupFields,
       };
   }
 };
@@ -463,24 +453,7 @@ export const createAgentOrchestration = (
     attemptTeardownTimeoutMs?: number;
   },
 ) => {
-  const handleAgentLifecycleEvent = (rawEvent: AgentLifecycleEvent) => {
-    // Enrich every lifecycle event with its thread's work group ONCE,
-    // centrally — emit sites in the manager stay group-unaware. The
-    // Activity UI uses this to collapse sibling agents under one group
-    // header.
-    let event = rawEvent;
-    if (!event.groupKey) {
-      // Optional-chained like the other runtimeStore lookups here: test
-      // harnesses stub partial stores.
-      const group = context.runtimeStore.getThreadGroup?.(event.agentId);
-      if (group?.groupKey) {
-        event = {
-          ...event,
-          groupKey: group.groupKey,
-          ...(group.groupLabel ? { groupLabel: group.groupLabel } : {}),
-        };
-      }
-    }
+  const handleAgentLifecycleEvent = (event: AgentLifecycleEvent) => {
     const managerOwner =
       context.state.localAgentManager?.resolveOwningManagerThread(
         event.agentId,
@@ -664,8 +637,6 @@ export const createAgentOrchestration = (
     },
     listActiveThreads: (conversationId) =>
       context.runtimeStore.listActiveThreads(conversationId),
-    listGroupMemberThreadIds: (groupKey) =>
-      context.runtimeStore.listGroupMemberThreadIds(groupKey),
     // Restart-with-continuation: durably snapshot the still-running rows
     // BEFORE the boot sweep flips them, so a failed interruption-state
     // write can genuinely be retried on the next boot. The returned episode
@@ -1312,24 +1283,15 @@ export const createAgentOrchestration = (
             };
 
             // Durable feature identity, decided at write time: an explicit
-            // identity from the caller, else the authoring thread's group
-            // key (several agents serving one request commit to ONE
-            // feature), else its thread key — so a thread resumed months
-            // later keeps extending the same feature instead of spawning a
-            // churned rename.
-            const threadGroup =
-              !selfModFeature && agentId
-                ? context.runtimeStore.getThreadGroup?.(agentId)
-                : undefined;
+            // identity from the caller, else the authoring thread key, so a
+            // thread resumed later keeps extending the same feature.
             const threadName =
               !selfModFeature && agentId
                 ? context.runtimeStore.getThreadName?.(agentId)
                 : undefined;
-            const featureId =
-              selfModFeature?.featureId ?? threadGroup?.groupKey ?? agentId;
+            const featureId = selfModFeature?.featureId ?? agentId;
             const featureTitle =
               selfModFeature?.featureTitle ??
-              threadGroup?.groupLabel ??
               (threadName && threadName !== agentId
                 ? threadName
                 : taskDescription);

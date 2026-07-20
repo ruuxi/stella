@@ -226,8 +226,6 @@ const backgroundWorkEqual = (
   if (a === b) return true;
   if (!a || !b) return a === b;
   if (a.cardId !== b.cardId) return false;
-  if ((a.groupKey ?? null) !== (b.groupKey ?? null)) return false;
-  if ((a.label ?? null) !== (b.label ?? null)) return false;
   if (a.threadIds.length !== b.threadIds.length) return false;
   if (a.completedThreadIds.length !== b.completedThreadIds.length) return false;
   for (let i = 0; i < a.threadIds.length; i += 1) {

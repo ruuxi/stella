@@ -143,7 +143,6 @@ export function BackgroundWorkCard({
   attemptGenerationsByThread,
   rootRunIdsByThread,
   terminalEventIdsByThread,
-  label,
   conversationId,
 }: {
   threadIds: string[];
@@ -170,7 +169,6 @@ export function BackgroundWorkCard({
   attemptGenerationsByThread?: Record<string, number>;
   rootRunIdsByThread?: Record<string, string>;
   terminalEventIdsByThread?: Record<string, string>;
-  label?: string;
   conversationId: string;
 }) {
   // Bumped by the stale-deadline timer so the working check re-evaluates its
@@ -234,10 +232,10 @@ export function BackgroundWorkCard({
   // Several threads in one turn collapse to a plain count instead of cycling
   // through descriptions — a single task shows its own description.
   const lifecycleTitle = isFollowUp
-    ? statusTexts?.[followUpId] || resolved[0] || label?.trim() || "Follow-up"
+    ? statusTexts?.[followUpId] || resolved[0] || "Follow-up"
     : multi
-      ? label?.trim() || resolved[0] || `${threadIds.length} tasks`
-      : resolved[0] || label?.trim() || "Background work";
+      ? resolved[0] || `${threadIds.length} tasks`
+      : resolved[0] || "Background work";
 
   const latestAssistantSummary = useMemo(
     () =>
@@ -332,7 +330,6 @@ export function BackgroundWorkCard({
                     ?.agentType ?? "Agent",
                 title:
                   descriptions?.[threadId]?.trim() ||
-                  label?.trim() ||
                   "Agent thread",
               })
             }

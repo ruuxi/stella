@@ -707,15 +707,6 @@ export const createRunnerContext = ({
           reason,
         );
       },
-      cancelGroup: async (groupKey, reason) => {
-        if (!context.state.localAgentManager) {
-          return { canceled: false, canceledThreadIds: [] };
-        }
-        return await context.state.localAgentManager.cancelGroup(
-          groupKey,
-          reason,
-        );
-      },
       adoptAgent: async (agentId, parentAgentId) => {
         if (!context.state.localAgentManager) {
           return { adopted: false };

@@ -25,7 +25,7 @@ const ev = (overrides: Partial<EventRecord>): EventRecord => ({
 const started = (
   agentId: string,
   description: string,
-  opts: { agentType?: string; groupLabel?: string; timestamp?: number } = {},
+  opts: { agentType?: string; timestamp?: number } = {},
 ): EventRecord =>
   ev({
     _id: `started:${agentId}:${opts.timestamp ?? 1}`,
@@ -35,7 +35,6 @@ const started = (
       agentId,
       description,
       agentType: opts.agentType ?? "general",
-      ...(opts.groupLabel ? { groupLabel: opts.groupLabel } : {}),
     },
   });
 

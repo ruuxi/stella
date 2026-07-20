@@ -77,9 +77,6 @@ type AgentEventPayload = {
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;
-  /** Work group (`grp-…` key + human label) of the agent's thread. */
-  groupKey?: string;
-  groupLabel?: string;
   assistantMessageEventId?: string;
 };
 
@@ -663,8 +660,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   error: ev.error,
                   statusText: ev.statusText,
                   attemptGeneration: ev.attemptGeneration,
-                  groupKey: ev.groupKey,
-                  groupLabel: ev.groupLabel,
                 },
                 senderWebContentsId,
               );
@@ -1027,8 +1022,6 @@ export const registerAgentHandlers = (options: AgentHandlersOptions) => {
                   error: ev.error,
                   statusText: ev.statusText,
                   attemptGeneration: ev.attemptGeneration,
-                  groupKey: ev.groupKey,
-                  groupLabel: ev.groupLabel,
                 },
                 senderWebContentsId,
               );

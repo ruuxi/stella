@@ -743,9 +743,6 @@ export type RuntimeAgentEventPayload = {
   outcome?: AgentRunFinishOutcome;
   reason?: string;
   replacedByRunId?: string;
-  /** Work group (`grp-…` key + human label) of the agent's thread. */
-  groupKey?: string;
-  groupLabel?: string;
   responseTarget?:
     | { type: "user_turn" }
     | { type: "agent_turn"; agentId: string }

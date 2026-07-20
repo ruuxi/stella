@@ -33,8 +33,6 @@ export type BackgroundTaskCardState = {
   startedAtMs: number;
   title: string;
   agentType?: string;
-  groupKey?: string;
-  groupLabel?: string;
   isFollowUp: boolean;
   status: BackgroundTaskCardStatus;
   latestEventId: string;
@@ -128,7 +126,6 @@ const cardTitle = (
       agentId: string;
       description?: string;
       statusText?: string;
-      groupLabel?: string;
       isFollowUp?: boolean;
     };
   },
@@ -140,7 +137,6 @@ const cardTitle = (
   return (
     followUpTitle ??
     asNonEmptyString(event.payload.description) ??
-    asNonEmptyString(event.payload.groupLabel) ??
     fallbackTaskDescription(agentId)
   );
 };
@@ -157,7 +153,6 @@ const completionFor = (
         {
           description: state.title,
           agentType: state.agentType,
-          groupLabel: state.groupLabel,
         },
       ],
     ]),
@@ -264,12 +259,6 @@ export const buildBackgroundTaskLifecycleIndex = (
         title: cardTitle(event),
         ...(asNonEmptyString(event.payload.agentType)
           ? { agentType: asNonEmptyString(event.payload.agentType) }
-          : {}),
-        ...(asNonEmptyString(event.payload.groupKey)
-          ? { groupKey: asNonEmptyString(event.payload.groupKey) }
-          : {}),
-        ...(asNonEmptyString(event.payload.groupLabel)
-          ? { groupLabel: asNonEmptyString(event.payload.groupLabel) }
           : {}),
         isFollowUp: event.payload.isFollowUp === true,
         status: "running",

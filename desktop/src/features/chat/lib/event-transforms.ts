@@ -58,10 +58,7 @@ export const getEventText = (event: EventRecord): string => {
 // Persisted lifecycle event payloads (kebab-case `agent-*` events). These
 // mirror the data emitted by `appendAgentLifecycleChatEvent` in the runner.
 
-/** Work group (`grp-…` key + human label) of the agent's thread. Present
- *  on lifecycle events whose thread was spawned into a group; absent on
- *  ungrouped agents and on legacy persisted events. */
-type AgentLifecycleGroupFields = {
+type AgentLifecycleFields = {
   /** Root orchestrator run that observed this task transition. This correlates
    * lifecycle packets, but is not a card identity by itself: one root run can
    * call `send_input` on the same thread more than once. Timeline cards use
@@ -70,11 +67,9 @@ type AgentLifecycleGroupFields = {
   /** Durable execution epoch for a reused thread. New lifecycle events carry
    *  this on starts, progress, and terminal packets; legacy rows omit it. */
   attemptGeneration?: number
-  groupKey?: string
-  groupLabel?: string
 }
 
-type AgentStartedEventPayload = AgentLifecycleGroupFields & {
+type AgentStartedEventPayload = AgentLifecycleFields & {
   agentId: string
   description: string
   agentType: string
@@ -89,24 +84,24 @@ type AgentStartedEventPayload = AgentLifecycleGroupFields & {
   isFollowUp?: boolean
 }
 
-type AgentCompletedEventPayload = AgentLifecycleGroupFields & {
+type AgentCompletedEventPayload = AgentLifecycleFields & {
   agentId: string
   result?: string
   fileChanges?: FileChangeRecord[]
   producedFiles?: ProducedFileRecord[]
 }
 
-type AgentFailedEventPayload = AgentLifecycleGroupFields & {
+type AgentFailedEventPayload = AgentLifecycleFields & {
   agentId: string
   error?: string
 }
 
-type AgentCanceledEventPayload = AgentLifecycleGroupFields & {
+type AgentCanceledEventPayload = AgentLifecycleFields & {
   agentId: string
   error?: string
 }
 
-type AgentProgressEventPayload = AgentLifecycleGroupFields & {
+type AgentProgressEventPayload = AgentLifecycleFields & {
   agentId: string
   statusText: string
   toolActivity?: TaskToolActivity
@@ -124,11 +119,6 @@ export type TaskItem = {
   runId?: string
   anchorTurnId?: string
   parentAgentId?: string
-  /** Work group this task's agent thread was spawned into. Tasks sharing
-   *  a groupKey collapse under one Activity group header; absent for
-   *  ungrouped agents and legacy persisted events. */
-  groupKey?: string
-  groupLabel?: string
   statusText?: string
   toolActivity?: TaskToolActivity
   reasoningText?: string
@@ -246,8 +236,6 @@ export function buildActivityTasks(
           record.rootRunId,
         anchorTurnId: decoration?.anchorTurnId,
         parentAgentId: record.parentAgentId,
-        groupKey: record.groupKey,
-        groupLabel: record.groupLabel,
         statusText: running
           ? (normalizeTaskDisplayStatusText(decoration?.statusText) ??
             (isGenericTaskDescription(record.description)
@@ -284,12 +272,15 @@ export function buildActivityTasks(
 }
 
 const STANDALONE_STATUS_TEXT = new Set(['Pausing'])
-const GENERIC_TASK_DESCRIPTION_PATTERN = /^(task|agent|work|help|do this|follow up)$/i
+const GENERIC_TASK_DESCRIPTION_PATTERN =
+  /^(task|agent|work|help|do this|follow up)$/i
 
 export function isGenericTaskDescription(
   description: string | undefined,
 ): boolean {
-  return !description || GENERIC_TASK_DESCRIPTION_PATTERN.test(description.trim())
+  return (
+    !description || GENERIC_TASK_DESCRIPTION_PATTERN.test(description.trim())
+  )
 }
 
 /**
@@ -309,7 +300,7 @@ const SPAWN_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 export function fallbackTaskDescription(agentId: string | undefined): string {
   const slug = (agentId ?? '').trim()
-  if (!slug || /^(task|grp|legacy)-/i.test(slug)) return 'Task'
+  if (!slug || /^(task|legacy)-/i.test(slug)) return 'Task'
   if (slug.length > SPAWN_SLUG_MAX_LENGTH || !SPAWN_SLUG_PATTERN.test(slug)) {
     return 'Task'
   }
@@ -559,30 +550,10 @@ export function getCurrentRunningTool(
 }
 
 /**
- * One collapsed Activity entry for tasks sharing a `groupKey` (agents
- * spawned into the same work group). Aggregated from the member tasks
- * by `groupActivityTasks`.
- */
-export type TaskGroup = {
-  groupKey: string
-  label: string
-  /** Members in spawn order (startedAtMs asc, id tie-break). */
-  members: TaskItem[]
-  /** Aggregate: any member running → running; else any error → error;
-   *  else any completed → completed; else canceled. */
-  status: TaskLifecycleStatus
-  completedCount: number
-  totalCount: number
-  startedAtMs: number
-  completedAtMs?: number
-  lastUpdatedAtMs: number
-}
-
-/**
  * One persisted ownership tree rooted at a Manager (or any future nested
  * owner). `parentAgentId` is the only edge source; labels/group names never
  * participate in ownership. Child rows reuse the same ActivityRow model, so
- * descendants and legacy groups can nest without a second visual language.
+ * descendants can nest without a second visual language.
  */
 export type TaskHierarchy = {
   owner: TaskItem
@@ -595,7 +566,6 @@ export type TaskHierarchy = {
 
 export type ActivityRow =
   | { kind: 'task'; task: TaskItem }
-  | { kind: 'group'; group: TaskGroup }
   | { kind: 'hierarchy'; hierarchy: TaskHierarchy }
 
 export const COMPACT_ACTIVITY_CELL_LIMIT = 16
@@ -614,15 +584,13 @@ export type CompactActivitySummary = {
 }
 
 /** Flatten a nested ownership/group projection into one visual per agent. */
-export const flattenActivityTasks = (rows: readonly ActivityRow[]): TaskItem[] => {
+export const flattenActivityTasks = (
+  rows: readonly ActivityRow[],
+): TaskItem[] => {
   const tasks: TaskItem[] = []
   const append = (row: ActivityRow): void => {
     if (row.kind === 'task') {
       tasks.push(row.task)
-      return
-    }
-    if (row.kind === 'group') {
-      tasks.push(...row.group.members)
       return
     }
     tasks.push(row.hierarchy.owner)
@@ -656,8 +624,12 @@ const compactLatestText = (task: TaskItem): string => {
 }
 
 const compareCompactAssistantRecency = (a: TaskItem, b: TaskItem): number => {
-  const aHasText = Boolean(selectLatestAgentAssistantMessage(a.assistantMessages))
-  const bHasText = Boolean(selectLatestAgentAssistantMessage(b.assistantMessages))
+  const aHasText = Boolean(
+    selectLatestAgentAssistantMessage(a.assistantMessages),
+  )
+  const bHasText = Boolean(
+    selectLatestAgentAssistantMessage(b.assistantMessages),
+  )
   if (aHasText !== bHasText) return Number(bHasText) - Number(aHasText)
   if (aHasText && bHasText) {
     const aSequence = a.assistantMessagesUpdatedSequence
@@ -677,8 +649,10 @@ const compareCompactAssistantRecency = (a: TaskItem, b: TaskItem): number => {
   return compareCompactTaskRecency(a, b)
 }
 
-/** Counts and newest-event selection for compact Manager/group rows. */
-export function summarizeCompactActivity(tasks: readonly TaskItem[]): CompactActivitySummary {
+/** Counts and newest-event selection for compact Manager rows. */
+export function summarizeCompactActivity(
+  tasks: readonly TaskItem[],
+): CompactActivitySummary {
   const ordered = [...tasks].sort(compareCompactAssistantRecency)
   const latestTask = ordered[0]
   const failureTask = ordered.find((task) => task.status === 'error')
@@ -702,7 +676,8 @@ export function getCompactActivityStatusText(
   prioritizeFailure: boolean,
 ): string {
   const tally = `${summary.runningCount} running · ${summary.completedCount} done`
-  const stopped = summary.canceledCount > 0 ? ` · ${summary.canceledCount} stopped` : ''
+  const stopped =
+    summary.canceledCount > 0 ? ` · ${summary.canceledCount} stopped` : ''
   if (prioritizeFailure && summary.failureTask) {
     const name = summary.failureTask.description.trim() || 'Agent'
     return `${summary.errorCount} failed — ${name} · ${tally}${stopped}`
@@ -716,9 +691,7 @@ export function getCompactActivityStatusText(
 export const activityRowKey = (row: ActivityRow): string =>
   row.kind === 'task'
     ? `task:${row.task.id}`
-    : row.kind === 'group'
-      ? `group:${row.group.groupKey}`
-      : `hierarchy:${row.hierarchy.owner.id}`
+    : `hierarchy:${row.hierarchy.owner.id}`
 
 export type TopLevelActivityWorkUnit = {
   id: string
@@ -729,8 +702,7 @@ export type TopLevelActivityWorkUnit = {
  * The units represented by top-level Activity rows. A Manager hierarchy is
  * governed by its owner rather than its descendants: owned children never
  * become extra ambient work, even if one remains active while the Manager is
- * paused. Direct sibling groups use their one visible group row and aggregate
- * status. Missing/detached parents already fail open as standalone rows in
+ * paused. Missing/detached parents already fail open as standalone rows in
  * `groupActivityTasks`, so adoption and detachment update the count naturally.
  */
 export const deriveTopLevelActivityWorkUnits = (
@@ -743,8 +715,7 @@ export const deriveTopLevelActivityWorkUnits = (
     if (
       !current ||
       (task.attemptGeneration ?? 0) > (current.attemptGeneration ?? 0) ||
-      ((task.attemptGeneration ?? 0) ===
-        (current.attemptGeneration ?? 0) &&
+      ((task.attemptGeneration ?? 0) === (current.attemptGeneration ?? 0) &&
         (task.lastUpdatedAtMs > current.lastUpdatedAtMs ||
           (task.lastUpdatedAtMs === current.lastUpdatedAtMs &&
             task.startedAtMs > current.startedAtMs)))
@@ -754,12 +725,7 @@ export const deriveTopLevelActivityWorkUnits = (
   }
   return groupActivityTasks([...latestById.values()]).map((row) => ({
     id: activityRowKey(row),
-    status:
-      row.kind === 'task'
-        ? row.task.status
-        : row.kind === 'group'
-          ? row.group.status
-          : row.hierarchy.owner.status,
+    status: row.kind === 'task' ? row.task.status : row.hierarchy.owner.status,
   }))
 }
 
@@ -771,19 +737,10 @@ export const countActiveTopLevelActivityWorkUnits = (
   ).length
 
 export const getActivityRowStatus = (row: ActivityRow): TaskLifecycleStatus =>
-  row.kind === 'task'
-    ? row.task.status
-    : row.kind === 'group'
-      ? row.group.status
-      : row.hierarchy.status
+  row.kind === 'task' ? row.task.status : row.hierarchy.status
 
 export const getActivityRowCompletedAtMs = (row: ActivityRow): number => {
-  const entry =
-    row.kind === 'task'
-      ? row.task
-      : row.kind === 'group'
-        ? row.group
-        : row.hierarchy.owner
+  const entry = row.kind === 'task' ? row.task : row.hierarchy.owner
   return entry.completedAtMs ?? entry.lastUpdatedAtMs ?? entry.startedAtMs
 }
 
@@ -793,12 +750,6 @@ export const getActivityRowSearchText = (row: ActivityRow): string => {
     return [row.task.description, row.task.statusText, row.task.outputPreview]
       .filter(Boolean)
       .join(' ')
-  }
-  if (row.kind === 'group') {
-    return [
-      row.group.label,
-      ...row.group.members.map((member) => member.description),
-    ].join(' ')
   }
   return [
     row.hierarchy.owner.description,
@@ -810,55 +761,14 @@ export const getActivityRowSearchText = (row: ActivityRow): string => {
     .join(' ')
 }
 
-const buildTaskGroup = (groupKey: string, members: TaskItem[]): TaskGroup => {
-  const ordered = [...members].sort(
-    (a, b) => a.startedAtMs - b.startedAtMs || a.id.localeCompare(b.id),
-  )
-  const completedCount = ordered.filter(
-    (member) => member.status === 'completed',
-  ).length
-  const status: TaskLifecycleStatus = ordered.some(
-    (member) => member.status === 'running',
-  )
-    ? 'running'
-    : ordered.some((member) => member.status === 'error')
-      ? 'error'
-      : completedCount > 0
-        ? 'completed'
-        : 'canceled'
-  return {
-    groupKey,
-    label:
-      ordered.find((member) => member.groupLabel)?.groupLabel ??
-      ordered[0].description,
-    members: ordered,
-    status,
-    completedCount,
-    totalCount: ordered.length,
-    startedAtMs: Math.min(...ordered.map((member) => member.startedAtMs)),
-    completedAtMs:
-      status === 'running'
-        ? undefined
-        : Math.max(
-            ...ordered.map(
-              (member) => member.completedAtMs ?? member.lastUpdatedAtMs,
-            ),
-          ),
-    lastUpdatedAtMs: Math.max(
-      ...ordered.map((member) => member.lastUpdatedAtMs),
-    ),
-  }
-}
-
 /**
  * Project the persisted task list into Activity rows.
  *
  * Ownership wins first: a task whose `parentAgentId` resolves to another
  * visible task is removed from the root list and nested under that owner.
  * This is what turns Manager + managed agents into one hierarchy, including
- * adopted agents whose persisted parent changes later. Within each sibling
- * level, leaf tasks still use the legacy `groupKey` collapse exactly as
- * before. Missing parents stay top-level rather than disappearing.
+ * adopted agents whose persisted parent changes later. Missing parents stay
+ * top-level rather than disappearing.
  */
 export function groupActivityTasks(tasks: readonly TaskItem[]): ActivityRow[] {
   const taskById = new Map(tasks.map((task) => [task.id, task]))
@@ -883,18 +793,7 @@ export function groupActivityTasks(tasks: readonly TaskItem[]): ActivityRow[] {
         (child) => !ancestors.has(child.id) && child.id !== task.id,
       )
 
-    // Legacy groups only collapse sibling leaves. An owning task remains the
-    // hierarchy header so its children cannot be hidden inside a group.
-    const membersByGroupKey = new Map<string, TaskItem[]>()
-    for (const task of siblings) {
-      if (!task.groupKey || visibleChildren(task).length > 0) continue
-      const members = membersByGroupKey.get(task.groupKey)
-      if (members) members.push(task)
-      else membersByGroupKey.set(task.groupKey, [task])
-    }
-
     const rows: ActivityRow[] = []
-    const emittedGroupKeys = new Set<string>()
     for (const task of siblings) {
       if (visited.has(task.id)) continue
       const children = visibleChildren(task)
@@ -923,21 +822,8 @@ export function groupActivityTasks(tasks: readonly TaskItem[]): ActivityRow[] {
         continue
       }
 
-      const members = task.groupKey
-        ? membersByGroupKey.get(task.groupKey)
-        : undefined
-      if (!task.groupKey || !members || members.length < 2) {
-        visited.add(task.id)
-        rows.push({ kind: 'task', task })
-        continue
-      }
-      if (emittedGroupKeys.has(task.groupKey)) continue
-      emittedGroupKeys.add(task.groupKey)
-      for (const member of members) visited.add(member.id)
-      rows.push({
-        kind: 'group',
-        group: buildTaskGroup(task.groupKey, members),
-      })
+      visited.add(task.id)
+      rows.push({ kind: 'task', task })
     }
     return rows
   }
@@ -954,41 +840,8 @@ export function groupActivityTasks(tasks: readonly TaskItem[]): ActivityRow[] {
 const countActivityTasks = (rows: readonly ActivityRow[]): number =>
   rows.reduce((total, row) => {
     if (row.kind === 'task') return total + 1
-    if (row.kind === 'group') return total + row.group.members.length
     return total + 1 + row.hierarchy.descendantCount
   }, 0)
-
-/**
- * Prune group expand/collapse overrides whose group no longer has ANY member
- * in the task list. Deliberately keyed off tasks' `groupKey` rather than the
- * rendered group rows: a group that temporarily shrinks to a single member
- * renders as a plain task row (see {@link groupActivityTasks}), and the
- * user's explicit expand/collapse choice must survive until the group
- * regrows. Returns `overrides` unchanged when nothing is stale.
- */
-export function pruneGroupExpandOverrides(
-  overrides: ReadonlyMap<string, boolean>,
-  tasks: readonly TaskItem[],
-): ReadonlyMap<string, boolean> {
-  if (overrides.size === 0) return overrides
-  const liveKeys = new Set<string>()
-  for (const task of tasks) {
-    if (task.groupKey) liveKeys.add(task.groupKey)
-  }
-  let stale = false
-  for (const key of overrides.keys()) {
-    if (!liveKeys.has(key)) {
-      stale = true
-      break
-    }
-  }
-  if (!stale) return overrides
-  const next = new Map<string, boolean>()
-  for (const [key, value] of overrides) {
-    if (liveKeys.has(key)) next.set(key, value)
-  }
-  return next
-}
 
 /** Agent-authored prose for Activity rows, active or completed. */
 export function getTaskAgentUpdates(

@@ -5,8 +5,8 @@
  *
  *   - `seenTaskIds` — the "seen running this session" set that keeps a
  *     finished standalone agent's row expanded (files visible). Compact
- *     Manager/group rows are collapsed by default and use overrides only.
- *   - `taskOverrides` / `groupOverrides` — explicit user toggles, which win
+ *     Manager rows are collapsed by default and use task overrides only.
+ *   - `taskOverrides` — explicit user toggles, which win
  *     over the status default; persisted so a row the user deliberately
  *     collapsed doesn't spring back open after a relaunch.
  *
@@ -23,7 +23,6 @@ const MAX_CONVERSATIONS = 8;
 export type ActivityExpansionSnapshot = {
   seenTaskIds: readonly string[];
   taskOverrides: Readonly<Record<string, boolean>>;
-  groupOverrides: Readonly<Record<string, boolean>>;
 };
 
 type PersistedEntry = ActivityExpansionSnapshot & { updatedAt: number };
@@ -32,7 +31,6 @@ type PersistedMap = Record<string, PersistedEntry>;
 export const EMPTY_ACTIVITY_EXPANSION: ActivityExpansionSnapshot = {
   seenTaskIds: [],
   taskOverrides: {},
-  groupOverrides: {},
 };
 
 const isStringArray = (value: unknown): value is string[] =>
@@ -57,7 +55,6 @@ const readPersisted = (): PersistedMap => {
       if (
         isStringArray(candidate.seenTaskIds) &&
         isBooleanRecord(candidate.taskOverrides) &&
-        isBooleanRecord(candidate.groupOverrides) &&
         typeof candidate.updatedAt === "number"
       ) {
         map[id] = candidate as PersistedEntry;

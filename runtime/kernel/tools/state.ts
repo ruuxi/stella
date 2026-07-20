@@ -9,7 +9,6 @@ import type {
   AgentToolApi,
 } from "./types.js";
 import {
-  THREAD_GROUP_KEY_PREFIX,
   deriveRuntimeThreadLiveState,
   formatRuntimeThreadAge,
   runtimeThreadLastActiveAt,
@@ -373,29 +372,6 @@ export const handleSpawnAgent = async (
             };
           }
         }
-      }
-      // Group ids and thread ids share one namespace (keys are minted
-      // unique across both), so this routing can never hit both.
-      if (
-        explicitThreadId.startsWith(THREAD_GROUP_KEY_PREFIX) &&
-        ctx.agentApi.cancelGroup
-      ) {
-        const groupResult = await ctx.agentApi.cancelGroup(
-          explicitThreadId,
-          AGENT_PAUSE_CANCEL_REASON,
-        );
-        if (groupResult.canceled) {
-          return {
-            result: {
-              group_id: explicitThreadId,
-              status: "canceled",
-              canceled: true,
-              canceled_thread_ids: groupResult.canceledThreadIds,
-            },
-          };
-        }
-        // Fall through: a grp-… prefix on a value that isn't a known
-        // group still gets the per-thread lookup below.
       }
       const canceled = await ctx.agentApi.cancelAgent(
         explicitThreadId,

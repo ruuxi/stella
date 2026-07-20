@@ -68,12 +68,4 @@ export type AgentStreamEvent = {
    * across the gap between this message and the tool it precedes.
    */
   followedByToolCall?: boolean;
-  /**
-   * Work group of the agent thread this event belongs to (`grp-…` key
-   * plus its human label). Present on agent lifecycle events whose
-   * thread was spawned into a group; the Activity UI collapses rows
-   * sharing a groupKey under one header.
-   */
-  groupKey?: string;
-  groupLabel?: string;
 };

@@ -19,8 +19,7 @@ export type LocalChatUpdatedPayload = {
 
 /**
  * One background-agent thread's authoritative activity state — a direct
- * projection of the runtime's `runtime_agents` row (joined with the thread
- * registry's group fields). This is the single source of truth the Activity
+ * projection of the runtime's `runtime_agents` row. This is the single source of truth the Activity
  * UI renders; lifecycle *events* remain the per-occurrence history for chat
  * cards, but never drive thread state.
  */
@@ -35,8 +34,6 @@ export type ThreadActivityRecord = {
   /** Root run that owns the thread's latest lifecycle. */
   rootRunId?: string;
   parentAgentId?: string;
-  groupKey?: string;
-  groupLabel?: string;
   startedAt: number;
   completedAt?: number;
   result?: string;

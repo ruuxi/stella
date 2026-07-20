@@ -12,7 +12,6 @@ import {
   getActivityRowStatus,
   flattenActivityTasks,
   groupActivityTasks,
-  pruneGroupExpandOverrides,
   selectFreshActivityTasks,
   summarizeCompactActivity,
   getTaskAgentUpdates,
@@ -59,7 +58,7 @@ describe("fallbackTaskDescription", () => {
 
   it("keeps 'Task' for ordinal/namespace/opaque ids with no real words", () => {
     expect(fallbackTaskDescription("task-7")).toBe("Task");
-    expect(fallbackTaskDescription("grp-abc123")).toBe("Task");
+    expect(fallbackTaskDescription("grp-abc123")).toBe("Grp abc123");
     expect(fallbackTaskDescription(undefined)).toBe("Task");
     expect(fallbackTaskDescription("1234-5678")).toBe("Task");
     expect(fallbackTaskDescription("a1")).toBe("Task");
@@ -83,124 +82,6 @@ describe("fallbackTaskDescription", () => {
 
   it("still de-slugs meaningful single-word ids", () => {
     expect(fallbackTaskDescription("research")).toBe("Research");
-  });
-});
-
-describe("work-group folding", () => {
-  const task = (overrides: Partial<TaskItem> & { id: string }): TaskItem => ({
-    description: "Task",
-    agentType: "general",
-    status: "running",
-    startedAtMs: 100,
-    lastUpdatedAtMs: 100,
-    ...overrides,
-  });
-
-  it("collapses two members of one group into a single header row", () => {
-    const rows = groupActivityTasks([
-      task({ id: "task-1", groupKey: "grp-1", groupLabel: "Plan the trip" }),
-      task({
-        id: "task-2",
-        groupKey: "grp-1",
-        groupLabel: "Plan the trip",
-        startedAtMs: 150,
-        lastUpdatedAtMs: 150,
-      }),
-      task({ id: "task-3", description: "Unrelated" }),
-    ]);
-
-    expect(rows.map((row) => row.kind)).toEqual(["group", "task"]);
-    const group = rows[0]!.kind === "group" ? rows[0].group : undefined;
-    expect(group?.label).toBe("Plan the trip");
-    expect(group?.members.map((member) => member.id)).toEqual([
-      "task-1",
-      "task-2",
-    ]);
-  });
-
-  it("leaves legacy rows without group fields untouched", () => {
-    const tasks = [
-      task({ id: "task-1", description: "Old task" }),
-      task({ id: "task-2", description: "Older task", status: "completed" }),
-    ];
-
-    const rows = groupActivityTasks(tasks);
-    expect(rows).toEqual([
-      { kind: "task", task: tasks[0] },
-      { kind: "task", task: tasks[1] },
-    ]);
-  });
-
-  it("renders a singleton group as a plain task row", () => {
-    const tasks = [
-      task({ id: "task-1", groupKey: "grp-1", groupLabel: "Plan the trip" }),
-    ];
-
-    expect(groupActivityTasks(tasks)).toEqual([
-      { kind: "task", task: tasks[0] },
-    ]);
-  });
-
-  it("aggregates running, completed, and failed group state", () => {
-    const running = groupActivityTasks([
-      task({
-        id: "task-1",
-        groupKey: "grp-1",
-        status: "completed",
-        completedAtMs: 200,
-        lastUpdatedAtMs: 200,
-      }),
-      task({
-        id: "task-2",
-        groupKey: "grp-1",
-        statusText: "Comparing 12 flight options",
-        lastUpdatedAtMs: 300,
-      }),
-      task({ id: "task-3", groupKey: "grp-1", lastUpdatedAtMs: 250 }),
-    ]);
-    expect(running[0]!.kind).toBe("group");
-    const runningGroup =
-      running[0]!.kind === "group" ? running[0].group : undefined;
-    expect(runningGroup?.status).toBe("running");
-
-    const done = groupActivityTasks([
-      task({
-        id: "task-1",
-        groupKey: "grp-1",
-        status: "completed",
-        completedAtMs: 200,
-        lastUpdatedAtMs: 200,
-      }),
-      task({
-        id: "task-2",
-        groupKey: "grp-1",
-        status: "completed",
-        completedAtMs: 300,
-        lastUpdatedAtMs: 300,
-      }),
-    ]);
-    const doneGroup = done[0]!.kind === "group" ? done[0].group : undefined;
-    expect(doneGroup?.status).toBe("completed");
-
-    const failed = groupActivityTasks([
-      task({
-        id: "task-1",
-        groupKey: "grp-1",
-        status: "completed",
-        completedAtMs: 200,
-        lastUpdatedAtMs: 200,
-      }),
-      task({
-        id: "task-2",
-        groupKey: "grp-1",
-        status: "error",
-        completedAtMs: 300,
-        lastUpdatedAtMs: 300,
-      }),
-    ]);
-    const failedGroup =
-      failed[0]!.kind === "group" ? failed[0].group : undefined;
-    expect(failedGroup?.status).toBe("error");
   });
 });
 
@@ -410,20 +291,6 @@ describe("top-level Activity work-unit counts", () => {
     ).toBe(1);
   });
 
-  it("counts one active direct group block instead of every member", () => {
-    expect(
-      countActiveTopLevelActivityWorkUnits([
-        task({ id: "group-a", groupKey: "grp-1" }),
-        task({ id: "group-b", groupKey: "grp-1" }),
-        task({
-          id: "group-c",
-          groupKey: "grp-1",
-          status: "completed",
-        }),
-      ]),
-    ).toBe(1);
-  });
-
   it("updates across completion, resume, adoption, and detachment", () => {
     const manager = task({ id: "manager", agentType: "manager" });
     const direct = task({ id: "agent" });
@@ -439,9 +306,9 @@ describe("top-level Activity work-unit counts", () => {
     expect(countActiveTopLevelActivityWorkUnits([manager, adopted])).toBe(1);
 
     const pausedManager = { ...manager, status: "canceled" as const };
-    expect(
-      countActiveTopLevelActivityWorkUnits([pausedManager, adopted]),
-    ).toBe(0);
+    expect(countActiveTopLevelActivityWorkUnits([pausedManager, adopted])).toBe(
+      0,
+    );
     expect(
       countActiveTopLevelActivityWorkUnits([
         pausedManager,
@@ -591,58 +458,6 @@ describe("extractStepsFromEvents", () => {
     ]);
 
     expect(steps.map((step) => step.status)).toEqual(["running", "running"]);
-  });
-});
-
-describe("pruneGroupExpandOverrides", () => {
-  const member = (id: string, groupKey?: string): TaskItem => ({
-    id,
-    description: id,
-    agentType: "general",
-    status: "running",
-    startedAtMs: 1,
-    lastUpdatedAtMs: 1,
-    ...(groupKey ? { groupKey, groupLabel: "Research" } : {}),
-  });
-
-  it("keeps an override while the group is shrunk to a single member, so it still applies after a regrow", () => {
-    const overrides: ReadonlyMap<string, boolean> = new Map([
-      ["grp-research", false],
-    ]);
-
-    // Shrunk to one member: renders as a plain task row, but the group is
-    // still alive — the user's explicit collapse must not be pruned.
-    const shrunk = pruneGroupExpandOverrides(overrides, [
-      member("a", "grp-research"),
-    ]);
-    expect(shrunk.get("grp-research")).toBe(false);
-
-    // Regrown to a group row: the collapse choice still applies.
-    const regrown = pruneGroupExpandOverrides(shrunk, [
-      member("a", "grp-research"),
-      member("b", "grp-research"),
-    ]);
-    expect(regrown.get("grp-research")).toBe(false);
-  });
-
-  it("drops an override once no member of the group remains", () => {
-    const overrides: ReadonlyMap<string, boolean> = new Map([
-      ["grp-research", true],
-    ]);
-    const pruned = pruneGroupExpandOverrides(overrides, [member("solo")]);
-    expect(pruned.has("grp-research")).toBe(false);
-    expect(pruned.size).toBe(0);
-  });
-
-  it("returns the same map reference when nothing is stale", () => {
-    const overrides: ReadonlyMap<string, boolean> = new Map([
-      ["grp-research", true],
-    ]);
-    expect(
-      pruneGroupExpandOverrides(overrides, [member("a", "grp-research")]),
-    ).toBe(overrides);
-    const empty: ReadonlyMap<string, boolean> = new Map();
-    expect(pruneGroupExpandOverrides(empty, [member("solo")])).toBe(empty);
   });
 });
 
@@ -1119,8 +934,6 @@ describe("buildActivityTasks", () => {
       record({
         threadId: "child",
         parentAgentId: "manager",
-        groupKey: "legacy-group",
-        groupLabel: "Legacy group",
       }),
     ]);
 
@@ -1131,8 +944,6 @@ describe("buildActivityTasks", () => {
     expect(tasks.find((task) => task.id === "child")).toMatchObject({
       id: "child",
       parentAgentId: "manager",
-      groupKey: "legacy-group",
-      groupLabel: "Legacy group",
     });
   });
 

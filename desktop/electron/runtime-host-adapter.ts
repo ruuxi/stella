@@ -347,8 +347,6 @@ export class RuntimeHostAdapter {
             ...(typeof event.attemptGeneration === "number"
               ? { attemptGeneration: event.attemptGeneration }
               : {}),
-            ...(event.groupKey ? { groupKey: event.groupKey } : {}),
-            ...(event.groupLabel ? { groupLabel: event.groupLabel } : {}),
           });
         }
         break;
@@ -921,8 +919,6 @@ export class RuntimeHostAdapter {
               ...(typeof event.attemptGeneration === "number"
                 ? { attemptGeneration: event.attemptGeneration }
                 : {}),
-              ...(event.groupKey ? { groupKey: event.groupKey } : {}),
-              ...(event.groupLabel ? { groupLabel: event.groupLabel } : {}),
             });
           }
           break;
