@@ -27,10 +27,15 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
-import { Check, Eye, Send, X } from "@/ui/icons";
+import { Eye } from "@/ui/icons";
 import { TextShimmer } from "@/app/chat/TextShimmer";
 import { useThreadActivity } from "@/features/chat/hooks/use-thread-activity";
 import { selectLatestThreadAssistantSummary } from "@/features/chat/lib/agent-assistant-summary";
+import {
+  agentPresentationFallback,
+  deriveAgentCardPresentationStatus,
+} from "@/features/chat/lib/agent-activity-presentation";
+import { AgentLifecycleStatusIcon } from "@/features/chat/components/AgentLifecycleStatusIcon";
 import { openAgentThreadTab } from "@/features/workspace-display/open-payload";
 import "./background-work-card.css";
 
@@ -255,15 +260,14 @@ export function BackgroundWorkCard({
   // "Paused" only replaces the ACTIVE presentation: while any covered thread
   // is still genuinely working the card keeps its shimmer + normal subtitle,
   // and a settled card keeps its plain historical label.
-  const failed = (failedThreadIds?.length ?? 0) > 0;
-  const showPaused = paused && !working && !failed;
-  const semanticFallback = failed
-    ? "Failed"
-    : showPaused
-      ? "Paused"
-      : working
-        ? "Working…"
-        : "Completed";
+  const presentationStatus = deriveAgentCardPresentationStatus({
+    working,
+    paused,
+    failed: (failedThreadIds?.length ?? 0) > 0,
+  });
+  const failed = presentationStatus === "error";
+  const showPaused = presentationStatus === "canceled";
+  const semanticFallback = agentPresentationFallback(presentationStatus);
   const subtitle = latestAssistantSummary?.text ?? semanticFallback;
   const startEventIds = threadIds
     .map((id) => startEventIdsByThread[id])
@@ -279,7 +283,8 @@ export function BackgroundWorkCard({
     <div
       className="background-work-card"
       data-state={failed ? "failed" : isFollowUp ? "follow-up" : "started"}
-      data-working={working ? "true" : undefined}
+      data-lifecycle-status={presentationStatus}
+      data-working={presentationStatus === "running" ? "true" : undefined}
       data-paused={showPaused ? "true" : undefined}
       data-activity-card-id={cardId}
       data-agent-ids={threadIds.join(",")}
@@ -288,13 +293,11 @@ export function BackgroundWorkCard({
       data-terminal-event-ids={terminalEventIds.join(",")}
     >
       <span className="background-work-card__glyph" aria-hidden="true">
-        {failed ? (
-          <X size={16} strokeWidth={1.75} />
-        ) : isFollowUp ? (
-          <Check size={16} strokeWidth={1.75} />
-        ) : (
-          <Send size={16} strokeWidth={1.75} />
-        )}
+        <AgentLifecycleStatusIcon
+          status={presentationStatus}
+          size={16}
+          strokeWidth={1.75}
+        />
       </span>
       <span className="background-work-card__text">
         <span className="background-work-card__title">

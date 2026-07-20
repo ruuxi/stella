@@ -19,6 +19,10 @@ import type {
   ToolResultPayload,
 } from '../../../../../runtime/contracts/local-chat.js'
 import { selectLatestAgentAssistantMessage } from './agent-assistant-summary'
+import {
+  deriveLatestAgentPresentationStatus,
+  latestAttemptSupersedesAuthoritative,
+} from './agent-activity-presentation'
 
 export type {
   Attachment,
@@ -146,6 +150,16 @@ export const TASK_COMPLETION_INDICATOR_MS = 3000
  */
 export type TaskLiveDecoration = {
   runId?: string
+  /** Lifecycle state observed directly from the ordered agent stream. */
+  status?: TaskLifecycleStatus
+  /** Durable attempt epoch; lets a resumed run supersede a stale terminal row. */
+  attemptGeneration?: number
+  /** Receipt time of this attempt's start, used only for legacy packets. */
+  startedAtMs?: number
+  /** Receipt time of the latest lifecycle packet for this attempt. */
+  observedAtMs?: number
+  /** Monotonic runtime-recorder sequence for stale packet fencing. */
+  lifecycleSequence?: number
   anchorTurnId?: string
   statusText?: string
   toolActivity?: TaskToolActivity
@@ -174,9 +188,9 @@ export function selectFreshActivityTasks(
 /**
  * The Activity task list: authoritative thread rows (from the runtime's
  * `runtime_agents` table via `useThreadActivity`) overlaid with the live
- * stream decoration for still-running threads. No reconciliation — the two
- * sources own disjoint fields, so a stale decoration can never flip a
- * row's status or title, and a terminal row ignores decoration entirely.
+ * stream lifecycle observation. The durable row wins within one attempt;
+ * only a strictly newer observed generation may temporarily supersede it
+ * while the row refetch catches up.
  */
 export function buildActivityTasks(
   records: readonly ThreadActivityRecord[],
@@ -185,14 +199,45 @@ export function buildActivityTasks(
   return records
     .filter((record) => isActivityFeedTask({ agentType: record.agentType }))
     .map((record) => {
-      const running = record.status === 'running'
-      const decoration = running ? decorations?.[record.threadId] : undefined
+      const candidateDecoration = decorations?.[record.threadId]
+      const authoritative = {
+        status: record.status,
+        attemptGeneration: record.attemptGeneration,
+        rootRunId: record.rootRunId,
+        updatedAtMs: record.updatedAt,
+        completedAtMs: record.completedAt,
+      }
+      const latestAttempt = candidateDecoration
+        ? {
+            status: candidateDecoration.status,
+            attemptGeneration: candidateDecoration.attemptGeneration,
+            rootRunId: candidateDecoration.runId,
+            startedAtMs: candidateDecoration.startedAtMs,
+            observedAtMs: candidateDecoration.observedAtMs,
+          }
+        : undefined
+      const status = deriveLatestAgentPresentationStatus(
+        authoritative,
+        latestAttempt,
+      )
+      const running = status === 'running'
+      const decoration = running ? candidateDecoration : undefined
+      const latestAttemptOwns = latestAttemptSupersedesAuthoritative(
+        authoritative,
+        latestAttempt,
+      )
+      const recordOwnsAttempt = !latestAttemptOwns
+      const observedDescription = latestAttemptOwns
+        ? normalizeTaskDisplayStatusText(candidateDecoration?.statusText)
+        : undefined
       return {
         id: record.threadId,
-        description: record.description,
+        description: observedDescription ?? record.description,
         agentType: record.agentType,
-        status: record.status,
-        runId: decoration?.runId ?? record.rootRunId,
+        status,
+        runId:
+          (latestAttemptOwns ? candidateDecoration?.runId : undefined) ??
+          record.rootRunId,
         anchorTurnId: decoration?.anchorTurnId,
         parentAgentId: record.parentAgentId,
         groupKey: record.groupKey,
@@ -206,13 +251,27 @@ export function buildActivityTasks(
         toolActivity: running ? decoration?.toolActivity : undefined,
         reasoningText: running ? decoration?.reasoningText : undefined,
         startedAtMs: record.startedAt,
-        completedAtMs: running ? undefined : record.completedAt,
-        lastUpdatedAtMs: record.updatedAt,
-        outputPreview: running ? undefined : (record.result ?? record.error),
-        assistantMessages: record.assistantMessages,
-        assistantMessagesUpdatedAtMs: record.assistantMessagesUpdatedAt,
-        assistantMessagesUpdatedSequence:
-          record.assistantMessagesUpdatedSequence,
+        completedAtMs: running
+          ? undefined
+          : latestAttemptOwns
+            ? candidateDecoration?.observedAtMs
+            : record.completedAt,
+        lastUpdatedAtMs:
+          (latestAttemptOwns ? candidateDecoration?.observedAtMs : undefined) ??
+          record.updatedAt,
+        outputPreview:
+          running || !recordOwnsAttempt
+            ? undefined
+            : (record.result ?? record.error),
+        assistantMessages: recordOwnsAttempt
+          ? record.assistantMessages
+          : undefined,
+        assistantMessagesUpdatedAtMs: recordOwnsAttempt
+          ? record.assistantMessagesUpdatedAt
+          : undefined,
+        assistantMessagesUpdatedSequence: recordOwnsAttempt
+          ? record.assistantMessagesUpdatedSequence
+          : undefined,
       }
     })
     .sort((a, b) => a.startedAtMs - b.startedAtMs || a.id.localeCompare(b.id))

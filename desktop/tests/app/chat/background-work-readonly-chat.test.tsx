@@ -96,6 +96,10 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
     expect(container.textContent).toContain("Check the route again");
     expect(container.textContent).not.toContain("finished send_input");
     expect(container.textContent).not.toContain("send_input");
+    const card = container.querySelector(".background-work-card");
+    expect(card?.getAttribute("data-lifecycle-status")).toBe("running");
+    expect(card?.querySelector(".stella-icon-circle-dot")).not.toBeNull();
+    expect(card?.querySelector(".stella-icon-check-circle")).toBeNull();
 
     const button = container.querySelector<HTMLButtonElement>(
       'button[aria-label="View activity"]',
@@ -174,6 +178,48 @@ describe("BackgroundWorkCard authored update and thread chat", () => {
       "The audit is complete and the checks pass.",
     );
     expect(container.textContent).not.toContain("Completed");
+    const card = container.querySelector(".background-work-card");
+    expect(card?.getAttribute("data-lifecycle-status")).toBe("completed");
+    expect(card?.querySelector(".stella-icon-check-circle")).not.toBeNull();
+    expect(card?.querySelector(".stella-icon-circle-dot")).toBeNull();
+  });
+
+  it("never pairs a terminal icon with the Working… fallback", async () => {
+    records = [
+      {
+        ...records[0]!,
+        assistantMessages: undefined,
+        assistantMessagesUpdatedAt: undefined,
+        assistantMessagesUpdatedSequence: undefined,
+      },
+    ];
+    await act(async () => {
+      root.render(
+        <BackgroundWorkCard
+          threadIds={["agent-thread-1"]}
+          spawnedAtMs={{}}
+          descriptions={{ "agent-thread-1": "Original task" }}
+          followUpThreadIds={["agent-thread-1"]}
+          statusTexts={{
+            "agent-thread-1":
+              "Stop milestone spam — report only a blocker or final completion",
+          }}
+          cardId="resumed-follow-up"
+          startEventIdsByThread={{ "agent-thread-1": "start-follow-up" }}
+          attemptGenerationsByThread={{ "agent-thread-1": 2 }}
+          rootRunIdsByThread={{ "agent-thread-1": "root-attempt-2" }}
+          conversationId="conversation-1"
+        />,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const card = container.querySelector(".background-work-card");
+    expect(card?.textContent).toContain("Working…");
+    expect(card?.getAttribute("data-lifecycle-status")).toBe("running");
+    expect(card?.querySelector(".stella-icon-circle-dot")).not.toBeNull();
+    expect(card?.querySelector(".stella-icon-check-circle")).toBeNull();
   });
 
   it("shows the latest stable accumulated assistant text while it streams", async () => {

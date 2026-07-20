@@ -417,6 +417,47 @@ describe("spawn-anchored background task lifecycle", () => {
     );
   });
 
+  it("keeps a resumed follow-up running when an older attempt completes out of order", () => {
+    const prior = started({
+      id: "prior-start",
+      at: 100,
+      agentId: "resumed-thread",
+      rootRunId: "prior-root",
+      description: "Original task",
+      attemptGeneration: 4,
+    });
+    const followUp = started({
+      id: "follow-up-start",
+      at: 300,
+      agentId: "resumed-thread",
+      rootRunId: "follow-up-root",
+      description: "Original task",
+      statusText:
+        "Stop milestone spam — report only a blocker or final completion",
+      isFollowUp: true,
+      attemptGeneration: 5,
+    });
+    const staleCompletion = completed({
+      id: "prior-completion-delivered-late",
+      at: 500,
+      agentId: "resumed-thread",
+      rootRunId: "prior-root",
+      attemptGeneration: 4,
+    });
+
+    const index = buildBackgroundTaskLifecycleIndex([
+      staleCompletion,
+      followUp,
+      prior,
+    ]);
+    expect(index.byStartEventId.get("prior-start")?.status).toBe("completed");
+    expect(index.byStartEventId.get("follow-up-start")).toMatchObject({
+      status: "running",
+      attemptGeneration: 5,
+      title: "Stop milestone spam — report only a blocker or final completion",
+    });
+  });
+
   it("settles a visible Manager card from a later internal attempt generation", () => {
     const visibleStart = started({
       id: "manager-visible-start",

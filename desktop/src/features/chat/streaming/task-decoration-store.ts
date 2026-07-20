@@ -4,7 +4,9 @@
  * durable `agentId`, never by run. Authoritative task state (status,
  * description, timestamps, result) lives in the thread-activity rows;
  * a decoration only carries the high-frequency display extras the rows
- * don't persist, and is cleared on the thread's terminal stream event.
+ * don't persist. The latest lifecycle observation stays until the durable
+ * row catches up or a newer attempt replaces it, which closes the brief
+ * completed-row/follow-up race without making stream data authoritative.
  *
  * Lives outside the React tree so BOTH kinds of consumer can read it:
  * the conversation-level task list (`useFullShellChat` merges the whole
@@ -25,9 +27,8 @@ export type TaskDecoration = TaskLiveDecoration & {
 
 export const MAX_AGENT_REASONING_CHARS = 8_000
 
-/** Terminal-clear normally keeps the map tiny; the cap only guards against
- *  threads whose terminal event streamed while the renderer wasn't looking
- *  (their stale decoration is already ignored by the merge). */
+/** New starts replace terminal observations and the cap bounds completed
+ * observations that remain after the authoritative row catches up. */
 export const MAX_TASK_DECORATIONS = 64
 
 const decorations = new Map<string, TaskDecoration>()
@@ -71,25 +72,80 @@ const setDecoration = (next: TaskDecoration) => {
   notify([next.agentId])
 }
 
+type DecorationLifecycleSignal = {
+  runId?: string
+  attemptGeneration?: number
+  lifecycleSequence?: number
+  startsAttempt?: boolean
+  settlesAttempt?: boolean
+}
+
+const isOlderLifecycleSignal = (
+  existing: TaskDecoration,
+  signal: DecorationLifecycleSignal,
+): boolean => {
+  if (
+    existing.attemptGeneration !== undefined &&
+    signal.attemptGeneration !== undefined &&
+    existing.attemptGeneration !== signal.attemptGeneration
+  ) {
+    return signal.attemptGeneration < existing.attemptGeneration
+  }
+  if (
+    existing.runId &&
+    signal.runId &&
+    existing.runId !== signal.runId &&
+    existing.attemptGeneration === signal.attemptGeneration
+  ) {
+    return signal.startsAttempt !== true
+  }
+  if (
+    existing.status !== undefined &&
+    existing.status !== 'running' &&
+    signal.startsAttempt !== true &&
+    signal.settlesAttempt !== true &&
+    existing.attemptGeneration === signal.attemptGeneration
+  ) {
+    return true
+  }
+  return (
+    existing.lifecycleSequence !== undefined &&
+    signal.lifecycleSequence !== undefined &&
+    signal.lifecycleSequence < existing.lifecycleSequence
+  )
+}
+
 export const decorateTask = (input: {
   agentId: string
   conversationId: string
   runId?: string
+  attemptGeneration?: number
+  lifecycleSequence?: number
+  /** A start replaces prior-attempt prose/tool decoration atomically. */
+  startsAttempt?: boolean
   anchorTurnId?: string
   statusText?: string
   toolActivity?: TaskDecoration['toolActivity']
 }): void => {
   const existing = decorations.get(input.agentId)
+  if (existing && isOlderLifecycleSignal(existing, input)) return
+  const now = Date.now()
+  const retained = input.startsAttempt ? undefined : existing
   setDecoration({
     agentId: input.agentId,
     conversationId: input.conversationId,
-    runId: input.runId ?? existing?.runId,
-    anchorTurnId: input.anchorTurnId ?? existing?.anchorTurnId,
+    runId: input.runId ?? retained?.runId,
+    status: 'running',
+    attemptGeneration: input.attemptGeneration ?? retained?.attemptGeneration,
+    lifecycleSequence: input.lifecycleSequence ?? retained?.lifecycleSequence,
+    startedAtMs: input.startsAttempt ? now : (retained?.startedAtMs ?? now),
+    observedAtMs: now,
+    anchorTurnId: input.anchorTurnId ?? retained?.anchorTurnId,
     statusText:
-      normalizeTaskDisplayStatusText(input.statusText) ?? existing?.statusText,
-    toolActivity: input.toolActivity ?? existing?.toolActivity,
-    reasoningText: existing?.reasoningText,
-    lastUpdatedAtMs: Date.now(),
+      normalizeTaskDisplayStatusText(input.statusText) ?? retained?.statusText,
+    toolActivity: input.toolActivity ?? retained?.toolActivity,
+    reasoningText: retained?.reasoningText,
+    lastUpdatedAtMs: now,
   })
 }
 
@@ -97,15 +153,24 @@ export const appendTaskReasoning = (input: {
   agentId: string
   conversationId: string
   runId?: string
+  attemptGeneration?: number
+  lifecycleSequence?: number
   chunk: string
 }): void => {
   if (!input.chunk) return
   const existing = decorations.get(input.agentId)
+  if (existing && isOlderLifecycleSignal(existing, input)) return
+  const now = Date.now()
   const nextReasoningText = `${existing?.reasoningText ?? ''}${input.chunk}`
   setDecoration({
     agentId: input.agentId,
     conversationId: input.conversationId,
     runId: input.runId ?? existing?.runId,
+    status: 'running',
+    attemptGeneration: input.attemptGeneration ?? existing?.attemptGeneration,
+    lifecycleSequence: input.lifecycleSequence ?? existing?.lifecycleSequence,
+    startedAtMs: existing?.startedAtMs ?? now,
+    observedAtMs: now,
     anchorTurnId: existing?.anchorTurnId,
     statusText: existing?.statusText,
     toolActivity: existing?.toolActivity,
@@ -113,7 +178,38 @@ export const appendTaskReasoning = (input: {
       nextReasoningText.length > MAX_AGENT_REASONING_CHARS
         ? nextReasoningText.slice(-MAX_AGENT_REASONING_CHARS)
         : nextReasoningText,
-    lastUpdatedAtMs: Date.now(),
+    lastUpdatedAtMs: now,
+  })
+}
+
+export const settleTaskDecoration = (input: {
+  agentId: string
+  conversationId: string
+  runId?: string
+  attemptGeneration?: number
+  lifecycleSequence?: number
+  status: Exclude<NonNullable<TaskDecoration['status']>, 'running'>
+}): void => {
+  const existing = decorations.get(input.agentId)
+  if (
+    existing &&
+    isOlderLifecycleSignal(existing, { ...input, settlesAttempt: true })
+  ) {
+    return
+  }
+  const now = Date.now()
+  setDecoration({
+    agentId: input.agentId,
+    conversationId: input.conversationId,
+    runId: input.runId ?? existing?.runId,
+    status: input.status,
+    attemptGeneration: input.attemptGeneration ?? existing?.attemptGeneration,
+    lifecycleSequence: input.lifecycleSequence ?? existing?.lifecycleSequence,
+    startedAtMs: existing?.startedAtMs ?? now,
+    observedAtMs: now,
+    anchorTurnId: existing?.anchorTurnId,
+    statusText: existing?.statusText,
+    lastUpdatedAtMs: now,
   })
 }
 

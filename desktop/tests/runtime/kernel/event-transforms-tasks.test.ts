@@ -769,7 +769,7 @@ describe("buildActivityTasks", () => {
     ...overrides,
   });
 
-  it("maps authoritative rows and overlays decoration only on running rows", () => {
+  it("maps authoritative rows and ignores a leftover same-attempt running decoration on terminal rows", () => {
     const tasks = buildActivityTasks(
       [
         record(),
@@ -777,6 +777,7 @@ describe("buildActivityTasks", () => {
           threadId: "book-hotel",
           description: "Book the hotel",
           status: "completed",
+          attemptGeneration: 2,
           rootRunId: "root-2",
           startedAt: 2_000,
           completedAt: 3_000,
@@ -789,9 +790,15 @@ describe("buildActivityTasks", () => {
           statusText: "Comparing fares",
           reasoningText: "checking SAS…",
         },
-        // Decoration for a terminal row must be ignored entirely — a stale
-        // "running" leftover can never re-open a finished thread.
-        "book-hotel": { statusText: "still working" },
+        // A stale same-attempt running observation cannot reopen a terminal.
+        "book-hotel": {
+          status: "running",
+          attemptGeneration: 2,
+          runId: "root-2",
+          startedAtMs: 2_000,
+          observedAtMs: 2_500,
+          statusText: "still working",
+        },
       },
     );
 
@@ -814,6 +821,119 @@ describe("buildActivityTasks", () => {
     });
     expect(done?.statusText).toBeUndefined();
     expect(done?.reasoningText).toBeUndefined();
+  });
+
+  it.each(["general", "manager"] as const)(
+    "lets a newer live follow-up supersede a stale completed %s row",
+    (agentType) => {
+      const [task] = buildActivityTasks(
+        [
+          record({
+            agentType,
+            status: "completed",
+            attemptGeneration: 4,
+            rootRunId: "prior-root",
+            completedAt: 2_000,
+            updatedAt: 2_000,
+            result: "Prior attempt finished",
+            assistantMessages: ["Prior final answer"],
+          }),
+        ],
+        {
+          "research-flights": {
+            status: "running",
+            attemptGeneration: 5,
+            runId: "follow-up-root",
+            startedAtMs: 3_000,
+            observedAtMs: 3_000,
+            statusText:
+              "Stop milestone spam — report only a blocker or final completion",
+          },
+        },
+      );
+
+      expect(task).toMatchObject({
+        status: "running",
+        runId: "follow-up-root",
+        description:
+          "Stop milestone spam — report only a blocker or final completion",
+        statusText:
+          "Stop milestone spam — report only a blocker or final completion",
+      });
+      expect(task?.completedAtMs).toBeUndefined();
+      expect(task?.outputPreview).toBeUndefined();
+      expect(task?.assistantMessages).toBeUndefined();
+    },
+  );
+
+  it("moves completed → follow-up → completed using the latest attempt", () => {
+    const stale = record({
+      status: "completed",
+      attemptGeneration: 4,
+      rootRunId: "prior-root",
+      completedAt: 2_000,
+      updatedAt: 2_000,
+    });
+    const [active] = buildActivityTasks([stale], {
+      "research-flights": {
+        status: "running",
+        attemptGeneration: 5,
+        runId: "follow-up-root",
+        startedAtMs: 3_000,
+        observedAtMs: 3_000,
+      },
+    });
+    expect(active?.status).toBe("running");
+
+    const [done] = buildActivityTasks(
+      [
+        record({
+          status: "completed",
+          attemptGeneration: 5,
+          rootRunId: "follow-up-root",
+          completedAt: 4_000,
+          updatedAt: 4_000,
+          assistantMessages: ["Final follow-up result"],
+        }),
+      ],
+      {
+        "research-flights": {
+          status: "completed",
+          attemptGeneration: 5,
+          runId: "follow-up-root",
+          startedAtMs: 3_000,
+          observedAtMs: 4_010,
+        },
+      },
+    );
+    expect(done).toMatchObject({
+      status: "completed",
+      assistantMessages: ["Final follow-up result"],
+    });
+  });
+
+  it("moves completed → follow-up → paused without showing completion", () => {
+    const [paused] = buildActivityTasks(
+      [
+        record({
+          status: "completed",
+          attemptGeneration: 4,
+          rootRunId: "prior-root",
+          completedAt: 2_000,
+          updatedAt: 2_000,
+        }),
+      ],
+      {
+        "research-flights": {
+          status: "canceled",
+          attemptGeneration: 5,
+          runId: "follow-up-root",
+          startedAtMs: 3_000,
+          observedAtMs: 3_500,
+        },
+      },
+    );
+    expect(paused?.status).toBe("canceled");
   });
 
   it("shows the row's own description: a send_input follow-up that re-described the thread just shows the new text", () => {

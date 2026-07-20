@@ -27,7 +27,12 @@ export function useTaskDecorationPublisher(): void {
       for (const [agentId, decoration] of Object.entries(
         getTaskDecorationsSnapshot(),
       )) {
-        if (decoration.statusText) {
+        if (
+          decoration.status !== 'completed' &&
+          decoration.status !== 'error' &&
+          decoration.status !== 'canceled' &&
+          decoration.statusText
+        ) {
           statusTextByAgentId[agentId] = decoration.statusText
         }
       }

@@ -16,8 +16,8 @@
 import { useCallback, type Dispatch, type MutableRefObject } from 'react'
 import { showToast } from '@/ui/toast'
 import {
-  clearTaskDecoration,
   decorateTask,
+  settleTaskDecoration,
 } from './task-decoration-store'
 import {
   AGENT_IDS,
@@ -38,6 +38,8 @@ type ReasoningQueueEntry = {
   agentId: string
   conversationId: string
   runId?: string
+  attemptGeneration?: number
+  lifecycleSequence?: number
   chunk: string
 }
 
@@ -460,7 +462,19 @@ export function useAgentEventHandler({
             event.type === AGENT_STREAM_EVENT_TYPES.AGENT_CANCELED
           ) {
             discardPendingReasoningChunks(event.agentId)
-            clearTaskDecoration(event.agentId)
+            settleTaskDecoration({
+              agentId: event.agentId,
+              conversationId,
+              runId,
+              attemptGeneration: event.attemptGeneration,
+              lifecycleSequence: event.sourceSeq ?? event.seq,
+              status:
+                event.type === AGENT_STREAM_EVENT_TYPES.AGENT_COMPLETED
+                  ? 'completed'
+                  : event.type === AGENT_STREAM_EVENT_TYPES.AGENT_FAILED
+                    ? 'error'
+                    : 'canceled',
+            })
             break
           }
 
@@ -472,6 +486,8 @@ export function useAgentEventHandler({
               agentId: event.agentId,
               conversationId,
               runId,
+              attemptGeneration: event.attemptGeneration,
+              lifecycleSequence: event.sourceSeq ?? event.seq,
               chunk: event.chunk,
             })
             break
@@ -482,7 +498,6 @@ export function useAgentEventHandler({
             // clean decoration — stale reasoning/status from the previous
             // attempt must not bleed into the new one.
             discardPendingReasoningChunks(event.agentId)
-            clearTaskDecoration(event.agentId)
           }
 
           flushPendingReasoningChunks(event.agentId)
@@ -490,6 +505,10 @@ export function useAgentEventHandler({
             agentId: event.agentId,
             conversationId,
             runId,
+            attemptGeneration: event.attemptGeneration,
+            lifecycleSequence: event.sourceSeq ?? event.seq,
+            startsAttempt:
+              event.type === AGENT_STREAM_EVENT_TYPES.AGENT_STARTED,
             anchorTurnId: event.userMessageId,
             statusText: event.statusText,
             toolActivity: event.toolActivity,

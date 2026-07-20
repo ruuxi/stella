@@ -13,6 +13,8 @@ export type PendingReasoningEntry = {
   agentId: string;
   conversationId: string;
   runId?: string;
+  attemptGeneration?: number;
+  lifecycleSequence?: number;
   chunk: string;
 };
 

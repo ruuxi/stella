@@ -15,13 +15,10 @@ import {
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  CheckCircle2,
-  Circle,
-  CircleDot,
-  AlertCircle,
   ChevronDown,
   Eye,
 } from "@/ui/icons";
+import { AgentLifecycleStatusIcon } from "@/features/chat/components/AgentLifecycleStatusIcon";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import { useUiState } from "@/context/ui-state";
 import {
@@ -300,48 +297,17 @@ const CompactChildState = memo(function CompactChildState({
 });
 
 function TaskStatusIcon({ status }: { status: TaskItem["status"] }) {
-  switch (status) {
-    // Running rows carry a static "active" status dot (a ringed center dot)
-    // rather than a spinner — the label's text shimmer already conveys the
-    // working state, so this fills the reserved icon slot for alignment and
-    // reads as "this thread is live" without a second animation.
-    case "running":
-      return (
-        <CircleDot
-          className="chat-workspace-strip__task-icon chat-workspace-strip__task-icon--running"
-          size={15}
-          strokeWidth={2}
-          aria-hidden="true"
-        />
-      );
-    case "completed":
-      return (
-        <CheckCircle2
-          className="chat-workspace-strip__task-icon chat-workspace-strip__task-icon--done"
-          size={15}
-          strokeWidth={2}
-          aria-hidden="true"
-        />
-      );
-    case "error":
-      return (
-        <AlertCircle
-          className="chat-workspace-strip__task-icon chat-workspace-strip__task-icon--error"
-          size={15}
-          strokeWidth={2}
-          aria-hidden="true"
-        />
-      );
-    case "canceled":
-      return (
-        <Circle
-          className="chat-workspace-strip__task-icon chat-workspace-strip__task-icon--canceled"
-          size={15}
-          strokeWidth={2}
-          aria-hidden="true"
-        />
-      );
-  }
+  const suffix =
+    status === "completed" ? "done" : status === "error" ? "error" : status;
+  return (
+    <AgentLifecycleStatusIcon
+      status={status}
+      className={`chat-workspace-strip__task-icon chat-workspace-strip__task-icon--${suffix}`}
+      size={15}
+      strokeWidth={2}
+      aria-hidden="true"
+    />
+  );
 }
 
 const TaskRow = memo(function TaskRow({
