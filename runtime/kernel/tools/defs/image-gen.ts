@@ -58,14 +58,16 @@ export const createImageGenTool = (
         referenceImagePaths: {
           type: "array",
           items: { type: "string" },
+          maxItems: 4,
           description:
-            "Optional local image paths to use as reference inputs. When any reference is provided the gateway switches from text_to_image to image_edit.",
+            "Optional local image paths to use as reference inputs. At most four total references may be supplied across paths and URLs. Managed generation safely normalizes local bytes into a bounded upload envelope. When any reference is provided the gateway switches from text_to_image to image_edit.",
         },
         referenceImageUrls: {
           type: "array",
           items: { type: "string" },
+          maxItems: 4,
           description:
-            "Optional remote http(s) image URLs to use as reference inputs. Mix with referenceImagePaths when you have a local subject photo plus catalog product photos.",
+            "Optional remote http(s) image URLs or validated data:image URLs to use as reference inputs. At most four total references may be supplied across URLs and paths. Mix with referenceImagePaths when you have a local subject photo plus catalog product photos.",
         },
         allowManagedReferenceUpload: {
           type: "boolean",

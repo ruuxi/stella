@@ -43,6 +43,7 @@ import {
   validateDecodedImageFile,
 } from "../../../runtime/kernel/tools/image-decode-validation.js";
 import { materializeMediaArtifact } from "../../../runtime/kernel/tools/media-artifact-store.js";
+import { MAX_MANAGED_IMAGE_REFERENCE_ITEMS } from "../../../runtime/kernel/tools/managed-image-references.js";
 
 type FashionHandlerOptions = PrivilegedIpcOptions & {
   getStellaAppDir: () => string | null;
@@ -79,6 +80,8 @@ type FashionConversionOptions = {
     args: readonly string[],
     options: { timeout: number; killSignal: NodeJS.Signals; maxBuffer: number },
   ) => Promise<unknown>;
+  /** Test-only race injection after pathname identity is captured. */
+  afterPathSnapshot?: () => void | Promise<void>;
 };
 
 const EXT_MIME_MAP: Record<string, string> = {
@@ -103,12 +106,22 @@ const sameFile = (left: Stats, right: Stats): boolean =>
   left.mtimeMs === right.mtimeMs &&
   left.ctimeMs === right.ctimeMs;
 
-const readPickedFileNoFollow = async (filePath: string): Promise<Buffer> => {
+const readPickedFileNoFollow = async (
+  filePath: string,
+  options: FashionConversionOptions = {},
+): Promise<Buffer> => {
   if (typeof constants.O_NOFOLLOW !== "number") {
     throw new Error("Safe no-follow image reads are unavailable.");
   }
+  const requested = path.resolve(filePath);
+  const initialResolved = await fs.realpath(requested);
+  const selectedPathStat = await fs.stat(initialResolved);
+  if (!selectedPathStat.isFile() || selectedPathStat.nlink !== 1) {
+    throw new Error("Fashion images must be regular, non-linked files.");
+  }
+  await options.afterPathSnapshot?.();
   const handle = await fs.open(
-    path.resolve(filePath),
+    initialResolved,
     constants.O_RDONLY | constants.O_NOFOLLOW,
   );
   try {
@@ -121,6 +134,17 @@ const readPickedFileNoFollow = async (filePath: string): Promise<Buffer> => {
     ) {
       throw new Error(
         "Fashion images must be regular files no larger than 20 MB.",
+      );
+    }
+    const postOpenResolved = await fs.realpath(requested);
+    const postOpenPathStat = await fs.stat(postOpenResolved);
+    if (
+      postOpenResolved !== initialResolved ||
+      !sameFile(selectedPathStat, before) ||
+      !sameFile(before, postOpenPathStat)
+    ) {
+      throw new Error(
+        "Fashion image pathname changed before its selected file was opened.",
       );
     }
     const chunks: Buffer[] = [];
@@ -237,7 +261,7 @@ export const prepareFashionImage = async (
   directory: string,
   conversionOptions: FashionConversionOptions = {},
 ): Promise<{ bytes: Buffer; ext: "jpg" | "png" | "gif" | "webp" }> => {
-  const bytes = await readPickedFileNoFollow(sourcePath);
+  const bytes = await readPickedFileNoFollow(sourcePath, conversionOptions);
   const sourceExt = path.extname(sourcePath).slice(1).toLowerCase();
   if (sourceExt === "heic" || isHeicBytes(bytes)) {
     if (!isHeicBytes(bytes)) throw new Error("Selected HEIC file is invalid.");
@@ -588,6 +612,11 @@ export const registerFashionHandlers = (options: FashionHandlerOptions) => {
       if (result.canceled || result.filePaths.length === 0) {
         return { canceled: true, paths: [] as string[] } as const;
       }
+      if (result.filePaths.length >= MAX_MANAGED_IMAGE_REFERENCE_ITEMS) {
+        throw new Error(
+          `Choose at most ${MAX_MANAGED_IMAGE_REFERENCE_ITEMS - 1} clothing images; the body photo uses the first image_gen reference slot.`,
+        );
+      }
       return { canceled: false, paths: result.filePaths } as const;
     },
   );
@@ -609,12 +638,26 @@ export const registerFashionHandlers = (options: FashionHandlerOptions) => {
           ? payload.batchId.trim()
           : `tryon-${Date.now().toString(36)}`;
 
+      const imageUrls = normalizeImageUrls(payload?.imageUrls);
+      const requestedPaths = Array.isArray(payload?.imagePaths)
+        ? payload.imagePaths.filter(
+            (value): value is string =>
+              typeof value === "string" && value.trim().length > 0,
+          )
+        : [];
+      if (
+        requestedPaths.length + imageUrls.length >=
+        MAX_MANAGED_IMAGE_REFERENCE_ITEMS
+      ) {
+        throw new Error(
+          `Fashion try-on accepts at most ${MAX_MANAGED_IMAGE_REFERENCE_ITEMS - 1} clothing references because the body photo occupies the first image_gen reference slot.`,
+        );
+      }
       const stashedPaths = await stashTryOnImagePaths(
         root,
         batchId,
-        payload?.imagePaths,
+        requestedPaths,
       );
-      const imageUrls = normalizeImageUrls(payload?.imageUrls);
 
       if (stashedPaths.length === 0 && imageUrls.length === 0) {
         throw new Error(
@@ -719,7 +762,7 @@ export const registerFashionHandlers = (options: FashionHandlerOptions) => {
           ? `- seedHints: ${seedHints.join(", ")}`
           : "",
         "",
-        "Always begin by calling `FashionGetContext` once. Then assemble each outfit slot-by-slot with `FashionSearchProducts`, register it via `FashionCreateOutfit`, render it via `image_gen` (with the body photo path as the first reference image and product imageUrls as the remaining references), and finalize via `FashionMarkOutfitReady` / `FashionMarkOutfitFailed`.",
+        "Always begin by calling `FashionGetContext` once. Then assemble each outfit slot-by-slot with `FashionSearchProducts`, register it via `FashionCreateOutfit`, render it via `image_gen` (with the body photo path as the first reference image and at most three product imageUrls as the remaining references), and finalize via `FashionMarkOutfitReady` / `FashionMarkOutfitFailed`.",
         "The try-on image must show the user wearing the selected clothes on a clean white studio background. The Fashion tab will render the generated image and surround it with the actual product images.",
       ].filter(Boolean);
 

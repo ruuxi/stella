@@ -25,6 +25,32 @@ afterEach(() => {
 });
 
 describe("Fashion image safety", () => {
+  it("rejects a picked pathname replaced between selection and descriptor open", async () => {
+    const root = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-fashion-preopen-race-"),
+    );
+    roots.add(root);
+    const selectedDir = path.join(root, "selected");
+    const movedDir = path.join(root, "selected-original");
+    fs.mkdirSync(selectedDir);
+    const source = path.join(selectedDir, "picked.png");
+    const validPng = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    fs.writeFileSync(source, validPng);
+
+    await expect(
+      prepareFashionImage(source, path.join(root, "fashion"), {
+        afterPathSnapshot: () => {
+          fs.renameSync(selectedDir, movedDir);
+          fs.mkdirSync(selectedDir);
+          fs.writeFileSync(source, validPng);
+        },
+      }),
+    ).rejects.toThrow("pathname changed");
+  });
+
   it.runIf(process.platform === "darwin")(
     "fails closed when sips is unavailable, sandbox-denied, or times out",
     async () => {

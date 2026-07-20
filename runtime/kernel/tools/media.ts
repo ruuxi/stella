@@ -8,10 +8,12 @@ import {
   submitAndWaitForManagedImageJob,
   type ManagedImageJobOptions,
 } from "./managed-image-job.js";
+import { validateImageDataUri } from "./image-reference-policy.js";
 import {
-  authorizedReferenceAsDataUri,
-  validateImageDataUri,
-} from "./image-reference-policy.js";
+  MAX_MANAGED_IMAGE_REQUEST_BYTES,
+  MAX_MANAGED_IMAGE_REFERENCE_ITEMS,
+  prepareManagedImageReferences,
+} from "./managed-image-references.js";
 import { runLocalImageGeneration } from "./local-image-generation.js";
 import { pruneImageOperationLedger } from "./image-operation-store.js";
 
@@ -134,6 +136,18 @@ const createImageGenHandler =
     // an explicit per-call upload consent flag below.
     const referencePaths = collectStringList(args.referenceImagePaths);
     const referenceUrlsRaw = collectStringList(args.referenceImageUrls);
+    if (
+      referencePaths.length + referenceUrlsRaw.length >
+      MAX_MANAGED_IMAGE_REFERENCE_ITEMS
+    ) {
+      return {
+        error: `image_gen accepts at most ${MAX_MANAGED_IMAGE_REFERENCE_ITEMS} reference images.`,
+        details: {
+          status: "failed",
+          error: { code: "managed_reference_count_exceeded" },
+        },
+      };
+    }
     const referenceUrls: string[] = [];
     for (const url of referenceUrlsRaw) {
       if (!HTTP_URL_RE.test(url) && !url.startsWith("data:")) {
@@ -180,19 +194,22 @@ const createImageGenHandler =
       };
     }
 
-    const imageUrls: string[] = [];
-    if (referencePaths.length > 0) {
-      try {
-        for (const filePath of referencePaths) {
-          imageUrls.push(await authorizedReferenceAsDataUri(filePath, context));
-        }
-      } catch (error) {
-        return {
-          error: `image_gen failed to read reference image: ${(error as Error).message}`,
-        };
-      }
+    let imageUrls: string[];
+    try {
+      imageUrls = await prepareManagedImageReferences({
+        paths: referencePaths,
+        urls: referenceUrls,
+        context,
+      });
+    } catch (error) {
+      return {
+        error: `image_gen failed to prepare managed reference image: ${(error as Error).message}`,
+        details: {
+          status: "failed",
+          error: { code: "managed_reference_envelope_exceeded" },
+        },
+      };
     }
-    imageUrls.push(...referenceUrls);
     const useImageEdit = imageUrls.length > 0;
     if (useImageEdit) input.image_urls = imageUrls;
     const capability = useImageEdit ? "image_edit" : "text_to_image";
@@ -212,21 +229,35 @@ const createImageGenHandler =
       };
     }
 
+    const requestBody = {
+      capability,
+      prompt,
+      ...(profile ? { profile } : {}),
+      ...(aspectRatio ? { aspectRatio } : {}),
+      ...(Object.keys(input).length > 0 ? { input } : {}),
+      ...(context.connectorDeliveryTarget
+        ? {
+            connectorRequestId: context.connectorDeliveryTarget.requestId,
+          }
+        : {}),
+    };
+    if (
+      Buffer.byteLength(JSON.stringify(requestBody), "utf8") >
+      MAX_MANAGED_IMAGE_REQUEST_BYTES
+    ) {
+      return {
+        error: `image_gen managed request exceeds the ${MAX_MANAGED_IMAGE_REQUEST_BYTES} byte ingress limit.`,
+        details: {
+          status: "failed",
+          error: { code: "managed_request_envelope_exceeded" },
+        },
+      };
+    }
+
     const terminal = await submitAndWaitForManagedImageJob({
       baseUrl: siteAuth.baseUrl,
       authToken: siteAuth.authToken,
-      requestBody: {
-        capability,
-        prompt,
-        ...(profile ? { profile } : {}),
-        ...(aspectRatio ? { aspectRatio } : {}),
-        ...(Object.keys(input).length > 0 ? { input } : {}),
-        ...(context.connectorDeliveryTarget
-          ? {
-              connectorRequestId: context.connectorDeliveryTarget.requestId,
-            }
-          : {}),
-      },
+      requestBody,
       context,
       extras,
       ...options.managedImageJob,

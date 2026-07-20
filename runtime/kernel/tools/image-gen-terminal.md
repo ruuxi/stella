@@ -21,6 +21,17 @@ missing/sandbox-denied conversion, oversized output, or an invalid JPEG fails
 closed and cleans temporary files. Managed local references additionally require
 explicit `allowManagedReferenceUpload` consent for the call.
 
+The `image_gen` schema and runtime accept at most four references total across
+paths and URLs. This count applies before provider selection. BYOK references
+continue to travel directly to the selected provider. Managed-only local and
+`data:image` references are normalized on-device when needed: the longest edge
+is at most 1600 px, each transmitted image is at most 1 MiB, and decoded bytes
+across all inline references are at most 2 MiB. Their combined data-URL text is
+bounded to 2,796,460 characters; remote reference URLs are limited to 8 KiB.
+Small already-valid images remain byte-identical, while larger images are
+progressively downscaled and JPEG-encoded to preserve a useful reference within
+the remaining aggregate budget.
+
 The owner-scoped managed idempotency key is derived from a durable local
 operation ID. That ID, its provider-job
 attachment, terminal result, tool-call aliases, and delivery acknowledgement
@@ -38,6 +49,16 @@ pass that claim. `succeeded`, `failed`, `canceled`, and `unknown` are immutable;
 late or opposite webhooks are audit-only. Legacy jobs already backed by Convex
 file storage remain readable and cleanable during migration; new durable image
 submissions do not create those blobs.
+
+The gateway rejects a declared or streamed request body above 3 MiB before JSON
+parsing and independently repeats the four-item, 1 MiB-per-inline-image, and
+2 MiB aggregate checks. Encrypted manifests are capped at 4.5 MiB of serialized
+text. Dispatcher reconstruction is budgeted conservatively below Convex's
+64 MiB action ceiling: two UTF-16 encrypted representations, three UTF-16
+plaintext/provider-body representations, ciphertext and plaintext byte buffers,
+and 8 MiB of fixed runtime headroom total 50.125 MiB at the hard limits. Chunk
+arrays are released before decrypt/parse, and legacy storage bodies are streamed
+through the same encrypted-payload cap.
 
 Fal assigns `request_id` only after accepting a queue submission and exposes no
 documented client submission idempotency key or lookup by a Stella key. This

@@ -10,6 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +33,14 @@ import {
 } from "../../../../../runtime/kernel/tools/image-decode-validation.js";
 import { readAuthorizedImageReference } from "../../../../../runtime/kernel/tools/image-reference-policy.js";
 import { localImagePollSleep } from "../../../../../runtime/kernel/tools/local-image-generation.js";
+import {
+  MAX_MANAGED_IMAGE_REFERENCE_ITEMS,
+  MAX_MANAGED_IMAGE_REFERENCE_ITEM_BYTES,
+  MAX_MANAGED_IMAGE_REFERENCE_TOTAL_BYTES,
+  MAX_MANAGED_IMAGE_REQUEST_BYTES,
+  normalizeManagedImageReferenceBytes,
+} from "../../../../../runtime/kernel/tools/managed-image-references.js";
+import { loadPhoton } from "../../../../../runtime/kernel/shared/photon.js";
 import { executeRuntimeToolCall } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
 import { saveLocalLlmCredential } from "../../../../../runtime/kernel/storage/llm-credentials.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
@@ -119,6 +128,112 @@ const createHandler = (
   }).image_gen!;
 
 describe("image_gen terminal managed-media semantics", () => {
+  it("enforces the four-item schema/runtime ceiling before provider selection", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-reference-count-");
+    const managedFetch = vi.fn() as unknown as typeof fetch;
+    const result = await createHandler(managedFetch)(
+      {
+        prompt: "combine these references",
+        referenceImageUrls: Array.from(
+          { length: MAX_MANAGED_IMAGE_REFERENCE_ITEMS + 1 },
+          (_, index) => `https://example.test/reference-${index}.png`,
+        ),
+      },
+      contextFor(stellaDataDir),
+    );
+    expect(result.details).toMatchObject({
+      status: "failed",
+      error: { code: "managed_reference_count_exceeded" },
+    });
+    expect(managedFetch).not.toHaveBeenCalled();
+  });
+
+  it("normalizes a large managed reference into a useful decoded bounded image", async () => {
+    const photon = await loadPhoton();
+    expect(photon).not.toBeNull();
+    const width = 1200;
+    const height = 1200;
+    const pixels = randomBytes(width * height * 4);
+    for (let index = 3; index < pixels.length; index += 4) pixels[index] = 255;
+    const sourceImage = new photon!.PhotonImage(pixels, width, height);
+    const source = Buffer.from(sourceImage.get_bytes());
+    sourceImage.free();
+    expect(source.length).toBeGreaterThan(
+      MAX_MANAGED_IMAGE_REFERENCE_ITEM_BYTES,
+    );
+
+    const normalized = await normalizeManagedImageReferenceBytes(
+      source,
+      "image/png",
+      256 * 1024,
+    );
+    expect(normalized.byteLength).toBeLessThanOrEqual(256 * 1024);
+    expect(normalized.dataUri).toMatch(/^data:image\/jpeg;base64,/);
+    expect(
+      Math.max(normalized.width, normalized.height),
+    ).toBeGreaterThanOrEqual(384);
+    const normalizedBytes = Buffer.from(
+      normalized.dataUri.slice(normalized.dataUri.indexOf(",") + 1),
+      "base64",
+    );
+    await expect(
+      decodeAndValidateImage(normalizedBytes),
+    ).resolves.toMatchObject({
+      mimeType: "image/jpeg",
+      width: normalized.width,
+      height: normalized.height,
+    });
+  });
+
+  it("keeps four small managed references inside the aggregate request envelope", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-reference-envelope-");
+    const reference = `data:image/png;base64,${Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    ).toString("base64")}`;
+    let submittedBody: string | undefined;
+    const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/generate")) {
+        submittedBody = String(init?.body);
+        return accepted();
+      }
+      if (url.includes("/job?")) {
+        return jobResponse("failed", {
+          error: { code: "TEST", message: "stop after envelope assertion" },
+        });
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    }) as unknown as typeof fetch;
+    await createHandler(fetchImpl)(
+      {
+        prompt: "use all four",
+        referenceImageUrls: Array.from(
+          { length: MAX_MANAGED_IMAGE_REFERENCE_ITEMS },
+          () => reference,
+        ),
+        allowManagedReferenceUpload: true,
+      },
+      contextFor(stellaDataDir),
+    );
+    const body = JSON.parse(submittedBody!) as {
+      input: { image_urls: string[] };
+    };
+    expect(body.input.image_urls).toHaveLength(4);
+    const decodedTotal = body.input.image_urls.reduce((total, value) => {
+      return (
+        total +
+        Buffer.from(value.slice(value.indexOf(",") + 1), "base64").length
+      );
+    }, 0);
+    expect(decodedTotal).toBeLessThanOrEqual(
+      MAX_MANAGED_IMAGE_REFERENCE_TOTAL_BYTES,
+    );
+    expect(Buffer.byteLength(submittedBody!, "utf8")).toBeLessThanOrEqual(
+      MAX_MANAGED_IMAGE_REQUEST_BYTES,
+    );
+  });
+
   it("removes the Fal polling abort listener after 1,200 normal sleeps", async () => {
     vi.useFakeTimers();
     try {
