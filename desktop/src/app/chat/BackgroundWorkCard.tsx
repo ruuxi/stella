@@ -28,7 +28,10 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { notifyChatContentGrowth } from "@/shell/chat-scroll-follow";
 import { Eye } from "@/ui/icons";
-import { TextShimmer } from "@/app/chat/TextShimmer";
+import {
+  CHAT_ACTIVITY_SHIMMER_GROUP,
+  TextShimmer,
+} from "@/app/chat/TextShimmer";
 import { useThreadActivity } from "@/features/chat/hooks/use-thread-activity";
 import { selectLatestThreadAssistantSummary } from "@/features/chat/lib/agent-assistant-summary";
 import {
@@ -305,7 +308,8 @@ export function BackgroundWorkCard({
             <TextShimmer
               text={title}
               durationMs={TITLE_SHIMMER_MS}
-              exclusiveGroup="background-work-cards"
+              exclusiveGroup={CHAT_ACTIVITY_SHIMMER_GROUP}
+              exclusivePriority={50}
             />
           ) : (
             title

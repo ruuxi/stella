@@ -18,7 +18,11 @@ interface TextShimmerProps {
   syncPhase?: boolean;
   /** At most one visible candidate in this group receives the sweep. */
   exclusiveGroup?: string;
+  /** Higher-priority visible candidates own their group's single sweep. */
+  exclusivePriority?: number;
 }
+
+export const CHAT_ACTIVITY_SHIMMER_GROUP = "chat-activity";
 
 export function TextShimmer({
   text,
@@ -27,6 +31,7 @@ export function TextShimmer({
   durationMs,
   syncPhase = false,
   exclusiveGroup,
+  exclusivePriority = 0,
 }: TextShimmerProps) {
   const rootRef = useRef<HTMLSpanElement>(null);
   const duration = useMemo(() => {
@@ -45,6 +50,7 @@ export function TextShimmer({
   const shouldAnimate = useExclusiveAnimation(
     exclusiveGroup,
     animationGateOpen,
+    exclusivePriority,
   );
 
   if (!active) {

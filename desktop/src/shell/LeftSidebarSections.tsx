@@ -79,7 +79,10 @@ import { displayTabKindForPayload } from "@/features/workspace-display/payload-k
 import { basenameOf } from "@/features/workspace-display/path-to-viewer";
 import { ScheduleDetailsDialog } from "@/global/schedule/ScheduleDetailsDialog";
 import type { ScheduleToolAffectedRef } from "../../../runtime/kernel/shared/scheduling";
-import { TextShimmer } from "@/app/chat/TextShimmer";
+import {
+  CHAT_ACTIVITY_SHIMMER_GROUP,
+  TextShimmer,
+} from "@/app/chat/TextShimmer";
 import { AgentAssistantUpdates } from "@/shell/AgentAssistantUpdates";
 import { selectLatestAgentAssistantMessage } from "@/features/chat/lib/agent-assistant-summary";
 import { useContinuousAnimationGate } from "@/shared/hooks/use-continuous-animation-gate";
@@ -414,7 +417,13 @@ const TaskRow = memo(function TaskRow({
                 </span>
                 <span className="chat-workspace-strip__task-label">
                   {task.status === "running" ? (
-                    <TextShimmer text={label} durationMs={2000} syncPhase />
+                    <TextShimmer
+                      text={label}
+                      durationMs={2000}
+                      syncPhase
+                      exclusiveGroup={CHAT_ACTIVITY_SHIMMER_GROUP}
+                      exclusivePriority={40}
+                    />
                   ) : (
                     label
                   )}
@@ -435,7 +444,13 @@ const TaskRow = memo(function TaskRow({
               </span>
               <span className="chat-workspace-strip__task-label">
                 {task.status === "running" ? (
-                  <TextShimmer text={label} durationMs={2000} syncPhase />
+                  <TextShimmer
+                    text={label}
+                    durationMs={2000}
+                    syncPhase
+                    exclusiveGroup={CHAT_ACTIVITY_SHIMMER_GROUP}
+                    exclusivePriority={40}
+                  />
                 ) : (
                   label
                 )}

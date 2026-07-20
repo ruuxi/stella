@@ -32,7 +32,10 @@ import {
 import { motion, useReducedMotion } from "motion/react";
 import { AlertCircle, Check, Search } from "@/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
-import { TextShimmer } from "@/app/chat/TextShimmer";
+import {
+  CHAT_ACTIVITY_SHIMMER_GROUP,
+  TextShimmer,
+} from "@/app/chat/TextShimmer";
 import { useChatRuntime } from "@/context/use-chat-runtime";
 import {
   deriveTopLevelActivityWorkUnits,
@@ -95,8 +98,7 @@ export const getDisplayedActivityPillState = (
 export const shouldTrayHoldSearchLayout = (
   inputValue: string,
   deferredQuery: string,
-): boolean =>
-  inputValue.trim().length > 0 || deferredQuery.trim().length > 0;
+): boolean => inputValue.trim().length > 0 || deferredQuery.trim().length > 0;
 
 /** Live status of the whole conversation's background work, distilled into
  *  a single pill state (+ running count) with a minimum dwell on terminal
@@ -232,7 +234,10 @@ function ActivityTray({ onNavigate }: { onNavigate: () => void }) {
   const searching = shouldTrayHoldSearchLayout(inputValue, deferredQuery);
 
   return (
-    <div className="composer-activity-tray" data-searching={searching || undefined}>
+    <div
+      className="composer-activity-tray"
+      data-searching={searching || undefined}
+    >
       <div className="composer-activity-tray__search">
         <Search size={15} strokeWidth={1.75} aria-hidden="true" />
         <input
@@ -279,7 +284,12 @@ const ActivityPillBody = memo(function ActivityPillBody({
 
   const labelNode: ReactNode =
     state === "running" ? (
-      <TextShimmer text={label} durationMs={TITLE_SHIMMER_MS} />
+      <TextShimmer
+        text={label}
+        durationMs={TITLE_SHIMMER_MS}
+        exclusiveGroup={CHAT_ACTIVITY_SHIMMER_GROUP}
+        exclusivePriority={30}
+      />
     ) : (
       label
     );

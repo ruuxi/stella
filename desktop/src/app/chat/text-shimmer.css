@@ -57,20 +57,6 @@
   will-change: transform;
 }
 
-/* The inline working label is the highest-signal active element. While it is
-   visible, duplicated ambient shimmers in cards/sidebar/pill stay static. */
-body:has(.working-indicator .text-shimmer__sweep)
-  .background-work-card
-  .text-shimmer__sweep,
-body:has(.working-indicator .text-shimmer__sweep)
-  .left-sidebar
-  .text-shimmer__sweep,
-body:has(.working-indicator .text-shimmer__sweep)
-  .composer-activity-pill
-  .text-shimmer__sweep {
-  display: none;
-}
-
 @keyframes text-shimmer-window {
   from {
     transform: translate3d(-100%, 0, 0);

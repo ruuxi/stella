@@ -90,11 +90,11 @@ describe("continuous animation hygiene", () => {
   it("elects only the newest visible candidate in a shared motion group", () => {
     expect(
       selectExclusiveAnimationOwner([
-        { id: "older-card", order: 3 },
-        { id: "newest-card", order: 8 },
-        { id: "middle-card", order: 5 },
+        { id: "older-card", order: 3, priority: 50 },
+        { id: "newest-card", order: 8, priority: 50 },
+        { id: "working-label", order: 1, priority: 100 },
       ]),
-    ).toBe("newest-card");
+    ).toBe("working-label");
     expect(selectExclusiveAnimationOwner([])).toBeNull();
   });
 
@@ -124,9 +124,7 @@ describe("continuous animation hygiene", () => {
       expect(keyframes).not.toMatch(/background|filter|width|left:/);
     }
     expect(activityCss).toContain('data-continuous-animation="true"');
-    expect(activityCss).toContain(
-      ':nth-child(\n    1 of .chat-workspace-strip__task-row[data-status="running"]',
-    );
+    expect(shimmerCss).not.toContain("body:has(");
     expect(stella).toContain("createDemandDrivenAnimationLoop");
     expect(stella).toContain("renderStatic();");
     expect(stella).not.toContain("requestAnimationFrame(animate)");

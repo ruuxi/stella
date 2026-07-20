@@ -23,6 +23,8 @@ interface SwapTextProps {
    * one atomic surface, while preserving animated swaps after it changes. */
   animateInitial?: boolean;
   className?: string;
+  shimmerGroup?: string;
+  shimmerPriority?: number;
 }
 
 const SWAP_DURATION_MS = 240;
@@ -32,6 +34,8 @@ export function SwapText({
   active = true,
   animateInitial = true,
   className,
+  shimmerGroup,
+  shimmerPriority,
 }: SwapTextProps) {
   const [current, setCurrent] = useState(text);
   const [previous, setPrevious] = useState<string | null>(null);
@@ -79,7 +83,12 @@ export function SwapText({
         key={`in:${current}`}
         className={`swap-text__layer swap-text__layer--in${!animateInitial && !hasChanged ? " swap-text__layer--initial-static" : ""}`}
       >
-        <TextShimmer text={current} active={active} />
+        <TextShimmer
+          text={current}
+          active={active}
+          exclusiveGroup={shimmerGroup}
+          exclusivePriority={shimmerPriority}
+        />
       </span>
     </span>
   );

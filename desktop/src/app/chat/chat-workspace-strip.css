@@ -437,36 +437,6 @@
   animation: chat-workspace-strip__compact-pulse 1.8s ease-in-out infinite;
 }
 
-/* A running list gets one title sweep: the newest top-level row. Expanded
-   descendants stay static while their active owner already carries motion. */
-.chat-workspace-strip__list--tasks
-  > .chat-workspace-strip__task-row
-  > .chat-workspace-strip__task-row-head
-  .chat-workspace-strip__task-label
-  > .text-shimmer
-  > .text-shimmer__sweep {
-  display: none;
-}
-
-.chat-workspace-strip__list--tasks
-  > .chat-workspace-strip__task-row[data-status="running"]:nth-child(
-    1 of .chat-workspace-strip__task-row[data-status="running"]
-  )
-  > .chat-workspace-strip__task-row-head
-  .chat-workspace-strip__task-label
-  > .text-shimmer
-  > .text-shimmer__sweep {
-  display: block;
-}
-
-.chat-workspace-strip__task-row[data-status="running"]
-  > .chat-workspace-strip__task-collapse
-  .chat-workspace-strip__task-label
-  > .text-shimmer
-  > .text-shimmer__sweep {
-  display: none;
-}
-
 .chat-workspace-strip__compact-bar-segment--error {
   background: var(--text-error);
 }

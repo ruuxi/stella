@@ -4,6 +4,7 @@ import { useWindowType } from "@/shared/hooks/use-window-type";
 import { cn } from "@/shared/lib/utils";
 import { StellaAnimation } from "@/shell/ascii-creature/StellaAnimation";
 import { SwapText } from "./SwapText";
+import { CHAT_ACTIVITY_SHIMMER_GROUP } from "./TextShimmer";
 import { getWorkingIndicatorDisplayStatus } from "@/features/chat/working-indicator-state";
 import "./indicators.css";
 
@@ -64,6 +65,8 @@ export function WorkingIndicator({
         active={animationActive}
         animateInitial={false}
         className="working-status"
+        shimmerGroup={CHAT_ACTIVITY_SHIMMER_GROUP}
+        shimmerPriority={100}
       />
     </div>
   );
