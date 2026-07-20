@@ -107,6 +107,10 @@ describe("continuous animation hygiene", () => {
       path.resolve(process.cwd(), "src/app/chat/chat-workspace-strip.css"),
       "utf8",
     );
+    const indicatorCss = fs.readFileSync(
+      path.resolve(process.cwd(), "src/app/chat/indicators.css"),
+      "utf8",
+    );
     const stella = fs.readFileSync(
       path.resolve(
         process.cwd(),
@@ -125,6 +129,9 @@ describe("continuous animation hygiene", () => {
     expect(shimmer).toContain("window.setTimeout(runSweep, restDuration)");
     expect(shimmer).toContain("animation.cancel()");
     expect(activityCss).toContain('data-continuous-animation="true"');
+    expect(indicatorCss).toContain(
+      ".indicator-stella .stella-animation-container",
+    );
     expect(shimmerCss).not.toContain("body:has(");
     expect(stella).toContain("createDemandDrivenAnimationLoop");
     expect(stella).toContain("renderStatic();");

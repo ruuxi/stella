@@ -208,6 +208,12 @@
   translate: -50% -50%;
 }
 
+/* The WebGL scene already supplies the working motion. Avoid stacking the
+   generic eight-second breathing transform around this tiny live indicator. */
+.indicator-stella .stella-animation-container {
+  animation: none;
+}
+
 /* ============================================
    Streaming animations — OpenCode-style
    ============================================ */
