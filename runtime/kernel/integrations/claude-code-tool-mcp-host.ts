@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import http from "node:http";
 import type { Socket } from "node:net";
 
@@ -24,6 +25,8 @@ const MAX_TOOL_RESULT_CHARS = 80_000;
 const MAX_SETTLED_CALL_LEDGER_ENTRIES = 512;
 
 export type ClaudeCodeToolMcpActiveTurn = {
+  /** Stable Stella run identity; survives a Claude process restart. */
+  identityScope?: string;
   executeTool: (
     toolCallId: string,
     toolName: string,
@@ -41,6 +44,11 @@ export type ClaudeCodeToolMcpActiveTurn = {
     toolName: string;
     result: ToolResult;
   }) => void;
+  /** Called only after the MCP HTTP response has been flushed to the socket. */
+  onToolResponseWritten?: (args: {
+    toolCallId: string;
+    toolName: string;
+  }) => void | Promise<void>;
 };
 
 export type ClaudeCodeToolMcpHost = {
@@ -245,6 +253,9 @@ export const createClaudeCodeToolMcpHost = async (
   // response. Retain the original promise for the session so a successful
   // mutation is never executed twice under the same native request ID.
   const callLedger = new Map<string, Promise<CallToolResult>>();
+  const responseDelivery = new AsyncLocalStorage<{
+    acknowledgements: Set<() => void | Promise<void>>;
+  }>();
   const settledCallLedgerKeys = new Set<string>();
   const trimCallLedger = () => {
     if (settledCallLedgerKeys.size <= MAX_SETTLED_CALL_LEDGER_ENTRIES) return;
@@ -269,10 +280,11 @@ export const createClaudeCodeToolMcpHost = async (
             `Tool is not available in this Stella session: ${request.params.name}`,
           );
         }
+        const turn = options.getActiveTurn();
         const clientSessionId = extra.sessionId ?? "stateless";
         const durableScope = crypto
           .createHash("sha256")
-          .update(options.identityScope ?? "unscoped")
+          .update(turn?.identityScope ?? options.identityScope ?? "unscoped")
           .digest("hex")
           .slice(0, 24);
         const canonicalRequestHash = crypto
@@ -289,11 +301,26 @@ export const createClaudeCodeToolMcpHost = async (
           request.params.name === "image_gen"
             ? `${durableScope}:${String(extra.requestId)}:${request.params.name}:${canonicalRequestHash}`
             : `${clientSessionId}:${String(extra.requestId)}:${request.params.name}`;
+        const registerDeliveryAcknowledgement = () => {
+          if (request.params.name !== "image_gen") return;
+          const acknowledgement = turn?.onToolResponseWritten;
+          const delivery = responseDelivery.getStore();
+          if (!acknowledgement || !delivery) return;
+          delivery.acknowledgements.add(() =>
+            acknowledgement({
+              toolCallId,
+              toolName: request.params.name,
+            }),
+          );
+        };
         const previous = callLedger.get(ledgerKey);
-        if (previous) return await previous;
+        if (previous) {
+          const result = await previous;
+          registerDeliveryAcknowledgement();
+          return result;
+        }
 
         const execution = (async (): Promise<CallToolResult> => {
-          const turn = options.getActiveTurn();
           if (!turn) {
             return {
               content: [
@@ -378,7 +405,9 @@ export const createClaudeCodeToolMcpHost = async (
             trimCallLedger();
           },
         );
-        return await execution;
+        const result = await execution;
+        registerDeliveryAcknowledgement();
+        return result;
       },
     );
   };
@@ -449,7 +478,23 @@ export const createClaudeCodeToolMcpHost = async (
         // the immutable catalog URL without reusing stale transport state.
         state = await createClientSession();
       }
-      await state.transport.handleRequest(request, response);
+      const delivery = {
+        acknowledgements: new Set<() => void | Promise<void>>(),
+      };
+      let responseFinished = false;
+      response.once("finish", () => {
+        responseFinished = true;
+        for (const acknowledge of delivery.acknowledgements) {
+          void Promise.resolve(acknowledge()).catch(() => undefined);
+        }
+        delivery.acknowledgements.clear();
+      });
+      response.once("close", () => {
+        if (!responseFinished) delivery.acknowledgements.clear();
+      });
+      await responseDelivery.run(delivery, () =>
+        state.transport.handleRequest(request, response),
+      );
       if (!state.transport.sessionId) {
         pendingSessions.delete(state);
         await state.server.close().catch(() => undefined);

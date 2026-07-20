@@ -12,7 +12,10 @@ import {
   materializeMediaArtifact,
   readyMediaArtifactSize,
 } from "./media-artifact-store.js";
-import { detectSupportedImageMimeType } from "./image-reference-policy.js";
+import {
+  decodeAndValidateImage,
+  validateDecodedImageFile,
+} from "./image-decode-validation.js";
 
 // fal permits inference to run for up to one hour and may continue retrying a
 // webhook for two hours. Keep the terminal waiter beyond both envelopes.
@@ -250,14 +253,19 @@ const extensionFor = (url: string): string => {
 const existingArtifact = async (
   filePath: string,
   index: number,
-  mimeType: string,
 ): Promise<ManagedImageArtifact | null> => {
   const sizeBytes = await readyMediaArtifactSize(filePath);
   if (sizeBytes === null) return null;
   const bytes = await fs.readFile(filePath).catch(() => null);
-  const detected = bytes ? detectSupportedImageMimeType(bytes) : null;
-  return detected
-    ? { kind: "image", index, path: filePath, mimeType: detected, sizeBytes }
+  const decoded = bytes ? await decodeAndValidateImage(bytes) : null;
+  return decoded
+    ? {
+        kind: "image",
+        index,
+        path: filePath,
+        mimeType: decoded.mimeType,
+        sizeBytes,
+      }
     : null;
 };
 
@@ -281,7 +289,7 @@ const materializeImages = async (args: {
       outputDir,
       `${args.jobId}_${index}.${extension}`,
     );
-    const existing = await existingArtifact(filePath, index, declaredMimeType);
+    const existing = await existingArtifact(filePath, index);
     if (existing) {
       artifacts.push(existing);
       continue;
@@ -291,10 +299,7 @@ const materializeImages = async (args: {
       filePath,
       signal: args.signal,
       producerTimeoutMs: args.downloadTimeoutMs,
-      validateExisting: async (candidate) => {
-        const bytes = await fs.readFile(candidate).catch(() => null);
-        return Boolean(bytes && detectSupportedImageMimeType(bytes));
-      },
+      validateExisting: validateDecodedImageFile,
       producer: async (downloadSignal) => {
         const response = await args.fetchImpl(image.url, {
           signal: downloadSignal,
@@ -309,13 +314,13 @@ const materializeImages = async (args: {
           response.headers.get("content-type")?.split(";")[0]?.trim() ||
           declaredMimeType;
         const bytes = Buffer.from(await response.arrayBuffer());
-        const detected = detectSupportedImageMimeType(bytes);
-        if (!detected) {
+        const decoded = await decodeAndValidateImage(bytes);
+        if (!decoded) {
           throw new Error(
             "Image artifact was partial or had an unsupported MIME type.",
           );
         }
-        mimeType = detected;
+        mimeType = decoded.mimeType;
         return bytes;
       },
     });
@@ -445,6 +450,12 @@ export const submitAndWaitForManagedImageJob = async (
   };
 
   try {
+    // A prior desktop process may have lost every POST response and then
+    // exited before it could observe the owner-scoped lookup. Reconcile the
+    // durable operation before issuing any new POST on reattachment.
+    if (!accepted && operation.reattached) {
+      accepted = await reconcileAcceptance();
+    }
     for (
       let attempt = 0;
       !accepted && attempt < SUBMIT_ATTEMPTS;

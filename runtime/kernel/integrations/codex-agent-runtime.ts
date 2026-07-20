@@ -53,6 +53,17 @@ export const CODEX_LIGHT_MODEL = "gpt-5.4-mini";
 export const CODEX_UTILITY_MODEL = "gpt-5.6-luna";
 const execFileAsync = promisify(execFile);
 
+const stableJson = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+};
+
 type JsonRpcId = number | string;
 type JsonRpcError = {
   code?: number;
@@ -879,6 +890,29 @@ type CodexServerRequestHandler = (
   request: JsonRpcRequestMessage,
 ) => Promise<unknown | undefined> | unknown | undefined;
 
+const CODEX_RESPONSE_WITH_ACK = Symbol("codex-response-with-ack");
+type CodexResponseWithAck = {
+  [CODEX_RESPONSE_WITH_ACK]: true;
+  result: unknown;
+  afterResponseWritten?: () => void | Promise<void>;
+};
+
+const responseWithAck = (
+  result: unknown,
+  afterResponseWritten?: () => void | Promise<void>,
+): CodexResponseWithAck => ({
+  [CODEX_RESPONSE_WITH_ACK]: true,
+  result,
+  afterResponseWritten,
+});
+
+const isResponseWithAck = (value: unknown): value is CodexResponseWithAck =>
+  Boolean(
+    value &&
+      typeof value === "object" &&
+      (value as Partial<CodexResponseWithAck>)[CODEX_RESPONSE_WITH_ACK],
+  );
+
 const configuredTimeoutMs = (envName: string, fallbackMs: number): number => {
   const raw = process.env[envName]?.trim();
   if (!raw) return fallbackMs;
@@ -1038,6 +1072,20 @@ class CodexAppServerClient {
     }
   }
 
+  private writeAsync(message: JsonRpcOutgoingMessage): Promise<void> {
+    if (this.closedError) return Promise.reject(this.closedError);
+    const line = `${JSON.stringify(message)}\n`;
+    return new Promise((resolve, reject) => {
+      this.child.stdin.write(line, (error) => {
+        if (error) {
+          reject(new Error(`Codex app-server write failed: ${error.message}`));
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+
   private handleLine(line: string) {
     const trimmed = line.trim();
     if (!trimmed) return;
@@ -1093,7 +1141,17 @@ class CodexAppServerClient {
       for (const handler of this.requestHandlers) {
         const result = await handler(message);
         if (result !== undefined) {
-          this.write({ jsonrpc: "2.0", id: message.id, result });
+          const response = isResponseWithAck(result) ? result.result : result;
+          await this.writeAsync({
+            jsonrpc: "2.0",
+            id: message.id,
+            result: response,
+          });
+          if (isResponseWithAck(result)) {
+            await Promise.resolve(result.afterResponseWritten?.()).catch(
+              () => undefined,
+            );
+          }
           return;
         }
       }
@@ -1108,11 +1166,11 @@ class CodexAppServerClient {
     } catch (error) {
       const messageText =
         error instanceof Error ? error.message : textFromUnknown(error);
-      this.write({
+      await this.writeAsync({
         jsonrpc: "2.0",
         id: message.id,
         error: { code: -32000, message: messageText },
-      } as JsonRpcResponseMessage);
+      } as JsonRpcResponseMessage).catch(() => undefined);
     }
   }
 
@@ -1413,6 +1471,10 @@ export const runCodexAgentTurn = async (request: {
     toolName: string;
     update: ToolResult;
   }) => void;
+  onToolResponseWritten?: (args: {
+    toolCallId: string;
+    toolName: string;
+  }) => void | Promise<void>;
   executeTool?: (
     toolCallId: string,
     toolName: string,
@@ -1761,6 +1823,21 @@ export const runCodexAgentTurn = async (request: {
         const executeTool = request.executeTool;
         const toolName = params.tool;
         const toolArgs = toolArgsFromCodexValue(params.arguments);
+        const requestHash = crypto
+          .createHash("sha256")
+          .update(toolName)
+          .update("\0")
+          .update(stableJson(toolArgs))
+          .digest("hex");
+        const durableScope = crypto
+          .createHash("sha256")
+          .update(`${request.sessionKey ?? "unscoped"}:${request.runId}`)
+          .digest("hex")
+          .slice(0, 24);
+        const toolCallId =
+          toolName === "image_gen"
+            ? `codex:${durableScope}:${params.callId}:${requestHash.slice(0, 24)}`
+            : params.callId;
         const workKey = `tool:${params.callId}`;
         activeTurnWork.add(workKey);
         refreshTurnIdleTimer?.();
@@ -1773,35 +1850,39 @@ export const runCodexAgentTurn = async (request: {
             toolName,
             signal: request.abortSignal,
             run: (signal, onActivity) =>
-              executeTool(
-                params.callId,
-                toolName,
-                toolArgs,
-                signal,
-                (update) => {
-                  onActivity();
-                  refreshTurnIdleTimer?.();
-                  request.onToolUpdate?.({
-                    toolCallId: params.callId,
-                    toolName,
-                    update,
-                  });
-                  const statusText = buildToolResultText(update).trim();
-                  if (statusText) emitStatus(statusText);
-                },
-              ),
+              executeTool(toolCallId, toolName, toolArgs, signal, (update) => {
+                onActivity();
+                refreshTurnIdleTimer?.();
+                request.onToolUpdate?.({
+                  toolCallId,
+                  toolName,
+                  update,
+                });
+                const statusText = buildToolResultText(update).trim();
+                if (statusText) emitStatus(statusText);
+              }),
           });
         } finally {
           activeTurnWork.delete(workKey);
           refreshTurnIdleTimer?.();
         }
         appendUniqueFileChanges(fileChanges, toolResult.fileChanges ?? []);
-        return {
+        const response = {
           contentItems: [
             { type: "inputText", text: buildToolResultText(toolResult) },
           ],
           success: !toolResult.error,
         };
+        return responseWithAck(
+          response,
+          toolName === "image_gen"
+            ? () =>
+                request.onToolResponseWritten?.({
+                  toolCallId,
+                  toolName,
+                })
+            : undefined,
+        );
       }
       if (message.method === "item/commandExecution/requestApproval") {
         return { decision: "decline" };

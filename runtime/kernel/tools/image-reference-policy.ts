@@ -1,7 +1,8 @@
-import { promises as fs } from "node:fs";
+import { constants, promises as fs, type Stats } from "node:fs";
 import path from "node:path";
 
 import type { ToolContext } from "./types.js";
+import { decodeAndValidateImage } from "./image-decode-validation.js";
 
 export const MAX_IMAGE_REFERENCE_BYTES = 20 * 1024 * 1024;
 
@@ -55,6 +56,9 @@ const authorizedRoots = async (context: ToolContext): Promise<string[]> => {
     context.stellaDataDir
       ? path.join(context.stellaDataDir, "outputs")
       : undefined,
+    context.stellaDataDir
+      ? path.join(context.stellaDataDir, "fashion")
+      : undefined,
   ].filter((value): value is string => Boolean(value?.trim()));
   const roots = await Promise.all(
     configured.map(
@@ -70,32 +74,124 @@ export type AuthorizedImageReference = {
   mimeType: string;
 };
 
+type ReferenceReadHooks = {
+  /** Test-only race injection after the file descriptor is safely open. */
+  afterOpen?: () => void | Promise<void>;
+};
+
+const sameOpenedObject = (left: Stats, right: Stats): boolean =>
+  left.dev === right.dev &&
+  left.ino === right.ino &&
+  left.size === right.size &&
+  left.mtimeMs === right.mtimeMs &&
+  left.ctimeMs === right.ctimeMs;
+
+const readBoundedFromHandle = async (
+  handle: Awaited<ReturnType<typeof fs.open>>,
+): Promise<Buffer> => {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const chunk = Buffer.allocUnsafe(
+      Math.min(256 * 1024, MAX_IMAGE_REFERENCE_BYTES + 1 - total),
+    );
+    const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
+    if (bytesRead === 0) break;
+    total += bytesRead;
+    if (total > MAX_IMAGE_REFERENCE_BYTES) {
+      throw new Error(
+        `reference image exceeds the ${MAX_IMAGE_REFERENCE_BYTES} byte limit`,
+      );
+    }
+    chunks.push(chunk.subarray(0, bytesRead));
+  }
+  return Buffer.concat(chunks, total);
+};
+
+export const readValidatedImageFileNoFollow = async (
+  filePath: string,
+  options: {
+    allowedRoots?: readonly string[];
+    hooks?: ReferenceReadHooks;
+  } = {},
+): Promise<AuthorizedImageReference> => {
+  const requested = path.resolve(filePath);
+  const initialResolved = await fs.realpath(requested);
+  const roots = options.allowedRoots ?? [];
+  if (
+    roots.length > 0 &&
+    !roots.some((root) => isWithin(initialResolved, root))
+  ) {
+    throw new Error("reference image is outside the authorized directories");
+  }
+  if (typeof constants.O_NOFOLLOW !== "number") {
+    throw new Error(
+      "safe no-follow image reads are unavailable on this platform",
+    );
+  }
+  const handle = await fs.open(
+    initialResolved,
+    constants.O_RDONLY | constants.O_NOFOLLOW,
+  );
+  try {
+    const openedStat = await handle.stat();
+    if (!openedStat.isFile()) {
+      throw new Error("reference image is not a regular file");
+    }
+    if (openedStat.size <= 0 || openedStat.size > MAX_IMAGE_REFERENCE_BYTES) {
+      throw new Error(
+        `reference image must be between 1 byte and ${MAX_IMAGE_REFERENCE_BYTES} bytes`,
+      );
+    }
+    await options.hooks?.afterOpen?.();
+    const postOpenResolved = await fs.realpath(requested);
+    if (
+      roots.length > 0 &&
+      !roots.some((root) => isWithin(postOpenResolved, root))
+    ) {
+      throw new Error(
+        "reference image changed outside the authorized directories",
+      );
+    }
+    const pathStat = await fs.stat(postOpenResolved);
+    if (!sameOpenedObject(openedStat, pathStat)) {
+      throw new Error("reference image changed while it was being authorized");
+    }
+    const bytes = await readBoundedFromHandle(handle);
+    const finalStat = await handle.stat();
+    if (
+      !sameOpenedObject(openedStat, finalStat) ||
+      bytes.length !== openedStat.size
+    ) {
+      throw new Error("reference image changed while it was being read");
+    }
+    const decoded = await decodeAndValidateImage(bytes);
+    if (!decoded) {
+      throw new Error(
+        "reference file is not a complete, decodable PNG, JPEG, GIF, or WebP image",
+      );
+    }
+    return { path: postOpenResolved, bytes, mimeType: decoded.mimeType };
+  } finally {
+    await handle.close();
+  }
+};
+
 export const readAuthorizedImageReference = async (
   filePath: string,
   context: ToolContext,
+  hooks?: ReferenceReadHooks,
 ): Promise<AuthorizedImageReference> => {
-  const resolved = await fs.realpath(path.resolve(filePath));
   const roots = await authorizedRoots(context);
-  if (roots.length === 0 || !roots.some((root) => isWithin(resolved, root))) {
+  if (roots.length === 0) {
     throw new Error(
       "reference image is outside the active workspace or Stella attachment/media directories",
     );
   }
-  const stat = await fs.stat(resolved);
-  if (!stat.isFile()) throw new Error("reference image is not a regular file");
-  if (stat.size <= 0 || stat.size > MAX_IMAGE_REFERENCE_BYTES) {
-    throw new Error(
-      `reference image must be between 1 byte and ${MAX_IMAGE_REFERENCE_BYTES} bytes`,
-    );
-  }
-  const bytes = await fs.readFile(resolved);
-  const mimeType = detectSupportedImageMimeType(bytes);
-  if (!mimeType) {
-    throw new Error(
-      "reference file is not a supported PNG, JPEG, GIF, or WebP image",
-    );
-  }
-  return { path: resolved, bytes, mimeType };
+  return await readValidatedImageFileNoFollow(filePath, {
+    allowedRoots: roots,
+    ...(hooks ? { hooks } : {}),
+  });
 };
 
 export const authorizedReferenceAsDataUri = async (
@@ -106,7 +202,7 @@ export const authorizedReferenceAsDataUri = async (
   return `data:${reference.mimeType};base64,${reference.bytes.toString("base64")}`;
 };
 
-export const validateImageDataUri = (value: string): void => {
+export const validateImageDataUri = async (value: string): Promise<void> => {
   const match = value.match(/^data:([^;,]+);base64,(.+)$/s);
   if (!match) throw new Error("reference data URI must be base64 encoded");
   const bytes = Buffer.from(match[2], "base64");
@@ -115,8 +211,8 @@ export const validateImageDataUri = (value: string): void => {
       `reference data URI exceeds the ${MAX_IMAGE_REFERENCE_BYTES} byte limit`,
     );
   }
-  const detected = detectSupportedImageMimeType(bytes);
-  if (!detected || detected !== match[1].trim().toLowerCase()) {
+  const decoded = await decodeAndValidateImage(bytes);
+  if (!decoded || decoded.mimeType !== match[1].trim().toLowerCase()) {
     throw new Error(
       "reference data URI MIME type does not match supported image bytes",
     );

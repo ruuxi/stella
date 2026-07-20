@@ -126,10 +126,21 @@ describe("native image terminal delivery recovery", () => {
     const unsubscribeRestarted = subscribe(false);
     for (const listener of listeners) listener(event);
     unsubscribeRestarted();
-    const intentionalNewCall = reserveDurableImageOperation({
+    const acknowledgedReplay = reserveDurableImageOperation({
       stellaDataDir: dataDir,
       conversationId,
       toolCallId,
+      requestBody,
+    });
+    expect(acknowledgedReplay.operationId).toBe(first.operationId);
+    expect(acknowledgedReplay.terminalResult).toMatchObject({
+      ok: false,
+      reattached: true,
+    });
+    const intentionalNewCall = reserveDurableImageOperation({
+      stellaDataDir: dataDir,
+      conversationId,
+      toolCallId: `${toolCallId}:next-run`,
       requestBody,
     });
     expect(intentionalNewCall.operationId).not.toBe(first.operationId);

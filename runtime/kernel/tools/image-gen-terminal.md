@@ -10,8 +10,13 @@ reason when available.
 managed gateway. `openai`, `openrouter`, and `fal` use the user's locally saved
 credential directly; reference images go only to that selected provider and
 do not pass through Stella managed storage. Local references are restricted to
-the active workspace and Stella attachment/media/output roots, capped at 20MB,
-and verified by image signature. Managed local references additionally require
+the active workspace and Stella attachment/media/output/Fashion roots, capped
+at 20MB after the descriptor read, and fully decoded before use. Reference reads
+use `O_NOFOLLOW`, an already-open file handle, and device/inode/metadata checks
+before and after the bounded read so path or ancestor replacement cannot change
+the authorized object. Fashion's trusted picker stages references locally;
+accepted HEIC files are converted with macOS `sips` and the resulting JPEG is
+fully decoded before publication. Managed local references additionally require
 explicit `allowManagedReferenceUpload` consent for the call.
 
 The owner-scoped managed idempotency key is derived from a durable local
@@ -56,16 +61,21 @@ Restart behavior is explicit:
   continue only after its returned request ID was durably attached. A native,
   Claude, or Codex continuation reopens the operation ledger using its stable,
   request-hashed tool-call alias. It polls the attached job or returns the cached
-  terminal result without another POST. A different current alias is a new
-  intentional request even when the arguments are identical. Pre-canonical
+  terminal result without another POST. An exact durable engine/run/tool alias
+  plus exact request hash always replays that terminal result, including after
+  its prior response was acknowledged. A different durable run/tool alias is a
+  new intentional request even when the arguments are identical. Pre-canonical
   external aliases may reattach once by conversation and normalized request,
   then are durably promoted to the strict identity scheme. Claude image identity
-  uses the persisted Stella session key rather than the random MCP transport
-  session.
+  combines the persisted Stella session and run identity rather than the random
+  MCP transport session; Codex uses the same run boundary plus the app-server
+  call ID and canonical request hash.
 - Native execution does not acknowledge inside the tool adapter. Only after
   Stella durably persists the tool-result transcript row does it acknowledge the
-  operation as delivered. A later identical request with a new tool-call ID is
-  then a genuinely new generation.
+  operation as delivered. Claude acknowledges after the MCP HTTP response emits
+  `finish`; Codex acknowledges after the app-server stdio write callback. A
+  crash on either side of those boundaries may replay the same result, but the
+  durable alias prevents another provider submission or charge.
 - A relay disconnect retries only the Stella HTTP request with the same durable
   key. If every submission response is lost, the client performs authenticated,
   owner-scoped lookup by idempotency key and exact request hash until it finds
@@ -80,8 +90,9 @@ managed client timeout is 3 hours 15 minutes; it does not auto-cancel accepted
 work when that deadline becomes terminal `unknown`.
 
 Artifact downloads have their own enforced aborting timeout within a 60-second
-handoff grace. Runtime and renderer share a cross-process lock, reject partial
-image bytes, remove stale partials, fsync the file and parent directory, and
+handoff grace. Runtime and renderer share a cross-process lock, fully decode
+PNG/JPEG/GIF/WebP pixels before rename, reject corrupt or truncated bytes,
+remove stale partials, fsync the file and parent directory, and
 publish only through atomic rename. Payload publication is also keyed by job ID,
 so transcript and completion-subscription convergence emits one artifact payload.
 
@@ -95,6 +106,10 @@ Encrypted managed inputs are deleted after submission settlement, cancellation,
 terminal webhook processing, or unknown classification. Provably unsubmitted
 pending rows are abandoned after 24 hours. Delivered local operation aliases are
 pruned after 30 days; pending and undelivered terminal rows are retained for
-reattachment.
+reattachment. Account deletion transactionally schedules deletion of every
+pending or dispatching submission blob in the same mutation that removes its
+media row, so an in-flight dispatcher's later release cannot orphan encrypted
+input. Local schema creation and column migration run under `BEGIN IMMEDIATE`
+to serialize concurrent desktop processes.
 
 These semantics apply only to `image_gen`. Other media behavior is unchanged.

@@ -156,20 +156,31 @@ const DEFAULT_REALTIME_VOICE: RealtimeVoicePreferences = {
   provider: "stella",
 };
 
-const IMAGE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
+export const IMAGE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
   {
     key: "stella",
     label: "Stella",
     description:
       "Default. Uses Stella's managed image service; local references require per-generation upload consent.",
   },
-  { key: "openai", label: "OpenAI", description: "Uses your OpenAI account." },
+  {
+    key: "openai",
+    label: "OpenAI",
+    description:
+      "Uses your key. References go directly from this device to OpenAI; an ambiguous lost response is reported as unknown and is never blindly retried.",
+  },
   {
     key: "openrouter",
     label: "OpenRouter",
-    description: "Routes image generation through your OpenRouter account.",
+    description:
+      "Uses your key. References go directly from this device to OpenRouter; an ambiguous lost response is reported as unknown and is never blindly retried.",
   },
-  { key: "fal", label: "fal", description: "Uses your fal account." },
+  {
+    key: "fal",
+    label: "fal",
+    description:
+      "Uses your key. References go directly from this device to fal; an ambiguous lost response is reported as unknown and is never blindly retried.",
+  },
 ];
 
 const VOICE_PROVIDER_OPTIONS: readonly ProviderOption[] = [

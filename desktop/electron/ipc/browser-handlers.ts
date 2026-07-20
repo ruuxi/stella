@@ -23,6 +23,7 @@ import {
   IPC_MEDIA_SAVE_OUTPUT,
 } from "../../src/shared/contracts/ipc-channels.js";
 import { materializeMediaArtifact } from "../../../runtime/kernel/tools/media-artifact-store.js";
+import { validateDecodedImageFile } from "../../../runtime/kernel/tools/image-decode-validation.js";
 
 type BrowserFetchInit = {
   method?: "GET" | "POST";
@@ -203,6 +204,9 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         const dir = path.join(stellaDataDir, "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = resolveMediaOutputPath(dir, payload.fileName);
+        const validateExisting = /\.(?:png|jpe?g|gif|webp)$/i.test(destPath)
+          ? validateDecodedImageFile
+          : undefined;
         // The terminal image_gen path materializes the same deterministic
         // jobId-based filename before the renderer sees completion. Reuse the
         // durable file so the sidebar/inline materializers do not download or
@@ -211,6 +215,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         if (dataUriMatch) {
           const saved = await materializeMediaArtifact({
             filePath: destPath,
+            ...(validateExisting ? { validateExisting } : {}),
             producer: async () => Buffer.from(dataUriMatch[2], "base64"),
           });
           return { ok: true, path: saved.path };
@@ -220,6 +225,7 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         );
         const saved = await materializeMediaArtifact({
           filePath: destPath,
+          ...(validateExisting ? { validateExisting } : {}),
           producerTimeoutMs: PRIVILEGED_RENDERER_FETCH_TIMEOUT_MS,
           producer: async (signal) => {
             const res = await fetch(safeUrl, {

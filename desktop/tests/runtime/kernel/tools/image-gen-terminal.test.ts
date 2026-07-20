@@ -1,4 +1,13 @@
-import { readdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  symlink,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -13,6 +22,12 @@ import {
   settleImageOperation,
 } from "../../../../../runtime/kernel/tools/image-operation-store.js";
 import { materializeMediaArtifact } from "../../../../../runtime/kernel/tools/media-artifact-store.js";
+import {
+  decodeAndValidateImage,
+  validateDecodedImageFile,
+} from "../../../../../runtime/kernel/tools/image-decode-validation.js";
+import { readAuthorizedImageReference } from "../../../../../runtime/kernel/tools/image-reference-policy.js";
+import { localImagePollSleep } from "../../../../../runtime/kernel/tools/local-image-generation.js";
 import { executeRuntimeToolCall } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
 import { saveLocalLlmCredential } from "../../../../../runtime/kernel/storage/llm-credentials.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
@@ -100,6 +115,24 @@ const createHandler = (
   }).image_gen!;
 
 describe("image_gen terminal managed-media semantics", () => {
+  it("removes the Fal polling abort listener after 1,200 normal sleeps", async () => {
+    vi.useFakeTimers();
+    try {
+      const signal = new AbortController().signal;
+      const add = vi.spyOn(signal, "addEventListener");
+      const remove = vi.spyOn(signal, "removeEventListener");
+      for (let index = 0; index < 1_200; index += 1) {
+        const pending = localImagePollSleep(1, signal);
+        await vi.advanceTimersByTimeAsync(1);
+        await pending;
+      }
+      expect(add).toHaveBeenCalledTimes(1_200);
+      expect(remove).toHaveBeenCalledTimes(1_200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("honors a persisted BYOK preference without touching the managed gateway", async () => {
     const stellaDataDir = tempDirs.create("image-gen-byok-routed-");
     await writeFile(
@@ -389,6 +422,60 @@ describe("image_gen terminal managed-media semantics", () => {
     expect(posts).toBe(1);
     expect(idempotencyKeys).toHaveLength(1);
     expect(result.result).toMatchObject({
+      jobId: "job-image-1",
+      status: "succeeded",
+      reattached: true,
+    });
+  });
+
+  it("reconciles after all three POST responses are lost and the process restarts", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-all-post-responses-lost-");
+    let posts = 0;
+    let sleeps = 0;
+    const disconnectedFetch = vi.fn(
+      async (input: string | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/generate") && init?.method === "POST") {
+          posts += 1;
+          throw new Error("relay lost accepted POST response");
+        }
+        if (String(input).includes("/job?") && init?.method === "GET") {
+          throw new Error("relay lookup unavailable");
+        }
+        throw new Error(`Unexpected fetch ${String(input)}`);
+      },
+    ) as unknown as typeof fetch;
+    await expect(
+      createHandler(disconnectedFetch, {
+        sleep: async () => {
+          sleeps += 1;
+          if (sleeps === 3) throw new Error("simulated process exit");
+        },
+      })({ prompt: "draw a durable fox" }, contextFor(stellaDataDir)),
+    ).rejects.toThrow("simulated process exit");
+    expect(posts).toBe(3);
+
+    const recoveredFetch = vi.fn(
+      async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/generate") && init?.method === "POST") {
+          posts += 1;
+          throw new Error("must reconcile before another POST");
+        }
+        if (url.includes("/job?") && init?.method === "GET") {
+          if (url.includes("clientRequestKey=")) return accepted(true);
+          return jobResponse("succeeded", {
+            output: { images: [{ url: "https://assets.test/image.png" }] },
+          });
+        }
+        if (url === "https://assets.test/image.png") return outputResponse();
+        throw new Error(`Unexpected fetch ${url}`);
+      },
+    ) as unknown as typeof fetch;
+    const recovered = await createHandler(recoveredFetch, {
+      sleep: async () => undefined,
+    })({ prompt: "draw a durable fox" }, contextFor(stellaDataDir));
+    expect(posts).toBe(3);
+    expect(recovered.result).toMatchObject({
       jobId: "job-image-1",
       status: "succeeded",
       reattached: true,
@@ -711,15 +798,25 @@ describe("image_gen terminal managed-media semantics", () => {
       process.cwd(),
       "../runtime/kernel/tools/media-artifact-store.ts",
     );
+    const validatorModulePath = path.resolve(
+      process.cwd(),
+      "../runtime/kernel/tools/image-decode-validation.ts",
+    );
+    const payload = outputResponse();
+    const payloadBase64 = Buffer.from(await payload.arrayBuffer()).toString(
+      "base64",
+    );
     const source = `
       import { appendFileSync } from "node:fs";
       import { materializeMediaArtifact } from ${JSON.stringify(modulePath)};
+      import { validateDecodedImageFile } from ${JSON.stringify(validatorModulePath)};
       await materializeMediaArtifact({
         filePath: ${JSON.stringify(filePath)},
+        validateExisting: validateDecodedImageFile,
         producer: async () => {
           appendFileSync(${JSON.stringify(markerPath)}, String(process.pid) + "\\n");
           await new Promise((resolve) => setTimeout(resolve, 150));
-          return Buffer.from("one-complete-multiprocess-payload");
+          return Buffer.from(${JSON.stringify(payloadBase64)}, "base64");
         },
       });
     `;
@@ -743,9 +840,7 @@ describe("image_gen terminal managed-media semantics", () => {
     expect(
       (await readFile(markerPath, "utf8")).trim().split("\n"),
     ).toHaveLength(1);
-    expect(await readFile(filePath, "utf8")).toBe(
-      "one-complete-multiprocess-payload",
-    );
+    expect((await readFile(filePath)).toString("base64")).toBe(payloadBase64);
   });
 
   it("cleans stale partial artifacts before an atomic directory-synced publish", async () => {
@@ -765,6 +860,28 @@ describe("image_gen terminal managed-media semantics", () => {
     });
     expect(await readFile(filePath, "utf8")).toBe("complete");
     await expect(stat(stalePartial)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects header-only and truncated image structures before atomic publish", async () => {
+    const invalidImages = [
+      Buffer.from("89504e470d0a1a0a", "hex"),
+      Buffer.from("ffd8ffe000104a4649460001", "hex"),
+      Buffer.from("47494638396101000100", "hex"),
+      Buffer.from("524946461000000057454250", "hex"),
+    ];
+    for (const bytes of invalidImages) {
+      expect(await decodeAndValidateImage(bytes)).toBeNull();
+    }
+    const root = tempDirs.create("image-gen-invalid-publish-");
+    const filePath = path.join(root, "artifact.png");
+    await expect(
+      materializeMediaArtifact({
+        filePath,
+        validateExisting: validateDecodedImageFile,
+        producer: async () => invalidImages[0]!,
+      }),
+    ).rejects.toThrow("full image validation");
+    await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("does not replay a delivered MCP alias for a different prompt", () => {
@@ -794,6 +911,16 @@ describe("image_gen terminal managed-media semantics", () => {
       conversationId: common.conversationId,
       toolCallId: common.toolCallId,
     });
+    const deliveredReplay = reserveDurableImageOperation({
+      ...common,
+      requestBody: { prompt: "first image" },
+    });
+    expect(deliveredReplay.operationId).toBe(first.operationId);
+    expect(deliveredReplay.terminalResult).toMatchObject({
+      ok: false,
+      code: "first_failure",
+      reattached: true,
+    });
     const second = reserveDurableImageOperation({
       ...common,
       requestBody: { prompt: "different intentional image" },
@@ -815,6 +942,94 @@ describe("image_gen terminal managed-media semantics", () => {
     });
     expect(samePromptNewAlias.operationId).not.toBe(second.operationId);
     expect(samePromptNewAlias.reattached).toBe(false);
+  });
+
+  it("serializes legacy SQLite column migration across desktop processes", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-concurrent-migration-");
+    const databasePath = path.join(
+      stellaDataDir,
+      "image-tool-operations.sqlite",
+    );
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`
+      CREATE TABLE image_tool_operations (
+        operation_id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        job_id TEXT,
+        state TEXT NOT NULL,
+        terminal_result_json TEXT,
+        delivered_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE image_tool_operation_aliases (
+        conversation_id TEXT NOT NULL,
+        tool_call_id TEXT NOT NULL,
+        operation_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (conversation_id, tool_call_id)
+      );
+    `);
+    legacy.close();
+    const modulePath = path.resolve(
+      process.cwd(),
+      "../runtime/kernel/tools/image-operation-store.ts",
+    );
+    const run = (toolCallId: string) =>
+      new Promise<void>((resolve, reject) => {
+        const source = `
+          import { reserveDurableImageOperation } from ${JSON.stringify(modulePath)};
+          reserveDurableImageOperation({
+            stellaDataDir: ${JSON.stringify(stellaDataDir)},
+            conversationId: "migration-conversation",
+            toolCallId: ${JSON.stringify(toolCallId)},
+            requestBody: { prompt: ${JSON.stringify(toolCallId)} },
+          });
+        `;
+        const child = spawn(
+          process.execPath,
+          [
+            "--experimental-strip-types",
+            "--input-type=module",
+            "--eval",
+            source,
+          ],
+          { stdio: ["ignore", "pipe", "pipe"] },
+        );
+        let stderr = "";
+        child.stderr.on("data", (chunk) => {
+          stderr += String(chunk);
+        });
+        child.once("error", reject);
+        child.once("close", (code) =>
+          code === 0
+            ? resolve()
+            : reject(new Error(stderr || `node exited ${code}`)),
+        );
+      });
+    await Promise.all([run("migration-a"), run("migration-b")]);
+    const migrated = new DatabaseSync(databasePath);
+    const operationColumns = migrated
+      .prepare("PRAGMA table_info(image_tool_operations)")
+      .all() as Array<{ name: string }>;
+    const aliasColumns = migrated
+      .prepare("PRAGMA table_info(image_tool_operation_aliases)")
+      .all() as Array<{ name: string }>;
+    expect(operationColumns.map(({ name }) => name)).toContain(
+      "submission_state",
+    );
+    expect(aliasColumns.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(["request_hash", "identity_version"]),
+    );
+    expect(
+      (
+        migrated
+          .prepare("SELECT COUNT(*) AS count FROM image_tool_operations")
+          .get() as { count: number }
+      ).count,
+    ).toBe(2);
+    migrated.close();
   });
 
   it("prunes only delivered terminal operations and preserves pending reattachment", () => {
@@ -950,5 +1165,37 @@ describe("image_gen terminal managed-media semantics", () => {
     );
     expect(result.error).toContain("outside the active workspace");
     expect(managedFetch).not.toHaveBeenCalled();
+  });
+
+  it("authorizes production Fashion references and rejects an ancestor replacement race", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-fashion-reference-");
+    const fashionDir = path.join(stellaDataDir, "fashion");
+    const safeDir = path.join(stellaDataDir, "attachments", "safe");
+    const outsideDir = tempDirs.create("image-gen-reference-race-outside-");
+    await Promise.all([
+      mkdir(fashionDir, { recursive: true }),
+      mkdir(safeDir, { recursive: true }),
+    ]);
+    const imageBytes = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const bodyPath = path.join(fashionDir, "body.png");
+    await writeFile(bodyPath, imageBytes);
+    await expect(
+      readAuthorizedImageReference(bodyPath, contextFor(stellaDataDir)),
+    ).resolves.toMatchObject({ mimeType: "image/png" });
+
+    const racedPath = path.join(safeDir, "reference.png");
+    await writeFile(racedPath, imageBytes);
+    await writeFile(path.join(outsideDir, "reference.png"), imageBytes);
+    await expect(
+      readAuthorizedImageReference(racedPath, contextFor(stellaDataDir), {
+        afterOpen: async () => {
+          await rename(safeDir, `${safeDir}-original`);
+          await symlink(outsideDir, safeDir, "dir");
+        },
+      }),
+    ).rejects.toThrow("outside the authorized directories");
   });
 });

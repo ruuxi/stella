@@ -1,4 +1,3 @@
-import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import {
@@ -12,10 +11,11 @@ import {
   reserveDurableImageOperation,
   settleImageOperation,
 } from "./image-operation-store.js";
+import { authorizedReferenceAsDataUri } from "./image-reference-policy.js";
 import {
-  authorizedReferenceAsDataUri,
-  detectSupportedImageMimeType,
-} from "./image-reference-policy.js";
+  decodeAndValidateImage,
+  validateDecodedImageFile,
+} from "./image-decode-validation.js";
 import { materializeMediaArtifact } from "./media-artifact-store.js";
 import type { ManagedImageTerminalResult } from "./managed-image-job.js";
 import type { ToolContext, ToolHandlerExtras, ToolResult } from "./types.js";
@@ -44,20 +44,25 @@ const abortError = (signal: AbortSignal): Error => {
   return error;
 };
 
-const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+export const localImagePollSleep = (
+  ms: number,
+  signal?: AbortSignal,
+): Promise<void> =>
   new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(abortError(signal));
-    const timer = setTimeout(resolve, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError(signal!));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
     timer.unref?.();
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(abortError(signal));
-      },
-      { once: true },
-    );
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
+
+const sleep = localImagePollSleep;
 
 const normalizeCount = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value)
@@ -174,19 +179,18 @@ const saveProviderImages = async (args: {
       signal: args.signal,
       producerTimeoutMs: 60_000,
       validateExisting: async (candidate) =>
-        detectSupportedImageMimeType(await fs.readFile(candidate)) ===
-        expectedMime,
+        await validateDecodedImageFile(candidate, expectedMime),
       producer: async (signal) => {
         const bytes = await imageBytes(image, signal);
-        const mimeType = detectSupportedImageMimeType(bytes);
-        if (!mimeType)
+        const decoded = await decodeAndValidateImage(bytes);
+        if (!decoded)
           throw new Error("provider returned an unsupported or partial image");
-        if (mimeType !== expectedMime) {
+        if (decoded.mimeType !== expectedMime) {
           throw new Error(
-            `provider returned ${mimeType} for requested ${expectedMime}`,
+            `provider returned ${decoded.mimeType} for requested ${expectedMime}`,
           );
         }
-        detectedMime = mimeType;
+        detectedMime = decoded.mimeType;
         return bytes;
       },
     });

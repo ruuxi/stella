@@ -60,8 +60,10 @@ const openDatabase = (stellaDataDir: string): DatabaseSync => {
   const db = new DatabaseSync(path.join(stellaDataDir, DATABASE_FILE), {
     timeout: 5_000,
   });
-  db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;");
-  db.exec(`
+  db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;");
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    db.exec(`
     CREATE TABLE IF NOT EXISTS image_tool_operations (
       operation_id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
@@ -86,34 +88,44 @@ const openDatabase = (stellaDataDir: string): DatabaseSync => {
       PRIMARY KEY (conversation_id, tool_call_id),
       FOREIGN KEY (operation_id) REFERENCES image_tool_operations(operation_id)
     );
-  `);
-  const operationColumns = tableColumns(db, "image_tool_operations");
-  if (!operationColumns.has("submission_state")) {
-    db.exec(
-      "ALTER TABLE image_tool_operations ADD COLUMN submission_state TEXT NOT NULL DEFAULT 'pending'",
-    );
-  }
-  const aliasColumns = tableColumns(db, "image_tool_operation_aliases");
-  if (!aliasColumns.has("request_hash")) {
-    db.exec(
-      "ALTER TABLE image_tool_operation_aliases ADD COLUMN request_hash TEXT",
-    );
-  }
-  if (!aliasColumns.has("identity_version")) {
-    // Rows from releases before canonical external-engine identities are
-    // eligible for exactly one request-hash migration reattachment.
-    db.exec(
-      "ALTER TABLE image_tool_operation_aliases ADD COLUMN identity_version INTEGER NOT NULL DEFAULT 1",
-    );
-  }
-  db.exec(`
+    `);
+    const operationColumns = tableColumns(db, "image_tool_operations");
+    if (!operationColumns.has("submission_state")) {
+      db.exec(
+        "ALTER TABLE image_tool_operations ADD COLUMN submission_state TEXT NOT NULL DEFAULT 'pending'",
+      );
+    }
+    const aliasColumns = tableColumns(db, "image_tool_operation_aliases");
+    if (!aliasColumns.has("request_hash")) {
+      db.exec(
+        "ALTER TABLE image_tool_operation_aliases ADD COLUMN request_hash TEXT",
+      );
+    }
+    if (!aliasColumns.has("identity_version")) {
+      // Rows from releases before canonical external-engine identities are
+      // eligible for exactly one request-hash migration reattachment.
+      db.exec(
+        "ALTER TABLE image_tool_operation_aliases ADD COLUMN identity_version INTEGER NOT NULL DEFAULT 1",
+      );
+    }
+    db.exec(`
     UPDATE image_tool_operation_aliases
     SET request_hash = (
       SELECT request_hash FROM image_tool_operations o
       WHERE o.operation_id = image_tool_operation_aliases.operation_id
     )
     WHERE request_hash IS NULL;
-  `);
+    `);
+    db.exec("COMMIT");
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // BEGIN may not have completed.
+    }
+    db.close();
+    throw error;
+  }
   return db;
 };
 
@@ -160,8 +172,7 @@ export const reserveDurableImageOperation = (args: {
     if (
       alias &&
       alias.request_hash === requestHash &&
-      alias.alias_request_hash === requestHash &&
-      (alias.state === "pending" || alias.delivered_at === null)
+      alias.alias_request_hash === requestHash
     ) {
       db.exec("COMMIT");
       return toOperation(alias, true);

@@ -11,6 +11,11 @@ import {
   type ClaudeCodeToolMcpActiveTurn,
   type ClaudeCodeToolMcpHost,
 } from "../../../../../runtime/kernel/integrations/claude-code-tool-mcp-host.js";
+import {
+  markImageOperationDelivered,
+  reserveDurableImageOperation,
+  settleImageOperation,
+} from "../../../../../runtime/kernel/tools/image-operation-store.js";
 
 const tools = [
   {
@@ -247,18 +252,59 @@ describe("claude-code-tool-mcp-host", () => {
   });
 
   it("keeps image_gen identity stable across a real MCP host/process restart", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-claude-image-replay-"),
+    );
     const callIds: string[] = [];
+    let submissions = 0;
+    let acknowledgements = 0;
     const create = async () => {
       const host = await createClaudeCodeToolMcpHost({
         tools: imageTools,
         identityScope: "persisted-claude-session-key",
         getActiveTurn: () => ({
-          executeTool: async (id) => {
+          identityScope: "persisted-claude-session-key:durable-run-id",
+          executeTool: async (id, _name, args) => {
             callIds.push(id);
+            const operation = reserveDurableImageOperation({
+              stellaDataDir: dir,
+              conversationId: "claude-mcp-response-replay",
+              toolCallId: id,
+              requestBody: args,
+            });
+            if (!operation.terminalResult) {
+              submissions += 1;
+              settleImageOperation({
+                stellaDataDir: dir,
+                operationId: operation.operationId,
+                result: {
+                  ok: true,
+                  job: {
+                    jobId: "job-stable",
+                    capability: "text_to_image",
+                    profile: "best",
+                    status: "succeeded",
+                  },
+                  filePaths: [],
+                  artifacts: [],
+                  reattached: false,
+                },
+              });
+            }
             return {
-              result: { jobId: "job-stable", status: "succeeded" },
+              result:
+                operation.terminalResult ??
+                ({ jobId: "job-stable", status: "succeeded" } as const),
               details: { jobId: "job-stable", status: "succeeded" },
             };
+          },
+          onToolResponseWritten: ({ toolCallId }) => {
+            acknowledgements += 1;
+            markImageOperationDelivered({
+              stellaDataDir: dir,
+              conversationId: "claude-mcp-response-replay",
+              toolCallId,
+            });
           },
         }),
       });
@@ -272,6 +318,7 @@ describe("claude-code-tool-mcp-host", () => {
       name: "image_gen",
       arguments: { prompt: "durable fox" },
     });
+    await vi.waitFor(() => expect(acknowledgements).toBe(1));
     await firstClient.close();
     await firstHost.close();
     hosts.delete(firstHost);
@@ -283,10 +330,115 @@ describe("claude-code-tool-mcp-host", () => {
       name: "image_gen",
       arguments: { prompt: "durable fox" },
     });
+    await vi.waitFor(() => expect(acknowledgements).toBe(2));
 
     expect(callIds).toHaveLength(2);
     expect(callIds[1]).toBe(callIds[0]);
     expect(callIds[0]).toMatch(/^mcp:[a-f0-9]{24}:/);
+    expect(submissions).toBe(1);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("reattaches when Claude loses the MCP response around the HTTP finish acknowledgement", async () => {
+    const dir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "stella-claude-image-response-loss-"),
+    );
+    let submissions = 0;
+    let acknowledgements = 0;
+    let releaseFirst!: () => void;
+    let announceTerminal!: () => void;
+    const firstMayReturn = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const terminalPersisted = new Promise<void>((resolve) => {
+      announceTerminal = resolve;
+    });
+    const makeTurn = (blockResponse: boolean): ClaudeCodeToolMcpActiveTurn => ({
+      identityScope: "claude-session:claude-durable-run",
+      executeTool: async (toolCallId, _toolName, args) => {
+        const operation = reserveDurableImageOperation({
+          stellaDataDir: dir,
+          conversationId: "claude-before-response-write",
+          toolCallId,
+          requestBody: args,
+        });
+        if (!operation.terminalResult) {
+          submissions += 1;
+          settleImageOperation({
+            stellaDataDir: dir,
+            operationId: operation.operationId,
+            result: {
+              ok: true,
+              job: {
+                jobId: "claude-response-loss-job",
+                capability: "text_to_image",
+                profile: "best",
+                status: "succeeded",
+              },
+              filePaths: [],
+              artifacts: [],
+              reattached: false,
+            },
+          });
+        }
+        announceTerminal();
+        if (blockResponse) await firstMayReturn;
+        return { result: operation.terminalResult ?? { status: "succeeded" } };
+      },
+      onToolResponseWritten: ({ toolCallId }) => {
+        acknowledgements += 1;
+        markImageOperationDelivered({
+          stellaDataDir: dir,
+          conversationId: "claude-before-response-write",
+          toolCallId,
+        });
+      },
+    });
+    try {
+      const firstHost = await createClaudeCodeToolMcpHost({
+        tools: imageTools,
+        getActiveTurn: () => makeTurn(true),
+      });
+      hosts.add(firstHost);
+      const firstClient = await connect(firstHost);
+      clients.add(firstClient);
+      const lostResponse = new AbortController();
+      const lost = firstClient.callTool(
+        {
+          name: "image_gen",
+          arguments: { prompt: "persist before response" },
+        },
+        undefined,
+        { signal: lostResponse.signal },
+      );
+      await terminalPersisted;
+      lostResponse.abort(new Error("Claude process crashed"));
+      await expect(lost).rejects.toThrow();
+      releaseFirst();
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      // Node's server-side `finish` is the latest observable boundary. The
+      // client can still disappear without consuming those bytes, so replay
+      // must remain safe even though delivery was acknowledged.
+      expect(acknowledgements).toBe(1);
+      await firstHost.close();
+      hosts.delete(firstHost);
+
+      const restartedHost = await createClaudeCodeToolMcpHost({
+        tools: imageTools,
+        getActiveTurn: () => makeTurn(false),
+      });
+      hosts.add(restartedHost);
+      const restartedClient = await connect(restartedHost);
+      clients.add(restartedClient);
+      await restartedClient.callTool({
+        name: "image_gen",
+        arguments: { prompt: "persist before response" },
+      });
+      await vi.waitFor(() => expect(acknowledgements).toBe(2));
+      expect(submissions).toBe(1);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("separates a reused MCP request alias when the canonical image request changes", async () => {

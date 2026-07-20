@@ -142,18 +142,33 @@ export const materializeMediaArtifact = async (args: {
     if (raced !== null) {
       return { path: args.filePath, sizeBytes: raced, created: false };
     }
+    // An invalid target may have been left by an older, signature-only
+    // release. Only the lock owner may remove it before atomic replacement.
+    if ((await readyMediaArtifactSize(args.filePath)) !== null) {
+      await fs.unlink(args.filePath);
+    }
+    let rejectProducerAbort: (() => void) | undefined;
     const producerAborted = new Promise<never>((_resolve, reject) => {
-      const rejectAbort = () => reject(abortError(producerSignal));
+      rejectProducerAbort = () => reject(abortError(producerSignal));
       if (producerSignal.aborted) {
-        rejectAbort();
+        rejectProducerAbort();
         return;
       }
-      producerSignal.addEventListener("abort", rejectAbort, { once: true });
+      producerSignal.addEventListener("abort", rejectProducerAbort, {
+        once: true,
+      });
     });
-    const bytes = await Promise.race([
-      args.producer(producerSignal),
-      producerAborted,
-    ]);
+    let bytes: Buffer;
+    try {
+      bytes = await Promise.race([
+        args.producer(producerSignal),
+        producerAborted,
+      ]);
+    } finally {
+      if (rejectProducerAbort) {
+        producerSignal.removeEventListener("abort", rejectProducerAbort);
+      }
+    }
     if (producerSignal.aborted) throw abortError(producerSignal);
     if (bytes.length === 0) throw new Error("Media artifact was empty.");
     const output = await fs.open(partialPath, "wx", 0o600);
@@ -162,6 +177,9 @@ export const materializeMediaArtifact = async (args: {
       await output.sync();
     } finally {
       await output.close();
+    }
+    if (args.validateExisting && !(await args.validateExisting(partialPath))) {
+      throw new Error("Media artifact failed full image validation.");
     }
     await fs.rename(partialPath, args.filePath);
     await syncDirectory(path.dirname(args.filePath));

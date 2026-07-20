@@ -435,6 +435,10 @@ type ClaudeCodeTurnRequest = {
     toolName: string;
     update: ToolResult;
   }) => void;
+  onToolResponseWritten?: (args: {
+    toolCallId: string;
+    toolName: string;
+  }) => void | Promise<void>;
   /**
    * Native Claude Code tool boundary observed in vanilla mode. This is a
    * notification only: Claude Code still owns execution and tool results.
@@ -1307,6 +1311,7 @@ class ClaudeCodeSessionRuntime {
 
     if (!request.vanilla) {
       session.activeMcpTurn = {
+        identityScope: `${request.sessionKey}:${request.runId}`,
         executeTool: async (
           toolCallId,
           toolName,
@@ -1375,6 +1380,7 @@ class ClaudeCodeSessionRuntime {
           }
           return toolResult;
         },
+        onToolResponseWritten: request.onToolResponseWritten,
       };
     }
 

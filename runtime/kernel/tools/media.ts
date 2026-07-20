@@ -143,7 +143,7 @@ const createImageGenHandler =
       }
       if (url.startsWith("data:")) {
         try {
-          validateImageDataUri(url);
+          await validateImageDataUri(url);
         } catch (error) {
           return {
             error: `invalid referenceImageUrls data URI: ${(error as Error).message}`,

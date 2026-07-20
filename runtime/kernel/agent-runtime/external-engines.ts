@@ -1266,13 +1266,6 @@ const runClaudeHostedTurn = async (args: {
         timestamp: now(),
       },
     });
-    if (toolName === "image_gen") {
-      markImageOperationDelivered({
-        stellaDataDir: args.opts.stellaDataDir ?? args.opts.stellaAppDir,
-        conversationId: args.opts.conversationId,
-        toolCallId,
-      });
-    }
     return toolResult;
   };
 
@@ -1386,6 +1379,14 @@ const runClaudeHostedTurn = async (args: {
     onStream: acceptClaudeStreamChunk,
     onNativeToolStart: flushPreambleBeforeTool,
     onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
+    onToolResponseWritten: ({ toolCallId, toolName }) => {
+      if (toolName !== "image_gen") return;
+      markImageOperationDelivered({
+        stellaDataDir: args.opts.stellaDataDir ?? args.opts.stellaAppDir,
+        conversationId: args.opts.conversationId,
+        toolCallId,
+      });
+    },
     executeTool: executeClaudeTool,
   });
   // The remaining buffer is this turn's final answer. It is persisted exactly
@@ -1698,13 +1699,6 @@ const runCodexHostedTurn = async (args: {
         timestamp: now(),
       },
     });
-    if (toolName === "image_gen") {
-      markImageOperationDelivered({
-        stellaDataDir: args.opts.stellaDataDir ?? args.opts.stellaAppDir,
-        conversationId: args.opts.conversationId,
-        toolCallId,
-      });
-    }
     return toolResult;
   };
   const emitCodexCommandExecution = (
@@ -1824,6 +1818,14 @@ const runCodexHostedTurn = async (args: {
     onStream: acceptCodexAssistantChunk,
     onSessionId: persistCodexSessionId,
     onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
+    onToolResponseWritten: ({ toolCallId, toolName }) => {
+      if (toolName !== "image_gen") return;
+      markImageOperationDelivered({
+        stellaDataDir: args.opts.stellaDataDir ?? args.opts.stellaAppDir,
+        conversationId: args.opts.conversationId,
+        toolCallId,
+      });
+    },
     executeTool: executeCodexTool,
     reuseAppServer: true,
     streamFinalAnswer: args.session.kind === "orchestrator",
@@ -1915,6 +1917,14 @@ const runCodexHostedTurn = async (args: {
       onStream: acceptCodexAssistantChunk,
       onSessionId: persistCodexSessionId,
       onToolUpdate: ({ update }) => emitToolUpdateStatus(update),
+      onToolResponseWritten: ({ toolCallId, toolName }) => {
+        if (toolName !== "image_gen") return;
+        markImageOperationDelivered({
+          stellaDataDir: args.opts.stellaDataDir ?? args.opts.stellaAppDir,
+          conversationId: args.opts.conversationId,
+          toolCallId,
+        });
+      },
       executeTool: executeCodexTool,
       reuseAppServer: true,
       streamFinalAnswer: args.session.kind === "orchestrator",
