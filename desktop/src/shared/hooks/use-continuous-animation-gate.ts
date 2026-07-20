@@ -129,11 +129,7 @@ const isElementPresentationVisible = (element: HTMLElement): boolean => {
       return false;
     }
     const style = getComputedStyle(current);
-    if (
-      style.display === "none" ||
-      style.visibility === "hidden" ||
-      Number.parseFloat(style.opacity || "1") === 0
-    ) {
+    if (style.display === "none" || style.visibility === "hidden") {
       return false;
     }
     current = current.parentElement;
@@ -193,13 +189,7 @@ export function useContinuousAnimationGate<T extends HTMLElement>({
     while (ancestor) {
       presentationObserver.observe(ancestor, {
         attributes: true,
-        attributeFilter: [
-          "class",
-          "data-collapsed",
-          "hidden",
-          "inert",
-          "style",
-        ],
+        attributeFilter: ["class", "data-collapsed", "hidden", "inert"],
       });
       ancestor = ancestor.parentElement;
     }

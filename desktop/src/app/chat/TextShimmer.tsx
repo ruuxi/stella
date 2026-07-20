@@ -4,6 +4,7 @@
 
 import { useMemo, useRef } from "react";
 import { useContinuousAnimationGate } from "@/shared/hooks/use-continuous-animation-gate";
+import { useExclusiveAnimation } from "@/shared/hooks/use-exclusive-animation";
 import "./text-shimmer.css";
 
 interface TextShimmerProps {
@@ -15,6 +16,8 @@ interface TextShimmerProps {
   durationMs?: number;
   /** Anchor the sweep phase to a shared wall clock across separate mounts. */
   syncPhase?: boolean;
+  /** At most one visible candidate in this group receives the sweep. */
+  exclusiveGroup?: string;
 }
 
 export function TextShimmer({
@@ -23,6 +26,7 @@ export function TextShimmer({
   className,
   durationMs,
   syncPhase = false,
+  exclusiveGroup,
 }: TextShimmerProps) {
   const rootRef = useRef<HTMLSpanElement>(null);
   const duration = useMemo(() => {
@@ -34,10 +38,14 @@ export function TextShimmer({
     () => (syncPhase ? -(Date.now() % duration) : 0),
     [duration, syncPhase],
   );
-  const shouldAnimate = useContinuousAnimationGate({
+  const animationGateOpen = useContinuousAnimationGate({
     active,
     elementRef: rootRef,
   });
+  const shouldAnimate = useExclusiveAnimation(
+    exclusiveGroup,
+    animationGateOpen,
+  );
 
   if (!active) {
     return <span className={className}>{text}</span>;

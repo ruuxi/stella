@@ -302,7 +302,11 @@ export function BackgroundWorkCard({
       <span className="background-work-card__text">
         <span className="background-work-card__title">
           {working ? (
-            <TextShimmer text={title} durationMs={TITLE_SHIMMER_MS} />
+            <TextShimmer
+              text={title}
+              durationMs={TITLE_SHIMMER_MS}
+              exclusiveGroup="background-work-cards"
+            />
           ) : (
             title
           )}

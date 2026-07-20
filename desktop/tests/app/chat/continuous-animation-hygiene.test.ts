@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { shouldRunContinuousAnimation } from "@/shared/hooks/use-continuous-animation-gate";
 import { createDemandDrivenAnimationLoop } from "@/shared/lib/demand-driven-animation-loop";
+import { selectExclusiveAnimationOwner } from "@/shared/hooks/use-exclusive-animation";
 
 describe("continuous animation hygiene", () => {
   it("requires live state, visible pixels, a visible app, and allowed motion", () => {
@@ -84,6 +85,17 @@ describe("continuous animation hygiene", () => {
     expect(frames.size).toBe(1);
     loop.stop();
     expect(frames.size).toBe(0);
+  });
+
+  it("elects only the newest visible candidate in a shared motion group", () => {
+    expect(
+      selectExclusiveAnimationOwner([
+        { id: "older-card", order: 3 },
+        { id: "newest-card", order: 8 },
+        { id: "middle-card", order: 5 },
+      ]),
+    ).toBe("newest-card");
+    expect(selectExclusiveAnimationOwner([])).toBeNull();
   });
 
   it("keeps persistent chat motion compositor-only and explicitly gated", () => {

@@ -25,6 +25,7 @@ export const createDemandDrivenAnimationLoop = ({
   setTimer = window.setTimeout,
 }: DemandDrivenAnimationLoopOptions): DemandDrivenAnimationLoop => {
   const frameIntervalMs = 1000 / Math.max(1, maxFramesPerSecond);
+  const displayFrameMs = 1000 / 60;
   let frameId: number | undefined;
   let timerId: number | undefined;
   let lastFrameAt: number | undefined;
@@ -40,7 +41,10 @@ export const createDemandDrivenAnimationLoop = ({
     if (!running) return;
     const elapsed =
       lastFrameAt === undefined ? frameIntervalMs : now() - lastFrameAt;
-    const delayMs = Math.max(0, frameIntervalMs - elapsed);
+    // Wake before the next eligible display frame. Waiting the full interval
+    // and then waiting for rAF would turn a 30 fps cap into roughly 15 fps.
+    const wakeAheadMs = Math.min(displayFrameMs, frameIntervalMs / 2);
+    const delayMs = Math.max(0, frameIntervalMs - elapsed - wakeAheadMs);
     if (delayMs <= 1) {
       requestNextFrame();
       return;
