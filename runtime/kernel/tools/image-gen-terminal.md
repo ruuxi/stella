@@ -128,7 +128,9 @@ whose provider acceptance is still ambiguous leaves a sanitized canceled
 tombstone and makes account deletion fail closed for a later retry rather than
 hot-looping or discarding the only reconciliation handle. A late webhook may
 attach its provider ID only to the cancellation outbox; it cannot reverse the
-terminal result or bill the user. Local schema creation and column migration run under `BEGIN IMMEDIATE`
+terminal result or bill the user. If no provider identity arrives, a later
+deletion retry removes the sanitized tombstone after the same 3h15 provider
+reconciliation envelope expires. Local schema creation and column migration run under `BEGIN IMMEDIATE`
 to serialize concurrent desktop processes.
 
 These semantics apply only to `image_gen`. Other media behavior is unchanged.
