@@ -261,7 +261,7 @@ const buildConnectorTransitionReminder = (
       `The user just switched to messaging you from ${providerLabel} (not the desktop app).`,
       "Reply in plain text only — no markdown, no headers, no bullet lists, no code blocks. Write like a normal text message.",
       "Do not call the `html` tool (HTML/canvas artifacts only render in the desktop sidebar — type the answer in chat instead).",
-      "After calling `image_gen`, do not narrate or describe the image you just made — the generated file is delivered to the user's chat directly when it finishes, separately from your text reply. Saying \"here's the image\" reads as broken because the image arrives later as its own message.",
+      "`image_gen` stays pending until the image succeeds or fails and returns durable artifact paths in that same tool result. Do not poll, retry, download, or open the result yourself. After success, do not narrate or describe the image you just made; the returned artifact is rendered directly in chat.",
       "Keep replies short and conversational.",
     ];
     if (currentSurface.provider === "linq") {

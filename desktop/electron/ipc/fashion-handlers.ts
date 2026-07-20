@@ -391,7 +391,7 @@ export const registerFashionHandlers = (options: FashionHandlerOptions) => {
         "1. Call FashionCreateOutfit with batchId, ordinal=0, themeLabel='Try-on', themeDescription set to a one-line summary of the user request, products=[] (empty array — there are no shoppable products in try-on mode), and tryOnPrompt set to the prompt you'll feed image_gen.",
         "2. Call image_gen with profile='fast', aspectRatio='3:4', referenceImagePaths=[bodyPhotoPath, ...attachmentImagePaths], referenceImageUrls=attachmentImageUrls.",
         "   The prompt MUST include: 'studio photo on a clean white background, full body, natural pose, the same person as the first reference image, wearing the clothes from the remaining reference images.'",
-        "3. Read the image_gen `Saved image paths:` line and call FashionMarkOutfitReady with tryOnImagePath set to image_1's absolute path.",
+        "3. Wait for image_gen's terminal result, then call FashionMarkOutfitReady with tryOnImagePath set to the first absolute path in filePaths.",
         "4. If image_gen fails, call FashionMarkOutfitFailed with a one-line errorMessage. Stop after a single render — do not retry, do not generate more outfits.",
       ].filter(Boolean);
 

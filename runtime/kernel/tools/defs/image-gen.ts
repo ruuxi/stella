@@ -1,8 +1,7 @@
 /**
- * `image_gen` tool — submit a still image job through Stella's managed media
- * gateway. The completed output is saved under `~/.stella/media/outputs/` and
- * surfaced in the sidebar by the media materializer; the model should not
- * wait for, download, or open it itself.
+ * `image_gen` tool — run a still image job through Stella's managed media
+ * gateway. The call stays pending through generation and durable artifact
+ * materialization, then returns terminal status and local output paths.
  */
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
@@ -25,9 +24,9 @@ export const createImageGenTool = (
     // both the catalog filter and executeTool via this gate.
     agentTypes: [AGENT_IDS.ORCHESTRATOR, AGENT_IDS.FASHION],
     description:
-      "Submit a still image job through Stella's managed media gateway. Returns immediately with a jobId; the completed image is saved under ~/.stella/media/outputs/ and shown in the sidebar later. Do not wait for, download, or open it yourself. Required: prompt.",
+      "Generate a still image through Stella's managed media gateway. The call stays pending until generation succeeds or fails. Success returns the terminal job status, artifact metadata, and durable local path(s) under ~/.stella/media/outputs/. Do not poll, download, retry, or open the result yourself. Required: prompt.",
     promptSnippet:
-      "Submit a still image job via Stella's managed media gateway",
+      "Generate a still image and return its terminal artifact result",
     parameters: {
       type: "object",
       properties: {

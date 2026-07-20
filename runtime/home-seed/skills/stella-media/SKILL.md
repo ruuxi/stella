@@ -9,7 +9,7 @@ Stella ships a managed media gateway that fronts every supported provider. Use i
 
 ## Still images
 
-General does not call `image_gen` directly. For still images, read the image docs below and route through Stella's managed media gateway. Use the documented `stella-media` command when you want `exec_command`-style wait/status behavior; use the raw API only when the docs say that is enough.
+General does not call `image_gen` directly. For still images, read the image docs below and route through Stella's managed media gateway. The orchestrator's `image_gen` call stays pending through generation and local artifact materialization, then returns terminal success/failure plus durable output paths. Do not poll or resubmit it. Use the documented `stella-media` command for General-agent `exec_command` workflows.
 
 ## Video, audio, 3D — read the relevant doc page first
 

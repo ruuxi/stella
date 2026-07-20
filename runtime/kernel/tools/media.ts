@@ -7,11 +7,26 @@ import type {
   ToolResult,
 } from "./types.js";
 import { runLocalImageGeneration } from "./local-image-generation.js";
+import {
+  submitAndWaitForManagedImageJob,
+  type ManagedImageJobOptions,
+} from "./managed-image-job.js";
 
 export const IMAGE_GEN_TOOL_NAME = "image_gen";
 
 type MediaToolOptions = {
   getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
+  managedImageJob?: Partial<
+    Pick<
+      ManagedImageJobOptions,
+      | "fetchImpl"
+      | "now"
+      | "sleep"
+      | "timeoutMs"
+      | "initialPollMs"
+      | "maxPollMs"
+    >
+  >;
 };
 
 const asNonEmptyString = (value: unknown): string | null =>
@@ -28,21 +43,6 @@ const mimeTypeFromExtension = (extension: string): string => {
       return "image/webp";
     default:
       return "image/png";
-  }
-};
-
-const parseErrorResponse = async (response: Response): Promise<string> => {
-  try {
-    const json = (await response.json()) as {
-      error?: unknown;
-      action?: unknown;
-    };
-    const error = asNonEmptyString(json.error);
-    const action = asNonEmptyString(json.action);
-    return [error, action].filter(Boolean).join(" ");
-  } catch {
-    const text = await response.text().catch(() => "");
-    return text.trim();
   }
 };
 
@@ -200,67 +200,43 @@ const createImageGenHandler =
       };
     }
 
-    let submitResponse: Response;
-    try {
-      submitResponse = await fetch(
-        new URL("/api/media/v1/generate", siteAuth.baseUrl).toString(),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${siteAuth.authToken}`,
-            "X-Device-ID": context.deviceId,
-          },
-          body: JSON.stringify({
-            capability,
-            prompt,
-            ...(profile ? { profile } : {}),
-            ...(aspectRatio ? { aspectRatio } : {}),
-            ...(Object.keys(input).length > 0 ? { input } : {}),
-            ...(context.connectorDeliveryTarget
-              ? {
-                  connectorRequestId: context.connectorDeliveryTarget.requestId,
-                }
-              : {}),
-          }),
-          signal: extras?.signal,
+    const terminal = await submitAndWaitForManagedImageJob({
+      baseUrl: siteAuth.baseUrl,
+      authToken: siteAuth.authToken,
+      requestBody: {
+        capability,
+        prompt,
+        ...(profile ? { profile } : {}),
+        ...(aspectRatio ? { aspectRatio } : {}),
+        ...(Object.keys(input).length > 0 ? { input } : {}),
+        ...(context.connectorDeliveryTarget
+          ? {
+              connectorRequestId: context.connectorDeliveryTarget.requestId,
+            }
+          : {}),
+      },
+      context,
+      extras,
+      ...options.managedImageJob,
+    });
+    if (!terminal.ok) {
+      const details = {
+        ...(terminal.jobId ? { jobId: terminal.jobId } : {}),
+        status: terminal.status,
+        error: {
+          code: terminal.code,
+          message: terminal.message,
+          ...(terminal.reason !== undefined ? { reason: terminal.reason } : {}),
         },
-      );
-    } catch (error) {
-      return {
-        error: `image_gen submission failed: ${(error as Error).message}`,
+        reattached: terminal.reattached,
       };
-    }
-
-    if (!submitResponse.ok) {
-      const message = await parseErrorResponse(submitResponse);
-      return {
-        error:
-          message ||
-          `image_gen submission failed with status ${submitResponse.status}.`,
-      };
-    }
-
-    let accepted: { jobId?: unknown; capability?: unknown; profile?: unknown };
-    try {
-      accepted = (await submitResponse.json()) as {
-        jobId?: unknown;
-        capability?: unknown;
-        profile?: unknown;
-      };
-    } catch {
-      return { error: "image_gen returned an invalid JSON response." };
-    }
-
-    const jobId = asNonEmptyString(accepted.jobId);
-    if (!jobId) {
-      return { error: "image_gen response did not include a jobId." };
+      return { error: terminal.message, details };
     }
 
     const details = {
-      jobId,
-      capability: asNonEmptyString(accepted.capability) ?? capability,
-      profile: asNonEmptyString(accepted.profile) ?? profile ?? "best",
+      jobId: terminal.job.jobId,
+      capability: terminal.job.capability,
+      profile: terminal.job.profile,
       prompt,
       ...(aspectRatio ? { aspectRatio } : {}),
       ...(sizeArg && typeof sizeArg === "object" && input.image_size
@@ -269,10 +245,16 @@ const createImageGenHandler =
       ...(typeof input.num_images === "number"
         ? { numImages: input.num_images as number }
         : {}),
-      status: "submitted",
+      status: "succeeded",
+      filePaths: terminal.filePaths,
+      artifacts: terminal.artifacts,
+      reattached: terminal.reattached,
+      ...(typeof terminal.job.completedAt === "number"
+        ? { completedAt: terminal.job.completedAt }
+        : {}),
     };
     return {
-      result: `image_gen job ${jobId} submitted. The generated image will appear automatically when it finishes.`,
+      result: details,
       details,
     };
   };

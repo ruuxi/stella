@@ -202,6 +202,14 @@ export const registerBrowserHandlers = (options: BrowserHandlersOptions) => {
         const dir = path.join(stellaDataDir, "media", "outputs");
         await fs.mkdir(dir, { recursive: true });
         const destPath = resolveMediaOutputPath(dir, payload.fileName);
+        // The terminal image_gen path materializes the same deterministic
+        // jobId-based filename before the renderer sees completion. Reuse the
+        // durable file so the sidebar/inline materializers do not download or
+        // create a second artifact for the same media job.
+        const existing = await fs.stat(destPath).catch(() => null);
+        if (existing?.isFile() && existing.size > 0) {
+          return { ok: true, path: destPath };
+        }
         const dataUriMatch = payload.url.match(/^data:([^;,]+);base64,(.+)$/is);
         if (dataUriMatch) {
           await fs.writeFile(destPath, Buffer.from(dataUriMatch[2], "base64"));

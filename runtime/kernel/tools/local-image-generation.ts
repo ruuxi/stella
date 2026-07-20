@@ -24,6 +24,31 @@ const HTTP_URL_RE = /^https?:\/\//i;
 const asNonEmptyString = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 
+const abortError = (signal: AbortSignal): Error => {
+  if (signal.reason instanceof Error) return signal.reason;
+  const error = new Error("Image generation was canceled.");
+  error.name = "AbortError";
+  return error;
+};
+
+const abortableSleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError(signal));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError(signal!));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    timer.unref?.();
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+
 const extensionFromFormat = (format: string): string => {
   const normalized = format.toLowerCase();
   if (normalized === "jpg" || normalized === "jpeg") return "jpg";
@@ -354,7 +379,7 @@ const runFal = async (
       const images = extractFalImages(result.json);
       if (images.length > 0) return images;
     }
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await abortableSleep(2_000, input.extras?.signal);
   }
   return { error: "fal image generation timed out." };
 };
@@ -436,6 +461,9 @@ export const runLocalImageGeneration = async (
       : preferences.provider === "fal"
         ? await runFal(input, apiKey, providerModel, outputFormat)
         : await runOpenRouter(input, apiKey, providerModel, outputFormat);
+  if (input.extras?.signal?.aborted) {
+    throw abortError(input.extras.signal);
+  }
   if ("error" in generated) {
     return {
       error: `image_gen ${preferences.provider} failed: ${generated.error}`,
@@ -460,18 +488,31 @@ export const runLocalImageGeneration = async (
     input.referenceImagePaths.length > 0 || input.referenceImageUrls.length > 0
       ? "image_edit"
       : "text_to_image";
+  const details = {
+    jobId,
+    capability,
+    profile: preferences.provider,
+    provider: preferences.provider,
+    model: providerModel,
+    prompt: input.prompt,
+    ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+    filePaths,
+    artifacts: await Promise.all(
+      filePaths.map(async (filePath, index) => {
+        const stat = await fs.stat(filePath);
+        return {
+          kind: "image" as const,
+          index,
+          path: filePath,
+          mimeType: mimeTypeFromPath(filePath),
+          sizeBytes: stat.size,
+        };
+      }),
+    ),
+    status: "succeeded",
+  };
   return {
-    result: `image_gen ${preferences.provider} created ${filePaths.length} image${filePaths.length === 1 ? "" : "s"}.`,
-    details: {
-      jobId,
-      capability,
-      profile: preferences.provider,
-      provider: preferences.provider,
-      model: providerModel,
-      prompt: input.prompt,
-      ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
-      filePaths,
-      status: "succeeded",
-    },
+    result: details,
+    details,
   };
 };
