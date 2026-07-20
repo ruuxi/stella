@@ -121,8 +121,9 @@ describe("continuous animation hygiene", () => {
 
     expect(shimmerCss).not.toContain("background-position");
     expect(shimmerCss).not.toContain("animation:");
-    expect(shimmer).toContain("maxFramesPerSecond: SHIMMER_MAX_FPS");
-    expect(shimmer).toContain('style.setProperty(\n          "transform"');
+    expect(shimmer).toContain("sweep.animate(");
+    expect(shimmer).toContain("window.setTimeout(runSweep, restDuration)");
+    expect(shimmer).toContain("animation.cancel()");
     expect(activityCss).toContain('data-continuous-animation="true"');
     expect(shimmerCss).not.toContain("body:has(");
     expect(stella).toContain("createDemandDrivenAnimationLoop");

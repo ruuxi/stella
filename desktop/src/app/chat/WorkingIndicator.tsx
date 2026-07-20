@@ -54,7 +54,7 @@ export function WorkingIndicator({
             width={20}
             height={20}
             maxDpr={1}
-            maxFps={30}
+            maxFps={15}
             paused={animationPaused}
             requireWindowFocus
           />

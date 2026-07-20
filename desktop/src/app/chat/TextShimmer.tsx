@@ -2,10 +2,9 @@
  * TextShimmer: animated gradient shimmer across the entire string.
  */
 
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useContinuousAnimationGate } from "@/shared/hooks/use-continuous-animation-gate";
 import { useExclusiveAnimation } from "@/shared/hooks/use-exclusive-animation";
-import { createDemandDrivenAnimationLoop } from "@/shared/lib/demand-driven-animation-loop";
 import "./text-shimmer.css";
 
 interface TextShimmerProps {
@@ -24,7 +23,6 @@ interface TextShimmerProps {
 }
 
 export const CHAT_ACTIVITY_SHIMMER_GROUP = "chat-activity";
-const SHIMMER_MAX_FPS = 15;
 
 export function TextShimmer({
   text,
@@ -53,27 +51,49 @@ export function TextShimmer({
     exclusivePriority,
   );
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!shouldAnimate || !sweepRef.current || !sweepTextRef.current) return;
-    const startedAt = performance.now();
-    const initialElapsed = syncPhase ? Date.now() % duration : 0;
-    const loop = createDemandDrivenAnimationLoop({
-      maxFramesPerSecond: SHIMMER_MAX_FPS,
-      onFrame: (time) => {
-        const phase =
-          ((initialElapsed + time - startedAt) % duration) / duration;
-        sweepRef.current?.style.setProperty(
-          "transform",
-          `translate3d(${-100 + phase * (100 + 100 / 0.28)}%, 0, 0)`,
-        );
-        sweepTextRef.current?.style.setProperty(
-          "transform",
-          `translate3d(${28 - phase * 128}%, 0, 0)`,
-        );
-      },
-    });
-    loop.start();
-    return loop.stop;
+    const sweep = sweepRef.current;
+    const sweepText = sweepTextRef.current;
+    const sweepDuration = Math.min(1100, Math.max(700, duration * 0.4));
+    const restDuration = Math.max(900, duration - sweepDuration);
+    let stopped = false;
+    let timerId: number | undefined;
+    let animations: Animation[] = [];
+
+    const runSweep = () => {
+      if (stopped) return;
+      animations = [
+        sweep.animate(
+          [
+            { transform: "translate3d(-100%, 0, 0)" },
+            { transform: "translate3d(calc(100% / 0.28), 0, 0)" },
+          ],
+          { duration: sweepDuration, easing: "ease-in-out" },
+        ),
+        sweepText.animate(
+          [
+            { transform: "translate3d(28%, 0, 0)" },
+            { transform: "translate3d(-100%, 0, 0)" },
+          ],
+          { duration: sweepDuration, easing: "ease-in-out" },
+        ),
+      ];
+      void Promise.all(animations.map((animation) => animation.finished))
+        .catch(() => undefined)
+        .then(() => {
+          if (!stopped) timerId = window.setTimeout(runSweep, restDuration);
+        });
+    };
+
+    const initialDelay = syncPhase ? duration - (Date.now() % duration) : 0;
+    if (initialDelay > 0) timerId = window.setTimeout(runSweep, initialDelay);
+    else runSweep();
+    return () => {
+      stopped = true;
+      if (timerId !== undefined) window.clearTimeout(timerId);
+      for (const animation of animations) animation.cancel();
+    };
   }, [duration, shouldAnimate, syncPhase]);
 
   if (!active) {
