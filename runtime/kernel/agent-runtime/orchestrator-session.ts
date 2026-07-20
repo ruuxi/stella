@@ -301,6 +301,7 @@ export class OrchestratorSession extends PiSessionCore {
         threadStore: opts.store,
         threadKey: this.threadKey,
         conversationId: opts.conversationId,
+        stellaDataDir: opts.stellaDataDir,
         ...(opts.uiVisibility ? { uiVisibility: opts.uiVisibility } : {}),
       };
       const retryState = { attemptsUsed: 0, retriesUsed: 0 };

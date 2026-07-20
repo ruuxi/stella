@@ -132,6 +132,10 @@ export const executeRuntimeAgentPrompt = async (args: {
   conversationId?: string;
   uiVisibility?: "visible" | "hidden";
   attemptGeneration?: number;
+  stellaDataDir?: string;
+  afterDurableMessagePersisted?: (
+    payload: import("../storage/shared.js").PersistedRuntimeThreadPayload,
+  ) => void;
   /**
    * Resume the agent loop from its existing in-memory context instead of
    * appending a new prompt. Used by the safety model-swap retry: the failed
@@ -227,6 +231,10 @@ export const executeRuntimeAgentPrompt = async (args: {
     ...(args.uiVisibility ? { uiVisibility: args.uiVisibility } : {}),
     ...(typeof args.attemptGeneration === "number"
       ? { attemptGeneration: args.attemptGeneration }
+      : {}),
+    ...(args.stellaDataDir ? { stellaDataDir: args.stellaDataDir } : {}),
+    ...(args.afterDurableMessagePersisted
+      ? { afterDurableMessagePersisted: args.afterDurableMessagePersisted }
       : {}),
   });
 

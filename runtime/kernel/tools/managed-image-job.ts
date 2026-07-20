@@ -5,7 +5,6 @@ import path from "node:path";
 import type { ToolContext, ToolHandlerExtras } from "./types.js";
 import {
   attachImageOperationJob,
-  markImageOperationDelivered,
   reserveDurableImageOperation,
   settleImageOperation,
 } from "./image-operation-store.js";
@@ -13,8 +12,11 @@ import {
   materializeMediaArtifact,
   readyMediaArtifactSize,
 } from "./media-artifact-store.js";
+import { detectSupportedImageMimeType } from "./image-reference-policy.js";
 
-export const MANAGED_IMAGE_JOB_TIMEOUT_MS = 20 * 60_000;
+// fal permits inference to run for up to one hour and may continue retrying a
+// webhook for two hours. Keep the terminal waiter beyond both envelopes.
+export const MANAGED_IMAGE_JOB_TIMEOUT_MS = 3 * 60 * 60_000 + 15 * 60_000;
 export const MANAGED_IMAGE_ARTIFACT_GRACE_MS = 60_000;
 const INITIAL_POLL_MS = 750;
 const MAX_POLL_MS = 5_000;
@@ -25,7 +27,8 @@ type MediaJobStatus =
   | "running"
   | "succeeded"
   | "failed"
-  | "canceled";
+  | "canceled"
+  | "unknown";
 
 type MediaJobError = {
   message?: string;
@@ -67,7 +70,7 @@ export type ManagedImageTerminalResult =
   | {
       ok: false;
       jobId?: string;
-      status: "failed" | "canceled";
+      status: "failed" | "canceled" | "unknown";
       code: string;
       message: string;
       reason?: unknown;
@@ -136,11 +139,18 @@ const abortableSleep = (ms: number, signal?: AbortSignal): Promise<void> =>
 const requestHeaders = (
   options: Pick<ManagedImageJobOptions, "authToken" | "context">,
   idempotencyKey: string,
+  requestHash: string,
 ): Record<string, string> => ({
   Authorization: `Bearer ${options.authToken}`,
   "X-Device-ID": options.context.deviceId,
   "Idempotency-Key": idempotencyKey,
+  "X-Stella-Request-Hash": requestHash,
 });
+
+export const hashManagedImageRequestBody = (
+  requestBody: Record<string, unknown>,
+): string =>
+  createHash("sha256").update(JSON.stringify(requestBody)).digest("hex");
 
 /**
  * Stable across worker/Electron restarts and external-engine continuation.
@@ -186,6 +196,7 @@ const parseJobStatus = (value: unknown): MediaJobStatus | null => {
     case "succeeded":
     case "failed":
     case "canceled":
+    case "unknown":
       return value;
     default:
       return null;
@@ -242,9 +253,12 @@ const existingArtifact = async (
   mimeType: string,
 ): Promise<ManagedImageArtifact | null> => {
   const sizeBytes = await readyMediaArtifactSize(filePath);
-  return sizeBytes === null
-    ? null
-    : { kind: "image", index, path: filePath, mimeType, sizeBytes };
+  if (sizeBytes === null) return null;
+  const bytes = await fs.readFile(filePath).catch(() => null);
+  const detected = bytes ? detectSupportedImageMimeType(bytes) : null;
+  return detected
+    ? { kind: "image", index, path: filePath, mimeType: detected, sizeBytes }
+    : null;
 };
 
 const materializeImages = async (args: {
@@ -263,30 +277,46 @@ const materializeImages = async (args: {
     throwIfAborted(args.signal);
     const declaredMimeType = image.mimeType ?? "image/png";
     const extension = extensionFor(image.url);
-    const filePath = path.join(outputDir, `${args.jobId}_${index}.${extension}`);
+    const filePath = path.join(
+      outputDir,
+      `${args.jobId}_${index}.${extension}`,
+    );
     const existing = await existingArtifact(filePath, index, declaredMimeType);
     if (existing) {
       artifacts.push(existing);
       continue;
     }
-
     let mimeType = declaredMimeType;
     const saved = await materializeMediaArtifact({
       filePath,
       signal: args.signal,
       producerTimeoutMs: args.downloadTimeoutMs,
+      validateExisting: async (candidate) => {
+        const bytes = await fs.readFile(candidate).catch(() => null);
+        return Boolean(bytes && detectSupportedImageMimeType(bytes));
+      },
       producer: async (downloadSignal) => {
         const response = await args.fetchImpl(image.url, {
           signal: downloadSignal,
           redirect: "follow",
         });
         if (!response.ok) {
-          throw new Error(`Image artifact download failed (${response.status}).`);
+          throw new Error(
+            `Image artifact download failed (${response.status}).`,
+          );
         }
         mimeType =
           response.headers.get("content-type")?.split(";")[0]?.trim() ||
           declaredMimeType;
-        return Buffer.from(await response.arrayBuffer());
+        const bytes = Buffer.from(await response.arrayBuffer());
+        const detected = detectSupportedImageMimeType(bytes);
+        if (!detected) {
+          throw new Error(
+            "Image artifact was partial or had an unsupported MIME type.",
+          );
+        }
+        mimeType = detected;
+        return bytes;
       },
     });
     artifacts.push({
@@ -338,7 +368,9 @@ const statusText = (job: ManagedMediaJob): string =>
       ? "Generating image…"
       : job.status === "succeeded"
         ? "Saving generated image…"
-        : "Image generation finished.";
+        : job.status === "unknown"
+          ? "Image outcome could not be reconciled."
+          : "Image generation finished.";
 
 export const submitAndWaitForManagedImageJob = async (
   options: ManagedImageJobOptions,
@@ -349,8 +381,7 @@ export const submitAndWaitForManagedImageJob = async (
   const timeoutMs = options.timeoutMs ?? MANAGED_IMAGE_JOB_TIMEOUT_MS;
   const artifactGraceMs =
     options.artifactGraceMs ?? MANAGED_IMAGE_ARTIFACT_GRACE_MS;
-  const artifactDownloadTimeoutMs =
-    options.artifactDownloadTimeoutMs ?? 30_000;
+  const artifactDownloadTimeoutMs = options.artifactDownloadTimeoutMs ?? 30_000;
   const initialPollMs = options.initialPollMs ?? INITIAL_POLL_MS;
   const maxPollMs = options.maxPollMs ?? MAX_POLL_MS;
   const signal = options.extras?.signal;
@@ -379,12 +410,39 @@ export const submitAndWaitForManagedImageJob = async (
     options.context,
     operation.operationId,
   );
-  const headers = requestHeaders(options, idempotencyKey);
+  const requestHash = hashManagedImageRequestBody(options.requestBody);
+  const headers = requestHeaders(options, idempotencyKey, requestHash);
   const deadline = now() + timeoutMs;
   let accepted: AcceptedJob | null = operation.jobId
     ? { jobId: operation.jobId, reattached: true }
     : null;
   let lastSubmitError = "";
+
+  const reconcileAcceptance = async (): Promise<AcceptedJob | null> => {
+    try {
+      const url = new URL("/api/media/v1/job", options.baseUrl);
+      url.searchParams.set("clientRequestKey", idempotencyKey);
+      url.searchParams.set("requestHash", requestHash);
+      const response = await fetchImpl(url, {
+        method: "GET",
+        headers,
+        signal,
+      });
+      if (response.status === 404) return null;
+      if (!response.ok) {
+        lastSubmitError = await parseErrorResponse(response);
+        return null;
+      }
+      return {
+        ...((await response.json()) as AcceptedJob),
+        reattached: true,
+      };
+    } catch (error) {
+      throwIfAborted(signal);
+      lastSubmitError = (error as Error).message;
+      return null;
+    }
+  };
 
   try {
     for (
@@ -411,23 +469,53 @@ export const submitAndWaitForManagedImageJob = async (
           break;
         }
         lastSubmitError = await parseErrorResponse(response);
-        if (response.status < 500 || attempt === SUBMIT_ATTEMPTS - 1) break;
+        if (response.status < 500) {
+          return finish({
+            ok: false,
+            status: "failed",
+            code: `submission_${response.status}`,
+            message: lastSubmitError,
+            reattached: operation.reattached,
+          });
+        }
       } catch (error) {
         throwIfAborted(signal);
         lastSubmitError = (error as Error).message;
-        if (attempt === SUBMIT_ATTEMPTS - 1) break;
       }
+      accepted = await reconcileAcceptance();
+      if (accepted) break;
       await sleep(Math.min(250 * 2 ** attempt, 1_000), signal);
     }
 
+    let reconciliationPollMs = initialPollMs;
+    while (!accepted && now() < deadline) {
+      options.extras?.onUpdate?.({
+        details: {
+          status: "queued",
+          statusText: "Reattaching durable image submission…",
+        },
+      });
+      accepted = await reconcileAcceptance();
+      if (accepted) break;
+      await sleep(
+        Math.min(reconciliationPollMs, Math.max(1, deadline - now())),
+        signal,
+      );
+      reconciliationPollMs = Math.min(
+        maxPollMs,
+        Math.max(initialPollMs, reconciliationPollMs * 1.5),
+      );
+    }
     const jobId = asNonEmptyString(accepted?.jobId);
     if (!jobId) {
       return finish({
         ok: false,
-        status: "failed",
-        code: "submission_failed",
-        message: lastSubmitError || "Image generation submission failed.",
-        reattached: false,
+        status: "unknown",
+        code: "submission_outcome_unknown",
+        message:
+          "Stella could not confirm whether the image request was accepted. It will not submit a duplicate.",
+        ...(lastSubmitError ? { reason: { cause: lastSubmitError } } : {}),
+        reattached: operation.reattached,
       });
     }
     attachImageOperationJob({
@@ -482,7 +570,11 @@ export const submitAndWaitForManagedImageJob = async (
             },
           });
 
-          if (value.status === "failed" || value.status === "canceled") {
+          if (
+            value.status === "failed" ||
+            value.status === "canceled" ||
+            value.status === "unknown"
+          ) {
             return finish({
               ok: false,
               jobId,
@@ -499,10 +591,7 @@ export const submitAndWaitForManagedImageJob = async (
           }
 
           if (value.status === "succeeded") {
-            artifactDeadline ??= Math.min(
-              deadline,
-              now() + artifactGraceMs,
-            );
+            artifactDeadline ??= Math.min(deadline, now() + artifactGraceMs);
             const images = extractRemoteImages(value.output);
             if (images.length > 0) {
               try {
@@ -563,14 +652,13 @@ export const submitAndWaitForManagedImageJob = async (
       pollMs = Math.min(maxPollMs, Math.max(initialPollMs, pollMs * 1.5));
     }
 
-    await cancelRequest({ fetchImpl, baseUrl: options.baseUrl, headers });
     const timeoutMinutes = Math.max(1, Math.ceil(timeoutMs / 60_000));
     return finish({
       ok: false,
       jobId: asNonEmptyString(accepted?.jobId) ?? undefined,
-      status: "failed",
-      code: "timeout",
-      message: `Image generation timed out after ${timeoutMinutes} minute${timeoutMinutes === 1 ? "" : "s"}.`,
+      status: "unknown",
+      code: "terminal_outcome_unknown",
+      message: `Image generation still had no durable terminal outcome after ${timeoutMinutes} minute${timeoutMinutes === 1 ? "" : "s"}. Stella did not cancel or resubmit it.`,
       ...(lastJob?.error ? { reason: lastJob.error } : {}),
       reattached: accepted?.reattached === true,
     });
@@ -590,13 +678,6 @@ export const submitAndWaitForManagedImageJob = async (
           message: "Image generation was canceled.",
           reattached: operation.reattached || accepted?.reattached === true,
         },
-      });
-      // Cancellation is itself the terminal delivery. Do not let a later,
-      // intentional identical request attach to the canceled operation.
-      markImageOperationDelivered({
-        stellaDataDir,
-        conversationId: options.context.conversationId,
-        toolCallId: options.context.requestId,
       });
       throw abortError(signal);
     }

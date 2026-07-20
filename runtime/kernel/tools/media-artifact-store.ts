@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
+import path from "node:path";
 
 const LOCK_STALE_MS = 2 * 60_000;
 const LOCK_POLL_MS = 50;
+const PARTIAL_STALE_MS = 10 * 60_000;
 
 const abortError = (signal: AbortSignal): Error => {
   if (signal.reason instanceof Error) return signal.reason;
@@ -36,14 +38,67 @@ export const readyMediaArtifactSize = async (
   }
 };
 
+const syncDirectory = async (directory: string): Promise<void> => {
+  const handle = await fs.open(directory, "r").catch(() => null);
+  if (!handle) return;
+  try {
+    await handle.sync();
+  } catch (error) {
+    // Directory fsync is unsupported on Windows and a few network filesystems.
+    if (
+      !(["EINVAL", "ENOTSUP", "EBADF"] as Array<string | undefined>).includes(
+        (error as NodeJS.ErrnoException).code,
+      )
+    ) {
+      throw error;
+    }
+  } finally {
+    await handle.close();
+  }
+};
+
+const cleanupStalePartials = async (filePath: string): Promise<void> => {
+  const directory = path.dirname(filePath);
+  const prefix = `${path.basename(filePath)}.partial-`;
+  const entries = await fs
+    .readdir(directory, { withFileTypes: true })
+    .catch(() => []);
+  const cutoff = Date.now() - PARTIAL_STALE_MS;
+  await Promise.all(
+    entries
+      .filter((entry) => entry.isFile() && entry.name.startsWith(prefix))
+      .map(async (entry) => {
+        const candidate = path.join(directory, entry.name);
+        const stat = await fs.stat(candidate).catch(() => null);
+        if (stat && stat.mtimeMs < cutoff) {
+          await fs.unlink(candidate).catch(() => undefined);
+        }
+      }),
+  );
+};
+
 /** Cross-process single-writer, atomic temp+rename materialization. */
 export const materializeMediaArtifact = async (args: {
   filePath: string;
   signal?: AbortSignal;
   producer: (signal?: AbortSignal) => Promise<Buffer>;
   producerTimeoutMs?: number;
+  validateExisting?: (filePath: string) => Promise<boolean>;
 }): Promise<{ path: string; sizeBytes: number; created: boolean }> => {
-  const existing = await readyMediaArtifactSize(args.filePath);
+  await fs.mkdir(path.dirname(args.filePath), { recursive: true });
+  await cleanupStalePartials(args.filePath);
+  const readySize = async (): Promise<number | null> => {
+    const size = await readyMediaArtifactSize(args.filePath);
+    if (size === null) return null;
+    if (
+      args.validateExisting &&
+      !(await args.validateExisting(args.filePath))
+    ) {
+      return null;
+    }
+    return size;
+  };
+  const existing = await readySize();
   if (existing !== null) {
     return { path: args.filePath, sizeBytes: existing, created: false };
   }
@@ -55,7 +110,7 @@ export const materializeMediaArtifact = async (args: {
       lock = await fs.open(lockPath, "wx", 0o600);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const raced = await readyMediaArtifactSize(args.filePath);
+      const raced = await readySize();
       if (raced !== null) {
         return { path: args.filePath, sizeBytes: raced, created: false };
       }
@@ -83,11 +138,22 @@ export const materializeMediaArtifact = async (args: {
     ? AbortSignal.any([args.signal, timeoutController.signal])
     : timeoutController.signal;
   try {
-    const raced = await readyMediaArtifactSize(args.filePath);
+    const raced = await readySize();
     if (raced !== null) {
       return { path: args.filePath, sizeBytes: raced, created: false };
     }
-    const bytes = await args.producer(producerSignal);
+    const producerAborted = new Promise<never>((_resolve, reject) => {
+      const rejectAbort = () => reject(abortError(producerSignal));
+      if (producerSignal.aborted) {
+        rejectAbort();
+        return;
+      }
+      producerSignal.addEventListener("abort", rejectAbort, { once: true });
+    });
+    const bytes = await Promise.race([
+      args.producer(producerSignal),
+      producerAborted,
+    ]);
     if (producerSignal.aborted) throw abortError(producerSignal);
     if (bytes.length === 0) throw new Error("Media artifact was empty.");
     const output = await fs.open(partialPath, "wx", 0o600);
@@ -98,6 +164,7 @@ export const materializeMediaArtifact = async (args: {
       await output.close();
     }
     await fs.rename(partialPath, args.filePath);
+    await syncDirectory(path.dirname(args.filePath));
     const sizeBytes = await readyMediaArtifactSize(args.filePath);
     if (sizeBytes === null) {
       throw new Error("Media artifact was not durable after atomic write.");

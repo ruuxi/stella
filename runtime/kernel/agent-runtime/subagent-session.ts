@@ -237,6 +237,7 @@ export class SubagentSession extends PiSessionCore {
         threadStore: opts.store,
         threadKey: this.threadKey,
         conversationId: opts.conversationId,
+        stellaDataDir: opts.stellaDataDir,
         ...(typeof opts.agentContext.attemptGeneration === "number"
           ? { attemptGeneration: opts.agentContext.attemptGeneration }
           : {}),

@@ -12,7 +12,8 @@ type MediaJobStatus =
   | "running"
   | "succeeded"
   | "failed"
-  | "canceled";
+  | "canceled"
+  | "unknown";
 
 type MediaJobError = {
   message?: string;
@@ -77,6 +78,7 @@ const terminalStatuses = new Set<MediaJobStatus>([
   "succeeded",
   "failed",
   "canceled",
+  "unknown",
 ]);
 
 const parseDurationSeconds = (

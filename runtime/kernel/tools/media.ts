@@ -1,5 +1,3 @@
-import { promises as fs } from "node:fs";
-
 import type {
   ToolContext,
   ToolHandler,
@@ -10,6 +8,12 @@ import {
   submitAndWaitForManagedImageJob,
   type ManagedImageJobOptions,
 } from "./managed-image-job.js";
+import {
+  authorizedReferenceAsDataUri,
+  validateImageDataUri,
+} from "./image-reference-policy.js";
+import { runLocalImageGeneration } from "./local-image-generation.js";
+import { pruneImageOperationLedger } from "./image-operation-store.js";
 
 export const IMAGE_GEN_TOOL_NAME = "image_gen";
 
@@ -33,20 +37,6 @@ type MediaToolOptions = {
 const asNonEmptyString = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 
-const mimeTypeFromExtension = (extension: string): string => {
-  switch (extension.toLowerCase()) {
-    case "jpg":
-    case "jpeg":
-      return "image/jpeg";
-    case "gif":
-      return "image/gif";
-    case "webp":
-      return "image/webp";
-    default:
-      return "image/png";
-  }
-};
-
 const HTTP_URL_RE = /^https?:\/\//i;
 
 const collectStringList = (value: unknown): string[] => {
@@ -59,18 +49,6 @@ const collectStringList = (value: unknown): string[] => {
   return out;
 };
 
-const mimeTypeFromPath = (filePath: string): string => {
-  const match = filePath.match(/\.([a-z0-9]{2,5})$/i);
-  return mimeTypeFromExtension(match?.[1]?.toLowerCase() ?? "png");
-};
-
-/** Read a local image file and convert it into a `data:` URI. */
-const readLocalImageAsDataUri = async (filePath: string): Promise<string> => {
-  const buffer = await fs.readFile(filePath);
-  const mimeType = mimeTypeFromPath(filePath);
-  return `data:${mimeType};base64,${buffer.toString("base64")}`;
-};
-
 const createImageGenHandler =
   (options: MediaToolOptions): ToolHandler =>
   async (
@@ -81,6 +59,17 @@ const createImageGenHandler =
     const prompt = asNonEmptyString(args.prompt);
     if (!prompt) {
       return { error: "prompt is required." };
+    }
+    const operationDataDir = context.stellaDataDir ?? context.stellaAppDir;
+    if (operationDataDir) {
+      try {
+        pruneImageOperationLedger({
+          stellaDataDir: operationDataDir,
+          limit: 50,
+        });
+      } catch {
+        // Retention cleanup must never block a current generation.
+      }
     }
 
     const input: Record<string, unknown> = {};
@@ -140,10 +129,9 @@ const createImageGenHandler =
       input.image_size = { width, height };
     }
 
-    // Reference images: local paths get base64-encoded into data: URIs (so the
-    // body photo never lands in Convex storage), remote URLs are passed as-is.
-    // Any reference present switches the capability to image_edit (GPT Image 2
-    // edit endpoint) which expects an `image_urls` array on the input.
+    // Reference paths are authorized and signature-checked before any read.
+    // BYOK sends them only to the selected provider. Managed Stella requires
+    // an explicit per-call upload consent flag below.
     const referencePaths = collectStringList(args.referenceImagePaths);
     const referenceUrlsRaw = collectStringList(args.referenceImageUrls);
     const referenceUrls: string[] = [];
@@ -153,13 +141,47 @@ const createImageGenHandler =
           error: `referenceImageUrls entry is not a valid http(s)/data URL: ${url}`,
         };
       }
+      if (url.startsWith("data:")) {
+        try {
+          validateImageDataUri(url);
+        } catch (error) {
+          return {
+            error: `invalid referenceImageUrls data URI: ${(error as Error).message}`,
+          };
+        }
+      }
       referenceUrls.push(url);
     }
-    let imageUrls: string[] = [];
+    const local = await runLocalImageGeneration({
+      args,
+      context,
+      extras,
+      prompt,
+      aspectRatio,
+      referenceImageUrls: referenceUrls,
+      referenceImagePaths: referencePaths,
+    });
+    if (local) return local;
+
+    if (
+      referencePaths.length > 0 &&
+      args.allowManagedReferenceUpload !== true
+    ) {
+      return {
+        error:
+          "Using local reference images with Stella managed generation requires allowManagedReferenceUpload=true for this call. The file is uploaded encrypted for the managed request and deleted after submission settles.",
+        details: {
+          status: "failed",
+          error: { code: "managed_reference_consent_required" },
+        },
+      };
+    }
+
+    const imageUrls: string[] = [];
     if (referencePaths.length > 0) {
       try {
         for (const filePath of referencePaths) {
-          imageUrls.push(await readLocalImageAsDataUri(filePath));
+          imageUrls.push(await authorizedReferenceAsDataUri(filePath, context));
         }
       } catch (error) {
         return {
@@ -168,11 +190,8 @@ const createImageGenHandler =
       }
     }
     imageUrls.push(...referenceUrls);
-
     const useImageEdit = imageUrls.length > 0;
-    if (useImageEdit) {
-      input.image_urls = imageUrls;
-    }
+    if (useImageEdit) input.image_urls = imageUrls;
     const capability = useImageEdit ? "image_edit" : "text_to_image";
 
     if (!options.getStellaSiteAuth) {

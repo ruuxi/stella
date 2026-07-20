@@ -93,14 +93,22 @@ export const persistFailedNotifiedJobs = (): void => {
   persistToStorage(failedNotifiedJobs, FAILED_NOTIFIED_KEY);
 };
 
-export const publishMaterializedMediaPayload = (payload: DisplayPayload): void => {
+export const publishMaterializedMediaPayload = (
+  payload: DisplayPayload,
+): boolean => {
   if (payload.kind === "media" && payload.jobId) {
+    const existing = materializedPayloadsByJobId.get(payload.jobId);
+    // Transcript replay and the live completion subscription can construct
+    // slightly different payloads for the same durable job. Job identity,
+    // rather than JSON equality, is the deduplication boundary.
+    if (existing) return false;
     materializedPayloadsByJobId.set(payload.jobId, payload);
     // Bound the in-memory payload map, matching the persist-time cap.
     capInMemory(materializedPayloadsByJobId);
     persistPayloadsToStorage(materializedPayloadsByJobId);
   }
   for (const listener of materializedPayloadListeners) listener();
+  return true;
 };
 
 export const useMaterializedMediaPayload = (

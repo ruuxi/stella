@@ -1,14 +1,20 @@
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat, utimes, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createMediaToolHandlers } from "../../../../../runtime/kernel/tools/media.js";
 import {
   attachImageOperationJob,
+  markImageOperationDelivered,
+  pruneImageOperationLedger,
   reserveDurableImageOperation,
+  settleImageOperation,
 } from "../../../../../runtime/kernel/tools/image-operation-store.js";
 import { materializeMediaArtifact } from "../../../../../runtime/kernel/tools/media-artifact-store.js";
 import { executeRuntimeToolCall } from "../../../../../runtime/kernel/agent-runtime/tool-adapters.js";
+import { saveLocalLlmCredential } from "../../../../../runtime/kernel/storage/llm-credentials.js";
 import type { ToolContext } from "../../../../../runtime/kernel/tools/types.js";
 import { createSyncTempDirTracker } from "../../../helpers/temp.js";
 
@@ -45,7 +51,13 @@ const accepted = (reattached = false) =>
   );
 
 const jobResponse = (
-  status: "queued" | "running" | "succeeded" | "failed" | "canceled",
+  status:
+    | "queued"
+    | "running"
+    | "succeeded"
+    | "failed"
+    | "canceled"
+    | "unknown",
   extra: Record<string, unknown> = {},
 ) =>
   new Response(
@@ -64,10 +76,16 @@ const jobResponse = (
   );
 
 const outputResponse = () =>
-  new Response(new Uint8Array([137, 80, 78, 71, 1, 2, 3]), {
-    status: 200,
-    headers: { "content-type": "image/png" },
-  });
+  new Response(
+    Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    ),
+    {
+      status: 200,
+      headers: { "content-type": "image/png" },
+    },
+  );
 
 const createHandler = (
   fetchImpl: typeof fetch,
@@ -82,34 +100,78 @@ const createHandler = (
   }).image_gen!;
 
 describe("image_gen terminal managed-media semantics", () => {
-  it("routes a persisted BYOK image preference through the durable managed gateway", async () => {
+  it("honors a persisted BYOK preference without touching the managed gateway", async () => {
     const stellaDataDir = tempDirs.create("image-gen-byok-routed-");
     await writeFile(
       path.join(stellaDataDir, "preferences.json"),
-      JSON.stringify({ imageGeneration: { provider: "openai", model: "gpt-image-1" } }),
+      JSON.stringify({
+        imageGeneration: { provider: "openai", model: "gpt-image-1" },
+      }),
     );
+    saveLocalLlmCredential(stellaDataDir, {
+      provider: "openai",
+      label: "OpenAI",
+      plaintext: "test-openai-key",
+    });
     const urls: string[] = [];
-    const fetchImpl = vi.fn(async (input: string | URL) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       urls.push(url);
-      if (url.endsWith("/api/media/v1/generate")) return accepted();
-      if (url.includes("/api/media/v1/job?")) {
-        return jobResponse("succeeded", {
-          output: { images: [{ url: "https://assets.test/image.png" }] },
-        });
+      if (url.endsWith("/v1/images/generations")) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                b64_json:
+                  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
       }
-      if (url === "https://assets.test/image.png") return outputResponse();
       throw new Error(`Unexpected fetch ${url}`);
-    }) as unknown as typeof fetch;
-    const result = await createHandler(fetchImpl)(
+    });
+    const managedFetch = vi.fn() as unknown as typeof fetch;
+    const result = await createHandler(managedFetch)(
       { prompt: "draw a durable fox" },
       contextFor(stellaDataDir),
     );
     expect(result.error).toBeUndefined();
-    expect(urls.some((url) => url.includes("api.openai.com"))).toBe(false);
-    expect(urls.some((url) => url.includes("openrouter.ai"))).toBe(false);
-    expect(urls.some((url) => url.includes("queue.fal.run"))).toBe(false);
-    expect(urls[0]).toBe("https://stella.test/api/media/v1/generate");
+    expect(urls).toEqual(["https://api.openai.com/v1/images/generations"]);
+    expect(managedFetch).not.toHaveBeenCalled();
+    expect(result.details).toMatchObject({
+      provider: "openai",
+      status: "succeeded",
+    });
+  });
+
+  it("rejects unsupported direct OpenAI remote edits before consuming a submission claim", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-openai-remote-reference-");
+    await writeFile(
+      path.join(stellaDataDir, "preferences.json"),
+      JSON.stringify({ imageGeneration: { provider: "openai" } }),
+    );
+    saveLocalLlmCredential(stellaDataDir, {
+      provider: "openai",
+      label: "OpenAI",
+      plaintext: "test-openai-key",
+    });
+    const directFetch = vi.spyOn(globalThis, "fetch");
+    const managedFetch = vi.fn() as unknown as typeof fetch;
+    const result = await createHandler(managedFetch)(
+      {
+        prompt: "edit a remote reference",
+        referenceImageUrls: ["https://example.test/private.png"],
+      },
+      contextFor(stellaDataDir),
+    );
+    expect(result.details).toMatchObject({
+      status: "failed",
+      error: { code: "unsupported_reference" },
+    });
+    expect(directFetch).not.toHaveBeenCalled();
+    expect(managedFetch).not.toHaveBeenCalled();
   });
 
   it("keeps the tool promise pending until delayed success and durable output", async () => {
@@ -154,11 +216,15 @@ describe("image_gen terminal managed-media semantics", () => {
       capability: "text_to_image",
       filePaths: [expect.stringContaining("job-image-1_0.png")],
       artifacts: [
-        expect.objectContaining({ kind: "image", index: 0, sizeBytes: 7 }),
+        expect.objectContaining({
+          kind: "image",
+          index: 0,
+          sizeBytes: expect.any(Number),
+        }),
       ],
     });
     const details = result.details as { filePaths: string[] };
-    expect((await stat(details.filePaths[0]!)).size).toBe(7);
+    expect((await stat(details.filePaths[0]!)).size).toBeGreaterThan(8);
   });
 
   it("returns delayed gateway failure as a structured terminal error", async () => {
@@ -180,11 +246,9 @@ describe("image_gen terminal managed-media semantics", () => {
     const onUpdate = vi.fn();
     const result = await createHandler(fetchImpl, {
       sleep: async () => undefined,
-    })(
-      { prompt: "draw a durable fox" },
-      contextFor(stellaDataDir),
-      { onUpdate },
-    );
+    })({ prompt: "draw a durable fox" }, contextFor(stellaDataDir), {
+      onUpdate,
+    });
 
     expect(result.error).toBe("Image request was blocked.");
     expect(onUpdate).toHaveBeenCalledWith({
@@ -322,8 +386,8 @@ describe("image_gen terminal managed-media semantics", () => {
     })({ prompt: "draw a durable fox" }, contextFor(stellaDataDir));
 
     expect(result.error).toBeUndefined();
-    expect(posts).toBe(2);
-    expect(idempotencyKeys[1]).toBe(idempotencyKeys[0]);
+    expect(posts).toBe(1);
+    expect(idempotencyKeys).toHaveLength(1);
     expect(result.result).toMatchObject({
       jobId: "job-image-1",
       status: "succeeded",
@@ -364,7 +428,7 @@ describe("image_gen terminal managed-media semantics", () => {
     });
   });
 
-  it("reattaches an actual persisted operation with a fresh native/Codex call id", async () => {
+  it("reattaches a pre-canonical persisted operation once during alias migration", async () => {
     const stellaDataDir = tempDirs.create("image-gen-persisted-operation-");
     const requestBody = {
       capability: "text_to_image",
@@ -381,6 +445,13 @@ describe("image_gen terminal managed-media semantics", () => {
       operationId: reserved.operationId,
       jobId: "job-image-1",
     });
+    const legacyDb = new DatabaseSync(
+      path.join(stellaDataDir, "image-tool-operations.sqlite"),
+    );
+    legacyDb.exec(
+      "UPDATE image_tool_operation_aliases SET identity_version = 1",
+    );
+    legacyDb.close();
     let posts = 0;
     const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
@@ -445,13 +516,13 @@ describe("image_gen terminal managed-media semantics", () => {
     };
     const first = await executeRuntimeToolCall({
       ...base,
-      toolCallId: "codex-process-one-call",
+      toolCallId: "codex-stable-call",
       runId: "codex-process-one-run",
     });
     const callsAfterFirst = networkCalls;
     const recovered = await executeRuntimeToolCall({
       ...base,
-      toolCallId: "codex-process-two-call",
+      toolCallId: "codex-stable-call",
       runId: "codex-process-two-run",
     });
     expect(networkCalls).toBe(callsAfterFirst);
@@ -497,7 +568,7 @@ describe("image_gen terminal managed-media semantics", () => {
     expect(polls).toBe(2);
   });
 
-  it("enforces bounded timeout and cancels the durable request", async () => {
+  it("returns a distinct unknown timeout without canceling accepted work", async () => {
     const stellaDataDir = tempDirs.create("image-gen-timeout-");
     let now = 0;
     let deleteCalls = 0;
@@ -523,13 +594,13 @@ describe("image_gen terminal managed-media semantics", () => {
       maxPollMs: 400,
     })({ prompt: "draw a durable fox" }, contextFor(stellaDataDir));
 
-    expect(result.error).toBe("Image generation timed out after 1 minute.");
+    expect(result.error).toContain("no durable terminal outcome");
     expect(result.details).toMatchObject({
       jobId: "job-image-1",
-      status: "failed",
-      error: { code: "timeout" },
+      status: "unknown",
+      error: { code: "terminal_outcome_unknown" },
     });
-    expect(deleteCalls).toBe(1);
+    expect(deleteCalls).toBe(0);
   });
 
   it("bounds each artifact download inside the grace window and cleans temp state", async () => {
@@ -546,17 +617,23 @@ describe("image_gen terminal managed-media semantics", () => {
       }
       if (url === "https://assets.test/hangs.png") {
         return await new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => {
-            downloadAborts += 1;
-            reject(new DOMException("Aborted", "AbortError"));
-          }, { once: true });
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              downloadAborts += 1;
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
         });
       }
       throw new Error(`Unexpected fetch ${url}`);
     }) as unknown as typeof fetch;
     const result = await createHandler(fetchImpl, {
       now: () => now,
-      sleep: async (ms: number) => { now += ms; },
+      sleep: async (ms: number) => {
+        now += ms;
+      },
       timeoutMs: 1_000,
       artifactGraceMs: 40,
       artifactDownloadTimeoutMs: 10,
@@ -569,19 +646,32 @@ describe("image_gen terminal managed-media semantics", () => {
     });
     expect(downloadAborts).toBeGreaterThan(0);
     const files = await readdir(path.join(stellaDataDir, "media", "outputs"));
-    expect(files.filter((name) => name.includes(".partial-") || name.endsWith(".lock"))).toEqual([]);
+    expect(
+      files.filter(
+        (name) => name.includes(".partial-") || name.endsWith(".lock"),
+      ),
+    ).toEqual([]);
   });
 
   it("serializes concurrent terminal and renderer writers to one complete payload", async () => {
     const stellaDataDir = tempDirs.create("image-gen-concurrent-writers-");
-    const filePath = path.join(stellaDataDir, "media", "outputs", "job-race_0.png");
+    const filePath = path.join(
+      stellaDataDir,
+      "media",
+      "outputs",
+      "job-race_0.png",
+    );
     await import("node:fs/promises").then(({ mkdir }) =>
       mkdir(path.dirname(filePath), { recursive: true }),
     );
     let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     let announceStarted!: () => void;
-    const started = new Promise<void>((resolve) => { announceStarted = resolve; });
+    const started = new Promise<void>((resolve) => {
+      announceStarted = resolve;
+    });
     let producers = 0;
     const first = materializeMediaArtifact({
       filePath,
@@ -606,5 +696,259 @@ describe("image_gen terminal managed-media semantics", () => {
     expect(producers).toBe(1);
     expect(left.path).toBe(right.path);
     expect(await readFile(filePath, "utf8")).toBe("complete-terminal-payload");
+  });
+
+  it("serializes real multi-process artifact writers and publishes one payload", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-multiprocess-writers-");
+    const filePath = path.join(
+      stellaDataDir,
+      "media",
+      "outputs",
+      "job-process_0.png",
+    );
+    const markerPath = path.join(stellaDataDir, "producers.log");
+    const modulePath = path.resolve(
+      process.cwd(),
+      "../runtime/kernel/tools/media-artifact-store.ts",
+    );
+    const source = `
+      import { appendFileSync } from "node:fs";
+      import { materializeMediaArtifact } from ${JSON.stringify(modulePath)};
+      await materializeMediaArtifact({
+        filePath: ${JSON.stringify(filePath)},
+        producer: async () => {
+          appendFileSync(${JSON.stringify(markerPath)}, String(process.pid) + "\\n");
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          return Buffer.from("one-complete-multiprocess-payload");
+        },
+      });
+    `;
+    const run = () =>
+      new Promise<void>((resolve, reject) => {
+        const child = spawn("bun", ["--eval", source], {
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        let stderr = "";
+        child.stderr.on("data", (chunk) => {
+          stderr += String(chunk);
+        });
+        child.once("error", reject);
+        child.once("close", (code) =>
+          code === 0
+            ? resolve()
+            : reject(new Error(stderr || `bun exited ${code}`)),
+        );
+      });
+    await Promise.all([run(), run()]);
+    expect(
+      (await readFile(markerPath, "utf8")).trim().split("\n"),
+    ).toHaveLength(1);
+    expect(await readFile(filePath, "utf8")).toBe(
+      "one-complete-multiprocess-payload",
+    );
+  });
+
+  it("cleans stale partial artifacts before an atomic directory-synced publish", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-stale-partial-");
+    const outputDir = path.join(stellaDataDir, "media", "outputs");
+    await import("node:fs/promises").then(({ mkdir }) =>
+      mkdir(outputDir, { recursive: true }),
+    );
+    const filePath = path.join(outputDir, "job-stale_0.png");
+    const stalePartial = `${filePath}.partial-old-process`;
+    await writeFile(stalePartial, "partial");
+    const old = new Date(Date.now() - 20 * 60_000);
+    await utimes(stalePartial, old, old);
+    await materializeMediaArtifact({
+      filePath,
+      producer: async () => Buffer.from("complete"),
+    });
+    expect(await readFile(filePath, "utf8")).toBe("complete");
+    await expect(stat(stalePartial)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not replay a delivered MCP alias for a different prompt", () => {
+    const stellaDataDir = tempDirs.create("image-gen-alias-collision-");
+    const common = {
+      stellaDataDir,
+      conversationId: "mcp-scope",
+      toolCallId: "mcp:scope:1",
+    };
+    const first = reserveDurableImageOperation({
+      ...common,
+      requestBody: { prompt: "first image" },
+    });
+    settleImageOperation({
+      stellaDataDir,
+      operationId: first.operationId,
+      result: {
+        ok: false,
+        status: "failed",
+        code: "first_failure",
+        message: "first terminal",
+        reattached: false,
+      },
+    });
+    markImageOperationDelivered({
+      stellaDataDir,
+      conversationId: common.conversationId,
+      toolCallId: common.toolCallId,
+    });
+    const second = reserveDurableImageOperation({
+      ...common,
+      requestBody: { prompt: "different intentional image" },
+    });
+    expect(second.operationId).not.toBe(first.operationId);
+    expect(second.terminalResult).toBeUndefined();
+
+    const sameRequestRestart = reserveDurableImageOperation({
+      ...common,
+      requestBody: { prompt: "different intentional image" },
+    });
+    expect(sameRequestRestart.operationId).toBe(second.operationId);
+    expect(sameRequestRestart.reattached).toBe(true);
+
+    const samePromptNewAlias = reserveDurableImageOperation({
+      ...common,
+      toolCallId: "mcp:scope:2",
+      requestBody: { prompt: "different intentional image" },
+    });
+    expect(samePromptNewAlias.operationId).not.toBe(second.operationId);
+    expect(samePromptNewAlias.reattached).toBe(false);
+  });
+
+  it("prunes only delivered terminal operations and preserves pending reattachment", () => {
+    const stellaDataDir = tempDirs.create("image-gen-ledger-prune-");
+    const terminal = reserveDurableImageOperation({
+      stellaDataDir,
+      conversationId: "prune-conversation",
+      toolCallId: "terminal-call",
+      requestBody: { prompt: "terminal" },
+    });
+    settleImageOperation({
+      stellaDataDir,
+      operationId: terminal.operationId,
+      result: {
+        ok: false,
+        status: "failed",
+        code: "done",
+        message: "done",
+        reattached: false,
+      },
+    });
+    markImageOperationDelivered({
+      stellaDataDir,
+      conversationId: "prune-conversation",
+      toolCallId: "terminal-call",
+    });
+    const pending = reserveDurableImageOperation({
+      stellaDataDir,
+      conversationId: "prune-conversation",
+      toolCallId: "pending-call",
+      requestBody: { prompt: "pending" },
+    });
+    expect(
+      pruneImageOperationLedger({
+        stellaDataDir,
+        deliveredBefore: Date.now() + 1,
+      }),
+    ).toBe(1);
+    expect(
+      reserveDurableImageOperation({
+        stellaDataDir,
+        conversationId: "prune-conversation",
+        toolCallId: "pending-call",
+        requestBody: { prompt: "pending" },
+      }).operationId,
+    ).toBe(pending.operationId);
+  });
+
+  it.each([
+    ["openai", "gpt-image-2", "https://api.openai.com/v1/images/generations"],
+    ["openrouter", "openai/gpt-image-2", "https://openrouter.ai/api/v1/images"],
+    ["fal", "fal-ai/flux-2-pro", "https://queue.fal.run/fal-ai/flux-2-pro"],
+  ])(
+    "never blind-resubmits an ambiguous direct %s request after restart",
+    async (provider, model, expectedUrl) => {
+      const stellaDataDir = tempDirs.create(`image-gen-${provider}-ambiguous-`);
+      await writeFile(
+        path.join(stellaDataDir, "preferences.json"),
+        JSON.stringify({ imageGeneration: { provider, model } }),
+      );
+      saveLocalLlmCredential(stellaDataDir, {
+        provider,
+        label: provider,
+        plaintext: `test-${provider}-key`,
+      });
+      const directFetch = vi
+        .spyOn(globalThis, "fetch")
+        .mockRejectedValue(new Error("connection lost after request send"));
+      const managedFetch = vi.fn() as unknown as typeof fetch;
+      const handler = createHandler(managedFetch);
+      const first = await handler(
+        { prompt: "ambiguous durable image" },
+        contextFor(stellaDataDir),
+      );
+      const restarted = await handler(
+        { prompt: "ambiguous durable image" },
+        {
+          ...contextFor(stellaDataDir),
+          runId: "restart-run",
+          rootRunId: "restart-root",
+        },
+      );
+      expect(first.details).toMatchObject({
+        status: "unknown",
+        error: { code: "provider_outcome_unknown" },
+      });
+      expect(restarted.details).toMatchObject({
+        status: "unknown",
+        reattached: true,
+      });
+      expect(directFetch).toHaveBeenCalledTimes(1);
+      expect(String(directFetch.mock.calls[0]?.[0])).toBe(expectedUrl);
+      expect(managedFetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it("requires managed local-reference consent before any file read or upload", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-managed-consent-");
+    const managedFetch = vi.fn() as unknown as typeof fetch;
+    const result = await createHandler(managedFetch)(
+      {
+        prompt: "use my reference",
+        referenceImagePaths: [path.join(stellaDataDir, "missing-private.png")],
+      },
+      contextFor(stellaDataDir),
+    );
+    expect(result.details).toMatchObject({
+      status: "failed",
+      error: { code: "managed_reference_consent_required" },
+    });
+    expect(managedFetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects local references outside authorized workspace and attachment roots", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-reference-policy-");
+    const outsideDir = tempDirs.create("image-gen-reference-outside-");
+    const outsidePath = path.join(outsideDir, "reference.png");
+    await writeFile(
+      outsidePath,
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    );
+    const managedFetch = vi.fn() as unknown as typeof fetch;
+    const result = await createHandler(managedFetch)(
+      {
+        prompt: "use outside file",
+        referenceImagePaths: [outsidePath],
+        allowManagedReferenceUpload: true,
+      },
+      contextFor(stellaDataDir),
+    );
+    expect(result.error).toContain("outside the active workspace");
+    expect(managedFetch).not.toHaveBeenCalled();
   });
 });

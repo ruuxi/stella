@@ -338,7 +338,10 @@ export const InlineGeneratedImageCardFrame = ({
   );
   const primaryFile = files[0] ?? null;
   const primaryPath = filePaths[0];
-  const jobFailed = job?.status === "failed" || job?.status === "canceled";
+  const jobFailed =
+    job?.status === "failed" ||
+    job?.status === "canceled" ||
+    job?.status === "unknown";
   const canOpenDisplayPanel = !isMiniRenderer();
   const frameStyle = {
     "--inline-generated-image-aspect-ratio": previewAspectRatio(

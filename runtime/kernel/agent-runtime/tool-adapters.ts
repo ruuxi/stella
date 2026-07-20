@@ -32,7 +32,6 @@ import {
   resolveImageCaps,
   type ImageCapTarget,
 } from "../../ai/utils/image-caps.js";
-import { markImageOperationDelivered } from "../tools/image-operation-store.js";
 
 export const STELLA_LOCAL_TOOLS = [
   ...DEVICE_TOOL_NAMES,
@@ -607,14 +606,6 @@ export const executeRuntimeToolCall = async (
     if (hookResult?.result) {
       toolResult = hookResult.result;
     }
-  }
-
-  if (args.toolName === "image_gen" && !context.deferImageDeliveryAck) {
-    markImageOperationDelivered({
-      stellaDataDir: context.stellaDataDir ?? context.stellaAppDir,
-      conversationId: context.conversationId,
-      toolCallId: context.requestId,
-    });
   }
 
   return toolResult;

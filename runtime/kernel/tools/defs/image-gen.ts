@@ -1,7 +1,6 @@
 /**
- * `image_gen` tool — run a still image job through Stella's managed media
- * gateway. The call stays pending through generation and durable artifact
- * materialization, then returns terminal status and local output paths.
+ * `image_gen` tool — run a still image job through the user's selected image
+ * provider. The call stays pending through durable terminal settlement.
  */
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
@@ -24,7 +23,7 @@ export const createImageGenTool = (
     // both the catalog filter and executeTool via this gate.
     agentTypes: [AGENT_IDS.ORCHESTRATOR, AGENT_IDS.FASHION],
     description:
-      "Generate a still image through Stella's durable managed media gateway. The call stays pending until generation succeeds, fails, is canceled, or reaches its bounded timeout, including durable artifact handoff. Success returns terminal job status, artifact metadata, and local path(s) under ~/.stella/media/outputs/. Never retry a pending call or submit a parallel duplicate; Stella reattaches it across relay or desktop restart. Do not poll, download, or open the result yourself. Required: prompt.",
+      "Generate a still image through the image provider selected in Settings (Stella managed or the user's own OpenAI, OpenRouter, or Fal account). The call stays pending until success, failure, cancellation, or a structured unknown outcome, including durable artifact handoff. Success returns terminal status, artifact metadata, and local path(s) under ~/.stella/media/outputs/. Never retry or parallel-submit a pending call; Stella reattaches when the provider exposes durable identity and never blindly resubmits an ambiguous BYOK request. Do not poll, download, or open the result yourself. Required: prompt.",
     promptSnippet:
       "Generate a still image and return its terminal artifact result",
     parameters: {
@@ -67,6 +66,11 @@ export const createImageGenTool = (
           items: { type: "string" },
           description:
             "Optional remote http(s) image URLs to use as reference inputs. Mix with referenceImagePaths when you have a local subject photo plus catalog product photos.",
+        },
+        allowManagedReferenceUpload: {
+          type: "boolean",
+          description:
+            "Required only when local referenceImagePaths are used with the Stella managed provider. Set true only when the user has explicitly asked to use those local/attached images for this generation; the references are uploaded encrypted for managed processing and removed after submission settles. BYOK providers receive references directly and do not use Stella managed storage.",
         },
       },
       required: ["prompt"],

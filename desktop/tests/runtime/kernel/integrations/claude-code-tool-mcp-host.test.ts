@@ -73,9 +73,7 @@ describe("claude-code-tool-mcp-host", () => {
         return {
           result: `${name}:${String(args.city)}`,
           details: { source: "test" },
-          fileChanges: [
-            { path: "/tmp/weather.txt", kind: { type: "update" } },
-          ],
+          fileChanges: [{ path: "/tmp/weather.txt", kind: { type: "update" } }],
         };
       },
     );
@@ -244,9 +242,7 @@ describe("claude-code-tool-mcp-host", () => {
       arguments: { city: "Phoenix" },
     });
     expect(result.isError).not.toBe(true);
-    expect(result.content).toEqual([
-      { type: "text", text: "weather:Phoenix" },
-    ]);
+    expect(result.content).toEqual([{ type: "text", text: "weather:Phoenix" }]);
     expect(executeTool).toHaveBeenCalledOnce();
   });
 
@@ -293,6 +289,39 @@ describe("claude-code-tool-mcp-host", () => {
     expect(callIds[0]).toMatch(/^mcp:[a-f0-9]{24}:/);
   });
 
+  it("separates a reused MCP request alias when the canonical image request changes", async () => {
+    const callIds: string[] = [];
+    const host = await createClaudeCodeToolMcpHost({
+      tools: imageTools,
+      identityScope: "persisted-alias-collision-scope",
+      getActiveTurn: () => ({
+        executeTool: async (id) => {
+          callIds.push(id);
+          return { result: { status: "succeeded" } };
+        },
+      }),
+    });
+    hosts.add(host);
+    const client = await connect(host);
+    clients.add(client);
+    const forceAlias = () => {
+      (client as unknown as { _requestMessageId: number })._requestMessageId =
+        77;
+    };
+    forceAlias();
+    await client.callTool({
+      name: "image_gen",
+      arguments: { prompt: "first intentional image" },
+    });
+    forceAlias();
+    await client.callTool({
+      name: "image_gen",
+      arguments: { prompt: "different intentional image" },
+    });
+    expect(callIds).toHaveLength(2);
+    expect(callIds[1]).not.toBe(callIds[0]);
+  });
+
   it("delivers structured image failure and preserves image cancellation", async () => {
     let mode: "failure" | "cancel" = "failure";
     const host = await createClaudeCodeToolMcpHost({
@@ -306,14 +335,21 @@ describe("claude-code-tool-mcp-host", () => {
               details: {
                 jobId: "job-failed",
                 status: "failed",
-                error: { code: "policy", message: "Image request was blocked." },
+                error: {
+                  code: "policy",
+                  message: "Image request was blocked.",
+                },
               },
             };
           }
           return await new Promise((_resolve, reject) => {
-            signal?.addEventListener("abort", () => reject(new Error("canceled")), {
-              once: true,
-            });
+            signal?.addEventListener(
+              "abort",
+              () => reject(new Error("canceled")),
+              {
+                once: true,
+              },
+            );
           });
         },
       }),
@@ -326,7 +362,9 @@ describe("claude-code-tool-mcp-host", () => {
       arguments: { prompt: "blocked" },
     });
     expect(failed.isError).toBe(true);
-    expect(JSON.stringify(failed.content)).toContain("Image request was blocked");
+    expect(JSON.stringify(failed.content)).toContain(
+      "Image request was blocked",
+    );
 
     mode = "cancel";
     const controller = new AbortController();
@@ -548,7 +586,11 @@ describe("claude-code-tool-mcp-host", () => {
       });
       expect(result.content).toEqual([
         { type: "text", text: "visible tree" },
-        { type: "image", data: bytes.toString("base64"), mimeType: "image/png" },
+        {
+          type: "image",
+          data: bytes.toString("base64"),
+          mimeType: "image/png",
+        },
       ]);
       expect(JSON.stringify(result.content)).not.toContain(
         "[stella-attach-image]",

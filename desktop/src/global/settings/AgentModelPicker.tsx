@@ -160,7 +160,8 @@ const IMAGE_PROVIDER_OPTIONS: readonly ProviderOption[] = [
   {
     key: "stella",
     label: "Stella",
-    description: "Default. Picks the best image model for you.",
+    description:
+      "Default. Uses Stella's managed image service; local references require per-generation upload consent.",
   },
   { key: "openai", label: "OpenAI", description: "Uses your OpenAI account." },
   {

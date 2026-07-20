@@ -9,20 +9,20 @@ Stella ships a managed media gateway that fronts every supported provider. Use i
 
 ## Still images
 
-General does not call `image_gen` directly. For still images, read the image docs below and route through Stella's managed media gateway. The orchestrator's `image_gen` call stays pending through generation and local artifact materialization, then returns terminal success/failure plus durable output paths. Do not poll or resubmit it. Use the documented `stella-media` command for General-agent `exec_command` workflows.
+General does not call `image_gen` directly. The orchestrator's `image_gen` honors the image provider selected in Settings: Stella uses the managed gateway, while OpenAI, OpenRouter, and Fal use the user's locally saved provider credential directly. The call stays pending through generation and local artifact materialization, then returns terminal success, failure, cancellation, or a distinct unknown outcome. Do not poll or resubmit it. Local references sent through Stella managed generation require explicit per-call upload consent; BYOK references bypass Stella managed storage. Use the documented `stella-media` command for General-agent `exec_command` workflows.
 
 ## Video, audio, 3D — read the relevant doc page first
 
 `web` fetch the URL for the operation you need, then call the gateway accordingly:
 
-| Domain   | URL                                   | Operations                                                                     |
-| -------- | ------------------------------------- | ------------------------------------------------------------------------------ |
-| Overview | `https://stella.sh/docs/media`        | Request/response shape, auth contract                                          |
-| Images   | `https://stella.sh/docs/media/images` | `text_to_image`, `icon`, `image_edit`                                          |
-| Video    | `https://stella.sh/docs/media/video`  | `image_to_video`, `video_extend`, `video_to_video`                             |
-| Audio    | `https://stella.sh/docs/media/audio`  | `audio_generation`, `speech_to_text`, `audio_visual_separate`                   |
-| Music    | `https://stella.sh/docs/media/music`  | `text_to_music`                                                                |
-| 3D       | `https://stella.sh/docs/media/3d`     | `text_to_3d`                                                                   |
+| Domain   | URL                                   | Operations                                                    |
+| -------- | ------------------------------------- | ------------------------------------------------------------- |
+| Overview | `https://stella.sh/docs/media`        | Request/response shape, auth contract                         |
+| Images   | `https://stella.sh/docs/media/images` | `text_to_image`, `icon`, `image_edit`                         |
+| Video    | `https://stella.sh/docs/media/video`  | `image_to_video`, `video_extend`, `video_to_video`            |
+| Audio    | `https://stella.sh/docs/media/audio`  | `audio_generation`, `speech_to_text`, `audio_visual_separate` |
+| Music    | `https://stella.sh/docs/media/music`  | `text_to_music`                                               |
+| 3D       | `https://stella.sh/docs/media/3d`     | `text_to_3d`                                                  |
 
 Examples/references: `desktop/src/app/media/MediaStudio.tsx` and `desktop/src/features/music/services/lyria-music.ts`.
 

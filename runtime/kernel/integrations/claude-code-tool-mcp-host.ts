@@ -275,13 +275,19 @@ export const createClaudeCodeToolMcpHost = async (
           .update(options.identityScope ?? "unscoped")
           .digest("hex")
           .slice(0, 24);
+        const canonicalRequestHash = crypto
+          .createHash("sha256")
+          .update(request.params.name)
+          .update("\0")
+          .update(stableJson(request.params.arguments ?? {}))
+          .digest("hex");
         const toolCallId =
           request.params.name === "image_gen"
-            ? `mcp:${durableScope}:${String(extra.requestId)}`
+            ? `mcp:${durableScope}:${String(extra.requestId)}:${canonicalRequestHash.slice(0, 24)}`
             : `mcp:${clientSessionId}:${String(extra.requestId)}`;
         const ledgerKey =
           request.params.name === "image_gen"
-            ? `${durableScope}:${String(extra.requestId)}:${request.params.name}`
+            ? `${durableScope}:${String(extra.requestId)}:${request.params.name}:${canonicalRequestHash}`
             : `${clientSessionId}:${String(extra.requestId)}:${request.params.name}`;
         const previous = callLedger.get(ledgerKey);
         if (previous) return await previous;

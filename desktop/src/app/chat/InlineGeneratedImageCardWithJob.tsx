@@ -89,10 +89,11 @@ export function InlineGeneratedImageCardWithJob({
     void (async () => {
       const completedPayload = await mediaPayloadFromJob(job);
       if (cancelled || !completedPayload) return;
-      publishMaterializedMediaPayload(completedPayload);
-      openDisplayPayloadTab(completedPayload, {
-        activate: false,
-      });
+      if (publishMaterializedMediaPayload(completedPayload)) {
+        openDisplayPayloadTab(completedPayload, {
+          activate: false,
+        });
+      }
       markMediaJobMaterialized(job.jobId);
     })();
     return () => {

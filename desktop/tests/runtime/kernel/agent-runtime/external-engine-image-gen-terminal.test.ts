@@ -313,4 +313,129 @@ describe("external engines receive image_gen terminal results", () => {
         undefined,
       );
     }));
+
+  it("delivers a structured image failure to the Codex continuation", async () =>
+    withRuntime(async ({ dataDir, store, scheduler }) => {
+      let engineSaw: ToolResult | undefined;
+      runCodexAgentTurnMock.mockImplementation(
+        async (request: ExternalToolRequest) => {
+          engineSaw = await request.executeTool(
+            "codex-image-failure",
+            "image_gen",
+            { prompt: "blocked image" },
+          );
+          return {
+            text: "Image failed.",
+            sessionId: "codex-failure",
+            fileChanges: [],
+          };
+        },
+      );
+      const failure: ToolResult = {
+        error: "Image request was blocked.",
+        details: {
+          jobId: "job-blocked",
+          status: "failed",
+          error: { code: "policy", message: "Image request was blocked." },
+        },
+      };
+      await runExternalSubagentTurn({
+        runId: "run-codex-image-failure",
+        rootRunId: "root-codex-image-failure",
+        conversationId: "conversation-codex-image-failure",
+        userMessageId: "user-codex-image-failure",
+        agentType: "general",
+        userPrompt: "Generate an image.",
+        agentContext: {
+          systemPrompt: "General",
+          dynamicContext: "",
+          maxAgentDepth: 1,
+          reasoningEffort: "high",
+          agentEngine: "codex_cli",
+          threadHistory: [],
+        },
+        toolCatalog,
+        toolExecutor: async () => failure,
+        deviceId: "device-test",
+        stellaDataDir: dataDir,
+        stellaAppDir: dataDir,
+        resolvedLlm: {
+          model,
+          route: "direct-provider",
+          getApiKey: () => undefined,
+        },
+        store,
+        callbacks: callbacks(),
+        compactionScheduler: scheduler,
+      });
+      expect(engineSaw).toEqual(failure);
+    }));
+
+  it("preserves Claude image cancellation without converting it to a retryable tool error", async () =>
+    withRuntime(async ({ dataDir, store, scheduler }) => {
+      runClaudeCodeTurnMock.mockImplementation(
+        async (request: ExternalToolRequest) => {
+          const controller = new AbortController();
+          const pending = request.executeTool(
+            "claude-image-cancel",
+            "image_gen",
+            { prompt: "cancel image" },
+            controller.signal,
+          );
+          controller.abort(new DOMException("Canceled", "AbortError"));
+          await pending;
+          return {
+            text: "unreachable",
+            sessionId: "claude-cancel",
+            fileChanges: [],
+          };
+        },
+      );
+      const toolExecutor = vi.fn(
+        async (
+          _name: string,
+          _args: Record<string, unknown>,
+          _context: unknown,
+          signal?: AbortSignal,
+        ): Promise<ToolResult> =>
+          await new Promise((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          }),
+      );
+      const cancelCallbacks = callbacks();
+      await expect(
+        runExternalOrchestratorTurn({
+          runId: "run-claude-image-cancel",
+          conversationId: "conversation-claude-image-cancel",
+          userMessageId: "user-claude-image-cancel",
+          agentType: "orchestrator",
+          userPrompt: "Generate an image.",
+          agentContext: {
+            systemPrompt: "Orchestrator",
+            dynamicContext: "",
+            maxAgentDepth: 1,
+            reasoningEffort: "high",
+            agentEngine: "claude_code_local",
+            threadHistory: [],
+          },
+          toolCatalog,
+          toolExecutor: toolExecutor as never,
+          deviceId: "device-test",
+          stellaDataDir: dataDir,
+          stellaAppDir: dataDir,
+          resolvedLlm: {
+            model,
+            route: "direct-provider",
+            getApiKey: () => undefined,
+          },
+          store,
+          callbacks: cancelCallbacks,
+          compactionScheduler: scheduler,
+        }),
+      ).resolves.toBe("run-claude-image-cancel");
+      expect(runClaudeCodeTurnMock).toHaveBeenCalledTimes(1);
+      expect(toolExecutor).toHaveBeenCalledTimes(1);
+    }));
 });
