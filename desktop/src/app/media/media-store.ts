@@ -186,7 +186,11 @@ export async function saveOutputToStella(
       case "image": {
         const results = await Promise.all(
           output.urls.map((url, i) =>
-            saveApi(url, `${jobId}_${i}.${ext(url, output.mimeTypes?.[i])}`),
+            saveApi(
+              url,
+              `${jobId}_${i}.${ext(url, output.mimeTypes?.[i])}`,
+              "image",
+            ),
           ),
         );
         const localPaths = results

@@ -1,3 +1,9 @@
-{"type":"stream_event","session_id":"session-fixture","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01JFIXTURE","name":"mcp__stella__image_gen","input":{}}}}
-{"type":"assistant","session_id":"session-fixture","message":{"id":"msg_fixture","role":"assistant","content":[{"type":"tool_use","id":"toolu_01JFIXTURE","name":"mcp__stella__image_gen","input":{"prompt":"fixture fox","size":{"width":1024,"height":1024}}}]}}
-{"type":"user","session_id":"session-fixture","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01JFIXTURE","content":"{\"status\":\"succeeded\"}"}]}}
+{"type":"stream_event","session_id":"session_sanitized_resume","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01WVus7FtxXisd3hT1j4bAgw","name":"mcp__stella__image_gen","input":{}}}}
+{"type":"stream_event","session_id":"session_sanitized_resume","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"prompt\":\"installed resume identity probe\"}"}}}
+{"type":"stream_event","session_id":"session_sanitized_resume","event":{"type":"content_block_stop","index":1}}
+{"type":"assistant","session_id":"session_sanitized_resume","message":{"id":"msg_sanitized_first","role":"assistant","content":[{"type":"tool_use","id":"toolu_01WVus7FtxXisd3hT1j4bAgw","name":"mcp__stella__image_gen","input":{"prompt":"installed resume identity probe"}}]}}
+{"type":"user","session_id":"session_sanitized_resume","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01WVus7FtxXisd3hT1j4bAgw","content":"{\"status\":\"succeeded\"}"}]}}
+{"type":"stream_event","session_id":"session_sanitized_resume","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_017BoTxf7LHyjZ8KgM5AZVxb","name":"mcp__stella__image_gen","input":{}}}}
+{"type":"stream_event","session_id":"session_sanitized_resume","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"prompt\":\"installed resume identity probe\"}"}}}
+{"type":"stream_event","session_id":"session_sanitized_resume","event":{"type":"content_block_stop","index":1}}
+{"type":"assistant","session_id":"session_sanitized_resume","message":{"id":"msg_sanitized_second","role":"assistant","content":[{"type":"tool_use","id":"toolu_017BoTxf7LHyjZ8KgM5AZVxb","name":"mcp__stella__image_gen","input":{"prompt":"installed resume identity probe"}}]}}

@@ -83,6 +83,8 @@ export const failedNotifiedJobs: Set<string> = new Set(
 );
 
 const materializedPayloadsByJobId = loadPayloadsFromStorage();
+const EMPTY_MATERIALIZED_PAYLOAD_SNAPSHOT = new Map<string, DisplayPayload>();
+let materializedPayloadSnapshot = new Map(materializedPayloadsByJobId);
 const materializedPayloadListeners = new Set<() => void>();
 
 export const persistMaterializedJobs = (): void => {
@@ -106,6 +108,9 @@ export const publishMaterializedMediaPayload = (
     // Bound the in-memory payload map, matching the persist-time cap.
     capInMemory(materializedPayloadsByJobId);
     persistPayloadsToStorage(materializedPayloadsByJobId);
+    // useSyncExternalStore compares snapshots by identity. Publishing a fresh
+    // immutable snapshot is what makes React observe the Map mutation.
+    materializedPayloadSnapshot = new Map(materializedPayloadsByJobId);
   }
   for (const listener of materializedPayloadListeners) listener();
   return true;
@@ -132,8 +137,8 @@ export const useMaterializedMediaPayloadSnapshot = (): ReadonlyMap<
       materializedPayloadListeners.add(listener);
       return () => materializedPayloadListeners.delete(listener);
     },
-    () => materializedPayloadsByJobId,
-    () => new Map(),
+    () => materializedPayloadSnapshot,
+    () => EMPTY_MATERIALIZED_PAYLOAD_SNAPSHOT,
   );
 
 /**

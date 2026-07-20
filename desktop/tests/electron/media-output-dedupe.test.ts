@@ -107,4 +107,58 @@ describe("media output artifact dedupe", () => {
       fs.existsSync(path.join(dataDir, "media", "outputs", "misleading_0.jpg")),
     ).toBe(false);
   });
+
+  it("validates remote image bytes independently of URL suffix and content type", async () => {
+    const dataDir = tempDirs.create("media-output-remote-validation-");
+    registerBrowserHandlers({
+      getStellaAppDir: () => dataDir,
+      getStellaDataDir: () => dataDir,
+      assertPrivilegedSender: () => true,
+    });
+    const handler = handlers.get(IPC_MEDIA_SAVE_OUTPUT)!;
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(Buffer.from("not an image"), {
+        headers: { "content-type": "application/octet-stream" },
+      }),
+    );
+    await expect(
+      handler(
+        {},
+        {
+          url: "https://example.test/corrupt.bin",
+          fileName: "remote-corrupt.bin",
+          kind: "image",
+        },
+      ),
+    ).resolves.toMatchObject({ ok: false });
+    expect(
+      fs.existsSync(
+        path.join(dataDir, "media", "outputs", "remote-corrupt.bin"),
+      ),
+    ).toBe(false);
+
+    fetchSpy.mockResolvedValueOnce(
+      new Response(validPng, {
+        headers: { "content-type": "application/octet-stream" },
+      }),
+    );
+    const valid = await handler(
+      {},
+      {
+        url: "https://example.test/generated.bin",
+        fileName: "remote-valid.bin",
+        kind: "image",
+      },
+    );
+    const normalizedPath = path.join(
+      dataDir,
+      "media",
+      "outputs",
+      "remote-valid.png",
+    );
+    expect(valid).toEqual({ ok: true, path: normalizedPath });
+    expect(fs.readFileSync(normalizedPath)).toEqual(validPng);
+  });
 });

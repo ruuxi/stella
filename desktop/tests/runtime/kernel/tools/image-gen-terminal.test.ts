@@ -1181,6 +1181,56 @@ describe("image_gen terminal managed-media semantics", () => {
     expect(managedFetch).not.toHaveBeenCalled();
   });
 
+  it("requires managed consent for data-URI bytes and accepts the same bytes with consent", async () => {
+    const stellaDataDir = tempDirs.create("image-gen-managed-inline-consent-");
+    const dataUri =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+    const deniedFetch = vi.fn() as unknown as typeof fetch;
+    const denied = await createHandler(deniedFetch)(
+      {
+        prompt: "use inline bytes",
+        referenceImageUrls: [dataUri],
+      },
+      contextFor(stellaDataDir),
+    );
+    expect(denied.details).toMatchObject({
+      status: "failed",
+      error: { code: "managed_reference_consent_required" },
+    });
+    expect(deniedFetch).not.toHaveBeenCalled();
+
+    const acceptedBodies: Array<Record<string, unknown>> = [];
+    const allowedFetch = vi.fn(
+      async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/generate") && init?.method === "POST") {
+          acceptedBodies.push(JSON.parse(String(init.body)));
+          return accepted();
+        }
+        if (url.includes("/job?") && init?.method === "GET") {
+          return jobResponse("succeeded", {
+            output: { images: [{ url: "https://assets.test/image.png" }] },
+          });
+        }
+        if (url === "https://assets.test/image.png") return outputResponse();
+        throw new Error(`Unexpected fetch ${init?.method ?? "GET"} ${url}`);
+      },
+    ) as unknown as typeof fetch;
+    const allowed = await createHandler(allowedFetch)(
+      {
+        prompt: "use inline bytes",
+        referenceImageUrls: [dataUri],
+        allowManagedReferenceUpload: true,
+      },
+      { ...contextFor(stellaDataDir), requestId: "inline-consent-allowed" },
+    );
+    expect(allowed.error).toBeUndefined();
+    expect(acceptedBodies[0]).toMatchObject({
+      capability: "image_edit",
+      input: { image_urls: [dataUri] },
+    });
+  });
+
   it("rejects local references outside authorized workspace and attachment roots", async () => {
     const stellaDataDir = tempDirs.create("image-gen-reference-policy-");
     const outsideDir = tempDirs.create("image-gen-reference-outside-");

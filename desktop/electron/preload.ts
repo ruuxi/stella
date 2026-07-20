@@ -1931,8 +1931,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
 
   media: {
-    saveOutput: (url: string, fileName: string) =>
-      ipcRenderer.invoke(IPC_MEDIA_SAVE_OUTPUT, { url, fileName }) as Promise<{
+    saveOutput: (url: string, fileName: string, kind?: "image") =>
+      ipcRenderer.invoke(IPC_MEDIA_SAVE_OUTPUT, {
+        url,
+        fileName,
+        kind,
+      }) as Promise<{
         ok: boolean;
         path?: string;
         error?: string;

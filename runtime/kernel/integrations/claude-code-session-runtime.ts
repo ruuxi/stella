@@ -439,6 +439,11 @@ type ClaudeCodeTurnRequest = {
     toolCallId: string;
     toolName: string;
   }) => void | Promise<void>;
+  /** Sanitized CLI init metadata used by the installed protocol probe. */
+  onProtocolInit?: (args: {
+    tools: string[];
+    mcpServers: Array<{ name?: string; status?: string }>;
+  }) => void;
   /**
    * Native Claude Code tool boundary observed in vanilla mode. This is a
    * notification only: Claude Code still owns execution and tool results.
@@ -534,6 +539,7 @@ type SessionState = {
       toolName: string;
       toolArgs: Record<string, unknown>;
     }) => void;
+    observeStreamEvent: (event: Record<string, unknown>) => void;
     claim: (
       toolName: string,
       toolArgs: Record<string, unknown>,
@@ -594,23 +600,85 @@ export const createClaudeNativeToolUseCorrelator = () => {
   const queued = new Map<string, string[]>();
   const waiters = new Map<string, Array<(id: string) => void>>();
   const observedIds = new Set<string>();
-  return {
-    observe(args: {
+  const streamingBlocks = new Map<
+    number,
+    {
       toolCallId: string;
       toolName: string;
-      toolArgs: Record<string, unknown>;
-    }) {
-      if (observedIds.has(args.toolCallId)) return;
-      observedIds.add(args.toolCallId);
-      const key = claudeToolKey(args.toolName, args.toolArgs);
-      const waiter = waiters.get(key)?.shift();
-      if (waiter) {
-        waiter(args.toolCallId);
+      initialInput: Record<string, unknown>;
+      partialJson: string;
+    }
+  >();
+  const observe = (args: {
+    toolCallId: string;
+    toolName: string;
+    toolArgs: Record<string, unknown>;
+  }) => {
+    if (observedIds.has(args.toolCallId)) return;
+    observedIds.add(args.toolCallId);
+    const key = claudeToolKey(args.toolName, args.toolArgs);
+    const waiter = waiters.get(key)?.shift();
+    if (waiter) {
+      waiter(args.toolCallId);
+      return;
+    }
+    const values = queued.get(key) ?? [];
+    if (!values.includes(args.toolCallId)) values.push(args.toolCallId);
+    queued.set(key, values);
+  };
+  return {
+    observe,
+    observeStreamEvent(event: Record<string, unknown>) {
+      if (event.type !== "stream_event") return;
+      const source = asObject(event.event);
+      const index = asNumber(source?.index);
+      if (!source || index === undefined || !Number.isInteger(index)) return;
+      if (source.type === "content_block_start") {
+        const block = asObject(source.content_block);
+        if (
+          block?.type === "tool_use" &&
+          typeof block.id === "string" &&
+          typeof block.name === "string"
+        ) {
+          streamingBlocks.set(index, {
+            toolCallId: block.id,
+            toolName: block.name,
+            initialInput: asObject(block.input) ?? {},
+            partialJson: "",
+          });
+        }
         return;
       }
-      const values = queued.get(key) ?? [];
-      if (!values.includes(args.toolCallId)) values.push(args.toolCallId);
-      queued.set(key, values);
+      const pending = streamingBlocks.get(index);
+      if (!pending) return;
+      if (source.type === "content_block_delta") {
+        const delta = asObject(source.delta);
+        if (
+          delta?.type === "input_json_delta" &&
+          typeof delta.partial_json === "string"
+        ) {
+          pending.partialJson += delta.partial_json;
+        }
+        return;
+      }
+      if (source.type !== "content_block_stop") return;
+      streamingBlocks.delete(index);
+      let toolArgs = pending.initialInput;
+      if (pending.partialJson.trim()) {
+        try {
+          const parsed = JSON.parse(pending.partialJson) as unknown;
+          toolArgs = asObject(parsed) ?? pending.initialInput;
+        } catch {
+          // The finalized assistant event remains a safe fallback. Never bind
+          // an MCP mutation to malformed or incomplete streamed arguments.
+          return;
+        }
+      }
+      observe({
+        toolCallId: pending.toolCallId,
+        toolName: pending.toolName,
+        toolArgs,
+      });
     },
     async claim(
       toolName: string,
@@ -1605,8 +1673,8 @@ class ClaudeCodeSessionRuntime {
         const recoverable = asRecoverableStepError(error);
         const hasPossibleSideEffects = Boolean(
           recoverable &&
-          (recoverable.fileChanges.length > 0 ||
-            recoverable.mcpCalls.length > 0),
+            (recoverable.fileChanges.length > 0 ||
+              recoverable.mcpCalls.length > 0),
         );
         // A normal refusal/overload can retry the configured model and then
         // fall back. Once any tool call started, the same prompt is never
@@ -1886,13 +1954,18 @@ class ClaudeCodeSessionRuntime {
       // Native takeover: Claude owns the tool loop. Its built-ins and all
       // ambient/user MCP servers remain disabled; only this run-private,
       // token-authenticated Stella server is visible.
+      const allowedStellaTools = request.tools
+        .map((tool) => `mcp__stella__${tool.name}`)
+        .join(",");
       args.push(
         "--strict-mcp-config",
         "--mcp-config",
         session.mcpConfigPath,
         "--disable-slash-commands",
         "--tools",
-        "",
+        "mcp__stella__*",
+        "--allowedTools",
+        allowedStellaTools,
       );
     }
     if (effectiveSystemPrompt.trim()) {
@@ -2097,6 +2170,32 @@ class ClaudeCodeSessionRuntime {
         if (
           parsedLine.type === "system" &&
           parsedLine.subtype === "init" &&
+          request.onProtocolInit
+        ) {
+          request.onProtocolInit({
+            tools: Array.isArray(parsedLine.tools)
+              ? parsedLine.tools.filter(
+                  (entry): entry is string => typeof entry === "string",
+                )
+              : [],
+            mcpServers: Array.isArray(parsedLine.mcp_servers)
+              ? parsedLine.mcp_servers.map((entry) => {
+                  const value = asObject(entry);
+                  return {
+                    ...(typeof value?.name === "string"
+                      ? { name: value.name }
+                      : {}),
+                    ...(typeof value?.status === "string"
+                      ? { status: value.status }
+                      : {}),
+                  };
+                })
+              : [],
+          });
+        }
+        if (
+          parsedLine.type === "system" &&
+          parsedLine.subtype === "init" &&
           typeof parsedLine.model === "string" &&
           request.stellaAppDir
         ) {
@@ -2145,6 +2244,7 @@ class ClaudeCodeSessionRuntime {
             parsedLine,
             session.activeNativeToolUseCorrelator?.observe,
           );
+          session.activeNativeToolUseCorrelator?.observeStreamEvent(parsedLine);
           if (
             updateClaudeCodeNativeToolActivity(
               parsedLine,
@@ -2289,6 +2389,9 @@ class ClaudeCodeSessionRuntime {
       }
     });
 
+    if (mcpHost && request.tools.some((tool) => tool.name === "image_gen")) {
+      await mcpHost.waitForClientReady(request.abortSignal);
+    }
     return processState;
   }
 

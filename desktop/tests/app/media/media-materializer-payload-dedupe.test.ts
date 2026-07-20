@@ -15,8 +15,9 @@ describe("media materializer payload dedupe", () => {
 
   it("publishes one payload when transcript and completion subscription converge", async () => {
     vi.resetModules();
-    const { publishMaterializedMediaPayload } =
-      await import("../../../src/app/media/media-materializer-state.js");
+    const { publishMaterializedMediaPayload } = await import(
+      "../../../src/app/media/media-materializer-state.js"
+    );
     const payload = {
       kind: "media" as const,
       asset: { kind: "image" as const, filePaths: ["/tmp/job-1_0.png"] },
@@ -44,8 +45,9 @@ describe("media materializer payload dedupe", () => {
     vi.stubGlobal("window", {
       electronAPI: { media: { saveOutput } },
     });
-    const { extractOutput, saveOutputToStella } =
-      await import("../../../src/app/media/media-store.js");
+    const { extractOutput, saveOutputToStella } = await import(
+      "../../../src/app/media/media-store.js"
+    );
     const output = extractOutput({
       images: [
         {
@@ -58,6 +60,7 @@ describe("media materializer payload dedupe", () => {
     expect(saveOutput).toHaveBeenCalledWith(
       "https://example.test/artifact-without-extension",
       "mime-job_0.jpg",
+      "image",
     );
   });
 });

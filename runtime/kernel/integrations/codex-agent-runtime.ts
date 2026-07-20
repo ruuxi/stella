@@ -23,7 +23,11 @@ import type {
   RuntimeAttachmentRef,
   RuntimePromptMessage,
 } from "../../protocol/index.js";
-import type { ToolResult, ToolUpdateCallback } from "../tools/types.js";
+import type {
+  ToolMetadata,
+  ToolResult,
+  ToolUpdateCallback,
+} from "../tools/types.js";
 import { executeToolWithInactivityBound } from "./tool-inactivity.js";
 import {
   DEFAULT_CODEX_MODEL,
@@ -140,6 +144,12 @@ type CodexThreadStartParams = {
   developerInstructions?: string | null;
   ephemeral?: boolean | null;
   experimentalRawEvents: boolean;
+  dynamicTools?: Array<{
+    type: "function";
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+  }>;
 };
 
 type CodexThreadResumeParams = {
@@ -840,6 +850,7 @@ export const buildCodexThreadStartParams = (args: {
   model: string;
   cwd?: string;
   systemPrompt?: string;
+  tools?: ToolMetadata[];
 }): CodexThreadStartParams => {
   const developerInstructions = extractCodexDeveloperInstructions(
     args.systemPrompt,
@@ -857,6 +868,16 @@ export const buildCodexThreadStartParams = (args: {
       : {}),
     ephemeral: false,
     experimentalRawEvents: false,
+    ...(args.tools?.length
+      ? {
+          dynamicTools: args.tools.map((tool) => ({
+            type: "function" as const,
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.parameters,
+          })),
+        }
+      : {}),
   };
 };
 
@@ -929,8 +950,8 @@ const responseWithAck = (
 const isResponseWithAck = (value: unknown): value is CodexResponseWithAck =>
   Boolean(
     value &&
-    typeof value === "object" &&
-    (value as Partial<CodexResponseWithAck>)[CODEX_RESPONSE_WITH_ACK],
+      typeof value === "object" &&
+      (value as Partial<CodexResponseWithAck>)[CODEX_RESPONSE_WITH_ACK],
   );
 
 const configuredTimeoutMs = (envName: string, fallbackMs: number): number => {
@@ -1358,6 +1379,7 @@ const startOrResumeCodexThread = async (args: {
   model: string;
   cwd?: string;
   systemPrompt?: string;
+  tools?: ToolMetadata[];
   onStatus?: (status: string) => void;
 }): Promise<string> => {
   if (args.persistedSessionId) {
@@ -1383,6 +1405,7 @@ const startOrResumeCodexThread = async (args: {
       model: args.model,
       cwd: args.cwd,
       systemPrompt: args.systemPrompt,
+      tools: args.tools,
     }),
   );
   return response.thread.id;
@@ -1454,6 +1477,8 @@ export const runCodexAgentTurn = async (request: {
   persistedSessionId?: string;
   prompt: string;
   systemPrompt?: string;
+  /** Stella dynamic tools exposed to the app-server thread. */
+  tools?: ToolMetadata[];
   cwd?: string;
   stellaDataDir?: string;
   stellaAppDir?: string;
@@ -1936,6 +1961,7 @@ export const runCodexAgentTurn = async (request: {
       model,
       cwd: request.cwd,
       systemPrompt: request.systemPrompt,
+      tools: request.tools,
       onStatus: emitStatus,
     });
     request.onSessionId?.(threadId);

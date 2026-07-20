@@ -72,6 +72,11 @@ export type ClaudeCodeToolMcpHost = {
   };
   /** Abort tools owned by a dying Claude process without closing the host. */
   abortActiveCalls: (reason?: unknown) => void;
+  /** Wait until the spawned Claude process has initialized this MCP catalog. */
+  waitForClientReady: (
+    signal?: AbortSignal,
+    timeoutMs?: number,
+  ) => Promise<void>;
   /** Drop MCP transports owned by a dead Claude process generation. */
   resetClientSessions: (reason?: unknown) => Promise<void>;
   close: () => Promise<void>;
@@ -261,8 +266,16 @@ export const createClaudeCodeToolMcpHost = async (
   const callLedger = new Map<string, Promise<CallToolResult>>();
   const responseDelivery = new AsyncLocalStorage<{
     acknowledgements: Set<() => void | Promise<void>>;
+    catalogListed: boolean;
   }>();
   const settledCallLedgerKeys = new Set<string>();
+  const clientReadyWaiters = new Set<() => void>();
+  let catalogListed = false;
+  const announceClientReady = () => {
+    catalogListed = true;
+    for (const resolve of clientReadyWaiters) resolve();
+    clientReadyWaiters.clear();
+  };
   const trimCallLedger = () => {
     if (settledCallLedgerKeys.size <= MAX_SETTLED_CALL_LEDGER_ENTRIES) return;
     for (const key of callLedger.keys()) {
@@ -274,9 +287,11 @@ export const createClaudeCodeToolMcpHost = async (
   };
 
   const configureMcpServer = (mcpServer: Server) => {
-    mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools,
-    }));
+    mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
+      const delivery = responseDelivery.getStore();
+      if (delivery) delivery.catalogListed = true;
+      return { tools };
+    });
     mcpServer.setRequestHandler(
       CallToolRequestSchema,
       async (request, extra) => {
@@ -499,10 +514,12 @@ export const createClaudeCodeToolMcpHost = async (
       }
       const delivery = {
         acknowledgements: new Set<() => void | Promise<void>>(),
+        catalogListed: false,
       };
       let responseFinished = false;
       response.once("finish", () => {
         responseFinished = true;
+        if (delivery.catalogListed) announceClientReady();
         for (const acknowledge of delivery.acknowledgements) {
           void Promise.resolve(acknowledge()).catch(() => undefined);
         }
@@ -539,12 +556,7 @@ export const createClaudeCodeToolMcpHost = async (
     socket.once("close", () => sockets.delete(socket));
   });
 
-  let port: number;
-  try {
-    port = await listen(httpServer);
-  } catch (error) {
-    throw error;
-  }
+  const port = await listen(httpServer);
   const url = `http://${HOST}:${port}${endpointPath}`;
   const abortActiveCalls = (reason?: unknown) => {
     for (const controller of activeCalls) controller.abort(reason);
@@ -556,7 +568,38 @@ export const createClaudeCodeToolMcpHost = async (
     const sessions = [...clientSessions.values(), ...pendingSessions.values()];
     clientSessions.clear();
     pendingSessions.clear();
+    catalogListed = false;
     await Promise.allSettled(sessions.map((state) => state.server.close()));
+  };
+  const waitForClientReady = async (
+    signal?: AbortSignal,
+    timeoutMs = 10_000,
+  ): Promise<void> => {
+    if (catalogListed) return;
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const onReady = () => finish();
+      const onAbort = () =>
+        finish(signal?.reason ?? new Error("Claude MCP startup canceled."));
+      const timer = setTimeout(
+        () => finish(new Error("Claude MCP tool catalog did not initialize.")),
+        timeoutMs,
+      );
+      timer.unref?.();
+      const finish = (error?: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        clientReadyWaiters.delete(onReady);
+        if (error) reject(error);
+        else resolve();
+      };
+      clientReadyWaiters.add(onReady);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();
+      else if (catalogListed) onReady();
+    });
   };
   const close = async () => {
     if (closed) return;
@@ -584,6 +627,7 @@ export const createClaudeCodeToolMcpHost = async (
       headers: { Authorization: bearer },
     },
     abortActiveCalls,
+    waitForClientReady,
     resetClientSessions,
     close,
   };

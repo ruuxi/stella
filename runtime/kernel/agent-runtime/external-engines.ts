@@ -1564,6 +1564,10 @@ const runCodexHostedTurn = async (args: {
     threadKey,
     engine: "codex_cli",
   });
+  const imageToolMetadata = getRuntimeToolMetadata({
+    toolsAllowlist: args.opts.agentContext.toolsAllowlist,
+    toolCatalog: args.opts.toolCatalog,
+  }).filter((tool) => tool.name === "image_gen");
   const persistCodexSessionId = (sessionId: string) => {
     setExternalEngineSessionId({
       store: args.opts.store,
@@ -1788,6 +1792,9 @@ const runCodexHostedTurn = async (args: {
     ...(persistedSessionId ? { persistedSessionId } : {}),
     prompt,
     systemPrompt: args.systemPrompt,
+    // Scope this durability change to image_gen. Codex persists dynamic tool
+    // definitions on the engine thread, including across thread/resume.
+    tools: imageToolMetadata,
     cwd: localCliCwd,
     stellaDataDir: args.opts.stellaDataDir,
     stellaAppDir: args.opts.stellaAppDir,
@@ -1888,6 +1895,7 @@ const runCodexHostedTurn = async (args: {
       persistedSessionId: finalResult.sessionId,
       prompt: queuedPrompt,
       systemPrompt: args.systemPrompt,
+      tools: imageToolMetadata,
       cwd: localCliCwd,
       stellaDataDir: args.opts.stellaDataDir,
       stellaAppDir: args.opts.stellaAppDir,

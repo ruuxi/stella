@@ -71,6 +71,26 @@ describe("claude-code-tool-mcp-host", () => {
     hosts.clear();
   });
 
+  it("does not admit the first prompt until the MCP catalog response is flushed", async () => {
+    const host = await createClaudeCodeToolMcpHost({
+      tools: imageTools,
+      getActiveTurn: () => undefined,
+    });
+    hosts.add(host);
+    let ready = false;
+    const readyPromise = host.waitForClientReady(undefined, 2_000).then(() => {
+      ready = true;
+    });
+    const client = await connect(host);
+    clients.add(client);
+    await Promise.resolve();
+    expect(ready).toBe(false);
+
+    await client.listTools();
+    await readyPromise;
+    expect(ready).toBe(true);
+  });
+
   it("publishes only the immutable allowlist and routes native calls to the active turn", async () => {
     const executeTool = vi.fn<ClaudeCodeToolMcpActiveTurn["executeTool"]>(
       async (_id, name, args, _signal, onUpdate) => {

@@ -163,13 +163,16 @@ const createImageGenHandler =
     });
     if (local) return local;
 
+    const hasInlineReferenceBytes = referenceUrls.some((url) =>
+      /^data:image\//i.test(url),
+    );
     if (
-      referencePaths.length > 0 &&
+      (referencePaths.length > 0 || hasInlineReferenceBytes) &&
       args.allowManagedReferenceUpload !== true
     ) {
       return {
         error:
-          "Using local reference images with Stella managed generation requires allowManagedReferenceUpload=true for this call. The file is uploaded encrypted for the managed request and deleted after submission settles.",
+          "Using local or inline reference image bytes with Stella managed generation requires allowManagedReferenceUpload=true for this call. The bytes are uploaded encrypted for the managed request and deleted after submission settles.",
         details: {
           status: "failed",
           error: { code: "managed_reference_consent_required" },

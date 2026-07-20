@@ -1935,6 +1935,7 @@ export type ElectronApi = {
     saveOutput: (
       url: string,
       fileName: string,
+      kind?: "image",
     ) => Promise<{ ok: boolean; path?: string; error?: string }>;
     getStellaMediaDir: () => Promise<string | null>;
     copyImage: (pngBase64: string) => Promise<{ ok: boolean; error?: string }>;

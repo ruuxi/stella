@@ -57,8 +57,10 @@ describe("claude-code-session-runtime", () => {
         }>;
       };
     }>;
-    const fixtureBlock = fixture.find((entry) => entry.type === "assistant")
-      ?.message?.content?.[0];
+    const fixtureBlocks = fixture
+      .filter((entry) => entry.type === "assistant")
+      .flatMap((entry) => entry.message?.content ?? []);
+    const fixtureBlock = fixtureBlocks[0];
     if (!fixtureBlock?.id || !fixtureBlock.name || !fixtureBlock.input) {
       throw new Error("Claude identity fixture is invalid");
     }
@@ -68,9 +70,51 @@ describe("claude-code-session-runtime", () => {
       toolName: fixtureBlock.name,
       toolArgs: fixtureBlock.input,
     };
-    // Claude emits this shape in both content_block_start and its finalized
-    // assistant transcript. The duplicate must not queue a second invocation.
-    correlator.observe(first);
+    // The MCP request can arrive before Claude emits its finalized assistant
+    // transcript. Reconstruct the native call from streamed JSON first so the
+    // tool host never deadlocks waiting on a post-tool event.
+    correlator.observeStreamEvent({
+      type: "stream_event",
+      event: {
+        type: "content_block_start",
+        index: 1,
+        content_block: {
+          type: "tool_use",
+          id: first.toolCallId,
+          name: first.toolName,
+          input: {},
+        },
+      },
+    });
+    const serializedInput = JSON.stringify(first.toolArgs);
+    correlator.observeStreamEvent({
+      type: "stream_event",
+      event: {
+        type: "content_block_delta",
+        index: 1,
+        delta: {
+          type: "input_json_delta",
+          partial_json: serializedInput.slice(0, 5),
+        },
+      },
+    });
+    correlator.observeStreamEvent({
+      type: "stream_event",
+      event: {
+        type: "content_block_delta",
+        index: 1,
+        delta: {
+          type: "input_json_delta",
+          partial_json: serializedInput.slice(5),
+        },
+      },
+    });
+    correlator.observeStreamEvent({
+      type: "stream_event",
+      event: { type: "content_block_stop", index: 1 },
+    });
+    // The later finalized transcript is the same ID and must not queue a
+    // second invocation.
     correlator.observe(first);
     await expect(
       correlator.claim(
@@ -80,7 +124,11 @@ describe("claude-code-session-runtime", () => {
       ),
     ).resolves.toBe(first.toolCallId);
 
-    const second = { ...first, toolCallId: "toolu_01JINTENTIONAL_REPEAT" };
+    const capturedRepeat = fixtureBlocks[1];
+    if (!capturedRepeat?.id) {
+      throw new Error("Claude resumed identity fixture is incomplete");
+    }
+    const second = { ...first, toolCallId: capturedRepeat.id };
     correlator.observe(second);
     await expect(
       correlator.claim(
@@ -780,7 +828,9 @@ describe("claude-code-session-runtime", () => {
       expect(inlineSettings.workflowKeywordTriggerEnabled).toBe(false);
       expect(inlineSettings.disableWorkflows).toBe(true);
       const toolsIndex = argv.indexOf("--tools");
-      expect(argv[toolsIndex + 1]).toBe("");
+      expect(argv[toolsIndex + 1]).toBe("mcp__stella__*");
+      const allowedToolsIndex = argv.indexOf("--allowedTools");
+      expect(argv[allowedToolsIndex + 1]).toBe("mcp__stella__get_weather");
       const mcpConfigIndex = argv.indexOf("--mcp-config");
       const mcpConfigPath = argv[mcpConfigIndex + 1];
       expect(mcpConfigPath).toBeTruthy();

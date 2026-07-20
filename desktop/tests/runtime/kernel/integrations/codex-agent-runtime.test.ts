@@ -64,7 +64,10 @@ describe("Codex agent runtime", () => {
       };
     }>;
     const started = fixture.find((entry) => entry.method === "item/started");
-    const request = fixture.find((entry) => entry.method === "item/tool/call");
+    const requests = fixture.filter(
+      (entry) => entry.method === "item/tool/call",
+    );
+    const request = requests[0];
     if (
       !started?.params?.item?.id ||
       !request?.params?.callId ||
@@ -81,6 +84,8 @@ describe("Codex agent runtime", () => {
       toolArgs: request.params.arguments,
     };
     const replay = codexDurableImageToolCallId(common);
+    expect(requests[1]?.params?.callId).toBe(request.params.callId);
+    expect(requests[2]?.params?.callId).not.toBe(request.params.callId);
     expect(codexDurableImageToolCallId(common)).toBe(replay);
     expect(
       codexDurableImageToolCallId({ ...common, callId: "call-native-2" }),
@@ -97,6 +102,36 @@ describe("Codex agent runtime", () => {
         toolArgs: { prompt: "changed image" },
       }),
     ).not.toBe(replay);
+  });
+
+  it("registers image_gen as a real app-server dynamic tool", () => {
+    expect(
+      buildCodexThreadStartParams({
+        model: "gpt-5.4",
+        tools: [
+          {
+            name: "image_gen",
+            description: "Generate one image and await its terminal result.",
+            parameters: {
+              type: "object",
+              properties: { prompt: { type: "string" } },
+              required: ["prompt"],
+            },
+          },
+        ],
+      }).dynamicTools,
+    ).toEqual([
+      {
+        type: "function",
+        name: "image_gen",
+        description: "Generate one image and await its terminal result.",
+        inputSchema: {
+          type: "object",
+          properties: { prompt: { type: "string" } },
+          required: ["prompt"],
+        },
+      },
+    ]);
   });
 
   it("clamps spawn effort against the Codex model/list surface", () => {

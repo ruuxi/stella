@@ -70,7 +70,7 @@ export const createImageGenTool = (
         allowManagedReferenceUpload: {
           type: "boolean",
           description:
-            "Required only when local referenceImagePaths are used with the Stella managed provider. Set true only when the user has explicitly asked to use those local/attached images for this generation; the references are uploaded encrypted for managed processing and removed after submission settles. BYOK providers receive references directly and do not use Stella managed storage.",
+            "Required whenever local or inline bytes are sent through the Stella managed provider, including referenceImagePaths, attachment-derived data URLs, and data:image entries in referenceImageUrls. Set true only when the user explicitly asked to use those images; references are uploaded encrypted for managed processing and removed after submission settles. Remote http(s) URLs do not require this flag. BYOK providers receive references directly and do not use Stella managed storage.",
         },
       },
       required: ["prompt"],

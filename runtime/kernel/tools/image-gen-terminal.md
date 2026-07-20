@@ -26,14 +26,18 @@ operation ID. That ID, its provider-job
 attachment, terminal result, tool-call aliases, and delivery acknowledgement
 live in `image-tool-operations.sqlite` under the Stella data directory.
 
-The gateway atomically reserves the media job and a scheduled submission
-outbox. Full inputs (including image-edit references) are envelope-encrypted;
-the durable copy lives in Convex file storage while the first scheduled action
-also carries the encrypted payload. A database CAS changes `pending` to
-`dispatching` exactly once immediately before the Fal POST. Concurrent HTTP
-retries and duplicate scheduled actions cannot pass that claim. `succeeded`,
-`failed`, `canceled`, and `unknown` are immutable; late or opposite webhooks are
-audit-only.
+The gateway envelope-encrypts full inputs (including image-edit references)
+and writes them as bounded, owner- and operation-scoped Convex database chunks.
+A manifest exists transactionally before the first chunk; only a complete
+manifest can be attached to the atomically reserved media job and scheduled
+submission outbox. This makes partial uploads enumerable and purgeable after
+every crash boundary without a file-storage store-to-registration gap. A
+database CAS changes `pending` to `dispatching` exactly once immediately before
+the Fal POST. Concurrent HTTP retries and duplicate scheduled actions cannot
+pass that claim. `succeeded`, `failed`, `canceled`, and `unknown` are immutable;
+late or opposite webhooks are audit-only. Legacy jobs already backed by Convex
+file storage remain readable and cleanable during migration; new durable image
+submissions do not create those blobs.
 
 Fal assigns `request_id` only after accepting a queue submission and exposes no
 documented client submission idempotency key or lookup by a Stella key. This
@@ -69,8 +73,11 @@ Restart behavior is explicit:
   is a new intentional request even when the arguments are identical. Pre-canonical
   external aliases may reattach once by conversation and normalized request,
   then are durably promoted to the strict identity scheme. Claude uses the
-  persisted stream-json `tool_use.id`, correlated from the finalized assistant
-  transcript rather than MCP request numbering. Codex uses the native
+  persisted stream-json `tool_use.id`. Stella reconstructs its exact arguments
+  from `content_block_start` plus JSON deltas and binds it at block stop before
+  Claude issues the MCP request; the finalized assistant transcript is a
+  duplicate/fallback, never the first-call dependency. MCP request numbering is
+  not identity. Codex uses the native
   `dynamicToolCall.id`/`item/tool/call.callId` within the persisted Codex
   session. Canonical request hashes are mismatch guards only. A new native ID
   is therefore a legitimate identical second generation; replay of the same
@@ -113,24 +120,26 @@ is audit-only and never billed. Image connector delivery has a restart-durable
 five-attempt watchdog and records terminal abandonment after exhaustion.
 
 Encrypted managed inputs are deleted after submission settlement, cancellation,
-terminal webhook processing, or unknown classification. Their storage IDs live
-in a durable cleanup outbox from immediately after `storage.store` until a
-transaction containing both storage deletion and outbox acknowledgement
-succeeds; failures retain exponential-backoff retry state. Provably unsubmitted
-pending rows are abandoned after 24 hours. Delivered local operation aliases are
-pruned after 30 days; pending and undelivered terminal rows are retained for
-reattachment. Account deletion first opens a durable owner media-purge gate,
-then drains jobs, owner-tagged and legacy job-tagged webhook metadata, encrypted
-blob cleanup, and a durable provider-cancellation outbox. Reservations and
-dispatch claims fail closed while that gate exists; an in-flight accepted Fal
-request is retained until its provider ID can be canceled. A claimed request
-whose provider acceptance is still ambiguous leaves a sanitized canceled
-tombstone and makes account deletion fail closed for a later retry rather than
-hot-looping or discarding the only reconciliation handle. A late webhook may
-attach its provider ID only to the cancellation outbox; it cannot reverse the
-terminal result or bill the user. If no provider identity arrives, a later
-deletion retry removes the sanitized tombstone after the same 3h15 provider
-reconciliation envelope expires. Local schema creation and column migration run under `BEGIN IMMEDIATE`
-to serialize concurrent desktop processes.
+terminal webhook processing, or unknown classification. Manifest rows retain
+owner/job identity until every encrypted chunk deletion succeeds, so cleanup
+can resume after any crash. Incomplete uploads are pruned after one hour;
+complete unattached or provably unsubmitted pending manifests are abandoned
+after 24 hours. The legacy file-storage cleanup outbox remains only for already
+persisted jobs. Delivered local operation aliases are pruned after 30 days;
+pending and undelivered terminal rows are retained for reattachment. Account
+deletion first opens a durable owner media-purge gate, then drains jobs,
+owner-tagged and legacy job-tagged webhook metadata, every partial or complete
+encrypted manifest, legacy blob cleanup, and a durable provider-cancellation
+outbox. Reservations and dispatch claims fail closed while that gate exists; an
+in-flight accepted Fal request is retained until its provider ID can be
+canceled. A claimed request whose provider acceptance is still ambiguous leaves
+a sanitized canceled tombstone and makes account deletion fail closed for a
+later retry rather than hot-looping or discarding the only reconciliation
+handle. A late webhook may attach its provider ID only to the cancellation
+outbox; it cannot reverse the terminal result or bill the user. If no provider
+identity arrives, a later deletion retry removes the sanitized tombstone after
+the same 3h15 provider reconciliation envelope expires. Local schema creation
+and column migration run under `BEGIN IMMEDIATE` to serialize concurrent
+desktop processes.
 
 These semantics apply only to `image_gen`. Other media behavior is unchanged.
