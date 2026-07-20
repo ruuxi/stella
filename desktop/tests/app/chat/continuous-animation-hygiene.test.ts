@@ -114,15 +114,15 @@ describe("continuous animation hygiene", () => {
       ),
       "utf8",
     );
+    const shimmer = fs.readFileSync(
+      path.resolve(process.cwd(), "src/app/chat/TextShimmer.tsx"),
+      "utf8",
+    );
 
     expect(shimmerCss).not.toContain("background-position");
-    for (const name of ["text-shimmer-window", "text-shimmer-content"]) {
-      const keyframes = shimmerCss.match(
-        new RegExp(`@keyframes ${name}\\s*\\{([\\s\\S]*?)\\n\\}`),
-      )?.[1];
-      expect(keyframes).toContain("transform:");
-      expect(keyframes).not.toMatch(/background|filter|width|left:/);
-    }
+    expect(shimmerCss).not.toContain("animation:");
+    expect(shimmer).toContain("maxFramesPerSecond: SHIMMER_MAX_FPS");
+    expect(shimmer).toContain('style.setProperty(\n          "transform"');
     expect(activityCss).toContain('data-continuous-animation="true"');
     expect(shimmerCss).not.toContain("body:has(");
     expect(stella).toContain("createDemandDrivenAnimationLoop");

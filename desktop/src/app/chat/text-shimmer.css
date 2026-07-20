@@ -41,8 +41,7 @@
     #000 62%,
     transparent
   );
-  animation: text-shimmer-window var(--text-shimmer-duration, 2s) linear
-    var(--text-shimmer-delay, 0ms) infinite;
+  transform: translate3d(-100%, 0, 0);
   will-change: transform;
 }
 
@@ -52,32 +51,13 @@
   overflow: hidden;
   text-overflow: inherit;
   white-space: inherit;
-  animation: text-shimmer-content var(--text-shimmer-duration, 2s) linear
-    var(--text-shimmer-delay, 0ms) infinite;
+  transform: translate3d(28%, 0, 0);
   will-change: transform;
-}
-
-@keyframes text-shimmer-window {
-  from {
-    transform: translate3d(-100%, 0, 0);
-  }
-  to {
-    transform: translate3d(calc(100% / 0.28), 0, 0);
-  }
-}
-
-@keyframes text-shimmer-content {
-  from {
-    transform: translate3d(28%, 0, 0);
-  }
-  to {
-    transform: translate3d(-100%, 0, 0);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .text-shimmer__sweep,
   .text-shimmer__sweep-text {
-    animation: none;
+    transform: none;
   }
 }

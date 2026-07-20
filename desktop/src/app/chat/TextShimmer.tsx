@@ -2,9 +2,10 @@
  * TextShimmer: animated gradient shimmer across the entire string.
  */
 
-import { useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import { useContinuousAnimationGate } from "@/shared/hooks/use-continuous-animation-gate";
 import { useExclusiveAnimation } from "@/shared/hooks/use-exclusive-animation";
+import { createDemandDrivenAnimationLoop } from "@/shared/lib/demand-driven-animation-loop";
 import "./text-shimmer.css";
 
 interface TextShimmerProps {
@@ -23,6 +24,7 @@ interface TextShimmerProps {
 }
 
 export const CHAT_ACTIVITY_SHIMMER_GROUP = "chat-activity";
+const SHIMMER_MAX_FPS = 15;
 
 export function TextShimmer({
   text,
@@ -34,15 +36,13 @@ export function TextShimmer({
   exclusivePriority = 0,
 }: TextShimmerProps) {
   const rootRef = useRef<HTMLSpanElement>(null);
+  const sweepRef = useRef<HTMLSpanElement>(null);
+  const sweepTextRef = useRef<HTMLSpanElement>(null);
   const duration = useMemo(() => {
     if (durationMs !== undefined) return durationMs;
     const perCharMs = 95;
     return Math.max(1400, Math.min(4000, text.length * perCharMs));
   }, [durationMs, text.length]);
-  const phaseDelayMs = useMemo(
-    () => (syncPhase ? -(Date.now() % duration) : 0),
-    [duration, syncPhase],
-  );
   const animationGateOpen = useContinuousAnimationGate({
     active,
     elementRef: rootRef,
@@ -53,6 +53,29 @@ export function TextShimmer({
     exclusivePriority,
   );
 
+  useLayoutEffect(() => {
+    if (!shouldAnimate || !sweepRef.current || !sweepTextRef.current) return;
+    const startedAt = performance.now();
+    const initialElapsed = syncPhase ? Date.now() % duration : 0;
+    const loop = createDemandDrivenAnimationLoop({
+      maxFramesPerSecond: SHIMMER_MAX_FPS,
+      onFrame: (time) => {
+        const phase =
+          ((initialElapsed + time - startedAt) % duration) / duration;
+        sweepRef.current?.style.setProperty(
+          "transform",
+          `translate3d(${-100 + phase * (100 + 100 / 0.28)}%, 0, 0)`,
+        );
+        sweepTextRef.current?.style.setProperty(
+          "transform",
+          `translate3d(${28 - phase * 128}%, 0, 0)`,
+        );
+      },
+    });
+    loop.start();
+    return loop.stop;
+  }, [duration, shouldAnimate, syncPhase]);
+
   if (!active) {
     return <span className={className}>{text}</span>;
   }
@@ -61,17 +84,13 @@ export function TextShimmer({
     <span
       ref={rootRef}
       className={`text-shimmer${shouldAnimate ? " text-shimmer--active" : ""}${className ? ` ${className}` : ""}`}
-      style={
-        {
-          "--text-shimmer-duration": `${duration}ms`,
-          "--text-shimmer-delay": `${phaseDelayMs}ms`,
-        } as React.CSSProperties
-      }
     >
       <span className="text-shimmer__base">{text}</span>
       {shouldAnimate ? (
-        <span className="text-shimmer__sweep" aria-hidden="true">
-          <span className="text-shimmer__sweep-text">{text}</span>
+        <span ref={sweepRef} className="text-shimmer__sweep" aria-hidden="true">
+          <span ref={sweepTextRef} className="text-shimmer__sweep-text">
+            {text}
+          </span>
         </span>
       ) : null}
     </span>
