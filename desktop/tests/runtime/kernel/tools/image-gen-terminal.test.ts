@@ -128,23 +128,42 @@ const createHandler = (
   }).image_gen!;
 
 describe("image_gen terminal managed-media semantics", () => {
-  it("enforces the four-item schema/runtime ceiling before provider selection", async () => {
+  it("enforces every mixed four-item runtime ceiling before provider selection", async () => {
     const stellaDataDir = tempDirs.create("image-gen-reference-count-");
     const managedFetch = vi.fn() as unknown as typeof fetch;
-    const result = await createHandler(managedFetch)(
-      {
-        prompt: "combine these references",
-        referenceImageUrls: Array.from(
-          { length: MAX_MANAGED_IMAGE_REFERENCE_ITEMS + 1 },
-          (_, index) => `https://example.test/reference-${index}.png`,
-        ),
-      },
-      contextFor(stellaDataDir),
-    );
-    expect(result.details).toMatchObject({
-      status: "failed",
-      error: { code: "managed_reference_count_exceeded" },
-    });
+    for (const [pathCount, urlCount] of Array.from(
+      { length: MAX_MANAGED_IMAGE_REFERENCE_ITEMS },
+      (_, pathIndex) => pathIndex + 1,
+    ).flatMap((pathCount) =>
+      Array.from(
+        { length: MAX_MANAGED_IMAGE_REFERENCE_ITEMS },
+        (_, urlIndex) => urlIndex + 1,
+      )
+        .filter(
+          (urlCount) =>
+            pathCount + urlCount > MAX_MANAGED_IMAGE_REFERENCE_ITEMS,
+        )
+        .map((urlCount) => [pathCount, urlCount] as const),
+    )) {
+      const result = await createHandler(managedFetch)(
+        {
+          prompt: "combine these references",
+          referenceImagePaths: Array.from(
+            { length: pathCount },
+            (_, index) => `/tmp/reference-${index}.png`,
+          ),
+          referenceImageUrls: Array.from(
+            { length: urlCount },
+            (_, index) => `https://example.test/reference-${index}.png`,
+          ),
+        },
+        contextFor(stellaDataDir),
+      );
+      expect(result.details).toMatchObject({
+        status: "failed",
+        error: { code: "managed_reference_count_exceeded" },
+      });
+    }
     expect(managedFetch).not.toHaveBeenCalled();
   });
 

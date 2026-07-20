@@ -16,6 +16,7 @@ import {
   reserveDurableImageOperation,
   settleImageOperation,
 } from "../../../../../runtime/kernel/tools/image-operation-store.js";
+import { createImageGenTool } from "../../../../../runtime/kernel/tools/defs/image-gen.js";
 
 const tools = [
   {
@@ -34,17 +35,7 @@ const tools = [
   },
 ];
 
-const imageTools = [
-  {
-    name: "image_gen",
-    description: "Generate an image and wait for its terminal result.",
-    parameters: {
-      type: "object" as const,
-      properties: { prompt: { type: "string" } },
-      required: ["prompt"],
-    },
-  },
-];
+const imageTools = [createImageGenTool({})];
 
 const connect = async (host: ClaudeCodeToolMcpHost) => {
   const client = new Client(
@@ -86,7 +77,13 @@ describe("claude-code-tool-mcp-host", () => {
     await Promise.resolve();
     expect(ready).toBe(false);
 
-    await client.listTools();
+    const catalog = await client.listTools();
+    expect(catalog.tools[0]?.name).toBe("image_gen");
+    expect(catalog.tools[0]?.inputSchema).toMatchObject({
+      type: "object",
+      required: ["prompt"],
+      allOf: expect.any(Array),
+    });
     await readyPromise;
     expect(ready).toBe(true);
   });

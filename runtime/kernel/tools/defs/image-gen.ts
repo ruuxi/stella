@@ -4,11 +4,33 @@
  */
 
 import { AGENT_IDS } from "../../../contracts/agent-runtime.js";
+import { MAX_MANAGED_IMAGE_REFERENCE_ITEMS } from "../managed-image-references.js";
 import { createMediaToolHandlers } from "../media.js";
 import type { ToolDefinition, ToolHandler } from "../types.js";
 
 export type ImageGenToolOptions = {
   getStellaSiteAuth?: () => { baseUrl: string; authToken: string } | null;
+};
+
+// JSON Schema cannot express a sum of array lengths directly. Reject every
+// positive partition whose minimum lengths add up to MAX + 1; larger mixed
+// inputs necessarily match one of the same partitions. Per-array maxItems
+// below handles the one-sided cases.
+const combinedReferenceImageLimit = {
+  not: {
+    anyOf: Array.from(
+      { length: MAX_MANAGED_IMAGE_REFERENCE_ITEMS },
+      (_, pathIndex) => ({
+        required: ["referenceImagePaths", "referenceImageUrls"],
+        properties: {
+          referenceImagePaths: { minItems: pathIndex + 1 },
+          referenceImageUrls: {
+            minItems: MAX_MANAGED_IMAGE_REFERENCE_ITEMS - pathIndex,
+          },
+        },
+      }),
+    ),
+  },
 };
 
 export const createImageGenTool = (
@@ -58,14 +80,14 @@ export const createImageGenTool = (
         referenceImagePaths: {
           type: "array",
           items: { type: "string" },
-          maxItems: 4,
+          maxItems: MAX_MANAGED_IMAGE_REFERENCE_ITEMS,
           description:
             "Optional local image paths to use as reference inputs. At most four total references may be supplied across paths and URLs. Managed generation safely normalizes local bytes into a bounded upload envelope. When any reference is provided the gateway switches from text_to_image to image_edit.",
         },
         referenceImageUrls: {
           type: "array",
           items: { type: "string" },
-          maxItems: 4,
+          maxItems: MAX_MANAGED_IMAGE_REFERENCE_ITEMS,
           description:
             "Optional remote http(s) image URLs or validated data:image URLs to use as reference inputs. At most four total references may be supplied across URLs and paths. Mix with referenceImagePaths when you have a local subject photo plus catalog product photos.",
         },
@@ -76,6 +98,7 @@ export const createImageGenTool = (
         },
       },
       required: ["prompt"],
+      allOf: [combinedReferenceImageLimit],
     },
     execute: handler,
   };
